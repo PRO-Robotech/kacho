@@ -25,13 +25,10 @@ import (
 // клетка выросла на единицу.
 func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing.T) {
 	lane := middleware.SessionLaneSnapshot{}
-	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
-	for _, rt := range middleware.LoginLaneRoutes() {
-		relay.Relayed[rt.Verb] = 0
-	}
+	relays := zeroRelaySnapshots()
 	m := gwmetrics.New("test", "deadbeef")
 	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relays: relays}
 	})
 	body := expose(t, m)
 
@@ -39,15 +36,19 @@ func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing
 		`kacho_api_gateway_session_lane_refusals_total{outcome="cutoff_denied"} 0`,
 		`kacho_api_gateway_session_lane_refusals_total{outcome="no_session"} 0`,
 		`kacho_api_gateway_session_lane_refusals_total{outcome="unavailable"} 0`,
+		// Отказ адреса (приёмка F6b, Р12): своя клетка той же полосы, с нулём до
+		// первого отказа.
+		`kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 0`,
 		`kacho_api_gateway_session_lane_rollout_window_total 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="login"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="logout"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="password"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="csrf"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="register"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="recovery"} 0`,
-		`kacho_api_gateway_login_lane_relayed_total{verb="recovery-complete"} 0`,
-		`kacho_api_gateway_login_lane_unreachable_total 0`,
+	}
+	// Клетка ретрансляции — на КАЖДУЮ запись объявления, включая второй фактор
+	// (Ф12) и координаты церемонии (LINE-A-1 §5.1): словарь меток обходится
+	// целиком, а не выписанной частью.
+	for _, verb := range gwmetrics.LoginLaneVerbLabels() {
+		zeroes = append(zeroes, `kacho_api_gateway_login_lane_relayed_total{verb="`+verb+`"} 0`)
+	}
+	for _, tg := range middleware.RelayTargets() {
+		zeroes = append(zeroes, `kacho_api_gateway_login_lane_unreachable_total{target="`+string(tg)+`"} 0`)
 	}
 	for _, line := range zeroes {
 		assert.Contains(t, body, line, "клетка обязана существовать с нулём до первого события")
@@ -61,10 +62,50 @@ func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing
 	for _, line := range zeroes[1:] {
 		assert.Contains(t, body, line, "соседняя клетка не должна была вырасти")
 	}
-	relay.Relayed["logout"] = 1
+	relays[0].Relayed["logout"] = 1
 	body = expose(t, m)
 	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="logout"} 1`)
 	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="login"} 0`)
+}
+
+// Недостижимость различается по ЦЕЛИ: слушатель формы и слушатель выдачи —
+// разные слушатели и падают порознь; одна клетка на двоих не сказала бы, какой
+// лежит. Клетка ретрансляции координаты церемонии растёт у своей записи.
+func TestSessionLane_L13_UnreachableIsCountedPerTargetAndCeremonyVerbsHaveCells(t *testing.T) {
+	relays := zeroRelaySnapshots()
+	m := gwmetrics.New("test", "deadbeef")
+	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		return gwmetrics.SessionLaneSnapshot{Relays: relays}
+	})
+	for i := range relays {
+		if relays[i].Target == middleware.RelayTargetIssuance {
+			relays[i].Unreachable = 7
+			relays[i].Relayed["authorize"] = 3
+		}
+	}
+	body := expose(t, m)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_unreachable_total{target="issuance"} 7`)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_unreachable_total{target="form"} 0`)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="authorize"} 3`)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="token"} 0`)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="discovery"} 0`,
+		"клетка метаданных обнаружения обязана стоять с нулём с первой секунды процесса")
+}
+
+// zeroRelaySnapshots — снимки ретрансляторов только что поднятого процесса: по
+// одному на цель, клетки своих записей с нулём.
+func zeroRelaySnapshots() []handler.LoginLaneRelaySnapshot {
+	var out []handler.LoginLaneRelaySnapshot
+	for _, tg := range middleware.RelayTargets() {
+		snap := handler.LoginLaneRelaySnapshot{Target: tg, Relayed: map[string]uint64{}}
+		for _, rt := range middleware.LoginLaneRoutes() {
+			if rt.Target == tg {
+				snap.Relayed[rt.Verb] = 0
+			}
+		}
+		out = append(out, snap)
+	}
+	return out
 }
 
 func countPresent(body string, lines []string) int {
@@ -104,16 +145,34 @@ func TestSessionLane_PasswordChangeRequiredCellIsGoneWithItsSubject(t *testing.T
 	require.Contains(t, out, `kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 0`)
 }
 
+// Клетка отказа адреса (приёмка F6b, Р12): существует с нулём до первого
+// отказа, растёт на число отказов и не трогает соседние клетки полосы.
+func TestSessionLane_F6b_R12_AddressRefusalCellExistsWithZeroAndGrows(t *testing.T) {
+	lane := middleware.SessionLaneSnapshot{}
+	relays := zeroRelaySnapshots()
+	m := gwmetrics.New("test", "deadbeef")
+	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relays: relays}
+	})
+	require.Contains(t, expose(t, m), `kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 0`)
+	lane.AddressNotVerified = 4
+	body := expose(t, m)
+	require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 4`)
+	for _, neighbour := range []string{"cutoff_denied", "no_session", "unavailable"} {
+		require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="`+neighbour+`"} 0`,
+			"соседняя клетка не должна была вырасти")
+	}
+}
+
 // Клетка «уровень вне оси сессии» (Ф11-19): существует с нулём до первого
 // ответа службы без уровня и растёт на единицу с каждым таким ответом.
 // Отдельная клетка, а не исход отказа: на глаголе без пола такой ответ
 // ПРОХОДИТ, и отказом он не является — состояние докладывается само по себе.
 func TestSessionLane_F11_19_OffAxisAssuranceCellExistsWithZeroAndGrows(t *testing.T) {
 	lane := middleware.SessionLaneSnapshot{}
-	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
 	m := gwmetrics.New("test", "deadbeef")
 	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relays: zeroRelaySnapshots()}
 	})
 	require.Contains(t, expose(t, m), `kacho_api_gateway_session_lane_assurance_off_axis_total 0`)
 	lane.AssuranceOffAxis = 1
@@ -127,10 +186,9 @@ func TestSessionLane_F11_19_OffAxisAssuranceCellExistsWithZeroAndGrows(t *testin
 // У КАЖДОЙ КЛЕТКИ СНИМКА ЕСТЬ ЧИТАТЕЛЬ, И ЭТО СУДИТСЯ ОБХОДОМ ПОЛЕЙ.
 //
 // Величина, объявленная в снимке и не собранная коллектором, невидима на
-// стенде — а вместе с ней невидим и вопрос, ради которого её завели. Так и
-// вышло: клетки переходного окна объявились в снимке, их предложили как
-// свидетельство («достижима ли чужая форма входа судить счётчиком»), и судить
-// им было нельзя — ни в `Describe`, ни в `Collect` их не было.
+// стенде — а вместе с ней невидим и вопрос, ради которого её завели: клетку
+// предлагают как свидетельство, а судить ею нельзя, потому что ни в
+// `Describe`, ни в `Collect` её нет.
 //
 // Гейт судит ПОВЕДЕНИЕМ, а не текстом: каждому полю снимка даётся СВОЁ число,
 // и после сбора каждое обязано найтись в выдаче. Поле, которого коллектор не
@@ -157,13 +215,10 @@ func TestSessionLane_EveryLaneSnapshotFieldIsRead(t *testing.T) {
 	}
 	require.NotEmpty(t, want, "полей-счётчиков в снимке не найдено — гейт судил бы о непрочитанном")
 
-	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
-	for _, r := range middleware.LoginLaneRoutes() {
-		relay.Relayed[r.Verb] = 0
-	}
+	relays := zeroRelaySnapshots()
 	m := gwmetrics.New("test", "deadbeef")
 	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relays: relays}
 	})
 	body := expose(t, m)
 
@@ -181,4 +236,16 @@ func TestSessionLane_EveryLaneSnapshotFieldIsRead(t *testing.T) {
 	}
 	t.Logf("перепись: полей-счётчиков в снимке %d · прочитанных коллектором %d",
 		len(want), len(want)-len(unread))
+}
+
+// Словарь меток `target` сходится с закрытым перечнем целей ретрансляции — в
+// обе стороны.
+func TestSessionLane_L13_TargetLabelsMatchTheDeclaredTargets(t *testing.T) {
+	labels := gwmetrics.LoginLaneTargetLabels()
+	targets := middleware.RelayTargets()
+	require.Equal(t, len(targets), len(labels), "число меток и число целей")
+	for i, tg := range targets {
+		require.Equal(t, string(tg), labels[i], "метка %d расходится с целью", i)
+	}
+	t.Logf("перепись: целей объявлено %d · меток %d", len(targets), len(labels))
 }

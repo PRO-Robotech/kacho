@@ -42,6 +42,7 @@ import { Form, Segmented, Select, Typography } from "antd";
 import { api } from "@shared/api/client";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { AddressVpcCascader } from "@shared/components/organisms/form/AddressVpcCascader";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { ImmutableField } from "@shared/components/organisms/form/ImmutableField";
 import { useProjectStore } from "@shared/lib/context-store";
 import { getByPath, setByPath } from "@shared/lib/path";
@@ -62,18 +63,6 @@ interface Props {
 }
 
 const FAMILY_LABEL: Record<Family, string> = { v4: "IPv4 Адрес", v6: "IPv6 Адрес" };
-
-// Единый layout горизонтальных строк секции «Источник VIP»: label слева 200px,
-// контрол справа — паритет с ResourceFormBody.
-const ROW_FORM_PROPS = {
-  component: false as const,
-  layout: "horizontal" as const,
-  labelCol: { flex: "200px" },
-  wrapperCol: { flex: "1 1 0" },
-  labelAlign: "left" as const,
-  colon: false,
-  size: "middle" as const,
-};
 
 // Область поиска в списке зон (#528).
 //
@@ -332,14 +321,14 @@ function EditReadOnlyBlock({ value }: Props) {
   const v6 = (getByPath(value, "v6_address_id") as string) || "";
   return (
     <Section title="Источник VIP">
-      <Form {...ROW_FORM_PROPS}>
+      <FormGrid embedded>
         <Form.Item label={FAMILY_LABEL.v4} style={{ marginBottom: 8 }}>
           <ImmutableField value={v4} reason="Неизменяемо после создания" />
         </Form.Item>
         <Form.Item label={FAMILY_LABEL.v6} style={{ marginBottom: 0 }}>
           <ImmutableField value={v6} reason="Неизменяемо после создания" />
         </Form.Item>
-      </Form>
+      </FormGrid>
     </Section>
   );
 }
@@ -348,10 +337,10 @@ export function NlbVipSourceField({ value, onChange, editMode }: Props) {
   if (editMode) return <EditReadOnlyBlock value={value} onChange={onChange} />;
   return (
     <Section title="Источник VIP">
-      <Form {...ROW_FORM_PROPS}>
+      <FormGrid embedded>
         <FamilyRow value={value} onChange={onChange} family="v4" />
         <FamilyRow value={value} onChange={onChange} family="v6" />
-      </Form>
+      </FormGrid>
       <Typography.Text type="secondary" style={{ fontSize: 11 }}>
         {/* Цвет — роль палитры, а не литерал: литерал берётся из одной темы и
             в другой остаётся собой. Здесь стоял красный набора antd, который

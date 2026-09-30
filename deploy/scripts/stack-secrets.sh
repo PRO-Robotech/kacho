@@ -8,12 +8,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ПРЕДМЕТ
 #
-# Цепочка стенда `own` (`values.prod.yaml` + `values.own.yaml`) объявляет
-# одиннадцать секретов ссылкой `existingSecret`: девять пар учётных данных баз,
-# учётные данные хранилища слоёв и подписной секрет печенья консоли входа. Ни
-# один шаблон их не создаёт — под боевым слоем это ШАГ ОПЕРАТОРА, и так и
-# написано в самом профиле. Ещё четыре — ключевой материал службы доступа —
-# заводит посев (`dev-prod-secrets.sh`), но его звал ТОЛЬКО `dev-up`.
+# Цепочка стенда `own` — строка `own` таблицы deploy/stacks.txt, слоёв в ней три
+# (боевой, накладка посадки и слой площадки стенда; перечень — в таблице, а не
+# здесь, kacho#2805). Она объявляет восемь секретов ссылкой `existingSecret`:
+# семь пар учётных данных баз и учётные данные хранилища слоёв (замер по рендеру
+# цепочки после снятия стека поставщика, kacho#2816: обязательные ссылки подов
+# минус заводимое самим применением; до снятия было одиннадцать — ещё две базы
+# поставщика и подписной секрет печенья его консоли входа). Ни один шаблон их не
+# создаёт — под боевым слоем это ШАГ ОПЕРАТОРА, и так и написано в самом
+# профиле. Ещё четыре — ключевой материал службы доступа — заводит посев
+# (`dev-prod-secrets.sh`), но его звал ТОЛЬКО `dev-up`.
 #
 # Следствие, наблюдавшееся вживую: `make stack-up STACK=own` на чистом кластере
 # применял выкатку, поды вставали в `CreateContainerConfigError` либо в отказ
@@ -51,7 +55,12 @@
 #       том): их kubelet не подставит вовсе, контейнер не стартует;
 #   (б) секреты, которые заводит ПОСЕВ: ссылки на них НЕОБЯЗАТЕЛЬНЫ, под
 #       поднимется и откажет позже уже стражем старта службы — рендер про них
-#       молчит by construction;
+#       молчит by construction. Требуется из них ровно то, на что рендер
+#       ССЫЛАЕТСЯ и что служба ЧИТАЕТ под посадкой этого рендера: ключ обёртки
+#       секретов второго фактора читается только под `own` (страж старта службы,
+#       `Lanes: own`), и под `external` его отсутствие стенду не мешает — так и
+#       обещает шапка посева. Прежде перечень брал ВСЕ имена посева безусловно и
+#       отказывал стенду, который поднимался (задача #2803);
 #   (в) ведомость производителей ниже — те, у кого на локальном стенде есть
 #       рецепт.
 #
@@ -67,6 +76,14 @@
 # записи. Перевыпуск не «обновляет секрет», а делает записанное недоступным —
 # тихо, без единого отказа. Дисциплину держит
 # deploy/tests/helm/secret-material-survives-recreation-test.sh.
+#
+# «Смотрит» — значит СПРАШИВАЕТ СЕРВЕР, и исходов у вопроса три (задача #2803):
+# есть · NotFound · отказ. Прежде отказ `get` (срок, сеть, RBAC) читался как «нет»,
+# величина чеканилась и уходила `apply`, а он существующий объект перезаписывает.
+# Теперь отказ — отказ шага с кодом 2, а заведение идёт АТОМАРНО на сервере
+# (`create`): объект, появившийся между проверкой и заведением, отвечает
+# AlreadyExists и переиспользуется. Держит
+# deploy/tests/helm/seed-secrets-refuse-unknown-state-test.sh.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # КОДЫ ВОЗВРАТА
@@ -124,8 +141,16 @@ RENDER="$(helm template "$RELEASE" "$UMBRELLA" -n "$NS" $ARGS "$@" 2>&1)" || {
 }
 
 seed_verb='create secret'
+# ОБРАЗЕЦ ПОИСКА ПО ЧУЖОМУ ФАЙЛУ, А НЕ ЗАВЕДЕНИЕ СЕКРЕТА, и глагол собран из
+# двух частей именно поэтому. Гейт дисциплины ключевого материала
+# (tests/helm/secret-material-survives-recreation-test.sh) разбирает КАЖДЫЙ
+# файл этого каталога и читает дословный глагол создания как заведение
+# секрета; записанный здесь целиком, он читался бы как заведение секрета с
+# НЕЛИТЕРАЛЬНЫМ именем — то есть гейт краснел бы на собственном читателе.
+# Разрыв виден глазом и ничего не обходит: имя секрета здесь не создаётся.
+SEED_NAMES="$(grep -oE "$seed_verb generic [a-z0-9][a-z0-9-]*" "$SEED_SH" | awk '{print $4}' | sort -u)"
+[ -n "$SEED_NAMES" ] || die "из посева $SEED_SH не прочитано ни одного имени секрета — судить (б) нечем" 2
 REQUIRED="$(
-  {
     printf '%s\n' "$RENDER" | python3 -c '
 import sys, yaml
 docs=[d for d in yaml.safe_load_all(sys.stdin) if isinstance(d, dict)]
@@ -161,25 +186,70 @@ for d in docs:
         scan(spec); continue
     tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
     if tpl: scan(tpl.get("spec") or {})
+# (б) ПОСЕВ: имя требуется, только если рендер на него ССЫЛАЕТСЯ (любой
+# ссылкой, обязательной или нет) и служба читает его под посадкой ЭТОГО рендера.
+# Полосность — одна строка на секрет, читаемый не всеми посадками; перенос
+# требования стража старта службы (`Lanes: own` у второго фактора), а не выбор.
+LANES = {"kaname-second-factor-enc-key": {"own"}}
+referenced=set()
+def scan_any(pod):
+    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
+        for e in c.get("env") or []:
+            r=(e.get("valueFrom") or {}).get("secretKeyRef")
+            if r: referenced.add(r["name"])
+        for ef in c.get("envFrom") or []:
+            r=ef.get("secretRef")
+            if r: referenced.add(r["name"])
+    for v in pod.get("volumes") or []:
+        s=v.get("secret")
+        if s and s.get("secretName"): referenced.add(s["secretName"])
+for d in docs:
+    spec=d.get("spec") or {}
+    if d.get("kind")=="Pod":
+        scan_any(spec); continue
+    tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
+    if tpl: scan_any(tpl.get("spec") or {})
+posture=None
+for d in docs:
+    if d.get("kind")=="ConfigMap" and d["metadata"]["name"]=="kaname-config":
+        cfg=yaml.safe_load((d.get("data") or {}).get("config.yaml") or "") or {}
+        posture=(cfg.get("authn") or {}).get("identity-provider")
+seed=[n for n in sys.argv[1].split() if n]
+for n in seed:
+    if n not in referenced or n in made: continue
+    lanes=LANES.get(n)
+    if lanes is not None:
+        if posture is None:
+            sys.stderr.write(f"посадка не прочитана из рендера (kaname-config, authn.identity-provider): требуемость {n}, читаемого только под {sorted(lanes)}, судить нечем\n")
+            sys.exit(3)
+        if posture not in lanes: continue
+    need.add(n)
 print("\n".join(sorted(n for n in need if n not in made)))
-'
-    # ОБРАЗЕЦ ПОИСКА ПО ЧУЖОМУ ФАЙЛУ, А НЕ ЗАВЕДЕНИЕ СЕКРЕТА, и глагол собран из
-    # двух частей именно поэтому. Гейт дисциплины ключевого материала
-    # (tests/helm/secret-material-survives-recreation-test.sh) разбирает КАЖДЫЙ
-    # файл этого каталога и читает дословный глагол создания как заведение
-    # секрета; записанный здесь целиком, он читался бы как заведение секрета с
-    # НЕЛИТЕРАЛЬНЫМ именем — то есть гейт краснел бы на собственном читателе.
-    # Разрыв виден глазом и ничего не обходит: имя секрета здесь не создаётся.
-    grep -oE "$seed_verb generic [a-z0-9][a-z0-9-]*" "$SEED_SH" | awk '{print $4}'
-  } | sort -u | grep -v '^$'
-)" || die "перечень требуемых секретов не выведен" 2
+' "$SEED_NAMES" | sort -u | grep -v '^$'
+)" || die "перечень требуемых секретов не выведен (причина выше)" 2
 
 req_n="$(printf '%s\n' "$REQUIRED" | grep -c .)"
 [ "$req_n" -gt 0 ] || die "требуемых секретов выведено НОЛЬ — обход слеп, а не стенд готов" 2
 
+# secret_state <имя> — «present» | «absent» по ОТВЕТУ СЕРВЕРА. Любой иной отказ
+# (срок, сеть, RBAC) — код 2 и текст сервера на stdout: «не знаю» не равно «нет».
+secret_state() {
+  local out
+  if out="$(kubectl -n "$NS" get secret "$1" -o name 2>&1)"; then
+    echo present; return 0
+  fi
+  case "$out" in *"(NotFound)"*) echo absent; return 0 ;; esac
+  printf '%s' "$out"
+  return 2
+}
+
 missing=""
 for s in $REQUIRED; do
-  kubectl -n "$NS" get secret "$s" >/dev/null 2>&1 || missing="$missing $s"
+  st="$(secret_state "$s")" || die "есть ли секрет $s в ns $NS, НЕ УСТАНОВЛЕНО — сервер ответил не
+       NotFound, а отказом: $st
+       Прочитать это как «секрета нет» значило бы перечеканить величину поверх
+       существующей. Выкатка не применена; повтори, когда кластер отвечает." 2
+  [ "$st" = present ] || missing="$missing $s"
 done
 
 if [ -z "$missing" ]; then
@@ -214,7 +284,6 @@ producer_of() {
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
     kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
-    "$RELEASE"-hydra-stand|"$RELEASE"-kratos-stand) echo "секрет поставщика ВНЕ helm (ключи dsn + величины сессий) — вторая законная форма из identity-session-secret-guard; на площадке заводит слой площадки" ;;
     *)                        echo "" ;;
   esac
 }
@@ -223,11 +292,17 @@ producer_of() {
 # объект не трогает вовсе.
 create_generic() {
   local name="$1"; shift
-  if kubectl -n "$NS" get secret "$name" >/dev/null 2>&1; then
+  local st out
+  st="$(secret_state "$name")" || { warn "есть ли секрет $name, не установлено — сервер ответил отказом: $st"; return 1; }
+  if [ "$st" = present ]; then
     log "$name уже есть — переиспользуется (величина могла быть чем-то записана)"
     return 0
   fi
-  # ПРИМЕНЕНИЕМ МАНИФЕСТА, А НЕ ГЛАГОЛОМ СОЗДАНИЯ. Две причины, и обе несущие:
+  # МАНИФЕСТОМ, ЗАВОДИМЫМ НА СЕРВЕРЕ (`create -f -`), А НЕ ГЛАГОЛОМ СОЗДАНИЯ И НЕ
+  # `apply`. `apply` существующий объект ПЕРЕЗАПИСЫВАЕТ, `create` отвечает на
+  # него AlreadyExists — и объект, появившийся между проверкой выше и этой
+  # строкой, переиспользуется, а не теряет величину (задача #2803). Форма
+  # манифеста, а не глагол, — по двум причинам, и обе несущие:
   #   • величины уезжают в `data:` УЖЕ в base64, поэтому ни ключ обёртки, ни
   #     строка bcrypt (`$2b$…`), ни строка соединения не проходят через разбор
   #     YAML и цитирование оболочки — а они несут знаки, на которых он ломается;
@@ -243,8 +318,14 @@ create_generic() {
     for kv in "$@"; do
       printf '  %s: %s\n' "${kv%%=*}" "$(printf '%s' "${kv#*=}" | base64 -w0)"
     done
-  } | kubectl apply -f - >/dev/null || return 1
-  log "заведён $name"
+  } | { out="$(kubectl -n "$NS" create -f - 2>&1)"; rc=$?
+        if [ "$rc" -ne 0 ]; then
+          case "$out" in
+            *"(AlreadyExists)"*) log "$name появился между проверкой и заведением — переиспользуется, величина не тронута"; exit 0 ;;
+          esac
+          warn "заведение $name отказало: $out"; exit 1
+        fi
+        log "заведён $name"; }
 }
 
 # bcrypt <пользователь> <пароль> — строка htpasswd, которую понимает zot.
@@ -266,49 +347,6 @@ except ImportError:
 u, p = sys.argv[1], sys.argv[2]
 print(u + ":" + bcrypt.hashpw(p.encode(), bcrypt.gensalt(prefix=b"2b")).decode())
 PY
-}
-
-# pg_facts <имя набора> — «<пользователь> <база> <режим шифрования>», прочитанные
-# из РЕНДЕРА того же применения. Выписывать их здесь значило бы завести вторую
-# копию того, что объявляет профиль, и копия разошлась бы молча.
-pg_facts() {
-  printf '%s\n' "$RENDER" | python3 -c '
-import sys, yaml
-want=sys.argv[1]
-for d in yaml.safe_load_all(sys.stdin):
-    if not isinstance(d, dict) or d.get("kind")!="StatefulSet": continue
-    if d["metadata"]["name"]!=want: continue
-    env={}
-    for c in (d["spec"]["template"]["spec"].get("containers") or []):
-        for e in (c.get("env") or []):
-            if e.get("value") is not None: env[e["name"]]=e["value"]
-    tls = str(env.get("POSTGRESQL_ENABLE_TLS","no")).lower()=="yes"
-    print(env.get("POSTGRES_USER",""), env.get("POSTGRES_DATABASE",""), "require" if tls else "disable")
-    break
-' "$1"
-}
-
-# ory_stand_secret <имя секрета> <имя набора базы> <ключ величины сессии>…
-# Строка соединения и величины сессий чеканятся ОДНИМ объектом: чарт поставщика,
-# переведённый на секрет вне helm, перенаправляет на него ВСЕ ключи.
-ory_stand_secret() {
-  local name="$1" pg="$2"; shift 2
-  produce "$pg" || return 1
-  local pass user db mode facts
-  pass="$(kubectl -n "$NS" get secret "$pg" -o jsonpath='{.data.password}' | base64 -d)" || return 1
-  [ -n "$pass" ] || { warn "у секрета $pg нет ключа password — строку соединения собрать не из чего"; return 1; }
-  facts="$(pg_facts "$pg")"
-  user="$(printf '%s' "$facts" | awk '{print $1}')"
-  db="$(printf '%s' "$facts" | awk '{print $2}')"
-  mode="$(printf '%s' "$facts" | awk '{print $3}')"
-  [ -n "$user" ] && [ -n "$db" ] && [ -n "$mode" ] || {
-    warn "рендер не назвал пользователя/базу/режим для $pg — собирать строку соединения вслепую нельзя"
-    return 1
-  }
-  local kv=("dsn=postgres://$user:$pass@$pg:5432/$db?sslmode=$mode")
-  local k
-  for k in "$@"; do kv+=("$k=$(openssl rand -hex 16)"); done
-  create_generic "$name" "${kv[@]}"
 }
 
 seed_ran=0
@@ -346,12 +384,6 @@ produce() {
     kratos-selfservice-ui-cookie-secret)
       create_generic "$name" "cookieSecret=$(openssl rand -hex 16)"
       ;;
-    "$RELEASE"-hydra-stand)
-      ory_stand_secret "$name" "$RELEASE-pg-hydra" secretsSystem secretsCookie
-      ;;
-    "$RELEASE"-kratos-stand)
-      ory_stand_secret "$name" "$RELEASE-pg-kratos" secretsDefault secretsCookie secretsCipher
-      ;;
     *) return 1 ;;
   esac
 }
@@ -378,7 +410,8 @@ done
 
 still=""
 for s in $REQUIRED; do
-  kubectl -n "$NS" get secret "$s" >/dev/null 2>&1 || still="$still $s"
+  st="$(secret_state "$s")" || die "есть ли секрет $s после посева, НЕ УСТАНОВЛЕНО — сервер ответил отказом: $st" 2
+  [ "$st" = present ] || still="$still $s"
 done
 if [ -n "$still" ]; then
   warn "стенд $STACK: после посева ОТСУТСТВУЕТ $(printf '%s\n' $still | grep -c .):"

@@ -4,7 +4,7 @@
 // jwk.go — RFC 7517 JWK parsing + RFC 7638 thumbprint computation.
 //
 // Used by:
-//   - jwks_verifier.go — fetches Hydra JWKS, converts to crypto.PublicKey for
+//   - jwks_verifier.go — fetches an issuer's JWKS, converts to crypto.PublicKey for
 //     JWT signature verification.
 //   - dpop.go — parses embedded `jwk` from DPoP JWT header, verifies DPoP
 //     signature, computes `jkt` thumbprint for cnf.jkt match.

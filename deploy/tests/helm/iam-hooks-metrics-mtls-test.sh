@@ -81,10 +81,27 @@ require_mikefarah_yq
 [ -f "$DEV" ]  || fatal "values.dev.yaml нет на диске ($DEV)"
 [ -f "$TPL" ]  || fatal "шаблона kaname нет на диске ($TPL)"
 
+# ИЗДАТЕЛЬ ПОСТАВЩИКА НА СТЕНДАХ НЕ ПОДНИМАЕТСЯ (#2735): он выключен в базе зонта
+# для всех цепочек, а его настройки — адреса обратных вызовов к нашему слушателю
+# и якорь доверия его пода — лежат в профилях до физического снятия подчарта
+# (#1276). Половины 2–4 судят ИХ, поэтому издатель поднимается внутри рендера
+# пробы ОДНИМ фактом поверх профиля — и только поверх профиля, который его
+# настройки объявляет. Половины 1 и 5 судят наш слушатель и от издателя не
+# зависят.
+# shellcheck source=deploy/tests/helm/provider-up.sh
+. "$(dirname "$0")/provider-up.sh"
+
 # render_only <values> <show-only-template> — результат в $HELM_OUT.
 render_only() {
-  helm_try kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2"
-  render_or_fatal "$(basename "$1") → $2"
+  local declared_rc
+  provider_part_declared issuer "$UMBRELLA/values.yaml" "$1" && declared_rc=0 || declared_rc=$?
+  case "$declared_rc" in
+    0) ;;
+    1) fail "$(basename "$1") больше не объявляет настроек издателя поставщика — половинам 2–4 судить нечего; снимите их вместе с предметом (#1276)" ;;
+    *) fatal "$(basename "$1") не разобран — объявлены ли настройки издателя, судить не по чему" ;;
+  esac
+  helm_try kacho-umbrella "$UMBRELLA" -f "$1" "${ISSUER_UP_ARGS[@]}" --show-only "$2"
+  render_or_fatal "$(basename "$1") → $2 (издатель поднят пробой)"
 }
 
 # Full per-edge env set, INCLUDING the new CLIENTAUTHMODE (M2): the prior array

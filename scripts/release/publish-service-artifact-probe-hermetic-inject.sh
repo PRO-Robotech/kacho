@@ -21,30 +21,53 @@
 # создаётся в конвейере тоже — без этого файла снятие изоляции прошло бы там
 # зелёным до первого человека с `~/.gitconfig`.
 #
-# ФОРМ, КОТОРЫМИ ВЫЗЫВАЮЩИЙ ПЕРЕДАЁТ ЛИЧНОСТЬ, ПЯТЬ, и контроль несёт все разом:
+# ФОРМ, КОТОРЫМИ ВЫЗЫВАЮЩИЙ ПЕРЕДАЁТ ЛИЧНОСТЬ, СЕМЬ, и контроль несёт все разом.
+# Шесть — НАСТРОЙКА git:
 #   корневой файл `~/.gitconfig` · файл XDG `$XDG_CONFIG_HOME/git/config` ·
 #   системный файл (`GIT_CONFIG_SYSTEM`) · переменные `GIT_CONFIG_COUNT/KEY/VALUE` ·
 #   `GIT_CONFIG_PARAMETERS` — так git передаёт `git -c …` всему, что запускает,
-#   в том числе хуку отправки.
+#   в том числе хуку отправки · каталог шаблонов `GIT_TEMPLATE_DIR` (#2823):
+#   `git init` копирует его `config` в `.git/config` нового репозитория, и
+#   настройка вызывающего доезжает ЛОКАЛЬНОЙ мимо пяти прочих снятий.
+# Седьмая — ПЕРЕМЕННЫЕ ЛИЧНОСТИ КОММИТА (#2832): `GIT_AUTHOR_NAME/EMAIL`,
+#   `GIT_COMMITTER_NAME/EMAIL` и `EMAIL`. Они сильнее любой настройки, и
+#   `git config --show-origin` их не показывает вовсе, поэтому о ней предпосылка
+#   спрашивает `git var GIT_AUTHOR_IDENT` и `GIT_COMMITTER_IDENT`. Её изоляция
+#   живёт НЕ в трёх строках начала пробы, а в случае I' (`root_only`): подпись
+#   коммита читает только он. Пока этой формы в контроле не было, снятие изоляции
+#   случая I' на обычном вызывающем проходило зелёным.
 # Каждая форма несёт СВОЁ значение, и предпосылка контроля спрашивает у git, что
-# он видит все пять: форма, не доставившая личность, сделала бы контроль холостым
-# по ней. Зелёный контроль при пяти доставленных формах и есть доказательство
+# он видит все семь: форма, не доставившая личность, сделала бы контроль холостым
+# по ней. Зелёный контроль при семи доставленных формах и есть доказательство
 # изоляции КАЖДОЙ; утечку любой одной предпосылка пробы называет поимённо.
 #
-# ПРОГОНОВ ЧЕТЫРЕ, и каждый меняет против контроля РОВНО ОДИН факт:
-#   1. контроль — у вызывающего личность есть во всех пяти формах: проба
-#      зелёная, и случай I ИСПОЛНЕН, а не пропущен;
+# ЛИЧНОСТЬ В ШАБЛОНЕ ЛЕЖИТ ЗА `[include]`, И ЭТО НЕСУЩЕЕ. Фикстура пробы пишет
+# свою локальную личность поверх скопированного `config`, а случай I её снимает:
+# запись `[user]` прямо в шаблоне этим снятием стиралась бы, и снятая изоляция
+# шаблона на случае I была бы не видна ничем. Включённый файл снятием локальной
+# записи не стирается — ровно так и доезжает настоящая настройка вызывающего.
+#
+# ПРОГОНОВ ШЕСТЬ, и каждый меняет против контроля РОВНО ОДИН факт:
+#   1. контроль — у вызывающего личность есть во всех семи формах: проба
+#      зелёная, случай I ИСПОЛНЕН, а не пропущен, и строки третьей категории нет
+#      ни у одного случая — в том числе у I', который седьмую форму и снимает;
 #   2. законный близнец — у вызывающего личности нет ни в одной: тот же исход и
 #      та же перепись;
 #   3. дефект ИСПЫТУЕМОГО — производитель без отказа по личности: случай I
 #      краснеет, и краснеет ТОЛЬКО он — изоляция не ослепила пробу к её предмету;
 #   4. дефект ПРОБЫ — изоляция снята: случай I объявлен «НЕ ВЫПОЛНИЛОСЬ» с
-#      названными формами утечки, а не находкой о производителе.
+#      названными формами утечки, а не находкой о производителе;
+#   5. дефект ПРОБЫ — снята изоляция ОДНОЙ шестой формы, шаблона: случай I
+#      объявлен «НЕ ВЫПОЛНИЛОСЬ», названа ровно она, прочие пять не названы;
+#   6. дефект ПРОБЫ — снята изоляция седьмой формы в случае I' (`unset` в
+#      `root_only`): случай I' объявлен «НЕ ВЫПОЛНИЛОСЬ», названа ровно она,
+#      шесть форм настройки не названы.
 # Прогоны независимы и идут параллельно: каждый — полная проба, и
-# последовательно их цена легла бы на прогон вчетверо.
+# последовательно их цена легла бы на прогон впятеро.
 #
-# Исходы: 0 — доказано; 1 — провалено утверждение; 3 — вердикта нет (условие
-# прогона не создано, дефект не внесён, утверждений ноль).
+# Исходы — по контракту доказательств дерева (`deploy/tests/helm/README.md`
+# §«Три исхода»): 0 — доказано; 1 — провалено утверждение; 2 — условие не
+# создано (условие прогона не создано, дефект не внесён, утверждений ноль).
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
@@ -53,16 +76,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE_NAME="publish-service-artifact-inject.sh"
 SUT_NAME="publish-service-artifact.sh"
 for f in "$PROBE_NAME" "$SUT_NAME"; do
-    [ -r "$HERE/$f" ] || { echo "нет $HERE/$f — доказывать нечего, это НЕ ВЫПОЛНИЛОСЬ" >&2; exit 3; }
+    [ -r "$HERE/$f" ] || { echo "нет $HERE/$f — доказывать нечего, это НЕ ВЫПОЛНИЛОСЬ" >&2; exit 2; }
 done
-command -v go >/dev/null 2>&1 || { echo "нет go — проба не исполнима, доказать нечем" >&2; exit 3; }
+command -v go >/dev/null 2>&1 || { echo "нет go — проба не исполнима, доказать нечем" >&2; exit 2; }
 
 PASS=0; FAIL=0; NOTRUN=0
 ok()     { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
 bad()    { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "$2"; }
 notrun() { NOTRUN=$((NOTRUN+$1)); printf '  НЕ ВЫПОЛНИЛОСЬ %s\n     %s\n' "$2" "$3"; }
 
-T="$(mktemp -d)" || exit 3
+T="$(mktemp -d)" || exit 2
 trap 'rm -rf "$T"' EXIT
 
 # ── Вызывающий: два окружения одного устройства ─────────────────────────────
@@ -79,54 +102,77 @@ GO_PINS=(
     "GOCACHE=$(go env GOCACHE)"
     "GOENV=$(go env GOENV)"
 )
-FORMS="via-home via-xdg via-system via-count via-parameters"
+FORMS="via-home via-xdg via-system via-count via-parameters via-template"
+# Седьмая форма — отдельным именем: её изоляция стоит не там, где у шести, и
+# прогон 4 (сняты три строки начала пробы) называть её не обязан.
+IDENT_FORM="via-ident-env"
 
-mkdir -p "$T/with/home" "$T/with/xdg/git" "$T/without/home" "$T/without/xdg/git"
+mkdir -p "$T/with/home" "$T/with/xdg/git" "$T/without/home" "$T/without/xdg/git" \
+         "$T/with/template" "$T/without/template"
 printf '[user]\n\tname = via-home\n\temail = via-home@invalid\n'     > "$T/with/home/.gitconfig"
 printf '[user]\n\tname = via-xdg\n\temail = via-xdg@invalid\n'       > "$T/with/xdg/git/config"
 printf '[user]\n\tname = via-system\n\temail = via-system@invalid\n' > "$T/with/system.gitconfig"
+printf '[user]\n\tname = via-template\n\temail = via-template@invalid\n' > "$T/with/template-user.gitconfig"
+printf '[include]\n\tpath = %s\n' "$T/with/template-user.gitconfig"      > "$T/with/template/config"
 : > "$T/without/home/.gitconfig"
 : > "$T/without/xdg/git/config"
 : > "$T/without/system.gitconfig"
+: > "$T/without/template/config"
 
 caller_with() {  # caller_with <команда...>
     env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_CONFIG \
         HOME="$T/with/home" XDG_CONFIG_HOME="$T/with/xdg" \
         GIT_CONFIG_SYSTEM="$T/with/system.gitconfig" \
+        GIT_TEMPLATE_DIR="$T/with/template" \
         GIT_CONFIG_COUNT=2 \
         GIT_CONFIG_KEY_0=user.name  GIT_CONFIG_VALUE_0=via-count \
         GIT_CONFIG_KEY_1=user.email GIT_CONFIG_VALUE_1=via-count@invalid \
         GIT_CONFIG_PARAMETERS="'user.name'='via-parameters' 'user.email'='via-parameters@invalid'" \
+        GIT_AUTHOR_NAME="$IDENT_FORM"    GIT_AUTHOR_EMAIL="$IDENT_FORM@invalid" \
+        GIT_COMMITTER_NAME="$IDENT_FORM" GIT_COMMITTER_EMAIL="$IDENT_FORM@invalid" \
+        EMAIL="$IDENT_FORM@invalid" \
         "${GO_PINS[@]}" "$@"
 }
 caller_without() {  # caller_without <команда...>
     env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_CONFIG \
         -u GIT_CONFIG_COUNT -u GIT_CONFIG_PARAMETERS \
+        -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL \
         HOME="$T/without/home" XDG_CONFIG_HOME="$T/without/xdg" \
         GIT_CONFIG_SYSTEM="$T/without/system.gitconfig" \
+        GIT_TEMPLATE_DIR="$T/without/template" \
         "${GO_PINS[@]}" "$@"
 }
 
 echo "── предпосылка: что вызывающий передаёт на самом деле"
 # Спрошено у git, а не выведено из того, что записано в файлы: форма, которую
 # git не читает, сделала бы контроль холостым по ней — зелёным без предмета.
-git init --quiet "$T/look"
-SEEN_WITH="$( cd "$T/look" && caller_with git config --show-origin --get-all user.name 2>/dev/null )"
-SEEN_WITHOUT="$( cd "$T/look" && caller_without git config --show-origin --get-all user.name 2>/dev/null )"
+# Репозиторий заводит САМ вызывающий: шаблон действует в момент `git init`, и
+# репозиторий, заведённый вне его окружения, шестой формы не увидел бы никогда.
+caller_with    git init --quiet "$T/look-with"
+caller_without git init --quiet "$T/look-without"
+SEEN_WITH="$( cd "$T/look-with" && caller_with git config --show-origin --get-all user.name 2>/dev/null )"
+SEEN_WITHOUT="$( cd "$T/look-without" && caller_without git config --show-origin --get-all user.name 2>/dev/null )"
+# Седьмая форма видна не в настройке, а в ПОДПИСИ, которую git поставил бы
+# коммиту: автор и коммиттер — отдельными переменными, и спрашиваются оба.
+IDENT_WITH="$( cd "$T/look-with" && { caller_with git var GIT_AUTHOR_IDENT; caller_with git var GIT_COMMITTER_IDENT; } 2>/dev/null )"
+IDENT_WITHOUT="$( cd "$T/look-without" && { caller_without git var GIT_AUTHOR_IDENT; caller_without git var GIT_COMMITTER_IDENT; } 2>/dev/null )"
 MISSING=""
 for v in $FORMS; do
     [[ "$SEEN_WITH" == *"$v"* ]] || MISSING="$MISSING $v"
 done
+[ "$(printf '%s\n' "$IDENT_WITH" | grep -c "^$IDENT_FORM <$IDENT_FORM@invalid> ")" = 2 ] \
+    || MISSING="$MISSING $IDENT_FORM"
 WITH_OK=1; WITHOUT_OK=1
 if [ -n "$MISSING" ]; then
     WITH_OK=0
     printf '   контроль НЕ создан: git не видит форм:%s\n' "$MISSING"
 else
-    printf '   контроль: личность видна в %d формах —%s\n' "$(printf '%s\n' "$SEEN_WITH" | grep -c .)" " $FORMS"
+    printf '   контроль: личность видна в %d формах настройки —%s — и в подписи коммита — %s\n' \
+        "$(printf '%s\n' "$SEEN_WITH" | grep -c .)" " $FORMS" "$IDENT_FORM"
 fi
-if [ -n "$SEEN_WITHOUT" ]; then
+if [ -n "$SEEN_WITHOUT" ] || [[ "$IDENT_WITHOUT" == *via-* ]]; then
     WITHOUT_OK=0
-    printf '   близнец НЕ создан: git видит личность: %s\n' "$(printf '%s' "$SEEN_WITHOUT" | tr '\n\t' '; ')"
+    printf '   близнец НЕ создан: git видит личность: %s\n' "$(printf '%s %s' "$SEEN_WITHOUT" "$IDENT_WITHOUT" | tr '\n\t' '; ')"
 else
     echo "   близнец: личность не видна ни в одной форме"
 fi
@@ -149,23 +195,40 @@ replace_line() {  # replace_line <файл> <строка> <замена|-> <с�
     mv "$file.new" "$file" && chmod +x "$file"
 }
 
-mkdir -p "$T/sut-defect" "$T/probe-defect"
+mkdir -p "$T/sut-defect" "$T/probe-defect" "$T/template-defect" "$T/ident-defect"
 cp "$HERE/$PROBE_NAME" "$HERE/$SUT_NAME" "$T/sut-defect/"
 cp "$HERE/$PROBE_NAME" "$HERE/$SUT_NAME" "$T/probe-defect/"
+cp "$HERE/$PROBE_NAME" "$HERE/$SUT_NAME" "$T/template-defect/"
+cp "$HERE/$PROBE_NAME" "$HERE/$SUT_NAME" "$T/ident-defect/"
 
 # Дефект испытуемого: отказ по неустановленной личности снят, всё прочее цело.
 SUT_DEFECT=1
 replace_line "$T/sut-defect/$SUT_NAME" \
     'if [ -z "$WHO_NAME" ] || [ -z "$WHO_MAIL" ]; then' 'if false; then' 1 || SUT_DEFECT=0
 
-# Дефект пробы: изоляция настройки вызывающего снята целиком — обе её строки.
+# Дефект пробы: изоляция настройки вызывающего снята целиком — все три её строки.
 PROBE_DEFECT=1
 replace_line "$T/probe-defect/$PROBE_NAME" \
     'export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1' - 1 \
     && replace_line "$T/probe-defect/$PROBE_NAME" \
-    'unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT' - 1 || PROBE_DEFECT=0
+    'unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT' - 1 \
+    && replace_line "$T/probe-defect/$PROBE_NAME" \
+    'export GIT_TEMPLATE_DIR=' - 1 || PROBE_DEFECT=0
 
-# ── Четыре прогона, параллельно ─────────────────────────────────────────────
+# Дефект пробы, одно-фактный: снята изоляция ТОЛЬКО шаблона, прочие пять форм
+# закрыты. Без него снятие этой одной строки было бы неотличимо от её наличия:
+# прогон 4 снимает все три разом, и утечку шаблона там заслоняют пять соседей.
+TEMPLATE_DEFECT=1
+replace_line "$T/template-defect/$PROBE_NAME" 'export GIT_TEMPLATE_DIR=' - 1 || TEMPLATE_DEFECT=0
+
+# Дефект пробы седьмой формы (#2832): в случае I' переменные личности коммита
+# больше не снимаются — подоболочка `root_only` остаётся, `unset` из неё убран.
+IDENT_DEFECT=1
+replace_line "$T/ident-defect/$PROBE_NAME" \
+    '    ( unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL' '    (' 1 \
+    || IDENT_DEFECT=0
+
+# ── Шесть прогонов, параллельно ─────────────────────────────────────────────
 run_probe() {  # run_probe <имя> <вызывающий> <каталог>
     local name="$1" caller="$2" dir="$3" rc
     ( cd "$T" && "$caller" bash "$dir/$PROBE_NAME" ) > "$T/$name.out" 2>&1; rc=$?
@@ -175,6 +238,8 @@ run_probe() {  # run_probe <имя> <вызывающий> <каталог>
 [ "$WITHOUT_OK" = 1 ]                          && run_probe twin    caller_without "$HERE" &
 [ "$WITH_OK" = 1 ] && [ "$SUT_DEFECT" = 1 ]    && run_probe sut     caller_with    "$T/sut-defect" &
 [ "$WITH_OK" = 1 ] && [ "$PROBE_DEFECT" = 1 ]  && run_probe probe   caller_with    "$T/probe-defect" &
+[ "$WITH_OK" = 1 ] && [ "$TEMPLATE_DEFECT" = 1 ] && run_probe template caller_with  "$T/template-defect" &
+[ "$WITH_OK" = 1 ] && [ "$IDENT_DEFECT" = 1 ]  && run_probe ident   caller_with    "$T/ident-defect" &
 wait
 
 out()     { cat "$T/$1.out" 2>/dev/null; }
@@ -237,8 +302,8 @@ fi
 echo "── 4. дефект пробы: изоляция настройки вызывающего снята"
 if [ "$WITH_OK" = 1 ] && [ "$PROBE_DEFECT" = 1 ]; then
     OUT="$(out probe)"; RC="$(rc_of probe)"
-    if [ "$RC" = 3 ]; then ok "4a вердикта нет — код 3, а не находка"
-    else bad "4a вердикта нет — код 3, а не находка" "код $RC; провалены: '$(failed probe)'; $(census probe)"; fi
+    if [ "$RC" = 2 ]; then ok "4a вердикта нет — код 2, а не находка"
+    else bad "4a вердикта нет — код 2, а не находка" "код $RC; провалены: '$(failed probe)'; $(census probe)"; fi
     if [ -z "$(failed probe)" ]; then ok "4b о производителе не объявлено ни одной находки"
     else bad "4b о производителе не объявлено ни одной находки" "провалены: '$(failed probe)'"; fi
     SAID="$(printf '%s\n' "$OUT" | grep -A1 '^  НЕ ВЫПОЛНИЛОСЬ I' )"
@@ -247,13 +312,56 @@ if [ "$WITH_OK" = 1 ] && [ "$PROBE_DEFECT" = 1 ]; then
         else bad "4c утечка названа по форме: $v" "текст: $(printf '%s' "$SAID" | tr '\n' '|')"; fi
     done
 else
-    notrun 7 "4a–4c" "дефект не внесён: строк изоляции нет в пробе ровно по одной (либо контроль не создан)"
+    notrun 8 "4a–4c" "дефект не внесён: строк изоляции нет в пробе ровно по одной (либо контроль не создан)"
+fi
+
+echo "── 5. дефект пробы: снята изоляция одного шаблона, прочие формы закрыты"
+if [ "$WITH_OK" = 1 ] && [ "$TEMPLATE_DEFECT" = 1 ]; then
+    OUT="$(out template)"; RC="$(rc_of template)"
+    # Код не выписан: «вердикта нет» — это ни зелёное, ни находка, и сверяется
+    # здесь именно это, а номер кода держит утверждение 4a того же исхода.
+    if [ "$RC" != 0 ] && [ "$RC" != 1 ]; then ok "5a вердикта нет — ни зелёное, ни находка (код $RC)"
+    else bad "5a вердикта нет — ни зелёное, ни находка" "код $RC; провалены: '$(failed template)'; $(census template)"; fi
+    if [ -z "$(failed template)" ]; then ok "5b о производителе не объявлено ни одной находки"
+    else bad "5b о производителе не объявлено ни одной находки" "провалены: '$(failed template)'"; fi
+    SAID="$(printf '%s\n' "$OUT" | grep -A1 '^  НЕ ВЫПОЛНИЛОСЬ I' )"
+    if [[ "$SAID" == *via-template* ]]; then ok "5c утечка названа по форме: via-template"
+    else bad "5c утечка названа по форме: via-template" "текст: $(printf '%s' "$SAID" | tr '\n' '|')"; fi
+    OTHERS=""
+    for v in $FORMS; do
+        [ "$v" = via-template ] && continue
+        [[ "$SAID" == *"$v"* ]] && OTHERS="$OTHERS $v"
+    done
+    if [ -z "$OTHERS" ]; then ok "5d прочие пять форм закрыты — не названы"
+    else bad "5d прочие пять форм закрыты — не названы" "названы:$OTHERS"; fi
+else
+    notrun 4 "5a–5d" "дефект не внесён: строки изоляции шаблона нет в пробе ровно одной (либо контроль не создан)"
+fi
+
+echo "── 6. дефект пробы: в случае I' не сняты переменные личности коммита"
+if [ "$WITH_OK" = 1 ] && [ "$IDENT_DEFECT" = 1 ]; then
+    OUT="$(out ident)"; RC="$(rc_of ident)"
+    if [ "$RC" != 0 ] && [ "$RC" != 1 ]; then ok "6a вердикта нет — ни зелёное, ни находка (код $RC)"
+    else bad "6a вердикта нет — ни зелёное, ни находка" "код $RC; провалены: '$(failed ident)'; $(census ident)"; fi
+    if [ -z "$(failed ident)" ]; then ok "6b о производителе не объявлено ни одной находки"
+    else bad "6b о производителе не объявлено ни одной находки" "провалены: '$(failed ident)'"; fi
+    SAID="$(printf '%s\n' "$OUT" | grep -A1 '^  НЕ ВЫПОЛНИЛОСЬ I' )"
+    if [[ "$SAID" == *"$IDENT_FORM"* ]]; then ok "6c утечка названа по форме: $IDENT_FORM"
+    else bad "6c утечка названа по форме: $IDENT_FORM" "текст: $(printf '%s' "$SAID" | tr '\n' '|')"; fi
+    OTHERS=""
+    for v in $FORMS; do
+        [[ "$SAID" == *"$v"* ]] && OTHERS="$OTHERS $v"
+    done
+    if [ -z "$OTHERS" ]; then ok "6d шесть форм настройки закрыты — не названы"
+    else bad "6d шесть форм настройки закрыты — не названы" "названы:$OTHERS"; fi
+else
+    notrun 4 "6a–6d" "дефект не внесён: строки снятия переменных личности нет в пробе ровно одной (либо контроль не создан)"
 fi
 
 echo
 printf 'перепись доказательства: утверждений %d, прошло %d, провалено %d, не выполнено %d\n' \
     "$((PASS+FAIL))" "$PASS" "$FAIL" "$NOTRUN"
 [ "$FAIL" = "0" ] || exit 1
-[ "$NOTRUN" = "0" ] || { echo "ВЕРДИКТА НЕТ по $NOTRUN утверждениям — это не «доказано»" >&2; exit 3; }
-[ "$PASS" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 3; }
+[ "$NOTRUN" = "0" ] || { echo "ВЕРДИКТА НЕТ по $NOTRUN утверждениям — это не «доказано»" >&2; exit 2; }
+[ "$PASS" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 2; }
 exit 0

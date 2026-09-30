@@ -89,6 +89,51 @@
 //  3. Он не судит конфигурацию поставщика — только НАШУ (метка
 //     `kacho.cloud/component: kratos-config`, которую ставит наш подчарт).
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// ЦЕПОЧКА, ОБЪЯВИВШАЯ ОТСУТСТВИЕ СЛУЖБЫ ЛИЧНОСТИ, — НЕ «ПОТЕРЯННАЯ ПРОВЯЗКА»
+// (задача #2816)
+//
+// Прежде гейт требовал нашей карты настроек службы личности от КАЖДОЙ цепочки
+// deploy/stacks.txt и отказывал на её отсутствии. Цепочку `own`, на которой
+// человека проверяет НАША полоса и поставщика нет вовсе, он не отличал от
+// процесса, потерявшего аргумент файла настроек: снять поставщика с неё было
+// нельзя, не уронив гейт (так и было записано в шапке values.own.yaml).
+//
+// Различает их признак, который производим МЫ: посадка личности, объявленная
+// нашей службой в её отрендеренной карте настроек (`kaname-config`,
+// authn.identity-provider). Чужой флаг `kratos.enabled` признаком не служит —
+// он исчезает вместе с подчартом, и цепочка, потерявшая провязку, выглядела бы
+// объявившей отсутствие.
+//
+//	посадка external — суд прежний: наша карта обязана быть, читатель обязан
+//	                    быть, B == 0;
+//	посадка own      — отсутствие обязано быть НАСТОЯЩИМ: в рендере нет ни
+//	                    одного объекта поставщика (имя или образ называет
+//	                    kratos|hydra|ory, включая НАШУ карту его настроек — у неё
+//	                    нет читателя), и ни одна наша нагрузка не называет адреса
+//	                    или издателя поставщика ни переменной, ни картой настроек.
+//	                    Цепочка, объявившая own и поднявшая хоть одну нагрузку
+//	                    поставщика, — находка, а не «своя полоса плюс запас».
+//
+// Перепись поставщика на external-цепочках печатается и требуется НЕПУСТОЙ хотя
+// бы на одной: иначе «на own ноль» неотличимо от переписи, которая не видит
+// поставщика нигде.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОСАДКУ own ОБЪЯВЛЯЮТ ВСЕ ЦЕПОЧКИ (#2735) — И ДВЕ ПОЛОВИНЫ ГЕЙТА РАСХОДЯТСЯ
+//
+// Цепочек на external в таблице больше нет, поставщик выключен в базе зонта на
+// всех. Половина own судит НАСТОЯЩИЙ рендер каждой цепочки — отсутствие
+// поставщика там и есть предмет. Половина external (наш файл не перебивается
+// окружением его процесса) без носителя осталась бы беспредметной, а контроль
+// переписи («объектов поставщика больше нуля хоть где-то») — невыполнимым.
+//
+// Поэтому вторая половина судит ту же цепочку, в которой поставщик ПОДНЯТ
+// ПРОБОЙ одним фактом (`providerRaisedByProbe`) — и только там, где профиль
+// цепочки его настройки объявляет (они лежат в дереве до физического снятия
+// подчарта, #1276). Перепись печатает, на скольких цепочках поставщик поднят
+// пробой, чтобы вердикт о файле настроек не читался как вердикт о стенде.
+//
 // Способность упасть и смолчать доказана инъекцией НАСТОЯЩИМ входом через
 // настоящие ручки чарта — identity_file_keys_survive_the_environment_injection_test.go.
 package deploy_test
@@ -98,6 +143,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -136,6 +182,21 @@ func renderStack(t *testing.T, chain []string, sets ...string) (string, error) {
 	}
 	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
 	return string(out), err
+}
+
+// chainDeclaresIdentityStore — объявляет ли цепочка (база зонта + профили)
+// настройки службы личности поставщика: `kratos.kratos.config` — непустое
+// отображение. Только такую цепочку проба вправе поднимать: иначе она судила бы
+// конфигурацию, которую не объявлял никто.
+func chainDeclaresIdentityStore(t *testing.T, chain []string) bool {
+	t.Helper()
+	merged := readYAML(t, filepath.Join(umbrellaDir, "values.yaml"))
+	for _, p := range chain {
+		merged = mergeValues(merged, readYAML(t, filepath.Join(umbrellaDir, p)))
+	}
+	cfg, ok := lookup(merged, "kratos", "kratos", "config")
+	m, isMap := cfg.(map[string]any)
+	return ok && isMap && len(m) > 0
 }
 
 // renderedDoc — один документ рендера, разобранный настолько, насколько нужен
@@ -370,6 +431,148 @@ func scanIdentityEnvOverrides(stack string, bodies map[string]map[string]any,
 	return declared, findings
 }
 
+// ourServiceConfigMap — карта настроек НАШЕЙ службы доступа; из неё читается
+// посадка личности, которую служба объявила себе (задача #2816).
+const ourServiceConfigMap = "kaname-config"
+
+// identityPostureOf — посадка личности стека по рендеру: `authn.identity-provider`
+// тела config.yaml нашей карты. Пусто — посадка не прочитана (карты нет, тело не
+// разбирается, ключа нет): судить стек по ней вызывающий не вправе.
+func identityPostureOf(docs []renderedDoc) string {
+	for _, d := range docs {
+		if str(d, "kind") != "ConfigMap" || str(submap(d, "metadata"), "name") != ourServiceConfigMap {
+			continue
+		}
+		body, _ := submap(d, "data")["config.yaml"].(string)
+		var cfg map[string]any
+		if err := yaml.Unmarshal([]byte(body), &cfg); err != nil {
+			return ""
+		}
+		v, _ := submap(cfg, "authn")["identity-provider"].(string)
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// providerWord — слово поставщика в имени объекта или в ссылке на образ.
+// Граница у `ory` — словесная: без неё словом поставщика считались бы
+// посторонние имена, содержащие эти три буквы.
+var providerWord = regexp.MustCompile(`(?i)kratos|hydra|oryd|\bory\b`)
+
+// providerAddress — адрес поставщика в величине: схема и хост/путь, называющие
+// kratos|hydra. Путь к файлу (якорь доверия, смонтированный под именем
+// поставщика) адресом не является и сюда не попадает — он печатается переписью
+// отдельно, чтобы «не адрес» было видно, а не молча выпало.
+var providerAddress = regexp.MustCompile(`(?i)https?://[^\s,"']*(kratos|hydra)`)
+
+// providerResidue — след стека поставщика в рендере.
+type providerResidue struct {
+	Objects   []string // <Kind>/<имя> [образ…] — объекты поставщика
+	Addresses []string // <нагрузка>/<контейнер> ИМЯ=величина или <карта>/<ключ> — адреса поставщика у наших
+	NameOnly  []string // имя переменной называет поставщика, величина адресом не является
+}
+
+func podSpecOf(d renderedDoc) map[string]any {
+	spec := submap(d, "spec")
+	switch str(d, "kind") {
+	case "Pod":
+		return spec
+	case "CronJob":
+		return submap(submap(submap(submap(spec, "jobTemplate"), "spec"), "template"), "spec")
+	}
+	return submap(submap(spec, "template"), "spec")
+}
+
+func podContainers(pod map[string]any) []map[string]any {
+	var out []map[string]any
+	for _, k := range []string{"initContainers", "containers"} {
+		for _, c := range slice(pod, k) {
+			if cm, ok := c.(map[string]any); ok {
+				out = append(out, cm)
+			}
+		}
+	}
+	return out
+}
+
+// providerResidueOf — перепись следа поставщика по одному рендеру.
+func providerResidueOf(docs []renderedDoc) providerResidue {
+	var r providerResidue
+	for _, d := range docs {
+		kind, name := str(d, "kind"), str(submap(d, "metadata"), "name")
+		pod := podSpecOf(d)
+		var images []string
+		for _, c := range podContainers(pod) {
+			if img := str(c, "image"); providerWord.MatchString(img) {
+				images = append(images, img)
+			}
+		}
+		if providerWord.MatchString(name) || len(images) > 0 {
+			obj := kind + "/" + name
+			if len(images) > 0 {
+				obj += " " + fmt.Sprint(images)
+			}
+			r.Objects = append(r.Objects, obj)
+			continue
+		}
+		for _, c := range podContainers(pod) {
+			for _, e := range slice(c, "env") {
+				em, _ := e.(map[string]any)
+				n, v := str(em, "name"), str(em, "value")
+				pair := name + "/" + str(c, "name") + " " + n + "=" + v
+				switch {
+				case providerAddress.MatchString(v):
+					r.Addresses = append(r.Addresses, pair)
+				case providerWord.MatchString(n):
+					r.NameOnly = append(r.NameOnly, pair)
+				}
+			}
+		}
+		if kind == "ConfigMap" {
+			data := submap(d, "data")
+			keys := make([]string, 0, len(data))
+			for k := range data {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				v, _ := data[k].(string)
+				for _, line := range strings.Split(v, "\n") {
+					t := strings.TrimSpace(line)
+					if strings.HasPrefix(t, "#") {
+						continue
+					}
+					if m := providerAddress.FindString(t); m != "" {
+						r.Addresses = append(r.Addresses, name+"/"+k+" "+t)
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(r.Objects)
+	sort.Strings(r.Addresses)
+	sort.Strings(r.NameOnly)
+	return r
+}
+
+// judgeDeclaredAbsence — находки на стеке, объявившем посадку own: отсутствие
+// поставщика обязано быть настоящим. Чистая функция — инъекция подаёт ей рендер
+// с одной внесённой чужой нагрузкой.
+func judgeDeclaredAbsence(stack string, r providerResidue) []string {
+	var out []string
+	for _, o := range r.Objects {
+		out = append(out, fmt.Sprintf("стек %q объявил посадку own (личность проверяет НАША полоса), а "+
+			"рендер несёт объект поставщика %s. Отсутствие, объявленное и не выполненное, — это "+
+			"нагрузка, которую никто не читает, либо карта, которую никто не монтирует", stack, o))
+	}
+	for _, a := range r.Addresses {
+		out = append(out, fmt.Sprintf("стек %q объявил посадку own, а наша нагрузка называет адрес "+
+			"поставщика: %s — сосед, которого на этой цепочке нет, либо издатель, чей набор ключей "+
+			"никто не держит", stack, a))
+	}
+	return out
+}
+
 // TestIdentityFileKeysAreNotOverriddenByTheEnvironment — ядро гейта.
 func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 	stacks := deployStacks(t)
@@ -381,9 +584,12 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 	sort.Strings(names)
 
 	var (
-		allFindings []overrideFinding
-		subjectsSum int
-		bodiesSum   int
+		allFindings  []overrideFinding
+		subjectsSum  int
+		bodiesSum    int
+		ownDeclared  int // стеков, объявивших посадку own
+		providerSeen int // объектов поставщика там, где он поднят, — контроль переписи
+		raisedByTest int // стеков, где поставщика подняла проба
 	)
 	for _, name := range names {
 		rendered, err := renderStack(t, stacks[name])
@@ -392,6 +598,39 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 				"здесь неотличимо от «не прочитано ничего». Вывод helm:\n%s", name, err, rendered)
 		}
 		docs := decodeRender(t, rendered)
+
+		posture := identityPostureOf(docs)
+		residue := providerResidueOf(docs)
+		switch posture {
+		case "own":
+			absent := judgeDeclaredAbsence(name, residue)
+			t.Logf("осмотрено: стек %-12s · документов %3d · посадка own — поставщик ОТСУТСТВУЕТ по "+
+				"объявлению: объектов поставщика %d · адресов поставщика у наших %d · имён без адреса %d %v",
+				name, len(docs), len(residue.Objects), len(residue.Addresses), len(residue.NameOnly),
+				residue.NameOnly)
+			for _, f := range absent {
+				t.Error(f)
+			}
+			ownDeclared++
+			// Вторая половина — на той же цепочке с поставщиком, поднятым пробой.
+			if !chainDeclaresIdentityStore(t, stacks[name]) {
+				continue
+			}
+			raised, err := renderStack(t, stacks[name], providerRaisedByProbe...)
+			if err != nil {
+				t.Fatalf("стек %q с поставщиком, поднятым пробой, не рендерится (%v) — вердикта о "+
+					"файле настроек НЕТ. Вывод helm:\n%s", name, err, raised)
+			}
+			raisedByTest++
+			docs = decodeRender(t, raised)
+			providerSeen += len(providerResidueOf(docs).Objects)
+		case "external":
+			providerSeen += len(residue.Objects)
+		default:
+			t.Fatalf("стек %q: посадка личности не прочитана из рендера (карта %s, authn.identity-provider "+
+				"= %q) — судить, обязан ли стек нести наш файл настроек поставщика, не по чему. Признак "+
+				"производим МЫ; чужой флаг подчарта его не заменяет", name, ourServiceConfigMap, posture)
+		}
 
 		bodiesRaw := ourIdentityConfigBodies(docs)
 		if len(bodiesRaw) == 0 {
@@ -435,11 +674,17 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 		allFindings = append(allFindings, findings...)
 	}
 
-	t.Logf("итого осмотрено: стеков %d · наших карт настроек %d · процессов-читателей %d · B(всего) %d",
-		len(names), bodiesSum, subjectsSum, len(allFindings))
+	t.Logf("итого осмотрено: стеков %d (из них объявили посадку own %d) · поставщик поднят ПРОБОЙ на %d "+
+		"(на стенде не поднимается, #2735) · наших карт настроек %d · процессов-читателей %d · "+
+		"B(всего) %d · объектов поставщика там, где он поднят, %d",
+		len(names), ownDeclared, raisedByTest, bodiesSum, subjectsSum, len(allFindings), providerSeen)
 
 	if bodiesSum == 0 || subjectsSum == 0 {
 		t.Fatalf("обход пуст (карт %d, читателей %d) — вердикт беспредметен", bodiesSum, subjectsSum)
+	}
+	if providerSeen == 0 {
+		t.Fatalf("там, где поставщик поднят, перепись поставщика нашла НОЛЬ объектов — перепись слепа, " +
+			"и «на own ноль» ничего не доказывает")
 	}
 
 	for _, f := range allFindings {

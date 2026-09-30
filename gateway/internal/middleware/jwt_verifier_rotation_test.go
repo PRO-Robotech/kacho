@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // rotatingJWKS — источник ключей, у которого набор можно подменить, со счётчиком
@@ -40,7 +42,7 @@ type rotatingJWKS struct {
 func newRotatingJWKS(t *testing.T, kid string) *rotatingJWKS {
 	t.Helper()
 	r := &rotatingJWKS{keys: jwksBodyForKid(kid)}
-	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	r.srv = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		r.fetches.Add(1)
 		r.mu.Lock()
 		body := r.keys

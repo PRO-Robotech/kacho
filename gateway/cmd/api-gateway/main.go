@@ -155,160 +155,84 @@ func main() {
 		log.Fatalf("identity posture startup-validation: %v", ipErr)
 	}
 
-	// ЧИТАТЕЛИ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ЗАВОДЯТСЯ МНОЖЕСТВОМ, А НЕ ПОСАДКОЙ.
-	//
-	// До этой правки их выбирала посадка, у которой два взаимоисключающих
-	// значения, — и состояния «наш носитель читается, и чужой ЕЩЁ читается» не
-	// существовало. Следствие наблюдаемо: перевод стенда с людьми был АТОМАРЕН,
-	// и в момент правки профиля вход терял каждый, чья чужая сессия жива.
-	//
-	// Множество (`KACHO_API_GATEWAY_SESSION_CARRIERS`) выражает три состояния —
-	// только чужой · оба · только наш, — и переход между ними есть решение
-	// ПРОФИЛЯ, а не правка кода. Ручка не объявлена — множество выводится из
-	// посадки, и поведение края то же, что прежде.
-	//
-	// Посадка при этом никуда не девается: она отвечает на «чья чеканка выдаёт
-	// личность» и продолжает решать полосу формы входа, адреса поставщика и
-	// авторитет отзыва. Страж ниже сверяет пару: не всякая осмысленна.
-	//
-	// Гейт `session_carrier_wiring_test.go` требует у каждого читателя ветки
-	// РЕШЕНИЯ МНОЖЕСТВА и объявляет ветку посадки находкой.
-	sessionCarriers, scErr := cfg.ResolvedSessionCarriers()
-	if scErr != nil {
-		// Префикс называет ЭТОТ отказ, а не соседний: разбор объявления и
-		// сверка пары — разные вопросы с разными починками, и общий префикс
-		// отправлял бы оператора искать не там.
-		log.Fatalf("session carrier declaration: %v", scErr)
+	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ — ОДИН, НАШ (Ф3 Р15, #2792): под
+	// `own` край читает нашу сессию по носителю kaname_session. Читатель чужой
+	// сессии снят вместе с переходным режимом двух носителей: край читает только нашу
+	// сессию. Гейт `own_lane_readers_wiring_test.go` требует у читателя ветки
+	// посадки; проба `session_carrier_posture_test.go` наблюдает, чьё печенье
+	// край читает, на конфигурации, разобранной из окружения.
+	var ourSessionReader middleware.HumanSessionReader
+	if iamConn := backends["iamInternal"]; iamConn != nil {
+		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn)
 	}
-	// Момент открытия окна разбирается ДО стража: страж судит ПАРУ и обязан
-	// получить величину, а не ошибку разбора, — у неё свой отказ и своя ручка.
-	declaredWindowOpenedAt, cwErr := cfg.ResolvedSessionCarrierWindowOpenedAt()
-	if cwErr != nil {
-		log.Fatalf("session carrier window declaration: %v", cwErr)
-	}
-	kratosURL := cfg.KratosPublicURL
-	if scErr := validateSessionCarrierConfig(SessionCarrierConfig{
-		Posture:        identityLane,
-		Carriers:       sessionCarriers,
-		ProviderURL:    kratosURL,
-		WindowOpenedAt: declaredWindowOpenedAt,
-		// Часы старта: страж спрашивает, МОЖЕТ ЛИ названный момент быть фактом.
-		Now: time.Now(),
-	}); scErr != nil {
-		log.Fatalf("session carrier / identity posture coherence: %v", scErr)
-	}
+	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
-	// Окно существует только при ОБЕИХ сторонах, и вопрос об этом ОДИН
-	// (`IsTransitionalWindow`): два его вычисления разошлись бы молча. Страж
-	// выше уже отверг и окно без момента, и момент без окна, и момент в
-	// будущем; здесь момент остаётся нулевым вне окна, чтобы провязка не
-	// зависела от порядка проверок.
-	//
-	// Вопрос задаётся ОДИН раз на обе величины — провязку и самоотчёт: два
-	// вычисления одного состояния разошлись бы молча, и самоотчёт назвал бы
-	// окно, которого полоса не получила (или наоборот).
-	carrierWindowOpenedAt := time.Time{}
-	// САМООТЧЁТ НАЗЫВАЕТ МОМЕНТ ОКНА, а не только состав множества. Без него
-	// величина, решающая, какие чужие сессии край ещё принимает, не наблюдается
-	// НИГДЕ: клетка отвергнутых стоит нулём и при исправном окне, и при
-	// границе, которая ничего не отделяет, — и эти два состояния неразличимы
-	// на стенде.
-	windowReport := "<окна нет>"
-	if sessionCarriers.IsTransitionalWindow() {
-		carrierWindowOpenedAt = declaredWindowOpenedAt
-		windowReport = carrierWindowOpenedAt.UTC().Format(time.RFC3339)
-	}
-	logger.Info("browser session carrier readers resolved",
-		"carriers", sessionCarriers.String(), "declared", sessionCarriers.Declared(),
-		"identity_provider", identityLane.String(),
-		"transitional_window_opened_at", windowReport)
-
-	// Чужая сторона — cookie ory_kratos_session, адрес
-	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL; «disabled» выключает полосу, и на
-	// ОБЪЯВЛЕННОМ множестве такая пара до сюда не доходит — её отверг страж.
-	if sessionCarriers.ReadsProvider() {
-		if kratosURL != "disabled" {
-			authInterceptor = authInterceptor.WithKratos(middleware.NewKratosClient(kratosURL))
-			logger.Info("provider session-auth wired", "kratos_url", kratosURL, "identity_provider", identityLane.String())
-		} else {
-			logger.Info("provider session-auth disabled by env")
-		}
-	}
-	// ПЕРЕХОДНОЕ ОКНО объявляется краю ТЕМ ЖЕ множеством, что и читатели:
-	// названы обе стороны — окно открыто. В окне положительный пол второго
-	// фактора на чужой полосе не удовлетворяется: новое полномочие берётся
-	// через нашу чеканку, обычный доступ чужой сессии сохраняется.
-	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(carrierWindowOpenedAt)
-
-	// НАША сторона — носитель kaname_session: `Resolve` на внутреннем слушателе
-	// службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
-	if sessionCarriers.ReadsOwn() {
-		if iamConn := backends["iamInternal"]; iamConn != nil {
-			authInterceptor = authInterceptor.WithHumanSession(clients.NewSessionRevocationsAdapter(iamConn))
-			logger.Info("own session-auth wired", "authority", cfg.IAMInternalAddr, "cache", "none")
-		}
-	}
-
-	// РЕТРАНСЛЯЦИЯ ГЛАГОЛОВ ФОРМЫ — предмет ПОСАДКИ, а не множества, и это не
-	// оплошность разведения. Форма входа принадлежит той чеканке, которая
-	// личность ВЫДАЁТ; множество говорит лишь о том, чьё печенье край ещё
-	// согласен прочитать. В переходном состоянии посадка уже `own`, поэтому
-	// полоса формы поднимается, а чужое печенье продолжает читаться — это и
-	// есть переход. Взаимный TLS клиентской парой края, адрес — своя ручка,
-	// страж старта ниже отказывает без неё.
-	var loginLaneRelay *handler.LoginLaneRelay
+	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
+	// входа и церемония авторизации принадлежат той чеканке, которая личность
+	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
+	// плюс удостоверение» под стражем старта (замысел LINE-A-1 §5.1б п. 2а,
+	// §7 инв. 36). Клиентскую пару края предъявляют ОБЕ: слушатель формы
+	// взаимный и без пары отвергает рукопожатие; слушатель выдачи, где целиком
+	// живёт церемония, запрашивающий (`optional-mutual`) — без пары он допустил
+	// бы прыжок, но узнал бы в нём не край, и все люди за краем делили бы один
+	// предел темпа (приёмка темпа службы, Р7, стадия S2 п. 1). Предел одной
+	// ретрансляции — названная величина механизма, общая для обеих целей
+	// (`handler.LoginLaneRelayTimeout`, инв. 30): здесь он не задаётся.
+	var loginLaneRelay, issuanceRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
-			URL:            cfg.LoginLaneURL,
-			ClientCertFile: cfg.MTLSClientCertFile,
-			ClientKeyFile:  cfg.MTLSClientKeyFile,
-			CAFile:         cfg.MTLSCAFile,
-		}); llErr != nil {
-			log.Fatalf("login lane startup-validation: %v", llErr)
-		}
-		loginLaneTransport, ltErr := newLoginLaneTransport(cfg)
-		if ltErr != nil {
-			log.Fatalf("login lane transport: %v", ltErr)
+		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
+		// прав: справа по числу доверенных прыжков (Ф3 Р2).
+		clientIP := newClientAddressOperator(cfg).ClientIP
+
+		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
+		if ftErr != nil {
+			log.Fatalf("login lane startup-validation: %v", ftErr)
 		}
 		relay, rErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
 			Logger:    logger,
+			Serves:    middleware.RelayTargetForm,
 			Target:    cfg.LoginLaneURL,
-			Transport: loginLaneTransport,
-			// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
-			// прав: справа по числу доверенных прыжков (Ф3 Р2).
-			ClientIP: newClientAddressOperator(cfg).ClientIP,
+			Transport: formTransport,
+			ClientIP:  clientIP,
 		})
 		if rErr != nil {
 			log.Fatalf("login lane relay: %v", rErr)
 		}
 		loginLaneRelay = relay
-		logger.Info("login lane relay wired", "target", cfg.LoginLaneURL,
-			"verbs", len(middleware.LoginLaneRoutes()), "strips", "authorization + x-kacho-* (both forms)")
+		logRelayWired(logger, relay, formTarget, cfg.LoginLaneURL)
+
+		issuanceTransport, issuanceTarget, itErr := prepareRelayTarget(cfg, middleware.RelayTargetIssuance, cfg.IAMIssuanceURL)
+		if itErr != nil {
+			log.Fatalf("authorization ceremony relay startup-validation: %v", itErr)
+		}
+		ceremony, cErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger:    logger,
+			Serves:    middleware.RelayTargetIssuance,
+			Target:    cfg.IAMIssuanceURL,
+			Transport: issuanceTransport,
+			ClientIP:  clientIP,
+		})
+		if cErr != nil {
+			log.Fatalf("authorization ceremony relay: %v", cErr)
+		}
+		issuanceRelay = ceremony
+		logRelayWired(logger, ceremony, issuanceTarget, cfg.IAMIssuanceURL)
 	}
 
 	// --- JWKS verifier wired into the principal-setting path ---
 	//
 	// The same JWTVerifier is the authoritative validator for asymmetric access
-	// JWTs of every accepted issuer (platform-minted and, while the transition
-	// window is open, the previous external OAuth server). It is constructed here (independent of the DPoP
-	// feature flag) and wired into the AuthInterceptor so a real login token
-	// authenticates on the principal path.
+	// JWTs of every DECLARED accepted issuer. It is constructed here (independent
+	// of the DPoP feature flag) and wired into the AuthInterceptor so a real login
+	// token authenticates on the principal path.
 	// The DPoP middleware (below) reuses the SAME instance when enabled.
 	//
-	// Construction failure (e.g. empty resolved JWKS URL) is a MISCONFIGURATION,
-	// not an outage: the constructor reads configuration and makes no network
-	// call, so the same start can never succeed until the address and issuer are
-	// set. It is therefore judged by a guard — fatal in a production-class env,
-	// the previous warn-and-continue only under an explicit dev-class label.
-	// Absorbed unconditionally, as it was, it made a permanent misconfiguration
-	// the normal running mode: the edge reported itself as configured and
-	// refused nothing for as long as it lived (security.md §8).
 	// Хоп за ключами получает СВОЙ якорь доверия, ровно как административный. Пусто ⇒
 	// транспорт по умолчанию (прежнее поведение); нечитаемая связка ⇒ ОТКАЗ В СТАРТЕ,
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
 	// проверяет, — худшее из состояний, потому что снаружи неотличим от исправного.
 	jwksHopClient, jwksCAErr := newJWKSHopClient(
-		cfg.HydraJWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
+		cfg.JWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
 	if jwksCAErr != nil {
 		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
 		os.Exit(1)
@@ -331,12 +255,12 @@ func main() {
 		logger.Error("api-gateway refusing to start: token acceptance declaration", "err", accErr)
 		os.Exit(1)
 	}
-	// АДРЕСАТ — судится ДО построения проверяющего, чтобы отказ назвал РУЧКУ.
-	//
-	// Конструктор ниже тоже откажет на незаявленном адресате, и это не второе
-	// место об одном предмете: он судит своё ПОЛЕ и пишет о нём, а оператору
-	// нужно имя переменной окружения. Порядок поэтому несущий — первым говорит
-	// тот, чей текст даёт следующий шаг.
+	// АДРЕСАТ — судится ДО ветки мягкого прохода ниже, и порядок несущий. В
+	// боевом классе незаявленный адресат отвергается здесь, с именем ручки, и до
+	// мягкого прохода боевой класс не доходит; конструктор проверяющего зовётся
+	// только с ОБЪЯВЛЕННЫМ адресатом. Страж, снятый или переставленный ниже
+	// ветки, открыл бы мягкий проход боевому классу — вызов, его выход и место
+	// держит TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass.
 	if audErr := validateProductionTokenAudience(cfg.AppEnv, cfg.DeclaredTokenAudience()); audErr != nil {
 		logger.Error("api-gateway refusing to start", "err", audErr)
 		os.Exit(1)
@@ -356,21 +280,36 @@ func main() {
 		platformAccepted = platformAccepted || b.ReadRevocation
 	}
 
-	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		Issuers:          issuerRecords,
-		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
-		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
-		HTTPClient:       jwksHopClient,
-		ExpectedAudience: cfg.DeclaredTokenAudience(),
-		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
-	})
-	if tvErr := validateProductionTokenVerifierConfig(cfg.AppEnv, jverr); tvErr != nil {
-		log.Fatalf("token verifier startup-validation: %v", tvErr)
-	}
-	if jverr != nil {
+	// МЯГКИЙ ПРОХОД ОДИН, И У НЕГО ОДИН ПРОИЗВОДИТЕЛЬ — незаявленный адресат
+	// (ветка then ниже). Дойти до него может только класс разработки: в боевом
+	// классе раньше отказывает страж адресата выше. Отказ самого конструктора —
+	// НАСТРОЙКА, а не сбой (конструктор читает конфигурацию и к сети не ходит),
+	// и он роняет старт в любом классе безусловным выходом. Все записи, на
+	// которых конструктор отказал бы, раньше отвергает объявление приёма,
+	// поэтому сегодня ветка отказа входа не получает; она стоит затем, чтобы
+	// новый отказ конструктора, не повторённый разбором, не стал мягким проходом
+	// (kacho#2827, security.md §8). Держат это пробы
+	// principal_verifier_wiring_test.go.
+	//
+	// jwtVerifier == nil ⇔ проверяющий подпись не провязан (мягкий проход).
+	var jwtVerifier *middleware.JWTVerifier
+	if cfg.DeclaredTokenAudience() == "" {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
-			"err", jverr, "accepted_issuers", acceptedIssuers)
+			"reason", config.AudienceKnob+" is not declared", "accepted_issuers", acceptedIssuers)
 	} else {
+		verifier, verifierErr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+			Issuers:          issuerRecords,
+			JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
+			JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
+			HTTPClient:       jwksHopClient,
+			ExpectedAudience: cfg.DeclaredTokenAudience(),
+			ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
+		})
+		if verifierErr != nil {
+			logger.Error("api-gateway refusing to start: token verifier", "err", verifierErr)
+			os.Exit(1)
+		}
+		jwtVerifier = verifier
 		authInterceptor = authInterceptor.WithVerifier(jwtVerifier)
 		logger.Info("token verifier wired into principal path",
 			"accepted_issuers", acceptedIssuers,
@@ -406,38 +345,25 @@ func main() {
 		"mode", cfg.AuthNMode,
 		"iam_internal_addr", cfg.IAMInternalAddr,
 		"dev_secret_set", cfg.AuthNDevSecret != "",
-		"jwks_verifier_set", jverr == nil)
+		"jwks_verifier_set", jwtVerifier != nil)
 
-	// --- Revocation path: refuse to boot production without its addresses ---
+	// --- Revocation path: refuse to boot production without its authority ---
 	//
 	// A verified signature says who minted the token and when it expires; it says
-	// nothing about whether the token is still good. Only the identity provider
-	// knows that, and only over its ADMIN API — which is a different Service and
-	// port from the public issuer, so neither address can be worked out from what
-	// the gateway already has. Left unset, both controls are simply off: no
-	// request is ever checked for revocation, and signing out does not end the
-	// provider-side session. Refuse rather than run without them.
-	// AdminCAFile is part of what this guard JUDGES: it refuses the start when the
-	// hop is https and no anchor is pinned. Omitting it here does not weaken the
-	// guard, it makes it unsatisfiable — the field stays at its zero value, so the
-	// answer is "nothing pinned" whatever the operator configured, and the refusal
-	// names the knob that is already set. Locked by
-	// admin_hop_wiring_test.go::TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard.
+	// nothing about whether the token is still good. The authority on that is
+	// OURS: our revocation authority for tokens of our own minting, our revocation
+	// record for any other accepted record. The previous provider's admin-API
+	// addresses — its introspection endpoint and its session kill — are gone
+	// together with the provider (#2734): the edge asks it nothing.
 	//
-	// ПОСАДКА ЛИЧНОСТИ подаётся тем же стражем (задача #1125): она разводит
-	// требование АДМИНИСТРАТИВНОГО адреса, и только его. Негодное значение
-	// отвергается здесь же — откат к «безопасному» не производится, потому что
-	// безопасного среди двух значений нет: каждое снимает требования другого.
-	// Разбор посадки стоит выше — до выбора читателя носителя (Ф3 Р15).
+	// ПОСАДКА ЛИЧНОСТИ подаётся стражу (задача #1125): под `own` наш авторитет
+	// обязателен. Все четыре величины НАШЕГО авторитета подаются стражу, потому
+	// что он их судит: собранная без них структура оставила бы их нулевыми, и
+	// вердикт «нашего авторитета нет» не зависел бы от настройки вовсе — класс,
+	// уже стоивший выкатки на соседней оси якоря доверия.
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
-		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
-		AdminURL:         cfg.ResolvedHydraAdminURL(),
-		AdminCAFile:      cfg.HydraAdminCAFile,
-		IdentityProvider: identityLane,
-		// Все четыре величины НАШЕГО авторитета отзыва подаются стражу, потому
-		// что он их судит. Собранная без них структура оставила бы их нулевыми,
-		// и вердикт «нашего авторитета нет» не зависел бы от настройки вовсе —
-		// класс, уже стоивший выкатки на соседней оси якоря доверия.
+		IdentityProvider:           identityLane,
+		PlatformTokenIssuer:        cfg.PlatformTokenIssuer,
 		PlatformRevocationURL:      cfg.PlatformTokenRevocationURL,
 		PlatformRevocationCAFile:   cfg.PlatformTokenRevocationCAFile,
 		PlatformRevocationCertFile: cfg.PlatformTokenRevocationCertFile,
@@ -451,69 +377,30 @@ func main() {
 	// It used to be wired inside the sender-constrained-token middleware below,
 	// which is gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP — a toggle no profile
 	// sets. So the check was configured, guarded and deployed, and never once
-	// asked. Turning that toggle on is not the way to fix it: it would also start
-	// DEMANDING proof-of-possession, which issuance does not yet mint (see
-	// AuthNRequireMachineTokenBinding), so it would refuse every machine
-	// credential. Whether a token was revoked is a question about ANY token, so
-	// it belongs on the layer every request passes through.
-	// One client for BOTH calls to the provider's admin API — introspection here
-	// and the logout session-kill below. They address the same host, so a trust
-	// anchor configured for one and not the other would be a difference nobody
-	// intended. Built before either consumer so an unusable anchor stops the
-	// process at the composition root rather than at the first request.
-	adminHopClient, ahErr := newAdminHopClient(
-		cfg.HydraAdminCAFile,
-		time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
-	if ahErr != nil {
-		log.Fatalf("admin API client: %v", ahErr)
+	// asked. Whether a token was revoked is a question about ANY token, so it
+	// belongs on the layer every request passes through.
+	//
+	// ПОЛОСА ЗАПИСИ ОТЗЫВА — для токена записи, которую наша чеканка не пометила.
+	// Спрашивается НАША запись по идентификатору удостоверения — та, что пишет
+	// выход человека (#797). Прежде за ней спрашивался ещё прежний поставщик;
+	// он снят, и полоса выродилась в свою первую половину.
+	//
+	// Провязка БЕЗУСЛОВНА. Соединение к службе доступа поднято выше
+	// (dialBackends) и является критическим: без него край не обслуживает ни
+	// одного запроса, потому что служба фронтит и личность, и права. Его
+	// отсутствие здесь — отказ старта, а не непровязанная полоса: непровязанная
+	// полоса пропускала бы токен, ни о чём не спросив.
+	recordConn := backends["iamInternal"]
+	if recordConn == nil {
+		log.Fatalf("revocation record lane: the identity service's internal connection is not " +
+			"dialled — the edge cannot ask whether a presented token was revoked (refuse to start)")
 	}
-	if strings.TrimSpace(cfg.HydraAdminCAFile) != "" {
-		logger.Info("admin API hop verified against a pinned trust anchor",
-			"ca_file", cfg.HydraAdminCAFile)
-	}
-
-	if introspectionURL := cfg.ResolvedHydraIntrospectionURL(); introspectionURL != "" {
-		revocationCache, rcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-			HydraIntrospectionURL: introspectionURL,
-			HTTPClient:            adminHopClient,
-			MaxEntries:            cfg.IntrospectionCacheSize,
-			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
-		})
-		if rcErr != nil {
-			log.Fatalf("revocation check: %v", rcErr)
-		}
-		// ИСТОЧНИКОВ ОТЗЫВА ДВА, И СПРАШИВАЮТСЯ ОБА (#797).
-		//
-		// Провайдер знает о своих отзывах и об истечении срока. О записи, которую
-		// делает НАШ выход — по идентификатору удостоверения, — он не знает и
-		// знать не может. До этой провязки наш отзыв не участвовал в решении на
-		// пути запроса вовсе: он писался и читался только административными
-		// путями, то есть выход записывал намерение, а не прекращал доступ.
-		//
-		// Соединение к iam уже поднято выше (dialBackends) и является
-		// критическим: без него край не обслуживает ни одного запроса, потому
-		// что iam фронтит и личность, и права. Поэтому отдельной ветки «а вдруг
-		// его нет» здесь не заводится — она была бы веткой, в которой край всё
-		// равно не работает.
-		var revocationChecker middleware.TokenRevocationChecker = revocationCache
-		if iamConn := backends["iamInternal"]; iamConn != nil {
-			revocationChecker = middleware.NewLocalThenProviderRevocation(
-				clients.NewSessionRevocationsAdapter(iamConn), revocationCache)
-		}
-		authInterceptor = authInterceptor.WithRevocationCheck(revocationChecker, 0)
-		logger.Info("revocation check active on the authN path",
-			"sources", "own record + provider introspection",
-			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
-			"cache_entries", cfg.IntrospectionCacheSize,
-			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
-	} else {
-		// Production-class environments never reach this branch — the guard above
-		// refuses to start. A dev stand may legitimately have no admin API to ask.
-		logger.Warn("revocation check NOT mounted: no introspection endpoint configured; "+
-			"a revoked token stays usable until it expires on its own",
-			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
-	}
+	authInterceptor = authInterceptor.WithRevocationCheck(
+		middleware.NewOwnRevocationSource(clients.NewSessionRevocationsAdapter(recordConn)), 0)
+	logger.Info("revocation check active on the authN path",
+		"record_lane_source", "our revocation record (by token identifier)",
+		"record_lane_unanswered_verdict", "refuse",
+		"per_call_budget", middleware.OwnRevocationCallBudget.String())
 
 	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
 	//
@@ -522,18 +409,11 @@ func main() {
 	// токен есть утверждение о предмете, которого у него нет. Поэтому читатель
 	// второй, и живёт он РЯДОМ, а не вместо.
 	//
-	// # Почему этот блок стоит СНАРУЖИ ветки прежнего провайдера
-	//
-	// Он стоял внутри неё, и это делало невыразимой посадку, к которой фаза и
-	// ведёт: «принимаем ТОЛЬКО нашего издателя». Такой профиль не задаёт адреса
-	// прежнего провайдера — задавать нечего, — и наш читатель не провязывался
-	// вовсе, а следом старт отвергался. Отказ был честный, но отвергал он не
-	// ошибку оператора, а состояние, которое обязано быть законным: возможность,
-	// объявленная и неисполнимая ни при каком входе, — тот же класс, что поле,
-	// которое требуют и прислать нельзя.
-	//
 	// Читатели независимы, потому что независимы их предметы: у каждого свой
-	// авторитет, свой якорь доверия, свой счётчик и своя семантика молчания.
+	// источник, свой транспорт, свой счётчик и своё окно доклада.
+	// ourTokenRevocation — читатель сверки наших токенов; тот же экземпляр
+	// получает перепрос открытых потоков (kacho#2900). Ноль — издатель не принят.
+	var ourTokenRevocation middleware.TokenRevocationChecker
 	if platformAccepted {
 		platformHopClient, phErr := newPlatformRevocationHopClient(
 			cfg.PlatformTokenRevocationCAFile,
@@ -544,11 +424,11 @@ func main() {
 			log.Fatalf("platform revocation authority client: %v", phErr)
 		}
 		platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-			HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
-			HTTPClient:            platformHopClient,
-			MaxEntries:            cfg.IntrospectionCacheSize,
-			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+			IntrospectionURL: cfg.PlatformTokenRevocationURL,
+			HTTPClient:       platformHopClient,
+			MaxEntries:       cfg.IntrospectionCacheSize,
+			TTL:              time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+			Timeout:          time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
 		})
 		if pcErr != nil {
 			// Наш издатель принимается, а спросить о его токенах некого. Отказ
@@ -557,6 +437,7 @@ func main() {
 			log.Fatalf("platform revocation check: %v", pcErr)
 		}
 		authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
+		ourTokenRevocation = platformCache
 		logger.Info("revocation of OUR OWN tokens is read on presentation",
 			"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
 			// Личность на хопе — в самоотчёте, а не только в настройках:
@@ -570,12 +451,11 @@ func main() {
 	// ─── НАШ ОТЗЫВ ЧИТАЕТСЯ И НА БРАУЗЕРНОЙ ПОЛОСЕ (#1122) ─────────────────
 	//
 	// Полос личности человека здесь ДВЕ, и до этой провязки они объявляли разное.
-	// Полоса предъявителя спрашивала про отзыв — свой и чужой. Полоса cookie не
-	// спрашивала НИЧЕГО, и разницу никто не решал: обоснование звучало «сессия
-	// перепроверяется у провайдера на каждом запросе». Про отзывы САМОГО
-	// провайдера это верно; про запись, которую делает НАШ глагол выхода и
-	// административный принудительный выход, — неверно и не может быть верным:
-	// тот, у кого спрашивают про сессию, о нашей записи не знает by construction.
+	// Полоса предъявителя спрашивала про отзыв. Полоса cookie не спрашивала
+	// НИЧЕГО, и разницу никто не решал: обоснование звучало «сессия
+	// перепроверяется у провайдера на каждом запросе» — а про запись, которую
+	// делает НАШ глагол выхода и административный принудительный выход, тот, у
+	// кого спрашивали про сессию, не знал by construction.
 	//
 	// Наблюдаемое следствие: администратор получал успех, а человек продолжал
 	// работать в консоли.
@@ -585,10 +465,10 @@ func main() {
 	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
 	// права. Ветка была бы веткой, в которой край всё равно не работает.
 	//
-	// Читатель отсечки — НА ОБЕИХ посадках (Ф3 Р7): под `own` наша сессия
-	// сравнивается с отсечкой тем же читателем, что сессия поставщика под
-	// `external`. Прежнее условие «адрес поставщика задан» снято: оно заводило
-	// читатель отсечки только вместе с поставщиком.
+	// Читатель отсечки заводится БЕЗ условия посадки (Ф3 Р7): наша сессия
+	// сравнивается с отсечкой одним читателем. Прежнее условие «адрес
+	// поставщика задан» снято: оно заводило читатель отсечки только вместе с
+	// поставщиком.
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		authInterceptor = authInterceptor.WithSessionCutoffCheck(
 			clients.NewSessionRevocationsAdapter(iamConn), 0)
@@ -617,7 +497,7 @@ func main() {
 		stepUpFloors = countDeclaredACRFloors(stepUpCatalog)
 	}
 	stepUpMounted := false
-	if cfg.AuthNEnforceStepUp && scErr == nil && jverr == nil && jwtVerifier != nil {
+	if cfg.AuthNEnforceStepUp && scErr == nil && jwtVerifier != nil {
 		authInterceptor = authInterceptor.WithStepUp(
 			middleware.NewStepUpGate(time.Now),
 			middleware.NewCatalogPermissionLookup(stepUpCatalog),
@@ -647,8 +527,8 @@ func main() {
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
 	// When disabled (default) the legacy auth-interceptor path remains the only
 	// authN code path. When enabled we add a second middleware after the legacy
-	// one — verified asymmetric tokens of accepted issuers flow through it; dev / Kratos / HMAC
-	// tokens pass through unchanged (they're not in JWT alg whitelist and the
+	// one — verified asymmetric tokens of accepted issuers flow through it; dev / session / HMAC
+	// credentials pass through unchanged (they're not in JWT alg whitelist and the
 	// JWT verifier rejects them gracefully → middleware passes through as
 	// anonymous when requireForAllRequests=false).
 	var dpopMiddleware *middleware.DPoPMiddleware
@@ -677,10 +557,10 @@ func main() {
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
 		// Reuse the SAME verifier instance already wired into the
-		// AuthInterceptor (single JWKS cache, one source of truth). If its
-		// construction failed above, DPoP cannot run either — fail-fast.
-		if jverr != nil {
-			log.Fatalf("jwt verifier (required by DPoP): %v", jverr)
+		// AuthInterceptor (single JWKS cache, one source of truth). If it was
+		// not wired above, DPoP cannot run either — fail-fast.
+		if jwtVerifier == nil {
+			log.Fatalf("jwt verifier (required by DPoP) is not wired: %s is not declared", config.AudienceKnob)
 		}
 		verifier := jwtVerifier
 		// ОДНОКРАТНОСТЬ ПРЕДЪЯВЛЕНИЯ — свойство ФЛОТА, а не процесса.
@@ -773,23 +653,19 @@ func main() {
 	// authenticate the caller before any server-side revocation: it verifies the
 	// presented access token via the SAME JWKS verifier used on the principal
 	// path and revokes ONLY the caller's own subject. Without a wired verifier
-	// (jverr != nil, e.g. empty JWKS URL) revocation fails closed (401); only
-	// cookie clearing remains.
+	// (the dev-class soft pass above: the token audience is not declared)
+	// revocation fails closed (401); only cookie clearing remains.
 	var logoutVerifier handler.CallerVerifier
-	if jverr == nil {
+	if jwtVerifier != nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
 	}
+	// Выход пишет отзыв в НАШУ запись — ту, что читает полоса отзыва выше.
+	// Снятия сессии на стороне прежнего поставщика больше нет (#2734): такой
+	// сессии не заводится, и исходящего хода у выхода нет вовсе.
 	logoutHandler, lerr := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:        logger,
-		Verifier:      logoutVerifier,
-		Revocations:   clients.NewSessionRevocationsAdapter(backends["iamInternal"]),
-		HydraAdminURL: cfg.ResolvedHydraAdminURL(),
-		// Same client as the introspection hop: same host, same trust anchor.
-		// Without this the session kill would keep dialing on the system root
-		// store, so an operator who moved the hop to TLS would find revocation
-		// verified and sign-out silently failing on every logout.
-		HTTPClient:      adminHopClient,
-		HookSharedToken: cfg.HookSharedSecret,
+		Logger:      logger,
+		Verifier:    logoutVerifier,
+		Revocations: clients.NewSessionRevocationsAdapter(recordConn),
 	})
 	if lerr != nil {
 		log.Fatalf("logout handler: %v", lerr)
@@ -948,16 +824,12 @@ func main() {
 		return snap
 	})
 	// Клетки полосы сессии и ретрансляции полосы формы (Ф3-48): существуют с
-	// нулём с первой секунды; ретранслятор под `external` не заведён, и его
+	// нулём с первой секунды; ретранслятор вне `own` не заведён, и его
 	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
 	// самоотчёте, а не по этим нулям.
 	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		snap := gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
-			Relay: handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}}
-		if loginLaneRelay != nil {
-			snap.Relay = loginLaneRelay.Stats()
-		}
-		return snap
+		return gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
+			Relays: handler.LoginLaneRelaySnapshots(loginLaneRelay, issuanceRelay)}
 	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
@@ -1042,7 +914,7 @@ func main() {
 	// механизма разошлись бы молча — и разошлись бы именно там, где расхождение
 	// не видно.
 	credentialSweeper, csErr := buildStreamRevocationSweeper(
-		cfg, backends["iamInternal"], subscriptionStream, logger)
+		cfg, backends["iamInternal"], ourTokenRevocation, subscriptionStream, logger)
 	if csErr != nil {
 		log.Fatalf("subscription credential recheck: %v", csErr)
 	}
@@ -1198,41 +1070,49 @@ func main() {
 	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))
 
 	// GET /iam/v1/auth/me — личность за браузерной сессией. Регистрируется ДО
-	// `/` чтобы перебить grpc-gateway catch-all. Читатели — ТЕ ЖЕ, что на полосе
-	// личности, и заводит их ТО ЖЕ множество: две полосы, читающие одну сессию,
-	// обязаны отвечать про неё одинаково, а старшинство между читателями у них
-	// одно и стоит в `middleware` (наш носитель решает на каждом своём исходе). Свой читатель отсечки маршрут держит на обеих
+	// `/` чтобы перебить grpc-gateway catch-all. Читатель — ПО ПОСАДКЕ (Ф3 Р15),
+	// тот же, что на полосе личности: две полосы, читающие одну сессию, обязаны
+	// отвечать про неё одинаково. Свой читатель отсечки маршрут держит на обеих
 	// посадках — точки предъявления вложены (Ф3-52, F4d-28).
-	sessionIdentity := middleware.NewSessionIdentityHandler(logger).
-		WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
-		WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
-	if sessionCarriers.ReadsProvider() && kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
-			// СВОЙ читатель окна, как и свой читатель отсечки: полос, читающих
-			// одну чужую сессию, две, и равенство между ними проверяется
-			// сравнением, а не по каждой отдельно. Момент — ТОТ ЖЕ, что у
-			// полосы: второй источник разошёлся бы с первым молча.
-			WithTransitionalCarrierWindow(carrierWindowOpenedAt)
-	}
-	if sessionCarriers.ReadsOwn() {
-		sessionIdentity = sessionIdentity.WithHumanSession(clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
-	}
+	sessionIdentity := wireWhoAmICarrierReader(
+		middleware.NewSessionIdentityHandler(logger).
+			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
+			WithAdminChecker(iamSubjectClient), // permissions = ["*","admin"] для system-admin
+		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	sessionIdentity.Register(httpMux)
 
-	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
-	// ретрансляция на слушатель службы, ЗА полосой личности (как «кто я»):
-	// носитель отсечённой сессии до службы не доходит (Ф3-51). Под `external`
-	// не заведена — пути перечня отвечают 404 краем. Пути — из того же
-	// объявления, что читают полоса и isPublicHTTPPath.
-	if loginLaneRelay != nil {
-		for _, rt := range middleware.LoginLaneRoutes() {
-			httpMux.Handle(rt.Path, loginLaneRelay)
+	// ЗАПИСИ ОБЪЯВЛЕНИЯ — глаголы полосы формы (Ф3 Р2; Ф4 регистрация, Ф5
+	// восстановление, Ф12 второй фактор) и две координаты церемонии авторизации
+	// (замысел LINE-A-1 §5.1: `GET /iam/v1/authorize`, `POST /iam/v1/token`) —
+	// ретрансляция на слушатели службы, ЗА полосой личности (как «кто я»):
+	// носитель отсечённой сессии до службы не доходит (Ф3-51). Каждая запись
+	// крепится ТОЧНЫМ путём на ретранслятор своей цели одной функцией монтажа
+	// (инв. 33): её исход судит проба пакета, её вызов здесь — гейт корня. Вне
+	// `own` не заведена — пути перечня отвечают 404 краем. Пути — из того же
+	// объявления, что читают полоса и isPublicHTTPPath; сосед
+	// `/iam/v1/authorize:check` остаётся за транскодером под `/`.
+	//
+	// Координаты церемонии на граничном admin-REST слушателе НЕ
+	// ретранслируются (sec-issuance-path-not-elsewhere): там запрос получает
+	// ответ обработчика `/` — второй аргумент монтажа есть ТОТ ЖЕ обработчик,
+	// что смонтирован под `/` ниже (гейт корня судит одно имя), и «не найдено»
+	// побайтно то, что слушатель отвечает на путь, которого у него нет. Глаголы
+	// формы ретранслируются и там — у них есть потребитель, операторская
+	// консоль (решение kacho#2849, `RelayTarget.ExternalListenersOnly`).
+	//
+	// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ (приёмка KAN-AUTHN-1, ось 8):
+	// обёртка стоит ВПЛОТНУЮ к пересылающему обработчику — разбор у `/` ниже.
+	restRoot := principalmeta.StripCredentialBeforeForwarding(restHandler)
+	if identityLane == identityposture.Own {
+		mounted, mErr := handler.MountLoginLaneRoutes(httpMux, restRoot, loginLaneRelay, issuanceRelay)
+		if mErr != nil {
+			log.Fatalf("login lane mount: %v", mErr)
 		}
+		logger.Info("relayed records mounted", "records", mounted)
 	}
 
-	// POST /oauth/logout — RFC 7009 token revocation +
-	// best-effort Hydra session-kill (triggers RFC 8254 back-channel logout
-	// to registered SPs).
+	// POST /oauth/logout — revocation of the caller's own token(s) in our record
+	// and the ending of the browser session carrier.
 	httpMux.Handle("/oauth/logout", logoutHandler)
 
 	// GET /subscription/v1/events — ЕДИНСТВЕННАЯ проекция потока изменений в
@@ -1263,7 +1143,7 @@ func main() {
 	// сопоставителем нельзя — снимается сам заголовок запроса. Разбор и решения
 	// по конструкциям сборки помимо общего узла — в шапке
 	// gateway/internal/principalmeta/credential_strip.go.
-	httpMux.Handle("/", principalmeta.StripCredentialBeforeForwarding(restHandler))
+	httpMux.Handle("/", restRoot)
 
 	// Хранилище однократности `Idempotency-Key`.
 	//
@@ -1274,8 +1154,8 @@ func main() {
 
 	// Build the HTTP chain. The DPoP middleware sits between the
 	// legacy auth-interceptor and the access-log: legacy fills principal
-	// from Kratos / dev-HMAC if present; DPoP middleware fills it from a
-	// verified Hydra JWT if present. Anonymous requests pass through both
+	// from our session / dev-HMAC if present; DPoP middleware fills it from a
+	// verified bearer JWT if present. Anonymous requests pass through both
 	// unless production-strict.
 	//
 	// AuthZ: the authz middleware mounts AFTER DPoP — by then
@@ -1321,15 +1201,16 @@ func main() {
 		// SECURITY (fail-closed): the SAME httpSrv serves every HTTP listener —
 		// the plaintext cmux listener the ingress targets, the advertised
 		// external TLS listener, AND the dedicated cluster-internal admin REST
-		// listener. ConnContext tags ONLY the internal admin listener's
-		// connections (wrapped with listenerorigin.InternalListener below);
-		// every other listener stays unmarked → external (the fail-closed
-		// default), so the REST dispatcher / authz middleware 404 Internal*
-		// paths regardless of which edge listener the request hit. This
-		// inverts the earlier model, which marked only the TLS
-		// listener external and left the ingress-facing plaintext listener
-		// trusted → Internal* REST reachable from the edge.
-		ConnContext: listenerorigin.InternalConnContext,
+		// listener. ConnContext tags the internal admin listener's connections
+		// (wrapped with listenerorigin.InternalListener below) internal and the
+		// two external HTTP listeners' connections (wrapped with
+		// listenerorigin.ExternalListener below) external. Each reader refuses
+		// by default: the REST dispatcher / authz middleware 404 Internal*
+		// paths on every connection without the internal mark, and the
+		// ceremony records (handler.MountLoginLaneRoutes) relay only on
+		// connections with the external mark. A listener that lost its wrapper
+		// serves neither. listener_origin_wiring_test.go holds the wrappers.
+		ConnContext: listenerorigin.ConnContext,
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
@@ -1374,7 +1255,7 @@ func main() {
 	}()
 
 	go func() {
-		serveErr := httpSrv.Serve(httpL)
+		serveErr := httpSrv.Serve(listenerorigin.ExternalListener(httpL))
 		if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 			logger.Error("http listener died; shutting down", "error", serveErr)
 			cancel()
@@ -1388,8 +1269,8 @@ func main() {
 	// the REST dispatcher serves Internal* paths (/vpc/v1/addressPools,
 	// `:internal` infra-sensitive projections, InternalRegistry/Cluster/
 	// Operations admin). Every other listener — the plaintext cmux listener the
-	// ingress targets and the external TLS listener — is external (unmarked)
-	// and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
+	// ingress targets and the external TLS listener, both ExternalListener-
+	// wrapped — is external and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
 	// port-forward / cluster-internal tooling reach it via the `internal-rest`
 	// Service port. It serves plain HTTP/1.1 REST (Internal* gRPC is blocked on
 	// EVERY listener by the proxy's HasInternalSuffix router), so no cmux split
@@ -1465,13 +1346,13 @@ func main() {
 				cancel()
 			}
 		}()
-		// SECURITY (fail-closed): the external TLS HTTP sub-listener is left
-		// UNWRAPPED — its connections carry no internal-origin marker, so they
-		// are external (the default) and the REST dispatcher 404s Internal*
-		// paths arriving here. Internal* REST is served ONLY on the dedicated
-		// cluster-internal admin listener (InternalListener-wrapped, below).
+		// SECURITY (fail-closed): the external TLS HTTP sub-listener carries
+		// listenerorigin.ExternalListener — its connections are external, so
+		// the REST dispatcher 404s Internal* paths arriving here and the
+		// ceremony records relay. Internal* REST is served ONLY on the dedicated
+		// cluster-internal admin listener (InternalListener-wrapped, above).
 		go func() {
-			serveErr := httpSrv.Serve(tlsHTTPL)
+			serveErr := httpSrv.Serve(listenerorigin.ExternalListener(tlsHTTPL))
 			if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 				logger.Error("tls http listener died; shutting down", "error", serveErr)
 				cancel()
@@ -1521,6 +1402,38 @@ func main() {
 	if serveErr := cmuxer.Serve(); serveErr != nil {
 		logger.Error("cmux serve error", "error", serveErr)
 	}
+}
+
+// wireLaneCarrierReader заводит на ПОЛОСЕ ЛИЧНОСТИ читателя носителя
+// браузерной сессии — НАШЕЙ, по носителю kaname_session: `Resolve` на внутреннем
+// слушателе службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
+//
+// Ветка спрашивает посадку, а не наличие адреса: до Ф3 читатель чужой сессии
+// заводился условием на свой адрес, и под `own` печенье поставщика становилось
+// личностью на посадке, где сессию человека судит наша служба. Сам читатель
+// чужой сессии снят (#2792): край читает только нашу сессию.
+func wireLaneCarrierReader(
+	a *middleware.AuthInterceptor, lane identityposture.Provider,
+	ours middleware.HumanSessionReader, logger *slog.Logger,
+) *middleware.AuthInterceptor {
+	if lane == identityposture.Own && ours != nil {
+		a = a.WithHumanSession(ours)
+		logger.Info("own session-auth wired", "cache", "none")
+	}
+	return a
+}
+
+// wireWhoAmICarrierReader — тот же выбор для маршрута «кто я»: две полосы,
+// читающие одну сессию, обязаны отвечать про неё одинаково, и читателя им
+// выбирает одна и та же посадка.
+func wireWhoAmICarrierReader(
+	who *middleware.SessionIdentityHandler, lane identityposture.Provider,
+	ours middleware.HumanSessionReader,
+) *middleware.SessionIdentityHandler {
+	if lane == identityposture.Own {
+		who = who.WithHumanSession(ours)
+	}
+	return who
 }
 
 // authzReloader is the narrow reload port the SIGHUP handler drives.

@@ -6,7 +6,20 @@
 // document-time defaults (домен `api.kacho.cloud`).
 //
 // Запрет: НЕ хардкодить `api.kacho.cloud` / `app.kacho.cloud` в компонентах.
-// Только через `config.apiDomain` / `config.appDomain` / `config.webauthnRpId`.
+// Только через `config.apiDomain` / `config.appDomain`.
+//
+// Ручек беспарольного входа (`VITE_WEBAUTHN_RP_ID` / `VITE_WEBAUTHN_RP_NAME`)
+// здесь больше нет: их читали только две обёртки клиента службы личности, а те
+// не звал никто. Вызов ключа доступа консоль берёт ИЗ УЗЛА ПОТОКА, который
+// служба ей отдаёт (`StepUpModal.tsx`, узел `webauthn`), — не из ручки. Ручка,
+// объявленная без читателя, заставляет развёртывание ЗАДАВАТЬ значение, от
+// которого не зависит ни одна ветка (#2733).
+//
+// По той же причине здесь нет и ручки базы потоков прежнего поставщика личности
+// (поле, умолчание под `/.ory/…` и построитель адреса над ним): вызывающих вне
+// файла не было ни одного, а церемонии консоль ведёт своими экранами и глаголами
+// нашей службы (приёмка F8). Возврат такой ручки краснит перепись обращений
+// к поставщику (`test/console-provider-not-addressed.test.ts`, F8-37) (#2874).
 
 interface AppConfig {
   /** Базовый origin для api-gateway REST. Пусто = same-origin (prod через ingress). */
@@ -15,20 +28,6 @@ interface AppConfig {
   apiDomain: string;
   /** Application origin (используется как audience для DPoP htu — full URL). */
   appDomain: string;
-  /** Kratos public base path (browser-flows). Default `/.ory/kratos/public`. */
-  kratosUrl: string;
-  /** Hydra base (OAuth2 endpoints). Default `/oauth2`. */
-  hydraUrl: string;
-  /** Hydra client_id для kacho-ui (Public client, PKCE). */
-  hydraClientId: string;
-  /** Redirect URI после OAuth-callback. Default `/auth/callback`. */
-  hydraRedirectUri: string;
-  /** OAuth scopes для access-token. */
-  hydraScopes: string;
-  /** WebAuthn RP-ID (eTLD+1 от app-домена). Kratos config обязан совпадать. */
-  webauthnRpId: string;
-  /** WebAuthn RP display-name. */
-  webauthnRpName: string;
   /** Допустимый clock-skew для DPoP nonce/iat (секунды). */
   dpopClockSkewSec: number;
   /** Recovery magic-link TTL (минуты) — для UI hint. */
@@ -59,30 +58,9 @@ export const config: AppConfig = {
   apiBase: envStr("VITE_KACHO_API_BASE", ""),
   apiDomain: envStr("VITE_KACHO_API_DOMAIN", DEFAULT_API_DOMAIN),
   appDomain: envStr("VITE_APP_DOMAIN", DEFAULT_APP_DOMAIN),
-  kratosUrl: envStr("VITE_KRATOS_URL", "/.ory/kratos/public"),
-  hydraUrl: envStr("VITE_HYDRA_URL", "/oauth2"),
-  hydraClientId: envStr("VITE_HYDRA_CLIENT_ID", "kacho-ui"),
-  hydraRedirectUri: envStr("VITE_HYDRA_REDIRECT_URI", "/auth/callback"),
-  hydraScopes: envStr("VITE_HYDRA_SCOPES", "openid profile email offline_access"),
-  webauthnRpId: envStr("VITE_WEBAUTHN_RP_ID", "kacho.cloud"),
-  webauthnRpName: envStr("VITE_WEBAUTHN_RP_NAME", "Kachō Cloud"),
   dpopClockSkewSec: envNum("VITE_DPOP_CLOCK_SKEW_SEC", 30),
   recoveryLinkTtlMin: envNum("VITE_RECOVERY_LINK_TTL_MIN", 5),
 };
-
-/** Полный URL для Kratos endpoint. */
-export function kratosUrl(path: string): string {
-  const base = config.kratosUrl.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
-
-/** Полный URL для Hydra endpoint. */
-export function hydraUrl(path: string): string {
-  const base = config.hydraUrl.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
 
 /** Origin для DPoP htu (full URL: scheme + host + path). */
 export function appOrigin(): string {

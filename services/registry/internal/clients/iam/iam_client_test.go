@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +21,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -58,8 +58,7 @@ func startFakeIAM(
 	internal iamv1.InternalIAMServiceServer,
 ) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	if project != nil {
 		iamv1.RegisterProjectServiceServer(srv, project)

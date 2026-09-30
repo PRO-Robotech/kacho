@@ -44,6 +44,8 @@ cd "$HERE/../.."
 # кодом 1, каким объявляется настоящий дефект (задача #1214).
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
+# shellcheck source=deploy/tests/helm/provider-up.sh
+. "$HERE/provider-up.sh"
 require_helm
 
 CHART=./helm/umbrella
@@ -73,6 +75,7 @@ EXPECTED_ASSERTIONS="${#PROFILES[@]}"
 rc=0
 seen_profiles=0
 seen_refs=0
+raised=0
 
 for prof in "${PROFILES[@]}"; do
   # Профиль приходит либо именем (тогда он лежит в чарте), либо готовым путём —
@@ -89,7 +92,19 @@ for prof in "${PROFILES[@]}"; do
 
   # Рендер — ПРЕДПОСЫЛКА измерения. Его отказ (несобранные зависимости умбреллы,
   # нет helm) находкой о дереве не является: код 2 плюс текст самого helm.
-  helm_try kacho-umbrella "$CHART" -f "$pf"
+  # СЛУЖБА ЛИЧНОСТИ ПОСТАВЩИКА НА СТЕНДЕ НЕ ПОДНИМАЕТСЯ (база зонта, #2735), а
+  # шаг подстановки, который здесь судится, живёт в её поде. Объявление шага
+  # лежит в профиле до физического снятия подчарта (#1276), поэтому служба
+  # поднимается внутри рендера пробы ОДНИМ фактом — только поверх профиля,
+  # который её настройки объявляет. Профиль без них остаётся «службы нет».
+  up=()
+  provider_part_declared identity-store "$CHART/values.yaml" "$pf" && declared_rc=0 || declared_rc=$?
+  case "$declared_rc" in
+    0) up=("${IDENTITY_STORE_UP_ARGS[@]}"); raised=$((raised + 1)) ;;
+    1) ;;
+    *) fatal "профиль $prof не разобран — объявлены ли настройки службы личности, судить не по чему" ;;
+  esac
+  helm_try kacho-umbrella "$CHART" -f "$pf" "${up[@]}"
   render_or_fatal "профиль $prof"
   out="$HELM_OUT"
 
@@ -108,7 +123,7 @@ for prof in "${PROFILES[@]}"; do
   done <<< "$verdict"
 done
 
-echo "осмотрено: профилей $seen_profiles, ссылок $seen_refs"
+echo "осмотрено: профилей $seen_profiles, ссылок $seen_refs; служба личности поставщика поднята ПРОБОЙ (на стенде не поднимается, #2735) на $raised"
 [ "$seen_profiles" -gt 0 ] \
   || fatal "ни один профиль не осмотрен — «ноль находок» здесь означало бы «ноль прочитанного»"
 [ "$rc" -eq 0 ] || fail "ссылка без источника в поде — см. строки ОТКАЗ выше"

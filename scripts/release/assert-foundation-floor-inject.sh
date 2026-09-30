@@ -59,14 +59,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/assert-foundation-floor.sh"
 NEIGHBOUR="$HERE/probe-published.sh"
 
+# Код 2 — «условие не создано» по контракту доказательств дерева
+# (`deploy/tests/helm/README.md` §«Три исхода»); тройка ниже — код ИСПЫТУЕМОГО.
 [ -r "$SUBJECT" ] || {
     echo "ОТКАЗ: испытуемого нет: $SUBJECT" >&2
     echo "  Инъекция без испытуемого вердикта не даёт — это НЕ ВЫПОЛНИЛОСЬ." >&2
-    exit 3; }
+    exit 2; }
 [ -r "$NEIGHBOUR" ] || {
-    echo "ОТКАЗ: соседа нет: $NEIGHBOUR — третий прогон невозможен" >&2; exit 3; }
-command -v go      >/dev/null 2>&1 || { echo "инструмента нет: go" >&2; exit 3; }
-command -v python3 >/dev/null 2>&1 || { echo "инструмента нет: python3" >&2; exit 3; }
+    echo "ОТКАЗ: соседа нет: $NEIGHBOUR — третий прогон невозможен" >&2; exit 2; }
+command -v go      >/dev/null 2>&1 || { echo "инструмента нет: go" >&2; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "инструмента нет: python3" >&2; exit 2; }
 
 tmp="$(mktemp -d)"
 trap 'chmod -R u+w "$tmp" 2>/dev/null; rm -rf "$tmp"' EXIT
@@ -291,7 +293,7 @@ printf '\nперепись: утверждений исполнено %d, про
 printf 'вне разбора: полоса проверки контрольных сумм — фикстуры нет в публичной базе\n'
 if [ "$checked" = "0" ]; then
     echo "ВЕРДИКТА НЕТ: утверждений исполнено 0 — инъекция беспредметна" >&2
-    exit 3
+    exit 2
 fi
 [ "$failed" = "0" ] || exit 1
 echo "инъекция сошлась: пол способен упасть по каждой оси и молчать на законных близнецах"

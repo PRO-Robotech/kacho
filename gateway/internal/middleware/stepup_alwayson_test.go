@@ -24,9 +24,9 @@ package middleware_test
 // утверждала «слой, через который проходит КАЖДЫЙ запрос», а подавала ТОЛЬКО
 // подписанного предъявителя. «Каждый запрос» и «каждый запрос ЭТОЙ полосы» —
 // разные утверждения, и разница между ними и была дефектом: браузер ходит по
-// сессии развёрнутого провайдера, а на той полосе пол не спрашивался вовсе.
-// Заявление файла теперь исполнимо, поэтому оно и проверяется: случаи ниже
-// подают ОБЕ полосы носителя личности.
+// сессии, а на той полосе пол не спрашивался вовсе. Заявление файла теперь
+// исполнимо, поэтому оно и проверяется: случаи ниже подают ОБЕ полосы носителя
+// личности — браузерную сессию (НАШУ) и подписанного предъявителя.
 //
 // Соседний stepup_lane_parity_test.go спрашивает другое — «решал ли кто-нибудь,
 // что полосы различаются», — и сравнивает их попарно. Здесь утверждается
@@ -35,10 +35,10 @@ package middleware_test
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -69,9 +69,9 @@ func alwaysOnAuth(t *testing.T, fix *jwksFixture) *middleware.AuthInterceptor {
 		)
 }
 
-// alwaysOnClaims — a Hydra-shaped human token at the given assurance level.
+// alwaysOnClaims — an issuer-shaped human token at the given assurance level.
 func alwaysOnClaims(acr string) jwt.MapClaims {
-	c := hydraClaims("user", "usr_alice_acc_a1b2")
+	c := issuerClaims("user", "usr_alice_acc_a1b2")
 	c["acr"] = acr
 	return c
 }
@@ -146,7 +146,7 @@ func TestStepUpAlwaysOn_MachinePrincipal_Exempt(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
 	auth := alwaysOnAuth(t, fix)
 
-	claims := hydraClaims("service_account", "sva_deployer_a1b2")
+	claims := issuerClaims("service_account", "sva_deployer_a1b2")
 	delete(claims, "acr")
 
 	rec, _, hit := serveREST(t, auth, http.MethodPost,
@@ -182,34 +182,35 @@ func TestStepUpAlwaysOn_GRPC_RoutineRPC_Passes(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЛОСА СЕССИИ. Тот же слой, тот же каталог, тот же пол — другой носитель.
 
-// sessionAtLevel — провайдер сессий, отвечающий живой сессией названного уровня.
-// Пустая строка означает «провайдер уровня не назвал»: поле в ответе
-// отсутствует, а не пусто, — именно так выглядит провайдер, который этого поля
-// не отдаёт.
-func sessionAtLevel(t *testing.T, level string) *httptest.Server {
-	t.Helper()
-	aal := ""
-	if level != "" {
-		aal = `,"authenticator_assurance_level":"` + level + `"`
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sessions/whoami" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"2026-08-24T10:00:00Z"`+aal+
-			`,"identity":{"id":"dc609064-d9f3-4e24-b574-d561c9f18359",`+
-			`"traits":{"email":"alice@example.test","name":{"first":"Alice","last":"A"}}}}`)
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+// sessionAtLevel — ответ НАШЕЙ службы о живой сессии названного уровня.
+//
+// Уровень назван НА ОСИ КАТАЛОГА («1», «2», «3»): наша сессия объявляет его
+// сама, перевода со словаря чужого поставщика нет (Ф11 Р7). Пустая строка
+// означает «служба уровня не назвала» — ответ без поля, а не с пустым полем.
+//
+// ПРЕЖДЕ ЗДЕСЬ СТОЯЛ HTTP-ДУБЛЁР ЧУЖОГО ПОСТАВЩИКА с его словарём («aal1»,
+// «aal2»). Он снят вместе с поставщиком; предмет случаев ниже — ПОЛ на полосе
+// сессии — от смены носителя не меняется, и полоса, на которой он меряется,
+// сегодня одна.
+type sessionAtLevelReader struct{ level string }
+
+func (r sessionAtLevelReader) ResolveHumanSession(
+	_ context.Context, _ string,
+) (middleware.HumanSession, bool, error) {
+	return middleware.HumanSession{
+		UserID:          "usr_alice_acc_a1b2",
+		Email:           "alice@example.test",
+		DisplayName:     "Alice A",
+		AuthenticatedAt: time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC),
+		AssuranceLevel:  r.level,
+		EmailVerified:   true,
+	}, true, nil
 }
 
 // alwaysOnSessionAuth — тот же композиционный корень, что alwaysOnAuth, плюс
 // смонтированная полоса сессии. Резолвер субъекта здесь ИСПОЛЬЗУЕТСЯ (у сессии
 // нет claim'ов), поэтому он несёт настоящую личность, а не заглушку.
-func alwaysOnSessionAuth(t *testing.T, kratosURL string) *middleware.AuthInterceptor {
+func alwaysOnSessionAuth(t *testing.T, level string) *middleware.AuthInterceptor {
 	t.Helper()
 	catalog, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -220,7 +221,7 @@ func alwaysOnSessionAuth(t *testing.T, kratosURL string) *middleware.AuthInterce
 		}},
 		authTestLogger(),
 	).
-		WithKratos(middleware.NewKratosClient(kratosURL)).
+		WithHumanSession(sessionAtLevelReader{level: level}).
 		WithStepUp(
 			middleware.NewStepUpGate(nil),
 			middleware.NewCatalogPermissionLookup(catalog),
@@ -240,7 +241,7 @@ func serveSession(t *testing.T, auth *middleware.AuthInterceptor, method, url st
 		w.WriteHeader(http.StatusOK)
 	}))
 	req := httptest.NewRequest(method, url, nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name())
+	req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: t.Name()})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec, seen, hit
@@ -261,7 +262,7 @@ const (
 // этот случай в проде проходил: браузер ходит по сессии, а пол на ней не
 // спрашивался.
 func TestStepUpAlwaysOn_SessionLane_SensitiveRPC_BelowFloor_Refused(t *testing.T) {
-	auth := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal1").URL)
+	auth := alwaysOnSessionAuth(t, "1")
 
 	rec, _, hit := serveSession(t, auth, http.MethodPost, sessionElevatedRoute)
 
@@ -276,7 +277,7 @@ func TestStepUpAlwaysOn_SessionLane_SensitiveRPC_BelowFloor_Refused(t *testing.T
 // глагол ПРОХОДИТ, и его уровень едет вперёд ко второму замку. Без этого случая
 // отказ выше зеленел бы на полосе, которая просто отвергает всё.
 func TestStepUpAlwaysOn_SessionLane_AtFloor_Passes_AndForwardsAssurance(t *testing.T) {
-	auth := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal2").URL)
+	auth := alwaysOnSessionAuth(t, "2")
 
 	rec, seen, hit := serveSession(t, auth, http.MethodPost, sessionElevatedRoute)
 
@@ -291,7 +292,7 @@ func TestStepUpAlwaysOn_SessionLane_AtFloor_Passes_AndForwardsAssurance(t *testi
 // Уровень, которого край не знает, — НЕ «достаточно». Мягкий проход здесь дал бы
 // контроль, не отказавший ни разу за свою жизнь.
 func TestStepUpAlwaysOn_SessionLane_UnknownAssurance_FailsClosed(t *testing.T) {
-	auth := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal-something-new").URL)
+	auth := alwaysOnSessionAuth(t, "уровень-вне-оси")
 
 	rec, _, hit := serveSession(t, auth, http.MethodPost, sessionElevatedRoute)
 
@@ -300,10 +301,10 @@ func TestStepUpAlwaysOn_SessionLane_UnknownAssurance_FailsClosed(t *testing.T) {
 	assert.False(t, hit)
 }
 
-// Провайдер, не назвавший уровня ВОВСЕ, — тот же исход: обойти пол отсутствием
-// поля в чужом ответе нельзя.
+// Служба, не назвавшая уровня ВОВСЕ, — тот же исход: обойти пол отсутствием
+// поля в ответе нельзя.
 func TestStepUpAlwaysOn_SessionLane_NoAssurance_FailsClosed(t *testing.T) {
-	auth := alwaysOnSessionAuth(t, sessionAtLevel(t, "").URL)
+	auth := alwaysOnSessionAuth(t, "")
 
 	rec, _, hit := serveSession(t, auth, http.MethodPost, sessionElevatedRoute)
 
@@ -316,7 +317,7 @@ func TestStepUpAlwaysOn_SessionLane_NoAssurance_FailsClosed(t *testing.T) {
 // Глагол, которому каталог пола не объявил, проходит и с непереводимым уровнем —
 // иначе «строгость» означала бы отказ каждому браузерному на всём каталоге.
 func TestStepUpAlwaysOn_SessionLane_UnknownAssurance_NoFloorRPC_StillPasses(t *testing.T) {
-	auth := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal-something-new").URL)
+	auth := alwaysOnSessionAuth(t, "уровень-вне-оси")
 
 	rec, seen, hit := serveSession(t, auth, http.MethodGet, sessionNoFloorRoute)
 
@@ -330,16 +331,16 @@ func TestStepUpAlwaysOn_SessionLane_UnknownAssurance_NoFloorRPC_StillPasses(t *t
 }
 
 // Пол AAL1 на обычной работе с ресурсами держится и на этой полосе: вошедший
-// паролем работает, а вошедший «никак» (aal0) — нет.
-func TestStepUpAlwaysOn_SessionLane_RoutineRPC_AAL1_Passes_AAL0_Refused(t *testing.T) {
-	pass := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal1").URL)
+// паролем работает, а уровень вне оси сессии — нет.
+func TestStepUpAlwaysOn_SessionLane_RoutineRPC_Level1Passes_OffAxisRefused(t *testing.T) {
+	pass := alwaysOnSessionAuth(t, "1")
 	recPass, seenPass, hitPass := serveSession(t, pass, http.MethodPost, sessionRoutineRoute)
-	require.True(t, hitPass, "aal1 удовлетворяет пол AAL1")
+	require.True(t, hitPass, "уровень «1» удовлетворяет пол AAL1")
 	assert.Equal(t, http.StatusOK, recPass.Code)
 	assert.Equal(t, "1", seenPass.Header.Get("X-Kacho-Token-Acr"))
 
-	refuse := alwaysOnSessionAuth(t, sessionAtLevel(t, "aal0").URL)
+	refuse := alwaysOnSessionAuth(t, "0")
 	recRefuse, _, hitRefuse := serveSession(t, refuse, http.MethodPost, sessionRoutineRoute)
-	assert.Equal(t, http.StatusUnauthorized, recRefuse.Code, "aal0 ранжируется нулём")
+	assert.Equal(t, http.StatusUnauthorized, recRefuse.Code, "уровень «0» вне оси сессии и ранжируется нулём")
 	assert.False(t, hitRefuse)
 }

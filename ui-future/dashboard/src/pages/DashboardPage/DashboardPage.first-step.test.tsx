@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { DashboardPage } from ".";
 import type { HostContext } from "../../utils";
 
@@ -49,7 +50,7 @@ function jsonResponse(body: unknown) {
 
 /** Стенд, у которого аккаунтов НЕТ — положение нового клиента. */
 function stubNoAccounts() {
-  jest.spyOn(global, "fetch").mockImplementation((input) => {
+  stubNetwork((input) => {
     const path = pathOf(input);
     if (path.startsWith("/iam/v1/accounts")) return jsonResponse({ accounts: [] });
     return jsonResponse({});
@@ -58,7 +59,7 @@ function stubNoAccounts() {
 
 /** Стенд, у которого аккаунт ЕСТЬ, а проект не выбран. */
 function stubWithAccount() {
-  jest.spyOn(global, "fetch").mockImplementation((input) => {
+  stubNetwork((input) => {
     const path = pathOf(input);
     if (path.startsWith("/iam/v1/accounts")) return jsonResponse({ accounts: [{ id: "account-1", name: "acc" }] });
     if (path.startsWith("/iam/v1/projects")) return jsonResponse({ projects: [] });
@@ -110,7 +111,7 @@ describe("первый экран называет первый шаг (#1613)",
   it("список ещё не прочитан — экран не утверждает, что аккаунтов нет", () => {
     // Третье состояние. «Ничего не прочитано» и «прочитано и пусто» — разные
     // вещи, и первое не даёт права на утверждение о втором.
-    jest.spyOn(global, "fetch").mockImplementation(() => new Promise(() => {}));
+    stubNetwork(() => new Promise(() => {}));
     render(<DashboardPage context={emptyContext} />);
 
     expect(screen.queryByTestId("dashboard-first-step-action")).not.toBeInTheDocument();

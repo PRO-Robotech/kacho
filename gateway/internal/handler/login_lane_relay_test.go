@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // fakeOwn — дублёр `Resolve` на один вопрос.
@@ -52,9 +53,11 @@ func (f *fakeCut) SessionCutoffOf(context.Context, string) (time.Time, bool, err
 
 var authAt = time.Date(2026, 9, 16, 12, 0, 0, 123456000, time.UTC)
 
+// Адрес подтверждён: проба о другом предмете (ретрансляция глаголов формы);
+// рубеж адреса держит own_session_address_gate_test.go (приёмка F6b, DoD п. 2).
 func liveSession() middleware.HumanSession {
 	return middleware.HumanSession{UserID: "usr-1", Email: "a@example.com", DisplayName: "A",
-		AuthenticatedAt: authAt, ExpiresAt: authAt.Add(24 * time.Hour), AssuranceLevel: "1"}
+		AuthenticatedAt: authAt, ExpiresAt: authAt.Add(24 * time.Hour), AssuranceLevel: "1", EmailVerified: true}
 }
 
 // seen — один запрос, дошедший до дублёра слушателя формы.
@@ -78,15 +81,23 @@ func (s *formListenerStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
 	s.mu.Lock()
 	s.requests = append(s.requests, seen{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, header: r.Header.Clone(), body: string(b)})
+	status, respHdr, body := s.status, s.respHdr, s.body
 	s.mu.Unlock()
-	for k, vs := range s.respHdr {
+	for k, vs := range respHdr {
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(s.status)
-	_, _ = io.WriteString(w, s.body)
+	w.WriteHeader(status)
+	_, _ = io.WriteString(w, body)
+}
+
+// answer — сменить ответ дублёра между запросами.
+func (s *formListenerStub) answer(status int, respHdr http.Header, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status, s.respHdr, s.body = status, respHdr, body
 }
 
 func (s *formListenerStub) count() int {
@@ -101,30 +112,49 @@ func (s *formListenerStub) last() seen {
 	return s.requests[len(s.requests)-1]
 }
 
-// chainWithRelay — край под `own`: полоса личности + ретранслятор на путях
-// путях, цель — `target`.
+// chainWithRelay — край под `own`: полоса личности + ретрансляторы на путях
+// объявления, цель ОБОИХ — `target`; возвращает ретранслятор полосы формы.
 func chainWithRelay(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (http.Handler, *handler.LoginLaneRelay) {
 	t.Helper()
+	chain, relays := chainWithRelays(t, own, cut, target)
+	return chain, relays[middleware.RelayTargetForm]
+}
+
+// chainWithRelays — край под `own`: по ретранслятору на КАЖДУЮ цель закрытого
+// перечня, все — на один дублёр `target`, смонтированы ТЕМ ЖЕ монтажом, что в
+// композиционном корне (`handler.MountLoginLaneRoutes`).
+func chainWithRelays(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (http.Handler, map[middleware.RelayTarget]*handler.LoginLaneRelay) {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-		Logger: logger,
-		Target: target,
-		// Оператор чтения цепочки — тот же, что у решения о доступе: один
-		// доверенный прыжок, адрес берётся справа.
-		ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
-		Timeout:  2 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("ретранслятор не собрался: %v", err)
+	relays := map[middleware.RelayTarget]*handler.LoginLaneRelay{}
+	var set []*handler.LoginLaneRelay
+	for _, tg := range middleware.RelayTargets() {
+		relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger: logger,
+			Serves: tg,
+			Target: target,
+			// Оператор чтения цепочки — тот же, что у решения о доступе: один
+			// доверенный прыжок, адрес берётся справа.
+			ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+			Timeout:  2 * time.Second,
+		})
+		if err != nil {
+			t.Fatalf("ретранслятор цели %q не собрался: %v", tg, err)
+		}
+		relays[tg] = relay
+		set = append(set, relay)
 	}
 	mux := http.NewServeMux()
-	for _, rt := range middleware.LoginLaneRoutes() {
-		mux.Handle(rt.Path, relay)
+	// Под `/` здесь ничего нет — мультиплексор отвечает на чужой путь
+	// `http.NotFoundHandler()`; им же отвечает внутренний слушатель на запись,
+	// которой на нём нет.
+	if _, err := handler.MountLoginLaneRoutes(mux, http.NotFoundHandler(), set...); err != nil {
+		t.Fatalf("монтаж объявления: %v", err)
 	}
 	a := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", nil, logger).
 		WithHumanSession(own).
 		WithSessionCutoffCheck(cut, time.Hour)
-	return a.HTTP(mux), relay
+	return a.HTTP(mux), relays
 }
 
 func formRequest(method, path, body string) *http.Request {
@@ -156,7 +186,7 @@ func kachoHeaders(h http.Header) []string {
 func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndNoIdentity(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Живая сессия: полоса ВЫСТАВИТ личность перед ретрансляцией — и её обязан
 	// снять ретранслятор (§1.10: шесть заголовков принципала).
@@ -187,32 +217,9 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 	if len(xff) != 1 || xff[0] != "10.0.0.1" {
 		t.Fatalf("X-Forwarded-For обязан быть РОВНО ОДНИМ адресом, выведенным оператором цепочки (справа по числу прыжков): %v", xff)
 	}
-	// Ответ службы уходит клиенту как есть — включая её Set-Cookie. На
-	// ВЫПОЛНЕННОМ выходе край ДОПОЛНЯЕТ его гашением имён, которых служба не
-	// знает: имён носителя два, своё у неё одно, а чужое принадлежит стороне,
-	// которой она не управляет. Проверяются обе половины — доехавшее от службы
-	// и дополненное краем, — потому что «как есть» здесь означает «не изменено»,
-	// а не «ничего не добавлено».
-	sc := rec.Result().Header["Set-Cookie"]
-	fromService := 0
-	ended := map[string]bool{}
-	for _, h := range sc {
-		if strings.HasPrefix(h, "kaname_session=; Max-Age=0") {
-			fromService++
-		}
-		for _, name := range middleware.SessionCarrierNames() {
-			if strings.HasPrefix(h, name+"=;") {
-				ended[name] = true
-			}
-		}
-	}
-	if fromService != 1 {
-		t.Fatalf("Set-Cookie службы не доехал до клиента неизменным: %v", sc)
-	}
-	for _, name := range middleware.SessionCarrierNames() {
-		if !ended[name] {
-			t.Fatalf("выполненный выход не погасил имя %q: %v", name, sc)
-		}
+	// Ответ службы уходит клиенту как есть — включая Set-Cookie.
+	if sc := rec.Result().Header["Set-Cookie"]; len(sc) != 1 || !strings.HasPrefix(sc[0], "kaname_session=; Max-Age=0") {
+		t.Fatalf("Set-Cookie службы не доехал до клиента: %v", sc)
 	}
 	if rec.Body.String() != `{}` {
 		t.Fatalf("тело ответа изменено: %q", rec.Body.String())
@@ -237,7 +244,7 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs503(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusServiceUnavailable,
 		body: `{"code":14,"message":"logout not performed; try again later"}`}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Под `own` вопросы края и слушатель формы бьют в одно хранилище: Resolve
 	// отвечает UNAVAILABLE, слушатель — исходом Ф1-58.
@@ -289,7 +296,7 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 			t.Fatalf("%s: Set-Cookie на недостижимой службе", p)
 		}
 	}
-	if relay2.Stats().Unreachable != 3 {
+	if relay2.Stats().Unreachable != 3 || relay2.Stats().Target != middleware.RelayTargetForm {
 		t.Fatalf("клетка «служба недостижима» = %d, ожидалось 3", relay2.Stats().Unreachable)
 	}
 	if s := relay.Stats(); s.Relayed["logout"] != 1 || s.Relayed["login"] != 1 || s.Relayed["csrf"] != 1 || s.Relayed["password"] != 0 || s.Unreachable != 0 {
@@ -302,7 +309,7 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 func TestLoginLaneRelay_F3_51_ServiceResponsePassesThroughUnchanged(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{"session":{"expiresAt":"2026-09-17T12:00:00Z"}}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=new; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax"}, "X-Service": {"kaname"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	chain, _ := chainWithRelay(t, &fakeOwn{found: false}, &fakeCut{}, srv.URL)
 	rec := httptest.NewRecorder()

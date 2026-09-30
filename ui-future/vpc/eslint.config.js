@@ -8,6 +8,7 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import { issuanceOrdering } from "../shared/issuance-ordering.eslint.config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -147,5 +148,7 @@ export default tseslint.config(
       "react-hooks/use-memo": "off",
     },
   },
+  // Места выпуска обращений к сети (приёмка F8, Р10, F8-46): правило одно на десять пакетов.
+  ...issuanceOrdering(),
   prettier,
 );

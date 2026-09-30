@@ -57,9 +57,9 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import subprocess
 import sys
-import tempfile
+
+import repo_tree
 
 # Производитель и артефакт, которым он объявляет посадку.
 PRODUCER = "tests/authz-fixtures/setup.sh"
@@ -91,17 +91,9 @@ def strip_comments(text: str) -> str:
 
 
 def tracked_files(root: str) -> list[str]:
-    """Обход по СОДЕРЖИМОМУ репозитория — то же множество, что увидит CI."""
-    try:
-        out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True,
-                             text=True, check=True).stdout.split()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        out = []
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules")]
-            for fn in filenames:
-                out.append(os.path.relpath(os.path.join(dirpath, fn), root))
-    return [p for p in out if p.endswith(EXTS)]
+    """Обход по СОДЕРЖИМОМУ репозитория — то же множество, что увидит CI; у
+    синтетического корня — по диску. Способ выбирает `repo_tree.tree_files`."""
+    return [p for p in repo_tree.tree_files(root, prune=("node_modules",)) if p.endswith(EXTS)]
 
 
 def producible(root: str) -> set[str]:
@@ -201,7 +193,8 @@ def run(root: str) -> int:
         return 1
 
     print(f"производимые посадки: {sorted(can_be)}  ·  читателей артефакта "
-          f"{ARTEFACT!r}: {len(readers)}  ·  осмотрено файлов: {examined}")
+          f"{ARTEFACT!r}: {len(readers)}  ·  осмотрено файлов: {examined} "
+          f"({repo_tree.tree_source(root)})")
     for r in readers:
         print(f"  читатель: {r}")
 
@@ -227,7 +220,7 @@ def self_test() -> int:
             fh.write(body)
 
     # ── ДЕФЕКТ: одно производимое значение, читатель на нём ветвится ──────────
-    with tempfile.TemporaryDirectory() as td:
+    with repo_tree.nested_fixture_root() as td:
         w(td, PRODUCER,
           'classify_posture() {\n'
           '  case "$1" in\n'
@@ -276,7 +269,7 @@ def self_test() -> int:
     # запрещает не ветвление как таковое, а ветвление, которое не может уйти в
     # обе стороны. Без этой половины гейт ловил бы форму, а не существо, и
     # отключился бы на первом же законном случае.
-    with tempfile.TemporaryDirectory() as td2:
+    with repo_tree.nested_fixture_root() as td2:
         w(td2, PRODUCER,
           'classify_posture() {\n'
           '  case "$1" in\n'
@@ -304,7 +297,7 @@ def self_test() -> int:
             ok = False
 
     # ── ПРЕДПОСЫЛКА: производителя нет ⇒ отказ, а не «чисто» ──────────────────
-    with tempfile.TemporaryDirectory() as td3:
+    with repo_tree.nested_fixture_root() as td3:
         w(td3, "deploy/scripts/x.sh", 'echo hi\n')
         if run(td3) != 1:
             print("SELF-TEST FAIL: дерево без производителя объявлено чистым", file=sys.stderr)

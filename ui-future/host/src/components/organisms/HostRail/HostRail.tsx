@@ -1,7 +1,11 @@
-import type { FC } from "react";
-import { Home, LogIn, Search, Settings } from "lucide-react";
+import { useRef, useState, type FC } from "react";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
+import { Home, LogIn, Search, Settings, UserRound } from "lucide-react";
+import type { SessionAnswer } from "@shared/api/login-lane";
 import { KachoLogo, RailButton } from "../../atoms";
+import { AccountPanel } from "../AccountPanel";
 import { loginUrl } from "../../../utils/auth";
+import { useSessionIdentity } from "../../../utils/session";
 import type { HostContext } from "../../../utils";
 import { REMOTE_MODULES } from "../../../remotes/moduleCatalog";
 import {
@@ -87,13 +91,33 @@ export const HostRail: FC<{
    * промиса. Умолчание — настоящие federation-импорты.
    */
   loadNavigation?: (remote: string) => Promise<unknown>;
+  /**
+   * Кто за сессией. Существует ради пробы; умолчание — ответ края
+   * (`useSessionIdentity`). `undefined` — ещё не известно.
+   */
+  identity?: SessionAnswer;
+}> = (props) => {
+  const known = useSessionIdentity();
+  return <HostRailView {...props} identity={"identity" in props ? props.identity : known} />;
+};
+
+const HostRailView: FC<{
+  context?: HostContext;
+  currentPath?: string;
+  showReachability: boolean;
+  navigate?: (path: string) => void | Promise<void>;
+  loadNavigation?: (remote: string) => Promise<unknown>;
+  identity: SessionAnswer | undefined;
 }> = ({
   context,
   currentPath = window.location.pathname,
   showReachability,
   navigate = (path) => window.location.assign(path),
   loadNavigation = loadRemoteNavigation,
+  identity,
 }) => {
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountOpener = useRef<HTMLDivElement>(null);
   const projectId = context?.project?.id ?? null;
   const sections = useModuleSections(loadNavigation);
   const current = activeSection(sections, currentPath);
@@ -176,8 +200,37 @@ export const HostRail: FC<{
           icon={<Settings size={iconSize} />}
           onClick={() => navigate("/system/regions")}
         />
-        <RailButton label="Войти" icon={<LogIn size={iconSize} />} onClick={() => window.location.assign(loginUrl())} />
+        {/* Пока край не ответил, каркас не обещает ни входа, ни учётной записи:
+            «Войти», мигнувшее у вошедшего, читалось бы как потерянная сессия. */}
+        {identity?.kind === "absent" && (
+          <RailButton
+            label="Войти"
+            icon={<LogIn size={iconSize} />}
+            onClick={() => window.location.assign(loginUrl())}
+          />
+        )}
+        {identity?.kind === "present" && (
+          // Обёртка без своей коробки — только чтобы панель узнала, чем она
+          // открыта: нажатие на пункт переключает панель, а не закрывает её как
+          // «нажатие вне» и тут же открывает снова.
+          <div ref={accountOpener} style={{ display: "contents" }}>
+            <RailButton
+              active={accountOpen || currentPath === ACCOUNT_SETTINGS_ADDRESS}
+              label="Учётная запись"
+              icon={<UserRound size={iconSize} />}
+              onClick={() => setAccountOpen((open) => !open)}
+            />
+          </div>
+        )}
       </div>
+      {identity?.kind === "present" && accountOpen && (
+        <AccountPanel
+          identity={identity}
+          onClose={() => setAccountOpen(false)}
+          navigate={navigate}
+          opener={accountOpener}
+        />
+      )}
     </nav>
   );
 };

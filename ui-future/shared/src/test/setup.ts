@@ -1,13 +1,40 @@
 import { configure } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import React from "react";
-import { jest } from "@jest/globals";
+import { afterAll, afterEach, jest } from "@jest/globals";
 import { antdStub } from "./antd-stub";
+import {
+  failOnIssuanceBreaches,
+  installIssuanceGuard,
+  recordIssuanceBreach,
+  releaseStubbedNetwork,
+} from "./issuance-guard";
 import { TextDecoder, TextEncoder } from "node:util";
 
 Object.assign(globalThis, {
   TextDecoder,
   TextEncoder,
+});
+
+// СТРАЖ ИСПОЛНЕНИЯ МЕСТ ВЫПУСКА (приёмка F8, Р10, F8-46) — в окружении проб
+// ВСЕХ девяти модулей консоли: `host` и `dashboard` импортируют этот файл
+// целиком. Всякий вызов `fetch` окна — под любым именем и любой формой
+// доступа — судится тем, выпустил ли его упорядочивающий транспорт
+// (`@shared/api/carrier-order`); иной вызов до сети не доходит, а запись о
+// нём роняет пробу здесь же, даже если код продукта проглотил отказ. Разбор
+// предмета и граница — в шапке `issuance-guard.ts`.
+//
+// Сеть проба подставляет как прежде — присвоением `globalThis.fetch = …`
+// (заменитель встаёт ПОД стражем) либо `stubNetworkOnce` (снимается после
+// пробы ниже). Заменить самого стража (`jest.spyOn`, `defineProperty`) нельзя:
+// это сняло бы суд со всех вызовов пробы.
+installIssuanceGuard(globalThis, recordIssuanceBreach);
+afterEach(() => {
+  releaseStubbedNetwork(globalThis);
+  failOnIssuanceBreaches();
+});
+afterAll(() => {
+  failOnIssuanceBreaches();
 });
 
 // jsdom ships no ResizeObserver, and ResourceTable measures its own body with

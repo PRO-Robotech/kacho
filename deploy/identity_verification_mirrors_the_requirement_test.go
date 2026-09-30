@@ -238,7 +238,7 @@ func verificationMirrorFindings(t *testing.T, root string) []string {
 		for _, s := range stacks[name] {
 			texts = append(texts, readFileForTest(t, filepath.Join(root, s)))
 		}
-		if !identityChainRaisesIdentity(texts) {
+		if !identityChainLandsIdentity(t, texts) {
 			continue
 		}
 		raising++
@@ -283,8 +283,10 @@ func verificationMirrorFindings(t *testing.T, root string) []string {
 
 	// ── ПРЕДПОСЫЛКИ ГЕЙТА — проверяются, а не подразумеваются ────────────────
 	if raising == 0 {
-		t.Fatalf("ни один стенд не поднимает службу личности — проверка беспредметна, "+
-			"и её зелёный ничего не значит (корень %s)", root)
+		t.Fatalf("ни один стенд не объявляет посадку личности — ни цепочкой профилей, "+
+			"ни базами подчартов. Это не «личности на стендах нет», а исчезнувшая "+
+			"предпосылка: проверка беспредметна, и её зелёный ничего не значит "+
+			"(корень %s)", root)
 	}
 	if len(enablingSources)+len(disablingSources) == 0 {
 		t.Fatalf("объявлений потока подтверждения не прочитано НИ ОДНОГО (корень %s) — "+
@@ -300,7 +302,7 @@ func verificationMirrorFindings(t *testing.T, root string) []string {
 			"осознанно — это находка MAIL-52", verifiedAddressHook, root)
 	}
 
-	t.Logf("перепись: стендов объявлено %d · поднимают службу личности %d · требуют "+
+	t.Logf("перепись: стендов объявлено %d · объявляют посадку личности %d · требуют "+
 		"подтверждённого адреса %d · из них поток подтверждения включён и не выключен "+
 		"никем %d · источников, объявляющих поток, %d (включают %d · выключают %d)",
 		len(stacks), raising, requiring, coherent,

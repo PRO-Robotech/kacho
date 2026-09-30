@@ -4,6 +4,7 @@
 package deploy_test
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -395,17 +396,18 @@ const flowProxyBodyLine = "            proxy_pass http://$kratos_ui;"
 func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 	// ── СКОБКА В СТРОКЕ-КОММЕНТАРИИ: ЧТО ИМЕННО ДЕРЖИТ СНЯТИЕ КОММЕНТАРИЕВ ──
 	//
-	// Шесть прежних случаев оставались зелёными при ОБЕЗВРЕЖЕННОМ
-	// `nginxCommentLineRe` — то есть признак «строки-комментарии сняты ДО
-	// разбора» не был доказан ни одним из них. Это дыра в доказательстве, а не
-	// в признаке: признак защищает не образец полосы (тот анкерован и решётку
-	// не пропускает), а СЧЁТ СКОБОК в `blockBodyAt`, который считает `{` и `}`
+	// Шесть прежних случаев оставались зелёными при ОБЕЗВРЕЖЕННОМ снятии
+	// комментариев — то есть признак «комментарии сняты ДО разбора» не был
+	// доказан ни одним из них (kacho#2781). Это дыра в доказательстве, а не в
+	// признаке: признак защищает не образец полосы (тот анкерован и решётку не
+	// пропускает), а СЧЁТ СКОБОК в `blockBodyAt`, который считает `{` и `}`
 	// буквально и о комментариях не знает.
 	//
-	// Оба случая строятся ИЗ СВОЕГО ЗАКОННОГО БЛИЗНЕЦА подстановкой ОДНОЙ
-	// строки: разница ровно в один факт держится тогда конструкцией, а не
-	// внимательностью читателя. Обезвредьте `nginxCommentLineRe` — краснеют
-	// ровно эти два, а остальные семь, включая обоих близнецов, молчат.
+	// Случаи строятся ИЗ СВОЕГО ЗАКОННОГО БЛИЗНЕЦА подстановкой ОДНОЙ строки:
+	// разница ровно в один факт держится тогда конструкцией, а не
+	// внимательностью читателя. Что каждый из них держит, не выписано в
+	// прозе, а ИЗМЕРЯЕТСЯ ниже: каждый случай прогоняется ещё и с обезвреженным
+	// снятием, и перечень покрасневших обязан совпасть с объявленным.
 	closingInComment := strings.Replace(flowServingFixture, flowProxyBodyLine,
 		"            # прежняя ветка кончалась здесь: }\n"+flowProxyBodyLine, 1)
 	if closingInComment == flowServingFixture {
@@ -419,11 +421,77 @@ func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 			"сравнивала бы близнеца с самим собой", flowNoProxyBodyLine)
 	}
 
+	// ── ХВОСТОВОЙ КОММЕНТАРИЙ И КАВЫЧКИ (kacho#2810, п. 2) ──
+	//
+	// Снятие только ЦЕЛЫХ строк-комментариев оставляло хвостовой комментарий
+	// в тексте, и его скобка уводила счётчик так же, как скобка комментария
+	// целой строкой. Каждый случай строится из законного близнеца подстановкой
+	// одной строки.
+	trailingClosing := strings.Replace(flowServingFixture, flowNoProxyBodyLine,
+		flowNoProxyBodyLine+"  # прежняя ветка кончалась здесь: }", 1)
+	trailingOpening := strings.Replace(flowTwoBandFixture, flowNoProxyBodyLine,
+		flowNoProxyBodyLine+" # было: if ($slow) {", 1)
+	trailingPlain := strings.Replace(flowTwoBandFixture, flowNoProxyBodyLine,
+		flowNoProxyBodyLine+" # было: переадресация на $slow", 1)
+	quotedHash := strings.Replace(flowServingFixture, flowProxyBodyLine,
+		"            if ($arg_x = \"#\") {\n                return 404;\n            }\n"+flowProxyBodyLine, 1)
+	quotedClosing := strings.Replace(flowServingFixture, flowNoProxyBodyLine,
+		`            set $kratos_mark "}";`, 1)
+	unterminatedQuote := strings.Replace(flowServingFixture, flowNoProxyBodyLine,
+		`            set $kratos_mark "без закрывающей кавычки;`, 1)
+	for name, built := range map[string]string{
+		"хвостовой `}`": trailingClosing, "хвостовая `{`": trailingOpening, "хвост без скобки": trailingPlain,
+		"`#` в кавычках": quotedHash, "`}` в кавычках": quotedClosing, "незакрытая кавычка": unterminatedQuote,
+	} {
+		if built == flowServingFixture || built == flowTwoBandFixture {
+			t.Fatalf("случай %q не построен: точки подстановки нет в законном входе", name)
+		}
+	}
+
+	// holds — какое свойство лексического прохода держит случай: «снятие» —
+	// краснеет, если комментарии не снимать вовсе; «кавычки» — краснеет, если
+	// снимать от любого `#` до конца строки, не зная кавычек. Пусто — случай от
+	// лексического прохода не зависит.
 	cases := []struct {
-		name string
-		conf string
-		want []string // пусто = гейт обязан ОТКАЗАТЬ
+		name  string
+		conf  string
+		want  []string // пусто = гейт обязан ОТКАЗАТЬ
+		holds []string
 	}{
+		{
+			name:  "хвостовой комментарий со `}` внутри тела РАБОЧЕЙ полосы — обслуживание есть",
+			conf:  trailingClosing,
+			want:  []string{"login", "registration"},
+			holds: []string{"снятие"},
+		},
+		{
+			name:  "хвостовой комментарий со `{` НЕ отдаёт полосе переадресацию соседней",
+			conf:  trailingOpening,
+			want:  []string{"consent"},
+			holds: []string{"снятие"},
+		},
+		{
+			name: "законный близнец: хвостовой комментарий БЕЗ скобки — обслуживает вторая",
+			conf: trailingPlain,
+			want: []string{"consent"},
+		},
+		{
+			name:  "`#` в кавычках — не комментарий: блок после него цел, обслуживание есть",
+			conf:  quotedHash,
+			want:  []string{"login", "registration"},
+			holds: []string{"кавычки"},
+		},
+		{
+			name:  "`}` в кавычках — не конец блока: обслуживание есть",
+			conf:  quotedClosing,
+			want:  []string{"login", "registration"},
+			holds: []string{"снятие", "кавычки"},
+		},
+		{
+			name:  "незакрытая кавычка — разбор не угадывает: отказ",
+			conf:  unterminatedQuote,
+			holds: []string{"снятие", "кавычки"},
+		},
 		{
 			name: "законный вход: полоса объявлена и переадресует — сегменты прочитаны",
 			conf: flowServingFixture,
@@ -460,9 +528,10 @@ func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 `,
 		},
 		{
-			name: "`}` в комментарии ВНУТРИ тела рабочей полосы — обслуживание есть",
-			conf: closingInComment,
-			want: []string{"login", "registration"},
+			name:  "`}` в комментарии ВНУТРИ тела рабочей полосы — обслуживание есть",
+			conf:  closingInComment,
+			want:  []string{"login", "registration"},
+			holds: []string{"снятие"},
 		},
 		{
 			name: "законный близнец о двух полосах: первая не переадресует — обслуживает вторая",
@@ -470,9 +539,10 @@ func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 			want: []string{"consent"},
 		},
 		{
-			name: "незакрытая `{` в комментарии НЕ отдаёт полосе переадресацию соседней",
-			conf: openingInComment,
-			want: []string{"consent"},
+			name:  "незакрытая `{` в комментарии НЕ отдаёт полосе переадресацию соседней",
+			conf:  openingInComment,
+			want:  []string{"consent"},
+			holds: []string{"снятие"},
 		},
 		{
 			name: "две полосы: сегменты ОБЪЕДИНЯЮТСЯ, а не берётся первая",
@@ -491,13 +561,8 @@ func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 			got, why := flowSegmentsFrom(c.conf)
 			if len(c.want) == 0 {
 				if why == "" {
-					keys := make([]string, 0, len(got))
-					for k := range got {
-						keys = append(keys, k)
-					}
-					sort.Strings(keys)
 					t.Fatalf("разбор объявил обслуживаемыми %v, хотя обслуживания нет — "+
-						"это ровно то ложное зелёное, ради которого ось заведена", keys)
+						"это ровно то ложное зелёное, ради которого ось заведена", sortedSegments(got))
 				}
 				refused++
 				return
@@ -505,21 +570,73 @@ func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
 			if why != "" {
 				t.Fatalf("законный вход отвергнут: %s", why)
 			}
-			keys := make([]string, 0, len(got))
-			for k := range got {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			if strings.Join(keys, " ") != strings.Join(c.want, " ") {
+			if keys := sortedSegments(got); strings.Join(keys, " ") != strings.Join(c.want, " ") {
 				t.Fatalf("сегменты прочитаны как %v, ожидались %v", keys, c.want)
 			}
 			served++
 		})
 	}
+
+	// ── ЧТО ДЕРЖИТ ЛЕКСИЧЕСКИЙ ПРОХОД — ИЗМЕРЕНО, А НЕ ВЫПИСАНО ──
+	//
+	// Тот же разбор с обезвреженным проходом: «снятие» — комментарии не
+	// снимаются вовсе; «кавычки» — снимаются от любого `#` до конца строки без
+	// знания кавычек (форма, которую задача назвала словами «`#` снимается до
+	// конца строки»). Покраснеть обязаны РОВНО объявленные случаи: лишний —
+	// объявление отстало от разбора; недостающий — признак больше не держит
+	// случая, и его снимут как ненужный вместе с тем, что он ловит (kacho#2781).
+	axes := []struct {
+		name  string
+		strip func(string) (string, bool)
+	}{
+		{"снятие", func(s string) (string, bool) { return s, true }},
+		{"кавычки", func(s string) (string, bool) { return nginxHashToLineEndRe.ReplaceAllString(s, ""), true }},
+	}
+	for _, ax := range axes {
+		var reddened, declared []string
+		for _, c := range cases {
+			got, why := flowSegmentsWith(c.conf, ax.strip)
+			correct := why != ""
+			if len(c.want) != 0 {
+				correct = why == "" && strings.Join(sortedSegments(got), " ") == strings.Join(c.want, " ")
+			}
+			if !correct {
+				reddened = append(reddened, c.name)
+			}
+			for _, h := range c.holds {
+				if h == ax.name {
+					declared = append(declared, c.name)
+				}
+			}
+		}
+		t.Logf("обезврежено %q: покраснело случаев %d из %d, объявлено %d", ax.name, len(reddened), len(cases), len(declared))
+		if len(reddened) == 0 {
+			t.Errorf("обезврежено %q — не покраснел НИ ОДИН случай: свойство не держит ничего", ax.name)
+		}
+		if strings.Join(reddened, "\n") != strings.Join(declared, "\n") {
+			t.Errorf("обезврежено %q: покраснели\n  %s\nа объявлены\n  %s", ax.name,
+				strings.Join(reddened, "\n  "), strings.Join(declared, "\n  "))
+		}
+	}
+
 	t.Logf("перепись инъекции признака полосы: случаев %d; обслуживание прочитано %d; отказов %d",
 		len(cases), served, refused)
 	if served == 0 || refused == 0 {
 		t.Fatalf("ось односторонняя: прочитано %d, отказов %d — доказательство без одной из сторон "+
 			"ловит форму, а не существо", served, refused)
 	}
+}
+
+// nginxHashToLineEndRe — обезвреженная форма снятия для оси «кавычки»: от
+// любого `#` до конца строки, без знания кавычек и границ лексемы.
+var nginxHashToLineEndRe = regexp.MustCompile(`#[^\n]*`)
+
+// sortedSegments — сегменты в устойчивом порядке.
+func sortedSegments(got map[string]bool) []string {
+	keys := make([]string, 0, len(got))
+	for k := range got {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

@@ -1,6 +1,6 @@
 // Same-origin redirect guard for auth hand-off targets (return_to /
 // post_logout_redirect_uri). These arrive from the query string and are fed to
-// react-router navigate() / Kratos loginUrl(); an unvalidated value is an
+// react-router navigate() / the sign-in address; an unvalidated value is an
 // open-redirect / re-phishing surface (CWE-601). We only ever navigate to a
 // destination that resolves onto our own origin.
 
@@ -13,6 +13,11 @@ const DEFAULT_FALLBACK = "/";
  * current origin over http(s); otherwise returns `fallback` (default "/").
  * This rejects absolute cross-origin URLs, protocol-relative "//host",
  * backslash-obfuscated "/\\host", and non-http schemes such as "javascript:".
+ *
+ * The verdict is taken on the value the navigation receives, not on `raw`: the
+ * navigation resolves the RETURNED path once more, and a normalised pathname
+ * may begin with "//", which a second resolution reads as protocol-relative.
+ * So the returned path is resolved again and must land on the same origin.
  */
 export function safeInternalPath(raw: string | null | undefined, fallback: string = DEFAULT_FALLBACK): string {
   if (!raw) return fallback;
@@ -26,11 +31,12 @@ export function safeInternalPath(raw: string | null | undefined, fallback: strin
   if (url.origin !== origin) return fallback;
   if (url.protocol !== "http:" && url.protocol !== "https:") return fallback;
   const path = `${url.pathname}${url.search}${url.hash}`;
-  return path.startsWith("/") ? path : fallback;
+  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
+  return new URL(path, origin).origin === origin ? path : fallback;
 }
 
 /**
- * Resolve the post-auth navigation target after a Kratos login/registration flow.
+ * Resolve the post-auth navigation target after a login/registration flow.
  *
  * Both `flowReturnTo` (from the flow response) and `queryReturnTo` (from the
  * `?return_to=` query param) are caller-supplied, so each is constrained to a

@@ -92,11 +92,17 @@ type laneQuestion struct {
 }
 
 var (
-	// questionSessionRevocation — «отозвано ли удостоверение с этим
-	// идентификатором» (`IsRevoked`).
+	// questionSessionRevocation — вопрос об отзыве токена, который путь запроса
+	// выбирает пометкой записи издателя: сверка по самому токену (наша чеканка)
+	// либо запись отзыва по идентификатору (`IsRevoked`). Отметку адреса называет
+	// только первая, и задаётся она ТОКЕНОМ (kacho#2900) — поэтому требуются оба:
+	// идентификатор и записанный полосой токен.
 	questionSessionRevocation = laneQuestion{
-		name:  "по идентификатору удостоверения",
-		named: func(c principalmeta.Credential) bool { return c.JTI != "" },
+		name: "по идентификатору удостоверения и записанному токену",
+		named: func(c principalmeta.Credential) bool {
+			_, _, recorded := c.Presented.Token()
+			return c.JTI != "" && recorded
+		},
 	}
 	// questionBasicCredentialLiveness — «живо ли удостоверение с этим
 	// идентификатором строки» (`CheckBasicCredentialLive`, #1450).
@@ -108,10 +114,14 @@ var (
 	// Идентификатора у браузерной сессии нет вовсе, поэтому вопрос ключуется
 	// парой; момент — вторая половина пары, и без него вердикт выносится, но
 	// другой, поэтому здесь требуются ОБЕ величины.
+	//
+	// Отметку адреса ни отсечка, ни пара не называют: её служба называет только
+	// в ответ о сессии по НОСИТЕЛЮ (`Resolve`), тем вопросом, что задаёт путь
+	// запроса (kacho#2900). Поэтому требуется и записанный полосой носитель.
 	questionSubjectCutoff = laneQuestion{
-		name: "по паре (человек, момент аутентификации)",
+		name: "по паре (человек, момент аутентификации) и носителю сессии",
 		named: func(c principalmeta.Credential) bool {
-			return c.UserID != "" && !c.AuthenticatedAt.IsZero()
+			return c.UserID != "" && !c.AuthenticatedAt.IsZero() && c.Presented.SessionBearer() != ""
 		},
 	}
 )
@@ -128,12 +138,14 @@ var (
 // конце пробы, а не принимается на веру.
 func laneQuestions() map[string]laneQuestion {
 	return map[string]laneQuestion{
-		// Наша сессия — та же пара (человек, момент): перепрос на открытом
-		// соединении задаёт про неё тот же вопрос об отсечке, что и про сессию
-		// поставщика (Ф3 Р7: читатель отсечки один).
+		// Наша сессия — пара (человек, момент): перепрос на открытом соединении
+		// задаёт про неё вопрос об отсечке (Ф3 Р7: читатель отсечки один).
+		//
+		// Рядом стояла запись полосы чужой сессии с тем же вопросом. Она снята
+		// ВМЕСТЕ с полосой: запись без полосы есть утверждение, пережившее свой
+		// предмет, и сверка с деревом ниже назвала бы её находкой.
 		"tryOwnSession":      questionSubjectCutoff,
-		"tryKratosSession":   questionSubjectCutoff,
-		"tryHydraJWT":        questionSessionRevocation,
+		"tryBearerJWT":       questionSessionRevocation,
 		"tryBasicCredential": questionBasicCredentialLiveness,
 	}
 }
@@ -149,6 +161,12 @@ func namedByLane(c principalmeta.Credential) string {
 	}
 	if c.BasicCredentialID != "" {
 		named = append(named, "идентификатор строки базового удостоверения")
+	}
+	if c.Presented.SessionBearer() != "" {
+		named = append(named, "носитель сессии")
+	}
+	if _, _, recorded := c.Presented.Token(); recorded {
+		named = append(named, "токен")
 	}
 	if c.UserID != "" {
 		moment := "без момента"

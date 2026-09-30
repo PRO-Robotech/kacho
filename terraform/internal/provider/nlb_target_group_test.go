@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -90,7 +91,7 @@ func TestTargetKeyDistinguishesWeight(t *testing.T) {
 // порядок оставил бы прежний вес и молча разошёлся бы с настройкой.
 func TestReconcileRemovesBeforeAdding(t *testing.T) {
 	var order []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case strings.HasSuffix(req.URL.Path, ":removeTargets"):
 			order = append(order, "remove")
@@ -120,7 +121,7 @@ func TestReconcileRemovesBeforeAdding(t *testing.T) {
 // несогласованности — «unexpected new value: .targets length changed».
 func TestAwaitTargetsWaitsOutTheStaleRead(t *testing.T) {
 	var reads atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		n := reads.Add(1)
 		targets := `{"externalIp":{"address":"203.0.113.10","zoneId":"z"},"weight":0},` +
