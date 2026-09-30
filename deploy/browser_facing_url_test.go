@@ -56,7 +56,7 @@ func browserFacingURLDeclarations(t *testing.T) map[string][]string {
 	t.Helper()
 	roots := []string{
 		filepath.Join(umbrellaDir),
-		filepath.Join(umbrellaDir, "charts", "kratos-selfservice-ui"),
+		filepath.Join(umbrellaDir, "charts", "identity-selfservice-ui"),
 	}
 	out := map[string][]string{}
 	for _, dir := range roots {

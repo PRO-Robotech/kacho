@@ -231,7 +231,7 @@ func TestReplacedListsGate_ProviderFormsProvenByInjection(t *testing.T) {
 			want: []string{"/", "/dashboard"},
 		},
 		{
-			name: "форма 2 — поточная последовательность (values.fe3455-ory-posture.yaml)",
+			name: "форма 2 — поточная последовательность (values.fe3455-identity-posture.yaml)",
 			yaml: "selfservice:\n  allowed_return_urls: [\"/\", \"/dashboard\"]\n",
 			path: "selfservice.allowed_return_urls",
 			want: []string{"/", "/dashboard"},

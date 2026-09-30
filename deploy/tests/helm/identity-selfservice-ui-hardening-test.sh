@@ -76,7 +76,6 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
 PROD="$UMBRELLA/values.prod.yaml"
-UI_TMPL="charts/kratos-selfservice-ui/templates/deployment.yaml"
 
 # ── Три исхода — ОБЩЕЙ реализацией на весь каталог ───────────────────────────
 # Механика, которую разбирает шапка выше (счётчики · stderr · результат рендера
@@ -91,6 +90,17 @@ EXPECTED_ASSERTIONS=6
 
 require_helm
 require_mikefarah_yq
+
+# КООРДИНАТА РЕНДЕРА — ИМЯ ЧАРТА, А НЕ КАТАЛОГ (#2759). `--show-only` адресует
+# шаблон так, как его называет helm: `charts/<name из Chart.yaml>/templates/…`.
+# Каталог подчарта — наш путь и переименовывается независимо от имени, поэтому
+# имя берётся у самого Chart.yaml, а не выписывается: выписанное разошлось бы с
+# каталогом при первом же переименовании — отказом helm «could not find template».
+UI_CHART_DIR="$UMBRELLA/charts/identity-selfservice-ui"
+UI_CHART="$(yq '.name' "$UI_CHART_DIR/Chart.yaml" 2>/dev/null)" || UI_CHART=""
+[ -n "$UI_CHART" ] && [ "$UI_CHART" != "null" ] ||
+  fail "$UI_CHART_DIR/Chart.yaml не называет имя чарта — координату рендера не вывести"
+UI_TMPL="charts/$UI_CHART/templates/deployment.yaml"
 
 # ПОДЧАРТ ВКЛЮЧАЕТСЯ ВНУТРИ РЕНДЕРА ПРОБЫ, А НЕ ПРОФИЛЕМ (#2777). Чужой экран
 # входа не разворачивает ни один стенд: он выключен в базе зонта, и профили о
@@ -229,7 +239,7 @@ if [ "${1:-}" = "--self-test" ]; then
   echo "-- инъекция: настоящий дефект чарта --"
   # Проверка TLS выключается безусловно → NODE_TLS_REJECT_UNAUTHORIZED=0
   # приезжает в ПРОДОВЫЙ рендер. Ровно тот дефект, ради которого секция 2 есть.
-  UI_DEPLOY="$WORK/helm/umbrella/charts/kratos-selfservice-ui/templates/deployment.yaml"
+  UI_DEPLOY="$WORK/helm/umbrella/charts/identity-selfservice-ui/templates/deployment.yaml"
   [ -f "$UI_DEPLOY" ] || fatal "в копии нет шаблона $UI_DEPLOY — инъектировать нечего"
   sed -i 's/{{- if \.Values\.kratosSelfServiceUI\.insecureSkipTLSVerify }}/{{- if true }}/' "$UI_DEPLOY"
   grep -q '{{- if true }}' "$UI_DEPLOY" || fatal "инъекция не внеслась — образец в шаблоне переехал, проверять нечего"

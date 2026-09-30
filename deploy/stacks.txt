@@ -46,6 +46,6 @@ prod:values.prod.yaml
 # git). У стенда `own` его не было ни одного — поэтому цепочка не поднималась
 # вовсе, и ни один из трёх пропусков к посадке личности отношения не имеет.
 own:values.prod.yaml,values.own.yaml,values.own-stand.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-identity-posture.yaml
 prorobotech:values.dev.yaml,values.dev-prod.yaml,values.prorobotech.yaml
 a8f60d:values.dev.yaml,values.dev-prod.yaml,values.a8f60d.yaml

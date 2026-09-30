@@ -22,7 +22,7 @@
 #                                 #   self-provisioning, add cert-manager PG server
 #                                 #   TLS, current-main hardened images, api-gateway
 #                                 #   internal-:9091 mTLS, geo forwarder SAN.
-#     -f values.fe3455-ory-posture.yaml
+#     -f values.fe3455-identity-posture.yaml
 #                                 # identity-provider POSTURE (tracked): hydra dev
 #                                 #   flag/issuer/PKCE/TTL, kratos development flag
 #                                 #   and cookie transport. Tracked on purpose — it

@@ -103,7 +103,7 @@ restore_cm() {
   helm template kacho-umbrella "$UMBRELLA" \
     $chain_args \
     ${IMAGE_IDS:+-f "$IMAGE_IDS"} --namespace "$NS" 2>/dev/null \
-    | awk '/^# Source: kacho-umbrella\/templates\/hydra-admin-tls-configmap.yaml/,/^---/' \
+    | awk '/^# Source: kacho-umbrella\/templates\/admin-hop-tls-configmap.yaml/,/^---/' \
     | kubectl -n "$NS" apply -f - >/dev/null 2>&1
 }
 IMAGE_IDS="$UMBRELLA/values.image-ids.yaml"; [ -f "$IMAGE_IDS" ] || IMAGE_IDS=""

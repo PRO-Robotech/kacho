@@ -471,7 +471,7 @@ func TestStackTablePredicates_RecogniseTheRealTree(t *testing.T) {
 	known := umbrellaProfileNames(t)
 	for _, want := range []string{
 		"values.dev.yaml", "values.dev-prod.yaml", "values.prod.yaml",
-		"values.fe3455-ory-posture.yaml", "values.prorobotech.yaml", "values.a8f60d.yaml",
+		"values.fe3455-identity-posture.yaml", "values.prorobotech.yaml", "values.a8f60d.yaml",
 	} {
 		if !known[want] {
 			t.Errorf("профиль %s не выведен из дерева — обход перестал его узнавать; выведено: %v",

@@ -255,7 +255,7 @@ mtls:
     caNamespace: ""
     caDuration: "87600h"      # 10y root
     caRenewBefore: "720h"     # 30d
-  # ─── provider ADMIN listener server-TLS (templates/hydra-admin-certificate.yaml) ─
+  # ─── provider ADMIN listener server-TLS (templates/admin-hop-certificate.yaml) ─
   # The admin listener (:4445) carries the CALLER'S LIVE BEARER on every
   # authenticated request that misses the introspection cache (introspection asks
   # about a token by SENDING it), and the administrative bearer on every OAuth2
@@ -264,7 +264,7 @@ mtls:
   # all of that is readable, and reusable, by anything on the path.
   #
   # Enabling this issues the serving cert AND places the TERMINATOR that uses it:
-  # an nginx sidecar inside the provider's own pod (templates/hydra-admin-tls-*),
+  # an nginx sidecar inside the provider's own pod (templates/admin-hop-tls-*),
   # plus its own ClusterIP Service. The profile must ALSO point the consumers at
   # that Service over https with the matching trust anchor. A production-class
   # gateway and iam both REFUSE TO START on a plaintext or unanchored hop, so the
@@ -470,7 +470,7 @@ global:
     # `extraEnv`; в аннотации sha256 вычислить не из чего.
     #
     # Содержимое собирается из этих значений ОДНИМ объявлением —
-    # charts/kaname/templates/_kratos-identity.tpl. Второго текста нет
+    # charts/kaname/templates/_identity-provider.tpl. Второго текста нет
     # намеренно: разойдясь, карта и отпечаток дали бы ЛОЖНУЮ привязку — та,
     # что не перекатывает под именно тогда, когда содержимое изменилось.
     identity:

@@ -1,0 +1,2 @@
+{"path":"kacho/cloud/vpc/v1/network_interface.proto","start_line":108,"start_column":3,"end_line":117,"end_column":4,"type":"RESERVED_ENUM_NO_DELETE","message":"Previously present reserved name \"DELETING\" on enum \"Status\" was deleted."}
+{"path":"kacho/cloud/vpc/v1/network_interface.proto","start_line":108,"start_column":3,"end_line":117,"end_column":4,"type":"RESERVED_ENUM_NO_DELETE","message":"Previously present reserved name \"FAILED\" on enum \"Status\" was deleted."}

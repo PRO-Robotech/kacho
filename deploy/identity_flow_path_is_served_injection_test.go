@@ -142,7 +142,7 @@ func TestIdentityFlowPathResolution_ProvenByInjection(t *testing.T) {
 	}
 
 	decl := func(prefixKnob string) flowDecl {
-		return flowDecl{file: "_kratos-identity.tpl", raw: "{{ $flow }}/registration", vars: identityTemplateVars(prefixKnob)}
+		return flowDecl{file: "_identity-provider.tpl", raw: "{{ $flow }}/registration", vars: identityTemplateVars(prefixKnob)}
 	}
 
 	// sources — умолчание плюс профили поверх него, как их строит гейт.
@@ -240,7 +240,7 @@ func TestIdentityFlowPathResolution_ProvenByInjection(t *testing.T) {
 			// а не угадывается — иначе разбор молчит о том, чего не прочёл.
 			name: "звено, разбору не известное, — находка, а не молчание",
 			decl: flowDecl{
-				file: "_kratos-identity.tpl", raw: "{{ $flow }}/login",
+				file: "_identity-provider.tpl", raw: "{{ $flow }}/login",
 				vars: map[string]string{"flow": `include "kacho.identity.flowBase" .`},
 			},
 			sources:  sources(rootDefault, nil),
@@ -254,7 +254,7 @@ func TestIdentityFlowPathResolution_ProvenByInjection(t *testing.T) {
 			// оставляет вторую непроверенной.
 			name: "функция трубы, разбору не известная, — тоже находка",
 			decl: flowDecl{
-				file: "_kratos-identity.tpl", raw: "{{ $flow }}/login",
+				file: "_identity-provider.tpl", raw: "{{ $flow }}/login",
 				vars: map[string]string{
 					"id":   ".Values.global.kacho.identity",
 					"flow": `$id.flowPathPrefix | trimSuffix "/"`,

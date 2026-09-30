@@ -86,6 +86,8 @@ const foreignIdentityRepoMark = "ory.sh"
 type foreignIdentityComponent struct {
 	Name string
 	Flag []string
+	// Undeclared — подчарт из `charts/`, не объявленный зависимостью зонта.
+	Undeclared bool
 }
 
 func (c foreignIdentityComponent) String() string {
@@ -152,19 +154,28 @@ func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
 		if !e.IsDir() || byName[e.Name()] {
 			continue
 		}
+		// Компонент называется `name` СВОЕГО Chart.yaml, а не каталогом: под этим
+		// именем helm кладёт его значения, и флаг включения живёт там же. Каталог —
+		// наш путь и переименовывается независимо (#2759).
+		dir := filepath.Join(umbrellaDir, "charts", e.Name())
+		name := subchartName(t, dir)
+		if byName[name] {
+			continue
+		}
 		var belongs bool
 		for _, n := range provider {
-			if strings.HasPrefix(e.Name(), n+"-") {
+			if strings.HasPrefix(name, n+"-") {
 				belongs = true
 			}
 		}
 		if !belongs {
 			continue
 		}
-		key := flagBearingTopLevelKey(t, filepath.Join(umbrellaDir, "charts", e.Name(), "values.yaml"))
+		key := flagBearingTopLevelKey(t, filepath.Join(dir, "values.yaml"))
 		out = append(out, foreignIdentityComponent{
-			Name: e.Name(),
-			Flag: []string{e.Name(), key, "enabled"},
+			Name:       name,
+			Flag:       []string{name, key, "enabled"},
+			Undeclared: true,
 		})
 	}
 	return out

@@ -106,7 +106,7 @@ func TestStepDeclarationGateFailsOnAReturnedDefect(t *testing.T) {
 			t.Errorf("находка не называет ПРИЧИНУ (разбор), а значит посылает читателя "+
 				"искать не там: %v", got)
 		}
-		if !strings.Contains(strings.Join(got, "\n"), "_kratos-identity.tpl") {
+		if !strings.Contains(strings.Join(got, "\n"), "_identity-provider.tpl") {
 			t.Errorf("находка не называет КООРДИНАТУ: %v", got)
 		}
 	})
