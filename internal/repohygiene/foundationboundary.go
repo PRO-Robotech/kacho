@@ -156,11 +156,22 @@ var foundationClasses = map[string]foundationClass{
 	// каталог общий, а не kaname и не kacho.
 	"moduleselfgating": classCorelib,
 	"nameformdb":       classToolchain,
-	"oauthceremony":    classCorelib,
-	"observability":    classCorelib,
-	"operations":       classCorelib,
-	"option":           classCorelib,
-	"outbox":           classCorelib,
+	// notify приехал с corelib 77-notify (NTF-1, kacho#2915, замысел З1) и
+	// классифицирован правилом K3-1 §3 по порядку Ограничение → В1 → В2 → В3 → В4:
+	// Ограничение не сработало — от каталога прод-код фундамента вне его самого
+	// не зависит; В1 нет — вход `notify/form` и `notify/spec` это значение поля и
+	// спецификация уведомления, а не дерево исходников; В2 не задаётся — это не
+	// перечень одного продукта; В3 нет — каталог меняется с формой уведомления,
+	// а не с глаголом, типом модели или политикой токена; В4 — смысл формы и
+	// спецификации уведомления не зависит от того, какой продукт его шлёт
+	// (источники платформы и служба доставки читают один словарь). Класс —
+	// фундамент.
+	"notify":        classCorelib,
+	"oauthceremony": classCorelib,
+	"observability": classCorelib,
+	"operations":    classCorelib,
+	"option":        classCorelib,
+	"outbox":        classCorelib,
 	// ownerregister и subjectchange НЕ ЛЕЖАТ В ЭТОМ ДЕРЕВЕ с 2026-09-13
 	// (kacho#2616, исход C): они переехали в модуль службы доступа и живут там
 	// по тем же путям — `github.com/PRO-Robotech/kaname/pkg/{ownerregister,
