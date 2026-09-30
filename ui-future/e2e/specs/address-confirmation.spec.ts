@@ -6,6 +6,7 @@ import {
   type APIResponse,
   type Locator,
   type Page,
+  type Request,
   type TestInfo,
 } from "@playwright/test";
 import { parseRpcStatus, reasonOfDetails } from "../../shared/src/api/rpc-status";
@@ -1390,12 +1391,37 @@ async function capturedAnswerOf(res: APIResponse): Promise<CapturedAnswer> {
 }
 
 /**
- * Подменить снятыми байтами чтения списка сетей, которые выпустит ДОКУМЕНТ,
- * открывший список, — до его ухода (см. шапку файла, F6b-26). Уход документа —
- * переход главного кадра после первой подмены; дальше чтения идут к краю.
+ * Документ, выпустивший обращение: путь адреса кадра в момент выпуска; пусто,
+ * когда у обращения нет кадра. Обращение уходящего документа, выпущенное после
+ * начала перехода, несёт ЕГО адрес, а не адрес нового: адрес кадра меняется,
+ * когда новый документ принят, а не когда переход начат.
  */
-async function substituteNetworkReads(page: Page, answer: CapturedAnswer): Promise<{ substituted: string[] }> {
+function documentOf(r: Request): string {
+  try {
+    return new URL(r.frame().url()).pathname;
+  } catch (_notAFrameRequest) {
+    return "";
+  }
+}
+
+/**
+ * Подменить снятыми байтами чтения списка сетей, которые выпустит ДОКУМЕНТ
+ * списка `list`, — до его ухода (см. шапку файла, F6b-26). Документ чтения —
+ * `documentOf`; чтение другого документа идёт к краю и записывается в
+ * `otherDocuments`. Условие несущее: каркас, который `scopeIsReady` оставляет
+ * на сводке проекта, сам читает сети, и его чтение, выпущенное после начала
+ * перехода на список, без него подменялось бы наравне с чтением списка
+ * (kacho#2922: у F6b-25 подменены два чтения — уходящей сводки и списка). Уход
+ * документа списка — переход главного кадра после первой подмены; дальше
+ * чтения идут к краю.
+ */
+async function substituteNetworkReads(
+  page: Page,
+  answer: CapturedAnswer,
+  list: string,
+): Promise<{ substituted: string[]; otherDocuments: string[] }> {
   const substituted: string[] = [];
+  const otherDocuments: string[] = [];
   let armed = true;
   page.context().on("request", (r) => {
     if (armed && substituted.length > 0 && r.isNavigationRequest() && r.frame() === page.mainFrame()) armed = false;
@@ -1403,31 +1429,28 @@ async function substituteNetworkReads(page: Page, answer: CapturedAnswer): Promi
   await page.route(
     (url) => url.pathname === NETWORKS,
     async (route) => {
-      if (!armed || route.request().method() !== "GET") return route.fallback();
-      substituted.push(route.request().url());
+      const read = route.request();
+      if (!armed || read.method() !== "GET") return route.fallback();
+      const document = documentOf(read);
+      if (document !== list) {
+        otherDocuments.push(`${document || "(без кадра)"} ${read.url()}`);
+        return route.fallback();
+      }
+      substituted.push(read.url());
       await route.fulfill({ status: answer.status, headers: answer.headers, body: answer.body });
     },
   );
-  return { substituted };
+  return { substituted, otherDocuments };
 }
 
-/**
- * Обращения к API по ДОКУМЕНТУ, который их выпустил: адрес кадра в момент
- * выпуска. Обращение уходящего документа, выпущенное после начала перехода,
- * несёт его адрес, а не адрес нового.
- */
+/** Обращения к API по ДОКУМЕНТУ, который их выпустил (`documentOf`). */
 function apiCallsByDocument(page: Page): Array<{ document: string; method: string; path: string }> {
   const calls: Array<{ document: string; method: string; path: string }> = [];
   page.context().on("request", (r) => {
     if (r.isNavigationRequest()) return;
-    let path = "";
-    let document = "";
-    try {
-      path = new URL(r.url()).pathname;
-      document = new URL(r.frame().url()).pathname;
-    } catch (_notAFrameRequest) {
-      return;
-    }
+    const document = documentOf(r);
+    if (document === "") return;
+    const path = new URL(r.url()).pathname;
     if (API_PATH.some((re) => re.test(path))) calls.push({ document, method: r.method(), path });
   });
   return calls;
@@ -1454,7 +1477,7 @@ test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении �
   const list = `/projects/${projectId}/vpc/networks`;
   const census = ceremonyCensus(page.context());
   const byDocument = apiCallsByDocument(page);
-  const swap = await substituteNetworkReads(page, refusal);
+  const swap = await substituteNetworkReads(page, refusal, list);
   const from = census.calls.length;
   await page.goto(list, { waitUntil: "domcontentloaded" });
 
@@ -1470,7 +1493,10 @@ test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении �
   await expectAddress(page, list, "экран подтверждения подтверждённой сессии не вернул на адрес возврата");
   expect(swap.substituted, "подменено не ровно одно чтение списка сетей").toHaveLength(1);
   const onScreen = byDocument.filter((c) => c.document === "/verification");
-  console.log(`[F6b-25] обращений к API документа /verification — ${onScreen.length}; подменено чтений ${swap.substituted.length}`);
+  console.log(
+    `[F6b-25] обращений к API документа /verification — ${onScreen.length}; подменено чтений ${swap.substituted.length}; ` +
+      `чтений других документов к краю ${swap.otherDocuments.length}: ${swap.otherDocuments.join(" | ")}`,
+  );
   expect(onScreen.length, "документ /verification не выпустил ни одного обращения — перепись ничего не видела").toBeGreaterThan(
     0,
   );
@@ -1520,14 +1546,17 @@ test("F6b-26 · отказ края по каталогу прав на той �
   const list = `/projects/${projectId}/vpc/networks`;
   const census = ceremonyCensus(page.context());
   const visited = visitedAddresses(page);
-  const swap = await substituteNetworkReads(page, refusal);
+  const swap = await substituteNetworkReads(page, refusal, list);
   const from = census.calls.length;
   await page.goto(list, { waitUntil: "domcontentloaded" });
   await expect(
     page.getByText("Недостаточно прав", { exact: true }),
     "отказ каталога прав не показан на странице списка",
   ).toBeVisible({ timeout: 30_000 });
-  console.log(`[F6b-26] подменено чтений ${swap.substituted.length}; адреса вкладки ${visited.join(" → ")}`);
+  console.log(
+    `[F6b-26] подменено чтений ${swap.substituted.length}; чтений других документов к краю ${swap.otherDocuments.length}; ` +
+      `адреса вкладки ${visited.join(" → ")}`,
+  );
   expect(swap.substituted.length, "ни одно чтение списка не подменено — предмета нет").toBeGreaterThan(0);
   expect(addressOf(page), "отказ каталога прав увёл со страницы").toBe(list);
   expect(
