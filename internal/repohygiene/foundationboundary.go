@@ -74,6 +74,14 @@ const (
 // Каталог `pkg/*`, которого здесь нет, — находка, а не умолчание: 52-й каталог
 // обязан быть классифицирован ПРАВИЛОМ приёмки (§3), а не молчанием карты.
 var foundationClasses = map[string]foundationClass{
+	// envknob и scripts приехали с пином фундамента, несущим стабы ленты
+	// `corelib.notify` (kacho#2915), и классифицированы правилом K3-1 §3 по
+	// порядку Ограничение → В1 → В2 → В3 → В4:
+	//   - envknob — ОГРАНИЧЕНИЕ: от него зависит прод-код фундамента вне его
+	//     самого (`migratorcli`, `observability`, `validate`, `dropguard`,
+	//     `grpcsrv`, `pgtest` — чтение ручки), поэтому класс — фундамент;
+	//   - scripts — В1: хуки git фундамента, их вход — индекс, сообщение коммита и
+	//     дерево исходников; Go в каталоге нет, в замыкание двоичного он не попадает.
 	"api":          classKacho,
 	"audit":        classCorelib,
 	"auth":         classCorelib,
@@ -103,6 +111,7 @@ var foundationClasses = map[string]foundationClass{
 	"db":              classCorelib,
 	"dbready":         classCorelib,
 	"dropguard":       classCorelib,
+	"envknob":         classCorelib,
 	"errors":          classCorelib,
 	"filter":          classCorelib,
 	"gitenv":          classToolchain,
@@ -182,6 +191,7 @@ var foundationClasses = map[string]foundationClass{
 	"retry":           classCorelib,
 	"safeconv":        classCorelib,
 	"schemaguard":     classCorelib,
+	"scripts":         classToolchain,
 	"servicecontract": classCorelib,
 	"servicehost":     classCorelib,
 	"shutdown":        classCorelib,
