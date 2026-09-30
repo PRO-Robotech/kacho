@@ -36,21 +36,48 @@ package repohygiene
 //  5. РАЗБИВКА СХОДИТСЯ. Письменная разбивка по исходам равна счёту по строкам,
 //     итог равен числу файлов дерева: число в документе, которое никто не
 //     пересчитывает, — первое, что в нём лжёт.
+//  6. КООРДИНАТА СТОИТ НА СВОЁМ ПРЕДМЕТЕ. Требование 4 судит, что строка
+//     существует, — и молчит, когда файл под координатой сдвинулся: номер
+//     остался в пределах файла, а указывает уже в другое (сборка 1 волны 4:
+//     17 записей о 14 координатах сошли так со своих предметов, гейт был
+//     зелёным). Поэтому у каждой координаты документа — строк ведомости, прозы
+//     и соседних таблиц — есть ЯКОРЬ: текст, стоящий на её первой строке, а у
+//     диапазона и на последней. Якорь не на своей строке — находка, и она
+//     называет, где он стоит теперь; координата без якоря и якорь без
+//     координаты — тоже находки.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ФОРМЫ ЗАПИСИ, КОТОРЫЕ РАЗБОР ЗНАЕТ, — ПЕРЕЧИСЛЕНЫ, И ПРОЧИХ НЕТ
 //
 // Ведомость — таблица Markdown с заголовком `identityProbeFateHeader` (ровно
-// одна в документе) и таблица разбивки с заголовком `identityProbeFateTotals`.
-// Координата — фрагмент в обратных кавычках в ячейке довода, двух форм:
+// одна в документе), таблица разбивки с заголовком `identityProbeFateTotals` и
+// таблица якорей с заголовком `identityProbeFateAnchorsHeader` (ровно одна).
+// Координата — фрагмент в обратных кавычках, двух форм:
 //
-//	`:<строка>[-<строка>]`         в самой пробе строки
-//	`<путь>:<строка>[-<строка>]`   путь от корня репозитория
+//	`:<строка>[-<строка>]`         в самой пробе строки — только в ячейке довода
+//	`<путь>:<строка>[-<строка>]`   путь от корня репозитория — в ячейке довода и
+//	                               в любом месте документа вне ограждённого кода
+//	                               и таблицы якорей
 //
-// Фрагмент ТОЙ ЖЕ ФОРМЫ, который не резолвится, — находка, а не молчание:
-// иначе всё записанное в незнакомом написании ушло бы из-под наблюдения.
-// Фрагменты другой формы (имена ключей, ручек) координатами не являются и не
-// читаются.
+// Форма `:<строка>` вне строки ведомости не резолвится ни во что и координатой
+// не читается. Фрагмент ТОЙ ЖЕ ФОРМЫ, который не резолвится, — находка, а не
+// молчание: иначе всё записанное в незнакомом написании ушло бы из-под
+// наблюдения. Фрагменты другой формы (имена ключей, ручек) координатами не
+// являются и не читаются.
+//
+// Строка таблицы якорей: координата с путём от корня, якорь первой строки и
+// якорь последней — у одиночной координаты вместо него `—`. Якорь — один
+// фрагмент в обратных кавычках, и он стоит на строке ПОДСТРОКОЙ: обратной
+// кавычки и `|` в нём нет по построению формы, поэтому якорем берётся часть
+// строки, а не строка целиком. Координата, записанная в документе несколько
+// раз, прибита одной строкой и судится одной находкой.
+//
+// ПРЕДЕЛ ТОЧНОСТИ назван, а не подразумевается. Якорь, стоящий в файле не на
+// одной строке (две одинаковые строки хука), ловит сдвиг, кроме сдвига ровно на
+// расстояние до своего двойника; число таких якорей печатает перепись. Якорь
+// последней строки диапазона судится только на ней (`}` законно стоит на многих
+// строках): он ловит рост и усадку предмета внутри диапазона, а сдвиг ловит
+// якорь первой.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЦЕЛЬ — ПУСТАЯ ВЕДОМОСТЬ, И ОНА НЕ ОТКАЗ
@@ -105,6 +132,39 @@ var identityProbeFateTotals = []string{"исход", "файлов"}
 // identityProbeFateTotalRow — ячейка итоговой строки разбивки.
 const identityProbeFateTotalRow = "итого"
 
+// identityProbeFateAnchorsHeader — заголовок таблицы якорей координат.
+var identityProbeFateAnchorsHeader = []string{"координата", "первая строка", "последняя строка"}
+
+// identityProbeAnchorNone — ячейка последней строки у одиночной координаты.
+const identityProbeAnchorNone = "—"
+
+// identityProbeCoordKey — координата как ключ: путь от корня и диапазон строк.
+type identityProbeCoordKey struct {
+	Path     string
+	From, To int
+}
+
+// String — координата в форме `<путь>:<строка>[-<строка>]`.
+func (k identityProbeCoordKey) String() string {
+	if k.To == k.From {
+		return fmt.Sprintf("%s:%d", k.Path, k.From)
+	}
+	return fmt.Sprintf("%s:%d-%d", k.Path, k.From, k.To)
+}
+
+// identityProbeAnchorCoord — ячейка координаты таблицы якорей: ровно одна
+// координата, и путь в ней от корня. Форма `:<строка>` здесь не годится —
+// у таблицы якорей нет пробы строки, в которую она резолвилась бы.
+var identityProbeAnchorCoord = regexp.MustCompile("^`([A-Za-z0-9_./-]+):([0-9]+)(?:-([0-9]+))?`$")
+
+// identityProbeAnchorText — ячейка якоря: ровно один фрагмент в обратных
+// кавычках. Обратной кавычки и `|` в якоре нет по построению формы: первая
+// закрыла бы фрагмент, вторая — ячейку.
+var identityProbeAnchorText = regexp.MustCompile("^`([^`]+)`$")
+
+// identityProbeAnchorWhereCap — сколько мест якоря называет находка.
+const identityProbeAnchorWhereCap = 5
+
 // identityProbeCoord — координата в обратных кавычках: путь (пустой = сама
 // проба строки) и строка либо диапазон строк.
 var identityProbeCoord = regexp.MustCompile("`([A-Za-z0-9_./-]*):([0-9]+)(?:-([0-9]+))?`")
@@ -120,9 +180,13 @@ var (
 	errIdentityProbeFateTwoLedgers = errors.New("заголовок ведомости стоит больше одного раза")
 	// errIdentityProbeFateNoTotals — разбивки по исходам в документе нет.
 	errIdentityProbeFateNoTotals = errors.New("таблица разбивки по исходам не найдена")
+	// errIdentityProbeFateNoAnchors — таблицы якорей нет.
+	errIdentityProbeFateNoAnchors = errors.New("таблица якорей координат не найдена")
+	// errIdentityProbeFateTwoAnchorTables — таблица якорей стоит дважды.
+	errIdentityProbeFateTwoAnchorTables = errors.New("таблица якорей координат стоит больше одного раза")
 )
 
-// identityProbeCoordRef — одна прочитанная координата строки.
+// identityProbeCoordRef — одна прочитанная координата документа.
 type identityProbeCoordRef struct {
 	// Path — путь от корня; для формы `:<строка>` — путь самой пробы строки.
 	Path string
@@ -130,6 +194,31 @@ type identityProbeCoordRef struct {
 	From, To int
 	// Raw — фрагмент, как записан.
 	Raw string
+	// Line — номер строки документа, где координата записана.
+	Line int
+}
+
+// key — координата как ключ таблицы якорей.
+func (c identityProbeCoordRef) key() identityProbeCoordKey {
+	return identityProbeCoordKey{Path: c.Path, From: c.From, To: c.To}
+}
+
+// identityProbeCoordAnchor — строка таблицы якорей: текст, который стоит на
+// первой строке координаты, и у диапазона — на последней.
+type identityProbeCoordAnchor struct {
+	// Line — номер строки документа.
+	Line int
+	// Key — координата, которую строка прибивает.
+	Key identityProbeCoordKey
+	// Raw — ячейка координаты, как записана.
+	Raw string
+	// First — якорь первой строки.
+	First string
+	// Last — якорь последней строки; HasLast == false — записано «—».
+	Last    string
+	HasLast bool
+	// Unreadable — почему строку нельзя прочитать; пусто — прочитана.
+	Unreadable string
 }
 
 // identityProbeFateRow — одна строка ведомости.
@@ -157,6 +246,12 @@ type identityProbeFateLedger struct {
 	Total int
 	// TotalsUnreadable — записи разбивки, чьё число не читается.
 	TotalsUnreadable []string
+	// Elsewhere — координаты с путём вне строк ведомости: проза, соседние
+	// таблицы. Форма `:<строка>` вне строки ведомости не резолвится ни во что и
+	// координатой не читается.
+	Elsewhere []identityProbeCoordRef
+	// Anchors — таблица якорей в порядке записи.
+	Anchors []identityProbeCoordAnchor
 }
 
 // identityProbeFateFacts — дерево, против которого судится ведомость.
@@ -164,19 +259,29 @@ type identityProbeFateLedger struct {
 type identityProbeFateFacts struct {
 	// Probes — имена файлов `deploy/identity_*_test.go` индекса git.
 	Probes []string
-	// Lines — число строк отслеживаемого файла по пути от корня. Пути нет —
-	// файл не отслеживается.
-	Lines map[string]int
+	// Text — строки отслеживаемого файла по пути от корня, как их нумерует
+	// редактор (строка N — Text[p][N-1]). Пути нет — файл не отслеживается.
+	Text map[string][]string
 }
 
 // identityProbeFateCensus — объём осмотренного: «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 type identityProbeFateCensus struct {
-	Rows      int
-	Probes    int
-	ByFate    map[string]int
+	Rows   int
+	Probes int
+	ByFate map[string]int
+	// Coords — координаты строк ведомости; OwnCoords — из них в самой пробе.
 	Coords    int
 	OwnCoords int
+	// OtherCoords — координаты вне строк ведомости.
+	OtherCoords int
+	// Anchors — прочитанные строки таблицы якорей.
+	Anchors int
+	// OnSubject — координаты (ключом), чей якорь стоит на их строках.
+	OnSubject int
+	// SharedAnchors — из них те, чей якорь первой строки стоит в файле не на
+	// одной строке: точность проверки у них ниже, и перепись это называет.
+	SharedAnchors int
 }
 
 // String — перепись одной строкой, для печати каждого прогона.
@@ -188,7 +293,11 @@ func (c identityProbeFateCensus) String() string {
 	for _, f := range identityProbeFates {
 		parts = append(parts, fmt.Sprintf("%s %d", f, c.ByFate[f]))
 	}
-	parts = append(parts, fmt.Sprintf("координат проверено %d (в самой пробе %d)", c.Coords, c.OwnCoords))
+	parts = append(parts,
+		fmt.Sprintf("координат проверено %d (в самой пробе %d)", c.Coords, c.OwnCoords),
+		fmt.Sprintf("вне строк ведомости %d", c.OtherCoords),
+		fmt.Sprintf("якорей %d", c.Anchors),
+		fmt.Sprintf("на своём предмете %d (якорь не единственный в файле у %d)", c.OnSubject, c.SharedAnchors))
 	return strings.Join(parts, " · ")
 }
 
@@ -258,7 +367,7 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 	l := identityProbeFateLedger{Totals: map[string]int{}, TotalsLine: map[string]int{}, Total: -1}
 	lines := strings.Split(text, "\n")
 
-	var ledgerAt, totalsAt []int
+	var ledgerAt, totalsAt, anchorsAt []int
 	for i, line := range lines {
 		cells := splitMarkdownRow(line)
 		switch {
@@ -266,6 +375,8 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 			ledgerAt = append(ledgerAt, i)
 		case sameCells(cells, identityProbeFateTotals):
 			totalsAt = append(totalsAt, i)
+		case sameCells(cells, identityProbeFateAnchorsHeader):
+			anchorsAt = append(anchorsAt, i)
 		}
 	}
 	switch {
@@ -275,9 +386,27 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 		return l, errIdentityProbeFateTwoLedgers
 	case len(totalsAt) == 0:
 		return l, errIdentityProbeFateNoTotals
+	case len(anchorsAt) == 0:
+		return l, errIdentityProbeFateNoAnchors
+	case len(anchorsAt) > 1:
+		return l, errIdentityProbeFateTwoAnchorTables
+	}
+
+	// Строки ведомости и таблицы якорей: координаты первой читаются по
+	// ячейкам, второй — координатами документа не являются вовсе.
+	tableLines := map[int]bool{}
+	claim := func(at int, rowLines []int) {
+		tableLines[at+1] = true
+		if at+1 < len(lines) && isMarkdownSeparator(splitMarkdownRow(lines[at+1])) {
+			tableLines[at+2] = true
+		}
+		for _, n := range rowLines {
+			tableLines[n] = true
+		}
 	}
 
 	rows, rowLines := tableAfter(lines, ledgerAt[0])
+	claim(ledgerAt[0], rowLines)
 	for i, cells := range rows {
 		r := identityProbeFateRow{Line: rowLines[i]}
 		if len(cells) != len(identityProbeFateHeader) {
@@ -287,20 +416,26 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 		}
 		r.File = strings.Trim(cells[1], "` ")
 		r.Fate = plainCell(cells[4])
-		own := probeDir + "/" + r.File
-		for _, m := range identityProbeCoord.FindAllStringSubmatch(cells[5], -1) {
-			c := identityProbeCoordRef{Path: m[1], Raw: m[0]}
-			if c.Path == "" {
-				c.Path = own
-			}
-			c.From, _ = strconv.Atoi(m[2])
-			c.To = c.From
-			if m[3] != "" {
-				c.To, _ = strconv.Atoi(m[3])
-			}
-			r.Coords = append(r.Coords, c)
-		}
+		r.Coords = coordsOf(cells[5], probeDir+"/"+r.File, r.Line)
 		l.Rows = append(l.Rows, r)
+	}
+
+	arows, alines := tableAfter(lines, anchorsAt[0])
+	claim(anchorsAt[0], alines)
+	for i, cells := range arows {
+		l.Anchors = append(l.Anchors, anchorOf(cells, alines[i]))
+	}
+
+	fenced := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced = !fenced
+			continue
+		}
+		if fenced || tableLines[i+1] {
+			continue
+		}
+		l.Elsewhere = append(l.Elsewhere, coordsOf(line, "", i+1)...)
 	}
 
 	for _, at := range totalsAt {
@@ -332,6 +467,111 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 	return l, nil
 }
 
+// coordsOf — координаты фрагмента документа. own — путь пробы строки
+// ведомости; пустой own значит «вне строки ведомости», и форма `:<строка>`
+// там не читается: резолвиться ей не во что.
+func coordsOf(text, own string, line int) []identityProbeCoordRef {
+	var out []identityProbeCoordRef
+	for _, m := range identityProbeCoord.FindAllStringSubmatch(text, -1) {
+		c := identityProbeCoordRef{Path: m[1], Raw: m[0], Line: line}
+		if c.Path == "" {
+			if own == "" {
+				continue
+			}
+			c.Path = own
+		}
+		c.From, _ = strconv.Atoi(m[2])
+		c.To = c.From
+		if m[3] != "" {
+			c.To, _ = strconv.Atoi(m[3])
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// anchorText — содержимое ячейки якоря; false — ячейка не один непустой
+// фрагмент в обратных кавычках.
+func anchorText(cell string) (string, bool) {
+	m := identityProbeAnchorText.FindStringSubmatch(cell)
+	if m == nil {
+		return "", false
+	}
+	t := strings.TrimSpace(m[1])
+	return t, t != ""
+}
+
+// anchorOf — разбор строки таблицы якорей.
+func anchorOf(cells []string, line int) identityProbeCoordAnchor {
+	a := identityProbeCoordAnchor{Line: line}
+	if len(cells) != len(identityProbeFateAnchorsHeader) {
+		a.Unreadable = fmt.Sprintf("ячеек %d, а не %d", len(cells), len(identityProbeFateAnchorsHeader))
+		if len(cells) > 0 {
+			a.Raw = cells[0]
+		}
+		return a
+	}
+	a.Raw = cells[0]
+	m := identityProbeAnchorCoord.FindStringSubmatch(cells[0])
+	if m == nil {
+		a.Unreadable = "ячейка координаты — не одна координата `<путь от корня>:<строка>[-<строка>]`"
+		return a
+	}
+	a.Key.Path = m[1]
+	a.Key.From, _ = strconv.Atoi(m[2])
+	a.Key.To = a.Key.From
+	if m[3] != "" {
+		a.Key.To, _ = strconv.Atoi(m[3])
+	}
+	var ok bool
+	if a.First, ok = anchorText(cells[1]); !ok {
+		a.Unreadable = fmt.Sprintf("ячейка первой строки %q — не один непустой фрагмент в обратных кавычках", cells[1])
+		return a
+	}
+	if cells[2] == identityProbeAnchorNone {
+		return a
+	}
+	if a.Last, ok = anchorText(cells[2]); !ok {
+		a.Unreadable = fmt.Sprintf("ячейка последней строки %q — не фрагмент в обратных кавычках и не «%s»",
+			cells[2], identityProbeAnchorNone)
+		return a
+	}
+	a.HasLast = true
+	return a
+}
+
+// linesWith — номера строк текста, несущих фрагмент.
+func linesWith(text []string, frag string) []int {
+	var at []int
+	for i, l := range text {
+		if strings.Contains(l, frag) {
+			at = append(at, i+1)
+		}
+	}
+	return at
+}
+
+// whereAnchor — где якорь стоит в файле, словами находки.
+func whereAnchor(at []int) string {
+	if len(at) == 0 {
+		return "в файле его нет — предмет переписан или снят: перечитайте пробу и назовите строку заново"
+	}
+	shown := at
+	if len(shown) > identityProbeAnchorWhereCap {
+		shown = shown[:identityProbeAnchorWhereCap]
+	}
+	parts := make([]string, len(shown))
+	for i, n := range shown {
+		parts[i] = fmt.Sprintf(":%d", n)
+	}
+	tail := ""
+	if len(at) > len(shown) {
+		tail = fmt.Sprintf(" и ещё %d", len(at)-len(shown))
+	}
+	return "в файле он стоит на " + strings.Join(parts, ", ") + tail +
+		" — переведите координату на строку предмета, перечитав его"
+}
+
 // knownFate — исход из закрытого словаря.
 func knownFate(f string) bool {
 	for _, k := range identityProbeFates {
@@ -342,7 +582,113 @@ func knownFate(f string) bool {
 	return false
 }
 
-// judgeIdentityProbeFate — пять требований шапки. Пусто = норма.
+// resolveCoord — координата указывает в отслеживаемый файл и в его строки.
+// Пусто — резолвится; иначе — причина словами находки.
+func resolveCoord(co identityProbeCoordRef, f identityProbeFateFacts) string {
+	text, tracked := f.Text[co.Path]
+	switch {
+	case !tracked:
+		return fmt.Sprintf("координата %s указывает в %s, которого в индексе нет: довод ссылается "+
+			"на то, чего в дереве не существует", co.Raw, co.Path)
+	case co.From < 1 || co.To < co.From || co.To > len(text):
+		return fmt.Sprintf("координата %s вне файла %s (строк в нём %d): довод описывает уже другое "+
+			"содержимое, перечитайте пробу и назовите строку заново", co.Raw, co.Path, len(text))
+	}
+	return ""
+}
+
+// judgeIdentityProbeAnchors — требование 6: координата стоит на своём
+// предмете. Судится ключом координаты, а не её вхождением: одна координата,
+// записанная в документе четырежды, — одна находка с перечнем строк документа.
+func judgeIdentityProbeAnchors(l identityProbeFateLedger, f identityProbeFateFacts, resolved []identityProbeCoordRef,
+	mentioned map[identityProbeCoordKey]bool, ledgerFile string, c *identityProbeFateCensus) []string {
+	var found []string
+	anchors := map[identityProbeCoordKey]identityProbeCoordAnchor{}
+	for _, a := range l.Anchors {
+		if a.Unreadable != "" {
+			found = append(found, fmt.Sprintf("%s:%d: строка таблицы якорей %s не читается — %s",
+				ledgerFile, a.Line, a.Raw, a.Unreadable))
+			continue
+		}
+		if prev, dup := anchors[a.Key]; dup {
+			found = append(found, fmt.Sprintf("%s:%d: якорь %s назван второй раз (первый — строка %d) — "+
+				"два якоря одной координаты, и действующим оказался бы прочитанный последним",
+				ledgerFile, a.Line, a.Raw, prev.Line))
+			continue
+		}
+		if !mentioned[a.Key] {
+			found = append(found, fmt.Sprintf("%s:%d: якорь %s пережил свою координату — в документе её "+
+				"нет; снимите строку якоря тем же изменением, что координату", ledgerFile, a.Line, a.Raw))
+		}
+		c.Anchors++
+		anchors[a.Key] = a
+	}
+
+	type use struct {
+		raw   string
+		lines []int
+	}
+	uses := map[identityProbeCoordKey]*use{}
+	var order []identityProbeCoordKey
+	for _, co := range resolved {
+		k := co.key()
+		if uses[k] == nil {
+			uses[k] = &use{raw: co.Raw}
+			order = append(order, k)
+		}
+		uses[k].lines = append(uses[k].lines, co.Line)
+	}
+	for _, k := range order {
+		u := uses[k]
+		at := fmt.Sprintf("%s:%d", ledgerFile, u.lines[0])
+		name := fmt.Sprintf("координата %s (%s)", u.raw, k)
+		if len(u.lines) > 1 {
+			rest := make([]string, len(u.lines)-1)
+			for i, n := range u.lines[1:] {
+				rest[i] = strconv.Itoa(n)
+			}
+			name += ", записанная ещё на строках документа " + strings.Join(rest, ", ") + ","
+		}
+		a, ok := anchors[k]
+		if !ok {
+			found = append(found, fmt.Sprintf("%s: %s без якоря — в таблице якорей нет строки `%s`: без "+
+				"якоря сдвиг файла под координатой не виден. Допишите текст первой строки предмета "+
+				"(и у диапазона — последней)", at, name, k))
+			continue
+		}
+		text := f.Text[k.Path]
+		first := linesWith(text, a.First)
+		if !strings.Contains(text[k.From-1], a.First) {
+			found = append(found, fmt.Sprintf("%s: %s сошла со своего предмета: на строке %d якоря «%s» нет; %s",
+				at, name, k.From, a.First, whereAnchor(first)))
+			continue
+		}
+		onSubject := true
+		switch {
+		case k.To == k.From && a.HasLast:
+			found = append(found, fmt.Sprintf("%s:%d: у одиночной координаты %s якорь последней строки — "+
+				"конца у неё нет, пишите «%s»", ledgerFile, a.Line, a.Raw, identityProbeAnchorNone))
+			onSubject = false
+		case k.To != k.From && !a.HasLast:
+			found = append(found, fmt.Sprintf("%s:%d: у диапазона %s нет якоря последней строки — рост "+
+				"предмета внутри диапазона прошёл бы молча", ledgerFile, a.Line, a.Raw))
+			onSubject = false
+		case k.To != k.From && !strings.Contains(text[k.To-1], a.Last):
+			found = append(found, fmt.Sprintf("%s: %s: конец диапазона сошёл с предмета — на строке %d якоря "+
+				"последней строки «%s» нет; %s", at, name, k.To, a.Last, whereAnchor(linesWith(text, a.Last))))
+			onSubject = false
+		}
+		if onSubject {
+			c.OnSubject++
+			if len(first) > 1 {
+				c.SharedAnchors++
+			}
+		}
+	}
+	return found
+}
+
+// judgeIdentityProbeFate — шесть требований шапки. Пусто = норма.
 func judgeIdentityProbeFate(l identityProbeFateLedger, f identityProbeFateFacts, probeDir, ledgerFile string) ([]string, identityProbeFateCensus) {
 	c := identityProbeFateCensus{Rows: len(l.Rows), Probes: len(f.Probes), ByFate: map[string]int{}}
 	var found []string
@@ -352,6 +698,20 @@ func judgeIdentityProbeFate(l identityProbeFateLedger, f identityProbeFateFacts,
 	for _, p := range f.Probes {
 		inTree[p] = true
 	}
+
+	// mentioned — каждая координата документа, судимая или нет: якорь без неё
+	// пережил свою координату. resolved — те, что указывают в строки файла:
+	// только у них есть строка, на которой якорю стоять.
+	mentioned := map[identityProbeCoordKey]bool{}
+	for _, r := range l.Rows {
+		for _, co := range r.Coords {
+			mentioned[co.key()] = true
+		}
+	}
+	for _, co := range l.Elsewhere {
+		mentioned[co.key()] = true
+	}
+	var resolved []identityProbeCoordRef
 
 	named := map[string]int{}
 	for _, r := range l.Rows {
@@ -393,19 +753,11 @@ func judgeIdentityProbeFate(l identityProbeFateLedger, f identityProbeFateFacts,
 		ownSeen := false
 		for _, co := range r.Coords {
 			c.Coords++
-			n, tracked := f.Lines[co.Path]
-			switch {
-			case !tracked:
-				found = append(found, fmt.Sprintf("%s: %s — координата %s указывает в %s, "+
-					"которого в индексе нет: довод ссылается на то, чего в дереве не существует",
-					at(r), r.File, co.Raw, co.Path))
-				continue
-			case co.From < 1 || co.To < co.From || co.To > n:
-				found = append(found, fmt.Sprintf("%s: %s — координата %s вне файла %s (строк в "+
-					"нём %d): довод описывает уже другое содержимое, перечитайте пробу и "+
-					"назовите строку заново", at(r), r.File, co.Raw, co.Path, n))
+			if why := resolveCoord(co, f); why != "" {
+				found = append(found, fmt.Sprintf("%s: %s — %s", at(r), r.File, why))
 				continue
 			}
+			resolved = append(resolved, co)
 			if co.Path == own {
 				ownSeen = true
 				c.OwnCoords++
@@ -417,6 +769,16 @@ func judgeIdentityProbeFate(l identityProbeFateLedger, f identityProbeFateFacts,
 				"проба утверждает, и он обязан указывать в неё", at(r), r.File, own))
 		}
 	}
+
+	for _, co := range l.Elsewhere {
+		c.OtherCoords++
+		if why := resolveCoord(co, f); why != "" {
+			found = append(found, fmt.Sprintf("%s:%d: вне строк ведомости — %s", ledgerFile, co.Line, why))
+			continue
+		}
+		resolved = append(resolved, co)
+	}
+	found = append(found, judgeIdentityProbeAnchors(l, f, resolved, mentioned, ledgerFile, &c)...)
 
 	var missing []string
 	for _, p := range f.Probes {

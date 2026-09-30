@@ -16,6 +16,8 @@ package repohygiene
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,7 +29,8 @@ type probeFateRow struct{ file, fate, coords string }
 // строкам (законный близнец), либо переданная явно.
 func probeFateDoc(rows []probeFateRow, totals map[string]string, total string) string {
 	var b strings.Builder
-	b.WriteString("# Ведомость\n\nПроза: `:1` в прозе координатой не является.\n\n")
+	b.WriteString("# Ведомость\n\nПроза: `:1` без пути координатой не является, а " + probeFateProse +
+		" — является и судится так же, как координата строки.\n\n")
 	b.WriteString("| " + strings.Join(identityProbeFateHeader, " | ") + " |\n")
 	b.WriteString("|---:|---|---|---|---|---|\n")
 	for i, r := range rows {
@@ -58,16 +61,101 @@ func probeFateDoc(rows []probeFateRow, totals map[string]string, total string) s
 	if total != "" {
 		fmt.Fprintf(&b, "| **итого** | **%s** |\n", total)
 	}
+	b.WriteString("\n## Якоря\n\n| " + strings.Join(identityProbeFateAnchorsHeader, " | ") + " |\n|---|---|---|\n")
+	for _, k := range probeFateKeys(rows) {
+		b.WriteString(probeFateAnchorRow(k.Path, k.From, k.To))
+	}
 	return b.String()
 }
 
+// probeFateKeys — координаты синтетического документа в порядке записи, каждая
+// один раз: строк ведомости и прозы. Путь, не выразимый координатой (ячейка
+// групповой записи), якоря не получает — такую строку гейт отвергает раньше.
+func probeFateKeys(rows []probeFateRow) []identityProbeCoordKey {
+	var keys []identityProbeCoordKey
+	seen := map[identityProbeCoordKey]bool{}
+	add := func(k identityProbeCoordKey) {
+		if !seen[k] && probeFatePathForm.MatchString(k.Path) {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for _, r := range rows {
+		for _, m := range identityProbeCoord.FindAllStringSubmatch(r.coords, -1) {
+			k := identityProbeCoordKey{Path: m[1]}
+			if k.Path == "" {
+				k.Path = "deploy/" + r.file
+			}
+			k.From, _ = strconv.Atoi(m[2])
+			k.To = k.From
+			if m[3] != "" {
+				k.To, _ = strconv.Atoi(m[3])
+			}
+			add(k)
+		}
+	}
+	add(identityProbeCoordKey{Path: probeFateProseTarget, From: 7, To: 7})
+	return keys
+}
+
+// probeFatePathForm — путь, выразимый координатой.
+var probeFatePathForm = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
+
+// probeFateAnchorRow — строка таблицы якорей законного близнеца: якорь — текст
+// строки предмета в синтетическом файле.
+func probeFateAnchorRow(path string, from, to int) string {
+	coord := fmt.Sprintf("%s:%d", path, from)
+	last := identityProbeAnchorNone
+	if to != from {
+		coord += fmt.Sprintf("-%d", to)
+		last = "`" + probeFateLine(path, to) + "`"
+	}
+	return fmt.Sprintf("| `%s` | `%s` | %s |\n", coord, probeFateLine(path, from), last)
+}
+
+// probeFateLine — строка n синтетического файла: единственная в файле, и ни
+// одна другая её не содержит («строка 1.» — не часть «строка 10.»).
+func probeFateLine(path string, n int) string { return fmt.Sprintf("%s — строка %d.", path, n) }
+
+// probeFateFile — синтетический файл из n строк.
+func probeFateFile(path string, n int) []string {
+	lines := make([]string, n)
+	for i := range lines {
+		lines[i] = probeFateLine(path, i+1)
+	}
+	return lines
+}
+
+// probeFateProseTarget — файл, в который указывает координата прозы: вне
+// ведомости, чтобы её сдвиг не задевал ни одной строки ведомости.
+const probeFateProseTarget = "deploy/own_reader_test.go"
+
+// probeFateProse — координата прозы синтетического документа.
+const probeFateProse = "`" + probeFateProseTarget + ":7`"
+
 // probeFateTree — синтетический индекс: пробы и число строк каждого файла.
 func probeFateTree(probes ...string) identityProbeFateFacts {
-	f := identityProbeFateFacts{Lines: map[string]int{"deploy/helm/umbrella/values.yaml": 900}}
+	f := identityProbeFateFacts{Text: map[string][]string{
+		"deploy/helm/umbrella/values.yaml": probeFateFile("deploy/helm/umbrella/values.yaml", 900),
+		probeFateProseTarget:               probeFateFile(probeFateProseTarget, 50),
+	}}
 	for _, p := range probes {
 		f.Probes = append(f.Probes, p)
-		f.Lines["deploy/"+p] = 100
+		f.Text["deploy/"+p] = probeFateFile("deploy/"+p, 100)
 	}
+	return f
+}
+
+// probeFateInsert — в файл path перед строкой at вставлено n строк (at на
+// единицу больше длины — вставка в конец). Меняет ровно один факт: где стоят
+// строки файла ниже вставки.
+func probeFateInsert(f identityProbeFateFacts, path string, at, n int) identityProbeFateFacts {
+	text := f.Text[path]
+	out := append([]string{}, text[:at-1]...)
+	for i := 0; i < n; i++ {
+		out = append(out, fmt.Sprintf("вставленная строка %d", i+1))
+	}
+	f.Text[path] = append(out, text[at-1:]...)
 	return f
 }
 
@@ -115,6 +203,11 @@ func TestIdentityProbeFateInjection_LawfulLedgerIsSilent(t *testing.T) {
 	}
 	if c.Rows != 3 || c.Probes != 3 || c.Coords != 5 || c.OwnCoords != 4 {
 		t.Fatalf("перепись законной ведомости неверна: %s", c)
+	}
+	// Координата прозы судится наравне со строками ведомости, и у каждой из
+	// шести координат якорь стоит на её строке.
+	if c.OtherCoords != 1 || c.Anchors != 6 || c.OnSubject != 6 || c.SharedAnchors != 0 {
+		t.Fatalf("перепись якорей законной ведомости неверна: %s", c)
 	}
 	for _, f := range identityProbeFates {
 		if c.ByFate[f] != 1 {
@@ -261,6 +354,7 @@ func TestIdentityProbeFateInjection_UnrecognisedFormIsARefusal(t *testing.T) {
 	t.Parallel()
 	lawful := probeFateDoc(probeFateLawfulRows(), nil, "")
 	header := "| " + strings.Join(identityProbeFateHeader, " | ") + " |"
+	anchors := "| " + strings.Join(identityProbeFateAnchorsHeader, " | ") + " |"
 	cases := []struct {
 		name string
 		doc  string
@@ -269,6 +363,8 @@ func TestIdentityProbeFateInjection_UnrecognisedFormIsARefusal(t *testing.T) {
 		{"заголовок переименован", strings.Replace(lawful, header, strings.Replace(header, "исход", "судьба", 1), 1), errIdentityProbeFateNoLedger},
 		{"ведомость дважды", lawful + "\n" + header + "\n", errIdentityProbeFateTwoLedgers},
 		{"разбивки нет", strings.Replace(lawful, "| исход | файлов |", "| исходы | файлов |", 1), errIdentityProbeFateNoTotals},
+		{"якорей нет", strings.Replace(lawful, anchors, strings.Replace(anchors, "первая строка", "якорь", 1), 1), errIdentityProbeFateNoAnchors},
+		{"якоря дважды", lawful + "\n" + anchors + "\n", errIdentityProbeFateTwoAnchorTables},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -312,5 +408,124 @@ func TestIdentityProbeFateInjection_EmptyLedgerIsTheGoalNotAFailure(t *testing.T
 	}
 	if !named {
 		t.Fatalf("пустая ведомость при живой пробе промолчала о ней:\n%s", strings.Join(found, "\n"))
+	}
+}
+
+// probeFateSomeFinding — среди находок есть одна, несущая каждый из фрагментов.
+func probeFateSomeFinding(t *testing.T, found []string, want ...string) {
+	t.Helper()
+	for _, f := range found {
+		all := true
+		for _, w := range want {
+			all = all && strings.Contains(f, w)
+		}
+		if all {
+			return
+		}
+	}
+	t.Fatalf("ни одна находка не несёт %q:\n%s", want, strings.Join(found, "\n"))
+}
+
+// Класс, ради которого у координаты есть якорь (#2731, возврат сборки 1 волны
+// 4): файл под координатой сдвинулся, номер строки остался в пределах файла, и
+// прежняя проверка «строка существует» молчала. Близнец — та же вставка ПОД
+// диапазоном: предмет на месте, находок нет.
+func TestIdentityProbeFateInjection_ShiftedCoordinateIsAFinding(t *testing.T) {
+	t.Parallel()
+	doc := probeFateDoc(probeFateLawfulRows(), nil, "")
+	const alpha = "deploy/identity_alpha_test.go"
+	if found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), alpha, 21, 3)); len(found) != 0 {
+		t.Fatalf("вставка под диапазоном дала находки — законный близнец не молчит:\n%s", strings.Join(found, "\n"))
+	}
+	found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), alpha, 5, 3))
+	probeFateOneFinding(t, found, "identity_alpha_test.go", "`:10-20`", "сошла со своего предмета", "стоит на :13")
+}
+
+// Предмет вырос: строки вставлены ВНУТРИ диапазона. Первая строка на месте,
+// а конец диапазона предмет больше не накрывает.
+func TestIdentityProbeFateInjection_RangeThatNoLongerCoversItsSubjectIsAFinding(t *testing.T) {
+	t.Parallel()
+	doc := probeFateDoc(probeFateLawfulRows(), nil, "")
+	const alpha = "deploy/identity_alpha_test.go"
+	if found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), alpha, 21, 2)); len(found) != 0 {
+		t.Fatalf("вставка сразу за концом диапазона дала находки — законный близнец не молчит:\n%s", strings.Join(found, "\n"))
+	}
+	found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), alpha, 15, 2))
+	probeFateOneFinding(t, found, "identity_alpha_test.go", "`:10-20`", "конец диапазона", "стоит на :22")
+}
+
+// Координата вне строк ведомости (проза, соседние таблицы) судится так же:
+// сдвиг её файла — находка с номером строки документа.
+func TestIdentityProbeFateInjection_ShiftedProseCoordinateIsAFinding(t *testing.T) {
+	t.Parallel()
+	doc := probeFateDoc(probeFateLawfulRows(), nil, "")
+	if found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), probeFateProseTarget, 8, 2)); len(found) != 0 {
+		t.Fatalf("вставка под координатой прозы дала находки:\n%s", strings.Join(found, "\n"))
+	}
+	found, _ := probeFateJudge(t, doc, probeFateInsert(probeFateLawfulTree(), probeFateProseTarget, 1, 2))
+	probeFateOneFinding(t, found, "ведомость.md:3:", probeFateProse, "сошла со своего предмета", "стоит на :9")
+}
+
+// Строка предмета переписана при прежнем числе строк: якоря в файле нет вовсе.
+func TestIdentityProbeFateInjection_RewrittenSubjectIsAFinding(t *testing.T) {
+	t.Parallel()
+	tree := probeFateLawfulTree()
+	tree.Text[probeFateProseTarget][6] = "строка переписана"
+	found, _ := probeFateJudge(t, probeFateDoc(probeFateLawfulRows(), nil, ""), tree)
+	probeFateOneFinding(t, found, probeFateProse, "в файле его нет")
+}
+
+// Якорь, стоящий в файле не на одной строке, всё равно ловит сдвиг, а перепись
+// называет число таких якорей: точность проверки видна, а не подразумевается.
+func TestIdentityProbeFateInjection_SharedAnchorStillCatchesTheShift(t *testing.T) {
+	t.Parallel()
+	doc := probeFateDoc(probeFateLawfulRows(), nil, "")
+	tree := probeFateLawfulTree()
+	tree.Text[probeFateProseTarget][29] = probeFateLine(probeFateProseTarget, 7)
+	found, c := probeFateJudge(t, doc, tree)
+	if len(found) != 0 || c.SharedAnchors != 1 || c.OnSubject != 6 {
+		t.Fatalf("якорь с двойником на своей строке: находок %d, перепись %s\n%s", len(found), c, strings.Join(found, "\n"))
+	}
+	found, _ = probeFateJudge(t, doc, probeFateInsert(tree, probeFateProseTarget, 1, 2))
+	probeFateOneFinding(t, found, probeFateProse, "стоит на :9, :32")
+}
+
+func TestIdentityProbeFateInjection_CoordinateWithoutAnAnchorIsAFinding(t *testing.T) {
+	t.Parallel()
+	doc := strings.Replace(probeFateDoc(probeFateLawfulRows(), nil, ""), probeFateAnchorRow(probeFateProseTarget, 7, 7), "", 1)
+	found, _ := probeFateJudge(t, doc, probeFateLawfulTree())
+	probeFateOneFinding(t, found, probeFateProse, "без якоря")
+}
+
+func TestIdentityProbeFateInjection_AnchorWithoutACoordinateIsAFinding(t *testing.T) {
+	t.Parallel()
+	row := probeFateAnchorRow(probeFateProseTarget, 7, 7)
+	lawful := probeFateDoc(probeFateLawfulRows(), nil, "")
+	found, _ := probeFateJudge(t, strings.Replace(lawful, row, row+probeFateAnchorRow(probeFateProseTarget, 30, 30), 1), probeFateLawfulTree())
+	probeFateOneFinding(t, found, probeFateProseTarget+":30", "пережил свою координату")
+	found, _ = probeFateJudge(t, strings.Replace(lawful, row, row+row, 1), probeFateLawfulTree())
+	probeFateOneFinding(t, found, probeFateProseTarget+":7", "второй раз")
+}
+
+func TestIdentityProbeFateInjection_UnreadableAnchorIsAFinding(t *testing.T) {
+	t.Parallel()
+	row := probeFateAnchorRow(probeFateProseTarget, 7, 7)
+	anchor := "`" + probeFateLine(probeFateProseTarget, 7) + "`"
+	rangeRow := probeFateAnchorRow("deploy/identity_alpha_test.go", 10, 20)
+	cases := []struct {
+		name, from, to string
+		want           []string
+	}{
+		{"координата без пути", row, "| `:7` | " + anchor + " | — |\n", []string{"не читается", "`:7`"}},
+		{"якорь без обратных кавычек", row, "| " + probeFateProse + " | " + strings.Trim(anchor, "`") + " | — |\n", []string{"не читается", probeFateProseTarget + ":7"}},
+		{"одиночной — якорь конца", row, strings.Replace(row, "| — |", "| "+anchor+" |", 1), []string{"одиночной координаты", probeFateProseTarget + ":7"}},
+		{"диапазону — без якоря конца", rangeRow, rangeRow[:strings.LastIndex(rangeRow, "| `")] + "| — |\n", []string{"последней строки", "identity_alpha_test.go:10-20"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := strings.Replace(probeFateDoc(probeFateLawfulRows(), nil, ""), tc.from, tc.to, 1)
+			found, _ := probeFateJudge(t, doc, probeFateLawfulTree())
+			probeFateSomeFinding(t, found, tc.want...)
+		})
 	}
 }

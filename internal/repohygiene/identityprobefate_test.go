@@ -15,12 +15,12 @@ import (
 	"testing"
 )
 
-// identityProbeFateFactsFromTree — состав проб и число строк каждого файла, на
+// identityProbeFateFactsFromTree — состав проб и строки каждого файла, на
 // который ссылается ведомость. Состав берётся из индекса git, а не обходом
 // диска: вердикт — свойство коммита, а не рабочего каталога.
 func identityProbeFateFactsFromTree(t *testing.T, root string, tt *trackedTree, l identityProbeFateLedger) identityProbeFateFacts {
 	t.Helper()
-	f := identityProbeFateFacts{Lines: map[string]int{}}
+	f := identityProbeFateFacts{Text: map[string][]string{}}
 	prefix := identityProbeDir + "/"
 	for rel := range tt.files {
 		name := strings.TrimPrefix(rel, prefix)
@@ -40,6 +40,9 @@ func identityProbeFateFactsFromTree(t *testing.T, root string, tt *trackedTree, 
 			need[c.Path] = true
 		}
 	}
+	for _, c := range l.Elsewhere {
+		need[c.Path] = true
+	}
 	for rel := range need {
 		if !tt.files[rel] {
 			continue
@@ -48,21 +51,18 @@ func identityProbeFateFactsFromTree(t *testing.T, root string, tt *trackedTree, 
 		if err != nil {
 			t.Fatalf("%s в индексе есть, а не читается: %v — судить координату нечем", rel, err)
 		}
-		f.Lines[rel] = identityProbeLineCount(string(raw))
+		f.Text[rel] = identityProbeLinesOf(string(raw))
 	}
 	return f
 }
 
-// identityProbeLineCount — число строк текста, как их нумерует редактор.
-func identityProbeLineCount(s string) int {
+// identityProbeLinesOf — строки текста, как их нумерует редактор: завершающий
+// перевод строки новой строки не открывает.
+func identityProbeLinesOf(s string) []string {
 	if s == "" {
-		return 0
+		return []string{}
 	}
-	n := strings.Count(s, "\n")
-	if !strings.HasSuffix(s, "\n") {
-		n++
-	}
-	return n
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
 // TestIdentityProbeFateLedgerNamesEveryProbe — сам гейт.
@@ -79,9 +79,10 @@ func TestIdentityProbeFateLedgerNamesEveryProbe(t *testing.T) {
 	l, err := parseIdentityProbeFateLedger(string(raw), identityProbeDir)
 	if err != nil {
 		t.Fatalf("%s: %v — форма ведомости не распознана, и судить её нечем (заголовок ведомости "+
-			"%q, заголовок разбивки %q)", IdentityProbeFateLedgerFile, err,
+			"%q, заголовок разбивки %q, заголовок таблицы якорей %q)", IdentityProbeFateLedgerFile, err,
 			"| "+strings.Join(identityProbeFateHeader, " | ")+" |",
-			"| "+strings.Join(identityProbeFateTotals, " | ")+" |")
+			"| "+strings.Join(identityProbeFateTotals, " | ")+" |",
+			"| "+strings.Join(identityProbeFateAnchorsHeader, " | ")+" |")
 	}
 
 	facts := identityProbeFateFactsFromTree(t, root, tt, l)
