@@ -56,11 +56,50 @@
 #
 # ВЫЗОВ ПОМОЩНИКА — ТОЖЕ ВЫЗОВ ПРОБРОСА (#2866, круг 2). Функция, чьё тело
 # открывает проброс (или зовёт такую функцию), — функция проброса: её узнают по
-# дампу функций после префикса и по стеку записанных вызовов. Строка, где имя
-# функции проброса стоит словом, — место вызова, как и команда с `kubectl … port-forward`,
-# и префикс ДОРАСТАЕТ до последней такой строки: помощник, позванный ниже
-# последнего вызова, записанного текстом, прежде за концом префикса не
-# исполнялся, а место его тела исполнял законный вызов выше, и покрытие молчало.
+# телам функций (дамп функций после префикса и текст прогонщика) и по стеку
+# записанных вызовов. Строка, где функция проброса ВЫЗВАНА, — место вызова, как и
+# команда вызова проброса (слово port-forward, см. ниже), и префикс ДОРАСТАЕТ до
+# последней такой строки: помощник, позванный ниже последнего вызова, записанного
+# текстом, прежде за концом префикса не исполнялся, а место его тела исполнял
+# законный вызов выше, и покрытие молчало. Обёртка, передающая слова дальше
+# (`kc() { kubectl "$@"; }`), функцией проброса НЕ является ни по телу, ни по
+# стеку: проброс называет её вызывающий словом port-forward, и место вызова — у
+# него; иначе местом вызова стал бы и `kc get …`, который записи проброса не даёт
+# никогда (#2893, круг 2).
+#
+# МЕСТО ВЫЗОВА — ВЫЗОВ В РАЗОБРАННОЙ КОМАНДЕ, А НЕ ИМЯ В ТЕКСТЕ (#2893). Прогонщик
+# разбирается до простых команд (кавычки, экранирование, продолжение строки,
+# here-doc, подстановка команды, определение функции, case, [[ ]] и (( ))):
+# вызов — это имя на месте имени команды, в том числе внутри `$(…)`, `<(…)` и
+# обратных кавычек. Имя внутри строкового литерала (`echo "own_front_forward …"`)
+# вызовом не является: прежде такая строка давала находку о неисполненном вызове,
+# а ниже префикса — и продление.
+#
+# ВЫЗОВ ПРОБРОСА УЗНАЁТСЯ ПО СЛОВУ port-forward, А НЕ ПО ИМЕНИ kubectl (#2893,
+# круг 2). Вызов проброса — простая команда со словом `port-forward` на месте
+# аргумента, если имя команды не из закрытого перечня имён, которые программ из
+# своих аргументов не исполняют (встроенные без исполнения чужого кода и чистые
+# фильтры — тот же перечень, что судит продление, ниже), либо это функция
+# прогонщика. kubectl, обёртка (command, env, sudo, timeout …), функция-обёртка
+# (`kc -n "$NS" port-forward …`), имя команды из переменной
+# (`${KUBECTL:-kubectl} -n "$NS" port-forward …`) и незнакомая программа — вызов:
+# имя, которого перечень не называет, не считается «наверное, не kubectl». Прежде
+# вызовом считалась только команда с именем kubectl (или за обёрткой из короткого
+# списка), и проброс через функцию-обёртку или имя из переменной ниже последнего
+# вызова kubectl не был ни местом вызова, ни концом префикса: о нём молчали и
+# статический суд, и исполнение.
+#
+# ПРОДЛЕНИЕ НЕ ИСПОЛНЯЕТ ШАГОВ С ПОБОЧНЫМ ДЕЙСТВИЕМ (#2893). Строки, на которые
+# префикс дорастает, — шаги прогонщика после пробросов: посев, прогон суит.
+# Исполняются они, только если каждая их команда (и каждая команда тел функций,
+# которые они зовут, по замыканию) ИНЕРТНА под подменами суда: встроенная
+# команда оболочки без исполнения чужого кода, подменённый инструмент, python3 с
+# объявленным производителем данных, чистый фильтр текста; перенаправление — только
+# в /dev/null, дескриптор или /tmp/ (переведён в каталог суда). Перечень закрыт;
+# шаг вне него — находка «продлевать нельзя» с его строкой и причиной, продление
+# на нём останавливается (вызовы выше него ещё дорастают), а вызовы ниже — не
+# исполняются и названы в той же находке. Прежде продление исполняло такие шаги
+# как есть: вызов помощника ниже строки посева запускал настоящий посев.
 #
 # ЦЕЛЬ ОПОЗНАЁТСЯ ПО СТВОЛУ ИМЕНИ (#2866, круг 2). Чарт называет службы
 # `<полное имя>-<роль>`, а нагрузку — полным именем: kacho-umbrella-hydra-public
@@ -83,8 +122,9 @@
 #                       спрятал бы её до этого дня.
 #
 # МЕСТО ВЫЗОВА, КОТОРОЕ НЕ ИСПОЛНИЛОСЬ, — НАХОДКА. Каждый вызов проброса вне
-# блока (команда с `kubectl` и `port-forward`) обязан исполниться хотя бы в
-# одном мире: иначе его цель суду неизвестна, и «ЧИСТО» о нём утверждать нечего.
+# блока (команда со словом port-forward — см. выше — и вызов функции проброса)
+# обязан исполниться хотя бы в одном мире: иначе его цель суду неизвестна, и
+# «ЧИСТО» о нём утверждать нечего.
 # Тем же счётом идёт прогон, прерванный до конца префикса, и вызов проброса мимо
 # оболочки записи (его ловит подставной kubectl, но координаты у такой записи
 # нет).
@@ -92,8 +132,9 @@
 # СТАТИЧЕСКИ вне блока по-прежнему судятся (в том числе строки, которых
 # исполнение не достигает):
 #   проброс к поставщику — служба блока или её ствол имени (см. выше), — если
-#   цель названа ЛИТЕРАЛОМ после `<вид>/` (продолжение строки обратной косой
-#   чертой склеивается: команда судится целиком, координата — её первая строка);
+#   цель вызова проброса (kubectl, обёртка, функция-обёртка, имя команды из
+#   переменной — см. выше) названа ЛИТЕРАЛОМ после `<вид>/` (продолжение строки
+#   склеивает разбор, координата — первая строка команды);
 #   ключ адреса, который блок кладёт в PROVIDER_ENV_ARGS (так ловится адрес
 #   суитам в прежней форме, например при запуске волны, launch_wave);
 #   ручка порта проброса к поставщику ($ИМЯ, ${ИМЯ…}) — кроме её объявления
@@ -110,24 +151,39 @@
 # цель без вида — имя пода, а не службы (такие пробросы считаются и называются
 # координатой в переписи; цели-нагрузки считаются числом — их суд держится на
 # соглашении об именах чарта); вызов функции проброса ниже конца префикса по
-# имени, которое в тексте словом не стоит (`eval`, имя, собранное из частей);
+# имени, которого нет на месте имени команды (`eval`, имя, собранное из частей);
 # адрес, собранный при исполнении из частей, не несущих ни ключа, ни ручки, ни
-# номера порта; вызов kubectl по абсолютному пути (он минует и оболочку, и
-# подставной kubectl). Комментарий не судится: он ничего не открывает.
+# номера порта; слово port-forward, собранное при исполнении (из переменной,
+# массива), — такая команда места вызова не заводит и судится исполнением, только
+# если префикс до неё доходит; вызов kubectl по абсолютному пути (он минует и
+# оболочку, и подставной kubectl). Комментарий и текст строки не судятся: они
+# ничего не открывают. Шаги префикса ДО последнего вызова, записанного текстом,
+# исполняются как есть: их инертность проба не судит (судится только
+# продление), и то, что они не пишут в дерево и не ходят в сеть, держится формой
+# прогонщиков — пробросы открываются до посева, — а не пробой.
 #
 # «НОЛЬ НАХОДОК» ОТЛИЧИМО ОТ «НОЛЬ ПРОЧИТАННОГО»: перепись печатается всегда
 # (прогонщики, блоки, посадки, строки, места вызова проброса вне блока — из них
 # вызовы функций проброса — и сколько из них исполнено, исполнения и записанные
-# вызовы, цели без вида и цели-нагрузки), прогонщик без вырезаемого блока —
-# находка, пустой обход — отказ. Осматриваемое дерево проба не меняет: байткод
-# прокладки не пишется (PYTHONDONTWRITEBYTECODE).
+# вызовы, продления префикса и остановки продления, цели без вида и
+# цели-нагрузки), прогонщик без вырезаемого блока — находка, пустой обход —
+# отказ. Что проба не пишет в осматриваемое дерево, держится на двух вещах и не
+# шире: байткод разборщика и прокладки не пишется (PYTHONDONTWRITEBYTECODE), а
+# продление префикса не исполняет шагов с побочным действием (выше); про префикс
+# до последнего вызова, записанного текстом, — граница выше.
 #
 # Самопроверка: `--self-test` (прогонщик прежней формы — пробросы безусловно —
 # обязан быть найден; проброс вне проверки живости — тоже; каждая из четырёх
 # статических находок вне блока — тоже; служба поставщика из переменной, из
 # манифеста (опыт x1b), нагрузка поставщика, названная полным именем чарта, и
 # помощник проброса, позванный после последнего вызова, записанного текстом, —
-# тоже; место вызова, не исполненное ни в одном мире, — тоже; осматриваемый
+# тоже; проброс через функцию-обёртку и через имя команды из переменной — тоже, а
+# вызов той же обёртки без проброса местом вызова не становится; место вызова, не
+# исполненное ни в одном мире, — тоже; имя функции
+# проброса в тексте строки обязано молчать, а тот же вызов в подстановке команды —
+# найтись; шаг посева в продлеваемых строках и в теле функции проброса — находка
+# «продлевать нельзя», и посев не исполняется (корень его оси не меняется), а
+# близнец с инертным шагом продлевается и судится; осматриваемый
 # корень после прогона тот же, что до него; синтетический законный
 # близнец, отличающийся от каждой инъекции одним фактом, обязан молчать; цель
 # без вида обязана попасть в перепись числом и координатой).
@@ -154,6 +210,16 @@ WORK="$(mktemp -d)"
 # помощников.
 export PYTHONDONTWRITEBYTECODE=1
 trap 'rm -rf "$WORK"' EXIT
+
+# ПОДМЕНЫ СУДА И ЕГО ПРОИЗВОДИТЕЛИ — одним перечнем на двух читателей: подставной
+# мир кладёт заглушку на каждый подменённый инструмент (kubectl — своей записью), а
+# разборщик считает инертным при продлении префикса только их и объявленных
+# производителей данных (#2893). Перечень рядом с разборщиком разошёлся бы с
+# заглушками молча.
+SUBSTITUTED_TOOLS=(newman grpcurl jq)
+PRODUCERS=(identity-provider-landing.py own-rest-front-address.py e2e-optional-transports.py)
+export FWD_GATE_SUBSTITUTED="kubectl ${SUBSTITUTED_TOOLS[*]}"
+export FWD_GATE_PRODUCERS="${PRODUCERS[*]}"
 
 # Срок одного исполнения (блок в посадке, префикс прогонщика в мире). Прогон
 # под подставным kubectl идёт доли секунды; повисший прогон — не «чисто», а
@@ -213,7 +279,7 @@ STUB
   # Прочие инструменты, чьё наличие прогонщик проверяет до пробросов: префикс
   # их не зовёт, но без них он выходит раньше первого вызова.
   local t
-  for t in newman grpcurl jq; do
+  for t in "${SUBSTITUTED_TOOLS[@]}"; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin/$t"; chmod +x "$WORK/bin/$t"
   done
 }
@@ -296,9 +362,11 @@ audit_runner() {  # <относительный путь> <абсолютный 
 }
 
 # ─── РАЗБОРЩИК ───────────────────────────────────────────────────────────────
-# Один файл на два вопроса: `last <файл>` — последняя строка последней команды с
-# вызовом проброса (где кончается префикс, который исполняется); `judge <строки>`
-# — суд вне блока по тексту и по записям исполнения.
+# Один файл на четыре вопроса: `last <файл>` — последняя строка последней команды
+# с вызовом проброса (где кончается префикс, который исполняется); `extend` — куда
+# префиксу дорастать; `inert` — нет ли в продлеваемых строках шага с побочным
+# действием; `judge <строки>` — суд вне блока по разобранному тексту и по записям
+# исполнения.
 write_analyzer() {
   cat > "$WORK/analyze.py" <<'PY'
 import os
@@ -310,7 +378,6 @@ PORTSPEC = re.compile(r'"?(?:\$\{([A-Za-z_]\w*)(?::-([0-9]+))?\}|\$([A-Za-z_]\w*
 KEY = re.compile(r'--env-var[\s=]+"?([A-Za-z_]\w*)=')
 KNOB = re.compile(r'^\s*([A-Za-z_]\w*)="\$\{([A-Za-z_]\w*):-([0-9]+)\}"\s*$')
 PF_WORD = re.compile(r'\bport-forward\b')
-KUBECTL = re.compile(r'\bkubectl\b')
 
 
 def code_of(line):
@@ -350,17 +417,6 @@ def targets_of(words):
             for t in [target_after(words, i)] if t is not None]
 
 
-def forward_targets(cmd):
-    """Цели вызовов `kubectl … port-forward` в команде.
-
-    Строка, где нет kubectl, вызовом не считается: это сообщение о пробросе, а
-    не проброс."""
-    words = [w for _, c in cmd for w in c.rstrip().rstrip("\\").split()]
-    if not any(KUBECTL.search(w) for w in words):
-        return []
-    return targets_of(words)
-
-
 def commands(numbered):
     """Команды из строк (номер, код): продолжение `\\` склеивается."""
     group = []
@@ -379,110 +435,703 @@ def read_code(path):
     return [(n, code_of(t)) for n, t in enumerate(lines, 1)]
 
 
-def forward_commands(code):
-    """(первая строка, последняя строка) каждой команды с вызовом проброса."""
-    for cmd in commands(code):
-        if "port-forward" in " ".join(c for _, c in cmd) and forward_targets(cmd):
-            yield cmd[0][0], cmd[-1][0]
+# ─── РАЗБОР: КОМАНДА, А НЕ ТЕКСТ (#2893) ─────────────────────────────────────
+# Место вызова — это вызов в РАЗОБРАННОЙ команде: имя, стоящее на месте имени
+# команды. Имя внутри строкового литерала (`echo "own_front_forward …"`) вызовом
+# не является, а подстановка команды внутри той же строки (`"$(own_front_forward …)"`)
+# — является. Разбор знает ровно столько грамматики shell, сколько нужно, чтобы
+# отличить одно от другого.
+RESERVED_OPEN = {"if", "then", "else", "elif", "do", "while", "until", "!", "time", "coproc"}
+RESERVED_CLOSE = {"fi", "done"}
+ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=")
+META = set(" \t\n;&|()<>")
 
 
-FN_HEAD = re.compile(r"^([^\s()=]+) \(\)\s*$")
+class Cmd:
+    """Простая команда разобранного текста: слова, присваивания, перенаправления.
+
+    `fn` — функция, в теле которой команда стоит (None — вне тела); `kind` —
+    simple | test ([[ … ]]) | arith ((( … ))); `line`/`end` — первая и последняя
+    строка команды."""
+
+    def __init__(self, line, fn):
+        self.line, self.end, self.fn, self.kind = line, line, fn, "simple"
+        self.words, self.assigns, self.redirs = [], [], []
+
+    def empty(self):
+        return not (self.words or self.assigns or self.redirs) and self.kind == "simple"
+
+
+def unquote(raw):
+    """Значение слова без кавычек; None — в слове есть подстановка ($, `)."""
+    out, i, q = [], 0, None
+    while i < len(raw):
+        ch = raw[i]
+        if q == "'":
+            if ch == "'":
+                q = None
+            else:
+                out.append(ch)
+        elif ch == "\\" and i + 1 < len(raw):
+            out.append(raw[i + 1])
+            i += 1
+        elif ch in "$`":
+            return None
+        elif ch == '"':
+            q = None if q == '"' else '"'
+        elif ch == "'" and q is None:
+            q = "'"
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+class Lexer:
+    """Разбор shell-текста до простых команд: кавычки, экранирование, продолжение
+    строки, комментарий, here-doc, подстановка команды ($(…), `…`, <(…), >(…)) —
+    её команды тоже команды, — присваивание (и массивом), определение функции,
+    [[ … ]], (( … )), case с образцами, for/select со списком слов."""
+
+    def __init__(self, text, line=1):
+        self.s, self.i, self.line = text, 0, line
+        self.cmds, self.heredocs = [], []
+
+    def peek(self, k=0):
+        j = self.i + k
+        return self.s[j] if j < len(self.s) else ""
+
+    def adv(self, n=1):
+        for _ in range(n):
+            if self.i < len(self.s):
+                if self.s[self.i] == "\n":
+                    self.line += 1
+                self.i += 1
+
+    def skip_blank(self):
+        while True:
+            ch = self.peek()
+            if ch and ch in " \t":
+                self.adv()
+            elif ch == "\\" and self.peek(1) == "\n":
+                self.adv(2)
+            else:
+                return
+
+    def next_is(self, ch):
+        j = self.i
+        while j < len(self.s) and self.s[j] in " \t":
+            j += 1
+        return self.s.startswith(ch, j)
+
+    # Вложенное внутри слова. Каждая функция стоит на первом символе своей
+    # конструкции (или сразу за открытием) и уходит за её конец.
+    def subst(self, fn):
+        """За `$(`: список команд до парной `)` — его команды тоже команды."""
+        self.parse_list(fn, stop=")")
+        if self.peek() == ")":
+            self.adv()
+
+    def arith(self, fn):
+        """За `((`: до парной `))`. Своих команд арифметика не несёт, но подстановка
+        команды внутри неё исполняется — её команды тоже команды."""
+        depth = 2
+        while self.i < len(self.s) and depth:
+            ch = self.peek()
+            if self.inside(fn, ch):
+                continue
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            self.adv()
+
+    def backtick(self, fn):
+        """За открывающей обратной кавычкой: текст до парной разбирается отдельно."""
+        start, line = self.i, self.line
+        while self.i < len(self.s) and self.peek() != "`":
+            if self.peek() == "\\":
+                self.adv()
+            self.adv()
+        inner = self.s[start:self.i]
+        self.adv()
+        sub = Lexer(inner.replace("\\`", "`"), line)
+        sub.parse_list(fn)
+        self.cmds.extend(sub.cmds)
+
+    def squote(self):
+        self.adv()
+        while self.i < len(self.s) and self.peek() != "'":
+            self.adv()
+        self.adv()
+
+    def dquote(self, fn):
+        self.adv()
+        while self.i < len(self.s) and self.peek() != '"':
+            ch = self.peek()
+            if ch == "\\":
+                self.adv(2)
+            elif ch == "$":
+                self.dollar(fn)
+            elif ch == "`":
+                self.adv()
+                self.backtick(fn)
+            else:
+                self.adv()
+        self.adv()
+
+    def inside(self, fn, ch):
+        """Общее для содержимого ${…} и (…): кавычки и подстановки. True — съедено."""
+        if ch == "\\":
+            self.adv(2)
+        elif ch == "'":
+            self.squote()
+        elif ch == '"':
+            self.dquote(fn)
+        elif ch == "$":
+            self.dollar(fn)
+        elif ch == "`":
+            self.adv()
+            self.backtick(fn)
+        else:
+            return False
+        return True
+
+    def dollar(self, fn):
+        nxt = self.peek(1)
+        if nxt == "(":
+            if self.peek(2) == "(":
+                self.adv(3)
+                self.arith(fn)
+            else:
+                self.adv(2)
+                self.subst(fn)
+        elif nxt == "{":
+            self.adv(2)
+            depth = 1
+            while self.i < len(self.s) and depth:
+                ch = self.peek()
+                if self.inside(fn, ch):
+                    continue
+                depth += {"{": 1, "}": -1}.get(ch, 0)
+                self.adv()
+        elif nxt == "'":
+            self.adv(2)
+            while self.i < len(self.s) and self.peek() != "'":
+                if self.peek() == "\\":
+                    self.adv()
+                self.adv()
+            self.adv()
+        else:
+            self.adv()
+
+    def balanced(self, fn):
+        """На `(` внутри слова (присваивание массивом, extglob): до парной `)`."""
+        self.adv()
+        depth = 1
+        while self.i < len(self.s) and depth:
+            ch = self.peek()
+            if self.inside(fn, ch):
+                continue
+            if ch == "#" and self.s[self.i - 1] in " \t\n(":
+                while self.i < len(self.s) and self.peek() != "\n":
+                    self.adv()
+                continue
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            self.adv()
+
+    def word(self, fn):
+        start = self.i
+        while self.i < len(self.s):
+            ch = self.peek()
+            if ch == "\\":
+                self.adv(2)
+                continue
+            if self.inside(fn, ch):
+                continue
+            if ch == "(":
+                so_far = self.s[start:self.i]
+                if (ASSIGN.match(so_far) and so_far.endswith("=")) or (so_far and so_far[-1] in "@!+*?"):
+                    self.balanced(fn)
+                    continue
+                break
+            if ch in META:
+                break
+            self.adv()
+        return self.s[start:self.i].replace("\\\n", "")
+
+    def token(self, fn):
+        """(вид, значение, строка): WORD | OP | NL | EOF."""
+        self.skip_blank()
+        line = self.line
+        ch = self.peek()
+        if not ch:
+            return "EOF", "", line
+        if ch == "#":
+            while self.i < len(self.s) and self.peek() != "\n":
+                self.adv()
+            return self.token(fn)
+        if ch == "\n":
+            self.adv()
+            return "NL", "\n", line
+        for op in (";;&", ";;", ";&", "&&", "||", "|&", "&>>", "&>", ";", "&", "|", "(", ")"):
+            if self.s.startswith(op, self.i):
+                self.adv(len(op))
+                return "OP", op, line
+        m = re.match(r"(\d+|\{[A-Za-z_]\w*\})?(<<<|<<-|<<|<>|<&|>&|>>|>\||<|>)", self.s[self.i:self.i + 40])
+        if m:
+            if m.group(1) is None and m.group(2) in ("<", ">") and self.peek(1) == "(":
+                start = self.i  # подстановка процесса <(…) / >(…): слово с командами внутри
+                self.adv(2)
+                self.subst(fn)
+                return "WORD", self.s[start:self.i], line
+            self.adv(len(m.group(0)))
+            return "OP", m.group(2), line
+        return "WORD", self.word(fn), line
+
+    def read_heredocs(self, fn):
+        """Тела here-doc после конца строки: текст, а не команды; у тела без
+        кавычек в ограничителе подстановки команд исполняются — их команды тоже команды."""
+        for delim, strip, expand in self.heredocs:
+            while self.i < len(self.s):
+                start = self.i
+                while self.i < len(self.s) and self.s[self.i] != "\n":
+                    self.i += 1
+                text, body_line = self.s[start:self.i], self.line
+                if self.i < len(self.s):
+                    self.i += 1
+                    self.line += 1
+                if (text.lstrip("\t") if strip else text) == delim:
+                    break
+                if expand and ("$(" in text or "`" in text):
+                    sub = Lexer(text, body_line)
+                    while sub.i < len(sub.s):
+                        if not sub.inside(fn, sub.peek()):
+                            sub.adv()
+                    self.cmds.extend(sub.cmds)
+        self.heredocs = []
+
+    def parse_list(self, fn=None, stop=None):
+        cur = Cmd(self.line, fn)
+        blocks = []          # («{» | «(», функция, чьё это тело, или None)
+        pending_fn = None    # имя определённой функции: следующий блок — её тело
+        state = "cmd"        # cmd | args | for_name | for_words | case_word | case_in | pattern | test
+        cases = 0
+
+        def here_fn():
+            for _, f in reversed(blocks):
+                if f:
+                    return f
+            return fn
+
+        def flush():
+            nonlocal cur
+            if not cur.empty():
+                self.cmds.append(cur)
+            cur = Cmd(self.line, here_fn())
+
+        while True:
+            kind, val, line = self.token(here_fn())
+            if kind == "EOF":
+                flush()
+                return
+            if kind == "NL":
+                flush()
+                if self.heredocs:
+                    self.read_heredocs(here_fn())
+                if state in ("args", "for_words", "for_name"):
+                    state = "cmd"
+                continue
+            if state == "test":
+                if kind == "WORD" and val == "]]":
+                    state = "args"
+                cur.end = line
+                continue
+            if state == "pattern":
+                if kind == "WORD" and val == "esac":
+                    cases -= 1
+                    state = "args"
+                elif kind == "OP" and val == ")":
+                    state = "cmd"
+                continue
+            if state == "case_word":
+                state = "case_in"
+                continue
+            if state == "case_in":
+                if kind == "WORD" and val == "in":
+                    state = "pattern"
+                continue
+            if state == "for_name":
+                if kind == "OP" and val == "(" and self.peek() == "(":
+                    self.adv()
+                    self.arith(here_fn())
+                state = "for_words"
+                continue
+            if state == "for_words":
+                if kind == "OP" and val in (";", "&"):
+                    state = "cmd"
+                continue
+            if kind == "OP":
+                if val in ("<", ">", ">>", ">|", "<>", "<&", ">&", "&>", "&>>", "<<", "<<-", "<<<"):
+                    _, target, l2 = self.token(here_fn())
+                    if val in ("<<", "<<-"):
+                        self.heredocs.append((unquote(target.replace("$", "")) or target, val == "<<-",
+                                              not any(q in target for q in "'\"\\")))
+                    cur.redirs.append((val, target, l2))
+                    cur.end = l2
+                    continue
+                if val == "(":
+                    if state == "args" and len(cur.words) == 1 and not cur.assigns and self.next_is(")"):
+                        self.token(here_fn())  # определение функции: имя () тело
+                        pending_fn = cur.words[0][0]
+                        cur = Cmd(self.line, here_fn())
+                        state = "cmd"
+                        continue
+                    if state == "cmd" and self.peek() == "(":
+                        self.adv()
+                        self.arith(here_fn())
+                        cur.kind, cur.end, state = "arith", self.line, "args"
+                        continue
+                    flush()
+                    blocks.append(("(", pending_fn))
+                    pending_fn = None
+                    cur = Cmd(self.line, here_fn())
+                    state = "cmd"
+                    continue
+                if val == ")":
+                    flush()
+                    if blocks and blocks[-1][0] == "(":
+                        blocks.pop()
+                        cur = Cmd(self.line, here_fn())
+                        state = "args"
+                        continue
+                    if stop == ")":
+                        self.i -= 1
+                        return
+                    state = "args"
+                    continue
+                flush()
+                state = "pattern" if val in (";;", ";&", ";;&") and cases else "cmd"
+                continue
+            lit = unquote(val)
+            if state == "cmd" and not cur.words and not cur.assigns:
+                if lit in RESERVED_OPEN:
+                    continue
+                if lit in RESERVED_CLOSE or (lit == "esac" and cases):
+                    flush()
+                    cases -= lit == "esac"
+                    state = "args"
+                    continue
+                if lit == "{":
+                    flush()
+                    blocks.append(("{", pending_fn))
+                    pending_fn = None
+                    cur = Cmd(self.line, here_fn())
+                    continue
+                if lit == "}":
+                    flush()
+                    while blocks and blocks.pop()[0] != "{":
+                        pass
+                    cur = Cmd(self.line, here_fn())
+                    state = "args"
+                    continue
+                if lit in ("for", "select"):
+                    state = "for_name"
+                    continue
+                if lit == "case":
+                    cases += 1
+                    state = "case_word"
+                    continue
+                if lit == "function":
+                    _, pending_fn, _ = self.token(here_fn())
+                    if self.next_is("("):
+                        self.token(here_fn())
+                        if self.next_is(")"):
+                            self.token(here_fn())
+                    continue
+                if lit == "[[":
+                    cur.line, cur.kind, state = line, "test", "test"
+                    continue
+            if state == "cmd" and not cur.words and ASSIGN.match(val):
+                if cur.empty():
+                    cur.line = line
+                cur.assigns.append((val, line))
+                cur.end = self.line
+                continue
+            if cur.empty():
+                cur.line = line
+            cur.words.append((val, line))
+            cur.end = self.line
+            state = "args"
+
+
+def parse_text(text):
+    lx = Lexer(text)
+    lx.parse_list()
+    return lx.cmds
+
+
+def parse_file(path):
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return parse_text(fh.read())
+
+
+def call_name(c):
+    """Имя, которое команда вызывает как функцию: слово на месте имени команды."""
+    return unquote(c.words[0][0]) if c.kind == "simple" and c.words else None
+
+
+def is_forward(c, funcs=()):
+    """Индекс слова `port-forward` в команде, которая открывает проброс, иначе None.
+
+    Вызов проброса — простая команда со словом `port-forward` на месте аргумента,
+    если её имя не из закрытого перечня имён, которые программ из своих аргументов
+    не исполняют (встроенные без исполнения чужого кода и чистые фильтры — те же
+    INERT_BUILTINS и PURE, что судят продление), либо это функция прогонщика
+    (`funcs`: одноимённая функция исполняется вместо встроенной). Имя kubectl для
+    этого не нужно (#2893, круг 2): kubectl, обёртка (command, env, sudo, timeout …),
+    функция-обёртка (`kc() { kubectl "$@"; }`), имя команды из переменной
+    (`${KUBECTL:-kubectl}`) и незнакомая программа — вызов; имя, которого перечень
+    не называет, — не «наверное, не kubectl». Слово внутри строкового литерала
+    (`echo "kubectl port-forward …"`) словом команды не является."""
+    if c.kind != "simple" or len(c.words) < 2:
+        return None
+    name = call_name(c)
+    if name is not None and name in INERT_BUILTINS | PURE and name not in funcs:
+        return None
+    return next((j for j in range(1, len(c.words)) if unquote(c.words[j][0]) == "port-forward"), None)
+
+
+def forward_target(c, funcs=()):
+    """Слово цели вызова проброса (как написано) либо None."""
+    j = is_forward(c, funcs)
+    return None if j is None else target_after([w for w, _ in c.words], j)
+
+
+def forward_commands(cmds, funcs=()):
+    return [c for c in cmds if is_forward(c, funcs) is not None]
+
+
+def defs_of(cmds):
+    """Тела функций: имя → команды тела (вложенные подстановки — тоже тело)."""
+    defs = {}
+    for c in cmds:
+        if c.fn:
+            defs.setdefault(c.fn, []).append(c)
+    return defs
+
+
 # Обёртка записи — функция исполнителя суда, а не прогонщика.
 OWN_FUNCS = {"kubectl"}
 
 
-def read_funcs(paths):
-    """Тела функций из дампов `declare -f` миров: имя → строки кода тела."""
-    funcs = {}
+def dump_defs(paths):
+    """Тела функций из дампов `declare -f` миров."""
+    defs = {}
     for path in paths:
-        if not os.path.exists(path):
-            continue
-        name = None
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            for line in fh.read().split("\n"):
-                m = FN_HEAD.match(line)
-                if m:
-                    name = m.group(1)
-                    funcs.setdefault(name, [])
-                elif name:
-                    funcs[name].append(code_of(line))
+        if os.path.exists(path):
+            for n, body in defs_of(parse_file(path)).items():
+                defs.setdefault(n, []).extend(body)
+    return defs
+
+
+def function_bodies(recs, cmds):
+    """Имя → (команды тела, взято ли из текста прогонщика): из дампов миров (в том
+    числе функции, заведённые подключёнными файлами) и из самого прогонщика (в том
+    числе функции, определённые ниже конца префикса, — их дамп не видел)."""
+    funcs = {n: (b, False) for n, b in dump_defs([r + ".funcs" for r in recs]).items()}
+    funcs.update({n: (b, True) for n, b in defs_of(cmds).items()})
     return funcs
 
 
-def word_re(name):
-    return re.compile(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])")
-
-
-def def_re(name):
-    return re.compile(r"^\s*(?:function\s+" + re.escape(name) + r"\b|" + re.escape(name) + r"\s*\(\))")
-
-
 def forwarding(funcs):
-    """Функции, чьё исполнение открывает проброс: в теле вызов kubectl … port-forward
-    либо вызов другой такой функции (замыкание)."""
-    fwd = {n for n, body in funcs.items() if n not in OWN_FUNCS
-           and any(forward_targets([(0, c)]) for c in body)}
+    """Функции, чьё исполнение открывает проброс: в теле вызов проброса (слово
+    port-forward в команде, см. is_forward) либо вызов другой такой функции
+    (замыкание). Обёртка, передающая слова дальше (`kc() { kubectl "$@"; }`),
+    функцией проброса не является: проброс называет её вызывающий, и место вызова —
+    у него."""
+    fwd = {n for n, (body, _) in funcs.items() if n not in OWN_FUNCS and forward_commands(body, funcs)}
     grew = True
     while grew:
         grew = False
-        for n, body in funcs.items():
-            if n in fwd or n in OWN_FUNCS:
-                continue
-            if any(word_re(f).search(c) for f in fwd for c in body):
+        for n, (body, _) in funcs.items():
+            if n not in fwd and n not in OWN_FUNCS and any(call_name(c) in fwd for c in body):
                 fwd.add(n)
                 grew = True
     return fwd
 
 
-def called_funcs(recs, prefix):
-    """Функции прогонщика, стоявшие в стеке записанного вызова проброса."""
+def called_funcs(recs, prefix, named):
+    """Функции прогонщика, стоявшие в стеке записанного вызова проброса НЕ НИЖЕ
+    места, где проброс назван словом port-forward (`named` — строки команд вызова
+    проброса в тексте). Функция ниже такого места — обёртка, передающая слова
+    дальше: проброс выбрал её вызывающий, и назвать её функцией проброса значило бы
+    сделать местом вызова каждый её вызов, в том числе `kc get …`, который записи
+    проброса не даёт никогда. Стек без такого места (слово собрано при исполнении)
+    называет функциями проброса все свои функции, как прежде."""
     names = set()
     for rec in recs:
         if not os.path.exists(rec):
             continue
         with open(rec, encoding="utf-8", errors="replace") as fh:
             for line in fh:
-                for fr in line.split("\t", 1)[0].split("\x1e"):
-                    parts = fr.split("\x1d")
-                    if len(parts) == 3 and parts[0] == prefix and parts[2] not in {"source", "main"} | OWN_FUNCS:
-                        names.add(parts[2])
+                frames = [p for p in (fr.split("\x1d") for fr in line.split("\t", 1)[0].split("\x1e"))
+                          if len(p) == 3 and p[0] == prefix and p[1].isdigit()]
+                at = [k for k, p in enumerate(frames) if int(p[1]) in named]
+                for p in frames[max(at) if at else 0:]:
+                    if p[2] not in {"source", "main"} | OWN_FUNCS:
+                        names.add(p[2])
     return names
 
 
-def forwarding_of(recs, prefix):
-    """Функции проброса: по дампам функций миров и по стеку записанных вызовов."""
-    return forwarding(read_funcs([r + ".funcs" for r in recs])) | called_funcs(recs, prefix)
+def forwarding_of(recs, prefix, cmds):
+    """Функции проброса: по телам (дампы миров и текст прогонщика) и по стеку
+    записанных вызовов."""
+    funcs = function_bodies(recs, cmds)
+    named = {n for c in forward_commands(cmds, funcs) for n in range(c.line, c.end + 1)}
+    return forwarding(funcs) | called_funcs(recs, prefix, named)
 
 
-def call_lines(code, fwd):
-    """Строки кода, где имя функции проброса стоит словом, — кроме её объявления."""
-    rx = [(f, word_re(f), def_re(f)) for f in sorted(fwd)]
-    return sorted({n for n, c in code for f, w, d in rx if w.search(c) and not d.match(c)})
+def call_lines(cmds, fwd):
+    """Строки, где функция проброса ВЫЗВАНА: её имя стоит на месте имени команды
+    (в том числе в подстановке команды и в теле другой функции). Определение
+    функции и имя в тексте вызовом не считаются."""
+    return sorted({c.words[0][1] for c in cmds if call_name(c) in fwd})
+
+
+# ─── ПРОДЛЕНИЕ НЕ ИСПОЛНЯЕТ ШАГОВ С ПОБОЧНЫМ ДЕЙСТВИЕМ (#2893) ────────────────
+# Строки, на которые префикс дорастает, исполняются, только если каждая их команда
+# ИНЕРТНА под подменами суда: не ходит в сеть, не пишет вне журналов суда и не
+# исполняет кода, который суд не объявил. Инертна команда, чьё имя —
+#   встроенная команда оболочки без исполнения чужого кода (ниже, INERT_BUILTINS);
+#   подменённый инструмент (подставной kubectl и заглушки — FWD_GATE_SUBSTITUTED);
+#   функция прогонщика, каждая команда тела которой инертна (по замыканию);
+#   python3 с объявленным производителем данных суда (FWD_GATE_PRODUCERS);
+#   чистый фильтр текста (PURE);
+# и чьи перенаправления пишут только в /dev/null, дескриптор или /tmp/ (журналы
+# префикса переведены в каталог суда). Остальное — шаг с побочным действием, и
+# продление на нём ОСТАНАВЛИВАЕТСЯ находкой. Список закрыт: имя, которого в нём
+# нет, — не «наверное безвредно», а причина остановиться.
+SUBSTITUTED = set(os.environ.get("FWD_GATE_SUBSTITUTED", "").split())
+PRODUCERS = set(os.environ.get("FWD_GATE_PRODUCERS", "").split())
+INERT_BUILTINS = {":", "true", "false", "echo", "printf", "local", "declare", "typeset", "export",
+                  "readonly", "unset", "shift", "set", "shopt", "test", "[", "read", "wait", "return",
+                  "break", "continue", "let", "cd", "pushd", "popd", "getopts", "mapfile", "readarray",
+                  "type", "exit", "pwd"}
+PURE = {"cut", "tr", "head", "tail", "wc", "basename", "dirname", "sleep", "grep", "cat", "base64",
+        "date", "seq", "readlink", "realpath"}
+WRITES = {">", ">>", ">|", "<>", "&>", "&>>", ">&"}
+# Имена, присваивание которых меняет, ЧТО исполнится дальше: подмены суда живут в PATH.
+SEARCH_VARS = {"PATH", "BASH_ENV", "ENV"}
+
+
+def plain(raw):
+    """Слово без кавычек, подстановки остаются текстом."""
+    return raw.replace('"', "").replace("'", "")
+
+
+def safe_write(op, target):
+    t = plain(target)
+    if op in (">&", "<&") and re.fullmatch(r"\d+-?|-", t):
+        return True
+    return t in ("/dev/null", "/dev/stdout", "/dev/stderr") or t.startswith("/dev/fd/") \
+        or (t.startswith("/tmp/") and ".." not in t)
+
+
+def step_of(c, funcs, seen=frozenset()):
+    """(строка, что это) первого шага с побочным действием в команде; None — инертна."""
+    for op, target, line in c.redirs:
+        if op in WRITES and not safe_write(op, target):
+            return line, f"запись перенаправлением в {target}"
+    for a, line in c.assigns:
+        if re.split(r"[+\[=]", a, maxsplit=1)[0] in SEARCH_VARS:
+            return line, f"присваивание {a.split('=', 1)[0]} меняет поиск программ, а подмены суда живут в нём"
+    if c.kind != "simple" or not c.words:
+        return None
+    raw, line = c.words[0]
+    name = unquote(raw)
+    args = [unquote(w) for w, _ in c.words[1:]]
+    if name is None:
+        return line, f"имя команды {raw} собирается при исполнении"
+    if name == "command":
+        if args[:1] in (["-v"], ["-V"]):
+            return None
+        return line, "command обходит функции прогонщика и подмены суда"
+    if name in ("export", "declare", "typeset", "local", "readonly") and \
+            any(re.split(r"[+\[=]", a or "", maxsplit=1)[0] in SEARCH_VARS for a in args):
+        return line, f"{name} меняет поиск программ, а подмены суда живут в нём"
+    # Функция прогонщика прежде встроенной: одноимённая функция исполняется вместо неё.
+    if name in funcs and name not in OWN_FUNCS:
+        if name in seen:
+            return None
+        body, from_text = funcs[name]
+        for b in sorted(body, key=lambda x: x.line):
+            s = step_of(b, funcs, seen | {name})
+            if s:
+                where = f" (строка {s[0]})" if from_text else ""
+                return line, f"в теле функции {name}{where}: {s[1]}"
+        return None
+    if name in INERT_BUILTINS or name in SUBSTITUTED:
+        return None
+    if name in ("python3", "python"):
+        script = next((w for w, _ in c.words[1:] if not (unquote(w) or "").startswith("-")), "")
+        if any(plain(script) == p or plain(script).endswith("/" + p) for p in PRODUCERS):
+            return None
+        return line, f"python3 {script} — не объявленный производитель данных суда"
+    if name in PURE:
+        return None
+    return line, f"внешняя программа {name}"
+
+
+def first_step(cmds, after, upto, funcs):
+    """Первый шаг с побочным действием среди команд строк (after, upto] вне тел
+    функций (тело исполняется, только когда функцию зовут, и судится через вызов)."""
+    for c in sorted((c for c in cmds if c.fn is None and after < c.line <= upto), key=lambda c: c.line):
+        s = step_of(c, funcs)
+        if s:
+            return s
+    return None
 
 
 if sys.argv[1] == "last":
-    ends = [last for _, last in forward_commands(read_code(sys.argv[2]))]
+    cmds = parse_file(sys.argv[2])
+    ends = [c.end for c in forward_commands(cmds, defs_of(cmds))]
     if ends:
         print(max(ends))
     sys.exit(0)
 
 if sys.argv[1] == "extend":
-    # extend <файл> <конец префикса> <префикс> <записи миров…> — строка ниже конца
-    # префикса, где зовётся функция проброса (последняя такая); пусто — некуда.
-    end = int(sys.argv[3])
-    below = [n for n in call_lines(read_code(sys.argv[2]), forwarding_of(sys.argv[5:], sys.argv[4])) if n > end]
+    # extend <файл> <конец префикса> <префикс> <предел> <записи миров…> — строка ниже
+    # конца префикса (и выше предела, если он не 0), где зовётся функция проброса
+    # (последняя такая); пусто — некуда.
+    cmds = parse_file(sys.argv[2])
+    end, limit = int(sys.argv[3]), int(sys.argv[5])
+    below = [n for n in call_lines(cmds, forwarding_of(sys.argv[6:], sys.argv[4], cmds))
+             if n > end and (not limit or n < limit)]
     if below:
         print(max(below))
+    sys.exit(0)
+
+if sys.argv[1] == "inert":
+    # inert <файл> <от> <до> <записи миров…> — «<строка>|<что это>» первого шага с
+    # побочным действием в строках (от, до]; пусто — продлевать можно.
+    cmds = parse_file(sys.argv[2])
+    s = first_step(cmds, int(sys.argv[3]), int(sys.argv[4]), function_bodies(sys.argv[5:], cmds))
+    if s:
+        print(f"{s[0]}|{s[1].replace('|', '¦')}")
     sys.exit(0)
 
 # ─── judge ───────────────────────────────────────────────────────────────────
 worlds = sys.argv[2].split(";")
 mirror = sys.argv[3]
 runners = []
+# Разобранный текст и исход продления у каждого прогонщика: «<продлений>:<строка
+# остановки>:<причина>», 0 — продление не останавливалось.
+parsed, extension = {}, {}
 for row in sys.argv[4:]:
-    rel, path, first, last, prefix, recs = row.split("|", 5)
+    rel, path, first, last, prefix, ext, recs = row.split("|", 6)
     runners.append((rel, int(first), int(last), read_code(path), prefix,
                     [r for r in recs.split(",") if r]))
+    parsed[rel] = parse_file(path)
+    n_ext, stop, stop_why = (ext.split(":", 2) + ["0", "0", ""])[:3] if ext else ("0", "0", "")
+    extension[rel] = (int(n_ext or 0), int(stop or 0), stop_why)
 
 services, knobs, ports, keys = set(), set(), set(), set()
 SERVICE_KINDS = {"svc", "service", "services"}
@@ -559,28 +1208,35 @@ def add(why, n, reason):
 
 sites_all, covered_all, execs, calls, bare, unrecorded = 0, 0, 0, 0, [], 0
 fn_sites_all, fn_names_all, workload = 0, set(), set()
+exts_all, stops_all = 0, 0
 for rel, first, last, code, prefix, recs in runners:
     outside = [(n, c) for n, c in code if not (first and first <= n <= last)]
     judged += sum(1 for _, c in outside if c.strip())
-    why, why_other, dead = {}, {}, []
-    # Места вызова вне блока — первая строка каждой команды с вызовом проброса и
-    # каждая строка, где зовётся функция проброса (её вызов — тоже вызов проброса).
-    fwd = forwarding_of(recs, prefix)
+    why, why_other, dead, blocked = {}, {}, [], []
+    cmds = parsed[rel]
+    n_ext, stop, stop_why = extension[rel]
+    exts_all += n_ext
+    stops_all += 1 if stop else 0
+    # Места вызова вне блока — первая строка каждой РАЗОБРАННОЙ команды вызова
+    # проброса (слово port-forward, см. is_forward) и каждая строка, где функция
+    # проброса ВЫЗВАНА (её вызов — тоже вызов проброса). Имя в тексте строки местом
+    # вызова не является.
+    fwd = forwarding_of(recs, prefix, cmds)
     fn_names_all |= fwd
-    fn_sites = set(call_lines(outside, fwd))
-    sites = sorted({f for f, _ in forward_commands(outside)} | fn_sites)
+    funcs = function_bodies(recs, cmds)
+    fwd_cmds = [c for c in forward_commands(cmds, funcs) if not (first and first <= c.line <= last)]
+    fn_sites = {n for n in call_lines(cmds, fwd) if not (first and first <= n <= last)}
+    sites = sorted({c.line for c in fwd_cmds} | fn_sites)
     sites_all += len(sites)
     fn_sites_all += len(fn_sites)
-    # СТАТИЧЕСКИ: служба поставщика литералом (судится и там, куда исполнение
-    # не доходит).
-    for cmd in commands(outside):
-        if "port-forward" not in " ".join(c for _, c in cmd):
-            continue
-        for n, c in cmd:
-            for m in TARGET.finditer(c):
-                r = provider_ref(m.group(0))
-                if r:
-                    add(why, cmd[0][0], r)
+    # СТАТИЧЕСКИ: служба поставщика литералом в цели вызова (судится и там, куда
+    # исполнение не доходит).
+    for c in fwd_cmds:
+        t = forward_target(c, funcs)
+        m = TARGET.search(t) if t else None
+        r = provider_ref(m.group(0)) if m else None
+        if r:
+            add(why, c.line, r)
     # ИСПОЛНЕНИЕМ: цель каждого записанного вызова — уже подставленная.
     executed = set()
     for k, rec in enumerate(recs):
@@ -634,11 +1290,30 @@ for rel, first, last, code, prefix, recs in runners:
                 r = provider_ref(target)
                 if r:
                     add(why if where == rel else why_other, no if where == rel else (where, no), r)
-    for n in sites:
-        if n in executed:
-            covered_all += 1
-        else:
-            dead.append(n)
+    # Не исполненное из-за остановки продления — не «мёртвое место», а следствие
+    # названной находки: вызов ниже строки остановки и вызов в теле функции, каждый
+    # вызов которой сам заблокирован (по замыканию).
+    unexec = [n for n in sites if n not in executed]
+    covered_all += len(sites) - len(unexec)
+    held = {n for n in unexec if stop and n >= stop}
+    if stop:
+        owner = {c.words[0][1]: c.fn for c in cmds if call_name(c) in fwd}
+        owner.update({c.line: c.fn for c in fwd_cmds})
+        callers = {}
+        for c in cmds:
+            if c.words and c.kind == "simple":
+                callers.setdefault(call_name(c), set()).add(c.words[0][1])
+        grew = True
+        while grew:
+            grew = False
+            for n in unexec:
+                f = owner.get(n)
+                if n not in held and f and callers.get(f) and all(
+                        x in held or x >= stop for x in callers[f]):
+                    held.add(n)
+                    grew = True
+    blocked = sorted(held)
+    dead = [n for n in unexec if n not in held]
     for n, c in outside:
         for k, rx in key_re:
             if rx.search(c):
@@ -662,6 +1337,11 @@ for rel, first, last, code, prefix, recs in runners:
         findings.append(
             f"{rel}:{n} · вне блока: вызов проброса не исполнился ни в одном мире суда "
             f"({', '.join(worlds)}) — его цель суду неизвестна, и «ЧИСТО» о нём утверждать нечего")
+    if stop:
+        findings.append(
+            f"{rel}:{stop} · продлевать нельзя: {stop_why} — префикс дорастает до вызова "
+            f"функции проброса ниже, а этот шаг исполнился бы вне подмен суда; проба его не "
+            f"исполняет, и вызовы на строках {', '.join(map(str, blocked)) or '—'} суду не видны")
 
 for f in findings:
     print("F|" + f)
@@ -671,6 +1351,7 @@ print(f"C|вне блока строк осмотрено {judged} · опозн
       f" функций {len(fn_names_all)}): исполнено в мирах суда {covered_all},"
       f" не исполнено {sites_all - covered_all} · исполнений прогонщика {execs},"
       f" вызовов проброса записано {calls}, мимо записи {unrecorded}"
+      f" · продлений префикса {exts_all}, остановлено на шаге с побочным действием {stops_all}"
       f" · целью без вида {len(bare)} (НЕ судятся: имя пода не называет службы)"
       + (f": {', '.join(bare)}" if bare else "")
       + f" · целью-нагрузкой {len(workload)} (судятся по стволу имени служб блока)")
@@ -771,20 +1452,20 @@ construct_end() {
 }
 
 exec_runners() {
-  local row rel abs last_fwd e ext pre recs w k name iam edge r
+  local row rel abs last_fwd e ext pre recs w k name iam edge r n_ext stop stop_why e2 step next
   local -a fns
   write_analyzer
   for row in "${RUNNER_ROWS[@]}"; do
     IFS='|' read -r rel abs _ _ <<<"$row"
     last_fwd="$(python3 "$WORK/analyze.py" last "$abs")" || {
-      FINDINGS+=("$rel: разборщик не прочитал файл — исполнять нечего и судить нечем"); EXEC_ROWS+=("$row||"); continue; }
-    if [ -z "$last_fwd" ]; then EXEC_ROWS+=("$row||"); continue; fi
+      FINDINGS+=("$rel: разборщик не прочитал файл — исполнять нечего и судить нечем"); EXEC_ROWS+=("$row|||"); continue; }
+    if [ -z "$last_fwd" ]; then EXEC_ROWS+=("$row|||"); continue; fi
     # Префикс кончается там, где кончается КОНСТРУКЦИЯ с последним вызовом:
     # вызов внутри цикла или функции без её конца не разбирается оболочкой.
     e="$(construct_end "$abs" "$last_fwd")"
     if [ -z "$e" ]; then
       FINDINGS+=("$rel: префикс до последнего вызова проброса (строка $last_fwd) не разбирается оболочкой ни на одной строке до конца файла — исполнять нечего")
-      EXEC_ROWS+=("$row||"); continue
+      EXEC_ROWS+=("$row|||"); continue
     fi
     build_mirror
     pre="$MIRROR/deploy/scripts/$(basename "$abs")"
@@ -792,9 +1473,21 @@ exec_runners() {
     # проброс, позванная ниже последнего вызова, записанного текстом, за концом
     # префикса не исполнялась, а место её тела исполнялось законным вызовом выше —
     # и покрытие, считавшее места, молчало. Поэтому префикс ДОРАСТАЕТ: после
-    # исполнения разборщик узнаёт функции проброса (по дампу функций миров) и
-    # ищет ниже конца префикса строку, где имя такой функции стоит словом; нашлась —
-    # префикс продлевается до конца её конструкции и исполняется заново.
+    # исполнения разборщик узнаёт функции проброса (по дампу функций миров и по
+    # тексту прогонщика) и ищет ниже конца префикса строку, где такая функция
+    # ВЫЗВАНА; нашлась — префикс продлевается до конца её конструкции и исполняется
+    # заново.
+    #
+    # ПРОДЛЕНИЕ НЕ ИСПОЛНЯЕТ ШАГОВ С ПОБОЧНЫМ ДЕЙСТВИЕМ (#2893). Строки, на которые
+    # префикс дорастает, — это шаги прогонщика ПОСЛЕ пробросов: посев, прогон суит.
+    # Прежде продление исполняло их как есть, и вызов помощника ниже строки посева
+    # запускал настоящий посев — запросы к портам localhost, запись в судимое
+    # дерево. Теперь до исполнения разборщик судит каждую команду продлеваемых строк
+    # (и тела функций, которые они зовут): шаг вне подмен суда — не исполняется,
+    # продление останавливается на нём (строка остановки — предел для следующих
+    # продлений: вызовы выше него ещё дорастают), а вызовы ниже становятся
+    # находкой «продлевать нельзя» с его строкой и причиной.
+    n_ext=0; stop=0; stop_why=""
     while :; do
       sed -n "1,${e}p" "$abs" | sed "s#/tmp/#$WORK/tmp/#g" > "$pre"
       recs=""; k=0; fns=()
@@ -805,16 +1498,24 @@ exec_runners() {
         exec_prefix "$pre" "$r" "$iam" "$edge"
         recs="$recs${recs:+,}$r"; fns+=("$r")
       done
-      ext="$(python3 "$WORK/analyze.py" extend "$abs" "$e" "$pre" "${fns[@]}")" || {
-        FINDINGS+=("$rel: разборщик не узнал функций проброса — продлевать префикс нечем, и вызов помощника ниже суду не виден"); break; }
-      [ -n "$ext" ] || break
-      e="$(construct_end "$abs" "$ext")"
-      if [ -z "$e" ]; then
-        FINDINGS+=("$rel: префикс до вызова функции проброса (строка $ext) не разбирается оболочкой ни на одной строке до конца файла — вызов суду не виден")
-        break
-      fi
+      next=""
+      while :; do
+        ext="$(python3 "$WORK/analyze.py" extend "$abs" "$e" "$pre" "$stop" "${fns[@]}")" || {
+          FINDINGS+=("$rel: разборщик не узнал функций проброса — продлевать префикс нечем, и вызов помощника ниже суду не виден"); break 2; }
+        [ -n "$ext" ] || break 2
+        e2="$(construct_end "$abs" "$ext")"
+        if [ -z "$e2" ]; then
+          FINDINGS+=("$rel: префикс до вызова функции проброса (строка $ext) не разбирается оболочкой ни на одной строке до конца файла — вызов суду не виден")
+          break 2
+        fi
+        step="$(python3 "$WORK/analyze.py" inert "$abs" "$e" "$e2" "${fns[@]}")" || {
+          FINDINGS+=("$rel: разборщик не рассудил, инертны ли строки $((e + 1))–$e2 — продлевать префикс нельзя, и вызов помощника на строке $ext суду не виден"); break 2; }
+        [ -n "$step" ] || { next="$e2"; break; }
+        stop="${step%%|*}"; stop_why="${step#*|}"
+      done
+      e="$next"; n_ext=$((n_ext + 1))
     done
-    EXEC_ROWS+=("$row|$pre|$recs")
+    EXEC_ROWS+=("$row|$pre|$n_ext:$stop:$stop_why|$recs")
   done
 }
 
@@ -1092,6 +1793,126 @@ TWIN
   out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$WORK/empty" 2>&1)"; rc=$?
   _st "пустой обход — отказ" "$([ "$rc" != 0 ] && echo 1 || echo 0)" "rc=$rc / $out"
 
+  # Оси 11 и 12 идут в СВОИХ корнях: их прогонщики не меняют переписи основного
+  # корня (ось 5), и каждая пара «инъекция — близнец» судится своим выводом.
+  # _one_in <вывод> <файл> <строка> <текст находки>: о файле ровно одна находка,
+  # и она стоит на этой строке с этим текстом.
+  _one_in() {
+    [ "$(grep -c "$2" <<<"$1")" = 1 ] && grep -q "$2:$3 · $4" <<<"$1" && echo 1 || echo 0
+  }
+  _seed_root() {  # <корень> — синтетика близнеца и производители, как у основного
+    mkdir -p "$1/deploy/scripts"
+    cp "$ROOT_DEFAULT/deploy/scripts/identity-provider-landing.py" \
+       "$ROOT_DEFAULT/deploy/scripts/e2e-optional-transports.py" "$1/deploy/scripts/"
+    write_manifest "$1" comp
+  }
+
+  echo "ось 11 — место вызова — вызов в разобранной команде, а не имя в тексте строки (#2893)"
+  # Имя помощника проброса внутри строкового литерала — ниже префикса и в теле
+  # функции — вызовом не является: ни места вызова, ни продления, ни находки о
+  # «неисполненном вызове» (опыт g3). Близнец отличается ОДНИМ фактом: в теле
+  # той же функции имя стоит в подстановке команды, `"$(pf_core …)"`, — это вызов,
+  # и он ведёт к поставщику.
+  local txt="$WORK/text"
+  _seed_root "$txt"
+  { cat "$d/newman-twin.sh"
+    echo 'note() { echo "pf_core provider-a 12 — имя помощника в тексте"; }'
+    echo 'note; echo "[x] pf_core provider-a 13"'
+  } > "$txt/deploy/scripts/newman-text.sh"
+  { cat "$d/newman-twin.sh"
+    echo 'note() { echo "$(pf_core provider-a 12)"; }'
+    echo 'note; echo "[x] pf_core provider-a 13"'
+  } > "$txt/deploy/scripts/newman-call.sh"
+  out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$txt" 2>&1 | grep -v '^  ok   ')"; rc=${PIPESTATUS[0]}
+  _st "имя функции проброса в тексте строки — не место вызова: о прогонщике ни одной находки" \
+      "$(grep -q 'newman-text.sh' <<<"$out" && echo 0 || echo 1)" "$out"
+  _st "подстановка команды с тем же именем — вызов: находка с координатой вызова функции" \
+      "$(_one_in "$out" newman-call.sh "$((twin_lines + 2))" 'вне блока: проброс к службе поставщика provider-a')" "$out"
+  # Мест вызова вне блока: по семь от текста близнеца у обоих прогонщиков и два у
+  # близнеца оси — вызов pf_core в теле note и вызов note; в прогонщике с именем в
+  # тексте мест не прибавилось. Функций проброса две: pf_core и note.
+  _st "перепись считает вызовы, а не имена: мест 16, из них вызовов функций 6, функций 2, исполнены все" \
+      "$(grep -q 'вне блока мест вызова проброса 16 (из них вызовов функций проброса 6; функций 2): исполнено в мирах суда 16, не исполнено 0 · ' <<<"$out" && echo 1 || echo 0)" "$out"
+
+  echo "ось 12 — продление префикса не исполняет шагов с побочным действием (#2893)"
+  # Посев стоит в дереве вне каталога прогонщиков и, исполнившись, пишет рядом с
+  # собой — в осматриваемый корень, как настоящий посев через ссылку зеркала. Вызов
+  # помощника ниже шага посева (в тексте прогонщика и в теле его функции) обязан
+  # остановить продление находкой, не исполнив посева. Близнецы отличаются ОДНИМ
+  # фактом — на месте `bash` встроенная `:`, шаг инертен: продление исполняется, и
+  # вызов ниже судится.
+  local side="$WORK/side"
+  _seed_root "$side"
+  mkdir -p "$side/tests/fx"
+  cat > "$side/tests/fx/setup.sh" <<'SEED'
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$here/out" && echo seeded > "$here/out/seeded"
+SEED
+  local sd='"$SCRIPT_DIR/../../tests/fx/setup.sh"'
+  { cat "$d/newman-twin.sh"; echo "bash $sd"; echo 'pf_core provider-a 12'; } > "$side/deploy/scripts/newman-seed.sh"
+  { cat "$d/newman-twin.sh"; echo ": $sd"; echo 'pf_core provider-a 12'; } > "$side/deploy/scripts/newman-seed-twin.sh"
+  { cat "$d/newman-twin.sh"; echo "seed_pf() { bash $sd; pf_core \"\$1\" 12; }"; echo 'seed_pf provider-a'; } \
+    > "$side/deploy/scripts/newman-seed-body.sh"
+  { cat "$d/newman-twin.sh"; echo "seed_pf() { : $sd; pf_core \"\$1\" 12; }"; echo 'seed_pf provider-a'; } \
+    > "$side/deploy/scripts/newman-seed-body-twin.sh"
+  # Состав корня — с ДИСКА, а не из индекса: предмет утверждения — файл, которого
+  # в индексе нет (запись посева), а у синтетического корня индекса нет вовсе.
+  before="$(find "$side" | sort)"
+  out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$side" 2>&1 | grep -v '^  ok   ')"; rc=${PIPESTATUS[0]}
+  after="$(find "$side" | sort)"
+  _st "посев не исполнен: осматриваемый корень после прогона тот же (посева out/ в нём нет)" \
+      "$([ "$before" = "$after" ] && [ ! -e "$side/tests/fx/out" ] && echo 1 || echo 0)" \
+      "$(diff <(printf '%s\n' "$before") <(printf '%s\n' "$after"))"
+  _st "шаг посева в продлеваемых строках — находка «продлевать нельзя» с его строкой и заблокированным вызовом" \
+      "$(_one_in "$out" newman-seed.sh "$((twin_lines + 1))" "продлевать нельзя: внешняя программа bash — .*на строках $((twin_lines + 2)) суду не видны")" "$out"
+  _st "близнец (шаг инертен) — продление исполнено, вызов ниже судится" \
+      "$(_one_in "$out" newman-seed-twin.sh "$((twin_lines + 2))" 'вне блока: проброс к службе поставщика provider-a')" "$out"
+  _st "посев в теле функции проброса — та же находка на строке вызова функции" \
+      "$(_one_in "$out" newman-seed-body.sh "$((twin_lines + 2))" "продлевать нельзя: в теле функции seed_pf (строка $((twin_lines + 1))): внешняя программа bash")" "$out"
+  _st "близнец тела (шаг инертен) — продление исполнено, вызов через функцию судится" \
+      "$(_one_in "$out" newman-seed-body-twin.sh "$((twin_lines + 2))" 'вне блока: проброс к службе поставщика provider-a')" "$out"
+  _st "остановки видны в переписи числом" \
+      "$(grep -q 'остановлено на шаге с побочным действием 2 · ' <<<"$out" && [ "$rc" != 0 ] && echo 1 || echo 0)" "rc=$rc / $out"
+
+  echo "ось 13 — проброс через функцию-обёртку и через имя команды из переменной — вызов проброса (#2893, круг 2)"
+  # Вызов проброса узнаётся по слову port-forward в разобранной команде, а не по
+  # имени kubectl: функция-обёртка (`kc() { kubectl "$@"; }`) и имя команды из
+  # переменной (`"$_k"` при `_k=kubectl`) открывают тот же проброс. Прежде такая
+  # строка ниже последнего вызова kubectl не была ни местом вызова, ни концом
+  # префикса, и о ней молчали и статический суд, и исполнение. Близнецы
+  # отличаются ОДНИМ фактом — цель ведёт к ядру. У обёртки есть и вызовы без
+  # проброса (`kc get pods`, выше и ниже): проброс выбирает её вызывающий, и
+  # такой вызов местом вызова проброса не становится — иначе он был бы «не
+  # исполненным ни в одном мире» (ни одной записи проброса он не даёт).
+  local wrap="$WORK/wrap"
+  _seed_root "$wrap"
+  local kc_def='kc() { kubectl "$@"; }' kc_get='kc -n "$NS" get pods >/dev/null 2>&1'
+  { cat "$d/newman-twin.sh"; echo "$kc_def"; echo "$kc_get"
+    echo 'kc -n "$NS" port-forward svc/provider-a "5:1" >/dev/null 2>&1 & PF_PIDS+=($!)'; echo "$kc_get"
+  } > "$wrap/deploy/scripts/newman-wrap.sh"
+  { cat "$d/newman-twin.sh"; echo "$kc_def"; echo "$kc_get"
+    echo 'kc -n "$NS" port-forward svc/core "5:3" >/dev/null 2>&1 & PF_PIDS+=($!)'; echo "$kc_get"
+  } > "$wrap/deploy/scripts/newman-wrap-twin.sh"
+  { cat "$d/newman-twin.sh"; echo '_k=kubectl'
+    echo '"$_k" -n "$NS" port-forward svc/provider-a "5:1" >/dev/null 2>&1 & PF_PIDS+=($!)'
+  } > "$wrap/deploy/scripts/newman-var.sh"
+  { cat "$d/newman-twin.sh"; echo '_k=kubectl'
+    echo '"$_k" -n "$NS" port-forward svc/core "5:3" >/dev/null 2>&1 & PF_PIDS+=($!)'
+  } > "$wrap/deploy/scripts/newman-var-twin.sh"
+  out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$wrap" 2>&1 | grep -v '^  ok   ')"; rc=${PIPESTATUS[0]}
+  _st "проброс через функцию-обёртку к поставщику — находка с координатой вызова обёртки" \
+      "$(_one_in "$out" newman-wrap.sh "$((twin_lines + 3))" 'вне блока: проброс к службе поставщика provider-a')" "$out"
+  _st "проброс через имя команды из переменной к поставщику — находка с координатой вызова" \
+      "$(_one_in "$out" newman-var.sh "$((twin_lines + 2))" 'вне блока: проброс к службе поставщика provider-a')" "$out"
+  _st "близнецы (цель — ядро) молчат, вызов обёртки без проброса местом вызова не стал" \
+      "$(grep -q -e 'newman-wrap-twin.sh' -e 'newman-var-twin.sh' <<<"$out" && echo 0 || echo 1)" "$out"
+  # Мест вызова вне блока: по семь от текста близнеца у четырёх прогонщиков и по
+  # одному дописанному вызову проброса — 32; вызовов функций проброса — по два
+  # вызова pf_core; обёртка функцией проброса не названа (функций одна), и все
+  # места исполнены: у каждого дописанного вызова есть запись.
+  _st "перепись: мест 32, из них вызовов функций 8, функций 1, исполнены все" \
+      "$(grep -q 'вне блока мест вызова проброса 32 (из них вызовов функций проброса 8; функций 1): исполнено в мирах суда 32, не исполнено 0 · ' <<<"$out" && [ "$rc" != 0 ] && echo 1 || echo 0)" "rc=$rc / $out"
+
   echo
   if [ "$ran" -eq 0 ]; then
     echo "ОТКАЗ: самопроверка не исполнила ни одного утверждения — вердикт беспредметен" >&2; return 1
@@ -1099,7 +1920,7 @@ TWIN
   if [ "$fails" -gt 0 ]; then
     echo "ОТКАЗ: провалено утверждений $fails из $ran" >&2; return 1
   fi
-  echo "ЧИСТО: $ran утверждений — проба способна упасть на прежней форме, на пробросе вне живости, на каждой из четырёх находок вне блока, на службе поставщика из переменной, из манифеста (x1b), на нагрузке поставщика под полным именем чарта, на помощнике, позванном после последнего вызова, записанного текстом, на месте вызова, которое не исполнилось, на вызове мимо записи и на прерванном исполнении, не тронуть осматриваемое дерево, смолчать на законном близнеце, объявить свою слепоту и назвать в переписи цель, которой не судит"
+  echo "ЧИСТО: $ran утверждений — проба способна упасть на прежней форме, на пробросе вне живости, на каждой из четырёх находок вне блока, на службе поставщика из переменной, из манифеста (x1b), на нагрузке поставщика под полным именем чарта, на помощнике, позванном после последнего вызова, записанного текстом, на месте вызова, которое не исполнилось, на вызове мимо записи и на прерванном исполнении, на вызове в подстановке команды и на шаге с побочным действием в продлеваемых строках, на пробросе через функцию-обёртку и через имя команды из переменной, смолчать на имени функции проброса в тексте строки и на вызове обёртки без проброса, не исполнить посев, не тронуть осматриваемое дерево, смолчать на законном близнеце, объявить свою слепоту и назвать в переписи цель, которой не судит"
   return 0
 }
 

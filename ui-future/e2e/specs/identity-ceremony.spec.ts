@@ -12,13 +12,14 @@ import {
   backupCodeOutside,
   newSeed,
   seedAddress,
-  seedHuman,
+  seedConfirmedHuman,
   seedSecondFactor,
   transferSession,
   type SeededHuman,
 } from "./ceremony-seed";
 import {
   ceremonyCensus,
+  confirmAddressFromLetter,
   formatCall,
   register,
   runTag,
@@ -29,6 +30,7 @@ import {
   type CeremonyCensus,
 } from "./fixtures";
 import { PROBE_FETCH } from "./issuance-guard.ts";
+import { LETTER_BUDGET_MS, stationMailbox, type Mailbox } from "./mail-receiver";
 import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
@@ -169,15 +171,30 @@ function expectContains(census: CeremonyCensus, method: string, path: string, qu
   ).toBeGreaterThan(0);
 }
 
+/**
+ * Человек сценария — посевом П-п (приёмка F6b, Р13): дальше экрана подтверждения
+ * проходит только подтверждённый адрес, и церемонии этого набора судят человека,
+ * который до них дошёл. Неподтверждённого заводит посев П-н там, где сценарий
+ * судит именно его (`address-confirmation.spec.ts`).
+ */
 async function seeded(testInfo: TestInfo, scenario: string, context?: BrowserContext): Promise<SeededHuman> {
   const seed = await newSeed(testInfo);
   try {
-    const human = await seedHuman(seed, seedAddress(scenario));
+    const human = await seedConfirmedHuman(seed, seedAddress(scenario));
     if (context) await transferSession(seed, context);
     return human;
   } finally {
     await seed.dispose();
   }
+}
+
+/**
+ * Письма приёмника на `email`, лежавшие ДО регистрации, — не её письма: код
+ * подтверждения берётся только из письма, принятого после (`awaitLetter`).
+ * Спрашивается до отправки формы регистрации.
+ */
+async function lettersBefore(mailbox: Mailbox, email: string): Promise<ReadonlySet<string>> {
+  return new Set((await mailbox.letters(email)).map((l) => l.id));
 }
 
 /** Метка обращения внутри сценария: своя у каждого заведённого человека. */
@@ -229,10 +246,13 @@ test("F8-01 · экран входа отдаёт консоль, и чужой 
 
 test("F8-03 · адрес, которого консоль не ведёт, отвечает названной страницей", async ({ page }) => {
   // verifies #2780 — близнец F8-01: изменён только открытый адрес церемонии.
-  await page.goto("/verification", { waitUntil: "domcontentloaded" });
+  // Адрес — `/recovery`: `/verification` стал экраном подтверждения адреса
+  // почты (приёмка F6b, §3.3 — сценарий на названную страницу остаётся за
+  // восстановлением доступа).
+  await page.goto("/recovery", { waitUntil: "domcontentloaded" });
   const heading = page.getByRole("heading", { name: "Такого адреса здесь нет" });
-  await expectScreen(page, "/verification", heading, "страница «такого адреса здесь нет»");
-  expect(pathOf(page), "перевода на панель быть не должно").toBe("/verification");
+  await expectScreen(page, "/recovery", heading, "страница «такого адреса здесь нет»");
+  expect(pathOf(page), "перевода на панель быть не должно").toBe("/recovery");
   // Путь наружу — действие, а не надпись: переход обязан привести ко входу.
   await page.getByRole("link", { name: "Перейти ко входу" }).click();
   await expectAddress(page, "/login", "путь наружу со страницы неведомого адреса не привёл ко входу");
@@ -560,9 +580,29 @@ test("F8-13 · отскок живой сессии и возврат после
   // verifies #2780 — условие C10: КАЖДАЯ навигация по адресу возврата — после
   // входа, после регистрации и отскок человека с живой сессией с экрана входа —
   // проходит один валидатор. Близнец положительный — свой адрес соблюдён.
-  test.setTimeout(180_000);
+  //
+  // Регистрация отдаёт НЕПОДТВЕРЖДЁННОГО человека, и дальше экрана
+  // подтверждения он не проходит (приёмка F6b, §3.3; F6b-12): адрес возврата
+  // регистрации доходит до цели ЧЕРЕЗ экран подтверждения. Судятся оба ухода —
+  // на экран подтверждения (чужой адрес туда не донесён: адреса возврата на нём
+  // нет вовсе) и с него, по коду из письма (Р9: `useReturnTo`).
   const use = testInfo.project.use;
   const origin = new URL(use.baseURL ?? "").origin;
+  // [адрес возврата · где кончаются отскок и возврат · экран подтверждения после регистрации]
+  const cases = [
+    ["//evil.example/dashboard", `${origin}/dashboard`, `${origin}/verification`],
+    ["https://evil.example/dashboard", `${origin}/dashboard`, `${origin}/verification`],
+    [
+      "/dashboard?f8-13=otskok",
+      `${origin}/dashboard?f8-13=otskok`,
+      `${origin}/verification?returnTo=%2Fdashboard%3Ff8-13%3Dotskok`,
+    ],
+  ] as const;
+  // Писем на каждый адрес возврата два — посев П-п отскока и регистрация, — и
+  // каждое ждётся до своего срока: срок последнего обязан кончиться ВНУТРИ
+  // предела пробы, иначе вместо «условие не создано» прогонщик назвал бы исход
+  // своим таймаутом, то есть красным (`mail-receiver.ts`, `LETTER_BUDGET_MS`).
+  test.setTimeout(180_000 + cases.length * 2 * LETTER_BUDGET_MS);
 
   async function inFreshContext(body: (page: Page) => Promise<void>, withSession: boolean) {
     const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
@@ -578,33 +618,35 @@ test("F8-13 · отскок живой сессии и возврат после
     }
   }
 
-  const expectLanded = async (page: Page, returnTo: string, expected: string) => {
+  const expectLanded = async (page: Page, returnTo: string, step: string, expected: string) => {
     await expect
-      .poll(() => page.url(), { message: `returnTo=${returnTo}: консоль увела не туда`, timeout: 30_000 })
+      .poll(() => page.url(), { message: `returnTo=${returnTo}, ${step}: консоль увела не туда`, timeout: 30_000 })
       .toBe(expected);
-    expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы чужое`).toBe(origin);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}, ${step}: происхождение страницы чужое`).toBe(origin);
   };
 
-  for (const [returnTo, expected] of [
-    ["//evil.example/dashboard", `${origin}/dashboard`],
-    ["https://evil.example/dashboard", `${origin}/dashboard`],
-    ["/dashboard?f8-13=otskok", `${origin}/dashboard?f8-13=otskok`],
-  ] as const) {
+  for (const [returnTo, expected, verification] of cases) {
     // Отскок: у браузера живая сессия, экран входа уводит сразу.
     await inFreshContext(async (page) => {
       await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
-      await expectLanded(page, returnTo, expected);
+      await expectLanded(page, returnTo, "отскок с экрана входа", expected);
     }, true);
-    // После регистрации: адрес возврата несёт экран регистрации.
+    // После регистрации: адрес возврата несёт экран регистрации, а до цели его
+    // доводит экран подтверждения.
     await inFreshContext(async (page) => {
+      const mailbox = stationMailbox();
+      const email = seedAddress(`F8-13-reg-${runStamp()}`);
+      const before = await lettersBefore(mailbox, email);
       await page.goto(`/registration?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
       const s = registrationScreen(page);
       await expectScreen(page, "/registration", s.submit, "экран регистрации");
-      await s.email.fill(seedAddress(`F8-13-reg-${runStamp()}`));
+      await s.email.fill(email);
       await s.password.fill(SEED_PASSWORD);
       const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
       expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
-      await expectLanded(page, returnTo, expected);
+      await expectLanded(page, returnTo, "уход регистрации на экран подтверждения", verification);
+      await confirmAddressFromLetter(page, mailbox, email, before);
+      await expectLanded(page, returnTo, "уход с экрана подтверждения по коду из письма", expected);
     }, false);
   }
 });
@@ -641,20 +683,35 @@ test("F8-40 · не заведённый адрес даёт побайтово 
 // ═══ S1 — группа C. Регистрация ═══════════════════════════════════════════════
 
 test("F8-14 · регистрация заводит человека и сразу даёт сессию", async ({ page }) => {
-  // verifies #2780
+  // verifies #2780 — сессию регистрация даёт сразу, а уводит — на экран
+  // подтверждения адреса, а не на панель: дальше него неподтверждённый не
+  // проходит (приёмка F6b, §3.3; F6b-12).
   const census = ceremonyCensus(page.context());
+  const email = seedAddress("F8-14");
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
   const s = registrationScreen(page);
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
-  await s.email.fill(seedAddress("F8-14"));
+  await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
   const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
-  await expectAddress(page, "/dashboard", "после регистрации консоль не увела на панель");
+  // Без адреса возврата регистрация уходит на корень, а корень неподтверждённой
+  // сессии — экран подтверждения без адреса возврата (F6b-15).
+  await expectAddress(page, "/verification", "после регистрации консоль не увела на экран подтверждения адреса");
   expectContains(census, "GET", LANE.csrf, "?form=register");
   expectContains(census, "POST", LANE.register);
   expectNoProvider(census);
   expect(await sessionHeld(page.context()), "после регистрации у браузера нет носителя сессии").toBe(true);
+  // Носитель — сессия ЭТОГО человека: край узнаёт его без второго ввода пароля.
+  const me = await page.request.get("/iam/v1/auth/me");
+  const view = (await me.json().catch(() => null)) as {
+    user?: { email?: unknown } | null;
+    session?: { emailVerified?: unknown };
+  } | null;
+  expect(
+    { status: me.status(), email: view?.user?.email, emailVerified: view?.session?.emailVerified },
+    `ответ края о сессии браузера после регистрации не называет заведённого человека: ${JSON.stringify(view)}`,
+  ).toEqual({ status: 200, email, emailVerified: false });
 });
 
 test("F8-15 · занятый адрес: отказ дословно, и экран не говорит, занят ли адрес", async ({ page }, testInfo) => {
@@ -693,30 +750,62 @@ test("F8-16 · пароль не отвечает правилу службы: �
   expectContains(census, "POST", LANE.register);
 });
 
-test("F8-17 · признак подтверждённости адреса показан, а действия, которого нет, не предложено", async ({ page }) => {
-  // verifies #2780
+test("F8-17 · признак подтверждённости адреса показан, и подтверждение предложено, пока адрес не подтверждён", async ({
+  page,
+}) => {
+  // verifies #2780 — действие «подтвердить адрес» на посадке ЕСТЬ — экран
+  // подтверждения (приёмка F6b, §3.3, Р8), и признак берётся из ответа
+  // глагола. Близнец внутри пробы — тот же человек после кода из письма:
+  // признак «подтверждён» показан, а подтверждать больше нечего.
+  const mailbox = stationMailbox();
+  const email = seedAddress("F8-17");
+  const before = await lettersBefore(mailbox, email);
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
   const s = registrationScreen(page);
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
-  const email = seedAddress("F8-17");
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
-  await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
-  await expectAddress(page, "/dashboard", "после регистрации консоль не увела на панель");
+  const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
+  expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
+  const registered = (await res.json()) as { session?: { emailVerified?: unknown } } | null;
+  expect(
+    registered?.session?.emailVerified,
+    `ответ регистрации не называет адрес неподтверждённым: ${JSON.stringify(registered)}`,
+  ).toBe(false);
 
-  // Состояние учётной записи — из ответа края о сессии, а не из догадки экрана.
+  // Адрес не подтверждён — консоль предлагает подтвердить именно его.
+  await expectAddress(page, "/verification", "после регистрации консоль не предложила подтвердить адрес");
+  const confirmation = page.getByRole("form", { name: "Подтверждение адреса почты" });
+  await expect(page.getByText(email, { exact: false }), "экран подтверждения не называет адрес").toBeVisible();
+  await expect(
+    confirmation.getByRole("textbox", { name: "Код из письма" }),
+    "неподтверждённому адресу не предложено ввести код из письма",
+  ).toBeVisible();
+  await expect(
+    confirmation.getByRole("button", { name: /Подтвердить$/ }),
+    "неподтверждённому адресу не предложено действие «Подтвердить»",
+  ).toBeVisible();
+
+  // Адрес подтверждён кодом из письма — признак из ответа края о сессии, и
+  // действия подтверждения больше нет.
+  await confirmAddressFromLetter(page, mailbox, email, before);
+  await expectAddress(page, "/dashboard", "после подтверждения адреса консоль не увела на панель");
   const me = page.waitForResponse((r) => new URL(r.url()).pathname === "/iam/v1/auth/me");
   await page.reload({ waitUntil: "domcontentloaded" });
-  const body = (await (await me).json()) as { session?: { emailVerified?: boolean } };
-  expect(typeof body.session?.emailVerified, "ответ о сессии не несёт emailVerified").toBe("boolean");
+  const body = (await (await me).json()) as { session?: { emailVerified?: unknown } } | null;
+  expect(
+    body?.session?.emailVerified,
+    `ответ о сессии после подтверждения не называет адрес подтверждённым: ${JSON.stringify(body)}`,
+  ).toBe(true);
 
   await page.getByRole("button", { name: "Учётная запись" }).click();
   const account = page.getByRole("dialog", { name: "Учётная запись" });
   await expect(account).toContainText(email);
-  await expect(account).toContainText(body.session?.emailVerified ? "Адрес подтверждён" : "Адрес не подтверждён");
+  await expect(account).toContainText("Адрес подтверждён");
+  await expect(account).not.toContainText("Адрес не подтверждён");
   await expect(
     account.getByRole("button", { name: /подтвердить/i }).or(account.getByRole("link", { name: /подтвердить/i })),
-    "предложено действие, производителя которого на посадке нет",
+    "подтверждённому адресу предложено подтверждение",
   ).toHaveCount(0);
 });
 
@@ -1097,7 +1186,8 @@ async function withSecondFactor<T>(
 ): Promise<T> {
   const seed = await newSeed(testInfo);
   try {
-    const human = await seedHuman(seed, seedAddress(scenario));
+    // Посев П-п: второй фактор неподтверждённому не заводится (приёмка F6b, §3.3).
+    const human = await seedConfirmedHuman(seed, seedAddress(scenario));
     const factor = await seedSecondFactor(seed);
     return await body(human, factor.backupCodes);
   } finally {

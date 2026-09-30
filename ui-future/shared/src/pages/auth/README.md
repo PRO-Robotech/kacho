@@ -13,6 +13,9 @@
 | адреса церемоний и как консоль отвечает на каждый — одно объявление | `ceremony-addresses.ts` (`CEREMONY_ROUTING`) |
 | вход, регистрация, выход | `LoginPage.tsx`, `RegistrationPage.tsx`, `LogoutPage.tsx` (+ `use-logout.ts`) |
 | адрес, которого консоль пока не ведёт | `CeremonyAddressNotServedPage.tsx` |
+| страж над каркасом: дальше входа — только с подтверждённым адресом | `AddressConfirmationGate.tsx` (+ `address-state.ts`, `use-address-state.ts`, `AddressStateUnknownPage.tsx`) |
+| экран подтверждения адреса почты (`/verification`) | `VerificationPage.tsx` |
+| уход на экран подтверждения по отказу края `EMAIL_NOT_VERIFIED` | `address-confirmation-exit.ts` |
 | параметры учётной записи (`/settings`) | `AccountSettingsPage.tsx` |
 | клиент глаголов полосы формы и единственный читатель «есть ли сессия» | `shared/src/api/login-lane.ts` |
 | разбор тела отказа — один у экранов и у сквозного набора | `shared/src/api/rpc-status.ts` |
@@ -26,11 +29,27 @@
 ## Адреса
 
 Маршрут получают все шесть: `/login`, `/registration`, `/logout`, `/settings`,
-`/recovery`, `/verification`. Консоль ведёт четыре; `/recovery` и
-`/verification` отвечают страницей «такого адреса здесь нет» до под-фазы S3 —
-восстановление доступа и подтверждение адреса ждут доставки письма. Экран входа
-пути на них не обещает. `/error` и `/consent` маршрутов не получают: это адреса
-чужих потоков.
+`/recovery`, `/verification`. Консоль ведёт пять; `/recovery` отвечает
+страницей «такого адреса здесь нет» — восстановление доступа ждёт своей
+под-фазы, и экран входа пути на него не обещает. `/verification` — экран
+подтверждения адреса почты (приёмка `docs/specs/sub-phase-F6b-console-and-edge-confirmed-address-gate-acceptance.md`
+в воркспейсе). `/error` и `/consent` маршрутов не получают: это адреса чужих
+потоков.
+
+## Дальше входа — только с подтверждённым адресом почты
+
+Учётная запись с неподтверждённым адресом видит вход, регистрацию, экран
+подтверждения и выход — и ничего больше (приёмка F6b, Р7). Каркас стоит за
+стражем (`AddressConfirmationGate.tsx`): он монтируется только на ответ края
+«адрес подтверждён», неподтверждённая сессия с любого адреса консоли уходит на
+экран подтверждения с адресом возврата, а «не названо» и «неизвестно» — своя
+страница с «Проверить снова» и «Выйти». Экран подтверждения
+(`VerificationPage.tsx`) решает по тому же ответу (`use-address-state.ts`), шлёт
+код из письма и новое письмо глаголами службы и отсчитывает срок до следующего
+письма только по `Retry-After` службы. Отказ края `EMAIL_NOT_VERIFIED` на любом
+запросе платформы уводит на экран подтверждения
+(`address-confirmation-exit.ts`, действие `confirm-address`). Рубеж — на крае и у
+службы; страж нужен человеку, а не вместо рубежа.
 
 ## Чего консоль не делает
 
@@ -50,9 +69,12 @@
 
 ## Чем удержано
 
-- браузерные пробы — `ui-future/e2e/specs/identity-ceremony.spec.ts` и
-  `ui-future/e2e/specs/account-settings.spec.ts` (имя теста начинается с ID
+- браузерные пробы — `ui-future/e2e/specs/identity-ceremony.spec.ts`,
+  `ui-future/e2e/specs/account-settings.spec.ts` и
+  `ui-future/e2e/specs/address-confirmation.spec.ts` (имя теста начинается с ID
   сценария приёмки);
+- адрес возврата читает один узел — `useReturnTo` —
+  `shared/src/test/return-to-single-reader.test.ts`;
 - обращения к чужому поставщику из прод-файлов консоли — статическая перепись
   `shared/src/test/console-provider-not-addressed.test.ts`;
 - носитель церемонии обязан быть отрисован продуктом —

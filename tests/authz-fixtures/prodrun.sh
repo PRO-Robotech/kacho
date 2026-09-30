@@ -51,15 +51,15 @@ if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   # Re-extract the iam-internal mTLS client-cert BEFORE reseeding. After a fresh
   # dev-up, cert-manager regenerates the internal-CA, so a `/tmp/iam-mtls/client.crt`
   # left from a PRIOR stand is signed by the OLD CA → iam-internal :9091 rejects it
-  # (SPIFFE/CA-mismatch) → prodseed's `UpsertFromIdentity` grpcurl HANGS on the dial
-  # deadline → 0 users seeded → `db_lookup(...) empty` (the persistent, NON-transient
-  # reseed blocker; a plain retry just re-hangs). Pull the current cert from the
+  # (SPIFFE/CA-mismatch) → the seed's grpcurl to iam :9091 HANGS on the dial
+  # deadline (the persistent, NON-transient reseed blocker; a plain retry just
+  # re-hangs). Pull the current cert from the
   # api-gateway-client-tls secret so prodseed authenticates against the live CA.
   # Best-effort: if kubectl/secret is unavailable (CI without cluster access) leave the
   # existing cert in place. Same secret/keys prodseed_matrix.py reads (MTLS_CERT/KEY).
   #
   # NB this is the GATEWAY identity, used for the gateway-fronted internal RPCs
-  # (UpsertFromIdentity). The bootstrap-token MINT deliberately does NOT accept it:
+  # (LookupSubject). The bootstrap-token MINT deliberately does NOT accept it:
   # it admits only the dedicated operator SAN (secret kacho-bootstrap-operator-client-tls)
   # — mint_rs256.py pulls that one itself. Do not "fix" a mint 403 by pointing it here.
   if command -v kubectl >/dev/null 2>&1; then
@@ -70,10 +70,13 @@ if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
       echo "[prodrun] refreshed /tmp/iam-mtls client-cert from api-gateway-client-tls (live CA)" >&2
     fi
   fi
-  # Bounded-retry: with the cert fresh, a residual failure is the genuine transient
-  # owner-provisioning EC (account/project not yet queryable after the first OIDC
-  # login) → "db_lookup(...) empty"; a re-attempt clears it. Without this a flaked
-  # reseed leaves an empty matrix → the whole suite washes.
+  # Bounded-retry: with the cert fresh, a residual failure is a genuine transient.
+  # Without this a flaked reseed leaves an empty matrix → the whole suite washes.
+  # People are enrolled by registration at the edge and confirmed by the letter read
+  # from the stand mail receiver (kacho#2901): this standalone driver opens no
+  # forwards itself, so MAILBOX_URL (default http://localhost:18025) must point at a
+  # forward to the receiver's read surface, exactly as the newman runners open it.
+  # Exit 75 of the seed is "condition not created" (no letter / receiver unreadable).
   reseed_ok=0
   for attempt in 1 2 3; do
     tmp="$(mktemp)"

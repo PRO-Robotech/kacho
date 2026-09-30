@@ -117,6 +117,13 @@ kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
 PF_PIDS+=($!)
+# Приёмник писем стенда — поверхность чтения посева людей (kacho#2901, F6b-53):
+# человек наборов подтверждается кодом из письма регистрации, и посев читает его
+# здесь. Тот же проброс и тот же довод, что у прогонщика шардов (newman-parallel.sh).
+MAILBOX_PORT="${MAILBOX_PORT:-18025}"
+MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
+kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pf-mailbox.log 2>&1 &
+PF_PIDS+=($!)
 
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ ──────────────────────
 #
@@ -249,6 +256,7 @@ echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
+MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
 PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
