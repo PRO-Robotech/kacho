@@ -186,11 +186,13 @@ pg-registry:
 # тега выводятся из неё. Пины блока переписывает порождающий
 # deploy/scripts/gen-managed-image-pins.sh — вместе с записью и одним вызовом:
 #
-#   bash scripts/gen-managed-image-pins.sh --profile helm/umbrella/values.own-stand.yaml \
+#   bash deploy/scripts/gen-managed-image-pins.sh --profile helm/umbrella/values.own-stand.yaml \
 #     --ref <коммит> --branch <ветка, чья сборка публикует тег>
 #
-# Он отказывает, если коммит не входит в названную ветку: образа с таким тегом
-# тогда нет, и пин назвал бы то, чего kubelet не вытянет.
+# Вызов выше — из корня дерева; путь профиля в нём от каталога deploy/, потому
+# что скрипт переходит туда сам. Он отказывает, если коммит не входит в
+# названную ветку: образа с таким тегом тогда нет, и пин назвал бы то, чего
+# kubelet не вытянет.
 #
 # порождено-от: 2798 87329e2935c54a3e1ddb3f2099afcedd1607894e
 #
