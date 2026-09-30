@@ -123,7 +123,7 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: main-16b5cade
+    tag: 366-4af7fd4f
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
@@ -599,6 +599,31 @@ global:
         credentialSecret:
           name: ""
           key: ""
+        # ─── ЯКОРЬ ПРОВЕРКИ СЕРТИФИКАТА УЗЛА — ТОЖЕ ИСТОЧНИК (kacho#2901) ────
+        #
+        # Секрет и ключ в нём, из которого НАШ отправитель (служба доступа)
+        # берёт удостоверяющий центр для проверки листа почтового узла. Шаблон
+        # подчарта проецирует рабочему объекту ОДИН этот ключ и отдаёт процессу
+        # путь к нему (`invite-mail.ca-bundle-file`); путь принадлежит шаблону, а
+        # не профилю.
+        #
+        # ПУСТО ⇒ системные корни, и это верно для публичного ретранслятора. Для
+        # приёмника стенда — неверно: его лист выписывает внутренний
+        # удостоверяющий стенда, рукопожатие без его якоря не состоится, письмо
+        # подтверждения адреса не уйдёт, и человек стенда останется в положении
+        # подтверждения. Поэтому профиль, ведущий полосу к приёмнику ЭТОГО
+        # выпуска, обязан назвать секрет приёмника (`mailpit.tlsSecretName`,
+        # ключ `ca.crt`), а профиль, ведущий её к внешнему узлу, назвать его не
+        # вправе: объявленный якорь ЗАМЕЩАЕТ системные корни процесса, и лист
+        # ретранслятора им не проверится. Оба направления держит страж рендера
+        # templates/identity-mail-lane-guard.yaml; исход рендера —
+        # deploy/address_gate_stand_render_test.go (F6b-56).
+        #
+        # Поставщику личности якорь приезжает иначе — переменной `SSL_CERT_FILE`
+        # его рабочего объекта; этот узел его не питает.
+        trustAnchorSecret:
+          name: ""
+          key: ""
     hydraAdminTls:
       # Порт СОСЕДА внутри пода. Инверсия с портом провайдера обязательна — см.
       # `providerListenerPort` ниже.
@@ -696,13 +721,6 @@ kacho-geo:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
-  # Публичный адрес поставщика личности — `disabled`, то самое слово, которым
-  # край выключает полосу чтения его сессии. Пустое значение здесь НЕ годится:
-  # шаблон чарта края выводит из пустого адрес по имени выпуска, и под объявлял
-  # бы адрес службы, которой ни на одном стенде нет. Читателя сессии поставщика
-  # край под посадкой `own` не заводит и так (множество носителей выводится из
-  # посадки); саму ручку снимает вместе с читателем волна-3 (#2797).
-  kratosPublicUrl: disabled
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella
@@ -714,7 +732,8 @@ api-gateway:
 
 # INFRA sec-hardening r3 — umbrella-owned public ingress for api-gateway. Replaces
 # the sub-chart ingress (disabled above). Routes the external edge through the
-# api-gateway pod's EXTERNAL-marked TLS listener (Service port `tls`, GRPCS) so
+# api-gateway pod's EXTERNAL-marked TLS listener (Service port `tls`, GRPCS; the
+# three ceremony coordinates ride HTTPS to the same listener by exact match) so
 # Internal* REST is never served on the public endpoint. host / tls.secretName /
 # proxyReadTimeout are inherited from the api-gateway sub-chart values.
 apiGatewayIngress:

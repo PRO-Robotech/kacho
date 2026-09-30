@@ -83,6 +83,11 @@ global:
         connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
         fromAddress: "noreply@kacho.cloud"
         fromName: "Kacho Cloud"
+        # Якорь листа приёмника у НАШЕГО отправителя — тем же узлом и по той же
+        # причине, что у стенда разработки (values.dev.yaml, kacho#2901).
+        trustAnchorSecret:
+          name: kacho-mailpit-tls
+          key: ca.crt
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ЧЕКАНКА ПЕРВИЧНОГО УДОСТОВЕРЕНИЯ СТЕНДА — ВКЛЮЧЕНА ЗДЕСЬ, И ЭТО ПОВЕРХНОСТЬ

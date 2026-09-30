@@ -6,7 +6,7 @@ package restmux
 // bootstrap_token_no_rest_route_test.go — the bootstrap-admin token mint must NOT
 // be reachable over REST, on ANY listener.
 //
-// InternalBootstrapTokenService/MintBootstrapToken hands out a Hydra-signed RS256
+// InternalBootstrapTokenService/MintBootstrapToken hands out an issuer-signed RS256
 // Bearer for a cluster `system_admin` ServiceAccount. Its catalog permission is
 // `<exempt>`, and the gateway admits `<exempt>` Internal* RPCs that arrive on the
 // cluster-internal listener WITHOUT extracting a principal — so a REST route for

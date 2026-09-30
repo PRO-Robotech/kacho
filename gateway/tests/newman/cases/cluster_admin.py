@@ -59,11 +59,24 @@ prodseed_all.py (production posture):
   jwtPureNoBindings      — the dedicated NEVER-granted subject (read-only negatives).
   baseUrl / internalBaseUrl / externalBaseUrl — injected by the newman runner.
 
-The grant/revoke TARGET is NOT a shared fixture. It is a fresh, `{{runId}}`-scoped
-user this suite seeds for itself via `InternalUserService.UpsertFromIdentity`.
-Granting cluster-admin to a shared subject would be cross-suite contamination:
-`jwtPureNoBindings` is precisely the "sees nothing" leak-guard other suites rely on,
-and making it a cluster admin would silently invalidate them.
+  clusterTargetUserId / clusterTargetEmail — the grant/revoke TARGET (see below).
+
+The grant/revoke TARGET is NOT a shared fixture. It is a person of its own, enrolled
+by the authz-fixture seed exactly as a person of the product is — registration at the
+edge, the registration letter read from the stand mail receiver, the code presented
+under the registration session (приёмка F6b, Р17, F6b-55; kacho#2901) — and handed
+to this suite by the two slots above. The suite creates NO person itself: a person
+created by a step of a case would appear after the seed's census of people and would
+be held by nothing. Granting cluster-admin to a shared subject would be cross-suite
+contamination: `jwtPureNoBindings` is precisely the "sees nothing" leak-guard other
+suites rely on, and making it a cluster admin would silently invalidate them.
+
+Freshness of the target is per SEED run, not per collection run: the suite is run
+only by the runner after its seed (deploy/scripts/newman-parallel.sh seeds once per
+invocation), so "revoke before grant → 404" holds. A missing slot marks every step
+that needs the target with the third-outcome mark of the suite's generator
+(`require_env_slot`), and the verdict gate counts the suite as not executed —
+neither red nor green.
 
 TWO SCENARIOS DELIBERATELY NOT REPRESENTED HERE (see the block at the bottom of this
 file for the full argument and the exact Go tests that own them). Both were present
@@ -304,47 +317,13 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-SEED-TARGET-USER  (fixture, self-seeded)
+# ЗДЕСЬ СТОЯЛ CLUSTER-ADMIN-SEED-TARGET-USER — снят вместе с заведением человека в
+# случае (приёмка F6b, F6b-55). Цель заводит посев, регистрацией и письмом, и
+# отдаёт слотами `clusterTargetUserId` / `clusterTargetEmail`. Страж слота — у
+# каждого шага, которому цель нужна: без неё шаг ушёл бы с пустым идентификатором.
 # ---------------------------------------------------------------------------
-# Provision this run's OWN grant/revoke target. `UpsertFromIdentity` is `<exempt>`
-# at the gateway and lives on the same cluster-internal listener, so no extra
-# fixture plumbing is needed. `{{runId}}`-scoped ⇒ the suite is re-runnable without
-# UNIQUE collisions, and no shared subject's grant-state is ever mutated.
-CASES.append(Case(
-    id="CLUSTER-ADMIN-SEED-TARGET-USER",
-    title="Seed a fresh, run-scoped User as the grant/revoke target (no shared-subject mutation)",
-    classes=["SETUP"],
-    priority="P0",
-    steps=[
-        Step(
-            name="upsert-target-user",
-            method="POST",
-            path="/iam/v1/internal/users:upsertFromIdentity",
-            mux="internal",
-            auth="jwtBootstrap",
-            body={
-                "externalId": "cluster-admin-target-{{runId}}",
-                "email": "cluster-admin-target-{{runId}}@kacho.local",
-                "displayName": "Cluster Admin Target {{runId}}",
-            },
-            test_script=[
-                *assert_status(200),
-                "pm.test('target user id has the usr prefix', () => {",
-                "  const j = pm.response.json();",
-                "  const uid = (j.metadata && j.metadata.userId) || (j.user && j.user.id) || '';",
-                "  pm.expect(uid, 'user id must match ^usr<17>: ' + JSON.stringify(j)).to.match(/^usr[0-9a-hjkmnp-tv-z]{17}$/);",
-                "});",
-                *save_from_response("j.id", "opId"),
-                *save_from_response(
-                    "(j.metadata && j.metadata.userId) || (j.user && j.user.id)",
-                    "clusterTargetUserId"),
-            ],
-        ),
-        # Poll to done: the user row must be COMMITTED before GrantAdmin looks it up,
-        # otherwise the existence check races the LRO worker.
-        poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-upsert-target-user"),
-    ],
-))
+TARGET_GUARD = require_env_slot("clusterTargetUserId", "grant/revoke target seeded by prodseed_matrix.py")
+TARGET_EMAIL_GUARD = require_env_slot("clusterTargetEmail", "grant/revoke target seeded by prodseed_matrix.py")
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +345,7 @@ CASES.append(Case(
     steps=[
         Step(
             name="revoke-non-admin",
+            pre_script=TARGET_GUARD,
             method="DELETE",
             path="/iam/v1/internal/cluster/admins/{{clusterTargetUserId}}",
             mux="internal",
@@ -395,6 +375,7 @@ CASES.append(Case(
     steps=[
         Step(
             name="grant-target",
+            pre_script=TARGET_GUARD,
             method="POST",
             path="/iam/v1/internal/cluster/admins",
             mux="internal",
@@ -416,6 +397,7 @@ CASES.append(Case(
         poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-grant"),
         Step(
             name="list-admins-includes-target",
+            pre_script=TARGET_GUARD + TARGET_EMAIL_GUARD,
             method="GET",
             path="/iam/v1/internal/cluster/admins",
             mux="internal",
@@ -434,7 +416,7 @@ CASES.append(Case(
                 "  const a = (j.admins || []).find(x => x.subjectId === u) || {};",
                 "  pm.expect(a.subjectType, JSON.stringify(a)).to.eql('USER');",
                 "  pm.expect(a.subjectEmail, 'subject email JOINed from users: ' + JSON.stringify(a))",
-                "    .to.eql('cluster-admin-target-' + pm.environment.get('runId') + '@kacho.local');",
+                "    .to.eql(pm.environment.get('clusterTargetEmail'));",
                 "  pm.expect(a.grantedAt, JSON.stringify(a)).to.be.a('string');",
                 "});",
             ],
@@ -457,6 +439,7 @@ CASES.append(Case(
     steps=[
         Step(
             name="grant-target-again",
+            pre_script=TARGET_GUARD,
             method="POST",
             path="/iam/v1/internal/cluster/admins",
             mux="internal",
@@ -477,6 +460,7 @@ CASES.append(Case(
         poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-grant-idem"),
         Step(
             name="list-admins-no-duplicate",
+            pre_script=TARGET_GUARD,
             method="GET",
             path="/iam/v1/internal/cluster/admins",
             mux="internal",
@@ -507,6 +491,7 @@ CASES.append(Case(
     steps=[
         Step(
             name="revoke-target",
+            pre_script=TARGET_GUARD,
             method="DELETE",
             path="/iam/v1/internal/cluster/admins/{{clusterTargetUserId}}",
             mux="internal",
@@ -527,6 +512,7 @@ CASES.append(Case(
         poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-revoke"),
         Step(
             name="list-admins-excludes-target",
+            pre_script=TARGET_GUARD,
             method="GET",
             path="/iam/v1/internal/cluster/admins",
             mux="internal",
@@ -594,8 +580,8 @@ CASES.append(Case(
 #    subject matching `^usr[0-9a-hjkmnp-tv-z]{17}$`, so the caller must itself be a
 #    USER principal holding cluster system_admin. Under the production posture this
 #    suite targets, every harness principal is a ServiceAccount: prodseed_all.py
-#    states it outright — "A human User principal with an `acr` requires the
-#    interactive Kratos→Hydra login, which a machine harness cannot drive" — and
+#    states it outright: a human User principal with an `acr` requires the
+#    interactive browser sign-in, which a machine harness cannot drive. And
 #    `jwtBootstrap` is minted for the bootstrap SA (bootstrap_token/mint.go). An SA
 #    principal id can never equal a `usr…` subject, so the self-revoke branch cannot
 #    be entered. A case that cannot enter its branch would either be permanently red

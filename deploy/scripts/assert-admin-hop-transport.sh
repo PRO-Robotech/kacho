@@ -495,6 +495,92 @@ pod/provider-session-0'
   expect_read "под провайдера есть (положительный контроль)" present provider-present -
 
   echo
+  echo "-- кластерная половина исполняется ЦЕЛИКОМ; kubectl и kind подменены в PATH --"
+  # ПОДКЛЮЧЕНИЕ ЗАКРЕПЛЯЕТСЯ ИСХОДОМ, А НЕ ФУНКЦИЯМИ. Всё выше судит функции
+  # суждения и чтения напрямую — и остаётся зелёным, если кластерная половина
+  # перестанет ими пользоваться (вернётся к счёту строк конвейером или к своему
+  # сравнению с нулём): функции целы, а гейт на стенде снова читает отказ сервера
+  # как «провайдера нет» (kacho#2845, мутант M7 ревью волны kacho#2795). Поэтому
+  # здесь исполняется сам этот файл БЕЗ `--self-test`, от проверки контекста до
+  # выхода, и судится его код выхода и текст. Подменён ровно один факт на случай
+  # против законного близнеца «оба чтения удались, провайдера нет».
+  #
+  # Код выхода сравнивается ТОЧНО: 2 — отказ проверки контекста, то есть подмена
+  # не сработала и половина до суждения не дошла; такой исход не засчитывается ни
+  # за «покраснела», ни за «промолчала».
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "  ✗ кластерная половина НЕ ИСПОЛНЕНА: нет jq (им она читает посадку и"
+    echo "    окружение потребителей) — самопроверка не выполнилась, это не «прошло»"
+    exit 2
+  fi
+  SELF="${BASH_SOURCE[0]}"
+  fake_bin="$(mktemp -d "${TMPDIR:-/tmp}/admin-hop-selftest.XXXXXX")" || {
+    echo "  ✗ кластерная половина НЕ ИСПОЛНЕНА: не удалось завести каталог подмен (mktemp)"
+    exit 2
+  }
+  cat >"$fake_bin/kind" <<'FAKE_KIND'
+#!/usr/bin/env bash
+[ "$1 $2" = "get kubeconfig" ] && { echo "    server: https://self-test.invalid:6443"; exit 0; }
+echo "self-test kind: неожиданный вызов: $*" >&2; exit 97
+FAKE_KIND
+  cat >"$fake_bin/kubectl" <<'FAKE_KUBECTL'
+#!/usr/bin/env bash
+# Двойник отвечает только на вызовы ветки посадки own; любой другой вызов —
+# отказ с кодом 97, чтобы половина, ушедшая мимо этой ветки, не нашла кластера.
+case "$*" in
+  "config current-context") echo "kind-$CLUSTER_NAME"; exit 0 ;;
+  "config view --minify "*) echo "https://self-test.invalid:6443"; exit 0 ;;
+  *" logs deploy/kaname")
+    echo '{"msg":"boot security posture","identity_provider":"own"}'; exit 0 ;;
+  *" logs deploy/api-gateway")
+    echo "{\"msg\":\"boot security posture\",\"identity_provider\":\"${FAKE_EDGE:-own}\"}"; exit 0 ;;
+  *" get pods -l "*" -o name")
+    case "$FAKE_PODS" in
+      empty)   exit 0 ;;
+      present) echo 'pod/provider-admin-0'; exit 0 ;;
+      refused) echo 'Unable to connect to the server: net/http: TLS handshake timeout' >&2; exit 1 ;;
+    esac ;;
+  *" get deploy api-gateway kaname -o json")
+    item='{"spec":{"template":{"spec":{"containers":[{"env":[ENV]}]}}}}'
+    none="${item/ENV/{\"name\":\"KACHO_APP_ENV\",\"value\":\"dev\"\}}"
+    case "$FAKE_DEPLOY" in
+      read)    echo "{\"items\":[$none,$none]}"; exit 0 ;;
+      partial) echo "{\"items\":[$none]}"
+               echo 'Error from server (NotFound): deployments.apps "kaname" not found' >&2; exit 1 ;;
+    esac ;;
+esac
+echo "self-test kubectl: неожиданный вызов: $*" >&2; exit 97
+FAKE_KUBECTL
+  chmod +x "$fake_bin/kind" "$fake_bin/kubectl"
+
+  expect_half() { # <метка> <поды> <окружение> <посадка края> <ожидаемый код> <подстрока вывода>
+    local label="$1" out code
+    checked=$((checked + 1))
+    out="$(PATH="$fake_bin:$PATH" CLUSTER_NAME=self-test NS=kacho \
+      FAKE_PODS="$2" FAKE_DEPLOY="$3" FAKE_EDGE="$4" \
+      timeout 60 bash "$SELF" 2>&1)" && code=0 || code=$?
+    if [ "$code" != "$5" ] || ! grep -qF -- "$6" <<<"$out"; then
+      echo "  ✗ кластерная половина: $label → код $code, ожидался $5 с «$6»"
+      echo "    половина не берёт чтение (read_provider_pods, consumer_addr_census) или"
+      echo "    суждение (own_absence_verdict) из общих функций; её вывод:"
+      printf '%s\n' "$out" | tail -6 | sed 's/^/      /'
+      rc=1; return
+    fi
+    echo "  ✓ кластерная половина: $label → код $code"
+  }
+  expect_half "оба чтения удались, провайдера нет (законный близнец)" \
+    empty read own 0 'переходу судить нечего'
+  expect_half "get pods отказал — не «провайдера нет», причина названа" \
+    refused read own 1 'TLS handshake timeout'
+  expect_half "под провайдера есть (положительный контроль)" \
+    present read own 1 'подов провайдера 1'
+  expect_half "окружение потребителей прочитано частично (NotFound второго)" \
+    empty partial own 1 'НЕ ПРОЧИТАНО (unread-refused'
+  expect_half "половины назвали разную посадку" \
+    empty read external 1 'назвали РАЗНУЮ'
+  rm -rf "$fake_bin"
+
+  echo
   echo "синтетических наблюдений и законных входов проверено: $checked"
   [ $rc -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"
   exit $rc

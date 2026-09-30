@@ -7,6 +7,12 @@ jest.unstable_mockModule("./auth", () => ({
   loginUrl: () => "/login",
 }));
 
+// Уход на экран подтверждения — переход документа (приёмка F6b, F6b-25).
+const leaveToAddressConfirmation = jest.fn();
+jest.unstable_mockModule("@shared/pages/auth/address-confirmation-exit", () => ({
+  leaveToAddressConfirmation,
+}));
+
 const { apiGet } = await import("./api-client");
 const { setStepUpRequester } = await import("@shared/api/step-up");
 
@@ -113,5 +119,47 @@ describe("api-client", () => {
 
     // The rejection must carry the HTTP-derived message, not an opaque SyntaxError.
     await expect(apiGet("/iam/v1/accounts")).rejects.not.toThrow(SyntaxError);
+  });
+});
+
+describe("F6b-25 · отказ адреса на чтении каркаса", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    redirectToLogin.mockClear();
+    leaveToAddressConfirmation.mockClear();
+  });
+
+  const ADDRESS_NOT_VERIFIED = JSON.stringify({
+    code: 7,
+    message: "email address is not verified",
+    details: [
+      { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "EMAIL_NOT_VERIFIED", domain: "iam.kaname.cloud" },
+    ],
+  });
+  const CATALOG_DENIED = JSON.stringify({
+    code: 7,
+    message: "permission denied",
+    details: [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        reason: "AUTHZ_DENIED",
+        domain: "kaname.cloud.iam.v1",
+        metadata: { deny_reasons: "no path" },
+      },
+    ],
+  });
+
+  it("F6b-25 · EMAIL_NOT_VERIFIED края — на экран подтверждения, а не на вход", async () => {
+    stubNetwork(() => answered(403, ADDRESS_NOT_VERIFIED));
+    await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
+    expect(leaveToAddressConfirmation).toHaveBeenCalledTimes(1);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("F6b-26 · близнец: отказ по каталогу прав того же статуса и кода никуда не уводит", async () => {
+    stubNetwork(() => answered(403, CATALOG_DENIED));
+    await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
+    expect(leaveToAddressConfirmation).not.toHaveBeenCalled();
+    expect(redirectToLogin).not.toHaveBeenCalled();
   });
 });

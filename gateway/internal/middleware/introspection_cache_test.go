@@ -3,7 +3,7 @@
 
 package middleware_test
 
-// introspection_cache_test.go — Hydra introspection LRU+TTL cache.
+// introspection_cache_test.go — revocation-authority introspection LRU+TTL cache.
 
 import (
 	"context"
@@ -45,8 +45,8 @@ func TestIntrospection_HappyPath_Caches(t *testing.T) {
 	defer srv.Close()
 
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	require.NoError(t, err)
 	res, err := c.Introspect(context.Background(), "jti-1", "rawtoken")
@@ -63,8 +63,8 @@ func TestIntrospection_InactiveCached_Negative(t *testing.T) {
 	srv, hits := newIntrospectionServer(t, false, 0)
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	assert.ErrorIs(t, err, middleware.ErrTokenInactive)
@@ -75,13 +75,13 @@ func TestIntrospection_InactiveCached_Negative(t *testing.T) {
 }
 
 func TestIntrospection_ExpiredAlreadyAtFetch_TreatedAsInactive(t *testing.T) {
-	// Hydra returns active=true but exp is already in the past — defence: we
+	// The authority returns active=true but exp is already in the past — defence: we
 	// must reject as inactive AND not cache the wrong positive result.
 	srv, hits := newIntrospectionServer(t, true, time.Now().Add(-time.Hour).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	assert.ErrorIs(t, err, middleware.ErrTokenInactive)
@@ -106,9 +106,9 @@ func TestIntrospection_ShortExp_ClampsCacheTTL(t *testing.T) {
 	srv, hits := newIntrospectionServer(t, true, base.Add(2*time.Second).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
-		Now:                   clock,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
+		Now:              clock,
 	})
 
 	// First call at now=base → cached with TTL clamped to the ~2s exp window.
@@ -123,19 +123,19 @@ func TestIntrospection_ShortExp_ClampsCacheTTL(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "read within clamp window must be a cache hit")
 
 	// Past exp → entry expired (miss) AND the re-fetch clamp sees exp in the
-	// past → ErrTokenInactive. Either way Hydra is re-hit.
+	// past → ErrTokenInactive. Either way the authority is re-hit.
 	advance(2 * time.Second)
 	_, err = c.Introspect(context.Background(), "jti", "raw")
 	assert.ErrorIs(t, err, middleware.ErrTokenInactive)
-	assert.Equal(t, int32(2), hits.Load(), "read past exp must re-hit Hydra")
+	assert.Equal(t, int32(2), hits.Load(), "read past exp must re-hit the authority")
 }
 
 func TestIntrospection_Invalidate(t *testing.T) {
 	srv, hits := newIntrospectionServer(t, true, time.Now().Add(15*time.Minute).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, _ = c.Introspect(context.Background(), "jti", "raw")
 	assert.Equal(t, int32(1), hits.Load())
@@ -146,11 +146,11 @@ func TestIntrospection_Invalidate(t *testing.T) {
 
 // TestIntrospection_WriteAfterInvalidate_Dropped — deterministic proof of the
 // write-after-invalidate epoch guard. A force-logout revocation that lands WHILE
-// an introspection is in flight (Get()-miss → Hydra fetch → store) must not be
+// an introspection is in flight (Get()-miss → authority fetch → store) must not be
 // defeated by the positive result re-populating the just-invalidated jti. The
-// Hydra handler calls Invalidate(jti) mid-flight (simulating the LISTEN/NOTIFY
+// authority handler calls Invalidate(jti) mid-flight (simulating the LISTEN/NOTIFY
 // arriving between the miss and the store); the positive result must be DROPPED,
-// so the next request re-hits Hydra rather than serving a revoked token from
+// so the next request re-hits the authority rather than serving a revoked token from
 // cache for the full TTL (CWE-362 / CWE-613).
 func TestIntrospection_WriteAfterInvalidate_Dropped(t *testing.T) {
 	var c *middleware.IntrospectionCache
@@ -170,8 +170,8 @@ func TestIntrospection_WriteAfterInvalidate_Dropped(t *testing.T) {
 
 	var err error
 	c, err = middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	require.NoError(t, err)
 
@@ -182,20 +182,20 @@ func TestIntrospection_WriteAfterInvalidate_Dropped(t *testing.T) {
 	assert.True(t, res.Active)
 	assert.Equal(t, 0, c.Len(), "positive result stored after a mid-flight Invalidate — epoch guard missing")
 
-	// Second call must re-hit Hydra (proves nothing survived in cache).
+	// Second call must re-hit the authority (proves nothing survived in cache).
 	_, err = c.Introspect(context.Background(), "jti", "raw")
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), hits.Load(), "second call served from cache — revoked token cached for TTL")
 }
 
-func TestIntrospection_HydraError_Bubbles(t *testing.T) {
+func TestIntrospection_SourceError_Bubbles(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	require.Error(t, err)
@@ -209,7 +209,7 @@ func TestIntrospection_Construction_RequiresURL(t *testing.T) {
 
 func TestIntrospection_EmptyJTI_Rejected(t *testing.T) {
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: "http://x",
+		IntrospectionURL: "http://x",
 	})
 	_, err := c.Introspect(context.Background(), "", "raw")
 	require.Error(t, err)

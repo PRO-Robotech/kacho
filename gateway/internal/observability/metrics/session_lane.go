@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // session_lane.go — клетки полосы сессии человека и ретрансляции полосы формы
-// (приёмка Ф3, Ф3-48) и клетка уровня вне оси сессии (приёмка Ф11, Ф11-19).
+// (приёмка Ф3, Ф3-48), клетка уровня вне оси сессии (приёмка Ф11, Ф11-19) и
+// клетка отказа адреса почты (приёмка F6b, Р12).
 //
 // Клетки существуют с нулём с первой секунды жизни процесса — «отказов по
 // отсечке не было» и «полосы нет» обязаны различаться без единого запроса.
-// Словарь меток закрыт константами этого файла; словарь глаголов сверяется с
-// объявлением путей `middleware.LoginLaneRoutes` пробой, а не читается из него
-// в момент сбора.
+// Словарь меток закрыт константами этого файла; словарь записей сверяется с
+// объявлением путей `middleware.LoginLaneRoutes`, словарь целей — с
+// `middleware.RelayTargets`, оба пробой, а не читаются в момент сбора.
 package metrics
 
 import (
@@ -23,6 +24,9 @@ const (
 	sessionOutcomeCutoffDenied = "cutoff_denied"
 	sessionOutcomeNoSession    = "no_session"
 	sessionOutcomeUnavailable  = "unavailable"
+	// sessionOutcomeEmailNotVerified — отказ адреса (приёмка F6b, Р12): живая
+	// сессия с неподтверждённым адресом почты на пути вне перечня прохода.
+	sessionOutcomeEmailNotVerified = "email_not_verified"
 )
 
 // Глаголы формы — закрытый словарь МЕТОК. Это словарь поверхности, а не второе
@@ -49,6 +53,23 @@ const (
 	loginLaneVerbSecondFactorRemove      = "second-factor-remove"
 	loginLaneVerbSecondFactorBackupCodes = "second-factor-backup-codes"
 	loginLaneVerbStepUp                  = "step-up"
+	// Подтверждение адреса почты (приёмка F6b, Р5): два глагола той же полосы.
+	loginLaneVerbVerifyEmail        = "verify-email"
+	loginLaneVerbVerifyEmailConfirm = "verify-email-confirm"
+	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1) и метаданные
+	// обнаружения (kacho#2721): ретранслируются на слушатель выдачи, клетки —
+	// те же.
+	loginLaneVerbAuthorize = "authorize"
+	loginLaneVerbToken     = "token"
+	loginLaneVerbDiscovery = "discovery"
+)
+
+// Цели ретрансляции — закрытый словарь меток `target` клетки недостижимости:
+// слушатель формы и слушатель выдачи падают порознь, и одна клетка на двоих не
+// сказала бы, какой лежит.
+const (
+	loginLaneTargetForm     = "form"
+	loginLaneTargetIssuance = "issuance"
 )
 
 // LoginLaneVerbLabels — значения метки `verb` в порядке объявления; для пробы
@@ -59,15 +80,25 @@ func LoginLaneVerbLabels() []string {
 		loginLaneVerbRegister, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
 		loginLaneVerbSecondFactorStatus, loginLaneVerbSecondFactorEnroll, loginLaneVerbSecondFactorConfirm,
 		loginLaneVerbSecondFactorRemove, loginLaneVerbSecondFactorBackupCodes, loginLaneVerbStepUp,
+		loginLaneVerbVerifyEmail, loginLaneVerbVerifyEmailConfirm,
+		loginLaneVerbAuthorize, loginLaneVerbToken, loginLaneVerbDiscovery,
 	}
 }
 
+// LoginLaneTargetLabels — значения метки `target` в порядке объявления целей;
+// для пробы сходимости с закрытым перечнем целей.
+func LoginLaneTargetLabels() []string {
+	return []string{loginLaneTargetForm, loginLaneTargetIssuance}
+}
+
 // SessionLaneSnapshot — то, что корень отдаёт коллектору на каждый сбор: клетки
-// полосы личности и клетки ретранслятора вместе — они собраны в разных местах
+// полосы личности и клетки ретрансляторов вместе — они собраны в разных местах
 // процесса, и снимок — единственная форма, в которой они приходят сюда разом.
+// Ретрансляторов по одному на цель; под посадкой external их нет, и клетки
+// стоят нулями.
 type SessionLaneSnapshot struct {
-	Lane  middleware.SessionLaneSnapshot
-	Relay handler.LoginLaneRelaySnapshot
+	Lane   middleware.SessionLaneSnapshot
+	Relays []handler.LoginLaneRelaySnapshot
 }
 
 var (
@@ -76,7 +107,8 @@ var (
 		"Browser-session refusals at the edge, by outcome: cutoff_denied (ended by our revocation, "+
 			"carrier ended), no_session (a carrier the service does not know: unknown, logged out, "+
 			"expired or blocked — one answer, carrier ended), unavailable (the service did not answer; "+
-			"carrier intact).",
+			"carrier intact), email_not_verified (a live session whose email address is not verified, "+
+			"outside the pass list; carrier intact).",
 		[]string{"outcome"}, nil)
 	sessionRolloutWindowDesc = prometheus.NewDesc(
 		"kacho_api_gateway_session_lane_rollout_window_total",
@@ -92,12 +124,14 @@ var (
 		nil, nil)
 	loginLaneRelayedDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_relayed_total",
-		"Login-lane requests relayed to the identity service's form listener, by verb.",
+		"Requests relayed to the identity service, by declared record (verb): form-lane verbs go to the "+
+			"form listener, the authorization ceremony's navigation, code exchange and discovery metadata to the issuance listener.",
 		[]string{"verb"}, nil)
 	loginLaneUnreachableDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_unreachable_total",
-		"Login-lane requests answered 503 by the edge because the form listener could not be reached.",
-		nil, nil)
+		"Relayed requests answered 503 by the edge because the target listener could not be reached, by target "+
+			"(form | issuance).",
+		[]string{"target"}, nil)
 )
 
 // RegisterSessionLane провязывает читателя клеток полосы сессии и ретрансляции.
@@ -127,24 +161,57 @@ func (c *sessionLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 	s := c.read()
 	for outcome, value := range map[string]uint64{
-		sessionOutcomeCutoffDenied: s.Lane.CutoffDenied,
-		sessionOutcomeNoSession:    s.Lane.NoSession,
-		sessionOutcomeUnavailable:  s.Lane.Unavailable,
+		sessionOutcomeCutoffDenied:     s.Lane.CutoffDenied,
+		sessionOutcomeNoSession:        s.Lane.NoSession,
+		sessionOutcomeUnavailable:      s.Lane.Unavailable,
+		sessionOutcomeEmailNotVerified: s.Lane.AddressNotVerified,
 	} {
 		ch <- prometheus.MustNewConstMetric(sessionRefusalsDesc, prometheus.CounterValue, float64(value), outcome)
 	}
 	ch <- prometheus.MustNewConstMetric(sessionRolloutWindowDesc, prometheus.CounterValue, float64(s.Lane.RolloutWindow))
 	ch <- prometheus.MustNewConstMetric(sessionAssuranceOffAxisDesc, prometheus.CounterValue, float64(s.Lane.AssuranceOffAxis))
+	// Величины ретрансляторов сводятся по записи и по цели; метки берутся из
+	// ЗАКРЫТОГО словаря констант этого файла, а не из ключей снимка — клетка
+	// записи, по которой ретрансляций не было, обязана стоять нулём, а ключ,
+	// пришедший из данных, меткой не становится. Словарь обходится ЦЕЛИКОМ, и
+	// это держит проба `TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent`,
+	// идущая по `LoginLaneVerbLabels()`: прежде здесь стояла часть словаря —
+	// семь записей из тринадцати, — и клетки шести глаголов второго фактора на
+	// поверхность не выходили вовсе.
+	relayed := map[string]uint64{}
+	unreachable := map[string]uint64{}
+	for _, r := range s.Relays {
+		for verb, n := range r.Relayed {
+			relayed[verb] += n
+		}
+		unreachable[string(r.Target)] += r.Unreachable
+	}
 	for verb, value := range map[string]uint64{
-		loginLaneVerbLogin:            s.Relay.Relayed[loginLaneVerbLogin],
-		loginLaneVerbLogout:           s.Relay.Relayed[loginLaneVerbLogout],
-		loginLaneVerbPassword:         s.Relay.Relayed[loginLaneVerbPassword],
-		loginLaneVerbCSRF:             s.Relay.Relayed[loginLaneVerbCSRF],
-		loginLaneVerbRegister:         s.Relay.Relayed[loginLaneVerbRegister],
-		loginLaneVerbRecovery:         s.Relay.Relayed[loginLaneVerbRecovery],
-		loginLaneVerbRecoveryComplete: s.Relay.Relayed[loginLaneVerbRecoveryComplete],
+		loginLaneVerbLogin:                   relayed[loginLaneVerbLogin],
+		loginLaneVerbLogout:                  relayed[loginLaneVerbLogout],
+		loginLaneVerbPassword:                relayed[loginLaneVerbPassword],
+		loginLaneVerbCSRF:                    relayed[loginLaneVerbCSRF],
+		loginLaneVerbRegister:                relayed[loginLaneVerbRegister],
+		loginLaneVerbRecovery:                relayed[loginLaneVerbRecovery],
+		loginLaneVerbRecoveryComplete:        relayed[loginLaneVerbRecoveryComplete],
+		loginLaneVerbSecondFactorStatus:      relayed[loginLaneVerbSecondFactorStatus],
+		loginLaneVerbSecondFactorEnroll:      relayed[loginLaneVerbSecondFactorEnroll],
+		loginLaneVerbSecondFactorConfirm:     relayed[loginLaneVerbSecondFactorConfirm],
+		loginLaneVerbSecondFactorRemove:      relayed[loginLaneVerbSecondFactorRemove],
+		loginLaneVerbSecondFactorBackupCodes: relayed[loginLaneVerbSecondFactorBackupCodes],
+		loginLaneVerbStepUp:                  relayed[loginLaneVerbStepUp],
+		loginLaneVerbVerifyEmail:             relayed[loginLaneVerbVerifyEmail],
+		loginLaneVerbVerifyEmailConfirm:      relayed[loginLaneVerbVerifyEmailConfirm],
+		loginLaneVerbAuthorize:               relayed[loginLaneVerbAuthorize],
+		loginLaneVerbToken:                   relayed[loginLaneVerbToken],
+		loginLaneVerbDiscovery:               relayed[loginLaneVerbDiscovery],
 	} {
 		ch <- prometheus.MustNewConstMetric(loginLaneRelayedDesc, prometheus.CounterValue, float64(value), verb)
 	}
-	ch <- prometheus.MustNewConstMetric(loginLaneUnreachableDesc, prometheus.CounterValue, float64(s.Relay.Unreachable))
+	for target, value := range map[string]uint64{
+		loginLaneTargetForm:     unreachable[loginLaneTargetForm],
+		loginLaneTargetIssuance: unreachable[loginLaneTargetIssuance],
+	} {
+		ch <- prometheus.MustNewConstMetric(loginLaneUnreachableDesc, prometheus.CounterValue, float64(value), target)
+	}
 }

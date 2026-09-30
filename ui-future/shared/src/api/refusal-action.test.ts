@@ -80,6 +80,44 @@ const PRODUCERS: Record<string, Producer> = {
     body: { code: 7, message: "something new", details: info("SOMETHING_NEW") },
   },
   noBody: { who: "раздача: ответ без тела отказа", status: 502, body: "<html>bad gateway</html>" },
+  // Приёмка F6b, Р3: отказ края неподтверждённой сессии — значение службы,
+  // побайтово: `403`, без вызова `WWW-Authenticate` и без `metadata`.
+  addressNotVerified: {
+    who: "край: адрес почты не подтверждён (F6b Р3)",
+    status: 403,
+    body: { code: 7, message: "email address is not verified", details: info("EMAIL_NOT_VERIFIED") },
+  },
+  // Отказ края по каталогу прав — близнец F6b-26: тот же статус и код, другая причина.
+  catalogDenied: {
+    who: "край: отказ по каталогу прав",
+    status: 403,
+    body: {
+      code: 7,
+      message: "permission denied",
+      details: [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          reason: "AUTHZ_DENIED",
+          domain: "kaname.cloud.iam.v1",
+          metadata: { deny_reasons: "no path" },
+        },
+      ],
+    },
+  },
+  addressAlreadyVerified: {
+    who: "служба: адрес уже подтверждён (F6b Р9)",
+    status: 400,
+    body: { code: 9, message: "email address is already verified", details: info("EMAIL_ALREADY_VERIFIED") },
+  },
+  inviteNotValid: {
+    who: "служба: приглашение негодно (F6b Р9, F6b-44)",
+    status: 400,
+    body: {
+      code: 9,
+      message: "invite is no longer valid; ask an account administrator to invite again",
+      details: info("INVITE_NOT_VALID"),
+    },
+  },
 };
 
 function actionOf(p: Producer, surface: RefusalSurface): RefusalAction {
@@ -101,6 +139,10 @@ describe("C2 · действие на отказ — по машинным пр�
     notEnrolled: "show",
     unknownReason: "show",
     noBody: "show",
+    addressNotVerified: "show",
+    catalogDenied: "show",
+    addressAlreadyVerified: "address-confirmed",
+    inviteNotValid: "show",
   };
   for (const [name, expected] of Object.entries(CEREMONY)) {
     it(`C2 · экран церемонии · ${PRODUCERS[name].who} → ${expected}`, () => {
@@ -119,6 +161,10 @@ describe("C2 · действие на отказ — по машинным пр�
     notEnrolled: "show",
     unknownReason: "show",
     noBody: "show",
+    addressNotVerified: "confirm-address",
+    catalogDenied: "show",
+    addressAlreadyVerified: "show",
+    inviteNotValid: "show",
   };
   for (const [name, expected] of Object.entries(PLATFORM)) {
     it(`C2 · запрос платформы · ${PRODUCERS[name].who} → ${expected}`, () => {
@@ -138,5 +184,34 @@ describe("C2 · действие на отказ — по машинным пр�
     // приходит вовсе.
     expect(actionOf(PRODUCERS.ended, "platform")).toBe("sign-in");
     expect(actionOf(PRODUCERS.ended, "ceremony")).toBe("show");
+  });
+});
+
+describe("F6b · действие на отказ адреса — только по точному значению причины", () => {
+  it("F6b-25 · отказ края EMAIL_NOT_VERIFIED на платформе ведёт на экран подтверждения", () => {
+    expect(actionOf(PRODUCERS.addressNotVerified, "platform")).toBe("confirm-address");
+  });
+
+  it("F6b-26 · близнец: отказ по каталогу прав того же статуса и кода никуда не уводит", () => {
+    expect(actionOf(PRODUCERS.catalogDenied, "platform")).toBe("show");
+  });
+
+  it("F6b-25 · значение причины сравнивается точно: регистр, пробел и приставка — «показать»", () => {
+    for (const reason of ["email_not_verified", "EMAIL_NOT_VERIFIED ", "EMAIL_NOT_VERIFIED_X", "X_EMAIL_NOT_VERIFIED"]) {
+      expect([reason, refusalActionOf({ status: 403, reason, challenge: null }, "platform")]).toEqual([reason, "show"]);
+    }
+    expect(refusalActionOf({ status: 403, reason: "EMAIL_NOT_VERIFIED", challenge: null }, "platform")).toBe(
+      "confirm-address",
+    );
+  });
+
+  it("F6b-42 · «адрес уже подтверждён» уводит с экрана подтверждения; на платформе — «показать»", () => {
+    expect(actionOf(PRODUCERS.addressAlreadyVerified, "ceremony")).toBe("address-confirmed");
+    expect(actionOf(PRODUCERS.addressAlreadyVerified, "platform")).toBe("show");
+  });
+
+  it("F6b-44 · негодное приглашение и неизвестная причина того же статуса — «показать»", () => {
+    expect(actionOf(PRODUCERS.inviteNotValid, "ceremony")).toBe("show");
+    expect(refusalActionOf({ status: 400, reason: "SOMETHING_NEW", challenge: null }, "ceremony")).toBe("show");
   });
 });

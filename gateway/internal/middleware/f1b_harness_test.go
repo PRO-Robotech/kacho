@@ -174,7 +174,7 @@ func f1bClaims(issuer, audience, subject string, now time.Time, ttl time.Duratio
 
 const (
 	f1bPlatformIssuer = "https://iam.kacho.test"
-	f1bLegacyIssuer   = "https://hydra.api.kacho.test"
+	f1bLegacyIssuer   = "https://legacy.api.kacho.test"
 	f1bAudience       = "https://api.kacho.test"
 )
 

@@ -172,6 +172,22 @@ api-gateway:
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
     issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
+    #
+    # Over this hop travels the material the edge verifies every bearer's
+    # SIGNATURE with, so the certificate of the mirror is checked against the
+    # anchor below and nothing else. registry fetches from this same :9097 over
+    # https (registry.tokenAcceptance.issuerKeySets below) — one port, one
+    # transport.
+    #
+    # The bundle is the internal CA that signs iam's serving cert. Unreadable or
+    # certificate-less ⇒ REFUSES THE START: falling back to the system roots would
+    # read as configured and verify nothing. The provider-named root that used to
+    # carry this anchor, together with its retired keys, is gone (#2734).
+    issuerKeySetsCa:
+      secretName: kaname-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/issuer-keysets-ca
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -274,50 +290,48 @@ api-gateway:
     # проба, а не этот комментарий.
     iamLoginLaneUrl: https://kaname-internal.kacho.svc:9100
 
+    # ─── АДРЕС СЛУШАТЕЛЯ ВЫДАЧИ — ВТОРАЯ ЦЕЛЬ РЕТРАНСЛЯЦИИ (LINE-A-1, kacho#2817) ─
+    #
+    # Обе координаты церемонии авторизации — навигация `GET /iam/v1/authorize` и
+    # обмен кода `POST /iam/v1/token` — край ретранслирует на слушатель выдачи
+    # службы. Страж старта судит КАЖДУЮ цель: под `own` пустое значение — такой
+    # же отказ старта с именем ручки, как у адреса полосы формы выше.
+    #
+    # Имя — ПУБЛИЧНЫЙ Service службы (`kaname`): слушатель выдачи выставлен
+    # записью `registry-token` там, у внутреннего Service этого порта нет. Порт —
+    # `kaname.ports.registryToken` (9096, умолчание подчарта). Схема `https`:
+    # слушатель под TLS (`kaname.mtls.registryToken` этого профиля). Край
+    # предъявляет ему ту же клиентскую пару и якорь `mtls.*`, что рёбрам к
+    # службе: служба узнаёт край только по сертификату и лишь тогда берёт адрес
+    # источника из `X-Forwarded-For` (приёмка темпа службы, Р7). Имя
+    # `kaname.kacho.svc` несёт серверный лист службы (`mtls.serverHosts`), по
+    # нему край ставит имя сервера на рукопожатии.
+    #
+    # Из адреса соседа не выводится: адрес, решающий, куда едет носитель сессии
+    # человека, задаётся явно. Согласие порта и TLS с половиной службы судит
+    # deploy/own_posture_stack_test.go.
+    #
+    # НАСЛЕДУЮТ ЭТУ СТРОКУ те же стенды, что строку выше.
+    iamIssuanceUrl: https://kaname.kacho.svc:9096
+
     # Вторая половина той же посадки. Значение обязано СОВПАДАТЬ с объявленным
     # службе выше: расхождение половин — стенд, у которого о личности решают
     # по-разному.
     identityProvider: own
-  # Узел носит имя прежнего поставщика по истории; живой в нём ровно один
-  # предмет — якорь хопа за набором ключей НАШЕГО издателя (`jwksCa`, ниже).
-  hydra:
-    # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
-    #
-    # THIS LINE USED TO POINT STRAIGHT AT THE PROVIDER, and that was the facade bypass
-    # this edge had already been caught at once and fixed. It came back because the
-    # correct route was unreachable: an address knob existed for this hop, a trust knob
-    # did not, so "fetch from the internal mirror over TLS" could not be configured and
-    # going around the facade looked like the pragmatic choice. It is not a choice any
-    # more — the anchor below makes the right route configurable.
-    #
-    # Why it matters more than tidiness: over this hop travels the material the edge
-    # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
-    # decision, and the edge then believes its own answer. Plaintext, or TLS whose
-    # certificate nobody checks, both leave that open. registry already fetches from
-    # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
-    # port, one
-    # transport.
-    jwksUrl: ""  # СНЯТ: адрес набора теперь объявляется записью издателя
-              # в tokenAcceptance.issuerKeySets выше.
-    # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
-    # Unreadable or certificate-less ⇒ REFUSES THE START: falling back to the
-    # system roots would read as configured and verify nothing.
-    jwksCa:
-      secretName: kaname-server-tls
-      key: ca.crt
-      mountPath: /etc/api-gateway/hydra-jwks-ca
-    issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
-                # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
     failOpen: false
   # mTLS: external listener server cert + backend-dial client cert, every edge on.
-  # `hybridExternal: false` → external listener is strict (browser clients reach
-  # the gateway through the ingress TLS terminator, not this listener directly).
+  # `hybridExternal` — client-certificate verification on the external listener
+  # (semantics: `mtls.hybridExternal` in gateway/deploy/values.yaml). The landing
+  # gate (deploy/scripts/assert-production-posture.sh) accepts the edge's
+  # public_mtls only as true. What the process will report is judged on the
+  # RENDER of each production chain, not on this line:
+  # edge_public_listener_mtls_test.go.
   mtls:
     enable: true
-    hybridExternal: false
+    hybridExternal: true
     serverSecretName: api-gateway-tls
     edges:
       vpc: true
@@ -609,6 +623,13 @@ kaname:
     hooks: true
     metrics: true
     registryToken: true
+    # Режим слушателя выдачи — запрашивающий (`optional-mutual`): край
+    # предъявляет ему свою клиентскую пару на ретрансляции церемонии, и служба
+    # берёт адрес источника из `X-Forwarded-For` только у пира с проверенным
+    # сертификатом края (приёмка темпа службы доступа, Р7 п. 1, стадия S2 п. 2).
+    # Вызывающий без сертификата допускается. Согласие с целью края судит
+    # deploy/own_posture_stack_test.go.
+    registryTokenClientAuthMode: optional-mutual
     jwksProxy: true
     publicRest: true
     internalRest: true
@@ -738,6 +759,16 @@ kaname:
         # Ф1 §4.1 — 5 минут; KANAME_AUTHN__LOGIN__RECOVERY_CODE_TTL). Код однократен
         # и после срока не оживает; умолчания в коде нет
         recoveryCodeTtl: 5m
+        # подтверждение адреса (kaname#456, Р7, Р9; kacho#2901): дальше экранов
+        # входа и подтверждения — только с подтверждённым адресом. Пять величин
+        # без умолчания (KANAME_AUTHN__LOGIN__VERIFICATION_*), незаданная роняет
+        # старт с именем ключа; величины профиля продукта — срок кода, попыток на
+        # код, промежуток между письмами, писем за окно и само окно
+        verificationCodeTtl: 30m
+        verificationCodeAttempts: 5
+        verificationResendInterval: 60s
+        verificationResendLimit: 5
+        verificationResendWindow: 24h
 
       # РЕГИСТРАЦИЯ НАШЕЙ ПОЛОСОЙ (Ф4, kacho#2699) — величины, которые читает
       # ТОЛЬКО посадка `own`; объявлены здесь по тому же доводу, что блок `login`
@@ -770,6 +801,33 @@ kaname:
       #
       # 15 минут — перенос прежней величины (Ф1 §4.1), а не новый выбор.
       selfServiceFreshness: 15m
+
+      # СРОКИ СОБСТВЕННОЙ ЦЕРЕМОНИИ (kaname#318) — условие старта под `own`,
+      # умолчания нет (KANAME_AUTHN__CEREMONY__*). Те же величины, что у корня
+      # цепочки values.dev.yaml, и по тем же доводам: перенос поведения сборки
+      # до ручек, равного потолкам фундамента (60s и 168h).
+      ceremony:
+        codeTtl: 60s
+        refreshTtl: 168h
+
+      # ─── ПРИВЯЗКА КЛЮЧЕЙ ДОСТУПА (Ф7, kacho#1273; Р2, Ф7-13) ─────────────────
+      #
+      # Три величины контракта, каждая — условие старта под `own`; умолчания нет
+      # ни у одной (`authn.access-keys.*`, KANAME_AUTHN__ACCESS_KEYS__*). Стоят
+      # здесь, в корне цепочки, по доводу окна свежести выше.
+      #
+      # Имя доверяющей стороны здесь не пишется: чарт берёт его из узла `identity`
+      # в `global` (`webauthnRpId`, а пусто — `domain`) тем же шаблоном, что у
+      # настроек поставщика, — ключи привязаны к этому имени, и смена имени
+      # делает уже заведённые ключи непредъявимыми (kacho#2905). Происхождение —
+      # консоль боевой посадки из того же узла (`appBaseURL`, а пусто —
+      # `https://<appSubdomain>.<domain>`): это и объявляет `originFromConsole`.
+      # Площадка с другим адресом консоли объявляет его в `global`, а площадка,
+      # где ключ не выполним, — свой перечень своим слоем. Перечень алгоритмов —
+      # весь словарь проверяющего: ES256, EdDSA, RS256.
+      accessKeys:
+        originFromConsole: true
+        algorithms: [-7, -8, -257]
 
       # ─── ПОСАДКА ЛИЧНОСТИ: СВОЯ ПОЛОСА, А НЕ ВНЕШНИЙ ПОСТАВЩИК ───────────────
       #
@@ -881,6 +939,17 @@ kaname:
         defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
+        # ТЕМП ПОВЕРХНОСТИ ВЫДАЧИ (kaname#315) — умолчаний нет, незаданная
+        # величина есть отказ старта с именем ручки. Числа — §3 приёмки службы
+        # ceremony-pace-is-named-by-number.md дословно: пул службы этого слоя —
+        # умолчание чарта (80), и потолки 32 + 32 оставляют 16 соединений
+        # gRPC-поверхности и фоновым циклам. Все величины — на реплику.
+        inFlightCeiling: 32
+        exchangesPerClientPerSec: 5
+        failedProofsPerSource: 50
+        failedProofWindow: 15m
+        authorizePerSourcePerSec: 10
+        authorizeInFlightCeiling: 32
   # ── ДОСТАВКА МАНИФЕСТОВ МОДУЛЕЙ (kacho#1875 · #1901 · #1909) ────────────
   #
   # Манифест модуля объявлен источником истины о том, что у платформы
@@ -1852,7 +1921,7 @@ hydra:
       # scopes as a list, and the provider's default string encoding would
       # verify fine and then authorize wrongly — worse than failing shut.
       #
-      # Guarded by gateway/deploy/token_shape_test.go, which reads the
+      # Guarded by deploy/helm/umbrella/token_shape_test.go, which reads the
       # declaration rather than a rendered template, so it can never skip.
       strategies:
         access_token: jwt

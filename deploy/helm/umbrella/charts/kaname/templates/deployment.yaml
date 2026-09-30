@@ -15,6 +15,10 @@
 {{- if hasKey (.Values.mtls | default dict) "rest" }}
 {{- fail "kaname: mtls.rest снята — она накрывала ОБА собственных REST-фронта. Объявите mtls.publicRest и mtls.internalRest по отдельности" }}
 {{- end }}
+{{- /* Узел почтовой полосы (`smtp` узла личности раздела `global`) читается
+     ОДИН раз на рабочий объект: его берут и том якоря узла (kacho#2901), и пара
+     удостоверения отправителя ниже. */}}
+{{- $mailNode := (((.Values.global).kacho).identity).smtp | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,8 +45,10 @@ spec:
         #
         # Аннотация пода, а не описатель сбора: описателя обслуживает оператор
         # сбора, а типа его ресурса в этом кластере нет. Аннотацию читают агенты
-        # обоих семейств и обращаются к ПОДУ напрямую — поэтому порт в Service и
-        # `containerPort` для сбора не нужны и здесь не заводятся.
+        # обоих семейств и обращаются к ПОДУ напрямую — поэтому порта в Service
+        # для сбора нет. `containerPort` этой поверхности объявлен у контейнера
+        # ниже (`metrics`) не ради сбора, а ради проб готовности и живости,
+        # которые живут на ней же (kacho#2871), — тем же ключом номера.
         #
         # Порт обязан совпадать с адресом, который процесс берёт из своей
         # конфигурации; это сверяет декларативная проверка
@@ -151,6 +157,19 @@ spec:
             name: {{ .Values.manifests.configMapName | quote }}
             optional: true
         {{- end }}
+        {{- if include "kaname.mailAnchor.declared" $mailNode }}
+        {{- $anchor := $mailNode.trustAnchorSecret }}
+        # ЯКОРЬ ПОЧТОВОГО УЗЛА (kacho#2901, F6b-56). Проецируется ОДИН ключ:
+        # секрет приёмника стенда несёт и его закрытый ключ, а он службе не нужен
+        # ни для чего — ключ, смонтированный «за компанию», есть доступ, которого
+        # никто не решал.
+        - name: mail-anchor
+          secret:
+            secretName: {{ $anchor.name | quote }}
+            items:
+              - key: {{ $anchor.key | quote }}
+                path: ca.crt
+        {{- end }}
         {{- if .Values.mtls.enable }}
         # SEC-H mTLS — cert-manager internal-CA секреты: лист СЛУШАТЕЛЯ и лист
         # КЛИЕНТА, в разных каталогах (cert-manager кладёт tls.crt/tls.key/ca.crt).
@@ -207,15 +226,30 @@ spec:
               containerPort: {{ .Values.ports.grpc }}
             - name: grpc-internal
               containerPort: {{ .Values.ports.internalGrpc }}
+            # Диагностическая поверхность процесса (:9095): `/metrics`, а с
+            # ревизии службы, несущей kaname#360, — и `/healthz`, `/readyz`.
+            # Поднимается при ЛЮБОЙ посадке, поэтому по этому порту идут пробы, а
+            # оператор, ищущий, куда постучаться за причиной неготовности, читает
+            # именно `ports:`. Номер — тот же ключ, что у объявления сбора
+            # (`metricsScrape.port`): у одной поверхности один адрес.
+            - name: metrics
+              containerPort: {{ .Values.metricsScrape.port }}
             # HTTP-слушатель перехватов (перехваты выдачи и обновления токена,
             # приём событий). Cluster-internal.
+            #
+            # ТОЛЬКО там, где процесс его поднимает (`kaname.hooksLaneRaised`,
+            # kacho#2871): под посадкой `own` поставщика нет, слушатель не
+            # строится, и порт, объявленный подом, называл бы дверь, за которой
+            # никого нет.
             #
             # Здесь стояло, что этот же порт отдаёт пакет правил наложения.
             # Такого маршрута у службы нет ни одного: наложение снято вместе со
             # своим потребителем, а комментарий пережил предмет и продолжал
             # обещать выдачу, которой не бывает.
+            {{- if include "kaname.hooksLaneRaised" $ }}
             - name: http-hooks
               containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
+            {{- end }}
             # Docker Registry v2 `/iam/token` auth-server HTTP listener — отдельный,
             # external-reachable порт (:9096), куда data-plane реестра проксирует
             # docker-обмен SA-key/user-token → identity-JWT. Отличается от hooks (:9092)
@@ -262,6 +296,11 @@ spec:
             # каталоге разошлись бы молча, и процесс читал бы пустой путь.
             - name: module-manifests
               mountPath: {{ .Values.manifests.mountPath | quote }}
+              readOnly: true
+            {{- end }}
+            {{- if include "kaname.mailAnchor.declared" $mailNode }}
+            - name: mail-anchor
+              mountPath: {{ include "kaname.mailAnchor.dir" $ | quote }}
               readOnly: true
             {{- end }}
             {{- if .Values.mtls.enable }}
@@ -665,7 +704,6 @@ spec:
             имя пользователя их требует, этого механизма не хватит, и он обязан
             завести свой предметом, а не молча.
             */}}
-            {{- $mailNode := (((.Values.global).kacho).identity).smtp | default dict }}
             {{- $mailRaw := tpl (toString ($mailNode.connectionURI | default "")) . }}
             {{- $mailScheme := ternary "smtps://" (ternary "smtp://" "" (hasPrefix "smtp://" $mailRaw)) (hasPrefix "smtps://" $mailRaw) }}
             {{- $mailRest := trimPrefix $mailScheme $mailRaw }}
@@ -805,21 +843,29 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
           # ГОТОВНОСТЬ СПРАШИВАЕТСЯ ПО ТОМУ, ЧТО СЕРВИС СТРОИТ. `/readyz` живёт на
-          # слушателе вебхуков (:9092) и отражает коннект к базе и поднятый
-          # LRO-worker (buildHooksMux в cmd/kaname/hooks_mux.go); `/healthz` там
-          # же — чистая живость. Прежде оба слота спрашивали `tcpSocket: grpc`, то
-          # есть «открыт ли порт»: iam с недоступной базой оставался Ready, а он
-          # фронтит authN+authZ каждому сервису платформы.
+          # диагностической поверхности (:9095, порт `metrics` выше) и отражает
+          # коннект к базе, версию схемы и поднятый LRO-worker; `/healthz` там же —
+          # чистая живость. Прежде оба слота спрашивали `tcpSocket: grpc`, то есть
+          # «открыт ли порт»: iam с недоступной базой оставался Ready, а он фронтит
+          # authN+authZ каждому сервису платформы.
           #
-          # Схема следует TLS слушателя вебхуков: та же ручка, что поднимает его
-          # TLS, переключает и пробу. Двух редакций одного решения тут быть не
-          # должно — проба по http на TLS-слушателе не ответит никогда, и под не
-          # станет готовым ни при каких условиях.
+          # ПОЧЕМУ ДИАГНОСТИКА, А НЕ ВЕБХУКИ (kacho#2871, служба — kaname#360).
+          # Пробы шли на слушатель вебхуков поставщика, а его процесс под посадкой
+          # `own` не поднимает вовсе: kubelet стучался бы в закрытый порт, под
+          # `own` не становился готовым никогда, а проба живости перезапускала
+          # контейнер по кругу. Диагностика поднимается при ЛЮБОЙ посадке —
+          # поэтому пробы здесь.
+          #
+          # Схема следует TLS диагностического слушателя: та же ручка, что
+          # включает его транспорт (`KANAME_METRICS_SERVER_MTLS_ENABLE` выше) и
+          # задаёт схему объявления сбора, переключает и пробу. Двух редакций одного
+          # решения тут быть не должно — проба по http на TLS-слушателе не ответит
+          # никогда, и под не станет готовым ни при каких условиях.
           readinessProbe:
             httpGet:
               path: /readyz
-              port: http-hooks
-              {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
+              port: metrics
+              {{- if (dig "metrics" .Values.mtls.httpListeners .Values.mtls) }}
               scheme: HTTPS
               {{- end }}
             initialDelaySeconds: 5
@@ -827,8 +873,8 @@ spec:
           livenessProbe:
             httpGet:
               path: /healthz
-              port: http-hooks
-              {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
+              port: metrics
+              {{- if (dig "metrics" .Values.mtls.httpListeners .Values.mtls) }}
               scheme: HTTPS
               {{- end }}
             initialDelaySeconds: 10

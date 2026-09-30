@@ -15,8 +15,7 @@ import (
 	"time"
 )
 
-// cutoffLookup — SubjectLookuper без расширения Kratos, чтобы полоса шла
-// простой веткой резолва и доходила до вопроса про отсечку.
+// cutoffLookup — SubjectLookuper, резолвящий ровно названного субъекта.
 type cutoffLookup struct{ subj Subject }
 
 func (c cutoffLookup) LookupByExternalID(context.Context, string) (Subject, error) {
@@ -39,34 +38,25 @@ func (f *fakeCutoff) SessionCutoffOf(_ context.Context, userID string) (time.Tim
 	return f.cutoff, f.found, f.err
 }
 
-// kratosStub — провайдер, называющий момент аутентификации сессии.
-func kratosStub(t *testing.T, authenticatedAt time.Time) *httptest.Server {
-	t.Helper()
-	at := ""
-	if !authenticatedAt.IsZero() {
-		at = `,"authenticated_at":"` + authenticatedAt.UTC().Format(time.RFC3339Nano) + `"`
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"active":true`+at+
-			`,"identity":{"id":"kid-1","traits":{"email":"a@example.com"}}}`)
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+// cookieLaneSession — наша сессия человека, аутентифицировавшаяся в authAt.
+// Нулевой момент означает «служба момента не назвала».
+func cookieLaneSession(authAt time.Time) *fakeHumanSession {
+	return &fakeHumanSession{found: true, sess: HumanSession{
+		UserID:          "usr-1",
+		Email:           "a@example.com",
+		DisplayName:     "A",
+		AuthenticatedAt: authAt,
+		ExpiresAt:       time.Now().Add(24 * time.Hour),
+		AssuranceLevel:  "1",
+		EmailVerified:   true,
+	}}
 }
 
-// carrierEnded — погасил ли ответ носителя браузерной сессии.
-func carrierEnded(res *http.Response) bool {
-	for _, c := range res.Cookies() {
-		if c.Name == "ory_kratos_session" && c.MaxAge < 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// runCookieLane прогоняет один запрос с cookie сессии через полосу личности.
-func runCookieLane(t *testing.T, kratosURL string, cut *fakeCutoff) (*http.Response, bool) {
+// runCookieLane прогоняет один запрос с НАШИМ носителем сессии через полосу
+// личности. Полоса браузерной сессии у края одна — наша (#2792), и отсечку она
+// спрашивает тем же читателем, что прежде спрашивала полоса поставщика: пробы
+// границы отсечки поэтому переехали сюда, а не сняты вместе с той полосой.
+func runCookieLane(t *testing.T, authAt time.Time, cut *fakeCutoff) (*http.Response, bool) {
 	t.Helper()
 	served := false
 	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { served = true })
@@ -74,26 +64,27 @@ func runCookieLane(t *testing.T, kratosURL string, cut *fakeCutoff) (*http.Respo
 	a := NewAuthInterceptor(AuthModeDev, "",
 		cutoffLookup{subj: Subject{Type: "user", ID: "usr-1", DisplayName: "A"}},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	).WithKratos(NewKratosClient(kratosURL))
+	).WithHumanSession(cookieLaneSession(authAt))
 	if cut != nil {
 		a = a.WithSessionCutoffCheck(cut, time.Hour)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
-	// Уникальная cookie на прогон: кэш сессии ключуется целиком по Cookie-header,
-	// и общий литерал сделал бы вердикт функцией порядка проб.
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name())
+	req.AddCookie(&http.Cookie{Name: OurSessionCarrierName, Value: t.Name()})
 	rec := httptest.NewRecorder()
 	a.HTTP(next).ServeHTTP(rec, req)
 	return rec.Result(), served
 }
+
+// carrierEnded — погасил ли ответ носителя браузерной сессии.
+func carrierEnded(res *http.Response) bool { return ourCarrierEnded(res) }
 
 // TestCookieLane_SessionAtOrBeforeCutoffIsRefused — ЦЕНТРАЛЬНОЕ утверждение
 // подфазы: запись, которую делает НАШ глагол выхода, действует на предъявлении
 // браузерной сессии.
 //
 // До этой полосы административный принудительный выход возвращал успех, а
-// человек продолжал работать в консоли: его личность резолвится по cookie, а ни
+// человек продолжал работать в консоли: его личность резолвилась по cookie, а ни
 // один читатель нашей отсечки на этом пути не стоял.
 //
 // Утверждается НАБЛЮДАЕМОЕ — код ответа, непрохождение запроса дальше и
@@ -102,7 +93,7 @@ func TestCookieLane_SessionAtOrBeforeCutoffIsRefused(t *testing.T) {
 	authAt := time.Now().Add(-2 * time.Hour)
 	cut := &fakeCutoff{cutoff: authAt.Add(time.Hour), found: true}
 
-	res, served := runCookieLane(t, kratosStub(t, authAt).URL, cut)
+	res, served := runCookieLane(t, authAt, cut)
 
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("сессия старше отсечки обязана быть отвергнута: получено %d, ожидалось 401", res.StatusCode)
@@ -124,8 +115,8 @@ func TestCookieLane_SessionAtOrBeforeCutoffIsRefused(t *testing.T) {
 
 // TestCookieLane_SessionExactlyAtCutoffIsRefused — ГРАНИЦА, и она включающая.
 //
-// Отсечка ставится моментом «сейчас», а метка времени сессии у провайдера имеет
-// конечное разрешение: совпадение двух моментов — не редкость, а обычный исход
+// Отсечка ставится моментом «сейчас», а метка времени сессии имеет конечное
+// разрешение: совпадение двух моментов — не редкость, а обычный исход
 // принудительного выхода сразу после входа. Исключающая граница делала бы такой
 // выход недействительным ровно в этом случае, и заметить это можно было бы
 // только по жалобе.
@@ -133,7 +124,7 @@ func TestCookieLane_SessionExactlyAtCutoffIsRefused(t *testing.T) {
 	authAt := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	cut := &fakeCutoff{cutoff: authAt, found: true}
 
-	res, served := runCookieLane(t, kratosStub(t, authAt).URL, cut)
+	res, served := runCookieLane(t, authAt, cut)
 
 	if res.StatusCode != http.StatusUnauthorized || served {
 		t.Fatalf("сессия, аутентифицировавшаяся РОВНО в момент отсечки, обязана быть отвергнута: код %d, дошло=%v",
@@ -153,7 +144,7 @@ func TestCookieLane_SessionAfterCutoffPasses(t *testing.T) {
 	authAt := time.Now()
 	cut := &fakeCutoff{cutoff: authAt.Add(-time.Hour), found: true}
 
-	res, served := runCookieLane(t, kratosStub(t, authAt).URL, cut)
+	res, served := runCookieLane(t, authAt, cut)
 
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("сессия моложе отсечки обязана проходить: получено %d", res.StatusCode)
@@ -171,7 +162,7 @@ func TestCookieLane_SessionAfterCutoffPasses(t *testing.T) {
 func TestCookieLane_NoCutoffPasses(t *testing.T) {
 	cut := &fakeCutoff{found: false}
 
-	res, served := runCookieLane(t, kratosStub(t, time.Now()).URL, cut)
+	res, served := runCookieLane(t, time.Now(), cut)
 
 	if res.StatusCode != http.StatusOK || !served {
 		t.Fatalf("без отсечки сессия обязана проходить: код %d, дошло=%v", res.StatusCode, served)
@@ -191,7 +182,7 @@ func TestCookieLane_NoCutoffPasses(t *testing.T) {
 func TestCookieLane_UnansweredAuthorityRefusesButKeepsCarrier(t *testing.T) {
 	cut := &fakeCutoff{err: errors.New("authority unreachable")}
 
-	res, served := runCookieLane(t, kratosStub(t, time.Now()).URL, cut)
+	res, served := runCookieLane(t, time.Now(), cut)
 
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("молчащий СВОЙ авторитет обязан давать отказ: получено %d", res.StatusCode)
@@ -218,7 +209,7 @@ func TestCookieLane_UnansweredAuthorityRefusesButKeepsCarrier(t *testing.T) {
 func TestCookieLane_UnsupportedAuthorityPassesLoudly(t *testing.T) {
 	cut := &fakeCutoff{err: ErrSessionCutoffUnsupported}
 
-	res, served := runCookieLane(t, kratosStub(t, time.Now()).URL, cut)
+	res, served := runCookieLane(t, time.Now(), cut)
 
 	if res.StatusCode != http.StatusOK || !served {
 		t.Fatalf("окно раската обязано проходить, иначе консоль лежит весь раскат: код %d, дошло=%v",
@@ -232,14 +223,14 @@ func TestCookieLane_UnsupportedAuthorityPassesLoudly(t *testing.T) {
 // TestCookieLane_SessionWithoutAuthInstantIsRefusedWhenCutoffExists — доказать
 // нечем ⇒ не пропускаем.
 //
-// Момент аутентификации приходит от провайдера, и он вправе его не назвать.
+// Момент аутентификации приходит от службы сессий, и пустым он может приехать.
 // Тогда сравнить с отсечкой не с чем: пропустить такую сессию значило бы, что
-// отзыв обходится ОТСУТСТВИЕМ поля в чужом ответе. Та же посадка, что у хука
+// отзыв обходится ОТСУТСТВИЕМ поля в ответе. Та же посадка, что у хука
 // обновления, где «нет момента ⇒ отказ» уже принята.
 func TestCookieLane_SessionWithoutAuthInstantIsRefusedWhenCutoffExists(t *testing.T) {
 	cut := &fakeCutoff{cutoff: time.Now().Add(-time.Hour), found: true}
 
-	res, served := runCookieLane(t, kratosStub(t, time.Time{}).URL, cut)
+	res, served := runCookieLane(t, time.Time{}, cut)
 
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("сессия без момента аутентификации при живой отсечке обязана быть отвергнута: получено %d",
@@ -257,7 +248,7 @@ func TestCookieLane_SessionWithoutAuthInstantIsRefusedWhenCutoffExists(t *testin
 // с читателем, сказавшим „годно“» не сливались в один наблюдаемый исход в глазах
 // следующего читателя кода.
 func TestCookieLane_UnmountedReaderLeavesLanePassing(t *testing.T) {
-	res, served := runCookieLane(t, kratosStub(t, time.Now()).URL, nil)
+	res, served := runCookieLane(t, time.Now(), nil)
 
 	if res.StatusCode != http.StatusOK || !served {
 		t.Fatalf("без провязанного читателя полоса обязана работать как прежде: код %d, дошло=%v",
@@ -272,14 +263,14 @@ func TestCookieLane_RefusalMessageNamesOwnSessionOnly(t *testing.T) {
 	authAt := time.Now().Add(-time.Hour)
 	cut := &fakeCutoff{cutoff: authAt.Add(time.Minute), found: true}
 
-	res, _ := runCookieLane(t, kratosStub(t, authAt).URL, cut)
+	res, _ := runCookieLane(t, authAt, cut)
 	body, _ := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 
 	if !strings.Contains(string(body), sessionCutoffDenyDescription) {
 		t.Fatalf("отказ не назвал состояние собственной сессии вызывающего: %s", string(body))
 	}
-	for _, leak := range []string{"usr-1", "kid-1", "a@example.com"} {
+	for _, leak := range []string{"usr-1", "a@example.com"} {
 		if strings.Contains(string(body), leak) {
 			t.Fatalf("в теле отказа личность вызывающего (%q): %s", leak, string(body))
 		}

@@ -5,7 +5,8 @@
 //     срок, уровень и подтверждённость адреса. Читатель ответа ОДИН —
 //     `sessionIdentity` клиента полосы (условие C7), и человек здесь в форме
 //     его провода (условие C9);
-//   - whoami — bootstrap прав из `GET /iam/v1/me`;
+//   - whoami — bootstrap прав из `GET /iam/v1/me`; спрашивается только после
+//     ответа края «адрес подтверждён» (приёмка F6b, Р7);
 //   - refresh() — перечитать личность и права.
 //
 // Церемоний здесь НЕТ. Вход, регистрацию и выход ведёт КОНСОЛЬ своими экранами
@@ -49,7 +50,7 @@ export interface AuthContextValue {
   refresh: () => Promise<void>;
   /** Перезапросить только whoami (например, после 403 — роль могла измениться). */
   refreshWhoAmI: () => Promise<void>;
-  /** Установить access-token (после Hydra token-exchange). */
+  /** Установить access-token (после обмена на токен). */
   setAccessToken: (token: string | null) => void;
   /** Проверка permission (admin `*` wildcard). */
   hasPermission: (perm: string) => boolean;
@@ -84,13 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [who, whoamiIamResp] = await Promise.all([
-        sessionIdentity(),
-        authApi.whoami().then(
-          (value) => ({ status: "fulfilled" as const, value }),
-          () => ({ status: "rejected" as const }),
-        ),
-      ]);
+      const who = await sessionIdentity();
       if (who.kind === "present") {
         setUser(who.user);
         setSession(who.session);
@@ -99,15 +94,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(null);
       }
       // `unknown` — спросить не удалось: состояние НЕ гасится (условие C6).
-      if (whoamiIamResp.status === "fulfilled") {
-        setWhoami(whoamiIamResp.value);
-      } else {
+      //
+      // Вопрос о правах — ТОЛЬКО ПОСЛЕ ответа «сессия есть, адрес подтверждён»
+      // (приёмка F6b, Р7). Прежде он уходил вместе с вопросом о сессии, не
+      // дожидаясь его ответа, и учётная запись с неподтверждённым адресом
+      // получала вопрос о правах, ответ на который ей не положен.
+      // `unknown` права не гасит по той же причине, что личность (условие C6).
+      if (who.kind === "present" && who.session?.emailVerified === true) {
+        await refreshWhoAmI();
+      } else if (who.kind !== "unknown") {
         setWhoami(null);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshWhoAmI]);
 
   // Init: начальный refresh (сессия — по httpOnly носителю, его держит браузер).
   useEffect(() => {
@@ -124,7 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // чтобы поймать изменение ролей (e.g. админ grant'нул system_admin) без
   // полного `refresh` (который дополнительно перечитывает личность и сессию).
   useEffect(() => {
-    if (!user) return;
+    // Тот же порог, что у подъёма: о правах спрашивается только подтверждённая
+    // сессия (приёмка F6b, Р7).
+    if (!user || session?.emailVerified !== true) return;
     // поллинг остаётся: предмет здесь не ресурс, а ЛИЧНОСТЬ вызывающего и её
     // права. Довод «журнала у iam нет» отсюда снят — журнал есть, — но вывод он
     // не менял и не меняет: ресурсный журнал несёт состояние РЕСУРСА, а не
@@ -134,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void refreshWhoAmI();
     }, WHOAMI_REFETCH_MS);
     return () => clearInterval(t);
-  }, [user, refreshWhoAmI]);
+  }, [user, session, refreshWhoAmI]);
 
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);

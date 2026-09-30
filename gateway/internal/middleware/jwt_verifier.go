@@ -726,7 +726,7 @@ func extClaimsMap(claims jwt.MapClaims) map[string]any {
 }
 
 // extractACR resolves the authentication assurance level that the step-up gate
-// ranks (grpcsrv.ACRRank / EvaluateStepUp).
+// ranks (acrlevel.Rank / grpcsrv.EvaluateStepUp).
 //
 // PRECEDENCE — standard claim first, enrichment map second:
 //

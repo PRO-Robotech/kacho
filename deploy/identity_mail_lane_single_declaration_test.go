@@ -61,7 +61,7 @@ const mailLaneFeedURI = mailLaneFeedPath + ".connectionURI"
 
 // Наш шаблон конфигурации личности — единственное законное объявление раздела
 // `courier` — адресуется существующей константой `identityConfigTemplate`
-// (identity_seed_matches_chart_schema_test.go). Второй копии координаты здесь
+// (identity_config_template_test.go). Второй копии координаты здесь
 // не заводится: это ровно тот класс, который третье утверждение ниже ловит.
 
 // cutoverScript — оснастка боевой раскатки. Перечень разрешённых координат слоя

@@ -32,8 +32,9 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :808
 # api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
 # negatives address it here rather than by its advertised hostname: that name does not
 # resolve on a developer box, adding it needs root, kind publishes only node:80, and the
-# Ingress in front of it speaks GRPCS so every REST path through it answers 502. Ban #6 is
-# about which routes the LISTENER serves, not about the name used to find it.
+# Ingress in front of it speaks GRPCS so every REST path through it answers 502 — every path
+# but the three exact ceremony coordinates, which it forwards over HTTPS (kacho#2860). Ban #6
+# is about which routes the LISTENER serves, not about the name used to find it.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 # Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают
@@ -115,6 +116,13 @@ echo "[e2e] пробросы к поставщику личности: откр�
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
+PF_PIDS+=($!)
+# Приёмник писем стенда — поверхность чтения посева людей (kacho#2901, F6b-53):
+# человек наборов подтверждается кодом из письма регистрации, и посев читает его
+# здесь. Тот же проброс и тот же довод, что у прогонщика шардов (newman-parallel.sh).
+MAILBOX_PORT="${MAILBOX_PORT:-18025}"
+MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
+kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pf-mailbox.log 2>&1 &
 PF_PIDS+=($!)
 
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ ──────────────────────
@@ -248,6 +256,7 @@ echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
+MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
 PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"

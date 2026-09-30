@@ -2,29 +2,17 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // revocation_endpoint_test.go — every deployed stand must tell the gateway where
-// to ask whether a token has been revoked.
+// to ask whether a token has been revoked, and the chart must carry what the
+// process reads for it.
 //
-// WHICH AUTHORITY depends on the edge's identity posture. On `external` it is the
-// identity provider's admin API, and the two addresses below are required. On
-// `own` the provider is not on the stand and our own revocation authority takes
-// its place (TestStacks_AcceptingOurIssuerNameTheRevocationAuthority below), so
-// the provider's addresses are required to be ABSENT — see
-// provider_road_posture_test.go for how the posture is read and why absence is
-// asserted rather than skipped.
+// WHICH AUTHORITY. Our own: a stand that accepts our issuer names our revocation
+// authority (TestStacks_AcceptingOurIssuerNameTheRevocationAuthority below). The
+// previous identity provider's admin-API addresses are gone (#2734): the edge no
+// longer asks that provider anything, and the probes that demanded its addresses
+// were retired together with them (the tombstone below says which and why).
 //
-// The gateway cannot work the provider's address out. Introspection is served by the
-// identity provider's ADMIN API, on a Service and port distinct from the public
-// issuer, and reachable only inside the cluster — so a profile that leaves it
-// out does not fall back to something workable, it leaves the check with nowhere
-// to ask. The same holds for the admin base the logout handler uses to end the
-// provider-side session.
-//
-// Both used to be DERIVED from the public issuer when unset, and no profile set
-// either, so every stand ran with both aimed at a server that does not serve
-// them. That is why the addresses are asserted here rather than assumed.
-//
-// This guard reads the DECLARATIONS, like its neighbour token_shape_test.go: the
-// contract is what the profiles declare, it needs no chart dependencies, and it
+// This guard reads the DECLARATIONS, like deploy/helm/umbrella/token_shape_test.go:
+// the contract is what the profiles declare, it needs no chart dependencies, and it
 // therefore can never skip. It merges each stack the way helm does, because the
 // profiles are layered — the base carries the address and an overlay may correct
 // it, so asking each FILE in isolation would demand redundant restatements and
@@ -32,8 +20,6 @@
 package deploy_test
 
 import (
-	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -136,11 +122,6 @@ func sortedStackNames(stacks map[string][]string) []string {
 	return names
 }
 
-// introspectionAdminPath — the path the provider's admin API serves token
-// introspection on, mirrored from the gateway's own boot guard. An address
-// ending anywhere else is the public API, which serves no introspection at all.
-const introspectionAdminPath = "/admin/oauth2/introspect"
-
 // mergeInto overlays src onto dst the way helm merges values files: maps merge
 // key by key, anything else replaces wholesale. It is the package's only
 // overlay.
@@ -186,121 +167,18 @@ func TestMergeInto_LeavesItsSourceIntact(t *testing.T) {
 	}
 }
 
-// resolveStack merges a stack's profiles in order and returns the gateway value
-// at the given path, or ("", false) when the stack never declares it.
-func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
-	t.Helper()
-	merged := map[string]any{}
-	for _, profile := range stack {
-		merged = mergeInto(merged, umbrellaValues(t, profile))
-	}
-	var cur any = merged
-	for _, key := range append([]string{"api-gateway"}, path...) {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return "", false
-		}
-		if cur, ok = m[key]; !ok {
-			return "", false
-		}
-	}
-	s, ok := cur.(string)
-	return s, ok && strings.TrimSpace(s) != ""
-}
-
-// Every stack whose edge posture is `external` must name the introspection
-// endpoint, and it must be the admin path — pointing it at the public API is
-// exactly the state this contract exists to prevent. A stack on `own` must name
-// none: the edge's boot guard does not require it there, and a named address is
-// still wired (provider_road_posture_test.go).
-func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
-	testStacksDeclareProviderRoad(t, introspectionRoad, introspectionAdminPath)
-}
-
-// And the admin base the logout handler needs to end the provider-side session.
-// Unset on `external`, the session kill is skipped and signing out leaves the
-// session alive; on `own` there is no provider-side session to end.
-func TestStacks_DeclareAdminEndpoint(t *testing.T) {
-	testStacksDeclareProviderRoad(t, adminRoad, "")
-}
-
-// testStacksDeclareProviderRoad — общее тело двух проб выше: наличие адреса
-// судится посадкой края, форма объявленного — одинаково на обеих посадках.
-func testStacksDeclareProviderRoad(t *testing.T, k providerRoadKnob, wantPath string) {
-	t.Helper()
-	stacks := deployableStacks(t)
-	census := postureCensus{}
-	for _, name := range sortedStackNames(stacks) {
-		stack := stacks[name]
-		posture := stackPosture(t, stack, k.half)
-		census.add(posture)
-		t.Run(name, func(t *testing.T) {
-			got, _ := scalarAt(foldStack(t, stack), k.path...)
-			if f := roadPresenceFinding(name, k, posture, got); f != "" {
-				t.Fatalf("%s (%s)", f, strings.Join(stack, " + "))
-			}
-			if strings.TrimSpace(got) == "" {
-				return
-			}
-			if err := checkAdminEndpoint(got, wantPath); err != nil {
-				t.Errorf("%s: %s %v", name, k.label, err)
-			}
-		})
-	}
-	t.Logf("перепись %s по посадке %s: %s", k.label, k.half.who, census)
-}
-
-// The chart must still emit the environment variables these values drive. A
-// value nothing renders is a decision that never reaches the process — the same
-// way the sender-constrained token knob was documented for its whole life while
-// no template emitted it.
-func TestChart_EmitsRevocationEnv(t *testing.T) {
-	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
-	// Пара клиентской личности стоит здесь по той же причине, что и адреса:
-	// профиль её ОБЪЯВЛЯЕТ (это утверждает соседний declared-тест), но пока
-	// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
-	// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
-	// котором каждый предъявитель нашей чеканки получал отказ.
-	// Ручки НАШЕЙ полосы (KACHO_API_GATEWAY_..._TOKEN_...) отсюда выведены и
-	// сверяются ВЫВОДИМО — TestChart_EmitsEveryDeclaredTokenAcceptanceKnob
-	// читает их перечень из объявления config. Выписанный список рядом с
-	// выводимым дал бы два места об одном предмете, и разошлись бы они молча:
-	// новая ручка попадала бы в одно и не попадала в другое.
-	for _, name := range []string{
-		"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
-	} {
-		// Имя сверяется ДО КОНЦА СТРОКИ, а не вхождением: подстрока
-		// удовлетворяется и удлинённым именем, поэтому переименование
-		// `…_CERT_FILE` → `…_CERT_FILE_X` оставляло гейт зелёным. Найдено
-		// инъекцией при заведении второй пары — до неё гейт три имени из трёх
-		// «проверял» так же.
-		if !strings.Contains(deployment, "name: "+name+"\n") {
-			t.Errorf("the api-gateway template no longer emits %s — the values knob would be "+
-				"silently inert and the profiles above would assert nothing", name)
-		}
-	}
-}
-
-// checkAdminEndpoint mirrors the gateway's boot guard: an absolute in-cluster
-// http(s) URL and, for introspection, the admin path.
-func checkAdminEndpoint(raw, wantPath string) error {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return fmt.Errorf("is not a valid URL: %v", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("must be an absolute http(s) URL, got %q", raw)
-	}
-	if u.Host == "" {
-		return fmt.Errorf("has no host: %q", raw)
-	}
-	if wantPath != "" && strings.TrimRight(u.Path, "/") != wantPath {
-		return fmt.Errorf("must address %q, got %q — the public OAuth2 API serves no "+
-			"introspection, and the gateway refuses to start on an address shaped like it",
-			wantPath, u.Path)
-	}
-	return nil
-}
+// ЗДЕСЬ СТОЯЛИ ТРИ ПРОБЫ О ДОРОГЕ КРАЯ К ПРЕЖНЕМУ ПОСТАВЩИКУ — и сняты вместе с ней
+// (#2734): TestStacks_DeclareIntrospectionEndpoint и TestStacks_DeclareAdminEndpoint
+// требовали адресов его административного API под посадкой `external`,
+// TestChart_EmitsRevocationEnv требовал, чтобы шаблон края эти адреса эмитировал.
+//
+// Последняя ИСТЕКЛА, а не снята молча (#2778): её перечень был сведён с ведомостью
+// снятых ручек (`internal/retiredknobs`), и имя, снятое с процесса, проба больше не
+// требовала, а называла находкой своего перечня. Когда с процесса сняты оба имени
+// перечня, требовать проба больше не может ничего, и снимается вместе с последним
+// — тем же изменением, что снимает читателя. Что снятые имена не вернутся, судят
+// двухколоночный гейт края (knob_producer_parity_test.go) и рендерная проба
+// каждой цепочки (deploy/edge_retired_knobs_render_test.go).
 
 // ─── НАША ПОЛОСА ОТЗЫВА: СТЕНД, А НЕ ФАЙЛ ───────────────────────────────────
 
@@ -512,7 +390,7 @@ var tokenLaneEnvValue = regexp.MustCompile(
 //
 // Читателей объявления двое: проба выше спрашивает КЛЮЧ ПРОФИЛЯ, процесс читает
 // ПЕРЕМЕННУЮ ОКРУЖЕНИЯ, и связывает их ровно одно место — эта строка шаблона.
-// Перевесив её на адрес соседа (`.Values.hydra.introspectionUrl`), получаем
+// Перевесив её на адрес соседа (скажем, `.Values.advertisedEndpoint`), получаем
 // состояние, в котором обе проверки зелены, профиль объявляет одно, а процесс
 // получает другое — и адрес контроля безопасности оказывается ВЫВЕДЕННЫМ из
 // чужого. Выведенный адрес всегда непуст, поэтому страж старта молчит, контроль

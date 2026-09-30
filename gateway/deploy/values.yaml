@@ -197,20 +197,6 @@ subscriptionStream:
 # Dev (kind + port-forward): override to localhost:18443.
 advertisedEndpoint: api.kacho.local:443
 
-# kratosPublicUrl — базовый адрес публичного API провайдера личности, по
-# которому край проверяет сессию SPA (cookie → /whoami).
-#
-# ПУСТО — не «выключено», а «вывести из релиза»: шаблон подставит
-# `http://<релиз>-kratos-public.<пространство-имён>.svc:80`. Выключает
-# сессионную аутентификацию целиком ТОЛЬКО значение `disabled` — это
-# сигнальное значение, которое читает config.go.
-#
-# Почему выводится, а не вписано литералом (#145): Service провайдера
-# называется по имени релиза, поэтому литерал верен ровно для одного релиза и
-# ломается молча при установке под другим именем — а профиль при этом не
-# меняется, потому что адреса он и не называл.
-kratosPublicUrl: ""
-
 # RESERVED — блок `oidc:` снят вместе с обработчиком церемонии.
 # Он питал маршруты интерактивного входа края, адресовавшие снятого провайдера
 # личности. Ни один профиль его не включал (`enabled: false` здесь был
@@ -280,24 +266,29 @@ kratosPublicUrl: ""
 #   4. gateway:   authn.requireMachineTokenBinding=true → unbound machine ⇒ 401
 authn:
   # ─── посадка личности (#1125) ──────────────────────────────────────────────
-  # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА: `external` — внешний поставщик удостоверений,
-  # `own` — наша собственная чеканка.
+  # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА. Законное значение одно — `own`, наша
+  # собственная чеканка: так разбирает поле словарь фундамента на пине дерева
+  # (corelib/identityposture, пин — go.mod). Прежняя посадка `external` снята
+  # со словаря (corelib#30): край её не разбирает, и под с ней не стартует —
+  # отказ на ResolvedIdentityProvider в main.go.
   #
-  # На крае она разводит требование ОБОИХ административных адресов поставщика
-  # (hydra.introspectionUrl, hydra.adminUrl): под `external` они обязательны,
-  # под `own` поставщика на стенде нет — сессии у него не существует, а ось
-  # интроспекции замещается осью НАШЕГО авторитета отзыва
-  # (tokenAcceptance.revocationUrl). Авторитет отзыва обязателен на обеих
-  # посадках; разводится лишь то, чей он (validateProductionRevocationConfig).
+  # На крае она разводит три провязки: читателя нашей сессии, ответ «кто я» и
+  # ретрансляцию глаголов формы — все три под `own`, — и требование НАШЕГО
+  # авторитета отзыва (tokenAcceptance.revocationUrl): под `own` он обязателен
+  # (validateProductionRevocationConfig). Адресов прежнего поставщика край не
+  # читает ни под одной посадкой (#2734).
   #
   # УМОЛЧАНИЯ У ПРОЦЕССА НЕТ намеренно, поэтому оно живёт здесь: профиль,
   # объявивший посадку у службы прав и забывший её на крае, получит отказ
-  # старта края — а не тихо разъехавшиеся половины одного стенда.
+  # старта края — а не тихо разъехавшиеся половины одного стенда. Значение
+  # здесь — то, что получит рендер без профиля стенда, и потому оно обязано
+  # разбираться словарём процесса: иначе такой рендер кладёт под в перезапуски.
+  # Держит это gateway/deploy/identity_posture_base_default_test.go.
   #
   # Значение обязано СОВПАДАТЬ с тем, что объявила служба прав: две половины
   # одного стенда, объявившие разное, — расхождение, которого никто не решал.
-  # Держит это deploy/identity_posture_profiles_test.go.
-  identityProvider: external
+  # Держит это deploy/helm/umbrella/identity_posture_profiles_test.go.
+  identityProvider: own
 
   # ─── адрес полосы формы службы доступа (Ф3, kacho#1269) ───────────────────
   # HTTPS-слушатель службы, на который край РЕТРАНСЛИРУЕТ четыре глагола формы
@@ -308,9 +299,10 @@ authn:
   #
   # ЧИТАЕТСЯ ТОЛЬКО ПОД `own`: под `own` пустое значение — отказ старта с именем
   # ручки (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь,
-  # неотличимо от «служба лежит»); под `external` не читается вовсе. Базовый
-  # профиль объявляет `external`, поэтому здесь пусто — и остаётся пустым: ручка
-  # задаётся ПРОФИЛЕМ рядом с посадкой, а не умолчанием чарта.
+  # неотличимо от «служба лежит»). Здесь пусто — и остаётся пустым: адрес
+  # выводится из имени Service службы на стенде, поэтому ручка задаётся
+  # ПРОФИЛЕМ рядом с посадкой, а не умолчанием чарта. Рендер без профиля стенда
+  # получает отказ старта с именем этой ручки.
   #
   # Профиль, который её задаёт, теперь в дереве есть — накладка посадки `own`
   # зонта (`deploy/helm/umbrella/values.own.yaml`, стек `own` в
@@ -329,54 +321,28 @@ authn:
   # с портом службы судит теперь проба, названная выше.
   iamLoginLaneUrl: ""
 
-# Previous external OAuth server. The accepted issuers and their key sets are
-# declared by `tokenAcceptance` (platform-minted tokens included); the auth path
-# verifies each token against the key set of the issuer it names.
-#
-# The revocation path needs two addresses, and neither is derivable from the
-# issuer: both are served by the provider's ADMIN API, on its own Service and
-# port, reachable only inside the cluster.
-#
-#   introspectionUrl: where the gateway asks whether an access token has been
-#               revoked — the admin path `/admin/oauth2/introspect`. Asked per
-#               request through a short-TTL cache. Drives
-#               KACHO_HYDRA_INTROSPECTION_URL.
-#   adminUrl:   admin API base the logout handler uses to end the provider-side
-#               session (`DELETE /admin/oauth2/auth/sessions/login`). Drives
-#               KACHO_HYDRA_ADMIN_URL.
-#
-# Both were DERIVED from the public issuer when unset, and no profile set
-# either, so every stand ran with them aimed at a server that serves neither.
-# They are no longer derived: unset means the control is off, and a
-# production-class gateway refuses to start in that state. The provider's admin
-# API carries no authentication of its own — it is protected by not being
-# routable — so no credentials accompany these addresses; do not publish the
-# admin Service outside the cluster.
-#
-#   hydra:
-#     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect
-#     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc:4445
-#   adminCa:    trust anchor for the admin hop, when that hop is served over
-#               TLS. Since the revocation check moved onto the authN layer the
-#               hop carries the caller's LIVE bearer on every introspection
-#               cache miss — before that only administrative calls went that
-#               way — so the transport is now a tenant-data question, not just
-#               an operational one. An in-cluster provider certificate is issued
-#               by the internal CA, which the gateway does not trust by default
-#               (its default pool is the system roots); this mounts the bundle
-#               and points KACHO_HYDRA_ADMIN_CA_FILE at it.
-#
-#               Set it together with an https address, never instead of one, and
-#               never a bundle that does not sign the provider's certificate: an
-#               unknown-authority handshake is classified as PERMANENT
-#               misconfiguration by the introspection layer, which then refuses
-#               every request rather than waving them through. A bundle that
-#               cannot be read, or that holds no certificate, refuses the start.
-#
-#     adminCa:
-#       secretName: hydra-admin-tls   # secret carrying the internal-CA bundle
-#       key: ca.crt
-#       mountPath: /etc/api-gateway/hydra-admin-ca
+  # ─── адрес слушателя выдачи службы доступа (LINE-A-1, kacho#2817) ──────────
+  # HTTPS-слушатель службы, на который край РЕТРАНСЛИРУЕТ обе координаты
+  # церемонии авторизации под посадкой `own`: навигацию `GET /iam/v1/authorize`
+  # и обмен кода `POST /iam/v1/token`. Цель своя, а не слушатель формы: церемония
+  # живёт целиком на слушателе выдачи. Край предъявляет ему ту же клиентскую
+  # пару (`mtls.*`), что рёбрам к службе: слушатель выдачи запрашивающий
+  # (`optional-mutual`), узнаёт край только по сертификату и лишь тогда берёт
+  # адрес источника из `X-Forwarded-For`. Якорь и имя сервера ребра iam — те же.
+  # Драйвит KACHO_API_GATEWAY_IAM_ISSUANCE_URL.
+  #
+  # ЧИТАЕТСЯ ТОЛЬКО ПОД `own`: пустое значение там — отказ старта с именем ручки
+  # (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь); под
+  # `external` не читается вовсе. Базовый профиль объявляет `external`, поэтому
+  # здесь пусто; значение задают корни цепочек стендов зонта
+  # (`values.prod.yaml`, `values.dev.yaml`) рядом с адресом полосы формы. Из
+  # адреса соседа оно не выводится: адрес, решающий, куда едет носитель сессии
+  # человека, задаётся явно.
+  #
+  # Образец адреса: публичный Service службы и порт её слушателя выдачи
+  # (`kaname.ports.registryToken`), схема `https`.
+  iamIssuanceUrl: ""
+
 # tokenAudience — АДРЕСАТ, которому адресованы принимаемые краем токены
 # (утверждение `aud`). Задача #2567.
 #
@@ -431,8 +397,8 @@ tokenAcceptance:
   #
   # 1. У ТЕХ ВЕЛИЧИН ЕСТЬ ДОМЕННО-НЕЗАВИСИМЫЙ ПРАВИЛЬНЫЙ ОТВЕТ. Адресат — это
   #    «https://» + тот самый `kacho.domain`, который оператор уже объявил;
-  #    посадка личности — одно из двух значений, и `external` есть сегодняшнее
-  #    состояние всякой установки. У перечня издателей такого ответа нет:
+  #    посадка личности — единственное значение словаря фундамента, `own`.
+  #    У перечня издателей такого ответа нет:
   #    издатель — ДОСЛОВНАЯ строка, которую поставщик штампует в `iss`, и она
   #    разная на разных стендах. Измерено сворачиванием
   #    `api-gateway.tokenAcceptance.issuers` по цепочкам deploy/stacks.txt так,
@@ -462,6 +428,27 @@ tokenAcceptance:
   # Производственная посадка требует https:// у каждого адреса: набор ключей
   # есть единственный якорь доверия проверки подписи.
   issuerKeySets: ""
+  # issuerKeySetsCa — якорь доверия ХОПА за наборами ключей, адреса которых
+  # объявляет issuerKeySets. По этому хопу приезжает материал, которым край
+  # проверяет ПОДПИСЬ каждого предъявителя: подменивший его в пути подменяет
+  # решение о доступе. Лист слушателя на внутрикластерном имени выписан
+  # внутренним центром, которого в корнях процесса нет, поэтому связка задаётся
+  # настройкой, как и адрес. Якорь один на клиент, которым край забирает наборы
+  # ВСЕХ принимаемых издателей. Драйвит KACHO_API_GATEWAY_JWKS_CA_FILE.
+  #
+  # Пусто ⇒ volume/mount/env не рендерятся, транспорт по умолчанию
+  # (внутрикластерный адрес без TLS якоря не требует). Задано ⇒ связка —
+  # ЕДИНСТВЕННЫЙ якорь хопа, а нечитаемая связка ОТКАЗЫВАЕТ В СТАРТЕ.
+  # Стенд, чей набор тянется по TLS с внутрикластерного имени, обязан его
+  # объявить: gateway/deploy/jwks_ca_render_test.go
+  # (TestStacks_InClusterKeySetHopCarriesItsAnchor).
+  #
+  # Прежний корень этого якоря носил имя снятого поставщика вместе с его
+  # адресами и снят целиком (#2734); ключ не переиспользуется.
+  issuerKeySetsCa:
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/api-gateway/issuer-keysets-ca
   # PLATFORM_TOKEN_ISSUER — издатель, под которым чеканит НАША платформа. Он же
   # выбирает полосу приёма: строгий тип at+jwt (RFC 9068) и чтение отзыва на
   # предъявлении. Пусто ⇒ наша чеканка краем не принимается. Непусто, но вне
@@ -496,36 +483,6 @@ tokenAcceptance:
   revocationClientCert:
     certFile: ""
     keyFile: ""
-
-hydra:
-  introspectionUrl: ""
-  adminUrl: ""
-  # Empty secretName ⇒ no volume, no mount, no env: the hop keeps the default
-  # transport. That is correct for a plaintext in-cluster admin API and wrong for
-  # an https one — see admin-hop-transport-test.sh, which fails a profile whose
-  # address is https while this is unset.
-  adminCa:
-    secretName: ""
-    key: ca.crt
-    mountPath: /etc/api-gateway/hydra-admin-ca
-  # jwksCa — trust anchor for the KEY-FETCH hop (the JWKS mirror), separate from
-  # the admin one above.
-  #
-  # Two different peers on two different addresses: the admin hop goes to the
-  # identity provider, the key-fetch hop goes to iam's mirror. Tying them to one
-  # bundle would make it impossible to move one to TLS without the other, and it
-  # is exactly that coupling which kept this hop on plaintext — an address knob
-  # existed here, a trust knob did not, so "serve the mirror over TLS" had no
-  # reachable configuration and was worked around by sending the edge straight to
-  # the provider instead, past the facade.
-  #
-  # Empty ⇒ default transport (an in-cluster plaintext mirror needs no anchor).
-  # Set ⇒ that bundle is the ONLY anchor for the hop, and an unreadable one
-  # REFUSES THE START.
-  jwksCa:
-    secretName: ""
-    key: ca.crt
-    mountPath: /etc/api-gateway/hydra-jwks-ca
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a

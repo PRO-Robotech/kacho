@@ -24,6 +24,14 @@
 // перехода на вход, без повышения и без гашения состояния. Умолчания в пользу
 // действия нет: новая причина службы, прочитанная как знакомая, увела бы
 // человека не туда молча.
+//
+// ПОДТВЕРЖДЕНИЕ АДРЕСА (приёмка F6b) добавило два действия, и оба выбираются
+// ТОЧНЫМ значением причины. Отказ `EMAIL_NOT_VERIFIED` на запросе платформы —
+// экран подтверждения: сессия цела, ей не хватает подтверждения, а не входа
+// (`403`, а не `401`, — Р3), поэтому «войдите» здесь увело бы в круг «вход →
+// экран подтверждения». `EMAIL_ALREADY_VERIFIED` на глаголе подтверждения —
+// уйти на адрес возврата: подтверждать нечего. Отказ по каталогу прав того же
+// статуса и кода (`AUTHZ_DENIED`) — «показать»: различает их только причина.
 
 import { LANE_REASON } from "./lane-reasons";
 
@@ -45,7 +53,11 @@ export type RefusalAction =
   /** платформа: сессии нет — экран входа */
   | "sign-in"
   /** показать текст отказа дословно */
-  | "show";
+  | "show"
+  /** платформа: адрес почты не подтверждён — экран подтверждения (F6b-25) */
+  | "confirm-address"
+  /** экран подтверждения: адрес уже подтверждён — уйти на адрес возврата (F6b-42) */
+  | "address-confirmed";
 
 /** Машинные признаки отказа. */
 export interface RefusalSigns {
@@ -57,6 +69,8 @@ export interface RefusalSigns {
 }
 
 export function refusalActionOf(signs: RefusalSigns, surface: RefusalSurface): RefusalAction {
+  if (signs.reason === LANE_REASON.emailNotVerified) return surface === "platform" ? "confirm-address" : "show";
+  if (signs.reason === LANE_REASON.emailAlreadyVerified) return surface === "ceremony" ? "address-confirmed" : "show";
   if (signs.reason === LANE_REASON.formTokenRejected) return surface === "ceremony" ? "fresh-form-token" : "show";
   if (signs.reason === LANE_REASON.sessionNotFresh) return "step-up-freshness";
   if (signs.challenge === "insufficient_user_authentication") return "step-up-floor";

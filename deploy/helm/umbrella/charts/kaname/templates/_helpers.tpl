@@ -169,3 +169,83 @@ deploy/own_lane_memory_budget_test.go.
 {{- end -}}
 {{- toYaml $res -}}
 {{- end -}}
+
+{{/*
+kaname.hooksLaneRaised — ПОДНИМАЕТ ЛИ ПРОЦЕСС СЛУШАТЕЛЬ ВЕБХУКОВ ПОСТАВЩИКА
+ЛИЧНОСТИ при посадке этого профиля (kacho#2871, служба — kaname#360). Отдаёт
+`true` либо пусто.
+
+ЗЕРКАЛО ПРЕДИКАТА ПРОЦЕССА, а не своё решение: служба снимает слушатель ровно
+ОДНИМ объявленным значением — `own` (`AuthNConfig.HasExternalIdentityProvider`,
+«не own»). Поэтому здесь «не own», а не «== external»: незаявленная посадка
+слушатель СОХРАНЯЕТ, и чарт, сузивший условие, снял бы порт там, где процесс
+дверь поднимает.
+
+Читателей два — порт пода и порт внутреннего Service, — и порознь они разошлись
+бы молча. Согласие с процессом на каждом стенде держит
+`deploy/kaname_hooks_port_follows_posture_test.go`.
+*/}}
+{{- define "kaname.hooksLaneRaised" -}}
+{{- $authn := (.Values.config | default dict).authn | default dict -}}
+{{- if ne (toString ($authn.identityProvider | default "")) "own" -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+ЯКОРЬ ПОЧТОВОГО УЗЛА У НАШЕГО ОТПРАВИТЕЛЯ (kacho#2901, приёмка F6b, F6b-56).
+
+Аргумент — узел почтовой полосы (`smtp` узла личности раздела `global`); источник
+якоря в нём — `trustAnchorSecret` (секрет и ключ). Объявлен целиком ⇒ рабочий
+объект монтирует из секрета ОДИН этот ключ под именем `ca.crt` в каталог ниже, а
+настройка процесса получает путь к нему (`invite-mail.ca-bundle-file`). Каталог и
+имя файла принадлежат шаблону, а не профилю: два читателя одного пути — том пода
+и настройка — берут его отсюда, и разойтись им нечем.
+
+Объявлен наполовину ⇒ якоря нет, и это не молчание: половину пары отвергает страж
+рендера зонта (templates/identity-mail-lane-guard.yaml, (7)), называя ключ.
+*/}}
+{{- define "kaname.mailAnchor.dir" -}}/etc/kaname-mail-anchor{{- end -}}
+{{- define "kaname.mailAnchor.file" -}}{{ include "kaname.mailAnchor.dir" . }}/ca.crt{{- end -}}
+{{- define "kaname.mailAnchor.declared" -}}
+{{- $a := (. | default dict).trustAnchorSecret | default dict -}}
+{{- if and (ne (trim (toString ($a.name | default ""))) "") (ne (trim (toString ($a.key | default ""))) "") -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+ВЕЛИЧИНЫ, ВЫВОДИМЫЕ ИЗ УЗЛА ЛИЧНОСТИ, — ОДНИМ ЧИТАТЕЛЕМ (kacho#2905, kacho#2901).
+
+Аргумент — `(list $ "<величина>")`. Узел личности раздела `global` подчарт читает
+для своих выводимых величин здесь, в одном месте; сами выражения — у шаблонов
+`kaname.identity.webauthnRpId` и `kaname.identity.consoleOrigin` (_kratos-identity.tpl),
+общих с настройками службы личности:
+
+  · `rpId`          — имя доверяющей стороны ключей доступа;
+  · `consoleOrigin` — происхождение консоли;
+  · `loginURL`      — адрес экрана входа консоли в письмах нашего отправителя:
+    `/login` в корне её происхождения (ui-future/shared/src/pages/auth/
+    ceremony-addresses.ts). Служба берёт из него происхождение для адреса экрана
+    подтверждения в письме (`<происхождение>/verification`). Литерала адреса в
+    профиле нет — он был бы вторым местом о происхождении консоли.
+
+Адрес входа — не одна из трёх величин, которые решение Р23 объявляет однажды для
+обоих отправителей (узел, отправитель, удостоверение): поставщику личности он не
+нужен. Поэтому он выводится из узла личности, а не из узла полосы; гейт питания
+полосы (deploy/identity_mail_lane_feeds_both_senders_test.go, граница его предмета
+названа в шапке) его не судит, судит исход рендера —
+deploy/address_gate_stand_render_test.go.
+
+Незнакомое имя величины — отказ рендера, а не пустая строка.
+*/}}
+{{- define "kaname.identity.derived" -}}
+{{- $root := index . 0 -}}
+{{- $what := index . 1 -}}
+{{- $id := $root.Values.global.kacho.identity | default dict -}}
+{{- if eq $what "rpId" -}}
+{{- include "kaname.identity.webauthnRpId" $id -}}
+{{- else if eq $what "consoleOrigin" -}}
+{{- include "kaname.identity.consoleOrigin" $id -}}
+{{- else if eq $what "loginURL" -}}
+{{- printf "%s/login" (trimSuffix "/" (include "kaname.identity.consoleOrigin" $id)) -}}
+{{- else -}}
+{{- fail (printf "kaname.identity.derived: величина %q не выводится из узла личности" (toString $what)) -}}
+{{- end -}}
+{{- end -}}
