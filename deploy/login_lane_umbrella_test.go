@@ -65,6 +65,14 @@ var loginLaneConfigKeys = []struct{ configKey, valueKey string }{
 	// Срок кода восстановления доступа (Ф5, kacho#2701) — ручка ТОГО ЖЕ блока
 	// `authn.login`: страж службы требует её под `own` наравне с остальными.
 	{"recovery-code-ttl", "recoveryCodeTtl"},
+	// Подтверждение адреса (kaname#456, Р7, Р9; kacho#2901) — пять ручек того же
+	// блока без умолчания: срок и предел попыток кода, промежуток, число и окно
+	// писем.
+	{"verification-code-ttl", "verificationCodeTtl"},
+	{"verification-code-attempts", "verificationCodeAttempts"},
+	{"verification-resend-interval", "verificationResendInterval"},
+	{"verification-resend-limit", "verificationResendLimit"},
+	{"verification-resend-window", "verificationResendWindow"},
 }
 
 // registrationConfigKeys — ключи блока `authn.registration` (Ф4, kacho#2699):
@@ -87,6 +95,7 @@ var loginLaneIntegerKeys = []string{
 	"addressAttempts", "sourceAttempts", "passwordMinLength",
 	"hasherMemory", "hasherIterations", "hasherParallelism",
 	"verifierCapacity", "memoryReserveBytes",
+	"verificationCodeAttempts", "verificationResendLimit",
 }
 
 // loginLaneEnv — пять переменных транспорта слушателя формы.

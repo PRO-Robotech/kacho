@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import type { Dispatch, SetStateAction } from "react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { HostBreadcrumb } from ".";
 import type { HostContext } from "../../../utils";
 
@@ -14,7 +15,7 @@ const jsonResponse = (body: unknown) => {
 
 describe("HostBreadcrumb", () => {
   beforeEach(() => {
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
+    stubNetwork(() => jsonResponse({ accounts: [] }));
   });
 
   afterEach(() => {

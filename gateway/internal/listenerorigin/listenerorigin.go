@@ -29,19 +29,34 @@
 // (KACHO_API_GATEWAY_INTERNAL_REST_ADDR, wrapped with InternalListener and never
 // targeted by the ingress). So:
 //
-//   - plaintext cmux listener (ingress-facing) → unmarked → external → Internal* 404
-//   - external TLS listener                    → unmarked → external → Internal* 404
+//   - plaintext cmux listener (ingress-facing) → ExternalListener → external → Internal* 404
+//   - external TLS listener                    → ExternalListener → external → Internal* 404
 //   - dedicated internal admin REST listener   → InternalListener → internal → served
+//   - any listener without a wrapper           → unmarked → external → Internal* 404
 //
 // # How the marker propagates
 //
 // api-gateway serves the SAME *http.Server (and the SAME REST dispatcher) on
-// every HTTP listener. The shared http.Server.ConnContext hook
-// (InternalConnContext) inspects the accepted net.Conn: a connection whose
-// listener was wrapped by InternalListener is tagged internal; any other
-// connection is left untagged (external — the fail-closed default). The REST
-// dispatcher then 404s Internal* paths whenever IsExternal(ctx) is true, which
-// is every listener except the marked internal admin one.
+// every HTTP listener. The shared http.Server.ConnContext hook (ConnContext)
+// inspects the accepted net.Conn: a connection whose listener was wrapped by
+// InternalListener is tagged internal; any other connection is left without the
+// internal tag (external — the fail-closed default). The REST dispatcher then
+// 404s Internal* paths whenever IsExternal(ctx) is true, which is every listener
+// except the marked internal admin one.
+//
+// # The second reader: records that answer on external listeners only
+//
+// Some records must answer ONLY on the external listeners (the authorization
+// ceremony coordinates). For them the restricted direction is the opposite one:
+// a missing marker must refuse, not serve. IsExternal cannot say that — its
+// default is external. Such records read OnExternalListener, whose default is
+// FALSE: it is true only when the connection was accepted on a listener wrapped
+// by ExternalListener. The composition root wraps both external HTTP listeners
+// (plaintext cmux and TLS). A listener that lost its wrapper serves neither
+// Internal* paths nor external-only records.
+//
+// A connection wrapped by BOTH wrappers is a wiring error; ConnContext sets no
+// marker for it, so each reader falls back to its own refusal.
 package listenerorigin
 
 import (
@@ -83,16 +98,15 @@ func WithInternal(ctx context.Context) context.Context {
 }
 
 // internalConn wraps a net.Conn accepted on the cluster-internal admin listener
-// so that InternalConnContext can recognise it and tag the request context.
+// so that ConnContext can recognise it and tag the request context.
 type internalConn struct {
 	net.Conn
 }
 
 // InternalListener wraps lis so every connection it accepts is tagged as
-// cluster-internal origin (recognisable by InternalConnContext). Wrap ONLY the
-// dedicated cluster-internal admin REST listener; leave the plaintext cmux
-// listener and the external TLS listener unwrapped (they stay external, the
-// fail-closed default).
+// cluster-internal origin (recognisable by ConnContext). Wrap ONLY the
+// dedicated cluster-internal admin REST listener; the plaintext cmux listener
+// and the external TLS listener carry ExternalListener instead.
 func InternalListener(lis net.Listener) net.Listener {
 	return &internalListener{Listener: lis}
 }
@@ -109,39 +123,91 @@ func (l *internalListener) Accept() (net.Conn, error) {
 	return &internalConn{Conn: c}, nil
 }
 
-// InternalConnContext is an http.Server.ConnContext hook: it marks the request
-// context as cluster-internal origin when the connection was accepted on a
-// listener wrapped by InternalListener. Connections from any other listener (the
-// external edge) pass through unmarked → external (fail-closed default).
+// markExternal is the sentinel stored under originKey for connections accepted
+// on a listener wrapped by ExternalListener. It is the only thing that makes
+// OnExternalListener true.
+type markExternal struct{}
+
+// OnExternalListener reports whether the connection was accepted on a listener
+// wrapped by ExternalListener. Its default is the OPPOSITE of IsExternal: a nil
+// context, an unmarked connection and an internal-marked connection all report
+// false. Records that answer on external listeners only refuse unless it is
+// true.
+func OnExternalListener(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	_, ok := ctx.Value(originKey{}).(markExternal)
+	return ok
+}
+
+// externalConn wraps a net.Conn accepted on an external listener so that
+// ConnContext can recognise it and tag the request context.
+type externalConn struct {
+	net.Conn
+}
+
+// ExternalListener wraps lis so every connection it accepts is tagged as
+// accepted on an external listener (recognisable by ConnContext). Wrap the
+// external HTTP listeners the ingress and external TLS clients reach; never the
+// dedicated cluster-internal admin REST listener.
+func ExternalListener(lis net.Listener) net.Listener {
+	return &externalListener{Listener: lis}
+}
+
+type externalListener struct {
+	net.Listener
+}
+
+func (l *externalListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &externalConn{Conn: c}, nil
+}
+
+// ConnContext is an http.Server.ConnContext hook. A connection accepted on a
+// listener wrapped by InternalListener is tagged internal; one accepted on a
+// listener wrapped by ExternalListener is tagged external; any other connection
+// passes through unmarked. A connection carrying both wrappers passes through
+// unmarked too: IsExternal then reports true and OnExternalListener false.
 //
 // The same http.Server serves every HTTP listener; ConnContext is invoked per
 // connection with the concrete net.Conn, so this is the one place that can tell
-// the internal admin listener from the external listeners without splitting into
-// multiple http.Server instances.
-func InternalConnContext(ctx context.Context, c net.Conn) context.Context {
-	if isInternalConn(c) {
+// the listeners apart without splitting into multiple http.Server instances.
+func ConnContext(ctx context.Context, c net.Conn) context.Context {
+	internal, external := connOrigin(c)
+	switch {
+	case internal && external:
+		return ctx
+	case internal:
 		return WithInternal(ctx)
+	case external:
+		return context.WithValue(ctx, originKey{}, markExternal{})
 	}
 	return ctx
 }
 
-// isInternalConn unwraps the conn chain (crypto/tls / cmux wrap the underlying
-// conn) to find the internalConn marker.
-func isInternalConn(c net.Conn) bool {
+// connOrigin unwraps the conn chain (crypto/tls and similar expose the
+// underlying conn via NetConn) and reports which wrappers it passes.
+func connOrigin(c net.Conn) (internal, external bool) {
 	type wrappedConn interface {
 		NetConn() net.Conn
 	}
 	for c != nil {
-		if _, ok := c.(*internalConn); ok {
-			return true
-		}
-		// crypto/tls.Conn (and similar) expose the underlying connection via
-		// NetConn().
-		if w, ok := c.(wrappedConn); ok {
+		switch w := c.(type) {
+		case *internalConn:
+			internal = true
+			c = w.Conn
+		case *externalConn:
+			external = true
+			c = w.Conn
+		case wrappedConn:
 			c = w.NetConn()
-			continue
+		default:
+			return internal, external
 		}
-		break
 	}
-	return false
+	return internal, external
 }

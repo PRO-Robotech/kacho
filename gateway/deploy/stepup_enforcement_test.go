@@ -50,7 +50,9 @@ func resolveStackBool(t *testing.T, stack []string, path ...string) (bool, bool)
 // Silence is not a neutral default here — it is the state in which the whole
 // control was inert, and a stand in that state now refuses to start.
 func TestStacks_DeclareStepUpEnforcement(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStackBool(t, stack, stepUpEnforcementPath...)
 			if !ok {

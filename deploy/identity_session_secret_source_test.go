@@ -71,6 +71,8 @@ var identitySecretKeys = []string{"default", "cookie", "cipher"}
 type identityLane struct {
 	// raisesIdentity — служба личности включена.
 	raisesIdentity bool
+	// flagRead — флаг включения службы прочитан булевым (включена она или нет).
+	flagRead bool
 	// selfContained — строка соединения объявлена В GIT: стенд поднимается из
 	// дерева, а не из слоя учётных данных площадки.
 	selfContained bool
@@ -114,14 +116,20 @@ func TestSelfContainedStandDeclaresItsIdentitySessionSecrets(t *testing.T) {
 	sort.Strings(names)
 
 	lanes := map[string]identityLane{}
-	raising, self, declaring := 0, 0, 0
+	raising, self, declaring, flagRead := 0, 0, 0, 0
 	for _, name := range names {
-		merged := map[string]any{}
+		// Слияние начинается с БАЗЫ зонта, как у helm: флаг включения службы
+		// личности объявлен там (#2735 — выключена на всех стендах), и цепочка
+		// без базы судила бы значение, которого helm не видит.
+		merged := readYAML(t, filepath.Join(umbrellaDir, "values.yaml"))
 		for _, profile := range stacks[name] {
 			merged = mergeValues(merged, readYAML(t, filepath.Join(umbrellaDir, profile)))
 		}
 		lane := identityLaneOf(merged)
 		lanes[name] = lane
+		if lane.flagRead {
+			flagRead++
+		}
 		if lane.raisesIdentity {
 			raising++
 		}
@@ -135,16 +143,26 @@ func TestSelfContainedStandDeclaresItsIdentitySessionSecrets(t *testing.T) {
 
 	// Перепись печатается ВСЕГДА и ПОРОЗНЬ: одно число скрывает ровно тот
 	// случай, ради которого ось заведена, — «полос N · несут свойство M».
-	t.Logf("осмотрено: стендов прочитано=%d (%s), поднимают службу личности=%d, "+
-		"из них самодостаточны в git=%d, из них объявляют источник величин сессии=%d",
-		len(names), strings.Join(names, ", "), raising, self, declaring)
+	t.Logf("осмотрено: стендов прочитано=%d (%s), флаг службы личности прочитан у %d, "+
+		"поднимают службу личности=%d, из них самодостаточны в git=%d, из них объявляют "+
+		"источник величин сессии=%d",
+		len(names), strings.Join(names, ", "), flagRead, raising, self, declaring)
 
-	// Предпосылка: обход что-то нашёл. Ноль поднимающих означает, что ключ
-	// переехал либо служба выключена всюду, — и тогда проверка судит пустоту.
+	// Предпосылка: обход что-то нашёл. Ноль стендов, поднимающих службу, — цель
+	// #2735 (она выключена в базе зонта на всех стендах), и принимается ровно
+	// при одном условии: флаг включения прочитан булевым у КАЖДОГО стенда.
+	// Непрочитанный флаг значит «ключ `kratos.enabled` переехал», и тогда ноль —
+	// это ноль прочитанного. Способность правила упасть держит проба
+	// возвращённого дефекта рядом (identity_session_secret_source_injection_test.go).
+	if raising == 0 && flagRead != len(names) {
+		t.Fatalf("предпосылка проверки нарушена: ни один стенд не поднимает службу личности, "+
+			"а флаг её включения прочитан у %d стендов из %d — ключ `kratos.enabled` "+
+			"переехал; «ноль находок» здесь означало бы «ноль прочитанного»",
+			flagRead, len(names))
+	}
 	if raising == 0 {
-		t.Fatalf("предпосылка проверки нарушена: ни один стенд не поднимает службу личности "+
-			"(стендов прочитано %d) — ключ `kratos.enabled` переехал либо служба выключена "+
-			"всюду; «ноль находок» здесь означало бы «ноль прочитанного»", len(names))
+		t.Logf("служба личности поставщика выключена на всех %d стендах (#2735): величинам "+
+			"её сессии перечеканиваться негде, и требованию судить нечего", len(names))
 	}
 
 	for _, name := range names {
@@ -174,7 +192,9 @@ func identityLaneOf(values map[string]any) identityLane {
 	if kratos == nil {
 		return lane
 	}
-	if enabled, ok := kratos["enabled"].(bool); !ok || !enabled {
+	enabled, ok := kratos["enabled"].(bool)
+	lane.flagRead = ok
+	if !ok || !enabled {
 		return lane
 	}
 	lane.raisesIdentity = true

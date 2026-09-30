@@ -19,6 +19,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // TestDataplane_Forward_PresentsOwnCredentials — форвардер ставит СВОИ учётные
@@ -26,7 +28,7 @@ import (
 func TestDataplane_Forward_PresentsOwnCredentials(t *testing.T) {
 	var sawUser, sawPass string
 	var sawAuthHeader string
-	zot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	zot := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawAuthHeader = r.Header.Get("Authorization")
 		u, p, ok := r.BasicAuth()
 		if !ok {

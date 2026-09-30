@@ -17,6 +17,7 @@ import (
 	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // mockOperationServer — простой mock для тестирования OpsProxy.
@@ -466,10 +467,7 @@ func (m *principalCapturingServer) Cancel(ctx context.Context, req *operationpb.
 // захваченные headers после вызова.
 func setupCapturingBackend(t *testing.T, ops map[string]*operationpb.Operation) (*grpc.ClientConn, *principalCapturingServer) {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
+	lis := privateloopback.Listen(t)
 	server := &principalCapturingServer{ops: ops}
 	srv := grpc.NewServer()
 	operationpb.RegisterOperationServiceServer(srv, server)

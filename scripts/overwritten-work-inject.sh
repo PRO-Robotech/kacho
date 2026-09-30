@@ -33,7 +33,9 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
 
 SUT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/overwritten-work.py"
-[ -x "$SUT" ] || { echo "НЕ ВЫПОЛНИЛОСЬ: не найден испытуемый $SUT" >&2; exit 3; }
+# Код 2 — «условие не создано» по контракту доказательств дерева
+# (`deploy/tests/helm/README.md` §«Три исхода»); тройка ниже — код ИСПЫТУЕМОГО.
+[ -x "$SUT" ] || { echo "НЕ ВЫПОЛНИЛОСЬ: не найден испытуемый $SUT" >&2; exit 2; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

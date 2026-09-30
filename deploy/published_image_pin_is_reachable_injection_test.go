@@ -35,6 +35,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // injectedRegistry — свой реестр: отвечает так, как отвечает Docker Hub.
@@ -346,7 +348,7 @@ func TestRegistryProbeRemembersPerRepositoryWithoutWeakeningTheControl(t *testin
 	// (а) Репозиторий читается: управляющий вопрос задан ОДИН раз на три ссылки,
 	//     а вердикт у каждой свой.
 	var tags, manifests int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case strings.HasPrefix(req.URL.Path, "/token"):
 			w.Header().Set("Content-Type", "application/json")

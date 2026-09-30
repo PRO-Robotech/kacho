@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { orderedTransport } from "@shared/api/carrier-order";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageFrame } from "@shared/components/organisms/PageFrame";
 import type { FC } from "react";
 import { Button, Space, Tag, Typography } from "antd";
 
@@ -8,8 +10,6 @@ const probes = [
   { label: "Начальная настройка IAM", path: "/iam/v1/me" },
   { label: "Сети VPC", path: "/vpc/v1/networks" },
   { label: "Виртуальные машины", path: "/compute/v1/instances" },
-  { label: "Kratos", path: "/.ory/kratos/public/health/ready" },
-  { label: "Hydra", path: "/.ory/hydra/public/health/ready" },
 ];
 
 type ProbeResult = {
@@ -24,7 +24,8 @@ export const ReachabilityPage: FC = () => {
   const runProbe = async (path: string) => {
     setResults((prev) => ({ ...prev, [path]: { state: "loading" } }));
     try {
-      const res = await fetch(path, { credentials: "include" });
+      // Обращение к краю — упорядочением вкладки (приёмка F8, Р10), как всякое.
+      const res = await orderedTransport.fetch(path, { credentials: "include" });
       const text = await res.text();
       const detail = text ? summarizeBody(text) : res.statusText;
       const state = res.ok ? "ok" : res.status === 401 || res.status === 403 ? "auth" : "error";
@@ -34,27 +35,31 @@ export const ReachabilityPage: FC = () => {
     }
   };
 
+  // Шапка с действием стоит, строки проб прокручиваются под ней одной
+  // областью (`PageFrame`): рабочая область каркаса сама не прокручивается.
   return (
-    <section className="workbench">
-      <div className="panel-heading">
-        <div>
-          {/* Заголовок — общей конструкцией: см. `PageHead`. */}
-          <PageHead title="Доступность API" />
-          <Typography.Text type="secondary">
-            Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
-          </Typography.Text>
+    <PageFrame
+      head={
+        <div className="workbench panel-heading">
+          <div>
+            {/* Заголовок — общей конструкцией: см. `PageHead`. */}
+            <PageHead title="Доступность API" />
+            <Typography.Text type="secondary">
+              Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
+            </Typography.Text>
+          </div>
+          <Button
+            type="primary"
+            onClick={() => {
+              void Promise.all(probes.map((p) => runProbe(p.path)));
+            }}
+          >
+            Проверить все
+          </Button>
         </div>
-        <Button
-          type="primary"
-          onClick={() => {
-            void Promise.all(probes.map((p) => runProbe(p.path)));
-          }}
-        >
-          Проверить все
-        </Button>
-      </div>
-
-      <div className="probe-grid">
+      }
+    >
+      <div className="workbench probe-grid">
         {probes.map((probe) => {
           const result = results[probe.path] ?? { state: "idle" };
           return (
@@ -76,7 +81,7 @@ export const ReachabilityPage: FC = () => {
           );
         })}
       </div>
-    </section>
+    </PageFrame>
   );
 };
 

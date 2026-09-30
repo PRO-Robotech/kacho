@@ -24,9 +24,9 @@
 //
 // # Кэша НЕТ — ни положительного, ни отрицательного (Р7)
 //
-// Читатель сессии поставщика держит положительный ответ 30 с. С таким окном
-// выход и блокировка не могут вычеркнуть чужой кэш, и Ф1-14/Ф1-16 («негодны
-// немедленно») не производятся. Один вызов на предъявление — цена, уже
+// Снятый читатель сессии прежнего поставщика держал положительный ответ 30 с.
+// С таким окном выход и блокировка не могли бы вычеркнуть кэш, и Ф1-14/Ф1-16
+// («негодны немедленно») не производились бы. Один вызов на предъявление — цена, уже
 // уплаченная на этом же пути решением о доступе; второй вызов той же службы
 // порядка не меняет.
 package middleware
@@ -55,7 +55,10 @@ type HumanSession struct {
 	// AssuranceLevel — уровень уверенности НА ОСИ КАТАЛОГА («1» — пароль): наша
 	// сессия объявляет его сама (Ф11), перевода со словаря поставщика здесь нет.
 	AssuranceLevel string
-	// EmailVerified — подтверждён ли ТЕКУЩИЙ адрес (Ф2 П1).
+	// EmailVerified — подтверждён ли ТЕКУЩИЙ адрес (Ф2 П1). По нему полоса
+	// сессии решает рубеж адреса (приёмка F6b, Р4), а «кто я» — спрашивать ли о
+	// правах (Р10). Значение, которого в ответе службы нет, — «не подтверждён»:
+	// нулевое значение закрывает, а не открывает.
 	EmailVerified bool
 }
 
@@ -100,33 +103,21 @@ type SessionLaneSnapshot struct {
 	// (нет, «0», словарь поставщика — Ф11-19). Не исход отказа: на глаголе без
 	// пола такой ответ проходит, а состояние докладывается само по себе.
 	AssuranceOffAxis uint64
-
-	// TransitionalFloorWithheld — сколько раз чужая сессия предъявила уровень,
-	// а край его не пропустил, потому что живы ОБА читателя носителя. Величина
-	// показывает, скольким людям переходное окно мешает выполнить действие с
-	// полом второго фактора, — то есть пора ли его закрывать.
-	TransitionalFloorWithheld uint64
-
-	// TransitionalWindowClosed — сколько чужих сессий отвергнуто как заведённые
-	// ПОСЛЕ открытия окна. Ненулевая величина означает, что чужая форма входа
-	// достижима: окно объявлено, а новые сессии на той стороне продолжают
-	// заводиться.
-	TransitionalWindowClosed uint64
+	// AddressNotVerified — отказов адреса (приёмка F6b, Р3, Р12): живая сессия,
+	// чей адрес почты не подтверждён, на пути вне перечня прохода. Носитель
+	// цел. Отказ решения с причиной службы (Р3а) здесь не считается: его
+	// произносит решение, а не полоса.
+	AddressNotVerified uint64
 }
 
 // SessionLaneCounts — накопитель клеток полосы сессии на горячем пути.
 type SessionLaneCounts struct {
-	cutoffDenied     atomic.Uint64
-	noSession        atomic.Uint64
-	unavailable      atomic.Uint64
-	rolloutWindow    atomic.Uint64
-	assuranceOffAxis atomic.Uint64
-
-	// transitionalFloorWithheld — см. recordTransitionalFloorWithheld.
-	transitionalFloorWithheld atomic.Uint64
-
-	// transitionalWindowClosed — см. recordTransitionalWindowClosed.
-	transitionalWindowClosed atomic.Uint64
+	cutoffDenied      atomic.Uint64
+	noSession         atomic.Uint64
+	unavailable       atomic.Uint64
+	rolloutWindow     atomic.Uint64
+	assuranceOffAxis  atomic.Uint64
+	addressUnverified atomic.Uint64
 }
 
 // Snapshot — слепок клеток для коллектора.
@@ -135,14 +126,12 @@ func (c *SessionLaneCounts) Snapshot() SessionLaneSnapshot {
 		return SessionLaneSnapshot{}
 	}
 	return SessionLaneSnapshot{
-		CutoffDenied:     c.cutoffDenied.Load(),
-		NoSession:        c.noSession.Load(),
-		Unavailable:      c.unavailable.Load(),
-		RolloutWindow:    c.rolloutWindow.Load(),
-		AssuranceOffAxis: c.assuranceOffAxis.Load(),
-
-		TransitionalFloorWithheld: c.transitionalFloorWithheld.Load(),
-		TransitionalWindowClosed:  c.transitionalWindowClosed.Load(),
+		CutoffDenied:       c.cutoffDenied.Load(),
+		NoSession:          c.noSession.Load(),
+		Unavailable:        c.unavailable.Load(),
+		RolloutWindow:      c.rolloutWindow.Load(),
+		AssuranceOffAxis:   c.assuranceOffAxis.Load(),
+		AddressNotVerified: c.addressUnverified.Load(),
 	}
 }
 
@@ -178,27 +167,8 @@ func (c *SessionLaneCounts) recordAssuranceOffAxis() {
 	}
 }
 
-// recordTransitionalFloorWithheld — чужая сессия предъявила уровень, а край его
-// не пропустил, потому что живы оба читателя.
-//
-// Своя клетка обязательна: без неё «в этом окне положительный пол на чужой
-// полосе не удовлетворяется» осталось бы невидимым до первой жалобы человека,
-// у которого действие с полом перестало выполняться. Клетка же называет
-// величину, по которой видно, ПОРА ЛИ закрывать окно.
-func (c *SessionLaneCounts) recordTransitionalFloorWithheld() {
+func (c *SessionLaneCounts) recordAddressNotVerified() {
 	if c != nil {
-		c.transitionalFloorWithheld.Add(1)
-	}
-}
-
-// recordTransitionalWindowClosed — чужая сессия отвергнута как заведённая после
-// открытия окна.
-//
-// Клетка отвечает на вопрос, которого больше негде задать: ДОСТИЖИМА ЛИ чужая
-// форма входа. Ноль означает, что новых сессий на той стороне не заводится;
-// растущая величина — что окно объявлено, а вторая дверь открыта.
-func (c *SessionLaneCounts) recordTransitionalWindowClosed() {
-	if c != nil {
-		c.transitionalWindowClosed.Add(1)
+		c.addressUnverified.Add(1)
 	}
 }

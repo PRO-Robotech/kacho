@@ -148,7 +148,7 @@ func TestChartPairsTheIdempotencyStoreWithTheFleetItDeclares(t *testing.T) {
 func TestEveryUmbrellaProfilePairsTheStoreWithItsFleet(t *testing.T) {
 	chart := gatewayChartValues(t)
 
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("прочитать каталог профилей: %v", err)

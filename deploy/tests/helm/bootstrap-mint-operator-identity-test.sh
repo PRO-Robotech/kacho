@@ -163,15 +163,20 @@ EMPTY_ALLOWED="$(allowlist_of "$EMPTY_CM")"
 # категорией — «условие прогона не создано», — то есть чужой предмет роняет
 # проверку, которой почта не нужна вовсе.
 #
-# Величины снимаются ВСЕ ТРИ: половина пары отвергается тем же стражем отдельной
-# ветвью («выглядит настроенной»), и снятие одной величины поменяло бы один отказ
-# на другой.
+# Величины полосы снимаются ВСЕ ТРИ: половина пары отвергается тем же стражем
+# отдельной ветвью («выглядит настроенной»), и снятие одной величины поменяло бы
+# один отказ на другой. С ними снимается и ЯКОРЬ отправителя (`trustAnchorSecret`,
+# kacho#2901): профиль стенда объявляет его секретом приёмника, а якорь без
+# полосы страж отвергает своей ветвью («проверять нечего») — оставленный, он
+# вернул бы ту же третью категорию чужим предметом.
 helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set mtls.enabled=false --set cert-manager.enabled=false \
   --set mailpit.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName= \
+  --set global.kacho.identity.smtp.trustAnchorSecret.name= \
+  --set global.kacho.identity.smtp.trustAnchorSecret.key= \
   --show-only "$CERT_TPL"
 render_or_fatal "values.dev.yaml + mtls.enabled=false → $CERT_TPL"
 NOMTLS="$HELM_OUT"

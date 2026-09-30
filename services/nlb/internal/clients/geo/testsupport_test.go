@@ -5,13 +5,13 @@ package geo
 
 import (
 	"context"
-	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 )
 
@@ -20,8 +20,7 @@ import (
 // существующие call-site'ы (region-only тесты продолжают звать startFakeGeo(t, regions)).
 func startFakeGeo(t *testing.T, regions geopb.RegionServiceServer, zones ...geopb.ZoneServiceServer) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	if regions != nil {
 		geopb.RegisterRegionServiceServer(srv, regions)

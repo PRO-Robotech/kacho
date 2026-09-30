@@ -4,19 +4,19 @@
   Serving certificate for the identity provider's ADMIN listener (:4445), issued
   by the SEC-F internal-CA ClusterIssuer.
 
-  WHY THIS EXISTS. The admin listener carries, on every authenticated request
-  that misses the introspection cache, the CALLER'S LIVE BEARER — introspection
-  asks about a token by sending it. It also carries the administrative bearer on
-  every OAuth2 client registration, trust grant and session teardown iam makes. In
-  the clear, all of that is readable by anything on the path, and the admin API it
-  opens authenticates nobody: reaching it IS the authorization.
+  WHY THIS EXISTS. The admin listener carries the administrative bearer on every
+  OAuth2 client registration, trust grant and session teardown iam makes. In the
+  clear, all of that is readable by anything on the path, and the admin API it
+  opens authenticates nobody: reaching it IS the authorization. (It used to carry
+  the edge's introspection of every live bearer too; the edge no longer calls
+  this listener at all, #2734.)
 
   ⚠ MEASURED FALSE 2026-07-30 — THE PROVIDER DOES NOT READ `serve.admin.tls`.
   What stood here: "the provider resolves TLS PER LISTENER — the runtime reads
   `serve.admin.tls.*` and `serve.public.tls.*`, each overriding the shared
-  `serve.tls` field by field", and it declared a previous note in
-  deploy/tests/helm/admin-hop-transport-test.sh (one shared block, therefore the
-  admin listener cannot be TLS'd alone) to be "wrong".
+  `serve.tls` field by field", and it declared a previous note in the edge's
+  admin-hop helm test (since retired with the edge's hop, #2734) — one shared
+  block, therefore the admin listener cannot be TLS'd alone — to be "wrong".
 
   The previous note was RIGHT. Measured on kind, provider v26.2.0, with this
   certificate issued and Ready, the secret mounted, `serve.admin.tls.cert/key`

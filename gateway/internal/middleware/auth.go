@@ -16,7 +16,7 @@
 //     или `ext_claims`), SubjectLookuper — fallback только при их отсутствии.
 //
 // ИЗДАТЕЛЬ У АСИММЕТРИЧНОЙ СТРАТЕГИИ НЕ ОДИН, и здесь стояло обратное
-// («единственная принятая стратегия — Hydra JWKS»). Край принимает ПЕРЕЧЕНЬ
+// («единственная принятая стратегия — набор ключей прежнего поставщика»). Край принимает ПЕРЕЧЕНЬ
 // издателей, у каждого своя запись источника ключей (`config/tokenissuers.go`,
 // `Config.TokenAcceptance`); на каждом стенде, объявившем свою чеканку, издателей
 // двое, и первый из них — наш. Строку читают при разборе 401, поэтому она
@@ -24,8 +24,8 @@
 //
 // Per-mode:
 //   - **dev** (default): backwards-compat. Без Bearer — pass-through anonymous
-//     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ Hydra
-//     JWKS по alg); HMAC-subject (external_id) не найден в kaname → fallback на
+//     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ набор
+//     ключей издателя по alg); HMAC-subject (external_id) не найден в kaname → fallback на
 //     anonymous, чтобы не ломать существующие newman-сценарии. Bad token (любая
 //     стратегия) → reject Unauthenticated, НИКОГДА anonymous.
 //   - **production**: Subject lookup → kaname; NotFound → reject.
@@ -52,7 +52,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
@@ -105,13 +104,6 @@ type SubjectLookuper interface {
 	LookupByExternalID(ctx context.Context, externalID string) (Subject, error)
 }
 
-// KratosSubjectLookuper — опциональное расширение SubjectLookuper для Kratos
-// session-flow: при NotFound делает lazy-upsert User mirror'а через
-// InternalUserService.UpsertFromIdentity.
-type KratosSubjectLookuper interface {
-	LookupOrUpsertFromKratos(ctx context.Context, identityID, email, displayName string) (Subject, error)
-}
-
 // Subject — резолвленный subject (User или ServiceAccount).
 type Subject struct {
 	Type        string // "user" | "service_account"
@@ -137,7 +129,6 @@ type AuthInterceptor struct {
 	// basicLane — полоса базового секрета (#1142). nil → полосы нет.
 	basicLane     *BasicCredentialLane
 	subjectLookup SubjectLookuper
-	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // асимметричный валидатор по перечню издателей (nil → disabled, HMAC-only)
 	// mtlsDomain — домен доверия, ОТНОСИТЕЛЬНО которого личность клиентского
 	// сертификата признаётся нашей. Объявленный домен И ЕСТЬ включение полосы:
@@ -149,9 +140,10 @@ type AuthInterceptor struct {
 	// (kaname_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
 	requireMachineBinding bool
-	// revocation — asks the identity provider whether a verified token is still
-	// live (nil → unmounted). See auth_revocation.go for why the check lives on
-	// this always-running layer rather than behind a feature toggle.
+	// revocation — asks OUR revocation record whether a verified token of a record
+	// our minting did not mark is still live (nil → unmounted). See
+	// auth_revocation.go for why the check lives on this always-running layer
+	// rather than behind a feature toggle.
 	revocation TokenRevocationChecker
 	// revocationFailures rate-limits the report of a revocation check that is not
 	// answering, so an outage is visible without flooding the log.
@@ -162,16 +154,15 @@ type AuthInterceptor struct {
 	revocationSkips *introspectionFailureReporter
 	// platformRevocation — авторитет отзыва НАШИХ токенов.
 	//
-	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: прежний
-	// провайдер о наших токенах не знает by construction, и его ответ на наш
-	// токен есть утверждение о чужом предмете, а не «действует» или «отозван».
+	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: запись издателя,
+	// выбранная для проверки подписи, решает и то, у кого спрашивать об отзыве.
 	//
 	// На этой полосе «авторитет не ответил» означает ОТКАЗ — см.
-	// auth_revocation.go, где асимметрия двух полос объявлена и обоснована.
+	// auth_revocation.go.
 	platformRevocation TokenRevocationChecker
-	// platformRevocationFailures — свой счётчик и своё окно доклада: «наш
-	// авторитет молчит» и «чужой авторитет молчит» суть разные неисправности с
-	// разными исправлениями и разными читателями.
+	// platformRevocationFailures — свой счётчик и своё окно доклада: «авторитет
+	// молчит» и «запись молчит» суть разные неисправности с разными
+	// исправлениями и разными читателями.
 	platformRevocationFailures *introspectionFailureReporter
 	// sessionCutoff — НАШ авторитет отзыва, спрошенный про СУБЪЕКТА, на полосе
 	// браузерной сессии. У неё нет удостоверения, поэтому спрашивать про неё по
@@ -182,39 +173,17 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
-	// humanSession — читатель НАШЕЙ сессии по носителю `kaname_session`
-	// (приёмка Ф3 Р7). nil → полоса нашей сессии не провязана.
-	//
-	// ЧИТАТЕЛЕЙ ПРОВЯЗЫВАЕТ МНОЖЕСТВО, И В ПЕРЕХОДНОМ СОСТОЯНИИ ОБА ЖИВЫ.
-	// Прежняя редакция этого комментария утверждала обратное тремя клаузами
-	// сразу — «ровно одного из двух», «по посадке», «оба разом не
-	// провязываются», — и все три стали ложью в том же изменении, которым
-	// заводилось состояние «оба»; парное поле у маршрута «кто я» им же было
-	// исправлено на противоположное. Комментарий о провязке, переживший смену
-	// провязки, опаснее отсутствующего: читатель верит ему и не идёт смотреть.
-	//
-	// Как есть: композиционный корень заводит читателей по
-	// `config.SessionCarrierSet` — состояний три, только чужой · ОБА · только
-	// наш, — а посадка решает другое: чья чеканка ВЫДАЁТ личность. Держит это
-	// `cmd/api-gateway/session_carrier_wiring_test.go`.
+	// humanSession — читатель НАШЕЙ сессии по носителю `kaname_session` (посадка
+	// `own`, приёмка Ф3 Р7). nil → полосы браузерной сессии нет. Читатель сессии
+	// в процессе ЕДИНСТВЕННЫЙ: чужой снят вместе с переходным режимом двух носителей
+	// (#2792), и край читает только нашу сессию.
 	humanSession HumanSessionReader
-
-	// transitionalCarrierWindowOpenedAt — момент открытия переходного окна
-	// носителя; нулевой означает «окно закрыто».
-	// См. WithTransitionalCarrierWindow.
-	transitionalCarrierWindowOpenedAt time.Time
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts
-	// sessionAssuranceUnknown — своё окно доклада для полосы сессии, назвавшей
-	// уровень уверенности, который край перевести не может (или не назвавшей
-	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
-	// ничем», и оно не исчезает само — см. auth_session_stepup.go.
-	sessionAssuranceUnknown *introspectionFailureReporter
 	// ownAssuranceOffAxis — окно доклада полосы НАШЕЙ сессии об ответе службы с
-	// уровнем вне оси сессии (Ф11-19, own_session_assurance.go). Своё, а не
-	// общее с полосой поставщика: у той словарь чужой и диагноз «не перевели»,
-	// у этой — ось своя и диагноз «служба отдала то, чего не производит».
+	// уровнем вне оси сессии (Ф11-19, own_session_assurance.go): диагноз «служба
+	// отдала то, чего не производит».
 	ownAssuranceOffAxis *introspectionFailureReporter
 	// basicAssuranceUnknown — то же окно доклада для полосы базового
 	// удостоверения: величина уровня уехала с оси каталога, и полоса больше не
@@ -336,18 +305,6 @@ func (a *AuthInterceptor) machineBindingViolationFor(vt *VerifiedToken, principa
 		return false // human / unknown principal — untouched by this control
 	}
 	return !vt.Cnf.HasJkt && !vt.Cnf.HasX5tS
-}
-
-// WithKratos подключает Kratos /whoami client.
-// Если выставлено, HTTP middleware сначала пытается резолвить principal по
-// ory_kratos_session cookie; при отсутствии cookie / 401 — fallback на JWT.
-func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
-	a.kratos = c
-	// Полоса смонтирована — значит у неё есть и доклад о непереводимом уровне
-	// уверенности. Заводить его позже было бы нечем: своей ручки у этого
-	// состояния нет, оно свойство ОТВЕТА провайдера, а не настройки края.
-	a.sessionAssuranceUnknown = newIntrospectionFailureReporter(0, nil)
-	return a
 }
 
 // WithVerifier подключает JWKS-валидатор асимметричного access JWT принимаемых
@@ -537,7 +494,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 					"method", fullMethod, "err", verr)
 				return nil, status.Error(codes.Unavailable, keySourceUnavailableReason)
 			}
-			a.logger.Warn("auth: Hydra JWT validation failed (JWKS)",
+			a.logger.Warn("auth: bearer JWT validation failed (JWKS)",
 				"method", fullMethod, "err", verr)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		}
@@ -551,20 +508,27 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		}
 		// A verified signature says who minted the token and when it expires. It
 		// does not say the token is still good — a sign-out or a revoked key
-		// leaves a valid signature behind. Only the provider knows, and it is
+		// leaves a valid signature behind. Only the revocation source knows, and
+		// both sources are ours: our revocation authority for a token of our own
+		// minting, our revocation record for any other accepted record. It is
 		// asked here, on the layer that always runs, using the token this branch
 		// has ALREADY verified (no second parse of the same bearer).
 		switch a.revocationCheck(ctx, vt, "grpc", fullMethod) {
 		case revocationRevoked:
 			// The credential is dead, which is an authN failure like any other and
 			// carries the same constant message (no varying text to read state off).
-			a.logger.Warn("auth: token reported not live by the provider; rejected",
-				"method", fullMethod)
+			a.logger.Warn("auth: token revoked per our revocation source; rejected",
+				"method", fullMethod, "source", revocationSourceOf(vt))
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		case revocationUnanswerable:
-			// The fault is this deployment's configuration, not the caller's
-			// credential: Unavailable, so a client retries instead of pointlessly
-			// re-authenticating.
+			// The question went unanswered, and «could not establish» is not
+			// «live». Three causes lead here, and the log in revocationCheck names
+			// which one: our source was silent, the check is assembled without its
+			// source, or the token carries no identifier to ask by. None of them is
+			// a verdict on the credential, so the answer is Unavailable and one
+			// constant text, not a sign-in challenge; a retry clears the first
+			// cause and not the other two — the same code the authority lane gives
+			// for the same three facts.
 			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
 		}
 		// Same floor, same reason, on the native surface — where the method is
@@ -604,7 +568,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
 	}
 
-	// Service Account / API-token principals. A token minted by the Hydra
+	// Service Account / API-token principals. A token minted by an issuer's
 	// client_credentials flow (or a static API token) declares itself with
 	// `kaname_principal_type=service_account`, and the id it is resolved by is
 	// `kaname_principal_id` — the single shape every mint stamps. `sub` is not a
@@ -614,8 +578,9 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// Здесь читалось ещё `kaname_sa_id` — с откатом на `sub`, если его нет. Имя
 	// не чеканит ни одна полоса выпуска, поэтому читатель брал откат ВСЕГДА. А
 	// откат называет машину не тем идентификатором, каким её знает модель прав:
-	// выпуск кладёт `sub` в `kaname_hydra_client_id`, то есть это субъект
-	// провайдера, тогда как принципал стоит в `kaname_principal_id` (`sva_…`).
+	// `sub` машинного токена — идентификатор её OAuth-клиента (выпуск кладёт его
+	// же в `kaname_external_id`), тогда как принципал стоит в
+	// `kaname_principal_id` (`sva_…`).
 	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
 		saID, _ := claims["kaname_principal_id"].(string)
 		if saID == "" {
@@ -637,9 +602,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 //
 // Владелец личности отвечает РАЗНЫМИ ошибками на «такой нет» и «есть, но
 // аутентификация ей запрещена» — и оба ведут сюда, в один и тот же отказ с
-// постоянным текстом. Различие нужно не здесь, а внутри: по нему
-// LookupOrUpsertFromKratos решает, заводить ли зеркало личности (заблокированной
-// — не заводить), и по нему же в лог попадает настоящая причина. Наружу
+// постоянным текстом. Различие нужно не здесь, а внутри: по нему в лог
+// попадает настоящая причина. Наружу
 // различие не выходит намеренно: иначе край стал бы оракулом существования
 // личности.
 //
@@ -756,8 +720,8 @@ func isAsymmetricJWT(tokenStr string) bool {
 }
 
 // principalFromVerifiedToken derives the Kachō Principal from a JWKS-verified
-// Hydra token's `kaname_principal_*` claims. It reads each claim robustly
-// from EITHER the top level (Hydra allowed_top_level_claims promotion) OR the
+// bearer token's `kaname_principal_*` claims. It reads each claim robustly
+// from EITHER the top level (the issuer's top-level claim promotion) OR the
 // nested `ext_claims` map (token_hook session.access_token.ext_claims). Returns
 // an error when the principal claims are absent so the caller can fall back to
 // the SubjectLookuper. displayName comes from a present display claim, else
@@ -875,14 +839,14 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 	// principal, and a `kaname_principal_type=service_account` claim is injected
 	// as a service_account with NO IAM lookup (symmetric-key principal forgery,
 	// CWE-347). The only accepted Bearer strategy in prod is the asymmetric JWKS
-	// (Hydra) verifier, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
+	// verifier of a declared issuer, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
 	// Fail closed regardless of whether a dev-secret happens to be configured
 	// (defense-in-depth alongside the fatal startup guard in cmd/api-gateway).
 	if a.mode != AuthModeDev {
 		return nil, fmt.Errorf("HMAC-dev token path disabled in %q mode", a.mode)
 	}
 	if len(a.devSecret) == 0 {
-		// HMAC-dev path requires a configured dev-secret. Hydra RS256 tokens are
+		// HMAC-dev path requires a configured dev-secret. Asymmetric (RS256/ES256/EdDSA) tokens are
 		// validated by the JWKS verifier branch BEFORE reaching here, so
 		// an empty dev-secret only disables the HS256-dev path.
 		return nil, fmt.Errorf("no signing key configured (dev secret empty)")
@@ -909,7 +873,7 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 // setPrincipalHeaders writes the resolved principal onto the REST request in
 // both the plain form (read by restmux WithMetadata → outgoing gRPC metadata)
 // and the legacy grpc-gateway convention form (fallback path). Shared by the
-// Hydra-JWT branch with the Kratos and SA-token paths.
+// bearer-JWT branch with the SA-token path.
 // withBasicCredentialLevel кладёт уровень удостоверения во ВХОДЯЩИЕ метаданные —
 // туда же, откуда его читает страж повышения (`verifiedTokenFromCtxOrHTTP`).
 // Входящие уже очищены от подделываемых клиентом заголовков выше по цепочке,
@@ -987,30 +951,21 @@ func extractBearer(ctx context.Context) string {
 // и прокидывает его как metadata в gRPC ctx (стандартный grpc-gateway-форвард
 // в `incomingHeaderMatcher`).
 //
-// Носителей личности на этом пути ЧЕТЫРЕ, и порядок между ними несущий:
+// Носителей личности на этом пути ТРИ, и порядок между ними несущий:
 //
 //	tryOwnSession       — наша сессия (`kaname_session`, посадка `own`; Ф3 Р15);
-//	tryKratosSession    — сессия развёрнутого провайдера (`ory_kratos_session`);
 //	tryBasicCredential  — базовый секрет с нашей маркой в `Authorization`;
-//	tryHydraJWT         — подписанный предъявитель в `Authorization`.
+//	tryBearerJWT        — подписанный предъявитель в `Authorization`.
 //
-// Две сессии — читатели ДВУХ РАЗНЫХ носителей, и провязаны они МНОЖЕСТВОМ
-// (`config.SessionCarrierSet`), а не посадкой: состояний три — только чужой ·
-// ОБА · только наш. Обе терминальны и выставляют личность одними именами.
-//
-// СТАРШИНСТВО МЕЖДУ НИМИ — РЕШЕНИЕ, А НЕ ПОРЯДОК СТРОК. При двух предъявленных
-// носителях действует НАША личность, и чужой читатель не спрашивается вовсе;
-// наша полоса терминальна на каждом своём исходе, поэтому мёртвое наше печенье
-// не откатывает запрос на чужую полосу — иначе полосу выбирал бы предъявитель.
-// Доводы — в шапке `auth_own_session.go`, наблюдение — в
-// `session_carrier_precedence_test.go`.
+// Читатель браузерной сессии — ОДИН, наш: читатель чужой сессии снят вместе с
+// переходным режимом двух носителей (#2792). Полоса сессии терминальна.
 //
 // Полоса базового секрета стоит ПЕРЕД полосой подписанного и терминальна: иначе
 // строка с нашей маркой ушла бы дальше как «удостоверения нет вовсе». Тот же
 // порядок держит нативная поверхность — расхождение между двумя поверхностями
 // края никто бы не решал, оно возникло бы побочным эффектом.
 //
-// `tryDevSecretJWT` носителем СВЕРХ этих четырёх не является: он читает тот же
+// `tryDevSecretJWT` носителем СВЕРХ этих трёх не является: он читает тот же
 // `Authorization` и в производственной посадке не провязан вовсе.
 //
 // Прежде здесь стоял четвёртый — переписывание cookie в Bearer, — и его нет:
@@ -1024,8 +979,8 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Strip client-forgeable identity headers before any auth path runs, then
 		// try each strategy in fail-closed order. The `injected` flag from the
-		// Kratos path suppresses the JWT paths (a resolved session wins). The
-		// Hydra and dev-JWT paths are terminal when they apply: they either write
+		// session lane suppresses the bearer paths (a resolved session wins). The
+		// bearer and dev-JWT paths are terminal when they apply: they either write
 		// a 401 or serve `next` themselves and report handled=true.
 		a.stripForgeableIdentityHeaders(r)
 
@@ -1033,32 +988,9 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		// сама ответить отказом. Прежде она умела только «резолвил / не
 		// резолвил», и отвергнуть сессию ей было нечем — оттого наш отзыв на ней
 		// и не действовал (auth_session_cutoff.go).
-		//
-		// Читателей носителя ДВА, и в переходном состоянии оба живы. Чужая
-		// полоса достаётся РОВНО запросу, которым наша сторона не владеет.
-		// ЧЕЙ ЭТО ЗАПРОС, РЕШАЕТСЯ ДО ПОЛОС, А НЕ ИХ ПОРЯДКОМ.
-		//
-		// Прежняя редакция спрашивала чужую полосу всякий раз, когда наша не
-		// выставила личность, — и этого НЕ ХВАТАЛО. Наша полоса не выставляет
-		// личность и там, где вынесла решение: на глаголах формы исход судит
-		// служба по записи, а недоступность на части из них ретранслируется.
-		// «Личность не выставлена» и «полоса ничего не решала» — разные вещи,
-		// и слив их в одно отдавал старшинство предъявителю: принеся наш
-		// носитель, на который наша полоса отвечает не личностью, он получал
-		// личность чужой стороны.
-		//
-		// Владение спрашивается о ЗАПРОСЕ, а не об исходе полосы, и ровно этим
-		// предикатом, что и сама полоса.
-		ownsRequest := a.ownSessionOwnsRequest(r)
 		r, injected, handled := a.tryOwnSession(w, r)
 		if handled {
 			return
-		}
-		if !injected && !ownsRequest {
-			injected, handled = a.tryKratosSession(w, r)
-			if handled {
-				return
-			}
 		}
 
 		if !injected {
@@ -1069,7 +1001,7 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 			if a.tryBasicCredential(w, r, next) {
 				return
 			}
-			if a.tryHydraJWT(w, r, next) {
+			if a.tryBearerJWT(w, r, next) {
 				return
 			}
 			if a.tryDevSecretJWT(w, r, next) {
@@ -1078,72 +1010,6 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// WithTransitionalCarrierWindow объявляет ПЕРЕХОДНОЕ ОКНО носителя моментом его
-// ОТКРЫТИЯ. Нулевой момент означает «окно закрыто».
-//
-// СМЫСЛ ОКНА ОДИН, И ОН НАЗВАН СЛОВАМИ: дочитываем ЖИВЫЕ чужие сессии, новых
-// не заводим. Отсюда оба его следствия, и оба несёт одно объявление — второй
-// источник одного состояния разошёлся бы с первым молча:
-//
-//   - чужая сессия принимается, только если она СТАРШЕ момента открытия
-//     (`tryKratosSession`). Без этой границы отзыв снимался бы входом заново на
-//     чужой стороне: её форма называет момент аутентификации сама, и любой наш
-//     отзыв оказывался бы старше следующего входа. Механизм замкнут краем и не
-//     опирается на обещание профиля закрыть чужую форму — годная сессия обязана
-//     попасть в промежуток «новее нашей отсечки, старше открытия окна», и вход
-//     заново выпадает из него с той стороны, с которой его не подделать;
-//   - положительный пол второго фактора на чужой полосе не удовлетворяется
-//     (`auth_session_stepup.go`): новое полномочие берётся через нашу чеканку.
-//
-// Обычный доступ живой чужой сессии сохраняется — ради него окно и заводится.
-//
-// Объявление, а не вывод из провязки: «читатель провязан» и «профиль назвал обе
-// стороны» — разные утверждения, и решать о полномочии по второму, выведенному
-// из первого, значит решать по косвенному признаку.
-func (a *AuthInterceptor) WithTransitionalCarrierWindow(openedAt time.Time) *AuthInterceptor {
-	a.transitionalCarrierWindowOpenedAt = openedAt
-	return a
-}
-
-// transitionalWindowAdmits — годна ли чужая сессия к приёму в окне.
-//
-// Закрытое окно не ограничивает ничего: состояние «только чужой» — это
-// сегодняшний стенд, и вход заново там единственный способ войти.
-//
-// Нулевой момент аутентификации при ОТКРЫТОМ окне — отказ, а не проход: сессия,
-// не назвавшая своего момента, не может доказать, что она старше окна, и
-// «неизвестно» здесь означает «не доказано».
-func (a *AuthInterceptor) transitionalWindowAdmits(authenticatedAt time.Time) bool {
-	if a.transitionalCarrierWindowOpenedAt.IsZero() {
-		return true
-	}
-	return !authenticatedAt.IsZero() &&
-		authenticatedAt.Before(a.transitionalCarrierWindowOpenedAt)
-}
-
-// ownSessionOwnsRequest — ВЛАДЕЕТ ли наша сторона этим запросом.
-//
-// Владение есть у запроса, а не у исхода полосы: наш читатель провязан И наш
-// носитель предъявлен. Всё, что происходит дальше, — наш исход, каким бы он ни
-// был: личность, отказ, ретрансляция глагола формы, анонимный проход на время
-// недоступности службы. Ни один из них не есть приглашение чужой стороне.
-//
-// Предикат носителя — ТОТ ЖЕ, что у полосы и у маршрута «кто я»
-// (`session_carrier_readers.go`): три ответа на «наш ли это запрос» означали бы
-// три разных решения о том, чья личность действует.
-//
-// Вопрос о ПРОВЯЗКЕ здесь не лишний и не дублирует полосу. При откате профиля
-// из состояния «оба» в «только чужой» наш носитель остаётся в браузерах, а
-// читателя у него больше нет: владеть таким запросом нам нечем, и чужая полоса
-// обязана его получить — иначе откат запер бы снаружи всех сразу.
-func (a *AuthInterceptor) ownSessionOwnsRequest(r *http.Request) bool {
-	if a.humanSession == nil {
-		return false
-	}
-	_, ours := ourSessionCarrierOf(r)
-	return ours
 }
 
 // tryBasicCredential — полоса базового секрета на REST-поверхности края.
@@ -1228,7 +1094,7 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 // grpc-gateway `Grpc-Metadata-` / lower-case variants) so a client cannot forge
 // `X-Kacho-Principal-Type: user` and bypass auth (full privilege escalation).
 // These headers are set ONLY by the auth middleware after a resolved
-// Bearer/Kratos credential.
+// credential (our session, the basic credential or a verified bearer).
 func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 	for k := range r.Header {
 		if isClientForgeableIdentityHeader(strings.ToLower(k)) {
@@ -1237,150 +1103,8 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 	}
 }
 
-// tryKratosSession resolves a Kratos session cookie (ory_kratos_session) to a
-// principal BEFORE the JWT paths so SPA users without a Bearer get a principal.
-//
-// Возвращает ДВА значения, и это не косметика. `injected` — резолвилась ли
-// личность (подавляет полосы предъявителя, как прежде). `handled` — полоса
-// ответила САМА и вызывающий обязан вернуться. Прежде второго исхода у полосы
-// не существовало вовсе, и отвергнуть сессию ей было нечем.
-//
-// Причин ответить самой ДВЕ, и обе — свой дефект того же класса «полоса не
-// спрашивала того, что спрашивает соседняя»:
-//
-//   - сессия отвергнута НАШИМ отзывом либо вопрос о нём остался без ответа —
-//     оттого наш глагол выхода на браузерной полосе не действовал ни разу
-//     (auth_session_cutoff.go);
-//   - предъявленный уровень уверенности не дотягивает до пола, объявленного
-//     каталогом прав для вызываемого глагола, — оттого действие с полом уровня
-//     «2» выполнялось из браузера без второго фактора (auth_session_stepup.go).
-func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Request) (injected, handled bool) {
-	if a.kratos == nil {
-		return false, false
-	}
-	// Чужой стороне уходит РОВНО её печенье (`ProviderSessionCarrierHeader`), а
-	// не заголовок целиком: наш носитель предъявительский, и вынести его к
-	// соседу значит отдать нашу сессию тому, кто её не выдавал.
-	cookieHdr := ProviderSessionCarrierHeader(r)
-	if cookieHdr == "" {
-		return false, false
-	}
-	res := a.kratos.Whoami(r.Context(), cookieHdr)
-	if !res.Active || res.IdentityID == "" {
-		return false, false
-	}
-	// ГРАНИЦА ОКНА СПРАШИВАЕТСЯ ПЕРВОЙ — ДО РЕЗОЛВА СУБЪЕКТА.
-	//
-	// Не только потому, что отвергнутая сессия не должна доехать до прав и до
-	// backend: резолв на этой полосе умеет заводить зеркало ЛЕНИВО, и стоя
-	// после него граница пропускала сторону, которую мы решили больше не
-	// заводить, СОЗДАТЬ у нас запись — тем самым действием, которое мы
-	// отвергаем. Смысл окна «новых не заводим» нарушался буквально, в
-	// единственном числе, каким его вообще можно нарушить.
-	//
-	// Величина, по которой судит граница, приходит из ответа чужой стороны и
-	// субъекта не требует: момент аутентификации назван в самом ответе.
-	//
-	// ОТКАЗ ИДЁТ ВМЕСТЕ С ОКОНЧАНИЕМ НОСИТЕЛЯ, и это не симметрия ради красоты,
-	// а тот же довод, что у отсечки: порознь первое даёт СТОЯЩИЙ отказ. Печенье
-	// остаётся в браузере, предъявляется на каждом следующем запросе, отвергается
-	// снова — и состояние держится до ручной чистки. Прежняя редакция носитель
-	// не гасила «потому что отказ обратим откатом профиля»: довод неверен,
-	// откат профиля есть снятие самого контроля, и предлагать его человеку как
-	// выход означало бы, что выхода нет.
-	//
-	// Окончание идёт печеньем без `Domain` и закрывает чужое печенье только
-	// там, где поставщик выдаёт его тоже без `Domain`. Эта ветка живёт лишь в
-	// состоянии «оба», а оно на цепочке, где поставщик ставит `Domain`, не
-	// объявляется — предусловие названо в шапке `session_carrier_names.go`.
-	//
-	// НА ПРЕД-АУТЕНТИФИКАЦИОННЫХ ПУТЯХ ОТКАЗА НЕТ ВОВСЕ. Требование записано у
-	// самого перечня (`isPublicHTTPPath`): человек, чью сессию отвергли, обязан
-	// сохранить возможность ЗАВЕРШИТЬ ВЫХОД — а здесь ещё и начать вход заново,
-	// потому что именно к нашей чеканке его и переводят. Запрос продолжается
-	// анонимно: носитель уже погашен, личности за ним нет, и следующее звено
-	// судит его как всякий запрос без сессии.
-	if !a.transitionalWindowAdmits(res.AuthenticatedAt) {
-		a.sessionLane.recordTransitionalWindowClosed()
-		EndSessionCarriers(w)
-		if isPublicHTTPPath(r.URL.Path) {
-			return false, false
-		}
-		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
-		return false, true
-	}
-
-	var subj Subject
-	var err error
-	// Если lookuper поддерживает lazy-upsert (Kratos new-user path) — используем
-	// его; иначе обычный lookup.
-	if kl, ok := a.subjectLookup.(KratosSubjectLookuper); ok {
-		subj, err = kl.LookupOrUpsertFromKratos(r.Context(), res.IdentityID, res.Email, res.DisplayName)
-	} else {
-		subj, err = a.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
-	}
-	if err != nil {
-		a.logger.Debug("auth.HTTP: Kratos SubjectLookup failed",
-			"identity_id", res.IdentityID, "err", err.Error())
-		return false, false
-	}
-	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
-	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
-	// чем отказ успел бы что-то значить.
-	switch a.sessionCutoffCheck(r.Context(), subj, res.AuthenticatedAt, r.URL.Path) {
-	case sessionCutoffEnded:
-		// Отказ И окончание носителя — вместе. Порознь первое даёт СТОЯЩИЙ
-		// отказ: сессия жива, момент её аутентификации прежний, и повторной
-		// аутентификации ничто не запросит.
-		a.sessionLane.recordCutoffDenied()
-		EndSessionCarriers(w)
-		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
-		return false, true
-	case sessionCutoffUnanswered:
-		// Носителя НЕ гасим: заминка своего же соседа не повод выкидывать тех,
-		// кого никто не отзывал. Текст — ТОТ ЖЕ, что у отсечки (F4d-23, Д3).
-		a.sessionLane.recordUnavailable()
-		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
-		return false, true
-	case sessionCutoffUnsupported:
-		a.sessionLane.recordRolloutWindow()
-		// Полоса продолжается. `unsupported` — окно раската, а не решение: край
-		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
-		// время раската. Состояние сходится само и докладывается громко.
-	case sessionCutoffNotAsked, sessionCutoffLive:
-		// Полоса продолжается.
-	}
-	// Достаточно ли СИЛЬНО человек аутентифицировался ДЛЯ ЭТОГО обращения?
-	// Спрашивается ровно там же, где на полосе предъявителя, и по тем же
-	// причинам: до записи личности, чтобы не прошедший пол запрос не доехал ни
-	// до прав, ни до backend.
-	//
-	// До #1201 этого вопроса здесь не было вовсе, и полоса не могла его задать:
-	// уровень уверенности провайдера край не разбирал. Освобождения этой полосы
-	// by design нет — пол есть свойство ВСЯКОГО обращения человека.
-	assurance := a.sessionAssurance(subj, res, r.URL.Path)
-	if a.enforceStepUpHTTP(w, r, assurance, stepUpLaneSession) {
-		return false, true
-	}
-	// Уровень едет вперёд к ВТОРОМУ замку (iam `authzguard.ACRFloor`) — по тем же
-	// именам, что у полосы предъявителя. Полоса, не выставляющая его, оставляет
-	// внутренний замок без входа.
-	reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneSession, r.URL.Path,
-		setSessionAssuranceHeaders(r, assurance, res.AuthenticationMethods))
-	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
-	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
-	r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, subj.Type)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, subj.ID)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, subj.DisplayName)
-	a.logger.Info("auth.HTTP: Principal injected (Kratos)",
-		"type", subj.Type, "id", subj.ID, "identity_id", res.IdentityID)
-	return true, false
-}
-
-// tryHydraJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
-// issuer (the name keeps the lane's original issuer; the verifier is issuer-agnostic)
-// over REST via the JWKS verifier (parity with the gRPC interceptor path) and
+// tryBearerJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
+// issuer over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
 // present-but-bad token → 401 fail-closed, never anonymous; a key set that could
@@ -1389,7 +1113,7 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 // and `next` served) — i.e. the caller must return. Returns false when the path
 // does not apply (no verifier / not an asymmetric Bearer) so the next strategy
 // runs.
-func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
+func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
 	if a.verifier == nil {
 		return false
 	}
@@ -1412,7 +1136,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 			writeHTTPServiceUnavailable(w, keySourceUnavailableReason)
 			return true
 		}
-		a.logger.Warn("auth.HTTP: Hydra JWT validate failed (JWKS)", "err", verr.Error())
+		a.logger.Warn("auth.HTTP: bearer JWT validate failed (JWKS)", "err", verr.Error())
 		writeHTTPUnauthorized(w, "token validation failed")
 		return true
 	}
@@ -1424,9 +1148,10 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		writeHTTPUnauthorized(w, "sender-constrained token required")
 		return true
 	}
-	// Is the token still live? The signature cannot answer that; the provider can.
-	// Asked on the token this branch has already verified — never by parsing the
-	// bearer a second time.
+	// Is the token still live? The signature cannot answer that; our revocation
+	// source can — our authority for a token of our own minting, our record for
+	// any other accepted record. Asked on the token this branch has already
+	// verified — never by parsing the bearer a second time.
 	//
 	// The pre-auth allow-list is exempt, and sign-out is why: a user whose session
 	// was revoked elsewhere must still be able to complete a sign-out and clear
@@ -1437,11 +1162,14 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	if !isPublicHTTPPath(r.URL.Path) {
 		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
 		case revocationRevoked:
-			a.logger.Warn("auth.HTTP: token reported not live by the provider; rejected",
-				"path", r.URL.Path)
+			a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
+				"path", r.URL.Path, "source", revocationSourceOf(vt))
 			writeHTTPUnauthorized(w, revocationDenyDescription)
 			return true
 		case revocationUnanswerable:
+			// Our source was silent, the check has no source, or the token has no
+			// identifier to ask by — the same three causes, the same refusal and the
+			// same constant text as on the native surface above.
 			writeHTTPServiceUnavailable(w, revocationUnavailableReason)
 			return true
 		}
@@ -1457,20 +1185,26 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	// the person, and the cluster-internal floor decides on the acr it finds here.
 	reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneBearer, r.URL.Path,
 		setTokenContextHeaders(r, vt))
+	// Токен и его полоса отзыва — для ТОГО ЖЕ вопроса с открытого соединения
+	// (kacho#2900): о токене нашей чеканки отметку адреса называет только сверка
+	// по самому токену. Полоса — та же пометка записи издателя, по которой
+	// revocationCheck выбрал вопрос выше.
+	r = r.WithContext(principalmeta.WithPresented(r.Context(),
+		principalmeta.PresentedToken(vt.Raw, vt.ReadRevocation)))
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
-		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT)", "type", pType, "id", pID)
+		a.logger.Info("auth.HTTP: Principal injected (bearer JWT)", "type", pType, "id", pID)
 		next.ServeHTTP(w, r)
 		return true
 	}
 	// Claims absent → fall back to SubjectLookuper on the verified sub.
 	if vt.Subject == "" {
-		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kaname_principal_* claims")
+		a.logger.Warn("auth.HTTP: bearer JWT has empty sub and no kaname_principal_* claims")
 		writeHTTPUnauthorized(w, "token missing subject")
 		return true
 	}
 	if subj, lerr := a.subjectLookup.LookupByExternalID(r.Context(), vt.Subject); lerr != nil {
-		a.logger.Debug("auth.HTTP: SubjectLookup failed (Hydra JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
+		a.logger.Debug("auth.HTTP: SubjectLookup failed (bearer JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
 	} else if a.machineBindingViolationFor(vt, subj.Type) {
 		// The lookup resolved a MACHINE principal from a token that carried no
 		// kaname_principal_* claims. Same requirement, same rejection.
@@ -1480,7 +1214,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		return true
 	} else {
 		setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
-		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT fallback)", "type", subj.Type, "id", subj.ID)
+		a.logger.Info("auth.HTTP: Principal injected (bearer JWT fallback)", "type", subj.Type, "id", subj.ID)
 	}
 	next.ServeHTTP(w, r)
 	return true

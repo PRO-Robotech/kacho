@@ -263,12 +263,26 @@ data:
       # либо описывают наш расход, и профиль, забывший ручку, выглядел бы
       # настроенным. Пустое доезжает до стража, и он отказывает в старте,
       # называя настройку.
+      #
+      # Темп поверхности выдачи (kaname#315) — шесть величин той же
+      # дисциплины: ноль означал бы «без ограничения», и умолчания нет ни у
+      # процесса, ни здесь. Первые четыре страж требует при включённом
+      # эндпоинте, две величины точки авторизации (`authorize-*`) — при
+      # собранной церемонии (посадка `own` и включённый эндпоинт). Все величины
+      # — НА РЕПЛИКУ: счёт живёт в памяти процесса. Полноту перечня против пина
+      # службы держит deploy/client_token_knobs_of_the_pin_test.go.
       client-token:
         enabled: true
         allowed-audiences: {{ $ct.allowedAudiences | quote }}
         default-audience: {{ $ct.defaultAudience | quote }}
         token-ttl: {{ $ct.tokenTtl | quote }}
         body-ceiling: {{ $ct.bodyCeiling }}
+        in-flight-ceiling: {{ $ct.inFlightCeiling }}
+        exchanges-per-client-per-sec: {{ $ct.exchangesPerClientPerSec }}
+        failed-proofs-per-source: {{ $ct.failedProofsPerSource }}
+        failed-proof-window: {{ $ct.failedProofWindow | quote }}
+        authorize-per-source-per-sec: {{ $ct.authorizePerSourcePerSec }}
+        authorize-in-flight-ceiling: {{ $ct.authorizeInFlightCeiling }}
       {{- end }}
       {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
       # bootstrap-mint — caller gate for InternalBootstrapTokenService/
@@ -364,6 +378,30 @@ data:
         {{- with .recoveryCodeTtl }}
         recovery-code-ttl: {{ . | quote }}
         {{- end }}
+        {{- /* ПОДТВЕРЖДЕНИЕ АДРЕСА на той же полосе (kaname#456, Р7, Р9; kacho#2901):
+             пять величин без умолчания — срок и предел попыток кода, промежуток
+             между письмами, число писем и окно их счёта. Под `own` незаданная —
+             отказ старта с именем ключа и переменной
+             (KANAME_AUTHN__LOGIN__VERIFICATION_*). Та же форма, что у
+             собственного чарта службы: незаданное доезжает до стража
+             незаданным, целые — через `hasKey` и `int64`. Ключ с ПУСТЫМ
+             значением (`--set …=null`) у целых — не объявление: `hasKey` на нём
+             истинен, и без проверки вида снятая ручка доехала бы нулём. */}}
+        {{- with .verificationCodeTtl }}
+        verification-code-ttl: {{ . | quote }}
+        {{- end }}
+        {{- if and (hasKey . "verificationCodeAttempts") (not (kindIs "invalid" .verificationCodeAttempts)) }}
+        verification-code-attempts: {{ int64 .verificationCodeAttempts }}
+        {{- end }}
+        {{- with .verificationResendInterval }}
+        verification-resend-interval: {{ . | quote }}
+        {{- end }}
+        {{- if and (hasKey . "verificationResendLimit") (not (kindIs "invalid" .verificationResendLimit)) }}
+        verification-resend-limit: {{ int64 .verificationResendLimit }}
+        {{- end }}
+        {{- with .verificationResendWindow }}
+        verification-resend-window: {{ . | quote }}
+        {{- end }}
       {{- end }}
 
       {{- with .Values.config.authn.registration }}
@@ -415,9 +453,34 @@ data:
       # ПУСТОЙ список — законная величина «никого» (служба стартует и отвергает
       # всякий ключ, Ф7-44/Ф7-10), а `with` считает пустой список пустым и
       # выбросил бы объявленное — незаданное и «никого» перестали бы различаться.
+      #
+      # ИМЯ ДОВЕРЯЮЩЕЙ СТОРОНЫ БЛОК НЕ НЕСЁТ (kacho#2905): оно берётся из узла
+      # `identity` раздела `global` — `webauthnRpId`, а пусто — `domain`, — тем же
+      # шаблоном, что у настроек службы личности. Ключ браузер привязывает к
+      # этому имени, и второе объявление рядом с общим расходилось бы с ним
+      # молча. Пустой узел даёт незаданное имя, и оно доезжает до стража
+      # незаданным. Объявленный в профиле `rpId` не выбрасывается молча, а
+      # роняет рендер с именем ключа.
+      #
+      # ПРОИСХОЖДЕНИЕ КОНСОЛИ — тоже из общего узла, когда профиль объявил
+      # `originFromConsole: true`: `appBaseURL`, а пусто — `https://<appSubdomain>.<domain>`.
+      # Это решение, а не умолчание: без него перечень берётся из `origins`, и
+      # незаданный перечень по-прежнему доезжает до стража незаданным. Обе ручки
+      # сразу — два объявления одного перечня, и рендер отказывает.
+      {{- if and (hasKey . "rpId") (not (kindIs "invalid" .rpId)) }}
+      {{- fail "kaname: config.authn.accessKeys.rpId снят (kacho#2905) — имя доверяющей стороны ключей доступа берётся из узла identity раздела global (webauthnRpId, а пусто — domain), тем же шаблоном, что у настроек службы личности. Объявите имя там либо снимите ключ из профиля" }}
+      {{- end }}
+      {{- $fromConsole := .originFromConsole | default false }}
+      {{- if and $fromConsole (hasKey . "origins") (not (kindIs "invalid" .origins)) }}
+      {{- fail "kaname: config.authn.accessKeys объявляет перечень происхождений дважды — originFromConsole=true и origins. Оставьте одно: originFromConsole берёт происхождение консоли из узла identity раздела global, origins — перечень профиля" }}
+      {{- end }}
       access-keys:
-        {{- with .rpId }}
+        {{- with include "kaname.identity.derived" (list $ "rpId") }}
         rp-id: {{ . | quote }}
+        {{- end }}
+        {{- if $fromConsole }}
+        origins:
+          - {{ include "kaname.identity.derived" (list $ "consoleOrigin") | quote }}
         {{- end }}
         # Ключ с ПУСТЫМ значением (`origins` без списка, `--set …=null`) — не
         # объявление. `hasKey` на нём истинен, поэтому вид проверяется отдельно,
@@ -437,6 +500,25 @@ data:
           {{- range . }}
           - {{ int64 . }}
           {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- with .Values.config.authn.ceremony }}
+      # СРОКИ СОБСТВЕННОЙ ЦЕРЕМОНИИ (kaname#318): срок кода авторизации от его
+      # выдачи и срок семейства токенов обновления от первой выдачи (оборот его
+      # не продлевает). Обе — условие старта под `identityProvider: own`,
+      # умолчания нет ни у одной (KANAME_AUTHN__CEREMONY__*); потолки держит
+      # фундамент (tokenpolicy.MaxAuthorizationCodeTTL,
+      # tokenpolicy.MaxRefreshTokenFamilyTTL), судит их страж старта, а не чарт.
+      # Ветвь, а не сквозная подстановка: незаданное доезжает до стража
+      # незаданным. Доставку каждой обязательной величины пиненной службы на
+      # каждом стеке держит deploy/pinned_required_settings_reach_the_service_test.go.
+      ceremony:
+        {{- with .codeTtl }}
+        code-ttl: {{ . | quote }}
+        {{- end }}
+        {{- with .refreshTtl }}
+        refresh-ttl: {{ . | quote }}
         {{- end }}
       {{- end }}
 
@@ -587,4 +669,13 @@ data:
       username-env: "KANAME_INVITE_MAIL_USERNAME"
       password-env: "KANAME_INVITE_MAIL_PASSWORD"
       {{- end }}
+      {{- /* ЯКОРЬ УЗЛА (kacho#2901, F6b-56): путь, по которому рабочему
+      объекту смонтирован ключ объявленного секрета. Не объявлен — ключа нет, и
+      процесс проверяет узел системными корнями (верно для публичного
+      ретранслятора). Путь — шаблона (`kaname.mailAnchor.file`), тот же, что у
+      тома в deployment.yaml. */}}
+      {{- if include "kaname.mailAnchor.declared" $mailNode }}
+      ca-bundle-file: {{ include "kaname.mailAnchor.file" $ | quote }}
+      {{- end }}
+      login-url: {{ include "kaname.identity.derived" (list $ "loginURL") | quote }}
     {{- end }}

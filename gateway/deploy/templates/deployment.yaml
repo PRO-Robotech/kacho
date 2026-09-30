@@ -169,23 +169,6 @@ spec:
               value: {{ .Values.subscriptionStream.maxStreams | quote }}
             - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
               value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
-            # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
-            # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
-            # вписывается литералом: Service провайдера называется
-            # `<релиз>-kratos-public`, поэтому литерал держался бы совпадением
-            # имени релиза с тем, что кто-то однажды набрал, и ломался бы молча
-            # при установке под другим именем. Значение `disabled` выключает
-            # чтение сессии ПОСТАВЩИКА (сигнальное значение config.go); чтения
-            # нашей сессии оно не касается.
-            # ЧИТАЕТ ЛИ АДРЕС КРАЙ, РЕШАЕТ МНОЖЕСТВО НОСИТЕЛЕЙ, А НЕ ПОСАДКА
-            # (`authn.sessionCarriers` ниже): читатель носителя поставщика
-            # заводится, когда множество называет сторону `external`. Множество не
-            # объявлено — оно выводится из посадки, и под `own` адрес не читается.
-            # Объявлено со стороной `external` — в том числе переходное
-            # `own,external` под `own` — адрес ОБЯЗАТЕЛЕН: с `disabled` страж
-            # старта края отказывает (validateSessionCarrierConfig).
-            - name: KACHO_API_GATEWAY_KRATOS_PUBLIC_URL
-              value: {{ .Values.kratosPublicUrl | default (printf "http://%s-kratos-public.%s.svc:80" .Release.Name .Release.Namespace) | quote }}
             {{- if .Values.tls.enabled }}
             - name: KACHO_API_GATEWAY_TLS_LISTEN_ADDR
               value: ":{{ .Values.tlsPort }}"
@@ -220,39 +203,6 @@ spec:
             - name: KACHO_API_GATEWAY_IDENTITY_PROVIDER
               value: {{ . | quote }}
             {{- end }}
-            {{- /* ЧЬЁ ПЕЧЕНЬЕ КРАЙ ЧИТАЕТ — множество читателей носителя
-                 браузерной сессии. Посадка выше отвечает на «чья чеканка выдаёт
-                 личность»; во время переезда ответы на эти два вопроса
-                 расходятся, и одной ручкой их не выразить: у посадки два
-                 взаимоисключающих значения, а состояний требуется три —
-                 только чужой · ОБА · только наш.
-
-                 `with`, а не `default`, по той же причине, что у посадки: своего
-                 значения у шаблона нет. Умолчание здесь объявило бы множество на
-                 каждом стенде, а незаданная ручка означает «выводи из посадки» и
-                 сохраняет сегодняшнее поведение. Пустая строка профиля — то же
-                 «не задано»: `with` её не эмитит, а процесс и пустую переменную
-                 читает как «не задано» (config.ResolvedSessionCarriers). Отказ
-                 старта получает ОБЪЯВЛЕНИЕ без единой стороны — значение из одних
-                 пробелов или разделителей («   », «,»): оно непусто, `with` его
-                 пропускает, и разбор при старте насчитывает ноль элементов. */}}
-            {{- with .Values.authn.sessionCarriers }}
-            - name: KACHO_API_GATEWAY_SESSION_CARRIERS
-              value: {{ . | quote }}
-            {{- end }}
-            {{- /* МОМЕНТ ОТКРЫТИЯ переходного окна, RFC 3339: граница между
-                 чужими сессиями, которые край дочитывает, и теми, что заведены
-                 после открытия окна и не принимаются. Без него отзыв снимался
-                 бы входом заново на чужой стороне.
-
-                 Обязателен ровно в состоянии `own,external`, запрещён вне его и
-                 обязан лежать в прошлом относительно старта — все три правила
-                 держит страж старта, а не шаблон: шаблон видит одно значение,
-                 а правила о ПАРЕ. */}}
-            {{- with .Values.authn.sessionCarrierWindowOpenedAt }}
-            - name: KACHO_API_GATEWAY_SESSION_CARRIER_WINDOW_OPENED_AT
-              value: {{ . | quote }}
-            {{- end }}
             {{- /* АДРЕС ПОЛОСЫ ФОРМЫ службы доступа (Ф3, kacho#1269): куда край
                  ретранслирует вход, выход, смену пароля и признак формы под
                  посадкой `own`. Эмитится ТОЛЬКО при непустом значении: пустая
@@ -261,6 +211,16 @@ spec:
                  обязаны приходить от значения профиля, а не от шаблона. */}}
             {{- with .Values.authn.iamLoginLaneUrl }}
             - name: KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- /* АДРЕС СЛУШАТЕЛЯ ВЫДАЧИ службы доступа (замысел LINE-A-1
+                 §5.1б п. 2, kacho#2817): куда край ретранслирует обе координаты
+                 церемонии авторизации под посадкой `own`. Тот же порядок, что у
+                 адреса полосы формы: эмитится ТОЛЬКО при непустом значении, и
+                 оба исхода — «задано» и «отказ старта под own» — приходят от
+                 значения профиля, а не от шаблона. */}}
+            {{- with .Values.authn.iamIssuanceUrl }}
+            - name: KACHO_API_GATEWAY_IAM_ISSUANCE_URL
               value: {{ . | quote }}
             {{- end }}
             # There is deliberately NO way here to hand the gateway a shared signing
@@ -309,22 +269,6 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
-            {{- if .Values.hydra }}
-            # Hydra JWKS for RS256 access-token verification.
-            # KACHO_HYDRA_JWKS_URL MUST be the cluster-internal Hydra PUBLIC
-            # Service (e.g. kacho-umbrella-hydra-public:4444/.well-known/jwks.json),
-            # reachable from the gateway pod. Without it config.ResolvedHydraJWKSURL()
-            # derives the public issuer host, which the pod cannot reach → Hydra
-            # login tokens never validate → WhoAmI/Account/Project → code 16.
-            {{- if .Values.hydra.jwksUrl }}
-            - name: KACHO_HYDRA_JWKS_URL
-              value: {{ .Values.hydra.jwksUrl | quote }}
-            {{- end }}
-            {{- if .Values.hydra.issuer }}
-            - name: KACHO_HYDRA_ISSUER
-              value: {{ .Values.hydra.issuer | quote }}
-            {{- end }}
-            {{- end }}
             {{- if .Values.tokenAcceptance }}
             # Ф1б (#926) — издатель на крае стал МНОЖЕСТВОМ, и у каждого
             # принимаемого издателя СВОЯ объявленная запись источника ключей.
@@ -332,9 +276,9 @@ spec:
             # ради которой развязка делается: ключ одного издателя проверял бы
             # токен, объявляющий другого.
             #
-            # Пустое значение рендерится НАМЕРЕННО: «не объявлено» и «объявлено
-            # пустым» различает сам процесс, и различие это — предмет стража
-            # старта, а не шаблона.
+            # Пустое значение рендерится НАМЕРЕННО: пустой перечень доезжает до
+            # стража старта, и тот отказывает в пуске, называя ручку. Судит
+            # процесс, а не шаблон.
             {{- /* АДРЕСАТ принимаемых токенов (задача #2567).
 
                  `aud` — единственное утверждение, которым токен говорит, КАКОЙ
@@ -384,48 +328,21 @@ spec:
               value: {{ .Values.tokenAcceptance.revocationClientCert.keyFile | quote }}
             {{- end }}
             {{- end }}
-            {{- if .Values.hydra }}
-            # Revocation path. A verified signature says who minted the token and
-            # when it lapses; it cannot say whether the token has since been
-            # turned off. Only the provider knows that, over its ADMIN API —
-            # a different Service and port from the public issuer, so neither
-            # address is derivable and both must be stated here.
-            #
-            # introspectionUrl is asked per request (through a short-TTL cache)
-            # before a request is let through; adminUrl is how the logout handler
-            # ends the provider-side session. Unset, each control is simply off,
-            # and a production-class gateway now refuses to start rather than run
-            # that way. Guarded by gateway/deploy/revocation_endpoint_test.go,
-            # which reads the profiles rather than a render, so it cannot skip.
-            {{- if .Values.hydra.introspectionUrl }}
-            - name: KACHO_HYDRA_INTROSPECTION_URL
-              value: {{ .Values.hydra.introspectionUrl | quote }}
-            {{- end }}
-            {{- if .Values.hydra.adminUrl }}
-            - name: KACHO_HYDRA_ADMIN_URL
-              value: {{ .Values.hydra.adminUrl | quote }}
-            {{- end }}
-            # Trust anchor for the admin hop. Since the revocation check moved
-            # onto the authN layer, that hop carries the caller's LIVE bearer on
-            # every introspection cache miss — not just administrative calls.
-            # Moving it to https only helps if the certificate is VERIFIED, and
-            # an in-cluster provider certificate comes from the internal CA,
-            # which the gateway does not trust by default. Set together with an
-            # https address; a bundle that cannot be read or holds no
-            # certificate REFUSES THE START rather than quietly reverting to the
-            # system root store.
-            {{- if .Values.hydra.adminCa.secretName }}
-            - name: KACHO_HYDRA_ADMIN_CA_FILE
-              value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.adminCa.mountPath) .Values.hydra.adminCa.key | quote }}
-            {{- end }}
-            {{- if (.Values.hydra.jwksCa | default dict).secretName }}
-            # Trust anchor for the KEY-FETCH hop. Over this hop travels the material
-            # the edge verifies every bearer's SIGNATURE with, so whoever substitutes
-            # it substitutes the access decision itself. Same requirement as the admin
-            # hop, separate knob because it is a different peer.
-            - name: KACHO_HYDRA_JWKS_CA_FILE
-              value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.jwksCa.mountPath) .Values.hydra.jwksCa.key | quote }}
-            {{- end }}
+            # The previous identity provider's admin-API addresses (introspection,
+            # session kill) and their trust anchor are NOT emitted: the edge no
+            # longer reads them (#2734), and a variable nobody reads is a value the
+            # operator sets, sees in the pod and gets the default behaviour for.
+            # Held by the two-column gate gateway/deploy/knob_producer_parity_test.go
+            # and by the per-stack render probe deploy/edge_retired_knobs_render_test.go.
+            {{- if ((.Values.tokenAcceptance | default dict).issuerKeySetsCa | default dict).secretName }}
+            # Trust anchor for the KEY-FETCH hop to the addresses declared by
+            # tokenAcceptance.issuerKeySets. Over this hop travels the material the
+            # edge verifies every bearer's SIGNATURE with, so whoever substitutes it
+            # substitutes the access decision itself. The name is the one the edge
+            # reads (config.JWKSCAFileKnob): the hop fetches the key sets of every
+            # accepted issuer, ours included.
+            - name: KACHO_API_GATEWAY_JWKS_CA_FILE
+              value: {{ printf "%s/%s" (trimSuffix "/" .Values.tokenAcceptance.issuerKeySetsCa.mountPath) .Values.tokenAcceptance.issuerKeySetsCa.key | quote }}
             {{- end }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
@@ -560,19 +477,9 @@ spec:
               mountPath: {{ .Values.mtls.mountPath | quote }}
               readOnly: true
             {{- end }}
-            {{- if .Values.hydra.adminCa.secretName }}
-            # Trust anchor for the identity provider's ADMIN API (see the
-            # KACHO_HYDRA_ADMIN_CA_FILE env above). Its own mount rather than a
-            # reuse of the mTLS bundle: the hop is one-way server-TLS to a
-            # different peer, and tying it to the backend-dial client-cert would
-            # make it impossible to configure the two independently.
-            - name: hydra-admin-ca
-              mountPath: {{ .Values.hydra.adminCa.mountPath | quote }}
-              readOnly: true
-            {{- end }}
-            {{- if (.Values.hydra.jwksCa | default dict).secretName }}
-            - name: hydra-jwks-ca
-              mountPath: {{ .Values.hydra.jwksCa.mountPath | quote }}
+            {{- if ((.Values.tokenAcceptance | default dict).issuerKeySetsCa | default dict).secretName }}
+            - name: issuer-keysets-ca
+              mountPath: {{ .Values.tokenAcceptance.issuerKeySetsCa.mountPath | quote }}
               readOnly: true
             {{- end }}
             {{- if ((.Values.tokenAcceptance | default dict).revocationCa | default dict).secretName }}
@@ -628,21 +535,13 @@ spec:
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
         {{- end }}
-        {{- if .Values.hydra.adminCa.secretName }}
-        - name: hydra-admin-ca
+        {{- if ((.Values.tokenAcceptance | default dict).issuerKeySetsCa | default dict).secretName }}
+        - name: issuer-keysets-ca
           secret:
-            secretName: {{ .Values.hydra.adminCa.secretName | quote }}
+            secretName: {{ .Values.tokenAcceptance.issuerKeySetsCa.secretName | quote }}
             items:
-              - key: {{ .Values.hydra.adminCa.key | quote }}
-                path: {{ .Values.hydra.adminCa.key | quote }}
-        {{- end }}
-        {{- if (.Values.hydra.jwksCa | default dict).secretName }}
-        - name: hydra-jwks-ca
-          secret:
-            secretName: {{ .Values.hydra.jwksCa.secretName | quote }}
-            items:
-              - key: {{ .Values.hydra.jwksCa.key | quote }}
-                path: {{ .Values.hydra.jwksCa.key | quote }}
+              - key: {{ .Values.tokenAcceptance.issuerKeySetsCa.key | quote }}
+                path: {{ .Values.tokenAcceptance.issuerKeySetsCa.key | quote }}
         {{- end }}
         {{- if ((.Values.tokenAcceptance | default dict).revocationCa | default dict).secretName }}
         - name: platform-revocation-ca

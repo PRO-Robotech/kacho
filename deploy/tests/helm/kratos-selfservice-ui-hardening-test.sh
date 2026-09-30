@@ -92,12 +92,21 @@ EXPECTED_ASSERTIONS=6
 require_helm
 require_mikefarah_yq
 
+# ПОДЧАРТ ВКЛЮЧАЕТСЯ ВНУТРИ РЕНДЕРА ПРОБЫ, А НЕ ПРОФИЛЕМ (#2777). Чужой экран
+# входа не разворачивает ни один стенд: он выключен в базе зонта, и профили о
+# его включении не высказываются. Предмет этой пробы — шаблон самого подчарта
+# (секрет печенья, проверка TLS, этаж securityContext), и он лежит в дереве,
+# пока подчарт не снят физически (#1276). Поэтому рендер включает подчарт ОДНИМ
+# фактом поверх настоящего профиля: остальные величины — те, что профиль
+# объявляет, и секреты печенья, и транспорт.
+UI_ON=(--set kratos-selfservice-ui.kratosSelfServiceUI.enabled=true)
+
 # render <values> <tmpl> [доп. -f …] — результат в $HELM_OUT, код возврата helm
 # в $HELM_RC. Ничего не решает: «отказал» и «отказал по НАШЕЙ причине» — разные
 # вопросы, и второй решает вызывающий.
 render() {
   local values="$1" tmpl="$2"; shift 2
-  helm_try kacho-umbrella "$UMBRELLA" -f "$values" "$@" --show-only "$tmpl"
+  helm_try kacho-umbrella "$UMBRELLA" -f "$values" "${UI_ON[@]}" "$@" --show-only "$tmpl"
 }
 
 # env_val <doc> <container> <env-name> — prints .value of the named env var.
@@ -247,7 +256,7 @@ fi
 render "$DEV" "$UI_TMPL"
 render_or_fatal "values.dev.yaml → $UI_TMPL (положительный контроль)"
 UI_DEV="$HELM_OUT"
-[ -n "$UI_DEV" ] || fatal "рендер values.dev.yaml → $UI_TMPL ПУСТ — подчарт kratos-selfservice-ui выключен на этом профиле, проверять нечего"
+[ -n "$UI_DEV" ] || fatal "рендер values.dev.yaml → $UI_TMPL ПУСТ при включённом внутри пробы подчарте — шаблон перестал рендериться, проверять нечего"
 
 # ── 1a. cookieSecret unset (enabled, no source) → render MUST fail ────────────
 # Layer an explicitly-empty cookieSecret over the otherwise-complete dev profile

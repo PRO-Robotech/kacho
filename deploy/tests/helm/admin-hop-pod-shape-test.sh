@@ -75,6 +75,9 @@ set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
 . "$(dirname "$0")/stacks.sh"
+# Поставщик на стендах не поднимается (#2735): проба поднимает его сама, ОДНИМ
+# фактом поверх настоящей цепочки — там, где профиль объявляет соседа в его поде.
+. "$(dirname "$0")/provider-up.sh"
 
 SCRIPT="$(basename "$0")"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -680,14 +683,26 @@ STACKS="$(stacks_table)"
 
 echo "=== $SCRIPT: форма пода административного перехода ==="
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-stacks_total=0; stacks_with_terminator=0
+stacks_total=0; stacks_with_terminator=0; stacks_raised=0
 
 while IFS= read -r line; do
   [ -z "$line" ] && continue
   stack="${line%%:*}"; files="${line#*:}"
   stacks_total=$((stacks_total + 1))
-  args=""
-  IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; done; unset IFS
+  args=""; paths=()
+  IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; paths+=("$UMBRELLA/$f"); done; unset IFS
+
+  # Поставщик и его сосед на стенде НЕ поднимаются: выключены в базе зонта для
+  # всех цепочек (#2735). Форма пода, которую объявляет профиль, лежит в дереве
+  # до физического снятия подчарта (#1276), и судится она поднятием поставщика
+  # ВНУТРИ рендера пробы — только на цепочке, чей профиль соседа объявляет.
+  up=()
+  provider_terminator_declared "$UMBRELLA/values.yaml" "${paths[@]}" && declared_rc=0 || declared_rc=$?
+  case "$declared_rc" in
+    0) up=("${PROVIDER_UP_ARGS[@]}"); stacks_raised=$((stacks_raised + 1)) ;;
+    1) ;;
+    *) fatal "стек $stack: профили цепочки не разобраны — объявлен ли сосед в поде поставщика, судить не по чему" ;;
+  esac
 
   render="$work/$stack.yaml"
   # Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm),
@@ -699,7 +714,7 @@ while IFS= read -r line; do
   # наружу не выходят. Аргументы `-f` абсолютные, поэтому рабочий каталог на исход
   # не влияет.
   # shellcheck disable=SC2086
-  helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
+  helm_try kacho-umbrella "$UMBRELLA" $args "${up[@]}" --namespace kacho
   render_or_fatal "стек $stack"
   printf '%s\n' "$HELM_OUT" >"$render"
 
@@ -731,10 +746,22 @@ echo
 echo "  ── перекат при правке настроек соседа (поведенческая половина) ──"
 assertion
 base="$work/roll-base.yaml"; ctrl="$work/roll-ctrl.yaml"; bumped="$work/roll-bumped.yaml"
+# Боевой профиль объявляет соседа в поде поставщика, но поставщика не поднимает
+# (#2735): поднимает его проба, тем же фактом, что в проходе по стекам выше.
+# Цепочка — из единственной таблицы (stacks.sh), а не выписанной парой имён.
+prod_chain="$(stacks_chain prod)" || fatal "цепочка prod не прочитана из таблицы стендов"
+prod_paths=("$UMBRELLA/values.yaml")
+for f in $prod_chain; do prod_paths+=("$UMBRELLA/$f"); done
+provider_terminator_declared "${prod_paths[@]}" && prod_declared_rc=0 || prod_declared_rc=$?
+case "$prod_declared_rc" in
+  0) ;;
+  1) fail "боевой профиль больше не объявляет соседа в поде поставщика — поведенческой половине судить нечего; снимите её вместе с предметом (#1276)" ;;
+  *) fatal "боевой профиль не разобран — объявлен ли сосед, судить не по чему" ;;
+esac
 render_prod() { # <файл> [доп. аргументы]
   local f="$1"; shift
   helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
-     --namespace kacho "$@"
+     "${PROVIDER_UP_ARGS[@]}" --namespace kacho "$@"
   render_or_fatal "боевой профиль (поведенческая половина)"
   printf '%s\n' "$HELM_OUT" >"$f"
 }
@@ -798,6 +825,7 @@ PY
 echo
 echo "── объём осмотренного ──"
 echo "  стеков отрендерено: $stacks_total; из них с терминатором: $stacks_with_terminator"
+echo "  поставщик поднят ПРОБОЙ (на стенде не поднимается, #2735): на $stacks_raised стеках"
 if [ "$stacks_total" -eq 0 ]; then
   fatal "таблица стеков не дала ни одной строки — обходить нечего"
 fi
@@ -812,4 +840,4 @@ echo "=== вердикт: утверждений $ASSERTIONS, находок $FA
 [ "$ASSERTIONS" -gt 0 ] \
   || fail "не выполнено НИ ОДНОГО утверждения — это провал, а не чистота"
 [ "$FAILURES" -eq 0 ] || fail "$SCRIPT — находок $FAILURES (перечень выше)"
-echo "PASS: $SCRIPT ($ASSERTIONS утверждений; стеков $stacks_total, из них с терминатором $stacks_with_terminator; рендеров helm: $RENDERS)"
+echo "PASS: $SCRIPT ($ASSERTIONS утверждений; стеков $stacks_total, из них с терминатором $stacks_with_terminator, поставщик поднят пробой на $stacks_raised; рендеров helm: $RENDERS)"

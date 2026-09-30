@@ -42,8 +42,9 @@
 # WHY SECTION 6 EXISTS AND WHY SECTION 4 WAS NOT ENOUGH. Section 4 judges the
 # pair «enforcement ⇒ issuance», and while BOTH halves are off it passes without
 # examining anything: two disabled sides prove nothing about a control. Section 6
-# judges a pair that IS satisfiable today — three profiles in this tree translate
-# the contour — so it has real inputs and can actually refuse. Both sections
+# judges a pair that IS satisfiable today — profiles in this tree translate the
+# contour (section 4 prints how many) — so it has real inputs and can actually
+# refuse. Both sections
 # print what they read, because «0 findings» must be distinguishable from
 # «0 profiles read».
 #
@@ -116,6 +117,25 @@ render_only() {
   render_or_fatal "$(basename "$1") → $2"
 }
 
+# ИЗДАТЕЛЬ ПОСТАВЩИКА НА СТЕНДАХ НЕ ПОДНИМАЕТСЯ (#2735): он выключен в базе
+# зонта для всех цепочек, а срок жизни его токена лежит в профиле до
+# физического снятия подчарта (#1276). Половина 1 судит ИМЕННО эту настройку,
+# поэтому издатель поднимается внутри рендера пробы ОДНИМ фактом поверх
+# профиля — и только поверх профиля, который его настройки объявляет.
+# shellcheck source=deploy/tests/helm/provider-up.sh
+. "$(dirname "$0")/provider-up.sh"
+render_issuer() {
+  local declared_rc
+  provider_part_declared issuer "$UMBRELLA/values.yaml" "$1" && declared_rc=0 || declared_rc=$?
+  case "$declared_rc" in
+    0) ;;
+    1) fail "$(basename "$1") больше не объявляет настроек издателя поставщика — половине 1 судить нечего; снимите её вместе с предметом (#1276)" ;;
+    *) fatal "$(basename "$1") не разобран — объявлены ли настройки издателя, судить не по чему" ;;
+  esac
+  helm_try kacho-umbrella "$UMBRELLA" -f "$1" "${ISSUER_UP_ARGS[@]}" --show-only "$2"
+  render_or_fatal "$(basename "$1") → $2 (издатель поднят пробой)"
+}
+
 # ── 1. PROD access-token TTL is explicit and short ───────────────────────────
 # Asserted from the values file (deterministic) AND the render, so neither a
 # values regression nor a template regression can slip through alone.
@@ -126,7 +146,7 @@ case "$prod_at" in
   *m) ;; # minutes — short-lived, as documented
   *)  fail "prod: access_token TTL='$prod_at' — the documented production lifetime is minutes, not $prod_at" ;;
 esac
-render_only "$PROD" charts/hydra/templates/configmap.yaml; HYDRA_CM_PROD="$HELM_OUT"
+render_issuer "$PROD" charts/hydra/templates/configmap.yaml; HYDRA_CM_PROD="$HELM_OUT"
 [ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
 any_line_matches "$HYDRA_CM_PROD" "access_token: *$prod_at" \
   || fail "prod: the rendered Hydra config does not carry access_token: $prod_at"

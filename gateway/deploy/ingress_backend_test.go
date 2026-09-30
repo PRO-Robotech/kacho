@@ -54,10 +54,13 @@ const (
 	// обслуживаются, поэтому наружу он выставляться не должен.
 	unmarkedPortName = "cmux"
 
-	subchartIngress  = "templates/ingress.yaml"
-	subchartService  = "templates/service.yaml"
-	umbrellaIngress  = "../../deploy/helm/umbrella/templates/api-gateway-ingress.yaml"
-	umbrellaValuesGl = "../../deploy/helm/umbrella/values*.yaml"
+	subchartIngress = "templates/ingress.yaml"
+	subchartService = "templates/service.yaml"
+)
+
+var (
+	umbrellaIngress  = filepath.Join(umbrellaDir, "templates", "api-gateway-ingress.yaml")
+	umbrellaValuesGl = filepath.Join(umbrellaDir, "values*.yaml")
 )
 
 // templateAction — действие шаблона внутри строки.

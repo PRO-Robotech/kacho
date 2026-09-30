@@ -32,8 +32,9 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :808
 # api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
 # negatives address it here rather than by its advertised hostname: that name does not
 # resolve on a developer box, adding it needs root, kind publishes only node:80, and the
-# Ingress in front of it speaks GRPCS so every REST path through it answers 502. Ban #6 is
-# about which routes the LISTENER serves, not about the name used to find it.
+# Ingress in front of it speaks GRPCS so every REST path through it answers 502 — every path
+# but the three exact ceremony coordinates, which it forwards over HTTPS (kacho#2860). Ban #6
+# is about which routes the LISTENER serves, not about the name used to find it.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 # Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают
@@ -93,15 +94,35 @@ kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pf-g
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
-# Hydra public — POST target of the OAuth2 client_credentials exchange that turns an
-# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
-# with no ingress route here. Unused in dev; required in production.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
-PF_PIDS+=($!)
+# ─── ПРОБРОС К ПОСТАВЩИКУ ЛИЧНОСТИ — ПО ПОСАДКЕ ЦЕПОЧКИ, А НЕ ВСЕГДА (#2841) ──
+# Публичная поверхность поставщика: цель обмена ключа служебной учётки на
+# предъявителя, её читает providerPublicBaseUrl суит. На цепочке own поставщика
+# нет (#2735), и проброс к службе, которой нет, — транспорт в пустоту, а адрес
+# суитам — адрес без производителя. Решение то же и тем же помощником, что у
+# прогонщика шардов (newman-parallel.sh, там же довод): поставщика нет ровно
+# тогда, когда обе половины цепочки объявили own; иначе проброс открывается, как
+# прежде. Держит исходом deploy/scripts/assert-provider-forwards-follow-the-landing.sh.
+PROVIDER_ENV_ARGS=()
+PROVIDER_LANDING="$(python3 "$SCRIPT_DIR/identity-provider-landing.py" --namespace "$NS")" \
+  || PROVIDER_LANDING="present|помощник посадки отказал — отсутствие поставщика НЕ установлено, проброс обязателен"
+_pf_before="${#PF_PIDS[@]}"
+if [ "${PROVIDER_LANDING%%|*}" != absent ]; then
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
+  PF_PIDS+=($!)
+  PROVIDER_ENV_ARGS=(--env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}")
+fi
+echo "[e2e] пробросы к поставщику личности: открыто $(( ${#PF_PIDS[@]} - _pf_before )) — ${PROVIDER_LANDING#*|}"
 # Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
+PF_PIDS+=($!)
+# Приёмник писем стенда — поверхность чтения посева людей (kacho#2901, F6b-53):
+# человек наборов подтверждается кодом из письма регистрации, и посев читает его
+# здесь. Тот же проброс и тот же довод, что у прогонщика шардов (newman-parallel.sh).
+MAILBOX_PORT="${MAILBOX_PORT:-18025}"
+MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
+kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pf-mailbox.log 2>&1 &
 PF_PIDS+=($!)
 
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ ──────────────────────
@@ -235,6 +256,7 @@ echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
+MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
 PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
@@ -267,7 +289,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"} \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
@@ -285,7 +307,7 @@ else
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"} \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \

@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // Сценарий 08 приёмки — порядок, нарушение которого стоит дороже всего.
@@ -73,7 +75,7 @@ func TestAwaitReturnsOperationOnSuccess(t *testing.T) {
 // бы каждый их apply на длительность интервала.
 func TestAwaitAcceptsImmediatelyDoneOperation(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&calls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"opsync","done":true}`))
@@ -94,7 +96,7 @@ func TestAwaitAcceptsImmediatelyDoneOperation(t *testing.T) {
 // нагрузку на край, ради ожидания которого он и написан.
 func TestAwaitWaitsBetweenPolls(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := atomic.AddInt32(&calls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		if n < 3 {

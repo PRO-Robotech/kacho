@@ -30,6 +30,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -46,7 +48,12 @@ const (
 // keySet — источник набора проверочных ключей ОДНОГО издателя со всеми ручками,
 // которых требуют сценарии F1.
 type keySet struct {
-	srv     *httptest.Server
+	srv *httptest.Server
+	// fetches — КАЖДОЕ прибытие на адрес источника, какой бы путь оно ни спрашивало:
+	// продукт, обратившийся к хосту источника по выведенному адресу, обязан попасть
+	// в счёт так же, как по объявленному. Постороннего в счёте нет по построению:
+	// источник слушает собственный адрес петли (privateloopback), а посторонний
+	// знает только порт.
 	fetches atomic.Int32
 
 	rsaKeys map[string]*rsa.PrivateKey
@@ -74,7 +81,7 @@ func newKeySet(t *testing.T) *keySet {
 		ecKeys:  map[string]*ecdsa.PrivateKey{},
 		edKeys:  map[string]ed25519.PrivateKey{},
 	}
-	ks.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ks.srv = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		ks.fetches.Add(1)
 		ct := ks.contentType
 		if ct == "" {

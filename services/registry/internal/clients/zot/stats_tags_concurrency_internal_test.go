@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // tagsConcZot — httptest-zot, считающий пик одновременных /tags/list-запросов.
@@ -59,7 +61,7 @@ func (z *tagsConcZot) server(t *testing.T) *httptest.Server {
 	if z.barrierN > 0 && z.release == nil {
 		z.release = make(chan struct{})
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case path == "/v2/" || path == "/v2":

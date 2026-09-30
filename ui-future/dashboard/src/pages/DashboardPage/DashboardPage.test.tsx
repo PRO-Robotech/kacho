@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { DashboardPage } from ".";
 import type { HostContext } from "../../utils";
 
@@ -30,8 +31,7 @@ function jsonResponse(body: unknown) {
 describe("DashboardPage", () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    global.fetch = jest.fn<typeof fetch>();
-    jest.spyOn(global, "fetch").mockImplementation((input) => {
+    stubNetwork((input) => {
       // Адрес берётся без `instanceof Request`: в этом окружении `Request` не
       // объявлен (`typeof Request === "undefined"`), и такая проверка бросала бы
       // прямо здесь. Клиент ловит это как сетевой отказ, поэтому ВСЕ ответы ниже

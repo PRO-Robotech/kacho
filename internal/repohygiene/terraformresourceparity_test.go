@@ -49,8 +49,14 @@ import (
 // всякий Create, потому что гейт на чтение отдал бы наблюдателю проекта право
 // порождать ресурсы. Два места об одном предмете здесь СОГЛАСНЫ — если однажды
 // разойдутся, неверно будет то, которое молчит.
+//
+// `FinishRegistration` здесь СОЗДАЮЩИЙ по тому же признаку: он заводит ключ
+// доступа человека строкой своей таблицы и отвечает `Operation` (Ф7-01), а не
+// сверяет присланное. Парный `BeginRegistration` ресурса не заводит — испытание
+// не ресурс.
 var creatingVerbs = map[string]bool{
 	"Create": true, "Issue": true, "Invite": true, "CreateRepository": true, "Copy": true,
+	"FinishRegistration": true,
 }
 
 // nonCreatingVerbs — все остальные глаголы публичного API, перечисленные ПОИМЁННО.
@@ -91,7 +97,12 @@ var nonCreatingVerbs = map[string]bool{
 	// чтение под личностью вызывающего, ничего не заводит; приехал пином
 	// службы на 16b5cade. У провайдера предмета нет — чтение чужого состояния
 	// без конфигурации не выражается ресурсом.
-	"ListMine":                 true,
+	"ListMine": true,
+	// Три глагола ключей доступа человека (Ф7, kacho#2718), ни один не заводит
+	// ресурса: `BeginRegistration` и `BeginAssertion` выдают испытание — оно
+	// однократно, привязано к вызывающему и ресурсом не является;
+	// `FinishAssertion` сверяет утверждение ключа и ничего не пишет в ландшафт.
+	"BeginRegistration": true, "BeginAssertion": true, "FinishAssertion": true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
@@ -130,6 +141,14 @@ var tfCoverage = map[string]string{
 	"MembershipService": "kaname_user_invitation",
 
 	"UserTokenService": "kaname_user_token",
+	// ОСОЗНАННОЕ ОТСУТСТВИЕ, а не долг. Ключ доступа человека (Ф7, kacho#2718)
+	// заводится ЦЕРЕМОНИЕЙ: `FinishRegistration` принимает результат, который
+	// подписал аутентификатор над испытанием, которое выдано сессии вызывающего
+	// и живёт меньше окна свежести, с битом присутствия человека. Провайдер такого
+	// результата произвести не может by construction: у провайдера нет ни
+	// аутентификатора, ни человека рядом с ним, и ресурс над этим глаголом был бы
+	// неисполним любым входом.
+	"AccessKeyService": "",
 
 	// nlb
 	"TargetGroupService":         "kacho_nlb_target_group",

@@ -120,14 +120,10 @@ type identityLane struct {
 
 // goodRevocation — годная боевая настройка полос отзыва на названной посадке.
 func goodRevocation(p identityposture.Provider) RevocationConfig {
-	cfg := RevocationConfig{
-		IdentityProvider: p,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      "/etc/api-gateway/hydra-admin-ca/ca.crt",
-	}
+	cfg := RevocationConfig{IdentityProvider: p}
 	if p == identityposture.Own {
-		cfg.PlatformRevocationURL = tlsAdminURL
+		cfg.PlatformTokenIssuer = ourPlatformIssuer
+		cfg.PlatformRevocationURL = ourAuthorityURL
 		cfg.PlatformRevocationCAFile = "/etc/api-gateway/platform-revocation-ca/ca.crt"
 		cfg.PlatformRevocationCertFile = "/etc/api-gateway/mtls/tls.crt"
 		cfg.PlatformRevocationKeyFile = "/etc/api-gateway/mtls/tls.key"
@@ -144,29 +140,9 @@ func tokenIdentityLanes() []identityLane {
 		{
 			knob:    config.AudienceKnob,
 			field:   "TokenAudience",
-			posture: identityposture.External,
+			posture: identityposture.Own,
 			refuseWhenUnset: func() error {
 				return validateProductionTokenAudience("production", "")
-			},
-		},
-		{
-			knob:    "KACHO_HYDRA_INTROSPECTION_URL",
-			field:   "HydraIntrospectionURL",
-			posture: identityposture.External,
-			refuseWhenUnset: func() error {
-				c := goodRevocation(identityposture.External)
-				c.IntrospectionURL = ""
-				return validateProductionRevocationConfig("production", c)
-			},
-		},
-		{
-			knob:    "KACHO_HYDRA_ADMIN_URL",
-			field:   "HydraAdminURL",
-			posture: identityposture.External,
-			refuseWhenUnset: func() error {
-				c := goodRevocation(identityposture.External)
-				c.AdminURL = ""
-				return validateProductionRevocationConfig("production", c)
 			},
 		},
 		{

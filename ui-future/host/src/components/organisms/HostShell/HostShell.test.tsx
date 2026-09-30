@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { BrowserRouter } from "react-router";
 import { HostShell } from ".";
 
@@ -15,7 +16,7 @@ describe("HostShell", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.history.pushState(null, "", "/");
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
+    stubNetwork(() => jsonResponse({ accounts: [] }));
   });
 
   afterEach(() => {

@@ -35,7 +35,7 @@
 //
 // Свободный проброс `range .Values.env` производителем НЕ считается — он
 // умеет выставить что угодно и потому не является утверждением о чарте
-// (та же граница, что у gateway/deploy/token_shape_test.go: first-class knob,
+// (та же граница, что у deploy/helm/umbrella/token_shape_test.go: first-class knob,
 // а не пассажирская мапа).
 package deploy_test
 

@@ -13,11 +13,12 @@
 //
 // # Что здесь утверждается сверх «токен принят»
 //
-// Полоса отзыва выбирается ПО ИЗДАТЕЛЮ, и на двух полосах «авторитет не
-// ответил» значит разное: на нашей — отказ, на полосе прежнего издателя
-// сохраняется задокументированный мягкий проход. Обе половины предъявлены, и
-// рядом с каждым отрицанием стоит положительный контроль: без него читатель
-// отзыва, ВСЕГДА отвечающий отказом, прошёл бы пробу целиком.
+// Полоса отзыва выбирается ПО ИЗДАТЕЛЮ: токен нашей чеканки спрашивается у
+// нашего авторитета, токен другой записи — у нашей записи отзыва. На обеих
+// полосах «источник не ответил» означает ОТКАЗ: мягкий проход второй полосы был
+// объявлен ради третьей стороны — прежнего поставщика — и снят вместе с ним
+// (#2734). Рядом с каждым отрицанием стоит положительный контроль: без него
+// читатель отзыва, ВСЕГДА отвечающий отказом, прошёл бы пробу целиком.
 package e2e_test
 
 import (
@@ -30,9 +31,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -50,11 +49,12 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
 	f1bPlatformIssuer = "https://kaname.kacho.local"
-	f1bLegacyIssuer   = "https://hydra.api.kacho.cloud"
+	f1bLegacyIssuer   = "https://legacy.api.kacho.cloud"
 )
 
 // f1bSigner — источник набора проверочных ключей ОДНОГО издателя плюс его
@@ -73,7 +73,7 @@ func newF1bSigner(t *testing.T, issuer, kid string) *f1bSigner {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	s := &f1bSigner{issuer: issuer, kid: kid, priv: priv, hits: &atomic.Int64{}}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		s.hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]any{{
@@ -131,7 +131,7 @@ func newF1bAuthority(t *testing.T) *f1bAuthority {
 		asked: &atomic.Int64{}, revoked: &atomic.Bool{},
 		down: &atomic.Bool{}, notFound: &atomic.Bool{},
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		a.asked.Add(1)
 		switch {
 		case a.notFound.Load():
@@ -215,13 +215,13 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	require.NoError(t, err)
 
 	legacyIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.oldAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.oldAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 	platformIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.ourAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.ourAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
@@ -235,7 +235,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 		WithRequireMachineTokenBinding(requireBinding)
 
 	// REST — НАСТОЯЩИЙ сервер и настоящее соединение.
-	rest := httptest.NewServer(auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	rest := privateloopback.NewServer(t, auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		st.restHits.Add(1)
 		st.restPrincipal.Store(r.Header.Get(principalmeta.HeaderPrincipalType) + ":" +
 			r.Header.Get(principalmeta.HeaderPrincipalID))
@@ -245,8 +245,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	st.restURL = rest.URL
 
 	// Нативная gRPC — НАСТОЯЩИЙ слушатель TCP.
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer(
 		grpc.UnaryInterceptor(auth.Unary()),
 		grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
@@ -456,27 +455,39 @@ func TestF1b09_OurTokenRevocationIsAskedOfOurAuthorityAndFailsClosed(t *testing.
 	}
 }
 
-// TestF1b09_LegacyLaneKeepsItsDocumentedSoftPass — размен назван вслух и
-// ПРЕДЪЯВЛЕН: полоса прежнего издателя своего поведения не меняет.
-func TestF1b09_LegacyLaneKeepsItsDocumentedSoftPass(t *testing.T) {
+// TestF1b09_SecondRecordLaneFailsClosedToo — полоса записи, которую наша
+// чеканка не пометила, на молчании источника ОТКАЗЫВАЕТ, как и наша (#2734).
+//
+// Прежде здесь предъявлялся размен: на этой полосе «авторитет не ответил»
+// пропускало токен — авторитетом была третья сторона. Третьей стороны больше
+// нет, источник наш, и мягкий проход означал бы «отзываем и свой же отзыв не
+// исполняем».
+func TestF1b09_SecondRecordLaneFailsClosedToo(t *testing.T) {
 	st := newF1bStand(t, true)
 
 	st.oldAuth.down.Store(true)
 	tok := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-down", nil)
-	if got := st.callREST(t, tok); got != http.StatusOK {
-		t.Fatalf("авторитет ПРЕЖНЕГО издателя недоступен, и его токен отвергнут (%d) — "+
-			"фаза меняет поведение полосы, которого менять не собиралась: авторитет там "+
-			"третья сторона, её доступностью мы не управляем", got)
+	if got := st.callREST(t, tok); got != http.StatusServiceUnavailable {
+		t.Fatalf("источник отзыва второй записи недоступен, а токен получил %d — ожидался "+
+			"отказ 503: «не знаю» не есть «не отозван»", got)
+	}
+	if got := st.callGRPC(t, tok); got != codes.Unavailable {
+		t.Fatalf("то же на нативной поверхности: %v, ожидалось Unavailable", got)
 	}
 
-	// Отзыв на той полосе по-прежнему исполняется — мягкий проход относится к
-	// НЕДОСТУПНОСТИ, а не к отказу.
+	// Положительный контроль: ответивший источник пропускает живой токен —
+	// отказ выше не есть «полоса отвергает всё».
 	st.oldAuth.down.Store(false)
+	live := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-live", nil)
+	if got := st.callREST(t, live); got != http.StatusOK {
+		t.Fatalf("живой токен второй записи при ответившем источнике отвергнут: %d", got)
+	}
+
+	// И отзыв на этой полосе исполняется.
 	st.oldAuth.revoked.Store(true)
 	revoked := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-revoked", nil)
 	if got := st.callREST(t, revoked); got == http.StatusOK {
-		t.Fatalf("отозванный токен прежнего издателя принят — мягкий проход подменил собой " +
-			"весь контроль")
+		t.Fatalf("отозванный токен второй записи принят")
 	}
 }
 

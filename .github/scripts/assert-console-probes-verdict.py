@@ -24,6 +24,14 @@
      прогона о вложениях не знает. Одна такая потеря уже случалась (#1242) и
      была найдена вручную — только потому, что кто-то попытался открыть файл.
 
+И два различения сверх них. УСЛОВИЕ ПРОГОНА (#2780, приёмка F8 §4): пробы, чья
+посадка создаётся чужим предметом, зависят от проекта условий; упало условие —
+исход называется «не выполнилось» с числом сценариев без вердикта, а не красным.
+Узнаётся условие по имени проекта в отчёте, а не по тексту отказа. УСЛОВИЕ ПРОБЫ
+(приёмка F6b, F6b-32): фикстура остановила пробу на условии, которое наступает
+внутри неё (письмо регистрации не дошло до приёмника), — узнаётся по пометке
+фикстуры И тому же тексту в отказе, а не по словам.
+
 Отсутствие отчёта — ПРОВАЛ, а не «нечего проверять»: суита, не оставившая
 отчёта, не выполнилась, и эта третья категория из вердикта не вычитается.
 
@@ -87,6 +95,42 @@ RC_UNMET = 3
 
 SPECS_GLOB = "*.spec.ts"
 
+# УСЛОВИЕ ПРОГОНА — СВОЙ ПРОЕКТ ПРОГОНЩИКА (#2780, приёмка F8 §4).
+#
+# Часть набора исполнима лишь на посадке, которую создаёт чужой предмет: адреса
+# церемоний обязана отдавать оболочка консоли, а не чужой экран. Проверка этого
+# условия — не проба о продукте, поэтому она живёт в СВОЁМ каталоге
+# (`ui-future/e2e/preconditions/`, объявления `*.precondition.ts`) и исполняется
+# СВОИМ проектом, от которого проекты зависящих проб объявляют зависимость
+# (`playwright.config.ts`). Упало условие — зависящие не стартуют вовсе.
+#
+# Различение здесь СТРУКТУРНОЕ, а не по тексту отказа: запись условия узнаётся по
+# имени проекта, которое кладёт отчёт (`projectName`), а не по словам в её
+# сообщении. Распознаватель текста «похожих» отказов стал бы маской ровно так,
+# как описано у кодов возврата выше; имя проекта ни одна проба о продукте
+# произвести не может.
+PRECONDITION_PROJECT = "precondition"
+PRECONDITIONS_GLOB = "*.precondition.ts"
+
+# УСЛОВИЕ ПРОБЫ, НЕ СОЗДАННОЕ ЕЁ ФИКСТУРОЙ (приёмка F6b, F6b-32; kacho#2901).
+#
+# Фикстура регистрации набора читает письмо у приёмника стенда. Письма нет в
+# срок — это «условие не создано», а не красное о продукте, и отдельного проекта
+# у такого условия нет: оно наступает внутри пробы, после регистрации. Узнаётся
+# оно по ДВУМ признакам сразу, и одного мало:
+#   * пометка пробы вида `FIXTURE_UNMET_ANNOTATION` — её ставит только модуль
+#     `FIXTURE_UNMET_SOURCE` (`conditionNotCreated`), проба о продукте её не
+#     ставит никогда;
+#   * текст пометки, начинающийся с `FIXTURE_UNMET_PREFIX`, стоит в тексте
+#     отказа пробы — то есть проба упала именно на нём, а не позже, когда
+#     условие уже было создано.
+# Слова «условие не создано» без пометки пишет кто угодно; пометка без того же
+# текста в отказе — след преходящего чтения, после которого проба упала по
+# существу. Совпадение вида пометки у фикстуры и здесь сверяет самопроверка.
+FIXTURE_UNMET_ANNOTATION = "условие не создано"
+FIXTURE_UNMET_PREFIX = "условие не создано:"
+FIXTURE_UNMET_SOURCE = "ui-future/e2e/specs/mail-receiver.ts"
+
 # ВЛОЖЕНИЕ ТРАССЫ (#1287). Имя задаёт разбор фикстуры `page` в specs/fixtures.ts:
 # он кладёт архив в `testInfo.attachments` под этим именем, а прогонщик переносит
 # запись в отчёт как есть. Сверка идёт по ИМЕНИ вложения в отчёте, а не по файлу
@@ -119,11 +163,15 @@ class Probe(NamedTuple):
     message: str
     runs: int
     attachments: tuple[str, ...]
+    # Проект прогонщика (`projectName` отчёта). Пусто у отчёта без проектов.
+    project: str = ""
+    # Пометки пробы (вид, текст) из того же запуска, что исход.
+    annotations: tuple[tuple[str, str], ...] = ()
 
 
-def declared_probes(specs_dir: Path) -> tuple[int, int]:
-    """Сколько проб объявлено в дереве и сколько файлов для этого прочитано."""
-    files = sorted(specs_dir.glob(SPECS_GLOB))
+def declared_probes(specs_dir: Path, glob: str = SPECS_GLOB) -> tuple[int, int]:
+    """Сколько объявлений в дереве и сколько файлов для этого прочитано."""
+    files = sorted(specs_dir.glob(glob)) if specs_dir.is_dir() else []
     return sum(len(DECL.findall(f.read_text(encoding="utf-8"))) for f in files), len(files)
 
 
@@ -162,7 +210,10 @@ def outcomes(report: dict) -> list[Probe]:
         message = ""
         started = 0
         attached: tuple[str, ...] = ()
+        marks: tuple[tuple[str, str], ...] = ()
+        project = ""
         for t in spec.get("tests", []) or []:
+            project = t.get("projectName") or project
             runs = t.get("results", []) or []
             started += len(runs)
             if runs:
@@ -170,6 +221,13 @@ def outcomes(report: dict) -> list[Probe]:
                 status = last.get("status") or "не исполнена"
                 attached = tuple(
                     (a or {}).get("name") or "" for a in (last.get("attachments") or [])
+                )
+                # Пометки — того же запуска; отчёт без них у запуска несёт их у
+                # пробы (форма снята с playwright 1.56.1: пометка из пробы
+                # приезжает в оба места).
+                marks = tuple(
+                    (str((a or {}).get("type") or ""), str((a or {}).get("description") or ""))
+                    for a in (last.get("annotations") or t.get("annotations") or [])
                 )
                 # САМЫЙ СОДЕРЖАТЕЛЬНЫЙ из доступных текстов, а не первый.
                 # Замерено (#1050): при снятии пробы по времени `error.message`
@@ -184,8 +242,19 @@ def outcomes(report: dict) -> list[Probe]:
                 message = max(candidates, key=len, default="")
             elif t.get("status"):
                 status = t["status"]
-        res.append(Probe(title, status, message, started, attached))
+        res.append(Probe(title, status, message, started, attached, project, marks))
     return res
+
+
+def fixture_unmet(g: Probe) -> str:
+    """Текст несозданного условия, на котором фикстура остановила пробу, либо
+    пустая строка. Два признака сразу — пометка вида `FIXTURE_UNMET_ANNOTATION`
+    с текстом условия и тот же текст в отказе пробы; одного мало."""
+    said = plain(g.message)
+    for kind, text in g.annotations:
+        if kind == FIXTURE_UNMET_ANNOTATION and text.startswith(FIXTURE_UNMET_PREFIX) and text in said:
+            return text
+    return ""
 
 
 # Отказы, при которых запрос до продукта НЕ ДОШЁЛ: имя не разрешилось, соединение
@@ -203,7 +272,7 @@ def unreached(message: str) -> bool:
     return any(tok in message for tok in _UNREACHED)
 
 
-def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
+def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None = None) -> tuple[int, list[str]]:
     """Возвращает (код возврата, строки вывода)."""
     log: list[str] = []
     declared, files = declared_probes(specs_dir)
@@ -230,11 +299,23 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         log.append(f"ПРОВАЛ: отчёт не разбирается ({exc}) — исход прогона неизвестен.")
         return 1, log
 
-    got = outcomes(report)
+    records = outcomes(report)
+    # Записи УСЛОВИЙ отделяются от записей проб по имени проекта: условие — не
+    # проба о продукте, и ни в счёт проб, ни в перепись трассы оно не входит.
+    conditions = [r for r in records if r.project == PRECONDITION_PROJECT]
+    got = [r for r in records if r.project != PRECONDITION_PROJECT]
     started = [g for g in got if g.runs > 0]
     not_started = [g for g in got if g.runs == 0]
-    log.append(f"=== разобрано записей отчёта: {len(got)} ===")
+    declared_conditions, condition_files = (
+        declared_probes(preconditions_dir, PRECONDITIONS_GLOB) if preconditions_dir else (0, 0)
+    )
+    created = [c for c in conditions if c.status == "passed"]
+    log.append(f"=== разобрано записей отчёта: {len(records)}, из них проб {len(got)} ===")
     log.append(f"=== исполнено проб {len(started)} из {declared} объявленных ===")
+    log.append(
+        f"=== условий прогона {len(conditions)}, создано {len(created)} "
+        f"(объявлений условий {declared_conditions} в {condition_files} файлах) ==="
+    )
     rc = 0
 
     if len(got) != declared:
@@ -242,6 +323,14 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
             f"ПРОВАЛ: объявлено проб {declared}, в отчёте {len(got)}. Расхождение значит, "
             "что часть проб не исполнялась, а прогон об этом молчал: «ноль упавших» из "
             "двух и из семи выглядит одинаково."
+        )
+        rc = 1
+
+    if len(conditions) != declared_conditions:
+        log.append(
+            f"ПРОВАЛ: условий объявлено {declared_conditions}, в отчёте {len(conditions)}. "
+            "Условие, выпавшее из прогона, уносит с собой различение «не выполнилось» и "
+            "«красное»: зависящие от него пробы судили бы посадку, которой не спрашивали."
         )
         rc = 1
 
@@ -291,6 +380,80 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
             "артефакта, ради которого трассу и включают."
         )
         rc = 1
+
+    # ТРЕТЬЯ КАТЕГОРИЯ (#2780, приёмка F8 §4): УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО.
+    #
+    # Упавшее условие — положительное и конкретное свидетельство: его запись
+    # принадлежит проекту условий, и зависящие от него пробы не стартовали вовсе.
+    # Исход отчитывается ЧИСЛОМ сценариев без вердикта, как требует приёмка, а не
+    # красным и не зелёным. Но ровно в двух случаях он третьей категорией НЕ
+    # становится:
+    #   * независимая проба упала по существу — красное о продукте ПЕРЕВЕШИВАЕТ,
+    #     иначе несозданное условие одной части набора прятало бы дефект другой;
+    #   * не стартовавших проб нет — зависимость проектов не провязана, и пробы,
+    #     которым условие нужно, судили посадку, которую предмет не поддерживает.
+    failed_conditions = [c for c in conditions if c.status != "passed"]
+    if failed_conditions:
+        for c in failed_conditions:
+            log.append(f"условие прогона НЕ создано: {c.title}")
+            for line in plain(c.message or "(текст отказа пуст)").strip().splitlines()[:6]:
+                log.append(f"    {line}")
+        waiting = not_started
+        if not waiting:
+            log.append(
+                "ПРОВАЛ: условие прогона не создано, а пробы исполнялись все до одной — "
+                "зависимость проектов от условия не провязана (`dependencies` в "
+                "playwright.config.ts). Их вердикт вынесен о посадке, которой предмет не "
+                "поддерживает, и не зачитывается ни в зелёное, ни в «не выполнилось»."
+            )
+            return RC_RED, log
+        log.append(
+            f"  сценариев без вердикта {len(waiting)} из {declared}; исполнено независимых "
+            f"{len(started)}, из них не прошли {len(bad_started)}"
+        )
+        if bad_started or rc:
+            log.append(
+                f"ПРОВАЛ: проб не в состоянии «прошла» среди исполненных: {len(bad_started)}. "
+                "Красное о продукте перевешивает несозданное условие: иначе условие одной "
+                "части набора прятало бы дефект другой."
+            )
+            return RC_RED, log
+        log.append(
+            f"НЕ ВЫПОЛНИЛОСЬ: условие прогона не создано — сценариев без вердикта "
+            f"{len(waiting)} из {declared}. Это НЕ вердикт о продукте: разбирать надо "
+            "посадку, на которой гоняли пробы (приёмка F8, §4), а не консоль. Третья "
+            "категория из вердикта не вычитается и в зелёное не зачитывается."
+        )
+        return RC_UNMET, log
+
+    # ТРЕТЬЯ КАТЕГОРИЯ (приёмка F6b, F6b-32): УСЛОВИЕ ПРОБЫ НЕ СОЗДАНО ЕЁ ФИКСТУРОЙ.
+    #
+    # Каждая упавшая проба остановлена фикстурой на несозданном условии — оба
+    # признака на месте (`fixture_unmet`). Это положительное и конкретное
+    # свидетельство, что вердикта о продукте у них нет, и при ранней остановке
+    # тоже: остаток не стартовал по тем же падениям. Но ровно как у условия
+    # прогона, третьей категорией исход НЕ становится, если рядом упала проба
+    # без такого свидетельства либо гейт уже нашёл своё (недосчёт, потерянная
+    # трасса): красное перевешивает.
+    unmet_by_fixture = [(g, fixture_unmet(g)) for g in bad_started]
+    unmet_by_fixture = [(g, text) for g, text in unmet_by_fixture if text]
+    if unmet_by_fixture and len(unmet_by_fixture) == len(bad_started) and not rc:
+        log.append(
+            f"НЕ ВЫПОЛНИЛОСЬ: условие пробы не создано её фикстурой — проб без вердикта "
+            f"{len(unmet_by_fixture) + len(not_started)} из {declared} (остановлены фикстурой "
+            f"{len(unmet_by_fixture)}, не стартовали {len(not_started)}, прошли "
+            f"{len(started) - len(bad_started)}). Это НЕ вердикт о продукте: разбирать надо "
+            "условие, названное ниже, а не консоль. Третья категория из вердикта не "
+            "вычитается и в зелёное не зачитывается."
+        )
+        for text in sorted({text for _, text in unmet_by_fixture}):
+            log.append(f"    {text}")
+        return RC_UNMET, log
+    if unmet_by_fixture:
+        log.append(
+            f"  остановлены фикстурой на несозданном условии: {len(unmet_by_fixture)}; "
+            f"прочих не прошедших: {len(bad_started) - len(unmet_by_fixture)} — красное перевешивает"
+        )
 
     # ТРЕТЬЯ КАТЕГОРИЯ (#935): ни одна проба не дошла до продукта.
     #
@@ -372,8 +535,9 @@ def _trace_attachments() -> list[dict]:
 
 
 def _spec(title: str, status: str, message: str = "", runs: int = 1,
-          trace: bool | None = None) -> dict:
-    """Запись пробы. `runs=0` — проба не стартовала (ранняя остановка прогона);
+          trace: bool | None = None, project: str = "probes") -> dict:
+    """Запись пробы. `runs=0` — проба не стартовала (ранняя остановка прогона
+    либо несозданное условие, от которого зависит её проект);
     `runs=1, status="skipped"` — намеренный `test.skip`. Различие замерено на
     настоящем отчёте playwright, а не придумано (#1050).
 
@@ -381,15 +545,45 @@ def _spec(title: str, status: str, message: str = "", runs: int = 1,
     проба несёт вложение трассы, прошедшая — нет. Это делает все прежние
     фикстуры ЗАКОННЫМИ близнецами для проверки трассы (#1287): инъекция обязана
     ронять только своё, иначе красное придёт от соседа и вакуумность новой
-    проверки останется незамеченной. `trace=False` — сама инъекция."""
+    проверки останется незамеченной. `trace=False` — сама инъекция.
+
+    `project` — имя проекта прогонщика, как его кладёт отчёт (`projectName`).
+    Форма отчёта с проектом-условием замерена на playwright 1.56.1 (#2780):
+    проба зависимого проекта при упавшем условии приходит `skipped` с НУЛЁМ
+    запусков, а само условие — записью своего проекта с исходом `failed`."""
     keep = (status in TRACE_EXPECTED) if trace is None else trace
-    t: dict = {"status": status, "results": []}
+    t: dict = {"status": status, "results": [], "projectName": project}
     if runs:
         res: dict = {"status": status, "error": {"message": message}}
         if keep:
             res["attachments"] = _trace_attachments()
         t["results"] = [res]
     return {"title": title, "tests": [t]}
+
+
+def _unmet_spec(title: str, text: str, message: str | None = None,
+                annotation: str | None = None, runs: int = 1) -> dict:
+    """Запись пробы, чью фикстуру остановило несозданное условие (приёмка F6b,
+    F6b-32). Форма снята с настоящего отчёта playwright 1.56.1: пометка,
+    положенная `test.info().annotations.push`, приезжает и в `results[].annotations`,
+    и в `tests[].annotations`, а текст отказа — `Error: <текст>`.
+
+    `message` и `annotation` — стороны двух признаков: по умолчанию оба на месте;
+    инъекция снимает один из них."""
+    spec = _spec(title, "failed", f"Error: {text}" if message is None else message, runs=runs)
+    kind = FIXTURE_UNMET_ANNOTATION if annotation is None else annotation
+    marks = [] if kind == "" else [{"type": kind, "description": text}]
+    t = spec["tests"][0]
+    t["annotations"] = marks
+    for res in t["results"]:
+        res["annotations"] = marks
+    return spec
+
+
+def _condition(status: str, message: str = "") -> dict:
+    """Запись условия прогона. Браузера условие не открывает, поэтому трассы у
+    него нет by construction — и на падении тоже."""
+    return _spec("условие прогона", status, message, trace=False, project=PRECONDITION_PROJECT)
 
 
 def _report_of(*specs: dict, max_failures: int = 0) -> str:
@@ -735,12 +929,230 @@ def self_test() -> int:
             and "трасса: упавших проб 0, с трассой 0, без трассы 0" in joined,
             "ноль находок о трассе", census))
 
+        # ─── УСЛОВИЕ ПРОГОНА — ОТДЕЛЬНЫЙ ПРОЕКТ ПРОГОНЩИКА (#2780, F8 §4) ───
+        #
+        # Условие, без которого часть набора не исполнима, объявлено СВОЕЙ записью
+        # в каталоге условий, а зависящие от него пробы — проектом, который от
+        # него зависит. Упало условие — зависящие не стартуют вовсе (ноль
+        # запусков), и это ТРЕТЬЯ категория с числом сценариев, а не красное о
+        # продукте. Каждая инъекция ниже меняет ровно один факт против законного
+        # прогона с созданным условием.
+        conds = root / "preconditions"
+        conds.mkdir()
+        (conds / "landing.precondition.ts").write_text(
+            'test("условие", async () => {});\n', encoding="utf-8")
+
+        # КОНТРОЛЬ: условие создано, всё объявленное исполнено и прошло.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _spec("а", "passed"), _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "условие создано: законный прогон принят, перепись условий печатается",
+            got == RC_GREEN and "условий прогона 1, создано 1" in joined,
+            f"{RC_GREEN} + «условий прогона 1, создано 1»", got))
+
+        # ИНЪЕКЦИЯ: условие не создано — зависящие пробы не стартовали.
+        rep.write_text(
+            _report_of(_condition("failed", "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО: /login отдаёт не оболочку"),
+                       _spec("F8-01 а", "skipped", runs=0),
+                       _spec("F8-02 б", "skipped", runs=0),
+                       _spec("F8-03 в", "skipped", runs=0)),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "несозданное условие — третья категория со СВОИМ кодом",
+            got == RC_UNMET, RC_UNMET, got))
+        cases.append((
+            "третья категория названа ЧИСЛОМ сценариев без вердикта",
+            "НЕ ВЫПОЛНИЛОСЬ: условие прогона не создано" in joined
+            and "сценариев без вердикта 3 из 3" in joined,
+            "«условие прогона не создано» + «сценариев без вердикта 3 из 3»",
+            "есть" if "сценариев без вердикта 3 из 3" in joined else "нет"))
+        cases.append((
+            "причина условия приезжает в журнал дословно",
+            "/login отдаёт не оболочку" in joined, "текст отказа условия",
+            "есть" if "/login отдаёт не оболочку" in joined else "нет"))
+        cases.append((
+            "у условия трассы не спрашивают — браузера оно не открывает",
+            "нет вложения" not in joined, "ни одной находки о трассе",
+            "чисто" if "нет вложения" not in joined else "находка"))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: условие создано, одна проба упала по существу —
+        # красное о продукте, третьей категорией НЕ называется.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _spec("а", "passed"),
+                       _spec("б", "failed", "expect(locator).toBeVisible() — экран не отрисован"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "условие создано, проба упала — красное о продукте",
+            got == RC_RED and "НЕ ВЫПОЛНИЛОСЬ" not in joined,
+            f"{RC_RED} без «НЕ ВЫПОЛНИЛОСЬ»", got))
+
+        # ИНЪЕКЦИЯ: условие не создано, а пробы ИСПОЛНЯЛИСЬ — зависимость
+        # проектов не провязана. Их вердикт вынесен о посадке, которую предмет не
+        # поддерживает, и зачесть его нельзя ни в зелёное, ни в третью категорию.
+        rep.write_text(
+            _report_of(_condition("failed", "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО"),
+                       _spec("а", "passed"), _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "условие не создано, а пробы исполнялись — провал провязки, не третья категория",
+            got == RC_RED and "зависимость" in joined and "НЕ ВЫПОЛНИЛОСЬ" not in joined,
+            f"{RC_RED} + «зависимость»", got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ ПО ДРУГОЙ ОСИ: условие не создано, но НЕЗАВИСИМАЯ проба
+        # упала по существу. Красное о продукте ПЕРЕВЕШИВАЕТ: иначе несозданное
+        # условие одной части набора прятало бы дефект другой.
+        rep.write_text(
+            _report_of(_condition("failed", "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО"),
+                       _spec("F8-01 а", "skipped", runs=0),
+                       _spec("F8-02 б", "skipped", runs=0),
+                       _spec("в", "failed", "expect(received).toBe(expected)")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "несозданное условие не прячет красное независимой пробы",
+            got == RC_RED and "сценариев без вердикта 2 из 3" in joined,
+            f"{RC_RED} + «сценариев без вердикта 2 из 3»", got))
+
+        # ИНЪЕКЦИЯ: условие объявлено в дереве, а в отчёте его нет — выпало
+        # вместе со своим утверждением.
+        rep.write_text(
+            _report_of(_spec("а", "passed"), _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "объявленное условие, выпавшее из отчёта, ловится",
+            got == RC_RED and "условий объявлено 1, в отчёте 0" in joined,
+            f"{RC_RED} + «условий объявлено 1, в отчёте 0»", got))
+
+        # ─── ТРЕТЬЯ КАТЕГОРИЯ: УСЛОВИЕ ПРОБЫ НЕ СОЗДАНО ЕЁ ФИКСТУРОЙ (F6b-32) ───
+        letter = ("условие не создано: письмо подтверждения не дошло до приёмника: "
+                  "адрес e2e-x@kacho.local, приёмник http://127.0.0.1:18025, ждали 45 с после регистрации")
+
+        # ИНЪЕКЦИЯ: фикстура каждой упавшей пробы остановилась на несозданном
+        # условии, оба признака на месте — третья категория со своим кодом.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter), _spec("б", "passed"), _unmet_spec("в", letter)),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        joined = "\n".join(log)
+        cases.append((
+            "фикстура не создала условие у каждой упавшей — третья категория со своим кодом",
+            got == RC_UNMET and "условие пробы не создано её фикстурой" in joined
+            and "проб без вердикта 2 из 3" in joined,
+            f"{RC_UNMET} + «проб без вердикта 2 из 3»", got))
+        cases.append((
+            "текст несозданного условия приезжает в журнал дословно",
+            "письмо подтверждения не дошло до приёмника" in joined, "текст условия",
+            "есть" if "письмо подтверждения не дошло до приёмника" in joined else "нет"))
+
+        # ИНЪЕКЦИЯ: та же картина при ранней остановке прогона — остаток не
+        # стартовал, а каждое падение — несозданное условие. Свидетельство то же,
+        # и категория та же, а не «красное о продукте».
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter), _unmet_spec("б", letter),
+                       _spec("в", "skipped", runs=0), max_failures=2),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        cases.append((
+            "ранняя остановка на несозданном условии фикстуры — третья категория",
+            got == RC_UNMET, RC_UNMET, got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: рядом упала проба по существу — красное перевешивает.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter),
+                       _spec("б", "failed", "expect(locator).toBeVisible() — экран не отрисован"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        cases.append((
+            "несозданное условие фикстуры не прячет красное соседней пробы",
+            got == RC_RED, RC_RED, got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: пометка есть, а в тексте отказа — другое. Проба упала
+        # ПОСЛЕ того, как условие было создано, и пометка осталась от преходящего
+        # чтения; одного признака мало.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter, message="Error: expect(received).toBe(expected)"),
+                       _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        cases.append((
+            "пометка без того же текста в отказе — красное",
+            got == RC_RED, RC_RED, got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: текст есть, пометки нет — «условие не создано» словами
+        # пишет кто угодно, пометку ставит только фикстура.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter, annotation=""),
+                       _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        cases.append((
+            "текст без пометки фикстуры — красное",
+            got == RC_RED, RC_RED, got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: пометка чужого вида с тем же текстом — красное.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _unmet_spec("а", letter, annotation="issue"),
+                       _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, conds)
+        cases.append((
+            "пометка другого вида — красное",
+            got == RC_RED, RC_RED, got))
+
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"
         empty.mkdir()
         rep.write_text(_report(), encoding="utf-8")
         got, _ = verdict(rep, empty)
         cases.append(("пустое дерево проб ловится", got == 1, 1, got))
+
+    # ПРОВЯЗКА: вид пометки объявлен дважды — здесь и у фикстуры набора
+    # (`ui-future/e2e/specs/mail-receiver.ts`, `CONDITION_NOT_CREATED`).
+    # Разошедшись, они вернули бы несозданное условие в красное молча.
+    marker_src = Path(__file__).resolve().parents[2] / FIXTURE_UNMET_SOURCE
+    declared_marker = (
+        re.search(r'export const CONDITION_NOT_CREATED = "([^"]*)";', marker_src.read_text(encoding="utf-8"))
+        if marker_src.is_file() else None
+    )
+    cases.append((
+        "вид пометки у фикстуры набора тот же, что читает гейт",
+        declared_marker is not None and declared_marker.group(1) == FIXTURE_UNMET_ANNOTATION,
+        f"{FIXTURE_UNMET_SOURCE}: CONDITION_NOT_CREATED = {FIXTURE_UNMET_ANNOTATION!r}",
+        declared_marker.group(1) if declared_marker else "объявления нет"))
 
     for name, ok, want, have in cases:
         print(f"  {'ОК ' if ok else 'ПРОВАЛ'} {name} (ждали {want}, получили {have})")
@@ -763,7 +1175,7 @@ def main() -> int:
 
     root = Path(__file__).resolve().parents[2]
     e2e = root / "ui-future" / "e2e"
-    rc, log = verdict(e2e / "results.json", e2e / "specs")
+    rc, log = verdict(e2e / "results.json", e2e / "specs", e2e / "preconditions")
     print("\n".join(log))
     return rc
 
