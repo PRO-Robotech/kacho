@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 58 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 64 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -165,25 +165,25 @@
       "id": "vpc",
       "suites": ["vpc"],
       "components": ["vpc", "pg-vpc"],
-      "why": "19 коллекций / 3725 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
+      "why": "21 коллекция / 3896 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
     },
     {
       "id": "nlb",
       "suites": ["nlb"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb"],
-      "why": "9 коллекций / 1773 запроса. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
+      "why": "10 коллекций / 1789 запросов. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
     },
     {
       "id": "compute-storage",
       "suites": ["compute", "storage"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
-      "why": "7+9 коллекций / 1334 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
+      "why": "7+10 коллекций / 1392 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
     },
     {
       "id": "edge",
       "suites": ["geo", "registry", "api-gateway"],
       "components": ["registry", "pg-registry"],
-      "why": "7+5+2 коллекции / 427 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam, registry→registry). Самый лёгкий стенд."
+      "why": "7+5+4 коллекции / 445 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
     }
   ]
 }

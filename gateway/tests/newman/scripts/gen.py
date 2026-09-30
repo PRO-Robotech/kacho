@@ -87,6 +87,8 @@ sys.path.insert(0, str(_kacholib_dir()))
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
+    assert_created_at_seconds,
+    assert_field_violation,
     _assert_delete_operation_outcome,
     assert_grpc_code,
     _assert_published_id_outcome,
@@ -151,6 +153,12 @@ class Step:
     # Internal* RPCs are served ONLY on "internal"; "public" 404s them by design
     # (ban #6), which is what the "external" negatives assert.
     mux: str = "public"
+    # Проверка цепочки сертификата снимается ЯВНО и только шагом, который это
+    # объявил. Внешний TLS-слушатель края предъявляет лист внутреннего
+    # удостоверяющего центра на имя службы в кластере, а проброс идёт на петлю:
+    # предмет такой пробы — какие маршруты слушатель ОБСЛУЖИВАЕТ, а не чья
+    # цепочка доверия у туннеля. Умолчание — строгая проверка.
+    insecure_tls: bool = False
 
 
 @dataclass
@@ -277,6 +285,25 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
         f"  const v = ({jsonpath});",
         f"  if (v !== undefined && v !== null) pm.environment.set({js_str(env_var)}, String(v));",
         "} catch (e) {}",
+    ]
+
+
+def assert_answered(label: str) -> List[str]:
+    """Утверждать, что ответ ВООБЩЕ ПРИШЁЛ, прежде чем утверждать о нём хоть что-то.
+
+    Запрос, умерший до завершения обмена (отказ соединения, TLS, таймаут), всё
+    равно доводит newman до скрипта проверок — с пустым ответом, где
+    `pm.response.code` не число. Проба, чьё первое утверждение ждёт отказа
+    (`404` на внешнем слушателе), без этой строки не отличала бы «маршрута нет» от
+    «до слушателя не дозвонились»: вторая находка — о харнессе, а не об изоляции,
+    и доказательством изоляции служить не может.
+    """
+    return [
+        f"pm.test({js_str(f'{label}: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)')}, () => {{",
+        "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края')"
+        ".to.not.be.undefined;",
+        "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+        "});",
     ]
 
 
@@ -514,6 +541,9 @@ _INJECTED = {
     "assert_error_message_eql": assert_error_message_eql,
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
+    "assert_answered": assert_answered,
+    "assert_field_violation": assert_field_violation,
+    "assert_created_at_seconds": assert_created_at_seconds,
     "require_env_url": require_env_url,
     "require_env_slot": require_env_slot,
     "poll_operation": poll_operation,
@@ -564,6 +594,16 @@ def _gateway_pre_head(step, var):
     return require_env_url(var, step.path, why)
 
 
+def _gateway_item_hook(step, item):
+    """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
+
+    Шаг без этого поля эмитится байт в байт как прежде: ослабленная проверка
+    сертификата появляется в элементе коллекции только там, где кейс её назвал.
+    """
+    if step.insecure_tls:
+        item["protocolProfileBehavior"] = {"strictSSL": False}
+
+
 _EMIT = Emit(
     id_slug="kacho-gateway",
     # Слаг идентификатора и видимое имя РАСХОДЯТСЯ, и это не описка: слаг —
@@ -575,6 +615,7 @@ _EMIT = Emit(
     auth_pre=_auth_pre_script,
     host_var=_gateway_host_var,
     pre_head=_gateway_pre_head,
+    item_hook=_gateway_item_hook,
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
     path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
 )
