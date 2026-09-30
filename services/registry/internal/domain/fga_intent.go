@@ -300,10 +300,10 @@ func FGASubjectFromID(principalID string) string {
 //
 // anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
 // happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the wildcard. The anon principal id is deployment-configured (the iam anon
-// Hydra client id); deploy MUST keep it reserved (no real principal shares it), since
-// a token proving sub==anonPrincipalID can only be minted by holding the anon client's
-// key (the anon flow).
+// gaining the wildcard. The anon principal id is deployment-configured (kaname
+// AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
+// then the only producer of a token with sub==anonPrincipalID is the anonymous flow of
+// the /iam/token shim, which mints it with the access service's own signer.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
 		return FGASubjectPublicWildcard
