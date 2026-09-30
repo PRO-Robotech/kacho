@@ -412,6 +412,43 @@ func outlivedLedgerRecords(external map[string]string, dict map[string][]string,
 	return out
 }
 
+// ownerJournalsOf — ОБЩИЙ ПОМОЩНИК ВЫВОДА ВЛАДЕЛЬЦЕВ: какие журналы дерева
+// объявляют виды, названные консолью при каждом владельце.
+//
+// Им пользуются ДВА гейта — этот (написание вида) и
+// `console_notify_source_key_test.go` (ключ модуля каталога `notify`, NTF-6
+// Р10а), — и это одна функция, а не две копии разбора: вывод «журнал какой
+// службы стоит за владельцем», посчитанный дважды разными руками, разошёлся бы
+// молча, и разошёлся бы тот, который реже прогоняют.
+//
+// Второй результат — записи карты, чей вид не объявляет ни один словарь: что с
+// ними делать, решает вызывающий (у этого гейта это находка либо прощение
+// ведомостью внешних журналов).
+func ownerJournalsOf(subjects []consoleStreamSubject, dict map[string][]string) (
+	ownerJournals map[string]map[string]bool, unresolved []consoleStreamSubject) {
+	byKind := map[string][]string{}
+	for owner, kinds := range dict {
+		for _, kind := range kinds {
+			byKind[kind] = append(byKind[kind], owner)
+		}
+	}
+	ownerJournals = map[string]map[string]bool{}
+	for _, s := range subjects {
+		journals := byKind[s.Kind]
+		if len(journals) == 0 {
+			unresolved = append(unresolved, s)
+			continue
+		}
+		if ownerJournals[s.Owner] == nil {
+			ownerJournals[s.Owner] = map[string]bool{}
+		}
+		for _, j := range journals {
+			ownerJournals[s.Owner][j] = true
+		}
+	}
+	return ownerJournals, unresolved
+}
+
 // judgeConsoleKinds сверяет карту предметов со словарями дерева.
 func judgeConsoleKinds(subjects []consoleStreamSubject, dict map[string][]string) consoleKindVerdict {
 	return judgeConsoleKindsWithExternal(subjects, dict, journalsOutsideThisTree)
@@ -422,49 +459,33 @@ func judgeConsoleKinds(subjects []consoleStreamSubject, dict map[string][]string
 // стороны, иначе один и тот же вход давал бы один и тот же вердикт.
 func judgeConsoleKindsWithExternal(subjects []consoleStreamSubject, dict map[string][]string,
 	external map[string]string) consoleKindVerdict {
-	byKind := map[string][]string{}
-	for owner, kinds := range dict {
-		for _, kind := range kinds {
-			byKind[kind] = append(byKind[kind], owner)
-		}
-	}
-	for kind := range byKind {
-		sort.Strings(byKind[kind])
-	}
-
 	var verdict consoleKindVerdict
-	ownerJournals := map[string]map[string]bool{}
+	ownerJournals, unresolved := ownerJournalsOf(subjects, dict)
 	journalOwners := map[string]map[string]bool{}
-
-	for _, s := range subjects {
-		journals := byKind[s.Kind]
-		if len(journals) == 0 {
-			if _, outside := external[s.Owner]; outside {
-				// Журнал этого владельца ведёт другой репозиторий, и пин его ещё
-				// не несёт: сверять написание НЕ С ЧЕМ. Молча пропустить нельзя —
-				// число таких видов печатает перепись, и запись ведомости
-				// истекает сама, как только журнал станет читаем.
-				verdict.ExcusedExternal++
-				continue
-			}
-			verdict.Undeclared = append(verdict.Undeclared, fmt.Sprintf(
-				"спека %q называет владельцем %q вид %q, которого НЕ ОБЪЯВЛЯЕТ ни один "+
-					"журнал дерева. Поток откроется, словарь владельца этого вида не "+
-					"принесёт, `hub.covers()` ответит «нет» — и список молча останется на "+
-					"опросе: ошибки не будет ни в одном журнале",
-				s.Spec, s.Owner, s.Kind))
-			continue
-		}
-		for _, j := range journals {
-			if ownerJournals[s.Owner] == nil {
-				ownerJournals[s.Owner] = map[string]bool{}
-			}
-			ownerJournals[s.Owner][j] = true
+	for owner, journals := range ownerJournals {
+		for j := range journals {
 			if journalOwners[j] == nil {
 				journalOwners[j] = map[string]bool{}
 			}
-			journalOwners[j][s.Owner] = true
+			journalOwners[j][owner] = true
 		}
+	}
+
+	for _, s := range unresolved {
+		if _, outside := external[s.Owner]; outside {
+			// Журнал этого владельца ведёт другой репозиторий, и пин его ещё
+			// не несёт: сверять написание НЕ С ЧЕМ. Молча пропустить нельзя —
+			// число таких видов печатает перепись, и запись ведомости
+			// истекает сама, как только журнал станет читаем.
+			verdict.ExcusedExternal++
+			continue
+		}
+		verdict.Undeclared = append(verdict.Undeclared, fmt.Sprintf(
+			"спека %q называет владельцем %q вид %q, которого НЕ ОБЪЯВЛЯЕТ ни один "+
+				"журнал дерева. Поток откроется, словарь владельца этого вида не "+
+				"принесёт, `hub.covers()` ответит «нет» — и список молча останется на "+
+				"опросе: ошибки не будет ни в одном журнале",
+			s.Spec, s.Owner, s.Kind))
 	}
 
 	for _, owner := range sortedMapKeys(ownerJournals) {
