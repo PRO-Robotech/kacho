@@ -16,7 +16,7 @@
 # минус заводимое самим применением; до снятия было одиннадцать — ещё две базы
 # поставщика и подписной секрет печенья его консоли входа). Ни один шаблон их не
 # создаёт — под боевым слоем это ШАГ ОПЕРАТОРА, и так и написано в самом
-# профиле. Ещё четыре — ключевой материал службы доступа — заводит посев
+# профиле. Ещё три — ключевой материал службы доступа — заводит посев
 # (`dev-prod-secrets.sh`), но его звал ТОЛЬКО `dev-up`.
 #
 # Следствие, наблюдавшееся вживую: `make stack-up STACK=own` на чистом кластере
@@ -264,13 +264,11 @@ is_local_stand() {
 # «наверное, появится»: отказ назовёт его отдельно.
 producer_of() {
   case "$1" in
-    kaname-hook-token)        echo "посев dev-prod-secrets.sh · на площадке — оператор: общий секрет обратных вызовов, ключ token" ;;
     kaname-jwks-enc-key)      echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки подписного ключа, ключ enc_key" ;;
     kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
     kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
-    kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
     *)                        echo "" ;;
   esac
 }
@@ -367,9 +365,6 @@ produce() {
         return 1
       }
       create_generic "$name" "username=$user" "password=$pass" "htpasswd=$line"
-      ;;
-    kratos-selfservice-ui-cookie-secret)
-      create_generic "$name" "cookieSecret=$(openssl rand -hex 16)"
       ;;
     *) return 1 ;;
   esac

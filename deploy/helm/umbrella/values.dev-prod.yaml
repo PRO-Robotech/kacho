@@ -42,13 +42,11 @@
 #      it and now the boot-guards REQUIRE it (production + mtls-off = refuse-start).
 #
 # ── Prerequisite secrets (provisioned out-of-band by scripts/dev-prod-secrets.sh) ─
-# iam production-strict Config.Validate fails fast without these (defense-in-depth):
-#   - kaname-hook-token       (key: token)    — callback-lane HMAC (its only
-#                                               consumer, the removed identity
-#                                               provider's issuer, is gone, #1276)
-#   - kaname-jwks-enc-key      (key: enc_key)  — JWKS private-key encryption
-# On the insecure-dev stand both are optional secretKeyRefs (absent) → dev iam
-# boots without them; production iam MUST have them.
+# iam production-strict Config.Validate fails fast without its key material
+# (defense-in-depth). What the seed provisions, and why each value is generated
+# ONCE, is written in the seed's own header — one place, not a copy here. The
+# callback-lane secret it used to provision is gone together with both of its
+# readers (the service's hooks listener, #2818; the identity provider, #1276).
 
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
 api-gateway:
