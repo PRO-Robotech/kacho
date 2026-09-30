@@ -211,6 +211,10 @@ pg-registry:
 # Служба доступа сюда не входит: её исходники вынесены отдельным продуктом, её
 # пин объявлен базовым слоем и из записи выше не выводится by construction.
 vpc:
+  # КОНТРОЛЬ kacho#2931 (ветка tmp/, не вливается): ОДИН факт посадки сломан
+  # только в цепочке own. Нога own работы production-posture обязана покраснеть
+  # и назвать vpc; нога dev-prod этого слоя не читает и остаётся законным близнецом.
+  authMode: dev
   image: docker.io/prorobotech/kacho-vpc:2798-87329e29
 compute:
   image: docker.io/prorobotech/kacho-compute:2798-87329e29
