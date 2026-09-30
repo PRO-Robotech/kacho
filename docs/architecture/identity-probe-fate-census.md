@@ -328,8 +328,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 20 | `deploy/published_image_pin_is_reachable_test.go` | оставить | — | `oryd/kratos-selfservice-ui-node` | судит пины образов продукта; сторонний образ поставщика назван прозой границы, правка — #1276 |
 | 21 | `deploy/stack_render_carries_no_vendor_residue_test.go` | оставить | — | `var vendorResidueWord` | страж возврата следа поставщика в рендере каждой цепочки (#2818) |
 | 22 | `deploy/stack_table_test.go` | оставить | — | `values.fe3455-ory.yaml` | слой учётных данных площадки вне git: имя слоя не снято — экземпляр живёт в клонах операторов (#1276, часть 1) |
-| 23 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | нет | `against deployed Kratos` | соответствие FIDO адресам службы личности поставщика; вызывающих нет, предмет снят с поставщиком — #1276; ключ доступа держат пробы Ф7 пина службы |
-| 24 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | нет | `Hydra at https://hydra.` | соответствие OIDC издателю поставщика; вызывающих нет, издатель снят — #1276 |
+| 23 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
+| 24 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
 | 25 | `deploy/tests/helm/admin-hop-address-census-test.sh` | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
 | 26 | `deploy/tests/helm/admin-hop-pod-shape-test.sh` | снять | да | — | форма пода терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
 | 27 | `deploy/tests/helm/admin-hop-port-policy-test.sh` | снять | да | — | политика порта терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
@@ -414,8 +414,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 
 | исход вне ведомости | исполнено | проб |
 |---|---|---:|
-| снять | да | 21 |
-| снять | нет | 3 |
+| снять | да | 23 |
+| снять | нет | 1 |
 | переписать | да | 8 |
 | переписать | нет | 5 |
 | оставить | — | 68 |
