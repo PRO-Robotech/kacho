@@ -15,10 +15,11 @@
 | authz-catalog | 18 | матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции) |
 | internal-volume | 4 | S4 INV-7a external-absence |
 | sec-d | 4 | SEC-D owner-tuple через iam (outbox → RegisterResource) |
-| **Всего** | **184** | |
+| label-revoke-storage | 3 | отзыв ARM_LABELS при смене меток (том, снимок, образ); перенесён из набора службы доступа, #2912 |
+| **Всего** | **187** | |
 
-`scripts/validate-cases.py` → OK (184 уникальных case-id, нет дублей, все
-каталогизированы). `python3 scripts/gen.py` → OK (9 коллекций).
+`scripts/validate-cases.py` → OK (187 уникальных case-id, нет дублей, все
+каталогизированы). `python3 scripts/gen.py` → OK (10 коллекций).
 
 Таблица выше — не заметка «на память»: её сверяет с самими коллекциями гейт
 `make -C services/storage audit-known-failing` (`tools/audit-known-failing.sh`,

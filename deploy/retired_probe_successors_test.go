@@ -14,16 +14,24 @@
 // НАШЕЙ посадке, его обязан держать кто-то другой — иначе снятие молча сузило
 // бы защиту. Здесь названы преемники для строк, чей класс воспроизводим:
 //
-//	16–17  посадка без доменного имени: печенье сессии выдаётся без Domain
 //	34     каждая полоса регистрации выдаёт сессию
 //	48–51  дальше входа — только с подтверждённым адресом
 //
-// Утверждается, что каждая строка ведомости с этим номером называет тот файл,
-// что здесь (ведомость, перенумерованная без правки этой таблицы, — находка);
-// её исход «снять» либо «переписать» (преемник у остающейся пробы — ошибка
-// таблицы); у строки есть хотя бы один преемник; каждый преемник ОБЪЯВЛЕН —
-// функция верхнего уровня с этим именем разобрана в названном файле своего
-// дерева; и преемник в платформе сам не снимается по ведомости.
+// Эти пробы сняты kacho#2818 вместе со своими строками (правило ведомости:
+// «снята проба — тем же изменением снимаются её строка»), и ведомость сама
+// говорит, что держится ли их свойство в пробах службы, в этом дереве не
+// измерено, — это измерение и есть предмет файла. Строки 16–17 (посадка без
+// доменного имени) kacho#2818 переписал на наш носитель и оставил: класс держит
+// сама проба, и преемника у неё нет.
+//
+// Утверждается: строка ведомости с этим номером, если она есть, называет тот
+// файл, что здесь (ведомость, перенумерованная без правки этой таблицы, —
+// находка), и её исход «снять» либо «переписать» (преемник у остающейся пробы —
+// ошибка таблицы); строки нет — файла пробы в дереве тоже нет (иначе ведомость
+// не знает пробы, которой назначен преемник); у строки есть хотя бы один
+// преемник; каждый преемник ОБЪЯВЛЕН — функция верхнего уровня с этим именем
+// разобрана в названном файле своего дерева; и преемник в платформе сам не
+// снимается по ведомости.
 //
 // Деревья два: платформа (это дерево) и служба доступа — ПО ПИНУ go.mod, тем
 // деревом, против которого платформа собирается и чей образ исполняет стенд.
@@ -95,22 +103,12 @@ type ledgerSuccession struct {
 // successorLocator — строка объявления пробы в дереве либо ошибка.
 type successorLocator func(tree, file, fn string) (int, error)
 
-// probeSuccessions — преемники строк 16–17, 34, 48–51 ведомости.
+// probePresence — лежит ли файл пробы (путь от `deploy/`) в дереве.
+type probePresence func(file string) bool
+
+// probeSuccessions — преемники строк 34 и 48–51 ведомости: пробы сняты
+// kacho#2818 вместе со строками, их класс воспроизводим под `own`.
 var probeSuccessions = []ledgerSuccession{
-	{
-		Rows: []fateRowRef{
-			{16, "identity_domainless_landing_injection_test.go"},
-			{17, "identity_domainless_landing_is_expressible_test.go"},
-		},
-		What: "посадка без доменного имени: печенье нашей сессии выдаётся без Domain на каждой цепочке own",
-		Heirs: []probeSuccessor{
-			{successorTreePlatform, "deploy/own_session_cookie_domain_test.go", "TestOwnSessionCookieDomain_IsNoneOnEveryOwnChain"},
-			{successorTreePlatform, "deploy/own_session_cookie_domain_injection_test.go", "TestOwnCookieDomain_TreeInjectionNamesTheChainAndTheKey"},
-			{successorTreeAccess, "internal/handler/loginlanehttp/handler_test.go", "TestLane_F3_07_NoDomainKeyOnAddressPosture"},
-		},
-		Uncovered: "согласие IP-литерала внешнего адреса с объявлением domainless и отсутствие ключей доступа на " +
-			"такой посадке судит сама проба строки 17 — исход «переписать», и до переписи она остаётся",
-	},
 	{
 		Rows: []fateRowRef{{34, "identity_registration_lanes_issue_a_session_test.go"}},
 		What: "каждая полоса регистрации выдаёт сессию",
@@ -165,8 +163,11 @@ func parseLedgerRows(doc string) (map[int]fateRow, error) {
 	return out, nil
 }
 
-// judgeSuccessions — ЯДРО: чистая функция от ведомости, таблицы и поиска.
-func judgeSuccessions(ledger map[int]fateRow, table []ledgerSuccession, locate successorLocator) (lines, findings []string) {
+// judgeSuccessions — ЯДРО: чистая функция от ведомости, таблицы, поиска и
+// состава дерева. Строки нет, и файла пробы нет — проба снята вместе со строкой
+// (правило ведомости), и преемник по-прежнему обязан быть объявлен; строки нет,
+// а файл есть — ведомость не знает пробы, которой назначен преемник.
+func judgeSuccessions(ledger map[int]fateRow, table []ledgerSuccession, locate successorLocator, present probePresence) (lines, findings []string) {
 	removed := map[string]bool{}
 	for _, r := range ledger {
 		if r.Outcome == "снять" {
@@ -179,9 +180,12 @@ func judgeSuccessions(ledger map[int]fateRow, table []ledgerSuccession, locate s
 			nums = append(nums, strconv.Itoa(ref.Number))
 			row, ok := ledger[ref.Number]
 			switch {
+			case !ok && !present(ref.File):
+				outcomes = append(outcomes, "снята вместе со строкой")
+				continue
 			case !ok:
-				findings = append(findings, fmt.Sprintf("строки %d в ведомости нет — таблица преемников называет "+
-					"строку, которой нет", ref.Number))
+				findings = append(findings, fmt.Sprintf("строки %d в ведомости нет, а проба %s в дереве есть — "+
+					"таблица преемников называет строку, которой нет", ref.Number, ref.File))
 				continue
 			case row.File != ref.File:
 				findings = append(findings, fmt.Sprintf("строка %d: ведомость называет %s, таблица преемников — %s; "+
@@ -265,7 +269,11 @@ func TestRetiredIdentityProbeSuccessorsAreDeclaredOnHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin := productModulePins(t, "..")[kanameModulePart]
-	lines, findings := judgeSuccessions(ledger, probeSuccessions, treeLocator("..", kanameModuleDir(t, "..")))
+	present := func(file string) bool {
+		_, err := os.Stat(file)
+		return err == nil
+	}
+	lines, findings := judgeSuccessions(ledger, probeSuccessions, treeLocator("..", kanameModuleDir(t, "..")), present)
 	heirs := 0
 	for _, s := range probeSuccessions {
 		heirs += len(s.Heirs)

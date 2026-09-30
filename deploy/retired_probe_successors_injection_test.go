@@ -13,6 +13,11 @@ import (
 	"testing"
 )
 
+// fixtureProbes — пробы, лежащие в синтетическом дереве.
+var fixtureProbes = map[string]bool{"identity_a_test.go": true, "identity_b_test.go": true, "identity_c_test.go": true}
+
+func fixturePresent(file string) bool { return fixtureProbes[file] }
+
 func successorFixture() (map[int]fateRow, []ledgerSuccession, successorLocator) {
 	ledger := map[int]fateRow{
 		1: {Number: 1, File: "identity_a_test.go", Outcome: "снять"},
@@ -35,7 +40,7 @@ func successorFixture() (map[int]fateRow, []ledgerSuccession, successorLocator) 
 
 func TestSuccessorJudge_TwinIsSilentAndEachDefectIsFound(t *testing.T) {
 	ledger, table, locate := successorFixture()
-	lines, findings := judgeSuccessions(ledger, table, locate)
+	lines, findings := judgeSuccessions(ledger, table, locate, fixturePresent)
 	if len(findings) != 0 || len(lines) != 1 ||
 		!strings.Contains(lines[0], "TestHeir") || !strings.Contains(lines[0], "TestPinHeir") {
 		t.Fatalf("законный близнец: строки %v, находки %v — ждали одну строку свойства с обоими "+
@@ -46,7 +51,7 @@ func TestSuccessorJudge_TwinIsSilentAndEachDefectIsFound(t *testing.T) {
 		name, want string
 		mutate     func(map[int]fateRow, []ledgerSuccession) successorLocator
 	}{
-		{"строки нет в ведомости", "строки 2 в ведомости нет", func(l map[int]fateRow, _ []ledgerSuccession) successorLocator {
+		{"строки нет в ведомости, а проба в дереве есть", "строки 2 в ведомости нет", func(l map[int]fateRow, _ []ledgerSuccession) successorLocator {
 			delete(l, 2)
 			return locate
 		}},
@@ -74,12 +79,39 @@ func TestSuccessorJudge_TwinIsSilentAndEachDefectIsFound(t *testing.T) {
 	for _, c := range cases {
 		l, tb, _ := successorFixture()
 		loc := c.mutate(l, tb)
-		_, got := judgeSuccessions(l, tb, loc)
+		_, got := judgeSuccessions(l, tb, loc, fixturePresent)
 		if !strings.Contains(strings.Join(got, "\n"), c.want) {
 			t.Errorf("%s: находка %q не выдана; находки: %v", c.name, c.want, got)
 		}
 	}
 	t.Logf("перепись: инъекций %d · близнец 1", len(cases))
+}
+
+// Проба, снятая вместе со своей строкой (правило ведомости: «снята проба — тем
+// же изменением снимаются её строка»), остаётся в таблице преемников: её класс
+// обязан держать объявленный преемник. Близнец меняет один факт — файл пробы в
+// дереве остался, и тогда отсутствие строки — находка.
+func TestSuccessorJudge_ProbeRemovedWithItsRowStillNeedsItsHeirs(t *testing.T) {
+	ledger, table, locate := successorFixture()
+	delete(ledger, 2)
+	gone := func(f string) bool { return f != "identity_b_test.go" && fixturePresent(f) }
+
+	lines, findings := judgeSuccessions(ledger, table, locate, gone)
+	if len(findings) != 0 || len(lines) != 1 || !strings.Contains(lines[0], "снята вместе со строкой") {
+		t.Fatalf("снятая вместе со строкой проба: строки %v, находки %v — ждали строку свойства со снятой "+
+			"пробой и молчание", lines, findings)
+	}
+
+	_, findings = judgeSuccessions(ledger, table, locate, fixturePresent)
+	if !strings.Contains(strings.Join(findings, "\n"), "строки 2 в ведомости нет") {
+		t.Errorf("строки нет, а файл пробы в дереве есть — находки нет: %v", findings)
+	}
+
+	table[0].Heirs = []probeSuccessor{{successorTreeAccess, "internal/x/heir_test.go", "TestGone"}}
+	_, findings = judgeSuccessions(ledger, table, locate, gone)
+	if !strings.Contains(strings.Join(findings, "\n"), "TestGone") {
+		t.Errorf("у снятой пробы преемник не объявлен — находки нет: %v", findings)
+	}
 }
 
 func TestLedgerRows_RefusesAnUnknownRowForm(t *testing.T) {

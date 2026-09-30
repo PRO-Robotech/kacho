@@ -1,0 +1,2098 @@
+{
+  "info": {
+    "_postman_id": "d7ee8b76-9c5c-512b-9215-340609a90b0a",
+    "name": "kacho-vpc / newman / authz-sa-apitoken",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  // runId формат: только [a-z0-9], без точки — чтобы проходить name regex.",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
+          "}",
+          "// Suite project scope (директива #2 — per-service isolation): prefer the vpc-",
+          "// DEDICATED existingProjectId/existingProjectCrossId (setup.sh seeds vpc-home /",
+          "// vpc-cross under a vpc-only account and grants the default JWT editor on BOTH),",
+          "// so the CRUD suites don't share projectA1/A2 with the iam matrix + nlb (cross-",
+          "// suite collision #276) and can run in parallel. Fall back to the shared matrix",
+          "// projectA1Id/A2Id only when the dedicated projects weren't seeded (standalone dev).",
+          "// NB: the 6-subject authz-deny matrix keeps using projectA1Id/B1Id directly (shared).",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId') || pm.environment.get('projectA1Id'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId') || pm.environment.get('projectA2Id'));",
+          "// Zone is environment-specific (geo seeds Region/Zone; ids differ per deploy).",
+          "// Resolve a live zone id once from the geo catalog; fall back to the committed",
+          "// existingZoneId when geo is unreachable (standalone vpc without geo).",
+          "if (!pm.environment.get('_zoneResolved')) {",
+          "  const __zjwt = pm.environment.get('jwtBootstrap') || pm.environment.get('jwtProjectAdminA1') || '';",
+          "  pm.sendRequest({",
+          "    url: pm.environment.get('baseUrl') + '/geo/v1/zones',",
+          "    method: 'GET',",
+          "    header: { 'Authorization': 'Bearer ' + __zjwt },",
+          "  }, (err, res) => {",
+          "    if (err || !res || res.code !== 200) return;",
+          "    let zs = []; try { zs = (res.json().zones) || []; } catch (e) {}",
+          "    const up = zs.filter(z => !z.status || String(z.status).indexOf('UP') !== -1);",
+          "    const pick = up.length ? up : zs;",
+          "    if (pick.length) {",
+          "      pm.environment.set('existingZoneId', pick[0].id);",
+          "      pm.environment.set('existingZoneAltId', (pick[1] || pick[0]).id);",
+          "      pm.environment.set('_zoneResolved', '1');",
+          "    }",
+          "  });",
+          "}",
+          "// Default auth: projectAdmin on project A1 — sufficient for most happy-path steps.",
+          "// Per-step auth= overrides this via item-level pre-request script (_auth_pre_script).",
+          "const __defaultJwt = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+          "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "_SETUP-ZONES — resolve live geo zone ids (zoneA..D)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const code = (pm.response && pm.response.code) || 0;",
+              "let zs = [];",
+              "if (code === 200) { try { zs = (pm.response.json().zones) || []; } catch (e) {} }",
+              "const up = zs.filter(z => !z.status || String(z.status).indexOf('UP') !== -1);",
+              "const stable = up.filter(z => String(z.id || '').indexOf('qa-') !== 0);",
+              "const baseline = stable.filter(z => String(z.id || '').indexOf('ru-central1-') === 0);",
+              "const pick = baseline.length ? baseline : (stable.length ? stable : up);",
+              "if (pick.length) {",
+              "  const at = (i) => (pick[i] || pick[pick.length - 1]).id;",
+              "  pm.environment.set('zoneA', at(0));",
+              "  pm.environment.set('zoneB', at(1));",
+              "  pm.environment.set('zoneC', at(2));",
+              "  pm.environment.set('zoneD', at(3));",
+              "  pm.environment.set('existingZoneId', at(0));",
+              "  pm.environment.set('existingZoneAltId', at(1));",
+              "  pm.environment.set('_zoneResolved', '1');",
+              "}",
+              "if (code === 200) {",
+              "  pm.test('каталог размещения ответил — пригодные зоны разрешены', function () {",
+              "    pm.expect(pick.length, pm.response.text()).to.be.above(0);",
+              "  });",
+              "}",
+              "pm.test('координата зоны непуста после резолва (живой каталог либо закоммиченное умолчание окружения)', function () {",
+              "  pm.expect(String(pm.environment.get('existingZoneId') || ''), 'existingZoneId').to.not.eql('');",
+              "  pm.expect(String(pm.environment.get('existingZoneAltId') || ''), 'existingZoneAltId').to.not.eql('');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtBootstrap}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/geo/v1/zones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "geo",
+            "v1",
+            "zones"
+          ]
+        }
+      }
+    },
+    {
+      "name": "AUTHZ-SA-NET-GT-A1 — [ALLOW] Get seed-network in project-A1 (granted resource) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-GT-A1] ALLOW: HTTP 200 (чтение разрешено)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-GT-A1] ALLOW: ответ — запрошенный ресурс, а не конверт отказа', () => {",
+                  "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+                  "  pm.expect(_j.id, JSON.stringify(_j)).to.equal(pm.environment.get('seedNetworkA1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-LS-A1 — [ALLOW] List networks ?projectId=A1 (own project) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-LS-A1] ALLOW: HTTP 200 (перечисление разрешено)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-LS-A1] ALLOW: конверт выдачи, а не конверт отказа', () => {",
+                  "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+                  "  pm.expect(Object.keys(_j).filter(k => ['networks', 'nextPageToken'].indexOf(k) < 0),",
+                  "    'посторонний ключ в конверте выдачи: ' + pm.response.text()).to.eql([]);",
+                  "  pm.expect(_j['networks'] === undefined || Array.isArray(_j['networks']),",
+                  "    'поле networks присутствует и не является массивом: ' + pm.response.text()).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-CR-A1 — [ALLOW] Create network in project-A1 (own project) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-sa-net-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-CR-A1] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-CR-A1] ALLOW: конверт Operation', () => {",
+                  "  pm.expect(_j && _j.id, 'operation.id: ' + pm.response.text()).to.match(/^enp[a-z0-9]+$/);",
+                  "  pm.expect(_j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-LS-A2-DENY — [DENY] List networks ?projectId=A2 (cross-project, no project-viewer) → 403 gated List as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectA2Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectA2Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-LS-A2-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-LS-A2-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-NET-LS-A2-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-GT-B1 — [DENY] Get seed-network in project-B1 (cross-account, no grant) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-GT-B1] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-GT-B1] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-SA-NET-GT-B1] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-CR-B1 — [DENY] Create network in project-B1 (cross-account, no grant) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-sa-net-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-CR-B1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-CR-B1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-NET-CR-B1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-NET-LS-B1-DENY — [DENY] List networks ?projectId=B1 (cross-account, no project-viewer) → 403 gated List as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-NET-LS-B1-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-NET-LS-B1-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-NET-LS-B1-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ACCT-GT-A — [DENY] Get account-A (project-scoped grant ≠ account-level) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{accountAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{accountAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ACCT-GT-A] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ACCT-GT-A] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-SA-ACCT-GT-A] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ACCT-UP-A — [DENY] Update account-A (no account-level grant) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "patch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{accountAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{accountAId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"x\", \"updateMask\": \"name\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ACCT-UP-A] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ACCT-UP-A] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ACCT-UP-A] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ESC-SELF-ADMIN — [DENY] Self-grant iam.admin on account-A (escalation) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accessBindings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accessBindings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"subjectType\": \"service_account\", \"subjectId\": \"{{svaAId}}\", \"roleId\": \"rol21232f297a57a5a74\", \"scopeType\": \"iam.account\", \"scopeId\": \"{{accountAId}}\", \"target\": {\"allInScope\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ESC-SELF-ADMIN] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-ADMIN] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-ADMIN] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ESC-SELF-VPC-B1 — [DENY] Self-grant vpc-admin on project-B1 (cross-account escalation) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accessBindings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accessBindings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"subjectType\": \"service_account\", \"subjectId\": \"{{svaAId}}\", \"roleId\": \"rol21232f297a57a5a74\", \"scopeType\": \"iam.project\", \"scopeId\": \"{{projectB1Id}}\", \"target\": {\"allInScope\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ESC-SELF-VPC-B1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-VPC-B1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-VPC-B1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ESC-SELF-MODIFY — [DENY] Self-modify own ServiceAccount row (escalation prep) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "patch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/serviceAccounts/{{svaAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "serviceAccounts",
+                "{{svaAId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"description\": \"escalated\", \"updateMask\": \"description\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ESC-SELF-MODIFY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-MODIFY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ESC-SELF-MODIFY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ESC-ISSUE-KEY — [DENY] Issue new SA-key for self (escalation prep) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/serviceAccounts/{{svaAId}}/keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "serviceAccounts",
+                "{{svaAId}}",
+                "keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"serviceAccountId\": \"{{svaAId}}\", \"description\": \"self-issued\", \"createdByUserId\": \"{{userAAAId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ESC-ISSUE-KEY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ESC-ISSUE-KEY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ESC-ISSUE-KEY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SA-ESC-CUSTOM-ROLE — [DENY] Create custom Role with broad iam/vpc rules (escalation prep) as service-account-A (vpc-editor on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "roles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"sa-hack-role-{{runId}}\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\"], \"verbs\": [\"*\"]}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SA-ESC-CUSTOM-ROLE] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SA-ESC-CUSTOM-ROLE] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SA-ESC-CUSTOM-ROLE] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SANG-NET-GT-A1 — [DENY] Get seed-network in project-A1 (no grants at all) as service-account-no-grant",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSANoGrant'",
+                  "const __t = pm.environment.get('jwtSANoGrant') || pm.variables.get('jwtSANoGrant') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSANoGrant is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSANoGrant is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SANG-NET-GT-A1] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SANG-NET-GT-A1] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-SANG-NET-GT-A1] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SANG-NET-LS-A1-DENY — [DENY] List networks ?projectId=A1 (no grants, no project-viewer) → 403 gated List as service-account-no-grant",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSANoGrant'",
+                  "const __t = pm.environment.get('jwtSANoGrant') || pm.variables.get('jwtSANoGrant') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSANoGrant is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSANoGrant is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SANG-NET-LS-A1-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SANG-NET-LS-A1-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SANG-NET-LS-A1-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SANG-NET-CR-A1 — [DENY] Create network in project-A1 (no grants) as service-account-no-grant",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-sang-net-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSANoGrant'",
+                  "const __t = pm.environment.get('jwtSANoGrant') || pm.variables.get('jwtSANoGrant') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSANoGrant is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSANoGrant is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SANG-NET-CR-A1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SANG-NET-CR-A1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SANG-NET-CR-A1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SANG-SA-LS-A-EMPTY — [EMPTY] List serviceAccounts ?accountId=A (no grants) → scope-filter empty as service-account-no-grant",
+      "description": "class:AUTHZ | class:SCOPE | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/serviceAccounts?accountId={{accountAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "serviceAccounts?accountId={{accountAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'jwtSANoGrant'",
+                  "const __t = pm.environment.get('jwtSANoGrant') || pm.variables.get('jwtSANoGrant') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSANoGrant is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSANoGrant is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SANG-SA-LS-A-EMPTY] EMPTY: status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('[AUTHZ-SANG-SA-LS-A-EMPTY] EMPTY: zero serviceAccounts (scope-filter)', () => pm.expect((body && body.serviceAccounts || []).length).to.equal(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-NET-GT-A1 — [ALLOW] Get seed-network in project-A1 (valid, in-scope token) as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-NET-GT-A1] ALLOW: HTTP 200 (чтение разрешено)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-APITOK-NET-GT-A1] ALLOW: ответ — запрошенный ресурс, а не конверт отказа', () => {",
+                  "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+                  "  pm.expect(_j.id, JSON.stringify(_j)).to.equal(pm.environment.get('seedNetworkA1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-NET-LS-A1 — [ALLOW] List networks ?projectId=A1 (valid, in-scope token) as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-NET-LS-A1] ALLOW: HTTP 200 (перечисление разрешено)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-APITOK-NET-LS-A1] ALLOW: конверт выдачи, а не конверт отказа', () => {",
+                  "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+                  "  pm.expect(Object.keys(_j).filter(k => ['networks', 'nextPageToken'].indexOf(k) < 0),",
+                  "    'посторонний ключ в конверте выдачи: ' + pm.response.text()).to.eql([]);",
+                  "  pm.expect(_j['networks'] === undefined || Array.isArray(_j['networks']),",
+                  "    'поле networks присутствует и не является массивом: ' + pm.response.text()).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-NET-GT-B1 — [DENY] Get seed-network in project-B1 (valid token, out-of-scope) as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-NET-GT-B1] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-NET-GT-B1] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-APITOK-NET-GT-B1] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-ACCT-GT-A — [DENY] Get account-A (valid token, scope=vpc.* only) as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{accountAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{accountAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-ACCT-GT-A] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-ACCT-GT-A] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-APITOK-ACCT-GT-A] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-NET-LS-B1-DENY — [DENY] List networks ?projectId=B1 (out-of-scope, no project-viewer) → 403 gated List as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-NET-LS-B1-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-NET-LS-B1-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-APITOK-NET-LS-B1-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-REVOKED-GT-A1 — [UNAUTH] Get seed-network in project-A1 (revoked token) as api-token-revoked",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenRevoked'",
+                  "const __t = pm.environment.get('apiTokenRevoked') || pm.variables.get('apiTokenRevoked') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenRevoked is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenRevoked is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-REVOKED-GT-A1] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-REVOKED-GT-A1] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-REVOKED-LS-A1 — [UNAUTH] List networks ?projectId=A1 (revoked token) as api-token-revoked",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{projectA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks?projectId={{projectA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenRevoked'",
+                  "const __t = pm.environment.get('apiTokenRevoked') || pm.variables.get('apiTokenRevoked') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenRevoked is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenRevoked is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-REVOKED-LS-A1] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-REVOKED-LS-A1] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-MALFORMED-GT-A1 — [UNAUTH] Get seed-network in project-A1 (malformed token) as api-token-malformed",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenMalformed'",
+                  "const __t = pm.environment.get('apiTokenMalformed') || pm.variables.get('apiTokenMalformed') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenMalformed is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenMalformed is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-MALFORMED-GT-A1] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-MALFORMED-GT-A1] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-EXPIRED-GT-A1 — [UNAUTH] Get seed-network in project-A1 (expired token) as api-token-expired",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{seedNetworkA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{seedNetworkA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenExpired'",
+                  "const __t = pm.environment.get('apiTokenExpired') || pm.variables.get('apiTokenExpired') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenExpired is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenExpired is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-EXPIRED-GT-A1] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-EXPIRED-GT-A1] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-REVOKED-CR — [UNAUTH] Create network with revoked token as api-token-revoked",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-rev-net-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenRevoked'",
+                  "const __t = pm.environment.get('apiTokenRevoked') || pm.variables.get('apiTokenRevoked') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenRevoked is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenRevoked is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-REVOKED-CR] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-REVOKED-CR] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-MALFORMED-CR — [UNAUTH] Create network with malformed token as api-token-malformed",
+      "description": "class:AUTHZ | class:NEG | class:AUTHN | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-mal-net-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenMalformed'",
+                  "const __t = pm.environment.get('apiTokenMalformed') || pm.variables.get('apiTokenMalformed') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenMalformed is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenMalformed is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-MALFORMED-CR] UNAUTH: status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(401));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-MALFORMED-CR] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-APITOK-ESC-SELF-ADMIN — [DENY] Self-grant iam.admin via valid API token (escalation) as api-token-valid (in-scope vpc.* on project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accessBindings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accessBindings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"subjectType\": \"service_account\", \"subjectId\": \"{{svaAId}}\", \"roleId\": \"rol21232f297a57a5a74\", \"scopeType\": \"iam.account\", \"scopeId\": \"{{accountAId}}\", \"target\": {\"allInScope\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// authz-deny: bearer from env 'apiTokenValid'",
+                  "const __t = pm.environment.get('apiTokenValid') || pm.variables.get('apiTokenValid') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: apiTokenValid is set (subject under test)', () => {",
+                  "    pm.expect.fail('apiTokenValid is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-APITOK-ESC-SELF-ADMIN] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-APITOK-ESC-SELF-ADMIN] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-APITOK-ESC-SELF-ADMIN] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

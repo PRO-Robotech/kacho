@@ -14,17 +14,17 @@ import (
 
 // handler_anon_test.go — RG-1 group B (anonymous public-read data-plane path,
 // B03/B04/B05/B07/B14). A VALID iam-issued anon Bearer carries the configured
-// anonymous principal id (its Hydra client id); the data-plane resolves it to the FGA
-// wildcard `user:*` (D-7). PUBLIC repos carry a `user:* v_get` tuple (emitted by the
-// overlay) → anon read allowed (200); PRIVATE/absent → the SAME uniform 404
-// NAME_UNKNOWN (public-ness is NOT a probeable existence-oracle). Anon push is denied
-// (user:* holds no write relation) → 403 DENIED; a request with no Bearer at all →
-// 401 challenge (unchanged). The verb-per-route model is unchanged: manifest/blob use
+// anonymous principal id (kaname AnonymousClientID) as its `sub`; the data-plane
+// resolves it to the FGA wildcard `user:*` (D-7). PUBLIC repos carry a `user:* v_get`
+// tuple (emitted by the overlay) → anon read allowed (200); PRIVATE/absent → the
+// SAME uniform 404 NAME_UNKNOWN (public-ness is NOT a probeable existence-oracle).
+// Anon push is denied (user:* holds no write relation) → 403 DENIED; a request with
+// no Bearer at all → 401 challenge (unchanged). The verb-per-route model is unchanged: manifest/blob use
 // v_get (covered by the user:* wildcard), tags/list uses v_list (NO wildcard — anon
 // cannot enumerate tags), which is why these tests exercise the docker-pull core
 // (manifest + blob) rather than tag listing.
 
-// anonClientID — the anon Hydra client id an anon Bearer's `sub` carries. The
+// anonClientID — the anonymous principal id an anon Bearer's `sub` carries. The
 // data-plane is configured (WithAnonymousSubject) to resolve this id to `user:*`.
 const anonClientID = "cid-registry-anon"
 

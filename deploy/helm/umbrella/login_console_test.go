@@ -100,20 +100,13 @@ var (
 	laneURLPath  = []string{"api-gateway", "authn", "iamLoginLaneUrl"}
 )
 
-// posturePathService / posturePathEdge — где посадка объявляется каждой
-// половиной. Читается сначала служба, затем край: СОГЛАСИЕ половин — предмет
-// deploy/helm/umbrella/identity_posture_profiles_test.go, и второго суждения о
-// нём здесь не заводится.
-var (
-	posturePathService = []string{"kaname", "config", "authn", "identityProvider"}
-	posturePathEdge    = []string{"api-gateway", "authn", "identityProvider"}
-)
-
-// postureExternal — значение, которое получает цепочка, посадку не объявившая.
-// Умолчание живёт в базовом профиле чарта службы
-// (`deploy/helm/umbrella/charts/kaname/values.yaml`), поэтому молчание цепочки
-// есть `external`, а не «не решено»: гейт обязан спрашивать с неё чужой
-// интерфейс ровно так же, как с объявившей.
+// ПОСАДКА СТЕКА — посадка службы, и она одна (kanameLanding, kaname#363): ключа
+// посадки у подчарта службы нет (kacho#2818), читать с цепочки нечего. СОГЛАСИЕ
+// края с ней — предмет deploy/helm/umbrella/identity_posture_profiles_test.go, и
+// второго суждения о нём здесь не заводится.
+//
+// postureExternal — чужая посадка. На дереве её не объявляет никто; ветвь
+// судьи о ней уходит вместе с интерфейсом входа чужого поставщика (#1276).
 const (
 	postureExternal = "external"
 	postureOwn      = "own"
@@ -122,9 +115,8 @@ const (
 // loginConsoleFacts — что ОДНА цепочка объявила о том, чем на ней входит человек.
 type loginConsoleFacts struct {
 	Stack string
-	// Posture — посадка личности; "" означает «цепочка молчит», и это НЕ третье
-	// состояние: молчание разрешается в `external` умолчанием чарта. Поле
-	// хранится сырым, чтобы перепись могла отличить объявивших от наследующих.
+	// Posture — посадка личности стека. Пустая — посадка не установлена, и это
+	// находка, а не наследование: умолчания посадки у чарта службы больше нет.
 	Posture string
 	// ForeignUI / ForeignUIDeclared — `enabled: false` и «ключа нет вовсе» суть
 	// ПРОТИВОПОЛОЖНЫЕ находки («интерфейс выключили» против «его никто не
@@ -143,13 +135,11 @@ type loginConsoleCensus struct {
 	Production int
 	OnExternal int
 	OnOwn      int
-	Inherited  int
 }
 
 func (c loginConsoleCensus) String() string {
-	return fmt.Sprintf("стеков в таблице %d · боевых %d · из них на чужой посадке %d "+
-		"(из них посадку НЕ объявляют, а наследуют умолчание чарта %d) · на собственной %d",
-		c.Stacks, c.Production, c.OnExternal, c.Inherited, c.OnOwn)
+	return fmt.Sprintf("стеков в таблице %d · боевых %d · из них на чужой посадке %d · на собственной %d",
+		c.Stacks, c.Production, c.OnExternal, c.OnOwn)
 }
 
 // judgeLoginConsole — НАХОДКИ по перечню боевых цепочек.
@@ -162,10 +152,6 @@ func judgeLoginConsole(facts []loginConsoleFacts) ([]string, loginConsoleCensus)
 	for _, f := range facts {
 		census.Production++
 		posture := strings.TrimSpace(f.Posture)
-		if posture == "" {
-			census.Inherited++
-			posture = postureExternal
-		}
 		switch posture {
 		case postureExternal:
 			census.OnExternal++
@@ -263,10 +249,7 @@ func TestStacks_ProductionClassResolvesTheLoginConsole(t *testing.T) {
 		t.Logf("%s: боевой класс, слитие %d профиль(ей): %s",
 			name, len(stack), strings.Join(stack, " -> "))
 
-		posture := resolveStackScalarAt(t, stack, posturePathService...)
-		if posture == "" {
-			posture = resolveStackScalarAt(t, stack, posturePathEdge...)
-		}
+		posture := kanameLanding
 		enabled, declared := resolveStackBoolAt(t, stack, consolePath...)
 		facts = append(facts, loginConsoleFacts{
 			Stack:             name,
@@ -348,8 +331,8 @@ func TestLoginConsoleGate_Twin_ACompleteOwnLaneIsSilent(t *testing.T) {
 // КОНТРОЛЬ прежнего требования: на посадке `external` выключенный и
 // необъявленный интерфейс остаются ДВУМЯ РАЗНЫМИ находками.
 //
-// Посадка здесь подаётся и объявленной, и ПУСТОЙ: пустая означает наследование
-// умолчания чарта, и стек, посадку не объявивший, обязан спрашиваться так же.
+// Пустая посадка — не наследование, а находка «не знает»: умолчания посадки у
+// чарта службы больше нет (kacho#2818).
 func TestLoginConsoleGate_Injection_TheForeignLaneStillRefuses(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -362,9 +345,9 @@ func TestLoginConsoleGate_Injection_TheForeignLaneStillRefuses(t *testing.T) {
 		{"не объявлен вовсе", loginConsoleFacts{
 			Stack: "synthetic", Posture: postureExternal,
 		}, "НЕ объявляет"},
-		{"посадка унаследована, интерфейс выключен", loginConsoleFacts{
+		{"посадка не установлена", loginConsoleFacts{
 			Stack: "synthetic", Posture: "", ForeignUI: false, ForeignUIDeclared: true,
-		}, "ВЫКЛЮЧИЛИ"},
+		}, "не знает"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			findings, _ := judgeLoginConsole([]loginConsoleFacts{tc.facts})
@@ -382,13 +365,13 @@ func TestLoginConsoleGate_Injection_TheForeignLaneStillRefuses(t *testing.T) {
 // к предыдущей инъекции.
 func TestLoginConsoleGate_Twin_AnEnabledForeignConsoleIsSilent(t *testing.T) {
 	findings, census := judgeLoginConsole([]loginConsoleFacts{{
-		Stack: "synthetic", Posture: "", ForeignUI: true, ForeignUIDeclared: true,
+		Stack: "synthetic", Posture: postureExternal, ForeignUI: true, ForeignUIDeclared: true,
 	}})
 	if len(findings) != 0 {
 		t.Fatalf("включённый чужой интерфейс объявлен находкой: %v", findings)
 	}
-	if census.Inherited != 1 || census.OnExternal != 1 {
-		t.Fatalf("перепись не отнесла молчащий стек к наследующим чужую посадку: %s", census)
+	if census.OnExternal != 1 {
+		t.Fatalf("перепись не отнесла стек к чужой посадке: %s", census)
 	}
 }
 

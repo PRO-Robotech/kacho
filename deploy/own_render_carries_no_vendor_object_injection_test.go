@@ -20,7 +20,10 @@
 //     значением — молчание;
 //   - пустой обход и рендер без объектов — отказ, а не «находок ноль»;
 //   - снятый пином ключ посадки: присутствие в рендере — находка, отсутствие —
-//     посадка по построению пина.
+//     посадка по построению пина;
+//   - отказ подъёма зависимости поставщика засчитывается живым контролем как «не
+//     поднимается» только шаблоном, которого в дереве зонта нет; тот же отказ при
+//     шаблоне, объявленном в дереве, и отказ другой природы — вердикта нет.
 //
 // Словарь поставщика в этих файлах литералом не пишется: имя собирается из
 // `internal/identityvendor` во время прогона. Литерал с именем в строке кода —
@@ -338,5 +341,101 @@ func TestVendorDependencies_ReadsNameAliasAndRepository(t *testing.T) {
 	}
 	if _, err := vendorDependencies([]byte("apiVersion: v2\nname: x\n")); err == nil {
 		t.Error("Chart.yaml без перечня зависимостей принят молча — обход пуст")
+	}
+}
+
+// Отказ подъёма зависимости поставщика засчитывается контролем как «не
+// поднимается» РОВНО тогда, когда helm назвал шаблон, которого в дереве зонта
+// нет ни в одном чарте, — ни в каталоге, ни в архиве (kacho#2818 снял шаблон,
+// на который ещё ссылаются значения профилей; физическое снятие — #1276).
+// Вход — настоящий отказ helm на настоящей цепочке; законные близнецы меняют
+// ровно один факт: тот же отказ при шаблоне, присутствующем в дереве (провязка
+// сломана — вердикта нет), и настоящий отказ другой природы.
+//
+// Предикат снятия этой ветви — внешний факт: когда #1276 уберёт зависимость
+// либо её значения перестанут ссылаться на снятый шаблон, отказов подъёма не
+// останется, проба покраснеет «вход исчез», и ветвь снимается вместе с ней.
+func TestOwnRenderControl_RefusedRaiseIsNamedOnlyByARetiredTemplate(t *testing.T) {
+	defines, census, err := umbrellaTemplateDefines(umbrellaDir)
+	if err != nil {
+		t.Fatalf("обход шаблонов зонта: %v", err)
+	}
+	t.Logf("обход шаблонов зонта: %s", census)
+	if census.Files == 0 || census.Archives == 0 {
+		t.Fatalf("обход шаблонов зонта обязан прочитать обе ветви — каталоги и архивы подчартов: %s", census)
+	}
+
+	chartYAML, err := os.ReadFile(filepath.Join(umbrellaDir, "Chart.yaml"))
+	if err != nil {
+		t.Fatalf("Chart.yaml зонта не читается: %v", err)
+	}
+	deps, err := vendorDependencies(chartYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stacks := deployStacks(t)
+	chainName := sortedStackNames(stacks)[0]
+	chain := stacks[chainName]
+
+	refused := 0
+	for _, d := range deps {
+		if d.Condition == "" {
+			continue
+		}
+		_, stderr, rerr := renderChainOutcome(t, chain, d.Condition+"=true")
+		if rerr == nil {
+			continue
+		}
+		refused++
+		tpl, ok := retiredTemplateRefusal(stderr, defines)
+		if !ok {
+			t.Errorf("цепочка %s, поднята %s: настоящий отказ не назван снятым шаблоном — классификатор слеп:\n%s",
+				chainName, d.Key, stderr)
+			continue
+		}
+		twin := map[string]string{tpl: "probe-twin/templates/_helpers.tpl"}
+		for k, v := range defines {
+			twin[k] = v
+		}
+		if got, ok := retiredTemplateRefusal(stderr, twin); ok {
+			t.Errorf("цепочка %s, поднята %s: тот же отказ при шаблоне %q, объявленном в дереве, засчитан как "+
+				"«не поднимается» — сломанная провязка прошла бы за снятие", chainName, d.Key, got)
+		}
+		t.Logf("  отказ подъёма %s на цепочке %s назван шаблоном %q (в дереве зонта не объявлен); "+
+			"близнец с объявленным шаблоном — вердикта нет", d.Key, chainName, tpl)
+	}
+	if refused == 0 {
+		t.Fatalf("ни одна зависимость поставщика (%d) не отказывает в подъёме на цепочке %s — вход инъекции "+
+			"исчез: ветвь «не поднимается» живого контроля снимается вместе с этой пробой (#1276)", len(deps), chainName)
+	}
+
+	absent := append(append([]string{}, chain...), "values.probe-absent.yaml")
+	_, stderr, rerr := renderChainOutcome(t, absent)
+	if rerr == nil {
+		t.Fatalf("рендер с отсутствующим файлом профиля выполнен — второго близнеца нет")
+	}
+	if got, ok := retiredTemplateRefusal(stderr, defines); ok {
+		t.Errorf("отказ helm другой природы (нет файла профиля) засчитан как снятый шаблон %q:\n%s", got, stderr)
+	}
+}
+
+// Классификатор отказа — чистая функция: имя шаблона берётся из фразы helm,
+// а не из подстроки, и объявленный в дереве шаблон снятым не считается.
+func TestRetiredTemplateRefusal_ReadsHelmPhraseAndTheTree(t *testing.T) {
+	const phrase = `Error: template: x/charts/y/templates/a.yaml:1:2: executing "x" at <tpl (toYaml $e) .>: ` +
+		`error calling tpl: error during tpl function execution for "- {{ include \"probe.gone\" . }}": ` +
+		`template: gotpl:1:5: executing "gotpl" at <include "probe.gone" .>: error calling include: ` +
+		`template: no template "probe.gone" associated with template "gotpl"`
+	if got, ok := retiredTemplateRefusal(phrase, map[string]string{"probe.kept": "c/templates/_h.tpl"}); !ok || got != "probe.gone" {
+		t.Errorf("фраза helm о неизвестном шаблоне прочитана как (%q, %v), ждали (probe.gone, true)", got, ok)
+	}
+	if _, ok := retiredTemplateRefusal(phrase, map[string]string{"probe.gone": "c/templates/_h.tpl"}); ok {
+		t.Error("шаблон объявлен в дереве, а отказ засчитан снятием")
+	}
+	if _, ok := retiredTemplateRefusal(`Error: include "probe.gone" failed`, map[string]string{}); ok {
+		t.Error("имя шаблона взято из подстроки без фразы helm о неизвестном шаблоне")
+	}
+	if _, ok := retiredTemplateRefusal("", map[string]string{}); ok {
+		t.Error("пустой вывод засчитан снятием")
 	}
 }
