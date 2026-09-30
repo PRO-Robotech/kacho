@@ -114,7 +114,6 @@ DECLARED="
 .github/scripts/stand-revision-verdict.sh
 .github/scripts/stand-up.sh
 .github/scripts/unit-shards.py
-deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-burst-waits-for-materialization.py
@@ -125,6 +124,7 @@ deploy/scripts/assert-delete-steps-are-asserted.py
 deploy/scripts/assert-dialled-transports-have-a-producer.py
 deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
+deploy/scripts/assert-identity-provider-absent.sh
 deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
@@ -147,7 +147,6 @@ deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/identity-provider-landing.py
 deploy/scripts/own-rest-front-address.py
-deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh

@@ -2,9 +2,13 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 #
-# admin-hop-cluster-half-inject.sh — доказательство инъекцией: самопроверка гейта
-# перехода (`assert-admin-hop-transport.sh --self-test`) держит ПОДКЛЮЧЕНИЕ его
-# кластерной половины к общим функциям чтения и суждения (kacho#2845).
+# identity-provider-absent-cluster-half-inject.sh — доказательство инъекцией:
+# самопроверка живого гейта посадки личности
+# (`assert-identity-provider-absent.sh --self-test`) держит ПОДКЛЮЧЕНИЕ его
+# кластерной половины к общим функциям чтения и суждения (kacho#2845). Прежде
+# гейт назывался assert-admin-hop-transport.sh, и эта инъекция —
+# admin-hop-cluster-half-inject.sh; половина перехода снята вместе с его
+# предметом (kacho#1276, часть 3), половина отсутствия и её подключение — те же.
 #
 # Функции суждения самопроверка судила и раньше — и оставалась зелёной, когда
 # кластерная половина переставала ими пользоваться: мутант ревью волны kacho#2795
@@ -21,7 +25,7 @@
 # кодом и в зачёт «прошло» не идёт.
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
-GATE="assert-admin-hop-transport.sh"
+GATE="assert-identity-provider-absent.sh"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0; unmet=0
@@ -33,7 +37,7 @@ import sys
 src, kind, out = sys.argv[1:4]
 text = open(src, encoding="utf-8").read()
 MUTANTS = {
-    # M7 ревью: поды провайдера — прежним счётом строк конвейером, мимо read_provider_pods.
+    # M7 ревью: поды поставщика — прежним счётом строк конвейером, мимо read_provider_pods.
     # Селектор двойнику kubectl безразличен; мутант меняет ровно способ счёта.
     "M7-pods": (
         '  read_provider_pods\n  PROVIDER_PODS="$PODS_CENSUS"\n',
@@ -81,7 +85,7 @@ expect() {
   pass=$((pass + 1)); echo "  [ok] $kind: самопроверка → код $code"
 }
 
-echo "=== подключение кластерной половины гейта перехода: инъекция в обе стороны ==="
+echo "=== подключение кластерной половины гейта посадки личности: инъекция в обе стороны ==="
 expect intact 0 "PASS: $GATE --self-test"
 expect M7-pods 1 "✗ кластерная половина"
 expect M7-consumers 1 "✗ кластерная половина"
