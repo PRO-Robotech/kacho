@@ -1493,9 +1493,7 @@ endif
 # рецептом из $(SVC).
 PSQL_DB_compute   := kacho_compute
 PSQL_DB_geo       := kacho_geo
-PSQL_DB_hydra     := hydra
 PSQL_DB_iam       := kaname
-PSQL_DB_kratos    := kratos
 PSQL_DB_nlb       := kacho_nlb
 PSQL_DB_registry  := kacho_registry
 PSQL_DB_storage   := kacho_storage
@@ -1503,9 +1501,7 @@ PSQL_DB_vpc       := kacho_vpc
 
 PSQL_USER_compute  := compute
 PSQL_USER_geo      := geo
-PSQL_USER_hydra    := hydra
 PSQL_USER_iam      := iam
-PSQL_USER_kratos   := kratos
 PSQL_USER_nlb      := kacho_nlb
 PSQL_USER_registry := registry
 PSQL_USER_storage  := storage
