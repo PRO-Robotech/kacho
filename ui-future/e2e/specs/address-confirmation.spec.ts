@@ -80,6 +80,13 @@ import { awaitLetter, conditionNotCreated, stationMailbox, type Letter, type Mai
  * службы (его исход утверждается как условие), отсчёт экрана открывает кнопку, и
  * проба ждёт это УСЛОВИЕ. Судится второе нажатие — ровно то, о чём «Тогда».
  *
+ * F6b-19, клавиша ввода. «Утверждается переписью сразу после нажатия» буквально —
+ * перепись, прочитанная раньше, чем второе письмо могло уйти: отправка начинается
+ * выдачей признака формы, и `POST` письма уходит за её ответом. Поэтому судится
+ * перепись, в которой у каждой отправки, начатой с нажатия кнопки, есть исход, и
+ * суд идёт при закрытой отправке — «без ожидания M» соблюдено, а «сразу»
+ * прочитано как «до конца отсчёта».
+ *
  * F6b-25. Экран подтверждения с подтверждённой сессией уходит на адрес возврата
  * (Р7), поэтому «после перехода обращений сверх перечня Р6 нет» судит обращения,
  * выпущенные документом `/verification`, а не всё, что выпустит вернувшаяся
@@ -874,6 +881,38 @@ function retryAfterOf(answer: LaneAnswer): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+/**
+ * Путь отправки письма в переписи с `from`, в порядке выпуска: выдача признака
+ * формы вида `verify-email` и `POST` письма.
+ */
+function sendingPath(census: CeremonyCensus, from: number): CeremonyCall[] {
+  return census.calls
+    .slice(from)
+    .filter(
+      (c) =>
+        c.kind === "запрос" &&
+        ((c.method === "GET" && c.path === LANE.csrf && c.query === "?form=verify-email") ||
+          (c.method === "POST" && c.path === VERIFY_EMAIL)),
+    );
+}
+
+/**
+ * Чего не хватает, чтобы у каждой начатой отправки был исход; `null` — хватает.
+ *
+ * Отправка экрана забирает признак у держателя и новый не держит
+ * (`FormTokenHolder.take`), поэтому следующая начинается выдачей признака, а
+ * `POST` письма уходит только за её ответом. Исход есть, когда у каждого
+ * обращения пути есть ответ и путь не кончается выдачей признака, за которой
+ * письма ещё нет.
+ */
+function sendingPathPending(path: readonly CeremonyCall[]): string | null {
+  const waiting = path.filter((c) => c.outcome === "ждём");
+  if (waiting.length > 0) return `без исхода: ${waiting.map(formatCall).join(" · ")}`;
+  const last = path.at(-1);
+  if (last?.method === "GET") return `признак формы выдан, письма за ним ещё нет: ${formatCall(last)}`;
+  return null;
+}
+
 /** Открыть `/verification` носителем П-н, перенесённым в браузер; перепись — с открытия. */
 async function openVerification(page: Page, address = "/verification") {
   await captureAnswers(page, ANSWERED_PATHS);
@@ -943,18 +982,37 @@ test("F6b-19 · новое письмо после промежутка: зап�
   await expect(page.getByText(sentText(held.human.email))).toBeVisible();
   await expect(page.getByText(waitText(next ?? 0)), "отсчёт не взят из Retry-After ответа").toBeVisible();
 
-  // Кнопка закрыта, и клавиша ввода второго письма не выпускает — сразу после нажатия.
+  // Кнопка закрыта, и клавиша ввода второго письма не выпускает, — пока идёт отсчёт.
+  //
+  // Второе письмо, начни его клавиша, уходит не с нажатием, а за ответом выдачи
+  // признака (`sendingPathPending`): перепись, прочитанная сразу, этого `POST`
+  // ещё не содержит, и проба зеленела на консоли, где клавиша ввода отправляет
+  // письмо тем же путём, что кнопка (опыт круга ревью kacho#2922: `POST` за
+  // сеанс три против двух у близнеца). Поэтому ждётся УСЛОВИЕ — у каждой
+  // отправки, начатой с нажатия кнопки, есть исход, — и судится перепись после
+  // него. Круг до страницы стоит перед ожиданием: выдача признака, начатая
+  // нажатием, выпускается в той же задаче страницы и к ответу круга уже лежит в
+  // переписи — иначе первое же чтение условия застало бы путь «законченным».
   await expect(s.resend).toBeDisabled();
   await s.resend.focus();
   await page.keyboard.press("Enter");
   await page.evaluate(() => document.readyState);
+  await expect
+    .poll(() => sendingPathPending(sendingPath(census, from)), {
+      message: `отправка, начатая с нажатия кнопки, не дошла до исхода:\n${census.describe()}`,
+    })
+    .toBeNull();
+  const path = sendingPath(census, from);
+  console.log(
+    `[F6b-19] путь отправки с нажатия кнопки до исхода — осмотрено обращений ${path.length}:\n` +
+      path.map((c) => `  ${formatCall(c)}`).join("\n"),
+  );
   expect(
-    census.calls
-      .slice(from)
-      .filter((c) => c.method === "POST" && c.path === VERIFY_EMAIL)
-      .map(formatCall),
+    path.filter((c) => c.method === "POST").map(formatCall),
     `за нажатием и клавишей ввода ждали ровно один POST ${VERIFY_EMAIL}:\n${census.describe()}`,
   ).toHaveLength(1);
+  // Суд состоялся при закрытой отправке, а не после отсчёта: «без ожидания M».
+  await expect(s.resend, "перепись клавиши ввода судилась уже после отсчёта — отправка была открыта").toBeDisabled();
 
   // Письмо с новым кодом пришло, и прежний код больше не действует.
   const k2 = await awaitLetter(held.mailbox, held.human.email, new Set([...held.before, k1.id]));
