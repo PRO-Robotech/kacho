@@ -70,7 +70,7 @@ func newEdgeUnderOwn(t *testing.T, issuance *formListenerStub, mount bool) *edge
 	for _, tg := range middleware.RelayTargets() {
 		r, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
 			Logger: logger, Serves: tg, Target: urls[tg],
-			ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+			ClientIP: mustExtractor(t, time.Now, "1").ClientIP,
 		})
 		require.NoError(t, err)
 		e.relays[tg] = r
@@ -89,7 +89,7 @@ func newEdgeUnderOwn(t *testing.T, issuance *formListenerStub, mount bool) *edge
 		Enabled:         true,
 		Catalog:         middleware.NewPermissionCatalog(),
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, true),
+		Context:         mustExtractor(t, time.Now, "1"),
 		Resources:       middleware.NewResourceExtractor(nil),
 		Checker:         refusingChecker{},
 		Logger:          logger,

@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
@@ -135,7 +136,7 @@ func chainWithRelays(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (h
 			Target: target,
 			// Оператор чтения цепочки — тот же, что у решения о доступе: один
 			// доверенный прыжок, адрес берётся справа.
-			ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+			ClientIP: mustExtractor(t, time.Now, "1").ClientIP,
 			Timeout:  2 * time.Second,
 		})
 		if err != nil {
@@ -328,4 +329,19 @@ func TestLoginLaneRelay_F3_51_ServiceResponsePassesThroughUnchanged(t *testing.T
 	if left := kachoHeaders(stub.last().header); len(left) != 0 {
 		t.Fatalf("заголовки пространства на входе: %v", left)
 	}
+}
+
+// mustExtractor — оператор клиентского адреса с числом прыжков, построенным
+// разбором значения ручки, как у корня края.
+func mustExtractor(t testing.TB, now func() time.Time, hops string) *middleware.ContextExtractor {
+	t.Helper()
+	parsed, err := config.ParseTrustedHops(hops)
+	if err != nil {
+		t.Fatalf("число прыжков %q: %v", hops, err)
+	}
+	e, err := middleware.NewContextExtractor(now, parsed)
+	if err != nil {
+		t.Fatalf("оператор клиентского адреса: %v", err)
+	}
+	return e
 }

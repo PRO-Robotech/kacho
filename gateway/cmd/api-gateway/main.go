@@ -59,6 +59,28 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	// СТРАЖ РУЧЕК КРАЯ (приёмка NTF-2, Р8, сценарий 71): 19 ключей без
+	// умолчаний — наличие и границы по одной таблице (`anon_mail_bounds.go`),
+	// затем ключ подписи вызовов proof-of-work (З9). Отказ называет ключ и
+	// нарушенную границу; журнал старта печатает действующие значения.
+	edgeLimits, elErr := config.ResolveEdgeLimits(cfg)
+	if elErr != nil {
+		log.Fatalf("edge knobs startup-validation: %v", elErr)
+	}
+	if _, pkErr := config.ReadAnonMailPoWKey(cfg); pkErr != nil {
+		log.Fatalf("anonymous mail proof-of-work key: %v", pkErr)
+	}
+	logger.Info("edge knobs resolved",
+		"limits", edgeLimits,
+		config.AnonMailPoWKeyFileKnob, cfg.AnonMailPoWKeyFile)
+
+	// ОПЕРАТОР КЛИЕНТСКОГО АДРЕСА — один на всех читателей (модель прав,
+	// ретрансляция полосы формы), число прыжков — из стража выше.
+	clientAddress, caErr := newClientAddressOperator(edgeLimits.TrustedHops)
+	if caErr != nil {
+		log.Fatalf("client address operator: %v", caErr)
+	}
+
 	// Посадка процесса — ЧЕРЕЗ ЦЕНТРАЛЬНЫЙ ДЕСКРИПТОР, и до первого исходящего
 	// соединения (задача продукта #1407). Раньше набора рёбер: страж, стоящий
 	// после дозвона до соседей, судит посадку, в которой процесс уже говорит.
@@ -182,7 +204,7 @@ func main() {
 	if identityLane == identityposture.Own {
 		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
 		// прав: справа по числу доверенных прыжков (Ф3 Р2).
-		clientIP := newClientAddressOperator(cfg).ClientIP
+		clientIP := clientAddress.ClientIP
 
 		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
 		if ftErr != nil {
@@ -735,7 +757,7 @@ func main() {
 			)
 		}
 
-		authz, err = buildAuthzMiddleware(cfg, logger)
+		authz, err = buildAuthzMiddleware(cfg, clientAddress, logger)
 		if err != nil {
 			log.Fatalf("authz middleware: %v", err)
 		}
@@ -750,7 +772,7 @@ func main() {
 				"app_env", appEnv,
 				"catalog_override_file", cfg.AuthZPermissionCatalogFile,
 				"overrides_file", cfg.AuthZOverridesFile,
-				"trusted_xff", cfg.AuthZTrustedXForwardedFor,
+				"trusted_hops", edgeLimits.TrustedHops.Count(),
 			)
 		} else {
 			logger.Info("authz-mw disabled (set KACHO_API_GATEWAY_AUTHZ_ENABLED=true to enable)")
@@ -1515,7 +1537,9 @@ type authzWiring struct {
 // buildAuthzMiddleware constructs the AuthZ middleware from
 // configuration. When AuthZEnabled=false this returns a no-op middleware
 // (the caller still wires it into the chain, but it pass-through everything).
-func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, error) {
+// clientAddress — the ONE client-address operator of the composition root: the
+// `client_ip` condition reads the same address the login-lane relay forwards.
+func buildAuthzMiddleware(cfg config.Config, clientAddress *middleware.ContextExtractor, logger *slog.Logger) (authzWiring, error) {
 	if !cfg.AuthZEnabled {
 		// Накопитель собирается и на выключенной проверке: серии обязаны стоять
 		// нулями и здесь, иначе «проверка выключена» на поверхности выглядело бы
@@ -1577,7 +1601,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, 
 		FailOpen:        cfg.AuthZFailOpen,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         newClientAddressOperator(cfg),
+		Context:         clientAddress,
 		Resources:       middleware.NewResourceExtractor(restRouter.PathTemplates()),
 		Checker:         clients.NewAuthzChecker(authzClient),
 		Overrides:       overrides,
