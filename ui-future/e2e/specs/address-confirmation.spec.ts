@@ -1338,6 +1338,16 @@ test("F6b-36 · адрес возврата чужого происхожден�
   // Близнец — свой адрес `/dashboard` (F6b-23): отрицание не тождественно.
   for (const [i, returnTo] of [...FOREIGN_RETURN_TO, "/dashboard"].entries()) {
     const own = returnTo === "/dashboard";
+    // Документ прошлого круга — каркас после подтверждения — жив и дочитывает
+    // платформу. Его чтения, выпущенные после смены сессии ниже, несут носитель
+    // П-н, получают 403 EMAIL_NOT_VERIFIED, и каркас сам уходит документом на
+    // /verification?returnTo=%2Fdashboard (leaveToAddressConfirmation). Уход,
+    // начатый, пока переход пробы ждёт ответа, отменяет его: page.goto падает с
+    // net::ERR_ABORTED (kacho#2922: прогоны 36670028057 и 36680973020, круги 1
+    // и 2). Поэтому страница уводится на пустой документ ДО смены сессии:
+    // переход завершён — у прежнего документа нет ни чтений, ни ухода. Ждётся
+    // событие перехода, а не время.
+    await page.goto("about:blank");
     await page.context().clearCookies();
     const held = await heldUnconfirmed(testInfo, `F6b-36-${i}`);
     try {
@@ -1356,15 +1366,21 @@ test("F6b-36 · адрес возврата чужого происхожден�
     const answered = lanePostAnswer(page, VERIFY_EMAIL_CONFIRM);
     await s.confirm.click();
     expect((await answered).status(), `returnTo=${returnTo}: код из письма не принят`).toBe(200);
-    await expectShell(page, `returnTo=${returnTo}: после подтверждения каркас не отрисован`);
+    // Куда ушёл документ, судится ДО каркаса: принятый чужой адрес уводит с
+    // консоли, и упавшее ожидание каркаса назвало бы следствие, а не адрес ухода.
+    await expect
+      .poll(() => documentsSince(census, at).length, {
+        message: `returnTo=${returnTo}: после подтверждения экран не ушёл документом`,
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
     const left = documentsSince(census, at)[0];
     expect(
-      {
-        document: left ? `${left.origin}${left.path}${left.query}` : "(перехода документа нет)",
-        origin: new URL(page.url()).origin,
-      },
+      `${left.origin}${left.path}${left.query}`,
       `returnTo=${returnTo}: куда ушёл документ после подтверждения:\n${census.describe()}`,
-    ).toEqual({ document: `${origin}${own ? "/dashboard" : "/"}`, origin });
+    ).toBe(`${origin}${own ? "/dashboard" : "/"}`);
+    await expectShell(page, `returnTo=${returnTo}: после подтверждения каркас не отрисован`);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}: после подтверждения вкладка не на консоли`).toBe(origin);
   }
 });
 
