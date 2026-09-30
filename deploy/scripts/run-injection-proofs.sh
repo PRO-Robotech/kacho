@@ -117,7 +117,6 @@ deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
-deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
