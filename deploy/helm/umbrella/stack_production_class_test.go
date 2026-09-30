@@ -88,29 +88,6 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 	return ok && strings.HasPrefix(strings.TrimSpace(mode), "production")
 }
 
-// resolveStackBoolAt reads a boolean at an ABSOLUTE path in the merged stack.
-// Its neighbour resolveStackBool is rooted at the gateway's own sub-tree; this
-// one reads an ABSOLUTE path in the merged tree.
-func resolveStackBoolAt(t *testing.T, stack []string, path ...string) (bool, bool) {
-	t.Helper()
-	merged := map[string]any{}
-	for _, profile := range stack {
-		merged = mergeInto(merged, umbrellaValues(t, profile))
-	}
-	var cur any = merged
-	for _, key := range path {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return false, false
-		}
-		if cur, ok = m[key]; !ok {
-			return false, false
-		}
-	}
-	b, ok := cur.(bool)
-	return b, ok
-}
-
 // devClassStackNames — стеки, которым РАЗРЕШЕНО быть dev-класса. Перечень
 // закрыт и назван по имени, а не выведен из состава: именно вывод из состава и
 // подвёл.

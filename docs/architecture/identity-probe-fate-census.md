@@ -313,7 +313,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 5 | `deploy/dbtls_declaration_test.go` | оставить | — | `Хранилища Ory держат свою строку соединения сами` | судит `sslmode` наших клиентов; поставщик назван прозой границы, правка — #1276 |
 | 6 | `deploy/helm/umbrella/admin_hop_transport_test.go` | снять | да | — | транспорт административного слушателя издателя; снята с его терминатором — #1276 (`3af063bd6f3`), классификация стека переехала в `deploy/helm/umbrella/stack_production_class_test.go` |
 | 7 | `deploy/helm/umbrella/identity_posture_profiles_test.go` | оставить | — | — | согласие двух половин стенда о посадке; половина службы — одна посадка own (#2818), вторая — край |
-| 8 | `deploy/helm/umbrella/login_console_test.go` | переписать | нет | `kratos-selfservice-ui` | ветвь посадки external судит экран входа поставщика, которого в зонте нет: её же комментарий называет снятие с #1276; переписать — #1276 |
+| 8 | `deploy/helm/umbrella/login_console_test.go` | переписать | да | `values.fe3455-ory.yaml` | ветвь посадки external, судившая выключатель экрана входа поставщика, снята — подчарта в зонте нет, путь отвечал «ключа нет» на 7 из 7 стеков; возврат держит предпосылка `TestLoginConsole_EveryKeyItReadsBelongsToAChartOfTheUmbrella` — #1276, часть 2; имя — слой учётных данных площадки |
 | 9 | `deploy/helm/umbrella/provider_road_posture_injection_test.go` | снять | да | — | инъекция пробы административной дороги к поставщику; снята с ней — #2818 (`92097320166`) |
 | 10 | `deploy/helm/umbrella/provider_road_posture_test.go` | снять | да | — | административная дорога к поставщику; у пина её нет (kaname#362), снята — #2818 (`92097320166`) |
 | 11 | `deploy/helm/umbrella/token_shape_test.go` | снять | да | — | форма токена издателя поставщика; снята с его настройками — #1276 (`3af063bd6f3`) |
@@ -416,8 +416,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---|---|---:|
 | снять | да | 23 |
 | снять | нет | 1 |
-| переписать | да | 8 |
-| переписать | нет | 5 |
+| переписать | да | 9 |
+| переписать | нет | 4 |
 | оставить | — | 68 |
 | **итого** | — | **105** |
 
