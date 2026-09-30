@@ -6,7 +6,7 @@
 // either direction — neither "this does not exist" nor "you have no access".
 // A 403, by contrast, is unambiguous and must stay a 403.
 
-import { ApiError } from "@shared/api/client";
+import { ApiError, apiErrorFromBody } from "@shared/api/client";
 import { NOT_FOUND_IS_AMBIGUOUS, presentError, QUOTA_SHOWCASE_HINT, errorText  } from "./error-presentation";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,5 +345,63 @@ describe("полоса отказа читается по признаку, а �
 
     expect(p.subTitle).toBe("cidrBlock 10.0.0.0/8 overlaps an address range reserved by the platform");
     expect(p.quota).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ АДРЕСА ПОЧТЫ ВОССТАНАВЛИВАЕТ СЛЕДУЮЩИЙ ШАГ (приёмка F6b, kacho#2898)
+//
+// Край произносит отказ `EMAIL_NOT_VERIFIED` значением службы (Р3): `403`,
+// `code` `7`, английская строка `email address is not verified`. Клиент
+// поверхности платформы уводит вкладку на экран подтверждения (F6b-25), но до
+// прихода нового документа — и там, где уход не случается, — страница рисует
+// отказ сама. Без вердикта он падал в общую ветку `403`: заголовок «Недостаточно
+// прав» и английская строка дословно. Заголовок называл причиной права, которых
+// у человека не отнимали, а следующего шага — ввести код из письма — не
+// называло ничто на экране.
+//
+// Байты — ровно тело края (`gateway/internal/middleware/address_refusal.go`,
+// `addressRefusalBody`), разобранное тем же разбором, что и настоящий ответ.
+const ADDRESS_REFUSAL_BODY =
+  '{"code":7,"message":"email address is not verified","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}';
+
+describe("отказ адреса почты называет следующий шаг, а не нехватку прав (F6b, #2898)", () => {
+  it("EMAIL_NOT_VERIFIED — заголовок экрана подтверждения и шаг «код из письма»", () => {
+    const p = presentError(apiErrorFromBody(403, "Forbidden", ADDRESS_REFUSAL_BODY));
+
+    // Причина — не права: у человека их не отнимали, ему не хватает подтверждения.
+    expect(p.title).not.toBe("Недостаточно прав");
+    expect(p.title).toBe("Подтвердите адрес почты");
+    // Следующий шаг назван: код из письма — на экране подтверждения, и там же
+    // новое письмо, если первого нет.
+    expect(p.subTitle).toContain("код из письма");
+    expect(p.subTitle).toContain("экране подтверждения");
+    expect(p.subTitle).toContain("новое письмо");
+    expect(p.subTitle).not.toContain("email address is not verified");
+    // Текст производителя — контракт и не теряется: он в подсказке.
+    expect(p.devDetail).toContain("email address is not verified");
+    expect(p.status).toBe("403");
+    expect(p.ambiguousNotFound).toBe(false);
+    expect(p.quota).toBeNull();
+  });
+
+  it("тост мутации несёт тот же шаг, а не строку края", () => {
+    // Мутации сообщают об отказе тостом (`errorText`), а не экраном отказа.
+    const shown = errorText(apiErrorFromBody(403, "Forbidden", ADDRESS_REFUSAL_BODY));
+
+    expect(shown).toContain("код из письма");
+    expect(shown).not.toContain("email address is not verified");
+  });
+
+  it("близнец: тот же статус и код с причиной AUTHZ_DENIED остаётся отказом в правах", () => {
+    // Различие с положительным — ОДНО: `reason`. Без близнеца «заголовок
+    // сменился» зеленело бы и на подмене заголовка у любого `403`.
+    const p = presentError(
+      apiErrorFromBody(403, "Forbidden", ADDRESS_REFUSAL_BODY.replace("EMAIL_NOT_VERIFIED", "AUTHZ_DENIED")),
+    );
+
+    expect(p.title).toBe("Недостаточно прав");
+    expect(p.subTitle).not.toContain("код из письма");
+    expect(p.subTitle).not.toContain("экране подтверждения");
   });
 });

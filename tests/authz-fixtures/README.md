@@ -146,7 +146,35 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 
 ## Что создаётся (минимум)
 
-- 6 users (bootstrap-admin + 5 test users + invitee) через `InternalUserService.UpsertFromIdentity`
+### Люди — регистрацией и письмом, и только так (приёмка F6b, Р17; kacho#2901)
+
+Каждый человек посева заводится тем путём, что человек продукта, — модуль
+`verified_human.py`:
+
+1. `GET /iam/v1/auth/csrf?form=register` и `POST /iam/v1/auth/register` на внешнем
+   слушателе края; носитель сессии регистрации — у посева, момент ответа T0 печатается;
+2. письмо регистрации читается у приёмника писем стенда (`MAILBOX_URL`, проброс
+   открывает прогонщик); письмо после T0 ровно одно, код — из его тела;
+3. вид **Ф-п**: `POST /iam/v1/auth/verify-email/confirm` с кодом носителем регистрации;
+   новый носитель — из `Set-Cookie`;
+4. `GET /iam/v1/auth/me` — положение сессии и идентификатор человека; аккаунт — запись
+   `GET /iam/v1/accounts` с его `ownerUserId`, проект — `GET /iam/v1/projects` с
+   `accountId` и `filter` `name="default"`.
+
+Письма посев не просит (`POST /iam/v1/auth/verify-email` в его переписи нет). Письма
+нет в срок либо приёмник не читается — «условие не создано», код 75: наборы «не
+выполнились», а не покраснели. Отказ края на годном входе — находка, код 1. Хуком
+поставщика человек не заводится, хранилище службы ради идентификаторов не читается.
+В конце посев печатает перепись людей: N, Ф-п M, Ф-н U, у каждого — адрес, вид,
+`emailVerified`, место заведения и слоты окружения (F6b-51). Самопроверка без стенда —
+`python3 verified_human.py --self-test`.
+
+Людей посева восемь: владельцы аккаунтов A и B, субъекты выдач NOB, INV, PA1,
+неприкосновенный субъект, субъект личного токена и цель выдачи администратора облака
+набора `cluster_admin` (слоты `clusterTargetUserId`, `clusterTargetEmail`). Все — Ф-п.
+
+### Прочее
+
 - 2 accounts (`authz-test-A`, `authz-test-B`)
 - 3 projects (`authz-test-A1`, `authz-test-A2` в account-A; `authz-test-B1` в account-B)
 - 4 access bindings:
@@ -154,7 +182,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
   - admin on account-A → user-AAA
   - admin on account-B → user-AAB
   - owner on account-B → user-INV (его home)
-- INV invite в account-A как editor on project-A1 (через `UserService.Invite`, потом активация через повторный UpsertFromIdentity)
+- приглашённых людей посев не заводит: посев, который заведёт приглашённого, пойдёт путём
+  приглашённого — приглашение, регистрация приглашённым адресом, письмо, код
 - 2 seed networks (для GET-проб): `authz-seed-net-a1` в project-A1, `authz-seed-net-b1` в project-B1
 
 ### KAC-127 — модели 5-6 (ServiceAccount + API token)
@@ -192,7 +221,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 
 ## Идемпотентность
 
-- `UpsertFromIdentity` — by design KAC-125 (ON CONFLICT external_id+account)
+- люди — свой адрес на прогон (`prodseed-<вид>-<метка прогона>@example.com`), повторный
+  посев заводит новых людей, а не переиспользует прежних
 - `AccessBinding.Create` — 5-tuple dedup (KAC-112 §13.4)
 - `Account/Project.Create` — find-by-name + skip если уже есть
 - `ServiceAccount.Create` — find-by-name + skip если уже есть (KAC-127)

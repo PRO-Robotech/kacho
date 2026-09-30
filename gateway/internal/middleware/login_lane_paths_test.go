@@ -8,10 +8,11 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — тринадцать путей одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — пятнадцать путей одним объявлением):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
-// восстановления Ф5 (kacho#2701) и шесть глаголов второго фактора Ф12 (Р4,
-// kacho#1281). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
+// kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
+// службы). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -31,6 +32,27 @@ var loginLaneWant = map[string]string{
 	"second-factor-remove":       "/iam/v1/auth/second-factor/remove",
 	"second-factor-backup-codes": "/iam/v1/auth/second-factor/backup-codes",
 	"step-up":                    "/iam/v1/auth/step-up",
+	// Подтверждение адреса почты (приёмка F6b, Р5): запрос письма и предъявление
+	// кода, оба под сессией человека.
+	"verify-email":         "/iam/v1/auth/verify-email",
+	"verify-email-confirm": "/iam/v1/auth/verify-email/confirm",
+}
+
+// openBeforeAddressConfirmationWant — записи, доступные до подтверждения адреса
+// почты (приёмка F6b, Р5): ровно девять — шесть глаголов формы и три координаты
+// церемонии (на них отвечает служба протоколом). Прочие девять глаголов формы
+// неподтверждённой сессии край отвергает значением Р3. Выписано ДОСЛОВНО по
+// приёмке — проба сверяет объявление с решением, а не с самим объявлением.
+var openBeforeAddressConfirmationWant = map[string]bool{
+	"csrf":                 true,
+	"login":                true,
+	"logout":               true,
+	"register":             true,
+	"verify-email":         true,
+	"verify-email-confirm": true,
+	"authorize":            true,
+	"token":                true,
+	"discovery":            true,
 }
 
 // TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane — глаголы
@@ -44,7 +66,7 @@ var loginLaneWant = map[string]string{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant)+len(ceremonyWant) {
-		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12) и координат церемонии %d (LINE-A-1 §5.1а)",
+		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b) и координат церемонии %d (LINE-A-1 §5.1а)",
 			len(routes), len(loginLaneWant)+len(ceremonyWant), len(loginLaneWant), len(ceremonyWant))
 	}
 	for _, rt := range routes {
@@ -136,4 +158,63 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 		}
 	}
 	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d записей объявления", len(added), len(LoginLaneRoutes()))
+}
+
+// TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation —
+// объявление несёт 18 записей: 15 глаголов формы с целью «слушатель формы» и 3
+// координаты церемонии с целью «слушатель выдачи»; у каждой — решение «доступна
+// до подтверждения адреса», и доступных ровно девять (приёмка F6b, Р5, F6b-11).
+//
+// Нулевое значение решения — ОТКАЗ: запись, дописанная без решения, до
+// подтверждения недоступна. Оба глагола подтверждения носитель читают (Р6
+// службы: «под сессией человека»), поэтому при службе, не ответившей о сессии,
+// край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
+func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation(t *testing.T) {
+	routes := LoginLaneRoutes()
+	if len(routes) != 18 || len(loginLaneWant) != 15 || len(ceremonyWant) != 3 {
+		t.Fatalf("записей объявлено %d, по приёмке — 18: глаголов формы 15 (%d выписано), координат церемонии 3 (%d выписано)",
+			len(routes), len(loginLaneWant), len(ceremonyWant))
+	}
+	open, form, issuance := 0, 0, 0
+	for _, rt := range routes {
+		switch rt.Target {
+		case RelayTargetForm:
+			form++
+		case RelayTargetIssuance:
+			issuance++
+		}
+		want := openBeforeAddressConfirmationWant[rt.Verb]
+		if got := loginLaneOpenBeforeAddressConfirmation(rt.Path); got != want {
+			t.Errorf("запись %q: доступна до подтверждения адреса = %v, по приёмке — %v", rt.Verb, got, want)
+		}
+		if loginLaneOpenBeforeAddressConfirmation(rt.Path) {
+			open++
+		}
+	}
+	if form != 15 || issuance != 3 {
+		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 15 и 3", form, issuance)
+	}
+	if open != 9 {
+		t.Fatalf("доступных до подтверждения адреса записей %d, по приёмке — 9", open)
+	}
+	for _, p := range []string{LoginLanePathVerifyEmail, LoginLanePathVerifyEmailConfirm} {
+		if loginLaneRelaysWhenUnanswered(p) {
+			t.Errorf("%q читает носитель — при службе, не ответившей о сессии, край обязан отвечать F4d-23, а не ретранслировать", p)
+		}
+		if !IsLoginLanePath(p) || !isPublicHTTPPath(p) {
+			t.Errorf("%q не объявлен глаголом формы — ретрансляция и освобождение от каталога его не видят", p)
+		}
+	}
+	// Близнец: регистрация носителя не читает и ретранслируется при неответе.
+	if !loginLaneRelaysWhenUnanswered(LoginLanePathRegister) {
+		t.Error("регистрация носителя не читает и обязана ретранслироваться при неответе службы")
+	}
+	// Путь вне перечня — не открыт: решение не наследуется ни приставкой, ни соседом.
+	for _, p := range []string{"/iam/v1/auth/verify-email/", "/iam/v1/auth/verify-emailx", "/iam/v1/auth/verify-email/confirm/x",
+		"/iam/v1/authorize/", "/iam/v1/authorize:check", "/iam/v1/token/x", "/.well-known/openid-configuration", "/vpc/v1/networks"} {
+		if loginLaneOpenBeforeAddressConfirmation(p) {
+			t.Errorf("путь %q признан доступным до подтверждения — совпадение обязано быть точным", p)
+		}
+	}
+	t.Logf("перепись: записей %d (формы %d · выдачи %d) · доступных до подтверждения адреса %d", len(routes), form, issuance, open)
 }

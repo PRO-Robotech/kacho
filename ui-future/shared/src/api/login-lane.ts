@@ -7,10 +7,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ И ПОЧЕМУ ОДНИМ МЕСТОМ
 //
-// Служба объявляет тринадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
+// Служба объявляет пятнадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
 // ретранслирует, раздача уводит `^/iam/v1/` на край безусловно. Консоль зовёт
 // их отсюда и ни откуда больше: экраны входа, регистрации, выхода, параметров
-// учётной записи и окно повышения уровня. Второй клиент тех же глаголов
+// учётной записи, подтверждения адреса почты и окно повышения уровня. Второй клиент тех же глаголов
 // разошёлся бы с первым молча — ровно так расходились две копии окна повышения.
 //
 // ЧЕГО КОНСОЛЬ НЕ ДЕЛАЕТ (Р2). Правило пароля, занятость адреса, годность кода
@@ -51,13 +51,25 @@ export const LOGIN_LANE = {
   remove: "/iam/v1/auth/second-factor/remove",
   backupCodes: "/iam/v1/auth/second-factor/backup-codes",
   stepUp: "/iam/v1/auth/step-up",
+  // Подтверждение адреса почты (приёмка F6b, Р6 службы): запрос письма с кодом и
+  // предъявление кода — оба под сессией человека, адреса в теле нет.
+  verifyEmail: "/iam/v1/auth/verify-email",
+  verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
 export const SESSION_IDENTITY_PATH = "/iam/v1/auth/me";
 
 /** Вид признака формы — словарь службы. */
-export type FormKind = "login" | "logout" | "password" | "register" | "second-factor" | "step-up";
+export type FormKind =
+  | "login"
+  | "logout"
+  | "password"
+  | "register"
+  | "second-factor"
+  | "step-up"
+  | "verify-email"
+  | "verify-email-confirm";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -241,7 +253,20 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
   return new LaneRefusal(res.status, null, "Служба не ответила по существу", null, null, retryAfterOf(res), www);
 }
 
-async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+/** Ответ глагола: статус, заголовки и тело — как их прислали. */
+interface Answered {
+  res: Response;
+  text: string;
+}
+
+/** Что глагол отдаёт вызывающему из успешного ответа. */
+type Reader<T> = (answered: Answered) => T;
+
+function bodyOf<T>({ text }: Answered): T {
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown, read: Reader<T> = bodyOf): Promise<T> {
   // Глагол, ставящий носитель, выпускается упорядочением вокруг себя (Р10):
   // обращения вкладки, выпущенные раньше, к его выпуску имеют исход, и новые
   // ждут его исхода. Остальные обращения полосы — обычные обращения вкладки.
@@ -265,7 +290,7 @@ async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown)
   }
   const text = await res.text();
   if (!res.ok) throw refusalOf(res, text);
-  return (text ? JSON.parse(text) : {}) as T;
+  return read({ res, text });
 }
 
 /**
@@ -379,8 +404,10 @@ export class FormTokenHolder {
 
 /**
  * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
- * закрыт, восемь (приёмка F8, Р10, N17). Пять переписывают дайджест той же
- * записи — прежний носитель с этого момента негоден; три заводят новую запись.
+ * закрыт, девять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
+ * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель). Пять переписывают
+ * дайджест той же записи — прежний носитель с этого момента негоден; четыре
+ * заводят новую запись.
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
  * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
@@ -396,6 +423,7 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/second-factor/remove",
   "/iam/v1/auth/second-factor/backup-codes",
   "/iam/v1/auth/step-up",
+  "/iam/v1/auth/verify-email/confirm",
 ]);
 
 /** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
@@ -423,12 +451,13 @@ async function submit<T>(
   body: Record<string, unknown>,
   raises: boolean,
   replayed = false,
+  read: Reader<T> = bodyOf,
 ): Promise<T> {
   try {
     return await holder.exclusive(async () => {
       const csrfToken = await holder.take();
       try {
-        const out = await exchange<T>("POST", path, { ...body, csrfToken });
+        const out = await exchange<T>("POST", path, { ...body, csrfToken }, read);
         noteAnswered(path);
         return out;
       } catch (e) {
@@ -442,10 +471,10 @@ async function submit<T>(
     if (!(e instanceof LaneRefusal) || !raises || replayed) throw e;
     const action = refusalActionOf(e, "ceremony");
     if (action === "step-up-freshness" && (await requestFreshPresentation())) {
-      return submit<T>(holder, path, body, raises, true);
+      return submit<T>(holder, path, body, raises, true, read);
     }
     if (action === "step-up-floor" && (await requestStepUp(acrFromChallenge(e.wwwAuthenticate)))) {
-      return submit<T>(holder, path, body, raises, true);
+      return submit<T>(holder, path, body, raises, true, read);
     }
     throw e;
   }
@@ -495,7 +524,30 @@ export const loginLane = {
     const body = "password" in form ? { method: "password", password: form.password } : presentation(form);
     return submit<Ceremony>(holder, LOGIN_LANE.stepUp, body, false);
   },
+  /**
+   * Запрос письма с новым кодом (приёмка F6b, Р6 и Р9). Тело — только признак
+   * формы: адрес служба берёт у человека сессии. Срок до следующего письма —
+   * ТОЛЬКО заголовок `Retry-After` ответа; нет заголовка — срока нет, и консоль
+   * своего не выдумывает (Р8).
+   */
+  requestAddressConfirmation(holder: FormTokenHolder) {
+    return submit<AddressConfirmationRequested>(holder, LOGIN_LANE.verifyEmail, {}, false, false, ({ res }) => ({
+      retryAfterSeconds: retryAfterOf(res),
+    }));
+  },
+  /**
+   * Предъявление кода из письма — как введён: своего суждения о содержимом кода
+   * консоль не выносит, приведение делает служба (Р8, Р7 службы).
+   */
+  confirmAddress(holder: FormTokenHolder, code: string) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.verifyEmailConfirm, { code }, false);
+  },
 };
+
+/** Исход запроса письма: срок до следующего — из ответа службы, либо `null`. */
+export interface AddressConfirmationRequested {
+  retryAfterSeconds: number | null;
+}
 
 /** Человек за сессией — в форме провода ответа края (`/iam/v1/auth/me`). */
 export interface SessionUser {

@@ -5,10 +5,12 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
 import { buildTheme } from "@shared/lib/theme";
 import { AccountSettingsPage } from "@shared/pages/auth/AccountSettingsPage";
+import { AddressConfirmationGate } from "@shared/pages/auth/AddressConfirmationGate";
 import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddressNotServedPage";
 import { LoginPage } from "@shared/pages/auth/LoginPage";
 import { LogoutPage } from "@shared/pages/auth/LogoutPage";
 import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
+import { VerificationPage } from "@shared/pages/auth/VerificationPage";
 import {
   ACCOUNT_SETTINGS_ADDRESS,
   CEREMONY_ADDRESSES,
@@ -84,9 +86,19 @@ const App: FC = () => {
  * Экран церемонии вне каркаса — по имени экрана из перечня; `never` держит
  * полноту: экран, добавленный в перечень и не поднятый здесь, роняет сборку.
  * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
+ *
+ * Экраны вида `screen` открыты и до подтверждения адреса почты (приёмка F6b,
+ * Р7); страница неведомого адреса — нет: она стоит за тем же стражем, что
+ * каркас, и неподтверждённую сессию уводит на экран подтверждения.
  */
 function ceremonyElement(serving: CeremonyServing) {
-  if (serving.kind !== "screen") return <CeremonyAddressNotServedPage />;
+  if (serving.kind !== "screen") {
+    return (
+      <AddressConfirmationGate>
+        <CeremonyAddressNotServedPage />
+      </AddressConfirmationGate>
+    );
+  }
   const screen = serving.screen;
   switch (screen) {
     case "login":
@@ -95,6 +107,8 @@ function ceremonyElement(serving: CeremonyServing) {
       return <RegistrationPage />;
     case "logout":
       return <LogoutPage />;
+    case "verification":
+      return <VerificationPage />;
     default: {
       const unhandled: never = screen;
       throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);
@@ -108,10 +122,15 @@ function ceremonyElement(serving: CeremonyServing) {
  * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
  * разделов, и рейл с ними обещал бы то, чего он получить не может. Адреса
  * церемоний объявлены одним местом (`ceremony-addresses.ts`) и получают маршрут
- * ВСЕ шесть (приёмка F8, Р3): четыре консоль ведёт, два — восстановление доступа
- * и подтверждение адреса — отвечают названной страницей, а не переводом на
- * панель. Параметры учётной записи (`/settings`) живут в каркасе: их открывает
- * вошедший человек, и рейл ему нужен.
+ * ВСЕ шесть (приёмка F8, Р3): пять консоль ведёт — вход, регистрация, выход,
+ * подтверждение адреса почты (приёмка F6b, Р8) и параметры учётной записи, —
+ * восстановление доступа отвечает названной страницей, а не переводом на панель.
+ * Параметры учётной записи (`/settings`) живут в каркасе: их открывает вошедший
+ * человек, и рейл ему нужен.
+ *
+ * КАРКАС СТОИТ ЗА СТРАЖЕМ ПОДТВЕРЖДЁННОСТИ АДРЕСА (приёмка F6b, Р7): он
+ * монтируется только на ответ края «адрес подтверждён», и неподтверждённая
+ * сессия с любого его адреса уходит на экран подтверждения.
  *
  * Замыкающее правило `*` каркаса этим НЕ трогается: радиус правки — шесть
  * именованных адресов, чтобы починка не растеклась на весь маршрутизатор.
@@ -124,7 +143,14 @@ const AppRoutes: FC<{
     {CEREMONY_ADDRESSES.filter((address) => CEREMONY_ROUTING[address].kind !== "in-shell").map((address) => (
       <Route key={address} path={address} element={ceremonyElement(CEREMONY_ROUTING[address])} />
     ))}
-    <Route path="*" element={<ShellRoutes dark={dark} setDark={setDark} />} />
+    <Route
+      path="*"
+      element={
+        <AddressConfirmationGate>
+          <ShellRoutes dark={dark} setDark={setDark} />
+        </AddressConfirmationGate>
+      }
+    />
   </Routes>
 );
 

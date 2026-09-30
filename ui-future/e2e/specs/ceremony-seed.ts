@@ -13,6 +13,7 @@ import {
 } from "@playwright/test";
 import { noteRefusal, recordableRefusal } from "./ceremony-budget";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
+import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
 
 /**
@@ -51,7 +52,14 @@ export const SEED_PASSWORD = E2E_PASSWORD;
 export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
-export type FormKind = "login" | "logout" | "password" | "register" | "second-factor" | "step-up";
+export type FormKind =
+  | "login"
+  | "logout"
+  | "password"
+  | "register"
+  | "second-factor"
+  | "step-up"
+  | "verify-email-confirm";
 
 export const LANE = {
   csrf: "/iam/v1/auth/csrf",
@@ -65,7 +73,11 @@ export const LANE = {
   remove: "/iam/v1/auth/second-factor/remove",
   backupCodes: "/iam/v1/auth/second-factor/backup-codes",
   stepUp: "/iam/v1/auth/step-up",
+  verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
 } as const;
+
+/** Ответ края о сессии — не глагол полосы, а вопрос «кто я»; посев задаёт его своим носителем. */
+const SESSION_IDENTITY = "/iam/v1/auth/me";
 
 /** Одно обращение посева и ответ на него — в порядке выпуска. */
 export interface IssuedCall {
@@ -209,6 +221,60 @@ export async function seedHuman(seed: Seed, email: string, password = SEED_PASSW
   expect(body?.session, "посев: ответ регистрации без session").toBeTruthy();
   expect(await seed.sessionBearer(), "посев: регистрация прошла, а носителя сессии у посева нет").not.toBe("");
   return { email, password, assuranceLevel: String(body?.session?.assuranceLevel ?? "") };
+}
+
+/**
+ * Посев П-п — человек с ПОДТВЕРЖДЁННЫМ адресом (приёмка F6b, Р13): П-н
+ * (`seedHuman`), затем код из письма регистрации тем же носителем.
+ *
+ * Шаги и исход каждого:
+ *   · письма на адрес, лежавшие у приёмника до регистрации, запоминаются — код
+ *     берётся только из письма, принятого ПОСЛЕ неё;
+ *   · письмо регистрации пришло без просьбы: `POST /iam/v1/auth/verify-email`
+ *     посев не шлёт — первое письмо ставит регистрация (Р15 службы). Нет в срок
+ *     — «условие не создано» (`awaitLetter`), а не красное;
+ *   · `POST /iam/v1/auth/verify-email/confirm` с кодом письма тем же носителем
+ *     → `200` и НОВЫЙ носитель в банке посева (Р10 службы). Отказ на коде из
+ *     письма — отказ продукта, и он назван ответом службы;
+ *   · ответ края о сессии новым носителем — `emailVerified: true`.
+ *
+ * Это «Дано» по умолчанию для сценария с человеком: неподтверждённый человек
+ * дальше экрана подтверждения не проходит, и заводит его только посев П-н —
+ * там, где сценарий судит именно его (`address-confirmation.spec.ts`).
+ */
+export async function seedConfirmedHuman(
+  seed: Seed,
+  email: string,
+  password = SEED_PASSWORD,
+): Promise<SeededHuman> {
+  const mailbox = stationMailbox();
+  const before = new Set((await mailbox.letters(email)).map((l) => l.id));
+  const human = await seedHuman(seed, email, password);
+  const registered = await seed.sessionBearer();
+
+  const letter = await awaitLetter(mailbox, email, before);
+  const res = await seed.submit(LANE.verifyEmailConfirm, "verify-email-confirm", { code: letter.code });
+  const call = lastIssued(seed, LANE.verifyEmailConfirm);
+  expect(
+    res.status(),
+    `посев П-п: код из письма ${letter.id} на ${email} отвергнут — ${res.status()} ${JSON.stringify(call.body)}. ` +
+      "Код взят из письма, принятого приёмником после регистрации, — это отказ продукта",
+  ).toBe(200);
+  const confirmed = await seed.sessionBearer();
+  expect(
+    confirmed !== "" && confirmed !== registered,
+    "посев П-п: подтверждение прошло, а НОВОГО носителя у посева нет (Р10 службы)",
+  ).toBe(true);
+
+  const me = await seed.read(SESSION_IDENTITY);
+  const view = lastIssued(seed, SESSION_IDENTITY).body as {
+    session?: { emailVerified?: unknown; assuranceLevel?: unknown };
+  } | null;
+  expect(
+    { status: me.status(), emailVerified: view?.session?.emailVerified },
+    `посев П-п: ответ края о сессии новым носителем не называет адрес подтверждённым — ${JSON.stringify(view)}`,
+  ).toEqual({ status: 200, emailVerified: true });
+  return { ...human, assuranceLevel: String(view?.session?.assuranceLevel ?? human.assuranceLevel) };
 }
 
 /**
