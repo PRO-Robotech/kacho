@@ -578,7 +578,10 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 					continue
 				}
 				for _, leg := range stepLegs(step.Run, legs) {
-					where := e.Name() + " job " + jobName + " step " + itoa(i) + leg.suffix
+					// The coordinate keeps its form «<file> job <job> step <n>» — other
+					// readers parse it (RG11 snapshot collector). The leg is named by
+					// the target itself: its value is what the matrix substituted.
+					where := e.Name() + " job " + jobName + " step " + itoa(i)
 					script := stripShellComments(maskExpressions(joinContinuations(leg.run)))
 
 					base := step.WorkingDirectory
@@ -668,6 +671,12 @@ func joinContinuations(script string) string {
 // decided at run time: its values are declared in the workflow, so expanding
 // them is reading, not guessing. Each leg is then checked on its own, which is
 // stricter than a mask: every value must resolve, not «some value goes here».
+//
+// Legs are expanded ONLY for a step whose make TARGET names a dimension
+// (targetNamesAMatrixDim). A dimension inside a `VAR=value` override does not
+// choose the Makefile target, the masked reading of such a step was already
+// exact, and multiplying it per leg would change what the census counts without
+// changing what it knows (the RG11 inventory counts it once).
 func literalMatrixLegs(matrix any) []map[string]string {
 	m, ok := matrix.(map[string]any)
 	if !ok || len(m) == 0 {
@@ -711,33 +720,51 @@ func literalMatrixLegs(matrix any) []map[string]string {
 
 var matrixDimRe = regexp.MustCompile(`\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}`)
 
-type stepLeg struct{ run, suffix string }
+type stepLeg struct{ run string }
 
 // stepLegs — the step body once per literal-matrix leg when it names a matrix
 // dimension, otherwise once as written. A dimension the matrix does not declare
 // stays an expression and is masked like any other.
+// wrappedMakeRe — the child make of the stand-up wrapper (`… -- make <target>`),
+// which makeRe does not see: `make` there follows `--`, not a separator.
+var wrappedMakeRe = regexp.MustCompile(`\s--\s+make\s+([^;&|\n]+)`)
+
+// targetNamesAMatrixDim — some make command of the step names its TARGET through
+// a matrix dimension, i.e. the masked reading would leave an expression where a
+// Makefile target must stand.
+func targetNamesAMatrixDim(run string) bool {
+	script := maskExpressions(matrixDimRe.ReplaceAllString(stripShellComments(joinContinuations(run)), "GHMATRIX"))
+	var argLists []string
+	for _, m := range makeRe.FindAllStringSubmatch(script, -1) {
+		argLists = append(argLists, m[1])
+	}
+	for _, m := range wrappedMakeRe.FindAllStringSubmatch(script, -1) {
+		argLists = append(argLists, m[1])
+	}
+	for _, a := range argLists {
+		_, targets := parseMakeArgs(a)
+		for _, tgt := range targets {
+			if strings.Contains(tgt, "GHMATRIX") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func stepLegs(run string, legs []map[string]string) []stepLeg {
-	if len(legs) == 0 || !matrixDimRe.MatchString(run) {
+	if len(legs) == 0 || !targetNamesAMatrixDim(run) {
 		return []stepLeg{{run: run}}
 	}
 	out := make([]stepLeg, 0, len(legs))
 	for _, leg := range legs {
-		keys := make([]string, 0, len(leg))
-		for k := range leg {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		parts := make([]string, 0, len(keys))
-		for _, k := range keys {
-			parts = append(parts, k+"="+leg[k])
-		}
 		body := matrixDimRe.ReplaceAllStringFunc(run, func(ref string) string {
 			if v, ok := leg[matrixDimRe.FindStringSubmatch(ref)[1]]; ok {
 				return v
 			}
 			return ref
 		})
-		out = append(out, stepLeg{run: body, suffix: " [" + strings.Join(parts, ",") + "]"})
+		out = append(out, stepLeg{run: body})
 	}
 	return out
 }
@@ -886,7 +913,9 @@ func TestLiteralMatrixLegsAreCheckedOneByOne(t *testing.T) {
 		"  literal:\n    strategy:\n      matrix:\n        stack: [a, b]\n" +
 		"    steps:\n      - run: make ${{ matrix.stack }}-up\n" +
 		"  expression:\n    strategy:\n      matrix: ${{ fromJSON(x) }}\n" +
-		"    steps:\n      - run: make ${{ matrix.stack }}-up\n"
+		"    steps:\n      - run: make ${{ matrix.stack }}-up\n" +
+		"  override:\n    strategy:\n      matrix:\n        stack: [a, b]\n" +
+		"    steps:\n      - run: make a-up V=${{ matrix.stack }}\n"
 	if err := os.WriteFile(filepath.Join(root, ".github", "workflows", "w.yml"), []byte(wf), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -894,8 +923,14 @@ func TestLiteralMatrixLegsAreCheckedOneByOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
-	for _, inv := range collectMakeInvocations(t, root) {
+	invs := collectMakeInvocations(t, root)
+	for _, inv := range invs {
 		got[inv.target] = true
+	}
+	// Two literal legs, one mask, and the override step read ONCE: a dimension
+	// in `V=…` does not choose the target, so it is not multiplied per leg.
+	if len(invs) != 4 {
+		t.Errorf("expected 4 invocations (a-up, b-up, GH_EXPR-up, a-up once), read %d: %+v", len(invs), invs)
 	}
 	for _, want := range []string{"a-up", "b-up", "GH_EXPR-up"} {
 		if !got[want] {
