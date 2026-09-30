@@ -869,7 +869,7 @@ func judgeIdentityBeyond(l identityProbeFateLedger, f identityBeyondFacts, probe
 		case key.Fate == identityFateRemove && key.Done == identityBeyondDone && tracked:
 			found = append(found, fmt.Sprintf("%s: %s записана снятой, а в индексе есть — снимите её вместе с "+
 				"предметом либо запишите «%s»", at(r), r.Path, identityBeyondPending))
-		case !(key.Fate == identityFateRemove && key.Done == identityBeyondDone) && !tracked:
+		case (key.Fate != identityFateRemove || key.Done != identityBeyondDone) && !tracked:
 			found = append(found, fmt.Sprintf("%s: %s записана живой (%s/%s), а в индексе её нет — снята? "+
 				"запишите «%s/%s» и изменение", at(r), r.Path, r.Fate, r.Done, identityFateRemove, identityBeyondDone))
 		case key.Fate == identityFateRewrite && key.Done == identityBeyondPending && !isNamed:
