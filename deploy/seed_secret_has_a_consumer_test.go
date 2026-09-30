@@ -114,7 +114,7 @@ func judgeSeedConsumers(f seedConsumerFacts) []string {
 // seedConsumerFactsFromTree — посев и объявления по индексу git.
 func seedConsumerFactsFromTree(t *testing.T) seedConsumerFacts {
 	t.Helper()
-	seed, err := os.ReadFile(seedScript) // #nosec G304 -- координата дерева, не пользовательский ввод
+	seed, err := os.ReadFile(seedScript)
 	if err != nil {
 		t.Fatalf("посев %s не читается (%v) — судить нечего", seedScript, err)
 	}
@@ -137,7 +137,7 @@ func seedConsumerFactsFromTree(t *testing.T) seedConsumerFacts {
 		t.Fatalf("абсолютный путь каталога deploy: %v", err)
 	}
 	for _, p := range files {
-		b, rerr := os.ReadFile(p) // #nosec G304 -- путь получен из индекса собственного дерева
+		b, rerr := os.ReadFile(p)
 		if rerr != nil {
 			t.Fatalf("чтение %s: %v", p, rerr)
 		}
