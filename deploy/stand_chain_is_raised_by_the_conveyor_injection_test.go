@@ -110,8 +110,8 @@ func TestExpandMatrixSplitsLiteralLegsAndRefusesTheRest(t *testing.T) {
 		t.Errorf("литеральная матрица раскрыта неверно: %+v", legs)
 	}
 	for name, body := range map[string]string{
-		"include":   "strategy:\n  matrix:\n    stack: [own]\n    include: [{stack: dev}]\n",
-		"выражение": "strategy:\n  matrix: ${{ fromJSON(x) }}\n",
+		"include":     "strategy:\n  matrix:\n    stack: [own]\n    include: [{stack: dev}]\n",
+		"выражение":   "strategy:\n  matrix: ${{ fromJSON(x) }}\n",
 		"нет матрицы": "runs-on: x\n",
 	} {
 		got := expandMatrix(job(body), "${{ matrix.stack }}-up", "n")
