@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Browser, type Page } from "@playwright/test";
-import { raiseAssurance } from "./assurance";
-import { apiCalls, register, tenantWithProject, test } from "./fixtures";
+import {
+  apiCalls,
+  inviteIntoAccount,
+  onlyAccount,
+  ownUserId,
+  register,
+  tenantWithProject,
+  test,
+} from "./fixtures";
 
 /**
  * Страница пользователей: что на ней можно СДЕЛАТЬ и что на ней НАПИСАНО.
@@ -37,40 +44,6 @@ import { apiCalls, register, tenantWithProject, test } from "./fixtures";
 /** Строка списка, принадлежащая этой почте. */
 function rowOf(page: Page, email: string) {
   return page.locator("tr").filter({ hasText: email }).first();
-}
-
-/**
- * Единственный аккаунт свежего арендатора — его идентификатор и подпись.
- *
- * Подпись собирается ТЕМ ЖЕ правилом, что и панель выбора области («имя либо
- * идентификатор»): аккаунт без имени показывается идентификатором, и ожидание
- * имени сделало бы пробу зависимой от того, назвал ли его кто-нибудь.
- *
- * Спрашивается ДО перехода на страницу: права арендатора материализуются в
- * ограниченном окне, и каркас, смонтированный раньше срока, оставил бы панель
- * выбора пустой навсегда.
- */
-async function onlyAccount(page: Page): Promise<{ id: string; label: string }> {
-  let found = { id: "", label: "" };
-  await expect
-    .poll(
-      async () => {
-        const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
-        if (!res.ok()) return "";
-        const body = (await res.json()) as { accounts?: Array<{ id: string; name?: string }> };
-        const first = body.accounts?.[0];
-        found = first ? { id: first.id, label: first.name || first.id } : { id: "", label: "" };
-        return found.id;
-      },
-      {
-        message:
-          "у арендатора не видно ни одного аккаунта: выбрать область будет нечем, " +
-          "и о членстве такой прогон не сказал бы ничего",
-        timeout: 60_000,
-      },
-    )
-    .not.toBe("");
-  return found;
 }
 
 /**
@@ -143,58 +116,16 @@ async function chooseAccountScope(page: Page, label: string): Promise<void> {
   ).toBeVisible({ timeout: 30_000 });
 }
 
-/** Идентификатор человека по его почте, прочитанный списком своего аккаунта. */
-async function ownUserId(page: Page, email: string): Promise<string> {
-  let id = "";
-  await expect
-    .poll(
-      async () => {
-        const res = await page.request.get("/iam/v1/users?pageSize=1000");
-        if (!res.ok()) return "";
-        const body = (await res.json()) as { users?: Array<{ id: string; email?: string }> };
-        id = body.users?.find((u) => (u.email ?? "").toLowerCase() === email.toLowerCase())?.id ?? "";
-        return id;
-      },
-      {
-        message: `человека ${email} не видно в списке своего аккаунта — членство во ВТОРОМ ` +
-          `аккаунте будет некому приписать, и фикстура завела бы его неизвестно кому`,
-        timeout: 60_000,
-      },
-    )
-    .not.toBe("");
-  return id;
-}
-
 /**
  * Завести человеку ВТОРОЕ членство и вернуть аккаунт, в котором оно заведено.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * ПОЧЕМУ ИМЕННО ТАК, А НЕ ПРОЩЕ
- *
- * Второе членство создаётся ровно одним способом — ПРИГЛАШЕНИЕМ уже
- * существующей почты в другой аккаунт. Заведение аккаунта членства не даёт:
- * в `services/iam/internal/repo/kaname/pg/account_repo.go` нет ни одной записи в
- * `memberships`, их пишет только заведение человека
- * (`user_repo.go`, два места, оба — путь `Upsert`). Приглашение же объявлено
- * полом уровня «2» (`required_acr_min = "2"`,
- * `kaname/cloud/iam/v1/user_service.proto` модуля `github.com/PRO-Robotech/kaname`),
- * поэтому приглашающий обязан сперва поднять уровень — механика в `./assurance`.
+ * Второе членство создаётся ПРИГЛАШЕНИЕМ уже существующей почты в другой
+ * аккаунт; шаги приглашения, подъём уровня приглашающего и утверждение премисы
+ * (`ACTIVE` у владельца) — `inviteIntoAccount` в `./fixtures`, там же и доводы.
  *
  * Приглашает ВТОРОЙ арендатор из СВОЕГО браузерного контекста: приглашение
  * требует прав на аккаунт-получатель, а их у первого арендатора нет и быть не
  * должно. Контекст закрывается за собой; аккаунт остаётся — он и есть предмет.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * ФИКСТУРА УТВЕРЖДАЕТ СВОЮ ПРЕМИСУ, И БЕЗ ЭТОГО ОНА БЕСПОЛЕЗНА
- *
- * Проба, ради которой фикстура заведена, утверждает ОТСУТСТВИЕ второго аккаунта
- * на экране. Не создайся членство — отрицание стало бы истинным by construction,
- * и проба зазеленела бы на несделанной работе, вернувшись ровно в то состояние,
- * из-за которого заведена задача #1357. Поэтому членство спрашивается у
- * ВЛАДЕЛЬЦА аккаунта (авторитет по своему списку) и обязано быть `ACTIVE`:
- * приглашение уже активного человека даёт активное членство сразу
- * (`CASE WHEN i.invite_status = 'PENDING' …` в том же `user_repo.go`), поэтому
- * `PENDING` здесь означал бы, что заведено не то, что предполагает сценарий.
  */
 async function secondAccountMembership(
   browser: Browser,
@@ -228,38 +159,7 @@ async function secondAccountMembership(
         "тот же самый, и второго членства не получилось бы",
     ).not.toBe(invitee.email.toLowerCase());
 
-    // Приглашение объявлено полом уровня «2»; без подъёма край отвергнет его
-    // 401-м, и виновником выглядел бы продукт.
-    await raiseAssurance(page);
-
-    const invited = await page.request.post("/iam/v1/users:invite", {
-      data: { accountId: host.id, email: invitee.email },
-    });
-    expect(
-      invited.status(),
-      `приглашение во второй аккаунт не прошло: ${await invited.text()}`,
-    ).toBe(200);
-
-    await expect
-      .poll(
-        async () => {
-          const res = await page.request.get(
-            `/iam/v1/accounts/${host.id}/memberships?pageSize=1000`,
-          );
-          if (!res.ok()) return "";
-          const body = (await res.json()) as {
-            memberships?: Array<{ userId?: string; state?: string }>;
-          };
-          return body.memberships?.find((m) => m.userId === invitee.userId)?.state ?? "";
-        },
-        {
-          message:
-            "членства во втором аккаунте нет: предмет сценария не собран, и утверждение " +
-            "об отсутствии постороннего аккаунта на экране стало бы истинным by construction",
-          timeout: 90_000,
-        },
-      )
-      .toBe("ACTIVE");
+    await inviteIntoAccount(page, host.id, invitee);
 
     return host;
   } finally {
@@ -649,7 +549,8 @@ test("iam: карточка сотрудника не называет пост�
   //
   // Фикстура заведена (#1357): второе членство создаётся приглашением
   // существующей почты во второй аккаунт под поднятым уровнем — см.
-  // `secondAccountMembership` выше, где названа и цена, и премиса.
+  // `secondAccountMembership` выше и `inviteIntoAccount` в `./fixtures`, где
+  // названа и цена, и премиса.
   //
   // Долг рядом остаётся своим: #1208 — не хватает второго ЧЕЛОВЕКА в аккаунте.
   // Механика подъёма уровня у них общая и лежит в `./assurance`.

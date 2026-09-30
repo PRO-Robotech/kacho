@@ -874,3 +874,153 @@ export async function scopeIsReady(page: Page, projectId: string): Promise<void>
     )
     .toBe(true);
 }
+
+/**
+ * Единственный аккаунт свежего арендатора — его идентификатор и подпись.
+ *
+ * Подпись собирается ТЕМ ЖЕ правилом, что и панель выбора области («имя либо
+ * идентификатор»): аккаунт без имени показывается идентификатором, и ожидание
+ * имени сделало бы пробу зависимой от того, назвал ли его кто-нибудь.
+ *
+ * Спрашивается ДО перехода на страницу: права арендатора материализуются в
+ * ограниченном окне, и каркас, смонтированный раньше срока, оставил бы панель
+ * выбора пустой навсегда.
+ *
+ * ПОЧЕМУ ЗДЕСЬ (NTF-6, Р14). `Tenant` несёт только почту и проект, а аккаунт
+ * арендатора нужен не одной пробе: страница пользователей выбирает его областью,
+ * пробы уведомлений адресуют им контакты и приглашают в него второго члена.
+ * Выписанный в каждой, он был бы несколькими местами об одном.
+ */
+export async function onlyAccount(page: Page): Promise<{ id: string; label: string }> {
+  let found = { id: "", label: "" };
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
+        if (!res.ok()) return "";
+        const body = (await res.json()) as { accounts?: Array<{ id: string; name?: string }> };
+        const first = body.accounts?.[0];
+        found = first ? { id: first.id, label: first.name || first.id } : { id: "", label: "" };
+        return found.id;
+      },
+      {
+        message:
+          "у арендатора не видно ни одного аккаунта: выбрать область будет нечем, " +
+          "и о членстве такой прогон не сказал бы ничего",
+        timeout: 60_000,
+      },
+    )
+    .not.toBe("");
+  return found;
+}
+
+/** Идентификатор человека по его почте, прочитанный списком своего аккаунта. */
+export async function ownUserId(page: Page, email: string): Promise<string> {
+  let id = "";
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/iam/v1/users?pageSize=1000");
+        if (!res.ok()) return "";
+        const body = (await res.json()) as { users?: Array<{ id: string; email?: string }> };
+        id = body.users?.find((u) => (u.email ?? "").toLowerCase() === email.toLowerCase())?.id ?? "";
+        return id;
+      },
+      {
+        message: `человека ${email} не видно в списке своего аккаунта — членство во ВТОРОМ ` +
+          `аккаунте будет некому приписать, и фикстура завела бы его неизвестно кому`,
+        timeout: 60_000,
+      },
+    )
+    .not.toBe("");
+  return id;
+}
+
+/**
+ * Пригласить уже существующего человека в аккаунт и дождаться его членства
+ * `ACTIVE`, прочитанного владельцем аккаунта.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ ПРИГЛАШЕНИЕМ И ПОЧЕМУ ТАК
+ *
+ * Членство во втором аккаунте создаётся ровно одним способом — ПРИГЛАШЕНИЕМ уже
+ * существующей почты. Заведение аккаунта членства не даёт: в
+ * `services/iam/internal/repo/kaname/pg/account_repo.go` нет ни одной записи в
+ * `memberships`, их пишет только заведение человека (`user_repo.go`, два места,
+ * оба — путь `Upsert`). Приглашение объявлено полом уровня «2»
+ * (`required_acr_min = "2"`, `kaname/cloud/iam/v1/user_service.proto` модуля
+ * `github.com/PRO-Robotech/kaname`), поэтому приглашающий обязан сперва поднять
+ * уровень — механика в `./assurance`. Поднимается он ТОЛЬКО если ниже «2»:
+ * повторный подъём заводил бы второй фактор заново.
+ *
+ * Аккаунт и страница приглашающего — ПАРАМЕТРЫ (NTF-6, Р14): функция, которая
+ * приглашает лишь в аккаунт, заведённый ею самой, строит не то членство, которое
+ * нужно пробе «второй член моего аккаунта». Приглашение в дереве проб одно —
+ * здесь; выписанное в нескольких файлах, оно было бы несколькими местами об
+ * одном.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ФИКСТУРА УТВЕРЖДАЕТ СВОЮ ПРЕМИСУ
+ *
+ * Пробы, которые её зовут, утверждают в том числе ОТСУТСТВИЕ (второго аккаунта
+ * на экране, права у второго члена). Не создайся членство — отрицание стало бы
+ * истинным by construction (#1357). Поэтому членство спрашивается у ВЛАДЕЛЬЦА
+ * аккаунта (авторитет по своему списку) и обязано быть `ACTIVE`: приглашение уже
+ * активного человека даёт активное членство сразу
+ * (`CASE WHEN i.invite_status = 'PENDING' …` в том же `user_repo.go`), и
+ * `PENDING` означал бы, что заведено не то, что предполагает сценарий.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ `./assurance` ГРУЗИТСЯ ПРИ ВЫЗОВЕ, А НЕ ИМПОРТОМ В ШАПКЕ
+ *
+ * `./assurance` и его `./ceremony-seed` сами импортируют этот модуль, а
+ * `ceremony-seed` читает его константу при загрузке
+ * (`SEED_PASSWORD = E2E_PASSWORD`). Импорт в шапке замкнул бы кольцо: пробе,
+ * загружающей `fixtures` первой, `ceremony-seed` достался бы недогруженный
+ * модуль, и пароль посева стал бы `undefined` — отказ входа, названный дефектом
+ * продукта. К моменту вызова этот модуль загружен целиком, и кольца нет.
+ */
+export async function inviteIntoAccount(
+  inviterPage: Page,
+  accountId: string,
+  invitee: { email: string; userId: string },
+): Promise<void> {
+  expect(accountId, "аккаунт приглашения пуст — приглашать некуда").not.toBe("");
+  expect(invitee.userId, `у приглашаемого ${invitee.email} нет идентификатора — ` +
+    `его членство не с чем будет сверить`).not.toBe("");
+
+  const { assuranceLevel, raiseAssurance } = await import("./assurance");
+  // Без подъёма край отвергнет приглашение `401`-м, и виновником выглядел бы продукт.
+  if (Number(await assuranceLevel(inviterPage)) < 2) {
+    await raiseAssurance(inviterPage);
+  }
+
+  const invited = await inviterPage.request.post("/iam/v1/users:invite", {
+    data: { accountId, email: invitee.email },
+  });
+  expect(
+    invited.status(),
+    `приглашение ${invitee.email} в аккаунт ${accountId} не прошло: ${await invited.text()}`,
+  ).toBe(200);
+
+  await expect
+    .poll(
+      async () => {
+        const res = await inviterPage.request.get(
+          `/iam/v1/accounts/${accountId}/memberships?pageSize=1000`,
+        );
+        if (!res.ok()) return "";
+        const body = (await res.json()) as {
+          memberships?: Array<{ userId?: string; state?: string }>;
+        };
+        return body.memberships?.find((m) => m.userId === invitee.userId)?.state ?? "";
+      },
+      {
+        message:
+          `членства ${invitee.email} в аккаунте ${accountId} нет в состоянии ACTIVE: предмет ` +
+          `сценария не собран, и утверждения об отсутствии стали бы истинными by construction`,
+        timeout: 90_000,
+      },
+    )
+    .toBe("ACTIVE");
+}
