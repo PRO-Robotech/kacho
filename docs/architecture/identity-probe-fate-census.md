@@ -321,7 +321,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 13 | `deploy/kaname_subchart_retired_identity_wiring_injection_test.go` | оставить | — | `kaname-kratos-config` | страж возврата: синтетика провязки поставщика в подчарте службы (#2818) |
 | 14 | `deploy/kaname_subchart_retired_identity_wiring_test.go` | оставить | — | `var retiredVendorNames = []string{` | страж возврата провязки поставщика, снятых ключей пина и полосы хуков (#2818) |
 | 15 | `deploy/neighbour_address_producer_test.go` | оставить | — | `-kratos-public.` | судит производителя адреса соседа; поставщик — наблюдавшийся случай в прозе и синтетика класса «сосед» |
-| 16 | `deploy/nginx_upstream_form_test.go` | переписать | нет | `kratosPublic` | распознаватель ключей апстрима несёт три формы ключей поставщика, которых в чарте консоли нет; переписать — #1276 |
+| 16 | `deploy/nginx_upstream_form_test.go` | переписать | да | — | распознаватель ключей апстрима нёс три ключа поставщика без носителя в чарте консоли (0 объявлений у каждого); сняты, объявлений под судом 9 до и после, носитель каждой формы держит `TestNginxUpstreamKeyFormsEachHaveACarrier` — #1276, часть 2 |
 | 17 | `deploy/own_posture_foreign_identity_injection_test.go` | оставить | — | `pg-kratos` | страж возврата: инъекция компонента поставщика в зонт (#2735, #1276) |
 | 18 | `deploy/own_posture_foreign_identity_test.go` | оставить | — | `foreignIdentityRepoMark` | страж возврата компонента поставщика в зонт (#2735, #1276) |
 | 19 | `deploy/provider_raised_by_probe_test.go` | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
@@ -416,8 +416,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---|---|---:|
 | снять | да | 23 |
 | снять | нет | 1 |
-| переписать | да | 10 |
-| переписать | нет | 3 |
+| переписать | да | 11 |
+| переписать | нет | 2 |
 | оставить | — | 68 |
 | **итого** | — | **105** |
 
