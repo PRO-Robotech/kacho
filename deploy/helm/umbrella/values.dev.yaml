@@ -147,8 +147,9 @@ global:
       # невозможным by construction, а не проверяемым.
       #
       # Правя объявление провайдера ниже, правьте ЭТОТ узел: alias
-      # подхватит правку сам. Покрытие держит
-      # deploy/identity_inherited_schemas_are_declared_test.go.
+      # подхватит правку сам. Читатель узла — шаблон поставщика в подчарте
+      # службы — снят вместе с пробой покрытия (kacho#2818); узел уходит с
+      # подчартом поставщика (#1276).
       inheritedSchemas: &kachoInheritedIdentitySchemas
         - id: default
           url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
@@ -389,9 +390,9 @@ api-gateway:
     # НАСЛЕДУЮТ ЭТУ СТРОКУ те же стенды, что строку выше.
     iamIssuanceUrl: https://kaname.kacho.svc:9096
 
-    # Вторая половина той же посадки. Значение обязано СОВПАДАТЬ с объявленным
-    # службе выше: расхождение половин — стенд, у которого о личности решают
-    # по-разному.
+    # Посадка края. У службы доступа она одна и ключа не имеет (kaname#363);
+    # край объявляет свою, и она обязана быть своей полосой — край и служба
+    # решают о личности одинаково.
     identityProvider: own
   # KAC-127: Phase 3 per-RPC authz middleware — ENABLED.
   #
@@ -1130,9 +1131,9 @@ kratos:
   # письма продолжают уходить.
   #
   # Путь тот же, что у основного процесса, и это обязано остаться так: файл
-  # один. Согласие двух ручек держит
-  # deploy/identity_courier_reads_what_it_mounts_test.go, а не внимание;
-  # предпосылку о чужом чарте перемеряет deploy/identity_courier_arg_premise_test.go.
+  # один. Проба согласия двух ручек снята вместе с картами поставщика подчарта
+  # службы (kacho#2818); предпосылку о чужом чарте перемеряет
+  # deploy/identity_courier_arg_premise_test.go до снятия подчарта (#1276).
   statefulSet:
     extraArgs:
       - --config
@@ -1172,15 +1173,10 @@ kratos:
         # localhost-port», и это утверждение пережило свой предмет. Служба
         # получает ДВА файла настроек и сливает их по порядку; наш идёт ВТОРЫМ, а
         # список под общим ключом не дополняется — он ЗАМЕЩАЕТСЯ целиком. Значит
-        # действует ОДНА запись из тела продукта
-        # (charts/kaname/templates/_identity-provider.tpl), а эти десять —
-        # умолчание, которое к процессу не относится.
-        #
-        # Сужение решено и записано: решение и его цена — в ведомости
-        # `identityReplacedListDecisions`
-        # (deploy/identity_replaced_lists_are_decided_test.go). Правя список
-        # здесь, правьте объявление продукта: правка ТОЛЬКО этих строк не
-        # доезжает никуда, и это не видно ни в рендере, ни при старте.
+        # действовала ОДНА запись из тела продукта — шаблона поставщика в
+        # подчарте службы, снятого вместе с ведомостью решений о замещаемых
+        # списках (kacho#2818); эти десять — умолчание, которое к процессу не
+        # относится, и уходит с подчартом поставщика (#1276).
         allowed_return_urls:
           - "/"
           - "/dashboard"
@@ -1234,9 +1230,9 @@ kratos:
           # девалось. Это и есть #1234, и складывается он только из СУММЫ
           # источников — по файлу каждый из них внутренне согласован.
           #
-          # Потоки, доставляемые письмом, объявляются один раз — в
-          # `_identity-provider.tpl`. Держит это
-          # deploy/identity_delivery_flows_declared_once_test.go.
+          # Потоки, доставляемые письмом, объявлялись один раз — шаблоном
+          # поставщика в подчарте службы; шаблон и проба единственности сняты
+          # вместе (kacho#2818), а этот раздел уходит с подчартом (#1276).
           error:
             ui_url: "/error"
       log:
@@ -2002,26 +1998,12 @@ kaname:
         origins: []
         algorithms: [-7, -8, -257]
 
-      # ─── ПОСАДКА ЛИЧНОСТИ: СВОЯ ПОЛОСА, А НЕ ВНЕШНИЙ ПОСТАВЩИК ───────────────
+      # ─── КЛЮЧА ПОСАДКИ ЛИЧНОСТИ У СЛУЖБЫ НЕТ (kacho#2818) ──────────────────
       #
-      # Умолчания нет ни у процесса, ни у чарта края: профиль, посадку не
-      # объявивший, получает отказ старта с именем поля, а не тихо наследует
-      # чужой выбор. Объявлено ОБЕИМ половинам — службе здесь, краю ниже: две
-      # половины одного стенда, решившие о личности по-разному, есть
-      # расхождение, которого никто не решал (держит
-      # `deploy/helm/umbrella/identity_posture_profiles_test.go`).
-      #
-      # ПЕРЕВОД СТОИТ ЗДЕСЬ, В КОРНЕ ЦЕПОЧКИ, а не в накладке: накладка посадки
-      # переводила ровно один стенд из семи, а шесть оставшихся ждали внешнего
-      # поставщика, которого снимают. Предпосылки обеих половин заведены
-      # предыдущими коммитами этой ветки и доказаны настоящими стражами старта
-      # на разобранном окружении каждого стенда — перевод не заводит полосу с
-      # нуля и не оставляет ни одной ручки незаданной.
-      #
-      # ПОРЯДОК: стенды переходят на `own` ПЕРВЫМИ, и только затем край
-      # перестаёт принимать `external` — предмет отдельной полосы. Обратный
-      # порядок положил бы шесть стендов.
-      identityProvider: own
+      # Посадка у службы одна — своя полоса (kaname#363), и ключ посадки она
+      # отвергает при любом значении. Ручка снята с подчарта вместе с читателем;
+      # профиль, всё ещё её объявляющий, получает отказ рендера. Посадку края
+      # объявляет его собственная ручка (`api-gateway.authn.identityProvider`).
   initContainer:
     migrator:
       enabled: true

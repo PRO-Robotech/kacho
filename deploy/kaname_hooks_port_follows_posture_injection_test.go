@@ -11,10 +11,9 @@
 //   - контроль — копия без правки: находок ноль (законный близнец инъекции);
 //   - инъекция А — проба готовности возвращена на порт `http-hooks`: красное,
 //     названы стенд и слот пробы;
-//   - инъекция Б — у внутреннего Service снято условие посадки с порта
-//     `http-hooks`: красное, названы стенд и Service; порт пода при этом
-//     остаётся под условием, то есть красное приходит от своей оси, а не от
-//     соседней.
+//   - инъекция Б — у внутреннего Service возвращён порт `http-hooks`: красное,
+//     названы стенд и Service; порта у пода при этом нет, то есть красное
+//     приходит от своей оси, а не от соседней.
 package deploy_test
 
 import (
@@ -71,7 +70,7 @@ func findingsNaming(findings []string, parts ...string) int {
 }
 
 func TestKanameHooksPortInjection_ControlCopyIsSilent(t *testing.T) {
-	findings, census := auditKanameHooksPort(t, copyKanameSubchart(t, "", "", ""), nil)
+	findings, census := auditKanameHooksPort(t, copyKanameSubchart(t, "", "", ""))
 	t.Logf("контроль: %s", census)
 	if len(findings) != 0 {
 		t.Fatalf("копия подчарта без правки дала %d находок — проверка краснеет не от предмета:\n  %s",
@@ -83,7 +82,7 @@ func TestKanameHooksPortInjection_ReadinessBackOnHooksIsFound(t *testing.T) {
 	chart := copyKanameSubchart(t, "templates/deployment.yaml",
 		"              path: /readyz\n              port: metrics\n",
 		"              path: /readyz\n              port: http-hooks\n")
-	findings, census := auditKanameHooksPort(t, chart, nil)
+	findings, census := auditKanameHooksPort(t, chart)
 	t.Logf("инъекция А: %s", census)
 	got := findingsNaming(findings, "readinessProbe", `"http-hooks"`)
 	if got != census.Stacks {
@@ -101,12 +100,13 @@ func TestKanameHooksPortInjection_ReadinessBackOnHooksIsFound(t *testing.T) {
 
 func TestKanameHooksPortInjection_UngatedServicePortIsFound(t *testing.T) {
 	chart := copyKanameSubchart(t, "templates/service-internal.yaml",
-		`    {{- if include "kaname.hooksLaneRaised" . }}`+"\n", "    {{- if true }}\n")
-	findings, census := auditKanameHooksPort(t, chart, nil)
+		"    - name: http-jwks\n",
+		"    - name: http-hooks\n      port: 9092\n      targetPort: http-hooks\n    - name: http-jwks\n")
+	findings, census := auditKanameHooksPort(t, chart)
 	t.Logf("инъекция Б: %s", census)
 	got := findingsNaming(findings, "внутренний Service маршрутизирует порт http-hooks")
 	if got != census.Own {
-		t.Fatalf("условие посадки снято с порта Service, а находок о нём %d из %d стендов под own:\n  %s",
+		t.Fatalf("порт хуков возвращён у Service, а находок о нём %d из %d стендов:\n  %s",
 			got, census.Own, strings.Join(findings, "\n  "))
 	}
 	if other := len(findings) - got; other != 0 {

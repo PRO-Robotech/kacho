@@ -143,7 +143,7 @@ host:
   # посадке own, полоса к чужому экрану и полоса `/.ory/…` — находка, и таких
   # цепочек с консолью обязана быть хотя бы одна (приёмка F8, §4). Отсутствие
   # адресов поставщика у наших нагрузок держит
-  # deploy/identity_file_keys_survive_the_environment_test.go.
+  # deploy/stack_render_carries_no_vendor_residue_test.go.
   upstreams:
     apiGateway: api-gateway.kacho.svc.cluster.local:8080
     kratosUi: ""

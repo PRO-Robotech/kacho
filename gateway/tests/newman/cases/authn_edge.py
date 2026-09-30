@@ -602,7 +602,7 @@ CASES.append(tampered_signature_case(
 # перестал принимать издателя поставщика (#1123), и посадку `own` объявляют все
 # стенды — прежнего издателя в перечне приёма края нет ни в одном профиле, а
 # его возврат ловит рендер-гейт объявленного отсутствия
-# (`deploy/identity_file_keys_survive_the_environment_test.go`).
+# (`deploy/stack_render_carries_no_vendor_residue_test.go`).
 #
 # ЧЕГО ЭТОТ КЕЙС НЕ ДУБЛИРУЕТ. Отрицание «без токена» лежит выше
 # (IBT-10-ANONYMOUS-REJECTED) и полосы не имеет by construction: у запроса без
