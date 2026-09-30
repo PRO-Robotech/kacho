@@ -12,7 +12,7 @@
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
-        managed-image-pins managed-image-pins-check stack-up cert-manager-up
+        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up
 
 SHELL := bash
 
@@ -239,6 +239,13 @@ IMAGE_IDS_VALUES := helm/umbrella/values.image-ids.yaml
 # хранится в git: значение — отпечаток дерева на момент выкатки, а не состояние
 # дерева.
 MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
+
+# LOCAL_IMAGES_VALUES — накладка, переводящая цепочку стенда на образы СБОРКИ
+# ЭТОГО ДЕРЕВА (kacho#2931). Пишется целью `own-up` ответом
+# `product_local_overlay` (scripts/lib/product-names.sh) и НЕ хранится в git:
+# значение — функция цепочки и того, что сборка положила в узлы, а не состояние
+# дерева. Объявлена ОДИН раз и здесь по тому же доводу, что соседние.
+LOCAL_IMAGES_VALUES := helm/umbrella/values.local-images.yaml
 
 # КОНТЕКСТ СБОРКИ ОДИН НА ВСЕХ — И ЭТО СОСТОЯНИЕ, А НЕ ВЕЧНАЯ НОРМА.
 #
@@ -857,6 +864,90 @@ dev-prod-up: dev-up
 	$(MAKE) --no-print-directory assert-metrics-surfaces-answer; \
 	$(MAKE) --no-print-directory assert-outbox-autovacuum; \
 	echo "production-posture stand is UP and READY"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# own-up — цепочка стенда `own` на kind из СБОРКИ ДЕРЕВА, и суд поднятого
+# (kacho#2931).
+#
+# ПРЕДМЕТ. Предикат «values.prod реально поднимается, а не только рендерится»
+# читается на цепочке, корнем которой стоит боевой слой: сам `values.prod.yaml`
+# по шапке stacks.txt намеренно неполон, и поднимаемая на kind его форма — цепочка
+# `own` (боевой слой + накладка посадки + слой площадки стенда). Её не поднимала
+# ни одна работа конвейера: подъём держался одним рендером, а страж старта
+# отказывает в РАНТАЙМЕ. Держатель — deploy/stand_chain_is_raised_by_the_conveyor_test.go.
+#
+# ПОЧЕМУ НЕ `stack-up STACK=own`. Две причины, и обе по построению:
+#   • `stack-up` стережётся `guard-destructive` — он требует человека у
+#     терминала, потому что цель по замыслу идёт и на настоящий кластер. Здесь
+#     кластер kind, которым цель владеет сама (создаёт его, как `dev-up`), и страж
+#     у неё тот же, что у `dev-up`, — `guard-kind-context`;
+#   • слой площадки пинит образы продукта на опубликованной ревизии. Конвейер
+#     судит ЗАПРОС: стенд обязан исполнять его дерево, иначе вердикт о посадке
+#     относится к чужой ревизии, а провенанс краснеет на каждом прогоне. Поэтому
+#     образы частей этого дерева собираются здесь же (`build-services`,
+#     `build-ui`), а цепочку на них переводит накладка $(LOCAL_IMAGES_VALUES),
+#     наложенная ПРАВЕЕ цепочки. Её перечень ссылок ВЫВОДИТСЯ из сложенной
+#     цепочки (internal/localimages), а не выписан рядом: выписанный разошёлся бы
+#     с профилем площадки молча. Пин вынесенной части (служба доступа) остаётся
+#     пином — её образ эта сборка не производит.
+#
+# Цепочка при этом — строка `own` таблицы целиком: посадку, ручки и адреса
+# накладка не трогает. Предусловия те же, что у `stack-up` (cert-manager,
+# манифесты модулей, секреты стенда), порядок после применения — тот же, что у
+# `dev-up` (готовность края, посевы, затем гейт посадки: измерение по базе
+# спрашивает ЖИВЫЕ соединения). Суд поднятого — `assert-rollout-ready` и
+# `assert-production-posture` без POSTURE_SKIP: стенд полный.
+#
+# Страж контекста — в рецепте, после создания кластера, по тому же доводу, что у
+# `dev-up` (§«ГДЕ СТОИТ СТРАЖ КОНТЕКСТА»).
+own-up: preflight
+	@set -e; start=$$(date +%s); \
+	grep -qx "$(CLUSTER_NAME)" <<<"$$(kind get clusters)" || CLUSTER_NAME=$(CLUSTER_NAME) ./kind/create-cluster.sh; \
+	kubectl config use-context kind-$(CLUSTER_NAME) || { \
+	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \
+	  echo "       Восстанови:  kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	}; \
+	$(MAKE) --no-print-directory guard-kind-context; \
+	kubectl create namespace kacho --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl label namespace kacho \
+	  pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
+	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
+	  --overwrite >/dev/null; \
+	$(MAKE) build-services; \
+	$(MAKE) build-ui; \
+	echo "=== стенд own: образы частей этого дерева — из сборки выше, а не пины площадки ==="; \
+	. ./scripts/lib/product-names.sh; \
+	product_names_load $(IMAGES); \
+	built=""; for s in $(IMAGES); do built="$$built $$(product_image_name "$$s")"; done; \
+	for p in $(UI_PROJECTS); do built="$$built kacho-ui-future-$$p"; done; \
+	chain="$$(bash tests/helm/stacks.sh --chain own ' ')"; \
+	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда own прочиталась пустой — накладку выводить не из чего"; exit 1; }; \
+	layers="./helm/umbrella/values.yaml"; for f in $$chain; do layers="$$layers ./helm/umbrella/$$f"; done; \
+	product_local_overlay dev "$$built" $$layers > ./$(LOCAL_IMAGES_VALUES); \
+	echo "=== накладка сборки: ./$(LOCAL_IMAGES_VALUES) ==="; \
+	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
+	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=own \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
+	STACK_NAMESPACE=kacho STACK_RELEASE=kacho-umbrella \
+	  bash scripts/stack-secrets.sh own \
+	    -f ./$(LOCAL_IMAGES_VALUES) -f ./$(IMAGE_IDS_VALUES) -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS); \
+	echo "=== стенд own: цепочка из stacks.txt, накладка сборки правее неё ==="; \
+	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
+	  $(call STACK_ARGS,own) \
+	  -f ./$(LOCAL_IMAGES_VALUES) \
+	  -f ./$(IMAGE_IDS_VALUES) \
+	  -f ./$(MODULE_MANIFESTS_VALUES) \
+	  $(UMBRELLA_OPTS) --wait --timeout 15m; \
+	$(MAKE) --no-print-directory wait-edge-ready; \
+	$(MAKE) --no-print-directory seed-geo; \
+	$(MAKE) --no-print-directory seed-storage; \
+	$(MAKE) --no-print-directory seed-vpc-pools; \
+	$(MAKE) --no-print-directory assert-rollout-ready; \
+	$(MAKE) --no-print-directory assert-production-posture; \
+	echo "own stand is UP and READY in $$(( $$(date +%s) - start ))s (цепочка own, образы сборки дерева)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # stack-up — раскатать ОБЪЯВЛЕННЫЙ стенд, а не набранную рукой команду.

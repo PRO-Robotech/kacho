@@ -46,6 +46,10 @@ deploy/helm/umbrella/.kacho-deps-fingerprint
 # не читаются — тот же класс, что файлы выше: сборка после подъёма стенда
 # получала другой контекст при неизменном исходнике.
 deploy/helm/umbrella/values.module-manifests.yaml
+# накладка сборки: её пишет цель `own-up` (deploy/Makefile, LOCAL_IMAGES_VALUES)
+# ПОСЛЕ сборки образов, в git её нет (deploy/.gitignore), Dockerfile её не читает —
+# тот же класс: следующая сборка получила бы другой контекст при том же исходнике.
+deploy/helm/umbrella/values.local-images.yaml
 
 # Второй экземпляр того же класса — артефакты прогонов e2e. Отчёты newman,
 # окружение, пропатченное посевом фикстур (в нём токены — они меняются на каждом
