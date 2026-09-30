@@ -34,10 +34,11 @@ type Handler struct {
 	pushGrants PushGrantRecorder
 	realm      string // IAM /token realm для WWW-Authenticate
 	service    string // service-audience для WWW-Authenticate
-	// anonSubjectID — the anonymous principal id (the iam-issued anon Hydra client id)
-	// this data-plane resolves to the FGA wildcard `user:*` (RG-1 D-7). Empty → anon
-	// pull DISABLED (secure-by-default): a token, if any, resolves as an ordinary
-	// principal. Set via WithAnonymousSubject from the composition root.
+	// anonSubjectID — the anonymous principal id (kaname AnonymousClientID, the `sub`
+	// of the anonymous token the /iam/token shim mints) this data-plane resolves to the
+	// FGA wildcard `user:*` (RG-1 D-7). Empty → anon pull DISABLED
+	// (secure-by-default): a token, if any, resolves as an ordinary principal. Set via
+	// WithAnonymousSubject from the composition root.
 	anonSubjectID string
 	logger        *slog.Logger
 }
@@ -80,9 +81,10 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 	}
 }
 
-// WithAnonymousSubject configures the anonymous principal id (the iam-issued anon
-// Hydra client id) this data-plane resolves to the FGA wildcard `user:*` — a VALID
-// anon Bearer thus reads only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
+// WithAnonymousSubject configures the anonymous principal id (kaname
+// AnonymousClientID, the `sub` of the anonymous token the /iam/token shim mints) this
+// data-plane resolves to the FGA wildcard `user:*` — a VALID anon Bearer thus reads
+// only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
 // Empty (the default) leaves anonymous pull DISABLED (secure-by-default: an anon token,
 // if any, resolves as an ordinary principal and is denied on PUBLIC-only grants).
 // Returns h for chaining from the composition root. Mirrors the WithClock-style
