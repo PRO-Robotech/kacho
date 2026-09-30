@@ -176,8 +176,12 @@ func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http
 		"subjectType": subj.Type,
 		"permissions": []string{},
 	}
-	// `permissions` — как сегодня (`system_admin` на кластере), по НАШЕМУ субъекту.
-	if h.adminCheck != nil {
+	// `permissions` — как сегодня (`system_admin` на кластере), по НАШЕМУ субъекту,
+	// и только для подтверждённого адреса (приёмка F6b, Р10). До подтверждения
+	// служба ни одной выдачи не исполняет, и спрашивать её о выдаче — задавать
+	// вопрос с известным ответом; консоль же, получив `["*","admin"]`, нарисовала
+	// бы разделы администратора тому, кому их нельзя.
+	if h.adminCheck != nil && sess.EmailVerified {
 		ok, _ := h.adminCheck.IsSystemAdmin(r.Context(), subj.Type+":"+subj.ID)
 		if ok {
 			userObj["permissions"] = []string{"*", "admin"}

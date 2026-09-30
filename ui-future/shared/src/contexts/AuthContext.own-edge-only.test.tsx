@@ -100,6 +100,8 @@ describe("подъём оболочки консоли", () => {
 
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.some((u) => u.includes("/iam/v1/auth/me"))).toBe(true);
-    expect(asked.some((u) => u.includes("/iam/v1/me"))).toBe(true);
+    // Вопрос о правах (`/iam/v1/me`) уходит только ПОСЛЕ ответа «адрес
+    // подтверждён» (приёмка F6b, Р7) — здесь край отвечает 401, и его нет; его
+    // положительную сторону держит `AuthContext.address-gate.test.tsx`.
   });
 });

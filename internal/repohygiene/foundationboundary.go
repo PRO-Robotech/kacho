@@ -74,7 +74,7 @@ const (
 // Каталог `pkg/*`, которого здесь нет, — находка, а не умолчание: 52-й каталог
 // обязан быть классифицирован ПРАВИЛОМ приёмки (§3), а не молчанием карты.
 var foundationClasses = map[string]foundationClass{
-	// acrlevel, docs, envknob, oauthceremony, scripts приехали с `corelib
+	// acrlevel, envknob, oauthceremony, scripts приехали с `corelib
 	// v1.10.0-rc.3` (пин поднят kacho#2862) и классифицированы правилом K3-1 §3
 	// по порядку Ограничение → В1 → В2 → В3 → В4:
 	//   - acrlevel, envknob — ОГРАНИЧЕНИЕ: от них зависит прод-код фундамента вне
@@ -87,8 +87,7 @@ var foundationClasses = map[string]foundationClass{
 	//     перечень (В2 не задаётся); меняется с протоколом OAuth 2.0, а не с
 	//     глаголом, типом модели или политикой токена доступа (В3 нет — политика
 	//     живёт в tokenpolicy); смысл церемонии не зависит от того, какой продукт
-	//     её исполняет;
-	//   - docs — В4: записки фундамента о его же изменениях, кода в каталоге нет.
+	//     её исполняет.
 	"acrlevel":     classCorelib,
 	"api":          classKacho,
 	"audit":        classCorelib,
@@ -118,7 +117,6 @@ var foundationClasses = map[string]foundationClass{
 	"credsecret":      classCorelib,
 	"db":              classCorelib,
 	"dbready":         classCorelib,
-	"docs":            classCorelib,
 	"dropguard":       classCorelib,
 	"envknob":         classCorelib,
 	"errors":          classCorelib,

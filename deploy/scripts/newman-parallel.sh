@@ -202,6 +202,16 @@ echo "[parallel] пробросы к поставщику личности: от
 # проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
+# ПРИЁМНИК ПИСЕМ СТЕНДА — поверхность чтения посева людей (kacho#2901, приёмка F6b,
+# Р17, F6b-53). Человек наборов заводится регистрацией и подтверждается кодом из
+# письма регистрации, а письмо лежит у приёмника; посев читает его здесь. Приёмник
+# есть на каждом шарде (Р18 ID-MAIL-1, deploy/mail_receiver_core_test.go), поэтому
+# проброс безусловен и стоит в PF_WHAT: не вставший останавливает прогон тем же
+# блоком ниже. Адрес посеву передаётся явно (MAILBOX_URL) — открывающий порт и
+# набирающий адрес суть один факт.
+MAILBOX_PORT="${MAILBOX_PORT:-18025}"
+MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
+kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pp-mailbox.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$MAILBOX_PORT|приёмник писем стенда, чтение (:8025)|/tmp/e2e-pp-mailbox.log")
 
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ, А НЕ ВЫПИСЫВАЕТСЯ ────
 #
@@ -471,6 +481,7 @@ if [ "$SEED" = "true" ]; then
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
       PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
+      MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
       SERVICES="$SEED_SERVICES" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
@@ -501,6 +512,15 @@ if [ "$SEED" = "true" ]; then
     # разное: «край расслаблен» — перекатить стенд, «свидетельства нет» — вернуть
     # достижимость края (порт-форвард/адрес). Прежний классификатор эти два случая
     # как раз и путал, и оператор шёл не туда.
+    # rc=75 — «условие не создано» посева людей (приёмка F6b, Р17): письмо
+    # подтверждения не дошло до приёмника в срок либо приёмник не читается. Наборы
+    # «не выполнились» — это не находка о продукте; текст условия, адрес и T0 —
+    # выше, в выводе посева.
+    if [ "$SEED_RC" -eq 75 ]; then
+      echo "Условие НЕ СОЗДАНО: человек посева не доведён до подтверждённого адреса"
+      echo "(письмо не дошло до приёмника либо приёмник не читается) — наборы «не"
+      echo "выполнились», вердикта о продукте нет."
+    fi
     if [ "$SEED_RC" -eq 3 ]; then
       echo "Посадка края НЕ УСТАНОВЛЕНА — про стенд не утверждается ничего; это не"
       echo "«стенд расслаблен», а «свидетельства не получено» (проверь достижимость"

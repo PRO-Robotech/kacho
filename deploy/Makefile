@@ -1,6 +1,6 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-.PHONY: dev-up dev-down dev-prod-up generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
+.PHONY: dev-up dev-down dev-prod-up wait-edge-ready generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
 	assert-metrics-surfaces-answer \
         assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
@@ -731,6 +731,12 @@ dev-up: preflight
 	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kaname --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
+	echo "=== край: готовность по ответу САМОГО края, после конца замены ==="; \
+	echo "    «Выкачено» и Ready пода не говорят, связан ли край со службой доступа"; \
+	echo "    СЕЙЧАС: первое — о числе реплик, второе — вывод из прошлой пробы. Посев"; \
+	echo "    идёт через край, и его первое же обращение к браузерной полосе край"; \
+	echo "    отвергает, пока служба доступа ему не отвечает (прогон 36600900186)."; \
+	$(MAKE) --no-print-directory wait-edge-ready; \
 	echo "=== базовый каталог geo (Region/Zone) ==="; \
 	echo "    Каталог geo стартует ПУСТЫМ, и пока он пуст, КАЖДОЕ создание зонального"; \
 	echo "    или регионального ресурса отвечает «зона/регион не найдены» (peer-validate"; \
@@ -770,6 +776,31 @@ dev-up: preflight
 
 dev-down:
 	kind delete cluster --name $(CLUSTER_NAME) || true
+
+# wait-edge-ready — стенд поднят, когда КРАЙ САМ ответил «готов» после конца замены.
+#
+# Фаза 3 `dev-up` заново раскатывает службу доступа и край и перезапускает базы, а
+# `rollout status` отвечает «выкачено», как только новые реплики доступны. На прогоне
+# 36600900186 (шард edge, kacho#2901) оба `rollout status` ответили «выкачено» в
+# 17:01:13, собственный `/readyz` края в 17:01:18 и 17:01:27 отвечал 503 (соединение
+# к внутреннему адресу службы доступа переустанавливалось после ухода её старого
+# пода), посев стартовал в 17:01:25 и получил 401 на подтверждении адреса: край по
+# записанному решению отказывает, когда служба доступа не ответила о сессии.
+#
+# Условие здесь двойное и на одном опросе: подов в завершении нет (пока заменённый
+# под жив, «готов» приходит через соединение, которое вот-вот оборвётся) И каждый
+# работающий под края отвечает на свой `/readyz` 200 — ответ, который край даёт
+# только при отвечающих критичных зависимостях. Держаться обязано
+# EDGE_READY_STREAK опросов подряд. Отказ НЕ гасится: стенд без готового края —
+# несозданное условие прогона, и `dev-up` обязан это сказать, а не напечатать
+# «complete». Разбор и исходы — в шапке scripts/wait-edge-ready.sh, проба —
+# tests/helm/edge-ready-before-seed-test.sh (подставной kubectl и провязка dev-up).
+EDGE_READY_ATTEMPTS ?= 90
+EDGE_READY_INTERVAL ?= 2
+EDGE_READY_STREAK ?= 3
+wait-edge-ready:
+	@bash scripts/wait-edge-ready.sh kacho api-gateway \
+	  $(EDGE_READY_ATTEMPTS) $(EDGE_READY_INTERVAL) $(EDGE_READY_STREAK)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # dev-prod-up — стенд в PRODUCTION-security-posture + СТРОГАЯ проверка, что он
@@ -1172,8 +1203,9 @@ managed-image-pins-check:
 	@bash scripts/gen-managed-image-pins.sh --profile $(PROFILE) --check
 
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
-# against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
-# api-gateway points at the in-cluster Hydra JWKS endpoint. No kind cluster needed.
+# against the rendered umbrella — e.g. edge-keyset-hop-test.sh checks that
+# api-gateway fetches every key set from the in-cluster iam mirror over TLS with a
+# trust anchor. No kind cluster needed.
 #
 # ЦЕЛЬ ВЫЗЫВАЕТСЯ ИЗ CI (.github/workflows/ci.yaml, job `helm`). До этого её не
 # звал никто — ни один workflow, ни одна другая цель: полтора десятка проверок и
