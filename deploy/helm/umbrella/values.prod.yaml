@@ -1175,8 +1175,9 @@ storage:
 #   authMode + breakglass=false → arms the guards; breakglass is fatal in prod
 #   mtls.enable                 → mTLS demanded on BOTH listeners (:9090 + :9091)
 #   authz.iamGrpcAddr           → per-RPC IAM Check interceptor attached
-#   iam.jwksUrl (https)         → requireSecureJWKSURL
-#   tokenAcceptance.issuers     → requireIssuerPinned
+#   tokenAcceptance.issuers + issuerKeySets (https) → Config.TokenAcceptance:
+#                                 issuer set pinned, one https key set per issuer
+#                                 (requireSecureKeySetURL)
 #   dataplaneTLSTerminatedExternally → requireDataplaneTLSAck
 #   db.sslmode ∈ require|verify-* → production-strict refuses plaintext DB
 registry:
@@ -1240,9 +1241,10 @@ registry:
   # перечнем, что у края выше: прежний издатель на этом стенде не поднимается
   # (#2735).
   #
-  # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
-  # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
-  # бы то, ради чего смена вообще видна при старте — пересмотр пина издателя.
+  # Прежние ручки `registry.iam.jwksUrl` и пин издателя под именем прежнего
+  # поставщика личности СНЯТЫ, а не оставлены мостом: мост был бы вторым местом
+  # об одном предмете и обессмыслил бы то, ради чего смена вообще видна при
+  # старте — пересмотр пина издателя.
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:
