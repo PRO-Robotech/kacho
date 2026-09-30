@@ -155,6 +155,22 @@ func TestOwnPostureForeignIdentityGate_DerivesTheForeignComponentsFromTheTree(t 
 		t.Errorf("баз поставщика выведено %d (%s) — база включается СВОИМ флагом и без него "+
 			"остаётся стоять при выключенной службе", databases, strings.Join(names, ", "))
 	}
+	// Экран входа поставщика лежит в charts/ БЕЗ объявления и узнаётся по `name`
+	// СВОЕГО Chart.yaml: каталог — наш путь и переименовывается независимо от
+	// имени (#2759). Ось, читавшая каталог за имя, теряла его молча — состав
+	// сужался с пяти компонентов до четырёх, а гейт оставался зелёным.
+	var screens int
+	for _, c := range got {
+		if c.Undeclared {
+			screens++
+		}
+	}
+	if screens < 1 {
+		t.Errorf("подчартов поставщика, лежащих в charts/ без объявления, выведено %d (%s) — "+
+			"экран входа выпал из состава; имя берётся из Chart.yaml подчарта, а не из "+
+			"каталога. Снят сам подчарт — снимите и это утверждение тем же изменением",
+			screens, strings.Join(names, ", "))
+	}
 	for _, c := range got {
 		if len(c.Flag) < 2 || c.Flag[len(c.Flag)-1] != "enabled" {
 			t.Errorf("у компонента %s путь флага не оканчивается ключом включения: %v", c.Name, c.Flag)

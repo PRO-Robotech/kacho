@@ -284,10 +284,26 @@ def coverage_findings() -> list:
                {d.get("name") for d in (dep_doc.get("dependencies") or [])}
     charts_dir = UMBRELLA_CHART.parent / "charts"
     vendored = set()
+    # Чарт называется `name` СВОЕГО Chart.yaml, а не каталогом: по имени helm
+    # строит ключ значений и строку `# Source:`, по имени же ведётся таблица этого
+    # гейта. Каталог — наш путь и переименовывается независимо от имени (#2759);
+    # читать каталог как имя значило бы потерять чарт при первом таком
+    # переименовании — с находкой «запись без предмета» вместо покрытия.
     if charts_dir.is_dir():
-        vendored = {p.name for p in charts_dir.iterdir()
-                    if p.is_dir() and (p / "Chart.yaml").is_file()
-                    and p.name not in declared}
+        for p in charts_dir.iterdir():
+            meta = p / "Chart.yaml"
+            if not (p.is_dir() and meta.is_file()):
+                continue
+            try:
+                name = (yaml.safe_load(meta.read_text(encoding="utf-8")) or {}).get("name")
+            except (OSError, yaml.YAMLError) as e:
+                out.append("не прочитан {}: {} — покрытие этого чарта НЕ проверено".format(meta, e))
+                continue
+            if not name:
+                out.append("{} не называет имя чарта — сверять покрытие не с чем".format(meta))
+                continue
+            if name not in declared and p.name not in declared:
+                vendored.add(name)
     first_party |= vendored
 
     if not first_party:

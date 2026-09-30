@@ -86,9 +86,22 @@ func readYAML(t *testing.T, path string) map[string]any {
 	return tree
 }
 
+// subchartName — ключ, под которым подчарт из charts/ виден значениям зонта:
+// `name` его Chart.yaml. Каталогом этот ключ не является — helm строит по имени
+// чарта и ключ значений, и строку `# Source:`, а каталог — наш путь и
+// переименовывается независимо от имени (#2759).
+func subchartName(t *testing.T, dir string) string {
+	t.Helper()
+	name, _ := readYAML(t, filepath.Join(dir, "Chart.yaml"))["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		t.Fatalf("%s/Chart.yaml не называет имя чарта — ключ его значений не вывести", dir)
+	}
+	return name
+}
+
 // subchartDirs — ключ значений умбреллы → каталог чарта. Выводится, а не
 // перечисляется: alias (или имя) зависимости с `repository: file://…` плюс
-// каталоги, физически лежащие в charts/.
+// каталоги, физически лежащие в charts/, — под именем из их Chart.yaml.
 func subchartDirs(t *testing.T) map[string]string {
 	t.Helper()
 	out := map[string]string{}
@@ -119,7 +132,8 @@ func subchartDirs(t *testing.T) map[string]string {
 		if !e.IsDir() {
 			continue
 		}
-		out[e.Name()] = filepath.Join(umbrellaDir, "charts", e.Name())
+		dir := filepath.Join(umbrellaDir, "charts", e.Name())
+		out[subchartName(t, dir)] = dir
 	}
 	return out
 }
@@ -360,4 +374,49 @@ func TestChartTemplateParsing_RecognisesRealChart(t *testing.T) {
 	if _, ok := f.ownEnv["KACHO_APP_ENV"]; !ok {
 		t.Errorf("собственная переменная KACHO_APP_ENV не опознана в %s — то же самое", dir)
 	}
+}
+
+// TestSubchartDirsKeyAnUndeclaredChartByItsChartName — подчарт, лежащий в
+// charts/ без объявления, виден значениям зонта под `name` СВОЕГО Chart.yaml, а
+// не под именем каталога: по имени helm строит ключ значений и строку
+// `# Source:`. Каталог — наш путь и переименовывается независимо (#2759).
+//
+// Вывод, взявший каталог за ключ, клал бы умолчания подчарта под ключ, которого
+// не читает никто, и обе проверки, стоящие на subchartDirs (здесь и сверка имени
+// образа), судили бы подчарт без его умолчаний — оставаясь зелёными.
+func TestSubchartDirsKeyAnUndeclaredChartByItsChartName(t *testing.T) {
+	charts := filepath.Join(umbrellaDir, "charts")
+	entries, err := os.ReadDir(charts)
+	if err != nil {
+		t.Fatalf("каталог подчартов не читается: %v — предпосылка исчезла", err)
+	}
+	keyOf := map[string]string{}
+	for key, dir := range subchartDirs(t) {
+		keyOf[filepath.Clean(dir)] = key
+	}
+	checked := 0
+	for _, e := range entries {
+		dir := filepath.Join(charts, e.Name())
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, "Chart.yaml")); err != nil {
+			continue
+		}
+		checked++
+		name, _ := readYAML(t, filepath.Join(dir, "Chart.yaml"))["name"].(string)
+		key, ok := keyOf[filepath.Clean(dir)]
+		switch {
+		case !ok:
+			t.Errorf("подчарт %s не выведен вовсе — его объявления не судит никто", dir)
+		case key != name:
+			t.Errorf("подчарт %s выведен под ключом %q, а helm читает его значения под %q — "+
+				"именем из его Chart.yaml, не каталогом", dir, key, name)
+		}
+	}
+	if checked == 0 {
+		t.Fatalf("в %s не осмотрено ни одного подчарта — «расхождений ноль» означало бы "+
+			"«прочитано ноль»", charts)
+	}
+	t.Logf("осмотрено подчартов в charts/: %d", checked)
 }

@@ -299,7 +299,7 @@ kratos:
     # Здесь они НЕ дублируются намеренно: два объявления одного предмета
     # разошлись бы молча, и привязка стала бы ложной ровно тогда, когда нужна.
     # Единственное объявление содержимого —
-    # charts/kaname/templates/_kratos-identity.tpl.
+    # charts/kaname/templates/_identity-provider.tpl.
 
 # JWKS rotator CronJob — УДАЛЁН (был вестигиальным) и НЕ возвращается.
 #

@@ -165,7 +165,7 @@ nginx наследует `add_header` с внешнего уровня, пока
 - `script-src` ослаблен — исход, который запись прямо запрещает.
 
 **Про два пина, а не один.** В дереве провайдер закреплён дважды: умолчание
-чарта (`deploy/helm/umbrella/charts/kratos-selfservice-ui/values.yaml`) и
+чарта (`deploy/helm/umbrella/charts/identity-selfservice-ui/values.yaml`) и
 переопределение профиля разработки (`deploy/helm/umbrella/values.dev.yaml`).
 Профили расходятся: боевой включает UI, тега не переопределяет и едет на
 умолчании чарта, разработка — на более новом. Какой из двух был на стенде

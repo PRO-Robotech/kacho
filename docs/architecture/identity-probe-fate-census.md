@@ -17,15 +17,15 @@
 
 Снимается **внешний поставщик личности**: подчарты-архивы
 `deploy/helm/umbrella/charts/kratos-0.62.1.tgz`, архив его издателя токенов,
-каталог `charts/kratos-selfservice-ui`, их базы и всё, что существует только ради
+каталог `charts/identity-selfservice-ui`, их базы и всё, что существует только ради
 их настройки, — включая четыре файла НАШЕГО подчарта, которые ничего, кроме их
 конфигурации, не производят:
 
 ```
-deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl
-deploy/helm/umbrella/charts/kaname/templates/kratos-config-configmap.yaml
-deploy/helm/umbrella/charts/kaname/templates/kratos-hooks-configmap.yaml
-deploy/helm/umbrella/charts/kaname/templates/kratos-identity-schema-configmap.yaml
+deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl
+deploy/helm/umbrella/charts/kaname/templates/identity-provider-config-configmap.yaml
+deploy/helm/umbrella/charts/kaname/templates/identity-provider-hooks-configmap.yaml
+deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.yaml
 ```
 
 Остаётся **посадка `own`**: её объявляют корни всех цепочек `deploy/stacks.txt`, а
@@ -45,12 +45,17 @@ deploy/helm/umbrella/charts/kaname/templates/kratos-identity-schema-configmap.ya
 Четвёртого исхода и корзины «прочее» нет. Исход выводится из **разбора
 содержимого** — что проба читает и что утверждает, — а не из совпадения слова:
 слово с именем поставщика в этом дереве стоит и в наших собственных координатах
-(`_kratos-identity.tpl`, путь `/etc/kaname-identity-rendered/`), и признак по слову
-ошибается в обе стороны.
+(тело `_identity-provider.tpl`, путь `/etc/kaname-identity-rendered/`), а четыре
+шаблона поставщика в нашем подчарте после #2759 не несут его в имени, — признак
+по слову ошибается в обе стороны.
 
 ## Объём осмотренного
 
 - ревизия: `origin/2798` @ `b7608fe9750`;
+- пути четырёх шаблонов подчарта и каталога `charts/identity-selfservice-ui` —
+  имена #2759 (слияние `2926` @ `ddf1fa34b65` в `2759` @ `689bb77e848`); номера
+  строк сверены по содержимому: координат 157, дословно совпали 151, ещё 6 — с
+  точностью до переименованного имени в самой строке, сдвигов 0;
 - файлов в предмете: **51** (`git ls-files 'deploy/identity_*_test.go' | wc -l`), строк
   **18 834**; по каждому прочитаны шапка-объявление предмета, источники входа
   (что читается с диска и из какого узла значений) и условие вердикта;
@@ -73,10 +78,10 @@ deploy/helm/umbrella/charts/kaname/templates/kratos-identity-schema-configmap.ya
 | 1 | `identity_bearer_window_ceiling_injection_test.go` | потолок сроков предъявителей падает и молчит на копии шаблона | чужая служба | переписать | правит копию тела шаблона поставщика `:18-26`, `:51-53`; переезжает вместе с гейтом строки 2 |
 | 2 | `identity_bearer_window_ceiling_test.go` | всякий срок предъявителя в настройках личности отнесён к ограничивающим окно либо к неограничивающим с причиной, и ограничивающий не выше потолка | чужая служба | переписать | перечень адресует ключи поставщика `:77-100` и читает его шаблон `:244`; код восстановления под `own` чеканим мы, его срок объявляет наш шаблон `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:373-379` — потолок обязан судить его |
 | 3 | `identity_callback_credential_source_test.go` | величина обратного вызова у отправителя и проверяющей стороны приходит из одного секрета | чужая служба | снять | отправитель — поставщик и его издатель `:11-15`, полоса узнаётся по маршруту хуков `:97`, словарь полос — хуки издателя `deploy/helm/umbrella/templates/identity-callback-credential-guard.yaml:69`; отправителя не станет, и пары нет |
-| 4 | `identity_callback_transport_test.go` | транспорт обратного вызова к слушателю хуков — решение профиля и совпадает со слушателем | чужая служба | снять | полосы — по маршруту хуков `:103`, `:458-475`; все их объявляет поставщик (`deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:360`, `deploy/helm/umbrella/values.prod.yaml:2044`), а слушатель хуков под `own` не строится `deploy/kaname_hooks_port_follows_posture_test.go:11-13` |
+| 4 | `identity_callback_transport_test.go` | транспорт обратного вызова к слушателю хуков — решение профиля и совпадает со слушателем | чужая служба | снять | полосы — по маршруту хуков `:103`, `:458-475`; все их объявляет поставщик (`deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:360`, `deploy/helm/umbrella/values.prod.yaml:2044`), а слушатель хуков под `own` не строится `deploy/kaname_hooks_port_follows_posture_test.go:11-13` |
 | 5 | `identity_chart_default_premise_test.go` | умолчание ручки режима разработки в архиве стороннего чарта безопасно | чужая служба | снять | читает архивы поставщика `:111-118` по перечню `deploy/identity_dev_flag_declaration_test.go:78-92`; архивов не станет |
 | 6 | `identity_chart_premise_reachability_test.go` | тег `helmcharts` зовётся конвейером, и у его раскола остался предмет | наша полоса | оставить | суд над конвейером и `Chart.yaml` `:66-97`, `:117-186`; под тегом остаётся наша проба `deploy/edge_retired_knobs_render_test.go:4`. Поставщик назван только текстом находки `:89-92` |
-| 7 | `identity_config_digest_binds_the_same_text_test.go` | отпечаток в шаблоне пода считается по тому же тексту, из которого рендерится карта настроек | чужая служба | снять | форма «ключ карты рендерится именованным шаблоном» `:45` накрывает ровно три карты поставщика (`deploy/helm/umbrella/charts/kaname/templates/kratos-config-configmap.yaml:89`, `deploy/helm/umbrella/charts/kaname/templates/kratos-hooks-configmap.yaml:48`, `deploy/helm/umbrella/charts/kaname/templates/kratos-identity-schema-configmap.yaml:28`) и их отпечатки в профилях `deploy/helm/umbrella/values.prod.yaml:1777-1781`; наша карта связана отпечатком по построению `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:85`. После снятия обход пуст `:91-95` |
+| 7 | `identity_config_digest_binds_the_same_text_test.go` | отпечаток в шаблоне пода считается по тому же тексту, из которого рендерится карта настроек | чужая служба | снять | форма «ключ карты рендерится именованным шаблоном» `:45` накрывает ровно три карты поставщика (`deploy/helm/umbrella/charts/kaname/templates/identity-provider-config-configmap.yaml:89`, `deploy/helm/umbrella/charts/kaname/templates/identity-provider-hooks-configmap.yaml:48`, `deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.yaml:28`) и их отпечатки в профилях `deploy/helm/umbrella/values.prod.yaml:1777-1781`; наша карта связана отпечатком по построению `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:85`. После снятия обход пуст `:91-95` |
 | 8 | `identity_config_mount_census_test.go` | число монтирующих профилей, объявленное стражем, равно выведенному обходом | чужая служба | снять | цепочка вывода идёт от довода `--config` процесса поставщика через шаг подстановки в его под `:43-51`, `:169`; ни шага, ни карты не останется |
 | 9 | `identity_config_reaches_the_process_test.go` | карта настроек, несущая маршрут обратных вызовов, где-нибудь смонтирована | чужая служба | снять | предмет — карта с маршрутом хуков поставщика `:27-30`, `:69`, `:111`; маршрут уходит вместе с его хуками |
 | 10 | `identity_config_template_test.go` | общая координата объявления настроек службы личности для проб пакета | чужая служба | переписать | указывает в шаблон поставщика `:19-22` и в его ключ схемы `:24-26`; читатели, которые переписываются (строки 2, 17, 29, 31), нуждаются в координате НАШЕГО объявления — она уже названа `deploy/identity_mail_lane_feeds_both_senders_test.go:53-54` |
@@ -102,25 +107,25 @@ deploy/helm/umbrella/charts/kaname/templates/kratos-identity-schema-configmap.ya
 | 30 | `identity_mail_lane_single_declaration_injection_test.go` | MAIL-54 падает только на своём предмете по трём осям | чужая служба | переписать | копия дерева с шаблоном поставщика `:29`, `:65`, `:105`; переезжает вместе с гейтом строки 31 |
 | 31 | `identity_mail_lane_single_declaration_test.go` | почтовая полоса объявлена одним местом, и оснастка раскатки посылает оператора туда | чужая служба | переписать | координата питания наша `:56` и остаётся; единица переписи — раздел формы поставщика `:75-80`, `:237-253`. Единственность обязана судить объявление НАШЕЙ почтовой секции `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:591` |
 | 32 | `identity_method_comment_matches_declaration_injection_test.go` | гейт перечня полос входа краснеет с именем полосы и молчит на прозе | чужая служба | снять | правит копию шаблона поставщика `:29`, `:37-39` |
-| 33 | `identity_method_comment_matches_declaration_test.go` | отмеченный перечень полос входа согласен с разобранным объявлением | чужая служба | снять | авторитет — блок методов поставщика `:20-25`, `:230-243`; отмеченный перечень есть только в `deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:319-320`, наш шаблон методов не объявляет |
+| 33 | `identity_method_comment_matches_declaration_test.go` | отмеченный перечень полос входа согласен с разобранным объявлением | чужая служба | снять | авторитет — блок методов поставщика `:20-25`, `:230-243`; отмеченный перечень есть только в `deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:319-320`, наш шаблон методов не объявляет |
 | 34 | `identity_registration_lanes_issue_a_session_test.go` | каждая полоса регистрации выдаёт сессию | чужая служба | снять | читает хуки полос регистрации поставщика `:44-72`, `:103-104`; наш блок регистрации полос не несёт `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:395-401` |
 | 35 | `identity_replaced_lists_are_decided_test.go` | список, объявленный обеими сторонами настроек, несёт явное решение | чужая служба | снять | механизм — слияние двух файлов настроек процессом поставщика `:10-15`, `:94-102`, `:698`; у нашей службы второй стороны нет |
 | 36 | `identity_replaced_lists_injection_test.go` | гейт замещаемых списков падает по вердикту и четырём формам записи | чужая служба | снять | зовёт вердикт гейта строки 35 `:9-10`, `:34` |
 | 37 | `identity_schema_body_single_node_injection_test.go` | гейт единственного узла тела схемы падает по обеим формам записи | чужая служба | снять | все входы — ключи подчарта поставщика `:54-77` |
-| 38 | `identity_schema_body_single_node_test.go` | тело схемы личности объявлено в профиле одним узлом | чужая служба | снять | две стороны — наша секция унаследованных схем и секция поставщика `:11-16`, `:265`; унаследованные схемы читает только шаблон поставщика `deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:167` |
+| 38 | `identity_schema_body_single_node_test.go` | тело схемы личности объявлено в профиле одним узлом | чужая служба | снять | две стороны — наша секция унаследованных схем и секция поставщика `:11-16`, `:265`; унаследованные схемы читает только шаблон поставщика `deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:167` |
 | 39 | `identity_second_factor_reachable_injection_test.go` | гейт достижимости второго фактора падает и молчит по каждой стороне | наша полоса | оставить | стороны `own` — объявление консоли и корень пиненной службы `:226`, `:287`; посадка `external` — отказ `:365`. Поставщик назван синтетикой `:61-63`, `:126-138`; самопроверка предиката монтирования `:29-37` уходит вместе с ним (строка 40) |
 | 40 | `identity_second_factor_reachable_test.go` | пол уровня уверенности «2» достижим: служба, консоль и каталог прав сходятся | наша полоса | оставить | стороны посадки `own` `:26-41`, `:2242-2256`, `:2292`; путь настроек поставщика `:171` и предикат монтирования `:2381-2388` служат пробам строк 14 и 35 и уходят вместе с ними — предмет файла от этого не меняется |
 | 41 | `identity_session_secret_source_injection_test.go` | гейт называет недостающую величину сессии и не требует секрета от профиля извне git | чужая служба | снять | синтетика деревьев подчарта поставщика `:28-43` |
 | 42 | `identity_session_secret_source_test.go` | самодостаточный в git стенд объявляет величины сессии службы личности | чужая служба | снять | предмет — секреты, которые чарт поставщика чеканит на каждом рендере `:10-16`, `:191-208` |
 | 43 | `identity_step_declaration_parses_injection_test.go` | гейт разбора шага падает на склейке строк и молчит на близнеце | чужая служба | снять | находка обязана называть шаблон поставщика `:83`, `:109` |
-| 44 | `identity_step_declaration_parses_test.go` | объявление шага-контейнера разбирается как YAML, имена окружения объявлены однажды | чужая служба | снять | популяция по признаку `:116-119` — ровно одно объявление, шаг подстановки в под поставщика `deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:751`; после снятия обход пуст `:190-192` |
+| 44 | `identity_step_declaration_parses_test.go` | объявление шага-контейнера разбирается как YAML, имена окружения объявлены однажды | чужая служба | снять | популяция по признаку `:116-119` — ровно одно объявление, шаг подстановки в под поставщика `deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:751`; после снятия обход пуст `:190-192` |
 | 45 | `identity_step_survives_kubernetes_expansion_injection_test.go` | гейт подстановки падает по двум формам и молчит на двух близнецах | чужая служба | снять | находка обязана называть шаблон поставщика `:49`, `:69` |
 | 46 | `identity_step_survives_kubernetes_expansion_test.go` | текст `command`/`args` шага доезжает до оболочки дословно | чужая служба | снять | та же популяция `:52-54`, замер снят на образе поставщика `:15-24`, `:33`, `:208` |
 | 47 | `identity_substitution_judges_the_form_test.go` | шаг подстановки судит остаток по форме ссылки, отказ закрыт | чужая служба | снять | предмет — тот же шаг подстановки в настройки поставщика `:10-14`, `:203-204`, `:216-218` |
 | 48 | `identity_verification_mirrors_the_requirement_injection_test.go` | MAIL-16 падает по четырём формам записи и судит сумму, а не файл | чужая служба | снять | копия дерева и вердикт гейта строки 49 `:46`, `:90` |
 | 49 | `identity_verification_mirrors_the_requirement_test.go` | требование подтверждённого адреса и включённость потока подтверждения зеркальны на наборе стенда | чужая служба | снять | обе половины читаются из шаблона поставщика и профилей поверх него `:9-12`, `:70`, `:291-293`, `:356`; наш шаблон ни требования, ни потока не объявляет — свойство под `own` принадлежит коду службы |
 | 50 | `identity_verified_address_required_on_both_lanes_injection_test.go` | MAIL-52 падает: снятие требования — находка с именем полосы | чужая служба | снять | правит копию шаблона поставщика `:23-26` |
-| 51 | `identity_verified_address_required_on_both_lanes_test.go` | требование подтверждённого адреса стоит на каждой полосе входа | чужая служба | снять | хук требования `:54`, `:169-170` стоит только в шаблоне поставщика `deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:415`, `deploy/helm/umbrella/charts/kaname/templates/_kratos-identity.tpl:430`; носителя в нашем шаблоне нет |
+| 51 | `identity_verified_address_required_on_both_lanes_test.go` | требование подтверждённого адреса стоит на каждой полосе входа | чужая служба | снять | хук требования `:54`, `:169-170` стоит только в шаблоне поставщика `deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:415`, `deploy/helm/umbrella/charts/kaname/templates/_identity-provider.tpl:430`; носителя в нашем шаблоне нет |
 
 ## Разбивка по исходам
 
