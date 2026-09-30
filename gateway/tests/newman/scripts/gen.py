@@ -50,13 +50,14 @@ import functools
 import json
 import re
 import sys
+import urllib.parse
 import uuid
 import importlib.util
 from pathlib import Path
 from dataclasses import dataclass, field, replace
 
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # --- общий слой генератора (задача #1367) ------------------------------------
 # Помощники ниже общие для ВСЕХ наборов newman и живут в дереве в одном
@@ -159,6 +160,11 @@ class Step:
     # предмет такой пробы — какие маршруты слушатель ОБСЛУЖИВАЕТ, а не чья
     # цепочка доверия у туннеля. Умолчание — строгая проверка.
     insecure_tls: bool = False
+    # Тело `application/x-www-form-urlencoded` парами «имя, значение» — форма,
+    # которой говорит координата выдачи края (`/iam/v1/token`, RFC 6749 §4.1.3).
+    # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
+    # молча перезаписало бы первое, поэтому пара — отказ генерации.
+    form: Optional[List[Tuple[str, str]]] = None
 
 
 @dataclass
@@ -594,14 +600,40 @@ def _gateway_pre_head(step, var):
     return require_env_url(var, step.path, why)
 
 
+def _form_raw(pairs: List[Tuple[str, str]]) -> str:
+    """Пары формы — в строку `application/x-www-form-urlencoded`.
+
+    Значение кодируется целиком (`safe=''`): `/`, `:`, `?`, `&`, `=` в адресе
+    возврата разорвали бы форму. Подстановок набора в значениях формы здесь нет
+    ни одной и не принимается: значение, известное только при прогоне, кладёт
+    пред-скрипт шага, а не литерал формы.
+    """
+    for k, v in pairs:
+        if "{{" in k or "{{" in v:
+            raise ValueError(f"форма: подстановка в паре {k!r}={v!r} — значение, "
+                             f"известное только при прогоне, кладёт пред-скрипт шага")
+    return "&".join(f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+                    for k, v in pairs)
+
+
 def _gateway_item_hook(step, item):
     """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
 
-    Шаг без этого поля эмитится байт в байт как прежде: ослабленная проверка
-    сертификата появляется в элементе коллекции только там, где кейс её назвал.
+    Шаг без этих полей эмитится байт в байт как прежде: ослабленная проверка
+    сертификата и тело формы появляются в элементе коллекции только там, где
+    кейс их назвал.
     """
     if step.insecure_tls:
         item["protocolProfileBehavior"] = {"strictSSL": False}
+    if step.form is not None:
+        if step.body is not None:
+            raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "
+                             f"запроса одно, и второе молча перезаписало бы первое")
+        item["request"]["header"] = [
+            {"key": "Content-Type", "value": "application/x-www-form-urlencoded"}]
+        # Режим `raw`, как у JSON: страж неразрешённой подстановки уровня
+        # коллекции читает адрес, а тело формы подстановок не несёт (см. `_form_raw`).
+        item["request"]["body"] = {"mode": "raw", "raw": _form_raw(step.form)}
 
 
 _EMIT = Emit(
