@@ -252,6 +252,9 @@ type identityProbeFateLedger struct {
 	Elsewhere []identityProbeCoordRef
 	// Anchors — таблица якорей в порядке записи.
 	Anchors []identityProbeCoordAnchor
+	// Beyond — записи сверх строк ведомости: решения по гейтам признака и
+	// судьба проб вне её образца (identityprobefatebeyond.go).
+	Beyond identityProbeFateBeyond
 }
 
 // identityProbeFateFacts — дерево, против которого судится ведомость.
@@ -424,6 +427,16 @@ func parseIdentityProbeFateLedger(text, probeDir string) (identityProbeFateLedge
 	claim(anchorsAt[0], alines)
 	for i, cells := range arows {
 		l.Anchors = append(l.Anchors, anchorOf(cells, alines[i]))
+	}
+
+	// Таблица проб вне ведомости координатами документа не читается: её
+	// фрагмент имени — содержимое пробы, а не адрес в ней. Таблица решений по
+	// гейтам признака остаётся прозой: её доводы разрешаются и прибиваются
+	// якорями наравне с любой координатой вне строк ведомости.
+	beyond, beyondLines := parseIdentityProbeFateBeyond(lines)
+	l.Beyond = beyond
+	for n := range beyondLines {
+		tableLines[n] = true
 	}
 
 	fenced := false
