@@ -5,9 +5,13 @@
 // the identity provider's ADMIN API in the clear, and none may carry it over TLS
 // with nothing to verify the peer against.
 //
-// WHAT RIDES THIS HOP. iam's facade carries the administrative bearer for every
-// OAuth2 client registration, trust grant and session teardown. The admin API
-// authenticates nobody: reaching it IS the authorization.
+// WHAT RIDES THIS HOP. The administrative bearer of every call its consumers make.
+// The admin API authenticates nobody: reaching it IS the authorization.
+//
+// IAM NO LONGER TAKES THIS HOP (kacho#2818). The access service pinned here keeps
+// no administrative road to the provider (kaname#362): the knob left the chart
+// with its reader, and so did the probe that judged iam's side of the hop by its
+// landing.
 //
 // THE EDGE NO LONGER TAKES THIS HOP (#2734). It used to: introspection asked
 // about a bearer by SENDING it on every cache miss, and the logout ended the
@@ -36,8 +40,6 @@
 package umbrella_test
 
 import (
-	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"testing"
@@ -101,87 +103,6 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 	return ok && strings.HasPrefix(strings.TrimSpace(mode), "production")
 }
 
-// iam is the platform's sole facade to the provider. Its hop must
-// additionally be DECLARED rather than derived: the derivation is never empty, so
-// a profile that never named the address still read as configured — while
-// addressing the public ingress hostname, which does not resolve in-cluster.
-//
-// That requirement is iam's posture's to make, read the way iam's boot guard
-// reads it: its lane table declares the admin road `external`-only. On `own`
-// the address is required to be absent (provider_road_posture_test.go).
-func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
-	stacks := deployableStacks(t)
-	census := postureCensus{}
-	for _, name := range sortedStackNames(stacks) {
-		stack := stacks[name]
-		merged := foldStack(t, stack)
-		facts := iamHopFacts{
-			Stack:      name,
-			Posture:    readPosture(iamPostureHalf, merged, iamPostureHalf.chartDefaults(t)),
-			Production: stackIsProductionClass(t, stack),
-		}
-		facts.AdminURL, _ = scalarAt(merged, iamAdminRoad.path...)
-		facts.CAFile, _ = scalarAt(merged, "kaname", "platform", "iam", "hydraAdminCaFile")
-		census.add(facts.Posture)
-		t.Run(name, func(t *testing.T) {
-			for _, f := range judgeIAMProviderHop(facts) {
-				t.Error(f)
-			}
-		})
-	}
-	t.Logf("перепись по посадке службы доступа: %s", census)
-}
-
-// iamHopFacts — что слитая цепочка объявляет об административной дороге
-// службы доступа к поставщику.
-type iamHopFacts struct {
-	Stack      string
-	Posture    postureReading
-	Production bool
-	AdminURL   string
-	CAFile     string
-}
-
-// judgeIAMProviderHop — чистая: находки об административной дороге службы
-// доступа. Вход ей подаёт и дерево, и инъекция.
-//
-// Якорь дороги (hydraAdminCaFile) под `own` не судится: его читатель — строка
-// таблицы требований полосы `external`, без адреса проверять по нему нечего, и
-// следствия, которое проба могла бы назвать, у него нет.
-func judgeIAMProviderHop(f iamHopFacts) []string {
-	if finding := roadPresenceFinding(f.Stack, iamAdminRoad, f.Posture, f.AdminURL); finding != "" {
-		return []string{finding}
-	}
-	got := strings.TrimSpace(f.AdminURL)
-	if got == "" || !f.Production {
-		return nil // declared is required on `external` everywhere; TLS only where production posture applies
-	}
-	var out []string
-	if err := requireTLSHop(got); err != nil {
-		out = append(out, fmt.Sprintf("%s: kaname.platform.iam.hydraAdminUrl %v", f.Stack, err))
-	}
-	if strings.TrimSpace(f.CAFile) == "" {
-		out = append(out, fmt.Sprintf("%s: kaname.platform.iam.hydraAdminCaFile is not declared while "+
-			"the hop is https — iam would verify against the system roots and every call on the "+
-			"hop would fail with an unknown authority", f.Stack))
-	}
-	return out
-}
-
-// requireTLSHop reports why an address is unfit to carry a credential.
-func requireTLSHop(raw string) error {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return fmt.Errorf("is not a valid URL: %v", err)
-	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("is %q — the hop carries a live bearer on every introspection cache miss "+
-			"and the administrative bearer on every facade call, so in the clear anything on "+
-			"the path can read and reuse them; address the admin listener over https", raw)
-	}
-	return nil
-}
-
 // adminHopConsumers — every place a profile DECLARES the provider's ADMIN API.
 //
 // This list is the point of the test below. The defect it guards is not "one
@@ -209,8 +130,11 @@ func requireTLSHop(raw string) error {
 // treats an address present in a render but declared by no entry here as a
 // finding. Pairing a declaration-built registry with a mechanical walk is the
 // general rule, not a fix for this hop — see that gate's header.
+//
+// iam is no longer a consumer (kacho#2818): the access service pinned here keeps no
+// administrative road to the provider (kaname#362), and its chart knob left with
+// the reader.
 var adminHopConsumers = map[string][]string{
-	"kaname.platform.iam.hydraAdminUrl":   {"kaname", "platform", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
 }
 

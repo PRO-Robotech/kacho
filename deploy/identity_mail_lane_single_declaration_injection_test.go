@@ -62,7 +62,7 @@ func newMailLaneFixture(t *testing.T) mailLaneFixture {
 	copyTree(t, umbrellaDir, root)
 	return mailLaneFixture{
 		root:   root,
-		tpl:    filepath.Join(root, "charts", "kaname", "templates", "_identity-provider.tpl"),
+		tpl:    filepath.Join(root, "charts", "kaname", "templates", "configmap.yaml"),
 		script: filepath.Join(root, filepath.Base(cutoverScript)),
 	}
 }
@@ -115,7 +115,7 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		}
 	})
 
-	// ── ОСЬ 1: второе объявление раздела `courier` ────────────────────────
+	// ── ОСЬ 1: второе объявление раздела полосы ───────────────────────────
 	t.Run("ось1 инъекция: возвращён встроенный блок courier", func(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
@@ -128,6 +128,17 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 			t.Errorf("возвращённый встроенный блок `courier` в values.dev.yaml гейт НЕ " +
 				"нашёл — он не способен упасть на своём предмете, то есть удостоверяет " +
 				"единственность объявления, ничего о ней не зная")
+		}
+	})
+	t.Run("ось1 инъекция: второй шаблон рендерит раздел нашего отправителя", func(t *testing.T) {
+		f := newMailLaneFixture(t)
+		p := filepath.Join(f.root, "templates", "second-mail-lane.yaml")
+		if err := os.WriteFile(p, []byte("data:\n  config.yaml: |\n    invite-mail:\n      relay: elsewhere.invalid\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if found := f.run(t); len(found) == 0 {
+			t.Errorf("второй шаблон, рендерящий `invite-mail`, гейт НЕ нашёл — единственность " +
+				"объявления нашей полосы он не судит")
 		}
 	})
 	t.Run("ось1 близнец: раздел, который мы НЕ объявляем, — молчание", func(t *testing.T) {
@@ -177,7 +188,7 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
 			"\nkratos:\n",
-			"\n# За подчартом поставщика остаются `courier` и `serve`.\nkratos:\n")
+			"\n# Наши настройки несут разделы `authn` и `invite-mail`.\nkratos:\n")
 		if found := f.run(t); len(found) == 0 {
 			t.Errorf("рукописный перечень разделов гейтом не найден — второе место об " +
 				"одном предмете переживает правку шаблона молча, а гейт это удостоверяет")
@@ -190,7 +201,7 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
 			"\nkratos:\n",
-			"\n# Раздел `courier` объявлен нашей конфигурацией личности.\nkratos:\n")
+			"\n# Раздел `invite-mail` объявлен настройками нашей службы.\nkratos:\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на блоке, называющем ОДИН раздел, — он запрещает "+
 				"называть раздел вовсе, тогда как его предмет — рукописный ПЕРЕЧЕНЬ:\n%s", strings.Join(found, "\n"))

@@ -120,10 +120,9 @@ func TestAddressVerificationKnobs_EveryOwnStackDeliversAllFive(t *testing.T) {
 
 	own, delivered := 0, 0
 	for _, name := range names {
+		// Посадка службы на каждом стеке одна — своя полоса (kanameLanding):
+		// судится каждый стек таблицы.
 		values := stackIdentityValues(t, stacks[name])
-		if idp, _ := lookup(values, "config", "authn", "identityProvider"); idp != "own" {
-			continue
-		}
 		own++
 		out, err := renderStackSubchart(t, name, values)
 		if err != nil {
@@ -146,10 +145,10 @@ func TestAddressVerificationKnobs_EveryOwnStackDeliversAllFive(t *testing.T) {
 		}
 	}
 	if own == 0 {
-		t.Fatal("ни одного стека на посадке own — вердикта нет")
+		t.Fatal("ни одного стека не осмотрено — вердикта нет")
 	}
-	t.Logf("перепись: стеков на own %d · ручек в ожидании %d · доставлено %d из %d · "+
-		"пин службы требует из пяти %d", own, len(addressVerificationKnobs), delivered,
+	t.Logf("перепись: стеков (посадка %s) %d · ручек в ожидании %d · доставлено %d из %d · "+
+		"пин службы требует из пяти %d", kanameLanding, own, len(addressVerificationKnobs), delivered,
 		own*len(addressVerificationKnobs), pinRequiresAddressVerification(t))
 }
 

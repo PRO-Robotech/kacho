@@ -83,6 +83,13 @@ var retiredVendorToggles = []string{"kratos.config.enabled=true", "kratos.identi
 // kanameRetiredLandingKnob — снятая ручка посадки в значениях подчарта.
 const kanameRetiredLandingKnob = "config.authn.identityProvider"
 
+// kanameLanding — посадка службы доступа на ЛЮБОМ стеке. С kaname#363 она одна
+// — своя полоса, — и ключа посадки у подчарта нет: пробы, прежде читавшие
+// `kaname.config.authn.identityProvider`, судят эту половину как `own`
+// безусловно (kacho#2818). Что профиль ключ посадки больше объявить не может,
+// держит TestKanameSubchartRefusesTheRetiredLandingKnob.
+const kanameLanding = "own"
+
 // hooksLaneEnvPrefixes и hooksLanePortName — полоса хуков прежнего поставщика
 // в поде службы: общий секрет обратных вызовов, транспорт её слушателя и порт.
 var hooksLaneEnvPrefixes = []string{"KANAME_HOOK_TOKEN", "KANAME_HOOKS_SERVER_"}
@@ -297,7 +304,7 @@ func podOf(docs []map[string]any) map[string]any {
 }
 
 // podContainers — все контейнеры пода, включая инициализирующие.
-func podContainers(pod map[string]any) []map[string]any {
+func kanamePodContainers(pod map[string]any) []map[string]any {
 	var out []map[string]any
 	for _, sec := range []string{"initContainers", "containers"} {
 		raw, _ := lookup(pod, "spec", "template", "spec", sec)
@@ -403,7 +410,7 @@ func judgeVendorWiring(where string, docs []map[string]any) []string {
 				}
 			}
 		}
-		for _, c := range podContainers(d) {
+		for _, c := range kanamePodContainers(d) {
 			note(d, "контейнер", fmt.Sprint(c["name"]))
 			note(d, "образ", fmt.Sprint(c["image"]))
 			for _, e := range listOfMaps(c, "env") {
@@ -464,7 +471,7 @@ func hooksLaneOf(docs []map[string]any) []string {
 		kind, _ := d["kind"].(string)
 		switch kind {
 		case "Deployment":
-			for _, c := range podContainers(d) {
+			for _, c := range kanamePodContainers(d) {
 				for _, e := range listOfMaps(c, "env") {
 					name := fmt.Sprint(e["name"])
 					for _, p := range hooksLaneEnvPrefixes {

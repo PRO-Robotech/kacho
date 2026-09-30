@@ -594,7 +594,7 @@ func TestF1b_ProfilesNamingAnAuthorityAlsoDeclareHowTheyIntroduceThemselves(t *t
 // перечне» стало ложным: его набор ключей на посадке own никто не держит.
 //
 // Обратное свойство держат рендером, по каждой цепочке: гейт объявленного
-// отсутствия (deploy/identity_file_keys_survive_the_environment_test.go —
+// отсутствия (deploy/stack_render_carries_no_vendor_residue_test.go —
 // издатель поставщика в перечне приёма края есть находка, и инъекция
 // `api-gateway.tokenAcceptance.issuers=…,<издатель поставщика>` роняет его) и
 // deploy/tests/helm/edge-keyset-hop-test.sh (перечень dev и prod называет
