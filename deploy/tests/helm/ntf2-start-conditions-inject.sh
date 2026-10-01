@@ -90,11 +90,14 @@ make_copy() {
 # commit_copy <копия> <сообщение> — все правки копии одним коммитом: проба
 # требует, чтобы диск совпадал с ревизией.
 commit_copy() {
-  git -C "$1" add -A >/dev/null 2>&1 \
-    && git -C "$1" -c user.name=ntf2-inject -c user.email=ntf2-inject@invalid \
+  if ! git -C "$1" add -A >/dev/null 2>"$WORK/commit.err"; then
+    echo "правки копии не добавлены в индекс: $(cat "$WORK/commit.err")" >&2; return 2
+  fi
+  if ! git -C "$1" -c user.name=ntf2-inject -c user.email=ntf2-inject@invalid \
          -c core.hooksPath=/dev/null -c commit.gpgsign=false \
-         commit -q --no-verify --allow-empty -m "$2" >/dev/null 2>"$WORK/commit.err" \
-    || { echo "коммит копии не сделан: $(cat "$WORK/commit.err")" >&2; return 2; }
+         commit -q --no-verify --allow-empty -m "$2" >/dev/null 2>"$WORK/commit.err"; then
+    echo "коммит копии не сделан: $(cat "$WORK/commit.err")" >&2; return 2
+  fi
 }
 
 # run_probe <копия> <файл вывода> — код пробы печатается в файл `.rc`.
@@ -147,7 +150,7 @@ for c in dev fe3455; do
   case "$line" in *ntf2-p7*) fail "C: в цепочке $c образец: $line" ;; esac
   ok
 done
-grep -qE '^  контроль п\.5: один values\.yaml → «  \|  \|  \| [^ ]+» — три пустых поля$' "$WORK/control.out" \
+grep -qE '^  контроль п\.5: один values\.yaml → « \|  \|  \| [^ ]+» — три пустых поля$' "$WORK/control.out" \
   || fail "C: контроль п.5 (один values.yaml — три пустых поля) не напечатан: $(grep 'контроль п.5' "$WORK/control.out")"
 ok
 grep -qE '^итог: выполнено [0-9]+ · не выполнено [0-9]+ · не выполнилось [0-9]+ \(исходов 7\)$' "$WORK/control.out" \
@@ -191,12 +194,12 @@ refusal_case() {
   echo "$name: $(grep '^п.2:' "$WORK/$name.out" | cut -c1-200)"
   ok
 }
-refusal_case I2-table "таблица стеков" git rm -q deploy/stacks.txt
+refusal_case I2-table "таблица стеков" rm -f deploy/stacks.txt
 o="$(outcome_of "$WORK/I2-table.out" п.5)"
 [ "$o" = "не выполнилось" ] || fail "I2-table: п.5 без таблицы дал «${o:-нет строки}», ожидалось «не выполнилось»"
 ok
-refusal_case I3-sample "не файл каталога образцов" git rm -q "$SAMPLE_REL"
-refusal_case I4-umbrella "каталог обязателен" git rm -rq deploy/helm/umbrella
+refusal_case I3-sample "не файл каталога образцов" rm -f "$SAMPLE_REL"
+refusal_case I4-umbrella "каталог обязателен" rm -rf deploy/helm/umbrella
 # Близнец I2–I4 — контроль C: та же копия с таблицей, образцом и зонтиком на
 # месте дала у п.2 «выполнено» либо «не выполнено» (утверждено выше).
 
