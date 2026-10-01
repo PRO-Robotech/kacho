@@ -39,7 +39,11 @@ import re
 import sys
 import urllib.parse
 
-ARCHIVE_URI = re.compile(r"^(?P<archive>[^/:]+\.(?:tgz|tar\.gz|tar)):(?P<inner>.+)$",
+# Архивная часть координаты МОЖЕТ нести каталоги: гейт покрытия признаёт архив-чарт
+# в любом подкаталоге `deploy/helm/vendor/`, и trivy пишет его как `sub/<архив>:…`.
+# Первая редакция запрещала `/` в архивной части (H6): такая координата не
+# переводилась, и шаг перевода краснел на архиве, который гейт счёл законным.
+ARCHIVE_URI = re.compile(r"^(?P<archive>[^:]+?\.(?:tgz|tar\.gz|tar)):(?P<inner>.+)$",
                          re.IGNORECASE)
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 

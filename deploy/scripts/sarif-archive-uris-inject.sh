@@ -7,7 +7,8 @@
 #
 # Вход — та форма, которую trivy 0.70.0 действительно пишет для архива-чарта
 # (координата `<архив>:<шаблон>` под базой ROOTPATH = каталог scan-ref): её отверг
-# Code Scanning на волне #2977. Прогонов шесть: архивная координата переведена ·
+# Code Scanning на волне #2977. Знаменатель — DENOM ниже, его сверяет сама проба.
+# Опыты: архивная координата переведена ·
 # близнец (обычная координата существующего файла) не тронут · архива нет в
 # checkout'е · координата со схемой вне архивной формы · база вне checkout'а ·
 # отчёт не прочитан.
@@ -15,6 +16,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TOOL="$ROOT/deploy/scripts/sarif-archive-uris.py"
+DENOM=7
 passed=0
 failed=0
 
@@ -79,5 +81,11 @@ expect "база вне checkout'а — находка" "$work/e.sarif" 1 "вн�
 
 expect "отчёт не прочитан — код 2" "$work/absent.sarif" 2 "не прочитан как SARIF"
 
-echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed"
-[ "$failed" = 0 ] || exit 1
+# H6: архив в ПОДКАТАЛОГЕ каталога вендоренных (гейт покрытия признаёт его законным).
+mkdir -p "$work/co/deploy/helm/vendor/sub" && printf 'archive\n' > "$work/co/deploy/helm/vendor/sub/chart-2.0.0.tgz"
+sarif "$work/f.sarif" "sub/chart-2.0.0.tgz:templates/deployment.yaml" "$work/co/deploy/helm/vendor"
+expect "H6: архив в подкаталоге vendor переведён" "$work/f.sarif" 0 \
+  '"uri": "deploy/helm/vendor/sub/chart-2.0.0.tgz"'
+
+echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
+[ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
