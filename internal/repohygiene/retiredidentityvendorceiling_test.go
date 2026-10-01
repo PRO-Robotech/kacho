@@ -67,7 +67,7 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 		pinned[name] = c
 	}
 
-	v, err := vendorVerdictAt(repo, tree.SortedFiles(), pinned)
+	v, err := vendorVerdictAt(repo, tree.SortedFiles(), pinned, retiredVendorCeilingGrants)
 	if err != nil {
 		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
 	}

@@ -117,7 +117,7 @@ func vendorProbeVerdict(t *testing.T, root string) vendorVerdict {
 			rels = append(rels, rel)
 		}
 	}
-	v, err := vendorVerdictAt(root, rels, vendorProbePinned())
+	v, err := vendorVerdictAt(root, rels, vendorProbePinned(), nil)
 	if err != nil {
 		t.Fatalf("суд мира не исполнился: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestRetiredVendorCeiling_BaseSymlinkIsARefusal(t *testing.T) {
 				rels = append(rels, rel)
 			}
 		}
-		_, err := vendorVerdictAt(root, rels, vendorProbePinned())
+		_, err := vendorVerdictAt(root, rels, vendorProbePinned(), nil)
 		switch {
 		case link && !errors.Is(err, errVendorBase):
 			t.Fatalf("символическая ссылка на базе обязана быть отказом, получено: %v", err)

@@ -389,6 +389,9 @@ type vendorTreeCensus struct {
 	// Ceiling — число того же дерева на БАЗЕ: производственный путь берёт его у
 	// базы (`judgeRetiredVendorAgainstBase`), в дереве оно не записано.
 	Ceiling int
+	// Granted — сколько привязок дерева извинено решением владельца
+	// (`retiredVendorCeilingGrants`); оно уже входит в Ceiling.
+	Granted int
 	// Areas — привязки дерева по областям: первый сегмент пути → строк. Сумма
 	// равна Bindings по построению: у каждой привязки есть файл.
 	Areas map[string]int
@@ -424,13 +427,13 @@ func (c vendorTreeCensus) String() string {
 	return fmt.Sprintf("путей обойдено %d = судимо построчно %d · двоичных %d · архивов %d "+
 		"(нераспакованных %d) · прозы %d (граница) · строк прочитано %d · "+
 		"привязок %d строк (по пути %d · по имени %d · склейкой %d · по пути API %d · "+
-		"двоичных %d · архивов %d) · потолок (число базы) %d · отброшено границей слова %d строк "+
+		"двоичных %d · архивов %d) · потолок %d (число базы %d + решением владельца %d) · отброшено границей слова %d строк "+
 		"(разных слов %d: %s) · засчитано именем ПРОПИСНЫМИ с прописной следом %d строк "+
 		"(разных слов %d: %s) · отброшено путём API серединой пути %d строк (разных путей %d: %s) · "+
 		"отброшено записью снятия диффа %d строк (файлов %d) · по областям (первый сегмент пути): %s",
 		c.Walked, c.Files, c.Blobs, c.Archives, c.Sealed, c.Prose, c.Lines,
 		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive,
-		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "),
+		c.Ceiling, c.Ceiling-c.Granted, c.Granted, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "),
 		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "),
 		c.SurfaceNested, len(c.SurfaceNestedPaths), strings.Join(c.SurfaceNestedPaths, ", "),
 		c.DiffRemoved, c.DiffRemovedFiles,
@@ -447,7 +450,7 @@ func vendorTotal(census map[string]vendorTreeCensus) (line string, bindings, cei
 		walked += c.Walked
 		perTree = append(perTree, fmt.Sprintf("%s %d", name, c.Bindings))
 	}
-	line = fmt.Sprintf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке (число базы) %d СТРОК "+
+	line = fmt.Sprintf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке %d СТРОК (число базы плюс решения владельца) "+
 		"(по деревьям: %s; деревьев обойдено %d · путей обойдено %d; единица счёта — %s)",
 		bindings, ceiling, strings.Join(perTree, " · "), len(census), walked, vendorCountingUnit)
 	return line, bindings, ceiling, walked
@@ -467,6 +470,8 @@ type vendorCeilingFinding struct {
 	// Delta — разность с деревом базы. Есть у находки производственного пути:
 	// тогда координатой роста служат СТРОКИ ПРИРОСТА, а не все адреса дерева.
 	Delta *vendorTreeDelta
+	// Note — готовый текст находки иного вида (самоистечение гранта владельца).
+	Note string
 }
 
 // vendorFindingGrown — привязок стало БОЛЬШЕ, чем на базе. Вид один: число ниже
@@ -474,6 +479,9 @@ type vendorCeilingFinding struct {
 const vendorFindingGrown = "число выросло над числом базы"
 
 func (f vendorCeilingFinding) String() string {
+	if f.Note != "" {
+		return f.Note
+	}
 	head := fmt.Sprintf("дерево %s: привязок к снятому издателю %d строк при потолке (число "+
 		"базы) %d (+%d) — %s. Снятие идёт в одну сторону: снимите привязку. Записи, которую "+
 		"ветка могла бы поднять, у гейта нет: принять рост — значит изменить сам гейт "+
@@ -1541,7 +1549,7 @@ func vendorBaseBindings(
 // против дерева БАЗЫ, по каждому из трёх деревьев. Потолок каждого — его число
 // на базе, посчитанное тем же прибором; находка роста несёт строки прироста.
 func judgeRetiredVendorAgainstBase(
-	head, base map[string]vendorTreeCorpus,
+	head, base map[string]vendorTreeCorpus, grants []vendorCeilingGrant,
 ) ([]vendorCeilingFinding, map[string]vendorTreeCensus, []vendorBinding, map[string]vendorTreeDelta, error) {
 	// ПРЕДПОСЫЛКА: база обойдена по каждому дереву закрытого перечня, и ни по
 	// одному лишнему. Дерево без базы судить не с чем, и его «не выросло»
@@ -1573,12 +1581,13 @@ func judgeRetiredVendorAgainstBase(
 		ceilings[tree] = len(baseBindings)
 	}
 
+	grantFindings := vendorApplyGrants(grants, head, byTree, ceilings, deltas, census)
 	findings := vendorCompare(census, bindings, ceilings)
 	for i := range findings {
 		d := deltas[findings[i].Tree]
 		findings[i].Delta = &d
 	}
-	return findings, census, bindings, deltas, nil
+	return append(findings, grantFindings...), census, bindings, deltas, nil
 }
 
 // vendorCoords — адреса дерева: «N · путь», ПО ПУТИ и все. Порядок выбран не для

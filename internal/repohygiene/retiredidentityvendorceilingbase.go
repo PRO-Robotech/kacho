@@ -582,7 +582,10 @@ type vendorVerdict struct {
 // деревья и суждение. Его зовут и гейт по дереву, и пробы на настоящих ветках
 // git. Дерево платформы подаётся перечнем путей индекса (rels), деревья служб —
 // готовыми корпусами по пину изменения.
-func vendorVerdictAt(root string, rels []string, pinned map[string]vendorTreeCorpus) (vendorVerdict, error) {
+// grants — решения владельца о потолке: гейт по дереву подаёт ведомость продукта
+// (`retiredVendorCeilingGrants`), пробы на синтетических ветках — свою либо nil.
+func vendorVerdictAt(root string, rels []string, pinned map[string]vendorTreeCorpus,
+	grants []vendorCeilingGrant) (vendorVerdict, error) {
 	head := map[string]vendorTreeCorpus{vendorTreePlatform: vendorCorpusFromPaths(root, rels)}
 	for tree, c := range pinned {
 		head[tree] = c
@@ -601,6 +604,6 @@ func vendorVerdictAt(root string, rels []string, pinned map[string]vendorTreeCor
 		return v, err
 	}
 	v.BaseHows = hows
-	v.Findings, v.Census, v.Bindings, v.Deltas, err = judgeRetiredVendorAgainstBase(head, base)
+	v.Findings, v.Census, v.Bindings, v.Deltas, err = judgeRetiredVendorAgainstBase(head, base, grants)
 	return v, err
 }
