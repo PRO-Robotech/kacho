@@ -90,8 +90,12 @@ func ownedTypeShapeFindings(t *testing.T, catalogJSON []byte, owned map[string]s
 	if err := c.LoadFromBytes(catalogJSON); err != nil {
 		t.Fatalf("загрузка каталога: %v", err)
 	}
-	entries := *c.entries.Load()
+	return ownedTypeShapeFindingsOf(*c.entries.Load(), owned)
+}
 
+// ownedTypeShapeFindingsOf — сверка над записями, уже помеченными загрузкой.
+// Отделена от загрузки, чтобы проба могла испортить пометку саму по себе.
+func ownedTypeShapeFindingsOf(entries map[string]CatalogEntry, owned map[string]string) ([]string, ownedTypeShapeCensus) {
 	expected := map[string]struct{}{}  // типы манифестов kacho, область метода kacho
 	strict := map[string]struct{}{}    // типы, судимые строго хоть одной записью
 	lenient := map[string]struct{}{}   // типы kacho-метода на суде префиксом
@@ -124,9 +128,13 @@ func ownedTypeShapeFindings(t *testing.T, catalogJSON []byte, owned map[string]s
 		}
 		by := foreignBy[typ]
 		sort.Strings(by)
+		cause := "чужой строки нет — откат пометки в самой загрузке каталога"
+		if len(by) > 0 {
+			cause = "его называют областью строки другого корня: " + strings.Join(by, ", ")
+		}
 		findings = append(findings, fmt.Sprintf(
-			"тип %s (служба %s) ушёл со строгой формы полосы 5b на суд префиксом; его называют областью строки другого корня: %s",
-			typ, owned[typ], strings.Join(by, ", ")))
+			"тип %s (служба %s) ушёл со строгой формы полосы 5b на суд префиксом; %s",
+			typ, owned[typ], cause))
 	}
 	for typ := range strict {
 		if _, ok := owned[typ]; !ok {
@@ -230,5 +238,34 @@ func TestKachoOwnedTypeShapeGate_StrictTypeNoManifestDeclaresIsFound(t *testing.
 	requireOwnedTypeCensus(t, cen)
 	if len(findings) != 1 || !strings.Contains(findings[0], "compute_shape_probe") {
 		t.Fatalf("ждали ровно одну находку о compute_shape_probe, получили %d: %v", len(findings), findings)
+	}
+}
+
+// TestKachoOwnedTypeShapeGate_MarkLostWithoutAForeignRowNamesTheLoad — откат
+// пометки без чужой строки (пометку снимает сама загрузка) называется ЭТОЙ
+// причиной, а не строкой другого корня с пустым перечнем.
+func TestKachoOwnedTypeShapeGate_MarkLostWithoutAForeignRowNamesTheLoad(t *testing.T) {
+	owned, _ := readKachoOwnedTypes(t)
+	c := NewPermissionCatalog()
+	if err := c.LoadFromBytes(EmbeddedPermissionCatalogJSON()); err != nil {
+		t.Fatalf("загрузка каталога: %v", err)
+	}
+	entries := map[string]CatalogEntry{}
+	for fqn, e := range *c.entries.Load() {
+		if e.ScopeExtractor.ObjectType == "storage_snapshot" {
+			e.judgesIDShape = false
+		}
+		entries[fqn] = e
+	}
+	findings, _ := ownedTypeShapeFindingsOf(entries, owned)
+	if len(findings) != 1 {
+		t.Fatalf("ждали ровно одну находку о storage_snapshot, получили %d: %v", len(findings), findings)
+	}
+	f := findings[0]
+	if !strings.Contains(f, "storage_snapshot") || !strings.Contains(f, "чужой строки нет — откат пометки в самой загрузке каталога") {
+		t.Errorf("находка называет не ту причину: %s", f)
+	}
+	if strings.Contains(f, "строки другого корня") {
+		t.Errorf("находка называет причиной строку другого корня, которой нет: %s", f)
 	}
 }
