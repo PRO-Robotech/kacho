@@ -671,24 +671,6 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
-            {{- /* ДОРОГА ОБМЕНА К ПРЕЖНЕМУ ИЗДАТЕЛЮ — ПОКА ЕЁ ЧИТАЕТ СЛУЖБА.
-            Контур полосы `/iam/token`, не переведённый на свою чеканку
-            (`config.authn.tokenSigning.enabled: false`), обменивает подписанное
-            утверждение у прежнего издателя по этому адресу; переведённый дороги
-            не строит вовсе. Пин службы оба ключа ещё читает, поэтому ручки
-            остаются здесь до изменения, снимающего их читателя (эпик kaname#357).
-            Ни один стек их не объявляет: пусто ⇒ не эмитится. */}}
-            {{- with .Values.platform.iam.hydraTokenURL }}
-            - name: KANAME_HYDRA_TOKEN_URL
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraTokenCaFile }}
-            # Trust anchor for the token-endpoint hop: empty → default transport;
-            # set → the only anchor; unreadable → refuse the start rather than
-            # fall back to the system roots.
-            - name: KANAME_HYDRA_TOKEN_CA_FILE
-              value: {{ . | quote }}
-            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
