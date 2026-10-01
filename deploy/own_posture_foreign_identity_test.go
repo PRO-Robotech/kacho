@@ -1,18 +1,19 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// own_posture_foreign_identity_test.go — ПОСАДКА ЛИЧНОСТИ И ФЛАГИ ЧУЖИХ СЛУЖБ
-// СВЯЗАНЫ, И СВЯЗЬ ДЕРЖИТ МАШИНА (kacho#2735, стадия S2 приёмки Ф4д §8).
+// own_posture_foreign_identity_test.go — ПОСАДКА ЛИЧНОСТИ И ЧУЖАЯ СЛУЖБА
+// ЛИЧНОСТИ ГОВОРЯТ ОБ ОДНОМ, И СВЯЗЬ ДЕРЖИТ МАШИНА (kacho#2735, стадия S2
+// приёмки Ф4д §8; с kacho#1276 — чужой службы в дереве нет вовсе).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// Стенд посадки `own` складывается из боевого профиля и накладки. Накладка
-// объявляет посадку, но чужие службы личности НЕ выключает — наследует их
+// Стенд посадки `own` складывался из боевого профиля и накладки. Накладка
+// объявляла посадку, но чужие службы личности НЕ выключала — наследовала их
 // включёнными снизу. Наблюдаемый исход: стенд, который человека проверяет СВОЕЙ
-// полосой, всё равно поднимает чужого поставщика, его базу и его экран входа,
-// и они стоят живыми рядом — вторая действующая дверь в ту же систему, о которой
-// никто не решал.
+// полосой, всё равно поднимал чужого поставщика, его базу и его экран входа,
+// и они стояли живыми рядом — вторая действующая дверь в ту же систему, о
+// которой никто не решал.
 //
 // Признак на день заведения (kacho `main` @ `f445aaaa554`), цепочка стенда
 // `own` = values.prod.yaml + values.own.yaml:
@@ -22,43 +23,33 @@
 //	  | grep -c '^# Source: kacho-umbrella/charts/\(kratos\|hydra\|pg-kratos\|pg-hydra\|kratos-selfservice-ui\)/'
 //	    → 30
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// ПОЧЕМУ ГЕЙТ, А НЕ ОДНА ПРАВКА ПРОФИЛЯ
-//
-// Выключить флаги — работа на один раз; связь «посадка ↔ флаги» после неё не
-// держится ничем. Четыре стража настроек чужой службы открываются условием
-// «стенд поднимает чужую службу» — на стенде, где она выключена, они законно
-// молчат, и ПОВТОРНОЕ включение чужой службы рядом с посадкой `own` не дало бы
-// ни одного красного: каждый страж честно проверил бы то, что сам объявил.
-// Здесь судится ровно то, чего не судит ни один из них, — согласие посадки и
-// флагов.
+// Сначала чужой стек выключили в базе зонта для всех стендов (#2735, #2777),
+// затем сняли физически (#1276): объявления зависимостей, их архивы, их базы
+// и экран входа, лежавший в `charts/` без объявления. Отсюда две стороны
+// гейта, и обе про одно — посадка и чужая служба обязаны говорить об одном.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ОСТАТОК НАЗЫВАЕТСЯ, А НЕ ПРЯЧЕТСЯ
+// СТОРОНА ДЕРЕВА — ЧУЖОЙ СЛУЖБЫ В ЗОНТЕ НЕТ
 //
-// Компонент чужой службы, который на стенде посадки `own` снять пока нельзя,
-// ВЕДЁТСЯ ведомостью: запись называет стенд, компонент и причину. И запись
-// САМОИСТЕКАЕТ — ведомость, называющая компонент, которого на стенде уже нет,
-// есть находка: исключению нечего исключать, и оно бы пережило свой предмет.
+// Компонент чужой службы, вернувшийся в зонт, — находка сам по себе, без
+// всякого стенда: посадки, которая бы его читала, у службы доступа нет
+// (kaname#363), а у края она одна на деле — `own`. Флаг выключения тут не
+// спасает: условие зависимости, чей путь в значениях не найден, helm читает
+// как «включено», и возвращённое объявление подняло бы стек молча.
 //
-// Сегодня ведомость ПУСТА, и это исход, а не упущение (#2735, #2777): чужой
-// стек выключен в базе зонта для всех стендов, и записи стенда `own`
-// (поставщик, его база, его экран входа) истекли вместе со своим предметом.
+// Прежде у этой стороны была ведомость остатка — компонент, снять который
+// пока нельзя, с причиной. Она истекла вместе со своим предметом: снимать
+// больше нечего, и запись в ней объявляла бы решённым то, что решать некому.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ОБЕ СТОРОНЫ, А НЕ ОДНА
+// СТОРОНА СТЕНДА — ПОСАДКА `external` ПРОВЕРЯТЬ ЧЕЛОВЕКА НЕЧЕМ
 //
-// Проверка, ловящая только «own с включённым чужим», зеленела бы на стенде,
-// который выключил чужую службу, оставшись на посадке `external`, — то есть на
-// стенде, которому проверять человека НЕЧЕМ. Поэтому у гейта две находки, и обе
-// про одно: посадка и флаги обязаны говорить об одном.
-//
-// Носителей второй стороны в таблице стендов сегодня НОЛЬ, и это цель #2735, а
-// не слепота: посадку `own` объявляют все стенды. Поэтому перепись такой ноль
-// принимает ровно при одном условии — на `own` стоят ВСЕ осмотренные стенды, —
-// а способность второй стороны упасть доказывает инъекция
-// (TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll): та же
-// функция суждения, стенд `external` без поставщика.
+// Стенд, чьи обе половины ждут внешнего поставщика, в дереве без поставщика
+// человека не проверит ничем. Поэтому такой стенд — находка; носителей этой
+// стороны в таблице стендов НОЛЬ, и это цель, а не слепота: посадку `own`
+// объявляют все стенды. Перепись такой ноль принимает ровно при одном условии
+// — на `own` стоят ВСЕ осмотренные стенды, — а способность этой стороны упасть
+// доказывает инъекция (TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // СОСТАВ ЧУЖОГО ВЫВОДИТСЯ ИЗ ДЕРЕВА
@@ -66,13 +57,18 @@
 // Список компонентов выписать здесь нельзя: выписанный разойдётся с Chart.yaml
 // молча, и гейт перестанет видеть тот компонент, который переименовали. Он
 // выводится: зависимости зонта, чей репозиторий принадлежит поставщику, их
-// базы (`pg-<имя>`) и подчарт экрана входа, лежащий в `charts/` без объявления.
+// базы (`pg-<имя>`) и подчарт, лежащий в `charts/` без объявления, чьё `name`
+// называет службу поставщика. Число «ноль» здесь — исход, а не «не прочитано»:
+// обход печатает, сколько зависимостей и подчартов он осмотрел, и падает на
+// пустом обходе. Способность найти вернувшийся компонент доказывает инъекция
+// на копии зонта (TestOwnPostureForeignIdentityGate_FindsAComponentReturnedToTheTree).
 package deploy_test
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -81,8 +77,14 @@ import (
 // foreignIdentityRepoMark — признак репозитория поставщика чужой службы личности.
 const foreignIdentityRepoMark = "ory.sh"
 
-// foreignIdentityComponent — компонент чужой службы личности и путь его флага
-// включения в слитых значениях стенда.
+// foreignIdentityChartName — признак подчарта поставщика, лежащего в `charts/`
+// без объявления: его `name` называет службу поставщика. Граница слова — начало
+// имени либо дефис: без неё признаком стало бы любое имя, где эти буквы стоят
+// внутри слова.
+var foreignIdentityChartName = regexp.MustCompile(`(?i)(^|-)(kratos|hydra)(-|$)`)
+
+// foreignIdentityComponent — компонент чужой службы личности в зонте и путь
+// его флага включения.
 type foreignIdentityComponent struct {
 	Name string
 	Flag []string
@@ -94,15 +96,29 @@ func (c foreignIdentityComponent) String() string {
 	return fmt.Sprintf("%s (%s)", c.Name, strings.Join(c.Flag, "."))
 }
 
-// foreignIdentityComponents — состав чужого, выведенный из дерева.
-func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
-	t.Helper()
+// foreignIdentityCensus — объём осмотренного обходом состава.
+type foreignIdentityCensus struct {
+	Dependencies int // зависимостей зонта прочитано
+	Subcharts    int // каталогов подчартов в charts/ прочитано
+}
 
-	chart := readYAML(t, filepath.Join(umbrellaDir, "Chart.yaml"))
+// foreignIdentityComponents — состав чужого в зонте, выведенный из дерева.
+func foreignIdentityComponents(t *testing.T) ([]foreignIdentityComponent, foreignIdentityCensus) {
+	t.Helper()
+	return foreignIdentityComponentsIn(t, umbrellaDir)
+}
+
+// foreignIdentityComponentsIn — то же на произвольном каталоге зонта: инъекция
+// зовёт ЭТУ ЖЕ функцию на копии, а не свою копию функции.
+func foreignIdentityComponentsIn(t *testing.T, dir string) ([]foreignIdentityComponent, foreignIdentityCensus) {
+	t.Helper()
+	var census foreignIdentityCensus
+
+	chart := readYAML(t, filepath.Join(dir, "Chart.yaml"))
 	deps, _ := chart["dependencies"].([]any)
 	if len(deps) == 0 {
-		t.Fatalf("в %s не прочитано ни одной зависимости — состав чужого взять неоткуда",
-			filepath.Join(umbrellaDir, "Chart.yaml"))
+		t.Fatalf("в %s не прочитано ни одной зависимости — состав чужого взять неоткуда, "+
+			"и «чужого нет» здесь неотличимо от «ничего не прочитано»", filepath.Join(dir, "Chart.yaml"))
 	}
 
 	// Имя, под которым зависимость видна значениям, — это alias, если он есть.
@@ -121,6 +137,7 @@ func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
 		if !ok {
 			continue
 		}
+		census.Dependencies++
 		n := nameOf(m)
 		byName[n] = true
 		if repo, _ := m["repository"].(string); strings.Contains(repo, foreignIdentityRepoMark) {
@@ -128,11 +145,6 @@ func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
 		}
 	}
 	sort.Strings(provider)
-	if len(provider) == 0 {
-		t.Fatalf("среди зависимостей зонта нет ни одной с репозиторием %q — "+
-			"поставщик переехал либо признак перестал его узнавать; «чужого не найдено» "+
-			"здесь неотличимо от «чужое не прочитано»", foreignIdentityRepoMark)
-	}
 
 	out := make([]foreignIdentityComponent, 0, 2*len(provider)+1)
 	for _, n := range provider {
@@ -146,7 +158,7 @@ func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
 
 	// Подчарты, лежащие в `charts/` БЕЗ объявления зависимостью: helm грузит их
 	// всегда, и флаг у них свой, внутри собственного узла значений.
-	entries, err := os.ReadDir(filepath.Join(umbrellaDir, "charts"))
+	entries, err := os.ReadDir(filepath.Join(dir, "charts"))
 	if err != nil {
 		t.Fatalf("каталог подчартов не читается: %v — предпосылка исчезла", err)
 	}
@@ -154,31 +166,27 @@ func foreignIdentityComponents(t *testing.T) []foreignIdentityComponent {
 		if !e.IsDir() || byName[e.Name()] {
 			continue
 		}
+		census.Subcharts++
 		// Компонент называется `name` СВОЕГО Chart.yaml, а не каталогом: под этим
 		// именем helm кладёт его значения, и флаг включения живёт там же. Каталог —
 		// наш путь и переименовывается независимо (#2759).
-		dir := filepath.Join(umbrellaDir, "charts", e.Name())
-		name := subchartName(t, dir)
-		if byName[name] {
+		sub := filepath.Join(dir, "charts", e.Name())
+		name := subchartName(t, sub)
+		if byName[name] || !foreignIdentityChartName.MatchString(name) {
 			continue
 		}
-		var belongs bool
-		for _, n := range provider {
-			if strings.HasPrefix(name, n+"-") {
-				belongs = true
-			}
-		}
-		if !belongs {
-			continue
-		}
-		key := flagBearingTopLevelKey(t, filepath.Join(dir, "values.yaml"))
+		key := flagBearingTopLevelKey(t, filepath.Join(sub, "values.yaml"))
 		out = append(out, foreignIdentityComponent{
 			Name:       name,
 			Flag:       []string{name, key, "enabled"},
 			Undeclared: true,
 		})
 	}
-	return out
+	if census.Subcharts == 0 {
+		t.Fatalf("в %s/charts не прочитано ни одного каталога подчарта — экран входа "+
+			"поставщика, лежащий там без объявления, искать было негде", dir)
+	}
+	return out, census
 }
 
 // flagBearingTopLevelKey — узел верхнего уровня файла значений подчарта, несущий
@@ -211,7 +219,7 @@ func (l identityLanding) both(v string) bool { return l.IAM == v && l.Edge == v 
 // any — хотя бы одна половина стенда стоит на посадке v.
 func (l identityLanding) any(v string) bool { return l.IAM == v || l.Edge == v }
 
-// identityPostureFinding — находка о стенде.
+// identityPostureFinding — находка о стенде либо о зонте.
 type identityPostureFinding struct {
 	Stack  string
 	Reason string
@@ -219,80 +227,50 @@ type identityPostureFinding struct {
 }
 
 const (
+	foreignInTree         = "компонент чужой службы личности лежит в зонте"
 	ownRaisesForeign      = "посадка `own`, а чужая служба личности включена"
 	externalRaisesNothing = "посадка `external`, а чужой службы личности нет"
-	remainderIsStale      = "запись ведомости пережила свой предмет"
 )
 
-// identityRemainder — ОСТАТОК, снять который сегодня нельзя, с причиной.
-type identityRemainder struct {
-	Component string
-	Reason    string
+// judgeForeignIdentityInTree — ЧИСТЫЙ предикат стороны дерева: каждый
+// компонент чужой службы в зонте — находка.
+func judgeForeignIdentityInTree(components []foreignIdentityComponent) []identityPostureFinding {
+	out := make([]identityPostureFinding, 0, len(components))
+	for _, c := range components {
+		where := "объявлен зависимостью зонта"
+		if c.Undeclared {
+			where = "лежит в charts/ без объявления — helm грузит такой подчарт всегда"
+		}
+		out = append(out, identityPostureFinding{
+			Reason: foreignInTree,
+			Text: fmt.Sprintf("компонент чужой службы личности %s %s.\n"+
+				"Посадки, которая бы его читала, нет: у службы доступа посадка одна — своя "+
+				"(kaname#363), у края все стенды таблицы стоят на `own`. Флаг выключения "+
+				"его не держит: условие зависимости, чей путь в значениях не найден, helm "+
+				"читает как «включено». Снимите компонент (снятие — kacho#1276).", c, where),
+		})
+	}
+	return out
 }
 
-// foreignIdentityRemainders — ВЕДОМОСТЬ ОСТАТКА по стендам.
-//
-// Запись здесь — не послабление, а объявление: «этот компонент чужой службы
-// стоит на этом стенде намеренно, вот почему, и вот чем держится предикат его
-// снятия». Запись, чей компонент на стенде уже выключен, — находка: она
-// объявляла бы решённым то, что решать больше нечего.
-var foreignIdentityRemainders = map[string][]identityRemainder{}
-
-// judgeStandIdentity — ЧИСТЫЙ предикат: посадка стенда против включённого
-// чужого и против ведомости остатка. Отдельная функция, а не тело проверки:
-// инъекция обязана звать ЕЁ ЖЕ, иначе доказывает свойство своей копии.
+// judgeStandIdentity — ЧИСТЫЙ предикат стороны стенда: посадка стенда против
+// включённого чужого. Отдельная функция, а не тело проверки: инъекция обязана
+// звать ЕЁ ЖЕ, иначе доказывает свойство своей копии.
 //
 // Стенд, половины которого разошлись, по второй стороне здесь НЕ судится: это
 // предмет соседа (helm/umbrella/identity_posture_profiles_test.go), и второй
 // вердикт об одном предмете разъехался бы с первым.
-func judgeStandIdentity(stack string, p identityLanding, enabled []string, remainders []identityRemainder) []identityPostureFinding {
-	onStand := map[string]bool{}
-	for _, c := range enabled {
-		onStand[c] = true
-	}
-	decided := map[string]string{}
+func judgeStandIdentity(stack string, p identityLanding, enabled []string) []identityPostureFinding {
 	var out []identityPostureFinding
-
-	for _, r := range remainders {
-		// САМОИСТЕЧЕНИЕ. Запись об остатке, которого на стенде нет, — находка:
-		// либо компонент уже снят и ведомость пережила свой предмет, либо его
-		// переименовали и ведомость перестала его узнавать.
-		if !onStand[r.Component] || !p.any(landingOwn) {
-			out = append(out, identityPostureFinding{
-				Stack:  stack,
-				Reason: remainderIsStale,
-				Text: fmt.Sprintf("ведомость остатка называет компонент %q стенда %q, "+
-					"а на стенде его нет (посадка iam=%s gateway=%s, включено: %s).\n"+
-					"Исключению нечего исключать: запись объявляет решённым то, что решать "+
-					"больше нечего, и переживёт любой следующий разбор. Снимите её.",
-					r.Component, stack, p.IAM, p.Edge, joinOrNone(enabled)),
-			})
-			continue
-		}
-		decided[r.Component] = r.Reason
-	}
-
-	var undecided []string
-	for _, c := range enabled {
-		if _, ok := decided[c]; !ok {
-			undecided = append(undecided, c)
-		}
-	}
-
 	switch {
-	case p.any(landingOwn) && len(undecided) > 0:
+	case p.any(landingOwn) && len(enabled) > 0:
 		out = append(out, identityPostureFinding{
 			Stack:  stack,
 			Reason: ownRaisesForeign,
 			Text: fmt.Sprintf("стенд %q объявил посадку личности `own` (iam=%s gateway=%s), "+
-				"но поднимает чужую службу личности, о которой не решал никто: %s.\n"+
-				"Это ВТОРАЯ действующая дверь в ту же систему рядом с нашей полосой: накладка "+
-				"посадки чужие службы не выключает — наследует их включёнными из слоя под "+
-				"собой.\nИсходов два: объявить флаг ложью в том слое, который объявил посадку "+
-				"(выключение в боевом слое сняло бы чужую службу и у стендов, которые на ней "+
-				"стоят по решению), либо внести компонент в ведомость остатка с причиной и "+
-				"предикатом снятия.\nРешённый остаток этого стенда: %s",
-				stack, p.IAM, p.Edge, strings.Join(undecided, ", "), joinOrNone(decidedComponentNames(decided))),
+				"но поднимает чужую службу личности: %s.\n"+
+				"Это ВТОРАЯ действующая дверь в ту же систему рядом с нашей полосой.",
+				stack, p.IAM, p.Edge, strings.Join(enabled, ", ")),
 		})
 	case p.both(landingExternal) && len(enabled) == 0:
 		out = append(out, identityPostureFinding{
@@ -301,52 +279,36 @@ func judgeStandIdentity(stack string, p identityLanding, enabled []string, remai
 			Text: fmt.Sprintf("стенд %q объявил посадку личности `external` обеим половинам, "+
 				"но не поднимает НИ ОДНОГО компонента чужой службы личности.\nТакому стенду "+
 				"проверять человека нечем: обе половины ждут внешнего поставщика, которого на "+
-				"стенде нет. Исходов два: перевести стенд на `own` либо вернуть флаги",
+				"стенде нет, а в дереве его нет вовсе (kacho#1276). Переведите стенд на `own`",
 				stack),
 		})
 	}
 	return out
 }
 
-// joinOrNone — перечень либо прямое слово о пустоте: пустая строка в тексте
-// находки читается как «здесь ничего не подставилось».
-func joinOrNone(v []string) string {
-	if len(v) == 0 {
-		return "ничего"
-	}
-	return strings.Join(v, ", ")
-}
-
-func decidedComponentNames(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // standIdentityCensus — объём осмотренного.
 type standIdentityCensus struct {
-	Stacks     int
-	Own        int
-	External   int
-	Mixed      int
-	Components int
-	Remainders int
+	Stacks       int
+	Own          int
+	External     int
+	Mixed        int
+	Dependencies int
+	Subcharts    int
+	Components   int
 }
 
 func (c standIdentityCensus) String() string {
 	return fmt.Sprintf("стендов осмотрено %d · на посадке own %d · на посадке external %d · "+
-		"половины разошлись %d · компонентов чужой службы личности в дереве %d · "+
-		"записей ведомости остатка %d",
-		c.Stacks, c.Own, c.External, c.Mixed, c.Components, c.Remainders)
+		"половины разошлись %d · зависимостей зонта прочитано %d · подчартов charts/ без "+
+		"объявления прочитано %d · компонентов чужой службы личности в зонте %d",
+		c.Stacks, c.Own, c.External, c.Mixed, c.Dependencies, c.Subcharts, c.Components)
 }
 
-// TestOwnPostureRaisesNoForeignIdentityService — посадка и флаги говорят об одном.
+// TestOwnPostureRaisesNoForeignIdentityService — посадка и чужая служба говорят
+// об одном: чужой службы в зонте нет, и ни один стенд её не ждёт.
 func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	stacks := deployStacks(t)
-	components := foreignIdentityComponents(t)
+	components, walked := foreignIdentityComponents(t)
 	umbrellaBase := readFileForTest(t, filepath.Join(umbrellaDir, "values.yaml"))
 
 	names := make([]string, 0, len(stacks))
@@ -355,11 +317,11 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	}
 	sort.Strings(names)
 
-	census := standIdentityCensus{Stacks: len(names), Components: len(components)}
-	for _, rs := range foreignIdentityRemainders {
-		census.Remainders += len(rs)
+	census := standIdentityCensus{
+		Stacks: len(names), Dependencies: walked.Dependencies,
+		Subcharts: walked.Subcharts, Components: len(components),
 	}
-	var findings []identityPostureFinding
+	findings := judgeForeignIdentityInTree(components)
 
 	for _, name := range names {
 		merged, _, _ := mergedValuesOfStack(t, stacks[name])
@@ -367,10 +329,6 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		// Посадку читает ЕДИНСТВЕННЫЙ читатель пакета (identityLandingOfChain) —
 		// тот же, что отбирает стенды для стражей личности, — из тех же слоёв,
 		// из которых выше сложены флаги: значения зонта, затем профили цепочки.
-		// Умолчание подчарта он подставляет, когда о посадке молчит вся цепочка,
-		// а не каждая половина порознь; для этого гейта это одно и то же, потому
-		// что объявить одну половину без второй профиль не может — это отказ
-		// TestIdentityPostureHalvesOfAProfileAgree (helm/umbrella).
 		texts := []string{umbrellaBase}
 		for _, prof := range stacks[name] {
 			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
@@ -402,41 +360,27 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		t.Logf("  %s: iam=%s gateway=%s · чужого включено %d (%s)",
 			name, p.IAM, p.Edge, len(enabled), strings.Join(enabled, ", "))
 
-		findings = append(findings, judgeStandIdentity(name, p, enabled, foreignIdentityRemainders[name])...)
+		findings = append(findings, judgeStandIdentity(name, p, enabled)...)
 	}
 
 	t.Logf("перепись: %s · находок %d", census, len(findings))
 
-	// Предпосылка обхода, обе стороны. Ноль стендов на любой из посадок значит,
-	// что гейт судит ПУСТОТУ по этой оси и молчал бы о вернувшемся дефекте.
+	// Предпосылка обхода. Ноль стендов на посадке `own` значит, что гейт судит
+	// ПУСТОТУ и молчал бы о вернувшемся дефекте.
 	if census.Own == 0 {
 		t.Fatalf("ни один стенд не стоит на посадке `own` (осмотрено %d) — гейт судил бы "+
 			"пустоту: «находок ноль» здесь неотличимо от «нечего было проверять»", census.Stacks)
 	}
-	// Вторая сторона без носителей законна ТОЛЬКО как цель: все стенды на `own`.
-	// Любой иной ноль (стенды с разошедшимися половинами и ни одного `external`)
-	// значит, что вторую сторону судить не по чему, и об этом сказано вслух.
+	// Сторона стенда без носителей законна ТОЛЬКО как цель: все стенды на `own`.
 	if census.External == 0 && census.Own != census.Stacks {
 		t.Fatalf("ни один стенд не стоит на посадке `external`, и не все стоят на `own` "+
-			"(осмотрено %d, на own %d, половины разошлись %d) — вторая сторона предиката "+
-			"осталась без носителя не потому, что её предмет исчерпан", census.Stacks,
-			census.Own, census.Mixed)
+			"(осмотрено %d, на own %d, половины разошлись %d) — сторона стенда осталась без "+
+			"носителя не потому, что её предмет исчерпан", census.Stacks, census.Own, census.Mixed)
 	}
 	if census.External == 0 {
-		t.Logf("вторая сторона (посадка `external` без поставщика) носителей не имеет: "+
+		t.Logf("сторона стенда (посадка `external` без поставщика) носителей не имеет: "+
 			"на `own` стоят все %d стендов — её способность упасть держит инъекция "+
 			"TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll", census.Stacks)
-	}
-	if census.Components < 2 {
-		t.Fatalf("состав чужой службы личности выведен из дерева как %d компонент(ов) — "+
-			"признак перестал их узнавать", census.Components)
-	}
-	// Ведомость, называющая стенд, которого в таблице состава нет, судит
-	// несуществующее и молчала бы об этом.
-	for stack := range foreignIdentityRemainders {
-		if _, ok := stacks[stack]; !ok {
-			t.Errorf("ведомость остатка называет стенд %q, которого в таблице состава нет", stack)
-		}
 	}
 
 	for _, f := range findings {

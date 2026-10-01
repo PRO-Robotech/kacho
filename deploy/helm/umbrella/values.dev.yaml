@@ -31,33 +31,25 @@
 
 # KAC-127 — обнуляем global.imageRegistry для dev. В values.yaml он =
 # `docker.io/prorobotech` (DockerHub-namespace для kacho-* образов). Но
-# third-party sub-chart'ы (Ory kratos/hydra/keto, bitnami postgresql)
-# тоже уважают `global.imageRegistry` и подставляют его перед СВОИМ image →
-# получается несуществующий `docker.io/prorobotech/oryd/hydra`. На dev-стенде
+# third-party sub-chart'ы (bitnami postgresql) тоже уважают
+# `global.imageRegistry` и подставляют его перед СВОИМ image → получается
+# несуществующий `docker.io/prorobotech/bitnamilegacy/postgresql`. На dev-стенде
 # образы стенда и так заданы явной строкой `image: <имя>:dev` (flat-string,
 # global.imageRegistry не используется этими sub-chart'ами), поэтому обнуление
-# global безопасно для kacho-сервисов и чинит pull third-party образов
-# (Ory → docker.io/oryd/*).
+# global безопасно для kacho-сервисов и чинит pull third-party образов.
 global:
   imageRegistry: ""
   kacho:
     # ─── СЛУЖБА ЛИЧНОСТИ: АДРЕСА СТЕНДА, А НЕ БОЕВЫЕ ─────────────────────────
     #
-    # Умолчания собираются из `domain: api.kacho.cloud` и дают
-    # `https://app.api.kacho.cloud/auth/<поток>`. На этом стенде такого имени
-    # нет, слушателя на 443 тоже нет (kind отображает ТОЛЬКО 80 → 28080), а
-    # потоки консольный nginx раздаёт в КОРНЕ (`^/(login|registration|…)`),
-    # без префикса `/auth`. Пока это не объявлено, служба личности уводит
-    # браузер на боевое имя: оно не разрешается, и ни одна проба консоли до
-    # продукта не доходит (прогон 32599157014 — 66 из 66).
-    #
-    # Величины взяты не на глаз: это ровно то, что раздаёт консольный nginx
-    # (ui-future/deploy/templates/configmap-nginx.yaml) — `/.ory/kratos/public/`
-    # на публичный API службы и корневые пути на её интерфейс.
+    # Умолчание происхождения консоли собирается из `domain: api.kacho.cloud` и
+    # даёт `https://app.api.kacho.cloud`. На этом стенде такого имени нет,
+    # слушателя на 443 тоже нет (kind отображает ТОЛЬКО 80 → 28080). Пока это
+    # не объявлено, служба доступа уводит браузер на боевое имя: оно не
+    # разрешается, и ни одна проба консоли до продукта не доходит (прогон
+    # 32599157014 — 66 из 66).
     identity:
       appBaseURL: "http://console.kacho.local:28080"
-      kratosPublicBaseURL: "/.ory/kratos/public/"
-      flowPathPrefix: ""
       # Cookie сессии обязана быть принята браузером на `console.kacho.local`:
       # родительский домен принимается, чужой (`api.kacho.cloud`) отвергается
       # целиком, и сессия не держится вовсе.
@@ -76,12 +68,11 @@ global:
       # (`MP_SMTP_REQUIRE_STARTTLS`). Обе стороны, потому что посадку не должен
       # выбирать тот, кто её нарушает.
       #
-      # ЯКОРЬ ПРОВЕРКИ объявлен ниже, у `kratos.deployment`: `ca.crt` секрета
-      # приёмника монтируется службе личности и называется ей переменной
-      # `SSL_CERT_FILE`. Без якоря шифрование было бы, а проверки — нет.
+      # ЯКОРЬ ПРОВЕРКИ объявлен ниже, в `smtp.trustAnchorSecret`: `ca.crt`
+      # секрета приёмника. Без якоря шифрование было бы, а проверки — нет.
       #
       # Имя узла — короткое, в одном пространстве имён, ровно как у DSN баз
-      # (`kacho-umbrella-pg-kratos`). Оно же стоит в `dnsNames` сертификата
+      # (`kacho-umbrella-pg-iam`). Оно же стоит в `dnsNames` сертификата
       # приёмника: проверка сертификата сверяет ИМЯ СОЕДИНЕНИЯ, поэтому
       # расхождение этих двух мест дало бы отказ проверки, а не отказ связи.
       #
@@ -131,28 +122,6 @@ global:
         trustAnchorSecret:
           name: kacho-mailpit-tls
           key: ca.crt
-      # ─── СХЕМЫ, УНАСЛЕДОВАННЫЕ ОТ СЛОЯ ПОД НАМИ ─────────────────────────
-      #
-      # Служба личности получает ДВА файла настроек; наш — второй, и его
-      # секция `identity.schemas` СПИСОК, то есть замещает чужую целиком, а
-      # не дополняет. Всё, что объявил подчарт провайдера ниже, из
-      # конфигурации исчезает — а строки личностей, созданные до смены
-      # схемы, ссылаются на неё ПО ИМЕНИ и без объявления не читаются
-      # (`500 invalid_configuration`).
-      #
-      # Поэтому здесь стоит ЯКОРЬ, а ниже — ССЫЛКА на него: тело схемы
-      # объявлено ОДИН раз и одним узлом YAML. Копия расходится молча, и
-      # разойтись она может только в одну сторону — процесс возьмёт ту,
-      # что стоит позже, то есть нашу. Якорь делает расхождение
-      # невозможным by construction, а не проверяемым.
-      #
-      # Правя объявление провайдера ниже, правьте ЭТОТ узел: alias
-      # подхватит правку сам. Читатель узла — шаблон поставщика в подчарте
-      # службы — снят вместе с пробой покрытия (kacho#2818); узел уходит с
-      # подчартом поставщика (#1276).
-      inheritedSchemas: &kachoInheritedIdentitySchemas
-        - id: default
-          url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
 
 # ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
 # The whole scheme runs on mTLS: cert-manager mints an internal-CA, every
@@ -566,9 +535,8 @@ pg-storage:
       limits:   { cpu: 1500m, memory: 1Gi }
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -676,9 +644,8 @@ pg-vpc:
       autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -715,9 +682,8 @@ pg-compute:
       autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -776,7 +742,6 @@ vpc:
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):
 #   pg-iam      → kaname (схема kaname)
 # В dev — emptyDir (без persistence), небольшие resource-лимиты.
-# KAC-127: pg-zitadel удалён — auth-tier (identity/OIDC) на Ory (Kratos/Hydra).
 
 pg-iam:
   auth:
@@ -818,9 +783,8 @@ pg-iam:
       autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -855,9 +819,8 @@ pg-geo:
       effective_cache_size = 512MB
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -898,9 +861,8 @@ pg-nlb:
       autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
@@ -909,687 +871,8 @@ pg-nlb:
     image:
       repository: bitnamilegacy/os-shell
 
-# KAC-127: Zitadel chart + конфиг удалены — auth-tier (identity/OIDC) на Ory
-# Kratos + Hydra. OIDC issuer для kaname теперь Hydra.
-
-# KAC-115: Ory stack — Kratos (identity) + Hydra (OIDC) + Keto (REBAC).
-# Включаются вместо Zitadel через overrides.yaml.
-
-pg-kratos:
-  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
-  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
-  global: { security: { allowInsecureImages: true } }
-  image:
-    registry: docker.io
-    repository: bitnamilegacy/postgresql
-    tag: "16.4.0-debian-12-r0"
-  auth:
-    username: kratos
-    password: changeme-dev-kratos
-    database: kratos
-  primary:
-    persistence: { enabled: true, size: 1Gi }
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits:   { cpu: 1, memory: 1Gi }
-
-pg-hydra:
-  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
-  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
-  global: { security: { allowInsecureImages: true } }
-  image:
-    registry: docker.io
-    repository: bitnamilegacy/postgresql
-    tag: "16.4.0-debian-12-r0"
-  auth:
-    username: hydra
-    password: changeme-dev-hydra
-    database: hydra
-  primary:
-    persistence: { enabled: true, size: 1Gi }
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits:   { cpu: 1, memory: 1Gi }
-
-kratos:
-  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
-  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
-  deployment:
-    # ─── КОНФИГУРАЦИЯ ДОЛЖНА ДОЕЗЖАТЬ ДО ПРОЦЕССА, А НЕ ТОЛЬКО РЕНДЕРИТЬСЯ ─────
-    #
-    # Карты настроек `kaname-kratos-{config,hooks,identity-schema}` собирает
-    # наш подчарт, и до этой провязки их НИКТО не монтировал: служба личности
-    # работала на СОКРАЩЁННОЙ конфигурации подчарта поставщика (перечень её
-    # разделов здесь не воспроизводится — он был бы вторым местом об одном
-    # предмете). Практическое следствие — обе полосы обратных вызовов (заведение
-    # пользователя и завершение восстановления доступа) не исполнялись ни на
-    # одном стенде, а схема личности подменялась умолчанием поставщика.
-    #
-    # Со стороны это выглядело исправным: шаблоны рендерились, карты в кластере
-    # присутствовали, транспорт полос был объявлен защищённым и проверялся
-    # соседней пробой. Не хватало ровно одного — чтения.
-    #
-    # Служба принимает НЕСКОЛЬКО файлов конфигурации и сливает их по порядку,
-    # поэтому наш файл идёт ВТОРЫМ — и всякий раздел, который объявляем МЫ,
-    # ЗАМЕЩАЕТ одноимённый раздел поставщика ЦЕЛИКОМ, а не дополняет его.
-    #
-    # Здесь стояло обратное — «дополняет базовый, а не заменяет его: DSN, адреса
-    # слушателей и почтовая полоса остаются за подчартом поставщика», — и из трёх
-    # названных разделов верно было ОДНО. Наш шаблон объявляет и адреса
-    # слушателей, и почтовую полосу (последнюю — безусловно); за поставщиком из
-    # перечисленного остаётся только DSN. Цена ложного перечня измерима и почти
-    # наступила: по нему делался вывод о МЕСТЕ ПРАВКИ почтовой полосы, и вывод
-    # был бы неверным — правится она в нашем шаблоне.
-    #
-    # Перечень разделов здесь НЕ ВОСПРОИЗВОДИТСЯ: он машинно выводим из
-    # `_identity-provider.tpl`, а второе его изложение переживает правку шаблона
-    # молча. Рукописный перечень — находка MAIL-54
-    # (deploy/identity_mail_lane_single_declaration_test.go).
-    #
-    # Пути не выдуманы здесь: они те же, что уже стоят внутри самой
-    # конфигурации (`file:///etc/config/kratos/...`), поэтому провязка сводится
-    # к монтированию каталога, а не к правке ссылок. Отдельные файлы монтируются через
-    # subPath — два тома на один каталог не поставить.
-    extraArgs:
-      - --config
-      - /etc/kaname-identity-rendered/kratos.yaml
-    # ─── ВЕЛИЧИНА ОБРАТНОГО ВЫЗОВА ОБЯЗАНА ДОЕХАТЬ ДО ПРОЦЕССА ────────────────
-    #
-    # Конфигурация объявляет учётные данные обратных вызовов как `${KANAME_HOOK_TOKEN}`
-    # — то есть рассчитывает на подстановку. Служба личности подстановки в
-    # ЗНАЧЕНИЯХ конфигурации НЕ делает: она переопределяет ключи переменными по
-    # пути, а элемент массива хуков таким путём невыразим. Значит строка уезжала
-    # в заголовок ДОСЛОВНО, служба прав отвечала `401`, а провайдер — `502`:
-    # вход паролем не проходил, посев церемонии не вставал, девять коллекций
-    # оставались без отчёта (прогон 32532668160, задача #948).
-    #
-    # Подставляем в поде, ДО старта процесса. Образ берётся ТОТ ЖЕ, что у
-    # главного контейнера, — ничего нового не тянем, и версия совпадает by
-    # construction. Секрет при этом не попадает ни в карту настроек, ни в рендер
-    # чарта: он приезжает из существующего Secret прямо в память init-контейнера.
-    #
-    # ОТКАЗ ЗАКРЫТЫЙ: пустая величина и любая непод­ставленная ссылка роняют
-    # запуск с текстом, называющим ручку. Молчаливый проход здесь означал бы
-    # ровно тот дефект, который чинится: полоса исполняется и отвергается.
-    extraInitContainers: |
-      {{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}
-    # ─── ОТПЕЧАТКИ СОДЕРЖИМОГО: без них правка настроек НЕ ПЕРЕКАТЫВАЕТ под ────
-    #
-    # Настройки приезжают томом и читаются процессом ОДИН РАЗ — на старте.
-    # Правка карты настроек не меняет шаблон пода, значит Kubernetes под НЕ
-    # перекатывает, и процесс продолжает жить со старым содержимым, пока его не
-    # перезапустит что-нибудь постороннее. Дерево и работающая система
-    # расходятся МОЛЧА, а любой гейт, читающий рендер, отчитается новым значением.
-    #
-    # ПОЧЕМУ ПЕРЕМЕННЫЕ, А НЕ АННОТАЦИЯ. Из ручек чарта провайдера через
-    # шаблонизацию (`tpl`) проходит РОВНО ОДНА — `deployment.extraEnv`;
-    # `deployment.annotations` и `podMetadata.annotations` идут прямым `toYaml`,
-    # и вычислить в них sha256 не из чего. Тот же вывод и та же развилка, что у
-    # соседа-терминатора административного перехода (_admin-hop-tls.tpl).
-    #
-    # Значения НЕ читаются процессом — они существуют ради того, чтобы шаблон
-    # пода менялся вместе с содержимым. Отпечаток берётся с ТОГО ЖЕ
-    # именованного шаблона, из которого рендерится сама карта настроек, поэтому
-    # соответствие доказано построением, а не заявлено.
-    #
-    # Курьер наследует эти переменные тем же способом, каким наследует тома
-    # (`statefulSet.extraEnv` пуст ⇒ берётся `deployment.extraEnv`), поэтому
-    # привязку получают ОБА рабочих объекта.
-    extraEnv:
-      - name: KACHO_IDENTITY_CONFIG_SHA256
-        value: '{{ printf "%s\n" (include "kacho.identity.configYaml" .) | sha256sum }}'
-      - name: KACHO_IDENTITY_SCHEMA_SHA256
-        value: '{{ printf "%s\n" (include "kacho.identity.schemaJSON" .) | sha256sum }}'
-      - name: KACHO_IDENTITY_HOOKS_SHA256
-        value: '{{ printf "%s\n%s\n" (include "kacho.identity.hookIdentityPayload" .) (include "kacho.identity.hookRecoveryPayload" .) | sha256sum }}'
-      # ─── ЯКОРЬ ПРОВЕРКИ СЕРТИФИКАТА ПОЧТОВОГО УЗЛА (решение Р5) ───────────
-      #
-      # Полоса до приёмника шифрована (`smtp://` ⇒ STARTTLS), а сертификат он
-      # предъявляет ВНУТРЕННЕГО удостоверяющего — того же, что и весь остальной
-      # стенд. В корневых хранилищах образа такого якоря нет, поэтому проверка
-      # отвергла бы соединение, и отвергла бы ПРАВИЛЬНО: шифрование без
-      # проверки якоря защищает от подслушивания и не защищает от подмены.
-      #
-      # Отсюда переменная: библиотека времени исполнения службы личности читает
-      # `SSL_CERT_FILE` при сборке корневого набора. Величина адресует `ca.crt`
-      # ТОГО ЖЕ секрета, который cert-manager выпускает приёмнику, — то есть
-      # якорь и предъявляемый сертификат приходят из одного источника by
-      # construction, и разойтись им негде.
-      #
-      # ЧТО ЭТА ВЕЛИЧИНА НЕ ДЕЛАЕТ: она не отменяет остальные корневые якоря —
-      # каталог системных корней читается отдельной переменной и здесь не
-      # трогается. На этом стенде исходящих соединений с публичными якорями у
-      # службы личности нет вовсе (база — без TLS, обратные вызовы — по `http`),
-      # поэтому и предмета у такой отмены нет.
-      #
-      # Курьер наследует переменные тем же способом, каким наследует тома, —
-      # значит якорь получает и ПОЧТОВЫЙ объект, а письма шлёт именно он.
-      # ДОВЕРИЕ: ДОПОЛНЯЕТ
-      #
-      # Переменная замещает список ФАЙЛОВ, но не список КАТАЛОГОВ, поэтому
-      # набор корней остаётся объединением: замер даёт 123 → 124, а не 123 → 1.
-      # Исключительность потребовала бы пинить обе переменные — и сломала бы
-      # fail-closed почтового курьера, который в иной посадке смотрит на шлюз
-      # TLS. Здесь якорь ДОБАВЛЯЕТСЯ, и это решение, а не побочный эффект.
-      - name: SSL_CERT_FILE
-        value: /etc/kacho-mail-anchor/ca.crt
-    extraVolumes:
-      - name: kacho-identity-config
-        configMap:
-          name: kaname-kratos-config
-      # Отрендеренная конфигурация: её пишет init-контейнер, читает процесс.
-      # Том пода, а не карта настроек, — величина обратного вызова не обязана
-      # существовать нигде, кроме памяти этих двух контейнеров.
-      - name: kacho-identity-rendered
-        emptyDir: {}
-      - name: kacho-identity-hooks
-        configMap:
-          name: kaname-kratos-hooks
-      - name: kacho-identity-schema
-        configMap:
-          name: kaname-kratos-identity-schema
-      # Якорь проверки сертификата почтового узла. Проецируется ОДИН ключ:
-      # секрет несёт ещё и закрытый ключ приёмника, а он службе личности не
-      # нужен ни для чего. Ключ, смонтированный «за компанию», — это доступ,
-      # которого никто не решал.
-      - name: kacho-mail-anchor
-        secret:
-          secretName: kacho-mailpit-tls
-          items:
-            - key: ca.crt
-              path: ca.crt
-    extraVolumeMounts:
-      # Шаблон конфигурации главному контейнеру НЕ монтируется: он читает
-      # отрендеренное. Смонтировать оба значило бы держать рядом два файла, из
-      # которых один рабочий, — и следующая правка `--config` вернула бы дефект.
-      - name: kacho-identity-rendered
-        mountPath: /etc/kaname-identity-rendered
-        readOnly: true
-      - name: kacho-identity-schema
-        mountPath: /etc/kaname-identity/identity.schema.json
-        subPath: identity.schema.json
-        readOnly: true
-      - name: kacho-identity-hooks
-        mountPath: /etc/kaname-identity/hooks
-        readOnly: true
-      - name: kacho-mail-anchor
-        mountPath: /etc/kacho-mail-anchor
-        readOnly: true
-  # ─── ПОЧТОВЫЙ ПРОЦЕСС ЧИТАЕТ ТО ЖЕ, ЧТО ОСНОВНОЙ ─────────────────────────
-  #
-  # Раздача настроек двум рабочим объектам службы личности НЕСИММЕТРИЧНА, и это
-  # свойство ЧУЖОГО чарта, а не наше решение: тома, монтирования, переменные и
-  # init-контейнеры почтовый процесс НАСЛЕДУЕТ от основного, когда своих не
-  # объявлено, — а аргументы командной строки НЕ наследует: у него своя ручка.
-  #
-  # Поэтому строки ниже — не дубль ради симметрии, и снимать их как избыточные
-  # нельзя. Без них карты настроек до почтового процесса ДОЕЗЖАЮТ томами, а
-  # указание их читать — нет: со стороны кластера всё смонтировано, со стороны
-  # процесса не изменилось ничего. Письма шлёт именно он, а раздел
-  # `courier.smtp` живёт в той самой конфигурации — значит отправителя и шлюз
-  # мы бы объявляли, применялись бы чужие умолчания, и заметить это неоткуда:
-  # письма продолжают уходить.
-  #
-  # Путь тот же, что у основного процесса, и это обязано остаться так: файл
-  # один. Проба согласия двух ручек снята вместе с картами поставщика подчарта
-  # службы (kacho#2818); предпосылку о чужом чарте перемеряет
-  # deploy/identity_courier_arg_premise_test.go до снятия подчарта (#1276).
-  statefulSet:
-    extraArgs:
-      - --config
-      - /etc/kaname-identity-rendered/kratos.yaml
-  kratos:
-    development: true
-    automigration:
-      enabled: true
-      # KAC-127: type=initContainer вместо дефолтного `job`. Ory-чарт по дефолту
-      # вешает на migration-Job pre-install hook (job.annotations в values чарта) →
-      # Job стартует ДО pg-kratos (обычный release-ресурс) → DNS-резолв
-      # `kacho-umbrella-pg-kratos` фейлится навсегда → hook не завершается →
-      # `helm --wait` блокируется → release failed. initContainer-режим исполняет
-      # миграцию как init-container Kratos-пода — отдельного hook-Job нет.
-      type: initContainer
-    config:
-      dsn: "postgres://kratos:changeme-dev-kratos@kacho-umbrella-pg-kratos:5432/kratos?sslmode=disable"
-      serve:
-        public:
-          # Relative base_url — генерируемые links резолвятся к текущему origin
-          # клиента (на каком бы port-forward порту он ни был — :9091, :18888,
-          # :28080). Cookies остаются same-origin → пользователь должен
-          # использовать ОДИН port в течение session, но любой работает.
-          base_url: "/.ory/kratos/public/"
-          cors:
-            enabled: true
-            # Dev: allow any localhost / 127.0.0.1 port (любое port-forward).
-            allowed_origins: ["*"]
-        admin:
-          base_url: "http://kacho-umbrella-kratos-admin:80/"
-      selfservice:
-        # Все browser-redirect URLs — relative. Браузер сам резолвит к текущему origin.
-        default_browser_return_url: "/"
-        # ─── ЭТОТ СПИСОК ДО ПРОЦЕССА НЕ ДОЕЗЖАЕТ (#1238) ─────────────────────
-        #
-        # Здесь стояло «whitelist для return_to query — relative + любой
-        # localhost-port», и это утверждение пережило свой предмет. Служба
-        # получает ДВА файла настроек и сливает их по порядку; наш идёт ВТОРЫМ, а
-        # список под общим ключом не дополняется — он ЗАМЕЩАЕТСЯ целиком. Значит
-        # действовала ОДНА запись из тела продукта — шаблона поставщика в
-        # подчарте службы, снятого вместе с ведомостью решений о замещаемых
-        # списках (kacho#2818); эти десять — умолчание, которое к процессу не
-        # относится, и уходит с подчартом поставщика (#1276).
-        allowed_return_urls:
-          - "/"
-          - "/dashboard"
-          - "http://localhost:9091/"
-          - "http://localhost:18888/"
-          - "http://localhost:28080/"
-          - "http://localhost:8080/"
-          - "http://127.0.0.1:9091/"
-          - "http://127.0.0.1:18888/"
-          - "http://127.0.0.1:28080/"
-          - "http://console.kacho.local/"
-        # ─── МЕТОДЫ ВХОДА ЗДЕСЬ НЕ ОБЪЯВЛЯЮТСЯ (#1213) ────────────────────────
-        #
-        # Здесь стоял перечень методов, и он ПРОТИВОРЕЧИЛ единственному
-        # объявлению продукта (`charts/kaname/templates/_identity-provider.tpl`):
-        # там одноразовый код по времени включён, здесь — выключен. Процесс
-        # получает оба файла и сливает их по порядку, то есть какая из двух
-        # величин победит, решал ПОРЯДОК, которого никто не выбирал.
-        #
-        # Цена измерена: замер на стенде читал метод второго фактора выключенным
-        # (эта строка) при включённом в дереве, и вывод «второй уровень
-        # уверенности недостижим» строился на половине правды. А недостижимый
-        # второй уровень означает, что 32 глагола каталога прав с полом «2»
-        # закрыты из браузера ДЛЯ ВСЕХ.
-        #
-        # Методы объявляются ОДИН раз, в теле настроек продукта. Держит это
-        # `deploy/identity_second_factor_reachable_test.go`: профиль, который
-        # доводит наши настройки до процесса и при этом сам высказывается о
-        # методах второго фактора, — находка.
-        flows:
-          registration:
-            enabled: true
-            ui_url: "/registration"
-            after:
-              password: { hooks: [{ hook: "session" }] }
-          login:
-            ui_url: "/login"
-          settings:
-            ui_url: "/settings"
-          # ─── О ПОТОКАХ ДОСТАВКИ ЭТОТ ПРОФИЛЬ НЕ ВЫСКАЗЫВАЕТСЯ (MAIL-18) ────
-          #
-          # Здесь стояли `recovery` и `verification`. Оба были ВТОРЫМ мнением:
-          # наша конфигурация личности объявляет раздел `selfservice` целиком и
-          # идёт вторым файлом, поэтому одноимённый раздел поставщика замещается
-          # ею полностью. Две величины доезжали до процесса, и какая применится,
-          # решал бы порядок слияния, а не решение.
-          #
-          # Практическая цена была наблюдаема: поток подтверждения объявлялся
-          # здесь ВЫКЛЮЧЕННЫМ рядом с ВКЛЮЧЁННЫМ в единственном объявлении, при
-          # том что требование подтверждённого адреса на входе никуда не
-          # девалось. Это и есть #1234, и складывается он только из СУММЫ
-          # источников — по файлу каждый из них внутренне согласован.
-          #
-          # Потоки, доставляемые письмом, объявлялись один раз — шаблоном
-          # поставщика в подчарте службы; шаблон и проба единственности сняты
-          # вместе (kacho#2818), а этот раздел уходит с подчартом (#1276).
-          error:
-            ui_url: "/error"
-      log:
-        level: info
-        format: json
-      secrets:
-        default: ["please-change-this-32-bytes-D3Fx"]
-        cookie: ["please-change-this-32-bytes-A1Bx"]
-        cipher: ["please-change-this-32-bytes-A1Bx"]
-      session:
-        lifespan: "24h"
-      identity:
-        default_schema_id: default
-        # Тело схемы объявлено ОДНИМ узлом — в global.kacho.identity.inheritedSchemas
-        # (см. разбор там же). Здесь стоит ссылка на него, потому что нашей
-        # секции настроек значения подчарта провайдера не видны, а копия
-        # литерала разошлась бы молча.
-        schemas: *kachoInheritedIdentitySchemas
-      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ (решение Р27) ──────────────
-      #
-      # Он здесь стоял и был ВТОРЫМ объявлением почтовой полосы. Единственное
-      # объявление — наша конфигурация личности (`_identity-provider.tpl`),
-      # питаемая `global.kacho.identity.smtp.*`; наш файл идёт вторым в цепочке
-      # `--config`, поэтому раздел `courier`, объявленный нами, замещает
-      # одноимённый раздел поставщика ЦЕЛИКОМ. Пока об одной полосе
-      # высказывались два места, какое из них доедет до процесса, решал бы
-      # порядок слияния, а не решение.
-      #
-      # Держит MAIL-54 — deploy/identity_mail_lane_single_declaration_test.go:
-      # возвращённый блок здесь — находка с именем профиля.
-  # ─── ТРЕТЬЕЙ КОПИИ ТЕЛА СХЕМЫ ЗДЕСЬ НЕТ (#1239) ───────────────────────────
-  #
-  # Здесь стояло `identitySchemas` с телом схемы, дословно совпадавшим с телом
-  # унаследованной схемы выше (совпадал и `$id`). Объявление было МЁРТВЫМ:
-  # подчарт поставщика читает `.Values.kratos.identitySchemas`, то есть уровнем
-  # НИЖЕ этого ключа, поэтому оно не резолвилось и в рендер не попадало — в
-  # карте настроек службы личности как был, так и остался единственный ключ
-  # `kratos.yaml` (сверено рендером до и после снятия: состав ключей тот же).
-  #
-  # Снято, а не перенесено под своего читателя: тело уже приезжает процессу
-  # ссылкой на якорь `kachoInheritedIdentitySchemas` (см. выше), отдельный файл
-  # схемы рядом с ним никому не нужен, а перенос дал бы ЧЕТВЁРТОЕ место об одном
-  # предмете. Мёртвое объявление хуже лишнего: следующий читатель принимает его
-  # за действующее и правит ЕГО вместо живого.
-  #
-  # Держит `deploy/identity_schema_body_single_node_test.go`: тело схемы
-  # объявляется ОДНИМ узлом, и узел этот обязан нести имя якоря.
-
-# KAC-127 Phase 2 — Hydra OAuth 2.1 + DPoP + mTLS-bound + JWT-strategy.
-# Acceptance §5.2: refresh rotation (force-rotate, 1s race window), PKCE mandatory,
-# Implicit + ROPC grants disabled, TTLs (access 15min / refresh 30d / id 15min / auth_code 1min),
-# JWT signing (RS256 / ES256 / EdDSA), token_hook + refresh_hook → kaname :9091.
-#
-# Dev-стенд (kind, kacho.local) — `enabled: false` по умолчанию; включается через
-# overrides.yaml в clusters/<cluster>/. URLs используют intentional dev-IP
-# (localhost:28080 — kind ingress, host-port 28080). Prod-overlay переопределит
-# все `urls.*` через `{{ .Values.kacho.domain }}` — см. values.prod.yaml.
-hydra:
-  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
-  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
-  hydra:
-    automigration:
-      enabled: true
-      # KAC-127: type=initContainer вместо `job` — устраняет pre-install hook
-      # deadlock (migration-Job дефолтно hook'нут pre-install, стартует до
-      # pg-hydra → DNS-резолв фейлится → `helm --wait` блокируется). См.
-      # аналогичный комментарий у kratos.automigration выше.
-      type: initContainer
-    dev: true
-    config:
-      dsn: "postgres://hydra:changeme-dev-hydra@kacho-umbrella-pg-hydra:5432/hydra?sslmode=disable"
-      serve:
-        public:
-          cors:
-            enabled: true
-            # Dev: любой localhost port.
-            allowed_origins: ["*"]
-      urls:
-        # Dev: browser-redirect URLs (consent/login/logout/error/post_logout) — relative
-        # paths, резолвятся к текущему origin клиента (любой port-forward работает без
-        # пересоздания config). В prod values.prod.yaml override'ит на полные https URLs.
-        self:
-          # `self.public` + `self.issuer` ОБЯЗАНЫ быть full URI (Hydra schema validation).
-          # Они идут в JWT `iss` claim — identity-string, browser туда НЕ ходит.
-          # Любой stable URL подойдёт (api-gateway validation должна совпасть). Для
-          # dev оставляем :28080-prefix — это просто identity, не navigation
-          # endpoint. Все NAVIGATION URLs ниже — relative (port-portable).
-          public: "http://localhost:28080/.ory/hydra/public/"
-          issuer: "http://localhost:28080/.ory/hydra/public/"
-        consent: "/consent"
-        login: "/login"
-        logout: "/logout"
-        error: "/error"
-        post_logout_redirect: "/"
-        # KAC-127 (deploy#37): `urls.identity_provider.publicly_writable` удалён —
-        # ключ не существует в Hydra v26.2.0 config-schema (`urls.identity_provider`
-        # принимает только `url` / `publicUrl` / `headers`). Динамическая
-        # OAuth2-client-регистрация и так выключена by-default; Hydra-admin
-        # `/clients` endpoint остаётся cluster-internal через Service-разделение.
-      secrets:
-        system: ["please-change-this-32-bytes-A1Bx"]
-      # ─── OAuth 2.1 / DPoP / mTLS-bound / JWT strategy (acceptance §5.2) ──
-      strategies:
-        # Self-contained JWT access tokens: api-gateway проверяет ПОДПИСЬ локально,
-        # по JWKS, без обращения к провайдеру (acceptance §2.3 token shape).
-        # Отзыв — отдельный вопрос и отдельный поход: см. блок revocation в
-        # api-gateway.hydra выше. Подпись локальна, отзыв — нет.
-        access_token: jwt
-        jwt:
-          scope_claim: list
-      ttl:
-        # Acceptance §5.2 — TTL discipline. The production value (15m) lives in
-        # values.prod.yaml. NOTE: that was not true until 2026-07-27 — this
-        # comment asserted a production block that did not exist, and because
-        # the profiles are NOT layered (values.prod.yaml renders standalone,
-        # never on top of this file) production was inheriting the identity
-        # provider's own 1h default. The block now exists there; keep the two in
-        # deliberate disagreement only for the documented reason below.
-        # LOCAL TEST-STAND override (#69): e2e waves run 30-40 min serially (iam runs its
-        # ~30 collections under the EXCLUSIVE-lock rule) and outran a 15m access_token → late
-        # collections failed 401 ("expected 401 == 200") — a token-expiry ARTIFACT, not a
-        # product/authz defect. This file drives ONLY the local dev/e2e stand (production
-        # fe3455 deploys values.prod.yaml, unchanged 15m). 4h covers the longest wave with
-        # headroom so a single seed's RS256 tokens survive the whole run without re-mint.
-        access_token: 4h
-        refresh_token: 720h        # 30 days
-        id_token: 15m
-        auth_code: 1m
-      oauth2:
-        expose_internal_errors: true
-        # OAuth 2.1 §6.1 — PKCE mandatory + refresh-token rotation с reuse-detection
-        # → family-revoke (acceptance §2.9).
-        pkce:
-          enforced: true
-          enforced_for_public_clients: true
-        # KAC-127 (deploy#37): `grant` в Hydra v26.2.0 принимает только `jwt`
-        # и `refresh_token`. Старый `grant.authorization_code.{require_pkce,ttl}`
-        # удалён — PKCE-enforcement задаётся через `oauth2.pkce.*` выше,
-        # auth_code-TTL — через `ttl.auth_code` (1m, см. блок ttl выше).
-        grant:
-          jwt:
-            # Phase 3b (Federation IN, RFC 7521/7523): assertion handling.
-            # Hydra v26.2.0 schema for `oauth2.grant.jwt`: only iat_optional,
-            # jti_optional, jwks_uri, max_ttl. The previously-added
-            # `scope_claim: scope` is REJECTED by the schema validator and
-            # crashes Hydra on boot ("additionalProperties scope_claim not
-            # allowed"). Per-issuer scope handling is governed by the
-            # admin-API trust-grant `scope` array, not by a global claim
-            # mapping.
-            iat_optional: false      # assertion MUST carry `iat`
-            jti_optional: false      # assertion MUST carry `jti` (anti-replay)
-            max_ttl: 720h            # assertion `exp - iat` upper bound
-          # Refresh-token rotation (OAuth 2.1 §6.1) — в v26.2.0 rotation ВСЕГДА
-          # включён (старый toggle `oauth2.refresh_token_rotation` упразднён);
-          # настраивается только grace-window. `rotation_grace_period: 1s` —
-          # concurrent legit refresh (две вкладки); reuse вне grace → family-revoke.
-          # Старые `oauth2.refresh_token_rotation` /
-          # `refresh_token_rotation_grace_period` /
-          # `refresh_token_grant_skip_token_binding_validation` удалены —
-          # их нет в v26.2.0 schema.
-          refresh_token:
-            rotation_grace_period: 1s
-        exclude_not_before_claim: false
-        # Phase 2 — `ext_claims` — обёртка, под которой token_hook
-        # возвращает kaname_*-claim'ы (см. handler/iamhooks/token_hook_handler.go).
-        # Phase 3a — добавляем индивидуальные kaname_* claim'ы как
-        # top-level allowed, чтобы кашо-policy-движки могли читать их
-        # без unwrap'а `ext_claims` (private_key_jwt SA-токены / interactive
-        # user-токены — оба пути).
-        allowed_top_level_claims:
-          - ext_claims
-          # SA / user principal — Phase 3a token_hook enrichment
-          - kaname_principal_type
-          - kaname_principal_id
-          - kaname_account_id
-          - kaname_active_account
-          - kaname_user_id
-          - kaname_sa_key_id
-          - kaname_hydra_client_id
-        client_credentials:
-          default_grant_allowed_scope: false
-        # KAC-127 (deploy#37): глобальные `oauth2.dpop` / `oauth2.mtls` блоки
-        # удалены — их нет в Hydra v26.2.0 config-schema. В v26.2.0 sender-
-        # constrained tokens конфигурируются per-client, а не глобально:
-        #   - DPoP (RFC 9449)   — через client-metadata `dpop_bound_access_tokens`
-        #     при регистрации OAuth2-клиента (Hydra-admin `/clients`);
-        #   - mTLS (RFC 8705)   — через client `tls_client_auth_*` /
-        #     `tls_client_certificate_bound_access_tokens`.
-        # Acceptance §6.4/§6.5 — enforcement переезжает на per-client регистрацию
-        # (см. kaname client-bootstrap); глобального config-knob нет.
-        # token_hook + refresh_hook → kaname HTTP hooks listener (acceptance §5.4).
-        # KAC-127 (deploy#39): URL исправлен — webhook'и обслуживает HTTP-listener
-        # на :9092 Service'а `kaname-internal` (НЕ gRPC :9091 на `kaname`).
-        #
-        # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ПУСТА НАМЕРЕННО (задача #948) ────────────
-        #
-        # Здесь стояло `${KANAME_HOOK_TOKEN}`, и этот профиль НЕ объявлял ни
-        # одного источника — то есть провайдер отправлял ЭТУ САМУЮ СТРОКУ в
-        # заголовке, служба прав её отвергала (`401`), а край переводил отказ
-        # арендатору как `502`. Профиль поднимается первой фазой `make dev-up` и
-        # ждёт готовности в этом состоянии, поэтому полоса обратных вызовов на
-        # нём была мертва целиком.
-        #
-        # Подстановки в значениях конфигурации провайдер не делает — ИЗМЕРЕНО на
-        # oryd/hydra:v26.2.0 и oryd/kratos:v26.2.0 при переменной, ЗАВЕДЁННОЙ в
-        # поде: ссылка доживает до чтения дословно. Значит доставка переменной с
-        # этим именем предмет бы не закрыла.
-        #
-        # Величину задаёт переменная по ПУТИ КЛЮЧА (`deployment.extraEnv` ниже) —
-        # она перекрывает файл конфигурации. Пустая строка здесь остаётся потому,
-        # что ключ `value` требует схема провайдера (измерено: без ключа
-        # конфигурация отвергается целиком), и потому, что пустое значение
-        # никогда не читается как рабочее — в отличие от ссылки, обещающей
-        # подстановку, которой не будет.
-        token_hook:
-          url: "http://kaname-internal.kacho.svc:9092/iam/v1/hooks/token"
-          auth:
-            type: api_key
-            config:
-              in: header
-              name: X-Kacho-Hook-Token
-              value: ""
-        refresh_token_hook:
-          url: "http://kaname-internal.kacho.svc:9092/iam/v1/hooks/refresh"
-          auth:
-            type: api_key
-            config:
-              in: header
-              name: X-Kacho-Hook-Token
-              value: ""
-      # Этот набор целиком принадлежит Hydra: она генерирует keypair и
-      # подписывает им. iam его лишь проксирует байт-в-байт (:9097) для
-      # плоскости данных и НЕ ротирует.
-      #
-      # Утверждение относится к ЭТОМУ набору, а не к платформе: у платформы своя
-      # ключница, и на этом профиле она ОБЪЯВЛЕНА
-      # (`kaname.config.authn.tokenSigning` ниже) — под посадкой `own` без неё
-      # служба не стартует.
-      # Поставщик на этом стенде не поднимается вовсе (values.yaml, раздел «ЧУЖОЙ
-      # СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»), и этот блок его настроек не читается.
-      webfinger:
-        jwks:
-          broadcast_keys:
-            - hydra.openid.id-token         # signing-key set, наполняется САМОЙ Hydra
-      log:
-        level: info
-        format: json
-        leak_sensitive_values: true
-      tracing:
-        provider: otel
-        providers:
-          # KAC-127 (deploy#37): ключ `endpoint` переименован в `server_url` —
-          # Hydra v26.2.0 tracing-schema (ory/x otelx) принимает `otlp.server_url`.
-          otlp:
-            server_url: otel-collector.observability.svc:4317
-            insecure: true
-  # ─── ИСТОЧНИК ВЕЛИЧИНЫ ОБРАТНОГО ВЫЗОВА (задача #948) ──────────────────────
-  #
-  # Провайдер читает величину учётных данных ТОЛЬКО отсюда: подстановки `${…}`
-  # в значениях конфигурации он не делает (измерено — см. блок token_hook выше),
-  # а переменная по ПУТИ КЛЮЧА конфигурации файл перекрывает. Имя переменной —
-  # это и есть путь `oauth2.{token,refresh_token}_hook.auth.config.value`,
-  # заглавными и через подчёркивание; своей формой его не заменить.
-  #
-  # ССЫЛКА ОБЯЗАТЕЛЬНАЯ, А НЕ `optional: true`, И ЭТО ОСОЗНАННО. Необязательная
-  # ссылка на отсутствующий секрет даёт ПУСТУЮ величину — то есть ровно тот
-  # дефект, который здесь чинится: полоса исполняется и отвергается, а стенд
-  # выглядит поднятым. Обязательная не даёт контейнеру стартовать вовсе.
-  #
-  # Цена названа: секрет обязан существовать ДО первого прогона helm. Он и
-  # существует — `make dev-up` зовёт scripts/dev-prod-secrets.sh перед выкаткой
-  # продукта, и выполнимость этой ссылки держит deploy/tests/helm/
-  # prerequisite-secrets-test.sh (секрет заводит скрипт, который цель реально
-  # исполняет).
-  deployment:
-    extraEnv:
-      - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
-        valueFrom:
-          secretKeyRef:
-            name: kaname-hook-token
-            key: token
-      - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
-        valueFrom:
-          secretKeyRef:
-            name: kaname-hook-token
-            key: token
-
-  # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation.
-  # The counterpart is any OIDC-conformant workload-identity endpoint that
-  # exchanges a signed workload assertion for its own credential; Kachō speaks
-  # the standard, not one vendor's dialect. Production uses cert-manager + Let's
-  # Encrypt — see values.prod.yaml. Dev defaults below are DISABLED — local
-  # smoke runs via host-port 28080 + relative URLs (current `urls.self.issuer`
-  # http://localhost:28080/.ory/hydra/public/). Enable when you need to
-  # exercise the federation-OUT path locally with a fake DNS entry pointing
-  # `auth.kacho.local` at the kind ingress.
-  ingress:
-    public:
-      enabled: false
-      className: nginx
-      annotations:
-        cert-manager.io/cluster-issuer: kacho-selfsigned
-        nginx.ingress.kubernetes.io/proxy-body-size: "8k"
-      hosts:
-        - host: auth.kacho.local
-          paths:
-            - path: /
-              pathType: Prefix
-      tls:
-        - hosts:
-            - auth.kacho.local
-          secretName: hydra-public-tls
-    admin:
-      # Admin endpoint MUST stay cluster-internal — no external ingress, ever
-      # (it has unauthenticated `/admin/clients` write surface). Explicitly
-      # disabled here as a guardrail; enabling this is a security incident.
-      enabled: false
-
-# Ory Kratos self-service UI (login/registration/recovery/verification/settings).
-# Образ oryd/kratos-selfservice-ui-node. UI nginx проксирует /login,/registration,
-# /recovery,/verification,/settings,/error → этот pod на :3000.
-# Sub-chart `kratos-selfservice-ui` — значения под вложенным ключом kratosSelfServiceUI.
-kratos-selfservice-ui:
-  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
-  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
-  # Полоса потоков консоли к этому поду не рендерится ни на одной цепочке:
-  # адрес интерфейса поставщика в чарте консоли пуст по умолчанию
-  # (ui-future/deploy/values.yaml, `host.upstreams.kratosUi`) — и тем же
-  # изменением, что выключение здесь (#2777).
-  kratosSelfServiceUI:
-    image:
-      repository: oryd/kratos-selfservice-ui-node
-      # v26.2.0 — последний тег образа; прыжок с v1.3.1 объясняется сменой схемы
-      # версий у Ory (v1.3.1 → v25.x → v26.x), а не двадцатью пятью мажорами
-      # изменений. Проверено по каталогу тегов, а не по номеру.
-      tag: "v26.2.0"
-    # Относительный: значение уходит в редиректы, которые исполняет БРАУЗЕР.
-    # Абсолютное `http://localhost:28080/...` работало ровно для того, кто открыл
-    # консоль по этому адресу; на её собственном хосте регистрация упиралась в
-    # `404 nginx`, потому что редирект уводил на хост без ingress. Разбор и
-    # проверка — в умолчании чарта (charts/identity-selfservice-ui/values.yaml).
-    kratosBrowserUrl: "/.ory/kratos/public"
-    kratosPublicUrl: "http://kacho-umbrella-kratos-public:80"
-    hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"
-    # Dev-only throwaway signing secret (kind stand). Prod sources it from an
-    # operator-provisioned Secret via cookieSecret.existingSecret (values.prod.yaml).
-    cookieSecret:
-      value: "dev-only-throwaway-32-bytes-A1Bx"
-    # Dev stand talks plain-http to kratos/hydra upstreams → opt into skipping
-    # Node's outbound TLS verification. Production leaves this OFF (verify on).
-    insecureSkipTLSVerify: true
-
-# KAC-127: zitadelOidcBootstrap удалён — identity/OIDC tier перешёл на Ory
-# Kratos + Hydra (см. секции pg-kratos / pg-hydra выше).
-
 # kaname — control-plane сервис IAM (Account / Project / User / ServiceAccount /
-# Group / Role / AccessBinding). E0 — skeleton + CRUD; интеграция с Ory — E2/E3.
+# Group / Role / AccessBinding).
 kaname:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
   authMode: dev
@@ -2275,9 +1558,8 @@ pg-registry:
       limits:   { cpu: 1000m, memory: 1Gi }
   image:
     repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
+    # Тег ПРИПИНЕН и одинаков у всех инстансов. Умолчание чарта (16.1 на
+    # debian-11) в этом ряду НЕ работает: его initdb отказывается стартовать, когда не может
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.

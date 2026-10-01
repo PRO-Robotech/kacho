@@ -13,7 +13,7 @@
 # LAYERED ON TOP of values.dev.yaml (like values.fe3455.yaml is) — it inherits ALL
 # kind-local adaptations from dev (local `:dev` images — internal/productnaming
 # declares their names, ingress hostPort,
-# in-cluster Hydra issuer/JWKS, pg hosts + inline dev secrets) and flips ONLY the
+# in-cluster issuer/JWKS, pg hosts + inline dev secrets) and flips ONLY the
 # security knobs from insecure-dev → production:
 #
 #   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
@@ -24,7 +24,7 @@
 # ── What this flips (vs the insecure-dev base) ──────────────────────────────
 #   1. AuthN mode  dev → production / production-strict  (gateway, iam, vpc, geo,
 #      compute, storage, nlb, registry). Anonymous fail-closed; Bearer required;
-#      Hydra RS256 only (HS256 dev-secret path OFF). KACHO_APP_ENV=production so
+#      RS256 only (HS256 dev-secret path OFF). KACHO_APP_ENV=production so
 #      the composition-root prod-guard treats the deploy as production-class.
 #   2. AuthZ breakglass  true → false  (geo, registry). Real per-RPC IAM
 #      Check on BOTH listeners (public + internal :9091); no breakglass bypass.
@@ -42,11 +42,11 @@
 #      it and now the boot-guards REQUIRE it (production + mtls-off = refuse-start).
 #
 # ── Prerequisite secrets (provisioned out-of-band by scripts/dev-prod-secrets.sh) ─
-# iam production-strict Config.Validate fails fast without these (defense-in-depth):
-#   - kaname-hook-token       (key: token)    — Hydra token-hook HMAC
-#   - kaname-jwks-enc-key      (key: enc_key)  — JWKS private-key encryption
-# On the insecure-dev stand both are optional secretKeyRefs (absent) → dev iam
-# boots without them; production iam MUST have them.
+# iam production-strict Config.Validate fails fast without its key material
+# (defense-in-depth). What the seed provisions, and why each value is generated
+# ONCE, is written in the seed's own header — one place, not a copy here. The
+# callback-lane secret it used to provision is gone together with both of its
+# readers (the service's hooks listener, #2818; the identity provider, #1276).
 
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
 api-gateway:
@@ -515,8 +515,8 @@ registry:
   # Data-plane proxy (KACHO_REGISTRY_DATAPLANE_ADDR is always a non-empty listen addr →
   # the proxy is always built → its 3 production guards fire): (1) requireSecureJWKSURL —
   # verify docker identity-JWT via the iam :9097 JWKS proxy over HTTPS (unification: iam
-  # is the JWKS facade, NOT Hydra direct; chart default is http:// which FAILS the guard);
-  # (2) requireIssuerPinned — pin the expected iss to Hydra's self.issuer; (3) require
+  # is the JWKS facade, NOT the issuer direct; chart default is http:// which FAILS the
+  # guard); (2) requireIssuerPinned — pin the expected iss to our issuer; (3) require
   # DataplaneTLSAck — operator ack the plaintext data-plane sits behind external TLS.
   # The Docker data-plane itself is NOT exercised on kind (dataplaneLB off) — these are
   # config-level boot guards, no live fetch, so registry boots control-plane-only.
@@ -525,9 +525,10 @@ registry:
   # перечнем, что у края выше: прежний издатель ни на одном стенде не
   # поднимается (#2735).
   #
-  # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
-  # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
-  # бы то, ради чего смена вообще видна при старте — пересмотр пина издателя.
+  # Прежние ручки `registry.iam.jwksUrl` и пин издателя под именем прежнего
+  # поставщика личности СНЯТЫ, а не оставлены мостом: мост был бы вторым местом
+  # об одном предмете и обессмыслил бы то, ради чего смена вообще видна при
+  # старте — пересмотр пина издателя.
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:
@@ -804,294 +805,3 @@ pg-registry:
       shared_buffers = 128MB
       work_mem = 4MB
       autovacuum_naptime = 5s
-
-# ── Величина учётных данных обратного вызова провайдера → служба прав :9092 ──
-# Адрес полосы и форма заголовка приезжают из values.dev.yaml; здесь — только
-# ВЕЛИЧИНА, переменной по пути ключа конфигурации.
-#
-# ЗДЕСЬ БЫЛ ЗАПИСАН ДЕФЕКТ, КОТОРЫЙ ЭТОТ ЖЕ ФАЙЛ И ЛЕЧИЛ — ТОЛЬКО У СЕБЯ.
-# Прежняя редакция объясняла: в базовом профиле величиной стоит литерал
-# `${KANAME_HOOK_TOKEN}`, провайдер подстановки не делает, значит литерал
-# уезжает в заголовок и служба прав отвечает `401`. Всё верно — и починено было
-# только в этом наложении. Базовый профиль остался с литералом и без источника,
-# а `make dev-up` поднимает СНАЧАЛА его и ждёт готовности в этом состоянии
-# (задача #948). Сегодня источник объявлен в ОБОИХ профилях, литерала нет ни в
-# одном, а профиль, объявивший полосу без источника, не рендерится вовсе —
-# templates/identity-callback-credential-guard.yaml.
-#
-# Транспорт остаётся ОТКРЫТЫМ http — см. заметку про mtls службы прав выше:
-# TLS на её HTTP-листенерах сломал бы чтение ключей проверки краем (:9097).
-# Блок `deployment` — ключ ВЕРХНЕГО уровня чарта провайдера → hydra.deployment.
-hydra:
-  hydra:
-    # THE FLAG THAT MADE ALL OF THE BELOW INERT.
-    #
-    # `values.dev.yaml` sets `hydra.hydra.dev: true`, which starts the provider as
-    # `hydra serve all --dev`. That flag serves every listener in the CLEAR and makes a
-    # declared TLS block decoration: the admin certificate was issued, mounted and named
-    # in the config, `checksum/hydra-config` matched, the pod was current — and an
-    # openssl handshake against :4445 still answered `wrong version number`, i.e.
-    # plaintext. The subchart's own default is `false` and its comment says "not secure
-    # in production environments"; neither this overlay nor values.prod.yaml used to turn
-    # it back off, so the production profile inherited it from the dev base.
-    #
-    # Visible consequence: the gateway dialled https, got an HTTP answer, correctly
-    # classified it as MISCONFIGURATION rather than an outage (security.md §8) and
-    # fail-closed every request with `503 revocation check unavailable`. The whole API
-    # surface was dead — which is how a control that is present, wired and never
-    # exercised finally announced itself.
-    dev: false
-    config:
-      urls:
-        self:
-          # ISSUER TRAILING-SLASH: values.dev.yaml sets self.issuer WITH a trailing
-          # slash (http://localhost:28080/.ory/hydra/public/). Hydra stamps that exact
-          # string into every token's `iss`. But the api-gateway verifier normalises its
-          # EXPECTED issuer by STRIPPING the trailing slash (config.ResolvedHydraIssuer)
-          # and then does an EXACT `iss != expected` compare (jwt_verifier.go) — so a
-          # with-slash token `iss` never matches the no-slash expected → EVERY RS256 token
-          # fails validation (401 "token validation failed"), production-newman included.
-          # Align on the gateway's canonical no-slash form: drop the trailing slash from
-          # the issuer identity (the token `iss`). `public` (browser-facing base URL, kept
-          # in dev.yaml) is a SEPARATE knob and keeps its slash for routing. iam's assertion
-          # audience (ResolveHydraTokenEndpoint = TrimRight(issuer)+"/oauth2/token") is
-          # unaffected — it already trims — so the registry-token exchange still matches
-          # Hydra's token endpoint. (Контур бутстрапа с 2026-08-23 в этом перечне НЕ
-          # участвует: он чеканит сам, задача #1119.) Scoped to the production-mode overlay (dev-mode authn
-          # accepts HS256 and never verifies the Hydra `iss`, so dev.yaml is untouched).
-          # SCHEME IS https BECAUSE THE PROVIDER REFUSES ANYTHING ELSE WITHOUT ITS
-          # DEVELOPMENT FLAG (see `dev: false` above): «Scheme from configuration key
-          # `urls.self.issuer` must be `https` when `dev` is `false`».
-          #
-          # `iss` IS AN IDENTIFIER, NOT A TRANSPORT. Nothing dials this string — the
-          # provider stamps it into every token's `iss`, consumers compare it as a
-          # string, and the browser-facing base URL is the SEPARATE `self.public` knob
-          # (left in the clear). So moving the scheme here changes the token identity
-          # and nothing about how anybody connects.
-          #
-          # EVERY CONSUMER THAT PINS `iss` MUST CARRY THE SAME STRING, character for
-          # character, and there are four of them (gateway, iam, registry, and the
-          # harness's client_assertion audience). They are set together below; a
-          # mismatch is not a degraded mode — every RS256 token fails the iss check and
-          # the whole surface answers 401.
-          issuer: "https://localhost:28080/.ory/hydra/public"
-          # `public` MOVES WITH `issuer`, AND THIS IS THE WHOLE POINT OF THE PAIR.
-          #
-          # The provider derives its ADVERTISED `token_endpoint` from `self.public`, not
-          # from `self.issuer` — measured on the live discovery document:
-          #     issuer         = https://localhost:28080/.ory/hydra/public   (self.issuer)
-          #     token_endpoint = http://localhost:28080/.ory/hydra/public/oauth2/token
-          # while `iss` comes from `self.issuer`. Consumers that build the private_key_jwt
-          # `aud` as «issuer + /oauth2/token» (iam's ResolveHydraTokenEndpoint, and the
-          # harness) therefore sent an https audience to a provider advertising an http
-          # token endpoint, and every exchange came back «hydra rejected the token
-          # exchange» → iam answered `bootstrap token issuer unavailable` → the seed could
-          # not obtain its first token. (ИСТОРИЯ. С задачи #1119 контур бутстрапа
-          # чеканит сам и этой ошибки не производит — искать её текст в дереве
-          # бесполезно; разбор оставлен потому, что тот же класс живёт у остальных
-          # потребителей пары issuer/public.)
-          #
-          # This was self-inflicted: `issuer` had to become https (the provider refuses a
-          # non-https issuer without its development flag) and `public` was left behind, so
-          # the two disagreed. They describe the SAME identity and must move together.
-          #
-          # Neither is a transport: both are identifier strings on a stand whose listener
-          # is reached over plain http behind a trusted terminator. Changing them changes
-          # what the provider ADVERTISES and stamps, not how anybody connects.
-          public: "https://localhost:28080/.ory/hydra/public/"
-      # ПОЧЕМУ ЗДЕСЬ НЕТ ОБЪЯВЛЕНИЯ TLS ДЛЯ АДМИНИСТРАТИВНОГО ЛИСТЕНЕРА.
-      #
-      # Развёрнутая версия провайдера ручку TLS ОТДЕЛЬНОГО листенера НЕ ЧИТАЕТ:
-      # при выданном, смонтированном и названном в конфигурации сертификате
-      # рукопожатие отвечало ошибкой уровня протокола, а собственная строка
-      # провайдера при старте сообщала, что он поднял ПРОСТОЙ http-сервер на
-      # административном порту. Ручка общая, не полистенная.
-      #
-      # Это ИЗМЕРЕНО (координата и процедура перемера —
-      # deploy/PROVIDER-LISTENER-PREMISE.md), а не выведено из документации: до
-      # этого здесь подряд стояли два взаимоисключающих объяснения, и оба были
-      # неверны — второе ещё и укоряло первое за непроверенное утверждение.
-      #
-      # Поэтому TLS терминирует СОСЕД в этом же поде, а листенер провайдера
-      # уезжает на петлю (см. serve.admin ниже и deployment.extraContainers).
-      serve:
-        # WITHOUT `--dev` the provider refuses to serve a listener that has neither TLS
-        # nor a declared trusted terminator. The ADMIN listener has its own certificate
-        # (below). The PUBLIC OIDC listener is deliberately left in the clear on this
-        # stand — the ingress, the JWKS mirror and the token endpoint all reach it over
-        # plain http — so it is declared as terminated by a trusted peer instead: pod
-        # CIDR, service CIDR, the kind node subnet (kubectl port-forward arrives from the
-        # node) and loopback. Documented narrowing for this stand, not a blanket exemption.
-        #
-        # ONE `serve:` KEY. This block and the trusted-terminator list must stay merged:
-        # a second `serve:` mapping in the same parent is a duplicate YAML key, the later
-        # one silently wins, and the first one vanishes without a word from helm.
-        tls:
-          allow_termination_from:
-            - 10.244.0.0/16
-            - 10.96.0.0/12
-            - 172.18.0.0/16
-            # ПЕТЛЯ — ИСТОЧНИК ПЛЕЙНТЕКСТА ПОСЛЕ УВОДА ЛИСТЕНЕРА.
-            # Административный листенер слушает 127.0.0.1, и плейнтекст ему
-            # приносит СОСЕД ПО ПЕТЛЕ. Без этой записи провайдер боевого класса
-            # (без отладочного флага) отверг бы его как нетерминированный.
-            - 127.0.0.1/32
-        admin:
-          # ЛИСТЕНЕР СЛУШАЕТ ТОЛЬКО ПЕТЛЮ. Открытого участка между подами больше
-          # нет КАК ОБЪЕКТА: он не покидает пода. Это свойство по построению, а
-          # не следствие политики, которую надо выдать и поддерживать.
-          host: "127.0.0.1"
-          # ПОРТ УСТУПЛЕН СОСЕДУ. Единственная политика, называющая под
-          # провайдера, разрешает трафик к нему только на 4444/4445 и матчит
-          # ПОРТ ПОДА, поэтому инверсия оставляет переход внутри её объёма без
-          # расширения списка.
-          #
-          # НАЗЫВАТЬ ЭТО ОГРАНИЧЕНИЕ ДЕЙСТВУЮЩИМ НЕЛЬЗЯ, и прежняя редакция
-          # называла: политика выбирает поды по метке сайдкара, которую не
-          # эмитит ни один профиль (измерено рендером), а этот стенд политик не
-          # рендерит вовсе. Решение остаётся — верное и бесплатное, — но
-          # обоснование у него forward-looking, а не «сегодня запрещено».
-          # Счёт выбранных подов печатает admin-hop-port-policy-test.sh
-          # отдельной строкой открытого долга.
-          port: 4455
-  service:
-    admin:
-      # Service провайдера СНЯТ. После увода на петлю он целился бы в порт,
-      # который снаружи пода не отвечает: выглядел бы рабочим адресом и однажды
-      # получил бы потребителя — с тихим истечением срока вместо внятного
-      # отказа. Снятый, он даёт отказ РАЗРЕШЕНИЯ ИМЕНИ: забытый потребитель
-      # падает громко и сразу. Потребители адресуют Service терминатора
-      # (templates/admin-hop-tls-service.yaml).
-      enabled: false
-  deployment:
-    # ПРОБЫ ИДУТ ЧЕРЕЗ СОСЕДА К ЭНДПОИНТУ ЗДОРОВЬЯ ПРОВАЙДЕРА.
-    #
-    # Умолчание чарта — httpGet на порт административного листенера с заголовком
-    # `Host: 127.0.0.1`; исполняет их kubelet ПО АДРЕСУ ПОДА, а заголовок петлёй
-    # запрос не делает. После увода на петлю такое обращение невозможно by
-    # construction, и пробы, оставленные как есть, роняли бы под навсегда.
-    #
-    # ГОТОВНОСТЬ ЗАКРЫТА В ОБЕ СТОРОНЫ. Порт — СОСЕДА (значит мёртвый сосед ⇒
-    # соединение не установится ⇒ под не Ready — цена со-размещения, сделанная
-    # наблюдаемой), а ПУТЬ — здоровья ПРОВАЙДЕРА, который сосед проксирует на
-    # петлю (значит повисший провайдер ⇒ апстрим не ответит ⇒ под не Ready).
-    # Статического пути здоровья у соседа нет намеренно, и это ИСПОЛНЯЕТСЯ:
-    # deploy/tests/helm/admin-hop-pod-shape-test.sh краснеет на любом ответе
-    # соседа, не зависящем от апстрима, а живой гейт — на прочерке в полях
-    # апстрима его журнала. Прежде это свойство держалось на комментарии.
-    #
-    # Под провайдера несёт ОБА листенера, поэтому неготовность снимает конечные
-    # точки И административного перехода, И публичного OIDC — при том что
-    # публичному (ключи проверки подписи, токен-эндпоинт) состояние базы для
-    # ответа не требуется.
-    # ГОТОВНОСТЬ ЧИТАЕТ /health/alive, А ЗАПУСК — /health/ready. Прежняя редакция
-    # называла отступление наоборот («готовность читает /health/ready, а не
-    # /health/alive») — и втягивала в путь готовности ХРАНИЛИЩЕ, которого
-    # инварианту перехода не требуется: достаточно, чтобы отвечали оба процесса
-    # пода. Падение базы снимало конечные точки перехода целиком, и потребитель
-    # получал отказ разрешения адреса вместо честного отказа провайдера. Запуск
-    # по-прежнему ждёт /health/ready: до миграций трафик принимать нечего.
-    customReadinessProbe:
-      httpGet:
-        path: /health/alive
-        port: 4445
-        scheme: HTTPS
-      initialDelaySeconds: 5
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 3
-    customStartupProbe:
-      httpGet:
-        path: /health/ready
-        port: 4445
-        scheme: HTTPS
-      failureThreshold: 30
-      periodSeconds: 2
-      timeoutSeconds: 5
-    # ПРОБА ЖИВОСТИ ПРОВАЙДЕРА — ПО ЕГО СОБСТВЕННОМУ ПУБЛИЧНОМУ ЛИСТЕНЕРУ, а не
-    # через соседа: иначе сломанный СОСЕД перезапускал бы ПРОВАЙДЕРА. Зависший
-    # процесс без неё не перезапускается вовсе, и под остаётся неготовым
-    # бессрочно, унося конечные точки обоих сервисов. Публичный листенер отдаёт
-    # /health/alive — ИЗМЕРЕНО на oryd/hydra:v26.2.0, не выведено из документации.
-    customLivenessProbe:
-      httpGet:
-        path: /health/alive
-        port: 4444
-        scheme: HTTP
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    # ОКНО НА ОСТАНОВКУ — у ОБОИХ контейнеров (второй хук в спецификации соседа).
-    # Снятие конечных точек идёт асинхронно с сигналом остановки: без паузы на
-    # хвосте КАЖДОГО переката запросы ещё приезжают в умирающий под, а проверка
-    # отзыва токена классифицирует такой отказ как временный — то есть тихо не
-    # исполняется. `/bin/sleep` в образе провайдера ЕСТЬ — проверено запуском.
-    lifecycle:
-      preStop:
-        exec:
-          command: ["/bin/sleep", "5"]
-    extraVolumes:
-      - name: hydra-admin-tls
-        secret:
-          secretName: kacho-umbrella-hydra-admin-tls
-      - name: hydra-admin-tls-conf
-        configMap:
-          name: kacho-umbrella-hydra-admin-tls-nginx
-      # Корневая файловая система соседа только для чтения, а nginx пишет
-      # pid-файл и временные тела запросов. Два emptyDir — вся его запись.
-      - name: hydra-admin-tls-run
-        emptyDir: {}
-      - name: hydra-admin-tls-cache
-        emptyDir: {}
-    # МОНТИРОВАНИЯ СЕКРЕТА В КОНТЕЙНЕР ПРОВАЙДЕРА БОЛЬШЕ НЕТ. Ручка, которую он
-    # не читает, снята вместе с материалом под неё: держать неработающую ручку
-    # рядом с обходным путём, который существует ИМЕННО ПОТОМУ, что она не
-    # работает, — гарантия того, что следующий снимет терминатор, поверив ей.
-    # Секрет монтируется СОСЕДУ (ниже).
-    # СОСЕД-ТЕРМИНАТОР. Спецификация и его конфигурация живут в ОДНОМ месте —
-    # templates/_admin-hop-tls.tpl, — потому что спецификация обязана нести
-    # ОТПЕЧАТОК конфигурации: аннотацию шаблона пода через значения этого чарта
-    # добавить нечем (через шаблонизацию у него проходит ТОЛЬКО этот список), а
-    # без привязки правка настроек даёт новый объект настроек и побайтово тот же
-    # шаблон пода — переката нет, живой nginx остаётся со старой конфигурацией.
-    #
-    # Прежде спецификация была выписана здесь литералом и ВТОРОЙ РАЗ в соседнем
-    # профиле — байт в байт. Два экземпляра расходятся; один экземпляр не может.
-    extraContainers: |
-      {{ include "kacho.hydraAdminTls.sidecar" . }}
-    extraEnv:
-      - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
-        valueFrom:
-          secretKeyRef:
-            name: kaname-hook-token
-            key: token
-      - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
-        valueFrom:
-          secretKeyRef:
-            name: kaname-hook-token
-            key: token
-
-# ─── Kratos self-service UI — provider ADMIN hop over TLS ───────────────────
-# dev declares the plaintext admin address; on this stand the hop is fronted by a
-# TLS TERMINATOR in the provider's pod, so the consent flow must address the
-# terminator over https and trust the internal CA that signed it. Left at dev's
-# value the flow does not degrade, it stops: the provider's own admin Service is
-# removed, so that address no longer resolves.
-kratos-selfservice-ui:
-  kratosSelfServiceUI:
-    # ADDRESS THE TERMINATOR, NOT THE PROVIDER. The admin hop is fronted by a
-    # TLS terminator in the provider's own pod (mtls.hydraAdminTls), so this
-    # consumer must address THAT over https and trust the internal CA that
-    # signed it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS.
-    #
-    # Left at the chart's plaintext default this flow does not degrade, it stops:
-    # the provider's own admin Service is REMOVED, so the old address does not
-    # resolve at all. That is deliberate — a consumer left behind must fail
-    # loudly on name resolution rather than time out against something that
-    # looks like a working address.
-    hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls:4445
-    caCert:
-      secretName: kacho-umbrella-hydra-admin-tls
-      key: ca.crt
-      mountPath: /etc/kratos-ui-ca
-

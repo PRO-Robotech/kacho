@@ -2,7 +2,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 #
-# outcome-contract-inject.sh — ДОКАЗАТЕЛЬСТВО ИНЪЕКЦИЕЙ ДЛЯ СВЕДЁННОЙ ЧЕТВЁРКИ.
+# outcome-contract-inject.sh — ДОКАЗАТЕЛЬСТВО ИНЪЕКЦИЕЙ ДЛЯ СВЕДЁННЫХ ПРОВЕРОК ПОСАДКИ.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ЧТО ЭТО ДОКАЗЫВАЕТ
@@ -11,8 +11,10 @@
 # порта, форма адреса соседа и фасад боевого профиля — держали КАЖДАЯ СВОЮ копию
 # различения «условие не создано» против «находка о дереве». Копии сведены к общей
 # реализации (`outcome.sh`). Сведение обязано было ничего не отнять, и это
-# утверждение проверяется здесь ВЫЗОВОМ, а не чтением диффа: у каждой из четырёх
-# спрашивают ОБЕ стороны.
+# утверждение проверяется здесь ВЫЗОВОМ, а не чтением диффа: у каждой спрашивают
+# ОБЕ стороны. Перепись адресов административного API и политика его порта
+# сняты вместе с административным переходом поставщика личности (#1276) — их
+# предмета в дереве нет; спрашиваются оставшиеся две.
 #
 #   сторона «условие не создано» — отнять предпосылку (инструмент, чарт
 #     зависимости, свежесть архива) ⇒ код 2 и НЕПУСТОЙ текст, называющий причину;
@@ -125,7 +127,7 @@ probe() { # <метка> <ожидаемый код> <обязательная �
   esac
 }
 
-echo "=== $SCRIPT: сведённая четвёрка — обе стороны различения ==="
+echo "=== $SCRIPT: сведённые проверки — обе стороны различения ==="
 echo "    зеркало: $WORKROOT (живая рабочая копия не трогается)"
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -162,74 +164,7 @@ PY
 probe "дефект профиля → находка с координатой" 1 "networkPolicy.datastore.enabled" "$M" prod-profile-fail-closed-test.sh
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. admin-hop-address-census — перепись потребителей адреса
-# ═════════════════════════════════════════════════════════════════════════════
-echo
-echo "── admin-hop-address-census-test.sh ──"
-M="$(mirror ac-clean)"
-probe "законный вход → зелено" 0 "PASS: admin-hop-address-census-test.sh" "$M" admin-hop-address-census-test.sh
-
-rm -f "$STUB/python3"
-probe "нет python3 → условие не создано" 2 "python3" "$M" admin-hop-address-census-test.sh "$STUB"
-ln -sfn "$(command -v python3)" "$STUB/python3"
-
-M="$(mirror ac-nochart)"
-rm -f "$M"/deploy/helm/umbrella/charts/hydra-*.tgz
-rm -rf "$M/deploy/helm/umbrella/charts/hydra"
-probe "чарт провайдера не материализован → условие не создано" 2 "не материализован" "$M" admin-hop-address-census-test.sh
-
-# ДЕФЕКТ: нагрузка, называющая адрес перехода и не объявленная ни одной записью
-# реестра, — ровно тот класс, ради которого перепись написана.
-M="$(mirror ac-defect)"
-cat > "$M/deploy/helm/umbrella/templates/zz-inject.yaml" <<'TPL'
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: zz-inject-unaccounted
-spec:
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: probe
-          image: busybox
-          env:
-            - name: ADMIN_URL
-              value: "https://{{ .Release.Name }}-hydra-admin-tls:4445"
-TPL
-probe "потребитель вне реестра → находка с координатой" 1 "zz-inject-unaccounted" "$M" admin-hop-address-census-test.sh
-
-# ═════════════════════════════════════════════════════════════════════════════
-# 3. admin-hop-port-policy — порт перехода против политик
-# ═════════════════════════════════════════════════════════════════════════════
-echo
-echo "── admin-hop-port-policy-test.sh ──"
-M="$(mirror pol-clean)"
-probe "законный вход → зелено" 0 "PASS: admin-hop-port-policy-test.sh" "$M" admin-hop-port-policy-test.sh
-
-rm -f "$STUB/python3"
-probe "нет python3 → условие не создано" 2 "python3" "$M" admin-hop-port-policy-test.sh "$STUB"
-ln -sfn "$(command -v python3)" "$STUB/python3"
-
-M="$(mirror pol-nochart)"
-rm -f "$M"/deploy/helm/umbrella/charts/hydra-*.tgz
-rm -rf "$M/deploy/helm/umbrella/charts/hydra"
-probe "чарт провайдера не материализован → условие не создано" 2 "не материализован" "$M" admin-hop-port-policy-test.sh
-
-# ДЕФЕКТ: сосед перестал объявлять схему исходного запроса. Провайдер за ним
-# начал бы считать переход открытым, и координата — стек.
-M="$(mirror pol-defect)"
-python3 - "$M/deploy/helm/umbrella/templates/_admin-hop-tls.tpl" <<'PY'
-import io,sys
-p=sys.argv[1]; s=io.open(p,encoding='utf-8').read()
-old="    proxy_set_header X-Forwarded-Proto https;\n"
-assert old in s, "точка инъекции не найдена — доказательство было бы вакуумным"
-io.open(p,'w',encoding='utf-8').write(s.replace(old,"",1))
-PY
-probe "сосед не объявляет схему → находка с координатой" 1 "X-Forwarded-Proto" "$M" admin-hop-port-policy-test.sh
-
-# ═════════════════════════════════════════════════════════════════════════════
-# 4. neighbour-address-form — форма адреса соседа
+# 2. neighbour-address-form — форма адреса соседа
 # ═════════════════════════════════════════════════════════════════════════════
 echo
 echo "── neighbour-address-form-test.sh ──"
@@ -273,10 +208,10 @@ probe "адрес дефектной формы → находка с коорд
 echo
 # Число объявлено, а не выведено из самого обхода: иначе проба, не дошедшая до
 # вызова, уменьшила бы и знаменатель — и «исполнено всё» стало бы истинным by
-# construction. Разбивка: по 1 законному входу на скрипт (4) + отнятые
-# предпосылки (3 у профиля, 2 у переписи, 2 у политики, 3 у формы = 10) +
-# по 1 внесённому дефекту на скрипт (4).
-echo "случаев проверено: $CHECKED (законных входов 4, отнятых предпосылок 10, внесённых дефектов 4)"
-[ "$CHECKED" -eq 18 ] || { echo "FAIL: исполнено $CHECKED случаев из 18 — часть проб не дошла до вызова"; RC=1; }
+# construction. Разбивка: по 1 законному входу на скрипт (2) + отнятые
+# предпосылки (3 у профиля, 3 у формы = 6) + по 1 внесённому дефекту на
+# скрипт (2).
+echo "случаев проверено: $CHECKED (законных входов 2, отнятых предпосылок 6, внесённых дефектов 2)"
+[ "$CHECKED" -eq 10 ] || { echo "FAIL: исполнено $CHECKED случаев из 10 — часть проб не дошла до вызова"; RC=1; }
 [ $RC -eq 0 ] && echo "PASS: $SCRIPT" || echo "FAIL: $SCRIPT"
 exit $RC

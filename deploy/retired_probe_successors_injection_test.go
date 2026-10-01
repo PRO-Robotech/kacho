@@ -114,17 +114,72 @@ func TestSuccessorJudge_ProbeRemovedWithItsRowStillNeedsItsHeirs(t *testing.T) {
 	}
 }
 
+// ledgerHeaderFixture — заголовок ведомости и разделитель под ним, как их пишет
+// документ.
+const ledgerHeaderFixture = "| # | файл | что утверждает | предпосылка | исход | основание (координата) |\n" +
+	"|---:|---|---|---|---|---|\n"
+
 func TestLedgerRows_RefusesAnUnknownRowForm(t *testing.T) {
-	good := "| # | файл |\n|---:|---|\n| 1 | `identity_a_test.go` | x | y | снять | z |\n"
+	good := ledgerHeaderFixture + "| 1 | `identity_a_test.go` | x | y | снять | z |\n"
 	rows, err := parseLedgerRows(good)
 	if err != nil || rows[1].File != "identity_a_test.go" || rows[1].Outcome != "снять" {
 		t.Fatalf("строка ведомости прочитана как %+v (ошибка %v)", rows, err)
 	}
-	if _, err := parseLedgerRows("| # | файл |\n"); err == nil {
+	if _, err := parseLedgerRows(ledgerHeaderFixture); err == nil {
 		t.Error("ведомость без строк принята — обход пуст")
 	}
 	if _, err := parseLedgerRows(good + "| 2 | `identity_b_test.go` | лишний | столбец | x | снять | z |\n"); err == nil {
 		t.Error("строка с лишним столбцом принята молча — исход читался бы не из своей ячейки")
+	}
+}
+
+// Документ ведомости несёт и ДРУГИЕ таблицы с номером в первой ячейке — решение
+// по гейтам признака (семь ячеек) и судьбу проб вне ведомости (шесть ячеек, но
+// исход — в третьей, и номера свои: kacho#1276). Строкой ведомости они не
+// являются: номер 34 записи о пробах вне ведомости — не прежняя строка 34
+// ведомости, и прочитанный как она он объявил бы ведомость перенумерованной.
+// Ведомость узнаётся по своему заголовку — тому же, по которому её находит гейт
+// документа (internal/repohygiene/identityprobefate.go), — и кончается первой
+// строкой, таблицей не являющейся. Близнец — та же ведомость без чужих таблиц.
+func TestLedgerRows_ReadsOnlyTheLedgerTable(t *testing.T) {
+	ledger := ledgerHeaderFixture +
+		"| 1 | `identity_a_test.go` | x | y | снять | z |\n" +
+		"| 2 | `identity_b_test.go` | x | y | переписать | z |\n"
+	gates := "\n### А. Решение по гейтам признака\n\n" +
+		"| # | гейт | исход | снят | класс | судьба класса | основание |\n" +
+		"|---:|---|---|---|---|---|---|\n" +
+		"| 1 | `identity_other_test.go` | снять | #1 | к | невоспроизводим | о |\n"
+	beyond := "\n### Б. Пробы вне ведомости\n\n" +
+		"| # | проба | исход | исполнено | фрагмент имени | довод |\n" +
+		"|---:|---|---|---|---|---|\n" +
+		"| 34 | `deploy/tests/helm/x-inject.sh` | переписать | да | — | д |\n"
+	foreign := gates + beyond
+
+	twin, err := parseLedgerRows(ledger)
+	if err != nil || len(twin) != 2 {
+		t.Fatalf("законный близнец: строки %+v, ошибка %v — ждали две строки ведомости", twin, err)
+	}
+	for name, doc := range map[string]string{"чужие таблицы после ведомости": ledger + foreign, "чужие таблицы до ведомости": foreign + "\n" + ledger} {
+		got, err := parseLedgerRows(doc)
+		if err != nil {
+			t.Errorf("%s: %v — чужая таблица прочитана как ведомость", name, err)
+			continue
+		}
+		if len(got) != 2 || got[1].File != "identity_a_test.go" || got[1].Outcome != "снять" {
+			t.Errorf("%s: строки %+v — ждали ровно две строки ведомости, строку 1 — её собственную", name, got)
+		}
+		if _, ok := got[34]; ok {
+			t.Errorf("%s: строка 34 чужой таблицы прочитана как строка ведомости", name)
+		}
+	}
+
+	// Таблица той же ширины без заголовка ведомости: ширина строки её не
+	// отличает, отличает только заголовок.
+	if rows, err := parseLedgerRows(beyond); err == nil {
+		t.Errorf("документ без заголовка ведомости принят, строки %+v — они прочитаны из чужой таблицы", rows)
+	}
+	if _, err := parseLedgerRows(ledger + "\n" + ledger); err == nil {
+		t.Error("два заголовка ведомости приняты — какая из таблиц судит, не установлено")
 	}
 }
 

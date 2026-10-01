@@ -53,13 +53,12 @@
 //   - живой контроль — каждая зависимость `Chart.yaml`, чьё имя, псевдоним или
 //     репозиторий называет поставщика, поднимается своим условием на настоящей
 //     цепочке; всякий объект, который она добавила к рендеру, обязан быть узнан.
-//     Зависимость, чей подъём helm отвергает, называя шаблон, которого в дереве
-//     зонта нет ни в одном чарте (kacho#2818 снял шаблоны, на которые ещё
-//     ссылаются значения подчарта службы личности поставщика), печатается «не
-//     поднимается» с именем шаблона: объекта она не произведёт ни на одной
-//     цепочке. Любой другой отказ рендера — условие не создано, вердикта нет.
-//     Когда #1276 снимет зависимости, контролю станет нечего поднимать — число
-//     поднятых печатается, и ноль назван вслух, а не молчит;
+//     Отказ рендера с поднятой зависимостью — условие не создано, вердикта нет.
+//     Зависимостей поставщика в зонте нет с kacho#1276, и контролю нечего
+//     поднимать: число печатается, и ноль назван вслух, а не молчит. Ветвь
+//     «не поднимается» (отказ подъёма, названный шаблоном, снятым kacho#2818)
+//     снята тем же сведением, что и последняя такая зависимость, вместе с её
+//     пробой — её предикат снятия исполнен;
 //   - инъекция по каждой оси распознавателя на каждой цепочке и перевод
 //     посадки настоящей ручкой профиля — в файле ..._injection_test.go.
 //
@@ -74,16 +73,12 @@
 package deploy_test
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -565,119 +560,6 @@ func renderChainCached(t *testing.T, chain []string, sets ...string) string {
 	return out
 }
 
-// helmNoTemplate — фраза helm о шаблоне, которого нет в наборе рендера.
-var helmNoTemplate = regexp.MustCompile(`no template "([^"]+)" associated with template`)
-
-// retiredTemplateRefusal — отказ рендера назван шаблоном, которого в дереве
-// зонта нет ни в одном чарте: имя берётся из фразы helm, а не из подстроки.
-// Шаблон, объявленный где-либо в дереве, снятым не считается — такой отказ
-// значит сломанную провязку, и вердикта у него нет.
-func retiredTemplateRefusal(stderr string, defined map[string]string) (string, bool) {
-	ms := helmNoTemplate.FindAllStringSubmatch(stderr, -1)
-	if len(ms) == 0 {
-		return "", false
-	}
-	for _, m := range ms {
-		if _, ok := defined[m[1]]; ok {
-			return "", false
-		}
-	}
-	return ms[0][1], true
-}
-
-// templateCensus — объём обхода объявлений шаблонов зонта по каждой ветви.
-type templateCensus struct {
-	Files, Archives, Defines int
-}
-
-func (c templateCensus) String() string {
-	return fmt.Sprintf("файлов шаблонов в каталогах %d · архивов подчартов %d · объявлений шаблонов %d",
-		c.Files, c.Archives, c.Defines)
-}
-
-// helmDefine — объявление именованного шаблона.
-var helmDefine = regexp.MustCompile(`define\s+"([^"]+)"`)
-
-// umbrellaTemplateDefines — имена шаблонов, объявленных где-либо в чартах,
-// которые загружает рендер зонта: каталоги `templates/` (зонт и подчарты-
-// каталоги) и архивы подчартов, включая вложенные. Имя → где объявлено.
-// Пустой обход — отказ: «шаблона нет» на непрочитанном дереве было бы ложью.
-func umbrellaTemplateDefines(dir string) (map[string]string, templateCensus, error) {
-	out := map[string]string{}
-	var c templateCensus
-	note := func(where string, src []byte) {
-		for _, m := range helmDefine.FindAllSubmatch(src, -1) {
-			if _, ok := out[string(m[1])]; !ok {
-				out[string(m[1])] = where
-			}
-			c.Defines++
-		}
-	}
-	var readArchive func(where string, r io.Reader) error
-	readArchive = func(where string, r io.Reader) error {
-		gz, err := gzip.NewReader(r)
-		if err != nil {
-			return fmt.Errorf("%s: %w", where, err)
-		}
-		defer gz.Close()
-		c.Archives++
-		tr := tar.NewReader(gz)
-		for {
-			h, err := tr.Next()
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			if err != nil {
-				return fmt.Errorf("%s: %w", where, err)
-			}
-			if h.Typeflag != tar.TypeReg {
-				continue
-			}
-			body, err := io.ReadAll(tr)
-			if err != nil {
-				return fmt.Errorf("%s!%s: %w", where, h.Name, err)
-			}
-			switch {
-			case strings.HasSuffix(h.Name, ".tgz"):
-				if err := readArchive(where+"!"+h.Name, bytes.NewReader(body)); err != nil {
-					return err
-				}
-			case strings.Contains("/"+h.Name, "/templates/"):
-				note(where+"!"+h.Name, body)
-			}
-		}
-	}
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		switch {
-		case strings.HasSuffix(p, ".tgz"):
-			f, err := os.Open(p)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			return readArchive(p, f)
-		case strings.Contains(filepath.ToSlash(p), "/templates/"):
-			src, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			c.Files++
-			note(p, src)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, c, err
-	}
-	if c.Defines == 0 {
-		return nil, c, fmt.Errorf("%w: объявлений шаблонов 0 (%s)", errOwnRenderEmptyWalk, c)
-	}
-	return out, c, nil
-}
-
 func TestNoStackRendersAnIdentityVendorObject(t *testing.T) {
 	stacks := deployStacks(t)
 	rules := currentPostureRules(t)
@@ -786,35 +668,17 @@ func TestOwnRenderControl_RaisedVendorDependencyIsFound(t *testing.T) {
 		return
 	}
 	rules := currentPostureRules(t)
-	defines, census, err := umbrellaTemplateDefines(umbrellaDir)
-	if err != nil {
-		t.Fatalf("обход шаблонов зонта: %v", err)
-	}
 	base := objectKeys(t, renderChainCached(t, chain))
-	var all, refused []string
+	var all []string
 	for _, d := range deps {
 		if d.Condition == "" {
 			t.Errorf("зависимость поставщика %s без условия — поднимается безусловно и видна гейту сама, "+
 				"контроль ставить нечем", d.Key)
 			continue
 		}
-		raised, stderr, rerr := renderChainOutcome(t, chain, d.Condition+"=true")
-		if rerr != nil {
-			// Отказ подъёма засчитывается только снятым шаблоном (kacho#2818):
-			// зависимость, чьи значения ссылаются на шаблон, которого нет в
-			// дереве, не произведёт объекта ни на одной цепочке. Любой другой
-			// отказ — условие не создано, вердикта нет.
-			tpl, ok := retiredTemplateRefusal(stderr, defines)
-			if !ok {
-				t.Fatalf("рендер цепочки %s с поднятой %s не выполнен (%v) — условие не создано, вердикта нет:\n%s",
-					chainName, d.Key, rerr, stderr)
-			}
-			refused = append(refused, fmt.Sprintf("%s (шаблон %q)", d.Key, tpl))
-			t.Logf("  контроль %s (%s=true): НЕ ПОДНИМАЕТСЯ — значения цепочки ссылаются на шаблон %q, "+
-				"которого в дереве зонта нет (%s); объектов этой зависимости не произведёт ни одна цепочка",
-				d.Key, d.Condition, tpl, census)
-			continue
-		}
+		// Отказ рендера с поднятой зависимостью — условие не создано, вердикта
+		// нет: ветви «не поднимается» больше нет (снята с kacho#1276).
+		raised := renderChainCached(t, chain, d.Condition+"=true")
 		all = append(all, d.Condition+"=true")
 		added := 0
 		verdict := judgeOne(t, chainName, chain, raised, rules)
@@ -839,9 +703,7 @@ func TestOwnRenderControl_RaisedVendorDependencyIsFound(t *testing.T) {
 			d.Key, d.Condition, added, len(verdict.VendorObjects), len(verdict.VendorImages))
 	}
 	if len(all) == 0 {
-		t.Logf("живой контроль БЕЗ ПОДНИМАЕМОГО ПРЕДМЕТА: зависимостей поставщика %d, не поднимается ни одна (%s); "+
-			"способность упасть держат инъекции по каждой оси (..._injection_test.go)",
-			len(deps), strings.Join(refused, "; "))
+		// Все зависимости поставщика без условия: каждая уже названа находкой выше.
 		return
 	}
 	// Все ПОДНИМАЕМЫЕ зависимости поставщика разом — на КАЖДОЙ цепочке: находка
@@ -856,7 +718,7 @@ func TestOwnRenderControl_RaisedVendorDependencyIsFound(t *testing.T) {
 		t.Logf("  контроль на цепочке %-11s: поставщик поднят (%d условий) — объектов поставщика %d, образов %d",
 			n, len(all), len(v.VendorObjects), len(v.VendorImages))
 	}
-	t.Logf("перепись контроля: зависимостей поставщика в Chart.yaml %d · поднято %d · не поднимается %d %v · "+
+	t.Logf("перепись контроля: зависимостей поставщика в Chart.yaml %d · поднято %d · "+
 		"цепочка поимённого подъёма %s · цепочек общего подъёма %d",
-		len(deps), len(all), len(refused), refused, chainName, len(stacks))
+		len(deps), len(all), chainName, len(stacks))
 }

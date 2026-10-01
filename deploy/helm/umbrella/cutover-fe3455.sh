@@ -31,7 +31,7 @@
 #       catalog together → the new RG-1 Repository RPCs authorize (no "catalog: no entry").
 #     • unchanged & live: vpc main-6fe9c386, compute main-1678f62c, geo main-fc2d945c,
 #       nlb main-2c87cac9, zot v2.1.18, every uif remote master-e6001c77, every Postgres
-#       (16.1.0-debian-11-r25 / pg-hydra 16.4.0-debian-12-r0) — emptyDir, tags NOT bumped.
+#       (16.1.0-debian-11-r25 / 16.4.0-debian-12-r0) — emptyDir, tags NOT bumped.
 #
 #   REGISTRY data-plane TLS: the overlay now sets registry.service.dataplaneLB.tlsSidecar
 #   (enabled + LE cert), so the chart — not a hand-applied kubectl patch — owns the public
@@ -159,24 +159,31 @@ fi
 # was being checked while this script deployed another. deploy/stacks.txt is the
 # one declaration; the credentials layer is appended here because it is outside
 # the tree by design and cannot live in a tracked table.
-ORY_CREDS_LAYER="values.fe3455-ory.yaml"
+#
+# The layer keeps its file name although the identity provider whose
+# credentials it used to carry is gone (#1276): the name is what the ignore
+# pattern `**/values.*-ory.yaml` covers, and an operator's existing copy must
+# stay covered — renaming it here without widening the pattern first would turn
+# the next `git add -A` in that clone into a published secret.
+CREDS_LAYER="values.fe3455-ory.yaml"
 FE_LAYERS="$(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
 [ -n "$FE_LAYERS" ] || die "stack table declares no fe3455 chain — nothing to deploy, and that is a refusal, not an empty success"
-FE_LAYERS="$FE_LAYERS $ORY_CREDS_LAYER"
+FE_LAYERS="$FE_LAYERS $CREDS_LAYER"
 FE_ARGS=()
 for f in $FE_LAYERS; do
-  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  ($ORY_CREDS_LAYER is gitignored — restore it locally before cutover)"
+  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  ($CREDS_LAYER is gitignored — restore it locally before cutover)"
   FE_ARGS+=(-f "$f")
 done
 log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 
 # ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
 #
-# Why this gate exists. Until 2026-08-11 the whole Ory overlay lived in the one
-# gitignored file, so the PRODUCTION POSTURE of the identity providers (kratos
-# development mode, hydra issuer/PKCE/TTL) was invisible to git, to review and to
-# every gate — their "no findings" over that layer meant "nothing read". Posture
-# now lives in the tracked values.fe3455-identity-posture.yaml.
+# Why this gate exists. Until 2026-08-11 the whole identity-provider overlay lived
+# in the one gitignored file, so the PRODUCTION POSTURE of the identity providers
+# was invisible to git, to review and to every gate — their "no findings" over
+# that layer meant "nothing read". The provider is gone (#1276), and with it its
+# posture layer and its own credentials: the one coordinate the layer still
+# carries is OUR mail relay address.
 #
 # A convention alone would not hold that split: the easiest way to change the
 # live cluster is still to edit the file nobody sees. So the split is CHECKED
@@ -184,7 +191,9 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # posture key reappearing in it refuses the cutover instead of shipping quietly.
 #
 # The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
-# `hydra.hydra.config` wholesale would re-admit every posture key under it.
+# a subtree wholesale would re-admit every posture key under it. A coordinate of
+# the removed provider (its DSNs and secrets) is no longer on the list: an
+# operator's copy that still carries one is refused, because nothing reads it.
 #
 # THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
 # round here. This list named `kratos.kratos.config.courier.smtp.connection_uri`,
@@ -198,18 +207,12 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # a value set there wins over every profile. Held by MAIL-54
 # (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
 # list and that declaration name different coordinates.
-ORY_CRED_PATHS='
-hydra.hydra.config.dsn
-hydra.hydra.config.secrets.system
-hydra.hydra.config.secrets.cookie
-kratos.kratos.config.dsn
-kratos.kratos.config.secrets.cookie
-kratos.kratos.config.secrets.cipher
+CRED_PATHS='
 global.kacho.identity.smtp.connectionURI
 '
-stray="$(ORY_CRED_PATHS="$ORY_CRED_PATHS" python3 - "$CHART_DIR/values.fe3455-ory.yaml" <<'PY'
+stray="$(CRED_PATHS="$CRED_PATHS" python3 - "$CHART_DIR/$CREDS_LAYER" <<'PY'
 import os, sys, yaml
-allowed = set(os.environ["ORY_CRED_PATHS"].split())
+allowed = set(os.environ["CRED_PATHS"].split())
 tree = yaml.safe_load(open(sys.argv[1])) or {}
 def leaves(node, path=()):
     if isinstance(node, dict):
@@ -219,17 +222,17 @@ def leaves(node, path=()):
         yield ".".join(path)
 print("\n".join(sorted(p for p in leaves(tree) if p not in allowed)))
 PY
-)" || die "could not read values.fe3455-ory.yaml (need python3 with PyYAML)"
+)" || die "could not read $CREDS_LAYER (need python3 with PyYAML)"
 
 if [ -n "$stray" ]; then
-  warn "values.fe3455-ory.yaml declares coordinates that are NOT credentials:"
+  warn "$CREDS_LAYER declares coordinates that are NOT on the credentials list:"
   printf '  %s\n' $stray >&2
-  die "posture must live in the TRACKED values.fe3455-identity-posture.yaml, where review and the
-       gates can see it. Move the coordinates above there (or, if they really are credentials,
-       add them to ORY_CRED_PATHS in this script with a reason). Refusing to deploy a posture
-       that no gate has read."
+  die "posture must live in a TRACKED profile of deploy/stacks.txt, where review and the gates
+       can see it; coordinates of the removed identity provider have no reader at all and are
+       deleted from the layer (#1276). If a coordinate above really is a credential, add it to
+       CRED_PATHS in this script with a reason. Refusing to deploy a layer that no gate has read."
 fi
-log "credentials layer carries credentials only (posture is in the tracked layer)."
+log "credentials layer carries credentials only (posture is in the tracked profiles)."
 
 # ── 2. re-vendor sub-charts from committed Chart.lock (pins pg -> no data loss) ─
 log "helm dependency build (respects Chart.lock; re-vendors ../kacho-registry@main S3/compat chart)…"
@@ -263,10 +266,9 @@ helm dependency build . >/dev/null \
 # требуемый секрет без строки и строка без требования одинаково роняют прогон.
 REQUIRED_SECRET_PRODUCERS='
 zot-s3-creds|оператор: ключи объектного хранилища (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), заводятся до раскатки
-kaname-hook-token|оператор: общий секрет обратных вызовов, ключ token, 24 байта hex; заводится ОДИН раз и не ротируется — перевыпуск разводит отправителя и проверяющую сторону
 kaname-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
 kaname-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
-kaname-second-factor-enc-key|оператор: ключ обёртки секретов второго фактора, ключ enc_key, 32 байта hex; читается стражем старта под identityProvider: own, перевыпуск делает уже обёрнутые секреты нечитаемыми НАВСЕГДА
+kaname-second-factor-enc-key|оператор: ключ обёртки секретов второго фактора, ключ enc_key, 32 байта hex; читается стражем старта службы на каждом старте, перевыпуск делает уже обёрнутые секреты нечитаемыми НАВСЕГДА
 '
 
 log "предполёт: вывожу перечень требуемых секретов (рендер + посев + таблица производителей)…"
@@ -406,7 +408,7 @@ MANIFEST_DIGEST_VALUES="values.module-manifests.yaml"
 #    from the Secret; these --set values are a defensive belt for the bitnami
 #    passwords-on-upgrade guard. Correct value paths: auth.password (secret key
 #    'password') + auth.postgresPassword (secret key 'postgres-password').
-PG_SVCS=(vpc compute iam geo nlb storage registry kratos hydra)
+PG_SVCS=(vpc compute iam geo nlb storage registry)
 PGARGS=()
 for svc in "${PG_SVCS[@]}"; do
   sec="kacho-umbrella-pg-$svc"

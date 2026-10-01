@@ -17,8 +17,9 @@
 # the gate. It was verified RED against the pre-fix tree (no `ttl` block in
 # values.prod.yaml → section 1 fails).
 #
-# Asserted:
-#   1. PROD Hydra render  → an explicit access-token TTL exists and is short.
+# Asserted (the former section 1 — the external issuer's own access-token TTL
+# in values.prod.yaml — is gone with the issuer, #1276: its subchart is removed
+# from the umbrella, and no profile carries its settings any more):
 #   2. PROD iam render    → SA-key lifetime envs present; access-token lifespan
 #                           pinned per-client (defence in depth over the global).
 #   3. DEV  iam render    → key lifetime still bounded, but the per-client token
@@ -50,18 +51,6 @@
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
-# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
-# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
-# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
-# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
-any_line_matches() {
-  local _l
-  while IFS= read -r _l; do
-    if [[ "$_l" =~ $2 ]]; then return 0; fi
-  done <<<"$1"
-  return 1
-}
-
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
@@ -74,12 +63,12 @@ GW_VALUES="$REPO_ROOT/../gateway/deploy/values.yaml"
 # ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
 # реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
 # предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
-# же `HYDRA_CM_PROD="$(render_only …)"` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1,
+# же рендере под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1,
 # ноль байт вывода — при том что этот файл специально написан так, чтобы
 # «ноль находок» было отличимо от «ноль прочитанного».
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
-EXPECTED_ASSERTIONS=6
+EXPECTED_ASSERTIONS=5
 
 # Перечень профилей ВЫВОДИТСЯ из каталога, а не выписывается: выписанный список
 # разошёлся бы с деревом молча, и разошёлся бы в сторону непроверенного профиля.
@@ -117,44 +106,6 @@ render_only() {
   render_or_fatal "$(basename "$1") → $2"
 }
 
-# ИЗДАТЕЛЬ ПОСТАВЩИКА НА СТЕНДАХ НЕ ПОДНИМАЕТСЯ (#2735): он выключен в базе
-# зонта для всех цепочек, а срок жизни его токена лежит в профиле до
-# физического снятия подчарта (#1276). Половина 1 судит ИМЕННО эту настройку,
-# поэтому издатель поднимается внутри рендера пробы ОДНИМ фактом поверх
-# профиля — и только поверх профиля, который его настройки объявляет.
-# shellcheck source=deploy/tests/helm/provider-up.sh
-. "$(dirname "$0")/provider-up.sh"
-render_issuer() {
-  local declared_rc
-  provider_part_declared issuer "$UMBRELLA/values.yaml" "$1" && declared_rc=0 || declared_rc=$?
-  case "$declared_rc" in
-    0) ;;
-    1) fail "$(basename "$1") больше не объявляет настроек издателя поставщика — половине 1 судить нечего; снимите её вместе с предметом (#1276)" ;;
-    *) fatal "$(basename "$1") не разобран — объявлены ли настройки издателя, судить не по чему" ;;
-  esac
-  helm_try kacho-umbrella "$UMBRELLA" -f "$1" "${ISSUER_UP_ARGS[@]}" --show-only "$2"
-  render_or_fatal "$(basename "$1") → $2 (издатель поднят пробой)"
-}
-
-# ── 1. PROD access-token TTL is explicit and short ───────────────────────────
-# Asserted from the values file (deterministic) AND the render, so neither a
-# values regression nor a template regression can slip through alone.
-prod_at="$(yq '.hydra.hydra.config.ttl.access_token // ""' "$PROD")"
-[ -n "$prod_at" ] \
-  || fail "prod: hydra.hydra.config.ttl.access_token is UNSET — production would inherit the provider default (this is the exact regression this gate exists for)"
-case "$prod_at" in
-  *m) ;; # minutes — short-lived, as documented
-  *)  fail "prod: access_token TTL='$prod_at' — the documented production lifetime is minutes, not $prod_at" ;;
-esac
-render_issuer "$PROD" charts/hydra/templates/configmap.yaml; HYDRA_CM_PROD="$HELM_OUT"
-[ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
-any_line_matches "$HYDRA_CM_PROD" "access_token: *$prod_at" \
-  || fail "prod: the rendered Hydra config does not carry access_token: $prod_at"
-ok
-
-# ── 2. PROD machine-credential lifetime envs ─────────────────────────────────
-# The SA key IS the machine's credential; machine principals are exempt from
-# step-up, which holds only while the credential is time-bounded.
 render_only "$PROD" charts/kaname/templates/deployment.yaml; IAM_PROD="$HELM_OUT"
 [ -n "$IAM_PROD" ] || fail "kaname deployment did not render in prod profile"
 [[ "$IAM_PROD" == *'KANAME_SAKEY_DEFAULT_TTL'* ]] \

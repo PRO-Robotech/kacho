@@ -136,26 +136,79 @@ var probeSuccessions = []ledgerSuccession{
 	},
 }
 
-// parseLedgerRows — строки ведомости: `| N | `файл` | … | исход | … |`, ровно
-// шесть ячеек. Иная форма строки с номером — ОТКАЗ: исход читался бы не из
-// своей ячейки.
+// fateLedgerHeader — заголовок таблицы ведомости, ячейками. Документ несёт и
+// другие таблицы с номером в первой ячейке (решение по гейтам признака, судьба
+// проб вне ведомости — kacho#1276), со своими номерами и своим местом исхода;
+// ведомость отличает от них только заголовок. По нему же её находит гейт
+// документа (`identityProbeFateHeader` в internal/repohygiene/identityprobefate.go):
+// заголовок, переписанный там и здесь не переписанный, — отказ «заголовка нет»,
+// а не молчаливое чтение чужой таблицы.
+var fateLedgerHeader = []string{"#", "файл", "что утверждает", "предпосылка", "исход", "основание (координата)"}
+
+// ledgerCells — ячейки строки таблицы Markdown без крайних разделителей, либо
+// nil, если строка таблицей не является.
+func ledgerCells(line string) []string {
+	s := strings.TrimSpace(line)
+	if !strings.HasPrefix(s, "|") || !strings.HasSuffix(s, "|") || len(s) < 2 {
+		return nil
+	}
+	cells := strings.Split(s[1:len(s)-1], "|")
+	for i, c := range cells {
+		cells[i] = strings.TrimSpace(c)
+	}
+	return cells
+}
+
+// isLedgerHeader — строка является заголовком ведомости дословно.
+func isLedgerHeader(cells []string) bool {
+	if len(cells) != len(fateLedgerHeader) {
+		return false
+	}
+	for i, c := range cells {
+		if c != fateLedgerHeader[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// parseLedgerRows — строки ведомости: таблица под заголовком `fateLedgerHeader`
+// (ровно один в документе) до первой строки, таблицей не являющейся; строка —
+// `| N | `файл` | … | исход | … |`, ровно шесть ячеек. Иная форма строки с
+// номером — ОТКАЗ: исход читался бы не из своей ячейки. Заголовка нет или их два
+// — ОТКАЗ: строки читались бы из чужой таблицы либо из одной из двух наугад.
 func parseLedgerRows(doc string) (map[int]fateRow, error) {
+	lines := strings.Split(doc, "\n")
+	var headers []int
+	for i, line := range lines {
+		if isLedgerHeader(ledgerCells(line)) {
+			headers = append(headers, i)
+		}
+	}
+	switch len(headers) {
+	case 0:
+		return nil, fmt.Errorf("заголовка ведомости %q в документе нет — строки читались бы из чужой таблицы",
+			"| "+strings.Join(fateLedgerHeader, " | ")+" |")
+	case 1:
+	default:
+		return nil, fmt.Errorf("заголовков ведомости в документе %d (строки %v) — какая таблица судит, не установлено",
+			len(headers), headers)
+	}
 	out := map[int]fateRow{}
-	for i, line := range strings.Split(doc, "\n") {
-		s := strings.TrimSpace(line)
-		if !strings.HasPrefix(s, "|") || !strings.HasSuffix(s, "|") || len(s) < 2 {
-			continue
+	for i := headers[0] + 1; i < len(lines); i++ {
+		cells := ledgerCells(lines[i])
+		if cells == nil {
+			break // таблица кончилась
 		}
-		cells := strings.Split(s[1:len(s)-1], "|")
-		n, err := strconv.Atoi(strings.TrimSpace(cells[0]))
+		n, err := strconv.Atoi(cells[0])
 		if err != nil {
-			continue // заголовок, разделитель, другие таблицы
+			continue // разделитель под заголовком
 		}
-		if len(cells) != 6 {
-			return nil, fmt.Errorf("строка %d ведомости с номером %d несёт %d ячеек, а не 6 — форма сменилась", i+1, n, len(cells))
+		if len(cells) != len(fateLedgerHeader) {
+			return nil, fmt.Errorf("строка %d ведомости с номером %d несёт %d ячеек, а не %d — форма сменилась",
+				i+1, n, len(cells), len(fateLedgerHeader))
 		}
-		file := strings.Trim(strings.TrimSpace(cells[1]), "`")
-		out[n] = fateRow{Number: n, File: file, Outcome: strings.TrimSpace(cells[4])}
+		out[n] = fateRow{Number: n, File: strings.Trim(cells[1], "`"), Outcome: cells[4]}
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("в ведомости не найдено ни одной строки — обход пуст")
