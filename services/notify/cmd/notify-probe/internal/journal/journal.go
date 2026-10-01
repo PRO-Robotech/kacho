@@ -28,6 +28,8 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/notify/feed"
 	"github.com/PRO-Robotech/corelib/subscription"
+
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/authzfilter"
 )
 
 const (
@@ -53,16 +55,7 @@ const (
 	// ровно это слово: другие строки журнал пробы не несёт, и CHECK таблицы
 	// держит тот же словарь.
 	ChangeUpdated = "UPDATED"
-
-	// SubscribeAction — действие, которым поток спрашивает видимость строки
-	// ленты: разрешение глагола подписки по каталогу прав.
-	SubscribeAction = "platform.subscription.subscribe"
 )
-
-// ReaderRelation — отношение модели, дающее видимость ленты: то же, которого
-// требует каталог прав у Claim и Ack. Видеть сигнал ленты вправе ровно тот,
-// кто вправе её забирать.
-const ReaderRelation = "reader"
 
 // Journal — объявление журнала пробы.
 func Journal() subscription.Journal {
@@ -89,8 +82,8 @@ func Journal() subscription.Journal {
 		Mapping: subscription.Mapping{
 			Kinds: map[string]subscription.Kind{
 				feed.JournalKey: {
-					ObjectType: string(feed.FeedObjectType),
-					Action:     SubscribeAction,
+					ObjectType: authzfilter.ResourceTypeFeed,
+					Action:     authzfilter.ActionFeedSubscribe,
 					NameForm:   subscription.NameFormNone,
 					Scope:      subscription.ScopeCluster,
 				},

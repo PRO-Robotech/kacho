@@ -58,7 +58,8 @@ func describe(cfg config.Config, logger *slog.Logger, ports servePorts) (service
 		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_NOTIFYPROBE_ADMISSION_*: %w", err)
 	}
 
-	spec := servicecontract.Spec{
+	bound, narrowers, streams := feedAxes(cfg, ports)
+	return servicecontract.New(servicecontract.Spec{
 		Service: serviceName,
 		Mode:    mode,
 		Logger:  logger,
@@ -109,22 +110,32 @@ func describe(cfg config.Config, logger *slog.Logger, ports servePorts) (service
 		BootGate: servicecontract.NotApplicable[servicecontract.BootGate](
 			"очереди регистраций у пробы нет (см. Emits), а её службы — Internal*, " +
 				"которые под загрузочный гейт мутаций не подпадают by construction"),
-	}
 
+		Bound:        bound,
+		Narrowers:    narrowers,
+		StreamBudget: streams,
+	})
+}
+
+// feedAxes — оси дескриптора, выводимые из служимой ленты: привязка сервера,
+// сужатель потока, бюджет потоков. Одно условие — служит ли процесс ленту.
+func feedAxes(cfg config.Config, ports servePorts) (
+	bound []servicecontract.Bound,
+	narrowers servicecontract.Axis[map[servicecontract.MethodFQN]servicecontract.ListNarrower],
+	streams servicecontract.Axis[time.Duration]) {
 	if ports.parts.serving() {
 		// Привязку приносит сам сервер ленты: notification_feed:notify-probe.
 		// Второго написания имени модуля в корне нет.
-		spec.Bound = []servicecontract.Bound{ports.parts.server.Bound()}
-		spec.Narrowers = servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
-			servicecontract.MethodFQN(subscriptionv1.InternalSubscriptionService_Subscribe_FullMethodName): ports.narrower,
-		})
-		spec.StreamBudget = servicecontract.Value(cfg.SubscriptionStreamBudget)
-	} else {
-		spec.Narrowers = servicecontract.NotApplicable[map[servicecontract.MethodFQN]servicecontract.ListNarrower](
-			"доставка выключена: поток подписки не объявлен, сужать нечего")
-		spec.StreamBudget = servicecontract.NotApplicable[time.Duration](
+		return []servicecontract.Bound{ports.parts.server.Bound()},
+			servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
+				servicecontract.MethodFQN(subscriptionv1.InternalSubscriptionService_Subscribe_FullMethodName): ports.narrower,
+			}),
+			servicecontract.Value(cfg.SubscriptionStreamBudget)
+	}
+	return nil,
+		servicecontract.NotApplicable[map[servicecontract.MethodFQN]servicecontract.ListNarrower](
+			"доставка выключена: поток подписки не объявлен, сужать нечего"),
+		servicecontract.NotApplicable[time.Duration](
 			"доставка выключена: серверных стримов процесс не служит — журнал подписки без " +
 				"ключа ленты пуст и не собирается")
-	}
-	return servicecontract.New(spec)
 }

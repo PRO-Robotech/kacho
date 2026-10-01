@@ -16,15 +16,14 @@ import (
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/listnarrow"
-	"github.com/PRO-Robotech/corelib/notify/feed"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
 	"github.com/PRO-Robotech/corelib/schemaguard"
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
-	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/journal"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/migrations"
 )
 
@@ -153,11 +152,9 @@ func buildNarrower(cfg config.Config) (*listnarrow.Narrower, func(), error) {
 		return nil, nil, fmt.Errorf("notify-probe→iam narrowing edge %s: %w", cfg.AuthZIAMGRPCAddr, err)
 	}
 	n := listnarrow.New(narrowiam.New(conn), listnarrow.Config{
-		Relations: map[string][]string{
-			string(feed.FeedObjectType): {journal.ReaderRelation},
-		},
-		Timeout:  cfg.AuthZCheckTimeout,
-		CacheTTL: cfg.AuthZCacheTTL,
+		Relations: authzfilter.PageRelations,
+		Timeout:   cfg.AuthZCheckTimeout,
+		CacheTTL:  cfg.AuthZCacheTTL,
 	})
 	return n, func() { _ = conn.Close() }, nil
 }
