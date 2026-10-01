@@ -48,9 +48,9 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 	// предикат и отличается от прежнего: ручка подчарта поставщика к нашему
 	// решению о личности отношения не имеет.
 	for _, foreign := range []string{
-		"kratos:\n  enabled: true\n  deployment: {}\n",
-		"hydra:\n  enabled: true\n",
-		"kratos:\n  enabled: false\n",
+		"vendor-sessions:\n  enabled: true\n  deployment: {}\n",
+		"vendor-issuer:\n  enabled: true\n",
+		"vendor-sessions:\n  enabled: false\n",
 	} {
 		if edge := identityLandingOfProfile(foreign); edge != "" {
 			t.Fatalf("чужой флаг %q прочитан как объявление посадки края (%q)", foreign, edge)
@@ -79,7 +79,7 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 // TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgement —
 // ВОЗВРАЩЁННЫЙ ДЕФЕКТ на НАСТОЯЩЕМ входе дерева.
 //
-// Дефект: предикат отбора стендов судил по `kratos.enabled` — флагу ЧУЖОГО
+// Дефект: предикат отбора стендов судил по `<подчарт>.enabled` — флагу ЧУЖОГО
 // подчарта. Измерено инъекцией: выключение чужих флагов в боевом профиле уводило
 // из-под суда боевой стенд и стенд посадки `own`, 7 стендов становились 5, и все
 // четыре стража личности оставались зелёными — пустыми операциями ровно там, где
@@ -112,7 +112,7 @@ func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgeme
 
 	base := readFileForTest(t, filepath.Join(umbrellaDir, "values.yaml"))
 	// Инъекция — ПОСЛЕДНИЙ слой цепочки, включающий оба чужих подчарта.
-	const foreignOn = "kratos:\n  enabled: true\nhydra:\n  enabled: true\n"
+	const foreignOn = "vendor-sessions:\n  enabled: true\nvendor-issuer:\n  enabled: true\n"
 
 	// Прежний признак: слитые значения (база зонта + цепочка) поднимают подчарт.
 	foreignChartRaised := func(texts []string) bool {
@@ -124,7 +124,7 @@ func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgeme
 			}
 			merged = mergeValues(merged, tree)
 		}
-		for _, chart := range []string{"kratos", "hydra"} {
+		for _, chart := range []string{"vendor-sessions", "vendor-issuer"} {
 			if on, ok := lookup(merged, chart, "enabled"); ok && on == true {
 				return true
 			}
