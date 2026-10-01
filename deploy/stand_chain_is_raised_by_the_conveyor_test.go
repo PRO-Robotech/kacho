@@ -85,6 +85,7 @@ var chainsTheConveyorDoesNotRaise = map[string]string{
 // standLeg — одна нога подъёма стенда в работе конвейера.
 type standLeg struct {
 	Workflow, Job, Name string
+	RunsOn              string // метка ранера работы (`runs-on`) — по ней судится ёмкость узла
 	OnPullRequest       bool
 	Target              string   // цель make, названная шагом подъёма
 	Phases              []string // цепочки, которые накладывает рецепт цели, ПО ПОРЯДКУ
@@ -242,7 +243,7 @@ func workflowLegs(file string, doc map[string]any, targets map[string]recipeTarg
 					problems = append(problems, fmt.Sprintf("%s / %s: %v", file, id, err))
 					continue
 				}
-				legs = append(legs, standLeg{Workflow: file, Job: id, Name: leg.name, OnPullRequest: onPR,
+				legs = append(legs, standLeg{Workflow: file, Job: id, Name: leg.name, RunsOn: runsOnLabel(job["runs-on"]), OnPullRequest: onPR,
 					Target: leg.target, Phases: phases, Judged: judged})
 			}
 		}
