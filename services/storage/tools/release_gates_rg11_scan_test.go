@@ -234,6 +234,11 @@ func rg11NewScanFixture(t *testing.T, dirty bool, scanner string) *rg11ScanFixtu
 		ownCache := filepath.Join(tmp, "trivy-cache")
 		rg11Command(t, source, nil, "cp", "-a", cache, ownCache)
 		f.env = append(f.env, "TRIVY_CACHE_DIR="+ownCache)
+		// Настоящая полоса доходит до гейта покрытия, а его проход профилей зонтика
+		// рендерит чарты: нужны helm и инструменты сборки зависимостей зонтика. Каталог
+		// подмен стоит ПЕРВЫМ, системный путь — после него; os/exec берёт последнее
+		// значение повторённого ключа, поэтому PATH здесь объявлен заново целиком.
+		f.env = append(f.env, "PATH="+f.bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 		t.Logf("real Trivy binary_sha256=%x cache_metadata=%s", sha256.Sum256(rg11Read(t, binary)), rg11Read(t, filepath.Join(ownCache, "policy", "metadata.json")))
 	case "process":
 		fixture := filepath.Join(source, "services/storage/tools/testdata/rg11/scan_process.py")
