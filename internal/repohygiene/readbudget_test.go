@@ -30,6 +30,7 @@ import (
 	// гейт с именем пакета, а не проходит молча.
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"

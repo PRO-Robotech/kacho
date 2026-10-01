@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
@@ -114,4 +115,17 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if accepted < 0 || call < accepted {
 		t.Fatal("posture line must be emitted AFTER the descriptor has been accepted by its constructor")
 	}
+}
+
+// TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries — самоотчёт
+// называет звено идентичности служб, которое уехало в дескриптор, словом, а не
+// пустой строкой: пустое значение неотличимо от «самоотчёт не заполнили», и гейт
+// посадки судит его отказом (corelib observability.BootPosture.ServiceIdentity).
+//
+// Звена у процесса нет (изъятие в serviceIdentityAxis), поэтому ждём метку
+// неприменимости фундамента — литерала своего не заводим.
+func TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries(t *testing.T) {
+	requireFields(t, captureBootPosture(t, bootPosture(config.Config{})), map[string]any{
+		"service_identity": grpcsrv.ServiceIdentityNotApplicable,
+	})
 }
