@@ -228,6 +228,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/PRO-Robotech/kacho/internal/identityvendor"
 )
 
 // retiredVendorMarks — имя снятого издателя личности, по которому узнаётся
@@ -240,7 +242,10 @@ import (
 // одна из них — `github.com/ory/fosite` — законно остаётся у собственной
 // чеканки токенов. Ось по слову `ory` краснела бы на коде, ради которого снятие
 // и делается.
-var retiredVendorMarks = []string{"hydra", "kratos", "oryd/"}
+//
+// Объявление живёт в `internal/identityvendor` (#2929): его читает ещё рендерная
+// проба развёртывания, и копия словаря у неё разошлась бы с этой молча.
+var retiredVendorMarks = identityvendor.Marks()
 
 // vendorCountingUnit — ЕДИНИЦА СЧЁТА одним текстом. Печатается итогом прогона и
 // дословно цитируется маршрутом волны снятия. Пробой она заперта дословно:

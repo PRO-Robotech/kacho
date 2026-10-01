@@ -372,7 +372,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 63 | `internal/repohygiene/browserbeforestand_test.go` | оставить | — | `Hydra, OpenFGA` | судит порядок шагов браузерной пробы; поставщик — ранер замера 2026-08-17 в прозе |
 | 64 | `internal/repohygiene/contractrootscript_injection_test.go` | оставить | — | `https://hydra.api.` | судит корень контракта в скриптах; адрес — синтетика инъекции |
 | 65 | `internal/repohygiene/foreignidpname_injection_test.go` | оставить | — | `const testHydraIss` | страж возврата имени поставщика в объявлениях Go: инъекция |
-| 66 | `internal/repohygiene/foreignidpname_test.go` | оставить | — | `hydraClientId` | страж возврата имени поставщика в объявлениях Go; запись terraform живёт до переименования поля контракта на крае |
+| 66 | `internal/repohygiene/foreignidpname_test.go` | оставить | — | — | страж возврата имени поставщика в объявлениях Go; ведомость пуста: запись deploy снята #1276, запись terraform — #2930 (поле контракта края не переименовано, а устарело, и форма разбора ответа о токене его не объявляет) |
 | 67 | `internal/repohygiene/grpcmountparity_test.go` | оставить | — | `хуки Hydra` | судит паритет монтирования служб; поставщик — история находки |
 | 68 | `internal/repohygiene/license_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит лицензии дерева; слой учётных данных площадки назван прозой |
 | 69 | `internal/repohygiene/peerlaneclassifier_test.go` | оставить | — | `ЗДЕСЬ БЫЛИ ДВА ПРИЗНАКА` | судит классификатор полос соседей; поставщик — «здесь были» в прозе |
@@ -391,9 +391,9 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 82 | `services/registry/cmd/kacho-registry/tokenverifier_test.go` | оставить | — | `probeLegacyIssuer` | судит проверку токена реестром; адрес прежнего издателя — значение синтетики слота |
 | 83 | `services/registry/internal/apps/kacho/config/config_test.go` | оставить | — | `KACHO_REGISTRY_HYDRA_ISSUER` | страж: снятые переменные издателя не читаются (TestConfig_RetiredTokenEnvsAreNotConsulted) |
 | 84 | `services/registry/internal/clients/jwks/f1_harness_test.go` | оставить | — | `testLegacyIss` | судит набор ключей реестра; адрес прежнего издателя — производимый пакетом признак (запись foreignIDPName) |
-| 85 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | нет | `Hydra client id` | судит анонимного субъекта; проза называет производителем идентификатора прежнего издателя — #2930 (комментарии registry) |
-| 86 | `services/registry/internal/domain/fga_subject_test.go` | переписать | нет | `anon Hydra client id` | судит анонимного субъекта; проза называет производителем идентификатора прежнего издателя — #2930 (комментарии registry) |
-| 87 | `tests/authz-fixtures/mint_rs256.py` | оставить | — | `"hydraClientId"` | посев читает поле контракта края под всеми его именами; `hydraClientId` живо, пока поле не переименовано на крае |
+| 85 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
+| 86 | `services/registry/internal/domain/fga_subject_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
+| 87 | `tests/authz-fixtures/mint_rs256.py` | оставить | — | `"hydraClientId"` | посев читает поле контракта края под всеми его именами; `hydraClientId` — устаревшее поле контракта края (#2930: не переименовано, а устарело), посев читает его, пока поле есть в ответе |
 | 88 | `tests/authz-fixtures/prodrun.sh` | оставить | — | `Hydra issues SA access tokens` | прогонщик посева; поставщик — проза о сроке токена |
 | 89 | `tests/authz-fixtures/prodseed_all.py` | оставить | — | `Hydra-signed RS256` | посев матрицы; поставщик — проза о подписи предъявителей |
 | 90 | `tests/authz-fixtures/prodseed_matrix.py` | оставить | — | `Hydra-signed RS256 ServiceAccount` | посев матрицы; поставщик — проза о подписи предъявителей |
@@ -417,8 +417,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---|---|---:|
 | снять | да | 24 |
 | снять | нет | 0 |
-| переписать | да | 11 |
-| переписать | нет | 2 |
+| переписать | да | 13 |
+| переписать | нет | 0 |
 | оставить | — | 68 |
 | **итого** | — | **105** |
 
@@ -456,8 +456,10 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 ## Что эта ведомость НЕ утверждает
 
 - что свойства проб «снять» держатся где-то ещё. Там, где носитель переехал в
-  код службы (требование подтверждённого адреса, полосы регистрации), держит ли
-  его проба службы — в этом дереве не измерено;
+  код службы (требование подтверждённого адреса, полосы регистрации — прежние
+  строки 48–51 и 34 ведомости, не записи Б), ОБЪЯВЛЕНИЕ преемника в пине службы
+  сверяет `deploy/retired_probe_successors_test.go` (kacho#2929); зелёность
+  преемника — конвейер службы на ревизии пина, в этом дереве она не измерена;
 - что проба вне `deploy/identity_*_test.go`, записанная в Б с исходом «оставить»,
   не называет поставщика: запись судит, что её судьба названа и что фрагмент имени
   стоит в ней на своём месте, а не то, что имени в ней нет. Предикат «упоминаний

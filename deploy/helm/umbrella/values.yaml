@@ -628,6 +628,21 @@ apiGatewayIngress:
 uif:
   enabled: false
 
+# ─── ЧУЖОГО СТЕКА ЛИЧНОСТИ В ЗОНТЕ НЕТ (#2735, #2777, #1276) ───────────────
+#
+# Человека на каждом стенде таблицы (deploy/stacks.txt) проверяет НАША полоса:
+# посадку `own` обеим половинам объявляют корни цепочек (values.dev.yaml,
+# values.prod.yaml). Подчарты поставщика личности, их базы и чужой экран входа
+# сняты с зонта физически (#1276), поэтому выключателей у них здесь нет:
+# выключать нечего, а флаг без подчарта был бы ручкой без читателя.
+#
+# Возврат держат: компонент поставщика в зонте — находка
+# deploy/own_posture_foreign_identity_test.go; объектов и образов поставщика в
+# рендере каждой цепочки (по узлам-идентификаторам) нет и посадка own у обеих
+# половин — deploy/own_render_carries_no_vendor_object_test.go (#2929);
+# объектов и адресов поставщика у наших нагрузок нет —
+# deploy/stack_render_carries_no_vendor_residue_test.go (kacho#2818).
+
 # ─── kacho-nlb — disabled in base values ───────────────────────────────────
 # Both the kacho-nlb sub-chart and its backing Postgres are condition-gated.
 # Base keeps them OFF so existing clusters don't implicitly start a new

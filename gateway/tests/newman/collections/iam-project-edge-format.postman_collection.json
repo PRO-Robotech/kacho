@@ -1,0 +1,164 @@
+{
+  "info": {
+    "_postman_id": "cbfd9cc5-aab2-532e-a5dc-2832e4e20ba0",
+    "name": "kacho-api-gateway / newman / iam-project-edge-format",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IAM-PRJ-DL-NEG-MALFORMED-PREFIX — Delete /projects/{string whose prefix is unknown to the platform} → sync 400 INVALID_ARGUMENT (3) from the edge; a known prefix of the wrong length passes on to the permission check (403)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "delete-malformed-prefix",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/projects/qqq-not-a-project",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "projects",
+                "qqq-not-a-project"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtAccountAdminA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('no operation envelope on a sync refusal', () => { const j = pm.response.json(); pm.expect(j.id, JSON.stringify(j)).to.be.undefined; });",
+                  "pm.test('the refusal names the identifier the caller sent', () => { const j = pm.response.json(); pm.expect(String(j.message || ''), JSON.stringify(j)).to.eql(\"invalid resource id 'qqq-not-a-project'\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-known-prefix-wrong-length",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/projects/prj123",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "projects",
+                "prj123"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtAccountAdminA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('a known prefix is not answered by the format short-circuit', () => { const j = pm.response.json(); pm.expect(String(j.message || ''), JSON.stringify(j)).to.not.include('invalid resource id'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
