@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=37
+DENOM=39
 passed=0
 failed=0
 
@@ -372,6 +372,33 @@ put_parent_without_templates "$work/h2ok" deploy/helm/h2p || exit 2
 put_chart_archive "$work/h2ok" deploy/helm/h2p/charts/injchart-0.1.0.tgz required_valued || exit 2
 expect "H2 (близнец): тот же подчарт со значением — осмотрен через родителя" "$work/h2ok" 0 \
   "целей  deploy/helm/h2p/charts/injchart-0.1.0.tgz — через родителя"
+
+# $1 — копия, $2 — точное имя шага, $3 — новое выражение `if:` (строкой, как есть)
+set_step_if() {
+  python3 - "$1/.github/workflows/security-scan.yml" "$2" "$3" <<'PY'
+import sys, yaml
+p, name, expr = sys.argv[1], sys.argv[2], sys.argv[3]
+d = yaml.safe_load(open(p, encoding="utf-8"))
+hit = [st for st in d["jobs"]["trivy"]["steps"] if st.get("name") == name]
+if len(hit) != 1:
+    sys.exit("инъекция не нашла шаг «%s»: %d" % (name, len(hit)))
+hit[0]["if"] = expr
+yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
+PY
+}
+
+# ── U. F2: выживший шаг признаётся по РАЗБОРУ выражения, а не по подстроке ───────
+# `!cancelled()` в тексте есть, но шаг снимается вместе с шагом x. Близнец — то же
+# выражение через `||`: исполняется при любом исходе, гейт молчит.
+VGATE="trivy config, вендоренные чарты (гейт CRITICAL/HIGH)"
+make_copy "$work/f2" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_if "$work/f2" "$VGATE" "!cancelled() && steps.x.outcome == 'success'" || exit 2
+expect "F2: !cancelled() && steps.x… — снимается с шагом x, находка" "$work/f2" 1 \
+  "при отказе предыдущего — неизвестно"
+make_copy "$work/f2twin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_if "$work/f2twin" "$VGATE" "!cancelled() || steps.x.outcome == 'success'" || exit 2
+expect "F2 (близнец): !cancelled() || … — исполняется всегда, гейт молчит" "$work/f2twin" 0 \
+  "судимых гейтовым шагом 3"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

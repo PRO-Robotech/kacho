@@ -99,6 +99,7 @@ import zipfile
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gha_expr  # noqa: E402 — разбор выражений `if:` GitHub Actions
 import iac_scan_passes  # noqa: E402 — соседний модуль, единственный источник проходов
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -318,28 +319,24 @@ def renders_nothing(src):
             % ", ".join(".Values." + k for k in sorted(keys)))
 
 
-_SURVIVES = re.compile(r"\balways\(\)|!\s*cancelled\(\)")
-_SUCCESS = re.compile(r"\bsuccess\(\)")
-
-
 def falls_with_predecessor(step):
-    """→ причина либо None: шаг снимается отказом ЛЮБОГО предыдущего шага.
+    """→ причина либо None: шаг снимается отказом предыдущего шага (или не исполняется
+    при успехе).
 
-    Шаг без `if` или с `if`, не несущим `always()`/`!cancelled()`, исполняется только
-    при успехе всех предыдущих. Найдено на волне #2977 (run 36867890066): отказ
-    выгрузки SARIF снял следующий за ней гейтовый шаг fs, и гейт на этой ревизии не
-    судил ничего — исход хуже красного, потому что он выглядит как пропуск, а не как
-    отказ. Разбор выражения ограничен: признаётся явный `always()`/`!cancelled()` без
-    `success()`; иное выражение считается снимаемым — гейт пусть лучше потребует
-    явной формы, чем угадает.
+    Отказ выгрузки SARIF на волне #2977 (run 36867890066) снял следующий за ней
+    гейтовый шаг fs — гейт на той ревизии не судил ничего. Вторая редакция судила по
+    подстроке (`always()`/`!cancelled()` в тексте) и признавала выжившим
+    `!cancelled() && steps.x.outcome == 'success'` (F2). Теперь выражение РАЗБИРАЕТСЯ
+    (`gha_expr`) и вычисляется в двух сценариях — все предыдущие успешны и предыдущий
+    отказал; выживший — тот, что заведомо исполняется в обоих. Неизвестное (контекст
+    прогона) и неразборное — находка: лучше потребовать явной формы, чем угадать.
     """
-    cond = step.get("if")
-    text = "" if cond is None else str(cond)
-    if _SURVIVES.search(text) and not _SUCCESS.search(text):
+    ok, why = gha_expr.survives_failure(step.get("if"))
+    if ok:
         return None
-    return ("if: %s — исполняется только при успехе всех предыдущих шагов; отказ любого "
-            "из них (например выгрузки SARIF) снимает гейт молча — нужен `if: "
-            "'!cancelled()'`" % (repr(cond) if cond is not None else "не задан"))
+    return ("if: %s — %s; гейт обязан исполняться при любом исходе предыдущих шагов "
+            "(`if: '!cancelled()'`)" % (repr(step.get("if")) if step.get("if") is not None
+                                         else "не задан", why))
 
 
 def check_workflow_passes():
