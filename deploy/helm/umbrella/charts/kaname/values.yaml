@@ -487,6 +487,31 @@ config:
     # (поднять пин, потом дописать чарт) дал бы стенд, который не поднимается ни
     # при каком профиле.
     accessKeysPerUser: 8
+  # ─── флаг почты службы (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) ──────
+  # Условие старта на ЛЮБОЙ посадке (KANAME_NOTIFICATIONS__ENABLED). Каждая
+  # цепочка deploy/stacks.txt объявляет его САМА, в корневом профиле
+  # (values.dev.yaml, values.prod.yaml), — там величину видит читающий стенд.
+  #
+  # Умолчание здесь всё же стоит, и это решение о ЗОНТЕ, а не о службе (тот же
+  # довод, что у потолков выше): подчарт рендерят отдельно — гейты дерева с одними
+  # базовыми значениями, — и без величины такой рендер не собирается вовсе.
+  # Значение — то, что объявляют все стенды платформы: почту они шлют. Страж
+  # шаблона при этом жив: снятый ключ (`--set config.notifications.enabled=null`)
+  # и не-булево («false» строкой, «yes») — отказ рендера с именем ключа.
+  notifications:
+    enabled: true
+  # ─── потолки приглашений (приёмка NTF-2 службы Р7, Р8; kacho#2915) ─────────
+  # Условие старта на ЛЮБОЙ посадке, умолчания нет ни здесь, ни у процесса.
+  # Объявляет ПРОФИЛЬ:
+  #   invite:                          # KANAME_INVITE__*
+  #     ttl: 168h                      # срок строки приглашения; 24h…720h
+  #     accountPerDay: 200
+  #     youngAccountPerDay: 50         # ≤ accountPerDay
+  #     youngAccountAge: 720h
+  #     pendingMax: 200
+  #     recipientPerHour: 3            # ≤ recipientPerDay ≤ recipientPerDayAll
+  #     recipientPerDay: 5
+  #     recipientPerDayAll: 10
   # Фоновые задания. Величина ОБЪЯВЛЕНА здесь, а не вшита в процесс: период
   # обновления снимка каталога и есть верхняя граница отставания снимка от базы
   # (kacho#1816). Непозитивная величина отвергается стражем старта — ноль здесь
@@ -609,6 +634,41 @@ config:
     #     verificationResendInterval: 60s # промежуток между письмами одному человеку
     #     verificationResendLimit: 5      # писем одному человеку за окно
     #     verificationResendWindow: 24h   # скользящее окно счёта писем
+    #     # ПОЧТОВЫЕ РУЧКИ ТАБЛИЦЫ Р8 (приёмка NTF-2 службы; kacho#2915) — условие
+    #     # старта НА ЛЮБОЙ ПОСАДКЕ, а не только под `own`; умолчания нет ни у
+    #     # одной (KANAME_AUTHN__LOGIN__{REGISTRATION_CODE_TTL,MAIL_WINDOW__*,
+    #     # ATTEMPTS__*,MAIL_THROTTLED_INTERVAL,TRUSTED_DEVICE__*}); границы и
+    #     # порядки судит страж старта. Образец — ориентиры базового профиля:
+    #     registrationCodeTtl: 60m        # 5m…24h, не короче firstPause окна
+    #     mailWindow:                     # окно адресата по назначению письма —
+    #       recovery:                     # recovery · verification · registration,
+    #         firstPause: 60s             # у каждого пять одинаковых ключей
+    #         secondPause: 5m
+    #         perHour: 3
+    #         perDay: 5
+    #         floorInterval: 6h
+    #     attempts:                       # перебор кода
+    #       addressSourcePerWindow: 5
+    #       window: 15m
+    #       addressFailureCeiling: 100
+    #     mailThrottledInterval: 168h     # письмо о торможении; 24h…720h
+    #     trustedDevice:                  # метка доверенного устройства
+    #       ttl: 2160h
+    #       recoveryPerDay: 2
+    # ─── файлы ключей почтовой полосы (NTF-2 службы З18; kacho#2915) ──────────
+    # Рендерится в config.yaml как authn.secrets.{mail-window,device-label}-key-file
+    # — пути ВЫВОДЯТСЯ из каталога ниже и имён файлов шаблона. Том из объекта
+    # Secret `secretName` (ключи `mail-window.key` и `device-label.key`, случайные
+    # байты не короче 32 каждый) БЕЗУСЛОВЕН: служба без файлов не стартует ни на
+    # какой посадке. Имя — объявление НАШЕГО стенда той же формы, что
+    # `db.passwordSecretName` и `platform.hooks.tokenHookSecretName` выше: объект
+    # с этим именем заводит посев стенда (deploy/scripts/dev-prod-secrets.sh,
+    # однажды), на площадке — оператор (ведомость производителей
+    # helm/umbrella/cutover-fe3455.sh). Профиль, сменивший имя на пустое либо
+    # пробельное, получает отказ рендера с именем ключа, а не том без имени.
+    secrets:
+      secretName: kaname-mail-keys
+      mountPath: /etc/kaname/secrets   # <mountPath>/{mail-window.key,device-label.key}
     # ─── регистрация нашей полосой (Ф4, kacho#2699) — ТОЛЬКО под `own` ────────
     # Рендерится в config.yaml как authn.registration.* (env-override:
     # KANAME_AUTHN__REGISTRATION__<KEY>). Обе величины — условие старта под

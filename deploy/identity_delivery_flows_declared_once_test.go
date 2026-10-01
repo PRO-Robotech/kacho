@@ -48,36 +48,74 @@ package deploy_test
 
 import (
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
-// deliveryFlowKey — имена, высказывание о которых в профиле есть второе мнение о
-// потоке, ДОСТАВЛЯЕМОМ ПИСЬМОМ.
+// deliveryFlowNames — имена потоков, высказывание о которых в профиле есть второе
+// мнение о потоке, ДОСТАВЛЯЕМОМ ПИСЬМОМ.
 //
 // Перечень узкий намеренно. `registration`, `login`, `settings` и `error`
 // письмом не доставляются: они здесь не судятся, потому что гейт, краснеющий на
 // них, был бы красным на исправном дереве — а такой снимают первым, и вместе с
 // ним уходит требование. Появится поток, доставляемый письмом, — имя
 // добавляется сюда вместе с ним.
-var deliveryFlowKey = regexp.MustCompile(`(?m)^\s+(verification|recovery)\s*:`)
+var deliveryFlowNames = map[string]bool{"verification": true, "recovery": true}
 
-// mailLaneKeyInProfile — второе мнение о самой почтовой полосе, высказанное
-// профилем. Держится тем же гейтом: полоса — такой же предмет единственного
-// объявления, что и потоки, которые её используют.
-var mailLaneKeyInProfile = regexp.MustCompile(`(?m)^\s+(courier)\s*:`)
+// deliveryFlowParent — узел, под которым имя выше и есть ПОТОК поставщика
+// личности (`selfservice.flows.<поток>`).
+//
+// СУДИТСЯ УЗЕЛ, А НЕ ОБРАЗЕЦ СТРОКИ (kacho#2915). Здесь стоял образец «строка
+// с отступом, начинающаяся с `recovery:` или `verification:`», и он ловил ФОРМУ,
+// а не существо: окно адресата службы доступа (`kaname.config.authn.login.
+// mailWindow.recovery`) называет ТЕ ЖЕ слова назначениями писем, к потокам
+// поставщика отношения не имеет — и образец объявлял его вторым мнением о
+// потоке на каждом стенде. Обратная сторона образца хуже: поток, записанный
+// строчной картой (`flows: {recovery: …}`), он не видел вовсе. Разбор видит
+// обе стороны: имя потока — находка только ребёнком узла `flows`, в любой
+// записи карты.
+const deliveryFlowParent = "flows"
+
+// mailLaneKey — второе мнение о самой почтовой полосе, высказанное профилем
+// (раздел `courier` конфигурации поставщика), на любой глубине. Держится тем же
+// гейтом: полоса — такой же предмет единственного объявления, что и потоки,
+// которые её используют.
+const mailLaneKey = "courier"
 
 // shadowedDeliveryFlows — потоки доставки и почтовая полоса, о которых профиль
-// высказался САМ, в обход единственного объявления.
+// высказался САМ, в обход единственного объявления. Профиль, который не
+// разбирается, — находка с причиной, а не молчание: непрочитанное утверждением
+// об отсутствии второго мнения не является.
 func shadowedDeliveryFlows(text string) []string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		return []string{"профиль не разобран как YAML (" + err.Error() + ")"}
+	}
 	seen := map[string]bool{}
-	for _, re := range []*regexp.Regexp{deliveryFlowKey, mailLaneKeyInProfile} {
-		for _, m := range re.FindAllStringSubmatch(text, -1) {
-			seen[m[1]] = true
+	var walk func(n *yaml.Node, parent string)
+	walk = func(n *yaml.Node, parent string) {
+		switch n.Kind {
+		case yaml.DocumentNode, yaml.SequenceNode:
+			for _, c := range n.Content {
+				walk(c, parent)
+			}
+		case yaml.AliasNode:
+			// Ссылка на якорь судится там, где якорь объявлен: обход по ней
+			// второй раз ничего не добавляет и на кольце не остановился бы.
+		case yaml.MappingNode:
+			for i := 0; i+1 < len(n.Content); i += 2 {
+				key := n.Content[i].Value
+				if key == mailLaneKey || (parent == deliveryFlowParent && deliveryFlowNames[key]) {
+					seen[key] = true
+				}
+				walk(n.Content[i+1], key)
+			}
 		}
 	}
+	walk(&doc, "")
 	out := make([]string, 0, len(seen))
 	for k := range seen {
 		out = append(out, k)

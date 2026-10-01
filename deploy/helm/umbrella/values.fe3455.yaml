@@ -50,18 +50,10 @@ mtls:
 # этого дерева, после чего запись ниже станет находкой сама.
 # без-вывода: kacho-ui-future-host kacho-ui-future-dashboard kacho-ui-future-vpc kacho-ui-future-iam kacho-ui-future-nlb kacho-ui-future-registry kacho-ui-future-system kacho-ui-future-compute kacho-ui-future-storage — коммит master-ветки прежнего репозитория консоли, в этом дереве не разрешается
 #
-# ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
-# собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
-# этом дереве он не разрешается by construction — значит запись «порождено-от»
-# его не покрывает и покрывать не вправе. Прежде покрывала: пин назывался
-# коммитом ЭТОГО дерева, выглядел выведенным — и не тянулся, потому что образа с
-# таким тегом в реестре нет. Проверка вывода этого не видит: она сверяет тег с
-# записью, а не с реестром. Досягаемость держит
-# deploy/published_image_pin_is_reachable_test.go.
-#
-# Директива самоистекает по ВНЕШНЕМУ факту: как только в теге окажется коммит
-# этого дерева, запись упадёт сама.
-# без-вывода: kaname — образ собирает конвейер своего репозитория PRO-Robotech/kaname; коммит её ствола в этом дереве не разрешается
+# ОБРАЗ СЛУЖБЫ ДОСТУПА ЭТОТ ПРОФИЛЬ НЕ ПИНИТ (kacho#2915, Д64): тег объявлен
+# один раз, в values.yaml, и там же стоит его запись о невыводимости — образ
+# собирает конвейер PRO-Robotech/kaname. Копия пина и записи в каждой накладке
+# была отдельным местом одной смены.
 # Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
 # services (vpc/compute/kacho-geo/api-gateway/kaname/kacho-nlb) the EFFECTIVE image
@@ -189,9 +181,10 @@ kaname:
     #
     # Тег ведёт И основной контейнер, И init наката миграций — оба через помощник
     # `kaname.image`.
-    # Действующее переопределение — values.fe3455-prod.yaml (тот же тег, слой ПОСЛЕ
-    # этого файла).
-    tag: 484-notify-f25c600c
+    # ТЕГ ЗДЕСЬ НЕ ПОВТОРЯЕТСЯ (kacho#2915, Д64): пин образа службы доступа объявлен
+    # ОДИН раз — `kaname.image.tag` в values.yaml, и этот профиль его наследует.
+    # Копия тега в каждой накладке была пятью местами одной смены: при подъёме
+    # пина каждую надо было найти, и пропущенная разводила стенды молча.
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true

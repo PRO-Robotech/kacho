@@ -138,15 +138,24 @@ log "target cluster confirmed by apiserver address (not by context name)."
 #    main-b3d23769 reverts kaname c300053 (issued_at RFC3339 string) → `docker login`
 #    breaks. The current pin (main-c744f956, kacho-iam#326) carries the fix, so this guard
 #    is a denylist against a silent repin BACK to the broken image.
-if grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/values.fe3455-prod.yaml" 2>/dev/null; then
+#    The tag lives ONCE, in the chart's base values.yaml (kacho#2915): the overlays
+#    no longer restate it, so the denylist reads the base file AND every layer of
+#    the fe3455 chain — a repin in any of them is a repin of this stand. The chain
+#    is read from the stack table, not restated (deploy/stack_table_test.go).
+DENY_FILES="values.yaml $(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
+deny_hit=0
+for f in $DENY_FILES; do
+  grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/$f" 2>/dev/null && deny_hit=1
+done
+if [ "$deny_hit" = 1 ]; then
   if [ "${ACK_IAM_ISSUED_AT_REVERT:-0}" != "1" ]; then
     die "BLOCKER: kaname pinned to main-b3d23769, which REVERTS the docker-login
        issued_at RFC3339 fix (kaname commit c300053). Rolling iam to this image breaks
        'docker login' (Time.UnmarshalJSON: input is not a JSON string) → the registry
        data-plane cannot mint a bearer token → all docker pull/push 401.
        RESOLUTION: pin kaname.image.tag to main-c744f956 or later (main c744f95 carries
-       c300053 re-applied via kacho-iam#326) in BOTH values.fe3455.yaml and
-       values.fe3455-prod.yaml → re-run.
+       c300053 re-applied via kacho-iam#326) in values.yaml, where the tag is declared
+       once → re-run.
        To knowingly ship the docker-login break anyway: ACK_IAM_ISSUED_AT_REVERT=1 $0"
   fi
   warn "ACK_IAM_ISSUED_AT_REVERT=1 set — proceeding with main-b3d23769; 'docker login' WILL break until c300053 is on the iam image."
@@ -267,6 +276,7 @@ kaname-hook-token|оператор: общий секрет обратных в�
 kaname-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
 kaname-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
 kaname-second-factor-enc-key|оператор: ключ обёртки секретов второго фактора, ключ enc_key, 32 байта hex; читается стражем старта под identityProvider: own, перевыпуск делает уже обёрнутые секреты нечитаемыми НАВСЕГДА
+kaname-mail-keys|оператор: ключи почтовой полосы, ключи mail-window.key и device-label.key (случайные байты, не короче 32 каждый); читаются стражем старта на любой посадке, смена сбрасывает окна адресатов и метки доверенных устройств
 '
 
 log "предполёт: вывожу перечень требуемых секретов (рендер + посев + таблица производителей)…"
