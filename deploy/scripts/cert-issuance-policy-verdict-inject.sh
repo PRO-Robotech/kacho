@@ -21,7 +21,11 @@
 #   unread-notify-passes      «поднят ли notify» не прочитано, а вердикт читает
 #                             это как «не поднят» — «не прочитано» стало «нет»;
 #   headline-dropped          отказ не называет предмет — приёмка требует фразу
-#                             «notify требует политики выпуска сертификатов служб».
+#                             «notify требует политики выпуска сертификатов служб»;
+#   notify-identity-ignored   «поднят ли notify» судится только по имени и меткам,
+#                             учётка пода не читается — notify, заведённый чартом
+#                             с иным именем, читается «не поднят» (ревью 2915-J1, F1);
+#   notify-unparsed-is-absent неразобранный список нагрузок читается «notify нет».
 #
 # Коды: 0 — каждый мутант покраснел, исходник зелен; 1 — гейт не способен
 # покраснеть на названном мутанте (находка); 2 — опыт не поставлен.
@@ -59,6 +63,12 @@ MUTANTS = [
   ("headline-dropped",
    '      echo "  ✗ $HEADLINE:"',
    '      echo "  ✗ политика не найдена:"'),
+  ("notify-identity-ignored",
+   '    if sa == sa_want or any(',
+   '    if any('),
+  ("notify-unparsed-is-absent",
+   '    print("unread 0 0"); sys.exit(0)',
+   '    print("absent 0 0"); sys.exit(0)'),
 ]
 with open(os.path.join(out, "index"), "w", encoding="utf-8") as idx:
     for name, a, b in MUTANTS:

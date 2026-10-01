@@ -47,13 +47,33 @@
 # Поведение политики (чужой SAN не выпускается, свой — выпускается) судит
 # не этот гейт, а проба `deploy/tests/cluster/cert-issuance-policy-test.sh`
 # (NTF1-J01, J02): гейт посадки отвечает на вопрос «стоит ли и исполняется ли».
+# Что гейт видит поднятый notify сквозь настоящий кластер (нагрузки в формах
+# соседних чартов; красный без политики, зелёный с ней) — проба
+# `deploy/tests/cluster/cert-issuance-gate-notify-presence-test.sh`.
 set -uo pipefail
 
 NS="${NS:-kacho}"
-# Признак «notify поднят» — Deployment с меткой имени notify в пространстве
-# стенда. Метку ставит чарт notify (полоса D1); иное имя — иное наблюдение, и
-# тогда гейт обязан узнать об этом из своей самопроверки, а не молчать.
-NOTIFY_SELECTOR="app.kubernetes.io/name=notify"
+# Признак «notify поднят» — ИДЕНТИЧНОСТЬ, а не ярлык. Политика защищает SAN
+# `ns/<ns>/sa/<учётка notify>`, и notify поднят ровно тогда, когда в
+# пространстве стенда есть рабочая нагрузка (Deployment, StatefulSet, DaemonSet),
+# чей под работает под этой учёткой. Учётка — `saName` декларации
+# `notify.spiffe` (решение Р12; литерал `kacho-notify` закреплён приёмкой:
+# NTF1-J03 `notify.spiffe = {T, N, kacho-notify}`, NTF4-117). Метки чарта
+# признаком не служат: соседние чарты метят деплойменты `kacho-<svc>` или не
+# метят вовсе, и селектор по метке, которую никто не производит, читал бы
+# «notify не поднят» на поднятом notify (находка ревью 2915-J1, F1).
+#
+# Вторая, страховочная половина — имя: нагрузка с именем или меткой имени
+# `notify`, `kacho-notify`, `notify-<что угодно>`, `kacho-notify-<…>` признаётся
+# notify при ЛЮБОЙ учётке. Ошибка признания здесь несимметрична: лишнее «поднят»
+# даёт громкий красный при отсутствии политики, недосчёт — молчаливый зелёный.
+#
+# Согласие с деревом держит проба рендера (deploy/tests/helm/
+# cert-issuance-policy-render-test.sh, правило 5): декларация `notify.spiffe`
+# обязана называть ту же учётку, а каждая нагрузка из чарта notify в каждой
+# цепочке — признаваться этим же классификатором (`--classify-notify`).
+NOTIFY_SA="kacho-notify"
+NOTIFY_NAME_RE='^(kacho-)?notify(-[a-z0-9]([-a-z0-9]*[a-z0-9])?)?$'
 POLICY_SELECTOR="kacho.cloud/component=cert-issuance-policy"
 ISSUER_SELECTOR="kacho.cloud/component=cert-manager-internal-ca"
 APPROVER_SELECTOR="app.kubernetes.io/name=cert-manager-approver-policy"
@@ -167,6 +187,32 @@ self_check() {
   expect 1 "НЕ принял" present kacho-internal-ca notready ready available no
   expect 0 "требование политики выпуска не предъявляется" absent absent absent absent absent yes
   expect 0 "не блокируется" absent "${ok_set[@]}"
+
+  # Признак «notify поднят» — на рабочих нагрузках в той форме, в какой их
+  # производят чарты дерева: соседи метят деплойменты `kacho-<svc>` или не метят
+  # вовсе, поэтому ось без меток и ось с меткой соседа обязательны.
+  classify() { # <ждём> <JSON списка рабочих нагрузок>
+    local want="$1" got; n=$((n + 1))
+    got="$(printf '%s' "$2" | notify_classify | cut -d' ' -f1)"
+    [ "$got" = "$want" ] || { echo "  ✗ самопроверка: классификатор notify → «$got», ждали «$want» на $2"; bad=1; }
+  }
+  local sa_only='{"items":[{"kind":"Deployment","metadata":{"name":"mail-gateway"},"spec":{"template":{"spec":{"serviceAccountName":"kacho-notify"}}}}]}'
+  local neighbor='{"items":[{"kind":"Deployment","metadata":{"name":"kacho-notify","labels":{"app.kubernetes.io/name":"kacho-notify"}},"spec":{"template":{"spec":{"serviceAccountName":"kacho-notify"}}}}]}'
+  local by_name='{"items":[{"kind":"StatefulSet","metadata":{"name":"notify-sender"},"spec":{"template":{"spec":{}}}}]}'
+  local by_label='{"items":[{"kind":"Deployment","metadata":{"name":"x","labels":{"app.kubernetes.io/name":"notify"}},"spec":{"template":{"spec":{"serviceAccountName":"x"}}}}]}'
+  local legacy_sa='{"items":[{"kind":"DaemonSet","metadata":{"name":"x"},"spec":{"template":{"spec":{"serviceAccount":"kacho-notify"}}}}]}'
+  local other='{"items":[{"kind":"Deployment","metadata":{"name":"kacho-vpc","labels":{"app.kubernetes.io/name":"kacho-vpc"}},"spec":{"template":{"spec":{"serviceAccountName":"kacho-vpc"}}}}]}'
+  local lookalike='{"items":[{"kind":"Deployment","metadata":{"name":"kacho-notifyx"},"spec":{"template":{"spec":{"serviceAccountName":"kacho-notifyx"}}}}]}'
+  classify present "$sa_only"
+  classify present "$neighbor"
+  classify present "$by_name"
+  classify present "$by_label"
+  classify present "$legacy_sa"
+  classify absent "$other"
+  classify absent "$lookalike"
+  classify absent '{"items":[]}'
+  classify unread 'не JSON'
+  classify unread '{"kind":"List"}'
   echo "  самопроверка: осей $n"
   return "$bad"
 }
@@ -174,10 +220,40 @@ self_check() {
 # ═════════════════════════════════════════════════════════════════════════════
 # КЛАСТЕРНАЯ ПОЛОВИНА — наблюдения.
 # ═════════════════════════════════════════════════════════════════════════════
+# notify_classify: JSON списка рабочих нагрузок (вид List, поле items) на входе
+# → "<present|absent|unread> <нагрузок осмотрено> <из них признано notify>".
+# Чистая функция: её же зовут самопроверка и проба рендера.
+notify_classify() {
+  python3 -c '
+import json, re, sys
+sa_want, name_re = sys.argv[1], re.compile(sys.argv[2])
+try:
+    doc = json.load(sys.stdin)
+    items = doc["items"]
+    if not isinstance(items, list):
+        raise ValueError("items не список")
+except Exception:
+    print("unread 0 0"); sys.exit(0)
+hit = 0
+for w in items:
+    meta = w.get("metadata") or {}
+    labels = meta.get("labels") or {}
+    pod = ((w.get("spec") or {}).get("template") or {}).get("spec") or {}
+    sa = pod.get("serviceAccountName") or pod.get("serviceAccount") or ""
+    names = [meta.get("name") or ""] + [labels.get(k) or "" for k in
+             ("app.kubernetes.io/name", "app.kubernetes.io/instance", "app")]
+    if sa == sa_want or any(name_re.match(n) for n in names if n):
+        hit += 1
+print("%s %d %d" % ("present" if hit else "absent", len(items), hit))' "$NOTIFY_SA" "$NOTIFY_NAME_RE" 2>/dev/null \
+    || echo "unread 0 0"
+}
+
+# observe_notify → "<present|absent|unread> <осмотрено> <признано>"
 observe_notify() {
   local out
-  out="$(kubectl -n "$NS" get deployments -l "$NOTIFY_SELECTOR" -o name 2>/dev/null)" || { echo unread; return; }
-  if [ -n "$out" ]; then echo present; else echo absent; fi
+  out="$(kubectl -n "$NS" get deployments.apps,statefulsets.apps,daemonsets.apps -o json 2>/dev/null)" \
+    || { echo "unread 0 0"; return; }
+  printf '%s' "$out" | notify_classify
 }
 
 observe_issuer() {
@@ -253,8 +329,8 @@ EOF
 
 main() {
   echo "=== E. политика выпуска сертификатов служб (NTF1-J04; ns $NS) ==="
-  local notify issuer arms bi workload certificates approver builtin npol=0 nmine=0 nctl=0 nsar=0
-  notify="$(observe_notify)"
+  local notify issuer arms bi workload certificates approver builtin npol=0 nmine=0 nctl=0 nsar=0 nwl=0 nnot=0
+  read -r notify nwl nnot <<<"$(observe_notify)"
   issuer="$(observe_issuer)"
   case "$issuer" in
     absent|ambiguous|unread|"") arms="absent absent 0 0"; bi="absent 0 0" ;;
@@ -263,13 +339,14 @@ main() {
   read -r workload certificates npol nmine <<<"$arms"
   read -r builtin nctl nsar <<<"$bi"
   approver="$(observe_approver)"
-  echo "    осмотрено: политик выпуска с меткой ${npol:-0} (под этим УЦ ${nmine:-0}), контроллеров cert-manager ${nctl:-0}, проверок права одобрения ${nsar:-0}"
+  echo "    осмотрено: рабочих нагрузок в $NS ${nwl:-0} (из них notify — учётка $NOTIFY_SA или имя notify — ${nnot:-0}), политик выпуска с меткой ${npol:-0} (под этим УЦ ${nmine:-0}), контроллеров cert-manager ${nctl:-0}, проверок права одобрения ${nsar:-0}"
   echo "    наблюдения: notify=$notify УЦ=$issuer workload=$workload certificates=$certificates контроллер=$approver встроенный-одобритель-вправе=$builtin"
   verdict "$notify" "$issuer" "$workload" "$certificates" "$approver" "$builtin"
 }
 
 case "${1:-}" in
   --self-check) self_check ;;
+  --classify-notify) notify_classify ;;
   "") main ;;
-  *) echo "использование: $0 [--self-check]" >&2; exit 2 ;;
+  *) echo "использование: $0 [--self-check | --classify-notify <JSON списка нагрузок]" >&2; exit 2 ;;
 esac

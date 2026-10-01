@@ -116,6 +116,7 @@ deploy/scripts/admin-hop-cluster-half-inject.sh
 deploy/scripts/cert-issuance-policy-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/tests/helm/cert-issuance-policy-render-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh
