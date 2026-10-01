@@ -8,8 +8,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/PRO-Robotech/corelib v1.10.0-rc.5.0.20261001082548-8a9eb14cd008 h1:aH5xwr/A/Hh9/12OI5+nbyslQdPA2/VcJTI8sjvm/jE=
 github.com/PRO-Robotech/corelib v1.10.0-rc.5.0.20261001082548-8a9eb14cd008/go.mod h1:Wa9ZZIkr7DVr82wtGSYUl5lRS99SvlPSQ8NMhok+S9g=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261001154905-a16d2da0f22f h1:SR38h4eX/pYsBrco8hnvjZmOLsSzfTXSmOy0kXwdchQ=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261001154905-a16d2da0f22f/go.mod h1:4RHCsXrgcDICF7C+gLVrRvBatOGBbRy4FEd+ASbWlNI=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261001165928-a5986266436b h1:JGyFGNgQhS0TsiCztX2rSJWs4ZokCyt0kKDtYUzHJxU=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261001165928-a5986266436b/go.mod h1:4RHCsXrgcDICF7C+gLVrRvBatOGBbRy4FEd+ASbWlNI=
 github.com/ProtonMail/go-crypto v1.3.0 h1:ILq8+Sf5If5DCpHQp4PbZdS1J7HDFRXz/+xKBiRGFrw=
 github.com/ProtonMail/go-crypto v1.3.0/go.mod h1:9whxjD8Rbs29b4XWbB8irEcE8KHMqaR2e7GWU1R+/PE=
 github.com/agext/levenshtein v1.2.2 h1:0S/Yg6LYmFJ5stwQeRp6EeOcCbj7xiqQSdNelsXvaqE=
