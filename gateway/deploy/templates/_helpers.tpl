@@ -39,3 +39,21 @@ Bearer'а.
 {{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}
 {{- $sp.trustDomain | default "kacho.cloud" -}}
 {{- end -}}
+
+{{/*
+api-gateway.selectorLabels — МЕТКИ ПОДА КРАЯ, одним определением.
+
+Их читают три стороны: селектор и шаблон пода собственного рабочего объекта,
+селектор Service — и политики сети умбреллы, впускающие край к службам
+(`templates/networkpolicy-*.yaml`). Пока политика писала метку края по памяти,
+а под нёс другую, правило не пропускало НИКОГО, и край не доставал до службы
+при зелёных рендере, установке и готовности (kacho#2941).
+
+Умбрелла зовёт помощник со значениями ЭТОГО чарта (`umbrella.edgeSelectorLabels`),
+поэтому читать здесь можно только `.Values`. Что каждое правило рендера
+выбирает под и впускает того, кто звонит, держит
+deploy/network_policy_admission_render_test.go.
+*/}}
+{{- define "api-gateway.selectorLabels" -}}
+app: {{ required "api-gateway.name обязателен: из него выводится метка пода края" .Values.name }}
+{{- end -}}

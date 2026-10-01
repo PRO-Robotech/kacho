@@ -59,7 +59,8 @@ miss (info-leak prevention).
 ### Internal-port (:9091) — оборона
 
 `:9091` (`Internal*` RPC) защищен несколькими слоями:
-1. **NetworkPolicy** (helm) — ingress на `:9091` только от api-gateway и admin-tooling pod'ов.
+1. **NetworkPolicy** (helm) — ingress на `:9091` только от тех, кто туда звонит: край, compute,
+   kacho-nlb — и admin-tooling pod'ов (`deploy/helm/umbrella/templates/networkpolicy-vpc-internal.yaml`).
 2. **mTLS** — verified client-cert на обоих листенерах.
 3. **per-RPC FGA-Check** — та же цепочка, что на public: cluster-scoped admin-RPC на
    `cluster:cluster_root` (`system_admin`/`system_viewer`), IPAM-примитивы —

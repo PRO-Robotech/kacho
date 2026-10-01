@@ -174,9 +174,11 @@ networkPolicy:
         from:
           - podSelector:
               matchLabels: { app: compute }
-          # compute→geo data-migration Job reads pg-compute as source.
-          - podSelector:
-              matchLabels: { kacho.cloud/job: geo-data-migration }
+        # Job переноса географии compute→geo читает pg-compute как источник. Его
+        # вход добавляет шаблон — и ТОЛЬКО когда Job включён
+        # (`kacho-geo.dataMigration.enabled`): выписанный здесь селектор выбирал
+        # бы под, которого в установке нет, и правило не пропускало бы никого.
+        geoDataMigration: true
       - name: pg-iam
         from:
           # covers kaname Deployment и `migrate` init-container.
@@ -186,8 +188,8 @@ networkPolicy:
         from:
           - podSelector:
               matchLabels: { app: kacho-geo }
-          - podSelector:
-              matchLabels: { kacho.cloud/job: geo-data-migration }
+        # Тот же Job пишет в pg-geo как в цель — см. pg-compute выше.
+        geoDataMigration: true
       - name: pg-nlb
         from:
           - podSelector:
@@ -649,6 +651,11 @@ uif:
 # Deployment + StatefulSet on the next `helm upgrade`. dev overlay flips both true.
 kacho-nlb:
   enabled: false
+  # Политика входа к подам службы (templates/networkpolicy-nlb.yaml): только
+  # край, на :9090 и :9091. Включена по умолчанию, как была, пока жила в чарте
+  # службы; отладочный профиль её выключает.
+  networkPolicy:
+    enable: true
   # Пин ЗДЕСЬ, а не умолчанием подчарта. Умолчание несёт пустой тег, и подчарт
   # подставляет `.Chart.AppVersion` (`kacho-nlb.image` в
   # services/nlb/deploy/templates/_helpers.tpl) — ссылку, которой в файле
