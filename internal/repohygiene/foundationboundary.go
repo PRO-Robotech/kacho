@@ -88,13 +88,23 @@ var foundationClasses = map[string]foundationClass{
 	//     глаголом, типом модели или политикой токена доступа (В3 нет — политика
 	//     живёт в tokenpolicy); смысл церемонии не зависит от того, какой продукт
 	//     её исполняет.
-	"acrlevel":     classCorelib,
-	"api":          classKacho,
-	"audit":        classCorelib,
-	"auth":         classCorelib,
-	"authz":        classCorelib,
-	"backoff":      classCorelib,
-	"baggage":      classCorelib,
+	"acrlevel": classCorelib,
+	"api":      classKacho,
+	"audit":    classCorelib,
+	"auth":     classCorelib,
+	"authz":    classCorelib,
+	"backoff":  classCorelib,
+	"baggage":  classCorelib,
+	// cmd и journaltx приехали с corelib 77-notify (пин поднят kacho#2915, Д64) и
+	// классифицированы правилом K3-1 §3 по порядку Ограничение → В1 → В2 → В3 → В4:
+	//   - cmd — В1: единственное содержимое `cmd/notifygen` — генератор, чей вход
+	//     есть дерево исходников потребителя (обход `filepath.WalkDir` каталога
+	//     шаблонов и миграций), зовётся `go tool notifygen`; Ограничение не
+	//     сработало — прод-код фундамента вне `cmd/` его не импортирует;
+	//   - journaltx — ОГРАНИЧЕНИЕ: от него зависит прод-код фундамента вне его
+	//     самого (`notify/feed/put_source.go`, `subscription/emit.go`), поэтому
+	//     класс — фундамент, и спорить не о чем.
+	"cmd":          classToolchain,
 	"config":       classCorelib,
 	"contractroot": classCorelib,
 	// credsecret, identityposture, tokenpolicy — общий словарь ОБОИХ продуктов
@@ -128,6 +138,7 @@ var foundationClasses = map[string]foundationClass{
 	"identityposture": classCorelib,
 	"ids":             classCorelib,
 	"internal":        classCorelib,
+	"journaltx":       classCorelib,
 	"listcursorplan":  classToolchain,
 	"listfiltergate":  classToolchain,
 	"listnarrow":      classCorelib,
