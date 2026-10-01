@@ -9,6 +9,8 @@
 #   - kaname-jwks-enc-key key=enc_key  — 32-byte-hex JWKS private-key encryption key
 #   - kaname-second-factor-enc-key key=enc_key — 32-byte-hex ключ обёртки секретов
 #                                       второго фактора (читается под identityProvider: own)
+#   - kaname-mail-keys    keys=mail-window.key,device-label.key — ключи почтовой
+#                                       полосы, 32 случайных байта каждый (читаются на любой посадке)
 #
 # ЗАПУСКАЕТСЯ ДО ПЕРВОГО ПРОГОНА helm, А НЕ МЕЖДУ ПРОГОНАМИ (задача #948). Общий
 # секрет обратных вызовов — ПРЕДУСЛОВИЕ: провайдер берёт его величину обязательной
@@ -179,6 +181,33 @@ elif [[ "$out" == *"(NotFound)"* ]]; then
     --dry-run=client -o yaml | create_once kaname-bootstrap-sa-key "private_key_pem, ES256 P-256"
 else
   refuse_unknown kaname-bootstrap-sa-key "$out"
+fi
+
+# ─── КЛЮЧИ ПОЧТОВОЙ ПОЛОСЫ k_window и k_device: ОДИН РАЗ, НЕ РОТИРУЮТСЯ ───────
+#
+# (kacho#2915, Д64; замысел NTF-2 службы З18). Служба читает ДВА файла —
+# `mail-window.key` (свёртка ключа окна адресата и адресов ожидающих
+# регистраций) и `device-label.key` (подпись метки доверенного устройства), —
+# случайные байты не короче 32 каждый. Страж старта требует оба на ЛЮБОЙ посадке,
+# поэтому секрет нужен каждому стенду, а не только `own`. Том у пода
+# ОБЯЗАТЕЛЬНЫЙ (проекция поимённо, без `optional`): недостающий объект или ключ
+# держит под до старта с именем ключа.
+#
+# Порождаем ОДИН раз, дальше переиспользуем — довод тот же, что у ключей
+# обёртки выше, и он измерим по самой службе: смена k_window начинает окна
+# адресатов и ожидающие регистрации заново, смена k_device делает
+# недействительными все выданные метки устройств. Величины проходят процессной
+# подстановкой прямо в манифест и НЕ печатаются: ни в лог, ни в переменную
+# окружения этого процесса.
+if out="$(kubectl -n "$NS" get secret kaname-mail-keys -o name 2>&1)"; then
+  echo "kaname-mail-keys already present — reusing (смена ключей сбрасывает окна адресатов и метки устройств)"
+elif [[ "$out" == *"(NotFound)"* ]]; then
+  kubectl -n "$NS" create secret generic kaname-mail-keys \
+    --from-file=mail-window.key=<(openssl rand 32) \
+    --from-file=device-label.key=<(openssl rand 32) \
+    --dry-run=client -o yaml | create_once kaname-mail-keys "mail-window.key + device-label.key, 32B random each"
+else
+  refuse_unknown kaname-mail-keys "$out"
 fi
 
 echo "prerequisite secrets ready in ns/$NS"

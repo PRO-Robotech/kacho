@@ -170,6 +170,26 @@ spec:
               - key: {{ $anchor.key | quote }}
                 path: ca.crt
         {{- end }}
+        # ФАЙЛЫ КЛЮЧЕЙ ПОЧТОВОЙ ПОЛОСЫ (замысел NTF-2 службы З18; kacho#2915, Д64)
+        # — том БЕЗУСЛОВНЫЙ: страж старта требует оба файла на любой посадке, и
+        # карта настроек называет их всегда. Пустое либо пробельное имя объекта
+        # отвергает `kaname.mailKeys.secretName` с именем ключа.
+        #
+        # Ключи объекта ПРОЕЦИРУЮТСЯ поимённо (`items`), а не томом целиком: в под
+        # попадают ровно два файла, которые читает процесс, и объект без любого из
+        # ключей останавливает под до старта с именем ключа, а не пускает процесс
+        # отказывать на чтении. Права 0440 — читает группа пода (`fsGroup`),
+        # прочим файл закрыт. Имена файлов — шаблона (`kaname.mailKeys.*File`),
+        # те же, что у путей настроек.
+        - name: mail-keys
+          secret:
+            secretName: {{ include "kaname.mailKeys.secretName" . | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ include "kaname.mailKeys.windowFile" . }}
+                path: {{ include "kaname.mailKeys.windowFile" . }}
+              - key: {{ include "kaname.mailKeys.deviceFile" . }}
+                path: {{ include "kaname.mailKeys.deviceFile" . }}
         {{- if .Values.mtls.enable }}
         # SEC-H mTLS — cert-manager internal-CA секреты: лист СЛУШАТЕЛЯ и лист
         # КЛИЕНТА, в разных каталогах (cert-manager кладёт tls.crt/tls.key/ca.crt).
@@ -303,6 +323,9 @@ spec:
               mountPath: {{ include "kaname.mailAnchor.dir" $ | quote }}
               readOnly: true
             {{- end }}
+            - name: mail-keys
+              mountPath: {{ required "kaname: config.authn.secrets.mountPath не задан — каталог монтирования файлов ключей почтовой полосы обязан быть назван, иначе пути настроек называют файлы, которых в поде нет" (.Values.config.authn.secrets | default dict).mountPath | quote }}
+              readOnly: true
             {{- if .Values.mtls.enable }}
             - name: mtls-server
               mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}

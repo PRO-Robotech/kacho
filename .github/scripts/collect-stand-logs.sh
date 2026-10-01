@@ -103,13 +103,79 @@ for obj in $workloads; do
         missing_names="${missing_names} ${kind}/${name}"
         # Причина уезжает В АРТЕФАКТ, а не только в журнал работы: артефакт
         # читают отдельно от него, и пустая выкладка там неотличима от потери.
+        #
+        # ПРОЧИТАННОЕ НЕ СТИРАЕТСЯ (kacho#2915). Отказ одного контейнера роняет
+        # всё обращение: под с init-контейнером в CrashLoopBackOff держит
+        # основной в PodInitializing, и чтение основного отказывает уже ПОСЛЕ
+        # того, как журнал init-контейнера лёг в файл. Здесь стояла перезапись
+        # файла строкой «журнал недоступен» — и текст отказа мигратора, единственный
+        # называвший причину, терялся (прогон 36904979893, все четыре шарда).
+        # Отказ теперь ДОПИСЫВАЕТСЯ к прочитанному.
         {
-            printf '(журнал недоступен) %s\n' "$obj"
+            printf '(журнал недоступен целиком) %s\n' "$obj"
             head -5 "$file.err" 2>/dev/null
-        } > "$file"
+        } >> "$file"
         rm -f "$file.err"
     fi
 done
+
+# ─── INIT-КОНТЕЙНЕРЫ И ПРОШЛЫЕ ЗАПУСКИ — ОТДЕЛЬНЫМИ ФАЙЛАМИ (kacho#2915) ───
+#
+# Чтение носителя целиком не отвечает на вопрос «почему под не стартовал»:
+# у упавшего init-контейнера текущий запуск может ещё не начаться, а причина
+# лежит в ПРОШЛОМ запуске (`--previous`), которого чтение носителя не читает
+# вовсе. Поэтому по каждому поду, перечнем ИЗ КЛАСТЕРА:
+#   - init-контейнер — журнал текущего запуска: `init-<под>-<контейнер>.log`;
+#   - любой контейнер с рестартами — журнал прошлого запуска:
+#     `<init|main>-<под>-<контейнер>.previous.log`.
+# Перепись печатается рядом с первой: «init-контейнеров не было» обязано быть
+# отличимо от «их журналы не прочитаны».
+pod_lines=$(kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.initContainerStatuses[*]}{"init:"}{.name}{":"}{.restartCount}{" "}{end}{range .status.containerStatuses[*]}{"main:"}{.name}{":"}{.restartCount}{" "}{end}{"\n"}{end}' 2>/dev/null) || pod_lines=""
+
+init_seen=0
+init_read=0
+prev_read=0
+side_unavailable=0
+
+# read_side <файл> <аргументы kubectl logs…> — один журнал в свой файл; отказ
+# называется в том же файле и считается.
+read_side() {
+    local f="$1"
+    shift
+    if kubectl -n "$ns" logs "$@" --tail="$tail_lines" > "$f" 2>"$f.err"; then
+        rm -f "$f.err"
+        return 0
+    fi
+    {
+        printf '(журнал недоступен) %s\n' "$*"
+        head -5 "$f.err" 2>/dev/null
+    } >> "$f"
+    rm -f "$f.err"
+    side_unavailable=$((side_unavailable + 1))
+    return 1
+}
+
+while IFS=$'\t' read -r pod specs; do
+    [ -n "$pod" ] || continue
+    for spec in $specs; do
+        role=${spec%%:*}
+        rest=${spec#*:}
+        cname=${rest%%:*}
+        restarts=${rest##*:}
+        if [ "$role" = init ]; then
+            init_seen=$((init_seen + 1))
+            read_side "$out/init-${pod}-${cname}.log" "pod/$pod" -c "$cname" &&
+                init_read=$((init_read + 1))
+        fi
+        case "$restarts" in
+            '' | *[!0-9]*) continue ;;
+        esac
+        if [ "$restarts" -gt 0 ]; then
+            read_side "$out/${role}-${pod}-${cname}.previous.log" "pod/$pod" -c "$cname" --previous &&
+                prev_read=$((prev_read + 1))
+        fi
+    done
+done <<< "$pod_lines"
 
 kubectl -n "$ns" get events --sort-by=.lastTimestamp > "$out/events.txt" 2>&1 ||
     printf '(события недоступны)\n' > "$out/events.txt"
@@ -118,6 +184,8 @@ kubectl -n "$ns" get events --sort-by=.lastTimestamp > "$out/events.txt" 2>&1 ||
 # сбор и заведён.
 printf '=== журналы стенда: поднято %d · собрано %d · из них пусто %d · недоступно %d\n' \
     "$raised" "$collected" "$empty" "$unavailable"
+printf '=== init-контейнеров %d · их журналов прочитано %d · журналов прошлых запусков прочитано %d · недоступно %d\n' \
+    "$init_seen" "$init_read" "$prev_read" "$side_unavailable"
 if [ "$raised" -gt 0 ]; then
     find "$out" -maxdepth 1 -type f -printf '    %f\n' | sort
 fi

@@ -710,6 +710,10 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 	if dec, handled := m.phaseScopeFiltered(dr, entry); handled {
 		return dec
 	}
+	// 4c. ScopeBound — closed refusal: the edge holds no server binding.
+	if dec, handled := m.phaseScopeBound(dr, entry, subj); handled {
+		return dec
+	}
 	// 5. Resource-scope resolution (+ 5b malformed-id short-circuit).
 	resourceID, resourceType, descriptor, dec, handled := m.phaseResource(dr, entry, subj)
 	if handled {
@@ -944,6 +948,48 @@ func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEn
 	return decision{
 		outcome:    outcomeAllow,
 		descriptor: permissionDeniedDescriptor{FQN: dr.FQN, Action: entry.Permission},
+		entry:      entry,
+	}, true
+}
+
+// phaseScopeBound refuses, closed, a row of the ScopeBound form
+// (`scope_extractor.bound_to_server`, kacho#2915, замысел NTF-1 §З14).
+//
+// The object of such a check is the instance the PROCESS THAT HOSTS THE SERVER
+// bound it to at boot (`servicecontract.Bound`, e.g. `notification_feed:<module>`);
+// the request does not name it, so `from_request_field` is empty by design. The
+// edge hosts no such server and holds no binding — by design there is no second
+// value of "the module name" anywhere but in the root that raised the server.
+// So the edge has exactly two options: ask the model about the wildcard
+// (`<type>:*`, "any feed" — the very question the form exists to forbid), or
+// refuse. It refuses. The methods of this form are `Internal*` and carry no
+// `google.api.http`, so the edge routes them to nobody: the refusal costs no
+// lawful caller anything, and the owning server enforces the binding itself
+// (corelib `catalogderive.Bind` + the server-side interceptor).
+//
+// It runs after subject extraction so an unauthenticated caller still reads 401,
+// like every other row.
+func (m *AuthzMiddleware) phaseScopeBound(dr decisionRequest, entry CatalogEntry, subj ResolvedSubject) (decision, bool) {
+	if !entry.ScopeExtractor.BoundToServer {
+		return decision{}, false
+	}
+	descriptor := permissionDeniedDescriptor{
+		FQN:          dr.FQN,
+		Subject:      subj.FGA,
+		Action:       entry.Permission,
+		ResourceType: entry.ScopeExtractor.ObjectType,
+	}
+	m.metrics.RecordDeny()
+	m.cfg.Logger.Warn("authz scope bound to a server the edge does not host — failing closed",
+		"fqn", dr.FQN,
+		"subject", subj.FGA,
+		"action", entry.Permission,
+		"resource_type", entry.ScopeExtractor.ObjectType,
+	)
+	return decision{
+		outcome:    outcomeDeny,
+		reasons:    []string{"scope bound to the serving process: the edge holds no binding for this method"},
+		descriptor: descriptor,
 		entry:      entry,
 	}, true
 }

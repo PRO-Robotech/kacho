@@ -92,6 +92,27 @@ func TestDeliveryFlowGateFailsOnAReturnedDefect(t *testing.T) {
 		}
 	})
 
+	t.Run("инъекция: поток строчной картой — находка", func(t *testing.T) {
+		// Та же величина, что выше, иной записью карты: образец строки её не
+		// видел, разбор обязан видеть.
+		f := newDeliveryFlowFixture(t)
+		f.inject(t, profile, anchor, "        flows: {recovery: {enabled: false}}\n")
+		if found := f.run(t); len(found) == 0 || !strings.Contains(strings.Join(found, "\n"), "recovery") {
+			t.Errorf("поток восстановления, записанный строчной картой, гейт НЕ нашёл: %v", found)
+		}
+	})
+
+	t.Run("близнец: назначения окна адресата службы доступа — молчание", func(t *testing.T) {
+		// Те же СЛОВА вне узла потоков поставщика (kacho#2915): назначения писем
+		// окна адресата — величины службы доступа, а не потоки поставщика.
+		f := newDeliveryFlowFixture(t)
+		f.inject(t, profile, anchor, "        mailWindowProbe:\n          recovery:\n            perHour: 3\n          verification:\n            perHour: 3\n")
+		if found := f.run(t); len(found) > 0 {
+			t.Errorf("гейт покраснел на назначениях окна адресата — он снова ловит "+
+				"слово, а не узел потока:\n%s", strings.Join(found, "\n"))
+		}
+	})
+
 	t.Run("близнец: поток, письмом НЕ доставляемый, — молчание", func(t *testing.T) {
 		// `settings` объявляется профилями законно и письмом не доставляется.
 		// Покраснев на нём, гейт стал бы красным на исправном дереве — а такой

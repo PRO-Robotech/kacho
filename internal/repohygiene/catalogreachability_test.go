@@ -103,7 +103,15 @@ import (
 // BeginAssertion,FinishAssertion}`: ключи доступа человека, обслуживаемые
 // службой в её дереве. Перемерено прогоном после регенерации: строк службы
 // 116 из 349.
+//
+// Лента уведомлений (kacho#2915) добавила ДВЕ строки не службы доступа —
+// `corelib.notify.InternalNotificationFeedService/{Ack,Claim}`: контракт общий,
+// сервер ленты поднимает модуль-источник у себя, край их не обслуживает
+// (префикс `Internal`). Следствие записи mountAllow того же коммита. Перемерено
+// прогоном после регенерации каталога: строк каталога 351.
 var knownInertCatalogRows = []string{
+	"corelib.notify.InternalNotificationFeedService/Ack",
+	"corelib.notify.InternalNotificationFeedService/Claim",
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
 	"kaname.cloud.iam.v1.AccessBindingService/ExpandAccess",

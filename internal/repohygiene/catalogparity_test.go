@@ -46,6 +46,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
@@ -93,6 +94,12 @@ var catalogProtoPackages = []string{
 	// как всякая другая. Пропусти его здесь, и строка каталога осталась бы без
 	// источника, а гейт назвал бы находкой сам каталог.
 	"corelib.subscription",
+	// Пакет ОБЩЕЙ ленты уведомлений модуля-источника (kacho#2915): в нём
+	// объявлена служба `InternalNotificationFeedService` — взять порцию и
+	// подтвердить исход, — и её аннотации обязаны сверяться так же, как всякие
+	// другие. Пропусти его здесь, и две строки каталога остались бы без
+	// источника, а гейт назвал бы находкой сам каталог.
+	"corelib.notify",
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки
@@ -247,6 +254,13 @@ func diffAnnotationAgainstRow(fqn string, a catalogderive.Annotations, row catal
 	if a.ScopeObjectTypeFromRequest != row.ScopeExtractor.ObjectTypeFromRequestField {
 		add("scope_extractor.object_type_from_request_field",
 			a.ScopeObjectTypeFromRequest, row.ScopeExtractor.ObjectTypeFromRequestField)
+	}
+	// Форма ScopeBound (kacho#2915): без этой оси строка без признака сходилась
+	// с аннотацией, несущей его, — а край читал её пустое from_request_field
+	// как подстановку `*`.
+	if a.ScopeBoundToServer != row.ScopeExtractor.BoundToServer {
+		add("scope_extractor.bound_to_server",
+			fmt.Sprint(a.ScopeBoundToServer), fmt.Sprint(row.ScopeExtractor.BoundToServer))
 	}
 	if a.HideExistence != row.HideExistence {
 		add("hide_existence", fmt.Sprint(a.HideExistence), fmt.Sprint(row.HideExistence))

@@ -1939,6 +1939,51 @@ kaname:
         verificationResendInterval: 60s
         verificationResendLimit: 5
         verificationResendWindow: 24h
+        # ── ПОЧТОВЫЕ РУЧКИ ТАБЛИЦЫ Р8 (приёмка NTF-2 службы, решение Д11;
+        # kacho#2915, Д64) ── условие старта НА ЛЮБОЙ ПОСАДКЕ, а не только под
+        # `own`: их судит страж таблицы границ службы в любом режиме, умолчания
+        # нет ни у процесса, ни у чарта (KANAME_AUTHN__LOGIN__*). Числа —
+        # ориентиры базового профиля таблицы Р8, дословно как в values.prod.yaml
+        # службы на пине дерева; стенд их не меняет — это политика продукта, а не
+        # свойство площадки. Доставку держит
+        # deploy/pinned_required_settings_reach_the_service_test.go.
+        #
+        # срок кода регистрации (5 мин ≤ ttl ≤ 24 ч, не короче firstPause окна)
+        registrationCodeTtl: 60m
+        # окно адресата по назначению письма: 60 с · 5 мин · 3 в час · 5 в сутки ·
+        # пол — одно письмо раз в 6 ч сверх потолков
+        mailWindow:
+          recovery:
+            firstPause: 60s
+            secondPause: 5m
+            perHour: 3
+            perDay: 5
+            floorInterval: 6h
+          verification:
+            firstPause: 60s
+            secondPause: 5m
+            perHour: 3
+            perDay: 5
+            floorInterval: 6h
+          registration:
+            firstPause: 60s
+            secondPause: 5m
+            perHour: 3
+            perDay: 5
+            floorInterval: 6h
+        # перебор кода: 5 неверных с пары (адрес, источник) за 15 мин; потолок 100
+        # неверных на адрес за то же окно
+        attempts:
+          addressSourcePerWindow: 5
+          window: 15m
+          addressFailureCeiling: 100
+        # не чаще одного письма о торможении адресату за 7 сут
+        mailThrottledInterval: 168h
+        # метка доверенного устройства: срок 90 сут; 2 письма восстановления в
+        # сутки по паре (окно адресата, метка)
+        trustedDevice:
+          ttl: 2160h
+          recoveryPerDay: 2
       # Потолок ТЕМПА заведения аккаунтов одной личностью: сверх первого — три за
       # час. Первое заведение проходит безусловно. Ноль законен и означал бы
       # «сверх первого — ни одного», поэтому величина объявлена явно.
@@ -2022,6 +2067,27 @@ kaname:
       # перестаёт принимать `external` — предмет отдельной полосы. Обратный
       # порядок положил бы шесть стендов.
       identityProvider: own
+    # ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) —
+    # объявлен ЯВНО: незаданный и не-булево — отказ рендера с именем ключа.
+    # Стенды платформы почту шлют: служба ставит письма класса security в свою
+    # ленту, их забирает служба уведомлений установки.
+    notifications:
+      enabled: true
+    # ПРИГЛАШЕНИЯ: СРОК И ПОТОЛКИ (приёмка NTF-2 службы Р7, Р8; решение Д11) —
+    # условие старта на любой посадке, умолчания нет (KANAME_INVITE__*). Числа —
+    # строка «kaname · приглашения» таблицы Р8 (200 · 50 · 30 сут · 200 · 3 · 5 ·
+    # 10 · 7 сут), как в values.prod.yaml службы. Порядки судит страж старта:
+    # youngAccountPerDay ≤ accountPerDay; recipientPerHour ≤ recipientPerDay ≤
+    # recipientPerDayAll.
+    invite:
+      ttl: 168h
+      accountPerDay: 200
+      youngAccountPerDay: 50
+      youngAccountAge: 720h
+      pendingMax: 200
+      recipientPerHour: 3
+      recipientPerDay: 5
+      recipientPerDayAll: 10
   initContainer:
     migrator:
       enabled: true

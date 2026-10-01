@@ -133,6 +133,11 @@ func describe(
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: "authz.trust-domain (env KACHO_NLB_AUTHZ__TRUST_DOMAIN)",
 
+		// Звено идентичности служб — изъятие с причиной: процесс ленты не служит.
+		// Причина и предикат снятия — у serviceIdentityAxis; та же функция кормит
+		// самоотчёт посадки, поэтому два места об одном звене разойтись не могут.
+		ServiceIdentity: serviceIdentityAxis(),
+
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(checkAddr, checkCreds),
 		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
