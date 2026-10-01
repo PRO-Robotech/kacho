@@ -97,19 +97,10 @@ platform:
       defaultTtl: "2160h"   # 90d
       maxTtl: "8760h"       # 365d
       accessTokenTtl: ""
-      # bindDpop — issue sender-constrained (RFC 9449) machine tokens. OFF by
-      # default and deliberately NOT flipped here: it only affects keys issued
-      # after it is on, so it must be enabled first, existing keys rotated, and
-      # only then may the gateway require binding.
-      #
-      # AND IT HAS A READER ONLY WHILE THE CONTOUR IS NOT TRANSLATED (#1137).
-      # Binding is registration metadata for the client MIRROR at the previous
-      # issuer. A profile that turns on `config.authn.clientToken.enabled`
-      # creates no mirror at all, so there this knob is read by nothing — the
-      # operator would declare a control that nothing enforces. iam REFUSES TO
-      # START in that combination, and tests/helm/machine-credential-posture-test.sh
-      # refuses the profile before any pod is created.
-      bindDpop: false
+      # Ключа `bindDpop` здесь НЕТ, и профиль, объявивший его, получает отказ
+      # рендера (`kaname.refuseRetiredKnobs`, kacho#2949): токен-эндпоинт, где
+      # обменивается ключ служебной учётки, доказательства владения не
+      # принимает, и машинный токен `cnf` не несёт ни на одном профиле.
 
 # ─── Умолчания глобальных значений службы личности ────────────────────────────
 #
