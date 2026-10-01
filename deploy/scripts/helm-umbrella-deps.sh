@@ -474,7 +474,7 @@ EOF
   #     её и до этой правки; исход всё равно был КРАСНЫМ, потому что адрес
   #     извлекался только формой первой.
   replay 3 есть 'форма вторая (репозиторий недостижим) → «условие не создано»' <<'EOF'
-Save error occurred:  could not find : chart hydra not found in https://k8s.ory.sh/helm/charts: looks like "https://k8s.ory.sh/helm/charts" is not a valid chart repository or cannot be reached: Get "https://k8s.ory.sh/helm/charts/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer
+Save error occurred:  could not find : chart cert-manager not found in https://charts.jetstack.io: looks like "https://charts.jetstack.io" is not a valid chart repository or cannot be reached: Get "https://charts.jetstack.io/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer
 EOF
   # (5) ФОРМА ТРЕТЬЯ — оборвано скачивание САМОГО АРХИВА (kacho#1525).
   replay 3 есть 'форма третья (оборван архив) → «условие не создано»' <<'EOF'
