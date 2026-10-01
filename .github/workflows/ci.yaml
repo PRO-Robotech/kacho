@@ -1564,6 +1564,19 @@ jobs:
           python3 .github/scripts/assert-review-trigger-scope.py --self-test
           python3 .github/scripts/assert-review-trigger-scope.py
 
+      # ─── ПРОЦЕСС ПО `workflow_run` ПУБЛИКУЕТ ТОЛЬКО ПОСАЖЕННОЕ ───
+      #
+      # Процесс по `workflow_run` исполняется с секретами базового репозитория,
+      # а фильтр `workflow_run.branches` судит одно имя ветки и не знает события
+      # исходного прогона. Гейт подаёт разобранному процессу синтетические
+      # события и исполняет условие задания, шаг решения и условия шагов: от
+      # запроса публикации нет, от `push` в ствол — есть (kacho#2942).
+      # `--self-test` ПЕРВЫМ; `pyyaml` ставит шаг выше.
+      - name: процесс по workflow_run публикует только посаженное
+        run: |
+          python3 .github/scripts/assert-workflow-run-publish-guard.py --self-test
+          python3 .github/scripts/assert-workflow-run-publish-guard.py
+
       # ─── ЗЕЛЁНОЕ ЗАДАНИЕ ОБЯЗАНО ДОКАЗАТЬ, ЧТО ИСПОЛНИЛО ОБЪЯВЛЕННОЕ ───
       #
       # Владелец материализации стенда объявляет третью категорию ОТМЕТКОЙ в

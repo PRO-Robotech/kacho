@@ -40,6 +40,13 @@ on:
   # мёртвого ранера.
   #
   # `branches:` здесь фильтрует ветку ВЫШЕСТОЯЩЕГО прогона (не ветку этого файла).
+  #
+  # ФИЛЬТР ВЕТКИ НЕ ОТВЕЧАЕТ НА ВОПРОС «МОЖНО ЛИ ПУБЛИКОВАТЬ»: он сверяет одно
+  # имя ветки и не знает ни события, которым поднят исходный прогон, ни его
+  # происхождения. Публикуется только посаженное, поэтому право судится
+  # отдельно — по событию и происхождению (условие задания и шаг «право на
+  # публикацию» ниже); держит это гейт
+  # `.github/scripts/assert-workflow-run-publish-guard.py` (kacho#2942).
   workflow_run:
     workflows: [e2e-newman]
     types: [completed]
@@ -59,8 +66,12 @@ on:
 # `github.ref` указывает на ветку по умолчанию (см. шаг «состояние под проверкой»),
 # поэтому на нём все такие прогоны попали бы в ОДНУ группу и отменяли друг друга
 # независимо от того, какую ветку собирают.
+#
+# В ключ входят СОБЫТИЕ и РЕПОЗИТОРИЙ головы исходного прогона, а не одна ветка:
+# одно имя ветки не различает происхождение, и прогоны, которым задание ниже
+# откажет, делили бы группу со сборкой ствола и отменяли бы её.
 concurrency:
-  group: docker-build-${{ github.event.workflow_run.head_branch || github.ref }}
+  group: docker-build-${{ github.event.workflow_run.event || github.event_name }}-${{ github.event.workflow_run.head_repository.full_name || github.repository }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 # `actions: write` — НЕ расширение прав «на всякий случай»: кэш `type=gha` пишется через
@@ -113,12 +124,66 @@ jobs:
     # Гейтить сборку на зелёный e2e значило бы получить джоб, который на красной
     # ветке не запускается НИ РАЗУ, при этом выглядит провязанным — то есть снова
     # ноль покрытия, только незаметный.
+    #
+    # ПУБЛИКУЕТСЯ ТОЛЬКО ПОСАЖЕННОЕ. По `workflow_run` задание идёт, лишь когда
+    # исходный прогон поднят `push` и голова из ЭТОГО репозитория. Для прочих —
+    # отказ, а не «сборка без публикации»: здесь у задания права, которых у
+    # непринятого кода быть не должно, включая запись в общий кэш слоёв.
+    # Правило имени ветки выражением не записать (сопоставления с образцом в
+    # языке условий нет) — его судит шаг «право на публикацию», первым.
     if: >-
       github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion != 'cancelled' &&
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.conclusion != 'cancelled' &&
        github.event.workflow_run.conclusion != 'skipped')
 
     steps:
+      # ── ПРАВО НА ПУБЛИКАЦИЮ ────────────────────────────────────────────────
+      #
+      # Второй слой поверх условия задания, и он не дублирует его: условие не умеет
+      # сопоставить имя ветки с правилом, а шаг умеет. Стоит ПЕРВЫМ — до выкачки,
+      # то есть решение принимает код ветки по умолчанию (файл процесса по
+      # `workflow_run` берётся оттуда), а не код головы, о праве которой идёт речь.
+      #
+      # Правило ветки — то же, что у фильтра `workflow_run.branches` выше: ствол
+      # `main` и ничего больше. Чужое событие, чужой репозиторий или ветка вне
+      # правила — ОТКАЗ шагом: последующие шаги, включая чтение секретов, не
+      # исполняются.
+      #
+      # Ручной запуск и собственный `push` этого файла (ствол и метки версий)
+      # судит их собственный фильтр и право запустившего — для них решение «да».
+      - name: право на публикацию
+        id: publish_right
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "workflow_run" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "право: событие этого файла ($EVENT_NAME) — судит его собственный фильтр"
+            exit 0
+          fi
+          why=""
+          if [ "${RUN_EVENT:-}" != "push" ]; then
+            why="исходный прогон поднят событием '${RUN_EVENT:-<пусто>}', а не push"
+          elif [ -z "${RUN_REPO:-}" ] || [ "$RUN_REPO" != "$THIS_REPO" ]; then
+            why="голова исходного прогона не из этого репозитория"
+          elif ! [[ "${RUN_BRANCH:-}" =~ ^main$ ]]; then
+            why="ветка '${RUN_BRANCH:-<пусто>}' вне правила (main)"
+          fi
+          if [ -n "$why" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::error::публикации нет: $why"
+            exit 1
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "право: push в ветку '$RUN_BRANCH' этого репозитория"
+
       # ── СОСТОЯНИЕ ПОД ПРОВЕРКОЙ ────────────────────────────────────────────
       #
       # У прогона по `workflow_run` контекст указывает на ВЕТКУ ПО УМОЛЧАНИЮ, а не
@@ -170,6 +235,9 @@ jobs:
 
       - name: gate on DockerHub secrets
         id: gate
+        # Секреты читаются ТОЛЬКО при праве на публикацию: третий слой, на случай
+        # если шаг права однажды станет отвечать «нет», не отказывая.
+        if: steps.publish_right.outputs.publish == 'true'
         env:
           DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
           DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -283,7 +351,7 @@ jobs:
                  --cache-from "type=gha,scope=$image" \
                  --cache-to "type=gha,mode=max,scope=$image" \
                  -f "./$dir/Dockerfile" \
-                 -t "${{ steps.gate.outputs.ns }}/$image:${{ steps.subject.outputs.branch }}-${{ steps.subject.outputs.sha }}" \
+                 -t "${{ steps.gate.outputs.ns || env.FALLBACK_NS }}/$image:${{ steps.subject.outputs.branch }}-${{ steps.subject.outputs.sha }}" \
                  $push_flag "$ctx" ; then
               echo "✓ $image"
             else
