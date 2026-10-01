@@ -6,7 +6,6 @@ import {
   type APIResponse,
   type Locator,
   type Page,
-  type Request,
   type TestInfo,
 } from "@playwright/test";
 import { parseRpcStatus, reasonOfDetails } from "../../shared/src/api/rpc-status";
@@ -35,6 +34,7 @@ import {
   type CeremonyCall,
   type CeremonyCensus,
 } from "./fixtures";
+import { issuingDocuments, substituteDocumentReads, type IssuedCall, type IssuingDocuments } from "./issuing-document";
 import { awaitLetter, conditionNotCreated, stationMailbox, type Letter, type Mailbox } from "./mail-receiver";
 
 /**
@@ -91,7 +91,10 @@ import { awaitLetter, conditionNotCreated, stationMailbox, type Letter, type Mai
  * F6b-25. Экран подтверждения с подтверждённой сессией уходит на адрес возврата
  * (Р7), поэтому «после перехода обращений сверх перечня Р6 нет» судит обращения,
  * выпущенные документом `/verification`, а не всё, что выпустит вернувшаяся
- * страница.
+ * страница. Документ обращения — запись браузера о выпуске
+ * (`issuing-document.ts`), а не адрес кадра в слушателе события: разбор отказа
+ * потока, выпущенный уходящим списком, слушатель получал уже при принятом
+ * экране и записывал за ним (kacho#2922, прогон 36889716883).
  *
  * F6b-26. Раздел `vpc` повторяет упавшее чтение (`retry: 1` клиента запросов), и
  * одна подменённая выдача отказа на странице не показывается никогда. Подмена
@@ -1406,70 +1409,9 @@ async function capturedAnswerOf(res: APIResponse): Promise<CapturedAnswer> {
   return { status: res.status(), headers, body: await res.body() };
 }
 
-/**
- * Документ, выпустивший обращение: путь адреса кадра в момент выпуска; пусто,
- * когда у обращения нет кадра. Обращение уходящего документа, выпущенное после
- * начала перехода, несёт ЕГО адрес, а не адрес нового: адрес кадра меняется,
- * когда новый документ принят, а не когда переход начат.
- */
-function documentOf(r: Request): string {
-  try {
-    return new URL(r.frame().url()).pathname;
-  } catch (_notAFrameRequest) {
-    return "";
-  }
-}
-
-/**
- * Подменить снятыми байтами чтения списка сетей, которые выпустит ДОКУМЕНТ
- * списка `list`, — до его ухода (см. шапку файла, F6b-26). Документ чтения —
- * `documentOf`; чтение другого документа идёт к краю и записывается в
- * `otherDocuments`. Условие несущее: каркас, который `scopeIsReady` оставляет
- * на сводке проекта, сам читает сети, и его чтение, выпущенное после начала
- * перехода на список, без него подменялось бы наравне с чтением списка
- * (kacho#2922: у F6b-25 подменены два чтения — уходящей сводки и списка). Уход
- * документа списка — переход главного кадра после первой подмены; дальше
- * чтения идут к краю.
- */
-async function substituteNetworkReads(
-  page: Page,
-  answer: CapturedAnswer,
-  list: string,
-): Promise<{ substituted: string[]; otherDocuments: string[] }> {
-  const substituted: string[] = [];
-  const otherDocuments: string[] = [];
-  let armed = true;
-  page.context().on("request", (r) => {
-    if (armed && substituted.length > 0 && r.isNavigationRequest() && r.frame() === page.mainFrame()) armed = false;
-  });
-  await page.route(
-    (url) => url.pathname === NETWORKS,
-    async (route) => {
-      const read = route.request();
-      if (!armed || read.method() !== "GET") return route.fallback();
-      const document = documentOf(read);
-      if (document !== list) {
-        otherDocuments.push(`${document || "(без кадра)"} ${read.url()}`);
-        return route.fallback();
-      }
-      substituted.push(read.url());
-      await route.fulfill({ status: answer.status, headers: answer.headers, body: answer.body });
-    },
-  );
-  return { substituted, otherDocuments };
-}
-
-/** Обращения к API по ДОКУМЕНТУ, который их выпустил (`documentOf`). */
-function apiCallsByDocument(page: Page): Array<{ document: string; method: string; path: string }> {
-  const calls: Array<{ document: string; method: string; path: string }> = [];
-  page.context().on("request", (r) => {
-    if (r.isNavigationRequest()) return;
-    const document = documentOf(r);
-    if (document === "") return;
-    const path = new URL(r.url()).pathname;
-    if (API_PATH.some((re) => re.test(path))) calls.push({ document, method: r.method(), path });
-  });
-  return calls;
+/** Обращения к API, которые выпустил документ с путём `document` (`issuing-document.ts`). */
+function apiCallsOf(documents: IssuingDocuments, document: string): IssuedCall[] {
+  return documents.calls.filter((c) => c.document === document && API_PATH.some((re) => re.test(c.path)));
 }
 
 test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении платформы ведёт на экран подтверждения", async ({
@@ -1492,8 +1434,8 @@ test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении �
   await scopeIsReady(page, projectId);
   const list = `/projects/${projectId}/vpc/networks`;
   const census = ceremonyCensus(page.context());
-  const byDocument = apiCallsByDocument(page);
-  const swap = await substituteNetworkReads(page, refusal, list);
+  const documents = await issuingDocuments(page);
+  const swap = await substituteDocumentReads(documents, { path: NETWORKS, document: list, answer: refusal });
   const from = census.calls.length;
   await page.goto(list, { waitUntil: "domcontentloaded" });
 
@@ -1507,8 +1449,11 @@ test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении �
   // Экран с подтверждённой сессией уходит на адрес возврата (Р7): окно документа
   // `/verification` закрыто, когда список открыт снова.
   await expectAddress(page, list, "экран подтверждения подтверждённой сессии не вернул на адрес возврата");
-  expect(swap.substituted, "подменено не ровно одно чтение списка сетей").toHaveLength(1);
-  const onScreen = byDocument.filter((c) => c.document === "/verification");
+  expect(
+    swap.substituted,
+    `подменено не ровно одно чтение списка сетей; без записи о выпуске: ${swap.unattributed.join(" | ") || "нет"}`,
+  ).toHaveLength(1);
+  const onScreen = apiCallsOf(documents, "/verification");
   console.log(
     `[F6b-25] обращений к API документа /verification — ${onScreen.length}; подменено чтений ${swap.substituted.length}; ` +
       `чтений других документов к краю ${swap.otherDocuments.length}: ${swap.otherDocuments.join(" | ")}`,
@@ -1520,7 +1465,9 @@ test("F6b-25 · отказ края EMAIL_NOT_VERIFIED на обращении �
     onScreen
       .filter((c) => !ALLOWED_BEFORE_CONFIRMATION.some((a) => a.method === c.method && a.path === c.path))
       .map((c) => `${c.method} ${c.path}`),
-    `после перехода на экран подтверждения — обращения сверх перечня Р6:\n${census.describe()}`,
+    `после перехода на экран подтверждения — обращения сверх перечня Р6 (документ обращения — запись браузера о выпуске):\n` +
+      `${onScreen.map((c) => `  ${c.method} ${c.url} [документ ${c.document}, загрузчик ${c.loaderId}]`).join("\n")}\n` +
+      `перепись страницы:\n${census.describe()}`,
   ).toEqual([]);
 });
 
@@ -1562,7 +1509,11 @@ test("F6b-26 · отказ края по каталогу прав на той �
   const list = `/projects/${projectId}/vpc/networks`;
   const census = ceremonyCensus(page.context());
   const visited = visitedAddresses(page);
-  const swap = await substituteNetworkReads(page, refusal, list);
+  const swap = await substituteDocumentReads(await issuingDocuments(page), {
+    path: NETWORKS,
+    document: list,
+    answer: refusal,
+  });
   const from = census.calls.length;
   await page.goto(list, { waitUntil: "domcontentloaded" });
   await expect(
@@ -1573,7 +1524,10 @@ test("F6b-26 · отказ края по каталогу прав на той �
     `[F6b-26] подменено чтений ${swap.substituted.length}; чтений других документов к краю ${swap.otherDocuments.length}; ` +
       `адреса вкладки ${visited.join(" → ")}`,
   );
-  expect(swap.substituted.length, "ни одно чтение списка не подменено — предмета нет").toBeGreaterThan(0);
+  expect(
+    swap.substituted.length,
+    `ни одно чтение списка не подменено — предмета нет; без записи о выпуске: ${swap.unattributed.join(" | ") || "нет"}`,
+  ).toBeGreaterThan(0);
   expect(addressOf(page), "отказ каталога прав увёл со страницы").toBe(list);
   expect(
     [
