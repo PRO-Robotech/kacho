@@ -255,6 +255,26 @@ mtls:
     caNamespace: ""
     caDuration: "87600h"      # 10y root
     caRenewBefore: "720h"     # 30d
+  # ─── ПОЛИТИКА ВЫПУСКА СЕРТИФИКАТОВ СЛУЖБ (templates/cert-issuance-policy.yaml) ─
+  # Внутренний УЦ выпускает идентичность службы только её учётке (SAN ↔
+  # пространство и учётка запросившего, замысел З30). Без политики любая учётка
+  # кластера выпускает себе идентичность любой службы, и notify, судящий по ней,
+  # судит по удостоверению, которое подделывается одним объектом.
+  #
+  # `enabled: false` — ТОЛЬКО на площадке с чужим cert-manager (оператор
+  # площадки держит свой: ни его встроенный одобритель, ни контроллер политики
+  # нам не подвластны, CRD политики там нет). Включение notify там краснит гейт
+  # посадки (секция E) — и обязано.
+  #
+  # certificateControllerServiceAccount — учётка контроллера cert-manager,
+  # которой открыта ветвь `certificates`. Это имя производит релиз
+  # CERT_MANAGER_RELEASE (deploy/Makefile); согласие держит
+  # tests/helm/cert-issuance-policy-render-test.sh.
+  issuancePolicy:
+    enabled: true
+    name: kacho-service-identity
+    certificateControllerServiceAccount: kacho-cert-manager
+    maxDuration: "2160h"      # = leafDuration всех служб; длиннее листу не выдаётся
   # ─── provider ADMIN listener server-TLS (templates/hydra-admin-certificate.yaml) ─
   # The admin listener (:4445) carries the CALLER'S LIVE BEARER on every
   # authenticated request that misses the introspection cache (introspection asks

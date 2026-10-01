@@ -542,6 +542,37 @@ guard-destructive:
 CERT_MANAGER_RELEASE := kacho-cert-manager
 CERT_MANAGER_CHART   := ./helm/umbrella/charts/cert-manager-v1.16.5.tgz
 
+# APPROVER_POLICY_RELEASE / APPROVER_POLICY_CHART — контроллер ПОЛИТИКИ ВЫПУСКА
+# сертификатов служб (замысел З30, templates/cert-issuance-policy.yaml). Ставится
+# той же целью `cert-manager-up`, сразу после cert-manager и только там, где
+# cert-manager наш: CRD политики обязан существовать раньше первого объекта
+# продукта, который его называет, а на площадке с чужим cert-manager ни его
+# встроенный одобритель, ни право одобрения нам не подвластны.
+#
+# ПРАВО ОДОБРЕНИЯ ДЕЛИТСЯ, А НЕ ДУБЛИРУЕТСЯ. Запрос одобряет тот, кто успел
+# первым, поэтому политика, рядом с которой встроенный одобритель cert-manager
+# одобряет всё подряд, ничего не решает. Встроенному оставлен ровно корневой
+# самоподписанный выпускающий (`clusterissuers.cert-manager.io/<rootIssuerName>`),
+# контроллеру политики — ровно внутренний УЦ (`…/<clusterIssuerName>`). Оба имени
+# читаются из values.yaml зонтика — того же узла, что рендерит цепочку УЦ;
+# второго написания у них нет. Что так и есть на живом кластере, судит секция E
+# гейта посадки (scripts/assert-cert-issuance-policy.sh).
+#
+# АРХИВ — НЕ В helm/umbrella/charts/. Всё, что лежит там, helm грузит сабчартом
+# зонтика, а имя этого архива начинается с `cert-manager-`: helm, ища архив
+# зависимости `cert-manager` по образцу `cert-manager-*.tgz`, находит два, и
+# статус зависимости cert-manager перестаёт быть `ok` (замер 2026-10-01, helm
+# v4.2.4: `helm dependency list` → `unpacked`, материализация зонтика — FATAL
+# «не на месте 1 из 21»). Поэтому архив вендорен отдельно, а его ПРОВЕНАНС
+# держит сам рецепт: сумма ниже — ДОСЛОВНО поле `digest` записи v0.28.0 в
+# https://charts.jetstack.io/index.yaml (сверено 2026-10-01), и установка
+# отказывает, если архив на диске с ней расходится. Бамп — тем же порядком,
+# что у внешних чартов зонтика (helm/umbrella/external-charts.yaml): новая
+# версия, новая сумма издателя, прежний архив снят тем же изменением.
+APPROVER_POLICY_RELEASE := kacho-approver-policy
+APPROVER_POLICY_CHART   := ./helm/vendor/cert-manager-approver-policy-v0.28.0.tgz
+APPROVER_POLICY_SHA256  := df30d97da8fa1dcce3f0c32ea69f28985440a6e7886da622a44296ab01f5a0d4
+
 # UMBRELLA_OPTS — то, что обязан нести КАЖДЫЙ вызов helm по умбрелле.
 #
 # Вынесено в переменную, а не дописано к вызовам, по цене одной ошибки: правя
@@ -598,6 +629,17 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 #     прочитано» не значит «нет»: поставить второй cert-manager туда, где первый
 #     уже стоит, нельзя оттого, что спросить не удалось.
 #
+# «ТОТ ЖЕ РЕЛИЗ» — ЭТО И ТА ЖЕ ВЕРСИЯ, И ТО ЖЕ ПРАВО ОДОБРЕНИЯ. Наш релиз той же
+# версии, чей встроенный одобритель вправе одобрять больше корневого
+# самоподписанного выпускающего (так стоят все кластеры, поднятые до политики
+# выпуска), — не «уже стоит», а дрейф: политика рядом с ним декоративна. Такой
+# релиз доводится `helm upgrade --install` до объявленного; значения релиза, не
+# прочитанные или не разобранные, — отказ, а не «наверное, то же».
+#
+# За cert-manager тем же заходом ставится контроллер политики выпуска
+# (APPROVER_POLICY_RELEASE) — на всех путях, где cert-manager наш, и ни на одном,
+# где он чужой.
+#
 # СТРАЖ — guard-declared-context: цель пишет в кластер активного контекста и
 # зовётся из путей, которые свою цель уже подтвердили (`dev-up` — guard-kind-
 # context, `stack-up` — guard-destructive). Пространство имён умолчания не имеет по
@@ -619,6 +661,13 @@ cert-manager-up: guard-declared-context
 	  exit 1; }; \
 	chart="$$(helm show chart $(CERT_MANAGER_CHART))"; \
 	want="$$(sed -n 's/^name: *//p' <<<"$$chart")-$$(sed -n 's/^version: *//p' <<<"$$chart")"; \
+	root="$$(yq -r '.mtls.internalCA.rootIssuerName // ""' ./helm/umbrella/values.yaml)"; \
+	issuer="$$(yq -r '.mtls.internalCA.clusterIssuerName // ""' ./helm/umbrella/values.yaml)"; \
+	[ -n "$$root" ] && [ -n "$$issuer" ] || { \
+	  echo "ABORT: имена выпускающих (mtls.internalCA.rootIssuerName / clusterIssuerName) не прочитаны из values.yaml зонтика."; \
+	  echo "       Без них право одобрения не разделить: встроенный одобритель cert-manager одобрял бы и внутренний УЦ."; \
+	  exit 1; }; \
+	approve="clusterissuers.cert-manager.io/$$root"; \
 	case "$$owner" in \
 	  absent) why="CRD cert-manager в кластере нет" ;; \
 	  "$$rel|$$ns") \
@@ -629,8 +678,18 @@ cert-manager-up: guard-declared-context
 	      echo "ABORT: ответ helm о релизе $$rel НЕ ПРОЧИТАН как JSON."; \
 	      exit 1; }; \
 	    if [ "$$have" = "deployed|$$want" ]; then \
-	      echo "=== cert-manager: релиз $$rel ($$want) уже стоит в ns $$ns — НЕ переставляется ==="; \
-	      why=""; \
+	      scope="$$(timeout 60 helm get values "$$rel" -n "$$ns" -o json)" || { \
+	        echo "ABORT: значения релиза $$rel НЕ ПРОЧИТАНЫ — право одобрения встроенного одобрителя не установить."; \
+	        exit 1; }; \
+	      scope="$$(printf '%s' "$$scope" | python3 -c 'import json,sys; s=sys.stdin.read().strip(); v=(json.loads(s) if s else {}) or {}; print(",".join(v.get("approveSignerNames") or []))')" || { \
+	        echo "ABORT: значения релиза $$rel НЕ ПРОЧИТАНЫ как JSON."; \
+	        exit 1; }; \
+	      if [ "$$scope" = "$$approve" ]; then \
+	        echo "=== cert-manager: релиз $$rel ($$want) уже стоит в ns $$ns — НЕ переставляется ==="; \
+	        why=""; \
+	      else \
+	        why="релиз $$rel в ns $$ns: встроенный одобритель вправе одобрять «$${scope:-умолчание чарта: все выпускающие}», объявлено «$$approve»"; \
+	      fi; \
 	    else \
 	      why="релиз $$rel в ns $$ns: $${have:-записи нет}, объявлен $$want"; \
 	    fi ;; \
@@ -648,10 +707,22 @@ cert-manager-up: guard-declared-context
 	  echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ($$why) ==="; \
 	  helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n "$$ns" --create-namespace \
 	    --set crds.enabled=true \
+	    --set-json "approveSignerNames=[\"$$approve\"]" \
 	    --wait --timeout 5m; \
 	fi; \
 	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
-	kubectl -n "$$ns" rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s
+	kubectl -n "$$ns" rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	echo "=== контроллер политики выпуска: ОТДЕЛЬНЫЙ релиз, до продукта; одобряет ТОЛЬКО clusterissuers.cert-manager.io/$$issuer ==="; \
+	got="$$(sha256sum $(APPROVER_POLICY_CHART) | cut -d' ' -f1)"; \
+	[ "$$got" = "$(APPROVER_POLICY_SHA256)" ] || { \
+	  echo "ABORT: архив $(APPROVER_POLICY_CHART) расходится с суммой издателя ($${got:-не прочитан} ≠ $(APPROVER_POLICY_SHA256))."; \
+	  echo "       Ставить контроллер, который решает, кому выпускать идентичность служб, из непроверенного архива нельзя."; \
+	  exit 1; }; \
+	helm upgrade --install $(APPROVER_POLICY_RELEASE) $(APPROVER_POLICY_CHART) -n "$$ns" \
+	  --set crds.enabled=true \
+	  --set-json "app.approveSignerNames=[\"clusterissuers.cert-manager.io/$$issuer\"]" \
+	  --wait --timeout 5m; \
+	kubectl -n "$$ns" rollout status deploy/cert-manager-approver-policy --timeout=180s
 
 # `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
 # команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось

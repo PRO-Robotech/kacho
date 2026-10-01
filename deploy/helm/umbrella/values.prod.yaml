@@ -510,7 +510,7 @@ kacho-geo:
   # пространство имён своё (kacho-storage), и запись «по образцу соседа» не
   # совпала бы — отказ был бы молчаливым.
   env:
-    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   db:
     sslMode: require
   mtls:
@@ -715,7 +715,7 @@ kaname:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
-        - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-storage
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
       # ПОЛОСА ВХОДА ПАРОЛЕМ (Ф3, kacho#1269) — величины, которые читает ТОЛЬКО

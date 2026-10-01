@@ -68,7 +68,7 @@ SCRIPT="$(basename "$0")"
 MAKEFILE="${MAKEFILE_UNDER_TEST:-$DEPLOY_ROOT/Makefile}"
 
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=15
+EXPECTED_ASSERTIONS=17
 # Пространство имён прогона части Б. Намеренно не `kacho` — см. шапку.
 NS="cm-probe-ns"
 
@@ -88,6 +88,12 @@ CHART_REL="$(sed -n 's/^CERT_MANAGER_CHART[[:space:]]*:=[[:space:]]*//p' "$MAKEF
 CHART="$DEPLOY_ROOT/${CHART_REL#./}"
 require_file_present "$CHART" "архив чарта cert-manager (CERT_MANAGER_CHART)"
 
+# Объявленное право одобрения встроенного одобрителя — тем же чтением, что у
+# рецепта: корневой выпускающий из values.yaml зонтика.
+require_mikefarah_yq
+ROOT_ISSUER="$(yq -r '.mtls.internalCA.rootIssuerName // ""' "$DEPLOY_ROOT/helm/umbrella/values.yaml")"
+[ -n "$ROOT_ISSUER" ] || fatal "mtls.internalCA.rootIssuerName не прочитан из values.yaml — объявленное право одобрения сверять не с чем"
+APPROVE="clusterissuers.cert-manager.io/$ROOT_ISSUER"
 REAL_HELM="$(command -v helm)"
 CHART_VERSION="$("$REAL_HELM" show chart "$CHART" 2>/dev/null | sed -n 's/^version: *//p' | head -1)"
 [ -n "$CHART_VERSION" ] || fatal "версия чарта cert-manager не прочиталась из $CHART — сравнивать не с чем"
@@ -322,7 +328,7 @@ case "$args" in
         case "$args" in *--ignore-not-found*) exit 0 ;; esac
         echo 'Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io "certificates.cert-manager.io" not found' >&2
         exit 1 ;;
-      ours-same|ours-drift|ours-failed) crd_json "$STUB_REL" "$STUB_NS"; exit 0 ;;
+      ours-same|ours-drift|ours-failed|ours-wide) crd_json "$STUB_REL" "$STUB_NS"; exit 0 ;;
       foreign) crd_json beget-cert-manager beget-cert-manager; exit 0 ;;
       # Поставлен не helm (манифестом, оператором): CRD есть, записи владельца нет.
       foreign-nohelm)
@@ -351,6 +357,15 @@ STUB
 # отдаёт оба, и первым стоит НЕ cert-manager.
 cat >"$TMP/bin/helm-answer" <<'STUB'
 #!/usr/bin/env bash
+if [ "$1" = get ] && [ "$2" = values ]; then
+  # Значения релиза: право одобрения встроенного одобрителя. «ours-wide» — релиз,
+  # поднятый до политики выпуска (умолчание чарта: одобрять всё).
+  case "$STUB_MODE" in
+    ours-wide) printf '{"crds":{"enabled":true}}\n' ;;
+    *) printf '{"crds":{"enabled":true},"approveSignerNames":["%s"]}\n' "$STUB_APPROVE" ;;
+  esac
+  exit 0
+fi
 [ "$1" = list ] || exit 0
 shift
 ns="default"; filter=""; json=no
@@ -372,7 +387,7 @@ rows = []
 if os.environ["STUB_LIST_NS"] == ns:
     rows.append({"name": "kacho-umbrella", "namespace": ns, "status": "deployed", "chart": "kacho-umbrella-0.1.0"})
     cm = {"ours-same": ("deployed", ver), "ours-drift": ("deployed", "v0.0.1"),
-          "ours-failed": ("failed", ver)}.get(m)
+          "ours-failed": ("failed", ver), "ours-wide": ("deployed", ver)}.get(m)
     if cm:
         rows.append({"name": os.environ["STUB_REL"], "namespace": ns, "status": cm[0],
                      "chart": "cert-manager-" + cm[1]})
@@ -393,7 +408,7 @@ run_mode() { # <режим> → код возврата цели; вывод и 
   local mode="$1"
   : >"$TMP/log.$mode"
   (cd "$DEPLOY_ROOT" && PATH="$TMP/bin:$PATH" STUB_MODE="$mode" STUB_LOG="$TMP/log.$mode" \
-     STUB_REL="$REL" STUB_NS="$NS" STUB_CHART_VERSION="$CHART_VERSION" \
+     STUB_REL="$REL" STUB_NS="$NS" STUB_CHART_VERSION="$CHART_VERSION" STUB_APPROVE="$APPROVE" \
      make --no-print-directory -f "$MAKEFILE" cert-manager-up \
        CERT_MANAGER_NAMESPACE="$NS" EXPECT_CONTEXT=kind-stub) >"$TMP/out.$mode" 2>&1
 }
@@ -444,6 +459,7 @@ behaviour "Б5: наличие не прочитано (API не ответил)
 behaviour "Б6: CRD есть, записи владельца helm нет"       foreign-nohelm 0  no  no
 behaviour "Б7: ответ API о CRD не разобран как JSON"      garbled        nz no  no
 behaviour "Б8: наш релиз той же версии, не deployed"      ours-failed    0  yes yes
+behaviour "Б9: наш релиз той же версии, одобритель шире объявленного" ours-wide 0 yes yes
 
 says "Б5: отказ называет причину — наличие cert-manager не прочитано" unreachable 'НЕ ПРОЧИТАНО' \
   "«не ответил» неотличимо от любого другого отказа"
@@ -453,7 +469,9 @@ says "Б6: вывод говорит, что cert-manager поставлен н�
   "оператор не отличит «стоит чужой» от «никакого»"
 says "Б7: отказ называет причину — ответ не прочитан как JSON" garbled 'НЕ ПРОЧИТАНО как JSON' \
   "неразобранный ответ неотличим от недоступного API"
+says "Б9: вывод называет дрейф права одобрения" ours-wide 'встроенный одобритель вправе одобрять' \
+  "перестановку релиза той же версии не объяснить ничем"
 
 echo
 echo "проверок исполнено: $N из $EXPECTED_ASSERTIONS"
-findings_verdict "режимов подставного кластера: 8 (absent, ours-same, ours-drift, foreign, unreachable, foreign-nohelm, garbled, ours-failed)"
+findings_verdict "режимов подставного кластера: 9 (absent, ours-same, ours-drift, foreign, unreachable, foreign-nohelm, garbled, ours-failed, ours-wide)"
