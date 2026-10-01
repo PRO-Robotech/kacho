@@ -271,3 +271,54 @@ func TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRu
 			len(v.findings), strings.Join(v.findings, "\n"))
 	}
 }
+
+// TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled — порча ОДНОГО
+// факта на стороне пода: метка шаблона пода края в рендере переписана, политики
+// не тронуты. Каждая находка называет политику, которая край больше не впускает,
+// и обе политики, впускающие край, названы.
+func TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled(t *testing.T) {
+	docs := npChainDocs(t, npInjectStack)
+	npTwinGreen(t, docs)
+
+	injected := npCopyDocs(docs)
+	spoiled := 0
+	for _, d := range injected {
+		md, _ := d["metadata"].(map[string]any)
+		if d["kind"] != "Deployment" || md["name"] != "api-gateway" {
+			continue
+		}
+		tpl, _ := podTemplateOf(d)
+		tm, _ := tpl["metadata"].(map[string]any)
+		labels, _ := tm["labels"].(map[string]any)
+		if _, ok := labels["app"]; ok {
+			labels["app"] = "kacho-api-gateway"
+			spoiled++
+		}
+	}
+	if spoiled != 1 {
+		t.Fatalf("метка `app` пода края переписана %d раз, ждали 1 — предпосылка инъекции", spoiled)
+	}
+	v, err := judgeNetworkPolicies(npNamespace, injected)
+	if err != nil {
+		t.Fatalf("судья отказал на инъекции: %v", err)
+	}
+	named := map[string]int{}
+	for _, f := range v.findings {
+		hit := false
+		for _, p := range []string{"kacho-nlb", "vpc-internal-allowlist"} {
+			if strings.Contains(f, "политика "+p+",") || strings.Contains(f, "политик ["+p+"]") {
+				named[p]++
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("находка не называет политику, переставшую впускать край: %s", f)
+		}
+	}
+	for _, p := range []string{"kacho-nlb", "vpc-internal-allowlist"} {
+		if named[p] == 0 {
+			t.Errorf("политика %s, впускавшая край, не названа ни одной находкой:\n%s", p, strings.Join(v.findings, "\n"))
+		}
+	}
+	t.Logf("инъекция: находок %d · по политикам %v", len(v.findings), named)
+}
