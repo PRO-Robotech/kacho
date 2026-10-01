@@ -48,42 +48,36 @@ MEDIUM, гасит завтра CRITICAL: переклассификация п�
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль погашенных находок» обязано быть отличимо от
 «ноль прочитанных находок».
 """
-import json
 import os
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 
 import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import iac_scan_passes  # noqa: E402 — соседний модуль, единственный источник проходов
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCAN_CONFIG = ROOT / "trivy.yaml"
 
 
 def run_scan(config_path):
-    """→ (множество целей, множество находок (цель, правило)) для данного конфига."""
-    env = dict(os.environ)
-    # Ignorefile здесь ВРЕДЕН: он отфильтровал бы находки ещё до сравнения, и
-    # погашенная заглушкой находка была бы неотличима от прощённой записью.
-    env.pop("TRIVY_IGNOREFILE", None)
-    cmd = [
-        "trivy", "config", ".", "--config", str(config_path),
-        "--format", "json",
-        "--skip-dirs", ".claude", "--skip-dirs", "**/node_modules", "--quiet",
-    ]
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env, timeout=900)
-    if r.returncode not in (0, 1):
-        print("ОТКАЗ: trivy вышел с кодом %d\n%s" % (r.returncode, r.stderr[:400]),
-              file=sys.stderr)
-        sys.exit(2)
-    doc = json.loads(r.stdout or "{}")
-    results = doc.get("Results") or []
-    targets = {res.get("Target") or "" for res in results}
+    """→ (множество целей, множество находок (цель, правило)) для данного конфига.
+
+    Срез дерева — проход ЗАГЛУШЕК (`iac_scan_passes.STUBBED`), а не всё дерево: заглушки
+    действуют ровно на него. Каталог вендоренных внешних чартов осматривается своим
+    проходом без заглушек — чарт с закрытой схемой значений отвергает ЛЮБУЮ заглушку,
+    и в этом проходе каждая из них «гасила» бы его находки, выбивая его из осмотра.
+    Ignorefile снят там же: он отфильтровал бы находки ещё до сравнения, и погашенная
+    заглушкой находка была бы неотличима от прощённой записью.
+    """
+    got = iac_scan_passes.results(ROOT, iac_scan_passes.STUBBED, config=config_path)
+    targets = {target for target, _ in got}
     findings = {
-        ((res.get("Target") or ""), (mis.get("ID") or ""))
-        for res in results
+        (target, (mis.get("ID") or ""))
+        for target, res in got
         for mis in (res.get("Misconfigurations") or [])
         if mis.get("Status") == "FAIL"
     }

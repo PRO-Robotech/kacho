@@ -56,18 +56,47 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
   * `.tgz` нет вовсе — причина верна, и тогда работает вторая половина: чарт,
     который всё-таки попал в цели, послаблению больше нечего послаблять.
 
+АРХИВНАЯ ФОРМА ЧАРТА — ТОЖЕ КАНДИДАТ. Отслеживаемый архив вне каталога другого чарта
+сканер рендерит как чарт, и цель обязана быть и у него. Какие формы архива сканер
+рендерит, гейт не помнит, а МЕРЯЕТ на каждом прогоне (`check_archive_forms`, перечень
+`ARCHIVE_FORMS`): вторая редакция знала одну `.tgz`, и приёмка нашла `.tar.gz` и `.tar`,
+выпадающие из скана при «непокрытых 0». Первая редакция знала только
+форму «каталог с Chart.yaml» — и вендоренный внешний чарт
+`deploy/helm/vendor/cert-manager-approver-policy-v0.28.0.tgz` (007d0adb90b) выпал из
+осмотра незамеченным: его схема значений закрыта, и любая заглушка `trivy.yaml` роняет
+его рендер. Архив внутри `<чарт>/charts/` — подчарт и кандидатом не является.
+
+ПРОХОДОВ ДВА, И ОНИ СВЕРЯЮТСЯ С CI. Цели берутся объединением проходов
+`iac_scan_passes.PASSES` (заглушки — всё дерево без каталога вендоренных; вендоренные —
+этот каталог без заглушек). Шаги `scan-type: config` задания trivy обязаны совпадать с
+проходами срезом, и каждый проход обязан иметь гейтовый шаг: иначе гейт судил бы о
+покрытии, которого CI не исполняет. Гейтовый — `exit-code: '1'` и при этом ни шаг, ни
+задание не стоят под `continue-on-error` (кроме заведомо ложного) и под заведомо ложным
+`if`: такой шаг объявлен судящим, а вердикта не выносит. Проход вендоренных самоистекает: каталог без
+отслеживаемого архива — находка.
+
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль непокрытых чартов» обязано быть отличимо от
 «ноль прочитанных чартов».
 """
-import json
-import os
+import gzip
+import io
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import zipfile
+
+import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import iac_scan_passes  # noqa: E402 — соседний модуль, единственный источник проходов
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCAN_CONFIG = ROOT / "trivy.yaml"
+WORKFLOW = ROOT / ".github" / "workflows" / "security-scan.yml"
 
 # Чарты, которым цель не требуется, — с причиной. Причина обязана быть проверяемой
 # (см. reason_still_holds), иначе через полгода это будет фольклор.
@@ -88,33 +117,197 @@ def git_ls(pattern):
 
 
 def scan_targets():
-    """→ множество целей, до которых сканер дошёл (с тем же конфигом, что и в CI)."""
+    """→ (множество целей от корня дерева по ВСЕМ проходам, перепись по проходам).
+
+    Проходы — те же, что шаги `scan-type: config` в CI (`iac_scan_passes.PASSES`;
+    совпадение держит `check_workflow_passes` ниже). Чарт обязан дать цель хотя бы в
+    одном проходе: заглушки вводят в осмотр наши чарты, а вендоренный чарт с
+    закрытой схемой значений осматривается проходом без них.
+    """
     if not shutil.which("trivy"):
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         sys.exit(2)
-    env = dict(os.environ)
-    env.pop("TRIVY_IGNOREFILE", None)
-    cmd = [
-        "trivy", "config", ".", "--config", SCAN_CONFIG.name,
-        "--severity", "CRITICAL,HIGH", "--format", "json",
-        "--skip-dirs", ".claude", "--skip-dirs", "**/node_modules", "--quiet",
-    ]
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env, timeout=900)
-    if r.returncode not in (0, 1):
-        print("ОТКАЗ: trivy вышел с кодом %d\n%s" % (r.returncode, r.stderr[:400]),
-              file=sys.stderr)
+    got, census = iac_scan_passes.all_results(ROOT, extra=("--severity", "CRITICAL,HIGH"))
+    return {target for target, _ in got}, census
+
+
+_STATIC_FALSE = re.compile(r"^\s*(\$\{\{\s*)?(false|0|null|''|\"\")(\s*\}\})?\s*$")
+
+
+def static_false(value):
+    """Значение ключа `if`/`continue-on-error`, ложное при ЛЮБОМ прогоне.
+
+    Судится только то, что ложно без вычисления: `false`, `0`, `null`, пустая
+    строка — голые или в `${{ }}`. Выражение, зависящее от прогона
+    (`!cancelled()`, `matrix.*`), ложным заранее не считается.
+    """
+    if value is False or value is None or value == 0:
+        return True
+    return isinstance(value, str) and bool(_STATIC_FALSE.match(value))
+
+
+def mute_reasons(node):
+    """→ причины, по которым шаг или задание заведомо не роняют вердикт.
+
+    Две формы, найденные приёмкой гейта (опыты M1 и M5 на 7b9d560610b): шаг с
+    `exit-code: '1'` под `continue-on-error`, отличным от заведомо ложного, —
+    красный скан задание не роняет; шаг под `if`, заведомо ложным, — не
+    исполняется вовсе.
+    """
+    why = []
+    if "continue-on-error" in node and not static_false(node["continue-on-error"]):
+        why.append("continue-on-error: %r — красный скан задание не роняет"
+                   % (node["continue-on-error"],))
+    if node.get("if") is not None and static_false(node["if"]):
+        why.append("if: %r — шаг не исполняется ни при каком прогоне" % (node["if"],))
+    return why
+
+
+# Формы архива, которые trivy рендерит как чарт. Выведены ЗАМЕРОМ, а не по памяти:
+# trivy 0.70.0 на одном и том же чарте, упакованном в каждую форму из PROBE_FORMS,
+# дал цели ровно у этих трёх (2026-10-01). Первая редакция гейта знала только `.tgz`,
+# и приёмка нашла выпадающие из скана `.tar.gz` и `.tar` (опыты M3, M4 на
+# 7b9d560610b) при «непокрытых 0».
+ARCHIVE_FORMS = (".tgz", ".tar.gz", ".tar")
+# Формы, которыми перечень перемеряется: признанные плюс соседние, которых сканер
+# сегодня НЕ рендерит. Сменит он поведение в любую сторону — гейт откажет, а не
+# продолжит судить по устаревшему перечню.
+PROBE_FORMS = (".tgz", ".tar.gz", ".tar", ".tar.bz2", ".tar.xz", ".zip", ".gz",
+               ".TGZ", ".tar.GZ")
+
+_PROBE_CHART = {
+    "Chart.yaml": "apiVersion: v2\nname: formprobe\nversion: 0.1.0\n",
+    "values.yaml": "image: formprobe\n",
+    "templates/deployment.yaml": (
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: formprobe}\n"
+        "spec:\n  selector: {matchLabels: {a: b}}\n  template:\n"
+        "    metadata: {labels: {a: b}}\n    spec:\n"
+        "      containers: [{name: c, image: \"{{ .Values.image }}\"}]\n"),
+}
+
+
+def _pack(src_dir, dst, form):
+    if form == ".zip":
+        with zipfile.ZipFile(dst, "w") as z:
+            for rel in _PROBE_CHART:
+                z.write(src_dir / rel, "formprobe/" + rel)
+        return
+    if form == ".gz":  # одиночный gzip поверх tar без tar-суффикса
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as t:
+            t.add(src_dir, arcname="formprobe")
+        dst.write_bytes(gzip.compress(buf.getvalue()))
+        return
+    mode = {".tgz": "w:gz", ".TGZ": "w:gz", ".tar.gz": "w:gz", ".tar.GZ": "w:gz",
+            ".tar": "w", ".tar.bz2": "w:bz2", ".tar.xz": "w:xz"}[form]
+    with tarfile.open(dst, mode) as t:
+        t.add(src_dir, arcname="formprobe")
+
+
+def check_archive_forms():
+    """Предпосылка: перечень ARCHIVE_FORMS совпадает с поведением сканера.
+
+    Один и тот же чарт пакуется в каждую форму PROBE_FORMS и сканируется с файлом
+    настроек прохода без заглушек; форма признана, если её архив дал цель.
+    Расхождение — ОТКАЗ (код 2): гейт, судящий о покрытии по неверному перечню
+    форм, молчит ровно там, где чарт выпал.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        src = tmp / "src"
+        for rel, body in _PROBE_CHART.items():
+            (src / rel).parent.mkdir(parents=True, exist_ok=True)
+            (src / rel).write_text(body, encoding="utf-8")
+        scan_dir = tmp / "scan"
+        scan_dir.mkdir()
+        for i, form in enumerate(PROBE_FORMS):
+            _pack(src, scan_dir / ("p%d%s" % (i, form)), form)
+        probe_pass = ("проба форм архива", ".", str(ROOT / iac_scan_passes.PASSES[1][2]), ())
+        got = iac_scan_passes.results(scan_dir, probe_pass)
+    names = {t.split(":", 1)[0] for t, _ in got}
+    rendered = tuple(f for i, f in enumerate(PROBE_FORMS) if "p%d%s" % (i, f) in names)
+    if set(rendered) != set(ARCHIVE_FORMS):
+        print("ОТКАЗ: перечень форм архива-чарта разошёлся с поведением сканера.\n"
+              "       признаны гейтом: %s\n       рендерит сканер: %s\n"
+              "       Обнови ARCHIVE_FORMS замером: судить о покрытии по неверному\n"
+              "       перечню — значит молчать там, где чарт выпал."
+              % (", ".join(ARCHIVE_FORMS), ", ".join(rendered) or "—"), file=sys.stderr)
         sys.exit(2)
-    doc = json.loads(r.stdout or "{}")
-    return {(res.get("Target") or "") for res in doc.get("Results") or []}
+    return ("  формы архива-чарта: опробовано %d, сканер рендерит %d (%s) — совпадает с "
+            "перечнем гейта" % (len(PROBE_FORMS), len(rendered), ", ".join(rendered)))
+
+
+def archive_is_chart(path):
+    """→ True — в архиве есть `<каталог>/Chart.yaml`; False — нет; None — не прочитан.
+
+    Непрочитанный архив кандидатом остаётся: исключать из суда то, чего гейт не
+    понял, значило бы молчать на нём.
+    """
+    try:
+        with tarfile.open(path, "r:*") as t:
+            return any(m.name.count("/") == 1 and m.name.endswith("/Chart.yaml")
+                       for m in t.getmembers())
+    except (tarfile.TarError, OSError):
+        return None
+
+
+def check_workflow_passes():
+    """→ (находки, строка переписи): шаги `scan-type: config` задания trivy против проходов.
+
+    Срез шага — (scan-ref, trivy-config, skip-dirs сверх тех, что гейты снимают
+    всегда). Шаг, чей срез не совпал ни с одним проходом, — находка: CI осматривал
+    бы не то, о чём судят гейты. Проход без ГЕЙТОВОГО шага (`exit-code: '1'`) — тоже
+    находка: срез, о покрытии которого здесь вынесен вердикт, в CI не судился бы.
+    """
+    if not WORKFLOW.exists():
+        print("ОТКАЗ: %s не найден — сверять проходы скана не с чем"
+              % WORKFLOW.relative_to(ROOT), file=sys.stderr)
+        sys.exit(2)
+    doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")) or {}
+    job = ((doc.get("jobs") or {}).get("trivy") or {})
+    steps = job.get("steps") or []
+    want = {(ref, cfg, frozenset(set(skip) - set(iac_scan_passes.ALWAYS_SKIPPED))): name
+            for name, ref, cfg, skip in iac_scan_passes.PASSES}
+    gated, seen, out = set(), 0, []
+    # Задание целиком, которое заведомо не судит, отнимает вердикт у всех своих шагов.
+    job_mute = mute_reasons(job)
+    for st in steps:
+        w = st.get("with") or {}
+        if str(w.get("scan-type") or "") != "config":
+            continue
+        seen += 1
+        skip = frozenset(d.strip() for d in str(w.get("skip-dirs") or "").split(",") if d.strip())
+        key = (str(w.get("scan-ref") or "."), str(w.get("trivy-config") or ""), skip)
+        if key not in want:
+            out.append("шаг «%s» (%s) — срез scan-ref=%s, trivy-config=%s, skip-dirs=%s не "
+                       "совпадает ни с одним проходом `iac_scan_passes.PASSES`"
+                       % (st.get("name") or "?", WORKFLOW.name, key[0], key[1] or "—",
+                          ",".join(sorted(skip)) or "—"))
+        elif str(w.get("exit-code") or "") == "1":
+            why = job_mute + mute_reasons(st)
+            if why:
+                out.append("шаг «%s» (%s) прохода «%s» объявлен гейтовым, но заведомо не "
+                           "судит: %s" % (st.get("name") or "?", WORKFLOW.name, want[key],
+                                          "; ".join(why)))
+            else:
+                gated.add(want[key])
+    if not seen:
+        out.append("в задании trivy (%s) нет ни одного шага `scan-type: config` — IaC-скан "
+                   "в CI не исполняется вовсе" % WORKFLOW.name)
+    for name in sorted(set(want.values()) - gated):
+        out.append("проход «%s» не судится в CI: у него нет шага с `exit-code: '1'`, "
+                   "который исполняется и роняет задание, в %s" % (name, WORKFLOW.name))
+    return out, ("  шагов scan-type: config в CI %d; проходов %d; судимых гейтовым шагом %d"
+                 % (seen, len(want), len(gated)))
 
 
 def local_dependency_names(chart_yaml):
     """→ множество имён зависимостей, чей источник ЛОКАЛЬНЫЙ (`file://…`).
 
-    Разбор построчный, без yaml: этот гейт зовётся в job'е скана, у которого
-    зависимость от разбора YAML не объявлена, и заводить её ради двух полей
-    значило бы платить за неё на каждом прогоне. Читаются пары «- name:» и
-    следующий за ней «repository:» того же элемента.
+    Разбор построчный: читаются пары «- name:» и следующий за ней «repository:»
+    того же элемента. Разбор YAML гейт теперь берёт для сверки шагов CI
+    (`check_workflow_passes`); перевод этой функции на него — не предмет правки,
+    которая его ввела.
     """
     names, cur, in_deps = set(), None, False
     for raw in chart_yaml.read_text(encoding="utf-8").splitlines():
@@ -194,6 +387,13 @@ def main():
               file=sys.stderr)
         return 2
 
+    for _name, _ref, cfg, _skip in iac_scan_passes.PASSES:
+        if not (ROOT / cfg).exists():
+            print("ОТКАЗ: файл настроек прохода «%s» (%s) не найден — trivy подхватил бы\n"
+                  "       корневой trivy.yaml сам, и проход судил бы не тот срез" % (_name, cfg),
+                  file=sys.stderr)
+            return 2
+
     charts = sorted({c[: -len("Chart.yaml")] for c in git_ls("*Chart.yaml")})
     if not charts:
         print("ОТКАЗ: в дереве не найдено ни одного Chart.yaml — судить не о чем",
@@ -201,7 +401,23 @@ def main():
         return 2
 
     templates = git_ls("*/templates/*.yaml")
-    targets = scan_targets()
+    # Архивная форма чарта: отслеживаемый архив формы из ARCHIVE_FORMS вне каталога
+    # другого чарта, несущий `<каталог>/Chart.yaml`. Внутри `<чарт>/charts/` архив —
+    # подчарт, сканер относит его к родителю. Перечень форм — замер поведения сканера,
+    # и он перемеряется на каждом прогоне (`check_archive_forms`).
+    if not shutil.which("trivy"):
+        print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
+        return 2
+    forms_census = check_archive_forms()
+    archives, nested_archives, not_charts = [], [], []
+    for a in sorted({a for form in ARCHIVE_FORMS for a in git_ls("*" + form)}):
+        if any(a.startswith(c) for c in charts):
+            nested_archives.append(a)
+        elif archive_is_chart(ROOT / a) is False:
+            not_charts.append(a)
+        else:
+            archives.append(a)
+    targets, census = scan_targets()
     if not targets:
         print("ОТКАЗ: скан не дошёл НИ ДО ОДНОЙ цели — сканер не отработал",
               file=sys.stderr)
@@ -242,12 +458,35 @@ def main():
         else:
             uncovered.append(d)
 
+    for a in archives:
+        hit = [t for t in targets if t.startswith(a + ":")]
+        if hit:
+            covered.append((a, len(hit)))
+        else:
+            uncovered.append(a)
+
+    # Проход вендоренных без предмета самоистекает, как всякое послабление: проход
+    # заглушек этот каталог НЕ осматривает, и оправдание тому — только архив в нём.
+    home = iac_scan_passes.VENDOR_HOME + "/"
+    if not any(a.startswith(home) for a in archives):
+        findings.append("%s — в каталоге нет ни одного отслеживаемого архива чарта, а проход "
+                        "заглушек его не осматривает: второй проход ничего не открывает, "
+                        "и снимать каталог с первого прохода больше незачем"
+                        % iac_scan_passes.VENDOR_HOME)
+    wf_findings, wf_census = check_workflow_passes()
+    findings += wf_findings
+
     print("iac-chart-coverage: чартов в дереве %d; из них без шаблонов %d, подчартов %d, "
-          "послаблений %d (не судимо в этом прогоне %d); кандидатов %d; целей скана %d; "
-          "непокрытых %d"
+          "послаблений %d (не судимо в этом прогоне %d); архивов-чартов вне чартов %d (подчартов-"
+          "архивов %d, архивов не чартов %d); кандидатов %d; целей скана %d (%s); непокрытых %d"
           % (len(charts), len(no_templates), len(nested), len(exempt_ok),
-             len(exempt_unjudged), len(covered) + len(uncovered), len(targets),
-             len(uncovered)))
+             len(exempt_unjudged), len(archives), len(nested_archives), len(not_charts),
+             len(covered) + len(uncovered), len(targets),
+             ", ".join("проход «%s» %d" % kv for kv in census.items()), len(uncovered)))
+    print(wf_census)
+    print(forms_census)
+    for a in not_charts:
+        print("  архив не чарт       %s — Chart.yaml в корневом каталоге архива нет" % a)
     for d, n in covered:
         print("  осмотрен %2d целей  %s" % (n, d))
     for d in no_templates:
@@ -262,6 +501,13 @@ def main():
               "                      свежий checkout, где этих файлов нет." % (d, why))
 
     for d in uncovered:
+        if d.endswith(ARCHIVE_FORMS):
+            findings.append("%s — архив чарта НЕ ДАЛ сканеру ни одной цели. Если он лежит вне "
+                            "%s, его осматривает проход заглушек, а внешний чарт с закрытой "
+                            "схемой значений отвергает любую заглушку и выпадает из осмотра "
+                            "молча; если внутри — рендер отказал и без заглушек"
+                            % (d, iac_scan_passes.VENDOR_HOME))
+            continue
         findings.append("%s — чарт с шаблонами НЕ ДАЛ сканеру ни одной цели: скорее всего "
                         "рендер отказал (не хватает значения или зависимости), и «ноль "
                         "находок» по нему означает «ноль прочитанного»" % d)
