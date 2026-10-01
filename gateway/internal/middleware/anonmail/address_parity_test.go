@@ -36,7 +36,7 @@ func TestGate_CX2_12_TheAddressTheEdgeCountsIsTheAddressTheServiceGets(t *testin
 	defer lane.Close()
 	l := testLimits()
 	var mem *MemoryStore
-	r := newRig(t, l, func(c *testClock) Store { mem = NewMemoryStore(l, c.Now); return mem }, 1)
+	r := newRig(t, l, func(c *testClock) Store { mem = mustMemoryStore(t, l, c.Now); return mem }, 1)
 	ce, err := middleware.NewContextExtractor(r.clock.Now, hops(t, 1))
 	if err != nil {
 		t.Fatal(err)

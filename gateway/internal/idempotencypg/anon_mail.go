@@ -104,12 +104,12 @@ func (s *Store) purgeAnonMailOnce() {
 	sw, err := s.PurgeAnonMail(ctx)
 	switch {
 	case err != nil:
-		s.cfg.Logger.Warn("anon mail store: purge failed", "error", err, "removed", sw.Removed)
+		s.cfg.Logger.WarnContext(ctx, "anon mail store: purge failed", "err", err, "removed", sw.Removed)
 	case !sw.Drained:
-		s.cfg.Logger.Warn("anon mail store: purge did not keep up with the write rate",
+		s.cfg.Logger.WarnContext(ctx, "anon mail store: purge did not keep up with the write rate",
 			"removed", sw.Removed, "interval", s.cfg.ReapInterval, "batch", AnonMailPurgeBatch)
 	case sw.Removed > 0:
-		s.cfg.Logger.Info("anon mail store: expired rows removed", "removed", sw.Removed,
+		s.cfg.Logger.InfoContext(ctx, "anon mail store: expired rows removed", "removed", sw.Removed,
 			"retention", config.AnonMailPassRetention())
 	}
 }

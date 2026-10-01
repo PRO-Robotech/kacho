@@ -402,7 +402,7 @@ func TestGate_NTF2_79_SourceKeyIsTheAddressAtTheTrustedDepth(t *testing.T) {
 	l.Global.Burst, l.Global.RatePerSecond = 1000, 1000
 	const h = 1
 	mk := func(t *testing.T) *rig {
-		return newRig(t, l, func(c *testClock) Store { return NewMemoryStore(l, c.Now) }, h)
+		return newRig(t, l, func(c *testClock) Store { return mustMemoryStore(t, l, c.Now) }, h)
 	}
 	t.Logf("h = %d · F = %d", h, l.Source.Free)
 	r := mk(t)
@@ -472,7 +472,7 @@ func TestGate_CX2_28_StoreUnavailableIs503AndTheLaneIsNotCalled(t *testing.T) {
 func TestGate_ConstructorRefusesAnIncompleteWiring(t *testing.T) {
 	l := testLimits()
 	pow, _ := NewPoW(testPoWKey, time.Now)
-	full := GateConfig{Store: NewMemoryStore(l, time.Now), PoW: pow, Limits: l,
+	full := GateConfig{Store: mustMemoryStore(t, l, time.Now), PoW: pow,
 		ClientIP: func(*http.Request) string { return "192.0.2.1" }, Now: time.Now,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	defer func() { _ = full.Store.Close() }()
@@ -485,7 +485,6 @@ func TestGate_ConstructorRefusesAnIncompleteWiring(t *testing.T) {
 		"clientIP": func(c *GateConfig) { c.ClientIP = nil },
 		"now":      func(c *GateConfig) { c.Now = nil },
 		"logger":   func(c *GateConfig) { c.Logger = nil },
-		"limits":   func(c *GateConfig) { c.Limits = config.AnonMailLimits{} },
 	} {
 		c := full
 		mut(&c)

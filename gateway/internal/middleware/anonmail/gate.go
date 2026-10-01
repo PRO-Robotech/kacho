@@ -14,7 +14,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 
-	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -38,9 +37,10 @@ const (
 
 // GateConfig — провязка звена. Все поля обязательны.
 type GateConfig struct {
-	Store  Store
-	PoW    *PoW
-	Limits config.AnonMailLimits
+	// Store — хранилище решения; пределы звена — его, второго источника
+	// пределов у звена нет (их проверяет конструктор хранилища).
+	Store Store
+	PoW   *PoW
 	// ClientIP — оператор клиентского адреса края (`ContextExtractor.ClientIP`):
 	// тот же адрес ретрансляция отдаёт службе в `X-Forwarded-For` (CX2-12).
 	ClientIP func(*http.Request) string
@@ -54,12 +54,17 @@ type Stats struct {
 	// StoreUnavailable — ответов 503 «хранилище ограничителя недоступно» за
 	// жизнь процесса (`kacho_api_gateway_anon_mail_store_unavailable_total`).
 	StoreUnavailable uint64
+	// StoreSaturated — из них ответов, где хранилище не ответило за
+	// исчерпанием пропускной способности решения (Verdict.Saturated, Д66):
+	// `kacho_api_gateway_anon_mail_store_saturated_total`.
+	StoreSaturated uint64
 }
 
 // Gate — звено-ограничитель.
 type Gate struct {
 	cfg         GateConfig
 	unavailable atomic.Uint64
+	saturated   atomic.Uint64
 }
 
 // NewGate собирает звено. Неполная провязка — ошибка сборки корня: звено,
@@ -77,14 +82,14 @@ func NewGate(cfg GateConfig) (*Gate, error) {
 		return nil, errors.New("anonmail gate: clock is required")
 	case cfg.Logger == nil:
 		return nil, errors.New("anonmail gate: logger is required")
-	case cfg.Limits.Source.Hard < 1 || cfg.Limits.PoWBits.Base < 1 || cfg.Limits.Global.Burst < 1:
-		return nil, errors.New("anonmail gate: limits are not resolved — build them with config.ResolveEdgeLimits")
 	}
 	return &Gate{cfg: cfg}, nil
 }
 
 // Stats — снимок величин звена.
-func (g *Gate) Stats() Stats { return Stats{StoreUnavailable: g.unavailable.Load()} }
+func (g *Gate) Stats() Stats {
+	return Stats{StoreUnavailable: g.unavailable.Load(), StoreSaturated: g.saturated.Load()}
+}
 
 // Wrap ставит звено перед next (ретрансляцией полосы формы).
 func (g *Gate) Wrap(next http.Handler) http.Handler {
@@ -97,7 +102,7 @@ func (g *Gate) serve(w http.ResponseWriter, r *http.Request, next http.Handler) 
 	keys, err := KeysFor(g.cfg.ClientIP(r))
 	if err != nil {
 		// Адрес не выведен — решать нечем; закрытый отказ тем же ответом.
-		g.cfg.Logger.Warn("anon mail gate: client address is not keyable; refusing", "path", r.URL.Path)
+		g.cfg.Logger.WarnContext(r.Context(), "anon mail gate: client address is not keyable; refusing", "path", r.URL.Path)
 		g.writeUnavailable(w)
 		return
 	}
@@ -116,7 +121,7 @@ func (g *Gate) serve(w http.ResponseWriter, r *http.Request, next http.Handler) 
 	case Challenge:
 		ch, err := g.cfg.PoW.Mint(v.Bits)
 		if err != nil {
-			g.cfg.Logger.Error("anon mail gate: challenge mint failed; refusing", "err", err)
+			g.cfg.Logger.ErrorContext(r.Context(), "anon mail gate: challenge mint failed; refusing", "err", err)
 			g.writeUnavailable(w)
 			return
 		}
@@ -124,6 +129,9 @@ func (g *Gate) serve(w http.ResponseWriter, r *http.Request, next http.Handler) 
 	case Reject:
 		writeRateLimited(w, v.RetryAfter)
 	default:
+		if v.Saturated {
+			g.saturated.Add(1)
+		}
 		g.writeUnavailable(w)
 	}
 }

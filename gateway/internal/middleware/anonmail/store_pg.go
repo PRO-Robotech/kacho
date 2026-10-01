@@ -112,15 +112,19 @@ const (
 ON CONFLICT (id) DO NOTHING RETURNING true`
 	// bucketSQL — строка ведра общего потока, ПОСЛЕДНЕЙ после ключей.
 	bucketSQL = `SELECT tokens, at FROM kacho_gateway.anon_mail_bucket WHERE id = 1 FOR UPDATE`
-	// countsSQL — счёт ключа в трёх окнах (now − w, now] по индексу (key, at).
-	countsSQL = `SELECT count(*) FILTER (WHERE at > $3),
-       count(*) FILTER (WHERE at > $4),
-       count(*) FILTER (WHERE at > $5)
+	// countsSQL — счёт ключа в трёх окнах (now − w, +∞) по индексу (key, at).
+	// Сверху окно НЕ закрыто (SEC-E2-1): момент решения берётся до
+	// сериализации по ключу, и пропуск соседа с более поздним моментом
+	// (своя реплика или часы другой реплики) обязан войти в счёт.
+	countsSQL = `SELECT count(*) FILTER (WHERE at > $2),
+       count(*) FILTER (WHERE at > $3),
+       count(*) FILTER (WHERE at > $4)
   FROM kacho_gateway.anon_mail_passes
- WHERE key = $1 AND at <= $2 AND at > least($3, $4, $5)`
-	// nthMomentSQL — момент номер $4 (с нуля, по возрастанию) в окне.
+ WHERE key = $1 AND at > least($2, $3, $4)`
+	// nthMomentSQL — момент номер $3 (с нуля, по возрастанию) в окне
+	// (now − w, +∞) — том же, что считает countsSQL.
 	nthMomentSQL = `SELECT at FROM kacho_gateway.anon_mail_passes
- WHERE key = $1 AND at > $2 AND at <= $3 ORDER BY at OFFSET $4 LIMIT 1`
+ WHERE key = $1 AND at > $2 ORDER BY at OFFSET $3 LIMIT 1`
 	// recordMomentsSQL — моменты пропуска всех ключей запроса; RETURNING отдаёт
 	// идентификатор транзакции решения — лишнего обращения нет.
 	recordMomentsSQL = `INSERT INTO kacho_gateway.anon_mail_passes (key, at, decision_id)
@@ -148,8 +152,8 @@ type PostgresStore struct {
 // хранилище. Схему накатывает хранилище однократности при своём построении —
 // поэтому пул строится после него (корень: buildAnonMailStore).
 func NewPostgresStore(ctx context.Context, dsn string, l config.AnonMailLimits, log *slog.Logger) (*PostgresStore, error) {
-	if log == nil {
-		return nil, errors.New("anonmail: logger is required")
+	if err := validateStoreWiring(l, log); err != nil {
+		return nil, err
 	}
 	cfg, err := limiterPoolConfig(dsn)
 	if err != nil {
@@ -297,17 +301,17 @@ func (b *pgBackend) beginDecision(ctx context.Context) (*pgTx, error) {
 	conn, err := b.pool.Acquire(actx)
 	cancel()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("anonmail: acquire: %w", err)
 	}
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		conn.Release()
-		return nil, err
+		return nil, fmt.Errorf("anonmail: begin: %w", err)
 	}
 	x := &pgTx{b: b, conn: conn, tx: tx}
 	if _, err := tx.Exec(ctx, b.limitsSQL); err != nil {
-		x.rollback()
-		return nil, err
+		x.rollback(ctx)
+		return nil, fmt.Errorf("anonmail: decision limits: %w", err)
 	}
 	return x, nil
 }
@@ -322,7 +326,7 @@ type pgTx struct {
 func (x *pgTx) lock(ctx context.Context, pairs []lockPair) error {
 	for _, p := range pairs {
 		if _, err := x.tx.Exec(ctx, x.b.lockSQL, p.class, p.obj); err != nil {
-			return err
+			return fmt.Errorf("anonmail: key lock: %w", err)
 		}
 	}
 	return nil
@@ -334,7 +338,10 @@ func (x *pgTx) markSpent(ctx context.Context, p Proof) (bool, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
-	return err == nil, err
+	if err != nil {
+		return false, fmt.Errorf("anonmail: mark challenge spent: %w", err)
+	}
+	return ok, nil
 }
 
 func (x *pgTx) bucket(ctx context.Context) (float64, time.Time, error) {
@@ -342,8 +349,10 @@ func (x *pgTx) bucket(ctx context.Context) (float64, time.Time, error) {
 		tokens float64
 		at     time.Time
 	)
-	err := x.tx.QueryRow(ctx, bucketSQL).Scan(&tokens, &at)
-	return tokens, at, err
+	if err := x.tx.QueryRow(ctx, bucketSQL).Scan(&tokens, &at); err != nil {
+		return 0, time.Time{}, fmt.Errorf("anonmail: bucket row: %w", err)
+	}
+	return tokens, at, nil
 }
 
 func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []time.Duration) ([]int, error) {
@@ -356,47 +365,48 @@ func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []
 		bounds[i] = now.Add(-w)
 	}
 	var c [3]int
-	if err := x.tx.QueryRow(ctx, countsSQL, key, now, bounds[0], bounds[1], bounds[2]).Scan(&c[0], &c[1], &c[2]); err != nil {
-		return nil, err
+	if err := x.tx.QueryRow(ctx, countsSQL, key, bounds[0], bounds[1], bounds[2]).Scan(&c[0], &c[1], &c[2]); err != nil {
+		return nil, fmt.Errorf("anonmail: key counts: %w", err)
 	}
 	return c[:len(windows)], nil
 }
 
 func (x *pgTx) nthMoment(ctx context.Context, key string, now time.Time, window time.Duration, offset int) (time.Time, error) {
 	var at time.Time
-	err := x.tx.QueryRow(ctx, nthMomentSQL, key, now.Add(-window), now, offset).Scan(&at)
-	return at, err
+	if err := x.tx.QueryRow(ctx, nthMomentSQL, key, now.Add(-window), offset).Scan(&at); err != nil {
+		return time.Time{}, fmt.Errorf("anonmail: nth moment: %w", err)
+	}
+	return at, nil
 }
 
 func (x *pgTx) recordPass(ctx context.Context, keys Keys, now time.Time, _ *Proof, bw *bucketWrite) error {
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
-		return err
+		return fmt.Errorf("anonmail: decision id: %w", err)
 	}
 	rows, err := x.tx.Query(ctx, recordMomentsSQL, keys.All(), now, id[:])
 	if err != nil {
-		return err
+		return fmt.Errorf("anonmail: record moments: %w", err)
 	}
+	defer rows.Close()
 	var xid string
 	for rows.Next() {
 		if xid != "" {
 			continue
 		}
 		if err := rows.Scan(&xid); err != nil {
-			rows.Close()
-			return err
+			return fmt.Errorf("anonmail: record moments: %w", err)
 		}
 	}
-	rows.Close()
 	if err := rows.Err(); err != nil {
-		return err
+		return fmt.Errorf("anonmail: record moments: %w", err)
 	}
 	if xid == "" {
 		return errors.New("anonmail: pass moments were not recorded")
 	}
 	if bw != nil {
 		if _, err := x.tx.Exec(ctx, bucketWriteSQL, bw.tokens, bw.at); err != nil {
-			return err
+			return fmt.Errorf("anonmail: bucket write: %w", err)
 		}
 	}
 	x.pending = pendingCommit{xid: xid, key: keys.Source, at: now, decisionID: id}
@@ -421,11 +431,13 @@ func (x *pgTx) commit(ctx context.Context) Outcome {
 	return x.b.onCommitError(ctx, x.pending, deadline)
 }
 
-// rollback — откат на контексте без отмены со сроком anonMailStoreWait;
-// соединение возвращается в пул (после отмены оператора — живым).
-func (x *pgTx) rollback() {
+// rollback — откат на контексте запроса без отмены со сроком
+// anonMailStoreWait (форма та же, что у commit): значения контекста доходят до
+// отката, отмена запроса его не обрывает; соединение возвращается в пул (после
+// отмены оператора — живым).
+func (x *pgTx) rollback(ctx context.Context) {
 	if x.tx != nil {
-		rctx, cancel := context.WithTimeout(context.Background(), anonMailStoreWait)
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), anonMailStoreWait)
 		_ = x.tx.Rollback(rctx)
 		cancel()
 		x.tx = nil
@@ -520,7 +532,7 @@ func (b *pgBackend) resolveCommit(ctx context.Context, probe commitProbe, pc pen
 		select {
 		case <-rctx.Done():
 			t.Stop()
-			b.log.Warn("anon mail limiter: commit outcome unresolved; answering 503",
+			b.log.WarnContext(ctx, "anon mail limiter: commit outcome unresolved; answering 503",
 				"decision_id", hex.EncodeToString(pc.decisionID[:]), "polls", polls)
 			return StoreUnavailable
 		case <-t.C:

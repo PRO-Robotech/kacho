@@ -6,6 +6,7 @@ package anonmail
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -36,8 +37,12 @@ type MemoryStore struct {
 }
 
 // NewMemoryStore строит хранилище memory. now — часы уборки (часы решения
-// приходят с запросом).
-func NewMemoryStore(l config.AnonMailLimits, now func() time.Time) *MemoryStore {
+// приходят с запросом). Неразрешённые пределы и отсутствие журнала — отказ
+// сборки.
+func NewMemoryStore(l config.AnonMailLimits, now func() time.Time, log *slog.Logger) (*MemoryStore, error) {
+	if err := validateStoreWiring(l, log); err != nil {
+		return nil, err
+	}
 	b := &memBackend{
 		bucketLock: make(chan struct{}, 1),
 		moments:    map[string][]time.Time{},
@@ -50,7 +55,7 @@ func NewMemoryStore(l config.AnonMailLimits, now func() time.Time) *MemoryStore 
 		b.stripes[i] = make(chan struct{}, 1)
 	}
 	go b.sweepLoop(now)
-	return &MemoryStore{store: newStore(b, l, discardLogger()), memBackend: b}
+	return &MemoryStore{store: newStore(b, l, log), memBackend: b}, nil
 }
 
 // Close останавливает уборку.
@@ -248,10 +253,11 @@ func (x *memTx) counts(_ context.Context, key string, now time.Time, windows []t
 	x.b.momentsMu.Lock()
 	ms := x.b.moments[key]
 	out := make([]int, len(windows))
-	hi := sort.Search(len(ms), func(i int) bool { return ms[i].After(now) })
+	// Окно (now − w, +∞): сверху не закрыто (SEC-E2-1) — пропуск соседа с
+	// более поздним моментом входит в счёт.
 	for j, w := range windows {
 		lo := sort.Search(len(ms), func(i int) bool { return ms[i].After(now.Add(-w)) })
-		out[j] = max(0, hi-lo)
+		out[j] = len(ms) - lo
 	}
 	x.b.momentsMu.Unlock()
 	return out, nil
@@ -302,7 +308,7 @@ func (x *memTx) commit(context.Context) Outcome {
 	return Pass
 }
 
-func (x *memTx) rollback() {
+func (x *memTx) rollback(context.Context) {
 	if x.reserved != nil {
 		x.b.spentMu.Lock()
 		if e := x.b.spent[*x.reserved]; e != nil && e.pending == x.pending {

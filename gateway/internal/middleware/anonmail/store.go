@@ -6,8 +6,12 @@ package anonmail
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
@@ -33,6 +37,11 @@ type Verdict struct {
 	// RetryAfter — при исходе Reject: время до выхода засчитанного момента из
 	// окна HARD (источник или подсеть — что позже).
 	RetryAfter time.Duration
+	// Saturated — при исходе StoreUnavailable: хранилище не ответило потому,
+	// что ожидание (захват соединения, блокировка ключа, строка ведра, срок
+	// решения) превысило предел звена — пропускная способность решения
+	// исчерпана (Д66). Отказ иного рода (настройка, соединение) — false.
+	Saturated bool
 }
 
 // Store — хранилище решения звена. Decide — одна неделимая операция:
@@ -61,9 +70,12 @@ type decisionTx interface {
 	markSpent(ctx context.Context, p Proof) (fresh bool, err error)
 	// bucket берёт ведро общего потока — последней блокировкой решения.
 	bucket(ctx context.Context) (tokens float64, at time.Time, err error)
-	// counts — счёт ключа в окнах (now − w, now] по каждому окну.
+	// counts — счёт ключа в окнах (now − w, +∞) по каждому окну. Сверху окно
+	// не закрыто (SEC-E2-1): момент решения берётся до сериализации по ключу,
+	// и пропуск соседа с более поздним моментом обязан войти в счёт.
 	counts(ctx context.Context, key string, now time.Time, windows []time.Duration) ([]int, error)
-	// nthMoment — момент номер offset (с нуля, по возрастанию) в окне.
+	// nthMoment — момент номер offset (с нуля, по возрастанию) в окне
+	// (now − w, +∞) — том же, что считает counts.
 	nthMoment(ctx context.Context, key string, now time.Time, window time.Duration, offset int) (time.Time, error)
 	// recordPass записывает моменты пропуска всех ключей запроса и, если
 	// решение взяло жетон, новое состояние ведра.
@@ -71,8 +83,9 @@ type decisionTx interface {
 	// commit фиксирует решение. Исход — Pass либо StoreUnavailable; у postgres
 	// исход неизвестной фиксации разрешается до возврата (resolveCommit).
 	commit(ctx context.Context) Outcome
-	// rollback откатывает всё записанное; безопасен после commit.
-	rollback()
+	// rollback откатывает всё записанное; безопасен после commit. ctx —
+	// контекст запроса без отмены.
+	rollback(ctx context.Context)
 }
 
 // backend — хранилище, открывающее транзакции решения.
@@ -98,7 +111,81 @@ func newStore(b backend, l config.AnonMailLimits, log *slog.Logger) *store {
 	return &store{b: b, limits: l, log: log, fold: keyLockPair}
 }
 
-func unavailable() Verdict { return Verdict{Outcome: StoreUnavailable} }
+// validateStoreWiring — пределы и журнал хранилища. Пределы проверяет
+// конструктор хранилища, по пределам которого идёт решение: второго источника
+// пределов у звена нет.
+func validateStoreWiring(l config.AnonMailLimits, log *slog.Logger) error {
+	switch {
+	case log == nil:
+		return errors.New("anonmail: logger is required")
+	case l.Source.Hard < 1 || l.PoWBits.Base < 1 || l.Global.Burst < 1:
+		return errors.New("anonmail: limits are not resolved — build them with config.ResolveEdgeLimits")
+	}
+	return nil
+}
+
+// Шаги транзакции решения — имена, которыми отказ называется в журнале.
+const (
+	stepBegin        = "begin"
+	stepLock         = "lock"
+	stepMarkSpent    = "mark_spent"
+	stepBucket       = "bucket"
+	stepCountsSource = "counts_source"
+	stepCountsSubnet = "counts_subnet"
+	stepRetryAfter   = "retry_after"
+	stepRecordPass   = "record_pass"
+)
+
+// storeFault — класс отказа хранилища. Набор закрыт, и каждый отказ попадает
+// ровно в один класс (hard-misconfig-is-not-outage).
+type storeFault int
+
+const (
+	// faultMisconfig — неправильная настройка: схемы или таблицы нет, нет прав,
+	// неверная база или схема. Сама не пройдёт — звучит уровнем ERROR.
+	faultMisconfig storeFault = iota + 1
+	// faultSaturated — ожидание сверх предела звена: блокировка ключа или
+	// строки ведра, захват соединения, срок оператора или решения. Пропускная
+	// способность решения исчерпана (Д66) — WARN и счётчик насыщения.
+	faultSaturated
+	// faultOutage — прочий сбой: соединение, отказ сервера. WARN.
+	faultOutage
+)
+
+// classifyStoreErr — класс отказа шага решения.
+func classifyStoreErr(err error) storeFault {
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) {
+		switch {
+		case pe.Code == "55P03" || pe.Code == "57014":
+			return faultSaturated
+		case strings.HasPrefix(pe.Code, "42"), strings.HasPrefix(pe.Code, "28"),
+			strings.HasPrefix(pe.Code, "3D"), strings.HasPrefix(pe.Code, "3F"):
+			return faultMisconfig
+		}
+		return faultOutage
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errMemWait) {
+		return faultSaturated
+	}
+	return faultOutage
+}
+
+// fail — отказ шага решения: ошибка обёрнута именем шага и записана в журнал
+// уровнем своего класса; ключей запроса (в них клиентский адрес) в журнале нет.
+func (s *store) fail(ctx context.Context, step string, err error) Verdict {
+	err = fmt.Errorf("anonmail: %s: %w", step, err)
+	f := classifyStoreErr(err)
+	switch f {
+	case faultMisconfig:
+		s.log.ErrorContext(ctx, "anon mail limiter: store is misconfigured; answering 503", "step", step, "err", err)
+	case faultSaturated:
+		s.log.WarnContext(ctx, "anon mail limiter: store wait exceeded the limiter's wait; answering 503", "step", step, "err", err)
+	case faultOutage:
+		s.log.WarnContext(ctx, "anon mail limiter: store failed; answering 503", "step", step, "err", err)
+	}
+	return Verdict{Outcome: StoreUnavailable, Saturated: f == faultSaturated}
+}
 
 // Decide — одно решение (З8). Срок решения — anonMailDecisionBudget от
 // контекста запроса: он покрывает захват соединения и все операторы до
@@ -108,23 +195,25 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 	defer cancel()
 	tx, err := s.b.begin(dctx)
 	if err != nil {
-		return unavailable()
+		return s.fail(ctx, stepBegin, err)
 	}
 	finished := false
 	defer func() {
 		if !finished {
-			tx.rollback()
+			// Откат — на контексте запроса без отмены: исчерпанный срок
+			// решения или ушедший клиент откат не обрывают (его предел — свой).
+			tx.rollback(context.WithoutCancel(ctx))
 		}
 	}()
 	if err := tx.lock(dctx, sortedLockPairs(r.Keys.All(), s.fold)); err != nil {
-		return unavailable()
+		return s.fail(ctx, stepLock, err)
 	}
 	state, proofBits := proofAbsent, 0
 	switch {
 	case r.Proof != nil:
 		fresh, err := tx.markSpent(dctx, *r.Proof)
 		if err != nil {
-			return unavailable()
+			return s.fail(ctx, stepMarkSpent, err)
 		}
 		if fresh {
 			state, proofBits = proofFresh, r.Proof.Bits
@@ -136,18 +225,18 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 	}
 	tokens, at, err := tx.bucket(dctx)
 	if err != nil {
-		return unavailable()
+		return s.fail(ctx, stepBucket, err)
 	}
 	l := s.limits
 	src, err := tx.counts(dctx, r.Keys.Source, r.Now, []time.Duration{l.Source.FreeWindow, l.Source.PoWWindow, l.Source.HardWindow})
 	if err != nil {
-		return unavailable()
+		return s.fail(ctx, stepCountsSource, err)
 	}
 	c := Counts{Source: SourceCounts{Free: src[0], PoW: src[1], Hard: src[2]}}
 	for _, sn := range r.Keys.Subnets {
 		n, err := tx.counts(dctx, sn.Key, r.Now, []time.Duration{l.SubnetPoWWindow, l.SubnetHardWindow})
 		if err != nil {
-			return unavailable()
+			return s.fail(ctx, stepCountsSubnet, err)
 		}
 		c.Subnets = append(c.Subnets, SubnetCounts{Len: sn.Len, PoW: n[0], Hard: n[1]})
 	}
@@ -158,7 +247,7 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 	case Reject:
 		ra, err := s.retryAfter(dctx, tx, r, c)
 		if err != nil {
-			return unavailable()
+			return s.fail(ctx, stepRetryAfter, err)
 		}
 		return Verdict{Outcome: Reject, RetryAfter: ra}
 	case Challenge:
@@ -173,14 +262,14 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 			spent = r.Proof
 		}
 		if err := tx.recordPass(dctx, r.Keys, r.Now, spent, bw); err != nil {
-			return unavailable()
+			return s.fail(ctx, stepRecordPass, err)
 		}
 		finished = true
 		// Фиксация — на контексте запроса без отмены: исчерпанный срок
 		// решения уже отправленную фиксацию не обрывает (её предел — свой).
 		return Verdict{Outcome: tx.commit(context.WithoutCancel(ctx))}
 	}
-	return unavailable()
+	return s.fail(ctx, "policy", fmt.Errorf("outcome %s outside the closed set", pol.outcome))
 }
 
 // retryAfter — секунды до выхода засчитанного момента из окна HARD на каждой

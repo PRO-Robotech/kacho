@@ -232,7 +232,6 @@ func main() {
 		gate, gErr := anonmail.NewGate(anonmail.GateConfig{
 			Store:    anonStore,
 			PoW:      pow,
-			Limits:   edgeLimits.AnonMail,
 			ClientIP: clientAddress.ClientIP,
 			Now:      time.Now,
 			Logger:   logger,

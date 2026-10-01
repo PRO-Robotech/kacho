@@ -134,6 +134,10 @@ func TestPg_CX2_28_LockWaitBeyondLockTimeoutIsStoreUnavailable(t *testing.T) {
 	if took > anonMailStoreWait+cancelCost+500*time.Millisecond {
 		t.Errorf("503 через %s — ожидание не ограничено lock_timeout", took)
 	}
+	// Д66: ожидание блокировки сверх lock_timeout — насыщение, а не сбой.
+	if s := r.gate.Stats(); s.StoreSaturated != 1 || s.StoreUnavailable != 1 {
+		t.Errorf("ключ удержан: счётчики %+v, ожидалось насыщение 1 из 1", s)
+	}
 	_ = tx.Rollback(context.Background())
 	if rec := r.send(pathRecovery, "198.51.100.52", "", ""); rec.Code != http.StatusOK {
 		t.Fatalf("близнец — ключ свободен: %d", rec.Code)
@@ -206,6 +210,10 @@ func TestPg_NTF2_59_StoreDownEveryRequestIs503AndTheProofIsNotSpent(t *testing.T
 		if got := r.gate.Stats().StoreUnavailable; got != 4 {
 			t.Errorf("метрика недоступности %d, ожидалось 4", got)
 		}
+		// Д66: соединение отвергнуто — сбой, а не насыщение.
+		if got := r.gate.Stats().StoreSaturated; got != 0 {
+			t.Errorf("хранилище остановлено: метрика насыщения %d, ожидалось 0", got)
+		}
 		// (д) хранилище поднято, часы стоят.
 		proxy.set(func(p *pgProxy) { p.refuse = false })
 		time.Sleep(1100 * time.Millisecond) // пул проверяет соединение, простоявшее дольше секунды
@@ -256,6 +264,10 @@ func TestPg_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t *testing.
 			t.Fatal(err)
 		}
 		held := r.send(pathRecovery, src, proof, "")
+		// Д66: строка ведра не взята за lock_timeout — насыщение.
+		if s := r.gate.Stats(); s.StoreSaturated != 1 {
+			t.Errorf("строка ведра удержана: счётчики %+v, ожидалось насыщение 1", s)
+		}
 		_ = tx.Rollback(context.Background())
 		again := r.send(pathRecovery, src, proof, "")
 		return held.Code, again.Code
@@ -437,7 +449,7 @@ func TestPg_K1_VanishedHolderIsReleasedByTheServer(t *testing.T) {
 		time.Sleep(anonMailDecisionBudget + 500*time.Millisecond)
 		after = r.send(pathRecovery, "198.51.100.48", "", "").Code
 		_, holderErr = x.tx.Exec(ctx, `SELECT 1`)
-		x.rollback()
+		x.rollback(context.Background())
 		return inside, after, holderErr
 	}
 	in, after, herr := run(t, decisionLimitsSQL)
@@ -483,7 +495,7 @@ func TestPg_K1_HolderInALongStatementIsReleasedWithinTwoBudgets(t *testing.T) {
 		time.Sleep(2*anonMailDecisionBudget + 500*time.Millisecond)
 		code := r.send(pathRecovery, "198.51.100.49", "", "").Code
 		<-done
-		x.rollback()
+		x.rollback(context.Background())
 		return code
 	}
 	if got := run(t, decisionLimitsSQL); got != http.StatusOK {

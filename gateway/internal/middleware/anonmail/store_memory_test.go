@@ -27,7 +27,7 @@ func TestMemoryStore_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t 
 	run := func(t *testing.T, markApart bool) (held, again int) {
 		l := testLimits()
 		var mem *MemoryStore
-		r := newRig(t, l, func(c *testClock) Store { mem = NewMemoryStore(l, c.Now); return mem }, 0)
+		r := newRig(t, l, func(c *testClock) Store { mem = mustMemoryStore(t, l, c.Now); return mem }, 0)
 		src := "198.51.100.40"
 		for i := 0; i < l.Source.Free; i++ {
 			r.send(pathRecovery, src, "", "")
@@ -122,7 +122,7 @@ func (x *blockingTx) recordPass(context.Context, Keys, time.Time, *Proof, *bucke
 	return errNotReached
 }
 func (x *blockingTx) commit(context.Context) Outcome { return StoreUnavailable }
-func (x *blockingTx) rollback()                      {}
+func (x *blockingTx) rollback(context.Context)       {}
 
 // TestStore_DecisionBudgetEndsInStoreUnavailable — модульная проба срока
 // решения (К1 ревью замысла; УК54): заглушка хранилища держит оператор дольше
@@ -153,7 +153,7 @@ func TestStore_DecisionBudgetEndsInStoreUnavailable(t *testing.T) {
 func TestMemoryStore_SweepRemovesExpiredSubjects(t *testing.T) {
 	l := testLimits()
 	clock := newTestClock()
-	m := NewMemoryStore(l, clock.Now)
+	m := mustMemoryStore(t, l, clock.Now)
 	defer func() { _ = m.Close() }()
 	k, _ := KeysFor("198.51.100.43")
 	var id [16]byte

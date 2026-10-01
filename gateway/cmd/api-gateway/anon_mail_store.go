@@ -43,6 +43,6 @@ func buildAnonMailStore(ctx context.Context, idem *idempotencypg.Store, cfg conf
 	default:
 		logger.Info("anonymous mail limiter store: in this process only, valid for a single replica",
 			"kind", idempotencyStoreMemory, "fleet_size", cfg.FleetSize)
-		return anonmail.NewMemoryStore(limits, time.Now), nil
+		return anonmail.NewMemoryStore(limits, time.Now, logger)
 	}
 }
