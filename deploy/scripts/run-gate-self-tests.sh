@@ -98,6 +98,7 @@ DECLARED="
 .github/scripts/assert-jobs-provide-their-tools.py
 .github/scripts/assert-required-contexts-match-jobs.py
 .github/scripts/assert-unit-shard-wiring.py
+.github/scripts/assert-workflow-run-publish-guard.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
