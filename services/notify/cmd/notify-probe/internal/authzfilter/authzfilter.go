@@ -9,11 +9,11 @@
 // своего пакета, — второе написание чужого словаря расходится молча.
 package authzfilter
 
-import "github.com/PRO-Robotech/corelib/notify/feed"
-
 // ResourceTypeFeed — тип объекта модели прав ленты: объект проверки Claim и
-// Ack и предмет сигнала журнала. Слово берётся у фундамента ленты.
-const ResourceTypeFeed = string(feed.FeedObjectType)
+// Ack и предмет сигнала журнала. Значение выписано литералом, чтобы его
+// читал разбор гейта словаря видов; равенство слову фундамента ленты
+// (feed.FeedObjectType) держит проба этого пакета.
+const ResourceTypeFeed = "notification_feed"
 
 // ActionFeedSubscribe — действие, которым поток спрашивает видимость строки
 // ленты: разрешение глагола подписки по каталогу прав
