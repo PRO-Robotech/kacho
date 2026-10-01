@@ -85,3 +85,18 @@ func TestVendorGrantInjection_GrantOutlivingItsSubchartIsFound(t *testing.T) {
 		t.Fatalf("грант без подчарта: находки %v, потолок %d", f, ceil["kacho"])
 	}
 }
+
+// После посадки строка гранта уже в базе (её нет в приросте), а ветка добавляет
+// ДРУГУЮ привязку: потолок не поднимается, рост остаётся ростом (опыт E6 приёмки).
+func TestVendorGrantInjection_LandedGrantDoesNotExcuseANewBinding(t *testing.T) {
+	t.Parallel()
+	other := `- "vendorx-1.0.0.tgz:templates/other.yaml"`
+	g, head, byTree, ceil, deltas, census := grantFixture(true, true, other)
+	// база: строка гранта уже там — в приросте только новая строка.
+	deltas["kacho"] = vendorTreeDelta{Added: []vendorBinding{byTree["kacho"][1]}}
+	vendorApplyGrants(g, head, byTree, ceil, deltas, census)
+	if ceil["kacho"] != 10 || census["kacho"].Granted != 0 || len(deltas["kacho"].Added) != 1 {
+		t.Fatalf("потолок %d, извинено %d, прирост %d — ждали 10, 0, 1: посаженный грант "+
+			"стал безадресным +1", ceil["kacho"], census["kacho"].Granted, len(deltas["kacho"].Added))
+	}
+}

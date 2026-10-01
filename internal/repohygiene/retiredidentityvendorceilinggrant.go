@@ -96,18 +96,22 @@ func vendorApplyGrants(
 					g.Tree, vendorFindingGrantStale, hit.File, hit.Line, subject, g.Removal)})
 			continue
 		}
-		ceilings[g.Tree]++
+		// Потолок поднимается ТОЛЬКО на строку, которой нет в базе, то есть которая
+		// стоит в ПРИРОСТЕ. После посадки строка гранта уже лежит в базе и входит в
+		// число базы сама; безусловный подъём превращал бы грант в безадресный +1
+		// для любой следующей привязки (приёмка 4240ac56fd3, опыт E6).
 		d := deltas[g.Tree]
 		for i, b := range d.Added {
 			if vendorBindingKey(b) == vendorBindingKey(*hit) {
 				d.Added = append(d.Added[:i:i], d.Added[i+1:]...)
+				ceilings[g.Tree]++
+				c := census[g.Tree]
+				c.Granted++
+				census[g.Tree] = c
 				break
 			}
 		}
 		deltas[g.Tree] = d
-		c := census[g.Tree]
-		c.Granted++
-		census[g.Tree] = c
 	}
 	return findings
 }
