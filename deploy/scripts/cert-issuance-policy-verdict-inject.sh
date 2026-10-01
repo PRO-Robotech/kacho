@@ -25,7 +25,10 @@
 #   notify-identity-ignored   «поднят ли notify» судится только по имени и меткам,
 #                             учётка пода не читается — notify, заведённый чартом
 #                             с иным именем, читается «не поднят» (ревью 2915-J1, F1);
-#   notify-unparsed-is-absent неразобранный список нагрузок читается «notify нет».
+#   notify-unparsed-is-absent неразобранный список нагрузок читается «notify нет»;
+#   approver-zero-pods-alive  контроллер политики «жив» по одному условию
+#                             Available, которое Kubernetes ставит и Deployment'у
+#                             с replicas: 0, — выключенный контроллер читается живым.
 #
 # Коды: 0 — каждый мутант покраснел, исходник зелен; 1 — гейт не способен
 # покраснеть на названном мутанте (находка); 2 — опыт не поставлен.
@@ -69,6 +72,9 @@ MUTANTS = [
   ("notify-unparsed-is-absent",
    '    print("unread 0 0"); sys.exit(0)',
    '    print("absent 0 0"); sys.exit(0)'),
+  ("approver-zero-pods-alive",
+   '    return cond and (st.get("availableReplicas") or 0) >= 1',
+   '    return cond'),
 ]
 with open(os.path.join(out, "index"), "w", encoding="utf-8") as idx:
     for name, a, b in MUTANTS:

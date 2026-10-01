@@ -25,7 +25,7 @@
 #      `certificates` — запрос подаёт контроллер cert-manager за объект
 #      Certificate) существуют, смотрят на ЭТОТ УЦ и приняты контроллером
 #      политики (Ready=True — он их разобрал и исполняет);
-#   3. контроллер политики жив (Deployment Available);
+#   3. контроллер политики жив (Deployment Available И доступных реплик ≥ 1);
 #   4. ВСТРОЕННЫЙ одобритель cert-manager НЕ вправе одобрять запросы этого УЦ.
 #
 # Четвёртое — главное и самое лёгкое для забвения. Политика, которая отказывает,
@@ -213,6 +213,25 @@ self_check() {
   classify absent '{"items":[]}'
   classify unread 'не JSON'
   classify unread '{"kind":"List"}'
+
+  # «Контроллер политики жив» — это под, который решает запросы, а не условие
+  # Available. Kubernetes ставит Available=True и Deployment'у с replicas: 0:
+  # недоступных реплик там не больше допустимого, потому что желаемых нет.
+  # Наблюдение по одному условию читало «контроллер жив» у выключенного
+  # контроллера (замер на kind-kacho: scale --replicas=0 → контроллер=available).
+  approver() { # <ждём> <JSON списка Deployment'ов>
+    local want="$1" got; n=$((n + 1))
+    got="$(printf '%s' "$2" | approver_classify)"
+    [ "$got" = "$want" ] || { echo "  ✗ самопроверка: наблюдение контроллера → «$got», ждали «$want» на $2"; bad=1; }
+  }
+  local avail='{"type":"Available","status":"True"}'
+  approver available "{\"items\":[{\"spec\":{\"replicas\":1},\"status\":{\"availableReplicas\":1,\"conditions\":[$avail]}}]}"
+  approver unavailable "{\"items\":[{\"spec\":{\"replicas\":0},\"status\":{\"conditions\":[$avail]}}]}"
+  approver unavailable "{\"items\":[{\"spec\":{\"replicas\":1},\"status\":{\"availableReplicas\":0,\"conditions\":[$avail]}}]}"
+  approver unavailable '{"items":[{"spec":{"replicas":1},"status":{"availableReplicas":1,"conditions":[{"type":"Available","status":"False"}]}}]}'
+  approver absent '{"items":[]}'
+  approver unread 'не JSON'
+  approver unread '{"kind":"List"}'
   echo "  самопроверка: осей $n"
   return "$bad"
 }
@@ -285,14 +304,34 @@ for p in items:
 print(st.get("workload","absent"), st.get("certificates","absent"), len(items), mine)' "$issuer" 2>/dev/null || echo "unread unread"
 }
 
+# approver_classify: JSON списка Deployment'ов контроллера политики на входе →
+# "<available|unavailable|absent|unread>". Чистая функция: её зовут самопроверка
+# и наблюдение.
+#
+# «Жив» — это Available=True И хотя бы одна доступная реплика. Одного условия
+# мало: у Deployment'а с replicas: 0 Kubernetes ставит Available=True (недоступных
+# реплик не больше допустимого, потому что желаемых нет), и выключенный
+# контроллер читался бы живым (замер на kind-kacho, 2026-10-01).
+approver_classify() {
+  python3 -c '
+import json,sys
+try:
+    items=json.load(sys.stdin)["items"]
+    if not isinstance(items, list): raise ValueError
+except Exception:
+    print("unread"); sys.exit(0)
+def alive(i):
+    st=i.get("status") or {}
+    cond=any(c.get("type")=="Available" and c.get("status")=="True" for c in st.get("conditions") or [])
+    return cond and (st.get("availableReplicas") or 0) >= 1
+if not items: print("absent")
+else: print("available" if any(alive(i) for i in items) else "unavailable")' 2>/dev/null || echo unread
+}
+
 observe_approver() {
   local out
   out="$(kubectl get deployments -A -l "$APPROVER_SELECTOR" -o json 2>/dev/null)" || { echo unread; return; }
-  printf '%s' "$out" | python3 -c '
-import json,sys
-items=json.load(sys.stdin)["items"]
-if not items: print("absent")
-else: print("available" if any(any(c.get("type")=="Available" and c.get("status")=="True" for c in i.get("status",{}).get("conditions",[])) for i in items) else "unavailable")' 2>/dev/null || echo unread
+  printf '%s' "$out" | approver_classify
 }
 
 # observe_builtin <УЦ> → "<yes|no|absent|unread> <контроллеров> <проверок права>"

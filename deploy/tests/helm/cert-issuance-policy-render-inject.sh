@@ -33,15 +33,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PARSER="$HERE/cert-issuance-policy-render.py"
 GATE="$HERE/../../scripts/assert-cert-issuance-policy.sh"
 for f in "$PARSER" "$GATE"; do
-  [ -f "$f" ] || { echo "ОТКАЗ: нет $f — доказывать нечего"; exit 2; }
+  [ -f "$f" ] || { echo "УСЛОВИЕ НЕ СОЗДАНО: нет $f — доказывать нечего"; exit 2; }
 done
-command -v python3 >/dev/null 2>&1 || { echo "ОТКАЗ: нет python3"; exit 2; }
-python3 -c 'import yaml' 2>/dev/null || { echo "ОТКАЗ: нет python3-yaml — разборщик не запустится"; exit 2; }
-TMP="$(mktemp -d)" || { echo "ОТКАЗ: не создан временный каталог"; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "УСЛОВИЕ НЕ СОЗДАНО: нет python3"; exit 2; }
+python3 -c 'import yaml' 2>/dev/null || { echo "УСЛОВИЕ НЕ СОЗДАНО: нет python3-yaml — разборщик не запустится"; exit 2; }
+TMP="$(mktemp -d)" || { echo "УСЛОВИЕ НЕ СОЗДАНО: не создан временный каталог"; exit 2; }
 trap 'rm -rf "$TMP"' EXIT
 
 # Мутант гейта — копия с ОДНОЙ подменой; якорь обязан найтись ровно один раз.
-python3 - "$GATE" "$TMP/gate-label-only.sh" <<'PY' || { echo "ОТКАЗ: мутант гейта не порождён — опыт не внесён"; exit 2; }
+python3 - "$GATE" "$TMP/gate-label-only.sh" <<'PY' || { echo "УСЛОВИЕ НЕ СОЗДАНО: мутант гейта не порождён — опыт не внесён"; exit 2; }
 import sys
 src, dst = sys.argv[1], sys.argv[2]
 text = open(src, encoding="utf-8").read()
@@ -80,7 +80,7 @@ run() {
   n=$((n + 1))
   out="$(python3 "$PARSER" inject kacho-cert-manager kacho "$gate" "$decl" 2>&1)"; rc=$?
   if [ "$rc" -ne 0 ]; then
-    echo "ОТКАЗ: разборщик не состоялся на «$name» (код $rc): $out"; exit 2
+    echo "УСЛОВИЕ НЕ СОЗДАНО: разборщик не состоялся на «$name» (код $rc): $out"; exit 2
   fi
   nbad="$(grep -c '^BAD|' <<<"$out")"; nwl="$(grep -c '^NOTIFYWL|' <<<"$out")"
   if [ "$nwl" != "$want_wl" ]; then
@@ -105,5 +105,5 @@ if [ "$bad" -ne 0 ]; then
   echo "FAIL: правило 5 пробы рендера не доказано инъекцией (опытов $n)"
   exit 1
 fi
-[ "$n" -eq 6 ] || { echo "ОТКАЗ: опытов исполнено $n из 6 — опыт поставлен не целиком"; exit 2; }
+[ "$n" -eq 6 ] || { echo "УСЛОВИЕ НЕ СОЗДАНО: опытов исполнено $n из 6 — опыт поставлен не целиком"; exit 2; }
 echo "PASS: правило 5 краснеет на каждом из 3 мутантов, близнецов 3 зелены (опытов $n)"
