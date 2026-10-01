@@ -191,7 +191,9 @@ func knobByEnv(env string) Knob {
 	return Knob{Name: env, Env: env}
 }
 
-func knobOfField(field string) Knob {
+// KnobOfField — ручка поля [Config] по его тегу: имя для текста отказа там,
+// где ручку судит не этот пакет (материал удостоверения пира — корень).
+func KnobOfField(field string) Knob {
 	f, ok := reflect.TypeFor[Config]().FieldByName(field)
 	if !ok {
 		panic("config: поля " + field + " нет — перечень ручек разошёлся с кодом стража")
@@ -308,7 +310,7 @@ func (c *Config) Validate() error {
 	sessionOK := c.checkDuration(&fs, "SMTPSessionTimeout", c.SMTPSessionTimeout, SMTPSessionTimeoutMin, SMTPSessionTimeoutMax)
 	if resolveOK && sessionOK {
 		if err := DeadlineSum(c.ResolveSendTimeout, c.SMTPSessionTimeout, feed.LeaseTTL); err != nil {
-			fs.add(knobOfField("ResolveSendTimeout"), "%v", err)
+			fs.add(KnobOfField("ResolveSendTimeout"), "%v", err)
 		}
 	}
 
@@ -322,7 +324,7 @@ func (c *Config) Validate() error {
 // checkDuration судит длительность по границе. Незаданная уже названа выше и
 // второй раз не называется.
 func (c *Config) checkDuration(fs *findings, field string, v, lo, hi time.Duration) bool {
-	k := knobOfField(field)
+	k := KnobOfField(field)
 	if c.unset[k.Env] {
 		return false
 	}
@@ -344,12 +346,12 @@ func DeadlineSum(resolveSend, session, lease time.Duration) error {
 	}
 	return fmt.Errorf("сумма сроков обработки строки %s (%s %s + %s %s + ackMargin %s) не меньше аренды "+
 		"feed.LeaseTTL %s: строка истекла бы раньше, чем её обработка обязана закончиться",
-		sum, knobOfField("ResolveSendTimeout"), resolveSend,
-		knobOfField("SMTPSessionTimeout"), session, AckMargin, lease)
+		sum, KnobOfField("ResolveSendTimeout"), resolveSend,
+		KnobOfField("SMTPSessionTimeout"), session, AckMargin, lease)
 }
 
 func (c *Config) validatePosture(fs *findings) {
-	k := knobOfField("AuthMode")
+	k := KnobOfField("AuthMode")
 	if !c.unset[k.Env] {
 		mode, err := c.Mode()
 		switch {
@@ -361,7 +363,7 @@ func (c *Config) validatePosture(fs *findings) {
 		}
 	}
 	for _, field := range []string{"PeerTLSCertFile", "PeerTLSKeyFile", "PeerTLSCAFile"} {
-		fk := knobOfField(field)
+		fk := KnobOfField(field)
 		if c.unset[fk.Env] {
 			// Незаданность уже названа общим перебором; ось называем в той же
 			// находке, а не второй: заменяем текст последней находки этой ручки.
@@ -388,17 +390,17 @@ func (fs *findings) renameAxis(k Knob, why string) {
 
 func (c *Config) validateDB(fs *findings) {
 	for _, field := range []string{"DBHost", "DBUser", "DBPassword", "DBName", "DBSSLMode"} {
-		k := knobOfField(field)
+		k := KnobOfField(field)
 		if !c.unset[k.Env] && strings.TrimSpace(reflect.ValueOf(*c).FieldByName(field).String()) == "" {
 			fs.add(k, "значение пусто")
 		}
 	}
-	if k := knobOfField("DBPort"); !c.unset[k.Env] {
+	if k := KnobOfField("DBPort"); !c.unset[k.Env] {
 		if _, err := parsePort(c.DBPort); err != nil {
 			fs.add(k, "%v", err)
 		}
 	}
-	if k := knobOfField("DiagAddr"); !c.unset[k.Env] {
+	if k := KnobOfField("DiagAddr"); !c.unset[k.Env] {
 		_, port, err := net.SplitHostPort(c.DiagAddr)
 		if err != nil {
 			fs.add(k, "адрес %q не в форме узел:порт: %v", c.DiagAddr, err)
@@ -420,7 +422,7 @@ func parsePort(s string) (int, error) {
 }
 
 func (c *Config) validateOrigin(fs *findings) {
-	k := knobOfField("Origin")
+	k := KnobOfField("Origin")
 	if c.unset[k.Env] {
 		return
 	}
@@ -462,18 +464,18 @@ func (c *Config) validateRelayCredential(fs *findings) {
 	switch {
 	case user != "" && !cred.present:
 		fs.add(credentialKnob, "секрет почты не смонтирован: в адресе ретранслятора (%s) есть имя "+
-			"пользователя, а удостоверения нет (ось G15, пара Д45)", knobOfField("SMTPConnectionURI"))
+			"пользователя, а удостоверения нет (ось G15, пара Д45)", KnobOfField("SMTPConnectionURI"))
 	case user == "" && cred.present:
 		fs.add(credentialKnob, "удостоверение задано, а имени пользователя в адресе ретранслятора (%s) "+
 			"нет: удостоверение без имени не применяется ни к какой сессии (пара Д45)",
-			knobOfField("SMTPConnectionURI"))
+			KnobOfField("SMTPConnectionURI"))
 	}
 }
 
 // relayUser — раскодированное имя пользователя адреса ретранслятора; пустое,
 // если адреса или имени нет. Неразбираемый адрес — находка.
 func (c *Config) relayUser(fs *findings) (string, bool) {
-	k := knobOfField("SMTPConnectionURI")
+	k := KnobOfField("SMTPConnectionURI")
 	if c.unset[k.Env] || c.SMTPConnectionURI == "" {
 		return "", true
 	}

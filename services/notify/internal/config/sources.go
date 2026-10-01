@@ -71,7 +71,7 @@ func SourceRecordFields() []string {
 // лишнее поле, значение вне закрытого перечня и повтор модуля — отказ старта с
 // именем ручки, номером записи, модулем и полем.
 func (c *Config) validateSources(fs *findings) {
-	k := knobOfField("Sources")
+	k := KnobOfField("Sources")
 	if c.unset[k.Env] {
 		return
 	}
