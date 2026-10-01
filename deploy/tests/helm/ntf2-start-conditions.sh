@@ -191,10 +191,10 @@ provider_charts() {
   listing="$(git -C "$REPO" ls-tree -d --name-only "$B" deploy/helm/umbrella/charts/ 2>&1)" || { echo "каталоги charts/ на $B не читаются: $listing" >&2; return 2; }
   for p in $prov; do
     out="$out$p"$'\n'
-    if printf '%s\n' "$all" | grep -qxF "pg-$p"; then out="${out}pg-$p"$'\n'; fi
+    if [[ $'\n'"$all"$'\n' == *$'\n'"pg-$p"$'\n'* ]]; then out="${out}pg-$p"$'\n'; fi
     for d in $listing; do
       d="${d##*/}"
-      case "$d" in "$p"-*) printf '%s\n' "$all" | grep -qxF "$d" || out="$out$d"$'\n' ;; esac
+      case "$d" in "$p"-*) [[ $'\n'"$all"$'\n' == *$'\n'"$d"$'\n'* ]] || out="$out$d"$'\n' ;; esac
     done
   done
   printf '%s' "$out" | sort -u
@@ -253,7 +253,7 @@ cond2() {
     chain_args[$n]="$args"
   done
   command -v helm >/dev/null 2>&1 || { nr п.2 "helm не найден"; return; }
-  yq --version 2>/dev/null | grep -q mikefarah || { nr п.2 "в PATH не mikefarah yq"; return; }
+  [[ "$(yq --version 2>/dev/null)" == *mikefarah* ]] || { nr п.2 "в PATH не mikefarah yq"; return; }
   [ -n "$PROVIDER_SET" ] || { nr п.2 "подчарты поставщика не выведены: $PROVIDER_ERR"; return; }
   echo "  подчарты поставщика на $B: $(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' ' ' | sed 's/ $//')"
   ctl="$(cond2_control)" || { nr п.2 "контроль распознавателей: $ctl"; return; }
@@ -327,7 +327,7 @@ P5_EXPR='. as $i ireduce ({}; . * $i) | [.global.kacho.identity.smtp.connectionU
 cond5() {
   local chain f files=() fields ctl suffix tpl uri name key tls
   [ "$DISK_OK" = 1 ] || { nr п.5 "$DISK_REASON"; return; }
-  yq --version 2>/dev/null | grep -q mikefarah || { nr п.5 "в PATH не mikefarah yq"; return; }
+  [[ "$(yq --version 2>/dev/null)" == *mikefarah* ]] || { nr п.5 "в PATH не mikefarah yq"; return; }
   chain="$(stacks_chain dev ' ' 2>"$WORK/err")" || { nr п.5 "общий читатель таблицы отказал на цепочке dev: $(cat "$WORK/err")"; return; }
   echo "  файлы цепочки dev (stacks.sh --chain): $chain"
   git -C "$REPO" show "$B:deploy/helm/umbrella/values.yaml" >"$WORK/p5-base.yaml" 2>"$WORK/err" \
@@ -350,7 +350,8 @@ cond5() {
   [ -n "$suffix" ] || { nr п.5 "имя сервиса приёмника из помощника kacho.mailReceiver.fullname на $B не выводится"; return; }
   IFS='|' read -r uri name key tls <<<"$fields"
   uri="${uri% }"; name="${name# }"; name="${name% }"; key="${key# }"; key="${key% }"; tls="${tls# }"
-  if printf '%s' "$uri" | grep -qE "^smtps?://([^@/]+@)?\\{\\{ *\\.Release\\.Name *\\}\\}${suffix}:[0-9]+/?\$" \
+  local uri_re="^smtps?://([^@/]+@)?\\{\\{ *\\.Release\\.Name *\\}\\}${suffix}:[0-9]+/?\$"
+  if [[ "$uri" =~ $uri_re ]] \
      && [ -n "$name" ] && [ "$name" = "$tls" ] && [ "$key" = ca.crt ]; then
     outcome п.5 выполнено "поля: $fields"
   else
