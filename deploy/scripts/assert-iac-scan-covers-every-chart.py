@@ -528,7 +528,6 @@ def main():
               file=sys.stderr)
         return 2
 
-    templates = git_ls("*/templates/*.yaml")
     if not shutil.which("trivy"):
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         return 2
@@ -565,21 +564,19 @@ def main():
               file=sys.stderr)
         return 2
 
-    no_templates, nested, exempt_ok, covered, uncovered, findings = [], [], [], [], [], []
+    exempt_ok, covered, uncovered, findings = [], [], [], []
     exempt_unjudged = []
     renders_none = []
 
     def own_hits(d):
         return [t for t in targets if t.startswith(d) and not t.startswith(d + "charts/")]
 
-    no_templates_set = {d for d in charts
-                        if not any(t.startswith(d + "templates/") for t in templates)}
-
+    # Каталог и архив судятся ОДНИМ предикатом (H7). Прежде каталог без шаблонов
+    # узнавался по индексу git (`*/templates/*.yaml`), а архив — по `renders_nothing`:
+    # библиотека-каталог молчала, та же библиотека архивом краснела. Теперь обе формы:
+    # есть свои цели (своим проходом или через рендер родителя — путь чарта в целях
+    # один) — осмотрен; не рендерит ничего по своим умолчаниям — названо; иначе находка.
     for d in charts:
-        has_templates = any(t.startswith(d + "templates/") for t in templates)
-        is_nested = any(d != p and d.startswith(p) for p in charts)
-        # Свои цели чарта — без его `charts/`: подчарты осматриваются и своим проходом
-        # (подчарты зонтика), и их цели не делают осмотренным родителя.
         hit = own_hits(d)
 
         if d in EXEMPT:
@@ -598,25 +595,12 @@ def main():
             else:
                 exempt_ok.append(d)
             continue
-        if not has_templates:
-            no_templates.append(d)
-            continue
-        if is_nested:
-            # Подчарт-каталог осмотрен через родителя — ЕСЛИ родитель осмотрен. У
-            # родителя в послаблении (зонтик) этого нет, и тогда подчарт обязан дать
-            # цели сам (проход подчартов зонтика), иначе он не осмотрен никем (#2980).
-            parent = max((p for p in charts if d != p and d.startswith(p)), key=len)
-            if parent not in EXEMPT and parent not in no_templates_set and own_hits(parent):
-                nested.append(d)
-            elif hit:
-                covered.append((d, len(hit)))
-            elif renders_nothing(chart_sources(ROOT / d)):
-                renders_none.append((d, renders_nothing(chart_sources(ROOT / d))))
-            else:
-                uncovered.append(d)
-            continue
         if hit:
             covered.append((d, len(hit)))
+            continue
+        why = renders_nothing(chart_sources(ROOT / d))
+        if why:
+            renders_none.append((d, why))
         else:
             uncovered.append(d)
 
@@ -681,11 +665,11 @@ def main():
     wf_findings, wf_census = check_workflow_passes()
     findings += wf_findings
 
-    print("iac-chart-coverage: чартов в дереве %d; из них без шаблонов %d, подчартов %d, "
-          "послаблений %d (не судимо в этом прогоне %d); архивов-чартов в %s %d, вне его %d "
+    print("iac-chart-coverage: чартов-каталогов в дереве %d; не рендерят ничего %d (каталоги "
+          "и архивы); послаблений %d (не судимо в этом прогоне %d); архивов-чартов в %s %d, вне его %d "
           "(подчартов-архивов %d, архивов не чартов %d, не прочитано %d); кандидатов %d; "
           "целей скана %d (%s); непокрытых %d"
-          % (len(charts), len(no_templates), len(nested), len(exempt_ok),
+          % (len(charts), len(renders_none), len(exempt_ok),
              len(exempt_unjudged), iac_scan_passes.VENDOR_HOME, len(archives), len(misplaced),
              len(nested_archives), len(not_charts), len(unreadable),
              len(covered) + len(uncovered), len(targets),
@@ -699,10 +683,6 @@ def main():
                                                   "Chart.yaml в оглавлении нет"))
     for d, n in covered:
         print("  осмотрен %2d целей  %s" % (n, d))
-    for d in no_templates:
-        print("  без шаблонов        %s — осматривать нечего" % d)
-    for d in nested:
-        print("  подчарт             %s — сканер относит его к родителю" % d)
     for a, n in sub_archives_via_parent:
         print("  осмотрен %2d целей  %s — через родителя" % (n, a))
     for d in exempt_ok:

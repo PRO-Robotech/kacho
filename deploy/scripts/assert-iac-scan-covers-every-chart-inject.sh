@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=46
+DENOM=48
 passed=0
 failed=0
 
@@ -162,6 +162,9 @@ elif kind == "broken":
 elif kind in ("guarded_off", "guarded_on"):
     files["templates/deployment.yaml"] = "{{- if .Values.feature.enabled }}\n" + deploy + "{{- end }}\n"
     files["values.yaml"] += "feature:\n  enabled: %s\n" % ("true" if kind == "guarded_on" else "false")
+elif kind == "library":
+    files = {"Chart.yaml": "apiVersion: v2\nname: injchart\nversion: 0.1.0\ntype: library\n",
+             "templates/_helpers.tpl": "{{- define \"injchart.name\" -}}injchart{{- end -}}\n"}
 elif kind == "nochart":
     files = {"README.txt": "not a chart\n"}
 else:
@@ -464,6 +467,21 @@ expect "F5: вердикт gosec после выгрузки без услови
   "задание «gosec», шаг «fail on level=error» стоит после выгрузки SARIF"
 expect "F4/F5 (близнец): контроль — шаги после выгрузки исполнимы" "$work/control" 0 \
   "шагов после выгрузки SARIF судимо"
+
+# ── Y. H7: один предикат для каталога и архива — библиотека не рендерит ничего ──
+# Библиотека-архив в каталоге вендоренных молчит так же, как библиотека-каталог;
+# близнец — то же место, чарт-приложение с манифестом: осмотрен (M3-близнец выше).
+make_copy "$work/h7" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/h7" deploy/helm/vendor/libc-0.1.0.tgz library || exit 2
+expect "H7: библиотека-архив — названа, гейт молчит" "$work/h7" 0 \
+  "не рендерит ничего  deploy/helm/vendor/libc-0.1.0.tgz — библиотека"
+make_copy "$work/h7dir" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+mkdir -p "$work/h7dir/deploy/helm/libdir/templates" || exit 2
+printf 'apiVersion: v2\nname: libdir\nversion: 0.1.0\ntype: library\n' > "$work/h7dir/deploy/helm/libdir/Chart.yaml"
+printf '{{- define "libdir.name" -}}libdir{{- end -}}\n' > "$work/h7dir/deploy/helm/libdir/templates/_helpers.tpl"
+git -C "$work/h7dir" add -f -- deploy/helm/libdir || exit 2
+expect "H7: та же библиотека каталогом — тот же исход" "$work/h7dir" 0 \
+  "не рендерит ничего  deploy/helm/libdir/ — библиотека"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
