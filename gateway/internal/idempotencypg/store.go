@@ -681,6 +681,10 @@ func (s *Store) reapLoop() {
 			return
 		case <-t.C:
 			s.reapOnce()
+			// Предметы ограничителя анонимной почты — тем же уборщиком и шагом:
+			// срок их хранения (25 ч на границах Р8) того же порядка, что жизнь
+			// записи однократности (З26).
+			s.purgeAnonMailOnce()
 		case <-dpop.C:
 			s.purgeDPoPOnce()
 		}

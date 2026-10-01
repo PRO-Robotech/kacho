@@ -122,7 +122,7 @@ func (x *blockingTx) recordPass(context.Context, Keys, time.Time, *Proof, *bucke
 	return errNotReached
 }
 func (x *blockingTx) commit(context.Context) Outcome { return StoreUnavailable }
-func (x *blockingTx) rollback()                       {}
+func (x *blockingTx) rollback()                      {}
 
 // TestStore_DecisionBudgetEndsInStoreUnavailable — модульная проба срока
 // решения (К1 ревью замысла; УК54): заглушка хранилища держит оператор дольше

@@ -162,11 +162,11 @@ func acquire(ctx context.Context, ch chan struct{}) error {
 }
 
 type memTx struct {
-	b        *memBackend
-	held     []chan struct{}
-	holdsBucket  bool
-	reserved *[challengeIDLen]byte
-	pending  chan struct{}
+	b           *memBackend
+	held        []chan struct{}
+	holdsBucket bool
+	reserved    *[challengeIDLen]byte
+	pending     chan struct{}
 
 	passKeys  []string
 	passAt    time.Time

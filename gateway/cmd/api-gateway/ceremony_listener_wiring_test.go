@@ -137,6 +137,7 @@ func TestCeremonyListenerWiring_L13_TheInternalAdminListener404sTheCeremonyAndTh
 		t.Cleanup(stub.Close)
 		r, rErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
 			Logger: logger, Serves: tg, Target: stub.URL, ClientIP: func(*http.Request) string { return "" },
+			AnonMailGate: anonMailGateFor(tg),
 		})
 		if rErr != nil {
 			t.Fatalf("ретранслятор цели %q: %v", tg, rErr)
@@ -243,4 +244,14 @@ func mergeKeys(a, b http.Header) map[string]struct{} {
 		out[k] = struct{}{}
 	}
 	return out
+}
+
+// anonMailGateFor — звено-ограничитель пробы: у цели с записями anonMail —
+// пропускающее (предмет этих проб — ретрансляция, а не лимиты), у прочих — нет
+// звена (ретранслятор отвергает звено, которому нечего судить).
+func anonMailGateFor(t middleware.RelayTarget) func(http.Handler) http.Handler {
+	if t == middleware.RelayTargetForm {
+		return func(h http.Handler) http.Handler { return h }
+	}
+	return nil
 }

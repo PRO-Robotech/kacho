@@ -131,9 +131,10 @@ func chainWithRelays(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (h
 	var set []*handler.LoginLaneRelay
 	for _, tg := range middleware.RelayTargets() {
 		relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-			Logger: logger,
-			Serves: tg,
-			Target: target,
+			Logger:       logger,
+			Serves:       tg,
+			AnonMailGate: anonMailGateFor(tg),
+			Target:       target,
 			// Оператор чтения цепочки — тот же, что у решения о доступе: один
 			// доверенный прыжок, адрес берётся справа.
 			ClientIP: mustExtractor(t, time.Now, "1").ClientIP,

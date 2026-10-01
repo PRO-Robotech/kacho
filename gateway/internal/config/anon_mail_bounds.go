@@ -384,6 +384,19 @@ func AnonMailWindowUpperBound() time.Duration {
 	return ceiling
 }
 
+// anonMailRetentionMargin — запас срока хранения моментов над верхней границей
+// окон: покрывает шаг уборки (замысел issue-2917, З26).
+const anonMailRetentionMargin = time.Hour
+
+// AnonMailPassRetention — срок хранения моментов пропуска ограничителя края
+// (З26, CX2-29): функция над той же таблицей границ, что судит страж старта, а
+// не литерал. Строго больше любого окна, которое установка вправе задать;
+// читают его звено (хранилище memory) и уборщик хранилища однократности
+// (postgres).
+func AnonMailPassRetention() time.Duration {
+	return AnonMailWindowUpperBound() + anonMailRetentionMargin
+}
+
 // AnonMailPoWKey — ключ подписи вызовов proof-of-work (З9). Ключ не печатается:
 // String и LogValue отдают метку, а не байты.
 type AnonMailPoWKey struct {

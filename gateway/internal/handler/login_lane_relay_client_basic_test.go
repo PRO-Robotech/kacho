@@ -84,7 +84,7 @@ func newProdEdge(t *testing.T, own *fakeOwn) *prodEdge {
 	var set []*handler.LoginLaneRelay
 	for _, tg := range middleware.RelayTargets() {
 		r, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-			Logger: logger, Serves: tg, Target: srv.URL,
+			Logger: logger, Serves: tg, Target: srv.URL, AnonMailGate: anonMailGateFor(tg),
 			ClientIP: mustExtractor(t, time.Now, "1").ClientIP,
 			Timeout:  2 * time.Second,
 		})

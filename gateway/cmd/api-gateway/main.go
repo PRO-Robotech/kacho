@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware/anonmail"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
@@ -67,7 +68,8 @@ func main() {
 	if elErr != nil {
 		log.Fatalf("edge knobs startup-validation: %v", elErr)
 	}
-	if _, pkErr := config.ReadAnonMailPoWKey(cfg); pkErr != nil {
+	powKey, pkErr := config.ReadAnonMailPoWKey(cfg)
+	if pkErr != nil {
 		log.Fatalf("anonymous mail proof-of-work key: %v", pkErr)
 	}
 	logger.Info("edge knobs resolved",
@@ -189,6 +191,58 @@ func main() {
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
+	// ХРАНИЛИЩЕ ОДНОКРАТНОСТИ СТРОИТСЯ ЗДЕСЬ, до ретрансляции полосы формы и
+	// до стража DPoP: его запись держит однократность предъявления
+	// доказательства владения (DPoP), а его построение накатывает схему, на
+	// которой стоит пул ограничителя анонимной почты (З8, CX2-44 (1)). Порядок
+	// — не стиль: страж, собранный раньше хранилища, получил бы память
+	// процесса при живом общем хранилище, и различие увидела бы только вторая
+	// реплика — то есть никто (#909).
+	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
+		StoreKind: cfg.IdempotencyStoreKind,
+		DSN:       cfg.IdempotencyDSN,
+		FleetSize: cfg.FleetSize,
+	}); pairErr != nil {
+		log.Fatalf("idempotency store startup-validation: %v", pairErr)
+	}
+	idempStore, sharedReplayStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
+	if idempErr != nil {
+		log.Fatalf("idempotency store: %v", idempErr)
+	}
+	if idempCloser != nil {
+		defer func() { _ = idempCloser.Close() }()
+	}
+
+	// ОГРАНИЧИТЕЛЬ АНОНИМНОЙ ПОЧТЫ (приёмка NTF-2, Р5; замысел З8, З9) — звено
+	// перед ретрансляцией записей формы с признаком anonMail. Хранилище
+	// строится ПОСЛЕ хранилища однократности и закрывается раньше него (порядок
+	// отложенных закрытий), то есть после остановки HTTP-сервера: решение,
+	// начатое до остановки, дорабатывает на живом пуле (CX2-44 (2)).
+	var anonMailGate *anonmail.Gate
+	if identityLane == identityposture.Own {
+		anonStore, asErr := buildAnonMailStore(context.Background(), sharedReplayStore, cfg, edgeLimits.AnonMail, logger)
+		if asErr != nil {
+			log.Fatalf("anonymous mail limiter store: %v", asErr)
+		}
+		defer func() { _ = anonStore.Close() }()
+		pow, powErr := anonmail.NewPoW(powKey.Bytes(), time.Now)
+		if powErr != nil {
+			log.Fatalf("anonymous mail proof-of-work: %v", powErr)
+		}
+		gate, gErr := anonmail.NewGate(anonmail.GateConfig{
+			Store:    anonStore,
+			PoW:      pow,
+			Limits:   edgeLimits.AnonMail,
+			ClientIP: clientAddress.ClientIP,
+			Now:      time.Now,
+			Logger:   logger,
+		})
+		if gErr != nil {
+			log.Fatalf("anonymous mail limiter: %v", gErr)
+		}
+		anonMailGate = gate
+	}
+
 	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
 	// входа и церемония авторизации принадлежат той чеканке, которая личность
 	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
@@ -216,6 +270,9 @@ func main() {
 			Target:    cfg.LoginLaneURL,
 			Transport: formTransport,
 			ClientIP:  clientIP,
+			// Звено-ограничитель перед ретрансляцией записей с признаком
+			// anonMail (NTF2-63); без него ретранслятор не строится.
+			AnonMailGate: anonMailGate.Wrap,
 		})
 		if rErr != nil {
 			log.Fatalf("login lane relay: %v", rErr)
@@ -555,26 +612,9 @@ func main() {
 	// anonymous when requireForAllRequests=false).
 	var dpopMiddleware *middleware.DPoPMiddleware
 	var cnfGRPCInterceptor *middleware.CnfBindingInterceptor
-	// ХРАНИЛИЩЕ ОДНОКРАТНОСТИ СТРОИТСЯ ЗДЕСЬ, а не ниже по файлу: его же
-	// запись держит однократность предъявления доказательства владения
-	// (DPoP), и страж этой проверки собирается парой строк ниже. Порядок
-	// здесь — не стиль: страж, собранный раньше хранилища, получил бы память
-	// процесса при живом общем хранилище, и различие увидела бы только вторая
-	// реплика — то есть никто (#909).
-	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
-		StoreKind: cfg.IdempotencyStoreKind,
-		DSN:       cfg.IdempotencyDSN,
-		FleetSize: cfg.FleetSize,
-	}); pairErr != nil {
-		log.Fatalf("idempotency store startup-validation: %v", pairErr)
-	}
-	idempStore, sharedReplayStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
-	if idempErr != nil {
-		log.Fatalf("idempotency store: %v", idempErr)
-	}
-	if idempCloser != nil {
-		defer func() { _ = idempCloser.Close() }()
-	}
+	// Хранилище однократности построено выше — до ретрансляции полосы формы:
+	// его же база держит ограничитель анонимной почты (З8), а страж DPoP ниже
+	// получает уже построенное общее хранилище (#909).
 
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
@@ -837,6 +877,9 @@ func main() {
 		// обязано быть видно величиной, а не выводиться из того, что никто не
 		// жаловался.
 		diagMetrics.RegisterIdempotencyReap(sharedReplayStore.ReapSweepStats)
+	}
+	if anonMailGate != nil {
+		diagMetrics.RegisterAnonMail(anonMailGate.Stats)
 	}
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
