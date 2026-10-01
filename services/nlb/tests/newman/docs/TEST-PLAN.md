@@ -142,10 +142,10 @@ before newman runs):
 | `jwtServiceAccountEditor` | SA editor on existingProjectId |
 | `jwtGroupMemberEditor` | User in group with editor binding |
 | `garbageRegionId` | `ru-doesnt-exist` literal |
-| `garbageNlbId` | `nlbnonexistent99999999` |
-| `garbageLstId` | `lstnonexistent99999999` |
-| `garbageTgrId` | `tgrnonexistent99999999` |
-| `garbageOpId` | `nlbnonexistent00000000` (well-formed prefix) |
+| `garbageNlbId` | `nlb00000000000000009` |
+| `garbageLstId` | `lst00000000000000009` |
+| `garbageTgrId` | `tgr00000000000000009` |
+| `garbageOpId` | `nlb00000000000000000` (well-formed prefix) |
 | `garbageInvalidOpId` | `garbage-id-no-prefix` |
 
 The kind-stand `setup.sh` allocates these and writes `kind-stand.postman_environment.json`;

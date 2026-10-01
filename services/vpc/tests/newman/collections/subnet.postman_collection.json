@@ -22776,7 +22776,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpsnapshotnonexist01",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22784,7 +22784,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpsnapshotnonexist01"
+                "enp00000000000000001"
               ]
             }
           },
@@ -22799,7 +22799,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('verbatim text', () => pm.expect(pm.response.json().message).to.eql(\"Subnet enpsnapshotnonexist01 not found\"));"
+                  "pm.test('verbatim text', () => pm.expect(pm.response.json().message).to.eql(\"Subnet enp00000000000000001 not found\"));"
                 ]
               }
             }
@@ -22822,7 +22822,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpsnapshotnonexist02",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000002",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22830,7 +22830,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpsnapshotnonexist02"
+                "enp00000000000000002"
               ]
             },
             "body": {
@@ -22878,7 +22878,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpsnapshotnonexist03",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000003",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22886,7 +22886,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpsnapshotnonexist03"
+                "enp00000000000000003"
               ]
             }
           },

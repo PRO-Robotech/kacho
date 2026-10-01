@@ -38,12 +38,15 @@ const networkCreateEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Create","p
 // arrives as a query parameter and the query IS the source grpc-gateway uses.
 const networkListEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/List","permission":"vpc.networks.list","required_relation":"v_list","scope_extractor":{"object_type":"project","from_request_field":"project_id"},"required_acr_min":"1"}`
 
+// Both ids carry the exact shape ids.NewID(prj) mints (prefix + 17 Crockford
+// chars): the catalog here holds only kacho rows, so `project` is judged by the
+// strict mint shape (resourceIDFormAccepted) — and a real project id passes it.
 const (
 	// scopeCallerCanEdit — a project the caller is an editor of.
-	scopeCallerCanEdit = "prj0000000000000cal"
+	scopeCallerCanEdit = "prj00000000000000ca1"
 	// scopeHandlerActsOn — the project named in the body, i.e. the one the
 	// handler would create the resource in.
-	scopeHandlerActsOn = "prj0000000000000act"
+	scopeHandlerActsOn = "prj00000000000000ac7"
 )
 
 // scopeSourceMW builds the REST-arm middleware for POST/GET /vpc/v1/networks.

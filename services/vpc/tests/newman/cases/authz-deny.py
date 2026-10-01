@@ -135,12 +135,12 @@ def notfound_asserts(case_id):
 # `ids.KnownPrefixes()`, поэтому `corevalidate.ResourceID` пропускает), строки нет.
 # Ею адресуются якорь шлюза, якорь интерфейса и область внутреннего адреса — три
 # ALLOW-полосы, чей единственный законный исход установлен ниже.
-NONEXISTENT_SUBNET_ID = "subnonexistent000001"
+NONEXISTENT_SUBNET_ID = "sub00000000000000001"
 
 # Заведомо нерезолвящаяся сеть — тем же построением. Стоит в теле DENY-полосы
 # подсети: там предмет кейса — отказ КРАЯ, до сервиса запрос не доходит вовсе,
 # и ссылка на ОБЩУЮ посевную сеть читалась бы как нарезка в ней, каковой не является.
-NONEXISTENT_NETWORK_ID = "netnonexistent000001"
+NONEXISTENT_NETWORK_ID = "net00000000000000001"
 
 # Адрес подсети, которую ALLOW-полоса режет в СВОЕЙ сети, созданной этим же кейсом.
 # Литерал безопасен BY CONSTRUCTION, и это свойство продукта, а не удача: ограничение
@@ -510,7 +510,7 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
 # id проходит формат-валидацию gateway'я и доходит до FGA Check → deny.
 #   `/Get`            → existence-hiding 404 (NF).
 #   `/Update|/Delete` → 403 (мутация-deny, existence НЕ скрывается).
-GARBAGE_ID = "enpnonexistent000001"
+GARBAGE_ID = "enp00000000000000001"
 
 
 def define_resource_cases(resource_name, plural, create_body_extra=None, supports_update=True,
@@ -611,7 +611,7 @@ define_resource_cases(
 # Первое чтение кода нашло только вызов из `applyAddressSpec`, потому что искало
 # место вызова `applyAddressSpec`, а не самой проверки; вторая координата в поиск не
 # попала. Ошибку назвал сквозной прогон, и назвал ТЕКСТОМ отказа, а не именем шага:
-# `{"code":5,"message":"Subnet subnonexistent000001 not found"}: expected 404 to
+# `{"code":5,"message":"Subnet sub00000000000000001 not found"}: expected 404 to
 # equal 200` — ровно пять кейсов, ровно этот ресурс. Утверждение сделало то, ради
 # чего заведено: разошлось с продуктом и назвало, в чём.
 define_resource_cases("address", "addresses", create_body_extra={
@@ -673,7 +673,7 @@ define_resource_cases("nic", "networkInterfaces", create_body_extra={
 # AddressPool — admin-only (cluster system_admin); все 6 субъектов DENY
 # ---------------------------------------------------------------------------
 
-APL_GARBAGE_ID = "aplnonexistent000001"
+APL_GARBAGE_ID = "apl00000000000000001"
 
 for subj in SUBJECTS:
     # Create AddressPool — admin-only: каждый аутентифицированный без system_admin → 403.

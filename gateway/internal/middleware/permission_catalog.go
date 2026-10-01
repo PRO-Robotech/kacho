@@ -138,6 +138,13 @@ type CatalogEntry struct {
 	//     TestScopeFilteredRowsBelongToADomainThatEnforcesThem, whose one recorded
 	//     exception is iam and carries its reason.
 	ScopeFiltered bool `json:"scope_filtered"`
+
+	// judgesIDShape — край судит id конкретной области этой записи строгой
+	// формой чеканки фундамента (kacho#2976). Из документа каталога НЕ читается:
+	// его выводит загрузка (markIDShapeJudged) из пакета метода и из того, какие
+	// корни называют тип своей областью. Запись, собранная вне загрузки, несёт
+	// false — прежний суд одним префиксом.
+	judgesIDShape bool
 }
 
 // ScopeExtractor — mirrored from `kaname.cloud.iam.v1.PermissionScopeExtractor`.
@@ -262,6 +269,7 @@ func (c *PermissionCatalog) LoadFromBytes(buf []byte) error {
 		}
 		next[e.FQN] = e
 	}
+	markIDShapeJudged(next)
 	c.entries.Store(&next)
 	return nil
 }

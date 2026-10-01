@@ -502,7 +502,7 @@ CASES.append(Case(
         *_create_repo("xreg/src-{{runId}}"),
         Step(name="rename-smuggle", method="POST", path=_reg_base() + "/xreg/src-{{runId}}:rename",
              body={"newName": "xreg/dst-{{runId}}",
-                   "registryId": "reg00000000smuggled0"},
+                   "registryId": "reg00000000000000002"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
                           *save_operation_id()]),
         poll_operation_until_done(),
