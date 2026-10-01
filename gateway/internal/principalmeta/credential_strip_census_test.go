@@ -67,7 +67,17 @@ const (
 	// бы сказать о нём неправду, а вычесть из обхода — завести исключение,
 	// которому нечего исключать.
 	groupStripsIt
+	// groupNamesAnUnrelatedField — НЕ читатель: файл называет одноимённое ПОЛЕ
+	// своих данных, к заголовку запроса отношения не имеющее. Перепись находит
+	// его по тому же признаку, что и читателей; отнести его к читателям значило
+	// бы сказать о нём неправду, а вычесть из обхода — завести исключение,
+	// которому нечего исключать. Группа держит ТОЛЬКО файлы без заголовков
+	// запроса вовсе — это проверяется ниже по импортам, а не верится на слово.
+	groupNamesAnUnrelatedField
 )
+
+// lastCredentialReaderGroup — последняя группа: перепись печатает все до неё.
+const lastCredentialReaderGroup = groupNamesAnUnrelatedField
 
 func (g credentialReaderGroup) String() string {
 	switch g {
@@ -85,6 +95,8 @@ func (g credentialReaderGroup) String() string {
 		return "называет ключ, чтобы искать его"
 	case groupStripsIt:
 		return "САМ узел снятия"
+	case groupNamesAnUnrelatedField:
+		return "называет одноимённое поле данных"
 	default:
 		return "не адъюдицирован"
 	}
@@ -125,6 +137,34 @@ var credentialReaderCensus = map[string]credentialReaderGroup{
 	"internal/repohygiene/bothidentityformsproducer.go": groupNamesTheKeyToSearchForIt,
 
 	"gateway/internal/principalmeta/credential_strip.go": groupStripsIt,
+
+	// Поле `authorization` записи перечня источников notify (NTF-1: запись
+	// `{module, feedAddr, san, classes, recipientForms, authorization}`) — способ,
+	// которым notify подтверждает право источника на письмо. Это ключ
+	// конфигурации процесса, а не заголовок запроса: входящих запросов с
+	// удостоверением у notify нет вовсе (gRPC-слушателя нет, NTF-1 Р1).
+	"services/notify/internal/config/sources.go": groupNamesAnUnrelatedField,
+}
+
+// requestCarrierImports — пакеты, через которые заголовок запроса доходит до
+// кода. Файл группы groupNamesAnUnrelatedField не импортирует ни одного: иначе
+// «поле данных» неотличимо от читателя, назвавшего себя полем.
+var requestCarrierImports = []string{
+	`"net/http"`,
+	`"google.golang.org/grpc/metadata"`,
+	`"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"`,
+}
+
+// unrelatedFieldCarriesARequest — файл группы «поле данных», импортирующий
+// носитель заголовка запроса: адъюдикация ложна. Чистая функция — её судит
+// проба с инъекцией.
+func unrelatedFieldCarriesARequest(src []byte) (string, bool) {
+	for _, imp := range requestCarrierImports {
+		if strings.Contains(string(src), imp) {
+			return imp, true
+		}
+	}
+	return "", false
 }
 
 // bothNameForms — разборщик, знающий ОБЕ законные формы записи имени.
@@ -185,10 +225,22 @@ func TestKAN_STRIP_03_CredentialReaderCensus(t *testing.T) {
 	sort.Strings(vanished)
 	t.Logf("перепись: осмотрено не-тестовых файлов Go %d · читателей входящего удостоверения %d",
 		scanned, len(found))
-	for g := groupWritesOutgoing; g <= groupStripsIt; g++ {
+	for g := groupWritesOutgoing; g <= lastCredentialReaderGroup; g++ {
 		list := byGroup[g]
 		sort.Strings(list)
 		t.Logf("  %-36s %d  %s", g.String(), len(list), strings.Join(list, " "))
+	}
+
+	for _, rel := range byGroup[groupNamesAnUnrelatedField] {
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Errorf("%s отнесён к «поле данных», но не читается: %v", rel, err)
+			continue
+		}
+		if imp, bad := unrelatedFieldCarriesARequest(b); bad {
+			t.Errorf("%s отнесён к «называет одноимённое поле данных», а импортирует носитель "+
+				"заголовка запроса %s — адъюдикация ложна: отнесите файл к группе читателей", rel, imp)
+		}
 	}
 
 	if len(unadjudicated) > 0 {
@@ -271,4 +323,21 @@ func gitLsFiles(root, pattern string) ([]string, error) {
 		}
 	}
 	return files, nil
+}
+
+// TestUnrelatedFieldGroupRefusesARequestCarrier — группа «поле данных» способна
+// упасть: файл, импортирующий носитель заголовка, адъюдикацию не проходит;
+// близнец без такого импорта — проходит.
+func TestUnrelatedFieldGroupRefusesARequestCarrier(t *testing.T) {
+	t.Parallel()
+	twin := []byte("package config\n\nimport (\n\t\"fmt\"\n)\n\nconst k = \"authorization\"\n")
+	if imp, bad := unrelatedFieldCarriesARequest(twin); bad {
+		t.Fatalf("близнец без носителя признан читателем по %s", imp)
+	}
+	for _, imp := range requestCarrierImports {
+		src := []byte("package config\n\nimport (\n\t" + imp + "\n)\n\nconst k = \"authorization\"\n")
+		if _, bad := unrelatedFieldCarriesARequest(src); !bad {
+			t.Errorf("инъекция импорта %s не опознана — группа приняла бы читателя за поле", imp)
+		}
+	}
 }
