@@ -108,10 +108,12 @@ WORKFLOW = ROOT / ".github" / "workflows" / "security-scan.yml"
 
 # Чарты, которым цель не требуется, — с причиной. Причина обязана быть проверяемой
 # (см. reason_still_holds), иначе через полгода это будет фольклор.
-EXEMPT = {
-    "deploy/helm/umbrella/": "не рендерится без сборки ЛОКАЛЬНЫХ сабчартов из "
-                             "исходников — они в git не вендорятся by construction",
-}
+#
+# Здесь стояло послабление зонтика («не рендерится без сборки локальных сабчартов»).
+# Предмет снят: зонтик осматривается проходом отрендеренных профилей, который сам
+# материализует зависимости (`deploy/scripts/render-umbrella-profiles.sh`). Механизм
+# остаётся ради следующей записи и судит её в обе стороны (`reason_still_holds`).
+EXEMPT = {}
 
 
 def git_ls(pattern):
@@ -499,6 +501,16 @@ def local_dependency_names(chart_yaml):
     return names
 
 
+def dependency_aliases(parent_dir, name):
+    """→ псевдонимы зависимости `name` в Chart.yaml родителя (пусто — без псевдонимов)."""
+    try:
+        doc = yaml.safe_load((parent_dir / "Chart.yaml").read_text(encoding="utf-8")) or {}
+    except OSError:
+        return set()
+    return {str(d.get("alias")) for d in doc.get("dependencies") or []
+            if isinstance(d, dict) and d.get("name") == name and d.get("alias")}
+
+
 def archive_chart_name(archive):
     """`vpc-1.0.0.tgz` → `vpc`; `cert-manager-v1.16.5.tgz` → `cert-manager`.
 
@@ -574,8 +586,8 @@ def main():
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         return 2
     bare_pass = iac_scan_passes.require(iac_scan_passes.BARE_NAME)
-    sub_pass = iac_scan_passes.require(iac_scan_passes.SUBCHARTS_NAME)
-    for p in (bare_pass, sub_pass):
+    ren_pass = iac_scan_passes.require(iac_scan_passes.RENDERED_NAME)
+    for p in (bare_pass, ren_pass):
         doc = yaml.safe_load((ROOT / p[2]).read_text(encoding="utf-8")) or {}
         if ((doc.get("misconfiguration") or {}).get("helm") or {}).get("set"):
             print("ОТКАЗ: проход «%s» (%s) несёт заглушки — его срез существует ровно\n"
@@ -674,13 +686,25 @@ def main():
     # trivy, отрендерив родителя, пишет их как `<родитель>charts/<имя подчарта>/…`.
     # Прежняя редакция судила по «у родителя есть цели», и подчарт под родителем без
     # шаблонов (H2) либо выключенный условием родителя оставался без суда.
-    sub_archives_via_parent = []
+    # Имя подчарта в рендере — ИМЯ ЧАРТА либо его ПСЕВДОНИМ в зависимостях родителя:
+    # один архив `postgresql` развёртывается зонтиком пятью псевдонимами `pg-*`.
+    # Подчарт зонтика, которого нет НИ В ОДНОМ отрендеренном профиле, не развёртывается
+    # никем (условие зависимости ложно во всех стеках) — он назван, а не судится;
+    # включит его профиль — он обязан дать цели.
+    rendered_umbrella_subdirs = set()
+    for f in iac_scan_passes.rendered_files(ROOT):
+        n = iac_scan_passes.normalize(iac_scan_passes.RENDERED_REF, f)
+        head = iac_scan_passes.UMBRELLA_CHARTS + "/"
+        if n.startswith(head):
+            rendered_umbrella_subdirs.add(n[len(head):].split("/", 1)[0])
+    sub_archives_via_parent, not_deployed = [], []
     for a in nested_archives:
         parent = max((c for c in charts if a.startswith(c + "charts/")), key=len)
         src = chart_sources(ROOT / a)
         sub_name = str((yaml.safe_load((src or {}).get("Chart.yaml") or "") or {}).get("name") or "")
+        names = {sub_name} | dependency_aliases(ROOT / parent, sub_name) if sub_name else set()
         own = [t for t in targets if t.startswith(a + ":")]
-        via = [t for t in targets if sub_name and t.startswith(parent + "charts/" + sub_name + "/")]
+        via = [t for t in targets for n in names if t.startswith(parent + "charts/" + n + "/")]
         why = None if own or via else renders_nothing(src)
         if own:
             covered.append((a, len(own)))
@@ -688,6 +712,8 @@ def main():
             sub_archives_via_parent.append((a, len(via)))
         elif why:
             renders_none.append((a, why))
+        elif parent.rstrip("/") == iac_scan_passes.UMBRELLA and not (names & rendered_umbrella_subdirs):
+            not_deployed.append((a, sorted(names)))
         else:
             uncovered.append(a)
 
@@ -710,7 +736,8 @@ def main():
         ref = iac_scan_passes.require(name)[1]
         for line in scan_log.get(name, []):
             m = re.search(r'file_path="([^"]+)"', line)
-            if m and iac_scan_passes.normalize(ref, m.group(1)) not in tracked_set:
+            if m and ref != iac_scan_passes.RENDERED_REF and \
+                    iac_scan_passes.normalize(ref, m.group(1)) not in tracked_set:
                 log_unjudged.append((name, iac_scan_passes.normalize(ref, m.group(1))))
                 continue
             findings.append("проход «%s»: в журнале trivy ERROR — %s" % (name, line))
@@ -722,10 +749,6 @@ def main():
                         "заглушек его не осматривает: второй проход ничего не открывает, "
                         "и снимать каталог с первого прохода больше незачем"
                         % iac_scan_passes.VENDOR_HOME)
-    if not any(a.startswith(iac_scan_passes.UMBRELLA_CHARTS + "/") for a in nested_archives):
-        findings.append("%s — нет ни одного отслеживаемого архива-подчарта: проход «%s» "
-                        "ничего не открывает и самоистекает" % (iac_scan_passes.UMBRELLA_CHARTS,
-                                                               sub_pass[0]))
     wf_findings, wf_census = check_workflow_passes()
     findings += wf_findings
 
@@ -749,6 +772,9 @@ def main():
         print("  осмотрен %2d целей  %s" % (n, d))
     for a, n in sub_archives_via_parent:
         print("  осмотрен %2d целей  %s — через родителя" % (n, a))
+    for a, names in not_deployed:
+        print("  не развёртывается   %s — ни один профиль не рендерит %s (условие зависимости "
+              "ложно во всех стеках)" % (a, ", ".join(names)))
     for d in exempt_ok:
         print("  послабление         %s — %s" % (d, EXEMPT[d]))
     for name, path in log_unjudged:
@@ -765,7 +791,7 @@ def main():
         if d in nested_archives:
             findings.append("%s — подчарт-архив НЕ ДАЛ ни одной цели: ни своим проходом "
                             "(«%s»), ни через родителя — среди целей нет его шаблонов; "
-                            "сторонний чарт вне скана целиком" % (d, sub_pass[0]))
+                            "сторонний чарт вне скана целиком" % (d, ren_pass[0]))
             continue
         if d in archives:
             findings.append("%s — архив-чарт НЕ ДАЛ ни одной цели проходу «%s» (без "

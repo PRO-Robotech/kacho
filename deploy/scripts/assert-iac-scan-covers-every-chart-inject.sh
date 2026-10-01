@@ -91,7 +91,7 @@ expect "контроль — архив осмотрен проходом вен
   "целей  deploy/helm/vendor/$ARCHIVE"
 expect "контроль — сжатый поток без оглавления назван «не чарт»" "$work/control" 0 \
   "сжатый поток без оглавления"
-expect "контроль — сторонний подчарт-архив зонтика осмотрен своим проходом" "$work/control" 0 \
+expect "контроль — сторонний подчарт-архив зонтика осмотрен в отрендеренных профилях" "$work/control" 0 \
   "целей  deploy/helm/umbrella/charts/cert-manager-v1.16.5.tgz"
 
 # ── B. Настоящий вендоренный архив вне своего каталога ──────────────────────────
@@ -323,13 +323,14 @@ git -C "$work/junk" add -- deploy/helm/junk-0.1.0.tgz || exit 2
 expect "непрочитанный архив — находка" "$work/junk" 1 \
   "deploy/helm/junk-0.1.0.tgz — архив не прочитан"
 
-# ── Q. #2980: подчарт-архив под родителем в послаблении ─────────────────────────
-# Родитель (зонтик) не осматривается, и подчарт обязан дать цели сам. Опыт — подчарт,
-# чей рендер отказывает (`required` без значения); близнец — тот же архив со значением.
+# ── Q. #2980: подчарт зонтика осматривается в отрендеренных профилях ─────────────
+# Подчарт, чей рендер отказывает (`required` без значения), роняет рендер профиля:
+# вердикта о профилях нет — код 2 с именем стека, а не «чисто». Близнец — тот же архив
+# со значением: осмотрен в профилях через родителя.
 make_copy "$work/subreq" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 put_chart_archive "$work/subreq" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required || exit 2
-expect "#2980: неосмотренный подчарт-архив зонтика — находка" "$work/subreq" 1 \
-  "deploy/helm/umbrella/charts/subreq-0.1.0.tgz — подчарт-архив НЕ ДАЛ ни одной цели"
+expect "#2980: подчарт зонтика, отказывающий в рендере профиля, — вердикта нет, код 2" "$work/subreq" 2 \
+  "профили зонтика не отрендерены"
 make_copy "$work/subok" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 put_chart_archive "$work/subok" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required_valued || exit 2
 expect "#2980 (близнец): тот же подчарт со значением — осмотрен, гейт молчит" "$work/subok" 0 \
@@ -337,13 +338,13 @@ expect "#2980 (близнец): тот же подчарт со значение
 
 # ── R. #2980: прохода подчартов зонтика нет в PASSES ─────────────────────────────
 make_copy "$work/nosub" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-sed -i '/^    (SUBCHARTS_NAME, UMBRELLA_CHARTS, "trivy-umbrella-subcharts.yaml", ALWAYS_SKIPPED),$/d' \
+sed -i '/^    (RENDERED_NAME, RENDERED_REF, "trivy-rendered-profiles.yaml", ()),$/d' \
   "$work/nosub/deploy/scripts/iac_scan_passes.py"
-if grep -q '^    (SUBCHARTS_NAME,' "$work/nosub/deploy/scripts/iac_scan_passes.py"; then
+if grep -q '^    (RENDERED_NAME,' "$work/nosub/deploy/scripts/iac_scan_passes.py"; then
   echo "ОТКАЗ: инъекция R не легла — строка прохода изменилась" >&2; exit 2
 fi
-expect "#2980: прохода подчартов нет — отказ с его именем" "$work/nosub" 2 \
-  "прохода «подчарты зонтика» нет"
+expect "#2980: прохода профилей зонтика нет — отказ с его именем" "$work/nosub" 2 \
+  "прохода «профили зонтика» нет"
 
 # ── S. Подчарт, выключенный условием в своих умолчаниях (H3) ──────────────────────
 # Не рендерит ни одного манифеста — признаётся предикатом, а не записью с именем.
@@ -508,10 +509,10 @@ expect "H4 (близнец): тот же прогон при пределе по
 # тот же неотрендеримый архив, что в Q, но НЕ добавленный в индекс: назван несудимым,
 # гейт молчит. Близнец — опыт Q: тот же архив в индексе даёт находку.
 make_copy "$work/localbuild" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/localbuild" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required || exit 2
-git -C "$work/localbuild" rm -q --cached -- deploy/helm/umbrella/charts/subreq-0.1.0.tgz || exit 2
+put_chart_archive "$work/localbuild" deploy/helm/vendor/subreq-0.1.0.tgz required || exit 2
+git -C "$work/localbuild" rm -q --cached -- deploy/helm/vendor/subreq-0.1.0.tgz || exit 2
 expect "местная сборка: ERROR о неотслеживаемом архиве — несудим, гейт молчит" "$work/localbuild" 0 \
-  "НЕ СУДИМО           deploy/helm/umbrella/charts/subreq-0.1.0.tgz — ERROR прохода"
+  "НЕ СУДИМО           deploy/helm/vendor/subreq-0.1.0.tgz — ERROR прохода"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

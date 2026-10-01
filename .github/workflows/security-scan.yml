@@ -222,6 +222,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      # Профили зонтика рендерятся ДО сканов: их осматривает проход «профили зонтика»
+      # (гейтовый шаг ниже). Пин helm — тот же, что у заданий чартов (`v4.2.4`).
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
+        with:
+          version: v4.2.4
+      - name: отрендерить профили зонтика (с хуками, по стекам deploy/stacks.txt)
+        run: bash deploy/scripts/render-umbrella-profiles.sh "$RUNNER_TEMP/iac-rendered"
       # Каждый скан идёт ДВАЖДЫ: sarif (exit-code 0, только в Security-tab) и table
       # (exit-code 1 — реальный гейт). Причина: с `format: sarif` trivy-action
       # срабатывает на ЛЮБОЕ правило в SARIF независимо от фильтра `severity`
@@ -285,7 +292,7 @@ jobs:
           # молча. Его осматривает следующий шаг, без заглушек. Срезы обоих проходов
           # объявлены в `deploy/scripts/iac_scan_passes.py`, и шаги здесь сверяет с
           # ними гейт покрытия (шаг «IaC-скан покрывает каждый чарт»).
-          skip-dirs: 'deploy/helm/vendor'
+          skip-dirs: 'deploy/helm/vendor,deploy/helm/umbrella'
           format: 'sarif'
           output: 'trivy-config.sarif'
           severity: 'CRITICAL,HIGH'
@@ -307,24 +314,6 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
 
-      # Третий проход — сторонние подчарты-архивы зонтика (#2980): их родитель снят с
-      # осмотра послаблением, и через него они не осматривались вовсе. Без заглушек, с
-      # версией Kubernetes узла стенда (`trivy-umbrella-subcharts.yaml`).
-      - name: trivy config, подчарты зонтика (SARIF → Security)
-        if: '!cancelled()'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
-        with:
-          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
-          cache: 'false'
-          version: v0.70.0
-          scan-type: 'config'
-          scan-ref: 'deploy/helm/umbrella/charts'
-          trivy-config: 'trivy-umbrella-subcharts.yaml'
-          format: 'sarif'
-          output: 'trivy-config-subcharts.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-
       # КООРДИНАТЫ АРХИВА-ЧАРТА — В ПУТИ CHECKOUT'А, ДО ВЫГРУЗКИ. Находку внутри архива
       # trivy адресует `<архив>:<шаблон>`, и Code Scanning читает это как URI со схемой
       # `<архив>`: волна #2977 (run 36867890066) получила восемь отказов «SARIF URI
@@ -335,7 +324,7 @@ jobs:
       # Выгрузку оставили, а не сняли: без неё LOW/MEDIUM внешнего чарта не видны нигде.
       - name: координаты SARIF IaC — в пути checkout'а
         if: '!cancelled()'
-        run: python3 deploy/scripts/sarif-archive-uris.py trivy-config.sarif trivy-config-vendored.sarif trivy-config-subcharts.sarif
+        run: python3 deploy/scripts/sarif-archive-uris.py trivy-config.sarif trivy-config-vendored.sarif
 
       - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
@@ -354,12 +343,6 @@ jobs:
         with:
           sarif_file: trivy-config-vendored.sarif
           category: trivy-config-vendored
-
-      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
-        if: always()
-        with:
-          sarif_file: trivy-config-subcharts.sarif
-          category: trivy-config-subcharts
 
       # `!cancelled()` ОБЯЗАТЕЛЕН и здесь, хотя шаг — первый из гейтов: без `if` он
       # исполняется только при успехе ВСЕХ предыдущих, и отказ выгрузки SARIF выше снял
@@ -393,7 +376,7 @@ jobs:
           scan-type: 'config'
           scan-ref: '.'
           trivy-config: 'trivy.yaml'
-          skip-dirs: 'deploy/helm/vendor'
+          skip-dirs: 'deploy/helm/vendor,deploy/helm/umbrella'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
@@ -417,9 +400,14 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
 
-      # Третий проход того же гейта (подчарты зонтика, #2980). Пути в выводе — от
-      # `deploy/helm/umbrella/charts`; записи `.trivyignore.yaml` под них — в этой форме.
-      - name: trivy config, подчарты зонтика (гейт CRITICAL/HIGH)
+      # ТРЕТИЙ ПРОХОД — ТО, ЧТО РАЗВЁРТЫВАЕТСЯ: каждый профиль зонтика (`deploy/stacks.txt`)
+      # отрендерен цепочкой своих values, С ХУКАМИ, по файлу на шаблон, и осмотрен
+      # готовыми манифестами. Прежде подчарты осматривались своими умолчаниями: значения
+      # профиля и хуки до сканера не доходили, а запись о долге переживала исправление
+      # (приёмка 4240ac56fd3). Рендер кладётся ВНЕ checkout'а — внутри его осмотрел бы и
+      # проход заглушек. SARIF у прохода нет: пути манифестов не лежат в репозитории,
+      # и Code Scanning привязать находку было бы не к чему; вердикт — гейтом ниже.
+      - name: trivy config, профили зонтика (гейт CRITICAL/HIGH)
         if: '!cancelled()'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
@@ -427,8 +415,8 @@ jobs:
           cache: 'false'
           version: v0.70.0
           scan-type: 'config'
-          scan-ref: 'deploy/helm/umbrella/charts'
-          trivy-config: 'trivy-umbrella-subcharts.yaml'
+          scan-ref: '${{ runner.temp }}/iac-rendered'
+          trivy-config: 'trivy-rendered-profiles.yaml'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'

@@ -59,18 +59,60 @@ ALWAYS_SKIPPED = (".claude", "**/node_modules")
 # «второй элемент», после перестановки молча судил бы чужим срезом.
 STUBBED_NAME = "заглушки"
 BARE_NAME = "вендоренные"  # проход БЕЗ заглушек
-SUBCHARTS_NAME = "подчарты зонтика"  # проход БЕЗ заглушек, с версией Kubernetes
-UMBRELLA_CHARTS = "deploy/helm/umbrella/charts"
+RENDERED_NAME = "профили зонтика"  # отрендеренные профили, как они развёртываются
+UMBRELLA = "deploy/helm/umbrella"
+UMBRELLA_CHARTS = UMBRELLA + "/charts"
+# scan-ref прохода профилей — каталог ВНЕ checkout'а, куда шаг конвейера кладёт рендер
+# (`deploy/scripts/render-umbrella-profiles.sh`). Внутри дерева его осмотрел бы и проход
+# заглушек. Гейты рендерят в свой временный каталог тем же скриптом (`rendered_dir`).
+RENDERED_REF = "${{ runner.temp }}/iac-rendered"
+RENDER_SCRIPT = "deploy/scripts/render-umbrella-profiles.sh"
 
 # (имя, scan-ref, файл настроек, каталоги вне прохода)
 PASSES = (
-    (STUBBED_NAME, ".", "trivy.yaml", ALWAYS_SKIPPED + (VENDOR_HOME,)),
+    # Зонтик целиком — вне прохода заглушек: он осматривается отрендеренными
+    # профилями, а с материализованными зависимостями отрендерился бы и здесь — с
+    # заглушками и базовыми значениями, то есть не тем, что развёртывается.
+    (STUBBED_NAME, ".", "trivy.yaml", ALWAYS_SKIPPED + (VENDOR_HOME, UMBRELLA)),
     (BARE_NAME, VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),
-    (SUBCHARTS_NAME, UMBRELLA_CHARTS, "trivy-umbrella-subcharts.yaml", ALWAYS_SKIPPED),
+    (RENDERED_NAME, RENDERED_REF, "trivy-rendered-profiles.yaml", ()),
 )
-# Проходы, чей журнал судится: строка ERROR в нём — находка. У прохода заглушек отказ
-# рендера зонтика законен (он в послаблении гейта покрытия), поэтому его журнал — нет.
-LOG_JUDGED = (BARE_NAME, SUBCHARTS_NAME)
+# Проходы, чей журнал судится: строка ERROR в нём — находка.
+LOG_JUDGED = (BARE_NAME, RENDERED_NAME)
+
+_RENDERED = {}
+
+
+def rendered_dir(root):
+    """→ каталог отрендеренных профилей (рендер один раз на процесс). Отказ рендера —
+    код 2: вердикта о профилях нет."""
+    key = str(root)
+    if key not in _RENDERED:
+        import atexit
+        import shutil
+        import tempfile
+        out = tempfile.mkdtemp(prefix="iac-rendered-")
+        atexit.register(shutil.rmtree, out, True)
+        r = subprocess.run(["bash", os.path.join(str(root), RENDER_SCRIPT), out],
+                           capture_output=True, text=True, timeout=900)
+        if r.returncode != 0:
+            print("ОТКАЗ: профили зонтика не отрендерены (код %d):\n%s"
+                  % (r.returncode, r.stderr[-800:]), file=sys.stderr)
+            sys.exit(2)
+        _RENDERED[key] = out
+    return _RENDERED[key]
+
+
+def rendered_files(root):
+    """→ отрендеренные файлы в форме цели прохода профилей (`<стек>/<чарт>/…`)."""
+    base = rendered_dir(root)
+    out = []
+    for d, _dirs, files in os.walk(base):
+        for f in files:
+            rel = os.path.relpath(os.path.join(d, f), base).replace(os.sep, "/")
+            if not rel.split("/")[-1].startswith(".err-"):
+                out.append(rel)
+    return sorted(out)
 
 
 def require(name):
@@ -85,7 +127,11 @@ def require(name):
 
 
 def normalize(ref, target):
-    """Цель прохода → путь от корня дерева."""
+    """Цель прохода → путь от корня дерева. Цель профиля (`<стек>/<чарт>/<путь>`)
+    приводится к пути в зонтике: `deploy/helm/umbrella/<путь>`."""
+    if ref == RENDERED_REF:
+        parts = target.split("/", 2)
+        return UMBRELLA + "/" + parts[2] if len(parts) == 3 else UMBRELLA + "/" + target
     return target if ref in (".", "") else ref.rstrip("/") + "/" + target
 
 
@@ -106,6 +152,9 @@ def run(root, scan_pass, config=None, extra=(), errors=None):
     env.pop("TRIVY_IGNOREFILE", None)
     # Журнал читается ВСЕГДА (без `--quiet`): в нём имя файла, на котором сканер
     # отказал, — без него предел памяти назвал бы проход, но не архив.
+    if ref == RENDERED_REF:
+        ref = rendered_dir(root)
+        own_config = os.path.join(str(root), own_config)
     cmd = ["trivy", "config", ref, "--config", str(config or own_config),
            "--format", "json", "--skip-version-check", *extra]
     for d in skipped:

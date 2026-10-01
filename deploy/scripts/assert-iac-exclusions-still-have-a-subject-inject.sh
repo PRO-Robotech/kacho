@@ -3,16 +3,13 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # Доказательство падучести гейта `assert-iac-exclusions-still-have-a-subject.py` по
-# двум осям, полученным с третьим проходом (#2980):
-#   * записи судятся в ТОЙ форме пути, к которой CI применяет перечень — относительно
-#     scan-ref прохода (`cert-manager-v1.16.5.tgz:templates/rbac.yaml`), а не в
-#     приведённой к корню; иначе все записи третьего прохода были бы «вне осмотра» и
-#     не судились бы никогда;
-#   * запись, чей путь снят из дерева (подчарт, уходящий с релизом отказа от
-#     стороннего издателя личности), — находка «снять запись»: так держится предикат
-#     «снять при снятии подчарта». Предмет опыта ВЫВОДИТСЯ из перечня — первая
-#     запись, чей путь лежит в архиве подчарта зонтика, — а не выписан именем.
-# Близнец снятия — контроль: архив на месте, запись судится и имеет предмет.
+# осям прохода отрендеренных профилей зонтика:
+#   * записи судятся в ТОЙ форме пути, к которой CI применяет перечень, — относительно
+#     каталога рендера (`<стек>/kacho-umbrella/…`), и рендер осмотрен целиком;
+#   * исправление значения зонтика, закрывшее находку в профиле, делает запись о ней
+#     находкой «предмета больше нет» — запись долга не переживает исправление;
+#   * профиль, переставший рендерить путь записи, — находка «снять запись».
+# Близнец обоих опытов — контроль: значения и таблица стеков как есть.
 # Исполняется в КОПИИ дерева вне репозитория; рабочая копия не меняется.
 set -uo pipefail
 
@@ -23,17 +20,20 @@ passed=0
 failed=0
 
 command -v trivy >/dev/null 2>&1 || { echo "ОТКАЗ: trivy не найден в PATH — доказывать нечем" >&2; exit 2; }
-# Предмет: первая запись, чей путь лежит в отслеживаемом архиве подчарта зонтика.
-ENTRY="$(python3 - "$ROOT/.trivyignore.yaml" <<'PY'
+# Предметы опытов ВЫВОДЯТСЯ из перечня, а не выписаны: запись прохода профилей о
+# корне ФС PostgreSQL в стеке prod (её исправление — значение зонтика) и стек первой
+# записи прохода профилей (его снятие из таблицы стеков).
+read -r PG_ENTRY STACK < <(python3 - "$ROOT/.trivyignore.yaml" <<'PY'
 import sys, yaml
 doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
-hits = [p for e in doc.get("misconfigurations") or [] for p in e.get("paths") or []
-        if ":" in p and p.split(":", 1)[0].endswith(".tgz")]
-print(hits[0] if hits else "")
+paths = [p for e in doc.get("misconfigurations") or [] for p in e.get("paths") or []
+         if "/kacho-umbrella/" in p]
+pg = [p for p in paths if p.startswith("prod/") and "/charts/pg-vpc/" in p]
+print(pg[0] if pg else "-", paths[0].split("/", 1)[0] if paths else "-")
 PY
-)"
-[ -n "$ENTRY" ] || { echo "ОТКАЗ: в .trivyignore.yaml нет записи в архиве подчарта — предмета опыта нет" >&2; exit 2; }
-ARCHIVE="deploy/helm/umbrella/charts/${ENTRY%%:*}"
+)
+[ "${PG_ENTRY:--}" != "-" ] && [ "${STACK:--}" != "-" ] \
+  || { echo "ОТКАЗ: в .trivyignore.yaml нет записей прохода профилей — предмета опытов нет" >&2; exit 2; }
 git -C "$ROOT" ls-files --error-unmatch "$ARCHIVE" >/dev/null 2>&1 \
   || { echo "ОТКАЗ: архив записи $ARCHIVE не отслеживается — опыт снимать нечего" >&2; exit 2; }
 
@@ -73,14 +73,27 @@ expect() {
 }
 
 make_copy "$work/control" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-expect "контроль — записи третьего прохода судятся и имеют предмет" "$work/control" 0 \
+expect "контроль — записи прохода профилей судятся и имеют предмет" "$work/control" 0 \
   "устаревших записей 0; вне осмотра 0; без пути в дереве 0"
-expect "контроль — записей прочитано 9" "$work/control" 0 "записей исключений 9"
 
+# Исправление значений закрывает находку в отрендеренном профиле — запись о ней
+# обязана стать находкой сама (приёмка 4240ac56fd3, п. 2). Близнец — контроль.
+make_copy "$work/fixed" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+cat >> "$work/fixed/deploy/helm/umbrella/values.prod.yaml" <<'YAML'
+pg-vpc:
+  primary:
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+YAML
+git -C "$work/fixed" add -- deploy/helm/umbrella/values.prod.yaml || exit 2
+expect "значение зонтика закрыло находку — запись без предмета, находка" "$work/fixed" 1 \
+  "«$PG_ENTRY» — предмета больше нет"
+
+# Профиль больше не рендерит путь записи (стек снят из таблицы) — «пути нет».
 make_copy "$work/gone" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-git -C "$work/gone" rm -q -- "$ARCHIVE" || exit 2
-expect "подчарт снят, запись осталась — находка «снять запись»" "$work/gone" 1 \
-  "«$ENTRY» — пути нет в дереве ни в одном проходе"
+sed -i "/^$STACK:/d" "$work/gone/deploy/stacks.txt" && git -C "$work/gone" add -- deploy/stacks.txt || exit 2
+expect "стек снят, записи остались — находка «снять запись»" "$work/gone" 1 \
+  "— пути нет в дереве ни в одном проходе"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

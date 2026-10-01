@@ -228,11 +228,19 @@ def main():
     # снят из дерева (подчарт, уходящий с релизом отказа от издателя личности), не «вне осмотра», а без
     # предмета навсегда: так держится «снять при снятии подчарта».
     tracked = set(git_ls_all())
+    # Проход профилей судит ОТРЕНДЕРЕННЫЕ файлы, а не файлы дерева: путь его записи
+    # существует, если профиль его рендерит. Рендер осмотрен целиком — файл, который
+    # профиль рендерит, но в котором сканеру нечего проверить, — «осмотрен и чист»,
+    # а не «вне осмотра»: запись о нём устарела.
+    rendered = set(iac_scan_passes.rendered_files(ROOT))
     gone = []
     for rid, glob, lineno in rules:
         head = glob.split(":", 1)[0]
-        if not any(fnmatch.fnmatch(t, iac_scan_passes.normalize(p[1], head))
-                   for p in iac_scan_passes.PASSES for t in tracked):
+        in_tree = any(fnmatch.fnmatch(t, iac_scan_passes.normalize(p[1], head))
+                      for p in iac_scan_passes.PASSES if p[1] != iac_scan_passes.RENDERED_REF
+                      for t in tracked)
+        in_render = any(fnmatch.fnmatch(t, glob) for t in rendered)
+        if not in_tree and not in_render:
             gone.append((rid, glob, lineno))
 
     stale, unscanned = [], []
@@ -242,7 +250,7 @@ def main():
         if any(norm(r) == norm(rid) and fnmatch.fnmatch(t, glob) for r, t in fails):
             continue
         # Находки нет. Осмотрен ли путь вообще? Только если да, запись судима.
-        if any(fnmatch.fnmatch(t, glob) for t in targets):
+        if any(fnmatch.fnmatch(t, glob) for t in targets | rendered):
             stale.append((rid, glob, lineno))
         else:
             unscanned.append((rid, glob, lineno))
