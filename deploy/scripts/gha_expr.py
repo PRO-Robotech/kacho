@@ -33,7 +33,7 @@ SCENARIOS = (ALL_SUCCEEDED, PREDECESSOR_FAILED, CANCELLED)
 
 _TOKEN = re.compile(r"""
     \s*(?:
-      (?P<num>-?\d+(?:\.\d+)?)
+      (?P<num>0[xX][0-9a-fA-F]+|-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)
     | (?P<str>'(?:[^']|'')*')
     | (?P<op>&&|\|\||==|!=|<=|>=|<|>|!|\(|\)|,|\[|\]|\.)
     | (?P<ident>[A-Za-z_][A-Za-z0-9_-]*|\*)
@@ -112,7 +112,7 @@ class _Parser:
     def primary(self):
         kind, val = self.take()
         if kind == "num":
-            return ("lit", float(val))
+            return ("lit", float(int(val, 16)) if val[:2].lower() == "0x" else float(val))
         if kind == "str":
             return ("lit", val[1:-1].replace("''", "'"))
         if kind == "op" and val == "(":
@@ -181,6 +181,39 @@ def _truthy(v):
     return bool(v) and v != ""
 
 
+def _to_number(v):
+    """Приведение к числу по правилам выражений Actions: null → 0, true → 1, false → 0,
+    строка — как число (пустая → 0, неразборная → NaN)."""
+    if v is None:
+        return 0.0
+    if isinstance(v, bool):
+        return 1.0 if v else 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = str(v).strip()
+    if t == "":
+        return 0.0
+    try:
+        return float(int(t, 16)) if t[:2].lower() == "0x" else float(t)
+    except ValueError:
+        return float("nan")
+
+
+def _compare(op, x, y):
+    """Сравнение по правилам Actions: две строки — БЕЗ учёта регистра; разные типы —
+    приведением к числу; NaN не равен ничему (`!=` для него истинно)."""
+    if isinstance(x, str) and isinstance(y, str) and not isinstance(x, bool):
+        a, b = x.lower(), y.lower()
+    elif type(x) is type(y) and x is not None:
+        a, b = x, y
+    else:
+        a, b = _to_number(x), _to_number(y)
+    if isinstance(a, float) and isinstance(b, float) and (a != a or b != b):
+        return op == "!="
+    return {"==": a == b, "!=": a != b, "<": a < b, "<=": a <= b,
+            ">": a > b, ">=": a >= b}[op]
+
+
 def _eval(node, scen):
     kind = node[0]
     if kind == "lit":
@@ -212,11 +245,7 @@ def _eval(node, scen):
     x, y = _eval(a, scen), _eval(b, scen)
     if x is UNKNOWN or y is UNKNOWN:
         return UNKNOWN
-    try:
-        return {"==": x == y, "!=": x != y, "<": x < y, "<=": x <= y,
-                ">": x > y, ">=": x >= y}[op]
-    except TypeError:
-        return UNKNOWN
+    return _compare(op, x, y)
 
 
 def evaluate(text, scen, implicit_success=True):

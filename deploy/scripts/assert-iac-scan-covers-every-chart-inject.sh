@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=53
+DENOM=59
 passed=0
 failed=0
 
@@ -513,6 +513,27 @@ put_chart_archive "$work/localbuild" deploy/helm/vendor/subreq-0.1.0.tgz require
 git -C "$work/localbuild" rm -q --cached -- deploy/helm/vendor/subreq-0.1.0.tgz || exit 2
 expect "местная сборка: ERROR о неотслеживаемом архиве — несудим, гейт молчит" "$work/localbuild" 0 \
   "НЕ СУДИМО           deploy/helm/vendor/subreq-0.1.0.tgz — ERROR прохода"
+
+# ── AB. Сравнение в выражении — по правилам Actions (приёмка 4240ac56fd3, п. 3) ──
+# Строки сравниваются без учёта регистра; разные типы приводятся к числу; числа
+# пишутся и как `0x…`, `1e0`. Опыты — выражения, ложные по этим правилам (шаг не
+# исполняется), близнецы — истинные (гейт молчит).
+for pair in \
+  "!cancelled() && 'a' != 'A'|1" "!cancelled() && 'a' == 'A'|0" \
+  "!cancelled() && null == 1|1" "!cancelled() && '1' == 1|0" \
+  "!cancelled() && 0x1 == 2|1" "!cancelled() && 0x1 == 1e0|0"; do
+  expr="${pair%|*}"; want="${pair##*|}"
+  make_copy "$work/cmp" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+  set_step_if "$work/cmp" "$VGATE" "$expr" || exit 2
+  if [ "$want" = 1 ]; then
+    expect "сравнение по правилам Actions: «$expr» ложно — находка" "$work/cmp" 1 \
+      "шаг не исполняется ни при каком прогоне"
+  else
+    expect "сравнение по правилам Actions (близнец): «$expr» истинно — гейт молчит" "$work/cmp" 0 \
+      "судимых гейтовым шагом"
+  fi
+  rm -rf -- "$work/cmp"
+done
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
