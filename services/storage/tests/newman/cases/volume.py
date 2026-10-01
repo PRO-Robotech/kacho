@@ -547,7 +547,7 @@ CASES.append(Case(
     steps=[Step(name="cr-bad-proj", method="POST", path=VOL, body=_vol_body("bp", projectId="{{garbageProjectId}}"),
                 test_script=["pm.test('status 400 (FAILED_PRECONDITION; 412 краем не производится)', () => pm.expect(pm.response.code).to.eql(400));",
                              *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                             *_assert_msg("Project b1gnonexistent999999 not found")])],
+                             *_assert_msg("Project b1g00000000000000009 not found")])],
 ))
 
 # ---------------------------------------------------------------------------
