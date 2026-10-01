@@ -1279,10 +1279,10 @@ def self_test(root: Path) -> int:
     return 1 if fails else 0
 
 
-def main(argv: list[str]) -> int:
+def main() -> int:
     root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                                text=True, check=True).stdout.strip())
-    if "--self-test" in argv:
+    if "--self-test" in sys.argv:
         return self_test(root)
     code, f, c = verdict(tree_workflows(root))
     if c:
@@ -1294,4 +1294,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())
