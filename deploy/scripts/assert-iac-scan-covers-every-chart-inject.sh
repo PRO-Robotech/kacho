@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=39
+DENOM=41
 passed=0
 failed=0
 
@@ -398,6 +398,18 @@ expect "F2: !cancelled() && steps.x… — снимается с шагом x, �
 make_copy "$work/f2twin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 set_step_if "$work/f2twin" "$VGATE" "!cancelled() || steps.x.outcome == 'success'" || exit 2
 expect "F2 (близнец): !cancelled() || … — исполняется всегда, гейт молчит" "$work/f2twin" 0 \
+  "судимых гейтовым шагом 3"
+
+# ── V. H5: составное ложное условие шага ────────────────────────────────────────
+# `always() && false` подстрока признавала выжившим; разбор — ложным везде. Близнец —
+# `always() || false`: истинно везде, гейт молчит.
+make_copy "$work/h5" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_if "$work/h5" "$VGATE" "always() && false" || exit 2
+expect "H5: always() && false — шаг не исполняется никогда, находка" "$work/h5" 1 \
+  "шаг не исполняется ни при каком прогоне (ложно во всех сценариях прогона)"
+make_copy "$work/h5twin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_if "$work/h5twin" "$VGATE" "always() || false" || exit 2
+expect "H5 (близнец): always() || false — гейт молчит" "$work/h5twin" 0 \
   "судимых гейтовым шагом 3"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"

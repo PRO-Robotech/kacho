@@ -140,35 +140,32 @@ def scan_targets(errors):
     return {target for target, _ in got}, census
 
 
-_STATIC_FALSE = re.compile(r"^\s*(\$\{\{\s*)?(false|0|null|''|\"\")(\s*\}\})?\s*$")
-
-
-def static_false(value):
-    """Значение ключа `if`/`continue-on-error`, ложное при ЛЮБОМ прогоне.
-
-    Судится только то, что ложно без вычисления: `false`, `0`, `null`, пустая
-    строка — голые или в `${{ }}`. Выражение, зависящее от прогона
-    (`!cancelled()`, `matrix.*`), ложным заранее не считается.
-    """
-    if value is False or value is None or value == 0:
-        return True
-    return isinstance(value, str) and bool(_STATIC_FALSE.match(value))
-
-
 def mute_reasons(node):
     """→ причины, по которым шаг или задание заведомо не роняют вердикт.
 
-    Две формы, найденные приёмкой гейта (опыты M1 и M5 на 7b9d560610b): шаг с
-    `exit-code: '1'` под `continue-on-error`, отличным от заведомо ложного, —
-    красный скан задание не роняет; шаг под `if`, заведомо ложным, — не
-    исполняется вовсе.
+    Две формы, найденные приёмкой (опыты M1 и M5 на 7b9d560610b): `continue-on-error`,
+    который может оказаться истинным, — красный скан задание не роняет; `if`, ложный
+    во всех сценариях прогона, — шаг не исполняется вовсе. Вторая редакция узнавала
+    ложное только ЦЕЛИКОМ (`false`, `${{ false }}`) и пропускала составное
+    `always() && false` (H5). Теперь оба ключа вычисляются разбором (`gha_expr`):
+    `continue-on-error`, не заведомо ложный, — находка; `if`, заведомо ложный во всех
+    сценариях, — находка; неразборное выражение — находка.
     """
     why = []
-    if "continue-on-error" in node and not static_false(node["continue-on-error"]):
-        why.append("continue-on-error: %r — красный скан задание не роняет"
-                   % (node["continue-on-error"],))
-    if node.get("if") is not None and static_false(node["if"]):
-        why.append("if: %r — шаг не исполняется ни при каком прогоне" % (node["if"],))
+    if "continue-on-error" in node:
+        coe = node["continue-on-error"]
+        try:
+            v = gha_expr.value_truth(coe)
+        except gha_expr.ParseError as err:
+            v = "не разобран (%s)" % err
+        if v is not False:
+            why.append("continue-on-error: %r — %s" % (
+                coe, "красный скан задание не роняет" if v is True else
+                "может оказаться истинным (%s)" % v))
+    never = gha_expr.never_runs(node.get("if"))
+    if never:
+        why.append("if: %r — шаг не исполняется ни при каком прогоне (%s)"
+                   % (node.get("if"), never))
     return why
 
 
