@@ -646,15 +646,6 @@ spec:
             - name: KANAME_SAKEY_ACCESS_TOKEN_TTL
               value: {{ .accessTokenTtl | quote }}
             {{- end }}
-            # bindDpop — register each key's OAuth2 client so the provider mints
-            # SENDER-CONSTRAINED tokens (RFC 9449) rather than plain bearers.
-            # Binding is registration metadata: it applies to keys issued AFTER
-            # this is switched on; pre-existing keys must be rotated. Enable this
-            # BEFORE the gateway's requireMachineTokenBinding.
-            {{- if .bindDpop }}
-            - name: KANAME_SAKEY_BIND_DPOP
-              value: "true"
-            {{- end }}
             {{- end }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
             # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
