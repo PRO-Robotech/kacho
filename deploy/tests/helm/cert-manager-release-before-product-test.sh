@@ -28,7 +28,12 @@
 #       `helm upgrade` (с `--install`, `-i` или без) и `helm install`, чей
 #       релиз либо чарт — cert-manager: переменной Makefile ИЛИ литералом;
 #   А2. `dev-up` зовёт `cert-manager-up` РАНЬШЕ своего helm-прогона продукта;
-#   А3. `stack-up` — то же.
+#   А3. `stack-up` — то же;
+#   А4. `own-up` — то же (kacho#2931): цель поднимает цепочку `own` на kind
+#       ОТДЕЛЬНЫМ рецептом, а не через `stack-up` (довод — у самой цели), и
+#       продукт применяет своим helm-прогоном. Путь подъёма, не названный здесь,
+#       применял бы продукт без судьи порядка — ровно тот класс, с которого
+#       начинался предмет (`stack-up` без релиза cert-manager).
 #
 # Часть Б — ПОВЕДЕНИЕ цели `cert-manager-up` против подставных kubectl и helm
 # (настоящий рецепт, кластер не нужен):
@@ -55,8 +60,8 @@
 # место переданного ns, иначе совпал бы с ним и прошёл бы незамеченным.
 #
 # Доказательство, что каждое утверждение способно покраснеть, — соседний
-# cert-manager-release-before-product-inject.sh (девять дефектов, каждый
-# прошёл прежнюю редакцию пробы зелёным).
+# cert-manager-release-before-product-inject.sh (у каждого дефекта там названа
+# полоса, редакция пробы которой его пропускала зелёным).
 #
 # Три исхода — общей библиотекой каталога: 0 зелено · 1 находка · 2 условие
 # не создано. Офлайновая проверка, как и остальные tests/helm/*.
@@ -68,7 +73,7 @@ SCRIPT="$(basename "$0")"
 MAKEFILE="${MAKEFILE_UNDER_TEST:-$DEPLOY_ROOT/Makefile}"
 
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=15
+EXPECTED_ASSERTIONS=16
 # Пространство имён прогона части Б. Намеренно не `kacho` — см. шапку.
 NS="cm-probe-ns"
 
@@ -254,6 +259,7 @@ def order(target, product_release):
 
 print("DEVUP|" + order("dev-up", "kacho-umbrella"))
 print("STACKUP|" + order("stack-up", "$(STACK_RELEASE)"))
+print("OWNUP|" + order("own-up", "kacho-umbrella"))
 PY
 )" || fatal "разбор Makefile не состоялся (python3 отказал)"
 
@@ -286,6 +292,12 @@ ok
 case "$(field STACKUP)" in
   BEFORE) good "А3: stack-up зовёт cert-manager-up раньше helm-прогона продукта" ;;
   *) violation "А3: stack-up — $(field STACKUP) (обязан звать cert-manager-up РАНЬШЕ helm-прогона продукта)" ;;
+esac
+
+ok
+case "$(field OWNUP)" in
+  BEFORE) good "А4: own-up зовёт cert-manager-up раньше helm-прогона продукта" ;;
+  *) violation "А4: own-up — $(field OWNUP) (обязан звать cert-manager-up РАНЬШЕ helm-прогона продукта)" ;;
 esac
 
 # ─── Часть Б: поведение цели против подставных kubectl и helm ───────────────

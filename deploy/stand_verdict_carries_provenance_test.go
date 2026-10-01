@@ -57,6 +57,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -75,16 +76,52 @@ const revOwner = "../.github/scripts/stand-revision-verdict.sh"
 const revOwnerCall = "stand-revision-verdict.sh"
 
 // standRecipes — рецепты, поднимающие стенд. Признак, а не перечень работ:
-// работа опознаётся по тому, ЧТО она делает.
-var standRecipes = []string{"dev-prod-up", "dev-up"}
+// работа опознаётся по тому, ЧТО она делает. `own-up` поднимает цепочку `own` из
+// сборки дерева (kacho#2931).
+var standRecipes = []string{"dev-prod-up", "dev-up", "own-up"}
 
-// standWorkflow — форма разбора объявления конвейера: задания и тела их шагов.
+// standWorkflow — форма разбора объявления конвейера: задания, их матрица и тела
+// шагов. Матрица читается затем, что шаг вправе назвать рецепт измерением
+// (`make ${{ matrix.stack }}-up`): буквального имени рецепта в теле тогда нет, и
+// поиск по тексту работу подъёма не узнал бы — ровно так он ослеп на
+// production-posture.yml при переходе на ноги по цепочкам.
 type standWorkflow struct {
 	Jobs map[string]struct {
+		Strategy struct {
+			Matrix any `yaml:"matrix"`
+		} `yaml:"strategy"`
 		Steps []struct {
 			Run string `yaml:"run"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
+}
+
+// runNamesARecipe — тело шага называет рецепт подъёма: буквально либо через
+// измерение ЛИТЕРАЛЬНОЙ матрицы, раскрытое по её значениям. Матрица из выражения
+// не раскрывается — её значений в объявлении нет; такой шаг узнаётся, только если
+// рецепт назван буквально.
+func runNamesARecipe(run string, matrix any) bool {
+	texts := []string{run}
+	if m, ok := matrix.(map[string]any); ok {
+		for dim, vals := range m {
+			list, ok := vals.([]any)
+			if !ok {
+				continue
+			}
+			ref := regexp.MustCompile(`\$\{\{\s*matrix\.` + regexp.QuoteMeta(dim) + `\s*\}\}`)
+			for _, v := range list {
+				texts = append(texts, ref.ReplaceAllString(run, fmt.Sprint(v)))
+			}
+		}
+	}
+	for _, text := range texts {
+		for _, recipe := range standRecipes {
+			if strings.Contains(text, recipe) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // revJob — то, что гейт вывел об одном задании конвейера.
@@ -152,10 +189,8 @@ func revFacts(t *testing.T) (jobs []revJob, files, steps int) {
 			j := revJob{workflow: filepath.Base(p), job: n}
 			for _, s := range wf.Jobs[n].Steps {
 				steps++
-				for _, recipe := range standRecipes {
-					if strings.Contains(s.Run, recipe) {
-						j.raises = true
-					}
+				if runNamesARecipe(s.Run, wf.Jobs[n].Strategy.Matrix) {
+					j.raises = true
 				}
 				if strings.Contains(s.Run, revOwnerCall) {
 					j.asks = true
@@ -243,5 +278,23 @@ func TestScanStandRevisionCoverage_SelfTest(t *testing.T) {
 	orphan := []revJob{{workflow: "проверки.yml", job: "линт", raises: false, asks: true}}
 	if got := scanStandRevisionCoverage(orphan); len(got) == 0 {
 		t.Errorf("(B) вопрос без стенда ПРОПУЩЕН")
+	}
+}
+
+// Рецепт, названный измерением литеральной матрицы, узнаётся; тот же шаг с
+// измерением, не дающим рецепта, — нет (законный близнец); буквальный — как прежде.
+func TestRunNamesARecipeThroughALiteralMatrix(t *testing.T) {
+	run := `.github/scripts/stand-up.sh --dir deploy -- make ${{ matrix.stack }}-up`
+	if !runNamesARecipe(run, map[string]any{"stack": []any{"dev-prod", "own"}}) {
+		t.Error("рецепт, названный измерением литеральной матрицы, не узнан — работа подъёма ослепла бы")
+	}
+	if runNamesARecipe(run, map[string]any{"stack": []any{"lint"}}) {
+		t.Error("законный близнец: измерение не даёт рецепта подъёма, а шаг узнан поднимающим")
+	}
+	if runNamesARecipe(run, "${{ fromJSON(x) }}") {
+		t.Error("матрица из выражения раскрыта догадкой")
+	}
+	if !runNamesARecipe("make dev-up CLUSTER_NAME=x", nil) {
+		t.Error("буквальный рецепт перестал узнаваться")
 	}
 }
