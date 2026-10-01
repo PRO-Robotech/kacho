@@ -354,6 +354,7 @@ def check_workflow_passes():
     want = {(ref, cfg, frozenset(set(skip) - set(iac_scan_passes.ALWAYS_SKIPPED))): name
             for name, ref, cfg, skip in iac_scan_passes.PASSES}
     gated, seen, gate_steps, out = set(), 0, 0, []
+    fs_gated = 0
     # Задание целиком, которое заведомо не судит, отнимает вердикт у всех своих шагов.
     job_mute = mute_reasons(job)
     for st in steps:
@@ -367,6 +368,8 @@ def check_workflow_passes():
             if fall:
                 why.append(fall)
             st["__mute"] = why
+            if not why and str(w.get("scan-type") or "") == "fs":
+                fs_gated += 1
             if why and str(w.get("scan-type") or "") != "config":
                 out.append("шаг «%s» (%s) объявлен гейтовым, но заведомо не судит: %s"
                            % (st.get("name") or "?", WORKFLOW.name, "; ".join(why)))
@@ -391,11 +394,19 @@ def check_workflow_passes():
     if not seen:
         out.append("в задании trivy (%s) нет ни одного шага `scan-type: config` — IaC-скан "
                    "в CI не исполняется вовсе" % WORKFLOW.name)
+    # Гейт fs держится здесь же (F3): его исполнимость судилась, а СУЩЕСТВОВАНИЕ — нет,
+    # и снятый целиком шаг давал ровно то, что упавшая выгрузка на волне #2977, — ни
+    # одного вердикта fs, без единой находки.
+    if not fs_gated:
+        out.append("в задании trivy (%s) нет исполняемого гейтового шага `scan-type: fs` "
+                   "(`exit-code: '1'`, исполняется при любом исходе предыдущих) — дерево "
+                   "не судится сканером зависимостей вовсе" % WORKFLOW.name)
     for name in sorted(set(want.values()) - gated):
         out.append("проход «%s» не судится в CI: у него нет шага с `exit-code: '1'`, "
                    "который исполняется и роняет задание, в %s" % (name, WORKFLOW.name))
-    return out, ("  шагов scan-type: config в CI %d; гейтовых шагов задания %d; проходов %d; "
-                 "судимых гейтовым шагом %d" % (seen, gate_steps, len(want), len(gated)))
+    return out, ("  шагов scan-type: config в CI %d; гейтовых шагов задания %d (из них fs %d); "
+                 "проходов %d; судимых гейтовым шагом %d"
+                 % (seen, gate_steps, fs_gated, len(want), len(gated)))
 
 
 def local_dependency_names(chart_yaml):

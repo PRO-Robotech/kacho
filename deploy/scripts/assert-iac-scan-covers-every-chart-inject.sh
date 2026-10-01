@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=41
+DENOM=43
 passed=0
 failed=0
 
@@ -411,6 +411,30 @@ make_copy "$work/h5twin" || { echo "ОТКАЗ: копия дерева не с�
 set_step_if "$work/h5twin" "$VGATE" "always() || false" || exit 2
 expect "H5 (близнец): always() || false — гейт молчит" "$work/h5twin" 0 \
   "судимых гейтовым шагом 3"
+
+# $1 — копия, $2 — точное имя шага; шаг СНИМАЕТСЯ целиком
+drop_step() {
+  python3 - "$1/.github/workflows/security-scan.yml" "$2" <<'PY'
+import sys, yaml
+p, name = sys.argv[1], sys.argv[2]
+d = yaml.safe_load(open(p, encoding="utf-8"))
+steps = d["jobs"]["trivy"]["steps"]
+keep = [st for st in steps if st.get("name") != name]
+if len(keep) != len(steps) - 1:
+    sys.exit("инъекция не нашла шаг «%s»" % name)
+d["jobs"]["trivy"]["steps"] = keep
+yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
+PY
+}
+
+# ── W. F3: гейтовый шаг fs существует ────────────────────────────────────────────
+# Близнец — контроль A: шаг на месте, «из них fs 1».
+make_copy "$work/f3" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+drop_step "$work/f3" "trivy fs (гейт CRITICAL/HIGH)" || exit 2
+expect "F3: гейтового шага fs нет — находка" "$work/f3" 1 \
+  "нет исполняемого гейтового шага \`scan-type: fs\`"
+expect "F3 (близнец): контроль — шаг fs на месте и исполним" "$work/control" 0 \
+  "(из них fs 1)"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
