@@ -19,7 +19,8 @@
 # ── ЧТО ЭТОТ СЛОЙ ЗАКРЫВАЕТ И ЧЕГО НЕ ДЕЛАЕТ ───────────────────────────────
 #
 # Закрывает ровно то, что у боевой площадки приходит слоем площадки: зеркало и
-# адреса образов, почтовая полосу и чеканку первичного удостоверения стенда.
+# адреса образов, почтовая полосу, чеканку первичного удостоверения стенда и
+# запрос процессора баз под ёмкость узла стенда.
 # НЕ трогает ни режима, ни mTLS, ни `sslmode` наших служб, ни посадки личности —
 # в файле нет ни одного ключа, который судит
 # `deploy/scripts/assert-production-posture.sh`. Одна величина здесь ВКЛЮЧАЕТ
@@ -143,27 +144,62 @@ mailpit:
 # который объявил подчарт, — иначе правка адреса протащила бы заодно смену
 # версии СУБД, которую никто не решал. Баз поставщиков в перечне нет: на этой
 # цепочке их не поднимается (kacho#2816).
+#
+# ── ЗАПРОС ПРОЦЕССОРА БАЗ: ПОД УЗЕЛ СТЕНДА, А НЕ ПОД БОЕВОЙ КЛАСТЕР ─────────
+#
+# Тем же ключом верхнего уровня, что образ (второй `pg-vpc:` унёс бы первый).
+#
+# Боевой слой задаёт базам запрос 500m (vpc, iam) и 250m (прочие пять) — это
+# размер боевого кластера. Цепочка own поднимается на узле kind ранера, и там
+# эти числа не помещаются: замер на голове d4fed1ee (рендер цепочки, единица —
+# запрос процессора пода) — 3520m у цепочки, 950m у плоскости управления kind,
+# итого 4470m на узле в 4000m. Нога «stack own boots» краснела четыре прогона из
+# четырёх: семь подов Pending, подъём падал по сроку «Progress deadline
+# exceeded». Держит арифметику deploy/stand_chain_fits_its_runner_render_test.go.
+#
+# 100m — НЕ ПОДОБРАНО, А ВЗЯТО У ИЗМЕРЕННОГО: ровно этот запрос у каждой из семи
+# баз несёт цепочка dev-prod (values.dev.yaml), которую конвейер поднимает на
+# том же ранере и том же kind зелёной, и тот же запрос назначает своим базам
+# слой боевой площадки на 4 vCPU (values.fe3455.yaml). С ним цепочка own просит
+# 1970m, вместе с плоскостью kind — 2920m из 4000m.
+#
+# Меняется ТОЛЬКО запрос процессора. Предел процессора, запрос и предел памяти
+# и настройки СУБД остаются боевыми: от них зависят арифметика соединений и
+# бюджет памяти (deploy/db_footprint_declaration_test.go), и база по-прежнему
+# вправе занять предел боевого слоя, когда процессор свободен. Посадку этот
+# раздел не трогает: assert-production-posture.sh запросов не судит.
+#
+# Предикат снятия: ранер ноги с ёмкостью узла, вмещающей боевой запрос (сумма
+# в гейте выше с боевыми 500m и 250m помещается), — тогда раздел снимается
+# целиком и цепочка own стоит на запросах боевого слоя.
 pg-vpc:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-compute:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-iam:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-geo:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-nlb:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-storage:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-registry:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ОБРАЗЫ ПРОДУКТА: ОДНА РЕВИЗИЯ НА СЛУЖБЫ И КРАЙ

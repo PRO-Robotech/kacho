@@ -84,7 +84,7 @@ import (
 // ownStackFacts — что цепочка одного стенда объявила обеим половинам.
 type ownStackFacts struct {
 	Stack       string
-	IAMPosture  string // kaname.config.authn.identityProvider
+	IAMPosture  string // посадка службы — одна (kanameLanding), не читается
 	EdgePosture string // api-gateway.authn.identityProvider
 	LanePort    string // kaname.ports.loginLane — порт слушателя в поде
 	ServicePort string // kaname.service.internal.loginLanePort — переопределение порта Службы
@@ -331,7 +331,9 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
 		f := ownStackFacts{Stack: name}
-		f.IAMPosture = declaredString(lookup(declared, "kaname", "config", "authn", "identityProvider"))
+		// Посадка службы одна на каждом стенде (kanameLanding, kaname#363): ключа
+		// посадки у подчарта нет (kacho#2818), читать его не с чего.
+		f.IAMPosture = kanameLanding
 		f.EdgePosture = declaredString(lookup(declared, "api-gateway", "authn", "identityProvider"))
 		f.LanePort = declaredString(lookup(declared, "kaname", "ports", "loginLane"))
 		f.ServicePort = declaredString(lookup(declared, "kaname", "service", "internal", "loginLanePort"))

@@ -4,7 +4,7 @@
 // identity_mail_lane_feeds_both_senders_injection_test.go — доказательство
 // падучести MAIL-48 в обе стороны.
 //
-// Дефект вносится в КОПИЮ обоих шаблонов в t.TempDir(): рабочее дерево
+// Дефект вносится в КОПИЮ шаблона в t.TempDir(): рабочее дерево
 // проверка не заводила и не трогает. Каждая инъекция меняет РОВНО ОДИН факт
 // против законного близнеца, и близнец прогоняется первым — без него красное
 // доказывало бы лишь то, что разбор что-то находит.
@@ -17,11 +17,11 @@ import (
 	"testing"
 )
 
-// mailFeedCopyTree — копия обоих шаблонов под временным корнем.
+// mailFeedCopyTree — копия шаблона нашего отправителя под временным корнем.
 func mailFeedCopyTree(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	for _, rel := range []string{identityConfigTemplate, mailSenderConfigTemplate} {
+	for _, rel := range []string{mailSenderConfigTemplate} {
 		raw, err := os.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			t.Fatalf("исходный шаблон %s не читается: %v", rel, err)
@@ -66,8 +66,8 @@ func TestMAIL48Injection_LawfulTreeIsSilent(t *testing.T) {
 }
 
 // TestMAIL48Injection_SenderFedFromAnotherNode — дефект A: наш отправитель
-// питается ДРУГИМ узлом значений. Находка обязана назвать ОБА пути: у дефекта
-// нет «главного» места, и починка одной стороны без второй ничего не решает.
+// питается ДРУГИМ узлом значений. Находка обязана назвать ОБА пути: прочитанный
+// и объявленный решением.
 func TestMAIL48Injection_SenderFedFromAnotherNode(t *testing.T) {
 	t.Parallel()
 	root := mailFeedCopyTree(t)
@@ -79,7 +79,7 @@ func TestMAIL48Injection_SenderFedFromAnotherNode(t *testing.T) {
 	got := mailLaneFeedFindings(t, root)
 	var hit string
 	for _, f := range got {
-		if strings.Contains(f, "РАЗЛИЧНЫ") {
+		if strings.Contains(f, "НЕ тот, что объявлен") {
 			hit = f
 		}
 	}
@@ -93,30 +93,20 @@ func TestMAIL48Injection_SenderFedFromAnotherNode(t *testing.T) {
 	}
 }
 
-// TestMAIL48Injection_CourierFedFromAnotherNode — та же ось с ДРУГОЙ стороны.
-// Односторонняя проверка молчала бы на расхождении, заведённом поставщиком.
-func TestMAIL48Injection_CourierFedFromAnotherNode(t *testing.T) {
+// TestMAIL48Injection_SenderPartlyFedFromAnotherNode — дефект A': одна из трёх
+// величин полосы берётся из чужого узла. Общий узел путей уходит выше
+// объявленного, и это находка: половина питания из другого места — то же
+// расхождение, что и целиком.
+func TestMAIL48Injection_SenderPartlyFedFromAnotherNode(t *testing.T) {
 	t.Parallel()
 	root := mailFeedCopyTree(t)
-	mailFeedEdit(t, root, identityConfigTemplate, func(s string) string {
-		s = strings.Replace(s,
-			"{{- $mailSmtp := .Values.global.kacho.identity.smtp }}",
-			"{{- $mailSmtp := .Values.kratos.courierSmtp }}", 1)
-		s = strings.ReplaceAll(s, ".Values.global.kacho.identity.smtp.fromAddress",
-			".Values.kratos.courierSmtp.fromAddress")
-		return strings.ReplaceAll(s, ".Values.global.kacho.identity.smtp.fromName",
-			".Values.kratos.courierSmtp.fromName")
+	mailFeedEdit(t, root, mailSenderConfigTemplate, func(s string) string {
+		return strings.Replace(s, "{{- with $mailNode.fromName }}",
+			"{{- with .Values.global.kacho.inviteFromName }}", 1)
 	})
 	got := mailLaneFeedFindings(t, root)
-	var found bool
-	for _, f := range got {
-		if strings.Contains(f, "РАЗЛИЧНЫ") && strings.Contains(f, "kratos.courierSmtp") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("расхождение, заведённое стороной поставщика, НЕ найдено:\n%s",
-			strings.Join(got, "\n"))
+	if len(got) != 1 || !strings.Contains(got[0], "НЕ тот, что объявлен") {
+		t.Fatalf("частичное питание из чужого узла НЕ найдено:\n%s", strings.Join(got, "\n"))
 	}
 }
 
@@ -165,10 +155,9 @@ func TestMAIL48Injection_RecognizerKnowsBothSpellingsOfAValuesReference(t *testi
 }
 
 // TestMAIL48Injection_RecognizerResolvesAChainOfVariables — разбор идёт по
-// цепочке переменных до неподвижной точки. Раздел `courier.smtp` берёт адрес
-// узла не прямой ссылкой, а через четыре присваивания подряд: предикат,
-// читающий только прямые ссылки, объявил бы у него питание из ДВУХ величин
-// вместо трёх — то есть вывел бы путь, которого никто не объявлял.
+// цепочке переменных до неподвижной точки. Раздел `invite-mail` берёт адрес
+// узла не прямой ссылкой, а через цепочку присваиваний: предикат, читающий
+// только прямые ссылки, вывел бы путь, которого никто не объявлял.
 func TestMAIL48Injection_RecognizerResolvesAChainOfVariables(t *testing.T) {
 	t.Parallel()
 	body := strings.Join([]string{

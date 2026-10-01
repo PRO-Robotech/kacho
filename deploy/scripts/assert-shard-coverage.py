@@ -980,9 +980,13 @@ def _self_test() -> int:
     m["shards"][0]["components"] = m["shards"][0]["components"] + ["kaname"]
     run(m, "(г) компонент вне gates", want_red=True)
 
-    # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml
+    # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml. Вход —
+    # НАСТОЯЩАЯ зависимость зонта без условия (`pg-geo`), а не имя, которого в
+    # Chart.yaml нет: прежний вход (подчарт экрана входа поставщика) снят вместе
+    # со своей зависимостью (#1276), и отсутствующее имя судило бы уже не ту
+    # форму — «нет зависимости», а не «зависимость без условия».
     m = copy.deepcopy(base)
-    m["gates"] = m["gates"] + ["kratos-selfservice-ui"]
+    m["gates"] = m["gates"] + ["pg-geo"]
     run(m, "(д) gate без condition в Chart.yaml", want_red=True,
         expect="НЕТ `condition:")
 

@@ -222,7 +222,7 @@ func TestClientToken_RenderEmitsEveryKnobOfThePin(t *testing.T) {
 	moduleDir := kanameModuleDir(t, "..")
 	knobs := clientTokenKnobsOfPin(t, moduleDir)
 
-	sets := []string{"config.authn.identityProvider=own", "config.authn.clientToken.enabled=true"}
+	sets := []string{"config.authn.clientToken.enabled=true"}
 	for _, k := range knobs {
 		sets = append(sets, "config.authn.clientToken."+k.valueKey()+"="+clientTokenSample(k.kind))
 	}
@@ -252,7 +252,7 @@ func TestClientToken_RenderEmitsEveryKnobOfThePin(t *testing.T) {
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ: выключенный эндпоинт блока не несёт — величины без
 	// потребителя не требуются.
-	off, err := renderIdentitySubchart(t, nil, "config.authn.identityProvider=own", "config.authn.clientToken.enabled=false")
+	off, err := renderIdentitySubchart(t, nil, "config.authn.clientToken.enabled=false")
 	if err != nil {
 		t.Fatalf("рендер подчарта с выключенным эндпоинтом не удался: %v\n%s", err, off)
 	}
