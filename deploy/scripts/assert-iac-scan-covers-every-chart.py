@@ -56,18 +56,36 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
   * `.tgz` нет вовсе — причина верна, и тогда работает вторая половина: чарт,
     который всё-таки попал в цели, послаблению больше нечего послаблять.
 
+АРХИВНАЯ ФОРМА ЧАРТА — ТОЖЕ КАНДИДАТ. Отслеживаемый `.tgz` вне каталога другого чарта
+сканер рендерит как чарт, и цель обязана быть и у него. Первая редакция знала только
+форму «каталог с Chart.yaml» — и вендоренный внешний чарт
+`deploy/helm/vendor/cert-manager-approver-policy-v0.28.0.tgz` (007d0adb90b) выпал из
+осмотра незамеченным: его схема значений закрыта, и любая заглушка `trivy.yaml` роняет
+его рендер. Архив внутри `<чарт>/charts/` — подчарт и кандидатом не является.
+
+ПРОХОДОВ ДВА, И ОНИ СВЕРЯЮТСЯ С CI. Цели берутся объединением проходов
+`iac_scan_passes.PASSES` (заглушки — всё дерево без каталога вендоренных; вендоренные —
+этот каталог без заглушек). Шаги `scan-type: config` задания trivy обязаны совпадать с
+проходами срезом, и каждый проход обязан иметь гейтовый шаг: иначе гейт судил бы о
+покрытии, которого CI не исполняет. Проход вендоренных самоистекает: каталог без
+отслеживаемого архива — находка.
+
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль непокрытых чартов» обязано быть отличимо от
 «ноль прочитанных чартов».
 """
-import json
-import os
 import pathlib
 import shutil
 import subprocess
 import sys
 
+import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import iac_scan_passes  # noqa: E402 — соседний модуль, единственный источник проходов
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCAN_CONFIG = ROOT / "trivy.yaml"
+WORKFLOW = ROOT / ".github" / "workflows" / "security-scan.yml"
 
 # Чарты, которым цель не требуется, — с причиной. Причина обязана быть проверяемой
 # (см. reason_still_holds), иначе через полгода это будет фольклор.
@@ -88,33 +106,68 @@ def git_ls(pattern):
 
 
 def scan_targets():
-    """→ множество целей, до которых сканер дошёл (с тем же конфигом, что и в CI)."""
+    """→ (множество целей от корня дерева по ВСЕМ проходам, перепись по проходам).
+
+    Проходы — те же, что шаги `scan-type: config` в CI (`iac_scan_passes.PASSES`;
+    совпадение держит `check_workflow_passes` ниже). Чарт обязан дать цель хотя бы в
+    одном проходе: заглушки вводят в осмотр наши чарты, а вендоренный чарт с
+    закрытой схемой значений осматривается проходом без них.
+    """
     if not shutil.which("trivy"):
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         sys.exit(2)
-    env = dict(os.environ)
-    env.pop("TRIVY_IGNOREFILE", None)
-    cmd = [
-        "trivy", "config", ".", "--config", SCAN_CONFIG.name,
-        "--severity", "CRITICAL,HIGH", "--format", "json",
-        "--skip-dirs", ".claude", "--skip-dirs", "**/node_modules", "--quiet",
-    ]
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env, timeout=900)
-    if r.returncode not in (0, 1):
-        print("ОТКАЗ: trivy вышел с кодом %d\n%s" % (r.returncode, r.stderr[:400]),
-              file=sys.stderr)
+    got, census = iac_scan_passes.all_results(ROOT, extra=("--severity", "CRITICAL,HIGH"))
+    return {target for target, _ in got}, census
+
+
+def check_workflow_passes():
+    """→ (находки, строка переписи): шаги `scan-type: config` задания trivy против проходов.
+
+    Срез шага — (scan-ref, trivy-config, skip-dirs сверх тех, что гейты снимают
+    всегда). Шаг, чей срез не совпал ни с одним проходом, — находка: CI осматривал
+    бы не то, о чём судят гейты. Проход без ГЕЙТОВОГО шага (`exit-code: '1'`) — тоже
+    находка: срез, о покрытии которого здесь вынесен вердикт, в CI не судился бы.
+    """
+    if not WORKFLOW.exists():
+        print("ОТКАЗ: %s не найден — сверять проходы скана не с чем"
+              % WORKFLOW.relative_to(ROOT), file=sys.stderr)
         sys.exit(2)
-    doc = json.loads(r.stdout or "{}")
-    return {(res.get("Target") or "") for res in doc.get("Results") or []}
+    doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")) or {}
+    steps = (((doc.get("jobs") or {}).get("trivy") or {}).get("steps") or [])
+    want = {(ref, cfg, frozenset(set(skip) - set(iac_scan_passes.ALWAYS_SKIPPED))): name
+            for name, ref, cfg, skip in iac_scan_passes.PASSES}
+    gated, seen, out = set(), 0, []
+    for st in steps:
+        w = st.get("with") or {}
+        if str(w.get("scan-type") or "") != "config":
+            continue
+        seen += 1
+        skip = frozenset(d.strip() for d in str(w.get("skip-dirs") or "").split(",") if d.strip())
+        key = (str(w.get("scan-ref") or "."), str(w.get("trivy-config") or ""), skip)
+        if key not in want:
+            out.append("шаг «%s» (%s) — срез scan-ref=%s, trivy-config=%s, skip-dirs=%s не "
+                       "совпадает ни с одним проходом `iac_scan_passes.PASSES`"
+                       % (st.get("name") or "?", WORKFLOW.name, key[0], key[1] or "—",
+                          ",".join(sorted(skip)) or "—"))
+        elif str(w.get("exit-code") or "") == "1":
+            gated.add(want[key])
+    if not seen:
+        out.append("в задании trivy (%s) нет ни одного шага `scan-type: config` — IaC-скан "
+                   "в CI не исполняется вовсе" % WORKFLOW.name)
+    for name in sorted(set(want.values()) - gated):
+        out.append("проход «%s» не судится в CI: у него нет шага с `exit-code: '1'` в %s"
+                   % (name, WORKFLOW.name))
+    return out, ("  шагов scan-type: config в CI %d; проходов %d; судимых гейтовым шагом %d"
+                 % (seen, len(want), len(gated)))
 
 
 def local_dependency_names(chart_yaml):
     """→ множество имён зависимостей, чей источник ЛОКАЛЬНЫЙ (`file://…`).
 
-    Разбор построчный, без yaml: этот гейт зовётся в job'е скана, у которого
-    зависимость от разбора YAML не объявлена, и заводить её ради двух полей
-    значило бы платить за неё на каждом прогоне. Читаются пары «- name:» и
-    следующий за ней «repository:» того же элемента.
+    Разбор построчный: читаются пары «- name:» и следующий за ней «repository:»
+    того же элемента. Разбор YAML гейт теперь берёт для сверки шагов CI
+    (`check_workflow_passes`); перевод этой функции на него — не предмет правки,
+    которая его ввела.
     """
     names, cur, in_deps = set(), None, False
     for raw in chart_yaml.read_text(encoding="utf-8").splitlines():
@@ -194,6 +247,13 @@ def main():
               file=sys.stderr)
         return 2
 
+    for _name, _ref, cfg, _skip in iac_scan_passes.PASSES:
+        if not (ROOT / cfg).exists():
+            print("ОТКАЗ: файл настроек прохода «%s» (%s) не найден — trivy подхватил бы\n"
+                  "       корневой trivy.yaml сам, и проход судил бы не тот срез" % (_name, cfg),
+                  file=sys.stderr)
+            return 2
+
     charts = sorted({c[: -len("Chart.yaml")] for c in git_ls("*Chart.yaml")})
     if not charts:
         print("ОТКАЗ: в дереве не найдено ни одного Chart.yaml — судить не о чем",
@@ -201,7 +261,14 @@ def main():
         return 2
 
     templates = git_ls("*/templates/*.yaml")
-    targets = scan_targets()
+    # Архивная форма чарта: отслеживаемый `.tgz` вне каталога другого чарта. Внутри
+    # `<чарт>/charts/` архив — подчарт, сканер относит его к родителю. Прежняя
+    # редакция архивную форму не знала вовсе, и вендоренный внешний чарт выпал из
+    # осмотра незамеченным (шапка `iac_scan_passes.py`).
+    archives, nested_archives = [], []
+    for a in git_ls("*.tgz"):
+        (nested_archives if any(a.startswith(c) for c in charts) else archives).append(a)
+    targets, census = scan_targets()
     if not targets:
         print("ОТКАЗ: скан не дошёл НИ ДО ОДНОЙ цели — сканер не отработал",
               file=sys.stderr)
@@ -242,12 +309,32 @@ def main():
         else:
             uncovered.append(d)
 
+    for a in archives:
+        hit = [t for t in targets if t.startswith(a + ":")]
+        if hit:
+            covered.append((a, len(hit)))
+        else:
+            uncovered.append(a)
+
+    # Проход вендоренных без предмета самоистекает, как всякое послабление: проход
+    # заглушек этот каталог НЕ осматривает, и оправдание тому — только архив в нём.
+    home = iac_scan_passes.VENDOR_HOME + "/"
+    if not any(a.startswith(home) for a in archives):
+        findings.append("%s — в каталоге нет ни одного отслеживаемого архива чарта, а проход "
+                        "заглушек его не осматривает: второй проход ничего не открывает, "
+                        "и снимать каталог с первого прохода больше незачем"
+                        % iac_scan_passes.VENDOR_HOME)
+    wf_findings, wf_census = check_workflow_passes()
+    findings += wf_findings
+
     print("iac-chart-coverage: чартов в дереве %d; из них без шаблонов %d, подчартов %d, "
-          "послаблений %d (не судимо в этом прогоне %d); кандидатов %d; целей скана %d; "
-          "непокрытых %d"
+          "послаблений %d (не судимо в этом прогоне %d); архивов вне чартов %d (подчартов-"
+          "архивов %d); кандидатов %d; целей скана %d (%s); непокрытых %d"
           % (len(charts), len(no_templates), len(nested), len(exempt_ok),
-             len(exempt_unjudged), len(covered) + len(uncovered), len(targets),
-             len(uncovered)))
+             len(exempt_unjudged), len(archives), len(nested_archives),
+             len(covered) + len(uncovered), len(targets),
+             ", ".join("проход «%s» %d" % kv for kv in census.items()), len(uncovered)))
+    print(wf_census)
     for d, n in covered:
         print("  осмотрен %2d целей  %s" % (n, d))
     for d in no_templates:
@@ -262,6 +349,13 @@ def main():
               "                      свежий checkout, где этих файлов нет." % (d, why))
 
     for d in uncovered:
+        if d.endswith(".tgz"):
+            findings.append("%s — архив чарта НЕ ДАЛ сканеру ни одной цели. Если он лежит вне "
+                            "%s, его осматривает проход заглушек, а внешний чарт с закрытой "
+                            "схемой значений отвергает любую заглушку и выпадает из осмотра "
+                            "молча; если внутри — рендер отказал и без заглушек"
+                            % (d, iac_scan_passes.VENDOR_HOME))
+            continue
         findings.append("%s — чарт с шаблонами НЕ ДАЛ сканеру ни одной цели: скорее всего "
                         "рендер отказал (не хватает значения или зависимости), и «ноль "
                         "находок» по нему означает «ноль прочитанного»" % d)
