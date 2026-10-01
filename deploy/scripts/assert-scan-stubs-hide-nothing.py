@@ -66,14 +66,15 @@ SCAN_CONFIG = ROOT / "trivy.yaml"
 def run_scan(config_path):
     """→ (множество целей, множество находок (цель, правило)) для данного конфига.
 
-    Срез дерева — проход ЗАГЛУШЕК (`iac_scan_passes.STUBBED`), а не всё дерево: заглушки
+    Срез дерева — проход ЗАГЛУШЕК (`iac_scan_passes.STUBBED_NAME`), а не всё дерево: заглушки
     действуют ровно на него. Каталог вендоренных внешних чартов осматривается своим
     проходом без заглушек — чарт с закрытой схемой значений отвергает ЛЮБУЮ заглушку,
     и в этом проходе каждая из них «гасила» бы его находки, выбивая его из осмотра.
     Ignorefile снят там же: он отфильтровал бы находки ещё до сравнения, и погашенная
     заглушкой находка была бы неотличима от прощённой записью.
     """
-    got = iac_scan_passes.results(ROOT, iac_scan_passes.STUBBED, config=config_path)
+    got = iac_scan_passes.results(ROOT, iac_scan_passes.require(iac_scan_passes.STUBBED_NAME),
+                                 config=config_path)
     targets = {target for target, _ in got}
     findings = {
         (target, (mis.get("ID") or ""))

@@ -15,14 +15,16 @@
 #
 # Всё исполняется в КОПИИ дерева вне репозитория (`git clone --shared` + наложение
 # правленых отслеживаемых файлов): рабочая копия не меняется ни на байт, и
-# восстанавливать нечего. Прогонов одиннадцать: контроль · архив вне своего каталога ·
+# восстанавливать нечего. Прогонов семнадцать: контроль · архив вне своего каталога ·
 # срез шага разошёлся · проход без гейтового шага · опыты приёмки 7b9d560610b:
 # M3 (`.tar.gz` с закрытой схемой) и близнец M2 (та же форма, схема открыта) · M4
 # (`.tar` с закрытой схемой) и близнец M4-twin · M1 (гейтовый шаг под
-# `continue-on-error: true`) · M5 (гейтовый шаг под `if: false`) · перечень форм
-# архива отстал от сканера. Близнец опыта с архивом — тот же архив той же формы в
+# `continue-on-error: true`) · M5 (гейтовый шаг под `if: false`) · опыты приёмки
+# ba3200fb3a1: вложенный архив `wrap/<чарт>/…` · `./`-архив, каждый с близнецом ·
+# 2в (прохода без заглушек нет в PASSES) · `.TGZ` назван «не чартом для сканера».
+# Близнец опыта с архивом — тот же архив той же формы в
 # том же месте, у которого меняется РОВНО одно: схема значений открыта, и заглушки
-# его рендер не роняют. Близнец M1, M5 и перечня форм — контроль A.
+# его рендер не роняют. Близнец M1, M5 и 2в — контроль A.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -116,11 +118,12 @@ PY
 expect "проход без гейтового шага — находка" "$work/ungated" 1 \
   "проход «вендоренные» не судится в CI"
 
-# $1 — копия, $2 — путь архива в ней, $3 — closed|open (схема значений)
+# $1 — копия, $2 — путь архива в ней, $3 — closed|open (схема значений),
+# $4 — префикс путей внутри архива (по умолчанию пусто: `injchart/…`)
 put_chart_archive() {
-  python3 - "$1/$2" "$3" <<'PY' && git -C "$1" add -- "$2"
+  python3 - "$1/$2" "$3" "${4:-}" <<'PY' && git -C "$1" add -- "$2"
 import io, json, sys, tarfile
-dst, schema = sys.argv[1], sys.argv[2]
+dst, schema, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
 files = {
     "Chart.yaml": "apiVersion: v2\nname: injchart\nversion: 0.1.0\n",
     "values.yaml": "image: injchart\n",
@@ -133,11 +136,11 @@ files = {
         "type": "object", "properties": {"image": {"type": "string"}},
         "additionalProperties": schema != "closed"}),
 }
-mode = "w:gz" if dst.endswith((".tgz", ".tar.gz")) else "w"
+mode = "w:gz" if dst.lower().endswith((".tgz", ".tar.gz")) else "w"
 with tarfile.open(dst, mode) as t:
     for rel, body in files.items():
         data = body.encode()
-        info = tarfile.TarInfo("injchart/" + rel)
+        info = tarfile.TarInfo(prefix + "injchart/" + rel)
         info.size = len(data)
         t.addfile(info, io.BytesIO(data))
 PY
@@ -192,17 +195,46 @@ mute_vendored_gate_step "$work/m5" if false || exit 2
 expect "M5: гейтовый шаг под if: false — находка" "$work/m5" 1 \
   "заведомо не судит: if: False"
 
-# ── H. Предпосылка: перечень форм архива перемеряется, а не принят на веру ──────
-# Перечень, отставший от поведения сканера, — ровно та слепота, что нашли M3 и M4.
-# Инъекция возвращает его к первой редакции (одна `.tgz`); законный близнец —
-# контроль A, где перечень совпал с замером.
-make_copy "$work/forms" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-sed -i 's/^ARCHIVE_FORMS = (".tgz", ".tar.gz", ".tar")$/ARCHIVE_FORMS = (".tgz",)/' \
-  "$work/forms/$GATE_REL"
-grep -q '^ARCHIVE_FORMS = (".tgz",)$' "$work/forms/$GATE_REL" \
-  || { echo "ОТКАЗ: инъекция перечня форм не легла — строка ARCHIVE_FORMS изменилась" >&2; exit 2; }
-expect "перечень форм отстал от сканера — отказ предпосылки" "$work/forms" 2 \
-  "перечень форм архива-чарта разошёлся с поведением сканера"
+# ── H. Вложенный архив: `wrap/<чарт>/Chart.yaml` ──────────────────────────────
+# Сканер рендерит его как чарт (замер trivy 0.70.0); третья редакция гейта судила по
+# глубине Chart.yaml и объявляла его «не чартом». Близнец — тот же архив, схема открыта.
+make_copy "$work/wrap" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/wrap" deploy/helm/wrapc-0.1.0.tgz closed wrap/ || exit 2
+expect "вложенный архив с закрытой схемой — гейт краснеет и называет его" "$work/wrap" 1 \
+  "deploy/helm/wrapc-0.1.0.tgz — архив чарта НЕ ДАЛ сканеру ни одной цели"
+make_copy "$work/wraptwin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/wraptwin" deploy/helm/wrapo-0.1.0.tgz open wrap/ || exit 2
+expect "близнец: вложенный архив с открытой схемой — осмотрен, гейт молчит" "$work/wraptwin" 0 \
+  "целей  deploy/helm/wrapo-0.1.0.tgz"
+
+# ── I. `./`-архив: пути внутри начинаются с `./` ──────────────────────────────────
+make_copy "$work/dot" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/dot" deploy/helm/dotc-0.1.0.tgz closed ./ || exit 2
+expect "./-архив с закрытой схемой — гейт краснеет и называет его" "$work/dot" 1 \
+  "deploy/helm/dotc-0.1.0.tgz — архив чарта НЕ ДАЛ сканеру ни одной цели"
+make_copy "$work/dottwin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/dottwin" deploy/helm/doto-0.1.0.tgz open ./ || exit 2
+expect "близнец: ./-архив с открытой схемой — осмотрен, гейт молчит" "$work/dottwin" 0 \
+  "целей  deploy/helm/doto-0.1.0.tgz"
+
+# ── J. 2в: прохода без заглушек нет в PASSES ─────────────────────────────────────
+# Гейт берёт его поимённо; без него одиночный прогон архива судить нечем — отказ с
+# именем прохода, а не исключение. Близнец — контроль A: проход на месте.
+make_copy "$work/nobare" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+sed -i '/^    (BARE_NAME, VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),$/d' \
+  "$work/nobare/deploy/scripts/iac_scan_passes.py"
+if grep -q '^    (BARE_NAME,' "$work/nobare/deploy/scripts/iac_scan_passes.py"; then
+  echo "ОТКАЗ: инъекция 2в не легла — строка прохода изменилась" >&2; exit 2
+fi
+expect "2в: прохода без заглушек нет — отказ с его именем" "$work/nobare" 2 \
+  "прохода «вендоренные» нет в \`iac_scan_passes.PASSES\`"
+
+# ── K. `.TGZ`: сканер такой файл чартом не рендерит (замер trivy 0.70.0) ──────────
+# Он не предмет гейта и обязан быть НАЗВАН отдельной строкой, а не пропущен молча.
+make_copy "$work/upper" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/upper" deploy/helm/upperc-0.1.0.TGZ closed || exit 2
+expect ".TGZ — не чарт для сканера, назван отдельно, гейт молчит" "$work/upper" 0 \
+  "не чарт для сканера deploy/helm/upperc-0.1.0.TGZ"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed"
 [ "$failed" = 0 ] || exit 1

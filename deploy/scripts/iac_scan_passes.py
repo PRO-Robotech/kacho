@@ -33,12 +33,27 @@ import sys
 VENDOR_HOME = "deploy/helm/vendor"
 ALWAYS_SKIPPED = (".claude", "**/node_modules")
 
+# Проходы называются по ИМЕНИ, а не по позиции в перечне: потребитель, взявший
+# «второй элемент», после перестановки молча судил бы чужим срезом.
+STUBBED_NAME = "заглушки"
+BARE_NAME = "вендоренные"  # проход БЕЗ заглушек
+
 # (имя, scan-ref, файл настроек, каталоги вне прохода)
 PASSES = (
-    ("заглушки", ".", "trivy.yaml", ALWAYS_SKIPPED + (VENDOR_HOME,)),
-    ("вендоренные", VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),
+    (STUBBED_NAME, ".", "trivy.yaml", ALWAYS_SKIPPED + (VENDOR_HOME,)),
+    (BARE_NAME, VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),
 )
-STUBBED = PASSES[0]
+
+
+def require(name):
+    """→ проход по имени; его нет — ОТКАЗ (код 2) с именем, а не исключение."""
+    for p in PASSES:
+        if p[0] == name:
+            return p
+    print("ОТКАЗ: прохода «%s» нет в `iac_scan_passes.PASSES` (есть: %s) — судить "
+          "не о чем: гейт опирается на него поимённо"
+          % (name, ", ".join(p[0] for p in PASSES) or "—"), file=sys.stderr)
+    sys.exit(2)
 
 
 def normalize(ref, target):

@@ -56,15 +56,15 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
   * `.tgz` нет вовсе — причина верна, и тогда работает вторая половина: чарт,
     который всё-таки попал в цели, послаблению больше нечего послаблять.
 
-АРХИВНАЯ ФОРМА ЧАРТА — ТОЖЕ КАНДИДАТ. Отслеживаемый архив вне каталога другого чарта
-сканер рендерит как чарт, и цель обязана быть и у него. Какие формы архива сканер
-рендерит, гейт не помнит, а МЕРЯЕТ на каждом прогоне (`check_archive_forms`, перечень
-`ARCHIVE_FORMS`): вторая редакция знала одну `.tgz`, и приёмка нашла `.tar.gz` и `.tar`,
-выпадающие из скана при «непокрытых 0». Первая редакция знала только
-форму «каталог с Chart.yaml» — и вендоренный внешний чарт
+АРХИВНАЯ ФОРМА ЧАРТА — ТОЖЕ КАНДИДАТ, И ЧАРТ ЛИ ОН, РЕШАЕТ СКАНЕР. Первая редакция
+знала только каталог с Chart.yaml — и вендоренный внешний чарт
 `deploy/helm/vendor/cert-manager-approver-policy-v0.28.0.tgz` (007d0adb90b) выпал из
 осмотра незамеченным: его схема значений закрыта, и любая заглушка `trivy.yaml` роняет
-его рендер. Архив внутри `<чарт>/charts/` — подчарт и кандидатом не является.
+его рендер. Вторая и третья угадывали «чарт ли архив» сами — по расширению, по глубине
+Chart.yaml — и каждая приёмка находила законную форму вне угаданного. Теперь кандидат —
+всякий отслеживаемый архив (по содержимому или расширению в любом регистре), и каждый
+прогоняется сканером в одиночку, проходом без заглушек: целей больше нуля — чарт, и он
+обязан быть покрыт. Архив внутри каталога другого чарта — подчарт и кандидатом не является.
 
 ПРОХОДОВ ДВА, И ОНИ СВЕРЯЮТСЯ С CI. Цели берутся объединением проходов
 `iac_scan_passes.PASSES` (заглушки — всё дерево без каталога вендоренных; вендоренные —
@@ -78,16 +78,13 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль непокрытых чартов» обязано быть отличимо от
 «ноль прочитанных чартов».
 """
-import gzip
-import io
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
-import zipfile
+import time
 
 import yaml
 
@@ -163,92 +160,46 @@ def mute_reasons(node):
     return why
 
 
-# Формы архива, которые trivy рендерит как чарт. Выведены ЗАМЕРОМ, а не по памяти:
-# trivy 0.70.0 на одном и том же чарте, упакованном в каждую форму из PROBE_FORMS,
-# дал цели ровно у этих трёх (2026-10-01). Первая редакция гейта знала только `.tgz`,
-# и приёмка нашла выпадающие из скана `.tar.gz` и `.tar` (опыты M3, M4 на
-# 7b9d560610b) при «непокрытых 0».
-ARCHIVE_FORMS = (".tgz", ".tar.gz", ".tar")
-# Формы, которыми перечень перемеряется: признанные плюс соседние, которых сканер
-# сегодня НЕ рендерит. Сменит он поведение в любую сторону — гейт откажет, а не
-# продолжит судить по устаревшему перечню.
-PROBE_FORMS = (".tgz", ".tar.gz", ".tar", ".tar.bz2", ".tar.xz", ".zip", ".gz",
-               ".TGZ", ".tar.GZ")
-
-_PROBE_CHART = {
-    "Chart.yaml": "apiVersion: v2\nname: formprobe\nversion: 0.1.0\n",
-    "values.yaml": "image: formprobe\n",
-    "templates/deployment.yaml": (
-        "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: formprobe}\n"
-        "spec:\n  selector: {matchLabels: {a: b}}\n  template:\n"
-        "    metadata: {labels: {a: b}}\n    spec:\n"
-        "      containers: [{name: c, image: \"{{ .Values.image }}\"}]\n"),
-}
+# КАНДИДАТ В АРХИВ-ЧАРТ ОТБИРАЕТСЯ ШИРОКО, А ЧАРТОМ ЕГО ПРИЗНАЁТ СКАНЕР. Две редакции
+# подряд угадывали «чарт ли это» сами — по расширению, потом по глубине `Chart.yaml`
+# внутри, — и обе приёмки нашли законную форму, которую сканер рендерит, а гейт нет
+# (`.tar.gz` и `.tar`; затем `wrap/<чарт>/Chart.yaml` и `./<чарт>/…`). Отсюда форма:
+# отбор кандидатов не решает ничего, кроме «это архив» — по содержимому ИЛИ по
+# расширению в любом регистре, — а решает одиночный прогон сканера на каждом
+# кандидате в одноразовом каталоге, проходом без заглушек. Целей больше нуля —
+# чарт, и он обязан быть покрыт; ноль — не чарт для сканера, перечисляется отдельно.
+ARCHIVE_SUFFIXES = (".tgz", ".tar", ".gz", ".tbz", ".tbz2", ".bz2", ".txz", ".xz",
+                    ".zip", ".zst", ".tzst")
 
 
-def _pack(src_dir, dst, form):
-    if form == ".zip":
-        with zipfile.ZipFile(dst, "w") as z:
-            for rel in _PROBE_CHART:
-                z.write(src_dir / rel, "formprobe/" + rel)
-        return
-    if form == ".gz":  # одиночный gzip поверх tar без tar-суффикса
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w") as t:
-            t.add(src_dir, arcname="formprobe")
-        dst.write_bytes(gzip.compress(buf.getvalue()))
-        return
-    mode = {".tgz": "w:gz", ".TGZ": "w:gz", ".tar.gz": "w:gz", ".tar.GZ": "w:gz",
-            ".tar": "w", ".tar.bz2": "w:bz2", ".tar.xz": "w:xz"}[form]
-    with tarfile.open(dst, mode) as t:
-        t.add(src_dir, arcname="formprobe")
+def is_archive(path):
+    """Архив ли файл — по расширению (любой регистр) ИЛИ по сигнатуре содержимого."""
+    if path.name.lower().endswith(ARCHIVE_SUFFIXES):
+        return True
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(263)
+    except OSError:
+        return False
+    return (head[:2] == b"\x1f\x8b"            # gzip
+            or head[:3] == b"BZh"               # bzip2
+            or head[:6] == b"\xfd7zXZ\x00"      # xz
+            or head[:4] == b"PK\x03\x04"         # zip
+            or head[:4] == b"\x28\xb5\x2f\xfd"  # zstd
+            or head[257:262] == b"ustar")       # tar
 
 
-def check_archive_forms():
-    """Предпосылка: перечень ARCHIVE_FORMS совпадает с поведением сканера.
+def chart_targets_alone(path, bare_pass):
+    """→ число целей, которое сканер даёт этому архиву, лежащему В ОДИНОЧКУ.
 
-    Один и тот же чарт пакуется в каждую форму PROBE_FORMS и сканируется с файлом
-    настроек прохода без заглушек; форма признана, если её архив дал цель.
-    Расхождение — ОТКАЗ (код 2): гейт, судящий о покрытии по неверному перечню
-    форм, молчит ровно там, где чарт выпал.
+    Одноразовый каталог, имя файла сохранено (сканер различает формы по имени),
+    файл настроек — прохода без заглушек: вопрос «чарт ли это для сканера», а не
+    «рендерится ли он с нашими заглушками».
     """
     with tempfile.TemporaryDirectory() as tmp:
-        tmp = pathlib.Path(tmp)
-        src = tmp / "src"
-        for rel, body in _PROBE_CHART.items():
-            (src / rel).parent.mkdir(parents=True, exist_ok=True)
-            (src / rel).write_text(body, encoding="utf-8")
-        scan_dir = tmp / "scan"
-        scan_dir.mkdir()
-        for i, form in enumerate(PROBE_FORMS):
-            _pack(src, scan_dir / ("p%d%s" % (i, form)), form)
-        probe_pass = ("проба форм архива", ".", str(ROOT / iac_scan_passes.PASSES[1][2]), ())
-        got = iac_scan_passes.results(scan_dir, probe_pass)
-    names = {t.split(":", 1)[0] for t, _ in got}
-    rendered = tuple(f for i, f in enumerate(PROBE_FORMS) if "p%d%s" % (i, f) in names)
-    if set(rendered) != set(ARCHIVE_FORMS):
-        print("ОТКАЗ: перечень форм архива-чарта разошёлся с поведением сканера.\n"
-              "       признаны гейтом: %s\n       рендерит сканер: %s\n"
-              "       Обнови ARCHIVE_FORMS замером: судить о покрытии по неверному\n"
-              "       перечню — значит молчать там, где чарт выпал."
-              % (", ".join(ARCHIVE_FORMS), ", ".join(rendered) or "—"), file=sys.stderr)
-        sys.exit(2)
-    return ("  формы архива-чарта: опробовано %d, сканер рендерит %d (%s) — совпадает с "
-            "перечнем гейта" % (len(PROBE_FORMS), len(rendered), ", ".join(rendered)))
-
-
-def archive_is_chart(path):
-    """→ True — в архиве есть `<каталог>/Chart.yaml`; False — нет; None — не прочитан.
-
-    Непрочитанный архив кандидатом остаётся: исключать из суда то, чего гейт не
-    понял, значило бы молчать на нём.
-    """
-    try:
-        with tarfile.open(path, "r:*") as t:
-            return any(m.name.count("/") == 1 and m.name.endswith("/Chart.yaml")
-                       for m in t.getmembers())
-    except (tarfile.TarError, OSError):
-        return None
+        shutil.copyfile(path, pathlib.Path(tmp) / path.name)
+        probe = ("одиночный архив", ".", str(ROOT / bare_pass[2]), ())
+        return len(iac_scan_passes.results(tmp, probe))
 
 
 def check_workflow_passes():
@@ -401,22 +352,32 @@ def main():
         return 2
 
     templates = git_ls("*/templates/*.yaml")
-    # Архивная форма чарта: отслеживаемый архив формы из ARCHIVE_FORMS вне каталога
-    # другого чарта, несущий `<каталог>/Chart.yaml`. Внутри `<чарт>/charts/` архив —
-    # подчарт, сканер относит его к родителю. Перечень форм — замер поведения сканера,
-    # и он перемеряется на каждом прогоне (`check_archive_forms`).
+    # Архивная форма чарта (см. `chart_targets_alone`). Архив внутри каталога
+    # другого чарта — его подчарт: сканер относит его к родителю и отдельной целью
+    # не заводит (на этом дереве `deploy/helm/umbrella/charts/*.tgz` не дают своих
+    # целей ни с заглушками, ни без), поэтому одиночному прогону не подлежит.
     if not shutil.which("trivy"):
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         return 2
-    forms_census = check_archive_forms()
+    bare_pass = iac_scan_passes.require(iac_scan_passes.BARE_NAME)
+    bare_doc = yaml.safe_load((ROOT / bare_pass[2]).read_text(encoding="utf-8")) or {}
+    if ((bare_doc.get("misconfiguration") or {}).get("helm") or {}).get("set"):
+        print("ОТКАЗ: проход «%s» (%s) несёт заглушки — одиночный прогон архива по нему\n"
+              "       отвечал бы «рендерится ли с заглушками», а не «чарт ли это»"
+              % (bare_pass[0], bare_pass[2]), file=sys.stderr)
+        return 2
+    t0 = time.monotonic()
+    tracked = git_ls("*")
+    candidates = [a for a in tracked if is_archive(ROOT / a)]
     archives, nested_archives, not_charts = [], [], []
-    for a in sorted({a for form in ARCHIVE_FORMS for a in git_ls("*" + form)}):
+    for a in candidates:
         if any(a.startswith(c) for c in charts):
             nested_archives.append(a)
-        elif archive_is_chart(ROOT / a) is False:
-            not_charts.append(a)
-        else:
+        elif chart_targets_alone(ROOT / a, bare_pass) > 0:
             archives.append(a)
+        else:
+            not_charts.append(a)
+    sniff_s = time.monotonic() - t0
     targets, census = scan_targets()
     if not targets:
         print("ОТКАЗ: скан не дошёл НИ ДО ОДНОЙ цели — сканер не отработал",
@@ -484,9 +445,11 @@ def main():
              len(covered) + len(uncovered), len(targets),
              ", ".join("проход «%s» %d" % kv for kv in census.items()), len(uncovered)))
     print(wf_census)
-    print(forms_census)
+    print("  архивов среди отслеживаемых файлов %d из %d; одиночных прогонов сканера %d; "
+          "отбор и прогоны %.1f с" % (len(candidates), len(tracked),
+                                      len(archives) + len(not_charts), sniff_s))
     for a in not_charts:
-        print("  архив не чарт       %s — Chart.yaml в корневом каталоге архива нет" % a)
+        print("  не чарт для сканера %s — одиночный прогон без заглушек: целей 0" % a)
     for d, n in covered:
         print("  осмотрен %2d целей  %s" % (n, d))
     for d in no_templates:
@@ -501,7 +464,7 @@ def main():
               "                      свежий checkout, где этих файлов нет." % (d, why))
 
     for d in uncovered:
-        if d.endswith(ARCHIVE_FORMS):
+        if d in archives:
             findings.append("%s — архив чарта НЕ ДАЛ сканеру ни одной цели. Если он лежит вне "
                             "%s, его осматривает проход заглушек, а внешний чарт с закрытой "
                             "схемой значений отвергает любую заглушку и выпадает из осмотра "
