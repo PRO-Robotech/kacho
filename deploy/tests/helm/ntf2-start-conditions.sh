@@ -56,10 +56,13 @@ CORELIB_MOD="github.com/PRO-Robotech/corelib"
 KANAME_MOD="github.com/PRO-Robotech/kaname"
 LANE_KNOB="KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL"
 POSTURE_KNOB="KACHO_API_GATEWAY_IDENTITY_PROVIDER"
-# Подчарты поставщика (§1.6): `identity-selfservice-ui` — имя страницы
-# поставщика после переименования волны-4, `kratos-selfservice-ui` — до него;
-# база может стоять по любую сторону переименования.
-PROVIDER_CHARTS="kratos|hydra|pg-kratos|pg-hydra|identity-selfservice-ui|kratos-selfservice-ui"
+# Признак репозитория поставщика чужой службы личности — тот же, по которому
+# состав чужого выводит гейт `TestOwnPostureRaisesNoForeignIdentityService`
+# (`foreignIdentityRepoMark`, deploy/own_posture_foreign_identity_test.go).
+# Имён подчартов поставщика проба не выписывает: они выводятся из зонтика на <B>
+# (`provider_charts`), как у гейта, — выписанный перечень расходился бы с
+# деревом молча, и потолок привязок к снимаемому издателю их не допускает.
+PROVIDER_REPO_MARK="ory.sh"
 
 for f in "$HERE/stacks.sh" "$HERE/lib/render-chain.sh"; do
   [ -r "$f" ] || { echo "FATAL: $f не читается — общий читатель таблицы либо обёртка рендера отсутствуют" >&2; exit 2; }
@@ -173,9 +176,37 @@ cond1() {
 }
 
 # ── п.2 посадка own во всех цепочках ─────────────────────────────────────────
+# provider_charts — подчарты поставщика на <B>, по строке, как их выводит гейт
+# посадки: зависимости зонтика с репозиторием поставщика (имя видимое значениям —
+# alias, если он есть), их базы `pg-<имя>` и каталоги `charts/<имя>-…` без
+# объявления зависимостью. Пусто — отказ: «чужого не найдено» неотличимо от
+# «чужое не прочитано».
+provider_charts() {
+  local chart all prov listing p d out=""
+  chart="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>&1)" || { echo "Chart.yaml зонтика на $B не читается: $chart" >&2; return 2; }
+  all="$(printf '%s\n' "$chart" | yq -r '.dependencies[] | (.alias // .name)' 2>&1)" || { echo "зависимости зонтика не разобраны: $all" >&2; return 2; }
+  prov="$(printf '%s\n' "$chart" | yq -r ".dependencies[] | select((.repository // \"\") | contains(\"$PROVIDER_REPO_MARK\")) | (.alias // .name)" 2>&1)" \
+    || { echo "зависимости поставщика не разобраны: $prov" >&2; return 2; }
+  [ -n "$prov" ] || { echo "среди зависимостей зонтика на $B нет ни одной с репозиторием $PROVIDER_REPO_MARK — поставщик переехал либо признак его не узнаёт" >&2; return 2; }
+  listing="$(git -C "$REPO" ls-tree -d --name-only "$B" deploy/helm/umbrella/charts/ 2>&1)" || { echo "каталоги charts/ на $B не читаются: $listing" >&2; return 2; }
+  for p in $prov; do
+    out="$out$p"$'\n'
+    if printf '%s\n' "$all" | grep -qxF "pg-$p"; then out="${out}pg-$p"$'\n'; fi
+    for d in $listing; do
+      d="${d##*/}"
+      case "$d" in "$p"-*) printf '%s\n' "$all" | grep -qxF "$d" || out="$out$d"$'\n' ;; esac
+    done
+  done
+  printf '%s' "$out" | sort -u
+}
+PROVIDER_PARENTS=""   # зависимости с репозиторием поставщика — для п.4
+PROVIDER_SET=""       # все подчарты поставщика — для п.2
+
 # Распознаватели рендера. Принадлежность объекта — `# Source:` под подчартом.
 provider_objects() { # <рендер> — рабочих объектов поставщика
-  awk -v re="/charts/(${PROVIDER_CHARTS})/" '
+  local re
+  re="/charts/($(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' '|' | sed 's/|$//'))/"
+  awk -v re="$re" '
     function flush() { if (src ~ re && kind ~ /^(Deployment|StatefulSet|Job)$/) c++; src = ""; kind = "" }
     /^---/ { flush(); next }
     /^# Source: / { src = $3; next }
@@ -188,25 +219,25 @@ env_values() { # <рендер> <имя переменной> — значени
 render_objects() { grep -c '^# Source: ' "$1" || true; }
 
 cond2_control() { # распознаватели обязаны видеть то, что считают
-  local syn="$WORK/synthetic.yaml" v n
-  printf '%s\n' '---' '# Source: kacho-umbrella/charts/kratos/templates/deployment.yaml' 'kind: Deployment' \
+  local syn="$WORK/synthetic.yaml" v n first
+  first="$(printf '%s\n' "$PROVIDER_SET" | grep . | head -n 1)"
+  printf '%s\n' '---' "# Source: kacho-umbrella/charts/$first/templates/deployment.yaml" 'kind: Deployment' \
     'spec:' '  template:' '    spec:' '      containers:' '        - env:' \
     "            - name: $POSTURE_KNOB" '              value: "foreign"' \
     '---' '# Source: kacho-umbrella/charts/api-gateway/templates/deployment.yaml' 'kind: Deployment' \
-    '---' '# Source: kacho-umbrella/charts/kratos/templates/configmap.yaml' 'kind: ConfigMap' >"$syn"
+    '---' "# Source: kacho-umbrella/charts/$first/templates/configmap.yaml" 'kind: ConfigMap' >"$syn"
   n="$(provider_objects "$syn")"
   v="$(env_values "$syn" "$POSTURE_KNOB" 2>"$WORK/err")" || { echo "yq отказал на синтетике: $(cat "$WORK/err")"; return 1; }
   [ "$n" = 1 ] && [ "$v" = foreign ] || { echo "синтетика: объектов поставщика $n (ожидался 1), посадка «$v» (ожидалась foreign)"; return 1; }
-  echo "синтетика: Deployment под charts/kratos/ → объектов поставщика 1, посадка foreign"
+  echo "синтетика: Deployment под charts/$first/ → объектов поставщика 1, ConfigMap там же и Deployment края — 0; посадка foreign"
 }
 
 cond2() {
   local names n args err rc out objs post lane prov bad="" chains=0 last ctl
+  local -A chain_args=()
   [ "$DISK_OK" = 1 ] || { nr п.2 "$DISK_REASON"; return; }
-  command -v helm >/dev/null 2>&1 || { nr п.2 "helm не найден"; return; }
-  yq --version 2>/dev/null | grep -q mikefarah || { nr п.2 "в PATH не mikefarah yq"; return; }
-  ctl="$(cond2_control)" || { nr п.2 "контроль распознавателей: $ctl"; return; }
-  echo "  контроль п.2: $ctl"
+  # Сначала СТРОКИ всех цепочек: отказ таблицы и обёртки — первым и со своим
+  # текстом, а не подменённый отказом того, что стоит дальше.
   names="$(stacks_names 2>"$WORK/err")" || { nr п.2 "общий читатель таблицы отказал: $(cat "$WORK/err")"; return; }
   for n in $names; do
     if [ "$n" = prod ]; then
@@ -219,6 +250,16 @@ cond2() {
       args="$(render_chain_args "$n" "$UMBRELLA" 2>"$WORK/err")" \
         || { nr п.2 "обёртка рендера отказала на $n: $(cat "$WORK/err")"; return; }
     fi
+    chain_args[$n]="$args"
+  done
+  command -v helm >/dev/null 2>&1 || { nr п.2 "helm не найден"; return; }
+  yq --version 2>/dev/null | grep -q mikefarah || { nr п.2 "в PATH не mikefarah yq"; return; }
+  [ -n "$PROVIDER_SET" ] || { nr п.2 "подчарты поставщика не выведены: $PROVIDER_ERR"; return; }
+  echo "  подчарты поставщика на $B: $(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' ' ' | sed 's/ $//')"
+  ctl="$(cond2_control)" || { nr п.2 "контроль распознавателей: $ctl"; return; }
+  echo "  контроль п.2: $ctl"
+  for n in $names; do
+    args="${chain_args[$n]}"
     out="$WORK/chain-$n.yaml"
     # Цепочка дробится на слова намеренно: это перечень `-f <файл>`.
     # shellcheck disable=SC2086
@@ -259,15 +300,23 @@ cond3() {
 
 # ── п.4 подчартов поставщика в зонтике нет (условие полосы стража почты) ─────
 cond4() {
-  local out n k
+  local out n k p e found=""
+  [ -n "$PROVIDER_PARENTS" ] || { nr п.4 "зависимости поставщика не выведены: $PROVIDER_ERR"; return; }
   out="$(git -C "$REPO" ls-tree --name-only "$B" deploy/helm/umbrella/charts/ 2>"$WORK/err")" \
     || { nr п.4 "git ls-tree charts/ отказал: $(cat "$WORK/err")"; return; }
   n="$(printf '%s' "$out" | grep -c . || true)"
   [ "$n" -ge 1 ] || { nr п.4 "контроль: в deploy/helm/umbrella/charts/ на $B записей 0 — каталог не виден"; return; }
-  k="$(printf '%s\n' "$out" | grep -cE '/(kratos|hydra)-' || true)"
-  local found
-  found="$(printf '%s\n' "$out" | grep -E '/(kratos|hydra)-' | sed 's#.*/##' | tr '\n' ' ' | sed 's/ $//')"
-  local detail="подчартов kratos|hydra в charts/: $k из записей $n${found:+ ($found)} (только для полосы, правящей страж почты, DoD п.14)"
+  # Команда Р16 п.4 — счёт записей `charts/<поставщик>-…`; имена поставщика —
+  # зависимости с его репозиторием, а не выписанный перечень.
+  k=0
+  for e in $out; do
+    e="${e##*/}"
+    for p in $PROVIDER_PARENTS; do
+      case "$e" in "$p"-*) k=$((k + 1)); found="$found $e"; break ;; esac
+    done
+  done
+  local detail
+  detail="подчартов поставщика ($(printf '%s\n' "$PROVIDER_PARENTS" | tr '\n' ' ' | sed 's/ $//')) в charts/: $k из записей $n${found:+ (${found# })} (только для полосы, правящей страж почты, DoD п.14)"
   if [ "$k" = 0 ]; then outcome п.4 выполнено "$detail"; else outcome п.4 "не выполнено" "$detail"; fi
 }
 
@@ -322,6 +371,15 @@ cond6k() {
   nr п.6 "исполняется после Е13 замысла (NTF1-D1 чарт notify, NTF1-D2 узел fe3455, NTF1-D1s); на $B зависимость notify в зонтике: $notify"
   nr K "записи перечня источников notify читаются из рендера чарта notify NTF1-D1/NTF1-D2 (Е13); на $B зависимость notify в зонтике: $notify"
 }
+
+PROVIDER_ERR=""
+if PROVIDER_SET="$(provider_charts 2>"$WORK/perr")"; then
+  PROVIDER_PARENTS="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>/dev/null \
+    | yq -r ".dependencies[] | select((.repository // \"\") | contains(\"$PROVIDER_REPO_MARK\")) | (.alias // .name)" 2>/dev/null)" \
+    || PROVIDER_PARENTS=""
+else
+  PROVIDER_SET=""; PROVIDER_ERR="$(cat "$WORK/perr")"
+fi
 
 cond1
 cond2
