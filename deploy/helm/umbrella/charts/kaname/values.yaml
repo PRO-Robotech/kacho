@@ -808,7 +808,7 @@ config:
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
-      - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-storage
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
       # Здесь стояла запись оператора сети — компонента с таким именем в дереве нет,

@@ -113,6 +113,7 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/admin-hop-cluster-half-inject.sh
+deploy/scripts/cert-issuance-policy-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh

@@ -26,6 +26,13 @@ mtls:
   enabled: true
   internalCA:
     caNamespace: beget-cert-manager   # cert-manager --cluster-resource-namespace
+  # Политики выпуска здесь нет и поставить её некому: cert-manager — оператора
+  # площадки (ns beget-cert-manager), его встроенный одобритель нам не подвластен,
+  # CRD политики выпуска в кластере нет. Включение notify на этой площадке краснит
+  # гейт посадки (секция E, NTF1-J04) — до тех пор, пока оператор не поставит
+  # контроллер политики и не снимет у своего одобрителя право на внутренний УЦ.
+  issuancePolicy:
+    enabled: false
 
 # ── images: prorobotech registry ──
 #
