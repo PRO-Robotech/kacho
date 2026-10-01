@@ -608,17 +608,24 @@ def main():
     # Подчарт-архив: осмотрен через родителя, только если родитель осмотрен; иначе
     # обязан дать цели сам. Прежняя редакция считала его «подчартом» и молчала — пять
     # сторонних архивов зонтика (44 цели, 15 находок CRITICAL/HIGH) не видел никто.
+    # Через родителя подчарт осмотрен, только если среди целей есть ЕГО шаблоны:
+    # trivy, отрендерив родителя, пишет их как `<родитель>charts/<имя подчарта>/…`.
+    # Прежняя редакция судила по «у родителя есть цели», и подчарт под родителем без
+    # шаблонов (H2) либо выключенный условием родителя оставался без суда.
     sub_archives_via_parent = []
     for a in nested_archives:
         parent = max((c for c in charts if a.startswith(c + "charts/")), key=len)
+        src = chart_sources(ROOT / a)
+        sub_name = str((yaml.safe_load((src or {}).get("Chart.yaml") or "") or {}).get("name") or "")
         own = [t for t in targets if t.startswith(a + ":")]
-        why = None if own else renders_nothing(chart_sources(ROOT / a))
+        via = [t for t in targets if sub_name and t.startswith(parent + "charts/" + sub_name + "/")]
+        why = None if own or via else renders_nothing(src)
         if own:
             covered.append((a, len(own)))
+        elif via:
+            sub_archives_via_parent.append((a, len(via)))
         elif why:
             renders_none.append((a, why))
-        elif parent not in EXEMPT and parent not in no_templates_set and own_hits(parent):
-            sub_archives_via_parent.append(a)
         else:
             uncovered.append(a)
 
@@ -671,8 +678,8 @@ def main():
         print("  без шаблонов        %s — осматривать нечего" % d)
     for d in nested:
         print("  подчарт             %s — сканер относит его к родителю" % d)
-    for a in sub_archives_via_parent:
-        print("  подчарт-архив       %s — осмотрен через родителя" % a)
+    for a, n in sub_archives_via_parent:
+        print("  осмотрен %2d целей  %s — через родителя" % (n, a))
     for d in exempt_ok:
         print("  послабление         %s — %s" % (d, EXEMPT[d]))
     for d, why in renders_none:
@@ -684,10 +691,9 @@ def main():
 
     for d in uncovered:
         if d in nested_archives:
-            findings.append("%s — подчарт-архив НЕ ДАЛ ни одной цели: родитель не осмотрен "
-                            "(послабление либо нет шаблонов), а сам архив не осмотрен "
-                            "проходом «%s» — сторонний чарт вне скана целиком"
-                            % (d, sub_pass[0]))
+            findings.append("%s — подчарт-архив НЕ ДАЛ ни одной цели: ни своим проходом "
+                            "(«%s»), ни через родителя — среди целей нет его шаблонов; "
+                            "сторонний чарт вне скана целиком" % (d, sub_pass[0]))
             continue
         if d in archives:
             findings.append("%s — архив-чарт НЕ ДАЛ ни одной цели проходу «%s» (без "

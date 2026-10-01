@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=35
+DENOM=37
 passed=0
 failed=0
 
@@ -349,6 +349,29 @@ make_copy "$work/guardon" || { echo "ОТКАЗ: копия дерева не с
 put_chart_archive "$work/guardon" deploy/helm/umbrella/charts/guard-0.1.0.tgz guarded_on || exit 2
 expect "H3 (близнец): условие истинно — осмотрен" "$work/guardon" 0 \
   "целей  deploy/helm/umbrella/charts/guard-0.1.0.tgz"
+
+# $1 — копия, $2 — каталог родителя: чарт БЕЗ шаблонов, объявляющий подчарт injchart
+put_parent_without_templates() {
+  mkdir -p "$1/$2/charts" || return 2
+  printf 'apiVersion: v2\nname: h2parent\nversion: 0.1.0\ndependencies:\n  - name: injchart\n    version: 0.1.0\n' \
+    > "$1/$2/Chart.yaml" || return 2
+  git -C "$1" add -f -- "$2/Chart.yaml"
+}
+
+# ── T. H2: подчарт-архив под родителем без шаблонов ──────────────────────────────
+# Родитель рендерится (без шаблонов, но с подчартом), и подчарт осмотрен через него,
+# только если среди целей есть шаблоны подчарта. Опыт — подчарт, чей рендер отказывает;
+# близнец — тот же подчарт со значением, осмотренный через родителя.
+make_copy "$work/h2bad" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_parent_without_templates "$work/h2bad" deploy/helm/h2p || exit 2
+put_chart_archive "$work/h2bad" deploy/helm/h2p/charts/injchart-0.1.0.tgz required || exit 2
+expect "H2: подчарт под родителем без шаблонов не осмотрен — находка" "$work/h2bad" 1 \
+  "deploy/helm/h2p/charts/injchart-0.1.0.tgz — подчарт-архив НЕ ДАЛ ни одной цели"
+make_copy "$work/h2ok" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_parent_without_templates "$work/h2ok" deploy/helm/h2p || exit 2
+put_chart_archive "$work/h2ok" deploy/helm/h2p/charts/injchart-0.1.0.tgz required_valued || exit 2
+expect "H2 (близнец): тот же подчарт со значением — осмотрен через родителя" "$work/h2ok" 0 \
+  "целей  deploy/helm/h2p/charts/injchart-0.1.0.tgz — через родителя"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
