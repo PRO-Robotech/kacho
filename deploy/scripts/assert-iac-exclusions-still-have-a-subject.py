@@ -33,8 +33,9 @@
 
 Тот третий исход закрыт по существу 2026-08-09: причиной был намеренный отказ рендера у
 чартов, требующих секрет оператора, и он снят заглушками ТОЛЬКО ДЛЯ СКАНА в корневом
-`trivy.yaml`. Поэтому здесь тот же `--config`: гейт обязан судить РОВНО о том множестве
-целей, которое видит гейт скана в CI. Разойдись они — «путь вне осмотра» у одного
+`trivy.yaml`. Поэтому здесь те же проходы (`iac_scan_passes.PASSES`: заглушки и
+вендоренные внешние чарты без них): гейт обязан судить РОВНО о том множестве целей,
+которое видит гейт скана в CI. Разойдись они — «путь вне осмотра» у одного
 означало бы «путь чист» у другого, и оба были бы уверены в своей правоте.
 
 ПРОВЕРКА СВОЕЙ ПРЕДПОСЫЛКИ. Гейт опирается на факты о мире и меряет их, а не
@@ -66,12 +67,12 @@
 пофайлово по чартам.
 """
 import fnmatch
-import json
-import os
 import pathlib
 import shutil
-import subprocess
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import iac_scan_passes  # noqa: E402 — соседний модуль, единственный источник проходов
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 IGNORE = ROOT / ".trivyignore.yaml"
@@ -163,21 +164,11 @@ def scan():
     if not shutil.which("trivy"):
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         sys.exit(2)
-    env = dict(os.environ)
-    env.pop("TRIVY_IGNOREFILE", None)
-    cmd = [
-        "trivy", "config", ".", "--config", SCAN_CONFIG.name,
-        "--severity", "CRITICAL,HIGH", "--format", "json",
-        "--skip-dirs", ".claude", "--skip-dirs", "**/node_modules", "--quiet",
-    ]
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env, timeout=900)
-    if r.returncode not in (0, 1):
-        print("ОТКАЗ: trivy вышел с кодом %d\n%s" % (r.returncode, r.stderr[:400]), file=sys.stderr)
-        sys.exit(2)
-    doc = json.loads(r.stdout or "{}")
+    # Проходы — те же, что у гейта покрытия и шагов CI (`iac_scan_passes.PASSES`):
+    # множество осмотренных целей у них обязано совпадать.
+    got, _census = iac_scan_passes.all_results(ROOT, extra=("--severity", "CRITICAL,HIGH"))
     fails, targets = set(), set()
-    for res in doc.get("Results") or []:
-        target = res.get("Target") or ""
+    for target, res in got:
         targets.add(target)
         for m in res.get("Misconfigurations") or []:
             if m.get("Status") == "FAIL":

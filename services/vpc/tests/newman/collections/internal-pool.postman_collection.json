@@ -1630,7 +1630,7 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/apl00000000000000009",
               "host": [
                 "{{internalBaseUrl}}"
               ],
@@ -1638,7 +1638,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent999999"
+                "apl00000000000000009"
               ]
             }
           },
@@ -1675,7 +1675,7 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/apl00000000000000009",
               "host": [
                 "{{internalBaseUrl}}"
               ],
@@ -1683,7 +1683,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent999999"
+                "apl00000000000000009"
               ]
             }
           },
@@ -1922,7 +1922,7 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999/utilization",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/apl00000000000000009/utilization",
               "host": [
                 "{{internalBaseUrl}}"
               ],
@@ -1930,7 +1930,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent999999",
+                "apl00000000000000009",
                 "utilization"
               ]
             }
@@ -3046,7 +3046,7 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enp00000000000000009/addressPoolBinding",
               "host": [
                 "{{internalBaseUrl}}"
               ],
@@ -3054,13 +3054,13 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent999999",
+                "enp00000000000000009",
                 "addressPoolBinding"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"poolId\": \"aplnonexistent999999\"}",
+              "raw": "{\"poolId\": \"apl00000000000000009\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3101,7 +3101,7 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enp00000000000000009/addressPoolBinding",
               "host": [
                 "{{internalBaseUrl}}"
               ],
@@ -3109,7 +3109,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent999999",
+                "enp00000000000000009",
                 "addressPoolBinding"
               ]
             }

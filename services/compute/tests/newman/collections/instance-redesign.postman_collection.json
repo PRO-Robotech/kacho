@@ -1538,7 +1538,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmregsrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"registry.image\", \"id\": \"ml/bert-trainer:cu121\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmregsrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"registry.image\", \"id\": \"ml/bert-trainer:cu121\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1593,7 +1593,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1647,7 +1647,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmvmct{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"containerSpec\": {\"command\": [\"x\"]}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmvmct{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"containerSpec\": {\"command\": [\"x\"]}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1701,7 +1701,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insctctvm{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"CONTAINER\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"registry.image\", \"id\": \"ml/bert-trainer:cu121\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"vmSpec\": {\"userData\": \"x\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insctctvm{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"CONTAINER\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"registry.image\", \"id\": \"ml/bert-trainer:cu121\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"vmSpec\": {\"userData\": \"x\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2659,7 +2659,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmcpu{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"cpuGuaranteePercent\": 101}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmcpu{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"cpuGuaranteePercent\": 101}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2898,7 +2898,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2952,7 +2952,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmal{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"не идентификатор\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmal{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"не идентификатор\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3776,7 +3776,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"vm.image\", \"id\": \"img-x:tag\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"vm.image\", \"id\": \"img-x:tag\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3830,7 +3830,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmout{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmout{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3879,7 +3879,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmoutik{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"imageKind\": \"STORAGE_IMAGE\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmoutik{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"imageKind\": \"STORAGE_IMAGE\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3929,7 +3929,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmouttwo{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\", \"imageKind\": \"STORAGE_IMAGE\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmouttwo{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\", \"imageKind\": \"STORAGE_IMAGE\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4837,7 +4837,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsamf{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serviceAccountId\": \"not!!a!!sa!!id\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsamf{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serviceAccountId\": \"not!!a!!sa!!id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4891,7 +4891,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmunr{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmunr{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5793,7 +5793,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnonet{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnonet{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6695,7 +6695,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsv{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"secondaryVolumeSpecs\": [{\"sizeGib\": 0, \"volumeTypeId\": \"vt-ssd\", \"mountPath\": \"/data\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsv{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"secondaryVolumeSpecs\": [{\"sizeGib\": 0, \"volumeTypeId\": \"vt-ssd\", \"mountPath\": \"/data\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6749,7 +6749,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnetset{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnetset{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6810,7 +6810,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfsspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfsspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6871,7 +6871,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmlclspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"localDiskSpecs\": [{\"size\": \"107374182400\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmlclspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"localDiskSpecs\": [{\"size\": \"107374182400\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6932,7 +6932,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntpol{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenancePolicy\": \"MIGRATE\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntpol{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenancePolicy\": \"MIGRATE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6993,7 +6993,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntgrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenanceGracePeriod\": \"60s\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntgrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenanceGracePeriod\": \"60s\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7054,7 +7054,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserprt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserprt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7115,7 +7115,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsshkey{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsshkey{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7176,7 +7176,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmall6{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}], \"localDiskSpecs\": [{\"size\": \"107374182400\"}], \"maintenancePolicy\": \"MIGRATE\", \"maintenanceGracePeriod\": \"60s\", \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmall6{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}], \"localDiskSpecs\": [{\"size\": \"107374182400\"}], \"maintenancePolicy\": \"MIGRATE\", \"maintenanceGracePeriod\": \"60s\", \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7252,7 +7252,7 @@
       ]
     },
     {
-      "name": "INST-RD-GET-NEG-ABSENT — COMP-1-22: Get well-formed-но-нет 'ins-doesnotexist000' → oneOf([403,404]) (authz-first: scope_extractor не резолвит target→project → 403 ДО backend NOT_FOUND); НИКОГДА 200. [verifies COMP-1-22 · authz-first tolerance]",
+      "name": "INST-RD-GET-NEG-ABSENT — COMP-1-22: Get well-formed-но-нет 'ins-00000000000000000' → oneOf([403,404]) (authz-first: scope_extractor не резолвит target→project → 403 ДО backend NOT_FOUND); НИКОГДА 200. [verifies COMP-1-22 · authz-first tolerance]",
       "description": "class:NEG | priority:P1",
       "item": [
         {
@@ -7266,7 +7266,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances/ins-doesnotexist000",
+              "raw": "{{baseUrl}}/compute/v1/instances/ins-00000000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7274,7 +7274,7 @@
                 "compute",
                 "v1",
                 "instances",
-                "ins-doesnotexist000"
+                "ins-00000000000000000"
               ]
             }
           },
@@ -8305,7 +8305,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbadzone{{runId}}\", \"zoneId\": \"no-such-zone\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbadzone{{runId}}\", \"zoneId\": \"no-such-zone\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-00000000000000001\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19115,7 +19115,7 @@
       ]
     },
     {
-      "name": "INST-RD-DEL-NEG-ABSENT — COMP-1-38: Delete well-formed-но-нет 'ins-doesnotexist000' → oneOf([403,404]) (authz-first tolerant); НИКОГДА 200. [verifies COMP-1-38 · authz-first tolerance]",
+      "name": "INST-RD-DEL-NEG-ABSENT — COMP-1-38: Delete well-formed-но-нет 'ins-00000000000000000' → oneOf([403,404]) (authz-first tolerant); НИКОГДА 200. [verifies COMP-1-38 · authz-first tolerance]",
       "description": "class:NEG | priority:P1",
       "item": [
         {
@@ -19129,7 +19129,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances/ins-doesnotexist000",
+              "raw": "{{baseUrl}}/compute/v1/instances/ins-00000000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19137,7 +19137,7 @@
                 "compute",
                 "v1",
                 "instances",
-                "ins-doesnotexist000"
+                "ins-00000000000000000"
               ]
             }
           },

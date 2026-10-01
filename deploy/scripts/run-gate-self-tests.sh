@@ -100,6 +100,7 @@ DECLARED="
 .github/scripts/assert-review-text-carries-no-attribution.py
 .github/scripts/assert-review-trigger-scope.py
 .github/scripts/assert-unit-shard-wiring.py
+.github/scripts/assert-workflow-run-publish-guard.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py

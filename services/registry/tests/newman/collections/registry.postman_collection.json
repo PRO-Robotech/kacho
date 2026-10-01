@@ -1151,7 +1151,7 @@
       ]
     },
     {
-      "name": "REG-GET-NEG-NOTFOUND — Get reg-DOESNOTEXIST00000 → 404 NOT_FOUND (existence-hidden, no deny_reasons)",
+      "name": "REG-GET-NEG-NOTFOUND — Get reg00000000000000000 → 404 NOT_FOUND (existence-hidden, no deny_reasons)",
       "description": "class:NEG | priority:P1",
       "item": [
         {
@@ -1165,7 +1165,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/reg-DOESNOTEXIST00000",
+              "raw": "{{baseUrl}}/registry/v1/registries/reg00000000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1173,7 +1173,7 @@
                 "registry",
                 "v1",
                 "registries",
-                "reg-DOESNOTEXIST00000"
+                "reg00000000000000000"
               ]
             }
           },

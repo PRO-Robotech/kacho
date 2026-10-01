@@ -6874,7 +6874,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"newName\": \"xreg/dst-{{runId}}\", \"registryId\": \"reg00000000smuggled0\"}",
+              "raw": "{\"newName\": \"xreg/dst-{{runId}}\", \"registryId\": \"reg00000000000000002\"}",
               "options": {
                 "raw": {
                   "language": "json"
