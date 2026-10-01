@@ -87,6 +87,7 @@ Kubernetes). Шаги `scan-type: config` задания trivy обязаны с
 import bz2
 import gzip
 import lzma
+import os
 import pathlib
 import re
 import shutil
@@ -731,15 +732,21 @@ def main():
     # checkout, где этого файла нет, и вердикт о нём отсюда не выносится — он печатается
     # как несудимый, а не роняет гейт у разработчика и не молчит.
     tracked_set = set(tracked)
+    tracked_dirs = {t.rsplit("/", i)[0] for t in tracked for i in range(1, t.count("/") + 1)}
     log_unjudged = []
     for name in iac_scan_passes.LOG_JUDGED:
         ref = iac_scan_passes.require(name)[1]
         for line in scan_log.get(name, []):
             m = re.search(r'file_path="([^"]+)"', line)
-            if m and ref != iac_scan_passes.RENDERED_REF and \
-                    iac_scan_passes.normalize(ref, m.group(1)) not in tracked_set:
-                log_unjudged.append((name, iac_scan_passes.normalize(ref, m.group(1))))
-                continue
+            # Путь нормализуется (`./`, `..`, двойные `/`), и отслеживаемым считается и
+            # КАТАЛОГ чарта, а не только файл индекса: trivy называет каталог-чарт
+            # каталогом. Отслеживаемое «НЕ СУДИМО» не получает никогда (приёмка
+            # 4240ac56fd3, п. 4).
+            if m and ref != iac_scan_passes.RENDERED_REF:
+                path = os.path.normpath(iac_scan_passes.normalize(ref, m.group(1)))
+                if path not in tracked_set and path not in tracked_dirs:
+                    log_unjudged.append((name, path))
+                    continue
             findings.append("проход «%s»: в журнале trivy ERROR — %s" % (name, line))
 
     # Проход вендоренных без предмета самоистекает, как всякое послабление: проход

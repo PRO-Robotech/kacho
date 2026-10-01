@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=59
+DENOM=60
 passed=0
 failed=0
 
@@ -534,6 +534,19 @@ for pair in \
   fi
   rm -rf -- "$work/cmp"
 done
+
+# ── AC. «НЕ СУДИМО» не получает отслеживаемое (п. 4) ──────────────────────────────
+# Каталог-чарт в каталоге вендоренных, чей рендер отказывает: trivy называет в журнале
+# КАТАЛОГ, а не файл индекса. Он отслеживается — строка ERROR обязана быть находкой.
+# Близнец — опыт AA: архив вне индекса назван несудимым.
+make_copy "$work/trackeddir" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+mkdir -p "$work/trackeddir/deploy/helm/vendor/reqdir/templates" || exit 2
+printf 'apiVersion: v2\nname: reqdir\nversion: 0.1.0\n' > "$work/trackeddir/deploy/helm/vendor/reqdir/Chart.yaml"
+printf 'apiVersion: v1\nkind: Secret\nmetadata: {name: reqdir}\nstringData: {p: {{ required "p обязателен" .Values.p | quote }}}\n' \
+  > "$work/trackeddir/deploy/helm/vendor/reqdir/templates/secret.yaml"
+git -C "$work/trackeddir" add -f -- deploy/helm/vendor/reqdir || exit 2
+expect "отслеживаемый каталог-чарт: ERROR рендера — находка, не «НЕ СУДИМО»" "$work/trackeddir" 1 \
+  "в журнале trivy ERROR"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
