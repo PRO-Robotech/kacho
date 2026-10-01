@@ -47,7 +47,7 @@ func identityProbeFateFactsFromTree(t *testing.T, root string, tt *trackedTree, 
 		if !tt.files[rel] {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- путь из индекса собственного дерева
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("%s в индексе есть, а не читается: %v — судить координату нечем", rel, err)
 		}

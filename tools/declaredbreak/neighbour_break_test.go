@@ -83,7 +83,7 @@ const (
 func siblingFindings(t *testing.T, name string) []Finding {
 	t.Helper()
 	p := filepath.Join("testdata", "neighbour", name+".jsonl")
-	f, err := os.Open(p) // #nosec G304 -- путь фикстуры задан пробой
+	f, err := os.Open(p)
 	if err != nil {
 		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: фикстура настоящего вывода buf %s не прочитана: %v", p, err)
 	}

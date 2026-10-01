@@ -88,7 +88,7 @@ func TestSymbolNamesTheSubjectInsideItsContainer(t *testing.T) {
 	seen := map[string]int{}
 	var findings int
 	for _, p := range files {
-		f, err := os.Open(p) // #nosec G304 -- путь из обхода testdata
+		f, err := os.Open(p)
 		if err != nil {
 			t.Fatalf("фикстура %s не открыта: %v", p, err)
 		}
