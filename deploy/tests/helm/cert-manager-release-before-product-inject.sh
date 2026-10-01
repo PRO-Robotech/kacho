@@ -6,9 +6,11 @@
 # проба cert-manager-release-before-product-test.sh СПОСОБНА покраснеть на
 # каждом дефекте порядка cert-manager, который ей поручен, и молчит на дереве.
 #
-# ОТКУДА ДЕФЕКТЫ. Все девять — опыты ревью полосы kacho#2840: каждый прошёл
-# прежнюю редакцию пробы с кодом 0 (10 из 10). Они записаны здесь, а не в
-# журнале полосы, затем чтобы слепота, однажды снятая, не вернулась молча.
+# ОТКУДА ДЕФЕКТЫ. Девять — опыты ревью полосы kacho#2840: каждый прошёл
+# прежнюю редакцию пробы с кодом 0 (10 из 10). Ещё два — полосы kacho#2931,
+# заведшей третий путь подъёма `own-up`: редакция пробы без А4 пропускала оба
+# кодом 0. Они записаны здесь, а не в журнале полосы, затем чтобы слепота,
+# однажды снятая, не вернулась молча.
 #
 # ИНЪЕКЦИЯ — НАСТОЯЩИМ ВХОДОМ. Мутант — копия Makefile дерева с ОДНОЙ подменой;
 # подмена обязана найтись в Makefile ровно один раз, иначе опыт не внесён и это
@@ -50,7 +52,14 @@ python3 - "$MAKEFILE" "$TMP" <<'PY' || { echo "ОТКАЗ: мутанты не �
 import os, sys
 src, out = sys.argv[1], sys.argv[2]
 text = open(src, encoding="utf-8").read()
-DEVUP_CALL = "\t$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \\\n"
+# Вызов цели в `dev-up` и в `own-up` (kacho#2931) записан одинаково, поэтому
+# якорь каждого берёт и СОСЕДНЮЮ строку своего рецепта: без неё подмена нашлась
+# бы дважды, и опыт не был бы внесён ни в один из них.
+KIND_CALL = ("\t$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \\\n"
+             "\t  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \\\n")
+DEVUP_CALL = KIND_CALL + '\techo "=== предусловные секреты'
+OWNUP_NEXT = "\t$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=own \\\n"
+OWNUP_CALL = KIND_CALL + OWNUP_NEXT
 STACKUP_CALL = ("\t$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \\\n"
                 "\t  EXPECT_CONTEXT=\"$$ctx\"; \\\n")
 MUTANTS = [
@@ -81,6 +90,14 @@ MUTANTS = [
   ("stackup-call-is-printf-argument", "А3",
    STACKUP_CALL,
    "\tprintf '%s\\n' \"$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE)\"; \\\n"),
+  # kacho#2931: третий путь подъёма. Оба опыта прошли редакцию пробы без А4
+  # кодом 0 — путь применял бы продукт без судьи порядка.
+  ("ownup-call-is-unquoted-echo", "А4",
+   OWNUP_CALL,
+   "\techo $(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho; \\\n" + OWNUP_NEXT),
+  ("ownup-product-before-call", "А4",
+   OWNUP_CALL,
+   "\thelm upgrade --install kacho-umbrella ./helm/umbrella -n kacho; \\\n" + OWNUP_CALL),
 ]
 with open(os.path.join(out, "index"), "w", encoding="utf-8") as idx:
     for name, label, a, b in MUTANTS:

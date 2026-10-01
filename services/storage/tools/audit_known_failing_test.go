@@ -20,6 +20,7 @@ package tools_regression
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -319,10 +320,50 @@ func TestAuditKnownFailing_RealTreeIsClean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit-known-failing must pass against the real suite: %v\n--- output ---\n%s", err, out)
 	}
-	if strings.Contains(out, "read 0 collection(s)") || strings.Contains(out, "0 case file(s)") {
+	if censusReadNothing(out) {
 		t.Fatalf("the gate passed having read nothing — that is not a pass\n--- output ---\n%s", out)
 	}
 	t.Log(strings.TrimSpace(out))
+}
+
+// censusLine — строка переписи гейта: числа прочитанных коллекций и модулей кейсов.
+var censusLine = regexp.MustCompile(`read (\d+) collection\(s\), (\d+) case file\(s\)`)
+
+// censusReadNothing — прочитал ли гейт НИЧЕГО, по его собственной строке переписи.
+// Судятся ЧИСЛА строки, а не подстроки; строки переписи нет — тоже «ничего не
+// прочитано»: гейт, не назвавший объём осмотренного, зелёным не считается.
+func censusReadNothing(out string) bool {
+	m := censusLine.FindStringSubmatch(out)
+	if m == nil {
+		return true
+	}
+	return m[1] == "0" || m[2] == "0"
+}
+
+// TestAuditKnownFailing_CensusReaderCountsNumbersNotSubstrings — чтение переписи
+// судит ЧИСЛА, а не подстроки. Перепись «10 case file(s)» содержит подстроку
+// «0 case file(s)», и проверка по подстроке объявила бы пустым обход, прочитавший
+// десять файлов: набор storage дорос до десяти модулей кейсов переносом
+// `label-revoke-storage` (#2912), и гейт настоящего дерева покраснел на законном
+// дереве. Инъекция в обе стороны: пустой обход по любой из двух осей и отсутствие
+// строки переписи — «ничего не прочитано»; непустой по обеим — нет.
+func TestAuditKnownFailing_CensusReaderCountsNumbersNotSubstrings(t *testing.T) {
+	for _, tc := range []struct {
+		out  string
+		want bool
+	}{
+		{"audit-known-failing: read 10 collection(s), 10 case file(s); 0 known-failing record(s)", false},
+		{"audit-known-failing: read 9 collection(s), 9 case file(s); 0 known-failing record(s)", false},
+		{"audit-known-failing: read 100 collection(s), 20 case file(s); 0 known-failing record(s)", false},
+		{"audit-known-failing: read 0 collection(s), 0 case file(s); 0 known-failing record(s)", true},
+		{"audit-known-failing: read 3 collection(s), 0 case file(s); 0 known-failing record(s)", true},
+		{"audit-known-failing: read 0 collection(s), 20 case file(s); 0 known-failing record(s)", true},
+		{"audit-known-failing: OK", true},
+	} {
+		if got := censusReadNothing(tc.out); got != tc.want {
+			t.Errorf("censusReadNothing(%q) = %v, want %v", tc.out, got, tc.want)
+		}
+	}
 }
 
 // clone copies a fixture map so a subtest can perturb one entry.

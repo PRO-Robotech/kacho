@@ -60,7 +60,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
-    kacho.cloud/job: geo-data-migration
+    {{- include "kacho-geo.dataMigration.selectorLabels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "5"
@@ -74,7 +74,7 @@ spec:
     metadata:
       labels:
         app: {{ .Values.name }}
-        kacho.cloud/job: geo-data-migration
+        {{- include "kacho-geo.dataMigration.selectorLabels" . | nindent 8 }}
     spec:
       restartPolicy: Never
       # INFRA sec-hardening r3 — restricted pod floor, mirroring the kacho-geo

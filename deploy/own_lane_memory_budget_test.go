@@ -585,10 +585,9 @@ func readLaneBudgetFacts(t *testing.T) []laneBudgetFacts {
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
-		f := laneBudgetFacts{Stack: name}
-		if p, ok := lookup(declared, "kaname", "config", "authn", "identityProvider"); ok {
-			f.Posture = fmt.Sprint(p)
-		}
+		// Посадка службы одна на каждом стенде (kanameLanding, kaname#363): ключа,
+		// который её называл бы, у подчарта больше нет.
+		f := laneBudgetFacts{Stack: name, Posture: kanameLanding}
 		cap, okCap := lookup(declared, "kaname", "config", "authn", "login", "verifierCapacity")
 		res, okRes := lookup(declared, "kaname", "config", "authn", "login", "memoryReserveBytes")
 		if okCap && okRes {

@@ -30,7 +30,8 @@
 вовсе. Оба субъекта — служебные учётки с токеном RS256.
 
 Читает /tmp/matrix.json (токен запуска + acctA), заводит ресурсы и выдачи и
-печатает на стандартный вывод ТОЛЬКО дополнительные фикстуры list-filter.
+печатает на стандартный вывод ТОЛЬКО дополнительные фикстуры: list-filter и
+истёкший предъявитель `apiTokenExpired` (`expired_bearer.py`).
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ import time
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import prodseed_matrix as pm  # noqa: E402  (reuse helpers: _curl,_await,make_sa,sa_token,etc.)
+import expired_bearer as eb  # noqa: E402
 
 MATRIX = json.loads(open("/tmp/matrix.json").read())
 # Mint a FRESH bootstrap token — the cached jwtBootstrap has a 1h TTL and may have
@@ -171,10 +173,24 @@ assert_subject_sees_subnet(tok_sv, lf_proj, lf_vis, must_see=True)
 assert_subject_sees_subnet(tok_sv, lf_proj, lf_hid, must_see=False)
 assert_subject_sees_subnet(tok_ng, lf_proj, lf_vis, must_see=False)
 
-print(json.dumps({
+out = {
     "listFilterProjectId": lf_proj,
     "subnetVisibleId": lf_vis,
     "subnetHiddenId": lf_hid,
     "jwtSubnetSubsetViewer": tok_sv,
     "jwtNoSubnetGrant": tok_ng,
-}))
+}
+
+# ── ИСТЁКШИЙ ПРЕДЪЯВИТЕЛЬ для `AUTHZ-APITOK-EXPIRED-GT-A1` (cases/authz-sa-apitoken.py) ──
+#
+# Условие создаётся выпуском и ожиданием по стенным часам (`expired_bearer.py`,
+# там же довод, почему не подделка). Не создано — ключ НЕ отдаётся окружению, и
+# кейс скажет «условие не создано» стражем своего субъекта; фикстуры list-filter
+# выше при этом не теряются: отказ одной фикстуры не вправе превратиться в
+# каскад отказов по чужим кейсам.
+try:
+    out["apiTokenExpired"] = eb.mint(pm, acctA)
+except eb.StageError as e:
+    eb.log(f"УСЛОВИЕ НЕ СОЗДАНО {e} — apiTokenExpired окружению не отдан")
+
+print(json.dumps(out))
