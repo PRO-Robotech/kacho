@@ -165,7 +165,7 @@ gRPC server-reflection **нет собственной ручки** — пере
     KACHO_API_GATEWAY_TLS_CERT_FILE: /tls/tls.crt
     KACHO_API_GATEWAY_TLS_KEY_FILE: /tls/tls.key
 
-    # AuthN — production: два объявленных издателя + DPoP
+    # AuthN — production: издатель платформы + DPoP
     KACHO_API_GATEWAY_AUTHN_MODE: production-strict
     # Посадка личности: чем стенд проверяет ЧЕЛОВЕКА — внешним поставщиком
     # удостоверений (external) или собственной чеканкой платформы (own).
@@ -173,20 +173,19 @@ gRPC server-reflection **нет собственной ручки** — пере
     # На крае поле разводит одно требование: под own обязателен НАШ авторитет
     # отзыва (KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL) вместе с якорем
     # доверия и КЛИЕНТСКОЙ ПАРОЙ: авторитет спрашивает сертификат, и хопу без
-    # пары он откажет на каждом запросе. Адресов внешнего поставщика край не
-    # читает ни на одной посадке: об отзыве токена другого принятого издателя
-    # отвечает наша запись отзыва на внутреннем слушателе службы доступа.
+    # пары он откажет на каждом запросе. Об отзыве токена другого принятого
+    # издателя отвечает наша запись отзыва на внутреннем слушателе службы доступа.
     # Читать отзыв обязана ЛЮБАЯ полоса: отзыв, действующий на выдаче и не
     # действующий на предъявлении, отзывом не является. Значение обязано
     # СОВПАДАТЬ с тем, что объявила служба прав, — половины одного стенда не
     # решают о личности по-разному.
     KACHO_API_GATEWAY_IDENTITY_PROVIDER: external
     KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP: "true"
-    # Издатель — МНОЖЕСТВО: платформа чеканит свои токены сама, прежний издатель
-    # на переходе остаётся, и у каждого СВОЯ запись источника ключей. Один набор
-    # на двоих означал бы, что ключ одного проверяет токен другого.
-    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://kaname.kacho.local,https://auth.kacho.cloud"
-    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://auth.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    # Издатель — платформа: она чеканит свои токены сама. У каждого
+    # принимаемого издателя СВОЯ запись источника ключей: общий набор означал
+    # бы, что ключ одного издателя проверяет токен другого.
+    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://kaname.kacho.local"
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
     KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://kaname.kacho.local"
     KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Перечень ОБЯЗАТЕЛЕН: не объявленный, он даёт отказ в старте — издателя
