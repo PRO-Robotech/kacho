@@ -25,12 +25,16 @@ func syntheticEdgeRendered(rules string) string {
 const syntheticEdgeRuleGood = "        - alert: SampleStuck\n" +
 	"          expr: kacho_api_gateway_sample_total > 1\n" +
 	"          for: 5m\n" +
+	"          labels:\n" +
+	"            severity: warning\n" +
 	"          annotations:\n" +
 	"            summary: \"проба\"\n"
 
 const syntheticEdgePage = "текст\n```yaml\n- alert: SampleStuck\n" +
 	"  expr: kacho_api_gateway_sample_total > 1\n" +
 	"  for: 5m\n" +
+	"  labels:\n" +
+	"    severity: warning\n" +
 	"  annotations:\n" +
 	"    summary: \"проба\"\n```\n"
 
@@ -90,6 +94,18 @@ func TestEdgeAlertRulesInjection_SummaryDriftIsAFinding(t *testing.T) {
 	}
 }
 
+// TestEdgeAlertRulesInjection_SeverityDriftIsAFinding — уровень тоже часть
+// правила: warning на странице и critical у объекта будит не того дежурного.
+func TestEdgeAlertRulesInjection_SeverityDriftIsAFinding(t *testing.T) {
+	drifted := strings.Replace(syntheticEdgeRuleGood, "severity: warning", "severity: critical", 1)
+	if drifted == syntheticEdgeRuleGood {
+		t.Fatal("инъекция не применилась")
+	}
+	if len(judgeSynthetic(t, drifted)) == 0 {
+		t.Fatal("разошедшийся уровень правила прошёл молча")
+	}
+}
+
 // TestEdgeAlertRulesInjection_IndentationIsNotDrift — законный близнец.
 func TestEdgeAlertRulesInjection_IndentationIsNotDrift(t *testing.T) {
 	wrapped := "        - alert: SampleStuck\n" +
@@ -97,6 +113,8 @@ func TestEdgeAlertRulesInjection_IndentationIsNotDrift(t *testing.T) {
 		"            kacho_api_gateway_sample_total\n" +
 		"              > 1\n" +
 		"          for: 5m\n" +
+		"          labels:\n" +
+		"            severity: warning\n" +
 		"          annotations:\n" +
 		"            summary: \"проба\"\n"
 	if f := judgeSynthetic(t, wrapped); len(f) != 0 {
@@ -136,8 +154,7 @@ func TestEdgeAlertRulesInjection_TheRealChartSwitchedOffDeliversNothing(t *testi
 	if len(page) == 0 {
 		t.Fatal("инъекция беспредметна: страница не несёт правил")
 	}
-	off, err := renderEdgeChain(t, edgeAlertChain{name: "chart"},
-		map[string]any{"alertRules": map[string]any{"enabled": false, "disabledBecause": "инъекция"}})
+	off, err := renderEdgeChain(t, edgeAlertChain{name: "chart"}, alertSwitch(false, "инъекция"))
 	if err != nil {
 		t.Fatalf("рендер выключенного чарта: %v\n%s", err, off)
 	}
@@ -152,7 +169,7 @@ func TestEdgeAlertRulesInjection_TheRealChartSwitchedOffDeliversNothing(t *testi
 		t.Fatalf("сверка не назвала все обещанные правила недоставленными (%d из %d) — она вакуумна",
 			len(onlyPage), len(page))
 	}
-	if !strings.Contains(strings.Join(onlyPage, ","), "KachoApiGatewayAnonMailSaturated") {
+	if !strings.Contains(strings.Join(onlyPage, ","), "AnonMailBucketSaturation") {
 		t.Fatalf("среди недоставленных не названо правило насыщения (Д66): %v", onlyPage)
 	}
 }

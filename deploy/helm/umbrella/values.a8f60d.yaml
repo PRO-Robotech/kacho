@@ -115,6 +115,12 @@ ingress-nginx:
 # предела процессора pg-iam ниже.
 global:
   kacho:
+    # Слой под этим (values.dev.yaml) выключает правила тревоги причиной
+    # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на кластере
+    # a8f60d НЕ измерен. Включать — после замера на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере a8f60d не измерено"
     identity:
       smtp:
         connectionURI: "smtps://info%40prorobotech.ru@smtp.yandex.ru:465/"
@@ -402,12 +408,6 @@ registry:
       persistence: false
     resources: *id002
 api-gateway:
-  # Слой под этим (values.dev.yaml) выключает правила тревоги края причиной
-  # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на кластере
-  # a8f60d НЕ измерен. Включать — после замера на площадке.
-  alertRules:
-    enabled: false
-    disabledBecause: "наличие CRD PrometheusRule на кластере a8f60d не измерено"
   resources: *id002
   image: docker.io/prorobotech/kacho-api-gateway:main-275240ef
 kaname:

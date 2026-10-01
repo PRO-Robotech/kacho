@@ -427,6 +427,7 @@ type stubStore struct{ v Verdict }
 
 func (s stubStore) Decide(context.Context, Request) Verdict { return s.v }
 func (s stubStore) Close() error                            { return nil }
+func (s stubStore) observation() Observation                { return Observation{} }
 
 // TestGate_CX2_28_StoreUnavailableIs503AndTheLaneIsNotCalled — модульная проба
 // (CX2-28): хранилище недоступно → 503, code 14, текст `request limiter is

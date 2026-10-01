@@ -58,6 +58,17 @@ type Stats struct {
 	// ведра общего потока за предел ожидания (Verdict.BucketWaitTimeout, Д66):
 	// `kacho_api_gateway_anon_mail_bucket_wait_timeouts_total`.
 	BucketWaitTimeouts uint64
+	// BucketHold — сумма времени, пока решения процесса держали строку ведра
+	// общего потока (Observation.BucketHold): опережающая серия насыщения
+	// `kacho_api_gateway_anon_mail_bucket_hold_seconds_total` (Д66) — растёт
+	// раньше, чем появляются отказы.
+	BucketHold time.Duration
+	// ClockOffset и ClockOffsetMeasured — смещение часов звена от часов базы в
+	// последнем измерившем его решении
+	// (`kacho_api_gateway_anon_mail_clock_offset_seconds`; ревью system-design
+	// I-2). Не измерено — серии нет.
+	ClockOffset         time.Duration
+	ClockOffsetMeasured bool
 }
 
 // Gate — звено-ограничитель.
@@ -86,9 +97,16 @@ func NewGate(cfg GateConfig) (*Gate, error) {
 	return &Gate{cfg: cfg}, nil
 }
 
-// Stats — снимок величин звена.
+// Stats — снимок величин звена и его хранилища.
 func (g *Gate) Stats() Stats {
-	return Stats{StoreUnavailable: g.unavailable.Load(), BucketWaitTimeouts: g.bucketWaitTimeouts.Load()}
+	o := g.cfg.Store.observation()
+	return Stats{
+		StoreUnavailable:    g.unavailable.Load(),
+		BucketWaitTimeouts:  g.bucketWaitTimeouts.Load(),
+		BucketHold:          o.BucketHold,
+		ClockOffset:         o.ClockOffset,
+		ClockOffsetMeasured: o.ClockOffsetMeasured,
+	}
 }
 
 // Wrap ставит звено перед next (ретрансляцией полосы формы).

@@ -12,22 +12,57 @@ import (
 	"time"
 )
 
-// TestMemoryStore_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh —
+// stallCountsBackend — хранилище memory, у которого шаг счёта ключа, идущий за
+// пометкой вызова, отказывает ожиданием сверх предела, пока stall поднят.
+// Остальные шаги — настоящие шаги memory.
+type stallCountsBackend struct {
+	*memBackend
+	stall atomic.Bool
+}
+
+func (b *stallCountsBackend) begin(ctx context.Context) (decisionTx, error) {
+	tx, err := b.memBackend.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stallCountsTx{memTx: tx.(*memTx), b: b}, nil
+}
+
+type stallCountsTx struct {
+	*memTx
+	b *stallCountsBackend
+}
+
+func (x *stallCountsTx) counts(ctx context.Context, key string, now time.Time, w []time.Duration) ([]int, error) {
+	if x.b.stall.Load() {
+		return nil, errMemWait
+	}
+	return x.memTx.counts(ctx, key, now, w)
+}
+
+// TestMemoryStore_CX2_43_MarkWrittenThenAStepTimesOutIs503AndRepeatIsFresh —
 // одноразовость, решение и момент — одна неделимая операция (CX2-43; Р5 «503
 // не истрачивает вызов»): верное свежее доказательство, пометка записана, затем
-// ведро не получено в срок (удержано соседом дольше anonMailStoreWait) → 503;
-// повтор того же решения после освобождения ведра → Fresh и пропуск.
+// следующий шаг решения (счёт ключа) не получен в срок → 503; повтор того же
+// решения после освобождения → Fresh и пропуск.
+//
+// Шаг после пометки — счёт, а не ведро: решению со свежим доказательством
+// ведро не нужно и не берётся (ревью system-design I-1, решение Д71).
 //
 // Близнец-инъекция меняет один факт — пометка вынесена в отдельную
 // зафиксированную запись до решения: повтор → Replayed и новый вызов.
-func TestMemoryStore_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t *testing.T) {
+func TestMemoryStore_CX2_43_MarkWrittenThenAStepTimesOutIs503AndRepeatIsFresh(t *testing.T) {
 	// Пробу исполняет одна функция; инъекция меняет ровно один факт, и её
 	// утверждение обязано разойтись с утверждением продукта — так проба
 	// доказывает, что способна упасть.
 	run := func(t *testing.T, markApart bool) (held, again int) {
 		l := testLimits()
-		var mem *MemoryStore
-		r := newRig(t, l, func(c *testClock) Store { mem = mustMemoryStore(t, l, c.Now); return mem }, 0)
+		var sb *stallCountsBackend
+		r := newRig(t, l, func(c *testClock) Store {
+			mem := mustMemoryStore(t, l, c.Now)
+			sb = &stallCountsBackend{memBackend: mem.memBackend}
+			return newStore(sb, l, discardLogger())
+		}, 0)
 		src := "198.51.100.40"
 		for i := 0; i < l.Source.Free; i++ {
 			r.send(pathRecovery, src, "", "")
@@ -39,18 +74,17 @@ func TestMemoryStore_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t 
 			if err != nil {
 				t.Fatal(err)
 			}
-			mem.markCommitted(p.ID, p.ExpiresAt)
+			sb.markCommitted(p.ID, p.ExpiresAt)
 		}
-		// Ведро удержано соседом дольше предела ожидания.
-		mem.bucketLock <- struct{}{}
+		sb.stall.Store(true)
 		h := r.send(pathRecovery, src, proof, "")
-		<-mem.bucketLock
+		sb.stall.Store(false)
 		a := r.send(pathRecovery, src, proof, "")
 		return h.Code, a.Code
 	}
 	held, again := run(t, false)
 	if held != http.StatusServiceUnavailable {
-		t.Fatalf("ведро удержано: %d, ожидался 503", held)
+		t.Fatalf("счёт не получен: %d, ожидался 503", held)
 	}
 	if again != http.StatusOK {
 		t.Fatalf("повтор того же решения: %d — 503 истратил вызов", again)
@@ -123,6 +157,7 @@ func (x *blockingTx) recordPass(context.Context, Keys, time.Time, *Proof, *bucke
 }
 func (x *blockingTx) commit(context.Context) Outcome { return StoreUnavailable }
 func (x *blockingTx) rollback(context.Context)       {}
+func (x *blockingTx) observed() txObservation        { return txObservation{} }
 
 // TestStore_DecisionBudgetEndsInStoreUnavailable — модульная проба срока
 // решения (К1 ревью замысла; УК54): заглушка хранилища держит оператор дольше

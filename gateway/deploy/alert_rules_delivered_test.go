@@ -70,15 +70,17 @@ type edgeAlertRule struct {
 	Alert       string            `yaml:"alert"`
 	Expr        string            `yaml:"expr"`
 	For         string            `yaml:"for"`
+	Labels      map[string]string `yaml:"labels"`
 	Annotations map[string]string `yaml:"annotations"`
 }
 
-// key — предмет сверки. Выражение нормализуется по пробелам: отступ блочного
-// скаляра у страницы и у объекта разный by construction, а различие ТЕКСТА
-// остаётся видимым.
+// key — предмет сверки: имя, выражение, выдержка, уровень, текст для
+// дежурного. Выражение нормализуется по пробелам: отступ блочного скаляра у
+// страницы и у объекта разный by construction, а различие ТЕКСТА остаётся
+// видимым.
 func (r edgeAlertRule) key() string {
 	return r.Alert + "\x00" + strings.Join(strings.Fields(r.Expr), " ") +
-		"\x00" + r.For + "\x00" + r.Annotations["summary"]
+		"\x00" + r.For + "\x00" + r.Labels["severity"] + "\x00" + r.Annotations["summary"]
 }
 
 func parseEdgeAlertRules(text string) ([]edgeAlertRule, error) {
@@ -216,18 +218,35 @@ func edgeLayers(t *testing.T, c edgeAlertChain) []map[string]any {
 	return out
 }
 
-// edgeAlertSwitch — положение выключателя на цепочке: умолчание чарта,
-// затем слои по порядку.
+// edgeAlertSwitch — положение выключателя `global.kacho.alertRules` на
+// цепочке (CX2-92 (а)): умолчание чарта, затем слои по порядку.
 func edgeAlertSwitch(t *testing.T, c edgeAlertChain) (enabled bool, reason string) {
 	t.Helper()
 	merged := mergeInto(map[string]any{}, gatewayChartValues(t))
 	for _, l := range edgeLayers(t, c) {
 		merged = mergeInto(merged, l)
 	}
-	ar, _ := merged["alertRules"].(map[string]any)
+	ar := alertRulesOf(merged)
 	enabled, _ = ar["enabled"].(bool)
 	reason, _ = ar["disabledBecause"].(string)
 	return enabled, reason
+}
+
+// alertRulesOf — узел `global.kacho.alertRules` дерева значений; nil — узла нет.
+func alertRulesOf(v map[string]any) map[string]any {
+	g, _ := v["global"].(map[string]any)
+	k, _ := g["kacho"].(map[string]any)
+	ar, _ := k["alertRules"].(map[string]any)
+	return ar
+}
+
+// alertSwitch — слой значений, ставящий выключатель `global.kacho.alertRules`.
+func alertSwitch(enabled bool, reason string) map[string]any {
+	ar := map[string]any{"enabled": enabled}
+	if reason != "" {
+		ar["disabledBecause"] = reason
+	}
+	return map[string]any{"global": map[string]any{"kacho": map[string]any{"alertRules": ar}}}
 }
 
 // renderEdgeChain рендерит чарт края слоями цепочки и extra поверх. Ошибка
@@ -334,10 +353,9 @@ func TestEdgeAlertRules_EveryChainRendersWithTheSwitchEitherWay(t *testing.T) {
 	chains := edgeAlertChains(t)
 	for _, c := range chains {
 		enabled, _ := edgeAlertSwitch(t, c)
-		flip := map[string]any{"alertRules": map[string]any{"enabled": true}}
+		flip := alertSwitch(true, "")
 		if enabled {
-			flip = map[string]any{"alertRules": map[string]any{
-				"enabled": false, "disabledBecause": "проба выключателя"}}
+			flip = alertSwitch(false, "проба выключателя")
 		}
 		rendered, err := renderEdgeChain(t, c, flip)
 		if err != nil {
@@ -358,15 +376,14 @@ func TestEdgeAlertRules_EveryChainRendersWithTheSwitchEitherWay(t *testing.T) {
 // TestEdgeAlertRules_DisabledWithoutReasonIsRefused — Р3 и законный близнец.
 func TestEdgeAlertRules_DisabledWithoutReasonIsRefused(t *testing.T) {
 	chart := edgeAlertChain{name: "chart"}
-	out, err := renderEdgeChain(t, chart, map[string]any{"alertRules": map[string]any{"enabled": false}})
+	out, err := renderEdgeChain(t, chart, alertSwitch(false, ""))
 	if err == nil {
 		t.Fatalf("выключение без причины отрендерилось — молчащая тревога неотличима от «забыли»:\n%s", out)
 	}
-	if !strings.Contains(out, "alertRules.disabledBecause") {
+	if !strings.Contains(out, "global.kacho.alertRules.disabledBecause") {
 		t.Fatalf("отказ рендера не называет ручку причины:\n%s", out)
 	}
-	twin, err := renderEdgeChain(t, chart, map[string]any{"alertRules": map[string]any{
-		"enabled": false, "disabledBecause": "оператора нет"}})
+	twin, err := renderEdgeChain(t, chart, alertSwitch(false, "оператора нет"))
 	if err != nil {
 		t.Fatalf("законный близнец (выключено с причиной) отвергнут: %v\n%s", err, twin)
 	}
@@ -446,5 +463,92 @@ func TestEdgeAlertRules_EveryRuleNamesASeriesTheEdgeProduces(t *testing.T) {
 	if len(missing) > 0 {
 		t.Fatalf("правила называют ряды, которых край не производит: %s — такое правило не звонит никогда",
 			strings.Join(missing, ", "))
+	}
+}
+
+// TestEdgeAlertRules_SwitchLivesUnderGlobalOnly — выключатель один на дерево
+// kacho, под `global` (CX2-92 (а)): его читает и чарт края в зонтике, и без
+// него, и подчарт kaname зонтика. Ручка `alertRules` в корне значений чарта
+// края — второй адрес того же решения: значение, поставленное по старому
+// адресу, молча не действовало бы. Утверждается на значениях чарта и каждого
+// профиля зонтика (поддерево края).
+func TestEdgeAlertRules_SwitchLivesUnderGlobalOnly(t *testing.T) {
+	chart := gatewayChartValues(t)
+	if _, ok := chart["alertRules"]; ok {
+		t.Errorf("значения чарта края несут корневую ручку alertRules — адрес выключателя global.kacho.alertRules")
+	}
+	if ar := alertRulesOf(chart); ar == nil || ar["enabled"] != true {
+		t.Errorf("значения чарта края: global.kacho.alertRules.enabled — %v, ожидалось true (умолчание поставки)", ar)
+	}
+	profiles := 0
+	for _, c := range edgeAlertChains(t) {
+		for _, profile := range c.chain {
+			profiles++
+			if sub, ok := umbrellaValues(t, profile)["api-gateway"].(map[string]any); ok {
+				if _, bad := sub["alertRules"]; bad {
+					t.Errorf("[%s] профиль %s ставит api-gateway.alertRules — адрес выключателя global.kacho.alertRules", c.name, profile)
+				}
+			}
+		}
+	}
+	t.Logf("ПЕРЕПИСЬ: профилей в цепочках осмотрено %d", profiles)
+	if profiles == 0 {
+		t.Fatal("обход профилей пуст")
+	}
+}
+
+// edgeRuleBySeries — правила страницы, чьё выражение ведёт серия series
+// (первая названная в нём): правило «503 не по насыщению» называет серию
+// ожиданий ведра вычитаемым, и она его предметом не является.
+func edgeRuleBySeries(rules []edgeAlertRule, series string) []edgeAlertRule {
+	var out []edgeAlertRule
+	for _, r := range rules {
+		if named := edgeSeriesRe.FindAllString(r.Expr, -1); len(named) > 0 && named[0] == series {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// TestEdgeAlertRules_D66_LeadingWarningAndCriticalExhaustion — набор правил
+// звена анонимной почты (Д66, Д69; ревью system-design CRIT-1, решение Д71):
+//
+//   - ОПЕРЕЖАЮЩЕЕ правило уровня warning — по серии удержания строки ведра
+//     (доля занятости, `rate(..._bucket_hold_seconds_total)`): звонит ДО первых
+//     503, пока запас есть;
+//   - правило уровня critical — по серии ожиданий ведра (503 по насыщению уже
+//     отданы);
+//   - правило смещения часов реплики от часов базы — warning;
+//   - у каждого правила уровень из закрытого набора {warning, critical}.
+//
+// Утверждается на опубликованной странице; объект с ней сверяет Р1.
+func TestEdgeAlertRules_D66_LeadingWarningAndCriticalExhaustion(t *testing.T) {
+	page := edgePageRules(t)
+	for _, r := range page {
+		if sev := r.Labels["severity"]; sev != "warning" && sev != "critical" {
+			t.Errorf("правило %s: уровень %q вне набора {warning, critical}", r.Alert, sev)
+		}
+	}
+	want := []struct {
+		series, severity, fn string
+	}{
+		{"kacho_api_gateway_anon_mail_bucket_hold_seconds_total", "warning", "rate("},
+		{"kacho_api_gateway_anon_mail_bucket_wait_timeouts_total", "critical", "rate("},
+		{"kacho_api_gateway_anon_mail_clock_offset_seconds", "warning", "abs("},
+	}
+	for _, w := range want {
+		rules := edgeRuleBySeries(page, w.series)
+		if len(rules) != 1 {
+			t.Errorf("правил по серии %s — %d, ожидалось одно", w.series, len(rules))
+			continue
+		}
+		r := rules[0]
+		if r.Labels["severity"] != w.severity {
+			t.Errorf("правило %s по %s: уровень %q, ожидался %s", r.Alert, w.series, r.Labels["severity"], w.severity)
+		}
+		if !strings.Contains(r.Expr, w.fn) {
+			t.Errorf("правило %s: выражение %q не несёт %s", r.Alert, r.Expr, w.fn)
+		}
+		t.Logf("правило %s · уровень %s · выдержка %s · %s", r.Alert, r.Labels["severity"], r.For, r.Expr)
 	}
 }

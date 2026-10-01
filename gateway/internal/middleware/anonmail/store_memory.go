@@ -52,6 +52,7 @@ func NewMemoryStore(l config.AnonMailLimits, now func() time.Time, log *slog.Log
 		stop:       make(chan struct{}),
 		stopped:    make(chan struct{}),
 		tokens:     float64(l.Global.Burst),
+		mono:       time.Now,
 	}
 	for i := range b.stripes {
 		b.stripes[i] = make(chan struct{}, 1)
@@ -86,6 +87,9 @@ type memBackend struct {
 	closeOnce sync.Once
 	stop      chan struct{}
 	stopped   chan struct{}
+
+	// mono — часы удержания ведра (time.Now: разность по монотонным часам).
+	mono func() time.Time
 }
 
 func (b *memBackend) begin(context.Context) (decisionTx, error) { return &memTx{b: b}, nil }
@@ -183,7 +187,13 @@ type memTx struct {
 	passAt    time.Time
 	passWrite bool
 	bw        *bucketWrite
+
+	// bucketTaken — когда решение получило ведро; obs — измерения решения.
+	bucketTaken time.Time
+	obs         txObservation
 }
+
+func (x *memTx) observed() txObservation { return x.obs }
 
 func (x *memTx) lock(ctx context.Context, pairs []lockPair) error {
 	idx := make([]int, 0, len(pairs))
@@ -248,6 +258,7 @@ func (x *memTx) bucket(ctx context.Context) (float64, time.Time, error) {
 		return 0, time.Time{}, err
 	}
 	x.holdsBucket = true
+	x.bucketTaken = x.b.mono()
 	return x.b.tokens, x.b.bucketAt, nil
 }
 
@@ -325,6 +336,7 @@ func (x *memTx) rollback(context.Context) {
 
 func (x *memTx) release() {
 	if x.holdsBucket {
+		x.obs.bucketHold = x.b.mono().Sub(x.bucketTaken)
 		<-x.b.bucketLock
 		x.holdsBucket = false
 	}

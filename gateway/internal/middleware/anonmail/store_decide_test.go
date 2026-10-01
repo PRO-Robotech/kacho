@@ -74,6 +74,7 @@ func (x *faultTx) recordPass(context.Context, Keys, time.Time, *Proof, *bucketWr
 	return x.b.at(stepRecordPass)
 }
 func (x *faultTx) commit(context.Context) Outcome { return Pass }
+func (x *faultTx) observed() txObservation        { return txObservation{} }
 func (x *faultTx) rollback(ctx context.Context) {
 	x.b.mu.Lock()
 	x.b.rollbackOn = ctx

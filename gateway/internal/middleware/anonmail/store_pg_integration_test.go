@@ -232,12 +232,18 @@ func TestPg_NTF2_59_StoreDownEveryRequestIs503AndTheProofIsNotSpent(t *testing.T
 	t.Run("близнец: хранилище исправно", func(t *testing.T) { run(t, false) })
 }
 
-// TestPg_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh — CX2-43 на
-// postgres: пометка вставлена, строку ведра держит соседняя транзакция пробы
-// дольше anonMailStoreWait → 503; после освобождения повтор того же решения →
-// Fresh и пропуск. Близнец-инъекция: пометка вынесена в отдельную
-// зафиксированную транзакцию до решения → повтор Replayed и новый вызов.
-func TestPg_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t *testing.T) {
+// TestPg_CX2_43_MarkWrittenThenAStepTimesOutIs503AndRepeatIsFresh — CX2-43 на
+// postgres: пометка вставлена, следующий за ней оператор решения (счёт ключа)
+// не получает таблицу моментов — её держит соседняя транзакция пробы дольше
+// anonMailStoreWait → 503; после освобождения повтор того же решения → Fresh и
+// пропуск. Близнец-инъекция: пометка вынесена в отдельную зафиксированную
+// транзакцию до решения → повтор Replayed и новый вызов.
+//
+// Шаг после пометки — счёт, а не строка ведра: решению со свежим
+// доказательством строка ведра не нужна и не берётся (ревью system-design
+// I-1, решение Д71), а неделимость пометки с решением от шага, на котором
+// решение оборвалось, не зависит.
+func TestPg_CX2_43_MarkWrittenThenAStepTimesOutIs503AndRepeatIsFresh(t *testing.T) {
 	run := func(t *testing.T, markApart bool) (int, int) {
 		dsn := edgeDB(t)
 		l := testLimits()
@@ -267,14 +273,14 @@ func TestPg_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tx.Exec(context.Background(), `SELECT 1 FROM kacho_gateway.anon_mail_bucket WHERE id = 1 FOR UPDATE`); err != nil {
+		if _, err := tx.Exec(context.Background(), `LOCK TABLE kacho_gateway.anon_mail_passes IN ACCESS EXCLUSIVE MODE`); err != nil {
 			t.Fatal(err)
 		}
 		held := r.send(pathRecovery, src, proof, "")
-		// CX2-93 (а): строка ведра не взята за lock_timeout — ожидание ведра:
-		// растут оба счётчика.
-		if s := r.gate.Stats(); s.BucketWaitTimeouts != 1 || s.StoreUnavailable != 1 {
-			t.Errorf("строка ведра удержана: счётчики %+v, ожидалось 1 и 1", s)
+		// CX2-93 (а): не получена таблица моментов, а не строка ведра — растёт
+		// только счётчик недоступности.
+		if s := r.gate.Stats(); s.BucketWaitTimeouts != 0 || s.StoreUnavailable != 1 {
+			t.Errorf("таблица моментов удержана: счётчики %+v, ожидалось 0 ожиданий ведра и 1 недоступность", s)
 		}
 		_ = tx.Rollback(context.Background())
 		again := r.send(pathRecovery, src, proof, "")

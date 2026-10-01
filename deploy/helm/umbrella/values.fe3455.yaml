@@ -106,14 +106,17 @@ kacho-geo:
   # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-geo:main-b622b388
   imagePullPolicy: IfNotPresent
+global:
+  kacho:
+    # Правила тревоги выключены (выключатель один на дерево kacho — CX2-92
+    # (а)): есть ли на кластере CRD PrometheusRule, НЕ измерено (доступа с
+    # машины разработки нет). Включённый объект на кластере без CRD отверг бы
+    # всю установку. Включать — после замера
+    # `kubectl get crd prometheusrules.monitoring.coreos.com` на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере fe3455 не измерено"
 api-gateway:
-  # Правила тревоги края выключены: есть ли на кластере CRD PrometheusRule, НЕ
-  # измерено (доступа с машины разработки нет). Включённый объект на кластере
-  # без CRD отверг бы всю установку. Включать — после замера
-  # `kubectl get crd prometheusrules.monitoring.coreos.com` на площадке.
-  alertRules:
-    enabled: false
-    disabledBecause: "наличие CRD PrometheusRule на кластере fe3455 не измерено"
   # FORWARD ROLL: main-c7dce40d (RG-1 #145 — 6 Repository RPCs + 418-catalog). Kept in
   # sync with the authoritative override in values.fe3455-prod.yaml (which layers AFTER
   # this file) so this pin is not a stale landmine. See that file for the full rationale.

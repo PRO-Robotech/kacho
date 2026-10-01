@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -46,11 +47,36 @@ type Verdict struct {
 }
 
 // Store — хранилище решения звена. Decide — одна неделимая операция:
-// блокировки ключей → пометка вызова → ведро → лестница → момент пропуска;
-// записанное фиксируется только при Pass.
+// блокировки ключей → пометка вызова → счёт → лестница → ведро (только на
+// пути жетона) → момент пропуска; записанное фиксируется только при Pass.
 type Store interface {
 	Decide(ctx context.Context, r Request) Verdict
+	// observation — накопленные хранилищем величины (снимок; в хранилище не
+	// ходит). Метод не экспортирован: хранилищ ровно два, оба в этом пакете, и
+	// читатель величин один — Gate.Stats, чей снимок уходит в метрики края
+	// (читателя держит гейт TestDeclaredAccumulatorsHaveANonTestReader на
+	// Gate.Stats).
+	observation() Observation
 	Close() error
+}
+
+// Observation — величины, которые хранилище измеряет о своих решениях.
+type Observation struct {
+	// BucketHold — сумма времени, пока решения этого процесса держали строку
+	// ведра общего потока: от получения строки до конца её транзакции
+	// (COMMIT/ROLLBACK; у memory — до отпускания ведра). Строка одна на
+	// установку, поэтому скорость роста суммы по флоту — доля времени, когда
+	// строка занята (насыщение Д66, 0…1).
+	BucketHold time.Duration
+	// ClockOffset — смещение часов звена от часов базы в последнем решении,
+	// измерившем его: момент решения минус clock_timestamp() базы. Плюс —
+	// реплика впереди базы (пишет моменты в будущее), минус — позади либо
+	// ожидание внутри решения: момент решения берётся до захвата соединения и
+	// блокировок, поэтому измерение смещено вниз не больше чем на срок решения.
+	ClockOffset time.Duration
+	// ClockOffsetMeasured — смещение измерено хотя бы одним решением. У memory
+	// часов базы нет — смещение не измеряется никогда.
+	ClockOffsetMeasured bool
 }
 
 // bucketWrite — новое состояние ведра общего потока, когда решение взяло
@@ -61,15 +87,17 @@ type bucketWrite struct {
 }
 
 // decisionTx — одна транзакция решения в хранилище. Порядок вызовов задаёт
-// store.Decide и только он: блокировки ключей → пометка → ведро (последней) →
-// счёт → запись пропуска → фиксация. Ошибка любого шага до фиксации — отказ
+// store.Decide и только он: блокировки ключей → пометка → счёт → ведро
+// (последней блокировкой и только на пути жетона) → запись пропуска →
+// фиксация. Ошибка любого шага до фиксации — отказ
 // хранилища (StoreUnavailable) с откатом всего записанного.
 type decisionTx interface {
 	// lock берёт блокировки ключей в переданном (отсортированном) порядке.
 	lock(ctx context.Context, pairs []lockPair) error
 	// markSpent помечает вызов использованным; false — уже истрачен.
 	markSpent(ctx context.Context, p Proof) (fresh bool, err error)
-	// bucket берёт ведро общего потока — последней блокировкой решения.
+	// bucket берёт ведро общего потока — последней блокировкой решения и
+	// только когда исход от ведра зависит (decideWithoutBucket).
 	bucket(ctx context.Context) (tokens float64, at time.Time, err error)
 	// counts — счёт ключа в окнах (now − w, +∞) по каждому окну. Сверху окно
 	// не закрыто (SEC-E2-1): момент решения берётся до сериализации по ключу,
@@ -87,6 +115,18 @@ type decisionTx interface {
 	// rollback откатывает всё записанное; безопасен после commit. ctx —
 	// контекст запроса без отмены.
 	rollback(ctx context.Context)
+	// observed — что транзакция измерила о себе; читается после commit либо
+	// rollback.
+	observed() txObservation
+}
+
+// txObservation — измерения одной транзакции решения.
+type txObservation struct {
+	// bucketHold — сколько транзакция держала строку ведра; 0 — не брала.
+	bucketHold time.Duration
+	// baseClock — clock_timestamp() базы, прочитанный транзакцией; нулевое —
+	// не читался (у memory часов базы нет).
+	baseClock time.Time
 }
 
 // backend — хранилище, открывающее транзакции решения.
@@ -107,6 +147,12 @@ type store struct {
 	log    *slog.Logger
 	// fold — свёртка ключа в пару рекомендательной блокировки.
 	fold func(string) lockPair
+
+	// holdNanos — сумма удержаний строки ведра (Observation.BucketHold).
+	holdNanos atomic.Int64
+	// offsetNanos и offsetMeasured — последнее измеренное смещение часов.
+	offsetNanos    atomic.Int64
+	offsetMeasured atomic.Bool
 }
 
 func newStore(b backend, l config.AnonMailLimits, log *slog.Logger) *store {
@@ -211,6 +257,9 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 			// решения или ушедший клиент откат не обрывают (его предел — свой).
 			tx.rollback(context.WithoutCancel(ctx))
 		}
+		// Транзакция кончена (фиксацией либо откатом): удержание строки
+		// ведра известно целиком.
+		s.observe(r, tx.observed())
 	}()
 	if err := tx.lock(dctx, sortedLockPairs(r.Keys.All(), s.fold)); err != nil {
 		return s.fail(ctx, stepLock, err)
@@ -230,10 +279,6 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 	case r.ProofRejected:
 		state = proofRejected
 	}
-	tokens, at, err := tx.bucket(dctx)
-	if err != nil {
-		return s.fail(ctx, stepBucket, err)
-	}
 	l := s.limits
 	src, err := tx.counts(dctx, r.Keys.Source, r.Now, []time.Duration{l.Source.FreeWindow, l.Source.PoWWindow, l.Source.HardWindow})
 	if err != nil {
@@ -248,8 +293,23 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 		c.Subnets = append(c.Subnets, SubnetCounts{Len: sn.Len, PoW: n[0], Hard: n[1]})
 	}
 	rung := Ladder(l, c)
-	tok, bucketAt := refill(tokens, at, r.Now, l.Global)
-	pol := decide(l, rung, state, proofBits, tok)
+	// Строка ведра — только на пути жетона (ревью system-design I-1, решение
+	// Д71): отказ по своим ключам и пропуск по доказательству исход от ведра не
+	// получают и общую строку флота не занимают. Неделимость не меняется: ведро
+	// читается и пишется под FOR UPDATE в этой же транзакции, счёт ключей
+	// стабилен под их блокировками, а строка ведра по-прежнему ПОСЛЕДНЯЯ
+	// блокировка решения — цикла ожиданий нет.
+	pol, needsBucket := decideWithoutBucket(l, rung, state, proofBits)
+	var bucketAt time.Time
+	tok := 0.0
+	if needsBucket {
+		tokens, at, err := tx.bucket(dctx)
+		if err != nil {
+			return s.fail(ctx, stepBucket, err)
+		}
+		tok, bucketAt = refill(tokens, at, r.Now, l.Global)
+		pol = decideByBucket(l, tok)
+	}
 	switch pol.outcome {
 	case Reject:
 		ra, err := s.retryAfter(dctx, tx, r, c)
@@ -303,6 +363,26 @@ func (s *store) retryAfter(ctx context.Context, tx decisionTx, r Request, c Coun
 		out = max(out, retryAfterFor(r.Now, at, l.SubnetHardWindow))
 	}
 	return out, nil
+}
+
+// observe — измерения законченной транзакции решения r.
+func (s *store) observe(r Request, o txObservation) {
+	if o.bucketHold > 0 {
+		s.holdNanos.Add(int64(o.bucketHold))
+	}
+	if !o.baseClock.IsZero() {
+		s.offsetNanos.Store(int64(r.Now.Sub(o.baseClock)))
+		s.offsetMeasured.Store(true)
+	}
+}
+
+// observation — снимок величин хранилища.
+func (s *store) observation() Observation {
+	return Observation{
+		BucketHold:          time.Duration(s.holdNanos.Load()),
+		ClockOffset:         time.Duration(s.offsetNanos.Load()),
+		ClockOffsetMeasured: s.offsetMeasured.Load(),
+	}
 }
 
 // Close закрывает хранилище.

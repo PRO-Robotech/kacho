@@ -66,6 +66,13 @@
 
 global:
   imageRegistry: ""
+  kacho:
+    # Слой под этим (values.dev.yaml) выключает правила тревоги причиной
+    # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на её
+    # кластере НЕ измерен. Включать — после замера на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере цепочки prorobotech не измерено"
 
 vpc:
   image: docker.io/prorobotech/kacho-vpc:main-d752de57
@@ -76,12 +83,6 @@ compute:
   imagePullPolicy: IfNotPresent
 
 api-gateway:
-  # Слой под этим (values.dev.yaml) выключает правила тревоги края причиной
-  # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на её кластере
-  # НЕ измерен. Включать — после замера на площадке.
-  alertRules:
-    enabled: false
-    disabledBecause: "наличие CRD PrometheusRule на кластере цепочки prorobotech не измерено"
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
 

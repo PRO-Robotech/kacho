@@ -31,10 +31,13 @@ const (
 	// `pool.Acquire`) — одно число. Решение ключа — единицы операторов к базе,
 	// и ожидание дольше означает очередь, а не конкуренцию.
 	anonMailStoreWait = 250 * time.Millisecond
-	// anonMailDecisionWaits — число ограниченных ожиданий на самом длинном
-	// пути решения: захват соединения, три ключа IPv6 (/64, /56, /48), вставка
-	// пометки, ждущая соседнюю незафиксированную вставку того же вызова, строка
-	// ведра. У IPv4 их пять.
+	// anonMailDecisionWaits — число ограниченных ожиданий, на которое рассчитан
+	// срок решения (замысел З8): захват соединения, три ключа IPv6 (/64, /56,
+	// /48), вставка пометки, ждущая соседнюю незафиксированную вставку того же
+	// вызова, строка ведра. Пометка и строка ведра на одном пути не встречаются:
+	// строку берёт только решение без доказательства (ревью system-design I-1),
+	// поэтому самый длинный путь — пять ожиданий (у IPv4 — четыре), и шестое —
+	// запас срока, а не ожидание пути.
 	anonMailDecisionWaits = 6
 	// anonMailDecisionBudget — срок решения: захват соединения и все операторы
 	// транзакции до COMMIT; тот же предел — `statement_timeout` и
@@ -50,9 +53,10 @@ const (
 	// транзакция при любом состоянии держателя кончается на сервере не позже
 	// двух сроков решения от прихода её последнего оператора (И37).
 	anonMailResolveBudget = 2 * anonMailDecisionBudget
-	// anonMailPoolConns — соединений пула ограничителя на реплику: все решения
-	// флота проходят строку ведра по одному, и соединений больше, чем «одно
-	// держит ведро, три готовят свои блокировки», пропускной способности не
+	// anonMailPoolConns — соединений пула ограничителя на реплику: решения пути
+	// жетона (открытая ступень без доказательства) проходят строку ведра флота
+	// по одному, и соединений больше, чем «одно держит ведро, три готовят свои
+	// блокировки либо решают без ведра», пропускной способности пути жетона не
 	// прибавляют.
 	anonMailPoolConns = 4
 	// anonMailConnLifetime и anonMailConnLifetimeJitter — срок жизни соединений
@@ -126,9 +130,15 @@ ON CONFLICT (id) DO NOTHING RETURNING expires_at > clock_timestamp()`
 	// Сверху окно НЕ закрыто (SEC-E2-1): момент решения берётся до
 	// сериализации по ключу, и пропуск соседа с более поздним моментом
 	// (своя реплика или часы другой реплики) обязан войти в счёт.
+	//
+	// Четвёртая колонка — часы базы в момент счёта (ревью system-design I-2):
+	// смещение часов реплики от них меряется оператором, который решение и
+	// так исполняет, — лишнего обращения к базе нет. Счёт исполняется на
+	// каждом решении, дошедшем до лестницы.
 	countsSQL = `SELECT count(*) FILTER (WHERE at > $2),
        count(*) FILTER (WHERE at > $3),
-       count(*) FILTER (WHERE at > $4)
+       count(*) FILTER (WHERE at > $4),
+       clock_timestamp()
   FROM kacho_gateway.anon_mail_passes
  WHERE key = $1 AND at > least($2, $3, $4)`
 	// nthMomentSQL — момент номер $3 (с нуля, по возрастанию) в окне
@@ -183,7 +193,7 @@ func NewPostgresStore(ctx context.Context, dsn string, l config.AnonMailLimits, 
 }
 
 func newPostgresStoreWithPool(pool *pgxpool.Pool, l config.AnonMailLimits, log *slog.Logger, owns bool) *PostgresStore {
-	b := &pgBackend{pool: pool, owns: owns, log: log, limitsSQL: decisionLimitsSQL, lockSQL: lockKeySQL, classify: classifyPoll}
+	b := &pgBackend{pool: pool, owns: owns, log: log, limitsSQL: decisionLimitsSQL, lockSQL: lockKeySQL, classify: classifyPoll, mono: time.Now}
 	b.onCommitError = func(ctx context.Context, pc pendingCommit, deadline time.Time) Outcome {
 		return b.resolveCommit(ctx, pgResolveProbe{pool: b.pool}, pc, deadline)
 	}
@@ -292,6 +302,9 @@ type pgBackend struct {
 	onCommitError func(ctx context.Context, pc pendingCommit, deadline time.Time) Outcome
 	// classify — класс ответа опроса pg_xact_status (classifyPoll).
 	classify func(*string, error) pollClass
+	// mono — часы удержания строки ведра (time.Now: разность двух чтений
+	// идёт по монотонным часам процесса и сдвига стенных часов не видит).
+	mono func() time.Time
 }
 
 func (b *pgBackend) begin(ctx context.Context) (decisionTx, error) { return b.beginDecision(ctx) }
@@ -331,7 +344,21 @@ type pgTx struct {
 	conn    *pgxpool.Conn
 	tx      pgx.Tx
 	pending pendingCommit
+	// bucketTaken — когда транзакция получила строку ведра; нулевое — не брала.
+	bucketTaken time.Time
+	obs         txObservation
 }
+
+// endBucketHold — транзакция кончилась (COMMIT либо ROLLBACK вернулся):
+// строка ведра отпущена, удержание известно.
+func (x *pgTx) endBucketHold() {
+	if !x.bucketTaken.IsZero() {
+		x.obs.bucketHold = x.b.mono().Sub(x.bucketTaken)
+		x.bucketTaken = time.Time{}
+	}
+}
+
+func (x *pgTx) observed() txObservation { return x.obs }
 
 func (x *pgTx) lock(ctx context.Context, pairs []lockPair) error {
 	for _, p := range pairs {
@@ -362,6 +389,7 @@ func (x *pgTx) bucket(ctx context.Context) (float64, time.Time, error) {
 	if err := x.tx.QueryRow(ctx, bucketSQL).Scan(&tokens, &at); err != nil {
 		return 0, time.Time{}, fmt.Errorf("bucket row: %w", err)
 	}
+	x.bucketTaken = x.b.mono()
 	return tokens, at, nil
 }
 
@@ -374,9 +402,15 @@ func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []
 		w := windows[min(i, len(windows)-1)]
 		bounds[i] = now.Add(-w)
 	}
-	var c [3]int
-	if err := x.tx.QueryRow(ctx, countsSQL, key, bounds[0], bounds[1], bounds[2]).Scan(&c[0], &c[1], &c[2]); err != nil {
+	var (
+		c    [3]int
+		base time.Time
+	)
+	if err := x.tx.QueryRow(ctx, countsSQL, key, bounds[0], bounds[1], bounds[2]).Scan(&c[0], &c[1], &c[2], &base); err != nil {
 		return nil, fmt.Errorf("key counts: %w", err)
+	}
+	if x.obs.baseClock.IsZero() {
+		x.obs.baseClock = base
 	}
 	return c[:len(windows)], nil
 }
@@ -432,6 +466,7 @@ func (x *pgTx) commit(ctx context.Context) Outcome {
 	cctx, cancel := context.WithTimeout(ctx, anonMailCommitWait)
 	err := x.tx.Commit(cctx)
 	cancel()
+	x.endBucketHold()
 	x.tx = nil
 	x.conn.Release()
 	x.conn = nil
@@ -452,6 +487,7 @@ func (x *pgTx) rollback(ctx context.Context) {
 		cancel()
 		x.tx = nil
 	}
+	x.endBucketHold()
 	if x.conn != nil {
 		x.conn.Release()
 		x.conn = nil

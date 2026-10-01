@@ -170,8 +170,21 @@ type policy struct {
 //   - открытая ступень — жетон ведра; жетона нет — вызов базовой сложности
 //     всем, включая источники ниже своего порога (NTF2-74).
 func decide(l config.AnonMailLimits, r Rung, p proofState, proofBits int, tokens float64) policy {
+	if pol, needs := decideWithoutBucket(l, r, p, proofBits); !needs {
+		return pol
+	}
+	return decideByBucket(l, tokens)
+}
+
+// decideWithoutBucket — часть решения, которой ведро не нужно. needsBucket —
+// исход зависит от ведра (открытая ступень без заголовка доказательства), и
+// только тогда решение берёт строку ведра (ревью system-design I-1, решение
+// Д71): отказ по своим ключам и пропуск по доказательству общую строку флота
+// не занимают. Исход при needsBucket=false от ведра не зависит — его и
+// утверждает проба TestDecide_I1_OnlyTheTokenPathReadsTheBucket.
+func decideWithoutBucket(l config.AnonMailLimits, r Rung, p proofState, proofBits int) (pol policy, needsBucket bool) {
 	if r == RungHard {
-		return policy{outcome: Reject}
+		return policy{outcome: Reject}, false
 	}
 	required := 0
 	switch r {
@@ -181,11 +194,17 @@ func decide(l config.AnonMailLimits, r Rung, p proofState, proofBits int, tokens
 		required = l.PoWBits.High
 	}
 	if p == proofFresh && proofBits >= max(required, l.PoWBits.Base) {
-		return policy{outcome: Pass}
+		return policy{outcome: Pass}, false
 	}
 	if p != proofAbsent || required > 0 {
-		return policy{outcome: Challenge, bits: max(required, l.PoWBits.Base)}
+		return policy{outcome: Challenge, bits: max(required, l.PoWBits.Base)}, false
 	}
+	return policy{}, true
+}
+
+// decideByBucket — исход открытой ступени без доказательства: жетон есть —
+// пропуск с жетоном, нет — вызов базовой сложности.
+func decideByBucket(l config.AnonMailLimits, tokens float64) policy {
 	if tokens >= 1 {
 		return policy{outcome: Pass, takeToken: true}
 	}
