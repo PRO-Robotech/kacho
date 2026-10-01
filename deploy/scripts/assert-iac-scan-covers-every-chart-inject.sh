@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=52
+DENOM=53
 passed=0
 failed=0
 
@@ -502,6 +502,16 @@ expect "H4: сканер за пределом памяти — код 2 с пр
 unset KACHO_IAC_TRIVY_MEMORY_MIB
 expect "H4 (близнец): тот же прогон при пределе по умолчанию — гейт молчит" "$work/control" 0 \
   "непокрытых 0"
+
+# ── AA. ERROR о неотслеживаемом файле — местная сборка, не вердикт ────────────────
+# `charts/*.tgz` локальных сабчартов git-ignored и лежит только у разработчика. Опыт —
+# тот же неотрендеримый архив, что в Q, но НЕ добавленный в индекс: назван несудимым,
+# гейт молчит. Близнец — опыт Q: тот же архив в индексе даёт находку.
+make_copy "$work/localbuild" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/localbuild" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required || exit 2
+git -C "$work/localbuild" rm -q --cached -- deploy/helm/umbrella/charts/subreq-0.1.0.tgz || exit 2
+expect "местная сборка: ERROR о неотслеживаемом архиве — несудим, гейт молчит" "$work/localbuild" 0 \
+  "НЕ СУДИМО           deploy/helm/umbrella/charts/subreq-0.1.0.tgz — ERROR прохода"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

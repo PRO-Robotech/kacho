@@ -700,8 +700,19 @@ def main():
     for a, why in unreadable:
         findings.append("%s — архив не прочитан (%s): чарт ли он, не установить, и молчать о "
                         "нём гейт не вправе" % (a, why))
+    # Строка ERROR о файле, которого git не отслеживает, — местный результат сборки
+    # зависимостей (`charts/*.tgz` локальных сабчартов, git-ignored): CI берёт свежий
+    # checkout, где этого файла нет, и вердикт о нём отсюда не выносится — он печатается
+    # как несудимый, а не роняет гейт у разработчика и не молчит.
+    tracked_set = set(tracked)
+    log_unjudged = []
     for name in iac_scan_passes.LOG_JUDGED:
+        ref = iac_scan_passes.require(name)[1]
         for line in scan_log.get(name, []):
+            m = re.search(r'file_path="([^"]+)"', line)
+            if m and iac_scan_passes.normalize(ref, m.group(1)) not in tracked_set:
+                log_unjudged.append((name, iac_scan_passes.normalize(ref, m.group(1))))
+                continue
             findings.append("проход «%s»: в журнале trivy ERROR — %s" % (name, line))
 
     # Проход вендоренных без предмета самоистекает, как всякое послабление: проход
@@ -740,6 +751,9 @@ def main():
         print("  осмотрен %2d целей  %s — через родителя" % (n, a))
     for d in exempt_ok:
         print("  послабление         %s — %s" % (d, EXEMPT[d]))
+    for name, path in log_unjudged:
+        print("  НЕ СУДИМО           %s — ERROR прохода «%s» о файле, которого git не "
+              "отслеживает (местная сборка зависимостей)" % (path, name))
     for d, why in renders_none:
         print("  не рендерит ничего  %s — %s" % (d, why))
     for d, why in exempt_unjudged:
