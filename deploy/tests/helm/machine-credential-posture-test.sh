@@ -26,34 +26,37 @@
 #                           lifespan is deliberately NOT pinned (the local e2e
 #                           stand widens the global TTL to outlast serial newman
 #                           waves; pinning 15m here would 401 late collections).
-#   4. STAGING ORDER      → machine-token binding is off by default on BOTH
-#                           halves. Enforcement without issuance can only
-#                           reject, so neither half may ship pre-enabled.
-#   5. CAPABILITY INTACT  → both templates still emit the knobs (a removed env
-#                           block would make every values-level decision inert —
-#                           exactly how the DPoP flag came to be unreachable).
-#   6. READER EXISTS      → no profile turns issuance-side binding on while the
-#                           SA-key contour is TRANSLATED to our own token
-#                           endpoint. There the provider mirror is not created
-#                           at all, so `dpop_bound_access_tokens` has no reader:
-#                           the knob would be declared and enforced by nothing
-#                           (task #1137). Mirrors the iam boot guard
-#                           `Config.validateMachineTokenBinding`.
+#   4. NO ENFORCEMENT     → no profile requires machine-token binding at the
+#                           gateway. No machine token issued on this platform
+#                           carries `cnf` (the token endpoint that exchanges an
+#                           SA key takes no proof of possession), so the
+#                           requirement can only reject every service-account
+#                           token.
+#   5. CAPABILITY INTACT  → both templates still emit the knobs they are read by
+#                           (a removed env block would make every values-level
+#                           decision inert — exactly how the DPoP flag came to
+#                           be unreachable).
+#   6. RETIRED KNOB LOUD  → `kaname.platform.iam.saKey.bindDpop` is refused: the
+#                           identity sub-chart fails the render on its presence,
+#                           whatever its value (task #2949), and no profile
+#                           declares it. Its one reader in the identity service
+#                           is a boot guard that refuses to start with it on
+#                           while the token endpoint is enabled; issuance never
+#                           read it.
 #
-# WHY SECTION 6 EXISTS AND WHY SECTION 4 WAS NOT ENOUGH. Section 4 judges the
-# pair «enforcement ⇒ issuance», and while BOTH halves are off it passes without
-# examining anything: two disabled sides prove nothing about a control. Section 6
-# judges a pair that IS satisfiable today — profiles in this tree translate the
-# contour (section 4 prints how many) — so it has real inputs and can actually
-# refuse. Both sections
-# print what they read, because «0 findings» must be distinguishable from
-# «0 profiles read».
+# WHY SECTION 6 RENDERS AND DOES NOT ONLY READ THE PROFILES. A profile census
+# sees the profiles of this tree; an operator's own profile reaches the chart
+# without passing it. The refusal therefore has to be the chart's own, and the
+# chart is asked directly. Section 4 prints the census both sections read,
+# because «0 findings» must be distinguishable from «0 profiles read».
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-UMBRELLA="$REPO_ROOT/helm/umbrella"
+# Каталог умбреллы переопределяется ради доказательства инъекцией: копия чарта
+# со снятым отказом (machine-credential-posture-inject.sh, ось 7) — проба та же.
+UMBRELLA="${MACHINE_POSTURE_UMBRELLA:-$REPO_ROOT/helm/umbrella}"
 PROD="$UMBRELLA/values.prod.yaml"
 DEV="$UMBRELLA/values.dev.yaml"
 IAM_TPL="$UMBRELLA/charts/kaname/templates/deployment.yaml"
@@ -80,11 +83,10 @@ while IFS= read -r _p; do PROFILES+=("$_p"); done < <(ls -1 "$PROFILE_DIR"/value
 [ "${#PROFILES[@]}" -gt 0 ] \
   || fatal "no values*.yaml under $PROFILE_DIR — a census over zero profiles is not a green verdict (условие не создано, не находка о дереве)"
 
-# bind_of / translated_of — ОДИН предикат на обе секции. Две копии одного
-# условия разошлись бы там, где расхождение не видно.
-bind_of()       { yq '.["kaname"].platform.iam.saKey.bindDpop // false' "$1"; }
-translated_of() { yq '.["kaname"].config.authn.clientToken.enabled // false' "$1"; }
-enforce_of()    { yq '.["api-gateway"].authn.requireMachineTokenBinding // false' "$1"; }
+# enforce_of / declares_retired_of — ОДИН предикат на секцию. Копия условия
+# разошлась бы там, где расхождение не видно.
+enforce_of()         { yq '.["api-gateway"].authn.requireMachineTokenBinding // false' "$1"; }
+declares_retired_of() { yq '(.["kaname"].platform.iam.saKey // {}) | has("bindDpop")' "$1"; }
 
 # yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
 # of the SAME NAME, whose filter syntax and quoting differ — assertions here read
@@ -127,33 +129,32 @@ dev_atl="$(yq '.["kaname"].platform.iam.saKey.accessTokenTtl // ""' "$DEV")"
   || fail "dev: saKey.accessTokenTtl='$dev_atl' — the local stand deliberately inherits the widened global TTL; pinning it 401s late newman collections"
 ok
 
-# ── 4. Binding staging order — issuance precedes enforcement ─────────────────
-# Issuance (iam) must precede enforcement (gateway). Enforcement alone rejects
-# every service-account token, because binding is per-client REGISTRATION
-# metadata: a key registered before issuance was enabled keeps minting bearers.
+# ── 4. No profile requires machine-token binding ─────────────────────────────
+# The gateway rejects, 401, a service-account token without `cnf` once
+# requireMachineTokenBinding is on. No issuance on this platform binds a
+# machine token: the token endpoint where an SA key is exchanged takes no proof
+# of possession. Enforcement therefore rejects every service-account token, and
+# there is no issuance-side switch to turn on first.
 #
-# Read over EVERY profile, not just prod/dev: the two profiles this section used
-# to read are 2 of the 10 in the tree, and the eight it skipped included a
-# deployable production profile.
-n_bind=0
-n_translated=0
+# Read over EVERY profile, not just prod/dev: a deployable production profile
+# sits among the ones a prod/dev pair would skip.
+n_enforce=0
+n_retired=0
 for f in "${PROFILES[@]}"; do
-  bind="$(bind_of "$f")"
-  reqb="$(enforce_of "$f")"
-  [ "$bind" = "true" ] && n_bind=$((n_bind + 1))
-  [ "$(translated_of "$f")" = "true" ] && n_translated=$((n_translated + 1))
-  if [ "$reqb" = "true" ] && [ "$bind" != "true" ]; then
-    fail "$(basename "$f"): requireMachineTokenBinding=true while saKey.bindDpop=$bind — enforcement before issuance rejects every machine token"
+  [ "$(declares_retired_of "$f")" = "true" ] && n_retired=$((n_retired + 1))
+  if [ "$(enforce_of "$f")" = "true" ]; then
+    n_enforce=$((n_enforce + 1))
+    fail "$(basename "$f"): requireMachineTokenBinding=true — no machine token issued on this platform carries cnf, so the gateway would reject every service-account token"
   fi
 done
-echo "  census: profiles read ${#PROFILES[@]} · issuance-side binding on $n_bind · contour translated $n_translated"
+echo "  census: profiles read ${#PROFILES[@]} · binding required $n_enforce · declaring retired saKey.bindDpop $n_retired"
 ok
 
 # ── 5. CAPABILITY INTACT — the templates still emit the knobs ────────────────
 # The DPoP feature was unreachable for its whole life precisely because no
 # template emitted its env. A values-level decision is inert without this.
 for name in KANAME_SAKEY_DEFAULT_TTL KANAME_SAKEY_MAX_TTL \
-            KANAME_SAKEY_ACCESS_TOKEN_TTL KANAME_SAKEY_BIND_DPOP; do
+            KANAME_SAKEY_ACCESS_TOKEN_TTL; do
   grep -q "name: $name" "$IAM_TPL" \
     || fail "capability: kaname template no longer emits $name — the values knob would be silently inert"
 done
@@ -163,23 +164,32 @@ for name in KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP \
     || fail "capability: api-gateway template no longer emits $name — the binding control would be unreachable, which is the state this work fixed"
 done
 grep -q 'requireMachineTokenBinding' "$GW_VALUES" \
-  || fail "capability: api-gateway values.yaml no longer documents the binding rollout order"
+  || fail "capability: api-gateway values.yaml no longer documents the binding knob"
 ok
 
-# ── 6. The issuance-side knob must have a READER (#1137) ─────────────────────
-# `saKey.bindDpop` is registration metadata for the client MIRROR at the previous
-# issuer. A translated contour (`authn.clientToken.enabled`) creates no mirror at
-# all, so on it the knob is read by nothing: the operator declares the control
-# and gets a stand where machine tokens are NOT bound, believing the opposite.
+# ── 6. The retired issuance-side knob is refused, not ignored (#2949) ────────
+# `kaname.platform.iam.saKey.bindDpop` changed no issuance on any contour: the
+# token endpoint that exchanges an SA key takes no proof of possession, and
+# without that endpoint no SA key is issued at all. Its one reader in the
+# identity service is a boot guard that refuses to start with it on while the
+# endpoint is enabled. The sub-chart therefore no longer emits it and refuses a
+# profile that declares it (`kaname.refuseRetiredKnobs`) — judged on PRESENCE:
+# `false` is a declaration too.
 #
-# The same contradiction refuses the iam start (`Config.validateMachineTokenBinding`).
-# Asserted here as well because a values-level decision is made before any pod
-# starts, and «the chart renders» is where an operator looks first.
+# Positive control: the prod render of section 2 succeeded with the same chain
+# minus the key, so a refusal here is the key's, not the chain's.
 for f in "${PROFILES[@]}"; do
-  if [ "$(bind_of "$f")" = "true" ] && [ "$(translated_of "$f")" = "true" ]; then
-    fail "$(basename "$f"): saKey.bindDpop=true while authn.clientToken.enabled=true — a translated contour registers no mirror, so the sender-constrained requirement has no reader (task #1137); iam refuses to start in this state"
+  if [ "$(declares_retired_of "$f")" = "true" ]; then
+    fail "$(basename "$f"): declares kaname.platform.iam.saKey.bindDpop — the knob is retired; the identity sub-chart refuses this profile at render"
   fi
 done
+RETIRED_OVERLAY="$(mktemp)"
+trap 'rm -f "$RETIRED_OVERLAY"' EXIT
+printf 'kaname:\n  platform:\n    iam:\n      saKey:\n        bindDpop: false\n' > "$RETIRED_OVERLAY"
+helm_try kacho-umbrella "$UMBRELLA" -f "$PROD" -f "$RETIRED_OVERLAY" --show-only charts/kaname/templates/deployment.yaml
+render_must_fail_because "platform.iam.saKey.bindDpop" \
+  "values.prod.yaml + saKey.bindDpop → charts/kaname/templates/deployment.yaml" \
+  "prod + saKey.bindDpop rendered — the identity sub-chart accepts a retired knob it no longer reads"
 ok
 
 outcome_verdict "профилей прочитано: ${#PROFILES[@]}"

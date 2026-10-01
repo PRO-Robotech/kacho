@@ -121,7 +121,7 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: 367-caf1c95c
+    tag: 357-b90430b4
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
@@ -140,17 +140,9 @@ kaname:
         defaultTtl: "2160h"   # 90d — applied when ttl_seconds is omitted
         maxTtl: "8760h"       # 365d — inclusive ceiling on ttl_seconds
         accessTokenTtl: ""
-        # bindDpop — mint SENDER-CONSTRAINED (RFC 9449) machine tokens. Off, and
-        # deliberately so: binding is per-client REGISTRATION metadata, so it
-        # only affects keys issued after it is enabled. Order is load-bearing —
-        # enable this, rotate existing SA keys, and only THEN set the gateway's
-        # api-gateway.authn.requireMachineTokenBinding. The reverse order rejects
-        # every service-account token.
-        #
-        # Its reader is the client MIRROR at the previous issuer, so a profile
-        # that translates the contour (`kaname.config.authn.clientToken.enabled`)
-        # has no reader for it at all: iam refuses to start with both set (#1137).
-        bindDpop: false
+        # Ключа `bindDpop` нет: подчарт отказывает в рендере профилю, который
+        # его объявляет (kacho#2949) — машинный токен `cnf` не несёт, см.
+        # charts/kaname/values.yaml.
 
 # ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
 # Each backing Postgres StatefulSet (bitnami sub-chart, pod label

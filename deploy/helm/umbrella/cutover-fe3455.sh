@@ -196,7 +196,7 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # operator's copy that still carries one is refused, because nothing reads it.
 #
 # THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
-# round here. This list named `kratos.kratos.config.courier.smtp.connection_uri`,
+# round here. This list named the vendor subchart's own courier relay URI,
 # a coordinate that feeds the VENDOR subchart's own config file. The identity
 # process reads SEVERAL config files and merges them in order; ours is second,
 # so the `courier` section we render REPLACES the vendor's wholesale rather than
@@ -466,14 +466,14 @@ fi
 
 # ── smoke: iam :9097 cluster-internal JWKS proxy (the JWKS-flip source of truth) ──
 #    The registry Bearer verifier now trusts iam's :9097 mirror (registry.iam.jwksUrl).
-#    Confirm iam-on-main actually serves it with Hydra kids BEFORE trusting docker auth.
+#    Confirm iam-on-main actually serves it with the issuer kids BEFORE trusting docker auth.
 #    Server-TLS (internal-CA leaf), no client cert → curl -k. Port-forward to reach the
 #    ClusterIP service from the operator host.
 log "smoke: iam :9097 JWKS proxy (GET /.well-known/jwks.json — expect 200 with keys)…"
 # THIS upgrade rolls the iam pod, so probe only once it is actually Ready. A port-forward
 # established against a terminating pod stays broken for the rest of the probe → false
 # negative. That is exactly what the 2026-07-15 run hit: the smoke warned "did NOT return
-# a keys set" while the endpoint served 200 with Hydra kids moments later. Hence: wait for
+# a keys set" while the endpoint served 200 with the issuer kids moments later. Hence: wait for
 # the rollout, then re-establish a FRESH forward per attempt (one dead tunnel must not
 # doom the whole check).
 kubectl -n "$NS" rollout status deploy/kaname --timeout=120s >/dev/null 2>&1 \

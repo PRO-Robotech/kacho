@@ -22,12 +22,15 @@
 package artifactgates
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // renderGuardName — предикат класса: офлайновый страж рендера сервисного чарта.
@@ -181,26 +184,29 @@ func reachableFromWorkflows(t *testing.T, root string) []string {
 		body := string(raw)
 		reachable = append(reachable, body)
 
+		matrix := workflowMatrixValues(body)
 		for _, m := range makeInvocation.FindAllStringSubmatch(body, -1) {
-			args := strings.Fields(m[1])
-			dir := workflowWorkingDir(body, wf.Name())
-			var targets []string
-			for i := 0; i < len(args); i++ {
-				switch {
-				case args[i] == "-C":
-					if i+1 < len(args) {
-						dir = args[i+1]
-						i++
+			for _, line := range expandWorkflowMatrix(m[1], matrix) {
+				args := strings.Fields(line)
+				dir := workflowWorkingDir(body, wf.Name())
+				var targets []string
+				for i := 0; i < len(args); i++ {
+					switch {
+					case args[i] == "-C":
+						if i+1 < len(args) {
+							dir = args[i+1]
+							i++
+						}
+					case strings.HasPrefix(args[i], "-") || strings.Contains(args[i], "="):
+					default:
+						targets = append(targets, args[i])
 					}
-				case strings.HasPrefix(args[i], "-") || strings.Contains(args[i], "="):
-				default:
-					targets = append(targets, args[i])
 				}
-			}
-			for _, tgt := range targets {
-				pull(dir, tgt)
-				// Каталог мог быть задан `working-directory:` на шаге, а не `-C`.
-				pull("deploy", tgt)
+				for _, tgt := range targets {
+					pull(dir, tgt)
+					// Каталог мог быть задан `working-directory:` на шаге, а не `-C`.
+					pull("deploy", tgt)
+				}
 			}
 		}
 	}
@@ -209,6 +215,85 @@ func reachableFromWorkflows(t *testing.T, root string) []string {
 			"и тогда любой страж выглядит немым")
 	}
 	return reachable
+}
+
+// workflowMatrixExpr — значение матрицы в тексте шага: `${{ matrix.<ключ> }}`.
+var workflowMatrixExpr = regexp.MustCompile(`\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}`)
+
+// workflowMatrixValues — значения каждого ключа матрицы во всех заданиях
+// workflow: скаляры под `strategy.matrix.<ключ>` и ключ каждой строки
+// `matrix.include`.
+//
+// Зачем. Цель make, собранная из значения матрицы (`make ${{ matrix.stack }}-up`),
+// без подстановки читалась словами `${{`, `matrix.stack`, `}}-up` — ни одной
+// цели, и всё, что зовёт её рецепт, выглядело немым. Так шаг подъёма стенда
+// боевой посадки (`production-posture.yml`, матрица `dev-prod` и `own`) терял
+// `dev-prod-up` и два живых гейта его рецепта; достижимыми их держала только
+// маска каталога `deploy/scripts/*` в чужом страже, снятом задачей kacho#1276.
+// Workflow, который не разбирается, значений не даёт: подстановки нет, и
+// ложной достижимости тоже.
+func workflowMatrixValues(body string) map[string][]string {
+	var doc struct {
+		Jobs map[string]struct {
+			Strategy struct {
+				Matrix map[string]any `yaml:"matrix"`
+			} `yaml:"strategy"`
+		} `yaml:"jobs"`
+	}
+	out := map[string][]string{}
+	if err := yaml.Unmarshal([]byte(body), &doc); err != nil {
+		return out
+	}
+	add := func(k string, v any) {
+		switch v.(type) {
+		case string, int, bool, float64:
+			out[k] = append(out[k], fmt.Sprint(v))
+		}
+	}
+	for _, job := range doc.Jobs {
+		for k, v := range job.Strategy.Matrix {
+			switch k {
+			case "exclude":
+			case "include":
+				rows, _ := v.([]any)
+				for _, r := range rows {
+					row, _ := r.(map[string]any)
+					for rk, rv := range row {
+						add(rk, rv)
+					}
+				}
+			default:
+				vals, _ := v.([]any)
+				for _, x := range vals {
+					add(k, x)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// expandWorkflowMatrix — аргументы вызова make со всеми подстановками значений
+// матрицы. Ключ без объявленных значений остаётся как есть: целью он не станет.
+func expandWorkflowMatrix(args string, values map[string][]string) []string {
+	loc := workflowMatrixExpr.FindStringSubmatchIndex(args)
+	if loc == nil {
+		return []string{args}
+	}
+	vals := values[args[loc[2]:loc[3]]]
+	if len(vals) == 0 {
+		return []string{args}
+	}
+	// Подставленное значение повторно не разбирается: выражение внутри значения
+	// матрицы не раскрывается и в конвейере.
+	rest := expandWorkflowMatrix(args[loc[1]:], values)
+	out := make([]string, 0, len(vals)*len(rest))
+	for _, v := range vals {
+		for _, r := range rest {
+			out = append(out, args[:loc[0]]+v+r)
+		}
+	}
+	return out
 }
 
 // workflowWorkingDir — корень по умолчанию для `make` без `-C`. Шаги задают его
@@ -502,4 +587,48 @@ func keysOf(m map[string]makeTarget) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestReachabilityExpandsTheWorkflowMatrix — цель make, собранная из значения
+// матрицы, достижима ровно по значениям матрицы. Синтетический конвейер во
+// временном каталоге: цели alpha-up и beta-up названы матрицей, gamma-up — нет
+// (законный близнец той же формы: цель есть в Makefile, но её не зовут).
+//
+// Красное до починки снято на дереве: без подстановки шаг `make ${{ matrix.stack
+// }}-up` производства боевой посадки терял `dev-prod-up`, и
+// TestEveryToolScriptGateIsInvoked называл немыми два гейта его рецепта.
+func TestReachabilityExpandsTheWorkflowMatrix(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".github/workflows/stand.yml", "jobs:\n  stand:\n    strategy:\n      matrix:\n"+
+		"        stack: [alpha]\n        include:\n          - stack: beta\n"+
+		"    steps:\n      - run: tool --dir deploy -- make -C deploy ${{ matrix.stack }}-up\n")
+	write("deploy/Makefile", "alpha-up:\n\t@bash scripts/alpha-probe.sh\n"+
+		"beta-up:\n\t@bash scripts/beta-probe.sh\n"+
+		"gamma-up:\n\t@bash scripts/gamma-probe.sh\n")
+
+	reachable := reachableFromWorkflows(t, root)
+	for _, want := range []string{"deploy/scripts/alpha-probe.sh", "deploy/scripts/beta-probe.sh"} {
+		if !anyMentions(reachable, want) {
+			t.Errorf("%s не достижим: цель из значения матрицы не подставлена", want)
+		}
+	}
+	if anyMentions(reachable, "deploy/scripts/gamma-probe.sh") {
+		t.Error("gamma-probe.sh объявлен достижимым, хотя матрица его цели не называет — " +
+			"подстановка порождает цели, которых конвейер не зовёт")
+	}
+	if got := expandWorkflowMatrix(" ${{ matrix.other }}-up", map[string][]string{"stack": {"alpha"}}); len(got) != 1 ||
+		got[0] != " ${{ matrix.other }}-up" {
+		t.Errorf("ключ без значений раскрыт в %q — целью он стать не может", got)
+	}
 }

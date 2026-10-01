@@ -170,7 +170,7 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, f.script,
 			"global.kacho.identity.smtp.connectionURI",
-			"kratos.kratos.config.courier.smtp.connection_uri")
+			"vendor.config.courier.smtp.connection_uri")
 		if found := f.run(t); len(found) == 0 {
 			t.Errorf("координата, переставленная на координату ПОСТАВЩИКА, гейтом не " +
 				"найдена — то есть #1679 воспроизводится, а гейт остаётся зелёным: " +

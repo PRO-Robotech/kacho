@@ -263,7 +263,9 @@ spec:
             # (service accounts) present a bound token; unbound ⇒ 401. Machines
             # are exempt from step-up because they have no second factor, so
             # proof-of-possession is what replaces it. The human path is
-            # unaffected. Default off — see values.yaml for the rollout order.
+            # unaffected. Default off: no machine token issued on this platform
+            # carries `cnf`, so turning it on rejects every service-account
+            # token — see values.yaml.
             {{- if .Values.authn.requireMachineTokenBinding }}
             - name: KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING
               value: "true"

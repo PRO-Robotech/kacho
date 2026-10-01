@@ -11,7 +11,7 @@
     "  полный стенд           29 workload   8298Mi   2980m",
     "  ядро без сервисных     18 workload   2730Mi   1330m",
     "то есть 45% запрошенного CPU стенда не зависит от того, что тестируется",
-    "(iam+geo+gateway+hydra+kratos+cert-manager+ingress и их базы), а 55%",
+    "(iam+geo+gateway+поставщик личности того замера+cert-manager+ingress и их базы), а 55%",
     "— зависит и снимается. Раннер даёт 4 ядра: 2980m запросов на 4000m",
     "allocatable — это и есть измеренная причина (BatchCheck Unavailable, окно",
     "материализации p90 11с против 5с локально).",
@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 65 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 66 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -183,7 +183,7 @@
       "id": "edge",
       "suites": ["geo", "registry", "api-gateway"],
       "components": ["registry", "pg-registry"],
-      "why": "7+5+5 коллекций / 477 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
+      "why": "7+5+6 коллекций / 482 запроса. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
     }
   ]
 }
