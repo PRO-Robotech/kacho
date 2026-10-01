@@ -301,6 +301,11 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 вне ведомости, и `git grep` предикатом выше по тем же формам назвал те же 70
 поимённо — два разных выражения.
 
+Строка 13 добавлена позже, сборкой волны kacho#2940: проба
+`deploy/kaname_subchart_retired_exchange_road_test.go` заведена задачей #2936 на
+ветке, где записи Б ещё не было, и встретила её только при сведении. Строк
+стало **106**; номера строк ниже неё сдвинуты на одну.
+
 Колонка «фрагмент имени» — текст, стоящий в пробе на строке, которая поставщика
 называет; у пробы, которая его не называет или снята, — `—`. Строка «снять · нет»
 и «переписать · нет» называет задачу, которая исход исполнит.
@@ -319,99 +324,100 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 10 | `deploy/helm/umbrella/provider_road_posture_test.go` | снять | да | — | административная дорога к поставщику; у пина её нет (kaname#362), снята — #2818 (`92097320166`) |
 | 11 | `deploy/helm/umbrella/token_shape_test.go` | снять | да | — | форма токена издателя поставщика; снята с его настройками — #1276 (`3af063bd6f3`) |
 | 12 | `deploy/image_name_agrees_with_the_source_of_names_test.go` | оставить | — | — | судит имена образов продукта; из перечня чужих образов границы сняты два ключа поставщика, которых в профилях нет — #1276, часть 2 |
-| 13 | `deploy/kaname_subchart_retired_identity_wiring_injection_test.go` | оставить | — | `kaname-kratos-config` | страж возврата: синтетика провязки поставщика в подчарте службы (#2818) |
-| 14 | `deploy/kaname_subchart_retired_identity_wiring_test.go` | оставить | — | `var retiredVendorNames = []string{` | страж возврата провязки поставщика, снятых ключей пина и полосы хуков (#2818) |
-| 15 | `deploy/neighbour_address_producer_test.go` | оставить | — | `-kratos-public.` | судит производителя адреса соседа; поставщик — наблюдавшийся случай в прозе и синтетика класса «сосед» |
-| 16 | `deploy/nginx_upstream_form_test.go` | переписать | да | — | распознаватель ключей апстрима нёс три ключа поставщика без носителя в чарте консоли (0 объявлений у каждого); сняты, объявлений под судом 9 до и после, носитель каждой формы держит `TestNginxUpstreamKeyFormsEachHaveACarrier` — #1276, часть 2 |
-| 17 | `deploy/own_posture_foreign_identity_injection_test.go` | оставить | — | `pg-kratos` | страж возврата: инъекция компонента поставщика в зонт (#2735, #1276) |
-| 18 | `deploy/own_posture_foreign_identity_test.go` | оставить | — | `foreignIdentityRepoMark` | страж возврата компонента поставщика в зонт (#2735, #1276) |
-| 19 | `deploy/provider_raised_by_probe_test.go` | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
-| 20 | `deploy/published_image_pin_is_reachable_test.go` | оставить | — | — | судит пины образов продукта; из перечня сторонних образов границы снят образ экрана входа поставщика, которого в дереве нет — #1276, часть 2 |
-| 21 | `deploy/stack_render_carries_no_vendor_residue_test.go` | оставить | — | `var vendorResidueWord` | страж возврата следа поставщика в рендере каждой цепочки (#2818) |
-| 22 | `deploy/stack_table_test.go` | оставить | — | `values.fe3455-ory.yaml` | слой учётных данных площадки вне git: имя слоя не снято — экземпляр живёт в клонах операторов (#1276, часть 1) |
-| 23 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
-| 24 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
-| 25 | `deploy/tests/helm/admin-hop-address-census-test.sh` | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
-| 26 | `deploy/tests/helm/admin-hop-pod-shape-test.sh` | снять | да | — | форма пода терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
-| 27 | `deploy/tests/helm/admin-hop-port-policy-test.sh` | снять | да | — | политика порта терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
-| 28 | `deploy/tests/helm/config-rollout-binding-test.sh` | оставить | — | `checksum/hydra-secrets` | судит перекатку при смене содержимого карт; имя — синтетика самопроверки |
-| 29 | `deploy/tests/helm/console-serves-identity-flows-test.sh` | оставить | — | `ORY_BAND` | страж возврата полосы раздачи к экрану поставщика на цепочке own (#2777, F8) |
-| 30 | `deploy/tests/helm/edge-keyset-hop-test.sh` | оставить | — | `PROVIDER_SPELLING=` | страж возврата снятых ключей издателя в чарте края |
-| 31 | `deploy/tests/helm/iam-hooks-metrics-mtls-test.sh` | снять | да | — | mTLS слушателей хуков и метрик; полоса хуков снята — #2818 (`92097320166`), половина метрик — новая проба `deploy/tests/helm/iam-metrics-mtls-test.sh` |
-| 32 | `deploy/tests/helm/iam-metrics-mtls-test.sh` | оставить | — | `HYDRA_CM_PROD` | судит mTLS слушателя метрик; поставщик — история дефекта #1195 в прозе |
-| 33 | `deploy/tests/helm/identity-callback-credential-source.py` | снять | да | — | разбор снятой пробы источника величины обратного вызова; снят с ней — #1276 (`3af063bd6f3`) |
-| 34 | `deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh` | переписать | да | — | самопроверка стражей на нашем признаке, без ключей поставщика — #1276 (`3af063bd6f3`) |
-| 35 | `deploy/tests/helm/identity-guards-on-our-own-posture-test.sh` | оставить | — | `.Values.kratos.enabled` | страж возврата замолкания стражей на выключателе поставщика (#2732) |
-| 36 | `deploy/tests/helm/identity-hook-credential-provenance-inject.sh` | снять | да | — | инъекция отчёта о происхождении величины обратного вызова (строка 23 ведомости); снята вместе с отчётом после его вызовов в конвейере — #1276, часть 3 |
-| 37 | `deploy/tests/helm/identity-hook-credential-source-inject.sh` | снять | да | — | инъекция источника величины хуков; полосы хуков у пина нет — #2818 (`92097320166`) |
-| 38 | `deploy/tests/helm/identity-hook-credential-source.py` | снять | да | — | разбор источника величины хуков; снят с полосой — #2818 (`92097320166`) |
-| 39 | `deploy/tests/helm/identity-mail-lane-runtime-inject.sh` | снять | да | — | почтовый процесс поставщика на исполнении; второго отправителя нет — #2818 (`92097320166`) |
-| 40 | `deploy/tests/helm/identity-session-secret-source-test.sh` | снять | да | — | секреты сессии, которые чеканит чарт поставщика; снята — #2818 (`92097320166`) |
-| 41 | `deploy/tests/helm/identity-substitution-output-inject.sh` | снять | да | — | шаг подстановки в настройки поставщика; шаблон снят — #2818 (`92097320166`) |
-| 42 | `deploy/tests/helm/jobs-cronjobs-hardening-test.sh` | оставить | — | `издатель и подписант — Hydra` | судит жёсткость заданий; поставщик — «здесь стояло» в прозе |
-| 43 | `deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh` | снять | да | — | усиление экрана входа поставщика; переименована #2759 (`689bb77e848`) в `identity-selfservice-ui-hardening-test.sh` и снята с каталогом экрана — #1276 (`3af063bd6f3`) |
-| 44 | `deploy/tests/helm/machine-credential-posture-test.sh` | переписать | да | — | посадка машинных учётных данных без половины издателя — #1276 (`3af063bd6f3`) |
-| 45 | `deploy/tests/helm/neighbour-address-form-test.sh` | оставить | — | `KACHO_API_GATEWAY_KRATOS_PUBLIC_URL` | судит форму адреса соседа; поставщик — замер в прозе и синтетика самопроверки |
-| 46 | `deploy/tests/helm/networkpolicy-egress-test.sh` | оставить | — | `к Hydra` | судит сетевые политики; поставщик — описание реального случая в прозе |
-| 47 | `deploy/tests/helm/outbox-autovacuum-naptime-test.sh` | переписать | да | — | перечень баз без баз поставщика — #1276 (`3af063bd6f3`) |
-| 48 | `deploy/tests/helm/outcome-contract-inject.sh` | переписать | да | — | контракт исходов без проб перехода — #1276 (`3af063bd6f3`) |
-| 49 | `deploy/tests/helm/prerequisite-secrets-test.sh` | оставить | — | `из пода Hydra` | судит обязательные ссылки на секреты; поставщик — история случая и её конец (#1276) |
-| 50 | `deploy/tests/helm/provider-up.sh` | снять | да | — | подъём поставщика пробой; поднимать нечего — #1276 (`3af063bd6f3`) |
-| 51 | `deploy/tests/helm/rendered-documents-well-formed-test.sh` | оставить | — | `values.fe3455-ory.yaml` | судит форму документов рендера; слой учётных данных площадки вне git, имя слоя не снято |
-| 52 | `deploy/tests/helm/three-outcomes-distinguishable-test.sh` | переписать | да | — | перечень прогона без снятых проб поставщика — #1276 (`3af063bd6f3`) |
-| 53 | `deploy/tests/helm/trusted-forwarder-profiles-test.sh` | оставить | — | `OPTIONAL_ORY=` | судит доверенных пересыльщиков профилей; слой учётных данных площадки вне git |
-| 54 | `gateway/cmd/api-gateway/identity_lane_validation_test.go` | оставить | — | — | страж края разводит требования по посадке (F4d-06) — посадка края жива |
-| 55 | `gateway/cmd/api-gateway/identity_provider_dictionary_test.go` | оставить | — | — | законность посадки края по словарю (#2862) |
-| 56 | `gateway/deploy/f1c_issuer_set_reaches_every_stand_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
-| 57 | `gateway/deploy/identity_posture_base_default_test.go` | оставить | — | — | посадка базового профиля чарта края разбирается читателем процесса (#2862) |
-| 58 | `gateway/deploy/login_lane_prereq_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
-| 59 | `gateway/deploy/revocation_endpoint_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит адрес отзыва края; слой учётных данных площадки назван прозой |
-| 60 | `gateway/internal/config/identity_posture_env_test.go` | оставить | — | — | у переменной посадки края есть читатель |
-| 61 | `gateway/internal/principalmeta/identity_strip_test.go` | оставить | — | — | снятие пространства x-kacho- перед ретрансляцией на полосу формы (Ф3 Р2) |
-| 62 | `internal/productnaming/productnaming_test.go` | оставить | — | `"oryd/hydra"` | судит словарь образов продукта; сторонний образ — синтетика отрицательного контроля |
-| 63 | `internal/repohygiene/browserbeforestand_test.go` | оставить | — | `Hydra, OpenFGA` | судит порядок шагов браузерной пробы; поставщик — ранер замера 2026-08-17 в прозе |
-| 64 | `internal/repohygiene/contractrootscript_injection_test.go` | оставить | — | `https://hydra.api.` | судит корень контракта в скриптах; адрес — синтетика инъекции |
-| 65 | `internal/repohygiene/foreignidpname_injection_test.go` | оставить | — | `const testHydraIss` | страж возврата имени поставщика в объявлениях Go: инъекция |
-| 66 | `internal/repohygiene/foreignidpname_test.go` | оставить | — | — | страж возврата имени поставщика в объявлениях Go; ведомость пуста: запись deploy снята #1276, запись terraform — #2930 (поле контракта края не переименовано, а устарело, и форма разбора ответа о токене его не объявляет) |
-| 67 | `internal/repohygiene/grpcmountparity_test.go` | оставить | — | `хуки Hydra` | судит паритет монтирования служб; поставщик — история находки |
-| 68 | `internal/repohygiene/license_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит лицензии дерева; слой учётных данных площадки назван прозой |
-| 69 | `internal/repohygiene/peerlaneclassifier_test.go` | оставить | — | `ЗДЕСЬ БЫЛИ ДВА ПРИЗНАКА` | судит классификатор полос соседей; поставщик — «здесь были» в прозе |
-| 70 | `internal/repohygiene/providersurface_injection_test.go` | оставить | — | `hydra_oauth_clients.go` | страж возврата поверхности API поставщика: инъекция |
-| 71 | `internal/repohygiene/providersurfacedeployment_injection_test.go` | оставить | — | `In-cluster Hydra ADMIN endpoint` | страж возврата поверхности API поставщика в развёртывании: инъекция |
-| 72 | `internal/repohygiene/retiredidentityvendorceiling_injection_test.go` | оставить | — | `image: oryd/hydra:v2.2.0` | убывающий потолок привязок к поставщику: инъекция |
-| 73 | `internal/repohygiene/retiredidentityvendorceiling_test.go` | оставить | — | `образ издателя` | убывающий потолок привязок к поставщику: формы привязки |
-| 74 | `internal/repohygiene/retiredidentityvendorceilingbase_test.go` | оставить | — | `vendorProbeLine` | убывающий потолок привязок к поставщику: синтетика базы |
-| 75 | `internal/repohygiene/retiredissuerclaim_injection_test.go` | оставить | — | `нейтральное имя` | страж возврата утверждения о прежнем издателе: инъекция |
-| 76 | `internal/repohygiene/retiredrpcsurface_test.go` | оставить | — | `хуки Hydra обслуживались по HTTP` | ведомость снятых RPC: причина снятия — история |
-| 77 | `internal/repohygiene/standlogsderived_injection_test.go` | оставить | — | `deployment.apps/kratos` | судит выведение журналов стенда; имена нагрузок — синтетика |
-| 78 | `internal/repohygiene/subchartdup_test.go` | оставить | — | `name: hydra` | судит дубли подчартов; зависимость — синтетика |
-| 79 | `internal/repohygiene/testdata/shellprobe/networkpolicy-egress-test.sh.before` | оставить | — | `к Hydra` | снимок прежней редакции пробы для самопроверки переписи; правка подменила бы снимок |
-| 80 | `internal/repohygiene/testdata/shellprobe/podtemplate-annotation-single-owner-test.sh.before` | оставить | — | `kratos/hydra` | снимок прежней редакции пробы для самопроверки переписи; правка подменила бы снимок |
-| 81 | `services/registry/cmd/kacho-registry/serve_iamjwks_test.go` | оставить | — | `legacyIssuer` | судит приём набора ключей реестром; адрес прежнего издателя — значение синтетики слота |
-| 82 | `services/registry/cmd/kacho-registry/tokenverifier_test.go` | оставить | — | `probeLegacyIssuer` | судит проверку токена реестром; адрес прежнего издателя — значение синтетики слота |
-| 83 | `services/registry/internal/apps/kacho/config/config_test.go` | оставить | — | `KACHO_REGISTRY_HYDRA_ISSUER` | страж: снятые переменные издателя не читаются (TestConfig_RetiredTokenEnvsAreNotConsulted) |
-| 84 | `services/registry/internal/clients/jwks/f1_harness_test.go` | оставить | — | `testLegacyIss` | судит набор ключей реестра; адрес прежнего издателя — производимый пакетом признак (запись foreignIDPName) |
-| 85 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
-| 86 | `services/registry/internal/domain/fga_subject_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
-| 87 | `tests/authz-fixtures/mint_rs256.py` | оставить | — | `"hydraClientId"` | посев читает поле контракта края под всеми его именами; `hydraClientId` — устаревшее поле контракта края (#2930: не переименовано, а устарело), посев читает его, пока поле есть в ответе |
-| 88 | `tests/authz-fixtures/prodrun.sh` | оставить | — | `Hydra issues SA access tokens` | прогонщик посева; поставщик — проза о сроке токена |
-| 89 | `tests/authz-fixtures/prodseed_all.py` | оставить | — | `Hydra-signed RS256` | посев матрицы; поставщик — проза о подписи предъявителей |
-| 90 | `tests/authz-fixtures/prodseed_matrix.py` | оставить | — | `Hydra-signed RS256 ServiceAccount` | посев матрицы; поставщик — проза о подписи предъявителей |
-| 91 | `tests/authz-fixtures/setup.sh` | оставить | — | `HYDRA_*` | посев набора; поставщик назван прозой перечня величин |
-| 92 | `ui-future/dashboard/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
-| 93 | `ui-future/deploy/console_serving_neighbours_injection_test.go` | оставить | — | `location ^~ /.ory/idp/public/` | страж возврата полосы соседа в раздаче консоли: инъекция |
-| 94 | `ui-future/deploy/console_serving_neighbours_test.go` | оставить | — | `/.ory/` | страж возврата полосы соседа в раздаче консоли |
-| 95 | `ui-future/deploy/identity_dev_ceremony_band_injection_test.go` | снять | да | — | инъекция полосы раздачи церемоний режима разработки к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`) |
-| 96 | `ui-future/deploy/identity_dev_ceremony_band_test.go` | снять | да | — | полоса раздачи церемоний режима разработки к экрану поставщика; снята — #1276 (`3af063bd6f3`) |
-| 97 | `ui-future/deploy/identity_serving_precedence_test.go` | снять | да | — | старшинство полосы раздачи к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`); возврат полосы на own — находка `deploy/tests/helm/console-serves-identity-flows-test.sh` |
-| 98 | `ui-future/e2e/specs/identity-ceremony.spec.ts` | оставить | — | `/.ory/idp/public/sessions/whoami` | перепись обращений к поставщику в браузерной пробе: подсаженные обращения — её инъекция |
-| 99 | `ui-future/host/src/pages/ReachabilityPage/ReachabilityPage.test.tsx` | оставить | — | `RETIRED_IDENTITY_PROVIDER_EDGE` | страж возврата адреса поставщика на странице достижимости |
-| 100 | `ui-future/host/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
-| 101 | `ui-future/shared/src/contexts/AuthContext.own-edge-only.test.tsx` | оставить | — | `FOREIGN_IDENTITY` | страж возврата: контекст входа не спрашивает службу поставщика |
-| 102 | `ui-future/shared/src/test/console-provider-not-addressed.injection.test.ts` | оставить | — | `/.ory/idp/public` | страж возврата адреса поставщика в консоли: инъекция |
-| 103 | `ui-future/shared/src/test/e2e-provider-not-addressed.test.ts` | оставить | — | `/.ory/idp/public/sessions/whoami` | страж возврата адреса поставщика в браузерных пробах |
-| 104 | `ui-future/shared/src/test/provider-address-census.ts` | оставить | — | `PROVIDER_KNOBS` | перепись адресов поставщика: оси ручек и модулей |
-| 105 | `ui-future/shared/src/test/provider-address.ts` | оставить | — | `/.ory/` | распознаватель адреса поставщика для стражей возврата |
+| 13 | `deploy/kaname_subchart_retired_exchange_road_test.go` | оставить | — | `platform.iam.hydraTokenURL` | проба отсутствия, страж возврата дороги обмена к издателю поставщика (#2936): профиль, объявивший снятую ручку — адрес его token-эндпоинта, якорь доверия к нему или его издателя — значением либо пустой строкой, получает отказ рендера подчарта службы с именем ручки, близнец без ручки рендерится; поставщика называют литералы трёх ручек — ровно то, что мог написать оператор, и предмет пробы — отказ на них, а не провязка (её судит `deploy/kaname_subchart_retired_identity_wiring_test.go`) |
+| 14 | `deploy/kaname_subchart_retired_identity_wiring_injection_test.go` | оставить | — | `kaname-kratos-config` | страж возврата: синтетика провязки поставщика в подчарте службы (#2818) |
+| 15 | `deploy/kaname_subchart_retired_identity_wiring_test.go` | оставить | — | `var retiredVendorNames = []string{` | страж возврата провязки поставщика, снятых ключей пина и полосы хуков (#2818) |
+| 16 | `deploy/neighbour_address_producer_test.go` | оставить | — | `-kratos-public.` | судит производителя адреса соседа; поставщик — наблюдавшийся случай в прозе и синтетика класса «сосед» |
+| 17 | `deploy/nginx_upstream_form_test.go` | переписать | да | — | распознаватель ключей апстрима нёс три ключа поставщика без носителя в чарте консоли (0 объявлений у каждого); сняты, объявлений под судом 9 до и после, носитель каждой формы держит `TestNginxUpstreamKeyFormsEachHaveACarrier` — #1276, часть 2 |
+| 18 | `deploy/own_posture_foreign_identity_injection_test.go` | оставить | — | `pg-kratos` | страж возврата: инъекция компонента поставщика в зонт (#2735, #1276) |
+| 19 | `deploy/own_posture_foreign_identity_test.go` | оставить | — | `foreignIdentityRepoMark` | страж возврата компонента поставщика в зонт (#2735, #1276) |
+| 20 | `deploy/provider_raised_by_probe_test.go` | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
+| 21 | `deploy/published_image_pin_is_reachable_test.go` | оставить | — | — | судит пины образов продукта; из перечня сторонних образов границы снят образ экрана входа поставщика, которого в дереве нет — #1276, часть 2 |
+| 22 | `deploy/stack_render_carries_no_vendor_residue_test.go` | оставить | — | `var vendorResidueWord` | страж возврата следа поставщика в рендере каждой цепочки (#2818) |
+| 23 | `deploy/stack_table_test.go` | оставить | — | `values.fe3455-ory.yaml` | слой учётных данных площадки вне git: имя слоя не снято — экземпляр живёт в клонах операторов (#1276, часть 1) |
+| 24 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
+| 25 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
+| 26 | `deploy/tests/helm/admin-hop-address-census-test.sh` | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
+| 27 | `deploy/tests/helm/admin-hop-pod-shape-test.sh` | снять | да | — | форма пода терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
+| 28 | `deploy/tests/helm/admin-hop-port-policy-test.sh` | снять | да | — | политика порта терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
+| 29 | `deploy/tests/helm/config-rollout-binding-test.sh` | оставить | — | `checksum/hydra-secrets` | судит перекатку при смене содержимого карт; имя — синтетика самопроверки |
+| 30 | `deploy/tests/helm/console-serves-identity-flows-test.sh` | оставить | — | `ORY_BAND` | страж возврата полосы раздачи к экрану поставщика на цепочке own (#2777, F8) |
+| 31 | `deploy/tests/helm/edge-keyset-hop-test.sh` | оставить | — | `PROVIDER_SPELLING=` | страж возврата снятых ключей издателя в чарте края |
+| 32 | `deploy/tests/helm/iam-hooks-metrics-mtls-test.sh` | снять | да | — | mTLS слушателей хуков и метрик; полоса хуков снята — #2818 (`92097320166`), половина метрик — новая проба `deploy/tests/helm/iam-metrics-mtls-test.sh` |
+| 33 | `deploy/tests/helm/iam-metrics-mtls-test.sh` | оставить | — | `HYDRA_CM_PROD` | судит mTLS слушателя метрик; поставщик — история дефекта #1195 в прозе |
+| 34 | `deploy/tests/helm/identity-callback-credential-source.py` | снять | да | — | разбор снятой пробы источника величины обратного вызова; снят с ней — #1276 (`3af063bd6f3`) |
+| 35 | `deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh` | переписать | да | — | самопроверка стражей на нашем признаке, без ключей поставщика — #1276 (`3af063bd6f3`) |
+| 36 | `deploy/tests/helm/identity-guards-on-our-own-posture-test.sh` | оставить | — | `.Values.kratos.enabled` | страж возврата замолкания стражей на выключателе поставщика (#2732) |
+| 37 | `deploy/tests/helm/identity-hook-credential-provenance-inject.sh` | снять | да | — | инъекция отчёта о происхождении величины обратного вызова (строка 23 ведомости); снята вместе с отчётом после его вызовов в конвейере — #1276, часть 3 |
+| 38 | `deploy/tests/helm/identity-hook-credential-source-inject.sh` | снять | да | — | инъекция источника величины хуков; полосы хуков у пина нет — #2818 (`92097320166`) |
+| 39 | `deploy/tests/helm/identity-hook-credential-source.py` | снять | да | — | разбор источника величины хуков; снят с полосой — #2818 (`92097320166`) |
+| 40 | `deploy/tests/helm/identity-mail-lane-runtime-inject.sh` | снять | да | — | почтовый процесс поставщика на исполнении; второго отправителя нет — #2818 (`92097320166`) |
+| 41 | `deploy/tests/helm/identity-session-secret-source-test.sh` | снять | да | — | секреты сессии, которые чеканит чарт поставщика; снята — #2818 (`92097320166`) |
+| 42 | `deploy/tests/helm/identity-substitution-output-inject.sh` | снять | да | — | шаг подстановки в настройки поставщика; шаблон снят — #2818 (`92097320166`) |
+| 43 | `deploy/tests/helm/jobs-cronjobs-hardening-test.sh` | оставить | — | `издатель и подписант — Hydra` | судит жёсткость заданий; поставщик — «здесь стояло» в прозе |
+| 44 | `deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh` | снять | да | — | усиление экрана входа поставщика; переименована #2759 (`689bb77e848`) в `identity-selfservice-ui-hardening-test.sh` и снята с каталогом экрана — #1276 (`3af063bd6f3`) |
+| 45 | `deploy/tests/helm/machine-credential-posture-test.sh` | переписать | да | — | посадка машинных учётных данных без половины издателя — #1276 (`3af063bd6f3`) |
+| 46 | `deploy/tests/helm/neighbour-address-form-test.sh` | оставить | — | `KACHO_API_GATEWAY_KRATOS_PUBLIC_URL` | судит форму адреса соседа; поставщик — замер в прозе и синтетика самопроверки |
+| 47 | `deploy/tests/helm/networkpolicy-egress-test.sh` | оставить | — | `к Hydra` | судит сетевые политики; поставщик — описание реального случая в прозе |
+| 48 | `deploy/tests/helm/outbox-autovacuum-naptime-test.sh` | переписать | да | — | перечень баз без баз поставщика — #1276 (`3af063bd6f3`) |
+| 49 | `deploy/tests/helm/outcome-contract-inject.sh` | переписать | да | — | контракт исходов без проб перехода — #1276 (`3af063bd6f3`) |
+| 50 | `deploy/tests/helm/prerequisite-secrets-test.sh` | оставить | — | `из пода Hydra` | судит обязательные ссылки на секреты; поставщик — история случая и её конец (#1276) |
+| 51 | `deploy/tests/helm/provider-up.sh` | снять | да | — | подъём поставщика пробой; поднимать нечего — #1276 (`3af063bd6f3`) |
+| 52 | `deploy/tests/helm/rendered-documents-well-formed-test.sh` | оставить | — | `values.fe3455-ory.yaml` | судит форму документов рендера; слой учётных данных площадки вне git, имя слоя не снято |
+| 53 | `deploy/tests/helm/three-outcomes-distinguishable-test.sh` | переписать | да | — | перечень прогона без снятых проб поставщика — #1276 (`3af063bd6f3`) |
+| 54 | `deploy/tests/helm/trusted-forwarder-profiles-test.sh` | оставить | — | `OPTIONAL_ORY=` | судит доверенных пересыльщиков профилей; слой учётных данных площадки вне git |
+| 55 | `gateway/cmd/api-gateway/identity_lane_validation_test.go` | оставить | — | — | страж края разводит требования по посадке (F4d-06) — посадка края жива |
+| 56 | `gateway/cmd/api-gateway/identity_provider_dictionary_test.go` | оставить | — | — | законность посадки края по словарю (#2862) |
+| 57 | `gateway/deploy/f1c_issuer_set_reaches_every_stand_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
+| 58 | `gateway/deploy/identity_posture_base_default_test.go` | оставить | — | — | посадка базового профиля чарта края разбирается читателем процесса (#2862) |
+| 59 | `gateway/deploy/login_lane_prereq_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
+| 60 | `gateway/deploy/revocation_endpoint_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит адрес отзыва края; слой учётных данных площадки назван прозой |
+| 61 | `gateway/internal/config/identity_posture_env_test.go` | оставить | — | — | у переменной посадки края есть читатель |
+| 62 | `gateway/internal/principalmeta/identity_strip_test.go` | оставить | — | — | снятие пространства x-kacho- перед ретрансляцией на полосу формы (Ф3 Р2) |
+| 63 | `internal/productnaming/productnaming_test.go` | оставить | — | `"oryd/hydra"` | судит словарь образов продукта; сторонний образ — синтетика отрицательного контроля |
+| 64 | `internal/repohygiene/browserbeforestand_test.go` | оставить | — | `Hydra, OpenFGA` | судит порядок шагов браузерной пробы; поставщик — ранер замера 2026-08-17 в прозе |
+| 65 | `internal/repohygiene/contractrootscript_injection_test.go` | оставить | — | `https://hydra.api.` | судит корень контракта в скриптах; адрес — синтетика инъекции |
+| 66 | `internal/repohygiene/foreignidpname_injection_test.go` | оставить | — | `const testHydraIss` | страж возврата имени поставщика в объявлениях Go: инъекция |
+| 67 | `internal/repohygiene/foreignidpname_test.go` | оставить | — | — | страж возврата имени поставщика в объявлениях Go; ведомость пуста: запись deploy снята #1276, запись terraform — #2930 (поле контракта края не переименовано, а устарело, и форма разбора ответа о токене его не объявляет) |
+| 68 | `internal/repohygiene/grpcmountparity_test.go` | оставить | — | `хуки Hydra` | судит паритет монтирования служб; поставщик — история находки |
+| 69 | `internal/repohygiene/license_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит лицензии дерева; слой учётных данных площадки назван прозой |
+| 70 | `internal/repohygiene/peerlaneclassifier_test.go` | оставить | — | `ЗДЕСЬ БЫЛИ ДВА ПРИЗНАКА` | судит классификатор полос соседей; поставщик — «здесь были» в прозе |
+| 71 | `internal/repohygiene/providersurface_injection_test.go` | оставить | — | `hydra_oauth_clients.go` | страж возврата поверхности API поставщика: инъекция |
+| 72 | `internal/repohygiene/providersurfacedeployment_injection_test.go` | оставить | — | `In-cluster Hydra ADMIN endpoint` | страж возврата поверхности API поставщика в развёртывании: инъекция |
+| 73 | `internal/repohygiene/retiredidentityvendorceiling_injection_test.go` | оставить | — | `image: oryd/hydra:v2.2.0` | убывающий потолок привязок к поставщику: инъекция |
+| 74 | `internal/repohygiene/retiredidentityvendorceiling_test.go` | оставить | — | `образ издателя` | убывающий потолок привязок к поставщику: формы привязки |
+| 75 | `internal/repohygiene/retiredidentityvendorceilingbase_test.go` | оставить | — | `vendorProbeLine` | убывающий потолок привязок к поставщику: синтетика базы |
+| 76 | `internal/repohygiene/retiredissuerclaim_injection_test.go` | оставить | — | `нейтральное имя` | страж возврата утверждения о прежнем издателе: инъекция |
+| 77 | `internal/repohygiene/retiredrpcsurface_test.go` | оставить | — | `хуки Hydra обслуживались по HTTP` | ведомость снятых RPC: причина снятия — история |
+| 78 | `internal/repohygiene/standlogsderived_injection_test.go` | оставить | — | `deployment.apps/kratos` | судит выведение журналов стенда; имена нагрузок — синтетика |
+| 79 | `internal/repohygiene/subchartdup_test.go` | оставить | — | `name: hydra` | судит дубли подчартов; зависимость — синтетика |
+| 80 | `internal/repohygiene/testdata/shellprobe/networkpolicy-egress-test.sh.before` | оставить | — | `к Hydra` | снимок прежней редакции пробы для самопроверки переписи; правка подменила бы снимок |
+| 81 | `internal/repohygiene/testdata/shellprobe/podtemplate-annotation-single-owner-test.sh.before` | оставить | — | `kratos/hydra` | снимок прежней редакции пробы для самопроверки переписи; правка подменила бы снимок |
+| 82 | `services/registry/cmd/kacho-registry/serve_iamjwks_test.go` | оставить | — | `legacyIssuer` | судит приём набора ключей реестром; адрес прежнего издателя — значение синтетики слота |
+| 83 | `services/registry/cmd/kacho-registry/tokenverifier_test.go` | оставить | — | `probeLegacyIssuer` | судит проверку токена реестром; адрес прежнего издателя — значение синтетики слота |
+| 84 | `services/registry/internal/apps/kacho/config/config_test.go` | оставить | — | `KACHO_REGISTRY_HYDRA_ISSUER` | страж: снятые переменные издателя не читаются (TestConfig_RetiredTokenEnvsAreNotConsulted) |
+| 85 | `services/registry/internal/clients/jwks/f1_harness_test.go` | оставить | — | `testLegacyIss` | судит набор ключей реестра; адрес прежнего издателя — производимый пакетом признак (запись foreignIDPName) |
+| 86 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
+| 87 | `services/registry/internal/domain/fga_subject_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
+| 88 | `tests/authz-fixtures/mint_rs256.py` | оставить | — | `"hydraClientId"` | посев читает поле контракта края под всеми его именами; `hydraClientId` — устаревшее поле контракта края (#2930: не переименовано, а устарело), посев читает его, пока поле есть в ответе |
+| 89 | `tests/authz-fixtures/prodrun.sh` | оставить | — | `Hydra issues SA access tokens` | прогонщик посева; поставщик — проза о сроке токена |
+| 90 | `tests/authz-fixtures/prodseed_all.py` | оставить | — | `Hydra-signed RS256` | посев матрицы; поставщик — проза о подписи предъявителей |
+| 91 | `tests/authz-fixtures/prodseed_matrix.py` | оставить | — | `Hydra-signed RS256 ServiceAccount` | посев матрицы; поставщик — проза о подписи предъявителей |
+| 92 | `tests/authz-fixtures/setup.sh` | оставить | — | `HYDRA_*` | посев набора; поставщик назван прозой перечня величин |
+| 93 | `ui-future/dashboard/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
+| 94 | `ui-future/deploy/console_serving_neighbours_injection_test.go` | оставить | — | `location ^~ /.ory/idp/public/` | страж возврата полосы соседа в раздаче консоли: инъекция |
+| 95 | `ui-future/deploy/console_serving_neighbours_test.go` | оставить | — | `/.ory/` | страж возврата полосы соседа в раздаче консоли |
+| 96 | `ui-future/deploy/identity_dev_ceremony_band_injection_test.go` | снять | да | — | инъекция полосы раздачи церемоний режима разработки к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`) |
+| 97 | `ui-future/deploy/identity_dev_ceremony_band_test.go` | снять | да | — | полоса раздачи церемоний режима разработки к экрану поставщика; снята — #1276 (`3af063bd6f3`) |
+| 98 | `ui-future/deploy/identity_serving_precedence_test.go` | снять | да | — | старшинство полосы раздачи к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`); возврат полосы на own — находка `deploy/tests/helm/console-serves-identity-flows-test.sh` |
+| 99 | `ui-future/e2e/specs/identity-ceremony.spec.ts` | оставить | — | `/.ory/idp/public/sessions/whoami` | перепись обращений к поставщику в браузерной пробе: подсаженные обращения — её инъекция |
+| 100 | `ui-future/host/src/pages/ReachabilityPage/ReachabilityPage.test.tsx` | оставить | — | `RETIRED_IDENTITY_PROVIDER_EDGE` | страж возврата адреса поставщика на странице достижимости |
+| 101 | `ui-future/host/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
+| 102 | `ui-future/shared/src/contexts/AuthContext.own-edge-only.test.tsx` | оставить | — | `FOREIGN_IDENTITY` | страж возврата: контекст входа не спрашивает службу поставщика |
+| 103 | `ui-future/shared/src/test/console-provider-not-addressed.injection.test.ts` | оставить | — | `/.ory/idp/public` | страж возврата адреса поставщика в консоли: инъекция |
+| 104 | `ui-future/shared/src/test/e2e-provider-not-addressed.test.ts` | оставить | — | `/.ory/idp/public/sessions/whoami` | страж возврата адреса поставщика в браузерных пробах |
+| 105 | `ui-future/shared/src/test/provider-address-census.ts` | оставить | — | `PROVIDER_KNOBS` | перепись адресов поставщика: оси ручек и модулей |
+| 106 | `ui-future/shared/src/test/provider-address.ts` | оставить | — | `/.ory/` | распознаватель адреса поставщика для стражей возврата |
 
 | исход вне ведомости | исполнено | проб |
 |---|---|---:|
@@ -419,8 +425,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | снять | нет | 0 |
 | переписать | да | 13 |
 | переписать | нет | 0 |
-| оставить | — | 68 |
-| **итого** | — | **105** |
+| оставить | — | 69 |
+| **итого** | — | **106** |
 
 Строки «оставить» — стражи возврата (их предмет и есть то, что поставщик не
 вернётся), синтетика, проза-история и слой учётных данных площадки вне git, чьё
@@ -439,7 +445,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 проба (эта строка), затем вызовы отчёта в трёх рабочих потоках конвейера
 (`console-e2e.yml`, `e2e-newman.yml`, `production-posture.yml`; у первой — и
 служебный id шага в перечне разметчика исхода), затем сам отчёт
-`deploy/scripts/identity-hook-credential-provenance.sh` и его инъекция (строка 36
+`deploy/scripts/identity-hook-credential-provenance.sh` и его инъекция (строка 37
 записи Б, снята из состава `deploy/scripts/run-injection-proofs.sh`). Отчёт не
 уходит раньше своих вызовов: между вторым и третьим изменением он лежит в дереве
 незваным, а не зовётся в пустоту.
