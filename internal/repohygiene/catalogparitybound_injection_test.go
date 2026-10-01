@@ -36,6 +36,7 @@ func boundClaimRow(bound bool) catalogderive.Entry {
 }
 
 func TestCatalogParityBoundInjection_RowWithoutTheFlagIsAFinding(t *testing.T) {
+	t.Parallel()
 	const fqn = "/corelib.notify.InternalNotificationFeedService/Claim"
 	got := diffAnnotationAgainstRow(fqn, boundClaimAnnotations(), boundClaimRow(false))
 	if len(got) != 1 || !strings.Contains(got[0], "scope_extractor.bound_to_server") {
@@ -44,6 +45,7 @@ func TestCatalogParityBoundInjection_RowWithoutTheFlagIsAFinding(t *testing.T) {
 }
 
 func TestCatalogParityBoundInjection_RowCarryingTheFlagIsSilent(t *testing.T) {
+	t.Parallel()
 	const fqn = "/corelib.notify.InternalNotificationFeedService/Claim"
 	if got := diffAnnotationAgainstRow(fqn, boundClaimAnnotations(), boundClaimRow(true)); len(got) != 0 {
 		t.Fatalf("законный близнец (признак в строке есть) дал находки: %q", got)
@@ -51,6 +53,7 @@ func TestCatalogParityBoundInjection_RowCarryingTheFlagIsSilent(t *testing.T) {
 }
 
 func TestCatalogParityBoundInjection_FlagWithoutAnnotationIsAFinding(t *testing.T) {
+	t.Parallel()
 	const fqn = "/corelib.notify.InternalNotificationFeedService/Claim"
 	a := boundClaimAnnotations()
 	a.ScopeBoundToServer = false
