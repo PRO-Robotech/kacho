@@ -107,13 +107,21 @@ permission-catalog-apply: permission-catalog
 # per-RPC authz middleware returns "catalog: no entry for method" (AUTHZ_DENIED) at
 # runtime. Requires a full monorepo checkout (in-repo proto/) + buf.
 #
+# СТРОГИЙ РЕЖИМ (kacho#2915): проверка генерирует каталог с
+# KACHO_PERMISSIONS_STRICT=1 — RPC с неполной или противоречивой аннотацией прав
+# роняет генерацию с именем метода, а не оставляет предупреждение в
+# build/permission_catalog_warnings.txt, которого не читает никто. Включён, когда
+# предупреждений стало 0 (последние два — Claim/Ack ленты уведомлений, снятые
+# признанием формы bound_to_server). `permission-catalog` и -apply остаются
+# мягкими: разработчик видит весь перечень разом, а не первый отказ.
+#
 # Копия в этом дереве ОДНА — второй операнд уехал вместе с вынесенной службой
 # доступа (см. блок выше). Требование «обе копии байт-в-байт» здесь больше не
 # утверждается: утверждать его нечем, а утверждение без предмета читалось бы как
 # исполняемое.
 .PHONY: permission-catalog-check
 permission-catalog-check:
-	./scripts/gen-permission-catalog.sh $(PERMISSION_CATALOG_BUILD)
+	KACHO_PERMISSIONS_STRICT=1 ./scripts/gen-permission-catalog.sh $(PERMISSION_CATALOG_BUILD)
 	@diff -u $(PERMISSION_CATALOG_TARGET) $(PERMISSION_CATALOG_BUILD) \
 	  || { echo "::error::permission_catalog.json (api-gateway embed) is STALE vs proto — run 'make permission-catalog-apply', then commit"; exit 1; }
 	@echo "permission catalog is complete."

@@ -5,7 +5,8 @@
     "required_relation": "reader",
     "scope_extractor": {
       "object_type": "notification_feed",
-      "from_request_field": ""
+      "from_request_field": "",
+      "bound_to_server": true
     },
     "required_acr_min": "1"
   },
@@ -15,7 +16,8 @@
     "required_relation": "reader",
     "scope_extractor": {
       "object_type": "notification_feed",
-      "from_request_field": ""
+      "from_request_field": "",
+      "bound_to_server": true
     },
     "required_acr_min": "1"
   },

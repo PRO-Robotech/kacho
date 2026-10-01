@@ -77,8 +77,16 @@ func NewResourceExtractor(httpFallbackPaths map[string]string) *ResourceExtracto
 // typed proto request, returning the resolved ResourceID + ok.
 //
 // Returns ok=true even for wildcard results — the boolean signals "no error",
-// not "specific id". Callers distinguish with ResourceID.IsWildcard.
+// not "specific id". Callers distinguish with ResourceID.IsWildcard. The one
+// ok=false outcome is a ScopeBound row (`bound_to_server`): its id is the
+// server's binding, which the edge does not hold.
 func (e *ResourceExtractor) ExtractFromProto(req any, entry CatalogEntry) (ResourceID, bool) {
+	if entry.ScopeExtractor.BoundToServer {
+		// Форма ScopeBound: идентификатор приносит привязка сервера, а не запрос.
+		// Пустое from_request_field здесь законно и НЕ означает «любой объект
+		// типа» — разрешать нечем, и подстановка была бы вопросом о чужих лентах.
+		return ResourceID(""), false
+	}
 	field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
 	if field == "" || field == "*" {
 		return ResourceID("*"), true
@@ -128,6 +136,10 @@ type ScopeConflict struct {
 // value (see ScopeConflict); the returned id is the best handler-visible reading,
 // but the caller must refuse rather than proceed on it.
 func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry CatalogEntry) (ResourceID, *ScopeConflict) {
+	if entry.ScopeExtractor.BoundToServer {
+		// Форма ScopeBound — см. ExtractFromProto: запрос объекта не называет.
+		return ResourceID(""), nil
+	}
 	if r == nil {
 		return ResourceID("*"), nil
 	}

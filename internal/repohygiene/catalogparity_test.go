@@ -255,6 +255,13 @@ func diffAnnotationAgainstRow(fqn string, a catalogderive.Annotations, row catal
 		add("scope_extractor.object_type_from_request_field",
 			a.ScopeObjectTypeFromRequest, row.ScopeExtractor.ObjectTypeFromRequestField)
 	}
+	// Форма ScopeBound (kacho#2915): без этой оси строка без признака сходилась
+	// с аннотацией, несущей его, — а край читал её пустое from_request_field
+	// как подстановку `*`.
+	if a.ScopeBoundToServer != row.ScopeExtractor.BoundToServer {
+		add("scope_extractor.bound_to_server",
+			fmt.Sprint(a.ScopeBoundToServer), fmt.Sprint(row.ScopeExtractor.BoundToServer))
+	}
 	if a.HideExistence != row.HideExistence {
 		add("hide_existence", fmt.Sprint(a.HideExistence), fmt.Sprint(row.HideExistence))
 	}
