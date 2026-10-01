@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=48
+DENOM=52
 passed=0
 failed=0
 
@@ -165,6 +165,10 @@ elif kind in ("guarded_off", "guarded_on"):
 elif kind == "library":
     files = {"Chart.yaml": "apiVersion: v2\nname: injchart\nversion: 0.1.0\ntype: library\n",
              "templates/_helpers.tpl": "{{- define \"injchart.name\" -}}injchart{{- end -}}\n"}
+elif kind == "big":
+    # член больше предела гейта (32 МиБ): нули сжимаются в десятки КиБ — архив мал,
+    # раскрытие велико. Ровно та форма, от которой предел и стоит.
+    files["files/blob.bin"] = "\0" * (40 << 20)
 elif kind == "nochart":
     files = {"README.txt": "not a chart\n"}
 else:
@@ -482,6 +486,22 @@ printf '{{- define "libdir.name" -}}libdir{{- end -}}\n' > "$work/h7dir/deploy/h
 git -C "$work/h7dir" add -f -- deploy/helm/libdir || exit 2
 expect "H7: та же библиотека каталогом — тот же исход" "$work/h7dir" 0 \
   "не рендерит ничего  deploy/helm/libdir/ — библиотека"
+
+# ── Z. H4: пределы — гейт не распаковывает без предела, сканер — под пределом ──────
+make_copy "$work/h4big" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/h4big" deploy/helm/vendor/bigc-0.1.0.tgz big || exit 2
+expect "H4: член архива больше предела — код 2 с именем архива" "$work/h4big" 2 \
+  "архив deploy/helm/vendor/bigc-0.1.0.tgz не прочитан — превышен предел"
+make_copy "$work/h4small" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/h4small" deploy/helm/vendor/bigc-0.1.0.tgz open || exit 2
+expect "H4 (близнец): тот же архив без раздутого члена — осмотрен" "$work/h4small" 0 \
+  "целей  deploy/helm/vendor/bigc-0.1.0.tgz"
+export KACHO_IAC_TRIVY_MEMORY_MIB=300
+expect "H4: сканер за пределом памяти — код 2 с пределом и проходом" "$work/control" 2 \
+  "при пределе памяти 300 МиБ (KACHO_IAC_TRIVY_MEMORY_MIB)"
+unset KACHO_IAC_TRIVY_MEMORY_MIB
+expect "H4 (близнец): тот же прогон при пределе по умолчанию — гейт молчит" "$work/control" 0 \
+  "непокрытых 0"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

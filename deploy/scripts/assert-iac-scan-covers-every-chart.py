@@ -206,6 +206,35 @@ def is_archive(path):
             or head[257:262] == b"ustar")       # tar
 
 
+# ПРЕДЕЛЫ ЧТЕНИЯ АРХИВА (H4). Архив — чужие байты; гейт не распаковывает его без
+# предела: число членов, размер члена и сумма размеров по заголовкам проверяются ДО
+# того, как чтение пройдёт дальше заголовка. Превышение — код 2 с именем архива: о
+# чарте, которого гейт не дочитал, вердикта нет. Пределы с запасом над деревом:
+# крупнейший отслеживаемый архив-чарт — десятки КиБ, сотни членов.
+MAX_ARCHIVE_MEMBERS = 20000
+MAX_MEMBER_BYTES = 32 << 20
+MAX_ARCHIVE_BYTES = 256 << 20
+
+
+class LimitExceeded(Exception):
+    pass
+
+
+def _bounded_tar_members(t):
+    out, total = [], 0
+    for m in t:
+        if len(out) >= MAX_ARCHIVE_MEMBERS:
+            raise LimitExceeded("членов больше %d" % MAX_ARCHIVE_MEMBERS)
+        if m.size > MAX_MEMBER_BYTES:
+            raise LimitExceeded("член «%s» — %d байт при пределе %d" % (m.name, m.size,
+                                                                         MAX_MEMBER_BYTES))
+        total += m.size
+        if total > MAX_ARCHIVE_BYTES:
+            raise LimitExceeded("сумма размеров членов больше %d байт" % MAX_ARCHIVE_BYTES)
+        out.append(m)
+    return out
+
+
 def archive_toc(path):
     """→ ("архив", [имена]) | ("поток", None) | ("не прочитан", причина).
 
@@ -216,12 +245,18 @@ def archive_toc(path):
     try:
         if zipfile.is_zipfile(path):
             with zipfile.ZipFile(path) as z:
-                return "архив", z.namelist()
+                infos = z.infolist()
+                if len(infos) > MAX_ARCHIVE_MEMBERS:
+                    raise LimitExceeded("членов больше %d" % MAX_ARCHIVE_MEMBERS)
+                if sum(i.file_size for i in infos) > MAX_ARCHIVE_BYTES:
+                    raise LimitExceeded("сумма размеров членов больше %d байт"
+                                        % MAX_ARCHIVE_BYTES)
+                return "архив", [i.filename for i in infos]
     except (zipfile.BadZipFile, OSError) as err:
         return "не прочитан", "zip: %s" % err
     try:
         with tarfile.open(path, "r:*") as t:
-            return "архив", t.getnames()
+            return "архив", [m.name for m in _bounded_tar_members(t)]
     except tarfile.ReadError as err:
         tar_err = err
     except (OSError, EOFError, tarfile.TarError) as err:
@@ -229,8 +264,15 @@ def archive_toc(path):
     for opener in (gzip.open, bz2.open, lzma.open):
         try:
             with opener(path) as fh:
-                while fh.read(1 << 20):
-                    pass
+                read = 0
+                while True:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    read += len(chunk)
+                    if read > MAX_ARCHIVE_BYTES:
+                        raise LimitExceeded("сжатый поток раскрывается больше чем в %d байт"
+                                            % MAX_ARCHIVE_BYTES)
             return "поток", None
         except (OSError, EOFError, lzma.LZMAError):
             continue
@@ -260,7 +302,7 @@ def chart_sources(path):
         return out
     try:
         with tarfile.open(path, "r:*") as t:
-            members = [m for m in t.getmembers() if m.isfile()]
+            members = [m for m in _bounded_tar_members(t) if m.isfile()]
             roots = sorted((m.name.rsplit("/", 1)[0] if "/" in m.name else ""
                             for m in members if m.name.rstrip("/").rsplit("/", 1)[-1]
                             == "Chart.yaml"), key=lambda r: r.count("/"))
@@ -544,8 +586,13 @@ def main():
     candidates = [a for a in tracked if is_archive(ROOT / a)]
     home = iac_scan_passes.VENDOR_HOME + "/"
     archives, nested_archives, not_charts, misplaced, unreadable = [], [], [], [], []
+    over_limit = []
     for a in candidates:
-        kind, toc = archive_toc(ROOT / a)
+        try:
+            kind, toc = archive_toc(ROOT / a)
+        except LimitExceeded as err:
+            over_limit.append((a, str(err)))
+            continue
         if kind == "не прочитан":
             unreadable.append((a, toc))
         elif kind == "поток" or not is_chart_toc(toc):
@@ -557,6 +604,12 @@ def main():
         else:
             misplaced.append(a)
     sniff_s = time.monotonic() - t0
+    if over_limit:
+        for a, why in over_limit:
+            print("ОТКАЗ: архив %s не прочитан — превышен предел: %s. Вердикта о нём нет, и\n"
+                  "       гейт его не выносит; разберите архив руками или поднимите предел\n"
+                  "       отдельным решением с замером" % (a, why), file=sys.stderr)
+        return 2
     scan_log = {}
     targets, census = scan_targets(scan_log)
     if not targets:

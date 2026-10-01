@@ -38,8 +38,19 @@
 """
 import json
 import os
+import re
+import resource
 import subprocess
 import sys
+
+# ПРЕДЕЛ ПАМЯТИ СКАНЕРА (H4). Архив-чарт — чужие байты: рендер, раздувающий память,
+# не должен ронять раннер и чужие задания. Сканер запускается под RLIMIT_AS; превышение
+# — код 2 с именем прохода и последнего файла из журнала, а не зависание и не «зелено».
+# Замер 2026-10-01, trivy 0.70.0, проход подчартов зонтика: 2048 МиБ — исполняется,
+# 512 МиБ — отказ рантайма; умолчание взято с запасом вдвое над рабочим значением.
+MEMORY_MIB_ENV = "KACHO_IAC_TRIVY_MEMORY_MIB"
+MEMORY_MIB_DEFAULT = 4096
+_FILE_PATH = re.compile(r'file_path="([^"]+)"')
 
 VENDOR_HOME = "deploy/helm/vendor"
 ALWAYS_SKIPPED = (".claude", "**/node_modules")
@@ -93,15 +104,31 @@ def run(root, scan_pass, config=None, extra=(), errors=None):
     _name, ref, own_config, skipped = scan_pass
     env = dict(os.environ)
     env.pop("TRIVY_IGNOREFILE", None)
+    # Журнал читается ВСЕГДА (без `--quiet`): в нём имя файла, на котором сканер
+    # отказал, — без него предел памяти назвал бы проход, но не архив.
     cmd = ["trivy", "config", ref, "--config", str(config or own_config),
-           "--format", "json", *extra]
-    cmd += ["--skip-version-check"] if errors is not None else ["--quiet"]
+           "--format", "json", "--skip-version-check", *extra]
     for d in skipped:
         cmd += ["--skip-dirs", d]
-    r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, env=env, timeout=900)
+    try:
+        mib = int(os.environ.get(MEMORY_MIB_ENV) or MEMORY_MIB_DEFAULT)
+    except ValueError:
+        print("ОТКАЗ: %s=%r — не число МиБ" % (MEMORY_MIB_ENV, os.environ.get(MEMORY_MIB_ENV)),
+              file=sys.stderr)
+        sys.exit(2)
+
+    def limit():
+        resource.setrlimit(resource.RLIMIT_AS, (mib << 20, mib << 20))
+
+    r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, env=env, timeout=900,
+                       preexec_fn=limit)
     if r.returncode not in (0, 1):
-        print("ОТКАЗ: trivy (проход «%s») вышел с кодом %d\n%s"
-              % (scan_pass[0], r.returncode, r.stderr[:400]), file=sys.stderr)
+        seen = _FILE_PATH.findall(r.stderr)
+        print("ОТКАЗ: trivy (проход «%s») вышел с кодом %d при пределе памяти %d МиБ (%s); "
+              "последний файл в журнале: %s\n%s"
+              % (scan_pass[0], r.returncode, mib, MEMORY_MIB_ENV,
+                 seen[-1] if seen else "журнал файла не назвал", r.stderr[-400:]),
+              file=sys.stderr)
         sys.exit(2)
     if errors is not None:
         errors += [line.strip() for line in r.stderr.splitlines()
