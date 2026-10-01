@@ -40,7 +40,14 @@
      выражением не сопоставить, это работа слоя 2);
   2. шаг решения (`id: publish_right`) при обойдённом условии задания ОСТАНАВЛИВАЕТ
      исполнение: отказывает, и отказ не погашен `continue-on-error`. Судится при
-     СНЯТЫХ условиях шагов с секретами — охрана слоя 3 не прячет снятие слоя 2;
+     СНЯТОЙ охране шагов с секретами — их условие вычисляется при выводах шагов,
+     равных всему, — охрана слоя 3 не прячет снятие слоя 2. Функции состояния в
+     этом условии смысл сохраняют: шаг по `failure()`, `always()`, `!success()`
+     идёт и ПОСЛЕ отказа, то есть отказ его не останавливает. Шаг решения
+     исполняется той оболочкой, которой его исполнит площадка (`shell` шага, иначе
+     `defaults.run.shell` задания, иначе процесса, иначе `bash -e {0}`); оболочка,
+     которую гейт не исполняет (не bash и не sh), — находка слоя 2 и худший случай
+     «выход с кодом 0 без ответа»;
   3. шаг с секретами охраняет своё условие: при ответе решения «нет» БЕЗ отказа,
      а также при ОТСУТСТВИИ ответа без отказа, он не исполняется.
 
@@ -51,7 +58,8 @@
 ЯЗЫК УСЛОВИЙ. Вычисляется подмножество выражений площадки: `|| && ! == !=`,
 скобки, строки, `true/false/null`, числа, контексты `github`, `steps`, `env`,
 `secrets` (значение — непустая строка-заглушка) и функции состояния
-`success() failure() always() cancelled()`. `continue-on-error` шага исполняется:
+`success() failure() always() cancelled()` (имя без учёта регистра; вызов
+распознаётся разбором, а не текстом). `continue-on-error` шага исполняется:
 отказ такого шага задание не останавливает. Сравнение строк —
 без учёта регистра, разнотипное — через число, как у площадки. Всё прочее —
 ОТКАЗ «не измерено» (код 2), а не догадка: непонятое условие не судится ни в
@@ -74,6 +82,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -216,7 +225,10 @@ class _Parser:
     def not_(self):
         if self.peek()[1] == "!":
             self.take()
-            return not truthy(self.not_())
+            v = self.not_()
+            # отрицание худшего случая — снова худший случай, а не «ложь»: иначе
+            # `!` над неизвестным выводом прятал бы исполнение шага
+            return ANY if v is ANY else not truthy(v)
         return self.cmp()
 
     def cmp(self):
@@ -247,10 +259,11 @@ class _Parser:
             if self.peek()[1] == "(":
                 self.take("(")
                 self.take(")")
-                if val not in STATUS_FUNCS:
+                fn = val.casefold()  # имена функций площадка сверяет без учёта регистра
+                if fn not in STATUS_FUNCS:
                     raise Unmeasured(f"функция {val}() не входит в вычисляемое подмножество")
                 f = self.ctx.failed
-                return {"success": not f, "failure": f, "always": True, "cancelled": False}[val]
+                return {"success": not f, "failure": f, "always": True, "cancelled": False}[fn]
             return self.resolve(val)
         raise Unmeasured(f"неожиданный элемент {val!r}")
 
@@ -290,7 +303,15 @@ def evaluate(expr, ctx: Ctx):
 
 
 def uses_status_func(expr) -> bool:
-    return bool(re.search(r"\b(success|failure|always|cancelled)\s*\(", str(expr)))
+    """Есть ли в условии ВЫЗОВ функции состояния — разбором, а не образцом: текст
+    'failure()' в строковом литерале вызовом не является. Без вызова площадка
+    подразумевает `success() &&`."""
+    if isinstance(expr, bool):
+        return False
+    toks = _tokens(_strip_braces(str(expr)))
+    return any(k == "id" and v.casefold() in STATUS_FUNCS
+               and i + 1 < len(toks) and toks[i + 1][1] == "("
+               for i, (k, v) in enumerate(toks))
 
 
 def interpolate(text: str, ctx: Ctx) -> str:
@@ -497,17 +518,63 @@ class Run:
         return self.secret_steps[0] if self.secret_steps else None
 
 
-def _run_decision(step: dict, ctx: Ctx) -> tuple[int, dict]:
+# Оболочка шага `run:` у площадки: ключ `shell` шага, иначе `defaults.run.shell`
+# задания, иначе процесса, иначе умолчание раннера Linux. Имена `bash` и `sh` —
+# записи площадки; прочее — шаблон `команда … {0}`, где `{0}` — файл сценария.
+PLATFORM_SHELLS = {
+    "bash": "bash --noprofile --norc -eo pipefail {0}",
+    "sh": "sh -e {0}",
+}
+DEFAULT_SHELL = ("bash -e {0}", "умолчание площадки")
+EXECUTED_SHELLS = {"bash", "sh"}
+
+
+def decision_shell(step: dict, job: dict, doc: dict) -> tuple[str, str]:
+    """Оболочка, которой площадка исполнит шаг, и уровень, откуда она взята."""
+    levels = (("шаг", step),
+              ("задание", ((job.get("defaults") or {}).get("run") or {})),
+              ("процесс", ((doc.get("defaults") or {}).get("run") or {})))
+    for source, holder in levels:
+        if isinstance(holder, dict) and holder.get("shell") is not None:
+            v = str(holder["shell"]).strip()
+            if "${{" in v:
+                raise Unmeasured(f"оболочка выражением ({source}): {v!r}")
+            return v, source
+    return DEFAULT_SHELL
+
+
+def shell_argv(shell: str, script: str) -> list[str] | None:
+    """Команда, которой площадка исполнит сценарий, — либо None, если гейт её не
+    исполняет (не bash и не sh): тогда исход шага — худший случай."""
+    tmpl = PLATFORM_SHELLS.get(shell, shell)
+    if "{0}" not in tmpl:
+        return None
+    try:
+        argv = shlex.split(tmpl)
+    except ValueError:
+        return None
+    if not argv or os.path.basename(argv[0]) not in EXECUTED_SHELLS:
+        return None
+    return [a.replace("{0}", script) for a in argv]
+
+
+def _run_decision(step: dict, ctx: Ctx, job: dict, doc: dict) -> tuple[int, dict]:
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
     for k, v in (step.get("env") or {}).items():
         env[str(k)] = interpolate(str(v), ctx)
     script = interpolate(str(step.get("run", "")), ctx)
+    shell, _ = decision_shell(step, job, doc)
     with tempfile.TemporaryDirectory() as d:
+        body = Path(d) / "step.sh"
+        body.write_text(script)
+        argv = shell_argv(shell, str(body))
+        if argv is None:
+            # Худший случай для слоя 2: выход с кодом 0 и без ответа.
+            return 0, {}
         out = Path(d) / "out"
         out.write_text("")
         env["GITHUB_OUTPUT"] = str(out)
-        p = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-                           env=env, capture_output=True, text=True)
+        p = subprocess.run(argv, env=env, capture_output=True, text=True)
         outputs = {}
         for line in out.read_text().splitlines():
             if "=" in line:
@@ -528,9 +595,11 @@ def _continue_on_error(step: dict, ctx: Ctx) -> bool:
 def simulate(job: dict, doc: dict, github: dict, *, bypass_job_if=False,
              forced_decision: tuple[int, dict] | None = None,
              neutral_secret_guards=False) -> Run:
-    """Исполнение задания в сцене. `neutral_secret_guards` снимает условия шагов,
-    читающих секреты (они идут, пока задание не остановлено): так судится слой 2
-    без охраны слоя 3."""
+    """Исполнение задания в сцене. `neutral_secret_guards` снимает охрану слоя 3 у
+    шагов, читающих секреты: их условие вычисляется при выводах шагов, равных всему
+    (худший случай), а функции состояния СОХРАНЯЮТ смысл. Так судится слой 2 —
+    останавливает ли отказ решения исполнение: `failure()`, `always()`, `!success()`
+    в условии шага с секретами отказ обходят, и снятием условия это не спрятать."""
     ctx = Ctx(github=github, env={**(doc.get("env") or {}), **(job.get("env") or {})})
     cond = job.get("if")
     job_if = True if cond is None else truthy(evaluate(cond, ctx))
@@ -542,10 +611,13 @@ def simulate(job: dict, doc: dict, github: dict, *, bypass_job_if=False,
         sid = step.get("id")
         reads = refs_secrets(step)
         sc = step.get("if")
-        if sc is None or (reads and neutral_secret_guards):
+        if sc is None:
             runs = not ctx.failed
         else:
-            v = truthy(evaluate(sc, ctx))
+            ectx = ctx
+            if reads and neutral_secret_guards:
+                ectx = Ctx(github=ctx.github, steps=ANY, env=ctx.env, failed=ctx.failed)
+            v = truthy(evaluate(sc, ectx))
             runs = v if uses_status_func(sc) else (v and not ctx.failed)
         if not runs:
             if sid:
@@ -554,7 +626,7 @@ def simulate(job: dict, doc: dict, github: dict, *, bypass_job_if=False,
         if reads:
             run.secret_steps.append(_step_label(step))
         if sid == DECISION_ID:
-            rc, outs = forced_decision if forced_decision else _run_decision(step, ctx)
+            rc, outs = forced_decision if forced_decision else _run_decision(step, ctx, job, doc)
             run.decision_rc, run.decision_publish = rc, outs.get("publish")
             tolerated = rc != 0 and _continue_on_error(step, ctx)
             ctx.steps[sid] = {"outputs": outs, "outcome": "success" if rc == 0 else "failure",
@@ -609,6 +681,12 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
                                 f"публикацию не судится по событию и ветке исходного прогона")
             else:
                 di = ids.index(DECISION_ID)
+                shell, source = decision_shell(steps[di], job, doc)
+                if shell_argv(shell, "x") is None:
+                    findings.append(f"{where}: слой 2: шаг решения №{di + 1} исполняется "
+                                    f"оболочкой '{shell}' ({source}) — гейт исполняет только "
+                                    f"bash и sh, отказ решения не доказан; судится худший "
+                                    f"случай: выход с кодом 0 без ответа")
                 if refs_secrets(steps[di]):
                     findings.append(f"{where}: место проверки: шаг решения №{di + 1} сам "
                                     f"читает секреты")
@@ -814,6 +892,67 @@ def self_test(root: Path) -> int:
     expect("законный близнец: continue-on-error: false у решения",
            mutate("        id: publish_right\n",
                   "        id: publish_right\n        continue-on-error: false\n"), 0)
+
+    # слой 2: шаг с секретами идёт ИМЕННО при отказе решения — функция состояния в
+    # его условии. Охрана слоя 3 тут не мешает судить слой 2: снимается она, а не
+    # функции состояния, которые и решают, идёт ли шаг после отказа.
+    guard = "        if: steps.publish_right.outputs.publish == 'true'\n"
+    login = "        if: steps.gate.outputs.push == 'true'\n"
+    expect("слой 2: вход в реестр по failure()",
+           mutate(login, "        if: failure()\n"), 1,
+           ["слой 2", "login to Docker Hub"], "слой 2")
+    expect("слой 2: вход в реестр по failure() ИЛИ законному ответу",
+           mutate(login, "        if: failure() || steps.gate.outputs.push == 'true'\n"), 1,
+           ["слой 2", "login to Docker Hub"], "слой 2")
+    expect("слой 2: шаг с секретами по failure() ИЛИ законному ответу",
+           mutate(guard, "        if: failure() || steps.publish_right.outputs.publish == 'true'\n"),
+           1, ["слой 2", "gate on DockerHub secrets"], "слой 2")
+    expect("слой 2: шаг с секретами по отрицанию success()",
+           mutate(guard, "        if: ${{ !success() }}\n"), 1,
+           ["слой 2", "gate on DockerHub secrets"])
+    expect("слой 2: функция состояния в другом регистре",
+           mutate(login, "        if: Failure()\n"), 1,
+           ["слой 2", "login to Docker Hub"], "слой 2")
+    expect("слой 2: always() И законный ответ — отказ не останавливает, держит один слой 3",
+           mutate(guard, "        if: always() && steps.publish_right.outputs.publish == 'true'\n"),
+           1, ["слой 2", "gate on DockerHub secrets"], "слой 2")
+    expect("законный близнец: success() И законный ответ",
+           mutate(guard, "        if: success() && steps.publish_right.outputs.publish == 'true'\n"),
+           0)
+    expect("законный близнец: 'failure()' строковым литералом",
+           mutate(guard, "        if: steps.publish_right.outputs.publish == 'true' && "
+                         "'failure()' != ''\n"), 0)
+
+    # слой 2: оболочка решения — та, что исполнит площадка. Переопределение на любом
+    # из трёх уровней (шаг, задание, процесс) оболочкой, которая выходит с кодом 0 и
+    # ничего не пишет, снимает отказ решения.
+    expect("слой 2: оболочка шага решения переопределена",
+           mutate("        id: publish_right\n",
+                  "        id: publish_right\n        shell: true {0}\n"), 1,
+           ["слой 2", "оболочкой 'true {0}'"], "слой 2")
+    expect("слой 2: оболочка задания переопределена",
+           mutate("    runs-on: ubuntu-latest\n",
+                  "    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: true {0}\n"),
+           1, ["слой 2", "оболочкой 'true {0}'", "задание"], "слой 2")
+    expect("слой 2: оболочка процесса переопределена",
+           mutate("    shell: bash\n", "    shell: true {0}\n"), 1,
+           ["слой 2", "оболочкой 'true {0}'", "процесс"], "слой 2")
+    expect("слой 2: оболочка шага — bash без -e и без отказа в сценарии",
+           mutate("        id: publish_right\n",
+                  "        id: publish_right\n        shell: bash -c 'exit 0' {0}\n"), 1,
+           ["слой 2"], "слой 2")
+    expect("законный близнец: shell: bash у шага решения",
+           mutate("        id: publish_right\n",
+                  "        id: publish_right\n        shell: bash\n"), 0)
+    expect("законный близнец: shell: bash у задания",
+           mutate("    runs-on: ubuntu-latest\n",
+                  "    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n"), 0)
+    expect("законный близнец: оболочка шага решения записью площадки",
+           mutate("        id: publish_right\n",
+                  "        id: publish_right\n"
+                  "        shell: bash --noprofile --norc -eo pipefail {0}\n"), 0)
+    expect("законный близнец: умолчание площадки (оболочка процесса снята)",
+           mutate("defaults:\n  run:\n    shell: bash\n", ""), 0)
 
     # ── слой 3: условие шага с секретами ──
     guard = "        if: steps.publish_right.outputs.publish == 'true'\n"
