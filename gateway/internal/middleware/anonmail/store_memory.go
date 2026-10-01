@@ -89,6 +89,10 @@ func (b *memBackend) close() error {
 	return nil
 }
 
+// sweepLoop — уборка хранилища memory.
+//
+// РЕПЛИКИ: на-реплику — хранилище memory живёт в памяти процесса и законно ровно
+// при флоте из одной реплики; каждая реплика убирает только свою память.
 func (b *memBackend) sweepLoop(now func() time.Time) {
 	defer close(b.stopped)
 	t := time.NewTicker(memSweepEvery)
@@ -195,6 +199,11 @@ func (x *memTx) lock(ctx context.Context, pairs []lockPair) error {
 	return nil
 }
 
+// markSpent — пометка вызова в транзакции решения.
+//
+// РЕПЛИКИ: запрос — ожидание принадлежит обслуживаемому запросу: оно ждёт исход
+// соседнего решения того же вызова не дольше anonMailStoreWait и живёт ровно
+// столько, сколько этот запрос.
 func (x *memTx) markSpent(ctx context.Context, p Proof) (bool, error) {
 	deadline := time.NewTimer(anonMailStoreWait)
 	defer deadline.Stop()

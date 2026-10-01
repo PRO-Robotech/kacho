@@ -490,6 +490,10 @@ type commitProbe interface {
 // нет — StoreUnavailable (вызов не истрачен). За весь срок разрешения строку
 // прочесть не удалось — остаток: 503 и WARN «исход фиксации не разрешён» с
 // decision_id; пропуска без подтверждённой записи нет.
+//
+// РЕПЛИКИ: запрос — опрос принадлежит обслуживаемому запросу и кончается его
+// исходом в пределах anonMailResolveBudget; у каждой реплики свои решения,
+// общего состояния опрос не двигает.
 func (b *pgBackend) resolveCommit(ctx context.Context, probe commitProbe, pc pendingCommit, deadline time.Time) Outcome {
 	rctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()

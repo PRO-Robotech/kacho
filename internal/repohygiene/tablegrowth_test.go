@@ -178,6 +178,13 @@ type TableGrowthDecl struct {
 // таблицу — поэтому таблицы, которой в дереве нет, здесь нет тоже.
 var tableGrowthRegistry = []TableGrowthDecl{
 	{
+		Owner: "gateway", Table: "anon_mail_bucket",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "строка-якорь ведра общего потока ограничителя анонимной почты: ОДНА на " +
+			"установку — первичный ключ с CHECK (id = 1), строку заводит миграция, решения " +
+			"её только обновляют (замысел issue-2917, З8, З26)",
+	},
+	{
 		Owner: "services/compute", Table: "quota_sync_cursor",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на ВИД синхронизации, а не на событие: ключ id перечисляет виды. " +

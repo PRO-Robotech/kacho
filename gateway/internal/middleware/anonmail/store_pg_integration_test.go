@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -358,7 +359,7 @@ func TestPg_UK52_WarmUpTakesAllConnectionsAtOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer p.Close()
+		pgtest.ClosePoolAtEnd(t, p)
 		if sequential {
 			for i := 0; i < anonMailPoolConns; i++ {
 				c, err := p.Acquire(context.Background())

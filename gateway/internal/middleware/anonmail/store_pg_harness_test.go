@@ -104,6 +104,6 @@ func rawPool(t testing.TB, dsn string, max int32) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(p.Close)
+	pgtest.ClosePoolAtEnd(t, p)
 	return p
 }
