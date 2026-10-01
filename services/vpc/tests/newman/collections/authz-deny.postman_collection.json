@@ -373,7 +373,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -381,7 +381,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -426,7 +426,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -434,7 +434,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -488,7 +488,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -496,7 +496,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -837,7 +837,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -845,7 +845,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -898,7 +898,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -906,7 +906,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -969,7 +969,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -977,7 +977,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -1572,7 +1572,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1580,7 +1580,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -1633,7 +1633,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1641,7 +1641,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -1704,7 +1704,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1712,7 +1712,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -2307,7 +2307,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2315,7 +2315,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -2368,7 +2368,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2376,7 +2376,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -2439,7 +2439,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2447,7 +2447,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -3042,7 +3042,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3050,7 +3050,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -3103,7 +3103,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3111,7 +3111,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -3174,7 +3174,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3182,7 +3182,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4022,7 +4022,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4030,7 +4030,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4083,7 +4083,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4091,7 +4091,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -4154,7 +4154,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networks/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4162,7 +4162,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4228,7 +4228,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-anon-own-{{runId}}\", \"networkId\": \"netnonexistent000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-anon-own-{{runId}}\", \"networkId\": \"net00000000000000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4442,7 +4442,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4450,7 +4450,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4495,7 +4495,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4503,7 +4503,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -4557,7 +4557,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4565,7 +4565,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4622,7 +4622,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-nob-own-{{runId}}\", \"networkId\": \"netnonexistent000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-nob-own-{{runId}}\", \"networkId\": \"net00000000000000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4906,7 +4906,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4914,7 +4914,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -4967,7 +4967,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4975,7 +4975,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -5038,7 +5038,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5046,7 +5046,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -6004,7 +6004,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6012,7 +6012,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -6065,7 +6065,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6073,7 +6073,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -6136,7 +6136,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6144,7 +6144,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -7102,7 +7102,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7110,7 +7110,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -7163,7 +7163,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7171,7 +7171,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -7234,7 +7234,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7242,7 +7242,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -7308,7 +7308,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-aab-own-{{runId}}\", \"networkId\": \"netnonexistent000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-subnet-aab-own-{{runId}}\", \"networkId\": \"net00000000000000001\", \"zoneId\": \"{{zoneA}}\", \"ipv4CidrPrimary\": \"10.0.0.0/16\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7574,7 +7574,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7582,7 +7582,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -7635,7 +7635,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7643,7 +7643,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -7706,7 +7706,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7714,7 +7714,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -8654,7 +8654,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8662,7 +8662,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -8715,7 +8715,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8723,7 +8723,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -8786,7 +8786,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8794,7 +8794,7 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -8860,7 +8860,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-anon-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-anon-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8921,7 +8921,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-anon-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-anon-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9074,7 +9074,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9082,7 +9082,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -9127,7 +9127,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9135,7 +9135,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -9189,7 +9189,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9197,7 +9197,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -9254,7 +9254,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-nob-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-nob-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9324,7 +9324,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-nob-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-nob-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9538,7 +9538,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9546,7 +9546,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -9599,7 +9599,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9607,7 +9607,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -9670,7 +9670,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9678,7 +9678,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -9744,7 +9744,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-pa1-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-pa1-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9779,7 +9779,7 @@
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'sub00000000000000001' + ' not found'));"
                 ]
               }
             }
@@ -9814,7 +9814,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-pa1-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-pa1-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10010,7 +10010,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10018,7 +10018,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -10071,7 +10071,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10079,7 +10079,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -10142,7 +10142,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10150,7 +10150,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -10216,7 +10216,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-aaa-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-aaa-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10251,7 +10251,7 @@
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'sub00000000000000001' + ' not found'));"
                 ]
               }
             }
@@ -10286,7 +10286,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-aaa-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-aaa-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10482,7 +10482,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10490,7 +10490,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -10543,7 +10543,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10551,7 +10551,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -10614,7 +10614,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10622,7 +10622,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -10688,7 +10688,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-aab-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-aab-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10758,7 +10758,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-aab-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-aab-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10793,7 +10793,7 @@
                   "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
-                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'sub00000000000000001' + ' not found'));"
                 ]
               }
             }
@@ -10954,7 +10954,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10962,7 +10962,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -11015,7 +11015,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11023,7 +11023,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -11086,7 +11086,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11094,7 +11094,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -11160,7 +11160,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-inv-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-address-inv-own-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11195,7 +11195,7 @@
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'sub00000000000000001' + ' not found'));"
                 ]
               }
             }
@@ -11230,7 +11230,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-inv-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"subnonexistent000001\"}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-address-inv-cross-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"sub00000000000000001\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11265,7 +11265,7 @@
                   "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
-                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'sub00000000000000001' + ' not found'));"
                 ]
               }
             }
@@ -11408,7 +11408,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11416,7 +11416,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -11469,7 +11469,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11477,7 +11477,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -11540,7 +11540,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11548,7 +11548,7 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -11828,7 +11828,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11836,7 +11836,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -11881,7 +11881,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11889,7 +11889,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -11943,7 +11943,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11951,7 +11951,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -12292,7 +12292,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12300,7 +12300,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -12353,7 +12353,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12361,7 +12361,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -12424,7 +12424,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12432,7 +12432,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -13027,7 +13027,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13035,7 +13035,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -13088,7 +13088,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13096,7 +13096,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -13159,7 +13159,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13167,7 +13167,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -13762,7 +13762,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13770,7 +13770,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -13823,7 +13823,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13831,7 +13831,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -13894,7 +13894,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13902,7 +13902,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -14234,7 +14234,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14242,7 +14242,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -14295,7 +14295,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14303,7 +14303,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -14366,7 +14366,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14374,7 +14374,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -14951,7 +14951,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14959,7 +14959,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -15012,7 +15012,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15020,7 +15020,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -15083,7 +15083,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/routeTables/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/routeTables/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15091,7 +15091,7 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -15371,7 +15371,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15379,7 +15379,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -15424,7 +15424,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15432,7 +15432,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -15486,7 +15486,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15494,7 +15494,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -15835,7 +15835,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15843,7 +15843,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -15896,7 +15896,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15904,7 +15904,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -15967,7 +15967,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -15975,7 +15975,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -16570,7 +16570,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16578,7 +16578,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -16631,7 +16631,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16639,7 +16639,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -16702,7 +16702,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16710,7 +16710,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -17305,7 +17305,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17313,7 +17313,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -17366,7 +17366,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17374,7 +17374,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -17437,7 +17437,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17445,7 +17445,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -17777,7 +17777,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17785,7 +17785,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -17838,7 +17838,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17846,7 +17846,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -17909,7 +17909,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17917,7 +17917,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -18494,7 +18494,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18502,7 +18502,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -18555,7 +18555,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18563,7 +18563,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -18626,7 +18626,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18634,7 +18634,7 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -18700,7 +18700,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18761,7 +18761,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18914,7 +18914,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18922,7 +18922,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -18967,7 +18967,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18975,7 +18975,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -19029,7 +19029,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19037,7 +19037,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -19094,7 +19094,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19164,7 +19164,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19378,7 +19378,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19386,7 +19386,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -19439,7 +19439,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19447,7 +19447,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -19510,7 +19510,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19518,7 +19518,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -19584,7 +19584,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19702,7 +19702,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -19737,7 +19737,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19933,7 +19933,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -19941,7 +19941,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -19994,7 +19994,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -20002,7 +20002,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -20065,7 +20065,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -20073,7 +20073,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -20139,7 +20139,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20257,7 +20257,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -20292,7 +20292,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20488,7 +20488,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -20496,7 +20496,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -20549,7 +20549,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -20557,7 +20557,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -20620,7 +20620,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -20628,7 +20628,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -20694,7 +20694,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20764,7 +20764,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20882,7 +20882,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -21043,7 +21043,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21051,7 +21051,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -21104,7 +21104,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21112,7 +21112,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -21175,7 +21175,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21183,7 +21183,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -21249,7 +21249,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -21367,7 +21367,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -21402,7 +21402,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -21520,7 +21520,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -21663,7 +21663,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21671,7 +21671,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -21724,7 +21724,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21732,7 +21732,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -21795,7 +21795,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/gateways/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/gateways/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -21803,7 +21803,7 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -21869,7 +21869,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-anon-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-anon-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -21930,7 +21930,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-anon-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-anon-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22083,7 +22083,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22091,7 +22091,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -22136,7 +22136,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22144,7 +22144,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -22198,7 +22198,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22206,7 +22206,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -22263,7 +22263,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-nob-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-nob-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22333,7 +22333,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-nob-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-nob-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22547,7 +22547,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22555,7 +22555,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -22608,7 +22608,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22616,7 +22616,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -22679,7 +22679,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -22687,7 +22687,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -22753,7 +22753,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-pa1-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-pa1-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22871,7 +22871,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -22906,7 +22906,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-pa1-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-pa1-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23102,7 +23102,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23110,7 +23110,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -23163,7 +23163,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23171,7 +23171,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -23234,7 +23234,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23242,7 +23242,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -23308,7 +23308,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-aaa-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-aaa-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23426,7 +23426,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -23461,7 +23461,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-aaa-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-aaa-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23657,7 +23657,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23665,7 +23665,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -23718,7 +23718,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23726,7 +23726,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -23789,7 +23789,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -23797,7 +23797,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -23863,7 +23863,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-aab-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-aab-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23933,7 +23933,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-aab-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-aab-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24051,7 +24051,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -24212,7 +24212,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24220,7 +24220,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -24273,7 +24273,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24281,7 +24281,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -24344,7 +24344,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24352,7 +24352,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -24418,7 +24418,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-inv-own-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-nic-inv-own-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24536,7 +24536,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -24571,7 +24571,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-inv-cross-{{runId}}\", \"subnetId\": \"subnonexistent000001\"}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-nic-inv-cross-{{runId}}\", \"subnetId\": \"sub00000000000000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24689,7 +24689,7 @@
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
                   "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet sub00000000000000001 not found\"));"
                 ]
               }
             }
@@ -24832,7 +24832,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24840,7 +24840,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -24893,7 +24893,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24901,7 +24901,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             },
             "body": {
@@ -24964,7 +24964,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enpnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/networkInterfaces/enp00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -24972,7 +24972,7 @@
                 "vpc",
                 "v1",
                 "networkInterfaces",
-                "enpnonexistent000001"
+                "enp00000000000000001"
               ]
             }
           },
@@ -25087,7 +25087,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25095,7 +25095,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -25149,7 +25149,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25157,7 +25157,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },
@@ -25272,7 +25272,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25280,7 +25280,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -25343,7 +25343,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25351,7 +25351,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },
@@ -25475,7 +25475,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25483,7 +25483,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -25546,7 +25546,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25554,7 +25554,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },
@@ -25678,7 +25678,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25686,7 +25686,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -25749,7 +25749,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25757,7 +25757,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },
@@ -25881,7 +25881,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25889,7 +25889,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -25952,7 +25952,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -25960,7 +25960,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },
@@ -26084,7 +26084,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -26092,7 +26092,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             },
             "body": {
@@ -26155,7 +26155,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent000001",
+              "raw": "{{baseUrl}}/vpc/v1/addressPools/apl00000000000000001",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -26163,7 +26163,7 @@
                 "vpc",
                 "v1",
                 "addressPools",
-                "aplnonexistent000001"
+                "apl00000000000000001"
               ]
             }
           },

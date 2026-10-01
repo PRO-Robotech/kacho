@@ -265,9 +265,9 @@ CASES.append(Case(
 # Get well-formed-but-absent → 404 NOT_FOUND (existence-hidden, no deny_reasons leak).
 CASES.append(Case(
     id="REG-GET-NEG-NOTFOUND",
-    title="Get reg-DOESNOTEXIST00000 → 404 NOT_FOUND (existence-hidden, no deny_reasons)",
+    title="Get reg00000000000000000 → 404 NOT_FOUND (existence-hidden, no deny_reasons)",
     classes=["NEG"], priority="P1",
-    steps=[Step(name="get-nx", method="GET", path=REG + "/reg-DOESNOTEXIST00000",
+    steps=[Step(name="get-nx", method="GET", path=REG + "/reg00000000000000000",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                              "pm.test('no deny_reasons leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));"])],
 ))
