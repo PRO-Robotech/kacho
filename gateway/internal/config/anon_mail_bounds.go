@@ -24,6 +24,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -402,10 +403,37 @@ func (k AnonMailPoWKey) LogValue() slog.Value { return slog.StringValue(anonMail
 // задана, файл не читается, ключ короче 32 байт — отказ старта с именем ручки.
 // Байты файла — ключ как есть: вывода из другого секрета и нормализации нет,
 // и у всех реплик флота ключ один (CX2-13).
+//
+// Путь читается только из закрытого набора форм — иначе отказ старта, а не
+// чтение «чего получится»:
+//   - АБСОЛЮТНЫЙ: относительный разрешался бы от рабочего каталога процесса,
+//     то есть читал бы то, что лежит рядом при запуске;
+//   - КАНОНИЧЕСКИЙ (filepath.Clean не меняет ни буквы): путь, названный
+//     оператором и напечатанный журналом старта, совпадает с прочитанным,
+//     `..` и лишние разделители не проходят;
+//   - ОБЫЧНЫЙ ФАЙЛ: FIFO при чтении без писателя ждёт вечно (страж висел бы
+//     вместо отказа), устройство вида /dev/zero не кончается.
 func ReadAnonMailPoWKey(cfg Config) (AnonMailPoWKey, error) {
-	path := strings.TrimSpace(cfg.AnonMailPoWKeyFile)
-	if path == "" {
+	raw := strings.TrimSpace(cfg.AnonMailPoWKeyFile)
+	if raw == "" {
 		return AnonMailPoWKey{}, fmt.Errorf("%s %w", AnonMailPoWKeyFileKnob, errNotSet)
+	}
+	path := filepath.Clean(raw)
+	if !filepath.IsAbs(path) {
+		return AnonMailPoWKey{}, fmt.Errorf("%s = %q: путь не абсолютный", AnonMailPoWKeyFileKnob, raw)
+	}
+	if path != raw {
+		return AnonMailPoWKey{}, fmt.Errorf("%s = %q: путь не в канонической форме, канон — %q",
+			AnonMailPoWKeyFileKnob, raw, path)
+	}
+	// Stat идёт по ссылке, а не Lstat: смонтированный секрет — цепочка ссылок
+	// внутри каталога тома, и судится её цель.
+	fi, err := os.Stat(path)
+	if err != nil {
+		return AnonMailPoWKey{}, fmt.Errorf("%s = %q: файл секрета не читается: %w", AnonMailPoWKeyFileKnob, path, err)
+	}
+	if !fi.Mode().IsRegular() {
+		return AnonMailPoWKey{}, fmt.Errorf("%s = %q: не обычный файл (%s)", AnonMailPoWKeyFileKnob, path, fi.Mode().Type())
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
