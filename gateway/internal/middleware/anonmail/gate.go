@@ -54,17 +54,17 @@ type Stats struct {
 	// StoreUnavailable — ответов 503 «хранилище ограничителя недоступно» за
 	// жизнь процесса (`kacho_api_gateway_anon_mail_store_unavailable_total`).
 	StoreUnavailable uint64
-	// StoreSaturated — из них ответов, где хранилище не ответило за
-	// исчерпанием пропускной способности решения (Verdict.Saturated, Д66):
-	// `kacho_api_gateway_anon_mail_store_saturated_total`.
-	StoreSaturated uint64
+	// BucketWaitTimeouts — из них ответов, где решение не получило строку
+	// ведра общего потока за предел ожидания (Verdict.BucketWaitTimeout, Д66):
+	// `kacho_api_gateway_anon_mail_bucket_wait_timeouts_total`.
+	BucketWaitTimeouts uint64
 }
 
 // Gate — звено-ограничитель.
 type Gate struct {
-	cfg         GateConfig
-	unavailable atomic.Uint64
-	saturated   atomic.Uint64
+	cfg                GateConfig
+	unavailable        atomic.Uint64
+	bucketWaitTimeouts atomic.Uint64
 }
 
 // NewGate собирает звено. Неполная провязка — ошибка сборки корня: звено,
@@ -88,7 +88,7 @@ func NewGate(cfg GateConfig) (*Gate, error) {
 
 // Stats — снимок величин звена.
 func (g *Gate) Stats() Stats {
-	return Stats{StoreUnavailable: g.unavailable.Load(), StoreSaturated: g.saturated.Load()}
+	return Stats{StoreUnavailable: g.unavailable.Load(), BucketWaitTimeouts: g.bucketWaitTimeouts.Load()}
 }
 
 // Wrap ставит звено перед next (ретрансляцией полосы формы).
@@ -129,8 +129,8 @@ func (g *Gate) serve(w http.ResponseWriter, r *http.Request, next http.Handler) 
 	case Reject:
 		writeRateLimited(w, v.RetryAfter)
 	default:
-		if v.Saturated {
-			g.saturated.Add(1)
+		if v.BucketWaitTimeout {
+			g.bucketWaitTimeouts.Add(1)
 		}
 		g.writeUnavailable(w)
 	}

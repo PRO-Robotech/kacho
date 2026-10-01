@@ -108,8 +108,18 @@ const (
 	// markSpentSQL — пометка вызова использованным; 0 строк — уже истрачен.
 	// Вставка ждёт соседнюю незафиксированную вставку того же вызова не дольше
 	// lock_timeout.
+	//
+	// Срок вызова судят ЧАСЫ БАЗЫ в том же операторе (ревью db, I1): пометку
+	// снимает уборщик по часам базы (`expires_at <= now()`), и если бы срок
+	// судили только часы реплики, отстающей на d, то в промежутке d пометки уже
+	// нет, а доказательство ещё живо — повтор прошёл бы как свежий. RETURNING
+	// вычисляется ПОСЛЕ вставки, то есть и после ожидания удаляющей транзакции
+	// уборщика: строка вставлена — значит удаление уже зафиксировано, и
+	// clock_timestamp() позже начала уборщика, а оно позже срока вызова. false —
+	// вызов истёк по часам базы: не свежий, решение его отвергает (вставка
+	// откатывается вместе с решением).
 	markSpentSQL = `INSERT INTO kacho_gateway.pow_spent (id, expires_at) VALUES ($1, $2)
-ON CONFLICT (id) DO NOTHING RETURNING true`
+ON CONFLICT (id) DO NOTHING RETURNING expires_at > clock_timestamp()`
 	// bucketSQL — строка ведра общего потока, ПОСЛЕДНЕЙ после ключей.
 	bucketSQL = `SELECT tokens, at FROM kacho_gateway.anon_mail_bucket WHERE id = 1 FOR UPDATE`
 	// countsSQL — счёт ключа в трёх окнах (now − w, +∞) по индексу (key, at).
@@ -301,17 +311,17 @@ func (b *pgBackend) beginDecision(ctx context.Context) (*pgTx, error) {
 	conn, err := b.pool.Acquire(actx)
 	cancel()
 	if err != nil {
-		return nil, fmt.Errorf("anonmail: acquire: %w", err)
+		return nil, fmt.Errorf("acquire: %w", err)
 	}
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		conn.Release()
-		return nil, fmt.Errorf("anonmail: begin: %w", err)
+		return nil, fmt.Errorf("begin: %w", err)
 	}
 	x := &pgTx{b: b, conn: conn, tx: tx}
 	if _, err := tx.Exec(ctx, b.limitsSQL); err != nil {
 		x.rollback(ctx)
-		return nil, fmt.Errorf("anonmail: decision limits: %w", err)
+		return nil, fmt.Errorf("decision limits: %w", err)
 	}
 	return x, nil
 }
@@ -326,7 +336,7 @@ type pgTx struct {
 func (x *pgTx) lock(ctx context.Context, pairs []lockPair) error {
 	for _, p := range pairs {
 		if _, err := x.tx.Exec(ctx, x.b.lockSQL, p.class, p.obj); err != nil {
-			return fmt.Errorf("anonmail: key lock: %w", err)
+			return fmt.Errorf("key lock: %w", err)
 		}
 	}
 	return nil
@@ -339,7 +349,7 @@ func (x *pgTx) markSpent(ctx context.Context, p Proof) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("anonmail: mark challenge spent: %w", err)
+		return false, fmt.Errorf("mark challenge spent: %w", err)
 	}
 	return ok, nil
 }
@@ -350,14 +360,14 @@ func (x *pgTx) bucket(ctx context.Context) (float64, time.Time, error) {
 		at     time.Time
 	)
 	if err := x.tx.QueryRow(ctx, bucketSQL).Scan(&tokens, &at); err != nil {
-		return 0, time.Time{}, fmt.Errorf("anonmail: bucket row: %w", err)
+		return 0, time.Time{}, fmt.Errorf("bucket row: %w", err)
 	}
 	return tokens, at, nil
 }
 
 func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []time.Duration) ([]int, error) {
 	if len(windows) == 0 || len(windows) > 3 {
-		return nil, fmt.Errorf("anonmail: %d windows, the statement reads 1..3", len(windows))
+		return nil, fmt.Errorf("%d windows, the statement reads 1..3", len(windows))
 	}
 	bounds := make([]time.Time, 3)
 	for i := range bounds {
@@ -366,7 +376,7 @@ func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []
 	}
 	var c [3]int
 	if err := x.tx.QueryRow(ctx, countsSQL, key, bounds[0], bounds[1], bounds[2]).Scan(&c[0], &c[1], &c[2]); err != nil {
-		return nil, fmt.Errorf("anonmail: key counts: %w", err)
+		return nil, fmt.Errorf("key counts: %w", err)
 	}
 	return c[:len(windows)], nil
 }
@@ -374,7 +384,7 @@ func (x *pgTx) counts(ctx context.Context, key string, now time.Time, windows []
 func (x *pgTx) nthMoment(ctx context.Context, key string, now time.Time, window time.Duration, offset int) (time.Time, error) {
 	var at time.Time
 	if err := x.tx.QueryRow(ctx, nthMomentSQL, key, now.Add(-window), offset).Scan(&at); err != nil {
-		return time.Time{}, fmt.Errorf("anonmail: nth moment: %w", err)
+		return time.Time{}, fmt.Errorf("nth moment: %w", err)
 	}
 	return at, nil
 }
@@ -382,11 +392,11 @@ func (x *pgTx) nthMoment(ctx context.Context, key string, now time.Time, window 
 func (x *pgTx) recordPass(ctx context.Context, keys Keys, now time.Time, _ *Proof, bw *bucketWrite) error {
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
-		return fmt.Errorf("anonmail: decision id: %w", err)
+		return fmt.Errorf("decision id: %w", err)
 	}
 	rows, err := x.tx.Query(ctx, recordMomentsSQL, keys.All(), now, id[:])
 	if err != nil {
-		return fmt.Errorf("anonmail: record moments: %w", err)
+		return fmt.Errorf("record moments: %w", err)
 	}
 	defer rows.Close()
 	var xid string
@@ -395,18 +405,18 @@ func (x *pgTx) recordPass(ctx context.Context, keys Keys, now time.Time, _ *Proo
 			continue
 		}
 		if err := rows.Scan(&xid); err != nil {
-			return fmt.Errorf("anonmail: record moments: %w", err)
+			return fmt.Errorf("record moments: %w", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("anonmail: record moments: %w", err)
+		return fmt.Errorf("record moments: %w", err)
 	}
 	if xid == "" {
-		return errors.New("anonmail: pass moments were not recorded")
+		return errors.New("pass moments were not recorded")
 	}
 	if bw != nil {
 		if _, err := x.tx.Exec(ctx, bucketWriteSQL, bw.tokens, bw.at); err != nil {
-			return fmt.Errorf("anonmail: bucket write: %w", err)
+			return fmt.Errorf("bucket write: %w", err)
 		}
 	}
 	x.pending = pendingCommit{xid: xid, key: keys.Source, at: now, decisionID: id}

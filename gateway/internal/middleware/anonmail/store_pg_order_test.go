@@ -57,8 +57,8 @@ func TestPg_GSE2_1_MissingSchemaIsLoggedAsMisconfiguration(t *testing.T) {
 		return s.Decide(context.Background(), Request{Keys: keys, Now: time.Now()}), logs.String()
 	}
 	v, logs := run(t, pgtest.NewDB(t))
-	if v.Outcome != StoreUnavailable || v.Saturated {
-		t.Fatalf("схемы нет: исход %s, насыщение %v", v.Outcome, v.Saturated)
+	if v.Outcome != StoreUnavailable || v.BucketWaitTimeout {
+		t.Fatalf("схемы нет: исход %s, насыщение %v", v.Outcome, v.BucketWaitTimeout)
 	}
 	if !strings.Contains(logs, "level=ERROR") || !strings.Contains(logs, "step=") || !strings.Contains(logs, "42P01") {
 		t.Errorf("схемы нет, а журнал не называет неправильную настройку: %q", logs)

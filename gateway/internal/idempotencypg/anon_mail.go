@@ -40,7 +40,9 @@ var anonMailSubjects = []anonMailSubject{
 	},
 	{
 		table: "pow_spent",
-		// После срока вызова доказательство отвергает уже проверка срока.
+		// После срока вызова доказательство отвергает уже проверка срока — по
+		// часам БАЗЫ, в операторе пометки звена (markSpentSQL, ревью db I1), а
+		// не только по часам реплики: часы уборки и часы срока одни.
 		reap: `DELETE FROM kacho_gateway.pow_spent WHERE ctid IN (
     SELECT ctid FROM kacho_gateway.pow_spent WHERE expires_at <= now() LIMIT $1)`,
 	},

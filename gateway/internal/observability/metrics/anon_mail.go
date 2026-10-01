@@ -21,16 +21,18 @@ var anonMailStoreUnavailableDesc = prometheus.NewDesc(
 		"The request never reached the identity service.",
 	nil, nil)
 
-// anonMailStoreSaturatedDesc — из ответов 503 ограничителя те, где хранилище не
-// ответило за исчерпанием пропускной способности решения (решение Д66): поток
+// anonMailBucketWaitTimeoutsDesc — из ответов 503 ограничителя те, где решение
+// не получило строку ведра общего потока за предел ожидания (решение Д66): поток
 // выше пропускной способности строки ведра флота кончается закрытым отказом,
 // и это принятая цена замысла — серия и правило тревоги по ней делают её
-// видимой.
-var anonMailStoreSaturatedDesc = prometheus.NewDesc(
-	"kacho_api_gateway_anon_mail_store_saturated_total",
-	"Anonymous mail limiter answers 503 since process start because a limiter wait ran out "+
-		"(connection acquire, key lock, global bucket row lock, decision budget): the fleet's decision "+
-		"throughput is saturated. A subset of kacho_api_gateway_anon_mail_store_unavailable_total.",
+// видимой. Ожидание блокировки ключа, пометки вызова и захват соединения пула
+// сюда не входят (CX2-93 (а)): они растят только серию недоступности.
+var anonMailBucketWaitTimeoutsDesc = prometheus.NewDesc(
+	"kacho_api_gateway_anon_mail_bucket_wait_timeouts_total",
+	"Anonymous mail limiter answers 503 since process start because the decision did not obtain "+
+		"the global bucket row within the limiter's wait: the fleet's decision throughput is saturated. "+
+		"Key lock, challenge mark and connection acquire waits are not counted here. "+
+		"A subset of kacho_api_gateway_anon_mail_store_unavailable_total.",
 	nil, nil)
 
 // RegisterAnonMail провязывает читателя величин звена-ограничителя. Функция и
@@ -51,12 +53,12 @@ type anonMailCollector struct {
 // различимы без единого запроса.
 func (c *anonMailCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- anonMailStoreUnavailableDesc
-	ch <- anonMailStoreSaturatedDesc
+	ch <- anonMailBucketWaitTimeoutsDesc
 }
 
 // Collect отдаёт снимок звена.
 func (c *anonMailCollector) Collect(ch chan<- prometheus.Metric) {
 	st := c.read()
 	ch <- prometheus.MustNewConstMetric(anonMailStoreUnavailableDesc, prometheus.CounterValue, float64(st.StoreUnavailable))
-	ch <- prometheus.MustNewConstMetric(anonMailStoreSaturatedDesc, prometheus.CounterValue, float64(st.StoreSaturated))
+	ch <- prometheus.MustNewConstMetric(anonMailBucketWaitTimeoutsDesc, prometheus.CounterValue, float64(st.BucketWaitTimeouts))
 }

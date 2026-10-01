@@ -23,7 +23,9 @@ const memStripes = 256
 // уборка идёт и по ключам, к которым больше никто не обращается.
 const memSweepEvery = 5 * time.Minute
 
-var errMemWait = errors.New("anonmail: memory store wait exceeded the limiter's store wait")
+// errMemWait — ожидание полосы, ведра или соседней пометки сверх предела
+// звена. Текст без префикса пакета: его ставит store.fail (GS-E2-10).
+var errMemWait = errors.New("memory store wait exceeded the limiter's store wait")
 
 // MemoryStore — хранилище звена в памяти процесса. Законно ровно при флоте из
 // одной реплики (пару «вид хранилища ↔ флот» судит гейт поставки, общий с

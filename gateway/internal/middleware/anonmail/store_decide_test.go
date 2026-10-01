@@ -164,10 +164,12 @@ func TestStore_GSE2_1_FailureIsNeverSilent(t *testing.T) {
 	}
 }
 
-// TestStore_D66_SaturationIsTellableFromOutage — насыщение (ожидание
-// хранилища сверх предела звена: блокировка, строка ведра, захват соединения,
-// срок решения) помечено в вердикте; отказ иного рода — нет. Счётчик
-// насыщения звена (Д66) судит эту пометку.
+// TestStore_D66_SaturationIsTellableFromOutage — пометку «строка ведра не
+// получена за предел ожидания» (Д66, CX2-93 (а)) ставит ШАГ строки ведра, а не
+// код ошибки: тот же 55P03 на блокировке ключа или пометке, истёкший захват
+// соединения и срок оператора счёта её не ставят. Отказ иного рода на шаге
+// ведра (таблицы нет, соединение оборвано) — тоже нет. Счётчик ожиданий ведра
+// звена судит эту пометку.
 func TestStore_D66_SaturationIsTellableFromOutage(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -176,19 +178,25 @@ func TestStore_D66_SaturationIsTellableFromOutage(t *testing.T) {
 		saturated bool
 	}{
 		{"строка ведра: lock_timeout", stepBucket, &pgconn.PgError{Code: "55P03"}, true},
-		{"ключ: lock_timeout", stepLock, &pgconn.PgError{Code: "55P03"}, true},
-		{"срок оператора: 57014", stepBucket, &pgconn.PgError{Code: "57014"}, true},
-		{"захват соединения: срок", stepBegin, context.DeadlineExceeded, true},
-		{"memory: ожидание сверх предела", stepBucket, errMemWait, true},
+		{"строка ведра: срок оператора 57014", stepBucket, &pgconn.PgError{Code: "57014"}, true},
+		{"строка ведра: срок решения", stepBucket, context.DeadlineExceeded, true},
+		{"memory: ведро сверх предела", stepBucket, errMemWait, true},
+		{"ключ: lock_timeout", stepLock, &pgconn.PgError{Code: "55P03"}, false},
+		{"memory: полоса ключа сверх предела", stepLock, errMemWait, false},
+		{"пометка: lock_timeout", stepMarkSpent, &pgconn.PgError{Code: "55P03"}, false},
+		{"захват соединения: срок", stepBegin, context.DeadlineExceeded, false},
+		{"счёт: срок оператора 57014", stepCountsSource, &pgconn.PgError{Code: "57014"}, false},
+		{"строка ведра: таблицы нет", stepBucket, &pgconn.PgError{Code: "42P01"}, false},
+		{"строка ведра: соединение оборвано", stepBucket, &pgconn.ConnectError{}, false},
 		{"таблицы нет: 42P01", stepCountsSource, &pgconn.PgError{Code: "42P01"}, false},
 		{"нет прав: 42501", stepLock, &pgconn.PgError{Code: "42501"}, false},
 		{"соединение отвергнуто", stepBegin, &pgconn.ConnectError{}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			v, _ := faultDecide(t, &faultBackend{fail: c.step, err: c.err}, "198.51.100.79", false)
-			if v.Outcome != StoreUnavailable || v.Saturated != c.saturated {
-				t.Errorf("исход %s, насыщение %v; ожидалось store_unavailable, %v", v.Outcome, v.Saturated, c.saturated)
+			v, _ := faultDecide(t, &faultBackend{fail: c.step, err: c.err}, "198.51.100.79", c.step == stepMarkSpent)
+			if v.Outcome != StoreUnavailable || v.BucketWaitTimeout != c.saturated {
+				t.Errorf("исход %s, насыщение %v; ожидалось store_unavailable, %v", v.Outcome, v.BucketWaitTimeout, c.saturated)
 			}
 		})
 	}
@@ -339,12 +347,12 @@ func raceOnDifferentMoments(t *testing.T, stores []Store, src string, n int) int
 	return int(ok.Load())
 }
 
-// TestGate_D66_SaturationCounter — счётчик насыщения звена считает только
-// отказы с пометкой насыщения; 503 по иной причине его не двигает, а общий
+// TestGate_D66_SaturationCounter — счётчик ожиданий ведра звена считает только
+// отказы с пометкой «строка ведра не получена»; 503 по иной причине его не двигает, а общий
 // счётчик недоступности считает оба.
 func TestGate_D66_SaturationCounter(t *testing.T) {
 	l := testLimits()
-	sat := newRig(t, l, func(*testClock) Store { return stubStore{Verdict{Outcome: StoreUnavailable, Saturated: true}} }, 0)
+	sat := newRig(t, l, func(*testClock) Store { return stubStore{Verdict{Outcome: StoreUnavailable, BucketWaitTimeout: true}} }, 0)
 	out := newRig(t, l, func(*testClock) Store { return stubStore{Verdict{Outcome: StoreUnavailable}} }, 0)
 	for i := 0; i < 2; i++ {
 		if rec := sat.send(pathRecovery, "198.51.100.83", "", ""); rec.Code != http.StatusServiceUnavailable {
@@ -354,10 +362,10 @@ func TestGate_D66_SaturationCounter(t *testing.T) {
 	if rec := out.send(pathRecovery, "198.51.100.83", "", ""); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("сбой: %d", rec.Code)
 	}
-	if s := sat.gate.Stats(); s.StoreUnavailable != 2 || s.StoreSaturated != 2 {
+	if s := sat.gate.Stats(); s.StoreUnavailable != 2 || s.BucketWaitTimeouts != 2 {
 		t.Errorf("насыщение: %+v, ожидалось 2 и 2", s)
 	}
-	if s := out.gate.Stats(); s.StoreUnavailable != 1 || s.StoreSaturated != 0 {
+	if s := out.gate.Stats(); s.StoreUnavailable != 1 || s.BucketWaitTimeouts != 0 {
 		t.Errorf("сбой: %+v, ожидалось 1 и 0", s)
 	}
 }

@@ -116,6 +116,10 @@ func memoryRig(t testing.TB, l config.AnonMailLimits) *rig {
 	return newRig(t, l, func(c *testClock) Store { return mustMemoryStore(t, l, c.Now) }, 0)
 }
 
+// discardLogger — журнал пробы, ничего не пишущий (GS-E2-8: прод-вызывающих
+// нет, помощник живёт с пробами).
+func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
+
 // mustMemoryStore — хранилище memory пробы; отказ конструктора — провал пробы.
 func mustMemoryStore(t testing.TB, l config.AnonMailLimits, now func() time.Time) *MemoryStore {
 	t.Helper()

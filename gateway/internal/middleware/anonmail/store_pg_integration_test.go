@@ -110,7 +110,7 @@ func TestPg_CX2_11_KeySpaceOfTheLockDoesNotMeetTheSchemaLock(t *testing.T) {
 func TestPg_CX2_28_LockWaitBeyondLockTimeoutIsStoreUnavailable(t *testing.T) {
 	dsn := edgeDB(t)
 	l := testLimits()
-	r, _, _ := pgRig(t, dsn, l)
+	r, _, logs := pgRig(t, dsn, l)
 	keys, _ := KeysFor("198.51.100.52")
 	p := keyLockPair(keys.Source)
 	holder, err := pgx.Connect(context.Background(), dsn)
@@ -134,9 +134,16 @@ func TestPg_CX2_28_LockWaitBeyondLockTimeoutIsStoreUnavailable(t *testing.T) {
 	if took > anonMailStoreWait+cancelCost+500*time.Millisecond {
 		t.Errorf("503 через %s — ожидание не ограничено lock_timeout", took)
 	}
-	// Д66: ожидание блокировки сверх lock_timeout — насыщение, а не сбой.
-	if s := r.gate.Stats(); s.StoreSaturated != 1 || s.StoreUnavailable != 1 {
-		t.Errorf("ключ удержан: счётчики %+v, ожидалось насыщение 1 из 1", s)
+	// CX2-93 (а): 55P03 на блокировке КЛЮЧА — не ожидание строки ведра:
+	// растёт только счётчик недоступности. Счётчик по коду 55P03 здесь красный.
+	if s := r.gate.Stats(); s.BucketWaitTimeouts != 0 || s.StoreUnavailable != 1 {
+		t.Errorf("ключ удержан: счётчики %+v, ожидалось ожиданий ведра 0, недоступности 1", s)
+	}
+	// GS-E2-10: префикс пакета в тексте ошибки — один раз.
+	for _, ln := range strings.Split(logs.String(), "\n") {
+		if strings.Contains(ln, "step="+stepLock) && strings.Count(ln, "anonmail:") != 1 {
+			t.Errorf("префикс «anonmail:» в строке журнала не один: %q", ln)
+		}
 	}
 	_ = tx.Rollback(context.Background())
 	if rec := r.send(pathRecovery, "198.51.100.52", "", ""); rec.Code != http.StatusOK {
@@ -211,7 +218,7 @@ func TestPg_NTF2_59_StoreDownEveryRequestIs503AndTheProofIsNotSpent(t *testing.T
 			t.Errorf("метрика недоступности %d, ожидалось 4", got)
 		}
 		// Д66: соединение отвергнуто — сбой, а не насыщение.
-		if got := r.gate.Stats().StoreSaturated; got != 0 {
+		if got := r.gate.Stats().BucketWaitTimeouts; got != 0 {
 			t.Errorf("хранилище остановлено: метрика насыщения %d, ожидалось 0", got)
 		}
 		// (д) хранилище поднято, часы стоят.
@@ -264,9 +271,10 @@ func TestPg_CX2_43_MarkWrittenBucketNotObtainedIs503AndRepeatIsFresh(t *testing.
 			t.Fatal(err)
 		}
 		held := r.send(pathRecovery, src, proof, "")
-		// Д66: строка ведра не взята за lock_timeout — насыщение.
-		if s := r.gate.Stats(); s.StoreSaturated != 1 {
-			t.Errorf("строка ведра удержана: счётчики %+v, ожидалось насыщение 1", s)
+		// CX2-93 (а): строка ведра не взята за lock_timeout — ожидание ведра:
+		// растут оба счётчика.
+		if s := r.gate.Stats(); s.BucketWaitTimeouts != 1 || s.StoreUnavailable != 1 {
+			t.Errorf("строка ведра удержана: счётчики %+v, ожидалось 1 и 1", s)
 		}
 		_ = tx.Rollback(context.Background())
 		again := r.send(pathRecovery, src, proof, "")
@@ -324,6 +332,10 @@ func TestPg_CX2_44_ExhaustedLimiterPoolDoesNotTouchIdempotency(t *testing.T) {
 		start := time.Now()
 		rec := r.send(pathRecovery, "198.51.100.44", "", "")
 		anonTook = time.Since(start)
+		// CX2-93 (а): истёкший захват соединения — не ожидание строки ведра.
+		if s := r.gate.Stats(); !shared && (s.StoreUnavailable != 1 || s.BucketWaitTimeouts != 0) {
+			t.Errorf("пул исчерпан: счётчики %+v, ожидалось недоступности 1, ожиданий ведра 0", s)
+		}
 		mut := middleware.HTTPIdempotency(idem)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))

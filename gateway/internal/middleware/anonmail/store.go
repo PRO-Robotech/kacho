@@ -37,11 +37,12 @@ type Verdict struct {
 	// RetryAfter — при исходе Reject: время до выхода засчитанного момента из
 	// окна HARD (источник или подсеть — что позже).
 	RetryAfter time.Duration
-	// Saturated — при исходе StoreUnavailable: хранилище не ответило потому,
-	// что ожидание (захват соединения, блокировка ключа, строка ведра, срок
-	// решения) превысило предел звена — пропускная способность решения
-	// исчерпана (Д66). Отказ иного рода (настройка, соединение) — false.
-	Saturated bool
+	// BucketWaitTimeout — при исходе StoreUnavailable: решение не получило строку
+	// ведра общего потока за предел ожидания звена (Д66, CX2-93 (а)) — поток
+	// выше пропускной способности строки ведра. Пометку ставит ШАГ строки
+	// ведра, а не код ошибки: тот же 55P03 на блокировке ключа или пометке,
+	// истёкший захват соединения, отказ иного рода — false.
+	BucketWaitTimeout bool
 }
 
 // Store — хранилище решения звена. Decide — одна неделимая операция:
@@ -95,7 +96,8 @@ type backend interface {
 }
 
 // errNotReached — шаг, которого решение не должно было достичь.
-var errNotReached = errors.New("anonmail: decision step not reached")
+// Текст без префикса пакета: его ставит store.fail (GS-E2-10).
+var errNotReached = errors.New("decision step not reached")
 
 // store — общий порядок решения поверх хранилища: один на оба вида, второго
 // порядка шагов в звене нет.
@@ -134,6 +136,7 @@ const (
 	stepCountsSubnet = "counts_subnet"
 	stepRetryAfter   = "retry_after"
 	stepRecordPass   = "record_pass"
+	stepPolicy       = "policy"
 )
 
 // storeFault — класс отказа хранилища. Набор закрыт, и каждый отказ попадает
@@ -144,10 +147,10 @@ const (
 	// faultMisconfig — неправильная настройка: схемы или таблицы нет, нет прав,
 	// неверная база или схема. Сама не пройдёт — звучит уровнем ERROR.
 	faultMisconfig storeFault = iota + 1
-	// faultSaturated — ожидание сверх предела звена: блокировка ключа или
-	// строки ведра, захват соединения, срок оператора или решения. Пропускная
-	// способность решения исчерпана (Д66) — WARN и счётчик насыщения.
-	faultSaturated
+	// faultWait — ожидание сверх предела звена: блокировка ключа или строки
+	// ведра, захват соединения, срок оператора или решения. WARN; на шаге
+	// строки ведра — ещё и пометка насыщения (Verdict.BucketWaitTimeout).
+	faultWait
 	// faultOutage — прочий сбой: соединение, отказ сервера. WARN.
 	faultOutage
 )
@@ -158,7 +161,7 @@ func classifyStoreErr(err error) storeFault {
 	if errors.As(err, &pe) {
 		switch {
 		case pe.Code == "55P03" || pe.Code == "57014":
-			return faultSaturated
+			return faultWait
 		case strings.HasPrefix(pe.Code, "42"), strings.HasPrefix(pe.Code, "28"),
 			strings.HasPrefix(pe.Code, "3D"), strings.HasPrefix(pe.Code, "3F"):
 			return faultMisconfig
@@ -166,25 +169,29 @@ func classifyStoreErr(err error) storeFault {
 		return faultOutage
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errMemWait) {
-		return faultSaturated
+		return faultWait
 	}
 	return faultOutage
 }
 
 // fail — отказ шага решения: ошибка обёрнута именем шага и записана в журнал
 // уровнем своего класса; ключей запроса (в них клиентский адрес) в журнале нет.
+// Префикс пакета ставит только fail: ошибки шагов хранилищ его не несут
+// (GS-E2-10). Насыщение (Д66) — ожидание сверх предела именно на шаге строки
+// ведра: класс ошибки один и тот же у ожидания ключа, пометки и захвата
+// соединения, и счётчик по классу звонил бы о насыщении, которого нет (CX2-93).
 func (s *store) fail(ctx context.Context, step string, err error) Verdict {
 	err = fmt.Errorf("anonmail: %s: %w", step, err)
 	f := classifyStoreErr(err)
 	switch f {
 	case faultMisconfig:
 		s.log.ErrorContext(ctx, "anon mail limiter: store is misconfigured; answering 503", "step", step, "err", err)
-	case faultSaturated:
+	case faultWait:
 		s.log.WarnContext(ctx, "anon mail limiter: store wait exceeded the limiter's wait; answering 503", "step", step, "err", err)
 	case faultOutage:
 		s.log.WarnContext(ctx, "anon mail limiter: store failed; answering 503", "step", step, "err", err)
 	}
-	return Verdict{Outcome: StoreUnavailable, Saturated: f == faultSaturated}
+	return Verdict{Outcome: StoreUnavailable, BucketWaitTimeout: step == stepBucket && f == faultWait}
 }
 
 // Decide — одно решение (З8). Срок решения — anonMailDecisionBudget от
@@ -269,7 +276,7 @@ func (s *store) Decide(ctx context.Context, r Request) Verdict {
 		// решения уже отправленную фиксацию не обрывает (её предел — свой).
 		return Verdict{Outcome: tx.commit(context.WithoutCancel(ctx))}
 	}
-	return s.fail(ctx, "policy", fmt.Errorf("outcome %s outside the closed set", pol.outcome))
+	return s.fail(ctx, stepPolicy, fmt.Errorf("outcome %s outside the closed set", pol.outcome))
 }
 
 // retryAfter — секунды до выхода засчитанного момента из окна HARD на каждой
@@ -300,5 +307,3 @@ func (s *store) retryAfter(ctx context.Context, tx decisionTx, r Request, c Coun
 
 // Close закрывает хранилище.
 func (s *store) Close() error { return s.b.close() }
-
-func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
