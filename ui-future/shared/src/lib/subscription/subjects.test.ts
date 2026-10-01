@@ -290,10 +290,10 @@ describe("уведомления: спека консоли → ключ мод�
   }
 
   // verifies #2925
-  it("каждая запись STREAM_SUBJECTS находит в каталоге ячейку подписки своего модуля", () => {
+  it(`каждая запись STREAM_SUBJECTS (осмотрено ${Object.keys(STREAM_SUBJECTS).length}) находит в каталоге ячейку подписки своего модуля`, () => {
     const specIds = Object.keys(STREAM_SUBJECTS);
-    // Объём осмотренного печатается: «нарушений нет» на пустом обходе не значит ничего.
-    console.log(`notifyModuleOf: осмотрено записей STREAM_SUBJECTS — ${specIds.length}`);
+    // Объём осмотренного назван в имени пробы и утверждён: «нарушений нет» на пустом
+    // обходе не значит ничего.
     expect(specIds.length).toBeGreaterThan(0);
 
     expect(specsWithoutSubscribableCell(catalog)).toEqual([]);
@@ -321,12 +321,13 @@ describe("уведомления: спека консоли → ключ мод�
     expect(notifyModuleOf("registries")).toBe("registry");
 
     // Отображение исчерпывающее: у каждого владельца, встреченного картой, — запись.
-    for (const { owner } of Object.values(STREAM_SUBJECTS)) {
-      expect({ owner, key: NOTIFY_SOURCE_BY_OWNER[owner] }).toEqual({
-        owner,
-        key: expect.stringMatching(/^[a-z]+$/),
-      });
-    }
+    // Владельцы без записи названы поимённо; пустой перечень — цель.
+    const owners = Object.values(STREAM_SUBJECTS).map(({ owner }) => owner);
+    expect(owners.length).toBeGreaterThan(0);
+    const ownersWithoutKey = owners.filter(
+      (owner) => !/^[a-z]+$/.test(NOTIFY_SOURCE_BY_OWNER[owner] ?? ""),
+    );
+    expect(ownersWithoutKey).toEqual([]);
   });
 
   // verifies #2925
@@ -337,9 +338,8 @@ describe("уведомления: спека консоли → ключ мод�
   });
 
   // verifies #2925
-  it("specOfKind — обратный поиск по STREAM_SUBJECTS, по каждой записи туда и обратно", () => {
+  it(`specOfKind — обратный поиск по STREAM_SUBJECTS (осмотрено ${Object.keys(STREAM_SUBJECTS).length}), по каждой записи туда и обратно`, () => {
     const entries = Object.entries(STREAM_SUBJECTS);
-    console.log(`specOfKind: осмотрено записей STREAM_SUBJECTS — ${entries.length}`);
     expect(entries.length).toBeGreaterThan(0);
     for (const [specId, { kind }] of entries) {
       expect({ kind, specId: specOfKind(kind) }).toEqual({ kind, specId });
