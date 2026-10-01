@@ -331,7 +331,7 @@ def falls_with_predecessor(step):
     ok, why = gha_expr.survives_failure(step.get("if"))
     if ok:
         return None
-    return ("if: %s — %s; гейт обязан исполняться при любом исходе предыдущих шагов "
+    return ("if: %s — %s; шаг обязан исполняться при любом исходе предыдущих шагов "
             "(`if: '!cancelled()'`)" % (repr(step.get("if")) if step.get("if") is not None
                                          else "не задан", why))
 
@@ -397,6 +397,26 @@ def check_workflow_passes():
     # Гейт fs держится здесь же (F3): его исполнимость судилась, а СУЩЕСТВОВАНИЕ — нет,
     # и снятый целиком шаг давал ровно то, что упавшая выгрузка на волне #2977, — ни
     # одного вердикта fs, без единой находки.
+    # ПОСЛЕ ПЕРВОЙ ВЫГРУЗКИ SARIF КАЖДЫЙ ШАГ ЗАДАНИЯ ИСПОЛНЯЕТСЯ ПРИ ЛЮБОМ ИСХОДЕ (F4, F5).
+    # Выгрузка — внешний сервис с собственными отказами (волна #2977); шаг после неё без
+    # `!cancelled()` снимается её отказом, и это касается не только гейтов: шаги
+    # подготовки (интерпретатор, модули), без которых гейты ниже не исполнятся, и
+    # гейт gosec «fail on level=error» снимались ровно так же. Судятся все задания
+    # этого файла; гейтовые шаги trivy уже названы выше и здесь не повторяются.
+    after_upload = 0
+    for jname, jdef in (doc.get("jobs") or {}).items():
+        seen_upload = False
+        for st in (jdef or {}).get("steps") or []:
+            w = st.get("with") or {}
+            if seen_upload and not (jname == "trivy" and str(w.get("exit-code") or "") == "1"):
+                after_upload += 1
+                fall = falls_with_predecessor(st)
+                if fall:
+                    out.append("задание «%s», шаг «%s» стоит после выгрузки SARIF и снимается "
+                               "её отказом: %s" % (jname, st.get("name") or st.get("uses") or "?",
+                                                   fall))
+            if "upload-sarif" in str(st.get("uses") or ""):
+                seen_upload = True
     if not fs_gated:
         out.append("в задании trivy (%s) нет исполняемого гейтового шага `scan-type: fs` "
                    "(`exit-code: '1'`, исполняется при любом исходе предыдущих) — дерево "
@@ -405,8 +425,8 @@ def check_workflow_passes():
         out.append("проход «%s» не судится в CI: у него нет шага с `exit-code: '1'`, "
                    "который исполняется и роняет задание, в %s" % (name, WORKFLOW.name))
     return out, ("  шагов scan-type: config в CI %d; гейтовых шагов задания %d (из них fs %d); "
-                 "проходов %d; судимых гейтовым шагом %d"
-                 % (seen, gate_steps, fs_gated, len(want), len(gated)))
+                 "проходов %d; судимых гейтовым шагом %d; шагов после выгрузки SARIF судимо %d"
+                 % (seen, gate_steps, fs_gated, len(want), len(gated), after_upload))
 
 
 def local_dependency_names(chart_yaml):

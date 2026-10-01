@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=43
+DENOM=46
 passed=0
 failed=0
 
@@ -435,6 +435,35 @@ expect "F3: гейтового шага fs нет — находка" "$work/f3"
   "нет исполняемого гейтового шага \`scan-type: fs\`"
 expect "F3 (близнец): контроль — шаг fs на месте и исполним" "$work/control" 0 \
   "(из них fs 1)"
+
+# $1 — копия, $2 — задание, $3 — подстрока имени или `uses` шага; снимается ключ `if`
+drop_if_in_job() {
+  python3 - "$1/.github/workflows/security-scan.yml" "$2" "$3" <<'PY'
+import sys, yaml
+p, job, needle = sys.argv[1], sys.argv[2], sys.argv[3]
+d = yaml.safe_load(open(p, encoding="utf-8"))
+hit = [st for st in d["jobs"][job]["steps"]
+       if needle in str(st.get("name") or st.get("uses") or "") and "if" in st]
+if len(hit) != 1:
+    sys.exit("инъекция не нашла ровно один шаг «%s» с if в задании %s: %d" % (needle, job, len(hit)))
+del hit[0]["if"]
+yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
+PY
+}
+
+# ── X. F4 / F5: шаг после выгрузки SARIF снимается её отказом ───────────────────
+# F4 — подготовка в задании trivy (интерпретатор); F5 — вердикт gosec. Близнец обоих —
+# контроль A: те же шаги под `!cancelled()`, гейт молчит.
+make_copy "$work/f4" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+drop_if_in_job "$work/f4" trivy "actions/setup-python" || exit 2
+expect "F4: подготовка trivy после выгрузки без условия — находка" "$work/f4" 1 \
+  "задание «trivy», шаг «actions/setup-python"
+make_copy "$work/f5" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+drop_if_in_job "$work/f5" gosec "fail on level=error" || exit 2
+expect "F5: вердикт gosec после выгрузки без условия — находка" "$work/f5" 1 \
+  "задание «gosec», шаг «fail on level=error» стоит после выгрузки SARIF"
+expect "F4/F5 (близнец): контроль — шаги после выгрузки исполнимы" "$work/control" 0 \
+  "шагов после выгрузки SARIF судимо"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
