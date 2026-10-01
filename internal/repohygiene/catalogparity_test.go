@@ -46,6 +46,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
@@ -93,6 +94,12 @@ var catalogProtoPackages = []string{
 	// как всякая другая. Пропусти его здесь, и строка каталога осталась бы без
 	// источника, а гейт назвал бы находкой сам каталог.
 	"corelib.subscription",
+	// Пакет ОБЩЕЙ ленты уведомлений модуля-источника (kacho#2915): в нём
+	// объявлена служба `InternalNotificationFeedService` — взять порцию и
+	// подтвердить исход, — и её аннотации обязаны сверяться так же, как всякие
+	// другие. Пропусти его здесь, и две строки каталога остались бы без
+	// источника, а гейт назвал бы находкой сам каталог.
+	"corelib.notify",
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки

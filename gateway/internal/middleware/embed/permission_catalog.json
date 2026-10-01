@@ -1,5 +1,25 @@
 [
   {
+    "fqn": "corelib.notify.InternalNotificationFeedService/Ack",
+    "permission": "platform.notification_feed.ack",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_feed",
+      "from_request_field": ""
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "corelib.notify.InternalNotificationFeedService/Claim",
+    "permission": "platform.notification_feed.claim",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_feed",
+      "from_request_field": ""
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "corelib.operation.OperationService/Cancel",
     "permission": "\u003cexempt\u003e",
     "required_relation": "",
