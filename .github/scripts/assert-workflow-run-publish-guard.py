@@ -29,10 +29,12 @@
   * ЧУЖИЕ (публикации нет): исходный прогон поднят не `push` (запрос, запрос с
     правами базы, ручной запуск), голова не из этого репозитория, ветка вне
     правила — на этой редакции правило равно фильтру `workflow_run.branches`:
-    ствол `main` и ничего больше;
-  * ЗАКОННЫЕ (публикация есть): `push` этого репозитория в `main`; а
-    также собственный `push` процесса в ствол. Без них гейт молчал бы на
-    процессе, который не публикует НИЧЕГО, — запрет без положительного контроля.
+    ствол `main` и ничего больше; собственное событие процесса вне перечня и
+    собственный `push` в ссылку вне правила (см. «Собственные события»);
+  * ЗАКОННЫЕ (публикация есть): `push` этого репозитория в `main`; собственный
+    `push` в ствол и метки версии; ручной запуск. Без них гейт молчал
+    бы на процессе, который не публикует НИЧЕГО, — запрет без положительного
+    контроля.
 
 СЛОЁВ ТРИ, И КАЖДЫЙ СУДИТСЯ ПОРОЗНЬ на чужих сценах, иначе один слой прятал бы
 снятие другого:
@@ -51,9 +53,26 @@
   3. шаг с секретами охраняет своё условие: при ответе решения «нет» БЕЗ отказа,
      а также при ОТСУТСТВИИ ответа без отказа, он не исполняется.
 
-МЕСТО ПРОВЕРКИ — судится структурно, отдельно от сцен: шаг решения есть; ДО него
-нет ни шага с `uses:` (выкачка, чужое действие), ни шага, читающего секреты; сам
-он секретов не читает; задание и процесс не дают секретов всем шагам сразу.
+МЕСТО ПРОВЕРКИ — судится структурно, отдельно от сцен: шаг решения есть и стоит
+ПЕРВЫМ — до него нет ни одного шага (выкачка и чужое действие меняют машину, шаг
+`run:` — окружение решения через `GITHUB_ENV`, а гейт таких шагов не исполняет);
+сам он секретов не читает; задание и процесс не дают секретов всем шагам сразу.
+Окружение шага решения в исполнении гейта — `env` процесса, задания и шага.
+
+СОБСТВЕННЫЕ СОБЫТИЯ ПРОЦЕССА — ПЕРЕЧНЕМ. Законные: `push` в ссылку правила этого
+файла (ствол `main`, метка версии `v<число>.<число>.<число>`) и ручной
+запуск; чужие: запрос, запрос с правами базы, очередь слияния, расписание и прочие
+события, а также собственный `push` в ссылку вне правила. Фильтр `push` в `on:` —
+не держатель: решение судит ссылку само, поэтому его расширение права не даёт.
+
+ТРИГГЕРЫ — судятся структурно: `on:` процесса-потребителя с секретами не выходит
+за перечень `push`, `workflow_dispatch`, `workflow_run`. Событие вне перечня —
+находка, даже если решение ему откажет: его исход гейт как законный не судит.
+
+ПАРАЛЛЕЛЬНОСТЬ — судится исходом: группа параллелизма (процесса и задания)
+вычисляется в каждой сцене, и чужая сцена не вправе получить группу законной.
+Прогон в общей группе вытесняет законный — публикация ствола отменяется прогоном,
+которому задание откажет.
 
 ЯЗЫК УСЛОВИЙ. Вычисляется подмножество выражений площадки: `|| && ! == !=`,
 скобки, строки, `true/false/null`, числа, контексты `github`, `steps`, `env`,
@@ -458,6 +477,18 @@ def _wr(event, branch, repo, conclusion="success"):
     }
 
 
+def _own(event, ref, head_repo=None):
+    """Собственное событие процесса: ссылка и (для запроса) репозиторий головы."""
+    ev = {} if head_repo is None else {
+        "pull_request": {"head": {"repo": {"full_name": head_repo}}}}
+    return {"event_name": event, "repository": THIS_REPO, "ref": ref,
+            "ref_name": ref.split("/", 2)[-1], "event": ev}
+
+
+# Собственные события, которые процесс вправе принимать: остальные — находка
+# «триггеры» (их исход сцены не судят как законный), а их сцены — чужие.
+ALLOWED_TRIGGERS = ("push", "workflow_dispatch", "workflow_run")
+
 SCENES = [
     Scene("workflow_run ← pull_request, голова чужого репозитория, ветка main",
           _wr("pull_request", "main", FOREIGN_REPO), False),
@@ -500,9 +531,46 @@ SCENES = [
           _wr("push", "2942", THIS_REPO), False, True),
     Scene("workflow_run ← push, ветка-номер с сутью вне правила 2942-x",
           _wr("push", "2942-x", THIS_REPO), False, True),
-    Scene("собственный push в main", {
-        "event_name": "push", "repository": THIS_REPO, "ref": "refs/heads/main",
-        "ref_name": "main", "event": {}}, True),
+    # ── собственные события процесса ──
+    # Чужие: событие вне перечня разрешённых. Решение обязано отказать им ЯВНО, а
+    # не пропустить как «не workflow_run»: запрос из ветки этого репозитория и
+    # запрос с правами базы получили бы секреты.
+    Scene("собственный pull_request, голова этого репозитория",
+          _own("pull_request", "refs/pull/7/merge", THIS_REPO), False),
+    Scene("собственный pull_request, голова чужого репозитория",
+          _own("pull_request", "refs/pull/7/merge", FOREIGN_REPO), False),
+    Scene("собственный pull_request_target",
+          _own("pull_request_target", "refs/heads/main", FOREIGN_REPO), False),
+    Scene("собственный merge_group",
+          _own("merge_group", "refs/heads/gh-readonly-queue/main/pr-7-0"), False),
+    Scene("собственный schedule", _own("schedule", "refs/heads/main"), False),
+    Scene("собственный repository_dispatch", _own("repository_dispatch", "refs/heads/main"), False),
+    Scene("собственный issue_comment", _own("issue_comment", "refs/heads/main"), False),
+    # Чужие по ссылке: собственный push вне правила фильтра этого файла (main,
+    # метка версии). Фильтр — не держатель: решение судит ссылку само.
+    Scene("собственный push, ветка вне правила feature/x",
+          _own("push", "refs/heads/feature/x"), False, True),
+    Scene("собственный push, ветка вне правила mainx",
+          _own("push", "refs/heads/mainx"), False, True),
+    Scene("собственный push, ветка вне правила x/refs/heads/main",
+          _own("push", "refs/heads/x/refs/heads/main"), False, True),
+    # Прежняя форма ветки задачи снята из фильтра `push` этой редакции
+    # (kacho#2807): её возврат в решение без фильтра — расширение права.
+    Scene("собственный push, ветка вне правила KAC-1",
+          _own("push", "refs/heads/KAC-1"), False, True),
+    Scene("собственный push, ветка вне правила KAC-1/x",
+          _own("push", "refs/heads/KAC-1/x"), False, True),
+    Scene("собственный push, метка вне правила v1.2",
+          _own("push", "refs/tags/v1.2"), False, True),
+    Scene("собственный push, метка вне правила v1.2.3-rc",
+          _own("push", "refs/tags/v1.2.3-rc"), False, True),
+    Scene("собственный push, метка вне правила v1x2x3",
+          _own("push", "refs/tags/v1x2x3"), False, True),
+    # Законные.
+    Scene("собственный push в main", _own("push", "refs/heads/main"), True),
+    Scene("собственный push метки v1.2.3", _own("push", "refs/tags/v1.2.3"), True),
+    Scene("собственный workflow_dispatch на ветке feature/x",
+          _own("workflow_dispatch", "refs/heads/feature/x"), True),
 ]
 
 
@@ -559,9 +627,11 @@ def shell_argv(shell: str, script: str) -> list[str] | None:
 
 
 def _run_decision(step: dict, ctx: Ctx, job: dict, doc: dict) -> tuple[int, dict]:
+    # окружение шага у площадки: процесс, затем задание, затем шаг
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
-    for k, v in (step.get("env") or {}).items():
-        env[str(k)] = interpolate(str(v), ctx)
+    for holder in (doc, job, step):
+        for k, v in (holder.get("env") or {}).items():
+            env[str(k)] = interpolate(str(v), ctx)
     script = interpolate(str(step.get("run", "")), ctx)
     shell, _ = decision_shell(step, job, doc)
     with tempfile.TemporaryDirectory() as d:
@@ -648,6 +718,22 @@ class Census:
     scenes: int = 0
 
 
+def concurrency_groups(job: dict, doc: dict, github: dict) -> list[tuple[str, str]]:
+    """Группы параллелизма, в которые прогон сцены встаёт: процесса и задания.
+    Прогон в общей группе вытесняет ждущий (а при `cancel-in-progress` — и
+    идущий) прогон той же группы, поэтому судится сама общность группы."""
+    out = []
+    for level, holder in (("процесса", doc), ("задания", job)):
+        c = holder.get("concurrency")
+        if c is None:
+            continue
+        g = c.get("group") if isinstance(c, dict) else c
+        if g is None:
+            raise Unmeasured(f"группа параллелизма {level} без ключа group")
+        out.append((level, interpolate(str(g), Ctx(github=github)).casefold()))
+    return out
+
+
 LAYER3_ANSWERS = [("«нет»", (0, {"publish": "false"})), ("без ответа", (0, {}))]
 
 
@@ -663,6 +749,7 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
         if not isinstance(doc, dict) or "workflow_run" not in _triggers(doc):
             continue
         c.consumers += 1
+        consumer_with_secrets = False
         for jname, job in (doc.get("jobs") or {}).items():
             c.jobs += 1
             steps = job.get("steps") or []
@@ -670,6 +757,7 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
             if not exposure and not any(refs_secrets(s) for s in steps):
                 continue
             c.jobs_with_secrets += 1
+            consumer_with_secrets = True
             where = f"{path}: jobs.{jname}"
             # ── место проверки ──
             for w in exposure:
@@ -694,15 +782,35 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
                     if refs_secrets(st):
                         findings.append(f"{where}: место проверки: шаг с секретами №{i + 1} "
                                         f"«{_step_label(st)}» стоит ДО шага решения №{di + 1}")
-                    if "uses" in st:
-                        findings.append(f"{where}: место проверки: шаг №{i + 1} "
-                                        f"«{_step_label(st)}» (uses) исполняется ДО шага "
-                                        f"решения №{di + 1}")
+                    # Любой шаг до решения меняет его окружение (GITHUB_ENV,
+                    # GITHUB_PATH, файлы машины), а гейт такие шаги не исполняет:
+                    # решение обязано стоять первым.
+                    kind = "uses" if "uses" in st else "run"
+                    findings.append(f"{where}: место проверки: шаг №{i + 1} "
+                                    f"«{_step_label(st)}» ({kind}) исполняется ДО шага "
+                                    f"решения №{di + 1}")
             # ── сцены ──
+            # группы законных сцен: чужой прогон в той же группе вытесняет публикацию
+            lawful_groups: dict[tuple[str, str], str] = {}
+            for sc in SCENES:
+                if sc.lawful:
+                    for key in concurrency_groups(job, doc, sc.github):
+                        lawful_groups.setdefault(key, sc.name)
             for sc in SCENES:
                 c.scenes += 1
                 r = simulate(job, doc, sc.github)
                 published = r.job_if and r.secret_step is not None
+                if not sc.lawful:
+                    for level, group in concurrency_groups(job, doc, sc.github):
+                        if level == "задания" and not r.job_if:
+                            continue  # задание не идёт — в группу задания не встаёт
+                        other = lawful_groups.get((level, group))
+                        if other is not None:
+                            findings.append(
+                                f"{where}: [{sc.name}] параллельность: группа {level} "
+                                f"«{group}» та же, что у законной сцены [{other}] — "
+                                f"прогон, которому публикация не положена, вытесняет "
+                                f"законный")
                 if sc.lawful:
                     if not published:
                         why = ("условие задания ложно" if not r.job_if else
@@ -728,6 +836,12 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
                             findings.append(f"{where}: [{sc.name}] слой 3: при ответе решения "
                                             f"{label} без отказа шаг «{rf.secret_step}» "
                                             f"исполняется")
+        # ── триггеры: собственные события процесса ──
+        if consumer_with_secrets:
+            for t in _triggers(doc):
+                if t not in ALLOWED_TRIGGERS:
+                    findings.append(f"{path}: триггеры: процесс поднимается событием "
+                                    f"'{t}' — вне перечня {', '.join(ALLOWED_TRIGGERS)}")
     return findings, c
 
 
@@ -759,7 +873,7 @@ def _census_line(c: Census) -> str:
 DOCKER = ".github/workflows/docker-build.yml"
 
 
-LAYERS = ("слой 1", "слой 2", "слой 3", "место проверки")
+LAYERS = ("слой 1", "слой 2", "слой 3", "место проверки", "триггеры", "параллельность")
 
 
 def _parser_probes() -> list[tuple[str, str, bool]]:
@@ -1014,17 +1128,137 @@ def self_test(root: Path) -> int:
         moved = rest[:k] + "\n" + block + rest[k:]
     expect("место проверки: решение после выкачки", moved, 1,
            ["место проверки", "actions/checkout", "(uses)"], "место проверки")
-    expect("законный близнец: шаг без uses и секретов до решения",
-           mutate(head, "      - name: отметка\n        run: echo start\n" + head), 0)
+    expect("место проверки: шаг run без секретов до решения (окружение решения)",
+           mutate(head, "      - name: отметка\n        run: echo BASH_ENV=/tmp/x >> \"$GITHUB_ENV\"\n"
+                  + head), 1,
+           ["место проверки", "«отметка» (run)"], "место проверки")
     expect("место проверки: секреты задания ключом вызова",
            {**real, ".github/workflows/reuse.yml":
             "on:\n  workflow_run:\n    workflows: [x]\n    types: [completed]\n"
             "jobs:\n  j:\n    uses: ./.github/workflows/x.yml\n    secrets: inherit\n"},
            1, ["reuse.yml", "задание: ключ secrets", "нет шага решения"])
 
+    # ── собственные события процесса: перечень, ссылка собственного push ──
+    own_if = "      github.event_name == 'push' ||\n      github.event_name == 'workflow_dispatch' ||\n"
+    expect("слой 1: собственные события — «всё, кроме workflow_run» вместо перечня",
+           mutate(own_if, "      github.event_name != 'workflow_run' ||\n"), 1,
+           ["слой 1", "собственный pull_request, голова этого репозитория",
+            "собственный pull_request_target"], "слой 1")
+    expect("слой 1: собственные события — запрет одного вместо перечня",
+           mutate("      github.event_name == 'push' ||\n",
+                  "      github.event_name != 'pull_request' ||\n"), 1,
+           ["слой 1", "собственный pull_request_target", "собственный schedule"], "слой 1")
+    expect("положительный контроль: ручной запуск снят из условия задания",
+           mutate("      github.event_name == 'workflow_dispatch' ||\n", ""), 1,
+           ["законной публикации НЕТ", "собственный workflow_dispatch", "условие задания ложно"])
+    any_event = "              why=\"событие '${EVENT_NAME:-<пусто>}' вне перечня"
+    expect("слой 2: решение — «да» любому собственному событию вне перечня",
+           mutate(any_event, "              echo \"publish=true\" >> \"$GITHUB_OUTPUT\"; exit 0\n"
+                  + any_event), 1,
+           ["слой 2", "собственный pull_request, голова этого репозитория",
+            "собственный pull_request_target", "собственный issue_comment"], "слой 2")
+    expect("слой 2: решение — запрос в перечне разрешённых",
+           mutate("            workflow_dispatch)\n",
+                  "            workflow_dispatch|pull_request|pull_request_target)\n"), 1,
+           ["слой 2", "собственный pull_request, голова чужого репозитория",
+            "собственный pull_request_target"], "слой 2")
+    expect("положительный контроль: ручной запуск снят из перечня решения",
+           mutate("            workflow_dispatch)\n", "            workflow_dispatch_gone)\n"), 1,
+           ["законной публикации НЕТ", "собственный workflow_dispatch"])
+    expect("слой 2: правило собственного push расширено до любой ветки",
+           mutate("^refs/heads/main$", "^refs/heads/.*$"), 1,
+           ["слой 2", "собственный push, ветка вне правила feature/x"], "слой 2")
+    expect("слой 2: правило собственного push без якоря конца",
+           mutate("^refs/heads/main$", "^refs/heads/main"), 1,
+           ["слой 2", "ветка вне правила mainx"], "слой 2")
+    expect("слой 2: правило собственного push без якоря начала",
+           mutate("^refs/heads/main$", "refs/heads/main$"), 1,
+           ["слой 2", "ветка вне правила x/refs/heads/main"], "слой 2")
+    expect("слой 2: в правило собственного push вернулась снятая форма KAC-*",
+           mutate("^refs/heads/main$ ]] ||\n",
+                  "^refs/heads/main$ ]] ||\n"
+                  "                 [[ \"${OWN_REF:-}\" =~ ^refs/heads/KAC-[^/]*$ ]] ||\n"), 1,
+           ["слой 2", "ветка вне правила KAC-1"], "слой 2")
+    expect("слой 2: в правило собственного push вошла ветка с вложенным путём",
+           mutate("^refs/heads/main$ ]] ||\n",
+                  "^refs/heads/main$ ]] ||\n"
+                  "                 [[ \"${OWN_REF:-}\" =~ ^refs/heads/KAC-[0-9]+/.*$ ]] ||\n"), 1,
+           ["слой 2", "ветка вне правила KAC-1/x"], "слой 2")
+    expect("слой 2: правило метки без якоря конца",
+           mutate("[0-9]+\\.[0-9]+\\.[0-9]+$ ]]", "[0-9]+\\.[0-9]+\\.[0-9]+ ]]"), 1,
+           ["слой 2", "метка вне правила v1.2.3-rc"], "слой 2")
+    expect("слой 2: правило метки — точка не экранирована",
+           mutate("v[0-9]+\\.[0-9]+\\.[0-9]+$", "v[0-9]+.[0-9]+.[0-9]+$"), 1,
+           ["слой 2", "метка вне правила v1x2x3"], "слой 2")
+    expect("слой 2: правило метки — третья часть версии необязательна",
+           mutate("v[0-9]+\\.[0-9]+\\.[0-9]+$", "v[0-9]+\\.[0-9]+(\\.[0-9]+)?$"), 1,
+           ["слой 2", "метка вне правила v1.2"], "слой 2")
+    expect("слой 2: ссылка собственного push не из контекста прогона",
+           mutate("          OWN_REF: ${{ github.ref }}\n", "          OWN_REF: refs/heads/main\n"), 1,
+           ["слой 2", "собственный push, ветка вне правила feature/x"], "слой 2")
+    expect("положительный контроль: метки версий сняты из правила собственного push",
+           mutate("[[ \"${OWN_REF:-}\" =~ ^refs/tags/v", "[[ \"${OWN_REF:-}\" =~ ^refs/tags/GONE"), 1,
+           ["законной публикации НЕТ", "собственный push метки v1.2.3"])
+    expect("законный близнец: фильтр push расширен до любой ветки — решение судит ссылку само",
+           mutate('      - main\n    tags:\n', '      - main\n      - "**"\n    tags:\n'), 0)
+
+    # окружение решения — процесс, задание, шаг, как у площадки
+    this_repo = "          THIS_REPO: ${{ github.repository }}\n"
+    expect("законный близнец: репозиторий сравнения из env задания",
+           mutate("    runs-on: ubuntu-latest\n",
+                  "    runs-on: ubuntu-latest\n    env:\n      THIS_REPO: ${{ github.repository }}\n",
+                  mutate(this_repo, "")), 0)
+    expect("слой 2: репозиторий сравнения из env процесса — чужой",
+           mutate("  FALLBACK_NS: local\n", f"  FALLBACK_NS: local\n  THIS_REPO: {FOREIGN_REPO}\n",
+                  mutate(this_repo, "")), 1,
+           ["слой 2", "push, голова чужого репозитория"])
+
+    # ── триггеры: событие вне перечня в `on:` ──
+    expect("триггеры: процесс поднимается запросом",
+           mutate("  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request:\n"), 1,
+           ["триггеры", "'pull_request'"], "триггеры")
+    expect("триггеры: процесс поднимается запросом с правами базы",
+           mutate("  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request_target:\n"
+                  "    types: [opened]\n"), 1,
+           ["триггеры", "'pull_request_target'"], "триггеры")
+    expect("законный близнец: разрешённый триггер с иным фильтром",
+           mutate("  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs: {}\n"), 0)
+
+    # ── параллельность: чужой прогон не делит группу с законным ──
+    grp = "  group: docker-build-${{ github.event_name }}-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch || github.ref }}\n"
+    expect("параллельность: прежний ключ — одна ветка",
+           mutate(grp, "  group: docker-build-${{ github.event.workflow_run.head_branch || github.ref }}\n"),
+           1, ["параллельность", "pull_request, голова чужого репозитория, ветка main"],
+           "параллельность")
+    expect("параллельность: из ключа снято событие исходного прогона",
+           mutate("-${{ github.event.workflow_run.event }}-", "-"), 1,
+           ["параллельность", "pull_request, голова этого репозитория, ветка main"],
+           "параллельность")
+    expect("параллельность: из ключа снят репозиторий головы",
+           mutate("-${{ github.event.workflow_run.head_repository.full_name }}-", "-"), 1,
+           ["параллельность", "push, голова чужого репозитория"], "параллельность")
+    expect("параллельность: репозиторий головы с подстановкой репозитория процесса",
+           mutate("-${{ github.event.workflow_run.head_repository.full_name }}-",
+                  "-${{ github.event.workflow_run.head_repository.full_name || github.repository }}-"), 1,
+           ["параллельность", "голова без репозитория"], "параллельность")
+    expect("параллельность: из ключа снято событие этого прогона",
+           mutate("docker-build-${{ github.event_name }}-", "docker-build-"), 1,
+           ["параллельность", "собственный pull_request_target"], "параллельность")
+    expect("параллельность: группа задания — постоянная",
+           mutate("    runs-on: ubuntu-latest\n",
+                  "    runs-on: ubuntu-latest\n    concurrency: publish\n"), 1,
+           ["параллельность", "группа задания"], "параллельность")
+    expect("законный близнец: ключ с добавленным именем процесса",
+           mutate(grp, grp[:-1] + "-${{ github.workflow }}\n"), 0)
+    expect("законный близнец: группы параллелизма нет",
+           mutate("concurrency:\n" + grp + "  cancel-in-progress: true\n", ""), 0)
+
     # ── положительный контроль и предмет ──
     expect("положительный контроль: задание не идёт никогда",
-           mutate("github.event_name != 'workflow_run' ||", "false && github.event_name != 'workflow_run' ||"),
+           mutate("    if: >-\n      github.event_name == 'push' ||",
+                  "    if: >-\n      false && (github.event_name == 'push' ||",
+                  mutate("github.event.workflow_run.conclusion != 'skipped')\n",
+                         "github.event.workflow_run.conclusion != 'skipped'))\n")),
            1, ["законной публикации НЕТ", "собственный push в main"])
     expect("положительный контроль: решение отказывает всем",
            mutate('echo "право: push в ветку', 'exit 1; echo "право: push в ветку'), 1,
@@ -1033,7 +1267,7 @@ def self_test(root: Path) -> int:
            mutate("        id: publish_right\n", "        id: publish_right_gone\n"), 1,
            ["нет шага решения"])
     expect("непонятое условие — не измерено, а не зелёное",
-           mutate("github.event_name != 'workflow_run' ||", "contains(github.ref, 'x') ||"), 2,
+           mutate("github.event_name == 'workflow_dispatch' ||", "contains(github.ref, 'x') ||"), 2,
            ["НЕ ИЗМЕРЕНО"])
     # законный близнец: workflow_run без секретов — молчание и учёт в переписи
     twin = ("on:\n  workflow_run:\n    workflows: [x]\n    types: [completed]\n"
