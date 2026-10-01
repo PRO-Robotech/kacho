@@ -203,6 +203,12 @@ compute:
 kacho-geo:
   image: docker.io/prorobotech/kacho-geo:main-4382f05c
 api-gateway:
+  # Правила тревоги края выключены: CRD PrometheusRule на kind-стенде `own` нет
+  # (замер 2026-10-01, `kubectl --context kind-kacho-own-2816 get crd
+  # prometheusrules.monitoring.coreos.com` → NotFound).
+  alertRules:
+    enabled: false
+    disabledBecause: "CRD PrometheusRule на kind-стенде own нет (замер kind-kacho-own-2816 2026-10-01)"
   image: docker.io/prorobotech/kacho-api-gateway:main-4382f05c
 kacho-nlb:
   image:
