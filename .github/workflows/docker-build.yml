@@ -64,11 +64,15 @@ on:
 # поэтому на нём все такие прогоны попали бы в ОДНУ группу и отменяли друг друга
 # независимо от того, какую ветку собирают.
 #
-# В ключ входят СОБЫТИЕ и РЕПОЗИТОРИЙ головы исходного прогона, а не одна ветка:
-# одно имя ветки не различает происхождение, и прогоны, которым задание ниже
-# откажет, делили бы группу со сборкой ствола и отменяли бы её.
+# В ключ входят СОБЫТИЕ этого прогона, СОБЫТИЕ и РЕПОЗИТОРИЙ головы исходного
+# прогона, а не одна ветка: одно имя ветки не различает происхождение, и
+# прогоны, которым задание ниже откажет, делили бы группу со сборкой ствола и
+# отменяли бы её. Подстановок по умолчанию у частей исходного прогона нет
+# намеренно: пустая часть не должна совпасть с частью законного прогона.
+# Что чужой прогон не делит группу с законным, держит тот же гейт
+# (`.github/scripts/assert-workflow-run-publish-guard.py`).
 concurrency:
-  group: docker-build-${{ github.event.workflow_run.event || github.event_name }}-${{ github.event.workflow_run.head_repository.full_name || github.repository }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  group: docker-build-${{ github.event_name }}-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 # `actions: write` — НЕ расширение прав «на всякий случай»: кэш `type=gha` пишется через
@@ -122,14 +126,17 @@ jobs:
     # ветке не запускается НИ РАЗУ, при этом выглядит провязанным — то есть снова
     # ноль покрытия, только незаметный.
     #
-    # ПУБЛИКУЕТСЯ ТОЛЬКО ПОСАЖЕННОЕ. По `workflow_run` задание идёт, лишь когда
-    # исходный прогон поднят `push` и голова из ЭТОГО репозитория. Для прочих —
+    # ПУБЛИКУЕТСЯ ТОЛЬКО ПОСАЖЕННОЕ. Собственные события — ПЕРЕЧНЕМ (`push`,
+    # ручной запуск), а не «всё, кроме workflow_run»: событие, добавленное в
+    # `on:` позже, не получает права молча. По `workflow_run` задание идёт, лишь
+    # когда исходный прогон поднят `push` и голова из ЭТОГО репозитория. Для прочих —
     # отказ, а не «сборка без публикации»: здесь у задания права, которых у
     # непринятого кода быть не должно, включая запись в общий кэш слоёв.
     # Правило имени ветки выражением не записать (сопоставления с образцом в
     # языке условий нет) — его судит шаг «право на публикацию», первым.
     if: >-
-      github.event_name != 'workflow_run' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository &&
        github.event.workflow_run.conclusion != 'cancelled' &&
@@ -148,31 +155,51 @@ jobs:
       # правила — ОТКАЗ шагом: последующие шаги, включая чтение секретов, не
       # исполняются.
       #
-      # Ручной запуск и собственный `push` этого файла (ствол и метки версий)
-      # судит их собственный фильтр и право запустившего — для них решение «да».
+      # Собственные события — перечнем. Ручной запуск судит право запустившего.
+      # Собственный `push` судится по ссылке тем же правилом, что у фильтра
+      # `push` выше (ствол, KAC-*, метка версии): фильтр — не держатель, его
+      # расширение права не даёт. Любое другое событие — отказ.
       - name: право на публикацию
         id: publish_right
         env:
           EVENT_NAME: ${{ github.event_name }}
+          OWN_REF: ${{ github.ref }}
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
           RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           THIS_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" != "workflow_run" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "право: событие этого файла ($EVENT_NAME) — судит его собственный фильтр"
-            exit 0
-          fi
           why=""
-          if [ "${RUN_EVENT:-}" != "push" ]; then
-            why="исходный прогон поднят событием '${RUN_EVENT:-<пусто>}', а не push"
-          elif [ -z "${RUN_REPO:-}" ] || [ "$RUN_REPO" != "$THIS_REPO" ]; then
-            why="голова исходного прогона не из этого репозитория"
-          elif ! [[ "${RUN_BRANCH:-}" =~ ^main$ ]]; then
-            why="ветка '${RUN_BRANCH:-<пусто>}' вне правила (main)"
-          fi
+          case "${EVENT_NAME:-}" in
+            push)
+              if [[ "${OWN_REF:-}" =~ ^refs/heads/main$ ]] ||
+                 [[ "${OWN_REF:-}" =~ ^refs/heads/KAC-[^/]*$ ]] ||
+                 [[ "${OWN_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "publish=true" >> "$GITHUB_OUTPUT"
+                echo "право: собственный push '$OWN_REF' в правиле этого файла"
+                exit 0
+              fi
+              why="собственный push: ссылка '${OWN_REF:-<пусто>}' вне правила (main, KAC-*, метка версии)"
+              ;;
+            workflow_dispatch)
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              echo "право: ручной запуск — судит право запустившего"
+              exit 0
+              ;;
+            workflow_run)
+              if [ "${RUN_EVENT:-}" != "push" ]; then
+                why="исходный прогон поднят событием '${RUN_EVENT:-<пусто>}', а не push"
+              elif [ -z "${RUN_REPO:-}" ] || [ "$RUN_REPO" != "$THIS_REPO" ]; then
+                why="голова исходного прогона не из этого репозитория"
+              elif ! [[ "${RUN_BRANCH:-}" =~ ^main$ ]]; then
+                why="ветка '${RUN_BRANCH:-<пусто>}' вне правила (main)"
+              fi
+              ;;
+            *)
+              why="событие '${EVENT_NAME:-<пусто>}' вне перечня (push, workflow_dispatch, workflow_run)"
+              ;;
+          esac
           if [ -n "$why" ]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "::error::публикации нет: $why"
