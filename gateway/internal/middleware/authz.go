@@ -57,7 +57,6 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
-	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
@@ -583,13 +582,20 @@ const (
 	//   authenticated subject, access denied → 7 PERMISSION_DENIED → HTTP 403
 	outcomeUnauthenticated
 	// outcomeInvalidArgument — the extracted per-resource scope id is
-	// syntactically malformed (unknown 3-char prefix / wrong length). Maps to
-	// gRPC InvalidArgument(3) / HTTP 400. The FGA Check
-	// must NOT run for a malformed id — a no-FGA-path deny would surface as 403,
-	// masking the Kachō-convention 400 the handler itself returns first. The
-	// gateway cannot tell malformed from well-formed-but-nonexistent, so ONLY the
-	// malformed (wrong-prefix / wrong-length) case is short-circuited here;
-	// well-formed-nonexistent stays a 403 deny (existence-leak protection).
+	// syntactically malformed. Maps to gRPC InvalidArgument(3) / HTTP 400. The FGA
+	// Check must NOT run for a malformed id — a no-FGA-path deny would surface as
+	// 403, masking the Kachō-convention 400 the handler itself returns first.
+	// "Malformed" depends on who mints the type (resourceIDFormAccepted):
+	//   - a type minted by a kacho service — anything but the exact mint shape
+	//     (known prefix, then 17 Crockford chars, fused or after a hyphen), so a
+	//     wrong length or a non-Crockford char is refused here;
+	//   - any other type (kaname's) — an unknown prefix only: corelib
+	//     validate.ResourceID checks neither length nor alphabet, and kaname has
+	//     lawful ids outside the mint shape (its system roles), so the owner
+	//     judges the rest.
+	// The gateway cannot tell malformed from well-formed-but-nonexistent, so ONLY
+	// the malformed case is short-circuited here; well-formed-nonexistent stays a
+	// 403 deny (existence-leak protection).
 	outcomeInvalidArgument
 	// outcomeNotFound — an authz deny on a hide-existence read RPC (catalog
 	// HideExistence / IAM verb-bearing `v_get` read). Maps to gRPC NotFound(5) /
@@ -1144,7 +1150,8 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// For an entry whose scope is a CONCRETE per-resource id (the
 	// `from_request_field` names a real resource-id field, not the wildcard /
 	// subject-as-scope / scope-polymorphic forms), a syntactically-invalid id
-	// (unknown 3-char prefix / wrong length) must surface as InvalidArgument(3)
+	// (what "invalid" means per type — resourceIDFormAccepted, see
+	// outcomeInvalidArgument) must surface as InvalidArgument(3)
 	// /400 — the Kachō convention — instead of reaching the FGA Check, where a
 	// no-path deny would mask it as PermissionDenied(7)/403. We deliberately do
 	// NOT validate the scope-polymorphic path (`object_type_from_request_field`),
@@ -1154,7 +1161,7 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// cached: it is a property of the request input, not of subject↔resource
 	// authz state.
 	if isConcreteResourceScope(entry) && !resourceID.IsWildcard() && resourceID.String() != "" {
-		if err := corevalidate.ResourceID("resource", "", resourceID.String()); err != nil {
+		if !resourceIDFormAccepted(entry, resourceID.String()) {
 			m.metrics.RecordDeny()
 			m.cfg.Logger.Info("authz invalid resource id",
 				"fqn", dr.FQN,
