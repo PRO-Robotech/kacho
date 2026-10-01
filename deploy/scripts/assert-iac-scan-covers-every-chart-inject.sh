@@ -104,7 +104,7 @@ expect "архив вне своего каталога — проход вен�
 
 # ── C. Срез шага CI разошёлся с проходом ────────────────────────────────────────
 make_copy "$work/skip" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-sed -i "/^ *skip-dirs: 'deploy\/helm\/vendor'$/d" "$work/skip/.github/workflows/security-scan.yml"
+sed -i "/^ *skip-dirs: 'deploy\/helm\/vendor,deploy\/helm\/umbrella'$/d" "$work/skip/.github/workflows/security-scan.yml"
 expect "шаг без skip-dirs прохода — находка" "$work/skip" 1 \
   "не совпадает ни с одним проходом"
 

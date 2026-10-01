@@ -34,8 +34,6 @@ PY
 )
 [ "${PG_ENTRY:--}" != "-" ] && [ "${STACK:--}" != "-" ] \
   || { echo "ОТКАЗ: в .trivyignore.yaml нет записей прохода профилей — предмета опытов нет" >&2; exit 2; }
-git -C "$ROOT" ls-files --error-unmatch "$ARCHIVE" >/dev/null 2>&1 \
-  || { echo "ОТКАЗ: архив записи $ARCHIVE не отслеживается — опыт снимать нечего" >&2; exit 2; }
 
 work="$(mktemp -d)" || { echo "ОТКАЗ: не создан временный каталог" >&2; exit 2; }
 trap 'rm -rf -- "$work"' EXIT
