@@ -172,7 +172,7 @@ misconfigurations:
       - "prorobotech/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
       - "prorobotech/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
       - "prorobotech/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-    statement: "#2980: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
+    statement: "#2985: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
   - id: KSV-0118
     paths:
       - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
@@ -187,4 +187,4 @@ misconfigurations:
       - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
       - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
       - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-    statement: "#2980: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
+    statement: "#2985: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
