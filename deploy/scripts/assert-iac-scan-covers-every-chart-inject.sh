@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=60
+DENOM=63
 passed=0
 failed=0
 
@@ -547,6 +547,34 @@ printf 'apiVersion: v1\nkind: Secret\nmetadata: {name: reqdir}\nstringData: {p: 
 git -C "$work/trackeddir" add -f -- deploy/helm/vendor/reqdir || exit 2
 expect "отслеживаемый каталог-чарт: ERROR рендера — находка, не «НЕ СУДИМО»" "$work/trackeddir" 1 \
   "в журнале trivy ERROR"
+
+# $1 — копия, $2 — точное имя шага, $3 — ключ `with:`, $4 — значение
+set_step_with() {
+  python3 - "$1/.github/workflows/security-scan.yml" "$2" "$3" "$4" <<'PY'
+import sys, yaml
+p, name, key, val = sys.argv[1:5]
+d = yaml.safe_load(open(p, encoding="utf-8"))
+hit = [st for st in d["jobs"]["trivy"]["steps"] if st.get("name") == name]
+if len(hit) != 1:
+    sys.exit("инъекция не нашла шаг «%s»: %d" % (name, len(hit)))
+hit[0].setdefault("with", {})[key] = val
+yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
+PY
+}
+
+# ── AD. Гейтовый шаг, судящий у́же порога (п. 6) ────────────────────────────────────
+w6="$work/sev"
+make_copy "$w6" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_with "$w6" "$VGATE" severity "CRITICAL" || exit 2
+expect "severity: CRITICAL без HIGH — находка" "$w6" 1 "недостаёт HIGH"
+w6="$work/sevtwin"
+make_copy "$w6" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_with "$w6" "$VGATE" severity "CRITICAL,HIGH,MEDIUM" || exit 2
+expect "severity шире порога (близнец) — гейт молчит" "$w6" 0 "судимых гейтовым шагом"
+w6="$work/ign"
+make_copy "$w6" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+set_step_with "$w6" "$VGATE" trivyignores ".trivyignore-extra" || exit 2
+expect "лишний trivyignores в гейтовом шаге — находка" "$w6" 1 "прощение мимо ведомости"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

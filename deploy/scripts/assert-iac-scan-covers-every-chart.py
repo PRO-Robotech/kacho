@@ -81,6 +81,20 @@ Kubernetes). Шаги `scan-type: config` задания trivy обязаны с
 который со своими умолчаниями не рендерит ничего, признаётся таким по предикату
 `renders_nothing` (один для каталога и архива), а не по записи с именем.
 
+ГРАНИЦЫ, НАЗВАННЫЕ ПРЯМО (что гейт НЕ держит):
+  * предел памяти сканера (`KACHO_IAC_TRIVY_MEMORY_MIB`) действует в гейтах, но не в
+    шагах `trivy-action` конвейера: входа для предела у действия нет, и сканер там
+    ограничен только памятью раннера;
+  * версия Kubernetes рендера профилей (`render-umbrella-profiles.sh`) совпадает с
+    узлом стенда вниманием, а не проверкой;
+  * профили — ровно строки `deploy/stacks.txt`; профиль вне таблицы не рендерится.
+    Полноту таблицы держит её собственный гейт (`deploy/stack_table_test.go`). Слой
+    учётных данных площадки, которого нет в репозитории, не рендерится вовсе;
+  * условие шага, зависящее от контекста прогона (`github.*`, `steps.*`), признаётся
+    неизвестным и судится как находка: гейт требует явной формы, а не угадывает;
+  * подчарт «не развёртывается», если ни один отрендеренный профиль не содержит его
+    файлов, — вердикт о таблице стеков, а не о кластере.
+
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль непокрытых чартов» обязано быть отличимо от
 «ноль прочитанных чартов».
 """
@@ -381,6 +395,30 @@ def falls_with_predecessor(step):
                                          else "не задан", why))
 
 
+# Порог гейта — CRITICAL и HIGH; шаг, судящий УЖЕ, — судит не то (приёмка 4240ac56fd3,
+# п. 6). Собственный перечень исключений, перечень пропускаемых файлов и своя политика
+# в гейтовом шаге — второй, незримый ведомости механизм прощения: `.trivyignore.yaml`
+# судится гейтом исключений, а эти входы — никем.
+GATE_SEVERITIES = {"CRITICAL", "HIGH"}
+NARROWING_INPUTS = ("trivyignores", "skip-files", "ignore-policy")
+
+
+def narrowed_inputs(w):
+    """→ причины, по которым гейтовый шаг судит у́же, чем объявлено."""
+    why = []
+    sev = {x.strip().upper() for x in str(w.get("severity") or "").split(",") if x.strip()}
+    if not sev:
+        why.append("severity не задан — trivy-action судит по умолчанию, а не по порогу гейта")
+    elif not GATE_SEVERITIES <= sev:
+        why.append("severity: %r — порог гейта %s, недостаёт %s"
+                   % (w.get("severity"), "+".join(sorted(GATE_SEVERITIES)),
+                      "+".join(sorted(GATE_SEVERITIES - sev))))
+    for k in NARROWING_INPUTS:
+        if str(w.get(k) or "").strip():
+            why.append("%s: %r — прощение мимо ведомости `.trivyignore.yaml`" % (k, w.get(k)))
+    return why
+
+
 def check_workflow_passes():
     """→ (находки, строка переписи): шаги `scan-type: config` задания trivy против проходов.
 
@@ -412,6 +450,7 @@ def check_workflow_passes():
             fall = falls_with_predecessor(st)
             if fall:
                 why.append(fall)
+            why += narrowed_inputs(w)
             st["__mute"] = why
             if not why and str(w.get("scan-type") or "") == "fs":
                 fs_gated += 1
