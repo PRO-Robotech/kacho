@@ -205,7 +205,7 @@ func renderStack(t *testing.T, chain []string, sets ...string) (string, error) {
 	for _, s := range sets {
 		args = append(args, "--set", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := exec.Command("helm", args...).CombinedOutput()
 	return string(out), err
 }
 

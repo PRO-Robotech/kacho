@@ -243,7 +243,7 @@ func bandSegments(reSrc string) ([]string, error) {
 func servingTemplate(t *testing.T) ([]nginxServer, string) {
 	t.Helper()
 	path := filepath.Join(repoRootFromTest(t), servingTemplateRel)
-	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из корня этого дерева
+	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("объявление раздачи %s не читается (%v) — предпосылка пробы исчезла", path, err)
 	}

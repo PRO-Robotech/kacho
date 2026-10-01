@@ -195,7 +195,7 @@ func refusedSettingRow(el ast.Expr) (refusedSetting, error) {
 func pinnedRefusedSettings(t *testing.T, moduleDir string) []refusedSetting {
 	t.Helper()
 	path := filepath.Join(moduleDir, "internal", "apps", "kaname", "config", "retired_settings.go")
-	src, err := os.ReadFile(path) // #nosec G304 -- путь собран из пина go.mod, не из ввода
+	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("перечень снятых настроек пиненного модуля не прочитан (%s): %v.\n"+
 			"Пин, у которого перечня нет, не несёт kaname#363 — посылка «служба отвергает "+
@@ -228,7 +228,7 @@ func moduleReadsHooksLane(moduleDir string) (bool, int, error) {
 			return nil
 		}
 		files++
-		src, rerr := os.ReadFile(path) // #nosec G304 -- обход каталога пиненного модуля
+		src, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return rerr
 		}

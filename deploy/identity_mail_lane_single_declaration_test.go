@@ -119,7 +119,7 @@ func umbrellaDeclarationFiles(t *testing.T, root string) []string {
 // утверждение сценария ловит.
 func ourConfigSections(t *testing.T, tpl string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(tpl) // #nosec G304 -- путь из дерева либо копии пробы
+	raw, err := os.ReadFile(tpl)
 	if err != nil {
 		t.Fatalf("шаблон настроек службы %s не читается: %v", tpl, err)
 	}

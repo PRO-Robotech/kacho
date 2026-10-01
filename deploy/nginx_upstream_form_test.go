@@ -147,7 +147,7 @@ func TestNginxUpstreamKeyFormsEachHaveACarrier(t *testing.T) {
 	files := uiChartFiles(t)
 	word, keys := 0, map[string]int{}
 	for _, f := range files {
-		raw, err := os.ReadFile(f) // #nosec G304 -- путь из обхода каталога репозитория
+		raw, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}

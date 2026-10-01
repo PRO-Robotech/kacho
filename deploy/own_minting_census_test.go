@@ -613,7 +613,7 @@ func mergedValuesOfStack(t *testing.T, chain []string) (map[string]any, int, int
 	t.Helper()
 	files, bytesRead := 0, 0
 	read := func(p string) map[string]any {
-		raw, err := os.ReadFile(filepath.Clean(p)) // #nosec G304 -- путь из таблицы стеков собственного дерева
+		raw, err := os.ReadFile(filepath.Clean(p))
 		if err != nil {
 			t.Fatalf("профиль %s не читается: %v — предпосылка исчезла, а не дерево стало чистым", p, err)
 		}

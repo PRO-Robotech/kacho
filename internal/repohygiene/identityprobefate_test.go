@@ -117,7 +117,7 @@ func identitySignFactsFromTree(t *testing.T, root string, tt *trackedTree, l ide
 				dir = vendorModuleDir(t, root, module)
 				dirs[p.Alias] = dir
 			}
-			raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p.Path))) // #nosec G304 -- путь в кэше модулей по пину
+			raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p.Path)))
 			if err != nil {
 				continue // файла в пиненном дереве нет — это называет суд
 			}
@@ -151,7 +151,7 @@ func identityBeyondFactsFromTree(t *testing.T, root string, tt *trackedTree) ide
 		if identityBeyondForm(rel) == "" || identityLedgerProbe(rel, identityProbeDir) {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- путь из индекса собственного дерева
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("%s в индексе есть, а не читается: %v — популяция неизвестна", rel, err)
 		}

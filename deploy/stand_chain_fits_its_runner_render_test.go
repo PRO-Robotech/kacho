@@ -49,7 +49,7 @@ func renderCertManagerRelease(t *testing.T, chart string, sets []string) string 
 		args = append(args, "--set", s)
 	}
 	var so, se bytes.Buffer
-	cmd := exec.Command("helm", args...) // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	cmd := exec.Command("helm", args...)
 	cmd.Stdout, cmd.Stderr = &so, &se
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("рендер релиза cert-manager (%s %v) не выполнен (%v) — условие не создано:\n%s",

@@ -390,7 +390,7 @@ func umbrellaChartKeys(t *testing.T) map[string]bool {
 	read := func(path string) chartFile {
 		t.Helper()
 		var c chartFile
-		raw, err := os.ReadFile(path) // #nosec G304 -- путь внутри каталога зонта
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("%s не читается: %v — ключей подчартов не знаю, судить нечем", path, err)
 		}
