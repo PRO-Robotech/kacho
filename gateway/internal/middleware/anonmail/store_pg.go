@@ -121,9 +121,9 @@ ON CONFLICT (id) DO NOTHING RETURNING true`
 	// nthMomentSQL — момент номер $4 (с нуля, по возрастанию) в окне.
 	nthMomentSQL = `SELECT at FROM kacho_gateway.anon_mail_passes
  WHERE key = $1 AND at > $2 AND at <= $3 ORDER BY at OFFSET $4 LIMIT 1`
-	// recordPassSQL — моменты пропуска всех ключей запроса; RETURNING отдаёт
+	// recordMomentsSQL — моменты пропуска всех ключей запроса; RETURNING отдаёт
 	// идентификатор транзакции решения — лишнего обращения нет.
-	recordPassSQL = `INSERT INTO kacho_gateway.anon_mail_passes (key, at, decision_id)
+	recordMomentsSQL = `INSERT INTO kacho_gateway.anon_mail_passes (key, at, decision_id)
 SELECT k, $2, $3 FROM unnest($1::text[]) AS k RETURNING pg_current_xact_id()::text`
 	// bucketWriteSQL — новое состояние ведра, когда решение взяло жетон.
 	bucketWriteSQL = `UPDATE kacho_gateway.anon_mail_bucket SET tokens = $1, at = $2 WHERE id = 1`
@@ -131,8 +131,8 @@ SELECT k, $2, $3 FROM unnest($1::text[]) AS k RETURNING pg_current_xact_id()::te
 
 // Операторы разрешения исхода фиксации — вне транзакции, на пуле ограничителя.
 const (
-	xactStatusSQL   = `SELECT pg_xact_status($1::xid8)`
-	passRecordedSQL = `SELECT EXISTS (SELECT 1 FROM kacho_gateway.anon_mail_passes
+	xactStatusSQL     = `SELECT pg_xact_status($1::xid8)`
+	momentRecordedSQL = `SELECT EXISTS (SELECT 1 FROM kacho_gateway.anon_mail_passes
  WHERE key = $1 AND at = $2 AND decision_id = $3)`
 )
 
@@ -373,7 +373,7 @@ func (x *pgTx) recordPass(ctx context.Context, keys Keys, now time.Time, _ *Proo
 	if _, err := rand.Read(id[:]); err != nil {
 		return err
 	}
-	rows, err := x.tx.Query(ctx, recordPassSQL, keys.All(), now, id[:])
+	rows, err := x.tx.Query(ctx, recordMomentsSQL, keys.All(), now, id[:])
 	if err != nil {
 		return err
 	}
@@ -540,6 +540,6 @@ func (p pgResolveProbe) xactStatus(ctx context.Context, xid string) (*string, er
 
 func (p pgResolveProbe) passRecorded(ctx context.Context, pc pendingCommit) (bool, error) {
 	var ok bool
-	err := p.pool.QueryRow(ctx, passRecordedSQL, pc.key, pc.at, pc.decisionID[:]).Scan(&ok)
+	err := p.pool.QueryRow(ctx, momentRecordedSQL, pc.key, pc.at, pc.decisionID[:]).Scan(&ok)
 	return ok, err
 }
