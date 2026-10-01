@@ -18,8 +18,8 @@
 //     `permission_catalog_warnings.txt` for CI inspection).
 //  5. When the environment variable `KACHO_PERMISSIONS_STRICT=1` is set the
 //     plugin fails the build (CodeGeneratorResponse.Error) listing every
-//     offending FQN — used by the dedicated `verify-permissions-coverage` CI
-//     job once every RPC across the polyrepo is annotated.
+//     offending FQN — set by `make permission-catalog-check` (gateway/Makefile),
+//     which the CI job `authz-artifacts` runs.
 //  6. `<exempt>` is a recognised opt-out value for RPCs that intentionally
 //     bypass authz (e.g. internal-port OperationService.Get); the row is
 //     still emitted into the catalog so downstream tooling can verify
@@ -80,6 +80,13 @@ type ScopeExtractor struct {
 	// AccessBindingService.ListByResource → "resource_type"). Empty for the
 	// fixed-scope majority; omitted from JSON when empty.
 	ObjectTypeFromRequestField string `json:"object_type_from_request_field,omitempty"`
+	// BoundToServer — mirror of `scope_extractor.bound_to_server` (форма
+	// ScopeBound, kacho#2915): объект проверки — экземпляр типа ObjectType, к
+	// которому процесс привязал сервер при подъёме; запрос его не называет, и
+	// FromRequestField у такой строки пуст ЗАКОННО. Без признака пустое поле
+	// читалось бы краем как подстановка `*`. Omitted from JSON when false so
+	// the other rows stay byte-identical.
+	BoundToServer bool `json:"bound_to_server,omitempty"`
 }
 
 const (
@@ -101,9 +108,10 @@ const (
 	// suitable for human review and CI grep. Absent when the catalog is clean.
 	WarningsOutputPath = "permission_catalog_warnings.txt"
 
-	// StrictEnv toggles hard build failure on missing annotations. Set to
-	// "1" by the dedicated `verify-permissions-coverage` CI job; un-set while
-	// some RPCs are still being annotated.
+	// StrictEnv toggles hard build failure on missing or conflicting
+	// annotations. Set to "1" by `make permission-catalog-check` (the CI job
+	// `authz-artifacts`); `permission-catalog` / -apply leave it unset so the
+	// whole list of findings is printed at once.
 	StrictEnv = "KACHO_PERMISSIONS_STRICT"
 
 	// PrimaryFile is the proto file whose presence in `req.FileToGenerate`
@@ -151,7 +159,7 @@ func run(stdin io.Reader, stdout io.Writer) error {
 	resp := &pluginpb.CodeGeneratorResponse{}
 
 	if strict() && len(warnings) > 0 {
-		// Strict mode (dedicated CI job). Fail the build with every offending
+		// Strict mode (`make permission-catalog-check`). Fail the build with every offending
 		// FQN aggregated into a single error message.
 		header := fmt.Sprintf(
 			"strict permission catalog check failed (%d RPC(s) missing required annotations):",
@@ -282,7 +290,8 @@ func collectEntries(req *pluginpb.CodeGeneratorRequest) ([]CatalogEntry, []strin
 // Validation rules:
 //   - permission              — required, non-empty (or literal `<exempt>`)
 //   - required_relation       — required, non-empty (waived for exempt / scope-filtered)
-//   - scope_extractor         — required, non-empty object_type + from_request_field (waived for exempt / scope-filtered)
+//   - scope_extractor         — required, non-empty object_type + exactly one id source:
+//     from_request_field OR bound_to_server (waived for exempt / scope-filtered)
 //   - required_acr_min        — optional (default `"2"` injected here)
 //   - scope_filtered          — optional; when set the row must carry a real
 //     permission and NEITHER a relation NOR a scope extractor
@@ -329,7 +338,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		if requiredRelation != "" {
 			problems = append(problems, "(corelib.authz.v1.required_relation) must be omitted")
 		}
-		if scope.ObjectType != "" || scope.FromRequestField != "" || scope.ObjectTypeFromRequestField != "" {
+		if scope.ObjectType != "" || scope.FromRequestField != "" || scope.ObjectTypeFromRequestField != "" || scope.BoundToServer {
 			problems = append(problems, "(corelib.authz.v1.scope_extractor) must be omitted")
 		}
 		if len(problems) > 0 {
@@ -351,6 +360,14 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		if exemptReason == "" {
 			return entry, fmt.Sprintf(
 				"%s: (corelib.authz.v1.exempt_reason) is required alongside permission = %q",
+				rpcFQN, ExemptSentinel)
+		}
+		if scope.BoundToServer {
+			// Проверки модели нет по решению — называть объект, о котором она
+			// спрашивала бы, значит утверждать проверку, которой не делается
+			// (тот же отказ, что у catalogderive).
+			return entry, fmt.Sprintf(
+				"%s: (corelib.authz.v1.scope_extractor).bound_to_server is set on an exempt RPC (permission = %q)",
 				rpcFQN, ExemptSentinel)
 		}
 		return entry, ""
@@ -377,7 +394,26 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 	if scope.ObjectType == "" {
 		problems = append(problems, "(corelib.authz.v1.scope_extractor).object_type")
 	}
-	if scope.FromRequestField == "" {
+	// Источник идентификатора объекта — ровно один: поле запроса
+	// (from_request_field) либо привязка сервера (bound_to_server, форма
+	// ScopeBound, kacho#2915). Привязка — законная альтернатива, а не пропуск:
+	// идентификатор приносит процесс, поднявший сервер, и запрос его не называет.
+	// Два источника — два ответа на один вопрос; вывод отвергает такую
+	// аннотацию с именем метода (authz_options.proto, поле bound_to_server).
+	if scope.BoundToServer {
+		var conflicts []string
+		if scope.FromRequestField != "" {
+			conflicts = append(conflicts, "from_request_field")
+		}
+		if scope.ObjectTypeFromRequestField != "" {
+			conflicts = append(conflicts, "object_type_from_request_field")
+		}
+		if len(conflicts) > 0 {
+			return entry, fmt.Sprintf(
+				"%s: (corelib.authz.v1.scope_extractor).bound_to_server conflicts with %s: the check has one source of the object id",
+				rpcFQN, strings.Join(conflicts, ", "))
+		}
+	} else if scope.FromRequestField == "" {
 		problems = append(problems, "(corelib.authz.v1.scope_extractor).from_request_field")
 	}
 	if len(problems) > 0 {
@@ -437,5 +473,6 @@ func getScopeExt(opts *descriptorpb.MethodOptions, ext protoreflect.ExtensionTyp
 		ObjectType:                 sx.GetObjectType(),
 		FromRequestField:           sx.GetFromRequestField(),
 		ObjectTypeFromRequestField: sx.GetObjectTypeFromRequestField(),
+		BoundToServer:              sx.GetBoundToServer(),
 	}
 }
