@@ -415,7 +415,7 @@ kacho-nlb:
   image:
     tag: main-b622b388
   networkPolicy:
-    enable: false            # kacho-nlb NP off (nlb chart uses `enable`, not `enabled`)
+    enable: false            # kacho-nlb NP off (key is `enable`, not `enabled`; read by umbrella templates/networkpolicy-nlb.yaml)
   # nlb chart default db.host=kacho-pg-nlb assumes release name `kacho`; this release
   # is `kacho-umbrella` → the real Service is kacho-umbrella-pg-nlb (the correct host
   # normally comes from values.dev, which the prod layer drops). Point it correctly.

@@ -18,9 +18,16 @@ non-datastore traffic. Rendering an entry whose pg instance is not deployed is h
 verify they cover every legitimate consumer (service pod + init-migrator + rotator/init
 Jobs) for your cluster before enabling. The kaname consumer label `app: kaname`
 covers its Deployment and the `migrate` init-container (both
-carry it); the compute→geo `geo-data-migration` Job selector is included on pg-compute
-(source) and pg-geo (target). Add entries here per cluster for any further store
+carry it). Add entries here per cluster for any further store
 (data-driven — no template change needed).
+
+Вход Job переноса географии compute→geo (источник pg-compute, цель pg-geo)
+добавляется к записи с `geoDataMigration: true` ТОЛЬКО когда Job включён
+(`kacho-geo.dataMigration.enabled`), и метка берётся из определения чарта Job
+(`kacho-geo.dataMigration.selectorLabels`). Выписанный постоянно, селектор
+выбирал во всех профилях под, которого в установке нет (kacho#2941); что каждый
+селектор входа выбирает под рендера, держит
+deploy/network_policy_admission_render_test.go.
 
 Disabled by default: the dev target (kind + kindnet) does not enforce NetworkPolicy and
 :5432 port-forward debugging would break. Enable on a NetworkPolicy-enforcing CNI:
@@ -31,6 +38,7 @@ See docs/architecture/known-divergences.md §4.
 */ -}}
 {{- if .Values.networkPolicy.datastore.enabled }}
 {{- $port := .Values.networkPolicy.datastore.port | default 5432 }}
+{{- $geoDataMigration := ((index .Values "kacho-geo" | default dict).dataMigration | default dict).enabled | default false }}
 {{- range .Values.networkPolicy.datastore.instances }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -52,6 +60,11 @@ spec:
   ingress:
     - from:
         {{- toYaml .from | nindent 8 }}
+        {{- if and .geoDataMigration $geoDataMigration }}
+        - podSelector:
+            matchLabels:
+              {{- include "kacho-geo.dataMigration.selectorLabels" $ | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ $port }}

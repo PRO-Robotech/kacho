@@ -363,9 +363,10 @@ vpc:
   repository:
     postgres:
       sslMode: require
-  # Defense-in-depth: lock the vpc internal :9091 listener to api-gateway only
-  # (umbrella templates/networkpolicy-vpc-internal.yaml). Empty adminPodsSelector
-  # → no extra admin pods; widen per cluster via a per-cluster overlay if needed.
+  # Defense-in-depth: lock the vpc internal :9091 listener to the pods that dial it —
+  # api-gateway, compute and kacho-nlb (umbrella templates/networkpolicy-vpc-internal.yaml,
+  # labels from the component charts). Empty adminPodsSelector → no extra admin pods;
+  # widen per cluster via a per-cluster overlay if needed.
   networkPolicy:
     enabled: true
     adminPodsSelector: {}
