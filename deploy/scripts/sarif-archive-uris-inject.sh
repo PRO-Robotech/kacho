@@ -16,7 +16,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TOOL="$ROOT/deploy/scripts/sarif-archive-uris.py"
-DENOM=7
+DENOM=10
 passed=0
 failed=0
 
@@ -27,17 +27,25 @@ mkdir -p "$work/co/deploy/helm/vendor" "$work/co/services/x/deploy/templates" ||
 printf 'archive\n' > "$work/co/deploy/helm/vendor/chart-1.0.0.tgz"
 printf 'kind: Deployment\n' > "$work/co/services/x/deploy/templates/deployment.yaml"
 
-# $1 — файл, $2 — uri, $3 — база (каталог относительно checkout'а; "-" — без базы)
+# $1 — файл, $2 — uri, $3 — база (каталог относительно checkout'а; "-" — без базы),
+# $4 — uri связанной координаты (`relatedLocations`, та же база; по умолчанию нет)
 sarif() {
   python3 - "$@" <<'PY'
 import json, pathlib, sys
 dst, uri, base = sys.argv[1], sys.argv[2], sys.argv[3]
+related = sys.argv[4] if len(sys.argv) > 4 else ""
 loc = {"physicalLocation": {"artifactLocation": {"uri": uri},
                             "region": {"startLine": 34, "endLine": 70}},
        "message": {"text": uri}}
 run = {"tool": {"driver": {"name": "Trivy"}},
        "results": [{"ruleId": "KSV-0011", "message": {"text": "Artifact: " + uri},
                     "locations": [loc]}]}
+if related:
+    rel = {"physicalLocation": {"artifactLocation": {"uri": related},
+                                "region": {"startLine": 3}}}
+    if base != "-":
+        rel["physicalLocation"]["artifactLocation"]["uriBaseId"] = "ROOTPATH"
+    run["results"][0]["relatedLocations"] = [rel]
 if base != "-":
     loc["physicalLocation"]["artifactLocation"]["uriBaseId"] = "ROOTPATH"
     run["originalUriBaseIds"] = {"ROOTPATH": {"uri": pathlib.Path(base).resolve().as_uri() + "/"}}
@@ -86,6 +94,24 @@ mkdir -p "$work/co/deploy/helm/vendor/sub" && printf 'archive\n' > "$work/co/dep
 sarif "$work/f.sarif" "sub/chart-2.0.0.tgz:templates/deployment.yaml" "$work/co/deploy/helm/vendor"
 expect "H6: архив в подкаталоге vendor переведён" "$work/f.sarif" 0 \
   '"uri": "deploy/helm/vendor/sub/chart-2.0.0.tgz"'
+
+# F1: постусловие — по ЗАПИСАННОМУ документу и по КАЖДОЙ координате, а не только по
+# `results[].locations`, которые перевод трогал. Связанная координата архивной формы
+# обязана быть переведена; связанная со схемой — названа; близнец — связанная
+# координата существующего файла: молчание.
+printf 'archive\n' > "$work/co/deploy/helm/vendor/other-1.0.0.tgz"
+sarif "$work/g.sarif" "chart-1.0.0.tgz:templates/deployment.yaml" "$work/co/deploy/helm/vendor" \
+  "other-1.0.0.tgz:templates/service.yaml"
+expect "F1: связанная координата архивной формы переведена" "$work/g.sarif" 0 \
+  '"uri": "deploy/helm/vendor/other-1.0.0.tgz"'
+sarif "$work/h.sarif" "chart-1.0.0.tgz:templates/deployment.yaml" "$work/co/deploy/helm/vendor" \
+  "evil.zip:templates/x.yaml"
+expect "F1: связанная координата со схемой — находка" "$work/h.sarif" 1 \
+  "координата несёт схему «evil.zip»"
+sarif "$work/i.sarif" "chart-1.0.0.tgz:templates/deployment.yaml" "$work/co/deploy/helm/vendor" \
+  "chart-1.0.0.tgz"
+expect "F1 (близнец): связанная координата существующего файла — молчание" "$work/i.sarif" 0 \
+  "нарушений постусловия 0"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

@@ -62,38 +62,44 @@ def base_dir(run, base_id, checkout):
         return None
 
 
+def _walk(obj):
+    if isinstance(obj, dict):
+        yield obj
+        for v in obj.values():
+            yield from _walk(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk(v)
+
+
 def locations(run):
-    """→ (location, physicalLocation) каждой координаты файла в результатах."""
-    for res in run.get("results") or []:
-        for loc in res.get("locations") or []:
-            phys = loc.get("physicalLocation")
-            if phys and phys.get("artifactLocation"):
-                yield loc, phys
+    """→ (location, physicalLocation) КАЖДОЙ координаты файла в результатах — не только
+    `results[].locations`, но и `relatedLocations`, `codeFlows`, `fixes` и прочих мест,
+    где SARIF несёт `physicalLocation`: Code Scanning проверяет их все."""
+    for node in _walk(run.get("results") or []):
+        phys = node.get("physicalLocation")
+        if isinstance(phys, dict) and isinstance(phys.get("artifactLocation"), dict):
+            yield node, phys
 
 
-def rewrite(doc, checkout):
-    """→ (координат, переведено, [нарушения постусловия])."""
-    seen, moved, bad = 0, 0, []
+def all_artifact_locations(run):
+    """→ каждый `artifactLocation` прогона (и `artifacts[].location`) — для постусловия."""
+    for node in _walk(run):
+        art = node.get("artifactLocation")
+        if isinstance(art, dict):
+            yield art
+    for item in run.get("artifacts") or []:
+        if isinstance(item, dict) and isinstance(item.get("location"), dict):
+            yield item["location"]
+
+
+def postcondition(doc, checkout):
+    """→ [нарушения] по ЗАПИСАННОМУ документу: каждая координата файла без схемы
+    (кроме `file:`) и указывает на существующий файл checkout'а."""
+    bad = []
     for run in doc.get("runs") or []:
-        for loc, phys in locations(run):
-            art = phys["artifactLocation"]
-            seen += 1
+        for art in all_artifact_locations(run):
             uri, base_id = art.get("uri") or "", art.get("uriBaseId")
-            m = ARCHIVE_URI.match(uri)
-            if m:
-                base = base_dir(run, base_id, checkout)
-                if base is None:
-                    bad.append("%s — база %s вне checkout'а, перевести не во что" % (uri, base_id))
-                    continue
-                art["uri"] = (base / m.group("archive")).as_posix()
-                art.pop("uriBaseId", None)
-                old = phys.pop("region", None) or {}
-                phys["region"] = {"startLine": 1}
-                loc["message"] = {"text": "%s:%s, строки %s–%s отрендеренного шаблона" % (
-                    m.group("archive"), m.group("inner"),
-                    old.get("startLine", "?"), old.get("endLine", "?"))}
-                moved += 1
-                uri, base_id = art["uri"], None
             if SCHEME.match(uri) and not uri.startswith("file:"):
                 bad.append("%s — координата несёт схему «%s», Code Scanning её отвергнет"
                            % (uri, uri.split(":", 1)[0]))
@@ -102,6 +108,35 @@ def rewrite(doc, checkout):
             target = None if base is None else checkout / base / uri
             if target is None or not target.is_file():
                 bad.append("%s — файла по этой координате в checkout'е нет" % uri)
+    return bad
+
+
+def rewrite(doc, checkout):
+    """→ (координат, переведено, [отказы перевода]). Постусловие — `postcondition`,
+    и судится оно по документу, ПРОЧИТАННОМУ из записанного файла (F1): прежняя
+    редакция судила по переменным перевода и не видела координат вне
+    `results[].locations` — они уходили в выгрузку непереведёнными."""
+    seen, moved, bad = 0, 0, []
+    for run in doc.get("runs") or []:
+        for loc, phys in locations(run):
+            art = phys["artifactLocation"]
+            seen += 1
+            uri, base_id = art.get("uri") or "", art.get("uriBaseId")
+            m = ARCHIVE_URI.match(uri)
+            if not m:
+                continue
+            base = base_dir(run, base_id, checkout)
+            if base is None:
+                bad.append("%s — база %s вне checkout'а, перевести не во что" % (uri, base_id))
+                continue
+            art["uri"] = (base / m.group("archive")).as_posix()
+            art.pop("uriBaseId", None)
+            old = phys.pop("region", None) or {}
+            phys["region"] = {"startLine": 1}
+            loc["message"] = {"text": "%s:%s, строки %s–%s отрендеренного шаблона" % (
+                m.group("archive"), m.group("inner"),
+                old.get("startLine", "?"), old.get("endLine", "?"))}
+            moved += 1
     return seen, moved, bad
 
 
@@ -121,10 +156,16 @@ def main(argv):
             return 2
         seen, moved, bad = rewrite(doc, checkout)
         results = sum(len(r.get("results") or []) for r in doc.get("runs") or [])
+        try:
+            path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+            written = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as err:
+            print("ОТКАЗ: %s не записан или не перечитан: %s" % (name, err), file=sys.stderr)
+            return 2
+        bad += postcondition(written, checkout)
         total_seen, total_moved, total_results = (total_seen + seen, total_moved + moved,
                                                   total_results + results)
         findings += ["%s: %s" % (name, b) for b in bad]
-        path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
         print("  %s: результатов %d; координат %d; переведено из архивной формы %d"
               % (name, results, seen, moved))
     print("sarif-archive-uris: файлов %d; результатов %d; координат %d; переведено %d; "
