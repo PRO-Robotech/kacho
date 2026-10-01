@@ -93,6 +93,64 @@
       "fate": "gone"
     },
     {
+      "carrier": "deploy/identity_delivery_flows_declared_once_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-18: потоки письма поставщика объявлены одним местом, профиль второго мнения о них не заводит",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_file_keys_survive_the_environment_injection_test.go",
+      "reason": "инъекцией доказывал, что ключ файла настроек поставщика не перебит одноимённой переменной окружения его процесса",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_inherited_schemas_injection_test.go",
+      "reason": "инъекцией доказывал, что наша секция схем поставщика покрывает схемы слоя под нами при замещающем слиянии списков",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_method_comment_matches_declaration_injection_test.go",
+      "reason": "инъекцией доказывал, что перечень полос входа сверяется с разобранным объявлением поставщика, а не с комментарием",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_replaced_lists_injection_test.go",
+      "reason": "инъекцией доказывал, что список, объявленный обеими сторонами настроек поставщика, несёт явное решение",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_step_declaration_parses_injection_test.go",
+      "reason": "инъекцией доказывал, что объявление шага подстановки настроек поставщика разбирается как YAML и не дублирует имён",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_step_survives_kubernetes_expansion_injection_test.go",
+      "reason": "инъекцией доказывал, что текст шага подстановки настроек поставщика доезжает до оболочки мимо подстановки Kubernetes",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_verification_mirrors_the_requirement_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-16: требование подтверждённого адреса у поставщика не стоит при выключенном потоке подтверждения",
+      "successor": "снято kacho#2818: выключатель потока подтверждения был ручкой поставщика, его в дереве нет; у полосы службы на пине caf1c95c ручек глагола подтверждения пять и выключателя среди них нет (internal/apps/kaname/config/login_lane.go), то есть состояние, которое судил носитель, в настройках не выразимо",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_verified_address_required_on_both_lanes_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-52: требование подтверждённого адреса на входе стоит на каждой полосе поставщика",
+      "successor": "снято kacho#2818: полос поставщика нет, требование живёт в коде службы — правило выдачи удостоверения человеку, которое каждая полоса выдачи обязана спросить (kaname#456); его судит гейт полос выдачи службы",
+      "fate": "carried",
+      "carried_to": {
+        "repo": "PRO-Robotech/kaname",
+        "path": "internal/check/address_admission_gates_test.go"
+      }
+    },
+    {
       "carrier": "deploy/internal_rest_client_auth_parity_injection_test.go",
       "reason": "доказательство падучести снятого выше носителя",
       "successor": "носитель снят вместе со своим гейтом, но ПРЕДМЕТ не исчез: он уехал вместе со службой и стережётся по координате carried_to. Прежняя редакция говорила «снято вместе с носителем», то есть «предмета больше нет», — и это было ложью (#2602)",

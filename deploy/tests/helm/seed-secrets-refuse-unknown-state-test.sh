@@ -3,8 +3,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # seed-secrets-refuse-unknown-state-test.sh — посев секретов стенда не читает
-# отказ API-сервера как «секрета нет» и не требует секрета, которого посадка не
-# читает (задача #2803).
+# отказ API-сервера как «секрета нет» (задача #2803).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ПРЕДМЕТ
@@ -16,11 +15,11 @@
 #    объект ПЕРЕЗАПИСЫВАЕТ. Для ключей обёртки перевыпуск необратим: записанное
 #    прежним ключом больше не открывается, и отказ при этом тихий.
 #
-# 2. ТРЕБУЕМОСТЬ В ОБХОД ПОСАДКИ. Перечень требуемых брал ВСЕ имена, которые
-#    заводит посев, безусловно. Под посадкой `external` ключ обёртки секретов
-#    второго фактора подключён `optional: true`, и служба его не требует; шапка
-#    посева обещает, что такой стенд поднимается и без него, а предполёт
-#    отказывал.
+# 2. ТРЕБУЕМОСТЬ В ОБХОД ПОСАДКИ — снята вместе со второй посадкой службы
+#    (kaname#363, kacho#2818). Прежде под посадкой `external` ключ обёртки
+#    секретов второго фактора службой не требовался, и предполёт обязан был его
+#    не называть; посадка у службы одна, и ключ требуется на каждом стенде —
+#    это утверждение 8.
 #
 # 3. ПРОБА НЕ ВИДЕЛА СНЯТИЯ СВОЕГО ПРЕДМЕТА (задача #2844). Прежде отказ
 #    сервера отказывал на `get` ВСЕХ секретов сразу, и утверждение требовало
@@ -70,12 +69,8 @@
 #   5  гонка   : `get` сказал NotFound, а объект уже заведён (между проверкой и
 #                заведением) → создание отвечает AlreadyExists, посев
 #                переиспользует, resourceVersion не сдвинулся;
-#   6  находка : рендер `external`, ключ второго фактора подключён
-#                `optional: true` и отсутствует → stack-secrets.sh его
-#                отсутствующим НЕ называет;
-#   7  близнец : тот же ключ, та же посадка, ссылка БЕЗ `optional` (копия чарта
-#                с одной снятой строкой) → называет;
-#   8  близнец : посадка `own` — служба ключ требует → называет;
+#   8  находка : стек own — служба ключ второго фактора требует, секрета нет →
+#                называет (утверждений 6 и 7 о посадке `external` больше нет);
 #   9  близнец : (×4) копия dev-prod-secrets.sh, где отказ `get` K читается как
 #                NotFound → мир 1 для K краснеет на каждом классе и называет
 #                посев и секрет;
@@ -95,13 +90,6 @@
 # посев, у которого различение снято в двух местах, называется весь. Миры
 # независимы и идут параллельно.
 #
-# НОСИТЕЛЬ ПОСАДКИ `external` — КОПИЯ ДЕРЕВА, А НЕ СТЕНД ТАБЛИЦЫ. Посадку `own`
-# объявляют все стенды deploy/stacks.txt (#2735), и стенда `external` в таблице
-# нет. Утверждения 6 и 7 поэтому идут по копии дерева, в которой у корня
-# цепочки `prod` сменён ровно один факт — посадка обеих половин (`own` →
-# `external`); всё остальное — рендер той же цепочки тем же helm. Утверждение 8
-# — на настоящем стенде `own`.
-#
 # КЛАСТЕРА ЗДЕСЬ НЕТ. `kubectl` и `kind` подменены двойниками в PATH: двойник
 # держит состояние объектов на диске (имя → resourceVersion) и отвечает ровно
 # теми текстами, которыми отвечает API-сервер (`Error from server (NotFound)`,
@@ -116,7 +104,7 @@ UMBRELLA="$DEPLOY/helm/umbrella"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=32
+EXPECTED_ASSERTIONS=30
 
 require_helm
 require_python_yaml
@@ -363,53 +351,7 @@ GET_MODE=notfound DEFAULT_PRESENT=0 seed
 $OUT"
 ok
 
-# ── копия дерева с посадкой `external` у корня цепочки prod ────────────────
-MIRROR="$WORK/mirror"; mkdir -p "$MIRROR/scripts" "$MIRROR/tests/helm" "$MIRROR/helm"
-cp "$DEPLOY/stacks.txt" "$MIRROR/"
-cp "$DEPLOY/scripts/stack-secrets.sh" "$DEPLOY/scripts/dev-prod-secrets.sh" "$MIRROR/scripts/"
-cp "$DEPLOY/tests/helm/stacks.sh" "$MIRROR/tests/helm/"
-cp -r "$UMBRELLA" "$MIRROR/helm/umbrella"
-python3 - "$MIRROR/helm/umbrella/values.prod.yaml" <<'PY' || fatal "6: копия боевого профиля не переведена на посадку external — судить утверждения 6 и 7 не на чем"
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-# Обе половины посадки объявлены в корне цепочки ровно по разу; иное число
-# значит, что профиль сменил форму, и копия утверждала бы не то.
-s2, n = re.subn(r"(?m)^(\s*identityProvider:\s*)own\s*$", r"\1external", s)
-assert n == 2, f"объявлений посадки own в корне prod найдено {n}, ожидалось 2"
-open(p, "w").write(s2)
-PY
-
-# ── 6. НАХОДКА: external, optional-ссылка, секрета нет — не требуется ───────
-# Площадка НЕ локальная: предполёт только судит и называет недостающее.
-fresh
-PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod "$MIRROR"
-[ "$RC" -eq 0 ] && [[ "$OUT" != *"kaname-second-factor-enc-key"* ]] \
-  || fail "6: стек prod в копии с посадкой external: ключ второго фактора подключён optional: true и служба его не требует, а предполёт вышел $RC и назвал его. Вывод:
-$OUT"
-ok
-
-# ── 7. БЛИЗНЕЦ: та же посадка, ссылка БЕЗ optional — называет ──────────────
-TPL="$MIRROR/helm/umbrella/charts/kaname/templates/deployment.yaml"
-python3 - "$TPL" <<'PY' || fatal "7: копия шаблона службы доступа не подготовлена — снимать optional не на чем"
-import sys
-p = sys.argv[1]; s = open(p).read()
-anchor = "- name: KANAME_SECOND_FACTOR_ENC_KEY"
-i = s.index(anchor)
-j = s.index("optional: true", i)
-line_start = s.rindex("\n", 0, j) + 1
-line_end = s.index("\n", j) + 1
-assert s[line_start:line_end].strip() == "optional: true"
-s = s[:line_start] + s[line_end:]
-open(p, "w").write(s)
-PY
-fresh
-PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod "$MIRROR"
-[ "$RC" -ne 0 ] && [[ "$OUT" == *"kaname-second-factor-enc-key"* ]] \
-  || fail "7: ссылка на ключ второго фактора БЕЗ optional, секрета нет — предполёт вышел $RC и его не назвал: близнец утверждения 6 не различает. Вывод:
-$OUT"
-ok
-
-# ── 8. БЛИЗНЕЦ: посадка own — служба ключ требует — называет ───────────────
+# ── 8. НАХОДКА: стек own — служба ключ требует — называет ─────────────────
 fresh
 PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack own
 [ "$RC" -ne 0 ] && [[ "$OUT" == *"kaname-second-factor-enc-key"* ]] \
