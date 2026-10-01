@@ -20,13 +20,14 @@
 # Всё исполняется в КОПИИ дерева вне репозитория (`git clone --shared` + наложение
 # правленых отслеживаемых файлов): рабочая копия не меняется ни на байт.
 #
-# ЗНАМЕНАТЕЛЬ — 29 утверждений; итог печатает число исполненных, и расхождение с
-# этим числом — тоже повод не верить зелёному.
+# ЗНАМЕНАТЕЛЬ — `DENOM` ниже; итог печатает число исполненных, и расхождение с ним —
+# код 1: выпавшее утверждение не делает прогон зеленее.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
+DENOM=35
 passed=0
 failed=0
 
@@ -53,10 +54,16 @@ make_copy() {
   git -C "$dst" checkout --quiet --detach HEAD || return 2
   # Правленые и новые отслеживаемые-к-коммиту файлы рабочей копии: доказательство
   # судит дерево, которое сейчас лежит перед автором, а не последний коммит.
+  # Всё, чем рабочая копия отличается от HEAD (правленое, проиндексированное, новое):
+  # доказательство судит дерево, которое сейчас лежит перед автором.
   while IFS= read -r -d '' path; do
-    mkdir -p "$dst/$(dirname "$path")" && cp -- "$ROOT/$path" "$dst/$path" || return 2
-  done < <(git -C "$ROOT" ls-files -m -o --exclude-standard -z -- deploy/scripts .github/workflows trivy.yaml trivy-vendored-charts.yaml)
-  git -C "$dst" add -A -- deploy/scripts .github/workflows trivy.yaml trivy-vendored-charts.yaml || return 2
+    if [ -e "$ROOT/$path" ]; then
+      mkdir -p "$dst/$(dirname "$path")" && cp -- "$ROOT/$path" "$dst/$path" || return 2
+    else
+      rm -f -- "$dst/$path" || return 2
+    fi
+  done < <(git -C "$ROOT" diff --name-only -z HEAD; git -C "$ROOT" ls-files -o --exclude-standard -z)
+  git -C "$dst" add -A || return 2
 }
 
 # $1 — заголовок, $2 — каталог копии, $3 — ожидаемый код, $4 — обязательная подстрока
@@ -84,6 +91,8 @@ expect "контроль — архив осмотрен проходом вен
   "целей  deploy/helm/vendor/$ARCHIVE"
 expect "контроль — сжатый поток без оглавления назван «не чарт»" "$work/control" 0 \
   "сжатый поток без оглавления"
+expect "контроль — сторонний подчарт-архив зонтика осмотрен своим проходом" "$work/control" 0 \
+  "целей  deploy/helm/umbrella/charts/cert-manager-v1.16.5.tgz"
 
 # ── B. Настоящий вендоренный архив вне своего каталога ──────────────────────────
 make_copy "$work/archive" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
@@ -126,7 +135,7 @@ expect "проход без гейтового шага — находка" "$wo
 # · nochart (архив без Chart.yaml). Форма по расширению в любом регистре: .zip —
 # zip, .tgz/.tar.gz — tar+gzip, иначе — tar.
 put_chart_archive() {
-  python3 - "$1/$2" "$3" "${4:-}" <<'PY' && git -C "$1" add -- "$2"
+  python3 - "$1/$2" "$3" "${4:-}" <<'PY' && git -C "$1" add -f -- "$2"
 import io, json, sys, tarfile, zipfile
 dst, kind, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
 deploy = ("apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: injchart}\n"
@@ -150,6 +159,9 @@ elif kind in ("required", "required_valued"):
         files["values.yaml"] += "password: inject-only\n"
 elif kind == "broken":
     files["templates/deployment.yaml"] = deploy + "{{ .Values.image\n"
+elif kind in ("guarded_off", "guarded_on"):
+    files["templates/deployment.yaml"] = "{{- if .Values.feature.enabled }}\n" + deploy + "{{- end }}\n"
+    files["values.yaml"] += "feature:\n  enabled: %s\n" % ("true" if kind == "guarded_on" else "false")
 elif kind == "nochart":
     files = {"README.txt": "not a chart\n"}
 else:
@@ -304,5 +316,39 @@ git -C "$work/junk" add -- deploy/helm/junk-0.1.0.tgz || exit 2
 expect "непрочитанный архив — находка" "$work/junk" 1 \
   "deploy/helm/junk-0.1.0.tgz — архив не прочитан"
 
-echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель 29)"
-[ "$failed" = 0 ] && [ "$((passed+failed))" = 29 ] || exit 1
+# ── Q. #2980: подчарт-архив под родителем в послаблении ─────────────────────────
+# Родитель (зонтик) не осматривается, и подчарт обязан дать цели сам. Опыт — подчарт,
+# чей рендер отказывает (`required` без значения); близнец — тот же архив со значением.
+make_copy "$work/subreq" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/subreq" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required || exit 2
+expect "#2980: неосмотренный подчарт-архив зонтика — находка" "$work/subreq" 1 \
+  "deploy/helm/umbrella/charts/subreq-0.1.0.tgz — подчарт-архив НЕ ДАЛ ни одной цели"
+make_copy "$work/subok" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/subok" deploy/helm/umbrella/charts/subreq-0.1.0.tgz required_valued || exit 2
+expect "#2980 (близнец): тот же подчарт со значением — осмотрен, гейт молчит" "$work/subok" 0 \
+  "целей  deploy/helm/umbrella/charts/subreq-0.1.0.tgz"
+
+# ── R. #2980: прохода подчартов зонтика нет в PASSES ─────────────────────────────
+make_copy "$work/nosub" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+sed -i '/^    (SUBCHARTS_NAME, UMBRELLA_CHARTS, "trivy-umbrella-subcharts.yaml", ALWAYS_SKIPPED),$/d' \
+  "$work/nosub/deploy/scripts/iac_scan_passes.py"
+if grep -q '^    (SUBCHARTS_NAME,' "$work/nosub/deploy/scripts/iac_scan_passes.py"; then
+  echo "ОТКАЗ: инъекция R не легла — строка прохода изменилась" >&2; exit 2
+fi
+expect "#2980: прохода подчартов нет — отказ с его именем" "$work/nosub" 2 \
+  "прохода «подчарты зонтика» нет"
+
+# ── S. Подчарт, выключенный условием в своих умолчаниях (H3) ──────────────────────
+# Не рендерит ни одного манифеста — признаётся предикатом, а не записью с именем.
+# Близнец — тот же архив с условием, истинным по умолчанию: обязан дать цели.
+make_copy "$work/guardoff" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/guardoff" deploy/helm/umbrella/charts/guard-0.1.0.tgz guarded_off || exit 2
+expect "H3: подчарт выключен условием — назван, гейт молчит" "$work/guardoff" 0 \
+  "не рендерит ничего  deploy/helm/umbrella/charts/guard-0.1.0.tgz — каждый шаблон под условием"
+make_copy "$work/guardon" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/guardon" deploy/helm/umbrella/charts/guard-0.1.0.tgz guarded_on || exit 2
+expect "H3 (близнец): условие истинно — осмотрен" "$work/guardon" 0 \
+  "целей  deploy/helm/umbrella/charts/guard-0.1.0.tgz"
+
+echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
+[ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1

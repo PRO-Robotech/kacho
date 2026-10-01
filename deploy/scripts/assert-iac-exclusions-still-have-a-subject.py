@@ -69,6 +69,7 @@
 import fnmatch
 import pathlib
 import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -154,6 +155,15 @@ def load_exclusions():
     return rules, unread, len(lines)
 
 
+def git_ls_all():
+    r = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
+                       timeout=120)
+    if r.returncode != 0:
+        print("ОТКАЗ: git ls-files вышел с кодом %d" % r.returncode, file=sys.stderr)
+        sys.exit(2)
+    return r.stdout.splitlines()
+
+
 def scan():
     """→ (множество (AVDID, target) реальных FAIL, множество осмотренных целей).
 
@@ -166,7 +176,10 @@ def scan():
         sys.exit(2)
     # Проходы — те же, что у гейта покрытия и шагов CI (`iac_scan_passes.PASSES`):
     # множество осмотренных целей у них обязано совпадать.
-    got, _census = iac_scan_passes.all_results(ROOT, extra=("--severity", "CRITICAL,HIGH"))
+    # Цели — в форме, которую пишет trivy (относительно scan-ref прохода): к ней CI
+    # применяет перечень исключений, и записи третьего прохода (#2980) стоят в ней.
+    got, _census = iac_scan_passes.all_results(ROOT, extra=("--severity", "CRITICAL,HIGH"),
+                                               raw=True)
     fails, targets = set(), set()
     for target, res in got:
         targets.add(target)
@@ -211,8 +224,21 @@ def main():
     scanned_ids = {norm(rid) for rid, _ in fails}
     declared_ids = {norm(rid) for rid, _, _ in rules}
 
+    # Путь записи обязан существовать хоть в одном проходе. Запись, чей файл или архив
+    # снят из дерева (подчарт, уходящий с релизом отказа от издателя личности), не «вне осмотра», а без
+    # предмета навсегда: так держится «снять при снятии подчарта».
+    tracked = set(git_ls_all())
+    gone = []
+    for rid, glob, lineno in rules:
+        head = glob.split(":", 1)[0]
+        if not any(fnmatch.fnmatch(t, iac_scan_passes.normalize(p[1], head))
+                   for p in iac_scan_passes.PASSES for t in tracked):
+            gone.append((rid, glob, lineno))
+
     stale, unscanned = [], []
     for rid, glob, lineno in rules:
+        if (rid, glob, lineno) in gone:
+            continue
         if any(norm(r) == norm(rid) and fnmatch.fnmatch(t, glob) for r, t in fails):
             continue
         # Находки нет. Осмотрен ли путь вообще? Только если да, запись судима.
@@ -222,9 +248,10 @@ def main():
             unscanned.append((rid, glob, lineno))
 
     print("iac-exclusions: строк файла прочитано %d; записей исключений %d (правил %d); "
-          "целей осмотрено %d; находок скана %d; устаревших записей %d; вне осмотра %d"
+          "целей осмотрено %d; находок скана %d; устаревших записей %d; вне осмотра %d; "
+          "без пути в дереве %d"
           % (filelines, len(rules), len(declared_ids), len(targets), len(fails),
-             len(stale), len(unscanned)))
+             len(stale), len(unscanned), len(gone)))
     if not rules:
         # Законный исход, а не отказ: перечень доведён до нуля фиксами. Механизм
         # остаётся ради СЛЕДУЮЩЕЙ записи и сработает на ней в тот же прогон.
@@ -265,8 +292,11 @@ def main():
 
     for rid, glob, lineno in stale:
         print("  %s:%d: %s «%s» — предмета больше нет" % (IGNORE.name, lineno, rid, glob))
+    for rid, glob, lineno in gone:
+        print("  %s:%d: %s «%s» — пути нет в дереве ни в одном проходе: файл или архив "
+              "снят, снять и запись" % (IGNORE.name, lineno, rid, glob))
 
-    if stale or unread:
+    if stale or unread or gone:
         print("\nИсключение живёт, пока у него есть предмет. Перечисленному выше исключать\n"
               "уже нечего: путь вычищен или исчез. Удалите запись — и закройте связанный\n"
               "долг, если он закрыт по существу. Оставленная запись предъявляет закрытый\n"

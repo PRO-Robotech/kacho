@@ -8,7 +8,7 @@
 совпадать с ними. Совпадение держит гейт покрытия (`check_workflow_passes`), а не
 внимание: шаг, чей срез разошёлся с проходом, — его находка.
 
-ПОЧЕМУ ПРОХОДОВ ДВА. Заглушки ТОЛЬКО ДЛЯ СКАНА (`trivy.yaml`) применяются КО ВСЕМ чартам
+ПОЧЕМУ ВЕНДОРЕННЫЕ — ОТДЕЛЬНЫМ ПРОХОДОМ. Заглушки ТОЛЬКО ДЛЯ СКАНА (`trivy.yaml`) применяются КО ВСЕМ чартам
 прохода: области чарта у `--helm-set` нет. Вендоренный внешний чарт с ЗАКРЫТОЙ схемой
 значений (`additionalProperties: false` в `values.schema.json`) отказывает в рендере на
 любом незнакомом ему ключе — то есть на любой нашей заглушке, — и сканер пропускает его
@@ -19,11 +19,22 @@
 чарт, отвергающий любую заглушку, нельзя by construction — поэтому каталог вендоренных
 архивов осматривается своим проходом, без заглушек.
 
+ТРЕТИЙ ПРОХОД — ПОДЧАРТЫ-АРХИВЫ ЗОНТИКА (#2980). Сторонние подчарты в
+`deploy/helm/umbrella/charts/` осматривались только через родителя, а родитель снят с
+осмотра послаблением (не рендерится без сборки локальных сабчартов): пять архивов, 44
+цели и 15 находок CRITICAL/HIGH не видел ни один проход (замер 2026-10-01, trivy 0.70.0).
+Проход без заглушек, с версией Kubernetes узла стенда (`trivy-umbrella-subcharts.yaml`):
+без неё cert-manager и ingress-nginx отказывают в рендере требованием `kubeVersion`.
+ГРАНИЦА ПРОХОДА: подчарт рендерится со СВОИМИ умолчаниями, а не со значениями зонтика —
+у trivy нет области чарта ни для `--helm-set`, ни для `--helm-values`, а `postgresql`
+стоит в зонтике пятью псевдонимами с разными значениями. Осмотр отвечает «что несёт
+сторонний чарт», а не «что развёрнуто»; это сказано и в шапке файла настроек.
+
 ПУТИ ЦЕЛЕЙ. Trivy пишет `Target` относительно `scan-ref`. Здесь они приводятся к корню
-дерева (`normalize`), чтобы гейты судили одно множество. Перечень исключений
-(`.trivyignore.yaml`) в CI применяется к выводу trivy КАК ЕСТЬ, то есть для второго
-прохода — в форме относительно его корня. Сегодня исключений в каталоге вендоренных нет;
-что запись под него обязана быть в этой форме — держится вниманием.
+дерева (`normalize`), чтобы гейты покрытия судили одно множество. Перечень исключений
+(`.trivyignore.yaml`) в CI применяется к выводу trivy КАК ЕСТЬ — в форме относительно
+корня прохода (`cert-manager-v1.16.5.tgz:templates/rbac.yaml`), — и гейт исключений
+сверяет записи с ТОЙ ЖЕ формой (`results(..., raw=True)`), а не с приведённой.
 """
 import json
 import os
@@ -37,12 +48,18 @@ ALWAYS_SKIPPED = (".claude", "**/node_modules")
 # «второй элемент», после перестановки молча судил бы чужим срезом.
 STUBBED_NAME = "заглушки"
 BARE_NAME = "вендоренные"  # проход БЕЗ заглушек
+SUBCHARTS_NAME = "подчарты зонтика"  # проход БЕЗ заглушек, с версией Kubernetes
+UMBRELLA_CHARTS = "deploy/helm/umbrella/charts"
 
 # (имя, scan-ref, файл настроек, каталоги вне прохода)
 PASSES = (
     (STUBBED_NAME, ".", "trivy.yaml", ALWAYS_SKIPPED + (VENDOR_HOME,)),
     (BARE_NAME, VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),
+    (SUBCHARTS_NAME, UMBRELLA_CHARTS, "trivy-umbrella-subcharts.yaml", ALWAYS_SKIPPED),
 )
+# Проходы, чей журнал судится: строка ERROR в нём — находка. У прохода заглушек отказ
+# рендера зонтика законен (он в послаблении гейта покрытия), поэтому его журнал — нет.
+LOG_JUDGED = (BARE_NAME, SUBCHARTS_NAME)
 
 
 def require(name):
@@ -92,14 +109,17 @@ def run(root, scan_pass, config=None, extra=(), errors=None):
     return json.loads(r.stdout or "{}")
 
 
-def results(root, scan_pass, config=None, extra=(), errors=None):
-    """→ [(цель от корня, запись Results)] прохода."""
+def results(root, scan_pass, config=None, extra=(), errors=None, raw=False):
+    """→ [(цель, запись Results)] прохода; цель — от корня дерева либо, при `raw`,
+    как её пишет trivy (относительно scan-ref: форма, к которой CI применяет
+    перечень исключений)."""
     doc = run(root, scan_pass, config, extra, errors)
-    return [(normalize(scan_pass[1], res.get("Target") or ""), res)
+    return [((res.get("Target") or "") if raw
+             else normalize(scan_pass[1], res.get("Target") or ""), res)
             for res in doc.get("Results") or []]
 
 
-def all_results(root, extra=(), errors=None):
+def all_results(root, extra=(), errors=None, raw=False):
     """→ (объединение по всем проходам, {имя прохода: число целей}).
 
     `errors` — словарь {имя прохода: [строки ERROR журнала]}; задан — прогоны идут
@@ -110,7 +130,7 @@ def all_results(root, extra=(), errors=None):
         log = None
         if errors is not None:
             log = errors.setdefault(p[0], [])
-        got = results(root, p, extra=extra, errors=log)
+        got = results(root, p, extra=extra, errors=log, raw=raw)
         census[p[0]] = len(got)
         out += got
     return out, census

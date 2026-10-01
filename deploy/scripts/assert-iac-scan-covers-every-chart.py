@@ -68,14 +68,18 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
 проходу без заглушек, а ERROR в журнале этого прохода — находка с текстом. Разбор —
 комментарий над `ARCHIVE_SUFFIXES`.
 
-ПРОХОДОВ ДВА, И ОНИ СВЕРЯЮТСЯ С CI. Цели берутся объединением проходов
-`iac_scan_passes.PASSES` (заглушки — всё дерево без каталога вендоренных; вендоренные —
-этот каталог без заглушек). Шаги `scan-type: config` задания trivy обязаны совпадать с
-проходами срезом, и каждый проход обязан иметь гейтовый шаг: иначе гейт судил бы о
-покрытии, которого CI не исполняет. Гейтовый — `exit-code: '1'` и при этом ни шаг, ни
-задание не стоят под `continue-on-error` (кроме заведомо ложного) и под заведомо ложным
-`if`: такой шаг объявлен судящим, а вердикта не выносит. Проход вендоренных самоистекает: каталог без
-отслеживаемого архива — находка.
+ПРОХОДЫ СВЕРЯЮТСЯ С CI. Цели берутся объединением проходов `iac_scan_passes.PASSES`
+(заглушки — всё дерево без каталога вендоренных; вендоренные — этот каталог без
+заглушек; подчарты зонтика — `deploy/helm/umbrella/charts` без заглушек, с версией
+Kubernetes). Шаги `scan-type: config` задания trivy обязаны совпадать с проходами
+срезом, и каждый проход обязан иметь гейтовый шаг: `exit-code: '1'`, не под
+`continue-on-error`, не под заведомо ложным `if` и не снимаемый отказом предыдущего
+шага. Проходы без заглушек самоистекают: срез без отслеживаемого архива — находка.
+
+ПОДЧАРТ ОСМОТРЕН ЧЕРЕЗ РОДИТЕЛЯ, ТОЛЬКО ЕСЛИ РОДИТЕЛЬ ОСМОТРЕН (#2980). У зонтика
+послабление, и его подчарты — каталоги и архивы — обязаны дать цели сами. Подчарт,
+который со своими умолчаниями не рендерит ничего, признаётся таким по предикату
+`renders_nothing` (один для каталога и архива), а не по записи с именем.
 
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль непокрытых чартов» обязано быть отличимо от
 «ноль прочитанных чартов».
@@ -238,6 +242,80 @@ def archive_toc(path):
 def is_chart_toc(names):
     """Chart.yaml на ЛЮБОЙ глубине оглавления (`x/Chart.yaml`, `./x/…`, `wrap/x/…`)."""
     return any(n.rstrip("/").rsplit("/", 1)[-1] == "Chart.yaml" for n in names)
+
+
+_GUARD = re.compile(r"^\{\{-?\s*if\s+\.Values\.([A-Za-z0-9_.]+)\s*-?\}\}\s*$")
+_TEMPLATE_SUFFIXES = (".yaml", ".yml", ".tpl", ".txt", ".json")
+
+
+def chart_sources(path):
+    """→ {путь от корня чарта: текст} для Chart.yaml, values.yaml и templates/** —
+    ОДНИМ разбором для обеих форм чарта: каталога и архива. Корень архива — каталог
+    самого мелкого Chart.yaml в оглавлении. None — источники не прочитаны."""
+    out = {}
+    if path.is_dir():
+        for f in path.rglob("*"):
+            rel = f.relative_to(path).as_posix()
+            if f.is_file() and (rel in ("Chart.yaml", "values.yaml")
+                                or rel.startswith("templates/")):
+                out[rel] = f.read_text(encoding="utf-8", errors="replace")
+        return out
+    try:
+        with tarfile.open(path, "r:*") as t:
+            members = [m for m in t.getmembers() if m.isfile()]
+            roots = sorted((m.name.rsplit("/", 1)[0] if "/" in m.name else ""
+                            for m in members if m.name.rstrip("/").rsplit("/", 1)[-1]
+                            == "Chart.yaml"), key=lambda r: r.count("/"))
+            if not roots:
+                return None
+            root = roots[0] + "/" if roots[0] else ""
+            for m in members:
+                if not m.name.startswith(root):
+                    continue
+                rel = m.name[len(root):]
+                if rel in ("Chart.yaml", "values.yaml") or rel.startswith("templates/"):
+                    out[rel] = t.extractfile(m).read().decode("utf-8", "replace")
+    except (tarfile.TarError, OSError, EOFError):
+        return None
+    return out
+
+
+def renders_nothing(src):
+    """→ причина либо None: чарт по своим умолчаниям не рендерит ни одного манифеста.
+
+    Один предикат для каталога и архива. Два законных вида: (1) у чарта нет шаблонов
+    манифестов (только `_*.tpl`-помощники) либо он `type: library`; (2) КАЖДЫЙ шаблон
+    целиком под `{{- if .Values.<ключ> }}`, и каждый такой ключ в values.yaml чарта —
+    ложь. Второй вид самоистекает: включили ключ — чарт обязан дать цели. Иная форма
+    условия не признаётся: лучше находка, чем угаданное «выключено».
+    """
+    if src is None:
+        return None
+    chart = yaml.safe_load(src.get("Chart.yaml") or "") or {}
+    if str(chart.get("type") or "") == "library":
+        return "библиотека (type: library) — манифестов не рендерит по определению"
+    manifests = [k for k in src if k.startswith("templates/") and k.endswith(_TEMPLATE_SUFFIXES)
+                 and not k.rsplit("/", 1)[-1].startswith("_") and k.endswith((".yaml", ".yml"))]
+    if not manifests:
+        return "шаблонов манифестов нет — осматривать нечего"
+    values = yaml.safe_load(src.get("values.yaml") or "") or {}
+    keys = set()
+    for k in manifests:
+        lines = [ln.strip() for ln in src[k].splitlines()]
+        meaningful = [ln for ln in lines if ln and not ln.startswith("#")
+                      and not ln.startswith("{{/*") and not ln.startswith("{{- /*")]
+        m = _GUARD.match(meaningful[0]) if meaningful else None
+        if not m:
+            return None
+        keys.add(m.group(1))
+    for key in sorted(keys):
+        v = values
+        for part in key.split("."):
+            v = v.get(part) if isinstance(v, dict) else None
+        if v is not False:
+            return None
+    return ("каждый шаблон под условием, ложным в своих умолчаниях: %s"
+            % ", ".join(".Values." + k for k in sorted(keys)))
 
 
 _SURVIVES = re.compile(r"\balways\(\)|!\s*cancelled\(\)")
@@ -430,12 +508,13 @@ def main():
         print("ОТКАЗ: trivy не найден в PATH — судить не о чем", file=sys.stderr)
         return 2
     bare_pass = iac_scan_passes.require(iac_scan_passes.BARE_NAME)
-    bare_doc = yaml.safe_load((ROOT / bare_pass[2]).read_text(encoding="utf-8")) or {}
-    if ((bare_doc.get("misconfiguration") or {}).get("helm") or {}).get("set"):
-        print("ОТКАЗ: проход «%s» (%s) несёт заглушки — каталог вендоренных существует\n"
-              "       ровно ради прохода без них" % (bare_pass[0], bare_pass[2]),
-              file=sys.stderr)
-        return 2
+    sub_pass = iac_scan_passes.require(iac_scan_passes.SUBCHARTS_NAME)
+    for p in (bare_pass, sub_pass):
+        doc = yaml.safe_load((ROOT / p[2]).read_text(encoding="utf-8")) or {}
+        if ((doc.get("misconfiguration") or {}).get("helm") or {}).get("set"):
+            print("ОТКАЗ: проход «%s» (%s) несёт заглушки — его срез существует ровно\n"
+                  "       ради прохода без них" % (p[0], p[2]), file=sys.stderr)
+            return 2
     t0 = time.monotonic()
     tracked = git_ls("*")
     candidates = [a for a in tracked if is_archive(ROOT / a)]
@@ -463,11 +542,20 @@ def main():
 
     no_templates, nested, exempt_ok, covered, uncovered, findings = [], [], [], [], [], []
     exempt_unjudged = []
+    renders_none = []
+
+    def own_hits(d):
+        return [t for t in targets if t.startswith(d) and not t.startswith(d + "charts/")]
+
+    no_templates_set = {d for d in charts
+                        if not any(t.startswith(d + "templates/") for t in templates)}
 
     for d in charts:
         has_templates = any(t.startswith(d + "templates/") for t in templates)
         is_nested = any(d != p and d.startswith(p) for p in charts)
-        hit = [t for t in targets if t.startswith(d)]
+        # Свои цели чарта — без его `charts/`: подчарты осматриваются и своим проходом
+        # (подчарты зонтика), и их цели не делают осмотренным родителя.
+        hit = own_hits(d)
 
         if d in EXEMPT:
             holds, why = reason_still_holds(d)
@@ -489,7 +577,18 @@ def main():
             no_templates.append(d)
             continue
         if is_nested:
-            nested.append(d)
+            # Подчарт-каталог осмотрен через родителя — ЕСЛИ родитель осмотрен. У
+            # родителя в послаблении (зонтик) этого нет, и тогда подчарт обязан дать
+            # цели сам (проход подчартов зонтика), иначе он не осмотрен никем (#2980).
+            parent = max((p for p in charts if d != p and d.startswith(p)), key=len)
+            if parent not in EXEMPT and parent not in no_templates_set and own_hits(parent):
+                nested.append(d)
+            elif hit:
+                covered.append((d, len(hit)))
+            elif renders_nothing(chart_sources(ROOT / d)):
+                renders_none.append((d, renders_nothing(chart_sources(ROOT / d))))
+            else:
+                uncovered.append(d)
             continue
         if hit:
             covered.append((d, len(hit)))
@@ -498,8 +597,28 @@ def main():
 
     for a in archives:
         hit = [t for t in targets if t.startswith(a + ":")]
+        why = None if hit else renders_nothing(chart_sources(ROOT / a))
         if hit:
             covered.append((a, len(hit)))
+        elif why:
+            renders_none.append((a, why))
+        else:
+            uncovered.append(a)
+
+    # Подчарт-архив: осмотрен через родителя, только если родитель осмотрен; иначе
+    # обязан дать цели сам. Прежняя редакция считала его «подчартом» и молчала — пять
+    # сторонних архивов зонтика (44 цели, 15 находок CRITICAL/HIGH) не видел никто.
+    sub_archives_via_parent = []
+    for a in nested_archives:
+        parent = max((c for c in charts if a.startswith(c + "charts/")), key=len)
+        own = [t for t in targets if t.startswith(a + ":")]
+        why = None if own else renders_nothing(chart_sources(ROOT / a))
+        if own:
+            covered.append((a, len(own)))
+        elif why:
+            renders_none.append((a, why))
+        elif parent not in EXEMPT and parent not in no_templates_set and own_hits(parent):
+            sub_archives_via_parent.append(a)
         else:
             uncovered.append(a)
 
@@ -512,8 +631,9 @@ def main():
     for a, why in unreadable:
         findings.append("%s — архив не прочитан (%s): чарт ли он, не установить, и молчать о "
                         "нём гейт не вправе" % (a, why))
-    for line in scan_log.get(bare_pass[0], []):
-        findings.append("проход «%s»: в журнале trivy ERROR — %s" % (bare_pass[0], line))
+    for name in iac_scan_passes.LOG_JUDGED:
+        for line in scan_log.get(name, []):
+            findings.append("проход «%s»: в журнале trivy ERROR — %s" % (name, line))
 
     # Проход вендоренных без предмета самоистекает, как всякое послабление: проход
     # заглушек этот каталог НЕ осматривает, и оправдание тому — только архив в нём.
@@ -522,6 +642,10 @@ def main():
                         "заглушек его не осматривает: второй проход ничего не открывает, "
                         "и снимать каталог с первого прохода больше незачем"
                         % iac_scan_passes.VENDOR_HOME)
+    if not any(a.startswith(iac_scan_passes.UMBRELLA_CHARTS + "/") for a in nested_archives):
+        findings.append("%s — нет ни одного отслеживаемого архива-подчарта: проход «%s» "
+                        "ничего не открывает и самоистекает" % (iac_scan_passes.UMBRELLA_CHARTS,
+                                                               sub_pass[0]))
     wf_findings, wf_census = check_workflow_passes()
     findings += wf_findings
 
@@ -547,14 +671,24 @@ def main():
         print("  без шаблонов        %s — осматривать нечего" % d)
     for d in nested:
         print("  подчарт             %s — сканер относит его к родителю" % d)
+    for a in sub_archives_via_parent:
+        print("  подчарт-архив       %s — осмотрен через родителя" % a)
     for d in exempt_ok:
         print("  послабление         %s — %s" % (d, EXEMPT[d]))
+    for d, why in renders_none:
+        print("  не рендерит ничего  %s — %s" % (d, why))
     for d, why in exempt_unjudged:
         print("  НЕ СУДИМО           %s — %s.\n"
               "                      Свойство репозитория отсюда не видно: CI берёт\n"
               "                      свежий checkout, где этих файлов нет." % (d, why))
 
     for d in uncovered:
+        if d in nested_archives:
+            findings.append("%s — подчарт-архив НЕ ДАЛ ни одной цели: родитель не осмотрен "
+                            "(послабление либо нет шаблонов), а сам архив не осмотрен "
+                            "проходом «%s» — сторонний чарт вне скана целиком"
+                            % (d, sub_pass[0]))
+            continue
         if d in archives:
             findings.append("%s — архив-чарт НЕ ДАЛ ни одной цели проходу «%s» (без "
                             "заглушек): рендер отказал (причина — строкой ERROR выше, если "
