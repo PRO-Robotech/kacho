@@ -273,7 +273,7 @@ PY
 make_copy "$work/fallcfg" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 drop_step_key "$work/fallcfg" "trivy config, вендоренные чарты (гейт CRITICAL/HIGH)" if || exit 2
 expect "гейт прохода без if — снимается упавшим предыдущим, находка" "$work/fallcfg" 1 \
-  "исполняется только при успехе всех предыдущих шагов"
+  "при отказе предыдущего — НЕ исполнится"
 make_copy "$work/fallfs" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 drop_step_key "$work/fallfs" "trivy fs (гейт CRITICAL/HIGH)" if || exit 2
 expect "гейт fs без if — находка с его именем" "$work/fallfs" 1 \
