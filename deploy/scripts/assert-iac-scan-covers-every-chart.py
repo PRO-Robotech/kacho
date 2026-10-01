@@ -202,6 +202,30 @@ def chart_targets_alone(path, bare_pass):
         return len(iac_scan_passes.results(tmp, probe))
 
 
+_SURVIVES = re.compile(r"\balways\(\)|!\s*cancelled\(\)")
+_SUCCESS = re.compile(r"\bsuccess\(\)")
+
+
+def falls_with_predecessor(step):
+    """→ причина либо None: шаг снимается отказом ЛЮБОГО предыдущего шага.
+
+    Шаг без `if` или с `if`, не несущим `always()`/`!cancelled()`, исполняется только
+    при успехе всех предыдущих. Найдено на волне #2977 (run 36867890066): отказ
+    выгрузки SARIF снял следующий за ней гейтовый шаг fs, и гейт на этой ревизии не
+    судил ничего — исход хуже красного, потому что он выглядит как пропуск, а не как
+    отказ. Разбор выражения ограничен: признаётся явный `always()`/`!cancelled()` без
+    `success()`; иное выражение считается снимаемым — гейт пусть лучше потребует
+    явной формы, чем угадает.
+    """
+    cond = step.get("if")
+    text = "" if cond is None else str(cond)
+    if _SURVIVES.search(text) and not _SUCCESS.search(text):
+        return None
+    return ("if: %s — исполняется только при успехе всех предыдущих шагов; отказ любого "
+            "из них (например выгрузки SARIF) снимает гейт молча — нужен `if: "
+            "'!cancelled()'`" % (repr(cond) if cond is not None else "не задан"))
+
+
 def check_workflow_passes():
     """→ (находки, строка переписи): шаги `scan-type: config` задания trivy против проходов.
 
@@ -219,11 +243,23 @@ def check_workflow_passes():
     steps = job.get("steps") or []
     want = {(ref, cfg, frozenset(set(skip) - set(iac_scan_passes.ALWAYS_SKIPPED))): name
             for name, ref, cfg, skip in iac_scan_passes.PASSES}
-    gated, seen, out = set(), 0, []
+    gated, seen, gate_steps, out = set(), 0, 0, []
     # Задание целиком, которое заведомо не судит, отнимает вердикт у всех своих шагов.
     job_mute = mute_reasons(job)
     for st in steps:
         w = st.get("with") or {}
+        # Любой гейтовый шаг задания — не только IaC: шаг fs снимается упавшей
+        # выгрузкой ровно так же, и вердикта по дереву тогда нет ни одного.
+        if str(w.get("exit-code") or "") == "1":
+            gate_steps += 1
+            why = job_mute + mute_reasons(st)
+            fall = falls_with_predecessor(st)
+            if fall:
+                why.append(fall)
+            st["__mute"] = why
+            if why and str(w.get("scan-type") or "") != "config":
+                out.append("шаг «%s» (%s) объявлен гейтовым, но заведомо не судит: %s"
+                           % (st.get("name") or "?", WORKFLOW.name, "; ".join(why)))
         if str(w.get("scan-type") or "") != "config":
             continue
         seen += 1
@@ -235,7 +271,7 @@ def check_workflow_passes():
                        % (st.get("name") or "?", WORKFLOW.name, key[0], key[1] or "—",
                           ",".join(sorted(skip)) or "—"))
         elif str(w.get("exit-code") or "") == "1":
-            why = job_mute + mute_reasons(st)
+            why = st["__mute"]
             if why:
                 out.append("шаг «%s» (%s) прохода «%s» объявлен гейтовым, но заведомо не "
                            "судит: %s" % (st.get("name") or "?", WORKFLOW.name, want[key],
@@ -248,8 +284,8 @@ def check_workflow_passes():
     for name in sorted(set(want.values()) - gated):
         out.append("проход «%s» не судится в CI: у него нет шага с `exit-code: '1'`, "
                    "который исполняется и роняет задание, в %s" % (name, WORKFLOW.name))
-    return out, ("  шагов scan-type: config в CI %d; проходов %d; судимых гейтовым шагом %d"
-                 % (seen, len(want), len(gated)))
+    return out, ("  шагов scan-type: config в CI %d; гейтовых шагов задания %d; проходов %d; "
+                 "судимых гейтовым шагом %d" % (seen, gate_steps, len(want), len(gated)))
 
 
 def local_dependency_names(chart_yaml):

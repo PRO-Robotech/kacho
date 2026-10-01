@@ -302,6 +302,18 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
 
+      # КООРДИНАТЫ АРХИВА-ЧАРТА — В ПУТИ CHECKOUT'А, ДО ВЫГРУЗКИ. Находку внутри архива
+      # trivy адресует `<архив>:<шаблон>`, и Code Scanning читает это как URI со схемой
+      # `<архив>`: волна #2977 (run 36867890066) получила восемь отказов «SARIF URI
+      # scheme … did not match the checkout URI scheme "file"». Перевод — в путь самого
+      # архива от корня (`deploy/helm/vendor/<архив>`), шаблон и строки уходят в
+      # сообщение координаты; постусловие (каждая координата — существующий файл
+      # checkout'а, без схемы) проверяется тем же скриптом, и отказ называет строку.
+      # Выгрузку оставили, а не сняли: без неё LOW/MEDIUM внешнего чарта не видны нигде.
+      - name: координаты SARIF IaC — в пути checkout'а
+        if: '!cancelled()'
+        run: python3 deploy/scripts/sarif-archive-uris.py trivy-config.sarif trivy-config-vendored.sarif
+
       - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
         with:
@@ -320,7 +332,12 @@ jobs:
           sarif_file: trivy-config-vendored.sarif
           category: trivy-config-vendored
 
+      # `!cancelled()` ОБЯЗАТЕЛЕН и здесь, хотя шаг — первый из гейтов: без `if` он
+      # исполняется только при успехе ВСЕХ предыдущих, и отказ выгрузки SARIF выше снял
+      # его на волне #2977 (run 36867890066) — гейт fs на той ревизии не судил ничего.
+      # Немой гейтовый шаг ловит гейт покрытия (`falls_with_predecessor`).
       - name: trivy fs (гейт CRITICAL/HIGH)
+        if: '!cancelled()'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
