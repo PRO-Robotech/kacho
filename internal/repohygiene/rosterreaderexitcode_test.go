@@ -88,6 +88,10 @@ import (
 var rosterReaderNames = []string{
 	// состав стендов
 	"stacks_table", "stacks_names", "stacks_chain", "stacks_args",
+	// состав стендов для гейтов рендера: отказ обёртки — отказ `stacks_args`,
+	// перечень образцов слоя оператора отказывает на пустом каталоге (NTF-1 D9,
+	// CX1-89). Обёртка — только библиотека: вызова по пути у неё нет (N9).
+	"render_chain_args", "render_chain_samples",
 	// части продукта
 	"product_service_dirs",
 	// коллекции набора

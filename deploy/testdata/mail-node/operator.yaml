@@ -1,0 +1,31 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# operator.yaml — образец слоя оператора для рендера цепочки `prod` гейтами
+# (NTF-1, полоса D9; замысел З28 «Образец узла — в фикстуре гейта», Д48, CX1-87).
+#
+# НЕ ПРОФИЛЬ И НЕ ПОСТАВКА. В `values.prod.yaml` узла почты нет намеренно: его
+# задаёт оператор, а образец в профиле стал бы узлом, который оператор не
+# задавал. Этот файл подставляет ТОЛЬКО тестовая обёртка рендера цепочек
+# (`deploy/stacks_render_wrapper_test.go`, `deploy/tests/helm/lib/render-chain.sh`),
+# и только к цепочке `prod`. `deploy/stacks.txt` каталог не называет, маска
+# `values*.yaml` зонтика его не захватывает.
+#
+# ФОРМА — УЗЕЛ ОПЕРАТОРА, А НЕ СТЕНДА (CX1-87 (а)): внешний узел с неявным TLS,
+# пара «имя в адресе ⇔ источник удостоверения» целиком, без якоря (корневое
+# хранилище), отправитель задан; ключей `mailpit.*` нет — приёмник стенда на
+# `prod` выключен, и узел формы `values.dev.yaml` страж почтовой полосы отвергает.
+#
+# Ключи — ТОЛЬКО формой зонтика (N24): корневой ключ, которого рендер зонтика не
+# читает, был бы значением принятым и проигнорированным. Держит
+# `TestMailNodeSamplesSpeakTheUmbrellaForm`.
+global:
+  kacho:
+    identity:
+      smtp:
+        connectionURI: "smtps://noreply@relay.operator.example:465/"
+        credentialSecret:
+          name: kacho-identity-smtp
+          key: password
+        fromAddress: "noreply@operator.example"
+        fromName: "Kacho Cloud"

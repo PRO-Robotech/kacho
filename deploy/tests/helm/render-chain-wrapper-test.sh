@@ -176,7 +176,16 @@ for s in $samples; do
   (cd "$UMBRELLA" && helm template "$RELEASE" . -n kacho $args) >/dev/null 2>"$WORK/err" && HELM_RC=0 || HELM_RC=$?
   RENDERS=$((RENDERS + 1))
   HELM_ERR="$(grep -vE 'WARNING: Kubernetes configuration' "$WORK/err" || true)"
-  render_or_fatal "prod + образец $s"
+  # Отказ рендера по НЕсобранным зависимостям — условие прогона (код 2); любой
+  # иной отказ — находка об ОБРАЗЦЕ, с его именем: образец, который страж
+  # зонтика отвергает, слоем оператора `prod` служить не может.
+  case "$HELM_ERR" in
+    *"missing in charts/ directory"*|*"dependency build"*) render_or_fatal "prod + образец $s" ;;
+  esac
+  if [ "$HELM_RC" -ne 0 ]; then
+    helm_said "prod + образец $s"
+    fail "F: рендер prod с образцом $s отказал (код $HELM_RC) — образец не годится слоем оператора"
+  fi
   echo "  prod отрендерен с образцом $s (код 0)"
   ok
 
