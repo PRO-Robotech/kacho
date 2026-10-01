@@ -61,17 +61,24 @@ def normalize(ref, target):
     return target if ref in (".", "") else ref.rstrip("/") + "/" + target
 
 
-def run(root, scan_pass, config=None, extra=()):
+def run(root, scan_pass, config=None, extra=(), errors=None):
     """→ разобранный JSON-отчёт прохода. Ignorefile снят: гейты судят сырой вывод.
 
     `config` подменяет файл настроек прохода (гейт заглушек гоняет проход с
     изменённым списком), срез дерева при этом остаётся тем же.
+
+    `errors` — список, куда складываются строки журнала уровня ERROR. Тогда прогон
+    идёт БЕЗ `--quiet`: отказ рендера чарта trivy печатает только в журнал
+    («[helm scanner] Failed to render Chart files»), выходя кодом 0 и не заводя ни
+    одной цели, — с `--quiet` он неотличим от «чарта здесь нет». Замер приёмки
+    8735f0eb7c7: архив с `{{ required … }}` гейт объявил «не чартом».
     """
     _name, ref, own_config, skipped = scan_pass
     env = dict(os.environ)
     env.pop("TRIVY_IGNOREFILE", None)
     cmd = ["trivy", "config", ref, "--config", str(config or own_config),
-           "--format", "json", "--quiet", *extra]
+           "--format", "json", *extra]
+    cmd += ["--skip-version-check"] if errors is not None else ["--quiet"]
     for d in skipped:
         cmd += ["--skip-dirs", d]
     r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, env=env, timeout=900)
@@ -79,21 +86,31 @@ def run(root, scan_pass, config=None, extra=()):
         print("ОТКАЗ: trivy (проход «%s») вышел с кодом %d\n%s"
               % (scan_pass[0], r.returncode, r.stderr[:400]), file=sys.stderr)
         sys.exit(2)
+    if errors is not None:
+        errors += [line.strip() for line in r.stderr.splitlines()
+                   if "\tERROR\t" in line or "\tFATAL\t" in line]
     return json.loads(r.stdout or "{}")
 
 
-def results(root, scan_pass, config=None, extra=()):
+def results(root, scan_pass, config=None, extra=(), errors=None):
     """→ [(цель от корня, запись Results)] прохода."""
-    doc = run(root, scan_pass, config, extra)
+    doc = run(root, scan_pass, config, extra, errors)
     return [(normalize(scan_pass[1], res.get("Target") or ""), res)
             for res in doc.get("Results") or []]
 
 
-def all_results(root, extra=()):
-    """→ (объединение по всем проходам, {имя прохода: число целей})."""
+def all_results(root, extra=(), errors=None):
+    """→ (объединение по всем проходам, {имя прохода: число целей}).
+
+    `errors` — словарь {имя прохода: [строки ERROR журнала]}; задан — прогоны идут
+    без `--quiet` (см. `run`).
+    """
     out, census = [], {}
     for p in PASSES:
-        got = results(root, p, extra=extra)
+        log = None
+        if errors is not None:
+            log = errors.setdefault(p[0], [])
+        got = results(root, p, extra=extra, errors=log)
         census[p[0]] = len(got)
         out += got
     return out, census

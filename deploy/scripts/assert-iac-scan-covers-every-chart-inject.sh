@@ -3,29 +3,25 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # Доказательство падучести гейта `assert-iac-scan-covers-every-chart.py` — инъекцией
-# настоящим входом, в ОБЕ стороны, по тем двум осям, которые гейт получил вместе с
-# проходами скана (`iac_scan_passes.py`):
+# настоящим входом, в ОБЕ стороны.
 #
-#   * архивная форма чарта — отслеживаемый `.tgz` вне каталога другого чарта обязан
-#     дать цель. Инъекция кладёт НАСТОЯЩИЙ вендоренный архив (схема значений закрыта)
-#     в срез прохода заглушек — ровно то, что случилось с ним в дереве, — и гейт обязан
-#     назвать его поимённо. Законный близнец — тот же архив в своём каталоге (контроль);
-#   * сверка шагов CI с проходами — шаг, чей срез разошёлся с проходом, и проход без
-#     гейтового шага — находки. Близнец — тот же файл задания без правки (контроль).
+# Оси: (1) архив-чарт распознаётся по ОГЛАВЛЕНИЮ (Chart.yaml на любой глубине, tar
+# любого сжатия и zip), а не по имени и не по исходу рендера; (2) место архива-чарта —
+# `deploy/helm/vendor`, вне его — находка, в том числе для форм, которых сканер не
+# рендерит; (3) в каталоге вендоренных каждый архив-чарт даёт цели проходу без
+# заглушек, а ERROR в журнале этого прохода — находка с текстом; (4) шаги CI сверены
+# с проходами, гейтовый шаг не бывает немым (`continue-on-error`, ложный `if`, `if`,
+# снимаемый упавшим предыдущим шагом).
+#
+# Близнец опыта меняет РОВНО одно: тот же архив в каталоге вендоренных вместо места
+# вне его; тот же чарт со значением в values.yaml вместо пустого `required`; тот же
+# архив без Chart.yaml. Близнец опытов над шагами CI — контроль A.
 #
 # Всё исполняется в КОПИИ дерева вне репозитория (`git clone --shared` + наложение
-# правленых отслеживаемых файлов): рабочая копия не меняется ни на байт, и
-# восстанавливать нечего. Прогонов девятнадцать: контроль · архив вне своего каталога ·
-# срез шага разошёлся · проход без гейтового шага · опыты приёмки 7b9d560610b:
-# M3 (`.tar.gz` с закрытой схемой) и близнец M2 (та же форма, схема открыта) · M4
-# (`.tar` с закрытой схемой) и близнец M4-twin · M1 (гейтовый шаг под
-# `continue-on-error: true`) · M5 (гейтовый шаг под `if: false`) · опыты приёмки
-# ba3200fb3a1: вложенный архив `wrap/<чарт>/…` · `./`-архив, каждый с близнецом ·
-# 2в (прохода без заглушек нет в PASSES) · `.TGZ` назван «не чартом для сканера» ·
-# гейтовый шаг прохода и шаг fs без `if` (снимаются упавшим предыдущим, волна #2977).
-# Близнец опыта с архивом — тот же архив той же формы в
-# том же месте, у которого меняется РОВНО одно: схема значений открыта, и заглушки
-# его рендер не роняют. Близнец M1, M5 и 2в — контроль A.
+# правленых отслеживаемых файлов): рабочая копия не меняется ни на байт.
+#
+# ЗНАМЕНАТЕЛЬ — 29 утверждений; итог печатает число исполненных, и расхождение с
+# этим числом — тоже повод не верить зелёному.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -80,16 +76,20 @@ expect() {
   echo "ok      $title"; passed=$((passed+1))
 }
 
+
 # ── A. Контроль: архив в своём каталоге, шаги CI совпадают с проходами ──────────
 make_copy "$work/control" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 expect "контроль — гейт молчит" "$work/control" 0 "непокрытых 0"
-expect "контроль — архив осмотрен проходом вендоренных" "$work/control" 0 "deploy/helm/vendor/$ARCHIVE"
+expect "контроль — архив осмотрен проходом вендоренных" "$work/control" 0 \
+  "целей  deploy/helm/vendor/$ARCHIVE"
+expect "контроль — сжатый поток без оглавления назван «не чарт»" "$work/control" 0 \
+  "сжатый поток без оглавления"
 
-# ── B. Архив с закрытой схемой в срезе прохода заглушек ─────────────────────────
+# ── B. Настоящий вендоренный архив вне своего каталога ──────────────────────────
 make_copy "$work/archive" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 git -C "$work/archive" mv "deploy/helm/vendor/$ARCHIVE" "deploy/helm/$ARCHIVE" || exit 2
-expect "архив вне своего каталога — гейт краснеет и называет его" "$work/archive" 1 \
-  "deploy/helm/$ARCHIVE — архив чарта НЕ ДАЛ сканеру ни одной цели"
+expect "архив вне своего каталога — находка «вне vendor»" "$work/archive" 1 \
+  "deploy/helm/$ARCHIVE — архив-чарт вне deploy/helm/vendor"
 expect "архив вне своего каталога — проход вендоренных без предмета" "$work/archive" 1 \
   "deploy/helm/vendor — в каталоге нет ни одного отслеживаемого архива"
 
@@ -119,31 +119,54 @@ PY
 expect "проход без гейтового шага — находка" "$work/ungated" 1 \
   "проход «вендоренные» не судится в CI"
 
-# $1 — копия, $2 — путь архива в ней, $3 — closed|open (схема значений),
-# $4 — префикс путей внутри архива (по умолчанию пусто: `injchart/…`)
+# $1 — копия, $2 — путь архива в ней, $3 — вид чарта, $4 — префикс путей внутри
+# архива (по умолчанию пусто: `injchart/…`). Виды: closed | open (схема значений
+# закрыта / открыта) · required (`{{ required }}` без значения, как у registry и nlb)
+# · required_valued (то же, значение в values.yaml) · broken (шаблон не разбирается)
+# · nochart (архив без Chart.yaml). Форма по расширению в любом регистре: .zip —
+# zip, .tgz/.tar.gz — tar+gzip, иначе — tar.
 put_chart_archive() {
   python3 - "$1/$2" "$3" "${4:-}" <<'PY' && git -C "$1" add -- "$2"
-import io, json, sys, tarfile
-dst, schema, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
+import io, json, sys, tarfile, zipfile
+dst, kind, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
+deploy = ("apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: injchart}\n"
+          "spec:\n  selector: {matchLabels: {a: b}}\n  template:\n"
+          "    metadata: {labels: {a: b}}\n    spec:\n"
+          "      containers: [{name: c, image: \"{{ .Values.image }}\"}]\n")
 files = {
     "Chart.yaml": "apiVersion: v2\nname: injchart\nversion: 0.1.0\n",
     "values.yaml": "image: injchart\n",
-    "templates/deployment.yaml": (
-        "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: injchart}\n"
-        "spec:\n  selector: {matchLabels: {a: b}}\n  template:\n"
-        "    metadata: {labels: {a: b}}\n    spec:\n"
-        "      containers: [{name: c, image: \"{{ .Values.image }}\"}]\n"),
-    "values.schema.json": json.dumps({
-        "type": "object", "properties": {"image": {"type": "string"}},
-        "additionalProperties": schema != "closed"}),
+    "templates/deployment.yaml": deploy,
 }
-mode = "w:gz" if dst.lower().endswith((".tgz", ".tar.gz")) else "w"
-with tarfile.open(dst, mode) as t:
-    for rel, body in files.items():
-        data = body.encode()
-        info = tarfile.TarInfo(prefix + "injchart/" + rel)
-        info.size = len(data)
-        t.addfile(info, io.BytesIO(data))
+if kind in ("closed", "open"):
+    files["values.schema.json"] = json.dumps({
+        "type": "object", "properties": {"image": {"type": "string"}},
+        "additionalProperties": kind != "closed"})
+elif kind in ("required", "required_valued"):
+    files["templates/secret.yaml"] = (
+        "apiVersion: v1\nkind: Secret\nmetadata: {name: injchart}\n"
+        "stringData: {password: {{ required \"password обязателен\" .Values.password | quote }}}\n")
+    if kind == "required_valued":
+        files["values.yaml"] += "password: inject-only\n"
+elif kind == "broken":
+    files["templates/deployment.yaml"] = deploy + "{{ .Values.image\n"
+elif kind == "nochart":
+    files = {"README.txt": "not a chart\n"}
+else:
+    sys.exit("неизвестный вид: " + kind)
+low = dst.lower()
+if low.endswith(".zip"):
+    with zipfile.ZipFile(dst, "w") as z:
+        for rel, body in files.items():
+            z.writestr(prefix + "injchart/" + rel, body)
+else:
+    mode = "w:gz" if low.endswith((".tgz", ".tar.gz")) else "w"
+    with tarfile.open(dst, mode) as t:
+        for rel, body in files.items():
+            data = body.encode()
+            info = tarfile.TarInfo(prefix + "injchart/" + rel)
+            info.size = len(data)
+            t.addfile(info, io.BytesIO(data))
 PY
 }
 
@@ -166,25 +189,26 @@ yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
 PY
 }
 
-# ── E. M3 / M2: `.tar.gz` в срезе прохода заглушек ──────────────────────────────
-make_copy "$work/m3" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/m3" deploy/helm/closedc-0.1.0.tar.gz closed || exit 2
-expect "M3: .tar.gz с закрытой схемой — гейт краснеет и называет его" "$work/m3" 1 \
-  "deploy/helm/closedc-0.1.0.tar.gz — архив чарта НЕ ДАЛ сканеру ни одной цели"
-make_copy "$work/m2" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/m2" deploy/helm/openc-0.1.0.tar.gz open || exit 2
-expect "M2 (близнец M3): .tar.gz с открытой схемой — осмотрен, гейт молчит" "$work/m2" 0 \
-  "целей  deploy/helm/openc-0.1.0.tar.gz"
 
-# ── F. M4 / M4-twin: `.tar` в срезе прохода заглушек ────────────────────────────
-make_copy "$work/m4" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/m4" deploy/helm/closedc-0.1.0.tar closed || exit 2
-expect "M4: .tar с закрытой схемой — гейт краснеет и называет его" "$work/m4" 1 \
-  "deploy/helm/closedc-0.1.0.tar — архив чарта НЕ ДАЛ сканеру ни одной цели"
-make_copy "$work/m4twin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/m4twin" deploy/helm/openc-0.1.0.tar open || exit 2
-expect "M4-twin: .tar с открытой схемой — осмотрен, гейт молчит" "$work/m4twin" 0 \
-  "целей  deploy/helm/openc-0.1.0.tar"
+# $1 — метка, $2 — имя файла, $3 — вид, $4 — префикс: пара «вне vendor — находка» /
+# «тот же архив, схема открыта, в vendor — осмотрен и молчит».
+pair_outside_and_vendored() {
+  local tag="$1" file="$2" kind="$3" prefix="${4:-}"
+  make_copy "$work/$tag-out" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+  put_chart_archive "$work/$tag-out" "deploy/helm/$file" "$kind" "$prefix" || exit 2
+  expect "$tag: архив-чарт вне vendor — находка" "$work/$tag-out" 1 \
+    "deploy/helm/$file — архив-чарт вне deploy/helm/vendor"
+  make_copy "$work/$tag-in" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+  put_chart_archive "$work/$tag-in" "deploy/helm/vendor/$file" open "$prefix" || exit 2
+  expect "$tag (близнец): тот же архив в vendor — осмотрен, гейт молчит" "$work/$tag-in" 0 \
+    "целей  deploy/helm/vendor/$file"
+}
+
+# ── E–I. Формы, которые сканер рендерит: вне vendor — находка, в vendor — осмотр ──
+pair_outside_and_vendored M3 closedc-0.1.0.tar.gz closed
+pair_outside_and_vendored M4 closedc-0.1.0.tar closed
+pair_outside_and_vendored wrap wrapc-0.1.0.tgz closed wrap/
+pair_outside_and_vendored dot dotc-0.1.0.tgz closed ./
 
 # ── G. M1 / M5: гейтовый шаг, который заведомо не судит ────────────────────────
 make_copy "$work/m1" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
@@ -196,30 +220,9 @@ mute_vendored_gate_step "$work/m5" if false || exit 2
 expect "M5: гейтовый шаг под if: false — находка" "$work/m5" 1 \
   "заведомо не судит: if: False"
 
-# ── H. Вложенный архив: `wrap/<чарт>/Chart.yaml` ──────────────────────────────
-# Сканер рендерит его как чарт (замер trivy 0.70.0); третья редакция гейта судила по
-# глубине Chart.yaml и объявляла его «не чартом». Близнец — тот же архив, схема открыта.
-make_copy "$work/wrap" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/wrap" deploy/helm/wrapc-0.1.0.tgz closed wrap/ || exit 2
-expect "вложенный архив с закрытой схемой — гейт краснеет и называет его" "$work/wrap" 1 \
-  "deploy/helm/wrapc-0.1.0.tgz — архив чарта НЕ ДАЛ сканеру ни одной цели"
-make_copy "$work/wraptwin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/wraptwin" deploy/helm/wrapo-0.1.0.tgz open wrap/ || exit 2
-expect "близнец: вложенный архив с открытой схемой — осмотрен, гейт молчит" "$work/wraptwin" 0 \
-  "целей  deploy/helm/wrapo-0.1.0.tgz"
-
-# ── I. `./`-архив: пути внутри начинаются с `./` ──────────────────────────────────
-make_copy "$work/dot" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/dot" deploy/helm/dotc-0.1.0.tgz closed ./ || exit 2
-expect "./-архив с закрытой схемой — гейт краснеет и называет его" "$work/dot" 1 \
-  "deploy/helm/dotc-0.1.0.tgz — архив чарта НЕ ДАЛ сканеру ни одной цели"
-make_copy "$work/dottwin" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/dottwin" deploy/helm/doto-0.1.0.tgz open ./ || exit 2
-expect "близнец: ./-архив с открытой схемой — осмотрен, гейт молчит" "$work/dottwin" 0 \
-  "целей  deploy/helm/doto-0.1.0.tgz"
 
 # ── J. 2в: прохода без заглушек нет в PASSES ─────────────────────────────────────
-# Гейт берёт его поимённо; без него одиночный прогон архива судить нечем — отказ с
+# Гейт берёт его поимённо; без него судить каталог вендоренных нечем — отказ с
 # именем прохода, а не исключение. Близнец — контроль A: проход на месте.
 make_copy "$work/nobare" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 sed -i '/^    (BARE_NAME, VENDOR_HOME, "trivy-vendored-charts.yaml", ALWAYS_SKIPPED),$/d' \
@@ -257,12 +260,49 @@ drop_step_key "$work/fallfs" "trivy fs (гейт CRITICAL/HIGH)" if || exit 2
 expect "гейт fs без if — находка с его именем" "$work/fallfs" 1 \
   "шаг «trivy fs (гейт CRITICAL/HIGH)» (security-scan.yml) объявлен гейтовым"
 
-# ── K. `.TGZ`: сканер такой файл чартом не рендерит (замер trivy 0.70.0) ──────────
-# Он не предмет гейта и обязан быть НАЗВАН отдельной строкой, а не пропущен молча.
-make_copy "$work/upper" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-put_chart_archive "$work/upper" deploy/helm/upperc-0.1.0.TGZ closed || exit 2
-expect ".TGZ — не чарт для сканера, назван отдельно, гейт молчит" "$work/upper" 0 \
-  "не чарт для сканера deploy/helm/upperc-0.1.0.TGZ"
+# ── M. `required` без значения (как у registry и nlb): «не отрендерился» ≠ «не чарт» ──
+make_copy "$work/req-out" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/req-out" deploy/helm/reqc-0.1.0.tgz required || exit 2
+expect "required вне vendor — находка «вне vendor», а не «не чарт»" "$work/req-out" 1 \
+  "deploy/helm/reqc-0.1.0.tgz — архив-чарт вне deploy/helm/vendor"
+make_copy "$work/req-in" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/req-in" deploy/helm/vendor/reqc-0.1.0.tgz required || exit 2
+expect "required в vendor — непокрыт" "$work/req-in" 1 \
+  "deploy/helm/vendor/reqc-0.1.0.tgz — архив-чарт НЕ ДАЛ ни одной цели"
+expect "required в vendor — текст отказа рендера из журнала" "$work/req-in" 1 \
+  "Failed to render Chart files"
+make_copy "$work/req-valued" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/req-valued" deploy/helm/vendor/reqc-0.1.0.tgz required_valued || exit 2
+expect "близнец: значение в values.yaml — осмотрен, гейт молчит" "$work/req-valued" 0 \
+  "целей  deploy/helm/vendor/reqc-0.1.0.tgz"
 
-echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed"
-[ "$failed" = 0 ] || exit 1
+# ── N. Рендер падает в vendor (шаблон не разбирается) ────────────────────────────
+make_copy "$work/broken" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/broken" deploy/helm/vendor/brokenc-0.1.0.tgz broken || exit 2
+expect "рендер в vendor падает — находка с текстом журнала" "$work/broken" 1 \
+  "в журнале trivy ERROR"
+
+# ── O. Формы, которых сканер не рендерит: .zip и .TGZ с чартом вне vendor ─────────
+make_copy "$work/zip" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/zip" deploy/helm/zipc-0.1.0.zip open || exit 2
+expect ".zip с чартом вне vendor — находка" "$work/zip" 1 \
+  "deploy/helm/zipc-0.1.0.zip — архив-чарт вне deploy/helm/vendor"
+make_copy "$work/zipnochart" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/zipnochart" deploy/helm/docs-0.1.0.zip nochart || exit 2
+expect "близнец: .zip без Chart.yaml — «не чарт», гейт молчит" "$work/zipnochart" 0 \
+  "deploy/helm/docs-0.1.0.zip — Chart.yaml в оглавлении нет"
+make_copy "$work/upper" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+put_chart_archive "$work/upper" deploy/helm/upperc-0.1.0.TGZ open || exit 2
+expect ".TGZ с чартом вне vendor — находка" "$work/upper" 1 \
+  "deploy/helm/upperc-0.1.0.TGZ — архив-чарт вне deploy/helm/vendor"
+
+# ── P. Непрочитанный архив — находка, а не «не чарт» ─────────────────────────────
+# Близнец — контроль A: сжатый поток без оглавления прочитан и назван «не чарт».
+make_copy "$work/junk" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+printf 'not an archive at all\n' > "$work/junk/deploy/helm/junk-0.1.0.tgz"
+git -C "$work/junk" add -- deploy/helm/junk-0.1.0.tgz || exit 2
+expect "непрочитанный архив — находка" "$work/junk" 1 \
+  "deploy/helm/junk-0.1.0.tgz — архив не прочитан"
+
+echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель 29)"
+[ "$failed" = 0 ] && [ "$((passed+failed))" = 29 ] || exit 1
