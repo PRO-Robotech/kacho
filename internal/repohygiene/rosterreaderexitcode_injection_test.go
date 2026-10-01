@@ -18,6 +18,9 @@
 package repohygiene
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -133,4 +136,64 @@ func TestRosterReaderGateIsSilentOnTheLegalTwin(t *testing.T) {
 	}
 	t.Logf("перепись: близнецов %d, строк-потреблений %d, ложных находок %d",
 		len(twins), cen.Consumptions, cen.Findings)
+}
+
+// renderChainWrapperTest — файл, зовущий шелл-обёртку рендера цепочек
+// присваиванием с потребованным кодом (NTF-1 D9, CX1-89, CX1-91).
+const renderChainWrapperTest = "deploy/tests/helm/render-chain-wrapper-test.sh"
+
+// renderChainAssign — присваивание цепочки `prod` от обёртки, которое инъекция
+// переписывает в теряющую форму.
+var renderChainAssign = regexp.MustCompile(`(?m)^([ \t]*)args="\$\((render_chain_args prod [^)]*)\)" \|\|.*$`)
+
+// TestRosterReaderGateRedsOnTheRenderChainWrapperLosingForm — шелл-обёртка
+// рендера цепочек — читатель состава стендов: её отказ — отказ `stacks_args`.
+// Настоящий текст файла, зовущего её, с присваиванием, переписанным в форму
+// `helm template … $(render_chain_args …)`, — находка формы «аргумент
+// helm/kubectl» с именем обёртки; тот же текст без правки — молчание.
+func TestRosterReaderGateRedsOnTheRenderChainWrapperLosingForm(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, renderChainWrapperTest))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s не читается (%v) — вход инъекции переименован или снят",
+			renderChainWrapperTest, err)
+	}
+	body := string(raw)
+	if !renderChainAssign.MatchString(body) {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: в %s нет присваивания `args=\"$(render_chain_args prod …)\" || …` — "+
+			"переписывать в теряющую форму нечего", renderChainWrapperTest)
+	}
+
+	// Близнец — текст как есть.
+	findings, cen := AuditRosterReaderExitCodes(map[string]string{renderChainWrapperTest: body})
+	if cen.Consumptions == 0 {
+		t.Fatalf("близнец: строк-потреблений ноль — имя обёртки гейту неизвестно")
+	}
+	for _, f := range findings {
+		t.Errorf("близнец: ЛОЖНАЯ НАХОДКА на законной форме: %s", f)
+	}
+
+	// Инъекция — первое присваивание переписано в аргумент helm.
+	done := false
+	injected := renderChainAssign.ReplaceAllStringFunc(body, func(m string) string {
+		if done {
+			return m
+		}
+		done = true
+		sub := renderChainAssign.FindStringSubmatch(m)
+		return sub[1] + "helm template kacho-umbrella . $(" + sub[2] + ")"
+	})
+	got, icen := AuditRosterReaderExitCodes(map[string]string{renderChainWrapperTest: injected})
+	hit := false
+	for _, f := range got {
+		if f.Form == "аргумент helm/kubectl" && strings.Contains(f.Text, "render_chain_args") {
+			hit = true
+		}
+	}
+	if !hit {
+		t.Errorf("инъекция: теряющая форма `helm template … $(render_chain_args …)` не найдена (находок %d)", len(got))
+	}
+	t.Logf("близнец: потреблений %d, находок %d; инъекция: потреблений %d, находок %d",
+		cen.Consumptions, len(findings), icen.Consumptions, len(got))
 }
