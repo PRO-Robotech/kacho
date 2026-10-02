@@ -93,14 +93,15 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 			continue
 		}
 		owner := "services/" + e.Name()
-		declDir := filepath.Join(servicesRoot, e.Name(), "internal", "subscriptionjournal")
-		if _, err := os.Stat(declDir); err != nil {
-			// У владельца журнала нет — законное состояние (`geo`, `iam`).
-			continue
-		}
-		files, err := treecorpus.UnderWithSuffix(declDir, ".go")
+		// Объявление журнала ищется по ВСЕМУ прод-дереву владельца, а не в
+		// каталоге `internal/subscriptionjournal`: журнал пробы-источника notify
+		// объявлен под корнем своего процесса
+		// (`cmd/notify-probe/internal/journal`, kacho#2915, Д74), и поиск по
+		// одному каталогу его не видел — инъекция «журнал без правила
+		// хранения» оставалась зелёной.
+		files, err := treecorpus.UnderWithSuffix(filepath.Join(servicesRoot, e.Name()), ".go")
 		if err != nil {
-			t.Fatalf("обход %s: %v", declDir, err)
+			t.Fatalf("обход %s: %v", owner, err)
 		}
 		var lane JournalLane
 		got := false
@@ -112,12 +113,16 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 			if rerr != nil {
 				t.Fatalf("чтение %s: %v", path, rerr)
 			}
-			census.FilesRead++
 			l, found, perr := ScanJournalLane(owner, path, src)
 			if perr != nil {
 				t.Fatalf("разбор %s: %v", path, perr)
 			}
 			if found {
+				census.FilesRead++
+				if got {
+					t.Fatalf("у владельца %s два объявления журнала (%s и %s) — гейт судит полосу "+
+						"владельца одной записью и второй не увидел бы", owner, lane.File, path)
+				}
 				lane, got = l, true
 			}
 		}
