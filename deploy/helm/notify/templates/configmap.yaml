@@ -1,0 +1,48 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+{{- $smtp := include "notify.mailNode" . | fromJson }}
+# Конфигурация процесса notify — ключи KACHO_NOTIFY_* (замысел З20). Читается
+# один раз, при старте: смену карты перекатывает аннотация `checksum/config`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "notify.fullname" . }}-config
+  labels:
+    {{- include "notify.labels" . | nindent 4 }}
+data:
+  KACHO_NOTIFY_AUTH_MODE: {{ .Values.authMode | quote }}
+  KACHO_NOTIFY_PEER_TLS_CERT_FILE: {{ printf "%s/tls.crt" (include "notify.peerTLSDir" .) | quote }}
+  KACHO_NOTIFY_PEER_TLS_KEY_FILE: {{ printf "%s/tls.key" (include "notify.peerTLSDir" .) | quote }}
+  KACHO_NOTIFY_PEER_TLS_CA_FILE: {{ printf "%s/ca.crt" (include "notify.peerTLSDir" .) | quote }}
+  KACHO_NOTIFY_DB_HOST: {{ .Values.db.host | quote }}
+  KACHO_NOTIFY_DB_PORT: {{ .Values.db.port | quote }}
+  KACHO_NOTIFY_DB_USER: {{ .Values.db.user | quote }}
+  KACHO_NOTIFY_DB_NAME: {{ .Values.db.name | quote }}
+  KACHO_NOTIFY_DB_SSLMODE: {{ .Values.db.sslMode | quote }}
+  KACHO_NOTIFY_DIAG_ADDR: {{ printf ":%d" (int .Values.ports.diag) | quote }}
+  KACHO_NOTIFY_CLAIM_INTERVAL: {{ .Values.claimInterval | quote }}
+  KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT: {{ .Values.resolveSendTimeout | quote }}
+  KACHO_NOTIFY_SMTP_SESSION_TIMEOUT: {{ .Values.smtpSessionTimeout | quote }}
+  KACHO_NOTIFY_ORIGIN: {{ .Values.origin | quote }}
+  KACHO_NOTIFY_SOURCES: {{ include "notify.sourceRoster" (dict "global" .Values.global) | quote }}
+  # ── УЗЕЛ ПОЧТЫ → КЛЮЧИ ПРОЦЕССА (Д44, Д46, Д47; CX1-77, CX1-81 (б)) ──────────
+  #
+  # Адрес — `tpl` значения узла под `required` с именем узла, без умолчания и
+  # без разбора: разбор адреса и пара «имя ⇔ удостоверение» — у стража старта
+  # (З20). Шаблон рендерится только при непустом перечне (NTF1-N04), поэтому
+  # `required` срабатывает ровно при «источник включён, а узел пуст».
+  # Поля отправителя — значением узла без умолчания и без `required`: пустое
+  # доезжает до процесса, и отказывает его страж (NTF2-34 (е)).
+  KACHO_NOTIFY_SMTP_CONNECTION_URI: {{ tpl (required "global.kacho.identity.smtp.connectionURI: адрес ретранслятора почты не задан, а notify рендерится (перечень источников непуст) — задайте узел почты установки" $smtp.connectionURI) $ | quote }}
+  KACHO_NOTIFY_SMTP_FROM_ADDRESS: {{ $smtp.fromAddress | quote }}
+  KACHO_NOTIFY_SMTP_FROM_NAME: {{ $smtp.fromName | quote }}
+  {{- $anchor := $smtp.trustAnchorSecret }}
+  {{- if and $anchor $anchor.name }}
+  # Якорь проверки листа ретранслятора — файл тома из секрета узла (только у
+  # notify); без якоря — корневое хранилище образа.
+  KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE: {{ printf "%s/%s" (include "notify.anchorDir" .) $anchor.key | quote }}
+  {{- end }}
+{{- end }}

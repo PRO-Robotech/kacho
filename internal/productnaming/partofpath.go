@@ -44,11 +44,18 @@ const umbrellaChartsPrefix = "deploy/helm/umbrella/charts/"
 // servicesPrefix — приставка пути дерева службы.
 const servicesPrefix = "services/"
 
+// deliveryChartsPrefix — приставка чартов поставки вне зонта: чарт службы,
+// которая ставится и отдельно (notify, NTF-1 З28, NTF1-I06), лежит в
+// `deploy/helm/<каталог службы>/` и в зонт входит записью зависимости
+// `file://`. Сам зонт и вендоренные архивы частью продукта не являются.
+const deliveryChartsPrefix = "deploy/helm/"
+
 // PartOfPath — каталог исходников части, чей это ПУТЬ.
 //
-// Две раскладки, обе живые: `services/<svc>/…` и подчарт зонта
-// `deploy/helm/umbrella/charts/<имя чарта>/…`. Путь, не подошедший ни под одну,
-// даёт ложь — тогда часть называет ключ подчарта, см. [PartOfLine].
+// Три раскладки, все живые: `services/<svc>/…`, подчарт зонта
+// `deploy/helm/umbrella/charts/<имя чарта>/…` и чарт поставки вне зонта
+// `deploy/helm/<каталог службы>/…`. Путь, не подошедший ни под одну, даёт
+// ложь — тогда часть называет ключ подчарта, см. [PartOfLine].
 //
 // Приписать строку соседу хуже, чем остановиться: покрытой оказалась бы не та
 // часть продукта.
@@ -63,6 +70,13 @@ func PartOfPath(rel string) (string, bool) {
 	if s, ok := strings.CutPrefix(rel, umbrellaChartsPrefix); ok {
 		if i := strings.IndexByte(s, '/'); i > 0 {
 			return ServiceDir(s[:i])
+		}
+		return "", false
+	}
+	if s, ok := strings.CutPrefix(rel, deliveryChartsPrefix); ok {
+		i := strings.IndexByte(s, '/')
+		if i > 0 && s[:i] != "umbrella" && s[:i] != "vendor" {
+			return s[:i], true
 		}
 	}
 	return "", false
