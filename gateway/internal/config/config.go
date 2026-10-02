@@ -86,8 +86,11 @@ type Config struct {
 	// IAMInternalAddr — admin-only internal-port (9091) of iam backend.
 	// InternalUserService.Get для admin tooling (gRPC-direct; REST-routing no-op,
 	// proto-аннотации `google.api.http` отсутствуют — handler регистрируется в mux
-	// pro-forma, реальный трафик идет по gRPC) + REST для
-	// InternalUserService.UpsertFromIdentity (OIDC-callback).
+	// pro-forma, реальный трафик идет по gRPC) + REST-маршрут
+	// InternalUserService.UpsertFromIdentity на внутреннем mux. Вызывающего
+	// этот маршрут кода в крае нет: обратный вызов кода авторизации снят
+	// (middleware/session_identity_handler.go), людей заводят регистрация и
+	// приглашение службы доступа; глагол остаётся служебным на :9091.
 	// InternalIAMService.LookupSubject/Check — REST-маршруты ЕСТЬ на внутреннем mux
 	// (`/iam/v1/internal/iam:lookupSubject` и `:check`, см. restmux/mux.go и
 	// middleware/rest_route_table_gen.go). Auth-interceptor при этом ходит на :9091

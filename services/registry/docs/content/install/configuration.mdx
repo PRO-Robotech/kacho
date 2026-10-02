@@ -99,8 +99,9 @@ mTLS, **breakglass не является следующим шагом** — о�
 ## Data-plane (OCI auth-proxy)
 
 Data-plane аутентифицирует `docker`/`helm` по identity-JWT. **Издатель токена — множество:**
-платформа чеканит свои токены сама, а прежний издатель на переходе остаётся, и у каждого
-принимаемого издателя **своя объявленная запись источника ключей**. Объединить наборы было бы
+посадка перечисляет принимаемых издателей (профили развёртывания объявляют одного — платформу,
+которая чеканит свои токены сама), и у каждого принимаемого издателя **своя объявленная запись
+источника ключей**. Объединить наборы было бы
 дешевле и уничтожило бы ровно ту защиту, ради которой развязка делается: ключ одного издателя
 проверял бы токен, объявляющий другого.
 
@@ -136,11 +137,10 @@ Data-plane аутентифицирует `docker`/`helm` по identity-JWT. **�
 :::
 
 :::info Снято с контракта
-`KACHO_REGISTRY_HYDRA_JWKS_URL` (эта страница называла его, а сервис читал другое имя),
-`KACHO_REGISTRY_IAM_JWKS_URL` и `KACHO_REGISTRY_HYDRA_ISSUER` **больше не консультируются**.
-Посадка, задавшая только их, не принимает ни одного издателя и потому **отказывает в старте**, а не
-работает вслепую. Прежний издатель объявляется своей записью в `TOKEN_ISSUERS` /
-`TOKEN_ISSUER_KEYSETS`.
+`KACHO_REGISTRY_IAM_JWKS_URL` и обе переменные прежнего внешнего издателя — адрес его набора
+ключей и его имя — **больше не консультируются**. Посадка, задавшая только их, не принимает ни
+одного издателя и потому **отказывает в старте**, а не работает вслепую. Каждый принимаемый
+издатель объявляется своей записью в `TOKEN_ISSUERS` / `TOKEN_ISSUER_KEYSETS`.
 :::
 
 ## mTLS (per-edge)
@@ -188,10 +188,9 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_AUTHZ_BREAKGLASS: "false"
 
     # data-plane: приём identity-JWT — издатель множество, у каждого своя запись
-    KACHO_REGISTRY_TOKEN_ISSUERS: https://kaname.kacho.local,https://hydra.api.kacho.cloud
+    KACHO_REGISTRY_TOKEN_ISSUERS: https://kaname.kacho.local
     KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS: >-
-      https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,
-      https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json
+      https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json
     KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER: https://kaname.kacho.local
     KACHO_REGISTRY_TOKEN_REVOCATION_URL: https://kaname-internal.kacho.svc:9097/internal/tokens/introspect
     KACHO_REGISTRY_SERVICE_AUD: registry.kacho.local

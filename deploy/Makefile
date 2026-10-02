@@ -1649,7 +1649,7 @@ loadtest-address-allocate-clean: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho delete cm k6-address-allocate --ignore-not-found
 
-# ─── KAC-105: IAM stack (kaname; KAC-127: Zitadel → Ory) ──────────────────────
+# ─── KAC-105: IAM stack (kaname; своя полоса личности с #2735) ────────────────
 
 # Здесь стоял alias `reload-svc-iam` — пересборка образа службы доступа из
 # дерева. Каталога службы в дереве нет, её образ производит конвейер её

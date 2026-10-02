@@ -33,7 +33,7 @@ quota:
 #   - goose migrator init-container (kacho-migrator up) → schema kacho_registry;
 #   - data-plane :8080 (Docker Registry v2 / OCI token-auth proxy in front of zot);
 #   - runtime edges registry→iam INTERNAL (:9091 Check + fga-proxy) and registry→iam
-#     PUBLIC (:9090 ProjectService.Get); data-plane verifies Hydra identity-JWT (JWKS);
+#     PUBLIC (:9090 ProjectService.Get); data-plane verifies kaname identity-JWT (JWKS);
 #   - own pg-registry Postgres (schema kacho_registry) — the bitnami dependency is
 #     added at the umbrella level (NOT in this chart);
 #   - bundled zot OCI backend StatefulSet + Service + blob-storage PVC.
@@ -416,9 +416,8 @@ tokenAcceptance:
   # старта стал бы тождественно истинным.
   # production/-strict требуют https:// у каждого адреса: набор ключей есть
   # единственный якорь доверия проверки подписи.
-  # Пример (наш издатель + зеркало прежнего, зеркало живёт до F4):
-  #   "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,\
-  #    https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+  # Пример (наш издатель — единственный, которого объявляют профили зонта):
+  #   "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
   issuerKeySets: ""
   # PLATFORM_TOKEN_ISSUER — издатель, под которым чеканит НАША платформа. Он же
   # выбирает полосу приёма: тип токена at+jwt (RFC 9068) и чтение отзыва на

@@ -160,12 +160,14 @@ fi
 # one declaration; the credentials layer is appended here because it is outside
 # the tree by design and cannot live in a tracked table.
 #
-# The layer keeps its file name although the identity provider whose
-# credentials it used to carry is gone (#1276): the name is what the ignore
-# pattern `**/values.*-ory.yaml` covers, and an operator's existing copy must
-# stay covered — renaming it here without widening the pattern first would turn
-# the next `git add -A` in that clone into a published secret.
-CREDS_LAYER="values.fe3455-ory.yaml"
+# The layer is named for what it carries — site secrets — and is covered by the
+# ignore pattern `**/values.*-secrets.yaml` (#2998). Its previous file name, from
+# the time it also carried the retired identity provider's credentials, stays
+# covered by its own ignore pattern in .gitignore and .dockerignore: an operator
+# clone may still hold a copy under that name, and dropping the pattern would turn
+# the next `git add -A` there into a published secret. Such a copy is not read
+# here; rename it to the name below.
+CREDS_LAYER="values.fe3455-secrets.yaml"
 FE_LAYERS="$(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
 [ -n "$FE_LAYERS" ] || die "stack table declares no fe3455 chain — nothing to deploy, and that is a refusal, not an empty success"
 FE_LAYERS="$FE_LAYERS $CREDS_LAYER"
