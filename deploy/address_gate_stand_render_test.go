@@ -505,11 +505,3 @@ func TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane(t *testing.T) {
 		}
 	}
 }
-
-func lastLines(s string, n int) string {
-	ls := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	if len(ls) > n {
-		ls = ls[len(ls)-n:]
-	}
-	return strings.Join(ls, "\n")
-}

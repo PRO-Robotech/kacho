@@ -95,62 +95,18 @@ var (
 	argsLine    = regexp.MustCompile(`^\s*args:\s*\[(.+)\]\s*$`)
 )
 
-// subchartKey — ключ подчарта в наложении значений зонта (`kaname:` в нулевой
-// колонке). Им наложение называет службу, которую настраивает.
-//
-// Приставкой имени платформы образец НЕ сужается: часть продукта вправе носить
-// СВОЁ имя (#2076), и сужение по `kacho-` не отвергало бы такой ключ, а НЕ
-// ВИДЕЛО его — форма вызова у переименованной части оставалась бы без хозяина.
-// Кому принадлежит распознанный ключ, решает владелец имён.
-var subchartKey = regexp.MustCompile(`^([a-z][a-z0-9-]*):`)
-
-// serviceOfManifest — чей это манифест. Выводится из ПУТИ, а не из содержимого:
-// имя службы внутри файла бывает шаблонным (`{{ .Values.name }}`).
-//
-// Две раскладки, обе живые: `services/<svc>/deploy/…` и чарт зонта
-// `deploy/helm/umbrella/charts/kacho-<svc>/…`. Путь, не подошедший ни под одну,
-// возвращает пустую строку — тогда службу называет ключ подчарта, см.
-// serviceForForm. Приписать форму соседу хуже, чем остановиться: покрытой
-// оказалась бы не та точка наката.
-func serviceOfManifest(rel string) string {
-	rel = filepath.ToSlash(rel)
-	if s, ok := strings.CutPrefix(rel, "services/"); ok {
-		if i := strings.Index(s, "/"); i > 0 {
-			return s[:i]
-		}
-		return ""
-	}
-	if s, ok := strings.CutPrefix(rel, "deploy/helm/umbrella/charts/"); ok {
-		if i := strings.Index(s, "/"); i > 0 {
-			if svc, known := productnaming.ServiceDir(s[:i]); known {
-				return svc
-			}
-		}
-	}
-	return ""
-}
-
 // serviceForForm — чью форму вызова объявляет строка line файла rel.
 //
-// Источников ДВА, и второй не запасной: наложение значений зонта
-// (`deploy/helm/umbrella/values.*.yaml`) настраивает ВСЕ подчарты одним файлом,
-// поэтому путь там службы не называет — её называет ключ подчарта над строкой.
-// Обход, знающий только путь, на таком файле остановился бы; знающий только
-// первый попавшийся ключ — приписал бы форму соседу.
+// Ответ берётся у владельца имён частей, [productnaming.PartOfLine], а не
+// выводится здесь второй копией. Своя копия уже разошлась с ним дважды: она не
+// знала раскладки чарта поставки вне зонта (`deploy/helm/<каталог службы>/…`,
+// notify, kacho#2915) и, встретив ключ верхнего уровня, не названный частью
+// продукта, шла выше и приписывала форму предыдущему подчарту — ровно тот
+// дефект, который владелец имён снял в kacho#2260. Приписать форму соседу хуже,
+// чем остановиться: покрытой оказалась бы не та точка наката.
 func serviceForForm(rel string, lines []string, at int) string {
-	if s := serviceOfManifest(rel); s != "" {
-		return s
-	}
-	for i := at; i >= 0; i-- {
-		m := subchartKey.FindStringSubmatch(lines[i])
-		if m == nil {
-			continue
-		}
-		if svc, known := productnaming.ServiceDir(m[1]); known {
-			return svc
-		}
-	}
-	return ""
+	svc, _ := productnaming.PartOfLine(rel, lines, at)
+	return svc
 }
 
 // parseFlowSequence разбирает потоковую последовательность YAML из строк в

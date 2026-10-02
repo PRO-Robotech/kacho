@@ -1,0 +1,111 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Значения чарта notify (NTF-1, замысел З20, З28; полоса D1).
+#
+# ЧТО СЮДА НЕ КЛАДЁТСЯ И ПОЧЕМУ.
+#   · узел почты — путь один, `global.kacho.identity.smtp` (Д44, Д47): у
+#     зонтика и у самостоятельной поставки он приходит слоем установки, своих
+#     ключей почты чарт не объявляет;
+#   · `global.kacho.*` — ни одного ключа: умолчание `global` подчарта не видно
+#     ни соседу, ни зонтику (CX1-112), и объявленное здесь было бы вторым
+#     местом одного значения;
+#   · перечень источников — выводится шаблоном `_sources.tpl` (З28, NTF1-N03),
+#     ручного перечня нет.
+#
+# Ручки процесса без умолчания в коде (`sec-no-silent-default-for-guarded-knob`):
+# пустое значение здесь доезжает до процесса, и отказывает его страж старта с
+# именем ручки. Единственный отказ рендера по значению чарта — ключ сетки
+# (`recipientKey`, УК91) и узел почты (`required`, Д46).
+
+# Полное имя установки; пусто — `<релиз>-notify` (имя релиза, уже несущее
+# `notify`, берётся как есть).
+fullnameOverride: ""
+
+# Реплики ≥ 2 и PDB — NTF1-I05.
+replicaCount: 2
+pdb:
+  minAvailable: 1
+
+image:
+  repository: docker.io/prorobotech/kacho-notify
+  # Тег задаёт профиль установки: образ без тега — отказ рендера, а не `latest`.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Посадка: только боевая (NTF1-G15) — `production` либо `production-strict`.
+authMode: production
+
+# Диагностическая поверхность (`/healthz`, `/readyz`, `/metrics`) — только
+# внутри кластера (З15). Порт задаёт ручку KACHO_NOTIFY_DIAG_ADDR; умолчания у
+# ручки в коде нет, порт сбора берёт гейт `TestEveryRenderedChartDeclaresItsScrape`
+# отсюда же.
+ports:
+  diag: 9095
+
+# metricsScrape — объявление СБОРА величин диагностической поверхности.
+# Выключение требует причины (`disabledBecause`), иначе гейт сбора краснеет.
+metricsScrape:
+  enabled: true
+  disabledBecause: ""
+
+# Собственная база `kacho_notify` (database-per-service). Пароль — только
+# ссылкой на секрет, значения в values нет.
+db:
+  host: ""
+  port: 5432
+  user: notify
+  name: kacho_notify
+  sslMode: require
+  passwordSecret:
+    name: ""
+    key: password
+
+# Ручки предмета notify — границы в §8 замысла (config.go).
+claimInterval: 30s
+resolveSendTimeout: 5s
+smtpSessionTimeout: 60s
+
+# Origin установки: абсолютный https:// без пути — база ссылок писем (NTF1-G06).
+origin: ""
+
+# Ключ сетки на адресата (З24) — СВОЙ объект Secret, не поле секрета почты (Д23).
+# Шаблон его не порождает (УК91): пусто — отказ рендера с именем ручки.
+recipientKey: ""
+
+# Удостоверение notify для mTLS к источникам и kaname — лист внутреннего УЦ,
+# выпущенный политикой З30. SAN — идентичность учётки notify:
+# spiffe://<trustDomain>/ns/<пространство релиза>/sa/<полное имя установки>.
+mtls:
+  trustDomain: kacho.cloud
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer
+  leafDuration: "2160h"
+  leafRenewBefore: "720h"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault

@@ -340,6 +340,7 @@ jobs:
           kacho-nlb:services/nlb:.
           kacho-storage:services/storage:.
           kacho-registry:services/registry:.
+          kacho-notify:services/notify:.
           kacho-api-gateway:gateway:."
 
           push_flag=""
