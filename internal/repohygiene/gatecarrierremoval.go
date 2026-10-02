@@ -600,8 +600,18 @@ func gateCarrierBase(root string) (rev, how string, err error) {
 //
 // `--no-renames` намеренно: спрашивается «исчез ли этот путь», а не «куда
 // уехало содержимое».
+//
+// `--full-history` обязателен (#2994). Без него `git log -- <путь>` упрощает
+// историю: на слиянии, где путь совпадает с одним из родителей, обход идёт
+// только по этому родителю. В конвейере HEAD — синтетическое слияние запроса со
+// стволом; носителя, заведённого и снятого внутри линии, у ствола нет, путь
+// совпадает со стволовым родителем, и ветка линии вместе с коммитом снятия
+// выпадает из обхода — законная запись читалась как «не снимали НИКОГДА».
+// Полный обход не ослабляет запрет: запись над путём, которого не убирал ни
+// один коммит ни на одном родителе, по-прежнему находка
+// (TestGateCarrierRemoval_RemovalBehindAMergeIsSeen).
 func carrierWasEverRemoved(root, carrier string) (bool, error) {
-	out, err := gitenv.Command(root, "log", "--no-renames", "--diff-filter=D",
+	out, err := gitenv.Command(root, "log", "--full-history", "--no-renames", "--diff-filter=D",
 		"--format=%H", "-n", "1", "HEAD", "--", carrier).Output()
 	if err != nil {
 		return false, fmt.Errorf("история пути %s: %w", carrier, err)
