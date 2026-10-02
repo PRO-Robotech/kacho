@@ -106,9 +106,31 @@ def _poll(op_var, auth, name, extra=()):
     return step
 
 
-def _cleanup(id_var, op_var, auth, name):
-    """Уборка: удаление заведённого аккаунта и опрос его операции."""
+def _cleanup(id_var, prj_var, op_var, auth, name):
+    """Уборка: сначала проект саги создания, затем сам аккаунт.
+
+    Сага создания аккаунта заводит в его транзакции проект по умолчанию
+    (`metadata.defaultProjectId`), а удаление аккаунта отказывает, пока в нём
+    есть проект (`contains projects`). Поэтому проект снимается ПЕРВЫМ и его
+    операция опрашивается до `done`, иначе аккаунт переживёт прогон.
+    """
     return [
+        Step(
+            name=f"cleanup-{name}-project",
+            method="DELETE",
+            path=f"/iam/v1/projects/{{{{{prj_var}}}}}",
+            auth=auth,
+            pre_script=[
+                *ADMIN_GUARD,
+                "// OPERATION guard (legal skip): создание отвергнуто — проекта саги нет.",
+                f"if (!pm.environment.get({js_str(prj_var)})) {{ pm.execution.skipRequest(); }}",
+            ],
+            test_script=[
+                *assert_status(200),
+                *save_from_response("j.id", f"{op_var}Prj"),
+            ],
+        ),
+        poll_operation(op_var=f"{op_var}Prj", auth=auth, name=f"cleanup-{name}-project-poll"),
         Step(
             name=f"cleanup-{name}",
             method="DELETE",
@@ -153,6 +175,8 @@ CASES.append(Case(
                 # Уборка снимает то, что ДЕЙСТВИТЕЛЬНО заведено: при отброшенном поле
                 # это чеканный идентификатор, а не X, и он не должен остаться жить.
                 *save_from_response("j.metadata && j.metadata.accountId", "aidK1CreatedId"),
+                # Проект по умолчанию, заведённый сагой создания, снимается уборкой ДО аккаунта.
+                *save_from_response("j.metadata && j.metadata.defaultProjectId", "aidK1PrjId"),
                 "pm.test('metadata.accountId is the supplied X (the edge did not drop the field)', () => {",
                 "  const j = pm.response.json();",
                 "  pm.expect(j.metadata && j.metadata.accountId, JSON.stringify(j))"
@@ -178,7 +202,7 @@ CASES.append(Case(
                 "});",
             ],
         ),
-        *_cleanup("aidK1CreatedId", "aidK1DelOpId", "jwtCloudAdminHuman", "k1"),
+        *_cleanup("aidK1CreatedId", "aidK1PrjId", "aidK1DelOpId", "jwtCloudAdminHuman", "k1"),
     ],
 ))
 
@@ -279,6 +303,7 @@ CASES.append(Case(
                 *assert_iam_operation_envelope(),
                 *save_from_response("j.id", "aidK2gOpId"),
                 *save_from_response("j.metadata && j.metadata.accountId", "aidK2gId"),
+                *save_from_response("j.metadata && j.metadata.defaultProjectId", "aidK2gPrjId"),
                 "pm.test('metadata.accountId is minted in the generator form and is not X', () => {",
                 "  const j = pm.response.json();",
                 "  const got = j.metadata && j.metadata.accountId;",
@@ -296,6 +321,6 @@ CASES.append(Case(
         # аккаунт приходит в хранилище прав асинхронно (`done` операции — запись
         # закоммичена, а не видна модели), а каскад администратора облака от
         # материализации не зависит.
-        *_cleanup("aidK2gId", "aidK2gDelOpId", "jwtCloudAdminHuman", "k2g"),
+        *_cleanup("aidK2gId", "aidK2gPrjId", "aidK2gDelOpId", "jwtCloudAdminHuman", "k2g"),
     ],
 ))
