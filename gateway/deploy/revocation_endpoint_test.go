@@ -71,7 +71,7 @@ var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:
 // a pod — and because every question asked here is one the intermediate state
 // must also answer.
 //
-// values.fe3455-ory.yaml is deliberately absent from the table — it is gitignored
+// values.fe3455-secrets.yaml is deliberately absent from the table — it is gitignored
 // (site credentials) and carries no gateway configuration; the cutover script
 // appends it itself.
 func deployableStacks(t *testing.T) map[string][]string {

@@ -318,7 +318,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 5 | `deploy/dbtls_declaration_test.go` | оставить | — | — | судит `sslmode` наших клиентов; проза границы о хранилищах поставщика и их послаблении в шапке профиля (которого там нет) правлена — #1276, часть 2 |
 | 6 | `deploy/helm/umbrella/admin_hop_transport_test.go` | снять | да | — | транспорт административного слушателя издателя; снята с его терминатором — #1276 (`3af063bd6f3`), классификация стека переехала в `deploy/helm/umbrella/stack_production_class_test.go` |
 | 7 | `deploy/helm/umbrella/identity_posture_profiles_test.go` | оставить | — | — | согласие двух половин стенда о посадке; половина службы — одна посадка own (#2818), вторая — край |
-| 8 | `deploy/helm/umbrella/login_console_test.go` | переписать | да | `values.fe3455-ory.yaml` | ветвь посадки external, судившая выключатель экрана входа поставщика, снята — подчарта в зонте нет, путь отвечал «ключа нет» на 7 из 7 стеков; возврат держит предпосылка `TestLoginConsole_EveryKeyItReadsBelongsToAChartOfTheUmbrella` — #1276, часть 2; имя — слой учётных данных площадки |
+| 8 | `deploy/helm/umbrella/login_console_test.go` | переписать | да | — | ветвь посадки external, судившая выключатель экрана входа поставщика, снята — подчарта в зонте нет, путь отвечал «ключа нет» на 7 из 7 стеков; возврат держит предпосылка `TestLoginConsole_EveryKeyItReadsBelongsToAChartOfTheUmbrella` — #1276, часть 2; слой учётных данных площадки переименован — #2998 |
 | 9 | `deploy/helm/umbrella/provider_road_posture_injection_test.go` | снять | да | — | инъекция пробы административной дороги к поставщику; снята с ней — #2818 (`92097320166`) |
 | 10 | `deploy/helm/umbrella/provider_road_posture_test.go` | снять | да | — | административная дорога к поставщику; у пина её нет (kaname#362), снята — #2818 (`92097320166`) |
 | 11 | `deploy/helm/umbrella/token_shape_test.go` | снять | да | — | форма токена издателя поставщика; снята с его настройками — #1276 (`3af063bd6f3`) |
@@ -333,7 +333,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 20 | `deploy/provider_raised_by_probe_test.go` | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
 | 21 | `deploy/published_image_pin_is_reachable_test.go` | оставить | — | — | судит пины образов продукта; из перечня сторонних образов границы снят образ экрана входа поставщика, которого в дереве нет — #1276, часть 2 |
 | 22 | `deploy/stack_render_carries_no_vendor_residue_test.go` | оставить | — | `var vendorResidueWord` | страж возврата следа поставщика в рендере каждой цепочки (#2818) |
-| 23 | `deploy/stack_table_test.go` | оставить | — | `values.fe3455-ory.yaml` | слой учётных данных площадки вне git: имя слоя не снято — экземпляр живёт в клонах операторов (#1276, часть 1) |
+| 23 | `deploy/stack_table_test.go` | переписать | да | — | слой учётных данных площадки вне git: слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 24 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
 | 25 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
 | 26 | `deploy/tests/helm/admin-hop-address-census-test.sh` | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
@@ -362,15 +362,15 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 49 | `deploy/tests/helm/outcome-contract-inject.sh` | переписать | да | — | контракт исходов без проб перехода — #1276 (`3af063bd6f3`) |
 | 50 | `deploy/tests/helm/prerequisite-secrets-test.sh` | переписать | да | — | судит обязательные ссылки на секреты; история случая и её конец — без имени поставщика — #1276, часть 4 |
 | 51 | `deploy/tests/helm/provider-up.sh` | снять | да | — | подъём поставщика пробой; поднимать нечего — #1276 (`3af063bd6f3`) |
-| 52 | `deploy/tests/helm/rendered-documents-well-formed-test.sh` | оставить | — | `values.fe3455-ory.yaml` | судит форму документов рендера; слой учётных данных площадки вне git, имя слоя не снято |
+| 52 | `deploy/tests/helm/rendered-documents-well-formed-test.sh` | переписать | да | — | судит форму документов рендера; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 53 | `deploy/tests/helm/three-outcomes-distinguishable-test.sh` | переписать | да | — | перечень прогона без снятых проб поставщика — #1276 (`3af063bd6f3`) |
-| 54 | `deploy/tests/helm/trusted-forwarder-profiles-test.sh` | оставить | — | `OPTIONAL_ORY=` | судит доверенных пересыльщиков профилей; слой учётных данных площадки вне git |
+| 54 | `deploy/tests/helm/trusted-forwarder-profiles-test.sh` | переписать | да | — | судит доверенных пересыльщиков профилей; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 55 | `gateway/cmd/api-gateway/identity_lane_validation_test.go` | оставить | — | — | страж края разводит требования по посадке (F4d-06) — посадка края жива |
 | 56 | `gateway/cmd/api-gateway/identity_provider_dictionary_test.go` | оставить | — | — | законность посадки края по словарю (#2862) |
 | 57 | `gateway/deploy/f1c_issuer_set_reaches_every_stand_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
 | 58 | `gateway/deploy/identity_posture_base_default_test.go` | оставить | — | — | посадка базового профиля чарта края разбирается читателем процесса (#2862) |
 | 59 | `gateway/deploy/login_lane_prereq_test.go` | переписать | да | — | пути по роли вместо имени поставщика — #2759 (`689bb77e848`) |
-| 60 | `gateway/deploy/revocation_endpoint_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит адрес отзыва края; слой учётных данных площадки назван прозой |
+| 60 | `gateway/deploy/revocation_endpoint_test.go` | переписать | да | — | судит адрес отзыва края; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 61 | `gateway/internal/config/identity_posture_env_test.go` | оставить | — | — | у переменной посадки края есть читатель |
 | 62 | `gateway/internal/principalmeta/identity_strip_test.go` | оставить | — | — | снятие пространства x-kacho- перед ретрансляцией на полосу формы (Ф3 Р2) |
 | 63 | `internal/productnaming/productnaming_test.go` | переписать | да | — | судит словарь образов продукта; сторонний образ поставщика снят из отрицательного контроля, остальные сторонние образы держат его — #1276, часть 5 |
@@ -379,7 +379,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 66 | `internal/repohygiene/foreignidpname_injection_test.go` | оставить | — | `const testHydraIss` | страж возврата имени поставщика в объявлениях Go: инъекция |
 | 67 | `internal/repohygiene/foreignidpname_test.go` | оставить | — | — | страж возврата имени поставщика в объявлениях Go; ведомость пуста: запись deploy снята #1276, запись terraform — #2930 (поле контракта края не переименовано, а устарело, и форма разбора ответа о токене его не объявляет) |
 | 68 | `internal/repohygiene/grpcmountparity_test.go` | переписать | да | — | судит паритет монтирования служб; история находки пересказана без имени — #1276, часть 5 |
-| 69 | `internal/repohygiene/license_test.go` | оставить | — | `values.fe3455-ory.yaml` | судит лицензии дерева; слой учётных данных площадки назван прозой |
+| 69 | `internal/repohygiene/license_test.go` | переписать | да | — | судит лицензии дерева; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 70 | `internal/repohygiene/peerlaneclassifier_test.go` | переписать | да | — | судит классификатор полос соседей; «здесь были» в прозе — без имени — #1276, часть 5 |
 | 71 | `internal/repohygiene/providersurface_injection_test.go` | оставить | — | `hydra_oauth_clients.go` | страж возврата поверхности API поставщика: инъекция |
 | 72 | `internal/repohygiene/providersurfacedeployment_injection_test.go` | оставить | — | `In-cluster Hydra ADMIN endpoint` | страж возврата поверхности API поставщика в развёртывании: инъекция |
@@ -398,11 +398,11 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 85 | `services/registry/internal/clients/jwks/f1_harness_test.go` | переписать | да | — | судит набор ключей реестра; адрес прежнего издателя в синтетике — нейтральное имя той же формы — #1276, часть 5 |
 | 86 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
 | 87 | `services/registry/internal/domain/fga_subject_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
-| 88 | `tests/authz-fixtures/mint_rs256.py` | оставить | — | `"hydraClientId"` | посев читает поле контракта края под всеми его именами; `hydraClientId` — устаревшее поле контракта края (#2930: не переименовано, а устарело), посев читает его, пока поле есть в ответе |
-| 89 | `tests/authz-fixtures/prodrun.sh` | оставить | — | `Hydra issues SA access tokens` | прогонщик посева; поставщик — проза о сроке токена |
-| 90 | `tests/authz-fixtures/prodseed_all.py` | оставить | — | `Hydra-signed RS256` | посев матрицы; поставщик — проза о подписи предъявителей |
-| 91 | `tests/authz-fixtures/prodseed_matrix.py` | оставить | — | `Hydra-signed RS256 ServiceAccount` | посев матрицы; поставщик — проза о подписи предъявителей |
-| 92 | `tests/authz-fixtures/setup.sh` | оставить | — | `HYDRA_*` | посев набора; поставщик назван прозой перечня величин |
+| 88 | `tests/authz-fixtures/mint_rs256.py` | переписать | да | — | посев читает поле клиента под его живыми именами; прежнее поле с именем поставщика в контракте службы доступа зарезервировано (kaname `service_account_oauth_client.proto`, `reserved`), ответ его не несёт, и ветвь снята — #2998 |
+| 89 | `tests/authz-fixtures/prodrun.sh` | переписать | да | — | прогонщик посева; проза о сроке токена называет срок службы доступа, а не поставщика — #2998 |
+| 90 | `tests/authz-fixtures/prodseed_all.py` | переписать | да | — | посев матрицы; проза о подписи предъявителей называет подписанта платформы — #2998 |
+| 91 | `tests/authz-fixtures/prodseed_matrix.py` | переписать | да | — | посев матрицы; проза о подписи предъявителей называет подписанта платформы — #2998 |
+| 92 | `tests/authz-fixtures/setup.sh` | переписать | да | — | посев набора; перечень величин без величин поставщика, которых посев не читает — #2998 |
 | 93 | `ui-future/dashboard/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
 | 94 | `ui-future/deploy/console_serving_neighbours_injection_test.go` | оставить | — | `location ^~ /.ory/idp/public/` | страж возврата полосы соседа в раздаче консоли: инъекция |
 | 95 | `ui-future/deploy/console_serving_neighbours_test.go` | оставить | — | `/.ory/` | страж возврата полосы соседа в раздаче консоли |
@@ -422,14 +422,14 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---|---|---:|
 | снять | да | 24 |
 | снять | нет | 0 |
-| переписать | да | 32 |
+| переписать | да | 42 |
 | переписать | нет | 0 |
-| оставить | — | 50 |
+| оставить | — | 40 |
 | **итого** | — | **106** |
 
 Строки «оставить» — стражи возврата (их предмет и есть то, что поставщик не
-вернётся), синтетика, проза-история и слой учётных данных площадки вне git, чьё
-имя не снято намеренно (первая часть этой задачи). Их имя поставщика — не
+вернётся) и синтетика. Проза-история посева и слой учётных данных площадки вне
+git, стоявшие здесь «оставить», переписаны задачей kacho#2998 (раздел ниже). Их имя поставщика — не
 привязка к нему; предикат «упоминаний в Go и в развёртывании — 0» с закрытым
 перечнем исключений — отдельный держатель, эта запись его не заменяет.
 
@@ -540,6 +540,27 @@ go test ./internal/repohygiene/ -run 'TestRetiredVendor(Mentions|Exceptions)' -c
 
 Решения по 17 гейтам признака не менялись (запись А): снять 13 — файлов в индексе
 0 из 13; оставить 1 и переписать 3 — файлы на месте и стоят в ведомости.
+
+## Снятие kacho#2998: слой учётных данных площадки и проза посева
+
+- **Слой учётных данных площадки переименован** по тому, что несёт: адрес
+  почтового ретранслятора с паролем, и ничего от поставщика. Новое имя —
+  `values.fe3455-secrets.yaml`; его покрывает шаблон `**/values.*-secrets.yaml`
+  (`.gitignore`) и одноимённая строка `.dockerignore`. Скрипт раскатки
+  (`deploy/helm/umbrella/cutover-fe3455.sh`, `CREDS_LAYER`) читает только новое
+  имя: копия под прежним именем не читается, и раскатка отказывает на шаге 1, пока
+  оператор её не переименует. В записи Б строки 8, 23, 52, 54, 60 и 69 стали
+  «переписать · да», фрагмента имени у них нет.
+- **Шаблон прежнего имени остаётся** — одна строка в `.gitignore` и одна в
+  `.dockerignore`. Это страж публикации секрета, а не проза: копия слоя под прежним
+  именем может жить в клоне оператора, и без шаблона следующий `git add -A` там
+  выложил бы её в публичный репозиторий, а `COPY . .` — в слой образа. Файлы вне
+  области перечня исключений (часть 5), поэтому эти две строки названы здесь.
+  Снимаются, когда ни у одного оператора копии под прежним именем нет.
+- **Проза посева** (`tests/authz-fixtures/`, строки 89–92 записи Б) называет
+  подписанта платформы вместо прежнего издателя; строка 88 потеряла ветвь чтения
+  поля, которое контракт службы доступа зарезервировал (ответ его не несёт).
+  Все пять — «переписать · да», фрагмента имени нет.
 
 ## Что эта ведомость НЕ утверждает
 

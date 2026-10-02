@@ -112,15 +112,15 @@ Postgres использует `emptyDir` — данные не сохраняю�
 > обратных кавычках читается как живое утверждение, а учётные данные к
 > несуществующему UI — приглашение искать то, чего нет.
 
-## IAM stack (KAC-105, sub-phase 2.0; auth-tier — на Ory с KAC-127, на своей полосе с #2735)
+## IAM stack (KAC-105, sub-phase 2.0; полоса личности — своя, с #2735)
 
 Dev-стенд поднимает рядом с остальными сервисами:
 
 - **kaname** — control-plane сервис IAM (Account / Project / User / ServiceAccount /
   Group / Role / AccessBinding). gRPC `:9090` (public) + `:9091` (internal, admin-only).
   Sub-chart живёт в `helm/umbrella/charts/kaname/`. Image: `kaname:dev`
-  (build из `services/iam/` **этого** репозитория — отдельного репозитория сервиса
-  не существует с переходом на монорепо).
+  (`charts/kaname/values.yaml`); образ производит конвейер репозитория службы
+  `PRO-Robotech/kaname`, каталога службы в этом дереве нет.
 - **Чужого стека личности на стенде НЕТ** (#2735, #2777). Посадку `own` обеим
   половинам — службе доступа и краю — объявляют корни цепочек
   (`values.dev.yaml`, `values.prod.yaml`): человека проверяет НАША полоса формы,

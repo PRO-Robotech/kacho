@@ -192,9 +192,9 @@ while IFS= read -r row; do
   # cutover-fe3455.sh). Посадки он больше не несёт, поэтому его отсутствие в CI
   # ничего не скрывает; добавляем, когда файл на месте. Что именно измерено,
   # видно в метке: «измерили меньше» не должно выглядеть как «измерили всё».
-  if [ "$stack" = "fe3455" ] && [ -f "$CHART/values.fe3455-ory.yaml" ]; then
-    args+=(-f "$CHART/values.fe3455-ory.yaml")
-    label="$label + fe3455-ory(креды)"
+  if [ "$stack" = "fe3455" ] && [ -f "$CHART/values.fe3455-secrets.yaml" ]; then
+    args+=(-f "$CHART/values.fe3455-secrets.yaml")
+    label="$label + fe3455-secrets(креды)"
   fi
   if check_profile "$label" "${args[@]}"; then ok; else fail=1; fi
   profiles_checked=$((profiles_checked + 1))

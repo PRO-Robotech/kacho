@@ -688,9 +688,9 @@ CASES.append(Case(
 # subject) gets an account-scoped ARM_LABELS grant by matchLabels:{network:treska};
 # the invitee SEES the network; the label is removed; the invitee STOPS seeing it.
 #
-# Invite-activation member-edge note: a genuine Kratos activation
-# (account:<A>#account@iam_user:<invitee>) needs the provision-hook flow, which the
-# black-box gateway harness cannot drive (no Kratos fixture) — see
+# Invite-activation member-edge note: a genuine invite activation
+# (account:<A>#account@iam_user:<invitee>) needs the invitee's interactive login
+# ceremony, which the black-box gateway harness cannot drive (no login fixture) — see
 # iam-invite-grant-fga.py caveat. To reproduce the mechanic end-to-end
 # through the gateway WITHOUT depending on the unreproducible activation hook, the
 # invitee is modeled by a fresh ServiceAccount subject on account A (same clean-
@@ -722,7 +722,7 @@ CASES.append(Case(
                  *assert_status(200), *save_from_response("j.id", "_opInvite")]),
         Step(name="poll-invite", method="GET", path="/operations/{{_opInvite}}",
              auth="jwtAccountAdminA", test_script=poll_op_done("_opInvite")),
-        # clean grant subject (deterministic in CI — no Kratos activation hook).
+        # clean grant subject (deterministic in CI — no interactive activation).
         *create_fresh_sa("_t31SaInv", "inv"),
         *create_network("_t31NetInv", "inv", {"network": "treska"}),
         # pre-grant: invitee subject cannot see the network.

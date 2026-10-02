@@ -68,7 +68,7 @@ var profileNamePattern = regexp.MustCompile(`values[A-Za-z0-9._-]*\.yaml`)
 // узнавал его наравне с отслеживаемыми, — иначе строка, называющая ЕГО и один
 // отслеживаемый профиль, читалась бы как одиночная и вторая копия цепочки
 // прошла бы незамеченной.
-var knownUntrackedProfiles = []string{"values.fe3455-ory.yaml"}
+var knownUntrackedProfiles = []string{"values.fe3455-secrets.yaml"}
 
 // umbrellaProfileNames — множество имён профилей умбреллы: отслеживаемые файлы
 // дерева плюс известные неотслеживаемые. Выводится, а не выписывается.

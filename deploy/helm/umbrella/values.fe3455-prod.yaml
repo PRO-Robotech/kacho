@@ -22,7 +22,7 @@
 #                                 #   self-provisioning, add cert-manager PG server
 #                                 #   TLS, current-main hardened images, api-gateway
 #                                 #   internal-:9091 mTLS, geo forwarder SAN.
-#     -f values.fe3455-ory.yaml   # stand CREDENTIALS (gitignored): the mail relay
+#     -f values.fe3455-secrets.yaml # stand CREDENTIALS (gitignored): the mail relay
 #                                 #   address of our identity lane, and nothing
 #                                 #   else. Last, so credentials cannot be
 #                                 #   overridden by posture. cutover-fe3455.sh
