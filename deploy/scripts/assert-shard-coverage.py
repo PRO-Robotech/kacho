@@ -225,9 +225,96 @@ def tracked_requests(root: pathlib.Path, tree: dict[str, list[str]]) -> dict[str
     return out
 
 
+def chart_templates(root: pathlib.Path) -> dict:
+    """путь → текст каждого ОТСЛЕЖИВАЕМОГО шаблона чарта (`*/templates/*`).
+
+    Единица — элемент индекса git, а не файл на диске: под деревом лежат
+    распакованные архивы зависимостей и копии полос.
+    """
+    r = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--", "*/templates/*"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return {}
+    out = {}
+    for rel in filter(None, r.stdout.split("\0")):
+        try:
+            out[rel] = (root / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return out
+
+
+def undeployed_carriers(root: pathlib.Path, records: dict, b6: dict, union_b6: set,
+                        templates: dict | None = None) -> tuple[dict, list, dict]:
+    """Записи «носитель не развёрнут» (`ban6_undeployed_carriers` манифеста).
+
+    ПРЕДМЕТ. Домен входит в популяцию ban #6, когда его контракт регистрирует
+    композиционный корень. Бывает носитель, чей корень регистрирует службу, а
+    НИ ОДИН чарт дерева этот процесс не запускает: экземпляра нет ни в одном
+    профиле, и ни один шард домен измерить не может — встречный контроль спросил
+    бы листенер, которого нет нигде. Требовать от шарда такой домен значило бы
+    требовать зелёного из отсутствия; молча снять его — завести невидимое
+    послабление. Поэтому запись ЕСТЬ, с причиной, и ВЫВОДИТСЯ ОБРАТНО из дерева:
+
+      * носитель записи обязан служить хотя бы один провязанный домен — иначе
+        запись без предмета (находка);
+      * процесс записи не назван НИ ОДНИМ отслеживаемым шаблоном чарта — иначе
+        носитель развёрнут, и запись ИСТЕКЛА (находка: домен обязан взять шард);
+      * домен засчитывается «не измеряемым» только когда ВСЕ его носители — в
+        записях; поперечный домен с развёрнутым носителем судится как прежде;
+      * домен записи, который уже берёт шард, — запись лишняя (находка).
+
+    Пустой обход шаблонов — отказ, а не «процесс нигде не назван».
+
+    → (домен → {carrier, process, reason, lifted_by}, находки, перепись).
+    """
+    findings: list[str] = []
+    hosts = b6.get("hosts", {})
+    served = set(b6.get("served", set()))
+    tpl = chart_templates(root) if templates is None else templates
+    stats = {"records": len(records), "templates_read": len(tpl)}
+    if records and not tpl:
+        findings.append("записи «носитель не развёрнут» есть, а шаблонов чартов не прочитано "
+                        "НИ ОДНОГО — истечение записей проверить не на чем; это отказ, а не "
+                        "«процесс нигде не назван»")
+        return {}, findings, stats
+    valid: dict[str, dict] = {}
+    for carrier, rec in sorted(records.items()):
+        proc = str(rec.get("process") or "")
+        doms = sorted(d for d in served if carrier in hosts.get(d, []))
+        if not proc or not rec.get("reason") or not rec.get("lifted_by"):
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' без процесса, причины "
+                            f"или предиката снятия — запись, которую нельзя проверить, не заводится")
+            continue
+        if not doms:
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' без предмета: носитель "
+                            f"не служит ни одного провязанного домена — удали запись")
+            continue
+        named = sorted(path for path, text in tpl.items() if proc in text)
+        if named:
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' ИСТЕКЛА: процесс {proc} "
+                            f"запускает шаблон {', '.join(named)} — домен(ы) "
+                            f"{', '.join(doms)} обязан взять шард, а запись снимается")
+            continue
+        valid[carrier] = dict(rec, carrier=carrier, domains=doms)
+    pending: dict[str, dict] = {}
+    for d in sorted(served):
+        hs = hosts.get(d, [])
+        if hs and all(h in valid for h in hs):
+            info = valid[hs[0]]
+            if d in union_b6:
+                findings.append(f"домен '{d}' в записи «носитель не развёрнут», а шард его уже "
+                                f"измеряет — запись лишняя, удали её")
+                continue
+            pending[d] = {"carrier": info["carrier"], "process": info["process"],
+                          "reason": info["reason"], "lifted_by": info["lifted_by"]}
+    return pending, findings, stats
+
+
 def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
           ban6: dict | None = None,
-          shard_doc: pathlib.Path | None = None) -> tuple[list[str], dict]:
+          shard_doc: pathlib.Path | None = None,
+          templates: dict | None = None) -> tuple[list[str], dict]:
     """`ban6` — перепись популяции запрета #6; по умолчанию берётся из дерева.
 
     Параметр существует ради самопроверки: инъекция на СИНТЕТИЧЕСКОЙ переписи
@@ -395,7 +482,10 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
     if contract_b6 and not want_b6:
         findings.append("ни один Internal*-контракт дерева не регистрируется прод-кодом — "
                         "предикат провязки не нашёл предмет; это отказ, а не «нечего измерять»")
-    for d in sorted(want_b6 - union_b6):
+    pending_b6, pending_findings, pending_stats = undeployed_carriers(
+        root, manifest.get("ban6_undeployed_carriers", {}), b6, union_b6, templates)
+    findings += pending_findings
+    for d in sorted(want_b6 - union_b6 - set(pending_b6)):
         findings.append(f"домен '{d}' несёт Internal*-контракт, ПРОВЯЗАННЫЙ прод-кодом, "
                         f"но ban #6 для него не измеряет НИ ОДИН шард — метод остался бы "
                         f"«изолированным» просто потому, что его никто не спрашивал")
@@ -651,6 +741,8 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
             f"итог судится отдельно")
 
     stats = {
+        "ban6_pending": pending_b6,
+        "ban6_pending_stats": pending_stats,
         "ban6_cross_domains": cross_b6,
         "transports_declared": len(transports),
         "transport_dialers": transport_dialers,
@@ -696,6 +788,15 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
         print(f"   {dom:12s} контракт приземлён ({', '.join(svcs)}), но НЕ провязан ни "
               f"одним композиционным корнем — у ban #6 нет предмета; провяжут → домен "
               f"войдёт в охват сам, и этот гейт покраснеет, пока его не возьмёт шард")
+    # Домен, чей единственный носитель не развёрнут НИ ОДНИМ шаблоном дерева,
+    # называется на каждом прогоне вместе с причиной и предикатом снятия.
+    ps = st["ban6_pending_stats"]
+    print(f"ban #6: записей «носитель не развёрнут» {ps['records']}; шаблонов чартов "
+          f"осмотрено {ps['templates_read']}")
+    for dom, info in sorted(st["ban6_pending"].items()):
+        print(f"   {dom:12s} НЕ ИЗМЕРЯЕТСЯ НИ ОДНИМ ШАРДОМ: носитель '{info['carrier']}' "
+              f"(процесс {info['process']}) не развёрнут ни одним шаблоном чарта — "
+              f"{info['reason']}; снимается: {info['lifted_by']}")
     # Домен, служимый НЕСКОЛЬКИМИ носителями, называется отдельно: у него нет
     # своего сервиса, поэтому «кто его измеряет» не выводится из имени.
     for dom, info in st["ban6_cross_domains"].items():
@@ -866,7 +967,8 @@ def _self_test() -> int:
     ok = True
 
     def run(m: dict, label: str, want_red: bool, expect: str | None = None,
-            ban6: dict | None = None, shard_doc: pathlib.Path | None = None) -> None:
+            ban6: dict | None = None, shard_doc: pathlib.Path | None = None,
+            templates: dict | None = None) -> None:
         """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
 
         Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
@@ -881,7 +983,8 @@ def _self_test() -> int:
             json.dump(m, fh)
             p = pathlib.Path(fh.name)
         try:
-            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc)
+            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc,
+                                templates=templates)
         finally:
             p.unlink(missing_ok=True)
         red = bool(findings)
@@ -1260,6 +1363,47 @@ def _self_test() -> int:
                                            why="набирают его при 7 коллекциях")
     run(m, "(т8) знаменатель в ГЛУБИНЕ манифеста тоже судится", want_red=True,
         expect="объём осмотренного назван неверно")
+
+    # ── записи «носитель не развёрнут» (ban6_undeployed_carriers) ───────────
+    #
+    # Близнец — дерево как есть (п.11 и прочие близнецы выше): запись notify
+    # законна, пока процесс пробы не запускает ни один шаблон. Ниже — четыре
+    # стороны той же записи, каждая одним фактом.
+    if "notify" in base.get("ban6_undeployed_carriers", {}):
+        m = copy.deepcopy(base)
+        m["ban6_undeployed_carriers"] = {}
+        run(m, "(у1) запись notify снята → домен не измеряет НИ ОДИН шард", want_red=True,
+            expect="домен 'notify' несёт Internal*-контракт")
+
+        tpl = dict(chart_templates(ROOT))
+        proc = base["ban6_undeployed_carriers"]["notify"]["process"]
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f'command: ["/usr/local/bin/{proc}", "serve"]\n')
+        run(base, "(у2) процесс записи запускает шаблон → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        m = copy.deepcopy(base)
+        m["ban6_undeployed_carriers"] = dict(
+            m["ban6_undeployed_carriers"],
+            dns={"process": "kacho-dns", "reason": "x", "lifted_by": "y"})
+        run(m, "(у3) запись о носителе без провязанного домена → без предмета",
+            want_red=True, expect="без предмета")
+
+        m = copy.deepcopy(base)
+        m["shards"][0]["components"] = m["shards"][0]["components"] + ["notify-probe"]
+        m["gates"] = sorted(set(m["gates"]) | {"notify-probe"})
+        m["gate_ban6_domains"] = dict(m["gate_ban6_domains"], **{"notify-probe": ["notify"]})
+        m.setdefault("gate_images", {})
+        m["gate_images"] = dict(m["gate_images"], **{"notify-probe": "notify"})
+        run(m, "(у4) домен записи уже берёт шард → запись лишняя", want_red=True,
+            expect="запись лишняя")
+
+        run(base, "(у5) пустой обход шаблонов при записи → отказ", want_red=True,
+            expect="шаблонов чартов не прочитано", templates={})
+    else:
+        print("  [FAIL] запись «носитель не развёрнут» notify в манифесте не найдена — "
+              "её стороны не проверены")
+        ok = False
 
     print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
     ok = _self_test_population() and ok
