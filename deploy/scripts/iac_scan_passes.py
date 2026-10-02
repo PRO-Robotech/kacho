@@ -83,6 +83,8 @@ LOG_JUDGED = (BARE_NAME, RENDERED_NAME)
 _RENDERED = {}
 # Каталог релиза вне зонтика → архив чарта в дереве (`releases.tsv` рендера).
 _RELEASES = {}
+# Сырые цели прохода профилей последнего прогона — для переписи по стекам.
+RAW_TARGETS = {}
 
 
 def rendered_dir(root):
@@ -108,6 +110,20 @@ def rendered_dir(root):
                     k, v = line.rstrip("\n").split("\t", 1)
                     _RELEASES[k] = v
     return _RENDERED[key]
+
+
+def rendered_units(root):
+    """→ [(единица, каталог вывода)]: стеки (`stacks.tsv`) и релизы вне зонтика
+    (`releases.tsv`) — так, как их записал рендер."""
+    base = rendered_dir(root)
+    out = []
+    with open(os.path.join(base, "stacks.tsv"), encoding="utf-8") as fh:
+        for line in fh:
+            if "\t" in line:
+                name, d = line.rstrip("\n").split("\t", 1)
+                out.append(("стек " + name, d))
+    out += [("релиз " + d, d) for d in sorted(_RELEASES)]
+    return out
 
 
 def rendered_files(root):
@@ -200,6 +216,8 @@ def results(root, scan_pass, config=None, extra=(), errors=None, raw=False):
     как её пишет trivy (относительно scan-ref: форма, к которой CI применяет
     перечень исключений)."""
     doc = run(root, scan_pass, config, extra, errors)
+    if scan_pass[1] == RENDERED_REF:
+        RAW_TARGETS[scan_pass[0]] = [res.get("Target") or "" for res in doc.get("Results") or []]
     return [((res.get("Target") or "") if raw
              else normalize(scan_pass[1], res.get("Target") or ""), res)
             for res in doc.get("Results") or []]

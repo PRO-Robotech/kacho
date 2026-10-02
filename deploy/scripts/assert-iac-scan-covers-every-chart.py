@@ -799,6 +799,19 @@ def main():
                         "заглушек его не осматривает: второй проход ничего не открывает, "
                         "и снимать каталог с первого прохода больше незачем"
                         % iac_scan_passes.VENDOR_HOME)
+    # ПЕРЕПИСЬ ПО СТЕКАМ И РЕЛИЗАМ (приёмка 1ed08384567). Каждая строка таблицы стеков и
+    # каждый релиз вне зонтика обязаны дать проходу профилей хотя бы одну цель: стек `dev`
+    # выпадал из осмотра целиком (встроенный пропуск trivy, шапка рендера), а гейт
+    # молчал — его находки по парам входили в `dev-prod`, и пропажа была бы видна,
+    # только когда ведомость опустеет.
+    raw = iac_scan_passes.RAW_TARGETS.get(ren_pass[0], [])
+    unit_census = []
+    for unit, top in iac_scan_passes.rendered_units(ROOT):
+        n = sum(1 for t in raw if t.split("/", 1)[0] == top)
+        unit_census.append("%s %d" % (top, n))
+        if n == 0:
+            findings.append("%s (каталог %s) не дал проходу «%s» ни одной цели: отрендерен, "
+                            "но не осмотрен сканером" % (unit, top, ren_pass[0]))
     wf_findings, wf_census = check_workflow_passes()
     findings += wf_findings
 
@@ -812,6 +825,7 @@ def main():
              len(covered) + len(uncovered), len(targets),
              ", ".join("проход «%s» %d" % kv for kv in census.items()), len(uncovered)))
     print(wf_census)
+    print("  проход «%s» по единицам рендера: %s" % (ren_pass[0], ", ".join(unit_census)))
     print("  архивов среди отслеживаемых файлов %d из %d; оглавления прочитаны за %.1f с"
           % (len(candidates), len(tracked), sniff_s))
     for a, kind in not_charts:

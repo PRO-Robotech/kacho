@@ -27,7 +27,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE_REL="deploy/scripts/assert-iac-scan-covers-every-chart.py"
 ARCHIVE="cert-manager-approver-policy-v0.28.0.tgz"
-DENOM=63
+DENOM=66
 passed=0
 failed=0
 
@@ -575,6 +575,33 @@ w6="$work/ign"
 make_copy "$w6" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 set_step_with "$w6" "$VGATE" trivyignores ".trivyignore-extra" || exit 2
 expect "лишний trivyignores в гейтовом шаге — находка" "$w6" 1 "прощение мимо ведомости"
+
+# ── AE. Перепись по единицам рендера (приёмка 1ed08384567) ─────────────────────────
+# trivy молча пропускает каталог `dev` в корне скана (встроенный перечень обходчика);
+# стек `dev` выпадал из осмотра целиком, а гейт молчал. Опыты: (1) каталог стека снят
+# после рендера — стек «выпал»; (2) прежнее именование каталогов (`<стек>`, без
+# приставки) — сканер пропускает `dev`. Законный близнец обоих — контроль A: перепись
+# называет каждую единицу, гейт молчит.
+expect "перепись по единицам рендера (близнец) — стек dev осмотрен, гейт молчит" "$work/control" 0 \
+  "по единицам рендера: stack-dev "
+# Порча правит ТЕКСТ скрипта рендера: `$…` в шаблонах sed/grep ниже — буквы, а не
+# раскрытие оболочки.
+make_copy "$work/dropped" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+# shellcheck disable=SC2016
+sed -i 's|^printf .release-cert-manager.*|rm -rf -- "$OUT/stack-dev"\n&|' "$work/dropped/deploy/scripts/render-umbrella-profiles.sh"
+# shellcheck disable=SC2016
+grep -q '^rm -rf -- "$OUT/stack-dev"$' "$work/dropped/deploy/scripts/render-umbrella-profiles.sh" \
+  || { echo "ОТКАЗ: инъекция «стек выпал» не легла" >&2; exit 2; }
+expect "стек выпал из рендера — находка с именем стека" "$work/dropped" 1 \
+  "стек dev (каталог stack-dev) не дал проходу «профили зонтика» ни одной цели"
+make_copy "$work/bare" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+# shellcheck disable=SC2016
+sed -i 's|^  dir="stack-$stack"$|  dir="$stack"|' "$work/bare/deploy/scripts/render-umbrella-profiles.sh"
+# shellcheck disable=SC2016
+grep -q '^  dir="$stack"$' "$work/bare/deploy/scripts/render-umbrella-profiles.sh" \
+  || { echo "ОТКАЗ: инъекция «прежнее именование» не легла" >&2; exit 2; }
+expect "прежнее именование: сканер пропустил каталог dev — находка" "$work/bare" 1 \
+  "стек dev (каталог dev) не дал проходу «профили зонтика» ни одной цели"
 
 echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель $DENOM)"
 [ "$failed" = 0 ] && [ "$((passed+failed))" = "$DENOM" ] || exit 1
