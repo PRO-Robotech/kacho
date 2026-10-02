@@ -480,3 +480,78 @@ func TestGateCarrierRemoval_LedgerRowSurvivesWhenItsRemovalLeavesTheDelta(t *tes
 			"как снятие ушло из дельты, получено:\n%s", strings.Join(f, "\n"))
 	}
 }
+
+// ── ИСТОРИЯ ЗА СЛИЯНИЕМ: снятие на ветке, которую упрощение истории бросает ─
+//
+// Миниатюра красного #2994. В конвейере HEAD — синтетический коммит слияния
+// запроса: первый родитель — ствол, второй — голова линии. Носитель заведён и
+// снят ВНУТРИ линии, ствол его не видел никогда. По умолчанию `git log -- <путь>`
+// упрощает историю: на слиянии путь совпадает со стволовым родителем (его нет
+// и там, и там), и обход идёт только по стволу — ветку линии вместе со снятием
+// он бросает. Предикат «путь когда-либо снимали» обязан видеть снятие на ЛЮБОМ
+// родителе, иначе законная запись надгробия читается как объявление того,
+// чего не было.
+//
+// Одно-фактность: оба мира — одно и то же слияние; второй отличается только
+// тем, что запись называет путь, которого не было ни на одном родителе.
+
+// injMergedLineRepo — ствол без носителя, линия, заведшая и снявшая его с
+// записью надгробия, и HEAD — слияние линии в ствол без перемотки.
+func injMergedLineRepo(t *testing.T, ledgerCarrier string) string {
+	t.Helper()
+	root := injLineRepo(t)
+
+	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/born_test.go")
+	injWriteLedger(t, root, GateCarrierRetirement{
+		Carrier:   ledgerCarrier,
+		Reason:    "предмет снят вместе с контрактом",
+		Successor: "предмета больше нет",
+	})
+	injGit(t, root, "add", "-A")
+	injGit(t, root, "commit", "--quiet", "-m", "линия сняла носитель и объявила снятие")
+
+	injGit(t, root, "checkout", "--quiet", "main")
+	injWrite(t, root, "other.txt", "ствол ушёл вперёд\n")
+	injGit(t, root, "add", "-A")
+	injGit(t, root, "commit", "--quiet", "-m", "ствол поехал дальше")
+	injGit(t, root, "merge", "--quiet", "--no-ff", "--no-edit", "release/lineX")
+	return root
+}
+
+func TestGateCarrierRemoval_RemovalBehindAMergeIsSeen(t *testing.T) {
+	t.Parallel()
+
+	t.Run("запись над снятым на линии путём молчит", func(t *testing.T) {
+		root := injMergedLineRepo(t, gateCorpusDir+"/born_test.go")
+		was, err := carrierWasEverRemoved(root, gateCorpusDir+"/born_test.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !was {
+			t.Fatal("снятие на втором родителе слияния обязано быть видно: " +
+				"упрощение истории бросило ветку линии")
+		}
+		// HEAD сам и есть точка, где снятие уже внутри: судится вся запись.
+		out, err := gitenv.Command(root, "rev-parse", "HEAD").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f := injJudge(t, root, strings.TrimSpace(string(out))); len(f) != 0 {
+			t.Fatalf("законная запись за слиянием обязана молчать, получено:\n%s", strings.Join(f, "\n"))
+		}
+	})
+
+	t.Run("запись над путём, которого не было ни на одном родителе, — находка", func(t *testing.T) {
+		root := injMergedLineRepo(t, gateCorpusDir+"/never_existed_test.go")
+		out, err := gitenv.Command(root, "rev-parse", "HEAD").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := injJudge(t, root, strings.TrimSpace(string(out)))
+		joined := strings.Join(f, "\n")
+		if !strings.Contains(joined, "never_existed_test.go") || !strings.Contains(joined, "НИКОГДА") {
+			t.Fatalf("полный обход истории не делает всякую запись законной: "+
+				"обязана быть находка НИКОГДА с именем записи, получено:\n%s", joined)
+		}
+	})
+}
