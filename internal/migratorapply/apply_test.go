@@ -19,6 +19,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // applyBudget — предел на один запуск точки наката. Самая длинная цепочка дерева
@@ -26,11 +28,76 @@ import (
 // многократно выше, чтобы отличать «медленно» от «висит», а не резать хвост.
 const applyBudget = 3 * time.Minute
 
-// migrationsDirOf — каталог цепочки сервиса. Выводится из пути точки наката, а не
-// выписывается: перечень сервисов здесь не заводится ни в каком виде.
-func migrationsDirOf(pkgPath string) (service, dir string) {
-	service = strings.TrimSuffix(strings.TrimPrefix(pkgPath, "services/"), "/cmd/migrator")
-	return service, filepath.Join("services", service, "internal", "migrations")
+// pointService — служба точки наката `services/<svc>/cmd/migrator`.
+func pointService(pkgPath string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(pkgPath, "services/"), "/cmd/migrator")
+}
+
+// treeChains — цепочки дерева у ЕДИНСТВЕННОГО их вывода,
+// [migrationchains.List] (kacho#2915, CX1-114). Каталог цепочки здесь из
+// имени службы больше не выводится: у каталога services/notify две базы и
+// цепочка пробы в services/notify/internal/probemigrations, и вывод из имени
+// её не видел бы. Отказ перечня — отказ пробы с его текстом (точка с таблицей
+// без строк называется по имени, а не превращается в «0 = 0»).
+func treeChains(t *testing.T, root string) []migrationchains.Chain {
+	t.Helper()
+	chains, err := migrationchains.List(root)
+	if err != nil {
+		t.Fatalf("перечень цепочек дерева: %v", err)
+	}
+	return chains
+}
+
+// chainLabel — имя подпробы и строки печати: служба и база строки.
+func chainLabel(c migrationchains.Chain) string {
+	if c.Database == "" {
+		return c.Service
+	}
+	return c.Service + "/" + c.Database
+}
+
+// databaseColumn — колонка «Database» печати на строку.
+func databaseColumn(c migrationchains.Chain) string {
+	if c.Database == "" {
+		return "не выбирает"
+	}
+	return c.Database
+}
+
+// chainDSN — база, на которую накатывается строка цепочки (CX1-115 (а)).
+//
+// Пустое Database — точка по имени базы не выбирает, и база — pgtest.NewEmptyDB
+// (имя `kacho_<cfg>_tNNNN`), как было. Непустое — база РОВНО С ИМЕНЕМ СТРОКИ:
+// её заводит `CREATE DATABASE` по DSN NewEmptyDB, имя в DSN подменяет
+// replaceDBName, снимается база в t.Cleanup. Имени базы из имени службы не
+// выводит никто — его объявляет таблица точки.
+func chainDSN(t *testing.T, c migrationchains.Chain) string {
+	t.Helper()
+	base := pgtest.NewEmptyDB(t)
+	if c.Database == "" {
+		return base
+	}
+	db, err := sql.Open("pgx", base)
+	if err != nil {
+		t.Fatalf("открытие базы пробы для CREATE DATABASE %s: %v", c.Database, err)
+	}
+	defer func() { _ = db.Close() }()
+	ident := `"` + strings.ReplaceAll(c.Database, `"`, `""`) + `"`
+	if _, err := db.Exec("CREATE DATABASE " + ident); err != nil {
+		t.Fatalf("база строки %s (точка %s) не заведена: %v", c.Database, c.Point, err)
+	}
+	t.Cleanup(func() {
+		drop, err := sql.Open("pgx", base)
+		if err != nil {
+			t.Errorf("снятие базы %s: %v", c.Database, err)
+			return
+		}
+		defer func() { _ = drop.Close() }()
+		if _, err := drop.Exec("DROP DATABASE IF EXISTS " + ident + " WITH (FORCE)"); err != nil {
+			t.Errorf("снятие базы %s: %v", c.Database, err)
+		}
+	})
+	return replaceDBName(t, base, c.Database)
 }
 
 // repoRoot — каталог с go.mod.
@@ -203,9 +270,10 @@ func buildApplyPoint(t *testing.T, root, binDir, pkg, service string) string {
 
 // TestEveryMigratorAppliesItsChainToALiveDatabase — доказательство наката.
 //
-// На каждую точку наката: собрать бинарь, выдать ПУСТУЮ базу, запустить `up`,
-// сверить число применённых миграций с длиной цепочки, повторить `up` (накат
-// идемпотентен) и прочитать `status`.
+// На каждую цепочку дерева (migrationchains.List, строка таблицы точки): собрать
+// бинарь её точки, выдать ПУСТУЮ базу строки (chainDSN: NewEmptyDB либо база
+// ровно с именем строки), запустить `up`, сверить число применённых миграций с
+// длиной цепочки, повторить `up` (накат идемпотентен) и прочитать `status`.
 //
 // Сверка с длиной цепочки — несущая. Без неё зелёным был бы и накат, не
 // применивший НИ ОДНОЙ миграции: бинарь, которому нечего делать, выходит нулём.
@@ -223,53 +291,63 @@ func TestEveryMigratorAppliesItsChainToALiveDatabase(t *testing.T) {
 			"тот класс, ради которого пакет заведён")
 	}
 
+	chains := treeChains(t, root)
 	binDir := t.TempDir()
-	proven, failed := 0, 0
+	bins := map[string]string{}
+	proven, failed, notify := 0, 0, 0
 
-	for _, pkg := range points {
-		service, migDir := migrationsDirOf(pkg)
+	for _, c := range chains {
 
-		ok := t.Run(service, func(t *testing.T) {
-			want := chainLength(t, root, migDir)
+		if c.Service == "notify" {
+			notify++
+		}
+		ok := t.Run(chainLabel(c), func(t *testing.T) {
+			want := chainLength(t, root, c.Dir)
 			if want == 0 {
-				t.Fatalf("в %s НЕТ ни одного файла миграции — эталона для сверки не существует, "+
-					"и «накат прошёл» здесь означало бы только «бинарь вышел нулём»", migDir)
+				t.Fatalf("в %s (база %s) НЕТ ни одного файла миграции — эталона для сверки не "+
+					"существует, и «накат прошёл» здесь означало бы только «бинарь вышел нулём»",
+					c.Dir, databaseColumn(c))
 			}
 
-			bin := buildApplyPoint(t, root, binDir, pkg, service)
+			bin, built := bins[c.Point]
+			if !built {
+				bin = buildApplyPoint(t, root, binDir, c.Point, c.Service)
+				bins[c.Point] = bin
+			}
 
-			dsn := pgtest.NewEmptyDB(t)
+			dsn := chainDSN(t, c)
+			dbName, _ := migrationchains.DatabaseOf(dsn)
 
 			out, err := runMigrator(t, bin, "up", "--dsn", dsn)
 			if err != nil {
-				t.Fatalf("накат %s на пустую базу ОТКАЗАЛ (%v) — это и означает «сервис не "+
-					"разворачивается»:\n%s", service, err, out)
+				t.Fatalf("накат %s (точка %s, база %s) на пустую базу ОТКАЗАЛ (%v) — это и "+
+					"означает «сервис не разворачивается»:\n%s", c.Dir, c.Point, dbName, err, out)
 			}
-			if got := appliedCount(t, dsn); got != want {
+			got := appliedCount(t, dsn)
+			t.Logf("  точка %s · Database %s · база в DSN %s · применено %d / объявлено %d",
+				c.Point, databaseColumn(c), dbName, got, want)
+			if got != want {
 				t.Fatalf("накат %s вышел успехом, но применил %d миграций из %d объявленных цепочкой. "+
 					"Успех на неполном накате хуже отказа: схема не та, а вердикт зелёный.\n%s",
-					service, got, want, out)
+					chainLabel(c), got, want, out)
 			}
 
 			// Повторный накат. Init-контейнер запускается на КАЖДОМ развёртывании, а
 			// не однажды, поэтому «применяется дважды» — штатный режим, а не край.
 			if out, err := runMigrator(t, bin, "up", "--dsn", dsn); err != nil {
 				t.Fatalf("повторный накат %s отказал (%v) — развёртывание на уже накатанной базе "+
-					"не пройдёт:\n%s", service, err, out)
+					"не пройдёт:\n%s", chainLabel(c), err, out)
 			}
 			if got := appliedCount(t, dsn); got != want {
-				t.Fatalf("повторный накат %s изменил число применённых: %d вместо %d", service, got, want)
+				t.Fatalf("повторный накат %s изменил число применённых: %d вместо %d", chainLabel(c), got, want)
 			}
 
 			if out, err := runMigrator(t, bin, "status", "--dsn", dsn); err != nil {
-				t.Fatalf("status %s отказал на накатанной базе (%v):\n%s", service, err, out)
+				t.Fatalf("status %s отказал на накатанной базе (%v):\n%s", chainLabel(c), err, out)
 			}
 
-			// Счёт ведётся ИЗНУТРИ тела, последним оператором, и это не стиль.
-			// Возврат t.Run равен true и тогда, когда подпроба ОТФИЛЬТРОВАНА и не
-			// исполнялась вовсе, — считать по нему значило бы записывать в
-			// доказанное то, чего не запускали. Ровно так первая редакция этой
-			// пробы отчиталась «доказано 6» на прогоне, где исполнялась одна точка.
+			// Счёт ведётся ИЗНУТРИ тела, последним оператором: возврат t.Run
+			// равен true и на отфильтрованной подпробе.
 			proven++
 		})
 		if !ok {
@@ -277,18 +355,19 @@ func TestEveryMigratorAppliesItsChainToALiveDatabase(t *testing.T) {
 		}
 	}
 
-	t.Logf("перепись: миграторов %d, накат доказан для %d", len(points), proven)
+	t.Logf("перепись: точек наката %d, цепочек %d, из них по services/notify %d, накат доказан для %d",
+		len(points), len(chains), notify, proven)
+	if notify == 0 {
+		t.Errorf("по services/notify цепочек 0 — точка наката каталога не видна доказательству")
+	}
 
-	// Область зелёного называется явно. Доказано меньше найденного — вердикт
-	// относится к доказанному, и молчание об этом сделало бы частичный прогон
-	// неотличимым от полного.
 	switch {
 	case failed > 0:
-		t.Errorf("накат доказан для %d точек из %d, отказали %d — находки выше", proven, len(points), failed)
-	case proven != len(points):
+		t.Errorf("накат доказан для %d цепочек из %d, отказали %d — находки выше", proven, len(chains), failed)
+	case proven != len(chains):
 		t.Errorf("доказано %d из %d при нуле отказов — прогон отфильтрован (-run), и его зелёное "+
-			"относится к %d точкам, а не к %d. Цель test-pg-outside-selection фильтра не ставит",
-			proven, len(points), proven, len(points))
+			"относится к %d цепочкам, а не к %d. Цель test-pg-outside-selection фильтра не ставит",
+			proven, len(chains), proven, len(chains))
 	}
 }
 
@@ -319,7 +398,7 @@ func TestApplyProofDistinguishesFailureFromSuccess(t *testing.T) {
 	}
 
 	pkg := points[0]
-	service, _ := migrationsDirOf(pkg)
+	service := pointService(pkg)
 	bin := buildApplyPoint(t, root, t.TempDir(), pkg, service)
 
 	// Живой сервер, несуществующая база: DSN отличается от годного ровно тем, что

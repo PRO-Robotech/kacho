@@ -101,7 +101,7 @@ POSTURE_SKIP ?=
 # `deploy/product_names_shell_reader_test.go`). Что сюда не вернётся вывод по
 # приставке, держит гейт `internal/repohygiene`
 # `TestStandRecipesNeverDeriveAnImageNameByPrefix`.
-SERVICES := vpc compute api-gateway nlb geo storage registry
+SERVICES := vpc compute api-gateway nlb geo storage registry notify
 
 # IMAGES — какие образы РЕАЛЬНО собирать. Умолчание — все восемь (локальный стенд
 # поднимает всё). Шард e2e поднимает подмножество компонентов, и сборка образа,

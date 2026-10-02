@@ -806,6 +806,16 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kacho.cloud.notify.v1.InternalNotifyProbeService/Send",
+    "permission": "notify.probeNotifications.send",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats",
     "permission": "registry.registries.getStats",
     "required_relation": "system_viewer",

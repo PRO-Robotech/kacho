@@ -44,6 +44,10 @@ var revocationScanRoots = []string{
 	"services/compute/internal/config",
 	"services/storage/internal/config",
 	"services/geo/internal/apps/kacho/config",
+	// Пробный процесс каталога notify: его кеш вердиктов строит фундамент, а
+	// величину окна объявляет ЭТОТ конфиг. Ключ переписи — «notify <ручка>»:
+	// serviceOfPath берёт имя сервиса из пути, а не имя бинаря.
+	"services/notify/cmd/notify-probe/internal/config",
 	// ЗДЕСЬ БЫЛ КАТАЛОГ ОБЪЯВЛЕНИЙ ВЛАДЕЛЬЦА МОДЕЛИ — он снят вместе со своим
 	// предметом: служба доступа вынесена отдельным продуктом, и каталога в дереве
 	// нет ни одним файлом. Гейт назвал это сам («предпосылка гейта нарушена:

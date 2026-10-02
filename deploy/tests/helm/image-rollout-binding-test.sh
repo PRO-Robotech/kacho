@@ -117,6 +117,45 @@ echo "=== $SCRIPT: рендер с двумя разными идентифик�
 render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" "values.dev.yaml + карта идентификаторов A"; ok
 render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" "values.dev.yaml + карта идентификаторов B"; ok
 
+# ── NOTIFY ДО ПОЛОСЫ D2 — КОПИЕЙ ОСМОТРА (решения Д80, Д81; замысел З28) ──────
+#
+# Объекты чарта notify рендерятся только при непустой таблице подключаемых
+# источников, а в дереве она пуста: умбрелла notify не рендерит ни в одной
+# цепочке, и привязку его пода к содержимому образа судить было бы не на чем.
+# notify при этом остаётся в SERVICES — его образ собирается, и выпасть из
+# предмета молча он не вправе. Поэтому, ПОКА таблица пуста, workload notify
+# берётся из рендера копии осмотра (`deploy/scripts/render-notify-inspect.sh`:
+# каталог чарта, где подменён ровно `templates/_sources.tpl`) с теми же картами
+# A и B; каталог чарта печатается своей строкой «перечень [], объектов 0».
+#
+# Ветку включает ПУСТАЯ ТАБЛИЦА, а не ноль объектов notify в рендере умбреллы:
+# непустая таблица — ветки нет, и workload notify обязан прийти из умбреллы (иначе
+# находка «не доехал»). Ветка истекает вместе с D2 сама: обёртка на непустой
+# таблице отказывает «копия осмотра пережила предмет».
+INSPECT="$DEPLOY_ROOT/scripts/render-notify-inspect.sh"
+NOTIFY_LEG=(-f "$DEPLOY_ROOT/testdata/notify-standalone/values.yaml" -f "$DEPLOY_ROOT/testdata/mail-node/operator.yaml")
+if [[ " $SERVICES " == *" notify "* ]]; then
+  [ -f "$INSPECT" ] || fatal "notify в SERVICES, а обёртки копии осмотра нет ($INSPECT)"
+  NOTIFY_TABLE="$(bash "$INSPECT" --table)" || fatal "таблица модулей notify не прочитана обёрткой копии осмотра"
+  if [ "$NOTIFY_TABLE" -eq 0 ]; then
+    echo "--- notify: таблица модулей пуста — workload notify из копии осмотра (Д80, Д81) ---"
+    bash "$INSPECT" --into "$TMPD/inspect" >"$TMPD/inspect.log" 2>&1; irc=$?
+    sed 's/^/  /' "$TMPD/inspect.log"
+    case "$irc" in
+      0) ;;
+      1) fail "копия осмотра notify: находка обёртки (перечень выше)" ;;
+      *) fatal "копия осмотра notify не построена — привязку notify судить не на чем" ;;
+    esac
+    for side in a b; do
+      helm_try kacho-notify "$TMPD/inspect/notify" -n kacho "${NOTIFY_LEG[@]}" -f "$TMPD/ids-$side.yaml"
+      render_nonempty_or_fatal "копия осмотра notify + карта идентификаторов ${side^^}"
+      printf -- '---\n%s\n' "$HELM_OUT" >>"$TMPD/$side.yaml"
+    done
+  else
+    echo "--- notify: таблица модулей непуста ($NOTIFY_TABLE строк) — ветки Д80 нет, workload notify судится по рендеру умбреллы ---"
+  fi
+fi
+
 SERVICES="$SERVICES" IDS_SUFFIX_A="$IDS_SUFFIX_A" IDS_SUFFIX_B="$IDS_SUFFIX_B" \
   python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
 import os, sys, yaml
@@ -346,6 +385,30 @@ else
     printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
   fi
 fi
+
+# (E) ИНЪЕКЦИЯ ПО КОПИИ ОСМОТРА (Д81): в чарте notify копии дерева снята
+#     привязка → копия осмотра строится из этого каталога и workload notify
+#     привязки не несёт → КРАСНЫЙ с именем notify. Близнец — (0): дерево как есть,
+#     привязано все сервисы SERVICES, notify в их числе.
+NOTIFY_REL="helm/notify/templates/deployment.yaml"
+if [[ " $SERVICES " != *" notify "* ]]; then
+  echo "  ПРОВАЛ (E) notify нет в SERVICES — инъекции по копии осмотра нечего судить"; st=1
+elif [ ! -f "$DEPLOY_ROOT/$NOTIFY_REL" ]; then
+  echo "  ПРОВАЛ (E) не найден шаблон notify для инъекции ($NOTIFY_REL)"; st=1
+else
+  grep -v 'kacho.cloud/image-id' "$DEPLOY_ROOT/$NOTIFY_REL" >"$WORK/$NOTIFY_REL"
+  out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
+  cp "$DEPLOY_ROOT/$NOTIFY_REL" "$WORK/$NOTIFY_REL"
+  if [ $ist -eq 1 ] && [[ "$out" == *"notify: идентификатор содержимого образа НЕ ДОЕХАЛ"* ]] \
+     && [[ "$out" == *"копия осмотра:"* ]]; then
+    echo "  ОК  (E) в копии осмотра снята привязка notify → КРАСНЫЙ с именем notify"
+  else
+    echo "  ПРОВАЛ (E) снятая привязка notify в копии осмотра не поймана (exit=$ist)"
+    printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
+  fi
+fi
+[[ " $SERVICES " == *" notify "* ]] && [ $rc -eq 0 ] \
+  && echo "  ОК  (E-близнец) дерево как есть: notify привязан через копию осмотра, состав полон"
 
 echo
 [ $st -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"

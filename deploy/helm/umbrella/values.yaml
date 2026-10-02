@@ -123,7 +123,7 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: 484-notify-a5986266
+    tag: 484-notify-57f18417
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
@@ -834,6 +834,29 @@ pg-storage:
   primary:
     extendedConfiguration: |
       autovacuum_naptime = 5s
+
+# ─── notify — шлюз уведомлений (NTF-1, замысел З28; полоса D1) ─────────────────
+# Подчарт deploy/helm/notify; объекты рендерятся только при непустом выведенном
+# перечне источников (NTF1-N04). На этой полосе таблица подключаемых источников
+# пуста, и notify не рендерится ни в одной цепочке — его в рендер цепочек вводит
+# полоса D2 (флаг global.kacho.notifications.*, строка notify-probe).
+#
+# ОБРАЗ НАЗВАН, ТЕГ — НЕТ, И ЭТО ПРАВДА, А НЕ ПРОПУСК. Рецепт стенда собирает
+# kacho-notify, поэтому базовый слой обязан его назвать (гейт
+# TestUmbrellaPinsEveryImageTheTreeBuilds). Опубликованного образа kacho-notify в
+# реестре ещё нет (конвейер публикует его со ствола, а службы там пока нет), и
+# тег, «выведенный» из записи коммита, назвал бы манифест, которого не
+# существует. Пустой тег — объявленное «опубликованного нет»: проверка
+# досягаемости считает его «без объявленного тега», а чарт notify отказывает в
+# рендере без тега (`required`), а не тянет `latest`. Тег вписывается тем же
+# изменением, что вводит notify в цепочку, тянущую образы из реестра.
+#
+# Посадку и шифрование канала базы объявляют профили цепочек (values.dev.yaml,
+# values.prod.yaml), а не этот слой и не умолчание подчарта.
+notify:
+  image:
+    repository: docker.io/prorobotech/kacho-notify
+    tag: ""
 
 # ─── security.txt (RFC 9116) — served at /.well-known/security.txt via api-gateway
 # ingress; runtime-configurable per cluster.

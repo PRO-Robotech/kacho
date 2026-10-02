@@ -1,0 +1,37 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+{{- $m := .Values.mtls }}
+{{- $trust := include "notify.trustDomain" . }}
+# ─── УДОСТОВЕРЕНИЕ NOTIFY ДЛЯ mTLS (замысел З20, З30) ────────────────────────
+#
+# Клиентский лист внутреннего УЦ: им notify предъявляет себя источникам ленты и
+# kaname. SAN — идентичность учётки notify в пространстве релиза; другую
+# идентичность политика выпуска (templates/cert-issuance-policy.yaml зонтика)
+# не одобрит. Выключателя mTLS нет: без файлов листа процесс не стартует
+# (NTF1-G15).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "notify.fullname" . }}-peer-tls
+  labels:
+    {{- include "notify.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "notify.fullname" . }}-peer-tls
+  duration: {{ $m.leafDuration | quote }}
+  renewBefore: {{ $m.leafRenewBefore | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $m.issuer.name | quote }}
+    kind: {{ $m.issuer.kind | quote }}
+    group: cert-manager.io
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust .Release.Namespace (include "notify.fullname" .) | quote }}
+  usages:
+    - client auth
+{{- end }}

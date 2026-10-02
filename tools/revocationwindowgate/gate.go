@@ -175,6 +175,8 @@ var knobNames = map[string]string{
 	"KACHO_COMPUTE_AUTHZ_CACHE_TTL":  "check",
 	"KACHO_STORAGE_AUTHZ_CACHE_TTL":  "check",
 	"KACHO_GEO_AUTHZ_CACHE_TTL":      "check",
+	// probe process of the notify catalog (services/notify/cmd/notify-probe)
+	"KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL": "check",
 	// per-object List visibility cache (internal/authzfilter)
 	"authz.list-filter.cache-ttl":            "list-filter",
 	"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": "list-filter",

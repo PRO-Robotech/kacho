@@ -202,6 +202,17 @@ INTERNAL_ENDPOINTS = {
     "vpc": ("svc/vpc", 9091, "vpc.kacho.svc.cluster.local"),
     "compute": ("svc/compute", 9091, "compute.kacho.svc.cluster.local"),
     "storage": ("svc/kacho-storage", 9091, "kacho-storage.kacho.svc.cluster.local"),
+    # Носитель `notify` (каталог services/notify) — ТОЛЬКО ВНУТРЕННИЙ: его
+    # Internal*-службы (`InternalNotifyProbeService`, сервер подписки вида
+    # `notification_feed`) поднимает процесс пробы-источника notify-probe на
+    # своём :9091, публичных служб у пробы нет, а у шлюза notify gRPC-слушателя
+    # нет вовсе (замысел З29, Д74). Имя — сегмент `sa/` идентичности пробы в
+    # таблице источников (`kacho-notify-probe`); Service с этим именем заводит
+    # развёртывание пробы (#2915, полоса D3). До него экземпляра пробы нет ни в
+    # одном профиле, и домен `notify` не измеряет ни один шард — это запись
+    # `ban6_undeployed_carriers` в deploy/e2e-shards.json, истекающая сама, когда
+    # шаблон чарта назовёт процесс `kacho-notify-probe`.
+    "notify": ("svc/kacho-notify-probe", 9091, "kacho-notify-probe.kacho.svc.cluster.local"),
 }
 
 # Вердикты встречного контроля (отдельные от вердиктов внешней пробы — вопрос

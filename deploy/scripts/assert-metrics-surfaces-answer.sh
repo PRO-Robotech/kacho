@@ -224,6 +224,7 @@ if [[ "$want_exec" == 1 ]]; then
     10.0.0.6) ns=kacho_vpc ;;
     10.0.0.7) ns=kacho_geo ;;
     10.0.0.8) ns=kacho_storage ;;
+    10.0.0.9) ns=kacho_notify ;;
     *)        ns=kacho_unknown ;;
   esac
   case "${STUB_SURFACE:-ok}" in
@@ -262,6 +263,9 @@ case "${STUB_MODE:-live}" in
       app=kacho-storage)                echo "storage-1|10.0.0.8|9102|" ;;
       app.kubernetes.io/name=kaname)    echo "$kaname_row" ;;
       app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1|10.0.0.5|9102|" ;;
+      # Под notify есть на стенде, только когда его таблица источников непуста
+      # (до D2 — нигде): заглушка отвечает им лишь по STUB_NOTIFY_POD=1.
+      app=kacho-notify) [[ "${STUB_NOTIFY_POD:-0}" == 1 ]] && echo "kacho-notify-1|10.0.0.9|9102|" ;;
       *) : ;;
     esac ;;
 esac
@@ -319,6 +323,32 @@ STUB
   run_case "схема вне пары http|https → красное с именем процесса" \
            1 "iam: объявление сбора называет схему 'ftp'" \
            STUB_MODE=live STUB_SCHEME_KANAME=ftp
+
+  # ── ось ветки Д80: notify при пустой таблице источников ─────────────────
+  #
+  # notify служит величины и объявляет сбор, но его объекты рендерятся только
+  # при непустой таблице источников; до D2 она пуста, и пода notify на стенде
+  # нет by construction. Ветку включает ПУСТАЯ ТАБЛИЦА (её спрашивает обёртка
+  # копии осмотра), а не отсутствие пода. Тройка одно-фактная вокруг одного
+  # стенда без пода notify:
+  #   а) таблица пуста (дерево как есть) → notify вне опроса, зелёный «все 8» —
+  #      это случай 1 выше; здесь утверждается ещё и печать причины;
+  #   б) таблица непуста, пода нет        → «не выполнилось», notify назван;
+  #   в) таблица непуста, под есть        → зелёный, опрошены все 9.
+  # Ответ о таблице подаётся подставной обёрткой (NOTIFY_INSPECT): настоящая
+  # отвечает о дереве, а дерево здесь не правится.
+  cat >"$tmp/bin/inspect-filled" <<'INSPECT'
+#!/usr/bin/env bash
+[[ "${1:-}" == --table ]] && echo 1
+INSPECT
+  chmod +x "$tmp/bin/inspect-filled"
+  run_case "Д80: таблица notify пуста → notify вне опроса, причина напечатана" \
+           0 "notify — вне опроса: перечень пуст" STUB_MODE=live
+  run_case "Д80: таблица непуста, пода notify нет → не выполнилось, notify назван" \
+           2 "notify (под не найден" STUB_MODE=live NOTIFY_INSPECT="$tmp/bin/inspect-filled"
+  run_case "Д80: таблица непуста, под notify есть → зелёный, опрошены все 9" \
+           0 "все 9 поверхностей отвечают" \
+           STUB_MODE=live STUB_NOTIFY_POD=1 NOTIFY_INSPECT="$tmp/bin/inspect-filled"
 
   # ── ось перечня частей ───────────────────────────────────────────────────
   #
@@ -736,8 +766,33 @@ if [[ -n "$PROCESSES" ]]; then
   load_product_names $PROCESSES
 fi
 
+# ВЕТКА Д80: notify при ПУСТОЙ таблице подключаемых источников.
+#
+# Объекты чарта notify рендерятся только при непустой таблице источников; пока
+# она пуста (до полосы D2), пода notify нет ни в одной цепочке by construction, а
+# в перечень процессов notify попадает обоими слагаемыми (корень служит
+# величины, шаблон объявляет сбор). Спрашивать под, которого рендер не создаёт,
+# значило бы выносить «не выполнилось» о каждом стенде.
+#
+# Ветку включает ПУСТАЯ ТАБЛИЦА — ответ обёртки копии осмотра
+# (`render-notify-inspect.sh --table`), — а не отсутствие пода: при непустой
+# таблице под обязан быть, и его отсутствие остаётся «не выполнилось». Ответа о
+# таблице нет (обёртка отказала) — ветки нет тоже. Ветка истекает с D2 сама.
+NOTIFY_INSPECT="${NOTIFY_INSPECT:-$(repo_root)/deploy/scripts/render-notify-inspect.sh}"
+notify_table_rows=""
+if any_line_matches "$PROCESSES" '^notify$'; then
+  notify_table_rows="$(bash "$NOTIFY_INSPECT" --table 2>/dev/null)" || notify_table_rows=""
+fi
+off_subject=0
+
 while read -r process; do
   [[ -n "$process" ]] || continue
+  if [[ "$process" == notify && "$notify_table_rows" == 0 ]]; then
+    off_subject=$((off_subject + 1))
+    echo "  --  notify — вне опроса: перечень пуст (Д80) — таблица источников чарта notify пуста," \
+         "объектов notify 0 в каждой цепочке, пода нет by construction; ветку снимает D2"
+    continue
+  fi
   expected=$((expected + 1))
   # Порт И СХЕМА берутся из ОБЪЯВЛЕНИЯ СБОРА этого же пода: аннотация и есть то
   # место, которое говорит собирателю, куда идти. Читая её, гейт проверяет ровно
@@ -808,7 +863,8 @@ while read -r process; do
 done < <(printf '%s\n' "$PROCESSES")
 
 echo
-echo "перепись: процессов с поверхностью в дереве — $expected; ответили — $answered; " \
+echo "перепись: процессов с поверхностью в дереве — $((expected + off_subject)); из них вне опроса" \
+     "по Д80 (таблица notify пуста) — $off_subject; опрашивалось — $expected; ответили — $answered;" \
      "ответили не тем — $failed; опрос не выполнился — $not_run"
 echo "  опрошены по схеме: http — $by_http (из них схема досталась умолчанием объявления — $scheme_defaulted); https — $by_https"
 if [[ "$by_https" -gt 0 ]]; then
