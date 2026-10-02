@@ -344,6 +344,32 @@ def user_platform_token(uid, created_by):
 CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
 
 
+# Посеянный аккаунт `kacho-system` — есть в каждой установке (миграция службы).
+# Человек им не владеет, поэтому `200` на его чтение отвечает только
+# администратору облака (`any_admin: system_admin` модели службы).
+SEEDED_SYSTEM_ACCOUNT = "acc1a18042d81fb438d6"
+
+
+def _await_cloud_admin_reads(token, user_id, budget=60):
+    """Выдача администратора облака видна модели прав — или громкий отказ посева.
+
+    Выдача приходит в хранилище прав асинхронно, поэтому вопрос повторяется в
+    бюджете. Не дождались — посев останавливается: набор, получивший слот
+    администратора без права, утверждал бы отказ службы как находку о продукте.
+    """
+    deadline = time.time() + budget
+    last = {}
+    while time.time() < deadline:
+        last = _curl("GET", f"/iam/v1/accounts/{SEEDED_SYSTEM_ACCOUNT}", token)
+        if isinstance(last, dict) and last.get("id") == SEEDED_SYSTEM_ACCOUNT:
+            return
+        time.sleep(1.0)
+    raise SystemExit(
+        f"[prodseed] выдача system_admin человеку user:{user_id} НЕ ВИДНА модели за "
+        f"{budget} с: чтение чужого аккаунта {SEEDED_SYSTEM_ACCOUNT} его токеном "
+        f"отвечает {last}. Слот администратора облака без права не отдаётся.")
+
+
 def seed_fga_tuple(fga_subject, relation, obj):
     """Посеять факт отношения (<fga_subject> #<relation> @obj) через журнал iam.
 
@@ -759,6 +785,30 @@ def seed() -> dict:
     seed_fga_cluster(f"user:{usr_utok}", "system_viewer")
     tok_user_platform = user_platform_token(usr_utok, usr_utok)
 
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-account-id-at-create` (kacho#2984; служба —
+    # PRO-Robotech/kaname#549, приёмка службы `account-id-may-be-supplied-at-create.md`,
+    # стадия S2, AID-K1 и AID-K2). Указать `id` при создании аккаунта вправе только
+    # ЧЕЛОВЕК, держащий `system_admin` на кластере: машинный администратор получает
+    # отказ по роду принципала (Р3 приёмки), поэтому `jwtBootstrap` этим субъектом
+    # служить не может. Оба — свои люди, а не матричные: каждое заведение аккаунта
+    # списывает место окна темпа заведений личности, и чужой набор, делящий человека,
+    # упёрся бы в потолок от этого набора.
+    #
+    # Администратор облака получает выдачу тем же глаголом, что цель набора
+    # `cluster_admin` (`InternalClusterService.GrantAdmin` под бутстрап-удостоверением).
+    # Выдача утверждается вопросом, на который отвечает ТОЛЬКО администратор облака, —
+    # чтение посеянного аккаунта `kacho-system`, которым человек не владеет: «выдано»
+    # не должно быть неотличимо от «выдано и не видно модели».
+    h_cloud_admin = human(f"prodseed-acc-id-admin-{RID}@example.com")
+    _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
+                 {"subjectType": "USER", "subjectId": h_cloud_admin.user_id}, base=INTERNAL),
+           boot, "userId")
+    tok_cloud_admin_human = user_platform_token(h_cloud_admin.user_id, h_cloud_admin.user_id)
+    _await_cloud_admin_reads(tok_cloud_admin_human, h_cloud_admin.user_id)
+    # Человек без роли на кластере — сторона отказа права (AID-K2) и её близнец.
+    h_plain = human(f"prodseed-acc-id-plain-{RID}@example.com")
+    tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
+
     fixtures = {
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
@@ -768,6 +818,13 @@ def seed() -> dict:
         # обменянный у нашего издателя. Слот читает суита края.
         "jwtUserTokenPlatformIssuer": tok_user_platform,
         "userTokenPlatformUserId": usr_utok,
+        # Люди набора `iam-account-id-at-create` (kacho#2984): человек-администратор
+        # облака и человек без роли на кластере. Пары «id ↔ предъявитель» объявлены
+        # в principal_pairings.PRINCIPAL_PAIRINGS и сверяются ниже.
+        "jwtCloudAdminHuman": tok_cloud_admin_human,
+        "cloudAdminHumanUserId": h_cloud_admin.user_id,
+        "jwtPlainHuman": tok_plain_human,
+        "plainHumanUserId": h_plain.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,
