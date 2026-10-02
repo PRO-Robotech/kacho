@@ -81,6 +81,8 @@ PASSES = (
 LOG_JUDGED = (BARE_NAME, RENDERED_NAME)
 
 _RENDERED = {}
+# Каталог релиза вне зонтика → архив чарта в дереве (`releases.tsv` рендера).
+_RELEASES = {}
 
 
 def rendered_dir(root):
@@ -100,6 +102,11 @@ def rendered_dir(root):
                   % (r.returncode, r.stderr[-800:]), file=sys.stderr)
             sys.exit(2)
         _RENDERED[key] = out
+        with open(os.path.join(out, "releases.tsv"), encoding="utf-8") as fh:
+            for line in fh:
+                if "\t" in line:
+                    k, v = line.rstrip("\n").split("\t", 1)
+                    _RELEASES[k] = v
     return _RENDERED[key]
 
 
@@ -110,7 +117,7 @@ def rendered_files(root):
     for d, _dirs, files in os.walk(base):
         for f in files:
             rel = os.path.relpath(os.path.join(d, f), base).replace(os.sep, "/")
-            if not rel.split("/")[-1].startswith(".err-"):
+            if "/" in rel:  # служебные `stacks.tsv`/`releases.tsv` лежат в корне
                 out.append(rel)
     return sorted(out)
 
@@ -128,9 +135,12 @@ def require(name):
 
 def normalize(ref, target):
     """Цель прохода → путь от корня дерева. Цель профиля (`<стек>/<чарт>/<путь>`)
-    приводится к пути в зонтике: `deploy/helm/umbrella/<путь>`."""
+    приводится к пути в зонтике: `deploy/helm/umbrella/<путь>`; цель релиза вне зонтика
+    (`release-<имя>/<чарт>/<путь>`) — к архиву чарта в дереве: `<архив>:<путь>`."""
     if ref == RENDERED_REF:
         parts = target.split("/", 2)
+        if len(parts) == 3 and parts[0] in _RELEASES:
+            return _RELEASES[parts[0]] + ":" + parts[2]
         return UMBRELLA + "/" + parts[2] if len(parts) == 3 else UMBRELLA + "/" + target
     return target if ref in (".", "") else ref.rstrip("/") + "/" + target
 

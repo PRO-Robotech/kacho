@@ -27,9 +27,9 @@ read -r PG_ENTRY STACK < <(python3 - "$ROOT/.trivyignore.yaml" <<'PY'
 import sys, yaml
 doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
 paths = [p for e in doc.get("misconfigurations") or [] for p in e.get("paths") or []
-         if "/kacho-umbrella/" in p]
-pg = [p for p in paths if p.startswith("prod/") and "/charts/pg-vpc/" in p]
-print(pg[0] if pg else "-", paths[0].split("/", 1)[0] if paths else "-")
+         if p.startswith("stack-")]
+pg = [p for p in paths if p.startswith("stack-prod/") and "/charts/pg-vpc/" in p]
+print(pg[0] if pg else "-", paths[0].split("/", 1)[0][len("stack-"):] if paths else "-")
 PY
 )
 [ "${PG_ENTRY:--}" != "-" ] && [ "${STACK:--}" != "-" ] \

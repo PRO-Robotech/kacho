@@ -58,15 +58,18 @@
 # ── 2026-10-01: ОТРЕНДЕРЕННЫЕ ПРОФИЛИ ЗОНТИКА (#2980) ────────────────────────
 # Зонтик и его подчарты осматриваются тем, что РАЗВЁРТЫВАЕТСЯ: каждый стек таблицы
 # `deploy/stacks.txt` отрендерен цепочкой своих values, с хуками, по файлу на шаблон
-# (`deploy/scripts/render-umbrella-profiles.sh`, проход «профили зонтика»). Пути ниже —
-# в форме этого прохода: `<стек>/kacho-umbrella/<путь шаблона>`; к ней CI и применяет
-# этот файл. Пара «правило × отрендеренный путь профиля» — пофайлово, по правилу 2:
+# (`deploy/scripts/render-umbrella-profiles.sh`, проход «профили зонтика»), а релизы вне
+# зонтика (cert-manager, политика выпуска) — так, как их ставит `cert-manager-up`. Пути
+# ниже — в форме этого прохода: `stack-<стек>/kacho-umbrella/<путь шаблона>` и
+# `release-<имя>/<чарт>/<путь шаблона>`; к ней CI и применяет этот файл. Пара «правило × отрендеренный путь профиля» — пофайлово, по правилу 2:
 # новый стек того же вида записи не наследует.
 #
-# Замер 2026-10-01, trivy 0.70.0, 7 стеков: 786 целей, 19 пар «правило × путь шаблона»,
-# 85 строк «правило × путь × стек». Три рода записей, и они НЕ равны:
+# Замер 2026-10-02, trivy 0.70.0, 7 стеков и 2 релиза: 860 целей, 19 пар «правило × путь
+# шаблона», 87 строк «правило × путь × единица рендера». Прежний замер (786 целей, 85
+# строк) не видел стек `dev` вовсе: trivy пропускал каталог `dev` в корне скана. Три рода записей, и они НЕ равны:
 #   * права, без которых сторонний контроллер не выполняет свою функцию — принятый
-#     риск по существу (cert-manager, контроллер входа, его хук допуска);
+#     риск по существу (cert-manager — отдельным релизом, контроллер входа, его хук
+#     допуска);
 #   * hostPort контроллера входа — только цепочки с `values.dev.yaml` (kind);
 #   * ДОЛГ развёртывания: корень ФС на запись и контекст безопасности по умолчанию у
 #     контроллера входа (с хуками), PostgreSQL (все псевдонимы `pg-*`) и реестра в
@@ -78,113 +81,115 @@
 misconfigurations:
   - id: KSV-0114
     paths:
-      - "dev-prod/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "own/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "prod/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "prorobotech/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
+      - "release-cert-manager/cert-manager/templates/cainjector-rbac.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (cainjector подставляет CA в конфигурации вебхуков)"
   - id: KSV-0041
     paths:
-      - "dev-prod/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "own/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "prod/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "prorobotech/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
+      - "release-cert-manager/cert-manager/templates/rbac.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (cert-manager выпускает сертификаты в Secret)"
   - id: KSV-0041
     paths:
-      - "dev-prod/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "own/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "prod/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
-      - "prorobotech/kacho-umbrella/charts/cert-manager/templates/cainjector-rbac.yaml"
+      - "release-cert-manager/cert-manager/templates/cainjector-rbac.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (cert-manager читает и пишет Secret с сертификатами)"
   - id: KSV-0041
     paths:
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/clusterrole.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (контроллер входа читает TLS-секреты, на которые ссылаются Ingress)"
   - id: KSV-0056
     paths:
-      - "dev-prod/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "own/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "prod/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
-      - "prorobotech/kacho-umbrella/charts/cert-manager/templates/rbac.yaml"
+      - "release-cert-manager/cert-manager/templates/rbac.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (решатель ACME HTTP-01 создаёт Ingress/Service)"
   - id: KSV-0114
     paths:
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml"
     statement: "#2980: принятый риск — право составляет функцию стороннего контроллера (хук патчит свою конфигурацию вебхука допуска CA-сертификатом)"
   - id: KSV-0024
     paths:
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
     statement: "#2980: только цепочка dev — kind пробрасывает вход на узел через hostPort; в профилях без values.dev.yaml записи нет"
   - id: KSV-0014
     paths:
-      - "a8f60d/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "a8f60d/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "dev-prod/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-      - "fe3455/kacho-umbrella/charts/registry/templates/deployment.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "own/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "own/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "prod/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "prod/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
-      - "prorobotech/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-a8f60d/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-dev/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-fe3455/kacho-umbrella/charts/registry/templates/deployment.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-own/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-prod/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-compute/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-geo/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-iam/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-nlb/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-registry/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-storage/templates/primary/statefulset.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/pg-vpc/templates/primary/statefulset.yaml"
     statement: "#2985: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
   - id: KSV-0118
     paths:
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
-      - "dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
-      - "own/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
-      - "prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
-      - "prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
+      - "stack-dev-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
+      - "stack-dev/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
+      - "stack-own/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
+      - "stack-prod/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml"
+      - "stack-prorobotech/kacho-umbrella/charts/ingress-nginx/templates/controller-deployment.yaml"
     statement: "#2985: ДОЛГ развёртывания — находка верна для профиля; исправляется значениями зонтика с проверкой подъёмом на стенде, запись снимается сама (рендер станет чистым — гейт исключений назовёт её)"
