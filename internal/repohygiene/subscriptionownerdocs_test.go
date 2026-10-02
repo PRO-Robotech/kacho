@@ -82,6 +82,81 @@ const subscriptionPathDeclRel = "gateway/internal/subscriptionstream/request.go"
 // заводя репозитория.
 type subscriptionDocsLister func(dir string, suffixes ...string) ([]string, error)
 
+// subscriptionInternalOnlyOwners — владельцы журнала, чей вид служится ТОЛЬКО на
+// внутреннем слушателе и краем не маршрутизируется: клиентской возможности
+// нет, и требование назвать адрес ручки в клиентской документации было бы
+// требованием обещать то, чего клиент не получит.
+//
+// Запись самоистекает от ФАКТА В ДЕРЕВЕ (subscriptionInternalOnlyExpired):
+// домен перестал служить глагол — записи нечего исключать; край узнал
+// внутренний адрес домена (ключ домена в `BackendAddrs` конфигурации края) —
+// вид стал досягаем снаружи, и требование к документации возвращается.
+var subscriptionInternalOnlyOwners = map[string]string{
+	"notify": "вид notification_feed только внутренний (kacho#2915, З32, Д74): ленту и подписку " +
+		"служит корень пробы-источника cmd/notify-probe на внутреннем слушателе, читатель — " +
+		"шлюз notify; край его не маршрутизирует (ban #6). Предикат снятия — ключ \"notify\" в " +
+		"gateway/internal/config BackendAddrs",
+}
+
+// subscriptionEdgeConfigRel — исходник конфигурации края, чья карта адресов
+// решает, каких владельцев край может назвать (`DomainsWithInternalBackend`).
+const subscriptionEdgeConfigRel = "gateway/internal/config/config.go"
+
+// subscriptionEdgeDomains — строковые ключи карты, которую возвращает
+// `BackendAddrs`: домены, чей адрес край знает. Разбором, а не подстрокой.
+func subscriptionEdgeDomains(root string) (map[string]bool, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filepath.Join(root, subscriptionEdgeConfigRel), nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		fn, ok := n.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "BackendAddrs" || fn.Body == nil {
+			return true
+		}
+		ast.Inspect(fn.Body, func(m ast.Node) bool {
+			kv, ok := m.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			if lit, ok := kv.Key.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				out[strings.Trim(lit.Value, "\"`")] = true
+			}
+			return true
+		})
+		return false
+	})
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s: ключей BackendAddrs не найдено — предикат снятия внутренних "+
+			"владельцев читать не с чего", subscriptionEdgeConfigRel)
+	}
+	return out, nil
+}
+
+// subscriptionInternalOnlyExpired — записи ведомости, пережившие предмет.
+func subscriptionInternalOnlyExpired(owners []string, edge map[string]bool) []string {
+	isOwner := map[string]bool{}
+	for _, o := range owners {
+		isOwner[o] = true
+	}
+	var out []string
+	for name := range subscriptionInternalOnlyOwners {
+		switch {
+		case !isOwner[name]:
+			out = append(out, fmt.Sprintf("запись внутреннего владельца %q пережила предмет: "+
+				"домен глагол подписки не служит — снимите запись", name))
+		case edge[name]:
+			out = append(out, fmt.Sprintf("запись внутреннего владельца %q пережила предмет: край "+
+				"знает адрес домена (%s BackendAddrs), вид досягаем снаружи — снимите запись, "+
+				"и клиентская документация обязана назвать адрес ручки", name, subscriptionEdgeConfigRel))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // ownerReport — что гейт установил про одного владельца журнала.
 type ownerReport struct {
 	name       string
@@ -185,7 +260,22 @@ func TestSubscriptionOwnersSaySoInTheirClientDocs(t *testing.T) {
 		t.Errorf("исходник %s не разбирается — гейт судит по узлам дерева, и неосмотренный "+
 			"файл его молчания не оправдывает", path)
 	}
-	reports := ownerDocReports(root, owners, list)
+	edge, err := subscriptionEdgeDomains(root)
+	if err != nil {
+		t.Fatalf("домены края: %v", err)
+	}
+	for _, finding := range subscriptionInternalOnlyExpired(owners, edge) {
+		t.Error(finding)
+	}
+	clientOwners := make([]string, 0, len(owners))
+	for _, o := range owners {
+		if why, internal := subscriptionInternalOnlyOwners[o]; internal {
+			t.Logf("  · %s: вид только внутренний — клиентская документация не судится (%s)", o, why)
+			continue
+		}
+		clientOwners = append(clientOwners, o)
+	}
+	reports := ownerDocReports(root, clientOwners, list)
 
 	named := 0
 	for _, rep := range reports {
@@ -292,5 +382,24 @@ func TestSubscriptionHandlePathHereMatchesTheEdgeDeclaration(t *testing.T) {
 		t.Fatalf("адрес ручки объявлен как %q, а гейт сверяет документацию с %q: величина "+
 			"повторена и разошлась — сверка идёт с адресом, которого нет",
 			declared, subscriptionHandlePath)
+	}
+}
+
+// TestSubscriptionInternalOnlyOwnersExpireOnTheirFacts — запись внутреннего
+// владельца истекает от факта в дереве в обе стороны; близнец — оба факта на
+// месте, находок нет.
+func TestSubscriptionInternalOnlyOwnersExpireOnTheirFacts(t *testing.T) {
+	t.Parallel()
+	edge := map[string]bool{"vpc": true}
+	if got := subscriptionInternalOnlyExpired([]string{"notify", "vpc"}, edge); len(got) != 0 {
+		t.Fatalf("близнец: владелец служит глагол, край его не знает — находок быть не должно: %v", got)
+	}
+	if got := subscriptionInternalOnlyExpired([]string{"vpc"}, edge); len(got) != 1 ||
+		!strings.Contains(got[0], "не служит") {
+		t.Fatalf("домен перестал служить глагол — запись обязана истечь: %v", got)
+	}
+	if got := subscriptionInternalOnlyExpired([]string{"notify"}, map[string]bool{"notify": true}); len(got) != 1 ||
+		!strings.Contains(got[0], "BackendAddrs") {
+		t.Fatalf("край узнал адрес домена — запись обязана истечь: %v", got)
 	}
 }

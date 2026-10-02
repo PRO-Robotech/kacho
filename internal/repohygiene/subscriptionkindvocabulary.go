@@ -119,7 +119,16 @@ type SubscriptionKindOptions struct {
 	// вторая половина вердикта НЕ выносится, и перепись говорит это вслух:
 	// «не сверялось» обязано быть отличимо от «сошлось».
 	ClientPage string
+	// InternalKinds — виды, объявленные владельцем, но служимые ТОЛЬКО на
+	// внутреннем слушателе: край их не маршрутизирует, и клиентская страница
+	// называть их не вправе (вид → причина и предикат снятия). Запись, чей вид
+	// не объявляет ни один журнал, — находка KIND-INTERNAL-UNUSED: она пережила
+	// предмет.
+	InternalKinds map[string]string
 }
+
+// KindInternalUnused — запись внутреннего вида, которого не объявляет ни один журнал.
+const KindInternalUnused = "KIND-INTERNAL-UNUSED"
 
 // SubscriptionKindCensus — объём осмотренного. Печатается ВСЕГДА.
 type SubscriptionKindCensus struct {
@@ -204,7 +213,26 @@ func AuditSubscriptionKindVocabulary(
 			census.GoFiles)
 	}
 
-	pageFindings, perr := auditClientPageKinds(o.Root, o.ClientPage, used, &census)
+	// Внутренние виды клиентской страницей не судятся: возможности у клиента
+	// нет. Страница, назвавшая такой вид, — KIND-PAGE-INVENTS (обещание
+	// возможности, которой нет); запись без предмета — находка.
+	clientUsed := make(map[string]struct{}, len(used))
+	for kind := range used {
+		if _, internal := o.InternalKinds[kind]; !internal {
+			clientUsed[kind] = struct{}{}
+		}
+	}
+	for kind := range o.InternalKinds {
+		if _, ok := used[kind]; !ok {
+			findings = append(findings, SubscriptionKindFinding{
+				Kind:  KindInternalUnused,
+				Where: kind,
+				What:  "запись внутреннего вида пережила предмет: ни один журнал вид не объявляет — снимите запись",
+			})
+		}
+	}
+
+	pageFindings, perr := auditClientPageKinds(o.Root, o.ClientPage, clientUsed, &census)
 	if perr != nil {
 		return nil, census, perr
 	}
