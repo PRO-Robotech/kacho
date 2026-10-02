@@ -164,6 +164,10 @@ func TestSendReturnsTheIDOfTheCommittedRow(t *testing.T) {
 // инъекция READ COMMITTED краснит пробу на каждом прогоне замера (см. отчёт
 // полосы), а не через раз.
 func TestParallelSendsGetTheirOwnIDs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("гонка идёт против живой базы (testcontainers): под кратким режимом пропускается, " +
+			"гоняет цель test-pg-outside-selection")
+	}
 	for round := 0; round < parallelRounds; round++ {
 		// Подпроба на раунд: база и пул раунда снимаются в его конце.
 		t.Run(fmt.Sprintf("round-%d", round), parallelSendsRound)

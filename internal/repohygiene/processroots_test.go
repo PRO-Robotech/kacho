@@ -45,7 +45,7 @@ func TestProcessOfFileSplitsOnlyMultiRootCatalogs(t *testing.T) {
 	cases := map[string]string{
 		"services/notify/cmd/notify-probe/diagnostics.go":  "notify/notify-probe",
 		"services/notify/cmd/notify-probe/internal/x/x.go": "notify/notify-probe",
-		"services/notify/cmd/notify/main.go":               "notify/notify",
+		"services/notify/cmd/notify/main.go":               "notify",
 		"services/notify/internal/config/config.go":        "notify",
 		"services/notify/cmd/migrator/main.go":             "notify",
 		"services/vpc/cmd/vpc/main.go":                     "vpc",

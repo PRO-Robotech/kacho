@@ -264,6 +264,15 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// стоит. Отсюда запись, а не строка в переписи долга.
 	"internal/migratorapply": "make test-pg-outside-selection",
 
+	// Проба-источник notify (kacho#2915, D4): корень процесса и его глагол Send.
+	// Пробы корня поднимают процесс на живой базе (NTF1-N08, M08, проводка
+	// ленты), пробы глагола — постановку и гонку параллельных Send; под
+	// кратким они пропускаются, а отбор интеграционной джобы по пути
+	// (`/internal/(repo|clients|reconciler|subscriptionjournal)`) до cmd/ не
+	// достаёт. Без своего шага они не исполнялись бы нигде.
+	"services/notify/cmd/notify-probe":               "make test-pg-outside-selection",
+	"services/notify/cmd/notify-probe/internal/send": "make test-pg-outside-selection",
+
 	// Соединение наката: открывает базу, ждёт готовности и ВОЗВРАЩАЕТ себе порог
 	// уведомлений сервера перед каждой миграцией (задача #2560). Свод службы
 	// доступа объявляет `SET client_min_messages = warning` без `LOCAL`, поэтому

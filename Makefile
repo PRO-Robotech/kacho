@@ -381,6 +381,8 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/storage/internal/migrations \
 	./services/vpc/internal/migrations \
 	./services/nlb/internal/apps/kacho/jobs \
+	./services/notify/cmd/notify-probe \
+	./services/notify/cmd/notify-probe/internal/send \
 	./gateway/internal/idempotencypg
 
 # Здесь стояли ЧЕТЫРЕ записи фундамента — `./pkg/dropguard`, `./pkg/subscription`,

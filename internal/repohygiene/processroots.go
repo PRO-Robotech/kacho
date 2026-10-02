@@ -47,17 +47,24 @@ func catalogProcessRoots(rels []string) map[string][]string {
 	return out
 }
 
-// processOfFile — процесс, которому принадлежит файл rel: у каталога с одним
-// корнем — сам каталог (`<svc>`), у каталога с несколькими — файл под
-// `cmd/<корень>/` принадлежит корню (`<svc>/<корень>`), прочее (общий код
-// каталога) — каталогу. Второй результат — false для пути вне `services/`.
+// processOfFile — процесс, которому принадлежит файл rel.
+//
+// У каталога с одним корнем процесс один — каталог (`<svc>`), как было до
+// правила. У каталога с несколькими корнями файл под `cmd/<корень>/`
+// принадлежит своему корню; ГЛАВНЫЙ корень — тот, что назван именем каталога
+// (`cmd/<svc>`), — зовётся именем каталога (`<svc>`), прочие —
+// `<svc>/<корень>`. Общий код каталога вне `cmd/` (`internal/…`) принадлежит
+// главному корню: его конфигурация и стражи — шлюза notify, а корень пробы
+// держит своё под `cmd/notify-probe/internal/`. Второй результат — false для
+// пути вне `services/`.
 func processOfFile(roots map[string][]string, rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	if len(parts) < 2 || parts[0] != "services" {
 		return "", false
 	}
 	svc := parts[1]
-	if len(roots[svc]) > 1 && len(parts) >= 5 && parts[2] == "cmd" && parts[3] != migratorRoot {
+	if len(roots[svc]) > 1 && len(parts) >= 5 && parts[2] == "cmd" &&
+		parts[3] != migratorRoot && parts[3] != svc {
 		return svc + "/" + parts[3], true
 	}
 	return svc, true
@@ -66,7 +73,7 @@ func processOfFile(roots map[string][]string, rel string) (string, bool) {
 // processMetricSegment — сегмент имён серий процесса (`kacho_<сегмент>_…`):
 // у каталога с одним корнем — имя каталога, у корня каталога с несколькими —
 // имя корня без дефисов (серии ASCII без дефиса): `notify/notify-probe` →
-// `notifyprobe`, `notify/notify` → `notify`.
+// `notifyprobe`, главный корень `notify` → `notify`.
 func processMetricSegment(process string) string {
 	if i := strings.IndexByte(process, '/'); i >= 0 {
 		return strings.ReplaceAll(process[i+1:], "-", "")
