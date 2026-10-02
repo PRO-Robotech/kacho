@@ -205,6 +205,10 @@ func TestOwnSecondFactor_StacksOnOwnDeclareBothKnobs(t *testing.T) {
 
 	findings, census := judgeSecondFactorDeclarations(facts)
 	t.Logf("перепись: %s", census)
+	if census.Own == 0 {
+		t.Fatalf("ни один из %d стендов не судился на посадке own — «находок нет» здесь "+
+			"означало бы «судить было некого»", census.Stacks)
+	}
 	for _, f := range facts {
 		t.Logf("  %s: posture=%s окно=%v секрет=%v", f.Stack, f.Posture, f.Freshness, f.SecretRef)
 	}
@@ -235,13 +239,14 @@ func readSecondFactorStackFacts(t *testing.T) []secondFactorStackFacts {
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
-		posture, _ := lookup(declared, "kaname", "config", "authn", "identityProvider")
 		_, freshness := lookup(declared, "kaname", "config", "authn", selfServiceFreshnessValue)
 		secretName, okName := lookup(declared, "kaname", "platform", "iam", "secondFactor", "encKeySecretName")
 		secretKey, okKey := lookup(declared, "kaname", "platform", "iam", "secondFactor", "encKeySecretKey")
 		out = append(out, secondFactorStackFacts{
-			Stack:     name,
-			Posture:   fmt.Sprint(posture),
+			Stack: name,
+			// Посадка службы одна на каждом стенде (kanameLanding, kaname#363):
+			// ключа посадки у подчарта нет (kacho#2818).
+			Posture:   kanameLanding,
 			Freshness: freshness,
 			SecretRef: okName && okKey &&
 				strings.TrimSpace(fmt.Sprint(secretName)) != "" &&

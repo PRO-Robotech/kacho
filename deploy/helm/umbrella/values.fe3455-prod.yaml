@@ -3,9 +3,9 @@
 # values.fe3455-prod.yaml — fe3455 PRODUCTION cutover overlay (greenfield stand).
 #
 # Layer order (production, no dev-auth) — the chain cutover-fe3455.sh actually runs.
-# Keep it in step with that script and with the fe3455 row of the stacks table in
-# deploy/tests/helm/admin-hop-address-census-test.sh; three hand-written copies of
-# one list is exactly how they drift apart.
+# The chain is declared ONCE, by the fe3455 row of deploy/stacks.txt, and the
+# script reads it from there; hand-written copies of one list is exactly how they
+# drift apart.
 #
 # Until 2026-08-11 this block named `values.fe3455-base.yaml` as its first layer.
 # NO SUCH FILE EXISTS in the tree — the statement had outlived its subject, and it
@@ -15,24 +15,21 @@
 #   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
 #     -f values.prod.yaml         # production AUTH flip (correct chart paths):
 #                                 #   authn.mode=production/production-strict,
-#                                 #   sslmode=require, mTLS on, Hydra JWKS/issuer,
+#                                 #   sslmode=require, mTLS on, JWKS/issuer,
 #                                 #   fail-closed authz, datastore NP.
 #     -f values.fe3455-prod.yaml  # THIS: revert values.prod's operator-provisioned
 #                                 #   assumptions (existingSecret) back to greenfield
 #                                 #   self-provisioning, add cert-manager PG server
 #                                 #   TLS, current-main hardened images, api-gateway
 #                                 #   internal-:9091 mTLS, geo forwarder SAN.
-#     -f values.fe3455-ory-posture.yaml
-#                                 # identity-provider POSTURE (tracked): hydra dev
-#                                 #   flag/issuer/PKCE/TTL, kratos development flag
-#                                 #   and cookie transport. Tracked on purpose — it
-#                                 #   used to live inside the gitignored creds file,
-#                                 #   where no review and no gate could read it.
-#     -f values.fe3455-ory.yaml   # identity-provider CREDENTIALS (gitignored):
-#                                 #   Ory DSNs + system/cookie/cipher secrets, and
-#                                 #   nothing else. Last, so credentials cannot be
+#     -f values.fe3455-ory.yaml   # stand CREDENTIALS (gitignored): the mail relay
+#                                 #   address of our identity lane, and nothing
+#                                 #   else. Last, so credentials cannot be
 #                                 #   overridden by posture. cutover-fe3455.sh
-#                                 #   refuses to deploy if a posture key appears here.
+#                                 #   refuses to deploy if any other coordinate
+#                                 #   appears here. The identity-provider posture
+#                                 #   layer and the provider's own credentials are
+#                                 #   gone with the provider (#1276).
 #
 # ── SECURITY POSTURE (what "production" means here) ──
 #   authN  : asymmetric JWT of an accepted issuer verified at the edge — the platform's
@@ -46,10 +43,7 @@
 #            server certs (templates/pg-certificates.yaml).
 #
 # ── KNOWN, DOCUMENTED greenfield concessions (follow-ups, not dev-mode) ──
-#   1. kratos/hydra backing Postgres keep their Ory-managed DSN (sslmode=disable,
-#      in-cluster) — those DSNs belong to their own charts, and hardening them is
-#      their own subject.
-#   2. PG credentials inherit the base-chart values (k8s Secret material, never
+#   1. PG credentials inherit the base-chart values (k8s Secret material, never
 #      exposed on the wire). A cosmetic rotation away from the changeme-* default
 #      is a clean follow-up once the stack is green — orthogonal to auth posture.
 
@@ -186,19 +180,8 @@ pg-nlb:
     certificatesSecret: kacho-umbrella-pg-nlb-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
-
-# ── infra PGs (kratos/hydra): bitnamilegacy image + operator secret;
-#    DSN stays Ory-managed (sslmode=disable) per concession #1. ──
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
-pg-kratos:
-  image: { registry: docker.io, repository: bitnamilegacy/postgresql }
-  volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
-  auth: { existingSecret: kacho-umbrella-pg-kratos, username: kratos, database: kratos }
-pg-hydra:
-  image: { registry: docker.io, repository: bitnamilegacy/postgresql, tag: 16.4.0-debian-12-r0 }
-  volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
-  auth: { existingSecret: kacho-umbrella-pg-hydra, username: hydra, database: hydra }
 networkPolicy:
   datastore:
     enabled: false           # pg-<svc>-ingress-allowlist (all 6)
@@ -308,26 +291,19 @@ kaname:
     # Разбор не воспроизводится и в исправленном виде намеренно: перечень задач,
     # которые несёт чужой образ, объявлен в ЕГО репозитории, и второе место об одном
     # предмете разошлось бы с первым молча — как разошёлся прежний.
-    tag: 366-4af7fd4f
+    tag: 357-b90430b4
   # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ─────────────────────
-  # ОБЯЗАТЕЛЬНО на развёрнутом окружении: без этого работает built-in дефолт
-  # `service: registry.kacho.local`, и `docker login` падает с `unauthorized`.
-  #
-  # Почему: `service` уходит не только в fallback для `?service=`, но и в
-  # issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте
-  # КАЖДОГО выпускаемого SA-ключа. docker шлёт `?service=registry.in-cloud.io`, iam
-  # просит у Hydra этот audience, а в клиенте лежит дефолтный registry.kacho.local →
-  #   Hydra: "Requested audience 'registry.in-cloud.io' has not been whitelisted
-  #           by the OAuth 2.0 Client" (400) → shim отдаёт 401.
-  # Диагностика 2026-07-15: падали и старый, и свежевыпущенный ключ; в логах iam —
-  # тишина (все причины схлопнуты в ErrUnauthenticated без лога), реальную причину
-  # назвала Hydra. Требует kaname#… (чарт научился рендерить эту секцию).
-  #
   # `issuer` = realm в WWW-Authenticate; совпадает с KACHO_REGISTRY_TOKEN_REALM
-  # data-plane'а (registry.dataplane ниже).
+  # data-plane'а (registry.dataplane ниже). Адресат полосы (`service`, он же `aud`
+  # выпускаемого токена) здесь не объявляется — он выводится из объявленной
+  # стороны реестра (см. ниже): расхождение с тем, что docker шлёт в
+  # `?service=`, ломает `docker login` (#321).
   #
-  # ⚠ audience фиксируется в Hydra-клиенте В МОМЕНТ выпуска ключа → SA-ключи,
-  # выпущенные ДО этой правки, надо ПЕРЕВЫПУСТИТЬ (задним числом allowlist не появится).
+  # ЗДЕСЬ СТОЯЛ РАЗБОР 2026-07-15 о перечне допустимых адресатов у OAuth-клиента
+  # прежнего поставщика личности: адресат фиксировался в клиенте в момент выпуска
+  # ключа, и ключи, выпущенные до правки, приходилось перевыпускать. Докер-токен
+  # чеканит собственный подписант службы (F1, #897; ниже `authn.tokenSigning`),
+  # клиента у поставщика нет (kacho#1276) — разбор снят вместе с предметом.
   #
   # NB: umbrella вендорит iam-чарт из ./charts/kaname (копия ВНУТРИ kacho-deploy),
   # а НЕ из ../kaname/deploy — у копии values вложены под `config`. Правка нужна в
@@ -439,7 +415,7 @@ kacho-nlb:
   image:
     tag: main-b622b388
   networkPolicy:
-    enable: false            # kacho-nlb NP off (nlb chart uses `enable`, not `enabled`)
+    enable: false            # kacho-nlb NP off (key is `enable`, not `enabled`; read by umbrella templates/networkpolicy-nlb.yaml)
   # nlb chart default db.host=kacho-pg-nlb assumes release name `kacho`; this release
   # is `kacho-umbrella` → the real Service is kacho-umbrella-pg-nlb (the correct host
   # normally comes from values.dev, which the prod layer drops). Point it correctly.
@@ -536,8 +512,10 @@ api-gateway:
 # matching the running pod + satisfying serve.go prod-guards: AUTH_MODE=production,
 # mTLS both listeners + both registry→iam edges (cert-manager kacho-internal-ca),
 # DATAPLANE_TLS_TERMINATED_EXTERNALLY=true (dataplane :8080 behind ext TLS),
-# HYDRA_ISSUER pinned. DB stays sslmode=disable (Ory/infra-tier concession, like the
-# running registry). zot image = the stand's running ghcr.io/project-zot:latest.
+# token acceptance pinned to our own issuer (registry.tokenAcceptance below). DB
+# stays sslmode=disable — the declared concession of this cluster (header §KNOWN,
+# DOCUMENTED; held by deploy/dbtls_declaration_test.go). zot image = the stand's
+# running ghcr.io/project-zot:latest.
 registry:
   enabled: true
   # `serviceAud` здесь НЕ объявляется: имя службы полосы объявлено один раз в
@@ -657,22 +635,21 @@ registry:
           privateKey:
             algorithm: ""
             size: ""
-  # The data-plane docker-Bearer verifier fetches every key set from the cluster-
+  # The data-plane docker-Bearer verifier fetches the key set from the cluster-
   # INTERNAL kaname key-set listener (:9097): the platform's OWN set for the tokens it
-  # mints and, while the transition window is open, a byte-for-byte mirror of the
-  # previous issuer's PUBLIC JWKS — over one-way server-TLS (internal-CA leaf); the registry pod trusts
+  # mints — over one-way server-TLS (internal-CA leaf); the registry pod trusts
   # the internal-CA via SSL_CERT_DIR. This is an https in-cluster Service, so
-  # production requireSecureJWKSURL passes without needing an external hydra-https
-  # terminator.
+  # the registry's key-set guard (requireSecureKeySetURL) passes.
   #
-  # ЗДЕСЬ СТОЯЛО «Hydra stays the SIGNER/ISSUER — only the key-DISTRIBUTION URL
-  # moved»: верно про ЗЕРКАЛО и неверно про выдачу. На этом стенде своя чеканка
-  # объявлена (`kaname.config.authn.tokenSigning.enabled`), издателей принимается
-  # ДВОЕ (`registry.tokenAcceptance.issuers`), и первый из них — наш.
+  # ЗДЕСЬ СТОЯЛО, что подписантом и издателем остаётся прежний поставщик личности,
+  # а переехал только адрес раздачи ключей, и потом — что издателей принимается
+  # двое. Своя чеканка объявлена (`kaname.config.authn.tokenSigning.enabled`),
+  # издатель у стенда один — наш (`registry.tokenAcceptance.issuers`, #2735),
+  # зеркала набора ключей прежнего издателя у службы нет (kaname#361).
   #
   # ⚠ IAM-FIRST DEPLOY SEQUENCING (fail-closed — do NOT flip prematurely):
-  #   the kaname :9097 JWKS endpoint MUST be live and smoke-verified serving
-  #   (GET /.well-known/jwks.json → 200 with Hydra kids) BEFORE this key-set flip
+  #   the kaname :9097 key-set endpoint MUST be live and smoke-verified serving
+  #   (GET the issuerKeySets URL below → 200 with the service's own key ids) BEFORE this key-set flip
   #   (registry.tokenAcceptance.issuerKeySets) reaches a rolling registry pod. A premature flip (iam endpoint not yet
   #   serving) fails every signature verify CLOSED → HTTP 401 on ALL prod docker pulls.
   #   Runbook: roll kaname first (this chart adds the :9097 listener), curl the
@@ -681,9 +658,10 @@ registry:
   # КАЖДОГО своя запись источника ключей. Принимается ровно один — наш, тем же
   # перечнем, что у края выше (#2735).
   #
-  # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
-  # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
-  # бы то, ради чего смена вообще видна при старте — пересмотр пина издателя.
+  # Прежние ручки `registry.iam.jwksUrl` и пин издателя под именем прежнего
+  # поставщика личности СНЯТЫ, а не оставлены мостом: мост был бы вторым местом
+  # об одном предмете и обессмыслил бы то, ради чего смена вообще видна при
+  # старте — пересмотр пина издателя.
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:

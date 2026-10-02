@@ -1,0 +1,2 @@
+{"path":"kacho/cloud/vpc/v1/network_service.proto","start_line":182,"start_column":1,"end_line":208,"end_column":2,"type":"FIELD_NO_DELETE","message":"Previously present field \"2\" with name \"page_size\" on message \"ListNetworksRequest\" was deleted."}
+{"path":"kacho/cloud/vpc/v1/network_service.proto","start_line":330,"start_column":1,"end_line":341,"end_column":2,"type":"FIELD_NO_DELETE","message":"Previously present field \"2\" with name \"page_size\" on message \"ListNetworkOperationsRequest\" was deleted."}

@@ -2546,18 +2546,24 @@ jobs:
       # Перечень — пробы, рендерящие УМБРЕЛЛУ (#1733), и инъекции их судей: условие
       # рендера создаёт ровно шаг материализации выше, потому что рендер требует
       # ЛОКАЛЬНЫХ сабчартов, а те из исходников дерева и не вендорятся. Под тегом
-      # три предмета: ключ файла службы личности не перебивается переменной;
-      # снятая с края ручка не приезжает в его под ни на одной цепочке; приёмник
-      # писем есть только у стенда, и почтовая полоса службы доступа доходит до
-      # него (приёмка F6b, сценарии F6b-54 и F6b-56, #2901).
-      - name: пробы тега helmcharts — ключ файла, снятые ручки края и приёмник писем стенда (рендер умбреллы)
+      # пять предметов: рендер ни одной цепочки не несёт следа прежнего поставщика
+      # личности — объекта либо адреса у наших нагрузок (kacho#2818); снятая с края
+      # ручка не приезжает в его под ни на одной цепочке; приёмник писем есть только
+      # у стенда, и почтовая полоса службы доступа доходит до него (приёмка F6b,
+      # сценарии F6b-54 и F6b-56, #2901); рендер ни одной цепочки не несёт объекта
+      # и образа поставщика, узнанного по узлу-идентификатору, и обе половины стенда
+      # получают посадку own (#2929); каждая цепочка, которую конвейер поднимает на
+      # kind, помещается в узел своего ранера по запросам процессора (#2937); политика
+      # сети каждой цепочки пропускает тех, кто к службе звонит, и называет только
+      # поды рендера (#2941).
+      - name: пробы тега helmcharts — след поставщика, снятые ручки края, приёмник писем стенда, объекты поставщика, ёмкость узла ранера и политики сети (рендер умбреллы)
         # `id` обязателен: без него шаг не попадает в контекст `steps`, и перепись
         # исходов (последний шаг работы) не может отличить «исполнился» от «пропущен».
         id: umbrella-env-key
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         run: >-
           go test -tags helmcharts ./deploy/
-          -run 'TestIdentityFileKeysAreNotOverriddenByTheEnvironment|TestEnvNamesForCoversPathAndItsPrefixes|TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent|TestFileKeyOverrideInjection_ExistingControlStillReds|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane'
+          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled'
           -count=1 -v
 
       - name: umbrella template — каждый стек таблицы

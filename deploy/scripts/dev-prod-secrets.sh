@@ -5,17 +5,21 @@
 # dev-prod-secrets.sh — provision the AuthN secrets that kaname production-strict
 # Config.Validate REQUIRES (fail-closed, defense-in-depth).
 #
-#   - kaname-hook-token   key=token    — общий секрет обратных вызовов провайдера
 #   - kaname-jwks-enc-key key=enc_key  — 32-byte-hex JWKS private-key encryption key
 #   - kaname-second-factor-enc-key key=enc_key — 32-byte-hex ключ обёртки секретов
-#                                       второго фактора (читается под identityProvider: own)
+#                                       второго фактора (требуется стражем старта службы)
+#   - kaname-bootstrap-sa-key key=private_key_pem — ES256-ключ учётки первичной чеканки
 #
-# ЗАПУСКАЕТСЯ ДО ПЕРВОГО ПРОГОНА helm, А НЕ МЕЖДУ ПРОГОНАМИ (задача #948). Общий
-# секрет обратных вызовов — ПРЕДУСЛОВИЕ: провайдер берёт его величину обязательной
-# ссылкой уже в базовом профиле, потому что необязательная ссылка на отсутствующий
-# секрет даёт ПУСТУЮ величину, полосу отвергают на первом же обращении, а стенд при
-# этом выглядит поднятым. Здесь стояло «Run BEFORE the production helm upgrade» —
-# верно для прежнего порядка, когда ссылку нёс только слой боевой посадки.
+# ЗАПУСКАЕТСЯ ДО ПЕРВОГО ПРОГОНА helm, А НЕ МЕЖДУ ПРОГОНАМИ (задача #948): под,
+# которому не хватает секрета, ждёт молча, и `helm --wait` истекает по сроку, а не
+# по причине.
+#
+# ЗДЕСЬ БЫЛ И ОБЩИЙ СЕКРЕТ ОБРАТНЫХ ВЫЗОВОВ (`kaname-hook-token`). Его читали две
+# стороны — издатель поставщика личности и слушатель хуков службы доступа. Обе
+# сняты (слушатель — kacho#2818, поставщик — kacho#1276), ссылок на секрет не
+# осталось ни в одном объявлении зонта, и посев снят вместе с ними: секрет,
+# который чеканится и никем не читается, — объявление, пережившее потребителя.
+# Держит deploy/seed_secret_has_a_consumer_test.go.
 #
 # Idempotent (atomic create; AlreadyExists = reuse). NB: these are LOCAL kind
 # dev-stand secrets, generated fresh each run — NOT committed, NOT production key
@@ -105,12 +109,11 @@ fi
 # резолв декодирует hex и требует РОВНО 32 байта. Величина может быть перечнем
 # через запятую (первый оборачивает, все открывают); так ключ и меняется.
 #
-# Требуется стражем старта службы ТОЛЬКО под `config.authn.identityProvider: own`
-# (Ф12, kacho#1281; переменная KANAME_SECOND_FACTOR_ENC_KEY). Ссылка у пода —
-# `optional: true`, поэтому недостающий секрет даёт ИМЕНОВАННЫЙ отказ стража, а
-# не `CreateContainerConfigError`, по которому не видно, какой ручки не хватает.
-# Под `external` второго фактора нет, секрета может не быть вовсе, и такой стенд
-# остаётся поднимаемым.
+# Требуется стражем старта службы на каждом старте (Ф12, kacho#1281; переменная
+# KANAME_SECOND_FACTOR_ENC_KEY): посадка у службы одна (kaname#363). Ссылка у
+# пода — `optional: true`, поэтому недостающий секрет даёт ИМЕНОВАННЫЙ отказ
+# стража, а не `CreateContainerConfigError`, по которому не видно, какой ручки
+# не хватает.
 #
 # ПОЧЕМУ ПОСЕВ, А НЕ ШАБЛОН ЧАРТА — довод безопасности, а не вкуса. Репозиторий
 # ПУБЛИЧЕН, поэтому величина в дерево не попадает ни при каких условиях. Шаблон,
@@ -138,37 +141,12 @@ else
   refuse_unknown kaname-second-factor-enc-key "$out"
 fi
 
-# ─── ОБЩИЙ СЕКРЕТ ОБРАТНОГО ВЫЗОВА: СОЗДАЁТСЯ ОДИН РАЗ, НЕ РОТИРУЕТСЯ ────────
-#
-# Величину читают ДВА пода — отправитель (провайдер) и проверяющая сторона
-# (служба прав), — и каждый читает её ОДИН РАЗ, при старте контейнера.
-# Перевыпуск на каждом прогоне поэтому не «обновляет секрет», а заводит окно, в
-# котором стороны держат РАЗНЫЕ величины: повторный `make dev-up` пересобирает
-# образы служб, поэтому под службы прав перекатывается и берёт новую величину, а
-# под провайдера остаётся прежним и продолжает подписывать старой. Исход — тот
-# самый `401` на обратном вызове, ради которого заведена задача #948, только
-# приходящий не с первой выкатки, а со второй.
-#
-# Поэтому: сгенерировать ОДИН раз, дальше переиспользовать — той же формой, что
-# у подписного ключа ниже. Ротация общего секрета — осознанное действие: снять
-# секрет и перекатить ОБА пода, а не побочный эффект подъёма стенда.
-if out="$(kubectl -n "$NS" get secret kaname-hook-token -o name 2>&1)"; then
-  echo "kaname-hook-token already present — reusing (обе стороны держат одну величину)"
-elif [[ "$out" == *"(NotFound)"* ]]; then
-  kubectl -n "$NS" create secret generic kaname-hook-token \
-    --from-literal=token="$(openssl rand -hex 24)" \
-    --dry-run=client -o yaml | create_once kaname-hook-token "token, 24B hex"
-else
-  refuse_unknown kaname-hook-token "$out"
-fi
-
-# Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — the private key that
-# InternalBootstrapTokenService (#58) uses to sign the private_key_jwt
-# client_assertion it exchanges at Hydra (aud=https://{API_DOMAIN}) for the first
-# non-interactive RS256 admin Bearer. The mint use-case derives the PUBLIC JWK
-# from this key and self-registers the Hydra OAuth client on first mint — so the
-# key MUST be STABLE across re-runs (regenerating it would orphan the already-
-# registered Hydra client's JWK → assertion signature no longer verifies). Hence:
+# Bootstrap-admin SA ES256 (P-256, PKCS#8) key of InternalBootstrapTokenService
+# (#58). The mint use-case derives the PUBLIC half (SPKI) from this key and records
+# it in the bootstrap client mapping row on first mint; the token itself is signed
+# by the service's OWN signer (kaname#1119 — the exchange with the former external
+# identity provider is gone). The key MUST be STABLE across re-runs: regenerating
+# it would leave the recorded public half describing a key nobody holds. Hence:
 # generate ONCE; reuse the existing secret on re-run (idempotent, NOT rotate).
 if out="$(kubectl -n "$NS" get secret kaname-bootstrap-sa-key -o name 2>&1)"; then
   echo "kaname-bootstrap-sa-key already present — reusing (stable signing key)"
