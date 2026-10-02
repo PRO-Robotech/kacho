@@ -24,7 +24,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
-	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/migrations"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/probemigrations"
 )
 
 // runServe — композиционный корень пробы.
@@ -54,7 +54,7 @@ func runServe(ctx context.Context, cfg config.Config, logger *slog.Logger) error
 	observability.LogBootPosture(logger, bootPosture(cfg, p.ports.identity, desc.HostForm().String()))
 
 	healthAgg := health.New(buildReadinessCheckers(pool,
-		schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))))
+		schemaguard.CheckFromFS(probemigrations.FS, schemaguard.PgxVersionReader(pool))))
 	go func() {
 		<-ctx.Done()
 		healthAgg.SetShuttingDown()

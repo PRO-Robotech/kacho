@@ -9,7 +9,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/migrations"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/probemigrations"
 )
 
 // TestMain выдаёт пакету один Postgres: база пробы — ТЕМИ миграциями, которые
@@ -18,6 +18,6 @@ import (
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
 		Name:    "notifyprobe",
-		Migrate: pgtest.Goose(migrations.FS),
+		Migrate: pgtest.Goose(probemigrations.FS),
 	}))
 }
