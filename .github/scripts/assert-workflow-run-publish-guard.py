@@ -558,6 +558,8 @@ SCENES = [
           _own("push", "refs/heads/x/refs/heads/main"), False, True),
     Scene("собственный push, ветка вне правила KAC-1",
           _own("push", "refs/heads/KAC-1"), False, True),
+    Scene("собственный push, ветка вне правила KAC-1/x",
+          _own("push", "refs/heads/KAC-1/x"), False, True),
     Scene("собственный push, метка вне правила v1.2",
           _own("push", "refs/tags/v1.2"), False, True),
     Scene("собственный push, метка вне правила v1.2.3-rc",
@@ -1177,6 +1179,11 @@ def self_test(root: Path) -> int:
                   "^refs/heads/main$ ]] ||\n"
                   "                 [[ \"${OWN_REF:-}\" =~ ^refs/heads/KAC-[^/]*$ ]] ||\n"), 1,
            ["слой 2", "ветка вне правила KAC-1"], "слой 2")
+    expect("слой 2: в правило собственного push вошла ветка с вложенным путём",
+           mutate("^refs/heads/main$ ]] ||\n",
+                  "^refs/heads/main$ ]] ||\n"
+                  "                 [[ \"${OWN_REF:-}\" =~ ^refs/heads/KAC-[0-9]+/.*$ ]] ||\n"), 1,
+           ["слой 2", "ветка вне правила KAC-1/x"], "слой 2")
     expect("слой 2: правило метки без якоря конца",
            mutate("[0-9]+\\.[0-9]+\\.[0-9]+$ ]]", "[0-9]+\\.[0-9]+\\.[0-9]+ ]]"), 1,
            ["слой 2", "метка вне правила v1.2.3-rc"], "слой 2")
