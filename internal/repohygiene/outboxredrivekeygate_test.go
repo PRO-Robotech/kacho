@@ -43,6 +43,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // TestRedriveAndDrainKeyTheSameOutboxTheSameWay — две половины одного правила
@@ -340,10 +342,21 @@ func migrationCorpus(t *testing.T, root string) (string, int) {
 	if err != nil {
 		t.Fatalf("состав миграций взять неоткуда: %v", err)
 	}
+	// Миграция — файл цепочки из перечня migrationchains, а не путь с сегментом
+	// /internal/migrations/ (kacho#2915, CX1-114).
+	chains := make([]migrationchains.Chain, 0)
+	for _, cd := range gateChainDirs(t, root) {
+		rel, rerr := filepath.Rel(root, cd.Dir)
+		if rerr != nil {
+			t.Fatalf("относительный путь %s: %v", cd.Dir, rerr)
+		}
+		chains = append(chains, migrationchains.Chain{Service: cd.Service, Dir: filepath.ToSlash(rel)})
+	}
 	var b strings.Builder
 	read := 0
 	for _, path := range files {
-		if !strings.Contains(path, "/internal/migrations/") {
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil || !migrationchains.IsChainSQL(chains, filepath.ToSlash(rel)) {
 			continue
 		}
 		raw, rerr := os.ReadFile(path) // #nosec G304 -- путь из индекса дерева

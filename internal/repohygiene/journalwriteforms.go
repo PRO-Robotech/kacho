@@ -63,6 +63,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // JournalWriteForm — форма, которой в дереве записывается строка журнала.
@@ -213,6 +215,13 @@ func CensusJournalWriteForms(root string, files map[string]bool) (JournalWriteFo
 	}
 	res.Owners = owners
 
+	// Миграция — файл цепочки из перечня migrationchains, а не путь с сегментом
+	// /internal/migrations/ (kacho#2915, CX1-114).
+	chains, err := chainsOfComposition(root, rels)
+	if err != nil {
+		return res, err
+	}
+
 	fset := token.NewFileSet()
 	// needConst — (каталог пакета → имена), чьё значение понадобилось разрешить.
 	needConst := needSet{}
@@ -226,7 +235,7 @@ func CensusJournalWriteForms(root string, files map[string]bool) (JournalWriteFo
 	for _, rel := range rels {
 		switch {
 		case strings.HasSuffix(rel, ".sql"):
-			if !isMigrationPath(rel) {
+			if !migrationchains.IsChainSQL(chains, rel) {
 				continue
 			}
 			body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- путь из индекса git этого дерева
@@ -956,10 +965,6 @@ func serviceOf(rel string) string {
 		return rest[:i]
 	}
 	return ""
-}
-
-func isMigrationPath(rel string) bool {
-	return strings.HasPrefix(rel, "services/") && strings.Contains(rel, "/internal/migrations/")
 }
 
 func underAnyRoot(rel string, roots []string) bool {

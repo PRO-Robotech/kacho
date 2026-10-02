@@ -9,8 +9,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
+
 	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
+
+// listSynthetic — перечень цепочек синтетического дерева во временном каталоге.
+func listSynthetic(t *testing.T, root string) ([]migrationchains.Chain, error) {
+	t.Helper()
+	tree, err := treecorpus.SyntheticTree(root)
+	if err != nil {
+		t.Fatalf("синтетическое дерево: %v", err)
+	}
+	return migrationchains.FromTree(tree)
+}
 
 // writeFile кладёт файл синтетического дерева, создавая каталоги.
 func writeFile(t *testing.T, root, rel, body string) {
@@ -41,7 +53,7 @@ func TestPointWithoutTableIsOneChainThatDoesNotChooseByDatabase(t *testing.T) {
 	point(t, root, "alpha")
 	chain(t, root, "services/alpha/internal/migrations")
 
-	got, err := migrationchains.List(root)
+	got, err := listSynthetic(t, root)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -61,7 +73,7 @@ func TestTableRowsAreTheChainsOfThePoint(t *testing.T) {
 	writeFile(t, root, "services/beta/cmd/migrator/chains.yaml",
 		"chains:\n  - database: kacho_betaprobe\n    dir: services/beta/internal/probemigrations\n")
 
-	got, err := migrationchains.List(root)
+	got, err := listSynthetic(t, root)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -150,7 +162,7 @@ func TestListRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			tc.build(t, root)
-			got, err := migrationchains.List(root)
+			got, err := listSynthetic(t, root)
 			if err == nil {
 				t.Fatalf("List ответил перечнем %+v там, где обязан отказать", got)
 			}

@@ -22,10 +22,11 @@
 // перечень — по пути). У точки без таблицы цепочка одна —
 // `services/<svc>/internal/migrations`, и по имени базы точка не выбирает.
 //
-// Обход идёт по диску, а не по индексу git: перечень зовут и гейты дерева, и
-// их инъекции на синтетических деревьях во временном каталоге, где индекса
-// нет. Отслеживаемость файлов цепочки судят сами потребители (эталон длины
-// цепочки `internal/migratorapply` берётся у индекса).
+// Состав берётся у ИНДЕКСА git (List), а не с диска: неотслеживаемая точка или
+// миграция, оставшаяся в рабочем каталоге, не меняет перечня. Инъекции гейтов
+// на синтетических деревьях во временном каталоге зовут FromTree с
+// treecorpus.SyntheticTree — индекса там нет, и диск там единственный
+// авторитет.
 package migrationchains
 
 import (
@@ -38,6 +39,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TableFile — имя файла таблицы цепочек рядом с main.go точки наката.
@@ -118,34 +121,50 @@ func serviceOfPoint(point string) (string, bool) {
 	return parts[1], true
 }
 
-// List — цепочки дерева root, упорядоченные по точке и каталогу.
+// List — цепочки дерева root по его индексу git. Недоступный индекс — отказ.
+func List(root string) ([]Chain, error) {
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		return nil, fmt.Errorf("перечень цепочек: %w", err)
+	}
+	return FromTree(tree)
+}
+
+// FromTree — цепочки состава tree, упорядоченные по точке и каталогу.
 //
 // Отказы (а не пустой перечень): точек наката ноль; таблица точки неверна
-// (ParseTable); каталога строки нет; каталог `services/<svc>/internal/migrations`
-// с миграциями, который не применяет ни одна точка, — цепочка без точки
-// наката, которую гейты иначе не увидели бы.
-func List(root string) ([]Chain, error) {
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
-	if err != nil {
-		return nil, fmt.Errorf("перечень цепочек: %s не прочитан: %w", servicesDir, err)
+// (ParseTable); каталога строки в составе нет; каталог
+// `services/<svc>/internal/migrations` с миграциями, который не применяет ни
+// одна точка, — цепочка без точки наката, которую гейты иначе не увидели бы.
+func FromTree(tree *treecorpus.Tree) ([]Chain, error) {
+	files := tree.SortedFiles()
+	services := map[string]bool{}
+	for _, f := range files {
+		if rest, ok := strings.CutPrefix(f, "services/"); ok {
+			if i := strings.IndexByte(rest, '/'); i > 0 {
+				services[rest[:i]] = true
+			}
+		}
 	}
+	names := make([]string, 0, len(services))
+	for svc := range services {
+		names = append(names, svc)
+	}
+	sort.Strings(names)
+
 	var out []Chain
 	covered := map[string]bool{}
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, svc := range names {
+		point := "services/" + svc + "/cmd/migrator"
+		if !tree.HasFile(point + "/main.go") {
 			continue
 		}
-		point := "services/" + e.Name() + "/cmd/migrator"
-		if !isFile(filepath.Join(root, filepath.FromSlash(point), "main.go")) {
-			continue
-		}
-		chains, cerr := pointChains(root, point, e.Name())
-		if cerr != nil {
-			return nil, cerr
+		chains, err := pointChains(tree, point, svc)
+		if err != nil {
+			return nil, err
 		}
 		for _, c := range chains {
-			if !isDir(filepath.Join(root, filepath.FromSlash(c.Dir))) {
+			if !tree.HasDir(c.Dir) {
 				return nil, fmt.Errorf("точка наката %s: каталога цепочки %s нет", point, c.Dir)
 			}
 			covered[c.Dir] = true
@@ -156,9 +175,9 @@ func List(root string) ([]Chain, error) {
 		return nil, errors.New("перечень цепочек: точек наката нет (services/*/cmd/migrator/main.go) — " +
 			"пустой перечень здесь означал бы зелёный гейт с нулём прочитанного")
 	}
-	for _, e := range entries {
-		dir := "services/" + e.Name() + "/internal/migrations"
-		if !e.IsDir() || covered[dir] || !hasSQL(filepath.Join(root, filepath.FromSlash(dir))) {
+	for _, svc := range names {
+		dir := "services/" + svc + "/internal/migrations"
+		if covered[dir] || !hasSQL(files, dir) {
 			continue
 		}
 		return nil, fmt.Errorf("перечень цепочек: %s несёт миграции, а её не применяет ни одна точка "+
@@ -175,28 +194,42 @@ func List(root string) ([]Chain, error) {
 
 // pointChains — цепочки одной точки: строки её таблицы либо одна строка по
 // умолчанию.
-func pointChains(root, point, svc string) ([]Chain, error) {
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(point), TableFile))
-	switch {
-	case errors.Is(err, os.ErrNotExist):
+func pointChains(tree *treecorpus.Tree, point, svc string) ([]Chain, error) {
+	table := point + "/" + TableFile
+	if !tree.HasFile(table) {
 		return []Chain{{Service: svc, Point: point, Dir: "services/" + svc + "/internal/migrations"}}, nil
-	case err != nil:
+	}
+	data, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(table)))
+	if err != nil {
 		return nil, fmt.Errorf("точка наката %s: %s не прочитан: %w", point, TableFile, err)
 	}
 	return ParseTable(point, data)
 }
 
-func isFile(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.Mode().IsRegular()
+// hasSQL — в каталоге dir (прямо, не глубже) есть файл миграции.
+func hasSQL(files []string, dir string) bool {
+	for _, f := range files {
+		if rest, ok := strings.CutPrefix(f, dir+"/"); ok && !strings.Contains(rest, "/") &&
+			strings.HasSuffix(rest, ".sql") {
+			return true
+		}
+	}
+	return false
 }
 
-func isDir(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
-}
-
-func hasSQL(dir string) bool {
-	m, _ := filepath.Glob(filepath.Join(dir, "*.sql"))
-	return len(m) > 0
+// IsChainSQL — файл rel (путь от корня, через `/`) — миграция одной из цепочек
+// chains: `.sql` прямо в каталоге цепочки. Распознаватели «это миграция» по
+// сегменту пути `/internal/migrations/` цепочку пробы notify
+// (`internal/probemigrations`) не видели бы.
+func IsChainSQL(chains []Chain, rel string) bool {
+	if !strings.HasSuffix(rel, ".sql") {
+		return false
+	}
+	dir := path.Dir(rel)
+	for _, c := range chains {
+		if c.Dir == dir {
+			return true
+		}
+	}
+	return false
 }

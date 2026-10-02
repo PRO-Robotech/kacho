@@ -174,11 +174,23 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 // порог о нём не узнает.
 func ageColumnDefaultsToDatabaseClock(t *testing.T, l JournalLane) bool {
 	t.Helper()
+	// Миграции владельца — все цепочки его каталога у migrationchains, а не
+	// services/<svc>/internal/migrations: журнал пробы notify объявлен в цепочке
+	// internal/probemigrations (kacho#2915, CX1-114).
 	svc := strings.TrimPrefix(l.Owner, "services/")
-	dir := filepath.Join(journalLaneServicesRoot, svc, "internal", "migrations")
-	files, err := treecorpus.UnderWithSuffix(dir, ".sql")
-	if err != nil {
-		t.Fatalf("обход миграций %s: %v", l.Owner, err)
+	var files []string
+	for _, cd := range migrationDirs(t, filepath.Dir(journalLaneServicesRoot)) {
+		if cd.Service != svc {
+			continue
+		}
+		chainSQL, err := treecorpus.UnderWithSuffix(cd.Dir, ".sql")
+		if err != nil {
+			t.Fatalf("обход миграций %s: %v", l.Owner, err)
+		}
+		files = append(files, chainSQL...)
+	}
+	if len(files) == 0 {
+		t.Fatalf("у владельца журнала %s миграций в перечне цепочек 0 — схема журнала не читается", l.Owner)
 	}
 	table := TableNameOf(l.Table)
 	for _, path := range files {

@@ -94,13 +94,13 @@ func main() {
 		fail(err)
 	}
 
-	row, fsys, err := selectChain(chainsTable, embedded, dsn)
+	_, fsys, err := selectChain(chainsTable, embedded, dsn)
 	if err != nil {
 		fail(err)
 	}
 
 	runner, err := migratorrun.New(migratorrun.Config{
-		Service:       serviceName + "/" + row.Database,
+		Service:       serviceName,
 		Dialect:       opts.Dialect,
 		DSN:           dsn,
 		FS:            fsys,

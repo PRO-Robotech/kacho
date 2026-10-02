@@ -126,7 +126,7 @@ var (
 // след снятого движка.
 //
 // sources — содержимое файлов миграций по путям вида
-// `services/<svc>/internal/migrations/<файл>.sql`. Карта, а не дерево: инъекция
+// `services/<svc>/internal/<каталог цепочки>/<файл>.sql`. Карта, а не дерево: инъекция
 // подаёт свой вход, не заводя ни файла, ни репозитория.
 //
 // Цепочка применяется В ПОРЯДКЕ ВЕРСИЙ внутри каждого сервиса, поэтому снятый
@@ -141,7 +141,7 @@ func FindRetiredEngineDatabaseObjects(sources map[string]string) ([]RetiredEngin
 		svc, ok := serviceOfMigrationPath(p)
 		if !ok {
 			return nil, census, fmt.Errorf("путь %q не похож на файл миграции сервиса "+
-				"(ожидается services/<svc>/internal/migrations/<файл>.sql)", p)
+				"(ожидается services/<svc>/internal/<каталог цепочки>/<файл>.sql)", p)
 		}
 		bySvc[svc] = append(bySvc[svc], p)
 	}
@@ -320,11 +320,20 @@ func stripSQLProse(src string) string {
 }
 
 // serviceOfMigrationPath — сервис-владелец по пути файла миграции.
+//
+// Цепочка — каталог `services/<svc>/internal/<каталог цепочки>/`: у каталога
+// службы их бывает несколько (notify: internal/probemigrations — база
+// kacho_notifyprobe, kacho#2915, CX1-114), и каждая применяется на свою базу
+// отдельно. Цепочка `internal/migrations` называется именем службы, прочие —
+// `<svc>/<каталог цепочки>`.
 func serviceOfMigrationPath(p string) (string, bool) {
 	parts := strings.Split(path.Clean(p), "/")
 	for i := 0; i+4 < len(parts); i++ {
-		if parts[i] == "services" && parts[i+2] == "internal" && parts[i+3] == "migrations" {
-			return parts[i+1], true
+		if parts[i] == "services" && parts[i+2] == "internal" && i+5 == len(parts) {
+			if parts[i+3] == "migrations" {
+				return parts[i+1], true
+			}
+			return parts[i+1] + "/" + parts[i+3], true
 		}
 	}
 	return "", false
