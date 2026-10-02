@@ -50,6 +50,10 @@ var declaredFilterRoots = []string{
 	"services/storage/internal/authzfilter",
 	"services/vpc/internal/authzfilter",
 	"services/registry/internal/handler",
+	// Фильтр страницы процесса пробы-источника notify: сужатель потока подписки
+	// (отношение reader на notification_feed). Лежит под корнем своего процесса
+	// (правило двух процессов каталога, kacho#2915, Д74).
+	"services/notify/cmd/notify-probe/internal/authzfilter",
 }
 
 // pageFilterDirGlob — форма, по которой фильтр сужения страницы опознаётся В
@@ -62,6 +66,8 @@ const pageFilterDirGlob = "services/*/internal/authzfilter"
 // освобождение переживёт то, что освобождало.
 var declaredNonFilterRoots = map[string]string{
 	"services/registry/internal/handler": "у registry фильтр страницы живёт в обработчике, отдельного пакета нет",
+	"services/notify/cmd/notify-probe/internal/authzfilter": "у каталога notify два процесса, и фильтр страницы " +
+		"пробы-источника лежит под корнем своего процесса cmd/notify-probe (правило Д74)",
 	// Освобождение общего сужателя снято вместе с его корнем: предмета у записи
 	// нет, а сама проверка ниже объявила бы её находкой — и была бы права.
 }

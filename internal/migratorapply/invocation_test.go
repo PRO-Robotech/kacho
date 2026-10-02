@@ -625,7 +625,7 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 		for _, form := range serviceForms {
 			lane := laneOf(t, root, form)
 			for _, c := range chains {
-				c, form := c, form
+
 				name := chainLabel(c) + "/" + strings.ReplaceAll(form.String(), " ", "_")
 				ok := t.Run(name, func(t *testing.T) {
 					want := chainLength(t, root, c.Dir)

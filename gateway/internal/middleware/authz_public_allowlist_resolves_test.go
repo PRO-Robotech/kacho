@@ -52,6 +52,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"

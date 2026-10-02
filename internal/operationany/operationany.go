@@ -52,6 +52,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
+
+	probev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 )
 
 // typeURLPrefix — префикс адреса типа в `Any`. Тот же, что пишет `anypb.New`.
@@ -78,6 +80,11 @@ func Anchors() []proto.Message {
 		// по местам упаковки — так, чтобы форма, которой ещё не написали, тоже
 		// была закрыта. Один тип пакета вносит в реестр весь его файл.
 		(*notifyv1.AckResponse)(nil),
+		// Пакет глагола пробы-источника `kacho.cloud.notify.v1` (kacho#2915, З29):
+		// его линкует корень notify-probe. Ответ Send — не Operation, но гейт
+		// полноты судит линковку, а не места упаковки, и край обязан линковать
+		// надмножество пакетов владельцев.
+		(*probev1.SendResponse)(nil),
 	}
 }
 
@@ -97,6 +104,9 @@ func RequiredResponseTypeURLs() []string {
 		// отобразить, а не ответить 500. Адрес назван типом, которым пакет
 		// заякорен выше.
 		typeURLPrefix + "corelib.notify.AckResponse",
+		// Разрешимость пакета `kacho.cloud.notify.v1` на крае — по той же причине,
+		// по какой выше заякорен его тип.
+		typeURLPrefix + "kacho.cloud.notify.v1.SendResponse",
 	}
 }
 

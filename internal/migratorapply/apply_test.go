@@ -297,7 +297,7 @@ func TestEveryMigratorAppliesItsChainToALiveDatabase(t *testing.T) {
 	proven, failed, notify := 0, 0, 0
 
 	for _, c := range chains {
-		c := c
+
 		if c.Service == "notify" {
 			notify++
 		}
