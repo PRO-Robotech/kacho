@@ -18,11 +18,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/clients/jwks"
 )
 
@@ -40,7 +40,7 @@ import (
 // недетерминированной.
 func FuzzKeyIDNeverReachesTheKeySetSource(f *testing.F) {
 	var fetches atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(f, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fetches.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"keys":[]}`))

@@ -10,14 +10,15 @@ import dedent from 'ts-dedent'
 # Конфигурация
 
 Kachō API Gateway конфигурируется через переменные окружения. Большинство — с префиксом
-**`KACHO_API_GATEWAY_`**; ключи AuthN-инфраструктуры (внешний поставщик удостоверений, наборы
-ключей, DPoP) — с префиксом `KACHO_` (общие для платформы). Эта страница перечисляет ключевые группы и даёт пример.
+**`KACHO_API_GATEWAY_`**; ключи AuthN-инфраструктуры (наборы
+ключей, кэш интроспекции, DPoP) — с префиксом `KACHO_` (общие для платформы). Эта страница перечисляет ключевые группы и даёт пример.
 
 :::warning Secure-by-default
 При `KACHO_APP_ENV=production` гейтвей **откажется стартовать**, если authz выключен
 (`AUTHZ_ENABLED=false`), включён fail-open (`AUTHZ_FAIL_OPEN=true`), AuthN не в production-режиме
-или internal gRPC-listener не защищён mTLS. Пустой/неустановленный `KACHO_APP_ENV` (дефолт)
-пропускает гейт — dev-режим для локальных стендов.
+или internal gRPC-listener не защищён mTLS. Пустой или неустановленный `KACHO_APP_ENV` (дефолт)
+гейт **не** пропускает: это боевой класс, как и любая метка, кроме `dev` · `local` · `test`.
+Послабления терпят только эти три — забытая метка гейт не выключает.
 :::
 
 ## Listener'ы
@@ -30,7 +31,7 @@ Kachō API Gateway конфигурируется через переменны�
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TLS&#95;CERT&#95;FILE</code> / <code>&#95;TLS&#95;KEY&#95;FILE</code></td><td><em>(пусто)</em></td><td>PEM-сертификат / ключ внешнего TLS-listener</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;INTERNAL&#95;REST&#95;ADDR</code></td><td><code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;ADVERTISED&#95;ENDPOINT</code></td><td><code>api.kacho.local:443</code></td><td>Advertised-адрес периметра для endpoint-discovery</td></tr>
-    <tr><td><code>KACHO&#95;APP&#95;ENV</code></td><td><em>(пусто)</em></td><td><code>production</code> включает секьюрити-гейты старта</td></tr>
+    <tr><td><code>KACHO&#95;APP&#95;ENV</code></td><td><em>(пусто)</em></td><td>Метка окружения. Послабления старта терпят только <code>dev</code> · <code>local</code> · <code>test</code>; любая другая метка, <strong>включая пустую</strong>, — боевой класс со всеми гейтами старта</td></tr>
   </tbody>
 </table>
 
@@ -56,18 +57,22 @@ Kachō API Gateway конфигурируется через переменны�
 <table>
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;MODE</code></td><td><code>dev</code></td><td><code>dev</code> · <code>production</code> · <code>production-strict</code></td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;MODE</code></td><td><code>production</code></td><td><code>dev</code> · <code>production</code> · <code>production-strict</code></td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;IDENTITY&#95;PROVIDER</code></td><td><em>(не объявлено)</em></td><td>Посадка личности — кто проверяет человека. Законное значение одно: <code>own</code>, собственная чеканка платформы. Значение вне словаря — отказ в старте при любой метке окружения; не объявлено — отказ в старте в боевом классе. Под <code>own</code> край ретранслирует вход человека службе доступа, и оба её адреса ниже обязательны</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;TRUST&#95;DOMAIN</code></td><td><em>(пусто)</em></td><td>Домен доверия установки: по нему имя проверенного клиентского сертификата опознаётся как служебная учётка. Пусто — отказ в старте: своим не признаётся никто</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;DEV&#95;SECRET</code></td><td><em>(пусто)</em></td><td>HMAC-секрет для dev-JWT (только режим <code>dev</code>)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;ENABLE&#95;DPOP</code></td><td><code>false</code></td><td>Включить проверку DPoP-proof (RFC 9449)</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;KRATOS&#95;PUBLIC&#95;URL</code></td><td>kratos-public svc</td><td>Ory Kratos public API для session-cookie SPA (<code>disabled</code> — выключить)</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUERS</code></td><td><em>(не объявлено)</em></td><td>Принимаемые издатели через запятую. <strong>Не объявлено</strong> — строится одна запись из <code>KACHO&#95;HYDRA&#95;ISSUER</code>/<code>&#95;JWKS&#95;URL</code>. <strong>Объявлено, но элементов ноль</strong> (<code>","</code>, пробелы) — отказ в старте: пустой перечень означает «принимаем любого издателя». Задать вместе с прежним скалярным пином — тоже отказ в старте</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUER&#95;KEYSETS</code></td><td><em>(пусто)</em></td><td>Привязка «издатель=адрес его набора ключей». Адрес <strong>объявляется</strong> и никогда не выводится из издателя: издатель приходит от предъявителя. Издатель без записи — отказ в старте; запись без принимающего её издателя — тоже</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;ISSUER</code></td><td><em>(пусто)</em></td><td>Издатель, под которым чеканит платформа. Выбирает полосу приёма: строгий тип <code>at+jwt</code> и чтение отзыва на предъявлении. Пусто — своя чеканка не принимается</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;URL</code></td><td><em>(пусто)</em></td><td>Наш авторитет отзыва (RFC 7662). Обязателен, когда принимается наш издатель. На этой полосе «авторитет не ответил» означает <strong>отказ</strong></td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;CA&#95;FILE</code></td><td><em>(пусто)</em></td><td>Якорь доверия хопа к авторитету отзыва. По хопу едет предъявленный токен. Нечитаемая связка — отказ в старте</td></tr>
-    <tr><td><code>KACHO&#95;HYDRA&#95;ISSUER</code></td><td><em>(derived)</em></td><td>Прежний скалярный пин издателя. Действует, только пока <code>&#95;TOKEN&#95;ISSUERS</code> не объявлен</td></tr>
-    <tr><td><code>KACHO&#95;HYDRA&#95;JWKS&#95;URL</code></td><td><em>(derived)</em></td><td>Прежний скалярный адрес набора. Та же оговорка</td></tr>
-    <tr><td><code>KACHO&#95;HYDRA&#95;INTROSPECTION&#95;URL</code> / <code>&#95;ADMIN&#95;URL</code></td><td><em>(пусто)</em></td><td>OAuth2-интроспекция / admin-API Hydra</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;ENFORCE&#95;STEP&#95;UP</code></td><td><code>false</code></td><td>Применять требование уровня аутентификации (<code>acr</code>), объявленное permission-каталогом. В боевом классе каталог, объявляющий такое требование, при выключенной ручке — отказ в старте; нечитаемый каталог — тоже</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;AUDIENCE</code></td><td><em>(пусто)</em></td><td>Адресат токена (<code>aud</code>) — собственный адрес API установки, схема и хост. В боевом классе пусто — отказ в старте: без адресата токен, выпущенный для другой установки, не отличить. Включённый DPoP без адресата — отказ в старте при любой метке</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUERS</code></td><td><em>(не объявлено)</em></td><td>Принимаемые издатели через запятую. <strong>Обязателен.</strong> Не объявлен — отказ в старте: краю некого принимать, и издателя он не выводит. <strong>Объявлен, но элементов ноль</strong> (<code>","</code>, пробелы) — тоже отказ в старте: пустой перечень означал бы «принимаем любого издателя»</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUER&#95;KEYSETS</code></td><td><em>(пусто)</em></td><td>Привязка «издатель=адрес его набора ключей». Адрес <strong>объявляется</strong> и никогда не выводится из издателя: издатель приходит от предъявителя. Издатель без записи — отказ в старте; запись без принимающего её издателя — тоже. В боевом классе адрес — только <code>https://</code>: набор ключей — якорь доверия проверки подписи</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;JWKS&#95;CA&#95;FILE</code></td><td><em>(пусто)</em></td><td>Якорь доверия хопа за наборами ключей. Пусто — транспорт по умолчанию; задано — единственный якорь хопа, нечитаемая связка — отказ в старте</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;ISSUER</code></td><td><em>(пусто)</em></td><td>Издатель, под которым чеканит платформа; значение вне <code>&#95;TOKEN&#95;ISSUERS</code> — отказ в старте. Его токен обязан нести строгий тип <code>at+jwt</code>, отзыв читается у нашего авторитета. В боевом классе обязателен: пусто — отказ в старте. Под меткой разработки пусто — своя чеканка не принимается</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;URL</code></td><td><em>(пусто)</em></td><td>Наш авторитет отзыва (RFC 7662). Обязателен в боевом классе, адрес — только <code>https://</code>; под меткой разработки — когда объявлен издатель платформы. «Авторитет не ответил» означает <strong>отказ</strong></td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;CA&#95;FILE</code></td><td><em>(пусто)</em></td><td>Якорь доверия хопа к авторитету отзыва. По хопу едет предъявленный токен. В боевом классе обязателен; нечитаемая связка — отказ в старте</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;CERT&#95;FILE</code> / <code>&#95;KEY&#95;FILE</code></td><td><em>(пусто)</em></td><td>Клиентская пара края к авторитету отзыва: авторитет спрашивает сертификат. В боевом классе обязательна; половина пары или нечитаемая пара — отказ в старте</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;IAM&#95;LOGIN&#95;LANE&#95;URL</code></td><td><em>(пусто)</em></td><td>Адрес HTTPS-слушателя формы входа службы доступа: сюда край ретранслирует глаголы формы входа. Под <code>own</code> обязателен при любой метке: пусто, не абсолютный адрес или не <code>https://</code> — отказ в старте. Требует клиентскую пару и якорь <code>KACHO&#95;API&#95;GATEWAY&#95;MTLS&#95;CLIENT&#95;CERT&#95;FILE</code> / <code>&#95;KEY&#95;FILE</code> / <code>&#95;CA&#95;FILE</code> (таблица mTLS ниже)</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;IAM&#95;ISSUANCE&#95;URL</code></td><td><em>(пусто)</em></td><td>Адрес HTTPS-слушателя выдачи службы доступа: сюда край ретранслирует церемонию авторизации — <code>GET /iam/v1/authorize</code> и <code>POST /iam/v1/token</code>. Под <code>own</code> обязателен; требования те же, что у адреса формы входа</td></tr>
     <tr><td><code>KACHO&#95;JWKS&#95;CACHE&#95;TTL&#95;SECONDS</code></td><td><code>300</code></td><td>TTL кэша JWKS</td></tr>
     <tr><td><code>KACHO&#95;JWT&#95;CLOCK&#95;SKEW&#95;SECONDS</code></td><td><code>30</code></td><td>Допуск на рассинхрон часов при проверке <code>exp</code>/<code>nbf</code></td></tr>
     <tr><td><code>KACHO&#95;DPOP&#95;REPLAY&#95;CACHE&#95;SIZE</code> / <code>&#95;TTL&#95;SECONDS</code></td><td><code>100000</code> / <code>120</code></td><td>Размер / TTL anti-replay кэша <code>jti</code></td></tr>
@@ -76,11 +81,9 @@ Kachō API Gateway конфигурируется через переменны�
   </tbody>
 </table>
 
-Церемонию интерактивного входа проводит консоль входа развёрнутого провайдера личности —
-край её не настраивает и своих ключей под неё не принимает. Прежние ключи
-`KACHO_API_GATEWAY_OIDC_*` сняты с контракта: их не объявлял ни один профиль, а маршруты,
-которые они питали, адресовали снятого провайдера. Имена зарезервированы и не
-переиспользуются. Детали проверки предъявителя — [Аутентификация](/architecture/authn).
+Вход человека проводит служба доступа платформы: край ретранслирует ей форму входа и
+церемонию авторизации по двум адресам выше. Детали проверки предъявителя —
+[Аутентификация](/architecture/authn).
 
 ## Авторизация (AuthZ)
 
@@ -168,98 +171,41 @@ gRPC server-reflection **нет собственной ручки** — пере
     KACHO_API_GATEWAY_TLS_CERT_FILE: /tls/tls.crt
     KACHO_API_GATEWAY_TLS_KEY_FILE: /tls/tls.key
 
-    # AuthN — production: два объявленных издателя + DPoP
+    # AuthN — production: издатель платформы + DPoP
     KACHO_API_GATEWAY_AUTHN_MODE: production-strict
-    # Посадка личности: чем стенд проверяет ЧЕЛОВЕКА — внешним поставщиком
-    # удостоверений (external) или собственной чеканкой платформы (own).
-    # Умолчания НЕТ: незаданное и неизвестное значение — отказ старта.
-    # На крае поле разводит ДВА требования, и второе — ЗАМЕЩЕНИЕ, а не
-    # послабление:
-    #   · АДМИНИСТРАТИВНЫЙ адрес поставщика (им выход человека снимает сессию на
-    #     его стороне) — обязателен под external, под own снимается: такой
-    #     сессии не существует;
-    #   · КТО ОТВЕЧАЕТ ОБ ОТЗЫВЕ на предъявлении — под external поставщик
-    #     (KACHO_HYDRA_INTROSPECTION_URL), под own НАШ авторитет
-    #     (KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL) вместе с якорем
-    #     доверия и КЛИЕНТСКОЙ ПАРОЙ: авторитет спрашивает сертификат, и хопу
-    #     без пары он откажет на каждом запросе.
-    # Читать отзыв обязана ЛЮБАЯ полоса: отзыв, действующий на выдаче и не
-    # действующий на предъявлении, отзывом не является. Значение обязано
-    # СОВПАДАТЬ с тем, что объявила служба прав, — половины одного стенда не
-    # решают о личности по-разному.
-    KACHO_API_GATEWAY_IDENTITY_PROVIDER: external
-    # Носитель браузерной сессии — МНОЖЕСТВО читателей, по той же причине, по
-    # которой множеством объявлен издатель токена ниже: переезд между двумя
-    # источниками личности не мгновенен. Посадка выше отвечает на «ЧЬЯ ЧЕКАНКА
-    # ВЫДАЁТ личность», эта ручка — на «ЧЬЁ ПЕЧЕНЬЕ край ещё читает», и во время
-    # переезда ответы расходятся: в этом расхождении переезд и состоит.
-    #
-    # Состояний ТРИ, и переход между ними — правка профиля, а не кода:
-    #   · external      — только чужое печенье: стенд до переезда;
-    #   · own,external  — ОБА: наше печенье уже читается, чужое ещё читается.
-    #                     Человек с живой чужой сессией входа не теряет;
-    #   · own           — только наше: состояние, к которому платформа приходит.
-    # Порядок записи ни на что не влияет: при двух предъявленных носителях
-    # действует НАША личность, и чужой читатель не спрашивается вовсе. Это
-    # решение о том, чья личность действует, и профилю оно не принадлежит.
-    #
-    # ПАРА «посадка × множество» СВЯЗАНА, и страж старта её сверяет: на стенде
-    # читается ровно то, что на нём чеканится. Отсюда две несимметричности,
-    # обе — отказ старта, а не предупреждение:
-    #   · own в множестве требует посадки own. Печенье нашей сессии чеканит наша
-    #     полоса входа, и под external выдать его на этом стенде некому —
-    #     читатель был бы провязан впустую;
-    #   · посадка own требует own в множестве. Под ней край поднимает нашу форму
-    #     входа, служба чеканит печенье, и без читателя человек прошёл бы вход
-    #     и остался анонимом — отказать при этом было бы нечем.
-    # Поэтому пример НИЖЕ стоит под посадкой external и называет только чужую
-    # сторону. Переходное состояние — \`"own,external"\` — объявляется вместе со
-    # сменой посадки на own, ОДНОЙ правкой профиля, и вместе с МОМЕНТОМ
-    # ОТКРЫТИЯ ОКНА:
-    #   KACHO_API_GATEWAY_SESSION_CARRIER_WINDOW_OPENED_AT: "2026-09-21T00:00:00Z"
-    # Смысл окна один: дочитываем ЖИВЫЕ чужие сессии, новых не заводим. Момент
-    # есть граница между ними, и он обязателен ровно в этом состоянии и
-    # запрещён вне его — объявление, которому нечего ограничивать, пережило бы
-    # свой предмет молча. Чужая сессия, заведённая ПОСЛЕ момента, не
-    # принимается: без этой границы отзыв снимался бы входом заново на чужой
-    # стороне, и переходное состояние стало бы постоянной второй дверью.
-    # В окне положительный пол второго фактора на чужой полосе не
-    # удовлетворяется — новое полномочие берётся через нашу чеканку; обычный
-    # доступ живой чужой сессии сохраняется.
-    # ЗАКРЫТЬ ЧУЖУЮ ФОРМУ ВХОДА в этом окне — предмет профиля, и край этого не
-    # проверяет; он лишь не принимает то, что она заведёт. Счётчик отвергнутых
-    # (\`TransitionalWindowClosed\`) отвечает, достижима ли она на деле.
-    #
-    # ОБЪЯВИВ чужую сторону, объяви и её адрес: объявленный читатель без адреса
-    # не заводится, и такое объявление отвергается при старте, а не молча
-    # не действует.
-    #
-    # Ручка НЕ ЗАДАНА — множество выводится из посадки, и край ведёт себя ровно
-    # как прежде; объявленное значение, не дающее ни одного элемента, — отказ
-    # старта.
-    #
-    # ВЫХОД гасит НАШЕ имя сессии во всех трёх состояниях: при
-    # \`kaname.config.authn.login.cookieDomain: none\` наше печенье выдаётся
-    # без Domain, и гашение края с ним совпадает. Чужое имя край гасит тоже
-    # печеньем без Domain, а оно закрывает чужое печенье только там, где
-    # поставщик выдаёт его без Domain, — на посадке без доменного имени.
-    # Отсюда ПРЕДУСЛОВИЕ: переходное \`"own,external"\` НЕ объявляется на
-    # цепочке, где поставщик ставит Domain (\`global.kacho.identity.cookieDomain\`,
-    # по умолчанию — домен личности). Страж старта его не сверяет — домен
-    # чужого печенья краю не объявлен; снимается предусловие вместе с чужим
-    # читателем.
-    KACHO_API_GATEWAY_SESSION_CARRIERS: external
-    KACHO_API_GATEWAY_KRATOS_PUBLIC_URL: "http://kacho-kratos-public.kacho.svc:80"
+    # Посадка личности: человека проверяет собственная чеканка платформы.
+    # Законное значение одно — own; умолчания НЕТ: незаданное значение в
+    # боевом классе и значение вне словаря при любой метке — отказ старта.
+    KACHO_API_GATEWAY_IDENTITY_PROVIDER: own
+    KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN: kacho.cloud
+    KACHO_API_GATEWAY_TOKEN_AUDIENCE: "https://api.kacho.cloud"
     KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP: "true"
-    # Издатель — МНОЖЕСТВО: платформа чеканит свои токены сама, прежний издатель
-    # на переходе остаётся, и у каждого СВОЯ запись источника ключей. Один набор
-    # на двоих означал бы, что ключ одного проверяет токен другого.
-    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://kaname.kacho.local,https://auth.kacho.cloud"
-    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://auth.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP: "true"
+    # Издатель — платформа: она чеканит свои токены сама. У каждого
+    # принимаемого издателя СВОЯ запись источника ключей: общий набор означал
+    # бы, что ключ одного издателя проверяет токен другого.
+    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://kaname.kacho.local"
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    KACHO_API_GATEWAY_JWKS_CA_FILE: /mtls/ca.crt
     KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://kaname.kacho.local"
+    # Перечень ОБЯЗАТЕЛЕН: не объявленный, он даёт отказ в старте — издателя
+    # из домена установки край не выводит.
+
+    # НАШ авторитет отзыва — в боевом классе обязателен вместе с якорем
+    # доверия и КЛИЕНТСКОЙ ПАРОЙ: авторитет спрашивает сертификат, и хопу без
+    # пары он откажет на каждом запросе. Отзыв читается на предъявлении у
+    # токена любого принятого издателя: об отзыве токена другого издателя
+    # отвечает наша запись отзыва на внутреннем слушателе службы доступа.
     KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
-    # Прежний скалярный пин при этом СНЯТ: два объявления об одном предмете дают
-    # отказ в старте, а не молчаливое старшинство.
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE: /mtls/ca.crt
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE: /mtls/client.crt
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE: /mtls/client.key
+
+    # Вход человека под own: форму входа и церемонию авторизации край
+    # ретранслирует службе доступа. Оба адреса обязательны, только https, и
+    # идут с клиентской парой и якорем mTLS ниже.
+    KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL: "https://kaname-internal.kacho.svc:9100"
+    KACHO_API_GATEWAY_IAM_ISSUANCE_URL: "https://kaname.kacho.svc:9096"
 
     # AuthZ — включён, fail-closed
     KACHO_API_GATEWAY_AUTHZ_ENABLED: "true"
@@ -276,8 +222,36 @@ gRPC server-reflection **нет собственной ручки** — пере
   `}
 </CodeBlock>
 
-:::tip Локальный dev
-Для локального запуска достаточно `KACHO_API_GATEWAY_AUTHN_MODE=dev` (остальное берёт дефолты):
-`KACHO_API_GATEWAY_AUTHN_MODE=dev bin/api-gateway`. Режим `dev` поднимает гейтвей без mTLS и без
-жёстких authz-гейтов. Сборка — в [Развёртывании](/install/deploy).
-:::
+## Локальный запуск {#local-run}
+
+Одной ручки режима для локального старта мало. Четыре ручки команды ниже обязательны — без
+любой из них край не стартует; пятая выбирает режим `dev`. Остальное берёт умолчания таблиц
+выше. Сборка бинаря — в [Развёртывании](/install/deploy).
+
+<CodeBlock language="bash">
+  {dedent`
+    KACHO_APP_ENV=dev \\
+    KACHO_API_GATEWAY_AUTHN_MODE=dev \\
+    KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN=kacho.cloud \\
+    KACHO_API_GATEWAY_TOKEN_ISSUERS=https://kaname.kacho.local \\
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS=https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json \\
+    bin/api-gateway
+  `}
+</CodeBlock>
+
+<table>
+  <thead><tr><th>Ручка</th><th>Без неё</th></tr></thead>
+  <tbody>
+    <tr><td><code>KACHO&#95;APP&#95;ENV=dev</code></td><td>Пустая метка — боевой класс: край судит боевые требования (первым отказом — адресат токена <code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;AUDIENCE</code>) и не стартует</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;TRUST&#95;DOMAIN</code></td><td>Отказ старта: установка не назвала домен доверия, и ни один клиентский сертификат не признаётся своим</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUERS</code></td><td>Отказ старта: перечень издателей обязателен (таблица AuthN выше)</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUER&#95;KEYSETS</code></td><td>Отказ старта: у принимаемого издателя нет записи его набора ключей</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;MODE=dev</code></td><td>Край стартует, но в режиме <code>production</code> — умолчании ручки: Bearer обязателен</td></tr>
+  </tbody>
+</table>
+
+Издатель и адрес набора взяты из примера выше — для своего стенда подставьте его издателя и
+адрес его набора; под меткой `dev` адрес может быть и `http://`. Метка `dev` терпит
+выключенную авторизацию (умолчание `AUTHZ_ENABLED=false`), которую боевой класс отвергает.
+`KACHO_API_GATEWAY_IDENTITY_PROVIDER` в минимум не входит: незаданную посадку личности
+отвергает только боевой класс.

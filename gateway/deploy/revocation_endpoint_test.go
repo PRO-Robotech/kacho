@@ -2,21 +2,17 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // revocation_endpoint_test.go — every deployed stand must tell the gateway where
-// to ask whether a token has been revoked.
+// to ask whether a token has been revoked, and the chart must carry what the
+// process reads for it.
 //
-// The gateway cannot work this address out. Introspection is served by the
-// identity provider's ADMIN API, on a Service and port distinct from the public
-// issuer, and reachable only inside the cluster — so a profile that leaves it
-// out does not fall back to something workable, it leaves the check with nowhere
-// to ask. The same holds for the admin base the logout handler uses to end the
-// provider-side session.
+// WHICH AUTHORITY. Our own: a stand that accepts our issuer names our revocation
+// authority (TestStacks_AcceptingOurIssuerNameTheRevocationAuthority below). The
+// previous identity provider's admin-API addresses are gone (#2734): the edge no
+// longer asks that provider anything, and the probes that demanded its addresses
+// were retired together with them (the tombstone below says which and why).
 //
-// Both used to be DERIVED from the public issuer when unset, and no profile set
-// either, so every stand ran with both aimed at a server that does not serve
-// them. That is why the addresses are asserted here rather than assumed.
-//
-// This guard reads the DECLARATIONS, like its neighbour token_shape_test.go: the
-// contract is what the profiles declare, it needs no chart dependencies, and it
+// This guard reads the DECLARATIONS, like deploy/posture_parity_test.go:
+// the contract is what the profiles declare, it needs no chart dependencies, and it
 // therefore can never skip. It merges each stack the way helm does, because the
 // profiles are layered — the base carries the address and an overlay may correct
 // it, so asking each FILE in isolation would demand redundant restatements and
@@ -24,8 +20,6 @@
 package deploy_test
 
 import (
-	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,11 +41,17 @@ func readRepoFile(t *testing.T, parts ...string) string {
 	return string(raw)
 }
 
-// stacksTable — the ONE place in the tree where the `-f` chains are declared.
-// Read from here, from deploy/tests/helm/stacks.sh and from the deploy package;
-// nowhere else, and TestNoSecondCopyOfAStackChain (deploy/stack_table_test.go)
-// keeps it that way.
-const stacksTable = "../../deploy/stacks.txt"
+// stacksTableFromRoot — the ONE place in the tree where the `-f` chains are
+// declared, addressed from the repository root. TestNoSecondCopyOfAStackChain
+// (deploy/stack_table_test.go) keeps the chains themselves from being copied
+// anywhere else; it does not count readers. Inside this package the table has
+// exactly one reader, readStackTable, and so exactly one grammar: two readers
+// with two grammars would each honestly judge the stands its own grammar
+// recognised, and a line one of them skips would narrow only half the package.
+var stacksTableFromRoot = filepath.Join("deploy", "stacks.txt")
+
+// stacksTable — the same table addressed from this package.
+var stacksTable = filepath.Join("..", "..", stacksTableFromRoot)
 
 var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
 
@@ -71,15 +71,23 @@ var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:
 // a pod — and because every question asked here is one the intermediate state
 // must also answer.
 //
-// values.fe3455-ory.yaml is deliberately absent from the table — it is gitignored
+// values.fe3455-secrets.yaml is deliberately absent from the table — it is gitignored
 // (site credentials) and carries no gateway configuration; the cutover script
 // appends it itself.
 func deployableStacks(t *testing.T) map[string][]string {
 	t.Helper()
-	raw, err := os.ReadFile(stacksTable)
+	return readStackTable(t, stacksTable)
+}
+
+// readStackTable — the table's only reader in this package. It takes the path
+// so that a check which derives the repository root on its own (see
+// lanePrereqRoot) reads the same lines through the same grammar.
+func readStackTable(t *testing.T, path string) map[string][]string {
+	t.Helper()
+	raw, err := os.ReadFile(path) // #nosec G304 -- the stack table of this tree
 	if err != nil {
 		t.Fatalf("stack table %s is unreadable (%v) — the premise of every check in this "+
-			"package is gone, which is not the same as a clean tree", stacksTable, err)
+			"package is gone, which is not the same as a clean tree", path, err)
 	}
 	out := map[string][]string{}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -91,151 +99,86 @@ func deployableStacks(t *testing.T) map[string][]string {
 		if m == nil {
 			// An unparsed line is NOT "fewer stacks", it is "the predicate stopped
 			// recognising them". Staying silent here narrows every check downstream.
-			t.Fatalf("stack table line not parsed: %q (%s)", line, stacksTable)
+			t.Fatalf("stack table line not parsed: %q (%s)", line, path)
 		}
 		out[m[1]] = strings.Split(m[2], ",")
 	}
 	if len(out) == 0 {
 		t.Fatalf("%s declares no stacks — this package is not entitled to conclude that "+
-			"none are left", stacksTable)
+			"none are left", path)
 	}
 	return out
 }
 
-// introspectionAdminPath — the path the provider's admin API serves token
-// introspection on, mirrored from the gateway's own boot guard. An address
-// ending anywhere else is the public API, which serves no introspection at all.
-const introspectionAdminPath = "/admin/oauth2/introspect"
+// sortedStackNames — имена цепочек таблицы в устойчивом порядке. Обход карты
+// давал бы подпробы и находки в порядке, разном от прогона к прогону, и два
+// прогона одного дерева нельзя было бы сравнить построчно.
+func sortedStackNames(stacks map[string][]string) []string {
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // mergeInto overlays src onto dst the way helm merges values files: maps merge
-// key by key, anything else replaces wholesale.
+// key by key, anything else replaces wholesale. It is the package's only
+// overlay.
+//
+// A map taken from src is COPIED into dst, never shared. A shared one would let
+// the next overlay edit src in place: `mergeInto(mergeInto({}, base), late)`
+// used to leave `late`'s keys inside `base`, so one profile tree held by a
+// caller ended up carrying another profile's declarations.
 func mergeInto(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = map[string]any{}
 	}
 	for k, v := range src {
 		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeInto(cur, sub)
-				continue
-			}
+			cur, _ := dst[k].(map[string]any)
+			dst[k] = mergeInto(cur, sub)
+			continue
 		}
 		dst[k] = v
 	}
 	return dst
 }
 
-// resolveStack merges a stack's profiles in order and returns the gateway value
-// at the given path, or ("", false) when the stack never declares it.
-func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
-	t.Helper()
-	merged := map[string]any{}
-	for _, profile := range stack {
-		merged = mergeInto(merged, umbrellaValues(t, profile))
-	}
-	var cur any = merged
-	for _, key := range append([]string{"api-gateway"}, path...) {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return "", false
-		}
-		if cur, ok = m[key]; !ok {
-			return "", false
-		}
-	}
-	s, ok := cur.(string)
-	return s, ok && strings.TrimSpace(s) != ""
-}
+// TestMergeInto_LeavesItsSourceIntact — the overlay does not write THROUGH
+// itself into a source tree. The result carries both the layer and the overlay
+// (the lawful twin of the property), while the layer the caller still holds
+// stays exactly what was read from its file.
+func TestMergeInto_LeavesItsSourceIntact(t *testing.T) {
+	base := map[string]any{"kaname": map[string]any{"ports": map[string]any{"loginLane": 9100}}}
+	late := map[string]any{"kaname": map[string]any{"ports": map[string]any{"public": 9090}}}
 
-// Every stack that deploys the gateway must name the introspection endpoint, and
-// it must be the admin path — pointing it at the public API is exactly the state
-// this contract exists to prevent.
-func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
-		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "introspectionUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.introspectionUrl is not declared — the "+
-					"revocation check has nowhere to ask, so every token stays good until it "+
-					"expires no matter what is revoked",
-					name, strings.Join(stack, " + "))
-			}
-			if err := checkAdminEndpoint(got, introspectionAdminPath); err != nil {
-				t.Errorf("%s: api-gateway.hydra.introspectionUrl %v", name, err)
-			}
-		})
+	merged := mergeInto(mergeInto(map[string]any{}, base), late)
+
+	if got := laneString(lookupLane(merged, "kaname", "ports", "public")); got != "9090" {
+		t.Fatalf("the overlay did not reach the result (kaname.ports.public = %q): %v", got, merged)
+	}
+	if got := laneString(lookupLane(merged, "kaname", "ports", "loginLane")); got != "9100" {
+		t.Fatalf("the overlay erased the layer under it (kaname.ports.loginLane = %q): %v", got, merged)
+	}
+	if v, leaked := lookupLane(base, "kaname", "ports", "public"); leaked {
+		t.Fatalf("the overlay wrote its key INTO THE SOURCE: base now carries kaname.ports.public = %v, "+
+			"a declaration its file never made: %v", v, base)
 	}
 }
 
-// And the admin base the logout handler needs to end the provider-side session.
-// Unset, the session kill is skipped and signing out leaves the session alive.
-func TestStacks_DeclareAdminEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
-		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "adminUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.adminUrl is not declared — signing out "+
-					"then leaves the session alive at the identity provider",
-					name, strings.Join(stack, " + "))
-			}
-			if err := checkAdminEndpoint(got, ""); err != nil {
-				t.Errorf("%s: api-gateway.hydra.adminUrl %v", name, err)
-			}
-		})
-	}
-}
-
-// The chart must still emit the environment variables these values drive. A
-// value nothing renders is a decision that never reaches the process — the same
-// way the sender-constrained token knob was documented for its whole life while
-// no template emitted it.
-func TestChart_EmitsRevocationEnv(t *testing.T) {
-	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
-	// Пара клиентской личности стоит здесь по той же причине, что и адреса:
-	// профиль её ОБЪЯВЛЯЕТ (это утверждает соседний declared-тест), но пока
-	// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
-	// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
-	// котором каждый предъявитель нашей чеканки получал отказ.
-	// Ручки НАШЕЙ полосы (KACHO_API_GATEWAY_..._TOKEN_...) отсюда выведены и
-	// сверяются ВЫВОДИМО — TestChart_EmitsEveryDeclaredTokenAcceptanceKnob
-	// читает их перечень из объявления config. Выписанный список рядом с
-	// выводимым дал бы два места об одном предмете, и разошлись бы они молча:
-	// новая ручка попадала бы в одно и не попадала в другое.
-	for _, name := range []string{
-		"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
-	} {
-		// Имя сверяется ДО КОНЦА СТРОКИ, а не вхождением: подстрока
-		// удовлетворяется и удлинённым именем, поэтому переименование
-		// `…_CERT_FILE` → `…_CERT_FILE_X` оставляло гейт зелёным. Найдено
-		// инъекцией при заведении второй пары — до неё гейт три имени из трёх
-		// «проверял» так же.
-		if !strings.Contains(deployment, "name: "+name+"\n") {
-			t.Errorf("the api-gateway template no longer emits %s — the values knob would be "+
-				"silently inert and the profiles above would assert nothing", name)
-		}
-	}
-}
-
-// checkAdminEndpoint mirrors the gateway's boot guard: an absolute in-cluster
-// http(s) URL and, for introspection, the admin path.
-func checkAdminEndpoint(raw, wantPath string) error {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return fmt.Errorf("is not a valid URL: %v", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("must be an absolute http(s) URL, got %q", raw)
-	}
-	if u.Host == "" {
-		return fmt.Errorf("has no host: %q", raw)
-	}
-	if wantPath != "" && strings.TrimRight(u.Path, "/") != wantPath {
-		return fmt.Errorf("must address %q, got %q — the public OAuth2 API serves no "+
-			"introspection, and the gateway refuses to start on an address shaped like it",
-			wantPath, u.Path)
-	}
-	return nil
-}
+// ЗДЕСЬ СТОЯЛИ ТРИ ПРОБЫ О ДОРОГЕ КРАЯ К ПРЕЖНЕМУ ПОСТАВЩИКУ — и сняты вместе с ней
+// (#2734): TestStacks_DeclareIntrospectionEndpoint и TestStacks_DeclareAdminEndpoint
+// требовали адресов его административного API под посадкой `external`,
+// TestChart_EmitsRevocationEnv требовал, чтобы шаблон края эти адреса эмитировал.
+//
+// Последняя ИСТЕКЛА, а не снята молча (#2778): её перечень был сведён с ведомостью
+// снятых ручек (`internal/retiredknobs`), и имя, снятое с процесса, проба больше не
+// требовала, а называла находкой своего перечня. Когда с процесса сняты оба имени
+// перечня, требовать проба больше не может ничего, и снимается вместе с последним
+// — тем же изменением, что снимает читателя. Что снятые имена не вернутся, судят
+// двухколоночный гейт края (knob_producer_parity_test.go) и рендерная проба
+// каждой цепочки (deploy/edge_retired_knobs_render_test.go).
 
 // ─── НАША ПОЛОСА ОТЗЫВА: СТЕНД, А НЕ ФАЙЛ ───────────────────────────────────
 
@@ -447,7 +390,7 @@ var tokenLaneEnvValue = regexp.MustCompile(
 //
 // Читателей объявления двое: проба выше спрашивает КЛЮЧ ПРОФИЛЯ, процесс читает
 // ПЕРЕМЕННУЮ ОКРУЖЕНИЯ, и связывает их ровно одно место — эта строка шаблона.
-// Перевесив её на адрес соседа (`.Values.hydra.introspectionUrl`), получаем
+// Перевесив её на адрес соседа (скажем, `.Values.advertisedEndpoint`), получаем
 // состояние, в котором обе проверки зелены, профиль объявляет одно, а процесс
 // получает другое — и адрес контроля безопасности оказывается ВЫВЕДЕННЫМ из
 // чужого. Выведенный адрес всегда непуст, поэтому страж старта молчит, контроль

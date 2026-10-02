@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // Сценарий 01 приёмки: адрес края обязателен, и отказ называет ОБА способа его задать.
@@ -137,7 +139,7 @@ func TestTokenNeverAppearsInErrors(t *testing.T) {
 // Заголовки: авторизация и идемпотентность доезжают до края в ожидаемой форме.
 func TestRequestCarriesAuthorizationAndIdempotency(t *testing.T) {
 	var gotAuth, gotIdem string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotIdem = r.Header.Get("Idempotency-Key")
 		w.WriteHeader(http.StatusOK)

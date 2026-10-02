@@ -29,10 +29,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
-	testIssuer   = "https://hydra.api.kacho.cloud"
+	testIssuer   = "https://issuer.api.kacho.test"
 	testAudience = "https://api.kacho.cloud"
 )
 
@@ -90,7 +91,7 @@ func newJWKSFixture(t *testing.T, alg string) *jwksFixture {
 	}
 	set := middleware.JWKSet{Keys: []middleware.JWK{jwkPub}}
 	body, _ := json.Marshal(set)
-	fix.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fix.server = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if fix.overrides != nil && fix.overrides(w, r) {
 			return
 		}

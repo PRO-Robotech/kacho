@@ -40,10 +40,28 @@ import (
 // чарт консоли) и значение похоже на кластерное имя службы. Одного признака
 // мало: `upstream` встречается в прозе, а кластерное имя — у адресов, которые
 // резолвит не nginx.
+//
+// nginxUpstreamWord — слово, которым чарт консоли называет апстримы: карта
+// `upstreams:` его значений. Его носитель — ключ, несущий слово.
+const nginxUpstreamWord = "upstream"
+
+// nginxUpstreamKeys — ключи апстримов, объявляемых адресом прямо в значениях.
+// У каждого обязан быть носитель в чарте консоли
+// (TestNginxUpstreamKeyFormsEachHaveACarrier): ключ без носителя — перечень,
+// переживший свой предмет.
+var nginxUpstreamKeys = []string{"apiGateway"}
+
 var (
 	reHelperUpstream = regexp.MustCompile(`printf\s+"%s\.%s\.svc(\.cluster\.local)?:`)
-	reValueUpstream  = regexp.MustCompile(`(?i)^\s*[a-z0-9_-]*(?:upstream|apiGateway|kratosPublic|hydraPublic|kratosUi)[a-z0-9_-]*\s*:\s*"?([a-z0-9.-]+\.svc(?:\.cluster\.local)?)(:\d+)?"?\s*$`)
+	reValueUpstream  = valueUpstreamOf(append([]string{nginxUpstreamWord}, nginxUpstreamKeys...))
+	reUpstreamWord   = regexp.MustCompile(`(?i)^\s*[a-z0-9_-]*` + nginxUpstreamWord + `[a-z0-9_-]*\s*:`)
 )
+
+// valueUpstreamOf — распознаватель объявления апстрима по формам имени ключа.
+func valueUpstreamOf(forms []string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)^\s*[a-z0-9_-]*(?:` + strings.Join(forms, "|") +
+		`)[a-z0-9_-]*\s*:\s*"?([a-z0-9.-]+\.svc(?:\.cluster\.local)?)(:\d+)?"?\s*$`)
+}
 
 // uiChartFiles — файлы чарта консоли, объявляющие апстримы.
 func uiChartFiles(t *testing.T) []string {
@@ -117,4 +135,43 @@ func TestNginxResolvedUpstreamsUseTheFullName(t *testing.T) {
 	}
 	t.Logf("осмотрено: файлов чарта консоли %d, объявлений апстрима %d, короткой формы %d",
 		len(files), checked, short)
+}
+
+// TestNginxUpstreamKeyFormsEachHaveACarrier — у каждой формы имени ключа,
+// которую знает распознаватель, есть носитель в чарте консоли: у слова
+// апстрима — ключ, который его несёт, у ключа апстрима — хотя бы одно
+// объявление адресом. Форма без носителя ничего не судит, а перечень, который
+// её несёт, описывает уже не чарт: так пережили свою полосу раздачи ключи
+// апстримов прежнего поставщика личности (#1276).
+func TestNginxUpstreamKeyFormsEachHaveACarrier(t *testing.T) {
+	files := uiChartFiles(t)
+	word, keys := 0, map[string]int{}
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if reUpstreamWord.MatchString(line) {
+				word++
+			}
+			for _, key := range nginxUpstreamKeys {
+				if valueUpstreamOf([]string{key}).MatchString(line) {
+					keys[key]++
+				}
+			}
+		}
+	}
+	if word == 0 {
+		t.Errorf("слово апстрима %q не стоит ни в одном ключе чарта консоли (файлов %d) — "+
+			"распознаватель знает форму, которой в предмете нет", nginxUpstreamWord, len(files))
+	}
+	for _, key := range nginxUpstreamKeys {
+		if keys[key] == 0 {
+			t.Errorf("ключ апстрима %q не несёт ни одного объявления адресом в чарте консоли "+
+				"(файлов %d) — распознаватель знает ключ, которого в предмете нет; снимите его", key, len(files))
+		}
+	}
+	t.Logf("слово апстрима: ключей %d · ключи апстрима %d, носители %v · файлов чарта консоли %d",
+		word, len(nginxUpstreamKeys), keys, len(files))
 }

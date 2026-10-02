@@ -10,13 +10,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // zot-forward: ZotForwarder стримит запрос в zot как есть (путь/тело/статус) и
 // возвращает записанный клиенту HTTP-статус.
 func TestDataplane_ZotForward_StreamsAndCapturesStatus(t *testing.T) {
 	var gotPath, gotMethod, gotBody string
-	zot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	zot := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotMethod = r.URL.Path, r.Method
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
@@ -48,7 +50,7 @@ func TestDataplane_ZotForward_StreamsAndCapturesStatus(t *testing.T) {
 // и Cookie до проксирования.
 func TestDataplane_ZotForward_StripsCallerCredentials(t *testing.T) {
 	var gotAuth, gotCookie string
-	zot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	zot := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotCookie = r.Header.Get("Cookie")
 		w.WriteHeader(http.StatusOK)

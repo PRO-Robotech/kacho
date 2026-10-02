@@ -59,7 +59,7 @@ mtls:
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
 # services (vpc/compute/kacho-geo/api-gateway/kaname/kacho-nlb) the EFFECTIVE image
 # override is carried by values.fe3455-prod.yaml, which layers AFTER this file
-# (-f values.prod -f values.fe3455 -f values.fe3455-prod -f values.fe3455-ory). The
+# (-f values.prod -f values.fe3455 -f values.fe3455-prod, deploy/stacks.txt). The
 # pins BELOW are kept in sync with the live tags too so this file is not a stale
 # landmine, but values.fe3455-prod.yaml is authoritative for the render. The `uif:`
 # block (below) is carried ONLY here — no later file overrides it.
@@ -184,7 +184,7 @@ kaname:
     # `kaname.image`.
     # Действующее переопределение — values.fe3455-prod.yaml (тот же тег, слой ПОСЛЕ
     # этого файла).
-    tag: main-16b5cade
+    tag: 357-934b7235
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true
@@ -272,41 +272,8 @@ pg-nlb:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
-pg-kratos:
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
-pg-hydra:
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
 
 # it to free a pod's worth of CPU/mem on the 4-vCPU cluster.
 # ── no ingress controller on this cluster ──
 ingress-nginx:
   enabled: false
-
-# ── identity: point the Ory self-service UI at the stand's EXTERNAL origin ──
-# Users reach this stand at http://kacho.in-cloud.io (external proxy → in-cluster
-# ui nginx → /.ory/kratos|hydra). The Node self-service UI hands the browser an
-# ABSOLUTE Kratos URL for the login/registration form actions; the dev default is
-# the local port-forward (localhost:28080), which on a remote stand points at the
-# USER's own machine → registration/login POSTs never reach Kratos (no identity
-# created, "invalid credentials"). Kratos' own server config is already origin-
-# relative (serve.public.base_url: /.ory/kratos/public/), so only this one browser
-# URL needs the external origin. Hydra issuer stays as-is (JWT `iss` identity only,
-# never navigated; password flow doesn't use the Hydra OAuth path).
-kratos-selfservice-ui:
-  kratosSelfServiceUI:
-    # Относительный, как и в остальных профилях: этот адрес исполняет браузер, а
-    # консоль проксирует Kratos через себя же (same-origin). Абсолютная форма
-    # здесь дополнительно фиксировала СХЕМУ `http://` — то есть при переводе
-    # площадки на https редиректы входа продолжали бы уводить на открытый канал,
-    # и заметить это можно было бы только по адресной строке.
-    kratosBrowserUrl: "/.ory/kratos/public"

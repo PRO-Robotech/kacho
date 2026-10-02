@@ -54,7 +54,8 @@
 # ДОМОВ У ДОКАЗАТЕЛЬСТВА ДВА, И ВТОРОЙ ОБЪЯВЛЯЕТСЯ ЗДЕСЬ ЖЕ
 #
 # Этот обход живёт в задании `helm lint · template`, а там из инструментов только
-# helm, go, python3 и git — замерено по объявлению задания, не по памяти.
+# то, что ставит само задание, — helm, kubectl, go, python3, yq, jq, openssl, make
+# и git; перечень читается из его шагов посадки, не по памяти.
 # Доказательству, которому нужен buf, trivy или сканер со своим окружением, здесь
 # остаётся ровно один исход — «условие не создано», и он повторяется КАЖДЫЙ
 # прогон. Такое доказательство существует как текст: ровно то, против чего оно
@@ -113,19 +114,19 @@ DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
-deploy/tests/helm/identity-hook-credential-provenance-inject.sh
-deploy/tests/helm/identity-hook-credential-source-inject.sh
+deploy/scripts/identity-provider-absent-cluster-half-inject.sh
+deploy/tests/helm/cert-manager-release-before-product-inject.sh
+deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
-deploy/tests/helm/identity-mail-lane-runtime-inject.sh
-deploy/tests/helm/identity-session-secret-source-inject.sh
-deploy/tests/helm/identity-substitution-output-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
 deploy/tests/helm/servername-checked-against-the-peer-inject.sh
 gateway/deploy/revocation_authority_inject.sh
+scripts/ci-local-logdir-inject.sh
 scripts/ci-local-outcome-inject.sh
 scripts/go-mod-tidy-check-inject.sh
 scripts/overwritten-work-inject.sh
+scripts/hooks/attribution-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh
@@ -167,7 +168,6 @@ scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|ну�
 # исключать (файла нет либо он переименован в форму доказательства), объявляется
 # находкой. Пустая ведомость — законное состояние и НЕ поломка.
 NOT_A_PROOF="
-deploy/scripts/inject-admin-hop-defects.sh|вносит дефекты в ЖИВОЙ стенд, а не доказывает гейт; запускается целью admin-hop-injection под стражем контекста
 deploy/scripts/run-injection-proofs.sh|это ОБХОДЧИК доказательств, а не доказательство; слово в имени от предмета обхода. Запускать его собой значило бы рекурсию
 gateway/scripts/inject-catalog-splice-defects.sh|доказательство гейта склейки, но НЕ этого обхода: вносит пропажу домена в РЕАЛЬНОЕ дерево контрактов и требует buf+go+python3, поэтому зовётся отдельной целью catalog-splice-inject (gateway/Makefile) руками при правке гейта
 gateway/scripts/inject-domain-generation-defects.sh|доказательство гейта разреза, но НЕ этого обхода: правит рабочее дерево и требует buf+go, поэтому зовётся отдельной целью domain-generation-inject (gateway/Makefile) руками при правке гейта или генераторов
@@ -445,6 +445,38 @@ tools/zz-gamma-inject.sh"
   verdict_probe "доказательство провалено → красное" 1 "$tmp/red"   "zz-broken-inject.sh"
   verdict_probe "условие не создано → код 2"         2 "$tmp/unmet" "zz-unmet-inject.sh"
 
+  # Один факт против `unmet`: код 2 тот же, но его дал bash на синтаксической
+  # ошибке, а не доказательство своим контрактом. Обязано быть красным (#2821).
+  mkdir -p "$tmp/syntax/deploy/scripts"
+  printf '#!/usr/bin/env bash\necho "инъекция зелена"\nexit 0\n' >"$tmp/syntax/deploy/scripts/zz-ok-inject.sh"
+  printf '#!/usr/bin/env bash\necho "до разбора"\nif then\n' >"$tmp/syntax/deploy/scripts/zz-unparsed-inject.sh"
+  verdict_probe "код 2 от синтаксиса bash → красное"  1 "$tmp/syntax" "сценарий не разбирается"
+
+  # ДВОЙКА ОБОРВАННОЙ КОМАНДЫ ПОД errexit (#2831). Один факт против `unmet`: код
+  # тот же (2), но его дал `grep` по отсутствующему файлу, а errexit вынес наружу
+  # как есть. Обязано быть красным, и отказ называет оборванную команду. Обрыв —
+  # внутри функции: ловушка без errtrace туда не доходит, и проба это различает.
+  mkdir -p "$tmp/errexit/deploy/scripts" "$tmp/errexit-unmet/deploy/scripts"
+  printf '#!/usr/bin/env bash\necho "инъекция зелена"\nexit 0\n' >"$tmp/errexit/deploy/scripts/zz-ok-inject.sh"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\ncheck() { grep -q x "$0.нет"; }\ncheck\necho "инъекция зелена"\n' \
+    >"$tmp/errexit/deploy/scripts/zz-errexit-inject.sh"
+  verdict_probe "код 2 от grep под errexit → красное" 1 "$tmp/errexit" "доказательство оборвано errexit"
+  # Законный близнец: та же форма, двойку объявило само доказательство.
+  printf '#!/usr/bin/env bash\necho "инъекция зелена"\nexit 0\n' >"$tmp/errexit-unmet/deploy/scripts/zz-ok-inject.sh"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\npremise() { echo "SKIP: нет инструмента"; exit 2; }\npremise\n' \
+    >"$tmp/errexit-unmet/deploy/scripts/zz-errexit-unmet-inject.sh"
+  verdict_probe "объявленная двойка под errexit → код 2" 2 "$tmp/errexit-unmet" "zz-errexit-unmet-inject.sh"
+  # Предпосылка: перевода нет — вердикт не выносится ни по кому, и это находка о
+  # дереве (файл перевода — часть его), а не «условие не создано».
+  probe
+  out="$(INJECTION_PROOFS_TREE="$tmp/green" INJECTION_PROOFS_DECLARED="deploy/scripts/zz-ok-inject.sh" \
+          INJECTION_PROOFS_LEDGER="" INJECTION_PROOFS_ELSEWHERE="" \
+          INJECTION_PROOFS_ERREXIT_ENV="$tmp/нет-перевода.sh" bash "$0" 2>&1)" && got=0 || got=$?
+  case "$got:$out" in
+    1:*"перевода errexit нет"*) echo "  ОК  перевода errexit нет → красное, названо" ;;
+    *) echo "  ПРОВАЛ перевода errexit нет — код $got:"; printf '%s\n' "$out" | sed 's/^/      /'; rc=1 ;;
+  esac
+
   # ЗЕРКАЛО НА УРОВНЕ ГЕЙТА, обе стороны. Слева — дерево, где не-доказательств нет
   # вовсе: ведомость пуста, и это ЦЕЛЬ, а не поломка. Справа — то же дерево плюс
   # файл со словом в имени и без формы: он обязан быть назван, а не пропущен.
@@ -520,13 +552,17 @@ EOF
 
   echo
   echo "случаев проверено: $checked"
-  [ "$checked" -eq 23 ] || { echo "ПРОВАЛ исполнено $checked случаев из 23"; rc=1; }
+  [ "$checked" -eq 27 ] || { echo "ПРОВАЛ исполнено $checked случаев из 27"; rc=1; }
   [ $rc -eq 0 ] && echo "PASS: обход доказательств инъекцией" || echo "FAIL: обход доказательств инъекцией"
   exit $rc
 fi
 
 # ── Корень обхода. Переопределяется ТОЛЬКО самопроверкой ────────────────────
 TREE="${INJECTION_PROOFS_TREE:-$REPO_ROOT}"
+# Перевод обрыва errexit в отказ (#2831) — ОДИН файл на обоих читателей контракта;
+# путь переопределяется ТОЛЬКО самопроверкой, чтобы «перевода нет» было
+# поведением гейта, а не утверждением о коде.
+ERREXIT_ENV="${INJECTION_PROOFS_ERREXIT_ENV-$REPO_ROOT/scripts/proof-errexit-env.sh}"
 
 # ── ПРЕДПОСЫЛКИ ИСПОЛНЯЮТСЯ ЗДЕСЬ, А НЕ ПРЕДПОЛАГАЮТСЯ У ЗАПУСКАЮЩЕГО ───────
 # Отсутствие инструмента — ОТКАЗ (код 2), а не пропуск: «не выполнилось» не идёт
@@ -650,6 +686,21 @@ if [ "$scanned" -eq 0 ] || [ "$count" -eq 0 ]; then
   exit 2
 fi
 
+# ── ДВОЙКУ ДАЁТ И КОМАНДА, ОБОРВАННАЯ errexit (#2831) ───────────────────────
+# Под `set -e` `grep` по отсутствующему файлу выходит кодом 2, и доказательство
+# выносит его наружу как есть — «условием не создано» стала бы находка о
+# сломанном доказательстве. Поэтому каждое доказательство исполняется с переводом
+# `scripts/proof-errexit-env.sh` (через BASH_ENV): выход по errexit он делает
+# кодом 1 и называет оборванную команду, явный `exit 2` не трогает. Тот же файл
+# подаёт второй читатель — `proof` в `scripts/ci-local.sh`. Перевода нет — любую
+# двойку некому отличить от оборванной команды, и вердикт не выносится ни по
+# кому: файл перевода — часть дерева, его отсутствие — находка, а не условие.
+if [ ! -r "$ERREXIT_ENV" ]; then
+  echo "FAIL: перевода errexit нет ($ERREXIT_ENV) — двойку доказательства под set -e"
+  echo "      не отличить от «условие не создано», и вердикт не выносится ни по кому."
+  exit 1
+fi
+
 failed=""
 unmet=""
 ran=0
@@ -658,7 +709,16 @@ for f in $HERE_DECLARED; do
   echo "=== $f ==="
   # КОД ВОЗВРАТА БЕРЁТСЯ КАК ДАННЫЕ. Исходов три, и третий — «условие не создано»
   # — не вердикт о дереве (`tests/helm/README.md` §«Три исхода», `e2e-flow.md` §1).
-  ( cd "$TREE" && bash "$f" ) && rc=0 || rc=$?
+  ( cd "$TREE" && BASH_ENV="$ERREXIT_ENV" bash "$f" ) && rc=0 || rc=$?
+  # ДВОЙКУ ДАЁТ И САМ bash — на синтаксической ошибке сценария (замер: `bash` на
+  # файле с `if then` выходит кодом 2). Засчитать её «условием не создано» значило
+  # бы выдать сломанное доказательство за нехватку инструмента, поэтому код 2
+  # принимается только у сценария, который bash разобрал (#2821). Тот же
+  # предикат стоит у второго читателя контракта — `proof` в `scripts/ci-local.sh`.
+  if [ "$rc" = 2 ] && ! bash -n "$TREE/$f" >/dev/null 2>&1; then
+    echo "!!! $f: код 2 дал bash, а не доказательство — сценарий не разбирается (bash -n)"
+    rc=1
+  fi
   case "$rc" in
     0) ran=$((ran + 1)) ;;
     2) unmet="$unmet $f" ;;

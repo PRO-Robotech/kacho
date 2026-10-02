@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	zotclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/zot"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
@@ -42,7 +43,7 @@ type authGatedZot struct {
 
 func (z *authGatedZot) server(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
 		z.mu.Lock()
 		if !ok || u != authUser || p != authPass {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // dpop_principal_id_test.go — the DPoP header-injection path must derive the
-// principal with the SAME rule as the legacy auth.HTTP Hydra path
+// principal with the SAME rule as the legacy auth.HTTP bearer-JWT path
 // (principalFromVerifiedToken): the kaname_principal_* claims, and nothing else.
 // Otherwise DPoP.Wrap (inner handler) overwrites the principal headers auth.HTTP
 // set, and the downstream FGA subject becomes user:<oidc-sub> instead of
@@ -57,7 +57,7 @@ func TestInjectVerifiedTokenHeaders_PrefersKanamePrincipalIDOverSub(t *testing.T
 }
 
 // TestInjectVerifiedTokenHeaders_TopLevelClaimWins — kaname_principal_id promoted
-// to the top-level claim set (Hydra allowed_top_level_claims) is also honored.
+// to the top-level claim set (the issuer's top-level claim promotion) is also honored.
 func TestInjectVerifiedTokenHeaders_TopLevelClaimWins(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
 	vt := &VerifiedToken{

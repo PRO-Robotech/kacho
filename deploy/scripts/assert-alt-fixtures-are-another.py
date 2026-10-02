@@ -60,9 +60,9 @@ import ast
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
+
+import repo_tree
 
 # `existingRegionAltId` → `existingRegionId`; `_suiteRegionAlt` → `_suiteRegion`.
 _ALT = re.compile(r"^(?P<stem>.+?)Alt(?P<tail>Id)?$")
@@ -91,17 +91,9 @@ def _resolve(val: str, consts: dict) -> str | None:
 
 
 def env_files(root: str) -> list[str]:
-    git = subprocess.run(["git", "-C", root, "ls-files", "-z"], capture_output=True, text=True)
-    if git.returncode == 0:
-        names = [n for n in git.stdout.split("\0") if n]
-    else:
-        names = []
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d != ".git"]
-            for fn in filenames:
-                names.append(os.path.relpath(os.path.join(dirpath, fn), root))
-    return sorted(n for n in names
-                  if "/environments/" in n.replace(os.sep, "/") and n.endswith(".json"))
+    """Способ обхода (индекс либо диск) выбирает `repo_tree.tree_files`."""
+    return [n for n in repo_tree.tree_files(root)
+            if "/environments/" in n and n.endswith(".json")]
 
 
 def collapsed_pairs(root: str) -> tuple[list[str], int, int]:
@@ -170,17 +162,8 @@ def python_files(root: str) -> list[str]:
     5805 строковых ключей) стоит доли секунды, поэтому сужать область незачем —
     а «починили там, где нашли» оставило бы класс живым во всех остальных.
     """
-    git = subprocess.run(["git", "-C", root, "ls-files", "-z", "*.py"],
-                         capture_output=True, text=True)
-    if git.returncode == 0 and git.stdout:
-        return sorted(n for n in git.stdout.split("\0") if n)
-    names = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules", "vendor")]
-        for fn in filenames:
-            if fn.endswith(".py"):
-                names.append(os.path.relpath(os.path.join(dirpath, fn), root))
-    return sorted(names)
+    return [n for n in repo_tree.tree_files(root, prune=("node_modules", "vendor"))
+            if n.endswith(".py")]
 
 
 def seeder_files(root: str) -> list[str]:
@@ -302,6 +285,7 @@ def run(root: str) -> int:
     findings += shadow
     findings += alt_differs_from_primary_in_seeder(root)
     print("===== «другая» фикстура обязана быть другой =====")
+    print(f"состав дерева: {repo_tree.tree_source(root)}")
     print(f"осмотрено файлов окружения: {files}; пар <X>Alt/<X> с непустыми значениями: {pairs}")
     print(f"прочитано файлов .py: {sfiles}; словарей: {sdicts}; строковых ключей: {skeys}")
     if pairs == 0:
@@ -327,7 +311,7 @@ def run(root: str) -> int:
 
 def self_test() -> int:
     ok = True
-    with tempfile.TemporaryDirectory() as td:
+    with repo_tree.nested_fixture_root() as td:
         d = os.path.join(td, "services", "x", "tests", "newman", "environments")
         os.makedirs(d)
 
@@ -367,7 +351,7 @@ def self_test() -> int:
             ok = False
 
     # Производитель: выдаёт один регион, создаёт другой → находка; совпало → тихо.
-    with tempfile.TemporaryDirectory() as td2:
+    with repo_tree.nested_fixture_root() as td2:
         sd = os.path.join(td2, "tests", "authz-fixtures")
         os.makedirs(sd)
         def seeder(text):
@@ -402,7 +386,7 @@ def self_test() -> int:
     # Затенённый ключ: тот же словарь объявляет одно имя дважды. ДЕФЕКТ, который
     # внесло слияние 2026-07-31 и который прошёл мимо всех прежних проверок —
     # обе строки синтаксически безупречны, конфликта нет, диффом не отличить.
-    with tempfile.TemporaryDirectory() as td4:
+    with repo_tree.nested_fixture_root() as td4:
         sd = os.path.join(td4, "tests", "authz-fixtures")
         os.makedirs(sd)
 
@@ -450,7 +434,7 @@ def self_test() -> int:
             ok = False
 
     # Пустое дерево: предпосылки нет — падаем, а не отчитываемся «чисто».
-    with tempfile.TemporaryDirectory() as td3:
+    with repo_tree.nested_fixture_root() as td3:
         if run(td3) != 1:
             print("SELF-TEST FAIL: дерево без пар объявлено чистым", file=sys.stderr)
             ok = False

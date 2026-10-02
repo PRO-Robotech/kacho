@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // Сценарий 12 приёмки — четыре случая, и каждый обязан быть отличим.
@@ -59,7 +61,7 @@ func TestConfirmAbsenceDistinguishesFourCases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var nth int
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				nth++
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Query().Get("filter") != "" {

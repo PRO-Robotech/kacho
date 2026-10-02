@@ -262,13 +262,14 @@ func (r *userTokenResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 // google.protobuf.Any через глобальный реестр типов, которого у провайдера нет. Тело
 // ЗАПРОСА при этом остаётся сгенерённым — именно там опечатка в имени поля прошла бы
 // молча.
+//
+// Форма объявляет только ЖИВЫЕ поля контракта: устаревшее поле, которое край ещё
+// присылает, разбор пропускает, как и любой необъявленный ключ, — строгого разбора
+// нет. Держит TestUserTokenWireReadsOnlyLiveFieldsOfTheEdgeContract, близнец —
+// TestUserTokenWireParsesTheWholeEdgeBody.
 type userTokenWire struct {
-	ID     string `json:"id"`
-	UserID string `json:"userId"`
-	// HydraClientID — зеркало клиента у ВНЕШНЕГО поставщика. У токенов нового
-	// выпуска пусто; в состояние не берётся ни одним полем (#1121). Оставлено в
-	// разборе тела, чтобы форма ответа края читалась целиком, а не выборочно.
-	HydraClientID   string            `json:"hydraClientId"`
+	ID              string            `json:"id"`
+	UserID          string            `json:"userId"`
 	Description     string            `json:"description"`
 	ExpiresAt       string            `json:"expiresAt"`
 	CreatedByUserID string            `json:"createdByUserId"`

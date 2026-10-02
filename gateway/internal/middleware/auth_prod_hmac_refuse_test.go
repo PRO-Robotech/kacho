@@ -9,8 +9,8 @@ package middleware_test
 // or guessed KACHO_API_GATEWAY_AUTHN_DEV_SECRET) otherwise yields a real
 // principal, and a `kaname_principal_type=service_account` claim is injected as a
 // service_account with NO IAM lookup — symmetric-key principal forgery (CWE-347).
-// In production the ONLY accepted Bearer strategy is the asymmetric JWKS (Hydra)
-// verifier.
+// In production the ONLY accepted Bearer strategy is the asymmetric JWKS
+// verifier of a declared issuer.
 
 import (
 	"context"

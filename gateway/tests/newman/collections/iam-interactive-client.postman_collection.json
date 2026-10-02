@@ -1,0 +1,2647 @@
+{
+  "info": {
+    "_postman_id": "7f744418-b60d-529f-8e07-76ef3078196a",
+    "name": "kacho-api-gateway / newman / iam-interactive-client",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IAM-IC-SECRET-01-CR-ISSUES-SECRET — IC-SECRET-01: Create on the own landing answers CreateInteractiveClientResponse with a client_secret_basic client and a non-empty clientSecret; Get describes the same row",
+      "description": "class:CRUD | class:SEC | priority:P0",
+      "item": [
+        {
+          "name": "create-s01",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s01-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Create answers an Operation that is done without an error', () => {",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.interactiveClientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS01Id', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.interactiveClient && j.response.interactiveClient.clientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS01ClientId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.clientSecret);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS01Secret', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('the one-time secret was captured (every later step compares by its value)', () =>",
+                  "  pm.expect(String(pm.environment.get('icS01Secret') || ''), 'no secret in the Create answer').to.have.length.above(0));",
+                  "pm.test('IC-SECRET-01: response is a CreateInteractiveClientResponse', () =>",
+                  "  pm.expect(String((j.response || {})['@type'] || ''), JSON.stringify(j)).to.match(/\\.CreateInteractiveClientResponse$/));",
+                  "const k = (j.response || {}).interactiveClient || {};",
+                  "pm.test('IC-SECRET-01: the client id is the ic- form of 17 crockford characters', () =>",
+                  "  pm.expect(k.id, JSON.stringify(j)).to.match(/^ic-[0-9a-hjkmnp-tv-z]{17}$/));",
+                  "pm.test('IC-SECRET-01: clientId is non-empty and carries the oic- prefix', () =>",
+                  "  pm.expect(String(k.clientId || ''), JSON.stringify(k)).to.match(/^oic-.+/));",
+                  "pm.test('IC-SECRET-01: the method is client_secret_basic (a confidential client)', () =>",
+                  "  pm.expect(k.tokenEndpointAuthMethod, JSON.stringify(k)).to.eql('client_secret_basic'));",
+                  "pm.test('IC-SECRET-01: grantTypes are exactly authorization_code and refresh_token', () =>",
+                  "  pm.expect(k.grantTypes, JSON.stringify(k)).to.eql(['authorization_code', 'refresh_token']));",
+                  "pm.test('IC-SECRET-01: status ACTIVE', () => pm.expect(k.status, JSON.stringify(k)).to.eql('ACTIVE'));",
+                  "pm.test('createdAt truncated to seconds', () => {",
+                  "  const ts = (((pm.response.json().response || {}).interactiveClient || {}).createdAt);",
+                  "  pm.expect(ts, 'createdAt present').to.be.a('string');",
+                  "  // RFC3339; если есть дробная часть — это .000... либо отсутствует",
+                  "  const m = ts.match(/\\.(\\d+)/);",
+                  "  if (m) pm.expect(parseInt(m[1].padEnd(9,'0'), 10), 'sub-second part is zero').to.eql(0);",
+                  "});",
+                  "pm.test('IC-SECRET-01: response.clientSecret is non-empty', () =>",
+                  "  pm.expect(String((j.response || {}).clientSecret || '')).to.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-after-create-s01",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS01Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS01Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS01Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const g = pm.response.json();",
+                  "pm.test('IC-SECRET-01: Get describes the row Create answered with (id, clientId, method)', () => {",
+                  "  pm.expect(g.id, JSON.stringify(g)).to.eql(pm.environment.get('icS01Id'));",
+                  "  pm.expect(g.clientId).to.eql(pm.environment.get('icS01ClientId'));",
+                  "  pm.expect(g.tokenEndpointAuthMethod).to.eql('client_secret_basic');",
+                  "});",
+                  "pm.test('IC-SECRET-01 twin (08): the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS01Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-icS01",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS01Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS01Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS01Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('teardown delete is done without an operation error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-IC-SECRET-04-CR-CONF-DUP-NAME — IC-SECRET-04: a second Create under a taken name → sync 409 ALREADY_EXISTS without a secret; the list holds exactly one client under that name; the first secret still proves its client",
+      "description": "class:CONF | class:NEG | class:SEC | priority:P0",
+      "item": [
+        {
+          "name": "create-s04",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s04-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Create answers an Operation that is done without an error', () => {",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.interactiveClientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS04Id', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.interactiveClient && j.response.interactiveClient.clientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS04ClientId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.clientSecret);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS04Secret', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('the one-time secret was captured (every later step compares by its value)', () =>",
+                  "  pm.expect(String(pm.environment.get('icS04Secret') || ''), 'no secret in the Create answer').to.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-before-duplicate-s04",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS04ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS04Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-before-duplicate-s04: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-before-duplicate-s04: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-duplicate-name-s04",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s04-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(409));",
+                  "pm.test('grpc code 6 (ALREADY_EXISTS)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
+                  "});",
+                  "const j = pm.response.json();",
+                  "pm.test('IC-SECRET-04: the refusal is synchronous — no Operation comes back', () =>",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.be.undefined);",
+                  "pm.test('IC-SECRET-04: no clientSecret in the refusal in any form', () =>",
+                  "  pm.expect(j.clientSecret, JSON.stringify(j)).to.be.undefined);",
+                  "pm.test('IC-SECRET-04: the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS04Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "list-by-taken-name-s04",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients?filter=name%3D%22ic-secret-s04-{{runId}}%22",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients?filter=name%3D%22ic-secret-s04-{{runId}}%22';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IC-SECRET-04: exactly one client carries the name, and it is the first one', () => {",
+                  "  const items = pm.response.json().interactiveClients || [];",
+                  "  pm.expect(items.length, pm.response.text()).to.eql(1);",
+                  "  pm.expect(items[0].id).to.eql(pm.environment.get('icS04Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-after-duplicate-s04",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS04ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS04Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-after-duplicate-s04: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-after-duplicate-s04: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-icS04",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS04Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS04Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS04Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('teardown delete is done without an operation error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-IC-SECRET-08-GT-NO-SECRET — IC-SECRET-08: Get answers the client_secret_basic resource without the secret (compared by value); at the same moment the secret proves the client and a one-character-off secret does not",
+      "description": "class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-s08",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s08-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Create answers an Operation that is done without an error', () => {",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.interactiveClientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS08Id', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.interactiveClient && j.response.interactiveClient.clientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS08ClientId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.clientSecret);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS08Secret', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('the one-time secret was captured (every later step compares by its value)', () =>",
+                  "  pm.expect(String(pm.environment.get('icS08Secret') || ''), 'no secret in the Create answer').to.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-s08",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS08Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS08Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS08Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const g = pm.response.json();",
+                  "pm.test('IC-SECRET-08: the resource of this client, method client_secret_basic', () => {",
+                  "  pm.expect(g.id, JSON.stringify(g)).to.eql(pm.environment.get('icS08Id'));",
+                  "  pm.expect(g.clientId).to.eql(pm.environment.get('icS08ClientId'));",
+                  "  pm.expect(g.tokenEndpointAuthMethod).to.eql('client_secret_basic');",
+                  "});",
+                  "pm.test('IC-SECRET-08: the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS08Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});",
+                  "pm.test('IC-SECRET-08: the resource message has no field for a secret or its verifier', () => {",
+                  "  pm.expect(g.clientSecret, JSON.stringify(g)).to.be.undefined;",
+                  "  pm.expect(g.secretVerifier, JSON.stringify(g)).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-secret-s08",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS08ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS08Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-secret-s08: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-secret-s08: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-wrong-secret-s08",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS08ClientId') || '');",
+                  "const _sec = String((String(pm.environment.get('icS08Secret') || '').slice(0, -1) + (String(pm.environment.get('icS08Secret') || '').slice(-1) === 'A' ? 'B' : 'A')) || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-wrong-secret-s08: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('present-wrong-secret-s08: the client is NOT proven (invalid_client)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_client');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-icS08",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS08Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS08Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS08Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('teardown delete is done without an operation error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-IC-SECRET-09-LS-UP-NO-SECRET — IC-SECRET-09: the List page carries the client in the Get projection without the secret; a description update answers without the secret and leaves it working; the mask cannot name clientSecret (unknown) nor switch tokenEndpointAuthMethod (immutable)",
+      "description": "class:SEC | class:VAL | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-s09",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s09-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Create answers an Operation that is done without an error', () => {",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.interactiveClientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS09Id', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.interactiveClient && j.response.interactiveClient.clientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS09ClientId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.clientSecret);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS09Secret', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('the one-time secret was captured (every later step compares by its value)', () =>",
+                  "  pm.expect(String(pm.environment.get('icS09Secret') || ''), 'no secret in the Create answer').to.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-projection-s09",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.environment.set('icS09GetBody', JSON.stringify(pm.response.json()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "list-s09",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients?filter=name%3D%22ic-secret-s09-{{runId}}%22",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients?filter=name%3D%22ic-secret-s09-{{runId}}%22';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IC-SECRET-09 (a): the page carries K in the same projection as Get', () => {",
+                  "  const items = pm.response.json().interactiveClients || [];",
+                  "  const k = items.find(c => c.id === pm.environment.get('icS09Id'));",
+                  "  pm.expect(k, pm.response.text()).to.be.an('object');",
+                  "  pm.expect(JSON.stringify(k)).to.eql(pm.environment.get('icS09GetBody'));",
+                  "});",
+                  "pm.test('IC-SECRET-09 (a): the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS09Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-description-s09",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"ic-secret-09-changed\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('IC-SECRET-09 (b): the Operation is done without an error', () => {",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "pm.test('IC-SECRET-09 (b): the response is the resource with the new description', () => {",
+                  "  pm.expect(j.response && j.response.id, JSON.stringify(j)).to.eql(pm.environment.get('icS09Id'));",
+                  "  pm.expect(j.response.description).to.eql('ic-secret-09-changed');",
+                  "});",
+                  "pm.test('IC-SECRET-09 (b): the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS09Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-after-update-s09",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS09ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS09Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-after-update-s09: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-after-update-s09: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-mask-client-secret-s09",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"clientSecret\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('IC-SECRET-09 (c): the status message is the generic invalid argument', () =>",
+                  "  pm.expect(pm.response.json().message, pm.response.text()).to.eql('invalid argument'));",
+                  "pm.test('field violation on \"update_mask\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'update_mask');",
+                  "  pm.expect(fv, 'fieldViolation for update_mask').to.be.an('object');",
+                  "});",
+                  "pm.test('IC-SECRET-09 (c): the BadRequest detail names client_secret as unknown', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type'] || '').includes('BadRequest'));",
+                  "  const fv = ((det || {}).fieldViolations || [])[0] || {};",
+                  "  pm.expect(fv.field, JSON.stringify(j)).to.eql('update_mask');",
+                  "  pm.expect(fv.description).to.eql('unknown field in update_mask: client_secret');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-mask-auth-method-s09",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"tokenEndpointAuthMethod\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('IC-SECRET-09 (d): the status message names the method as immutable', () =>",
+                  "  pm.expect(pm.response.json().message, pm.response.text()).to.eql('token_endpoint_auth_method is immutable after InteractiveClient.Create'));",
+                  "pm.test('IC-SECRET-09 (d): the update_mask violation carries the same sentence', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type'] || '').includes('BadRequest'));",
+                  "  const fv = ((det || {}).fieldViolations || []).find(x => x.field === 'update_mask') || {};",
+                  "  pm.expect(fv.description, JSON.stringify(j)).to.eql('token_endpoint_auth_method is immutable after InteractiveClient.Create');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-after-refused-masks-s09",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IC-SECRET-09: the method was not switched by the refused mask', () =>",
+                  "  pm.expect(pm.response.json().tokenEndpointAuthMethod, pm.response.text()).to.eql('client_secret_basic'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-after-refused-masks-s09",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS09ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS09Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-after-refused-masks-s09: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-after-refused-masks-s09: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-icS09",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS09Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS09Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS09Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('teardown delete is done without an operation error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-IC-SECRET-10-DL-NO-USABLE-SECRET — IC-SECRET-10: Delete echoes the resource without the secret; afterwards the secret gets invalid_client byte-identical to a wrong secret and to a never-created client; Get → 404; a repeated Delete has the same outcome",
+      "description": "class:SEC | class:STATE | class:IDM | priority:P0",
+      "item": [
+        {
+          "name": "create-s10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ic-secret-s10-{{runId}}\", \"redirectUris\": [\"https://api.kacho.local/auth/callback\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Create answers an Operation that is done without an error', () => {",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.interactiveClientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS10Id', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.interactiveClient && j.response.interactiveClient.clientId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS10ClientId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.response && j.response.clientSecret);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('icS10Secret', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('the one-time secret was captured (every later step compares by its value)', () =>",
+                  "  pm.expect(String(pm.environment.get('icS10Secret') || ''), 'no secret in the Create answer').to.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-before-delete-s10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS10ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS10Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-before-delete-s10: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('present-before-delete-s10: the client is proven and the never-issued code is what is refused', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-wrong-secret-s10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS10ClientId') || '');",
+                  "const _sec = String((String(pm.environment.get('icS10Secret') || '').slice(0, -1) + (String(pm.environment.get('icS10Secret') || '').slice(-1) === 'A' ? 'B' : 'A')) || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-wrong-secret-s10: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('present-wrong-secret-s10: the client is NOT proven (invalid_client)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_client');",
+                  "});",
+                  "pm.environment.set('icS10WrongSecretBody', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-never-created-client-s10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String('oic-00000000000000000' || '');",
+                  "const _sec = String(pm.environment.get('icS10Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-never-created-client-s10: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('present-never-created-client-s10: the client is NOT proven (invalid_client)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_client');",
+                  "});",
+                  "pm.environment.set('icS10NeverCreatedBody', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-s10",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS10Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS10Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS10Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('IC-SECRET-10: the Operation is done without an error', () => {",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "pm.test('IC-SECRET-10: the response echoes the removed resource', () =>",
+                  "  pm.expect(j.response && j.response.id, JSON.stringify(j)).to.eql(pm.environment.get('icS10Id')));",
+                  "pm.test('IC-SECRET-10: the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS10Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "present-after-delete-s10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{externalBaseUrl}}/iam/v1/token",
+              "host": [
+                "{{externalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=authorization_code&code=ic-secret-never-issued-code&redirect_uri=https%3A%2F%2Fapi.kacho.local%2Fauth%2Fcallback&code_verifier=ic-secret-verifier-0123456789abcdefghijklmnop"
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// HARNESS-CONFIG GUARD — externalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/token';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: externalBaseUrl is set — external-isolation check — Internal* paths must 404 on the advertised TLS endpoint', () => {",
+                  "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const _cj = require('crypto-js');",
+                  "const _cid = String(pm.environment.get('icS10ClientId') || '');",
+                  "const _sec = String(pm.environment.get('icS10Secret') || '');",
+                  "if (!_cid || !_sec) {",
+                  "  pm.test('the pair to present is known before it is presented', () => pm.expect.fail('clientId or secret was not captured by the Create of this case — the step is not sent, a presentation without a secret is a different branch'));",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _b = _cj.enc.Base64.stringify(_cj.enc.Utf8.parse(encodeURIComponent(_cid) + ':' + encodeURIComponent(_sec)));",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' + _b});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('present-after-delete-s10: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('present-after-delete-s10: the client is NOT proven (invalid_client)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.error, pm.response.text()).to.eql('invalid_client');",
+                  "});",
+                  "pm.test('present-after-delete-s10: byte-identical to the earlier refusal kept in icS10WrongSecretBody', () => pm.expect(pm.response.text()).to.eql(String(pm.environment.get('icS10WrongSecretBody') || '<not captured>')));",
+                  "pm.test('present-after-delete-s10: byte-identical to the earlier refusal kept in icS10NeverCreatedBody', () => pm.expect(pm.response.text()).to.eql(String(pm.environment.get('icS10NeverCreatedBody') || '<not captured>')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-after-delete-s10",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS10Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS10Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS10Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('IC-SECRET-10: gone, in the contract tone with the id', () =>",
+                  "  pm.expect(pm.response.json().message, pm.response.text()).to.eql('InteractiveClient ' + pm.environment.get('icS10Id') + ' not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-again-s10",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/iam/v1/internal/interactiveClients/{{icS10Id}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "internal",
+                "interactiveClients",
+                "{{icS10Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — internalBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + '/iam/v1/internal/interactiveClients/{{icS10Id}}';",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — Internal* RPCs live ONLY on the cluster-internal REST listener', () => {",
+                  "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('IC-SECRET-10: the repeated Delete has the same outcome (done, no error)', () => {",
+                  "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined;",
+                  "});",
+                  "pm.test('IC-SECRET-10 repeat: the body does not carry the secret, compared by its value', () => {",
+                  "  const s = String(pm.environment.get('icS10Secret') || '');",
+                  "  pm.expect(s, 'the secret of this case was not captured — nothing to compare against').to.have.length.above(0);",
+                  "  pm.expect(pm.response.text().indexOf(s), 'the secret is in the body').to.eql(-1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

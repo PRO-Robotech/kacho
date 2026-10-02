@@ -451,7 +451,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// compute.v1 + vpc.v1 InternalResourceLifecycleService/Subscribe (the live
 	// lifecycle feed is loadbalancer.v1's), vpc.v1 InternalWatchService/Watch (the live
 	// event stream is compute.v1's), and iam.v1 InternalIamHooksService/{TokenHook,
-	// RefreshTokenHook} (Hydra's hooks are served over HTTP with their own
+	// RefreshTokenHook} (the issuer's hooks are served over HTTP with their own
 	// request-body structs — these proto types were read by no non-generated line).
 	// IAM-INT-1 then ADDED the five InternalInteractiveClientService entries:
 	// Create/Update/Delete are sensitive (category I — they decide where an
@@ -819,9 +819,19 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// `MembershipService/ListMine` (kaname#206) — чтение своих членств, в
 	// полосу «рутина». Полоса «без порога» не сдвинулась. Числа ЗАМЕРЕНЫ
 	// прогоном после регенерации: 29→30, 284→285, 341→343.
-	assert.Equal(t, 285, n1, "routine count")
-	assert.Equal(t, 28, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 343, n2+n1+nEmpty, "catalog total")
+	//
+	// Край Ф7 (kacho#2718, пин службы на f8fc5a37) привёз ШЕСТЬ записей
+	// `AccessKeyService`. Четыре — в полосу «рутина» контрактом службы:
+	// регистрация (два шага), перечень и снятие ключа стоят на полу «1», хотя
+	// выпуск и отзыв удостоверений-соседей стоят на «2» — регистрация на «2»
+	// неисполнима, первый ключ заводится из сессии одним паролем (приёмка Ф7
+	// Р5, Р11). Две — освобождённые (`SELF_SERVICE`) и без порога: глаголы
+	// утверждения ПРОИЗВОДЯТ уровень, требовать его от них — два правила об
+	// одном поле. Полоса «чувствительное» не сдвинулась. Числа ЗАМЕРЕНЫ
+	// прогоном после регенерации: 285→289, 28→30, 343→349.
+	assert.Equal(t, 289, n1, "routine count")
+	assert.Equal(t, 30, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 349, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

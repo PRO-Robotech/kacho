@@ -13,6 +13,7 @@
 
 import { render, screen, waitFor, within, renderHook } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 
 import { DashboardPage } from ".";
 import { SERVICE_MODULES } from "../../lib/service-modules";
@@ -69,8 +70,7 @@ function listAnswerFor(path: string): Record<string, unknown> | null {
 
 describe("счётчики плиток витрины", () => {
   beforeEach(() => {
-    global.fetch = jest.fn<typeof fetch>();
-    jest.spyOn(global, "fetch").mockImplementation((input) => jsonResponse(listAnswerFor(pathOf(input)) ?? {}));
+    stubNetwork((input) => jsonResponse(listAnswerFor(pathOf(input)) ?? {}));
   });
 
   afterEach(() => jest.restoreAllMocks());

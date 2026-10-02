@@ -11,9 +11,10 @@ re-flag it.
 The console **used to** carry a debounced client-side have-i-been-pwned (HIBP)
 k-anonymity check on its own registration page — it `fetch`ed
 `https://api.pwnedpasswords.com/range/<SHA1-prefix>` and warned before submit.
-That page is gone: the console never mounted it by any route, and registration
-belongs to the identity provider, which serves the address (see
-`shared/src/pages/auth/README.md`). So there is nothing left to fail open, and
+That page is gone: the console never mounted it by any route. Registration now
+runs on the console's own screen (`shared/src/pages/auth/RegistrationPage.tsx`,
+acceptance F8) against our identity service's verb, and that screen carries no
+client-side breach check either. So there is nothing left to fail open, and
 this entry is kept only because the reasoning under it is still load-bearing:
 it is the recorded argument for **not** widening the egress allow-list. The
 app's CSP is `connect-src 'self'`
@@ -25,11 +26,12 @@ cross-origin fetch would be blocked** in the deployed image anyway — which is
 why removing the page cost no enforcement.
 
 **Where the control actually lives:** the authoritative breach
-rejection is enforced **server-side** by Kratos —
-`deploy/.../kratos-config-configmap.yaml` sets
-`password.config.haveibeenpwned_enabled: true` (host `api.pwnedpasswords.com`).
-A breached password is rejected on submit and the Kratos flow message surfaces
-through the provider's own flow UI. The client check never was the enforcement
+rejection is enforced **server-side** by our identity service: its rule for a new
+password consults the breach authority when the landing declares
+`authn.login.breach-check` as `enabled` with the authority's address, and an
+undeclared value refuses start, so a silently disabled check cannot pass for a
+configured one (kaname `INSTALL.md`, knob `KANAME_AUTHN__LOGIN__BREACH_CHECK`).
+A breached password is refused by the service on submit. The client check never was the enforcement
 point — it was a hint that fired only where CSP is absent (local `vite` dev, no
 nginx header).
 
@@ -37,7 +39,7 @@ nginx header).
 `connect-src` exception would (a) widen the strict egress allow-list of an
 authenticated console to a third-party host and (b) leak SHA-1 password prefixes
 from the app origin on every keystroke. Keeping `connect-src 'self'` and letting
-Kratos (server-to-server) perform the HIBP lookup is the stronger posture. The
+the identity service (server-to-server) perform the HIBP lookup is the stronger posture. The
 k-anonymity prefix scheme itself is correct (only 5 hex chars leave the browser,
 never the password), so fail-open on the *hint* leaks nothing and loses no
 enforcement.
@@ -108,74 +110,6 @@ document, feed it to `ConfigProvider csp={{ nonce }}`, and only then drop
 `'unsafe-inline'`. That is a change to the delivery pipeline and to the security
 posture — it carries its own acceptance, and it is deliberately not folded into a
 dependency bump.
-
-## Политика консоли применяется к проксируемой странице входа и блокирует встроенный скрипт провайдера
-
-**Статус:** принято / ограниченный остаток; измерено 2026-08-11, держится гейтом.
-
-**Запись гейта:** `csp:login-page-inline-script` — держит `scripts/check-csp-divergence-records.mjs`.
-**Измерено против:** `oryd/kratos-selfservice-ui-node:v1.3.1`, `oryd/kratos-selfservice-ui-node:v26.2.0`.
-
-Страницы входа и регистрации отдаёт **сторонний** self-service UI провайдера
-личности, а край консоли проксирует их полосу через себя
-(`deploy/templates/configmap-nginx.yaml`, полоса `^/(login|registration|…)`).
-nginx наследует `add_header` с внешнего уровня, пока у полосы нет своих, — значит
-политика консоли применяется и к странице, которую консоль не писала. Одну
-конструкцию этой страницы политика отвергает, и браузер печатает об этом ошибку
-на каждой загрузке входа.
-
-**Что именно отвергается — измерено, а не предположено:** один встроенный скрипт
-в 123 байта, вешающий пустой обработчик `load` на узлы passkey, которых на
-странице нет. Отказ не меняет ничего: регистрация проходит сквозь
-(форма → пароль → `/dashboard`), проверено на стенде 2026-08-11.
-
-**Почему это не «чинится» ослаблением политики.** `script-src` не ослабляется и
-хеш не добавляется: `'unsafe-inline'` ради пустого обработчика открыл бы
-исполнение произвольных встроенных скриптов на страницах **ввода пароля** — там,
-где цена ошибки максимальна, — а хеш протух бы при первом же обновлении
-провайдера и вернул бы ту же ошибку.
-
-**Почему исход «объявить», а не «снять» — с разбором отвергнутых способов снять:**
-
-- вырезать чужой скрипт при проксировании — правка чужой разметки по образцу: она
-  либо промахнётся мимо будущего настоящего скрипта, либо вырежет его;
-- подставлять чужому скрипту `nonce` — то же ослабление, названное иначе: nonce,
-  выдаваемый любому встроенному скрипту, который прислал провайдер, доверяет всей
-  его разметке, и именно на странице ввода пароля;
-- отдавать вход собственными страницами консоли — смена того, кто отдаёт вход;
-  это отдельный предмет со своей приёмкой, а не правка политики. Заготовки под
-  него в дереве больше нет: страницы, лежавшие здесь мёртвыми, сняты (#1225), и
-  такой ход означал бы написать их заново — уже под собственного поставщика, а
-  не под протокол внешнего.
-
-**Цена бездействия названа честно:** постоянная ошибка в журнале приучает не
-смотреть на нарушения политики, и настоящее нарушение потеряется среди этого.
-Гейт существует ровно затем, чтобы запись не пережила своё основание молча.
-
-**Условие снятия — и чем каждое держится.** Гейт роняет прогон, когда:
-
-- пин стороннего UI в дереве отличается от названного выше — разметку страницы
-  входа определяет только он, поэтому его смена означает «перемерить и либо снять
-  запись, либо обновить пин»;
-- полоса входа больше не проксируется стороннему UI — предмета у записи нет;
-- у полосы появились собственные заголовки — политика консоли на страницу входа
-  больше не наследуется, и запись описывает не то, что происходит;
-- `script-src` ослаблен — исход, который запись прямо запрещает.
-
-**Про два пина, а не один.** В дереве провайдер закреплён дважды: умолчание
-чарта (`deploy/helm/umbrella/charts/kratos-selfservice-ui/values.yaml`) и
-переопределение профиля разработки (`deploy/helm/umbrella/values.dev.yaml`).
-Профили расходятся: боевой включает UI, тега не переопределяет и едет на
-умолчании чарта, разработка — на более новом. Какой из двух был на стенде
-2026-08-11, в исходной записи не зафиксировано, а восстановить это задним числом
-нельзя, — поэтому запись привязана к **обоим**: любое движение любого из них
-требует перемерить. Предикат: `grep -rn -A3 'repository:.*kratos-selfservice-ui'
-deploy/helm/umbrella`.
-
-Пин — **прокси**-предикат: он ломается раньше своего предмета (образ могли поднять
-по причине, к встроенному скрипту не относящейся). Направление неточности выбрано
-осознанно: ложное срабатывание требует перемерить, а не оставляет запись тихо жить
-после того, как её основание исчезло.
 
 ## `react-hooks/exhaustive-deps` line-level suppressions
 
@@ -420,8 +354,8 @@ The two federation **shell** apps — `host` (the outer console shell) and
 `package.json` `workspaces` = `shared`/`vpc`/`iam`) and deliberately do **not**
 consume the `@shared/*` alias. Each carries a small private copy of:
 
-- `src/utils/auth.ts` — Kratos login-redirect + `isAuthRoute` guard
-  (byte-identical between host and dashboard).
+- `src/utils/auth.ts` — redirect to the console's own sign-in screen + the
+  ceremony-route guard (byte-identical between host and dashboard).
 - `src/utils/api-client.ts` — minimal `apiGet`/`apiList` fetch wrapper with a
   401→login redirect and a defensive JSON parse (identical between host and
   dashboard).

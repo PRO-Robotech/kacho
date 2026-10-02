@@ -15,30 +15,20 @@
 import React from "react";
 import { jest } from "@jest/globals";
 import { act, render } from "@testing-library/react";
-import { requestStepUp } from "@shared/api/step-up";
+import { requestStepUp, type StepUpRequest, type StepUpRequester } from "@shared/api/step-up";
 
 jest.unstable_mockModule("@shared/api/auth", () => ({
   authApi: {
     me: jest.fn(() => Promise.resolve({ user: null })),
     whoami: jest.fn(() => Promise.resolve(null)),
-    logout: jest.fn(() => Promise.resolve()),
   },
   hasPermission: () => false,
-}));
-
-jest.unstable_mockModule("@shared/lib/kratos", () => ({
-  kratos: {
-    whoami: jest.fn(() => Promise.resolve(null)),
-    initLogout: jest.fn(() => Promise.resolve({ logout_token: "", logout_url: "" })),
-    submitLogout: jest.fn(() => Promise.resolve()),
-    loginUrl: () => "#idp",
-  },
 }));
 
 const { AuthProvider, useAuth } = await import("./AuthContext");
 
 /** Дитя, которое ведёт себя как окно подтверждения: подписывается и отписывается. */
-function FakeWindow({ handler }: { handler: (acr?: string) => Promise<void> }) {
+function FakeWindow({ handler }: { handler: StepUpRequester }) {
   const { setStepUpHandler } = useAuth();
   React.useEffect(() => {
     setStepUpHandler(handler);
@@ -49,9 +39,9 @@ function FakeWindow({ handler }: { handler: (acr?: string) => Promise<void> }) {
 
 describe("шов «отказ по полу → окно подтверждения»", () => {
   it("просьба клиента доходит до смонтированного окна", async () => {
-    const asked: Array<string | undefined> = [];
-    const handler = (acr?: string) => {
-      asked.push(acr);
+    const asked: StepUpRequest[] = [];
+    const handler: StepUpRequester = (request) => {
+      asked.push(request);
       return Promise.resolve();
     };
 
@@ -67,7 +57,7 @@ describe("шов «отказ по полу → окно подтвержден�
     });
 
     expect(ok).toBe(true);
-    expect(asked).toEqual(["2"]);
+    expect(asked).toEqual([{ cause: "floor", acr: "2" }]);
   });
 
   it("окна нет — просьба отвечает ОТКАЗОМ, а не молчаливым согласием", async () => {

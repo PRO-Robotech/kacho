@@ -8,13 +8,13 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -69,7 +69,7 @@ func TestDo_DrainsBodyForKeepalive(t *testing.T) {
 	// НЕ доходя до io.EOF — хвостовой padding (сверх slurp-лимита net/http ~2 KiB)
 	// остаётся непрочитанным. Без явного дренажа net/http бросает соединение.
 	trailing := strings.Repeat("\n", 256<<10) // 256 KiB хвоста после JSON-значения
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"a":"b"}`))
 		_, _ = io.WriteString(w, trailing)
@@ -105,7 +105,7 @@ func TestDo_DrainsBodyForKeepalive(t *testing.T) {
 func TestGetManifest_DrainsBodyForKeepalive(t *testing.T) {
 	var newConns int64
 	trailing := strings.Repeat("\n", 256<<10) // хвост сверх slurp-лимита net/http
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"config":{"digest":"sha256:c","size":3}}`))
 		_, _ = io.WriteString(w, trailing)

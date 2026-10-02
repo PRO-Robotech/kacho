@@ -4,6 +4,19 @@ import { ConfigProvider } from "antd";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
 import { buildTheme } from "@shared/lib/theme";
+import { AccountSettingsPage } from "@shared/pages/auth/AccountSettingsPage";
+import { AddressConfirmationGate } from "@shared/pages/auth/AddressConfirmationGate";
+import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddressNotServedPage";
+import { LoginPage } from "@shared/pages/auth/LoginPage";
+import { LogoutPage } from "@shared/pages/auth/LogoutPage";
+import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
+import { VerificationPage } from "@shared/pages/auth/VerificationPage";
+import {
+  ACCOUNT_SETTINGS_ADDRESS,
+  CEREMONY_ADDRESSES,
+  CEREMONY_ROUTING,
+  type CeremonyServing,
+} from "@shared/pages/auth/ceremony-addresses";
 import { HostShell } from "./components";
 import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
 import {
@@ -69,7 +82,79 @@ const App: FC = () => {
   );
 };
 
+/**
+ * Экран церемонии вне каркаса — по имени экрана из перечня; `never` держит
+ * полноту: экран, добавленный в перечень и не поднятый здесь, роняет сборку.
+ * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
+ *
+ * Экраны вида `screen` открыты и до подтверждения адреса почты (приёмка F6b,
+ * Р7); страница неведомого адреса — нет: она стоит за тем же стражем, что
+ * каркас, и неподтверждённую сессию уводит на экран подтверждения.
+ */
+function ceremonyElement(serving: CeremonyServing) {
+  if (serving.kind !== "screen") {
+    return (
+      <AddressConfirmationGate>
+        <CeremonyAddressNotServedPage />
+      </AddressConfirmationGate>
+    );
+  }
+  const screen = serving.screen;
+  switch (screen) {
+    case "login":
+      return <LoginPage />;
+    case "registration":
+      return <RegistrationPage />;
+    case "logout":
+      return <LogoutPage />;
+    case "verification":
+      return <VerificationPage />;
+    default: {
+      const unhandled: never = screen;
+      throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);
+    }
+  }
+}
+
+/**
+ * Маршруты консоли — два яруса.
+ *
+ * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
+ * разделов, и рейл с ними обещал бы то, чего он получить не может. Адреса
+ * церемоний объявлены одним местом (`ceremony-addresses.ts`) и получают маршрут
+ * ВСЕ шесть (приёмка F8, Р3): пять консоль ведёт — вход, регистрация, выход,
+ * подтверждение адреса почты (приёмка F6b, Р8) и параметры учётной записи, —
+ * восстановление доступа отвечает названной страницей, а не переводом на панель.
+ * Параметры учётной записи (`/settings`) живут в каркасе: их открывает вошедший
+ * человек, и рейл ему нужен.
+ *
+ * КАРКАС СТОИТ ЗА СТРАЖЕМ ПОДТВЕРЖДЁННОСТИ АДРЕСА (приёмка F6b, Р7): он
+ * монтируется только на ответ края «адрес подтверждён», и неподтверждённая
+ * сессия с любого его адреса уходит на экран подтверждения.
+ *
+ * Замыкающее правило `*` каркаса этим НЕ трогается: радиус правки — шесть
+ * именованных адресов, чтобы починка не растеклась на весь маршрутизатор.
+ */
 const AppRoutes: FC<{
+  dark: boolean;
+  setDark: Dispatch<SetStateAction<boolean>>;
+}> = ({ dark, setDark }) => (
+  <Routes>
+    {CEREMONY_ADDRESSES.filter((address) => CEREMONY_ROUTING[address].kind !== "in-shell").map((address) => (
+      <Route key={address} path={address} element={ceremonyElement(CEREMONY_ROUTING[address])} />
+    ))}
+    <Route
+      path="*"
+      element={
+        <AddressConfirmationGate>
+          <ShellRoutes dark={dark} setDark={setDark} />
+        </AddressConfirmationGate>
+      }
+    />
+  </Routes>
+);
+
+const ShellRoutes: FC<{
   dark: boolean;
   setDark: Dispatch<SetStateAction<boolean>>;
 }> = ({ dark, setDark }) => {
@@ -99,6 +184,7 @@ const AppRoutes: FC<{
           <Route path="/projects/:projectId/:moduleKey/*" element={<ModulePlaceholderPage />} />
           <Route path="/iam/*" element={<IamRemote context={context} />} />
           <Route path="/system/*" element={<SystemRemote context={context} />} />
+          <Route path={ACCOUNT_SETTINGS_ADDRESS} element={<AccountSettingsPage />} />
           <Route path="/dev/reachability" element={<ReachabilityPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

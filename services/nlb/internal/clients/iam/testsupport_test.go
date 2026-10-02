@@ -5,13 +5,13 @@ package iam
 
 import (
 	"context"
-	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
@@ -24,8 +24,7 @@ func startFakeIAM(
 	internal iampb.InternalIAMServiceServer,
 ) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	if project != nil {
 		iampb.RegisterProjectServiceServer(srv, project)

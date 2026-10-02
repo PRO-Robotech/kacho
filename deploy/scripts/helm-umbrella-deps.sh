@@ -474,7 +474,7 @@ EOF
   #     её и до этой правки; исход всё равно был КРАСНЫМ, потому что адрес
   #     извлекался только формой первой.
   replay 3 есть 'форма вторая (репозиторий недостижим) → «условие не создано»' <<'EOF'
-Save error occurred:  could not find : chart hydra not found in https://k8s.ory.sh/helm/charts: looks like "https://k8s.ory.sh/helm/charts" is not a valid chart repository or cannot be reached: Get "https://k8s.ory.sh/helm/charts/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer
+Save error occurred:  could not find : chart cert-manager not found in https://charts.jetstack.io: looks like "https://charts.jetstack.io" is not a valid chart repository or cannot be reached: Get "https://charts.jetstack.io/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer
 EOF
   # (5) ФОРМА ТРЕТЬЯ — оборвано скачивание САМОГО АРХИВА (kacho#1525).
   replay 3 есть 'форма третья (оборван архив) → «условие не создано»' <<'EOF'
@@ -608,8 +608,12 @@ package_local_subcharts() {
     name="${id%%	*}"; version="${id##*	}"
     [ -n "$name" ] && [ -n "$version" ] || {
       echo "FATAL: $rel/Chart.yaml не назвал имя и версию"; return 1; }
-    # Прежние версии ЭТОГО сабчарта — прочь. Образец привязан к имени целиком,
-    # поэтому `kratos-selfservice-ui-*.tgz` не попадает под `kratos-*`.
+    # Прежние версии ЭТОГО сабчарта — прочь. Образец привязан к имени локального
+    # сабчарта целиком, поэтому вендоренный архив с более КОРОТКИМ именем под него
+    # не попадает (наблюдавшаяся пара — экран входа поставщика личности и его
+    # чарт — снята вместе с обоими, #1276). Образец `<имя>-*.tgz` захватил бы
+    # архив, чьё имя ПРОДОЛЖАЕТ это имя через дефис; среди архивов зонта такого
+    # соседа у локальных сабчартов нет.
     find "$UMBRELLA/charts" -maxdepth 1 -name "$name-*.tgz" \
       ! -name "$name-$version.tgz" -delete 2>/dev/null
     helm package "$abs" -d "$UMBRELLA/charts" >/dev/null 2>&1 || {

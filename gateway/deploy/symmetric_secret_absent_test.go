@@ -12,9 +12,10 @@
 // production posture, and the symmetric stand-in is allowed only inside in-process
 // fixtures, which never read these files.
 //
-// WHY THIS READS DECLARATIONS, NOT A RENDER. Same reason as its neighbours
-// token_shape_test.go and revocation_endpoint_test.go: the contract is what a profile
-// DECLARES, the check then needs no chart tooling, and it therefore can never skip.
+// WHY THIS READS DECLARATIONS, NOT A RENDER. Same reason as its neighbour
+// revocation_endpoint_test.go and as deploy/posture_parity_test.go: the
+// contract is what a profile DECLARES, the check then needs no chart tooling, and
+// it therefore can never skip.
 // A guard that can skip is the one that will skip on the day it matters.
 //
 // WHY BY STACK AND NOT BY FILE. Profiles are layered: a file that declares nothing
@@ -116,12 +117,14 @@ func TestPremise_EveryStackProfileExists(t *testing.T) {
 		t.Fatal("deployableStacks is empty — this file would examine nothing and report success")
 	}
 	seen := map[string]bool{}
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		if len(stack) == 0 {
 			t.Errorf("stack %q names no profile — it cannot be checked", name)
 		}
 		for _, profile := range stack {
-			path := filepath.Join("..", "..", "deploy", "helm", "umbrella", profile)
+			path := filepath.Join(umbrellaDir, profile)
 			if _, err := os.Stat(path); err != nil {
 				t.Errorf("stack %q names %s, which does not resolve (%v) — every question "+
 					"asked of it would answer \"nothing declared\"", name, profile, err)
@@ -140,7 +143,9 @@ func TestPremise_EveryStackProfileExists(t *testing.T) {
 // visible instead of green.
 
 func TestStacks_DeclareAnAsymmetricAuthnPosture(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			merged := mergedStack(t, stack)
 			gw := gatewayValues(merged)
@@ -175,7 +180,9 @@ func TestStacks_DeclareAnAsymmetricAuthnPosture(t *testing.T) {
 // ── the absence half ─────────────────────────────────────────────────────────
 
 func TestStacks_DeclareNoSymmetricSecret(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			found := findSymmetricSecret(mergedStack(t, stack))
 			if len(found) > 0 {
@@ -191,7 +198,7 @@ func TestStacks_DeclareNoSymmetricSecret(t *testing.T) {
 // Per FILE as well as per stack: a profile that no stack names yet is still a profile
 // somebody will deploy, and the stack table is maintained by hand.
 func TestEveryUmbrellaProfile_DeclaresNoSymmetricSecret(t *testing.T) {
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)

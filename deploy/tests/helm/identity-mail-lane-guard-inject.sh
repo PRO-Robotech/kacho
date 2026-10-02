@@ -13,7 +13,10 @@
 #     получает ретранслятор слоем учётных данных, которого рендер не видит);
 #   · «неявный TLS» (`smtps://`) — такая же защищённая полоса, как STARTTLS,
 #     и страж, знающий только одну схему, отверг бы работающую посадку;
-#   · неизменённое дерево обязано рендериться.
+#   · неизменённое дерево обязано рендериться;
+#   · якорь отправителя `trustAnchorSecret` профиль стенда объявляет секретом
+#     приёмника, и у близнеца, уводящего полосу с приёмника (выключен либо
+#     внешний ретранслятор), якорь снят: иначе близнец не законен (kacho#2901).
 #
 # ИНЪЕКЦИЯ РОНЯЕТ ТОЛЬКО ПРОВЕРЯЕМОЕ: каждая — это `--set` ОДНОЙ величины
 # поверх неизменного дерева. Инъекция вида «завести ещё один объект» нарушала бы
@@ -146,6 +149,22 @@ assert "источник объявлен наполовину: имя без к
 assert "источник объявлен наполовину: ключ без имени" RED 'задан, а' \
   --set global.kacho.identity.smtp.credentialSecret.key=password
 
+# ── ЯКОРЬ НАШЕГО ОТПРАВИТЕЛЯ СХОДИТСЯ С УЗЛОМ ПОЛОСЫ (ветви 7 и 8, kacho#2901) ─
+#
+# Профиль стенда объявляет якорь `trustAnchorSecret` секретом приёмника, и
+# объявленный якорь замещает системные корни процесса. Поэтому у двух близнецов
+# ниже — «приёмник выключен, полосы нет» и «внешний ретранслятор» — якорь СНЯТ:
+# без этого они не законны, а это ровно две оси здесь. Ось и её близнец
+# различаются ОДНИМ фактом — якорем; всё прочее у них подано одинаково.
+echo "=== якорь отправителя: сходится с узлом полосы ==="
+assert "внешний ретранслятор с якорем приёмника стенда" RED "замещает системные корни" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/'
+assert "якорь объявлен, полосы нет"                     RED "проверять нечего" \
+  --set mailpit.enabled=false \
+  --set global.kacho.identity.smtp.connectionURI= \
+  --set global.kacho.identity.smtp.fromAddress= \
+  --set global.kacho.identity.smtp.fromName=
+
 echo "=== законные близнецы: страж обязан молчать ==="
 # СВОЙСТВО, РАДИ КОТОРОГО ЛИТЕРАЛ И СНЯТ: полоса профиля сходится с ЛЮБЫМ именем
 # релиза, потому что берёт имя оттуда же, откуда его берёт манифест приёмника.
@@ -165,15 +184,19 @@ assert "приёмник выключен, полосы нет"  GREEN "" \
   --set mailpit.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
-  --set global.kacho.identity.smtp.fromName=
+  --set global.kacho.identity.smtp.fromName= \
+  --set global.kacho.identity.smtp.trustAnchorSecret.name= \
+  --set global.kacho.identity.smtp.trustAnchorSecret.key=
 
 assert "полное имя службы приёмника"    GREEN "" \
   --set 'global.kacho.identity.smtp.connectionURI=smtp://kacho-umbrella-mailpit.kacho.svc:1025/'
 assert "внешний ретранслятор"           GREEN "" \
-  --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/'
+  --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/' \
+  --set global.kacho.identity.smtp.trustAnchorSecret.name= \
+  --set global.kacho.identity.smtp.trustAnchorSecret.key=
 
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 21 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$red" -ge 23 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
 [ "$green" -ge 7 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: страж почтовой полосы способен упасть и способен смолчать" \
               || echo "ИТОГ: ОТКАЗ"

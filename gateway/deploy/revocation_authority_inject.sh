@@ -62,8 +62,8 @@ assert 'накладка гасит адрес — краснеет и назы�
 
 echo "── ось 1, законный близнец: ОТКАТ полосы (наш издатель снят целиком) ──"
 blank_overlay '  tokenAcceptance:
-    issuers: "https://localhost:28080/.ory/hydra/public"
-    issuerKeySets: "https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuers: "https://localhost:28080/legacy-issuer"
+    issuerKeySets: "https://localhost:28080/legacy-issuer=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     platformIssuer: ""
     revocationUrl: ""
 '
@@ -95,7 +95,7 @@ s=open(p).read()
 s=s.replace("""            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL
               value: {{ .Values.tokenAcceptance.revocationUrl | quote }}""",
 """            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL
-              value: {{ .Values.hydra.introspectionUrl | quote }}""",1)
+              value: {{ .Values.advertisedEndpoint | quote }}""",1)
 open(p,"w").write(s)
 PY2
 assert 'адрес выведен из соседнего — краснеет с именем' red 'KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL берёт значение из'

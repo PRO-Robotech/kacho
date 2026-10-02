@@ -65,6 +65,14 @@ var loginLaneConfigKeys = []struct{ configKey, valueKey string }{
 	// Срок кода восстановления доступа (Ф5, kacho#2701) — ручка ТОГО ЖЕ блока
 	// `authn.login`: страж службы требует её под `own` наравне с остальными.
 	{"recovery-code-ttl", "recoveryCodeTtl"},
+	// Подтверждение адреса (kaname#456, Р7, Р9; kacho#2901) — пять ручек того же
+	// блока без умолчания: срок и предел попыток кода, промежуток, число и окно
+	// писем.
+	{"verification-code-ttl", "verificationCodeTtl"},
+	{"verification-code-attempts", "verificationCodeAttempts"},
+	{"verification-resend-interval", "verificationResendInterval"},
+	{"verification-resend-limit", "verificationResendLimit"},
+	{"verification-resend-window", "verificationResendWindow"},
 }
 
 // registrationConfigKeys — ключи блока `authn.registration` (Ф4, kacho#2699):
@@ -87,6 +95,7 @@ var loginLaneIntegerKeys = []string{
 	"addressAttempts", "sourceAttempts", "passwordMinLength",
 	"hasherMemory", "hasherIterations", "hasherParallelism",
 	"verifierCapacity", "memoryReserveBytes",
+	"verificationCodeAttempts", "verificationResendLimit",
 }
 
 // loginLaneEnv — пять переменных транспорта слушателя формы.
@@ -280,24 +289,25 @@ func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.
 		if mode != "mutual" {
 			t.Errorf("стенд %s: режим проверки клиента слушателя формы обязан быть объявлен `mutual` явно, получено %v", name, mode)
 		}
-		if ip, _ := lookup(declared, "kaname", "config", "authn", "identityProvider"); ip == "own" {
-			ownPosture++
-			// Под `own` строки — условие старта: адрес и весь блок величин.
-			if _, ok := lookup(declared, "kaname", "ports", "loginLane"); !ok {
-				t.Errorf("стенд %s на посадке own: `kaname.ports.loginLane` не объявлен — отказ старта службы", name)
+		// Посадка службы одна на каждом стенде — своя (kanameLanding, kaname#363):
+		// строки полосы — условие старта везде. Прежде блок стоял под чтением
+		// ключа посадки; ключ снят (kacho#2818), и условие стало безусловным.
+		ownPosture++
+		// Под `own` строки — условие старта: адрес и весь блок величин.
+		if _, ok := lookup(declared, "kaname", "ports", "loginLane"); !ok {
+			t.Errorf("стенд %s на посадке own: `kaname.ports.loginLane` не объявлен — отказ старта службы", name)
+		}
+		for _, k := range loginLaneConfigKeys {
+			if k.valueKey == "breachCheckUrl" {
+				continue
 			}
-			for _, k := range loginLaneConfigKeys {
-				if k.valueKey == "breachCheckUrl" {
-					continue
-				}
-				if _, ok := lookup(declared, "kaname", "config", "authn", "login", k.valueKey); !ok {
-					t.Errorf("стенд %s на посадке own: `kaname.config.authn.login.%s` не объявлен — отказ старта службы", name, k.valueKey)
-				}
+			if _, ok := lookup(declared, "kaname", "config", "authn", "login", k.valueKey); !ok {
+				t.Errorf("стенд %s на посадке own: `kaname.config.authn.login.%s` не объявлен — отказ старта службы", name, k.valueKey)
 			}
-			for _, k := range registrationConfigKeys {
-				if _, ok := lookup(declared, "kaname", "config", "authn", "registration", k.valueKey); !ok {
-					t.Errorf("стенд %s на посадке own: `kaname.config.authn.registration.%s` не объявлен — отказ старта службы (Ф4-18)", name, k.valueKey)
-				}
+		}
+		for _, k := range registrationConfigKeys {
+			if _, ok := lookup(declared, "kaname", "config", "authn", "registration", k.valueKey); !ok {
+				t.Errorf("стенд %s на посадке own: `kaname.config.authn.registration.%s` не объявлен — отказ старта службы (Ф4-18)", name, k.valueKey)
 			}
 		}
 	}

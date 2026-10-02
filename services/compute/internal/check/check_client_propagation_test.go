@@ -5,7 +5,6 @@ package check
 
 import (
 	"context"
-	"net"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
@@ -47,8 +47,7 @@ func (f *fakeInternalIAM) Check(ctx context.Context, req *iamv1.CheckRequest) (*
 
 func startFakeInternalIAM(t *testing.T, fake *fakeInternalIAM) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	iamv1.RegisterInternalIAMServiceServer(srv, fake)
 	go func() { _ = srv.Serve(lis) }()

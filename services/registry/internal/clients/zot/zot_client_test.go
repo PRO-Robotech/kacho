@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	zotclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/zot"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -170,7 +171,7 @@ func (f *fakeZot) manifestByRef(repo, ref string) (manifestFixture, bool) {
 
 func (f *fakeZot) server(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case path == "/v2/_zot/ext/search":

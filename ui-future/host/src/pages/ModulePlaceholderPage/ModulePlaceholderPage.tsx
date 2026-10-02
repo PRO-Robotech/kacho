@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ModuleUnavailablePanel } from "@shared/components/organisms/ModuleErrorBoundary";
+import { PageFrame } from "@shared/components/organisms/PageFrame";
 // Заголовок раздела — из того же зеркала канона, что и крошка хоста: своя
 // карта здесь была третьей подписью одного раздела в одном продукте.
 import { SERVICES } from "../../lib/entity-names";
@@ -27,12 +28,16 @@ export const ModulePlaceholderPage: FC = () => {
   // адреса. Канон ключа не знает — панель обойдётся без имени вовсе.
   const label = SERVICES[moduleKey]?.menuTitle ?? "";
 
+  // Прокрутка одна и она у рамки (`PageFrame`): рабочая область каркаса сама
+  // не прокручивается, и панель, выше экрана, обрезалась бы снизу.
   return (
-    <section className="workbench" data-testid="module-placeholder-page">
-      {/* Уход к списку сервисов — переходом внутри приложения: здесь, в отличие
-          от корневой границы каркаса, маршрутизатор есть, и перезагружать всю
-          консоль ради смены страницы незачем. */}
-      <ModuleUnavailablePanel moduleLabel={label} onGoHome={() => void navigate("/dashboard")} />
-    </section>
+    <PageFrame>
+      <section className="workbench" data-testid="module-placeholder-page">
+        {/* Уход к списку сервисов — переходом внутри приложения: здесь, в отличие
+            от корневой границы каркаса, маршрутизатор есть, и перезагружать всю
+            консоль ради смены страницы незачем. */}
+        <ModuleUnavailablePanel moduleLabel={label} onGoHome={() => void navigate("/dashboard")} />
+      </section>
+    </PageFrame>
   );
 };
