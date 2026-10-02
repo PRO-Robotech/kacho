@@ -97,6 +97,13 @@ expect "контроль — сторонний подчарт-архив зон
 # ── B. Настоящий вендоренный архив вне своего каталога ──────────────────────────
 make_copy "$work/archive" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
 git -C "$work/archive" mv "deploy/helm/vendor/$ARCHIVE" "deploy/helm/$ARCHIVE" || exit 2
+# Архив ставится и отдельным релизом (`cert-manager-up`): путь в deploy/Makefile
+# переезжает вместе с ним, иначе отказал бы рендер релиза, а не гейт о месте архива.
+if ! { sed -i "s#helm/vendor/$ARCHIVE#helm/$ARCHIVE#" "$work/archive/deploy/Makefile" \
+       && grep -q "helm/$ARCHIVE" "$work/archive/deploy/Makefile" \
+       && git -C "$work/archive" add -- deploy/Makefile; }; then
+  echo "ОТКАЗ: путь архива в Makefile не перенесён" >&2; exit 2
+fi
 expect "архив вне своего каталога — находка «вне vendor»" "$work/archive" 1 \
   "deploy/helm/$ARCHIVE — архив-чарт вне deploy/helm/vendor"
 expect "архив вне своего каталога — проход вендоренных без предмета" "$work/archive" 1 \
