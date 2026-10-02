@@ -183,7 +183,7 @@
       "id": "edge",
       "suites": ["geo", "registry", "api-gateway"],
       "components": ["registry", "pg-registry"],
-      "why": "7+5+7 коллекций / 494 запроса. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
+      "why": "7+5+7 коллекций / 498 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
     }
   ]
 }
