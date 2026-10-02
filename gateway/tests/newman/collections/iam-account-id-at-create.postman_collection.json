@@ -1,0 +1,1000 @@
+{
+  "info": {
+    "_postman_id": "10d9034b-e1c9-5edc-996e-436d5769d183",
+    "name": "kacho-api-gateway / newman / iam-account-id-at-create",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IAM-ACC-ID-K1 — AID-K1: POST /iam/v1/accounts with id=X by a human cloud admin through the edge → Operation with metadata.accountId = X; done gives response.id = X; GET /accounts/X → 200",
+      "description": "class:CRUD | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "create-with-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"{{aidK1Id}}\", \"name\": \"aidk1-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtCloudAdminHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (seed slot) — human cloud admin seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// X — свежий идентификатор формы генератора, выведенный из runId прогона.",
+                  "(function () {",
+                  "  const A = '0123456789abcdefghjkmnpqrstvwxyz';",
+                  "  const src = String(pm.environment.get('runId') || '') + ':k1';",
+                  "  let h = 2166136261 >>> 0; let out = '';",
+                  "  for (let i = 0; i < 17; i++) {",
+                  "    const s = src + ':' + i;",
+                  "    for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619) >>> 0; }",
+                  "    out += A[h % 32];",
+                  "  }",
+                  "  pm.environment.set('aidK1Id', 'acc' + out);",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IAM Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
+                  "});",
+                  "pm.environment.set('aidK1OpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK1OpId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.accountId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK1CreatedId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.accountId is the supplied X (the edge did not drop the field)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.metadata && j.metadata.accountId, JSON.stringify(j)).to.eql(pm.environment.get('aidK1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-with-id-poll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{aidK1OpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{aidK1OpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): the mutation under test was refused on",
+                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "if (!pm.environment.get('aidK1OpId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_pollCount', '0');",
+                  "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                  "}",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 45) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _ipd = Date.now(); while (Date.now() - _ipd < 500) void 0;  /* real inter-poll delay: cap 45 x 500ms budget (testing.md) */",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (no error)', () => {",
+                  "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                  "});",
+                  "pm.test('done gives response.id = X', () => {",
+                  "  pm.expect(j.response && j.response.id, JSON.stringify(j)).to.eql(pm.environment.get('aidK1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-supplied",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{aidK1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{aidK1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('GET /accounts/X answers id = X', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.eql(pm.environment.get('aidK1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-k1",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{aidK1CreatedId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{aidK1CreatedId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtCloudAdminHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (seed slot) — human cloud admin seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): создание отвергнуто — убирать нечего.",
+                  "if (!pm.environment.get('aidK1CreatedId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.environment.set('aidK1DelOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK1DelOpId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-k1-poll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{aidK1DelOpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{aidK1DelOpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): the mutation under test was refused on",
+                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "if (!pm.environment.get('aidK1DelOpId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_pollCount', '0');",
+                  "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                  "}",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 45) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _ipd = Date.now(); while (Date.now() - _ipd < 500) void 0;  /* real inter-poll delay: cap 45 x 500ms budget (testing.md) */",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (no error)', () => {",
+                  "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-ACC-ID-K1-FORM — AID-K1 form twin: POST /iam/v1/accounts with a malformed id by the same human cloud admin → sync 400 INVALID_ARGUMENT (3), \"invalid account id 'acc7M3K9Q2X5V8B4N6T1'\", field id",
+      "description": "class:VAL | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-malformed-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"acc7M3K9Q2X5V8B4N6T1\", \"name\": \"aidk1f-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtCloudAdminHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (seed slot) — human cloud admin seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('error message exactly equals \"invalid account id \\'acc7M3K9Q2X5V8B4N6T1\\'\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"invalid account id 'acc7M3K9Q2X5V8B4N6T1'\");",
+                  "});",
+                  "pm.test('field violation on \"id\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'id');",
+                  "  pm.expect(fv, 'fieldViolation for id').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-ACC-ID-K2 — AID-K2: POST /iam/v1/accounts with id=X by a human without a cluster role → 403 PERMISSION_DENIED (7), \"permission denied\" from the service; account X does not exist",
+      "description": "class:NEG | class:AUTHZ | class:SEC | priority:P0",
+      "item": [
+        {
+          "name": "create-with-id-denied",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"{{aidK2Id}}\", \"name\": \"aidk2-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtPlainHuman'",
+                  "const __t = pm.environment.get('jwtPlainHuman') || pm.variables.get('jwtPlainHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPlainHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPlainHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtPlainHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtPlainHuman') || pm.variables.get('jwtPlainHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPlainHuman is set (seed slot) — human without a cluster role seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtPlainHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// X — свежий идентификатор формы генератора, выведенный из runId прогона.",
+                  "(function () {",
+                  "  const A = '0123456789abcdefghjkmnpqrstvwxyz';",
+                  "  const src = String(pm.environment.get('runId') || '') + ':k2';",
+                  "  let h = 2166136261 >>> 0; let out = '';",
+                  "  for (let i = 0; i < 17; i++) {",
+                  "    const s = src + ':' + i;",
+                  "    for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619) >>> 0; }",
+                  "    out += A[h % 32];",
+                  "  }",
+                  "  pm.environment.set('aidK2Id', 'acc' + out);",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('error message exactly equals \"permission denied\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"permission denied\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-denied-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{aidK2Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{aidK2Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtCloudAdminHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (seed slot) — human cloud admin seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('the refused X was not created', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Account ' + pm.environment.get('aidK2Id') + ' not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IAM-ACC-ID-K2-GENERATED — AID-K2 field twin: POST /iam/v1/accounts without id by the same human → Operation done with response; the id is minted in the generator form",
+      "description": "class:CRUD | priority:P0",
+      "item": [
+        {
+          "name": "create-without-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"aidk2g-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtPlainHuman'",
+                  "const __t = pm.environment.get('jwtPlainHuman') || pm.variables.get('jwtPlainHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPlainHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPlainHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtPlainHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtPlainHuman') || pm.variables.get('jwtPlainHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPlainHuman is set (seed slot) — human without a cluster role seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtPlainHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// X — свежий идентификатор формы генератора, выведенный из runId прогона.",
+                  "(function () {",
+                  "  const A = '0123456789abcdefghjkmnpqrstvwxyz';",
+                  "  const src = String(pm.environment.get('runId') || '') + ':k2';",
+                  "  let h = 2166136261 >>> 0; let out = '';",
+                  "  for (let i = 0; i < 17; i++) {",
+                  "    const s = src + ':' + i;",
+                  "    for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619) >>> 0; }",
+                  "    out += A[h % 32];",
+                  "  }",
+                  "  pm.environment.set('aidK2Id', 'acc' + out);",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IAM Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
+                  "});",
+                  "pm.environment.set('aidK2gOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK2gOpId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.accountId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK2gId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.accountId is minted in the generator form and is not X', () => {",
+                  "  const j = pm.response.json();",
+                  "  const got = j.metadata && j.metadata.accountId;",
+                  "  pm.expect(got, JSON.stringify(j)).to.match(/^acc[0-9a-hjkmnp-tv-z]{17}$/);",
+                  "  pm.expect(got, JSON.stringify(j)).to.not.eql(pm.environment.get('aidK2Id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-without-id-poll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{aidK2gOpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{aidK2gOpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtPlainHuman'",
+                  "const __t = pm.environment.get('jwtPlainHuman') || pm.variables.get('jwtPlainHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPlainHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPlainHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): the mutation under test was refused on",
+                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "if (!pm.environment.get('aidK2gOpId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_pollCount', '0');",
+                  "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                  "}",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 45) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _ipd = Date.now(); while (Date.now() - _ipd < 500) void 0;  /* real inter-poll delay: cap 45 x 500ms budget (testing.md) */",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (no error)', () => {",
+                  "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                  "});",
+                  "pm.test('done gives response.id = the minted id', () => {",
+                  "  pm.expect(j.response && j.response.id, JSON.stringify(j)).to.eql(pm.environment.get('aidK2gId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-k2g",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{aidK2gId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "{{aidK2gId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — jwtCloudAdminHuman is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (seed slot) — human cloud admin seeded by prodseed_matrix.py', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): создание отвергнуто — убирать нечего.",
+                  "if (!pm.environment.get('aidK2gId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.environment.set('aidK2gDelOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK2gDelOpId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-k2g-poll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{aidK2gDelOpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{aidK2gDelOpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtCloudAdminHuman'",
+                  "const __t = pm.environment.get('jwtCloudAdminHuman') || pm.variables.get('jwtCloudAdminHuman') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtCloudAdminHuman is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCloudAdminHuman is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// OPERATION guard (legal skip): the mutation under test was refused on",
+                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "if (!pm.environment.get('aidK2gDelOpId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_pollCount', '0');",
+                  "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                  "}",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 45) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _ipd = Date.now(); while (Date.now() - _ipd < 500) void 0;  /* real inter-poll delay: cap 45 x 500ms budget (testing.md) */",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (no error)', () => {",
+                  "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
