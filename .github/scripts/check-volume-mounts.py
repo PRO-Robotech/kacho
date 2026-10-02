@@ -52,9 +52,12 @@ fail-closed отказ рендера без учётных данных хра�
 """
 from __future__ import annotations
 
+import atexit
 import pathlib
+import shutil
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -83,11 +86,14 @@ class Chart:
     """
 
     def __init__(self, name: str, path: str, required: list[str],
-                 toggles: list[tuple[str, str, str]]):
+                 toggles: list[tuple[str, str, str]], inspect_copy: bool = False):
         self.name = name
         self.path = path
         self.required = required
         self.toggles = toggles
+        # inspect_copy — чарт, чьи объекты до наполнения его таблицы источников
+        # судятся по КОПИИ ОСМОТРА (решения Д80, Д81): см. `render_dir`.
+        self.inspect_copy = inspect_copy
 
     def renders(self):
         """Все комбинации тумблеров: (подпись, список аргументов --set)."""
@@ -156,7 +162,58 @@ CHARTS = [
     Chart("kacho-geo", "deploy/helm/umbrella/charts/kacho-geo", [],
           [("mtls.enable", "false", "true"), ("dataMigration.enabled", "false", "true")]),
     Chart("uif", "ui-future/deploy", [], []),
+    # notify (NTF-1, замысел З28): ноги рендера — собственные значения ноги без
+    # зонтика и образец узла почты оператора, пути от корня репозитория (гейт
+    # зовут и из временного каталога вне дерева). Тумблер — единственное условие
+    # вокруг томов чарта: якорь доверия узла почты (`trustAnchorSecret.name`)
+    # добавляет том `smtp-trust-anchor` и его монт; `peer-tls` и `tmp` безусловны.
+    # Объекты notify рендерятся только при непустой таблице источников, а в
+    # дереве она пуста — поэтому рендер идёт по копии осмотра (`inspect_copy`).
+    Chart("notify", "deploy/helm/notify",
+          ["-f", str(REPO / "deploy/testdata/notify-standalone/values.yaml"),
+           "-f", str(REPO / "deploy/testdata/mail-node/operator.yaml")],
+          [("global.kacho.identity.smtp.trustAnchorSecret.name", "", "smtp-anchor")],
+          inspect_copy=True),
 ]
+
+# КОПИЯ ОСМОТРА (замысел З28, решения Д80, Д81). Пока таблица подключаемых
+# источников чарта notify пуста, чарт рендерит ноль объектов — и «в рендере нет
+# workload'ов» здесь было бы правдой о дереве, но не вердиктом о томах. Поэтому,
+# ПОКА таблица пуста, чарт с `inspect_copy` рендерится по копии каталога, где
+# подменён ровно `templates/_sources.tpl` (обёртка проверяет это сама и печатает
+# каталог чарта отдельной строкой «перечень [], объектов 0»). Непустая таблица —
+# ветки нет, рендерится сам каталог; копию снимает D2.
+INSPECT = REPO / "deploy/scripts/render-notify-inspect.sh"
+_INSPECT_DIRS: dict = {}
+
+
+def render_dir(chart: "Chart"):
+    """→ (каталог для рендера, None) либо (None, причина «не выполнилось»)."""
+    if not chart.inspect_copy:
+        return REPO / chart.path, None
+    if chart.name in _INSPECT_DIRS:
+        return _INSPECT_DIRS[chart.name]
+    t = subprocess.run(["bash", str(INSPECT), "--table"], capture_output=True, text=True)
+    if t.returncode != 0 or not t.stdout.strip().isdigit():
+        res = (None, "таблица модулей не прочитана обёрткой копии осмотра: "
+               + (t.stderr or t.stdout).strip().split("\n")[0])
+    elif int(t.stdout.strip()) > 0:
+        print("  · {}: таблица модулей непуста ({} строк) — ветки Д80 нет, рендерится "
+              "каталог чарта".format(chart.name, t.stdout.strip()))
+        res = (REPO / chart.path, None)
+    else:
+        work = pathlib.Path(tempfile.mkdtemp(prefix="kacho-notify-inspect-"))
+        atexit.register(shutil.rmtree, work, True)
+        r = subprocess.run(["bash", str(INSPECT), "--into", str(work)],
+                           capture_output=True, text=True)
+        for line in (r.stdout + r.stderr).splitlines():
+            print("  · " + line)
+        if r.returncode != 0:
+            res = (None, "копия осмотра {} не построена (код {})".format(chart.name, r.returncode))
+        else:
+            res = (work / pathlib.Path(chart.path).name, None)
+    _INSPECT_DIRS[chart.name] = res
+    return res
 
 
 def pod_spec(doc):
@@ -247,7 +304,7 @@ def stdin_mode() -> int:
     return 1 if bad else 0
 
 
-def coverage_findings() -> list:
+def coverage_findings(charts=None) -> list:
     """Ни один сервисный чарт умбреллы не может оказаться вне гейта молча.
 
     Прежняя обёртка несла РУЧНОЙ список из четырёх чартов при восьми сервисных.
@@ -295,7 +352,7 @@ def coverage_findings() -> list:
                 "вендоренного сабчарта — покрытие сверять не с чем, а это не "
                 "«покрыто всё»".format(UMBRELLA_CHART)]
 
-    covered = {c.name for c in CHARTS}
+    covered = {c.name for c in (CHARTS if charts is None else charts)}
     for name in sorted(first_party - covered - NO_WORKLOAD_CHARTS):
         out.append("чарт '{}' — first-party зависимость умбреллы, но его нет в таблице этого "
                    "гейта: его монты не проверяются, и об этом ничто не сообщает".format(name))
@@ -310,7 +367,10 @@ def coverage_findings() -> list:
 
 def render(chart: Chart, sets: list):
     """Рендер чарта. Возвращает (манифесты | None, первая строка диагностики)."""
-    p = subprocess.run(["helm", "template", "t", str(REPO / chart.path)] + sets,
+    where, why = render_dir(chart)
+    if where is None:
+        return None, why
+    p = subprocess.run(["helm", "template", "t", str(where)] + sets,
                        capture_output=True, text=True)
     if p.returncode != 0:
         return None, (p.stderr or p.stdout).strip().split("\n")[0]
@@ -508,6 +568,17 @@ spec:
         rc = 1
     else:
         print("  ОК     покрытие: все first-party чарты умбреллы в таблице ({})".format(len(CHARTS)))
+
+    # Инъекция покрытия: запись notify снята из таблицы → красный, и это ровно та
+    # строка, что стояла до появления записи. Близнец — таблица как есть (выше).
+    without = [c for c in CHARTS if c.name != "notify"]
+    cov = coverage_findings(without)
+    if len(without) == len(CHARTS) - 1 and any(
+            "'notify'" in line and "first-party зависимость умбреллы" in line for line in cov):
+        print("  ОК     запись notify снята → покрытие красное: «first-party зависимость умбреллы»")
+    else:
+        print("  ПРОВАЛ запись notify снята, а покрытие не покраснело: {}".format(cov))
+        rc = 1
 
     print()
     print("PASS: check-volume-mounts --self-test" if rc == 0
