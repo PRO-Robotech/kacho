@@ -336,10 +336,11 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.environment.set('aidK1DelPrjOpId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('aidK1DelOpIdPrj', String(v));",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK1DelPrjOpId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -357,13 +358,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{aidK1DelOpIdPrj}}",
+              "raw": "{{baseUrl}}/operations/{{aidK1DelPrjOpId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{aidK1DelOpIdPrj}}"
+                "{{aidK1DelPrjOpId}}"
               ]
             }
           },
@@ -385,7 +386,7 @@
                   "}",
                   "// OPERATION guard (legal skip): the mutation under test was refused on",
                   "// purpose, so there is no Operation to poll and nothing to assert.",
-                  "if (!pm.environment.get('aidK1DelOpIdPrj')) { pm.execution.skipRequest(); }"
+                  "if (!pm.environment.get('aidK1DelPrjOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
             },
@@ -1060,10 +1061,11 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.environment.set('aidK2gDelPrjOpId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('aidK2gDelOpIdPrj', String(v));",
+                  "  if (v !== undefined && v !== null) pm.environment.set('aidK2gDelPrjOpId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -1081,13 +1083,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{aidK2gDelOpIdPrj}}",
+              "raw": "{{baseUrl}}/operations/{{aidK2gDelPrjOpId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{aidK2gDelOpIdPrj}}"
+                "{{aidK2gDelPrjOpId}}"
               ]
             }
           },
@@ -1109,7 +1111,7 @@
                   "}",
                   "// OPERATION guard (legal skip): the mutation under test was refused on",
                   "// purpose, so there is no Operation to poll and nothing to assert.",
-                  "if (!pm.environment.get('aidK2gDelOpIdPrj')) { pm.execution.skipRequest(); }"
+                  "if (!pm.environment.get('aidK2gDelPrjOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
             },

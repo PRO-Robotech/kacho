@@ -113,7 +113,12 @@ def _cleanup(id_var, prj_var, op_var, auth, name):
     (`metadata.defaultProjectId`), а удаление аккаунта отказывает, пока в нём
     есть проект (`contains projects`). Поэтому проект снимается ПЕРВЫМ и его
     операция опрашивается до `done`, иначе аккаунт переживёт прогон.
+
+    Имя операции проекта оканчивается на `OpId` — по соглашению дерева
+    (`_is_operation_id_var`): только такое имя `save_from_response` сбрасывает
+    перед захватом, и опрос не подтвердит операцию предыдущего шага.
     """
+    prj_op_var = f"{op_var.removesuffix('OpId')}PrjOpId"
     return [
         Step(
             name=f"cleanup-{name}-project",
@@ -127,10 +132,10 @@ def _cleanup(id_var, prj_var, op_var, auth, name):
             ],
             test_script=[
                 *assert_status(200),
-                *save_from_response("j.id", f"{op_var}Prj"),
+                *save_from_response("j.id", prj_op_var),
             ],
         ),
-        poll_operation(op_var=f"{op_var}Prj", auth=auth, name=f"cleanup-{name}-project-poll"),
+        poll_operation(op_var=prj_op_var, auth=auth, name=f"cleanup-{name}-project-poll"),
         Step(
             name=f"cleanup-{name}",
             method="DELETE",
