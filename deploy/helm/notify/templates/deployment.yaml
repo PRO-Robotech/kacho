@@ -76,7 +76,7 @@ spec:
       # пароля (конфигурации процесса точка не читает).
       initContainers:
         - name: migrate
-          image: "{{ .Values.image.repository }}:{{ required "image.tag (чарт notify): тег образа не задан" .Values.image.tag }}"
+          image: {{ include "notify.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
@@ -94,7 +94,7 @@ spec:
               value: {{ printf "host=%s port=%v user=%s password=$(KACHO_NOTIFY_DB_PASSWORD) dbname=%s sslmode=%s" .Values.db.host .Values.db.port .Values.db.user .Values.db.name .Values.db.sslMode | quote }}
       containers:
         - name: notify
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "notify.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["serve"]
           securityContext:

@@ -26,8 +26,19 @@
 // ноги `deploy/testdata/notify-standalone/values.yaml` и образцом узла почты из
 // каталога образцов D9 (`deploy/testdata/mail-node/operator.yaml`). Стража
 // зонтика в этом рендере нет, поэтому отказ на снятый адрес даёт только шаблон
-// notify. Нога фикстурной копии ЗОНТИКА (цепочка `prod` через обёртку D9,
-// инъекции «страж первым» и `alias`) этим файлом не проводится.
+// notify.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// НОГА — ФИКСТУРНАЯ КОПИЯ ЗОНТИКА (N02, N20, N25; CX1-94, CX1-97)
+//
+// Цепочка `prod` через обёртку D9 на копии зонтика во временном каталоге (раздел
+// «нога фикстурной копии ЗОНТИКА» ниже): опора и отрицание, инъекции «страж
+// первым», `alias: notifyx`, копия шаблона под другим именем, состав копии.
+// Там же — решения Д76: пустая таблица источников даёт закрытый
+// детерминированный исход в каждой цепочке, notify без тега образа — отказ
+// рендера с именем ручки.
+//
+// Чего здесь НЕТ (зависит от D2/D6): I01, I02, I06 приёмки NTF-1.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ИСХОДОВ ТРИ (verdict-and-landing §1)
@@ -38,6 +49,7 @@
 package deploy_test
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -48,6 +60,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,6 +129,14 @@ func notifyChartCopy(t *testing.T, edits map[string]func(string) string) string 
 	if err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: копия чарта %s не снята: %v", notifyChartDir, err)
 	}
+	applyCopyEdits(t, dst, edits)
+	return dst
+}
+
+// applyCopyEdits — правки копии: путь от base → функция правки текста. Правка,
+// ничего не изменившая, — «НЕ ВЫПОЛНИЛОСЬ»: инъекция не нашла своего входа.
+func applyCopyEdits(t *testing.T, dst string, edits map[string]func(string) string) {
+	t.Helper()
 	for rel, edit := range edits {
 		p := filepath.Join(dst, rel)
 		body, rerr := os.ReadFile(p)
@@ -130,7 +151,6 @@ func notifyChartCopy(t *testing.T, edits map[string]func(string) string) string 
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: правка копии %s: %v", rel, werr)
 		}
 	}
-	return dst
 }
 
 // replaceOnce — замена ровно одного вхождения; иное число — пустая строка
@@ -987,5 +1007,705 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	})
 	if f := migrateFindings(mustRenderNotify(t, inj, standaloneLeg())); len(f) == 0 {
 		t.Errorf("инъекция «контейнер migrate снят»: проба промолчала")
+	}
+}
+
+// ─── нога фикстурной копии ЗОНТИКА (N02, N20, N25; CX1-94, CX1-97, CX1-99, М43, М45) ─
+//
+// Цепочка `prod` через обёртку D9 (`deployStacksForRender`, образец
+// `operator.yaml` последним слоем) рендерится на КОПИИ зонтика во временном
+// каталоге: зонтик, каталоги его `file://`-зависимостей по путям их
+// `repository` и каталог образцов — в прежнем взаимном положении от корня
+// репозитория. Копия, а не дерево: инъекции правят чарт notify и `Chart.yaml`
+// зонтика, а таблица источников в дереве пуста (строку `probe-b` несёт копия).
+//
+// Состав копии выводится разбором `dependencies` зонтика, а не выписан здесь:
+// новая `file://`-зависимость входит в копию без правки пробы, недостающий
+// каталог — «НЕ ВЫПОЛНИЛОСЬ» с именем зависимости. Файлы каталога — те, что
+// дерево ведёт (`git ls-files --cached --others --exclude-standard`): собранные
+// архивы локальных сабчартов и отметки материализации в копию не попадают, их
+// производит шаг материализации самой копии — владелец
+// `deploy/scripts/helm-umbrella-deps.sh` (гейт единственного владельца).
+//
+// Слой значений notify копии — собственные значения ноги без зонтика
+// (`notify-standalone/values.yaml`) под именем зависимости в `Chart.yaml`
+// копии: значения подчарта адресуются этим именем, и инъекция `alias` сменила
+// бы и его. Узла почты в слое нет — он приходит только образцом.
+
+const (
+	// umbrellaGuardPath — путь отказа стража почтовой полосы зонтика (М45).
+	umbrellaGuardPath = "kacho-umbrella/templates/identity-mail-lane-guard.yaml"
+	// umbrellaGuardFile — его шаблон от каталога зонтика.
+	umbrellaGuardFile = "templates/identity-mail-lane-guard.yaml"
+	// notifyImageKnobUmbrella — имя ручки тега образа так, как его задаёт
+	// установка зонтика (Д76 (2)).
+	notifyImageKnobUmbrella = "notify.image.tag"
+)
+
+// umbrellaDep — запись `dependencies` зонтика.
+type umbrellaDep struct{ name, alias, repo string }
+
+// umbrellaDeps — записи `dependencies` из `Chart.yaml` каталога dir.
+func umbrellaDeps(t *testing.T, dir string) []umbrellaDep {
+	t.Helper()
+	chart := readYAML(t, filepath.Join(dir, "Chart.yaml"))
+	var out []umbrellaDep
+	for _, d := range nlist(chart["dependencies"]) {
+		m, _ := d.(map[string]any)
+		out = append(out, umbrellaDep{nstr(m["name"]), nstr(m["alias"]), nstr(m["repository"])})
+	}
+	if len(out) == 0 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: в %s/Chart.yaml зависимостей ноль", dir)
+	}
+	return out
+}
+
+// copyMemberDirs — каталоги копии от корня репозитория: зонтик, каталог
+// образцов и каталог каждой `file://`-зависимости по пути её `repository` от
+// зонтика. Каталога нет либо путь выходит из репозитория — ошибка с именем
+// зависимости. Второй возврат — число `file://`-зависимостей.
+func copyMemberDirs(repoRoot string, deps []umbrellaDep) ([]string, int, error) {
+	umbrellaRel := filepath.Join("deploy", umbrellaDir)
+	dirs := []string{umbrellaRel, filepath.Join("deploy", mailNodeSamplesDir)}
+	local := 0
+	var missing []string
+	for _, d := range deps {
+		rel, ok := strings.CutPrefix(d.repo, "file://")
+		if !ok {
+			continue
+		}
+		local++
+		dir := filepath.Clean(filepath.Join(umbrellaRel, rel))
+		if dir == ".." || strings.HasPrefix(dir, "../") || filepath.IsAbs(dir) {
+			missing = append(missing, d.name+" ("+d.repo+" выходит из репозитория)")
+			continue
+		}
+		if st, err := os.Stat(filepath.Join(repoRoot, dir)); err != nil || !st.IsDir() {
+			missing = append(missing, d.name+" ("+d.repo+" → "+dir+")")
+			continue
+		}
+		dirs = append(dirs, dir)
+	}
+	if len(missing) > 0 {
+		return nil, local, fmt.Errorf("каталогов file://-зависимостей нет: %s", strings.Join(missing, ", "))
+	}
+	if local == 0 {
+		return nil, 0, fmt.Errorf("file://-зависимостей у зонтика ноль — копировать нечего")
+	}
+	return dirs, local, nil
+}
+
+// umbrellaCopyOpts — что копия несёт сверх дерева.
+type umbrellaCopyOpts struct {
+	// fixtureRow — таблица источников notify несёт строку `probe-b` (N02).
+	fixtureRow bool
+	// notifyEdits — правки чарта notify копии (путь от корня чарта).
+	notifyEdits map[string]func(string) string
+	// notifyDuplicates — новый файл чарта notify копии → файл, копией
+	// которого он заводится (путь от корня чарта).
+	notifyDuplicates map[string]string
+	// umbrellaEdits — правки зонтика копии (путь от каталога зонтика).
+	umbrellaEdits map[string]func(string) string
+	// afterBuild — правка уже материализованного зонтика (путь каталога).
+	afterBuild func(t *testing.T, umbrella string)
+}
+
+// umbrellaCopy — копия зонтика: корень и каталог зонтика в нём.
+type umbrellaCopy struct{ root, umbrella string }
+
+// notifyUmbrellaCopy — фикстурная копия зонтика, материализованная владельцем.
+func notifyUmbrellaCopy(t *testing.T, opts umbrellaCopyOpts) umbrellaCopy {
+	t.Helper()
+	requireHelmForNotify(t)
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs, local, err := copyMemberDirs(repoRoot, umbrellaDeps(t, umbrellaDir))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: состав фикстурной копии зонтика: %v", err)
+	}
+	root := t.TempDir()
+	files := 0
+	for _, dir := range dirs {
+		out, gerr := gitenv.Command(repoRoot, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", dir).Output()
+		if gerr != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: перечень файлов %s не снят: %v", dir, gerr)
+		}
+		n := 0
+		for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+			if f == "" {
+				continue
+			}
+			body, rerr := os.ReadFile(filepath.Join(repoRoot, f)) // #nosec G304 -- путь из перечня дерева
+			if rerr != nil {
+				t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s не прочитан: %v", f, rerr)
+			}
+			dst := filepath.Join(root, f)
+			if merr := os.MkdirAll(filepath.Dir(dst), 0o750); merr != nil {
+				t.Fatal(merr)
+			}
+			if werr := os.WriteFile(dst, body, 0o600); werr != nil {
+				t.Fatal(werr)
+			}
+			n++
+		}
+		if n == 0 {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: каталог копии %s пуст — дерево его не ведёт", dir)
+		}
+		files += n
+	}
+	t.Logf("копия зонтика: file://-зависимостей %d; каталогов %d (%s); файлов %d",
+		local, len(dirs), strings.Join(dirs, ", "), files)
+
+	c := umbrellaCopy{root: root, umbrella: filepath.Join(root, "deploy", umbrellaDir)}
+	notifyEdits := map[string]func(string) string{}
+	if opts.fixtureRow {
+		notifyEdits["templates/_sources.tpl"] = replaceOnce(notifyEmptyTableBody, notifyFixtureTableBody)
+	}
+	for k, f := range opts.notifyEdits {
+		if prev, ok := notifyEdits[k]; ok {
+			notifyEdits[k] = func(s string) string { return f(prev(s)) }
+			continue
+		}
+		notifyEdits[k] = f
+	}
+	notifyCopyDir := filepath.Join(root, "deploy", notifyChartDir)
+	applyCopyEdits(t, notifyCopyDir, notifyEdits)
+	for dst, src := range opts.notifyDuplicates {
+		body, rerr := os.ReadFile(filepath.Join(notifyCopyDir, src))
+		if rerr != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: копия шаблона %s не снята: %v", src, rerr)
+		}
+		if _, serr := os.Stat(filepath.Join(notifyCopyDir, dst)); serr == nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s в чарте notify уже есть — копия его заменила бы", dst)
+		}
+		if werr := os.WriteFile(filepath.Join(notifyCopyDir, dst), body, 0o600); werr != nil {
+			t.Fatal(werr)
+		}
+	}
+	applyCopyEdits(t, c.umbrella, opts.umbrellaEdits)
+
+	owner := filepath.Join(repoRoot, helmDepsOwner)
+	cmd := exec.Command("bash", owner, c.umbrella) // #nosec G204 -- владелец материализации из дерева, каталог копии
+	out, berr := cmd.CombinedOutput()
+	code := 0
+	if berr != nil {
+		code = -1
+		if ee, ok := berr.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+	}
+	t.Logf("материализация зависимостей копии: %s %s → код %d", helmDepsOwner, c.umbrella, code)
+	if code != 0 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: материализация зависимостей копии — код %d:\n%s", code, out)
+	}
+	archives, _ := filepath.Glob(filepath.Join(c.umbrella, "charts", "notify-*.tgz"))
+	if len(archives) != 1 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: после материализации архивов notify в копии %d, ожидался один", len(archives))
+	}
+	t.Logf("материализация копии собрала зависимость notify: %s", filepath.Base(archives[0]))
+	if opts.afterBuild != nil {
+		opts.afterBuild(t, c.umbrella)
+	}
+	return c
+}
+
+// effectiveDepName — имя, которым копия адресует чарт notify: алиас либо имя.
+func (c umbrellaCopy) effectiveDepName(t *testing.T) string {
+	t.Helper()
+	for _, d := range umbrellaDeps(t, c.umbrella) {
+		if strings.TrimPrefix(d.repo, "file://") == "../notify" {
+			if d.alias != "" {
+				return d.alias
+			}
+			return d.name
+		}
+	}
+	t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: в Chart.yaml копии нет зависимости file://../notify")
+	return ""
+}
+
+// notifyLayer — слой значений notify копии; drop — пути ключей, снятые из него.
+func (c umbrellaCopy) notifyLayer(t *testing.T, drop ...[]string) string {
+	t.Helper()
+	own := readYAML(t, notifyStandaloneValues)
+	for _, path := range drop {
+		parent, _ := ndig(own, path[:len(path)-1]...).(map[string]any)
+		if len(path) == 1 {
+			parent = own
+		}
+		if _, has := parent[path[len(path)-1]]; !has {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: снимаемого ключа %s в %s нет", strings.Join(path, "."), notifyStandaloneValues)
+		}
+		delete(parent, path[len(path)-1])
+	}
+	body, err := yaml.Marshal(map[string]any{c.effectiveDepName(t): own})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "notify-layer.yaml")
+	if err := os.WriteFile(p, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// chainFiles — элементы цепочки chain обёртки D9, разрешённые в копии.
+// Элемента нет в копии — «НЕ ВЫПОЛНИЛОСЬ».
+func (c umbrellaCopy) chainFiles(t *testing.T, chain string) []string {
+	t.Helper()
+	elems, ok := deployStacksForRender(t, "operator.yaml")[chain]
+	if !ok {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочки %s в таблице нет", chain)
+	}
+	var out []string
+	for _, e := range elems {
+		p := filepath.Join(c.umbrella, e)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: элемент цепочки %s (%s) в копии не существует", e, chain)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// render — `helm template` копии зонтика цепочкой файлов и наборами.
+func (c umbrellaCopy) render(files []string, sets ...string) (string, error) {
+	args := []string{"template", "kacho-umbrella", c.umbrella, "-n", "kacho"}
+	for _, f := range files {
+		args = append(args, "-f", f)
+	}
+	for _, s := range sets {
+		args = append(args, "--set", s)
+	}
+	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы пробы
+	return string(out), err
+}
+
+// mustRender — рендер копии, который обязан пройти (опора, близнец).
+func mustRender(t *testing.T, c umbrellaCopy, files []string, sets ...string) string {
+	t.Helper()
+	out, err := c.render(files, sets...)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: опорный рендер копии зонтика отказал: %v\n%s", err, lastLines(out, 5))
+	}
+	return out
+}
+
+// negationRemoves — РЕШЕНИЕ предпосылки отрицания: наборы sets снимают ровно
+// ключ want (`<ключ>=null`). Иное — ошибка с именами всех снятых ключей.
+func negationRemoves(sets []string, want string) error {
+	var removed []string
+	for _, s := range sets {
+		if k, ok := strings.CutSuffix(s, "=null"); ok {
+			removed = append(removed, k)
+		}
+	}
+	if len(removed) != 1 || removed[0] != want {
+		return fmt.Errorf("снято ключей %d (%s), а отрицание снимает ровно %s",
+			len(removed), strings.Join(removed, ", "), want)
+	}
+	return nil
+}
+
+// runUmbrellaMailNodeLeg — опора (образец целиком) и отрицание (образец минус
+// sets) на цепочке `prod` копии со слоем notify.
+func runUmbrellaMailNodeLeg(t *testing.T, c umbrellaCopy, wantPath, address string, sets ...string) (legOutcome, string) {
+	t.Helper()
+	if err := negationRemoves(sets, notifyMailNodeKey); err != nil {
+		return legNotRun, err.Error()
+	}
+	files := append(c.chainFiles(t, prodChainName), c.notifyLayer(t))
+	support, serr := c.render(files)
+	neg, nerr := c.render(files, sets...)
+	return mailNodeLeg(support, serr, neg, nerr, wantPath, address)
+}
+
+// notifySourceCount — объекты рендера зонтика, рождённые чартом notify (любым
+// именем зависимости, несущим шаблоны `charts/notify*/`).
+func notifySourceCount(objs []renderedObj) int {
+	n := 0
+	for _, o := range objs {
+		if strings.HasPrefix(o.source, "kacho-umbrella/charts/notify") {
+			n++
+		}
+	}
+	return n
+}
+
+func sampleAddress(t *testing.T) string {
+	t.Helper()
+	a := nstr(ndig(readYAML(t, notifyStandaloneSample), "global", "kacho", "identity", "smtp", "connectionURI"))
+	if a == "" {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: образец %s без адреса узла", notifyStandaloneSample)
+	}
+	return a
+}
+
+// TestNotifyMailNodeReachesTheProcessThroughTheUmbrella — нога фикстурной
+// копии зонтика: `prod` через обёртку, из образца снят ровно адрес узла.
+func TestNotifyMailNodeReachesTheProcessThroughTheUmbrella(t *testing.T) {
+	address := sampleAddress(t)
+	neg := notifyMailNodeKey + "=null"
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{fixtureRow: true})
+
+	// Предпосылка (CX1-94 (б)): снятые ключи и код рендера образца целиком.
+	files := append(c.chainFiles(t, prodChainName), c.notifyLayer(t))
+	if out, err := c.render(files); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: рендер prod образца целиком отказал: %v\n%s", err, out)
+	}
+	t.Logf("предпосылка: цепочка prod %v + слой notify; образец %s; снятые ключи [%s]; рендер образца целиком — код 0",
+		deployStacksForRender(t, "operator.yaml")[prodChainName], notifyStandaloneSample, notifyMailNodeKey)
+
+	outcome, why := runUmbrellaMailNodeLeg(t, c, notifyUmbrellaConfigMapPath, address, neg)
+	switch outcome {
+	case legNotRun:
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s", why)
+	case legRed:
+		t.Errorf("узел почты не доезжает до процесса через зонтик: %s", why)
+	default:
+		t.Logf("нога зонтика: %s", why)
+	}
+
+	// Константа чужой ноги → «НЕ ВЫПОЛНИЛОСЬ» с фактическим путём.
+	if o, w := runUmbrellaMailNodeLeg(t, c, notifyStandaloneConfigMapPath, address, neg); o != legNotRun {
+		t.Errorf("константа ноги без зонтика, поданная ноге зонтика: ожидалось НЕ ВЫПОЛНИЛОСЬ, получено %s (%s)", o, w)
+	} else {
+		t.Logf("константа чужой ноги → НЕ ВЫПОЛНИЛОСЬ: %s", w)
+	}
+
+	// Снято два ключа → «НЕ ВЫПОЛНИЛОСЬ» с обоими именами.
+	two := "global.kacho.identity.smtp.fromAddress=null"
+	if o, w := runUmbrellaMailNodeLeg(t, c, notifyUmbrellaConfigMapPath, address, neg, two); o != legNotRun ||
+		!strings.Contains(w, notifyMailNodeKey) || !strings.Contains(w, "fromAddress") {
+		t.Errorf("снято два ключа: ожидалось НЕ ВЫПОЛНИЛОСЬ с обоими именами, получено %s (%s)", o, w)
+	} else {
+		t.Logf("снято два ключа → НЕ ВЫПОЛНИЛОСЬ: %s", w)
+	}
+
+	cmKey := notifyConnectionEnv + ": {{ tpl (required"
+	swapLine := func(repl string) func(string) string {
+		return func(s string) string {
+			i := strings.Index(s, cmKey)
+			if i < 0 {
+				return s
+			}
+			return s[:i] + notifyConnectionEnv + ": " + repl + "\n" + s[strings.Index(s[i:], "\n")+i+1:]
+		}
+	}
+	guardCopyPath := "kacho-umbrella/charts/kaname/charts/guardfirst/" + umbrellaGuardFile
+	cases := []struct {
+		name string
+		opts umbrellaCopyOpts
+		want legOutcome
+		// path — путь, который обязан стоять в причине «НЕ ВЫПОЛНИЛОСЬ».
+		path []string
+	}{
+		{"ключ из пути вне узла", umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
+			"templates/configmap.yaml": swapLine("{{ .Values.origin | quote }}")}}, legRed, nil},
+		// Снятый `required` и `default`: notify отказа не даёт, и отказывает
+		// страж зонтика — «НЕ ВЫПОЛНИЛОСЬ» с его путём, а не зелёный.
+		{"снятый required", umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
+			"templates/configmap.yaml": swapLine("{{ tpl (.Values.global.kacho.identity.smtp.connectionURI | toString) . | quote }}")}},
+			legNotRun, []string{umbrellaGuardPath}},
+		{"default у ключа", umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
+			"templates/configmap.yaml": swapLine(`{{ tpl (.Values.global.kacho.identity.smtp.connectionURI | default "smtp://fallback:25/") . | quote }}`)}},
+			legNotRun, []string{umbrellaGuardPath}},
+		{"страж первым", umbrellaCopyOpts{afterBuild: func(t *testing.T, u string) {
+			t.Helper()
+			sub := filepath.Join(u, "charts", "kaname", "charts", "guardfirst")
+			body, err := os.ReadFile(filepath.Join(u, umbrellaGuardFile))
+			if err != nil {
+				t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: шаблон стража зонтика не прочитан: %v", err)
+			}
+			if err := os.MkdirAll(filepath.Join(sub, "templates"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(sub, "Chart.yaml"), []byte("apiVersion: v2\nname: guardfirst\nversion: 0.0.1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(sub, umbrellaGuardFile), body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}}, legNotRun, []string{guardCopyPath}},
+		{"alias notifyx", umbrellaCopyOpts{umbrellaEdits: map[string]func(string) string{
+			"Chart.yaml": replaceOnce("  - name: notify\n", "  - name: notify\n    alias: notifyx\n")}},
+			legNotRun, []string{"kacho-umbrella/charts/notifyx/templates/configmap.yaml"}},
+		{"копия шаблона ConfigMap под другим именем", umbrellaCopyOpts{notifyDuplicates: map[string]string{
+			"templates/configmap-copy.yaml": "templates/configmap.yaml"}},
+			legNotRun, []string{notifyUmbrellaConfigMapPath, "kacho-umbrella/charts/notify/templates/configmap-copy.yaml"}},
+	}
+	for _, cs := range cases {
+		cs.opts.fixtureRow = true
+		ic := notifyUmbrellaCopy(t, cs.opts)
+		o, w := runUmbrellaMailNodeLeg(t, ic, notifyUmbrellaConfigMapPath, address, neg)
+		pathsOK := true
+		for _, p := range cs.path {
+			if !strings.Contains(w, p) {
+				pathsOK = false
+			}
+		}
+		if o != cs.want || !pathsOK {
+			t.Errorf("инъекция %q: ожидалось %s с путями %v, получено %s (%s)", cs.name, cs.want, cs.path, o, w)
+			continue
+		}
+		t.Logf("инъекция %q → %s: %s", cs.name, o, w)
+	}
+
+	// Близнец — перечень пуст: notify нет, отказа нет.
+	empty := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	out, err := empty.render(append(empty.chainFiles(t, prodChainName), empty.notifyLayer(t)))
+	if err != nil {
+		t.Errorf("перечень пуст: рендер prod отказал — отказа быть не должно: %v\n%s", err, out)
+	} else if n := notifySourceCount(parseRendered(t, out)); n != 0 {
+		t.Errorf("перечень пуст, а объектов notify в рендере зонтика %d", n)
+	} else {
+		t.Logf("близнец «перечень пуст»: код 0, объектов notify 0")
+	}
+}
+
+// TestNotifyUmbrellaCopyCompositionNamesAMissingDependency — состав копии
+// выводится разбором `dependencies`: каталога зависимости нет либо путь выходит
+// из репозитория — ошибка с именем зависимости; близнец — записи дерева.
+func TestNotifyUmbrellaCopyCompositionNamesAMissingDependency(t *testing.T) {
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := umbrellaDeps(t, umbrellaDir)
+	declared := 0
+	for _, d := range deps {
+		if strings.HasPrefix(d.repo, "file://") {
+			declared++
+		}
+	}
+	dirs, local, err := copyMemberDirs(repoRoot, deps)
+	if err != nil {
+		t.Fatalf("состав копии дерева: %v", err)
+	}
+	if local != declared || len(dirs) != declared+2 {
+		t.Errorf("состав копии: file://-записей в Chart.yaml %d, учтено %d, каталогов %d (ожидалось %d)",
+			declared, local, len(dirs), declared+2)
+	}
+	t.Logf("file://-зависимостей %d; каталоги копии: %s", local, strings.Join(dirs, ", "))
+
+	for _, ghost := range []umbrellaDep{
+		{name: "ghost", repo: "file://../ghost"},
+		{name: "escape", repo: "file://../../../../outside"},
+	} {
+		_, _, gerr := copyMemberDirs(repoRoot, append(append([]umbrellaDep(nil), deps...), ghost))
+		if gerr == nil || !strings.Contains(gerr.Error(), ghost.name) {
+			t.Errorf("инъекция «зависимость %s (%s)»: ожидалась ошибка с её именем, получено %v", ghost.name, ghost.repo, gerr)
+		} else {
+			t.Logf("инъекция %q → %v", ghost.name, gerr)
+		}
+	}
+}
+
+// ─── пустая таблица источников — закрытый детерминированный исход (Д76 (1)) ─
+
+// inventedSourcesLayer — слой, называющий источник во всех местах, откуда
+// перечень мог бы его «взять»: ручного перечня у notify нет (NTF1-N03), и
+// пустая таблица обязана остаться пустым перечнем при любом таком слое.
+func inventedSourcesLayer(t *testing.T, under string) (string, int) {
+	t.Helper()
+	src := []any{map[string]any{"module": "invented", "feedAddr": "invented:9091",
+		"san": "spiffe://kacho.cloud/ns/kacho/sa/invented", "classes": []any{"notice"},
+		"recipientForms": []any{}, "authorization": "resolveSend"}}
+	own := map[string]any{"sources": src, "pluggableSources": src, "sourceRoster": src}
+	global := map[string]any{"kacho": map[string]any{
+		"notify":        map[string]any{"sources": src},
+		"notifications": map[string]any{"sources": src, "enabled": true},
+	}}
+	doc := map[string]any{"global": global}
+	if under == "" {
+		for k, v := range own {
+			doc[k] = v
+		}
+	} else {
+		doc[under] = own
+	}
+	body, err := yaml.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "invented-sources.yaml")
+	if err := os.WriteFile(p, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p, len(own) + 3
+}
+
+// TestNotifyEmptyRosterIsAClosedDeterministicOutcome — таблица дерева пуста:
+// рендер не падает, объектов notify 0, источников не выдумывает (слой,
+// называющий источник, ничего не меняет), два рендера побайтно равны; то же —
+// в каждой цепочке таблицы стендов на копии зонтика. Инъекция — перечень,
+// берущий источники из значений при пустой таблице, → красный.
+func TestNotifyEmptyRosterIsAClosedDeterministicOutcome(t *testing.T) {
+	judge := func(chart string) (int, string, error) {
+		layer, _ := inventedSourcesLayer(t, "")
+		files := append(standaloneLeg(), layer)
+		a, aerr := renderNotify(t, chart, files)
+		b, berr := renderNotify(t, chart, files)
+		if aerr != nil || berr != nil {
+			return 0, a + b, fmt.Errorf("рендер отказал: %v / %v", aerr, berr)
+		}
+		if a != b {
+			return 0, "", fmt.Errorf("два рендера одних значений различаются")
+		}
+		return len(parseRendered(t, a)), a, nil
+	}
+	n, out, err := judge(notifyChartDir)
+	switch {
+	case err != nil:
+		t.Errorf("пустая таблица: %v\n%s", err, out)
+	case n != 0:
+		t.Errorf("пустая таблица и слой, называющий источник: объектов notify %d — перечень выдуман из значений", n)
+	default:
+		_, places := inventedSourcesLayer(t, "")
+		t.Logf("пустая таблица, слой с источником в %d местах: код 0, объектов 0, два рендера равны", places)
+	}
+
+	fallback := `{{- $t := include "notify.pluggableSources" . | fromJsonArray -}}` +
+		`{{- if $t }}{{ $t | toJson }}{{ else }}{{ dig "kacho" "notifications" "sources" (list) .global | toJson }}{{ end -}}`
+	inj := notifyChartCopy(t, map[string]func(string) string{
+		"templates/_sources.tpl": replaceOnce(`{{- include "notify.pluggableSources" . -}}`, fallback),
+	})
+	if n, _, err := judge(inj); err == nil && n == 0 {
+		t.Errorf("инъекция «перечень из значений при пустой таблице»: проба промолчала")
+	} else {
+		t.Logf("инъекция «перечень из значений при пустой таблице» → красный: объектов %d, %v", n, err)
+	}
+
+	// Каждая цепочка таблицы стендов на копии зонтика (prod — через обёртку).
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	chains := deployStacksForRender(t, "operator.yaml")
+	names := make([]string, 0, len(chains))
+	for name := range chains {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		layer, _ := inventedSourcesLayer(t, c.effectiveDepName(t))
+		files := append(c.chainFiles(t, name), layer)
+		out, err := c.render(files)
+		if err != nil {
+			t.Errorf("цепочка %s, пустая таблица: рендер зонтика отказал: %v\n%s", name, err, lastLines(out, 5))
+			continue
+		}
+		if k := notifySourceCount(parseRendered(t, out)); k != 0 {
+			t.Errorf("цепочка %s, пустая таблица: объектов notify %d", name, k)
+			continue
+		}
+		t.Logf("цепочка %s: код 0, объектов notify 0", name)
+	}
+	if len(names) == 0 {
+		t.Fatal("НЕ ВЫПОЛНИЛОСЬ: цепочек ноль")
+	}
+}
+
+func lastLines(s string, n int) string {
+	l := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(l) > n {
+		l = l[len(l)-n:]
+	}
+	return strings.Join(l, "\n")
+}
+
+// ─── notify включён без тега образа — отказ рендера с именем ручки (Д76 (2)) ─
+
+// imageTagRefusal — РЕШЕНИЕ: рендер отказал шаблоном wantPath с именем ручки
+// knob. Код 0 — КРАСНЫЙ; иной шаблон либо путь не разобран — «НЕ ВЫПОЛНИЛОСЬ».
+func imageTagRefusal(out string, err error, wantPath, knob string) (legOutcome, string) {
+	if err == nil {
+		return legRed, "notify рендерится без тега образа (код 0)"
+	}
+	m := execErrorPathRe.FindStringSubmatch(out)
+	switch {
+	case m == nil:
+		return legNotRun, "путь отказа не разобран: " + lastLines(out, 3)
+	case m[1] != wantPath:
+		return legNotRun, "отказал шаблон " + m[1] + ", а не " + wantPath + ": " + lastLines(out, 3)
+	case !strings.Contains(out, knob):
+		return legRed, "отказ без имени ручки " + knob + ": " + lastLines(out, 3)
+	}
+	return legHeld, "отказ " + m[1] + " с именем " + knob
+}
+
+// notifyImagesCarryTag — у каждого контейнера рабочей нагрузки notify образ
+// с непустым тегом tag.
+func notifyImagesCarryTag(objs []renderedObj, tag string) []string {
+	var out []string
+	n := 0
+	for _, d := range objsOfKind(objs, "Deployment") {
+		for _, c := range containersOf(nPodSpec(d)) {
+			n++
+			if img := nstr(c["image"]); !strings.HasSuffix(img, ":"+tag) {
+				out = append(out, "контейнер "+nstr(c["name"])+": образ "+img+" без тега "+tag)
+			}
+		}
+	}
+	if n == 0 {
+		out = append(out, "контейнеров notify 0 — судить нечего")
+	}
+	return out
+}
+
+// TestNotifyRefusesToRenderWithoutAnImageTag — notify включён (таблица с
+// источником), тег пуст → отказ рендера шаблоном развёртывания с именем ручки;
+// на копии зонтика — `notify.image.tag`, так её задаёт установка. Близнец —
+// тег задан → у каждого контейнера образ с тегом. Инъекция — снятый `required`
+// → красный.
+func TestNotifyRefusesToRenderWithoutAnImageTag(t *testing.T) {
+	const standaloneDeployment = "notify/templates/deployment.yaml"
+	const umbrellaDeployment = "kacho-umbrella/charts/notify/templates/deployment.yaml"
+
+	chart := notifyFixtureChart(t, nil)
+	out, err := renderNotify(t, chart, standaloneLeg(), "image.tag=")
+	switch o, w := imageTagRefusal(out, err, standaloneDeployment, "image.tag"); o {
+	case legNotRun:
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: нога без зонтика: %s", w)
+	case legRed:
+		t.Errorf("нога без зонтика: %s", w)
+	default:
+		t.Logf("нога без зонтика: %s", w)
+	}
+	if f := notifyImagesCarryTag(mustRenderNotify(t, chart, standaloneLeg()), "fixture"); len(f) != 0 {
+		t.Errorf("близнец (тег задан): %s", strings.Join(f, "; "))
+	}
+
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{fixtureRow: true})
+	files := append(c.chainFiles(t, prodChainName), c.notifyLayer(t, []string{"image", "tag"}))
+	out, err = c.render(files)
+	switch o, w := imageTagRefusal(out, err, umbrellaDeployment, notifyImageKnobUmbrella); o {
+	case legNotRun:
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: нога зонтика: %s", w)
+	case legRed:
+		t.Errorf("нога зонтика: %s", w)
+	default:
+		t.Logf("нога зонтика (prod, тег базового слоя пуст): %s", w)
+	}
+
+	twin := parseRendered(t, mustRender(t, c, append(c.chainFiles(t, prodChainName), c.notifyLayer(t))))
+	var own []renderedObj
+	for _, o := range twin {
+		if strings.HasPrefix(o.source, "kacho-umbrella/charts/notify/") {
+			own = append(own, o)
+		}
+	}
+	if f := notifyImagesCarryTag(own, "fixture"); len(f) != 0 {
+		t.Errorf("близнец зонтика (тег задан): %s", strings.Join(f, "; "))
+	}
+
+	noRequired := regexp.MustCompile(`\(required "[^"]*" \.Values\.image\.tag\)`)
+	inj := notifyFixtureChart(t, map[string]func(string) string{
+		"templates/_helpers.tpl": func(s string) string { return noRequired.ReplaceAllString(s, ".Values.image.tag") },
+	})
+	out, err = renderNotify(t, inj, standaloneLeg(), "image.tag=")
+	if o, w := imageTagRefusal(out, err, standaloneDeployment, "image.tag"); o != legRed {
+		t.Errorf("инъекция «снятый required у тега»: ожидался красный, получено %s (%s)", o, w)
+	} else {
+		t.Logf("инъекция «снятый required у тега» → красный: %s", w)
 	}
 }
