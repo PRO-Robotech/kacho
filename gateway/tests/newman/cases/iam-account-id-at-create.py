@@ -77,6 +77,16 @@ MALFORMED_ACCOUNT_ID = "acc7M3K9Q2X5V8B4N6T1"
 
 _ACC_ID_RE = "/^acc[0-9a-hjkmnp-tv-z]{17}$/"
 
+# ЧТЕНИЯ И УБОРКА ИДУТ ПОД МАШИННЫМ АДМИНИСТРАТОРОМ ОБЛАКА, а не под человеком
+# (kacho#2984, разбор красного посева на 7f2afe93). Персональный токен человека,
+# обменянный у нашего издателя, `acr` не несёт, а каталог края требует его у
+# чтения аккаунта (`required_acr_min=1`) и у удаления проекта и аккаунта (`2`):
+# край ответил бы `401` / `16` `insufficient_user_authentication` до всякого
+# вопроса о праве. Предмет набора — `Create` (в каталоге `<exempt>`, пола нет) и
+# опрос его операции; чтение X и уборка его не утверждают, а лишь проверяют и
+# снимают созданное, и машинный принципал от пола уверенности освобождён.
+READER = "jwtBootstrap"
+
 ADMIN_GUARD = require_env_slot("jwtCloudAdminHuman", "human cloud admin seeded by prodseed_matrix.py")
 PLAIN_GUARD = require_env_slot("jwtPlainHuman", "human without a cluster role seeded by prodseed_matrix.py")
 
@@ -198,7 +208,7 @@ CASES.append(Case(
             name="get-supplied",
             method="GET",
             path=f"{ACCOUNTS}/{{{{aidK1Id}}}}",
-            auth="jwtCloudAdminHuman",
+            auth=READER,
             test_script=[
                 *assert_status(200),
                 "pm.test('GET /accounts/X answers id = X', () => {",
@@ -207,7 +217,7 @@ CASES.append(Case(
                 "});",
             ],
         ),
-        *_cleanup("aidK1CreatedId", "aidK1PrjId", "aidK1DelOpId", "jwtCloudAdminHuman", "k1"),
+        *_cleanup("aidK1CreatedId", "aidK1PrjId", "aidK1DelOpId", READER, "k1"),
     ],
 ))
 
@@ -269,8 +279,7 @@ CASES.append(Case(
             name="get-denied-absent",
             method="GET",
             path=f"{ACCOUNTS}/{{{{aidK2Id}}}}",
-            auth="jwtCloudAdminHuman",
-            pre_script=[*ADMIN_GUARD],
+            auth=READER,
             test_script=[
                 *assert_status(404),
                 *assert_grpc_code(5, "NOT_FOUND"),
@@ -325,7 +334,7 @@ CASES.append(Case(
         # Уборку ведёт администратор облака, а не владелец: право владельца на новый
         # аккаунт приходит в хранилище прав асинхронно (`done` операции — запись
         # закоммичена, а не видна модели), а каскад администратора облака от
-        # материализации не зависит.
-        *_cleanup("aidK2gId", "aidK2gPrjId", "aidK2gDelOpId", "jwtCloudAdminHuman", "k2g"),
+        # материализации не зависит. Машинный — по причине, названной у `READER`.
+        *_cleanup("aidK2gId", "aidK2gPrjId", "aidK2gDelOpId", READER, "k2g"),
     ],
 ))
