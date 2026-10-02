@@ -1,0 +1,154 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+{{- $smtp := include "notify.mailNode" . | fromJson }}
+{{- $anchor := $smtp.trustAnchorSecret }}
+{{- $cred := $smtp.credentialSecret }}
+{{- $dbpw := .Values.db.passwordSecret }}
+{{- $dbpwName := required "db.passwordSecret.name (чарт notify): секрет пароля базы kacho_notify не назван" $dbpw.name }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "notify.fullname" . }}
+  labels:
+    {{- include "notify.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "notify.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "notify.labels" . | nindent 8 }}
+      annotations:
+        # ── ОБЪЯВЛЕНИЕ СБОРА ВЕЛИЧИН ──────────────────────────────────────────
+        # Порт — тот же `ports.diag`, которым чарт задаёт KACHO_NOTIFY_DIAG_ADDR;
+        # умолчания у ручки в коде нет, и согласие держит декларативный гейт
+        # `TestEveryRenderedChartDeclaresItsScrape`.
+        {{- if .Values.metricsScrape.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.ports.diag | quote }}
+        prometheus.io/path: /metrics
+        {{- else }}
+        kacho.cloud/metrics-scrape-disabled-because: {{ .Values.metricsScrape.disabledBecause | quote }}
+        {{- end }}
+        # Привязка пода к содержимому образа (тег `:dev` неизменен).
+        kacho.cloud/image-id: {{ dig "kachoImageIds" "notify" "unset" .Values.global | quote }}
+        # Конфигурация читается при старте: смена карты обязана перекатить под.
+        #
+        # Хеш карты берётся только при заданном адресе узла. Без адреса рендер
+        # обязан отказать ШАБЛОНОМ КАРТЫ (`notify/templates/configmap.yaml`) —
+        # путь отказа утверждает проба (CX1-97); helm исполняет этот шаблон
+        # раньше карты, и включение карты здесь отказало бы путём этого файла.
+        # Без адреса рендер не проходит в любом случае: пода без аннотации не
+        # бывает.
+        {{- if $smtp.connectionURI }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        # Смена ключа сетки перекатывает все реплики (CX1-66 (б)); хеш берётся от
+        # отрендеренного объекта целиком и прообраза ключа не раскрывает.
+        checksum/recipient-key: {{ include (print $.Template.BasePath "/recipient-key-secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "notify.fullname" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: peer-tls
+          secret:
+            secretName: {{ include "notify.fullname" . }}-peer-tls
+        {{- if and $anchor $anchor.name }}
+        - name: smtp-trust-anchor
+          secret:
+            secretName: {{ $anchor.name | quote }}
+            items:
+              - key: {{ $anchor.key | quote }}
+                path: {{ $anchor.key | quote }}
+        {{- end }}
+      # ── НАКАТ СХЕМЫ kacho_notify ДО СТАРТА ПРОЦЕССА (Д74) ──────────────────────
+      # Точка наката каталога выбирает цепочку по имени базы в DSN; DSN — только
+      # KACHO_MIGRATOR_DSN, собранный из ручек базы процесса и ссылки на секрет
+      # пароля (конфигурации процесса точка не читает).
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ required "image.tag (чарт notify): тег образа не задан" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          command: ["/usr/local/bin/kacho-migrator", "up"]
+          env:
+            - name: KACHO_NOTIFY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbpwName | quote }}
+                  key: {{ $dbpw.key | quote }}
+            - name: KACHO_MIGRATOR_DSN
+              value: {{ printf "host=%s port=%v user=%s password=$(KACHO_NOTIFY_DB_PASSWORD) dbname=%s sslmode=%s" .Values.db.host .Values.db.port .Values.db.user .Values.db.name .Values.db.sslMode | quote }}
+      containers:
+        - name: notify
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: diag
+              containerPort: {{ .Values.ports.diag }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: peer-tls
+              mountPath: {{ include "notify.peerTLSDir" . | quote }}
+              readOnly: true
+            {{- if and $anchor $anchor.name }}
+            - name: smtp-trust-anchor
+              mountPath: {{ include "notify.anchorDir" . | quote }}
+              readOnly: true
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "notify.fullname" . }}-config
+          env:
+            - name: KACHO_NOTIFY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbpwName | quote }}
+                  key: {{ $dbpw.key | quote }}
+            # Ключ сетки — только переменной secretKeyRef (З24).
+            - name: KACHO_NOTIFY_RECIPIENT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "notify.fullname" . }}-recipient-key
+                  key: recipientKey
+            {{- if and $cred $cred.name }}
+            # Удостоверение ретранслятора — ссылка на объект и ключ, названные
+            # узлом (CX1-80, CX1-82 (в)); узел без удостоверения — ссылки нет.
+            - name: KACHO_NOTIFY_SMTP_CREDENTIAL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $cred.name | quote }}
+                  key: {{ $cred.key | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: diag
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: diag
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

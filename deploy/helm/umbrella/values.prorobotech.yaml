@@ -96,6 +96,15 @@ kaname:
         sourceAttempts: 50
         sourceWindow: 15m
 
+notify:
+  # NTF-1, полоса D1: образ стенда разработки под нами — локальная сборка, а
+  # эта площадка тянет образы из реестра. Опубликованного образа notify ещё нет,
+  # поэтому тег объявлен пустым, а не выведен из записи коммита: выведенный
+  # назвал бы манифест, которого нет. Чарт без тега рендер отвергает; на этой
+  # полосе notify в цепочке не рендерится (перечень источников пуст).
+  image:
+    repository: docker.io/prorobotech/kacho-notify
+    tag: ""
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb

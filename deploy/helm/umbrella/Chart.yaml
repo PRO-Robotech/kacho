@@ -101,6 +101,19 @@ dependencies:
   - name: api-gateway
     version: ">= 0.0.0"
     repository: file://../../../gateway/deploy
+  # notify — шлюз уведомлений, единственный держатель удостоверения почты
+  # (NTF-1, замысел З28; полоса D1). Чарт лежит в deploy/helm/notify, вне
+  # charts/ (вендоренный каталог, объявленный зависимостью, запрещён шапкой выше),
+  # и ставится также отдельно, рядом с самостоятельной kaname (NTF1-I06).
+  #
+  # БЕЗ `condition` и БЕЗ `alias` (CX1-99). Второй включатель был бы вторым
+  # написанием одного решения: объекты чарта рендерятся только при непустом
+  # выведенном перечне источников (NTF1-N04). Имя зависимости — сегмент пути
+  # `# Source:` (`kacho-umbrella/charts/notify/…`), по которому пробы рендера и
+  # распознаватель NTF-2 узнают объекты чарта; алиас его сменил бы.
+  - name: notify
+    version: ">= 0.0.0"
+    repository: file://../notify
   # Federated ui-future console (host + dashboard/vpc/iam/nlb/registry/system
   # Module-Federation remotes). Chart is named `uif` (renamed from `ui` in
   # kacho-ui-future so it never collides with the legacy `ui` chart above — two

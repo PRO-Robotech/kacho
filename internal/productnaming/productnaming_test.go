@@ -341,3 +341,27 @@ func TestPartOfLineStopsAtTheFirstTopLevelKey(t *testing.T) {
 		}
 	}
 }
+
+// TestPartOfPathKnowsADeliveryChartOutsideTheUmbrella — третья раскладка: чарт
+// поставки службы под `deploy/helm/<каталог службы>/`, вне подчартов зонта
+// (чарт notify, NTF-1 З28: он ставится и отдельно, NTF1-I06). Каждый случай
+// отличается от соседа одним фактом: свой каталог чарта — часть названа;
+// шаблон самого зонта и вендоренный архив — НЕ названа (приписать соседу
+// хуже, чем остановиться).
+func TestPartOfPathKnowsADeliveryChartOutsideTheUmbrella(t *testing.T) {
+	for _, tc := range []struct {
+		rel    string
+		want   string
+		wantOK bool
+	}{
+		{"deploy/helm/notify/templates/deployment.yaml", "notify", true},
+		{"deploy/helm/umbrella/templates/mail-receiver.yaml", "", false},
+		{"deploy/helm/umbrella/charts/kaname/templates/deployment.yaml", "iam", true},
+		{"deploy/helm/vendor/cert-manager-approver-policy-v0.28.0.tgz", "", false},
+	} {
+		got, ok := productnaming.PartOfPath(tc.rel)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("%s: PartOfPath дал (%q, %v), ждали (%q, %v)", tc.rel, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}

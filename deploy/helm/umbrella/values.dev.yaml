@@ -504,6 +504,27 @@ compute:
   authzIam:
     grpcAddr: kaname-internal.kacho.svc:9091
 
+# ─── notify — шлюз уведомлений (NTF-1, полоса D1) ─────────────────────────────
+# Образ стенда — локальная сборка `make build-services` (SERVICES называет
+# notify). Объекты чарта не рендерятся ни в одной цепочке, пока выведенный
+# перечень источников пуст: notify входит в рендер цепочек с флагом и строкой
+# `notify-probe` таблицы (полоса D2, замысел З28 «Узел стенда»). Образ назван
+# здесь, потому что рецепт стенда его собирает и загружает в узлы: образ,
+# который собирают и не просит ни один стенд, — вторая половина расхождения
+# TestEveryStandLocalImageHasAProducer.
+#
+# Посадка — только боевая и на стенде (NTF1-G15: вне боевой notify не стартует),
+# канал базы — шифрованный. Объявлены профилем цепочки, а не умолчанием подчарта
+# (TestShardStandFinishesInProductionPosture,
+# TestProductionStacks_DeclareEncryptedDatabaseChannel).
+notify:
+  authMode: production
+  image:
+    repository: kacho-notify   # local kind image (kacho-notify:dev)
+    tag: dev
+  db:
+    sslMode: require
+
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
 # image to :main-latest (a documented placeholder that doesn't exist) → override
