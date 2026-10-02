@@ -222,7 +222,8 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 //     зарегистрированы в allowlist;
 //   - InternalIAMService.* / InternalUserService.* — НЕ в allowlist и блокируются
 //     HasInternalSuffix (Internal не публикуется на external);
-//   - User не имеет публичного Create (создание через InternalUserService.UpsertFromIdentity).
+//   - User не имеет публичного Create (людей заводят регистрация и приглашение;
+//     InternalUserService.UpsertFromIdentity — служебный, только internal).
 func TestGateway_KAC105_IamActive(t *testing.T) {
 	publicMethods := []string{
 		// AccountService
@@ -233,8 +234,8 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		// ProjectService (без Move)
 		"/kaname.cloud.iam.v1.ProjectService/Get",
 		"/kaname.cloud.iam.v1.ProjectService/Create",
-		// UserService (read + delete + labels-only Update; Create остается
-		// internal-only через InternalUserService.UpsertFromIdentity).
+		// UserService (read + delete + labels-only Update; публичного Create
+		// нет — людей заводят регистрация и приглашение).
 		"/kaname.cloud.iam.v1.UserService/Get",
 		"/kaname.cloud.iam.v1.UserService/List",
 		"/kaname.cloud.iam.v1.UserService/Delete",
@@ -291,8 +292,8 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		})
 	}
 
-	// UserService.Create в contract'е ОТСУТСТВУЕТ вовсе (Users появляются через
-	// InternalUserService.UpsertFromIdentity и публичный Invite), поэтому
+	// UserService.Create в contract'е ОТСУТСТВУЕТ вовсе (людей заводят
+	// регистрация и публичный Invite), поэтому
 	// утверждение «его нет в списке» не могло упасть: чтобы упасть, кто-то должен
 	// был вписать в список несуществующий RPC — а это ловит
 	// TestAllowlist_NoEntryWithoutAnRPC (parity_test.go) для ЛЮБОГО такого пути.
