@@ -5,7 +5,7 @@ package main
 
 // boot_test.go — NTF1-N08 на уровне процесса: `notify-probe serve` без
 // KACHO_NOTIFYPROBE_NOTIFICATIONS_ENABLED не стартует и называет переменную;
-// с true — стартует (готовность поверхности /readyz = 200 на базе с
+// с true и с false — стартует (готовность поверхности /readyz = 200 на базе с
 // миграциями бинаря) и гаснет по отмене без ошибки.
 
 import (
@@ -64,10 +64,10 @@ func TestNTF1N08_WithoutTheFlagTheProbeRefusesToStart(t *testing.T) {
 	}
 }
 
-// Близнец NTF1-N08 — со значением true процесс стартует: готовность отвечает
-// 200, отмена гасит его без ошибки.
-func TestNTF1N08_WithTrueTheProbeStarts(t *testing.T) {
-	for _, flag := range []string{"true"} {
+// Близнец NTF1-N08 — со значением true и со значением false процесс
+// стартует: готовность отвечает 200, отмена гасит его без ошибки.
+func TestNTF1N08_WithTrueOrFalseTheProbeStarts(t *testing.T) {
+	for _, flag := range []string{"true", "false"} {
 		t.Run(flag, func(t *testing.T) {
 			ca := newTestCA(t)
 			env := standEnv(t, pgtest.NewDB(t), serveModel(t, &model{}), flag, ca)

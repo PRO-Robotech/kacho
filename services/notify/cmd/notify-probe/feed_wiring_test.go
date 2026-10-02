@@ -6,14 +6,17 @@ package main
 // feed_wiring_test.go — что проба СЛУЖИТ, спрошенное у сервера, на котором
 // зарегистрировал ПРОД-регистратор корня (registerInternal / registerPublic):
 //
-//   - доставка включена — внутренний слушатель служит ленту
+//   - глагол пробы (`kacho.cloud.notify.v1.InternalNotifyProbeService`) служится
+//     при любом флаге: при выключенной доставке он отвечает единым отказом
+//     «доставка не настроена» (NTF1-N06), а не «метода нет»;
+//   - доставка включена — внутренний слушатель служит ещё ленту
 //     (`corelib.notify.InternalNotificationFeedService`) и подписку
 //     (`corelib.subscription.InternalSubscriptionService`);
-//   - выключена — ни того, ни другого (NTF1-N07 (б) для пробы: других видов
+//   - выключена — ни ленты, ни подписки (NTF1-N07 (б) для пробы: других видов
 //     журнала нет, поэтому сервер подписки не объявлен и не смонтирован);
 //   - публичный слушатель не служит ничего (обе службы — Internal*, ban #6).
 //
-// И что носитель поднимает пробу с включённой доставкой без отказа старта:
+// И что носитель поднимает пробу без отказа старта при обоих значениях флага:
 // объявленное в дескрипторе (звено идентичности, привязка ленты, сужатель,
 // бюджет потоков) сходится со служимым набором.
 
@@ -37,6 +40,7 @@ import (
 const (
 	feedService         = "corelib.notify.InternalNotificationFeedService"
 	subscriptionService = "corelib.subscription.InternalSubscriptionService"
+	probeService        = "kacho.cloud.notify.v1.InternalNotifyProbeService"
 )
 
 // assembled — проба, собранная корнем над базой pgtest с окружением флага.
@@ -80,27 +84,28 @@ func served(register func(grpc.ServiceRegistrar)) []string {
 // Регистрация сервера ленты стоит в прод-файле корня и зависит от флага.
 func TestRootRegistersTheFeedServerOnlyWhenDeliveryIsOn(t *testing.T) {
 	_, on, _, _ := assembled(t, "true")
-	got := served(func(r grpc.ServiceRegistrar) { registerInternal(r, on.ports.parts) })
-	if strings.Join(got, ",") != feedService+","+subscriptionService {
-		t.Fatalf("включённая доставка: внутренний слушатель служит %v, ожидались %s и %s",
-			got, feedService, subscriptionService)
+	got := served(func(r grpc.ServiceRegistrar) { registerInternal(r, on.ports) })
+	if strings.Join(got, ",") != feedService+","+subscriptionService+","+probeService {
+		t.Fatalf("включённая доставка: внутренний слушатель служит %v, ожидались %s, %s и %s",
+			got, feedService, subscriptionService, probeService)
 	}
 	if pub := served(registerPublic); len(pub) != 0 {
 		t.Fatalf("публичный слушатель служит %v — Internal*-службы на внешний край не выходят", pub)
 	}
 
 	_, off, _, _ := assembled(t, "false")
-	if got := served(func(r grpc.ServiceRegistrar) { registerInternal(r, off.ports.parts) }); len(got) != 0 {
-		t.Fatalf("выключенная доставка: внутренний слушатель служит %v — ни ленты, ни подписки быть не должно", got)
+	if got := served(func(r grpc.ServiceRegistrar) { registerInternal(r, off.ports) }); strings.Join(got, ",") != probeService {
+		t.Fatalf("выключенная доставка: внутренний слушатель служит %v — ни ленты, ни подписки быть не "+
+			"должно, глагол пробы %s — служится", got, probeService)
 	}
 	if off.ports.parts.source == nil || off.ports.parts.source.Enabled() {
 		t.Fatal("источник ленты при выключенной доставке обязан быть собран и выключен (метрика флага)")
 	}
 }
 
-// Носитель поднимает пробу с включённой доставкой без отказа старта.
+// Носитель поднимает пробу без отказа старта при обоих значениях флага.
 func TestCarrierRaisesTheProbeWithoutAStartRefusal(t *testing.T) {
-	for _, flag := range []string{"true"} {
+	for _, flag := range []string{"true", "false"} {
 		t.Run(flag, func(t *testing.T) {
 			cfg, p, logger, log := assembled(t, flag)
 			desc, err := describe(cfg, logger, p.ports)
@@ -110,7 +115,7 @@ func TestCarrierRaisesTheProbeWithoutAStartRefusal(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			serveErr := servicehost.Serve(ctx, desc, registerPublic,
-				func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports.parts) })
+				func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports) })
 			if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
 				t.Fatalf("носитель отказал пробе в старте:\n%v", serveErr)
 			}

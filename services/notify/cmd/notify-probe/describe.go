@@ -19,15 +19,17 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/send"
 )
 
 // serviceName — имя процесса в дескрипторе, самоотчёте и метках.
 const serviceName = "notify-probe"
 
 // servePorts — то, что корень приносит в дескриптор уже собранным: лента,
-// звено идентичности, сужатель потока и приёмники величин.
+// глагол пробы, звено идентичности, сужатель потока и приёмники величин.
 type servePorts struct {
 	parts        feedParts
+	send         *send.Server
 	identity     servicecontract.Axis[grpcsrv.ServiceIdentity]
 	narrower     servicecontract.ListNarrower
 	authzObserve func(read func() authz.Metrics)

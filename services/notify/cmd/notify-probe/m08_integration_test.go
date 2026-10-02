@@ -93,7 +93,7 @@ func raise(t *testing.T, ca *testCA, m *model, identity *servicecontract.Axis[gr
 		cancel()
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
-	both := func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports.parts) }
+	both := func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports) }
 	var serveErr error
 	stopped := make(chan struct{})
 	go func() {

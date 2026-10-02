@@ -43,6 +43,12 @@ const (
 	// ленты, которую написал `notifygen init`.
 	Service = "kacho_notifyprobe.notifyprobe"
 
+	// FeedOutbox — таблица ленты пробы (строка на письмо), схемо-
+	// квалифицированная: префикс Service и суффикс ленты фундамента. Глагол
+	// постановки читает из неё id поставленной строки; её же создаёт миграция
+	// notifygen init.
+	FeedOutbox = Service + "_notification_outbox"
+
 	// Table — таблица журнала, схемо-квалифицированная.
 	Table = "kacho_notifyprobe.notifyprobe_outbox"
 

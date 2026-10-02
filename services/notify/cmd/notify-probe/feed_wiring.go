@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/subscription"
 
+	probev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/journal"
 )
@@ -175,14 +176,19 @@ func startFeedSweeps(ctx context.Context, pool *pgxpool.Pool, reg prometheus.Reg
 	}, nil
 }
 
-// registerPublic — публичный слушатель: служб у пробы на нём нет. Обе её
+// registerPublic — публичный слушатель: служб у пробы на нём нет. Все её
 // службы — Internal* (ban #6). Слушатель поднимается носителем парой с
 // внутренним, и его пустой служимый набор — объявление, а не пропуск.
 func registerPublic(grpc.ServiceRegistrar) {}
 
-// registerInternal — внутренний слушатель: сервер ленты и сервер подписки,
-// когда доставка включена. Регистрация ленты стоит ЗДЕСЬ, в прод-файле корня.
-func registerInternal(reg grpc.ServiceRegistrar, parts feedParts) {
+// registerInternal — внутренний слушатель: глагол пробы
+// InternalNotifyProbeService при любом флаге (при выключенной доставке он
+// отвечает единым отказом «доставка не настроена», NTF1-N06), а сервер ленты и
+// сервер подписки — когда доставка включена. Регистрация ленты стоит ЗДЕСЬ, в
+// прод-файле корня (NTF1-C02).
+func registerInternal(reg grpc.ServiceRegistrar, ports servePorts) {
+	probev1.RegisterInternalNotifyProbeServiceServer(reg, ports.send)
+	parts := ports.parts
 	if !parts.serving() {
 		return
 	}

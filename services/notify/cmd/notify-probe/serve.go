@@ -24,6 +24,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/send"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/probemigrations"
 )
 
@@ -73,7 +74,7 @@ func runServe(ctx context.Context, cfg config.Config, logger *slog.Logger) error
 
 	serveErr := servicehost.Serve(ctx, desc,
 		registerPublic,
-		func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports.parts) },
+		func(r grpc.ServiceRegistrar) { registerInternal(r, p.ports) },
 	)
 
 	stopDiag()
@@ -92,7 +93,7 @@ type probe struct {
 	close func()
 }
 
-// assemble собирает ленту, сужатель потока и звено идентичности и поднимает
+// assemble собирает ленту, глагол пробы, сужатель потока и звено идентичности и поднимает
 // уборщиков. Объявление о себе (describe) строится из возвращённых портов.
 // close гасит уборщиков (с ожиданием) и ребро сужателя — до закрытия пула.
 func assemble(ctx context.Context, cfg config.Config, logger *slog.Logger,
@@ -122,6 +123,7 @@ func assemble(ctx context.Context, cfg config.Config, logger *slog.Logger,
 	return probe{
 		ports: servePorts{
 			parts:        parts,
+			send:         send.New(pool, parts.source, logger.With(slog.String("component", "probe_send"))),
 			identity:     identity,
 			narrower:     narrower,
 			authzObserve: authzCache.Install,
