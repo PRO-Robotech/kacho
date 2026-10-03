@@ -183,9 +183,14 @@ func TestTheTreeHasItsChains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("корень: %v", err)
 	}
-	chains, err := migrationchains.List(root)
+	chains, census, err := migrationchains.Survey(root)
 	if err != nil {
 		t.Fatalf("List дерева: %v", err)
+	}
+	t.Logf("поиск сирот: файлов .sql под services/*/internal/** %d, каталогов %d", census.SQLFiles, census.SQLDirs)
+	if census.SQLFiles == 0 || census.SQLDirs < len(chains) {
+		t.Fatalf("поиск сирот осмотрел %d файлов в %d каталогах при %d цепочках — обход не видит "+
+			"даже каталогов перечня", census.SQLFiles, census.SQLDirs, len(chains))
 	}
 	notify := 0
 	for _, c := range chains {
@@ -271,4 +276,83 @@ func TestDatabaseOfRefusalCarriesNoPieceOfTheDSN(t *testing.T) {
 			}
 		}
 	}
+}
+
+// GS-C3 — DatabaseOf и соединение наката — ОДИН разбор: DSN, который разбор
+// соединения (`migratorcli.OpenDB` → `pgx.ParseConfig`) отвергает, DatabaseOf
+// тоже отвергает, и отказ остаётся у DatabaseOf — без кусков строки. Иначе
+// DSN проходит выбор цепочки, а отказ разбора приходит позже, текстом драйвера
+// с узлом, пользователем и базой. Ключи — три собственных ключа драйвера поверх
+// libpq (statement_cache_capacity, description_cache_capacity,
+// default_query_exec_mode) в обеих записях. Близнец каждого — тот же DSN с
+// годным значением ключа: принят с именем базы.
+func TestDatabaseOfRefusesWhatTheConnectionRefuses(t *testing.T) {
+	t.Setenv("PGDATABASE", "")
+	cases := []struct{ bad, good string }{
+		{"postgres://u:s3cr%40t@db-host-x:5432/kacho_notifyprobe?statement_cache_capacity=zz",
+			"postgres://u:s3cr%40t@db-host-x:5432/kacho_notifyprobe?statement_cache_capacity=10"},
+		{"postgres://u@db-host-x/kacho_notifyprobe?description_cache_capacity=zz",
+			"postgres://u@db-host-x/kacho_notifyprobe?description_cache_capacity=10"},
+		{"host=db-host-x user=u dbname=kacho_notifyprobe default_query_exec_mode=zz",
+			"host=db-host-x user=u dbname=kacho_notifyprobe default_query_exec_mode=exec"},
+	}
+	for _, c := range cases {
+		if got, err := migrationchains.DatabaseOf(c.good); err != nil || got != "kacho_notifyprobe" {
+			t.Errorf("близнец %q: %q, %v; ожидалось kacho_notifyprobe", c.good, got, err)
+		}
+		got, err := migrationchains.DatabaseOf(c.bad)
+		if err == nil {
+			t.Errorf("DSN %q принят с базой %q, а соединение наката его отвергнет текстом драйвера "+
+				"с кусками строки — разборов два", c.bad, got)
+			continue
+		}
+		for _, m := range []string{"db-host-x", "kacho_notifyprobe", "s3cr", "u@", "zz"} {
+			if strings.Contains(err.Error(), m) {
+				t.Errorf("отказ DatabaseOf(%q) несёт кусок DSN %q: %v", c.bad, m, err)
+			}
+		}
+	}
+}
+
+// ORPHAN-CHAIN-BLIND — сирота-цепочка видна ВНЕ канонического каталога: любой
+// `.sql` под services/<svc>/internal/** вне каталогов перечня — отказ с
+// каталогом. Инъекция — строка таблицы снята при файлах цепочки на месте
+// (каталог probemigrations-формы) и файл в произвольном каталоге internal/.
+// Близнец — тот же файл в каталоге строки таблицы: перечень без отказа.
+func TestOrphanSQLAnywhereUnderInternalIsRefused(t *testing.T) {
+	for name, stray := range map[string]string{
+		"строка снята, файлы на месте": "services/beta/internal/probemigrations",
+		"каталог вне канона":           "services/beta/internal/strayq",
+		"вложенный каталог":            "services/beta/internal/repo/sql",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			point(t, root, "beta")
+			chain(t, root, "services/beta/internal/migrations")
+			writeFile(t, root, "services/beta/cmd/migrator/chains.yaml",
+				"chains:\n  - database: kacho_beta\n    dir: services/beta/internal/migrations\n")
+			chain(t, root, stray)
+			got, err := listSynthetic(t, root)
+			if err == nil {
+				t.Fatalf("сирота %s не увидена: перечень %+v", stray, got)
+			}
+			for _, s := range []string{stray, "без точки наката"} {
+				if !strings.Contains(err.Error(), s) {
+					t.Errorf("отказ не называет %q: %v", s, err)
+				}
+			}
+		})
+	}
+	t.Run("близнец: файл в каталоге строки", func(t *testing.T) {
+		root := t.TempDir()
+		point(t, root, "beta")
+		chain(t, root, "services/beta/internal/migrations")
+		chain(t, root, "services/beta/internal/probemigrations")
+		writeFile(t, root, "services/beta/cmd/migrator/chains.yaml",
+			"chains:\n  - database: kacho_beta\n    dir: services/beta/internal/migrations\n"+
+				"  - database: kacho_betaprobe\n    dir: services/beta/internal/probemigrations\n")
+		if got, err := listSynthetic(t, root); err != nil || len(got) != 2 {
+			t.Fatalf("перечень %+v, %v; ожидались две цепочки без отказа", got, err)
+		}
+	})
 }
