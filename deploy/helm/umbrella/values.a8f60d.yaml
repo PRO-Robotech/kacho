@@ -59,7 +59,7 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main 275240efdc1e763e0f8433eddf5fdb3106e5bd37
+# порождено-от: main ba01514b98bb870841adbce431a5b1c9ceec86f0
 #
 # ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
 # собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
@@ -321,17 +321,17 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-275240ef
+  image: docker.io/prorobotech/kacho-vpc:main-ba01514b
 compute:
   autoscaling:
     maxReplicas: 2
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-275240ef
+  image: docker.io/prorobotech/kacho-compute:main-ba01514b
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
 # ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
 #
@@ -348,7 +348,7 @@ registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -377,7 +377,7 @@ registry:
     resources: *id002
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-275240ef
+  image: docker.io/prorobotech/kacho-api-gateway:main-ba01514b
 kaname:
   resources: *id002
   # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — СУЖЕНА ПРЕДЕЛОМ ЭТОГО КЛАСТЕРА
@@ -419,7 +419,7 @@ kaname:
     # выше: его собирает конвейер PRO-Robotech/kaname, и коммит её ствола в этом
     # дереве не разрешается. Здесь стоял `main-7bb0a6e1` — коммит ЭТОГО дерева,
     # применённый к чужому образу: выглядит выведенным, манифеста нет (404).
-    # Остальные пины профиля (сегодня шестнадцать, на `main-275240ef`) достижимы,
+    # Остальные пины профиля (выведенные из записи «порождено-от») достижимы,
     # поэтому расхождение не видно ни по одному из них. Здесь стояло
     # «девятнадцать» — число дня записи, пережившее свой предмет: перечень
     # модулей консоли с тех пор сузился, а число при пинах не считалось.
@@ -427,39 +427,39 @@ kaname:
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-275240ef
+  image: docker.io/prorobotech/kacho-geo:main-ba01514b
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+  image: docker.io/prorobotech/kacho-ui-future-host:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-system:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
