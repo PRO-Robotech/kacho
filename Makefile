@@ -245,7 +245,7 @@ UNIT_TIMEOUT ?= 40m
 INTEGRATION_TIMEOUT ?= 25m
 
 # Сервисы, у которых есть интеграционные пакеты. Совпадает с матрицей CI.
-SERVICES ?= vpc compute geo nlb storage registry
+SERVICES ?= vpc compute geo nlb storage registry notify
 
 # ─── ВТОРОГО МОДУЛЯ В ДЕРЕВЕ НЕТ ─────────────────────────────────────────────
 #
@@ -381,8 +381,6 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/storage/internal/migrations \
 	./services/vpc/internal/migrations \
 	./services/nlb/internal/apps/kacho/jobs \
-	./services/notify/cmd/notify-probe \
-	./services/notify/cmd/notify-probe/internal/send \
 	./gateway/internal/idempotencypg
 
 # Здесь стояли ЧЕТЫРЕ записи фундамента — `./pkg/dropguard`, `./pkg/subscription`,
@@ -519,6 +517,17 @@ test-unit: $(HOOKS_NOTICE)
 ## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
 ## которого «ничего не нашлось» — законный исход (код 1).
 ##
+## НОЛЬ ИСПОЛНЕННЫХ ПРОБ — ОТКАЗ (kacho#2915, Д92). Служба в перечне без единого
+## отобранного пакета и прогон, у которого все пробы пропустились, печатали
+## `ok`/«пропуск» и выходили нулём — зелёный при нуле исполненного. Теперь цель
+## гонит `go test -v`, считает строки `--- PASS|FAIL` верхнего уровня и
+## печатает «проб исполнено N, пропущено M»; N = 0 при зелёном исходе — отказ.
+##
+## Вторая альтернатива отбора — пакеты каталога notify с настоящей базой
+## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92): их пробы
+## гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит. Шире
+## (`cmd/` всех служб) отбор не берётся — радиус не измерен.
+##
 ## `-tags=integration` ОБЯЗАТЕЛЕН, и добавлен он позже самой цели (#489). Без
 ## него файл под `//go:build integration` не попадает в сборку НИ В ОДНОМ
 ## прогоне: юнит-джоба идёт с `-short`, а эта — шла без тегов. У compute так
@@ -562,13 +571,17 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; fi; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)'); \
-	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/cmd/(notify-probe(/internal/send)?|migrator)$$'); \
+	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l)) — ОТКАЗ: исполнено проб 0" >&2; exit 1; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); rc=0; \
-	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -v -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
 	out=0; deploy/scripts/classify-integration-outcome.sh "$$rc" "$$log" || out=$$?; \
-	rm -f "$$log"; exit $$out
+	ran=$$(grep -cE '^--- (PASS|FAIL):' "$$log" || true); skipped=$$(grep -cE '^--- SKIP:' "$$log" || true); \
+	rm -f "$$log"; \
+	echo "integration $(SVC): проб исполнено $$ran, пропущено $$skipped"; \
+	if [ "$$out" -eq 0 ] && [ "$$ran" -eq 0 ]; then echo "integration $(SVC): исполнено проб 0 — ОТКАЗ, а не зелёный" >&2; exit 1; fi; \
+	exit $$out
 else
 	@set -e; for svc in $(SERVICES); do \
 		echo "=== integration: $$svc ==="; \

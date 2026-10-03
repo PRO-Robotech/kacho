@@ -587,7 +587,12 @@ jobs:
         # .github/required-contexts.txt). Пока владелец не снял `integration
         # (iam)` из защиты, контекст останется «ожидается» — он не начнётся, не
         # позеленеет и не покраснеет. То же у `build iam` и `unit (iam)`.
-        svc: [vpc, compute, geo, nlb, storage, registry]
+        #
+        # notify (kacho#2915, Д90, Д92): пакеты каталога с настоящей базой —
+        # процесс пробы-источника, его глагол Send и точка наката — отбирает
+        # вторая альтернатива отбора цели test-integration; ноль исполненных
+        # проб у цели — отказ, а не «пропуск».
+        svc: [vpc, compute, geo, nlb, storage, registry, notify]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7

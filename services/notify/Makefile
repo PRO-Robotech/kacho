@@ -8,7 +8,7 @@ IMAGE  := kacho-notify:dev
 # Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
 include ../../provenance.mk
 
-.PHONY: build test test-short vet lint docker
+.PHONY: build test test-short integration vet lint docker
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -19,6 +19,11 @@ test:
 
 test-short:
 	$(MAKE) -C ../.. test-service-short SVC=notify
+
+# Интеграция (настоящий Postgres): отбор и вердикт — у корневой цели
+# test-integration; ноль исполненных проб — отказ (kacho#2915, Д92).
+integration:
+	$(MAKE) -C ../.. test-integration SVC=notify
 
 vet:
 	go vet ./...
