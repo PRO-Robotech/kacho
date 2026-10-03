@@ -49,10 +49,14 @@ type InternalNotifyProbeServiceClient interface {
 	// Send — поставить письмо `probe-hello` на адрес.
 	//
 	// Шаблон, класс и значение атрибута `target` (путь `/` — origin установки)
-	// задаёт сама проба; вызывающий называет только адресата. Пустой `address` —
-	// `INVALID_ARGUMENT` `address: required`; адрес, который не нормализуется, —
-	// `INVALID_ARGUMENT` с именем поля `address`. Проверка формы стоит первой,
-	// до обращения к базе.
+	// задаёт сама проба; вызывающий называет только адресата. Порядок проверок:
+	// первым — флаг доставки источника: при выключенной доставке —
+	// `FAILED_PRECONDITION` `email delivery is not configured in this installation`
+	// с `ErrorInfo` причины `NOTIFICATION_DELIVERY_NOT_CONFIGURED`, до чтения
+	// адреса; вторым — форма адреса: пустой `address` — `INVALID_ARGUMENT`
+	// `address: required`, адрес, который не нормализуется, — `INVALID_ARGUMENT`
+	// с именем поля `address` и без его значения. Обе проверки стоят до обращения
+	// к базе.
 	//
 	// Право — `system_admin` на синглтоне `cluster`: письмо ставит оператор
 	// стенда, а не тенант. Отношение подстановочным знаком не выполняется.
@@ -101,10 +105,14 @@ type InternalNotifyProbeServiceServer interface {
 	// Send — поставить письмо `probe-hello` на адрес.
 	//
 	// Шаблон, класс и значение атрибута `target` (путь `/` — origin установки)
-	// задаёт сама проба; вызывающий называет только адресата. Пустой `address` —
-	// `INVALID_ARGUMENT` `address: required`; адрес, который не нормализуется, —
-	// `INVALID_ARGUMENT` с именем поля `address`. Проверка формы стоит первой,
-	// до обращения к базе.
+	// задаёт сама проба; вызывающий называет только адресата. Порядок проверок:
+	// первым — флаг доставки источника: при выключенной доставке —
+	// `FAILED_PRECONDITION` `email delivery is not configured in this installation`
+	// с `ErrorInfo` причины `NOTIFICATION_DELIVERY_NOT_CONFIGURED`, до чтения
+	// адреса; вторым — форма адреса: пустой `address` — `INVALID_ARGUMENT`
+	// `address: required`, адрес, который не нормализуется, — `INVALID_ARGUMENT`
+	// с именем поля `address` и без его значения. Обе проверки стоят до обращения
+	// к базе.
 	//
 	// Право — `system_admin` на синглтоне `cluster`: письмо ставит оператор
 	// стенда, а не тенант. Отношение подстановочным знаком не выполняется.

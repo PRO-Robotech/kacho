@@ -31,8 +31,10 @@
 // этой транзакции, и `age(xmin) > 0`. Строка, вставленная этой транзакцией (в
 // точке сохранения постановки — номером подтранзакции, старше номера
 // транзакции), даёт `age(xmin) <= 0`. На уровне READ COMMITTED каждый оператор
-// берёт новый снимок, и параллельная постановка с номером старше закоммитилась
-// бы в него — ответ отдал бы чужой id; гонку держит проба
+// берёт новый снимок, и параллельная постановка с номером старше, успевшая
+// закоммититься, попала бы в него с `age(xmin) <= 0` рядом со своей строкой:
+// строк стало бы две, и Send ответил бы INTERNAL («строк ленты этой транзакции
+// 2») — ложный отказ, а не чужой id. Гонку держит проба
 // TestParallelSendsGetTheirOwnIDs. Строк своей транзакции не ровно одна —
 // внутренняя ошибка, а не «первая попавшаяся».
 package send
@@ -60,7 +62,7 @@ import (
 const target = "/"
 
 // ownRowQuery — id строк ленты, вставленных этой транзакцией (см. шапку).
-var ownRowQuery = `SELECT id FROM ` + journal.FeedOutbox + ` WHERE age(xmin) <= 0`
+const ownRowQuery = `SELECT id FROM ` + journal.FeedOutbox + ` WHERE age(xmin) <= 0`
 
 // Server — служба InternalNotifyProbeService.
 type Server struct {
@@ -86,7 +88,9 @@ func (s *Server) Send(ctx context.Context, req *notifyv1.SendRequest) (*notifyv1
 		return nil, status.Error(codes.InvalidArgument, "address: required")
 	}
 	if _, err := address.Normalize(addr); err != nil {
-		return nil, status.Error(codes.InvalidArgument, "address: "+err.Error())
+		// Текст фундамента уже начинается именем поля (`address: …`) и значения
+		// адреса не несёт — отдаётся как есть, второго префикса нет.
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	ctx = s.source.Bind(ctx)
@@ -107,12 +111,12 @@ func (s *Server) Send(ctx context.Context, req *notifyv1.SendRequest) (*notifyv1
 func (s *Server) put(ctx context.Context, addr string) (string, error) {
 	tx, err := journaltx.Begin(ctx, s.db, journaltx.NewOptions(s.source.Enabled()))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("начало транзакции постановки: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	if err := notify.SendProbeHello(ctx, tx, notify.ProbeHelloAttrs{To: addr, Target: target}); err != nil {
-		return "", err
+		return "", fmt.Errorf("постановка probe-hello: %w", err)
 	}
 	rows, err := tx.Query(ctx, ownRowQuery)
 	if err != nil {
