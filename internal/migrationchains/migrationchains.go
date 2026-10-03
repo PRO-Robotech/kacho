@@ -123,20 +123,47 @@ func serviceOfPoint(point string) (string, bool) {
 
 // List — цепочки дерева root по его индексу git. Недоступный индекс — отказ.
 func List(root string) ([]Chain, error) {
+	chains, _, err := Survey(root)
+	return chains, err
+}
+
+// Census — объём, осмотренный поиском сирот: файлов `.sql` под
+// `services/<svc>/internal/**` и каталогов, в которых они лежат. Ноль файлов
+// при непустом перечне — не «сирот нет», а «смотреть было не на что»: судит
+// вызывающий, перечень цепочек такой ответ отдаёт без отказа.
+type Census struct {
+	SQLFiles int
+	SQLDirs  int
+}
+
+// Survey — то же, что List, и объём осмотренного поиском сирот.
+func Survey(root string) ([]Chain, Census, error) {
 	tree, err := treecorpus.NewTree(root)
 	if err != nil {
-		return nil, fmt.Errorf("перечень цепочек: %w", err)
+		return nil, Census{}, fmt.Errorf("перечень цепочек: %w", err)
 	}
-	return FromTree(tree)
+	return SurveyTree(tree)
 }
 
 // FromTree — цепочки состава tree, упорядоченные по точке и каталогу.
 //
 // Отказы (а не пустой перечень): точек наката ноль; таблица точки неверна
-// (ParseTable); каталога строки в составе нет; каталог
-// `services/<svc>/internal/migrations` с миграциями, который не применяет ни
-// одна точка, — цепочка без точки наката, которую гейты иначе не увидели бы.
+// (ParseTable); каталога строки в составе нет; файл `.sql` где угодно под
+// `services/<svc>/internal/**` вне каталогов перечня — цепочка без точки
+// наката, которую гейты иначе не увидели бы.
+//
+// Сирота ищется по ЛЮБОМУ каталогу под internal/, а не только по
+// каноническому `internal/migrations`: цепочка с таблицей лежит в каталоге,
+// который называет строка (`internal/probemigrations` у notify), и строка,
+// снятая при файлах на месте, оставила бы цепочку вне перечня молча — гейты,
+// читающие перечень, её не видят (ORPHAN-CHAIN-BLIND).
 func FromTree(tree *treecorpus.Tree) ([]Chain, error) {
+	chains, _, err := SurveyTree(tree)
+	return chains, err
+}
+
+// SurveyTree — FromTree и объём осмотренного поиском сирот.
+func SurveyTree(tree *treecorpus.Tree) ([]Chain, Census, error) {
 	files := tree.SortedFiles()
 	services := map[string]bool{}
 	for _, f := range files {
@@ -161,27 +188,24 @@ func FromTree(tree *treecorpus.Tree) ([]Chain, error) {
 		}
 		chains, err := pointChains(tree, point, svc)
 		if err != nil {
-			return nil, err
+			return nil, Census{}, err
 		}
 		for _, c := range chains {
 			if !tree.HasDir(c.Dir) {
-				return nil, fmt.Errorf("точка наката %s: каталога цепочки %s нет", point, c.Dir)
+				return nil, Census{}, fmt.Errorf("точка наката %s: каталога цепочки %s нет", point, c.Dir)
 			}
 			covered[c.Dir] = true
 		}
 		out = append(out, chains...)
 	}
 	if len(out) == 0 {
-		return nil, errors.New("перечень цепочек: точек наката нет (services/*/cmd/migrator/main.go) — " +
+		return nil, Census{}, errors.New("перечень цепочек: точек наката нет (services/*/cmd/migrator/main.go) — " +
 			"пустой перечень здесь означал бы зелёный гейт с нулём прочитанного")
 	}
-	for _, svc := range names {
-		dir := "services/" + svc + "/internal/migrations"
-		if covered[dir] || !hasSQL(files, dir) {
-			continue
-		}
-		return nil, fmt.Errorf("перечень цепочек: %s несёт миграции, а её не применяет ни одна точка "+
-			"наката — цепочка без точки наката", dir)
+	census, orphans := sqlUnderInternal(files, covered)
+	if len(orphans) > 0 {
+		return nil, census, fmt.Errorf("перечень цепочек: %s несёт миграции, а её не применяет ни одна точка "+
+			"наката — цепочка без точки наката (каталогов-сирот %d)", strings.Join(orphans, ", "), len(orphans))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Point != out[j].Point {
@@ -189,7 +213,36 @@ func FromTree(tree *treecorpus.Tree) ([]Chain, error) {
 		}
 		return out[i].Dir < out[j].Dir
 	})
-	return out, nil
+	return out, census, nil
+}
+
+// sqlUnderInternal — перепись `.sql` под services/<svc>/internal/** и
+// каталоги-сироты: каталоги с `.sql`, которых нет среди covered (каталогов
+// перечня), по возрастанию.
+func sqlUnderInternal(files []string, covered map[string]bool) (Census, []string) {
+	var census Census
+	dirs := map[string]bool{}
+	for _, f := range files {
+		rest, ok := strings.CutPrefix(f, "services/")
+		if !ok || !strings.HasSuffix(f, ".sql") {
+			continue
+		}
+		i := strings.IndexByte(rest, '/')
+		if i <= 0 || !strings.HasPrefix(rest[i:], "/internal/") {
+			continue
+		}
+		census.SQLFiles++
+		dirs[path.Dir(f)] = true
+	}
+	census.SQLDirs = len(dirs)
+	var orphans []string
+	for d := range dirs {
+		if !covered[d] {
+			orphans = append(orphans, d)
+		}
+	}
+	sort.Strings(orphans)
+	return census, orphans
 }
 
 // pointChains — цепочки одной точки: строки её таблицы либо одна строка по
@@ -204,17 +257,6 @@ func pointChains(tree *treecorpus.Tree, point, svc string) ([]Chain, error) {
 		return nil, fmt.Errorf("точка наката %s: %s не прочитан: %w", point, TableFile, err)
 	}
 	return ParseTable(point, data)
-}
-
-// hasSQL — в каталоге dir (прямо, не глубже) есть файл миграции.
-func hasSQL(files []string, dir string) bool {
-	for _, f := range files {
-		if rest, ok := strings.CutPrefix(f, dir+"/"); ok && !strings.Contains(rest, "/") &&
-			strings.HasSuffix(rest, ".sql") {
-			return true
-		}
-	}
-	return false
 }
 
 // IsChainSQL — файл rel (путь от корня, через `/`) — миграция одной из цепочек

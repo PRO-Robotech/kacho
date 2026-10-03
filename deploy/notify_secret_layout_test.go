@@ -49,6 +49,7 @@
 package deploy_test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io/fs"
 	"os"
@@ -62,6 +63,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/gitenv"
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 const (
@@ -594,6 +597,54 @@ func TestNotifyRecipientKeyIsNeverGenerated(t *testing.T) {
 	}
 }
 
+// TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender — ключ сетки короче
+// 32 байт — отказ РЕНДЕРА с именем ручки и границей (Д94), той же границей, что
+// страж старта (Д89). Близнец — ключ ровно 32 байт: рендер проходит, и объект
+// ключа несёт его. Граница — в БАЙТАХ, как у стража (`len` Go): 16 кириллических
+// букв — 32 байта (проходит), 15 — 30 (отказ). Ни значение, ни длина в текст
+// отказа не попадают.
+func TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender(t *testing.T) {
+	chart := notifyFixtureChart(t, nil)
+	cases := []struct {
+		name, key string
+		refused   bool
+	}{
+		{"31 байт ASCII", strings.Repeat("k", 31), true},
+		{"32 байта ASCII (близнец)", strings.Repeat("k", 32), false},
+		{"15 кириллических букв — 30 байт", strings.Repeat("ключ", 3) + "клю", true},
+		{"16 кириллических букв — 32 байта (близнец)", strings.Repeat("ключ", 4), false},
+	}
+	for _, c := range cases {
+		if got := len(c.key) < 32; got != c.refused {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: кейс %q построен неверно — длина %d байт", c.name, len(c.key))
+		}
+		out, err := renderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key)
+		switch {
+		case c.refused && err == nil:
+			t.Errorf("%s: рендер прошёл — короткий ключ обязан быть отказом рендера (Д94)", c.name)
+		case c.refused && !(strings.Contains(out, "notify.recipientKey") && strings.Contains(out, "короче 32 байт")):
+			t.Errorf("%s: отказ без имени ручки или границы:\n%s", c.name, out)
+		case c.refused && strings.Contains(out, c.key):
+			t.Errorf("%s: значение ключа попало в текст отказа", c.name)
+		case !c.refused && err != nil:
+			t.Errorf("%s: рендер отказал на ключе, равном границе:\n%s", c.name, out)
+		case !c.refused:
+			var got string
+			if sec := objsOfKind(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key), "Secret"); len(sec) == 1 {
+				raw, decErr := base64.StdEncoding.DecodeString(nstr(ndig(sec[0].doc, "data", "recipientKey")))
+				if decErr == nil {
+					got = string(raw)
+				}
+			}
+			if got != c.key {
+				t.Errorf("%s: объект ключа не несёт заданный ключ (получено %d байт)", c.name, len(got))
+			}
+		default:
+			t.Logf("%s → отказ рендера с именем ручки и границей", c.name)
+		}
+	}
+}
+
 // TestNotifyRecipientKeyAnnotationFollowsTheKeyOnly — смена ключа меняет
 // `checksum/recipient-key` и не меняет `checksum/config`; смена несвязанного
 // значения не меняет `checksum/recipient-key`.
@@ -986,10 +1037,13 @@ func migrateFindings(objs []renderedObj) []string {
 				pw = nstr(ndig(e, "valueFrom", "secretKeyRef", "name")) != ""
 			}
 		}
-		// dbname — ТОЧНЫМ значением разобранного поля, не подстрокой: подстрока
-		// принимает dbname=kacho_notifyprobe (база пробы) за базу службы (Д84).
-		if db, ok := dsnField(dsn, "dbname"); !ok || db != "kacho_notify" {
-			out = append(out, "DSN контейнера migrate называет базу «"+db+"», а не ровно kacho_notify")
+		// dbname — ТОЧНЫМ значением, не подстрокой: подстрока принимает
+		// dbname=kacho_notifyprobe (база пробы) за базу службы (Д84). Читает его
+		// та же функция, которой точка наката выбирает цепочку
+		// (migrationchains.DatabaseOf над разбором драйвера, Д93), — своего
+		// разбора DSN у пробы нет.
+		if db, err := migrationchains.DatabaseOf(dsn); err != nil || db != "kacho_notify" {
+			out = append(out, fmt.Sprintf("DSN контейнера migrate называет базу «%s» (%v), а не ровно kacho_notify", db, err))
 		}
 		if !pw {
 			out = append(out, "пароль базы у migrate не ссылкой на секрет")
@@ -1018,16 +1072,49 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	}
 }
 
-// dsnField — значение поля key строки DSN вида «k=v k=v» (форма, которую
-// печатает шаблон чарта; значения без пробелов и кавычек). Второе значение —
-// поле найдено.
-func dsnField(dsn, key string) (string, bool) {
-	for _, tok := range strings.Fields(dsn) {
-		if k, v, ok := strings.Cut(tok, "="); ok && k == key {
-			return v, true
+// migrateDeployment — синтетическое развёртывание notify с контейнером migrate
+// и DSN dsn: вход решения migrateFindings без рендера.
+func migrateDeployment(dsn string) []renderedObj {
+	return []renderedObj{{kind: "Deployment", name: "kacho-notify", doc: map[string]any{
+		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"initContainers": []any{map[string]any{
+				"name": "migrate", "command": []any{"kacho-migrator"}, "args": []any{"up"},
+				"env": []any{
+					map[string]any{"name": "KACHO_MIGRATOR_DSN", "value": dsn},
+					map[string]any{"name": "KACHO_NOTIFY_DB_PASSWORD",
+						"valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": "s", "key": "k"}}},
+				},
+			}},
+		}}},
+	}}}
+}
+
+// Д93 — имя базы DSN контейнера migrate читается разбором драйвера, а не своим:
+// каждая законная запись libpq, которую драйвер читает как kacho_notify, —
+// молчание; запись с другой базой — красный. Свой разбор «k=v через пробел»
+// не видел кавычек и пробелов вокруг «=» и называл годную запись чужой.
+func TestMigrateDSNDatabaseIsReadByTheDriverParse(t *testing.T) {
+	t.Setenv("PGDATABASE", "")
+	for _, dsn := range []string{
+		"host=h port=5432 user=notify dbname=kacho_notify sslmode=require",
+		"host=h port=5432 user=notify dbname = kacho_notify sslmode=require",
+		"host=h port=5432 user=notify dbname='kacho_notify' sslmode=require",
+		"postgres://notify@h:5432/kacho_notify?sslmode=require",
+	} {
+		if f := migrateFindings(migrateDeployment(dsn)); len(f) != 0 {
+			t.Errorf("DSN %q называет kacho_notify, а проба красная: %v", dsn, f)
 		}
 	}
-	return "", false
+	for _, dsn := range []string{
+		"host=h dbname=kacho_notifyprobe sslmode=require",
+		"host=h dbname='kacho_notify x' sslmode=require",
+		"host=h sslmode=require",
+		"host=h dbname='open",
+	} {
+		if f := migrateFindings(migrateDeployment(dsn)); len(f) == 0 {
+			t.Errorf("DSN %q не называет ровно kacho_notify, а проба молчит", dsn)
+		}
+	}
 }
 
 // ─── нога фикстурной копии ЗОНТИКА (N02, N20, N25; CX1-94, CX1-97, CX1-99, М43, М45) ─

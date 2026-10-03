@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"os"
@@ -13,7 +14,11 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/PRO-Robotech/corelib/pgtest"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/probemigrations"
 )
 
@@ -112,10 +117,26 @@ func TestRemovedRowRefusesTheProbeDatabase(t *testing.T) {
 // процесса и его код выхода.
 const helperEnv = "KACHO_NOTIFY_MIGRATOR_TEST_RUN_MAIN"
 
+// helperRowEnv / helperAnswerEnv — подмены процесса-помощника для пробы точки
+// на живой базе: строка таблицы цепочек с именем базы pgtest (имени пробы в
+// таблице точки нет, а накатывать предстоит её цепочку) и ответ запроса сверки
+// чужим именем (сервер, открывший соединение не к той базе). Прод их не
+// читает: подмена живёт только в тестовом бинаре.
+const (
+	helperRowEnv    = "KACHO_NOTIFY_MIGRATOR_TEST_ROW_DB"
+	helperAnswerEnv = "KACHO_NOTIFY_MIGRATOR_TEST_ANSWER"
+)
+
 // TestHelperRunsMain — не проба: тело процесса-помощника.
 func TestHelperRunsMain(t *testing.T) {
 	if os.Getenv(helperEnv) != "1" {
 		return
+	}
+	if db := os.Getenv(helperRowEnv); db != "" {
+		chainsTable = []byte("chains:\n  - database: " + db + "\n    dir: services/notify/internal/probemigrations\n")
+	}
+	if answer := os.Getenv(helperAnswerEnv); answer != "" {
+		currentDatabaseQuery = "SELECT '" + answer + "'::text"
 	}
 	os.Args = []string{binaryName, "up"}
 	main()
@@ -123,10 +144,12 @@ func TestHelperRunsMain(t *testing.T) {
 }
 
 // runPoint исполняет main() точки с DSN в KACHO_MIGRATOR_DSN; stderr и код.
-func runPoint(t *testing.T, dsn string) (string, error) {
+// extra — подмены процесса-помощника (helperRowEnv, helperAnswerEnv).
+func runPoint(t *testing.T, dsn string, extra ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunsMain$")
 	cmd.Env = append(os.Environ(), helperEnv+"=1", "KACHO_MIGRATOR_DSN="+dsn, "PGDATABASE=")
+	cmd.Env = append(cmd.Env, extra...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -177,10 +200,10 @@ func TestConnectedDatabaseMustBeTheRowDatabase(t *testing.T) {
 	answer := func(name string, err error) func(context.Context) (string, error) {
 		return func(context.Context) (string, error) { return name, err }
 	}
-	if err := confirmDatabase(ctx, answer("kacho_notifyprobe", nil), "kacho_notifyprobe"); err != nil {
+	if err := confirmDatabase(ctx, answer("kacho_notifyprobe", nil), "kacho_notifyprobe", time.Second); err != nil {
 		t.Fatalf("близнец: база соединения равна строке, а отказ: %v", err)
 	}
-	err := confirmDatabase(ctx, answer("kacho_notify", nil), "kacho_notifyprobe")
+	err := confirmDatabase(ctx, answer("kacho_notify", nil), "kacho_notifyprobe", time.Second)
 	if err == nil {
 		t.Fatal("соединение с kacho_notify при строке kacho_notifyprobe принято — накат ушёл бы в чужую базу")
 	}
@@ -189,7 +212,123 @@ func TestConnectedDatabaseMustBeTheRowDatabase(t *testing.T) {
 			t.Errorf("отказ сверки не называет %q: %v", s, err)
 		}
 	}
-	if err := confirmDatabase(ctx, answer("", errors.New("conn reset")), "kacho_notifyprobe"); err == nil {
+	if err := confirmDatabase(ctx, answer("", errors.New("conn reset")), "kacho_notifyprobe", time.Second); err == nil {
 		t.Fatal("ошибка чтения current_database() принята за пройденную сверку")
 	}
+}
+
+// GS-C2 — у сверки свой предел: сервер, принявший соединение и замерший
+// (failover, зависший пулер), не держит init-контейнер бесконечно — истечение
+// предела есть отказ «наката нет», а не ожидание. Ответ, пришедший после
+// предела, не принимается. Близнец — ответ в пределе принят.
+func TestConfirmDatabaseRefusesWhenTheNameDoesNotArriveInTime(t *testing.T) {
+	const limit = 100 * time.Millisecond
+	late := func(ctx context.Context) (string, error) {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(2 * time.Second):
+			return "kacho_notifyprobe", nil
+		}
+	}
+	start := time.Now()
+	err := confirmDatabase(context.Background(), late, "kacho_notifyprobe", limit)
+	took := time.Since(start)
+	if err == nil {
+		t.Fatalf("ответ, пришедший через %s при пределе %s, принят — замерший сервер держал бы накат", took, limit)
+	}
+	for _, s := range []string{pointDir, "kacho_notifyprobe", "наката нет", limit.String()} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("отказ по пределу не называет %q: %v", s, err)
+		}
+	}
+	if took > time.Second {
+		t.Errorf("отказ пришёл через %s при пределе %s — предел не действует", took, limit)
+	}
+	inTime := func(ctx context.Context) (string, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			return "", errors.New("чтение имени базы идёт без предела")
+		}
+		return "kacho_notifyprobe", nil
+	}
+	if err := confirmDatabase(context.Background(), inTime, "kacho_notifyprobe", limit); err != nil {
+		t.Errorf("близнец: ответ в пределе, а отказ: %v", err)
+	}
+}
+
+// gooseState — есть ли в базе dsn учётная таблица goose и сколько версий в ней
+// применено.
+func gooseState(t *testing.T, dsn string) (bool, int) {
+	t.Helper()
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: база пробы не открыта: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	var table sql.NullString
+	if err := db.QueryRow(`SELECT to_regclass('goose_db_version')::text`).Scan(&table); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: to_regclass не прочитан: %v", err)
+	}
+	if !table.Valid {
+		return false, 0
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM goose_db_version WHERE version_id > 0`).Scan(&n); err != nil {
+		t.Fatalf("учётная таблица goose не прочитана: %v", err)
+	}
+	return true, n
+}
+
+// Д83, вторая половина — проводка сверки в main() на живом сервере. Точка
+// исполняется процессом (тот же канал, что у init-контейнера: stderr и код
+// выхода) против пустой базы pgtest, строка таблицы называет эту базу.
+//
+//   - сервер отвечает на запрос сверки чужим именем kacho_x → отказ с обоими
+//     именами, учётной таблицы goose в базе НЕТ (to_regclass IS NULL): накат не
+//     начинался;
+//   - близнец — ответ без подмены → накат прошёл, применено = объявлено
+//     цепочкой пробы. Близнец исполняет и настоящее чтение current_database()
+//     на живом сервере: его поломка (fail-closed) остановила бы и этот накат.
+//
+// Инъекция «вызов сверки снят из main()» → в первом случае накат проходит,
+// таблица goose появляется → красный (Д95, таблица возврата полосы).
+func TestPointConfirmsTheConnectedDatabaseBeforeGoose(t *testing.T) {
+	want, err := fs.Glob(probemigrations.FS, "*.sql")
+	if err != nil || len(want) == 0 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: в FS цепочки пробы нет миграций (%v)", err)
+	}
+
+	foreign := pgtest.NewEmptyDB(t)
+	db, err := migrationchains.DatabaseOf(foreign)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: имя базы pgtest не разобрано: %v", err)
+	}
+	stderr, err := runPoint(t, foreign, helperRowEnv+"="+db, helperAnswerEnv+"=kacho_x")
+	if err == nil {
+		t.Errorf("сервер ответил базой kacho_x при строке %s, а точка вышла успехом:\n%s", db, stderr)
+	}
+	for _, s := range []string{"kacho_x", db, pointDir, "наката нет"} {
+		if !strings.Contains(stderr, s) {
+			t.Errorf("отказ сверки не называет %q:\n%s", s, stderr)
+		}
+	}
+	if exists, n := gooseState(t, foreign); exists {
+		t.Errorf("сверка не прошла, а учётная таблица goose в базе %s есть (применено %d) — накат начался "+
+			"до сверки либо без неё", db, n)
+	}
+
+	twin := pgtest.NewEmptyDB(t)
+	tdb, err := migrationchains.DatabaseOf(twin)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: имя базы pgtest не разобрано: %v", err)
+	}
+	if stderr, err := runPoint(t, twin, helperRowEnv+"="+tdb); err != nil {
+		t.Fatalf("близнец: база соединения равна строке %s, а точка отказала (%v):\n%s", tdb, err, stderr)
+	}
+	exists, n := gooseState(t, twin)
+	if !exists || n != len(want) {
+		t.Fatalf("близнец: применено %d (таблица goose есть: %v), объявлено цепочкой пробы %d", n, exists, len(want))
+	}
+	t.Logf("сверка на живой базе: чужое имя → отказ без наката; близнец %s → применено %d / объявлено %d",
+		tdb, n, len(want))
 }

@@ -19,7 +19,7 @@
 // зелёной.
 //
 // Имя базы берётся разбором драйвера (`migrationchains.DatabaseOf` над
-// `pgconn.ParseConfig`) — тем же, каким накат соединяется, а после соединения
+// `pgx.ParseConfig`) — тем же, каким накат соединяется, а после соединения
 // и до первого оператора goose точка сверяет `SELECT current_database()` со
 // строкой таблицы: неравенство — отказ без наката (Д83).
 //
@@ -39,12 +39,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"sort"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 
@@ -67,7 +69,23 @@ const (
 
 	// migrationsDir — путь внутри встроенной FS; её корень — ".".
 	migrationsDir = "."
+
+	// confirmTimeout — предел чтения имени базы соединения при сверке (GS-C2).
+	// Барьер готовности сервера (`dbready` внутри [migratorcli.OpenDB]) свой
+	// бюджет уже прошёл, и сервер ответил; одиночный `SELECT current_database()`
+	// у живого сервера — миллисекунды. Предел защищает от сервера, принявшего
+	// соединение и замершего (failover, зависший пулер): без него init-контейнер
+	// висел бы в Init без отказа. Десять секунд — на три порядка больше
+	// ожидаемого ответа и много меньше бюджета барьера (2 мин).
+	confirmTimeout = 10 * time.Second
 )
+
+// currentDatabaseQuery — запрос сверки: имя базы, к которой открыто
+// соединение. Переменная, а не константа, ровно по одной причине: проба точки
+// (main_test.go) подменяет его в процессе-помощнике ответом чужого имени,
+// чтобы наблюдать отказ сверки и отсутствие наката на живом сервере. Прод его
+// не меняет.
+var currentDatabaseQuery = "SELECT current_database()"
 
 // chainsTable — таблица «имя базы → каталог цепочки».
 //
@@ -116,7 +134,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	if err := confirmDatabase(ctx, connectedDatabase(dsn, opts.Dialect), row.Database); err != nil {
+	if err := confirmConnection(ctx, dsn, opts.Dialect, row.Database); err != nil {
 		fail(err)
 	}
 
@@ -201,18 +219,44 @@ func run(ctx context.Context, r *migratorrun.Runner, opts migratorcli.Options) e
 	return fmt.Errorf("unhandled command %q", opts.Command)
 }
 
+// confirmConnection — сверка после соединения (Д83): соединение открывается
+// тем же трактом, каким его откроет накат ([migratorcli.OpenDB]: тот же разбор
+// DSN, тот же барьер готовности сервера), имя базы читается под пределом
+// [confirmTimeout], соединение закрывается сразу после чтения. Неоткрытое
+// соединение — тоже отказ «наката нет»: сверить не удалось.
+func confirmConnection(ctx context.Context, dsn, dialect, want string) error {
+	spec, err := migratorcli.ResolveDialectSpec(dialect)
+	if err != nil {
+		return err
+	}
+	db, err := migratorcli.OpenDB(ctx, dsn, spec, migratorcli.NewNoticeRelay(serviceName, os.Stderr))
+	if err != nil {
+		return fmt.Errorf("точка наката %s: соединение для сверки со строкой %q не открыто — "+
+			"наката нет: %w", pointDir, want, err)
+	}
+	defer func() { _ = db.Close() }()
+	return confirmDatabase(ctx, currentDatabase(db), want, confirmTimeout)
+}
+
 // confirmDatabase — сверка после соединения (Д83): база, к которой открыто
 // соединение (`SELECT current_database()`), равна базе строки таблицы, по
 // которой выбрана цепочка. Сверка стоит до первого оператора goose: выбор
 // цепочки по разбору DSN и соединение — два места решения о базе, и второе
 // судит первое на живом сервере, а не на строке. Неравенство — отказ с обоими
-// именами; ошибка чтения — тоже отказ: «сверить не удалось» не равно «сверка
-// пройдена».
-func confirmDatabase(ctx context.Context, current func(context.Context) (string, error), want string) error {
-	got, err := current(ctx)
+// именами; ошибка чтения и истечение предела limit — тоже отказ: «сверить не
+// удалось» не равно «сверка пройдена».
+func confirmDatabase(ctx context.Context, current func(context.Context) (string, error), want string, limit time.Duration) error {
+	cctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	got, err := current(cctx)
+	if err == nil && cctx.Err() != nil {
+		// Ответ пришёл, но после предела: читатель не уважил контекст. Принять
+		// его — значит снова ждать сервер без предела.
+		err = cctx.Err()
+	}
 	if err != nil {
-		return fmt.Errorf("точка наката %s: имя базы соединения не прочитано, сверка со строкой %q "+
-			"не пройдена — наката нет: %w", pointDir, want, err)
+		return fmt.Errorf("точка наката %s: имя базы соединения не прочитано за %s, сверка со строкой %q "+
+			"не пройдена — наката нет: %w", pointDir, limit, want, err)
 	}
 	if got != want {
 		return fmt.Errorf("точка наката %s: соединение открыто к базе %q, а цепочка выбрана строкой %q — "+
@@ -221,22 +265,11 @@ func confirmDatabase(ctx context.Context, current func(context.Context) (string,
 	return nil
 }
 
-// connectedDatabase — чтение `current_database()` соединением, открытым тем же
-// трактом, каким откроет его накат ([migratorcli.OpenDB]: тот же разбор DSN,
-// тот же барьер готовности сервера). Соединение закрывается сразу после чтения.
-func connectedDatabase(dsn, dialect string) func(context.Context) (string, error) {
+// currentDatabase — чтение имени базы соединением db.
+func currentDatabase(db *sql.DB) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
-		spec, err := migratorcli.ResolveDialectSpec(dialect)
-		if err != nil {
-			return "", err
-		}
-		db, err := migratorcli.OpenDB(ctx, dsn, spec, migratorcli.NewNoticeRelay(serviceName, os.Stderr))
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = db.Close() }()
 		var name string
-		if err := db.QueryRowContext(ctx, "SELECT current_database()").Scan(&name); err != nil {
+		if err := db.QueryRowContext(ctx, currentDatabaseQuery).Scan(&name); err != nil {
 			return "", fmt.Errorf("SELECT current_database(): %w", err)
 		}
 		return name, nil

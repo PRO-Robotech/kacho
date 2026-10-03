@@ -1166,8 +1166,15 @@ assert-production-posture: guard-kind-context
 #
 # Перечень опрашиваемых процессов ВЫВОДИТСЯ из дерева, а не выписан в скрипте:
 # девятый сервис попадёт под опрос в момент появления обработчика экспозиции.
+#
+# STAND_STACK — профиль (имя стека deploy/stacks.txt), которым поднят стенд:
+# знаменатель гейта — носители, ОТРЕНДЕРЕННЫЕ этим профилем (kacho#2915, Д91), и
+# факт «не отрендерен» гейт проверяет рендером профиля. Умолчание — `dev-prod`,
+# последний профиль, который применяет `dev-up`; стенд, поднятый иной цепочкой,
+# называет её здесь.
+STAND_STACK ?= dev-prod
 assert-metrics-surfaces-answer: guard-kind-context
-	@bash scripts/assert-metrics-surfaces-answer.sh
+	@KACHO_STAND_STACK="$(STAND_STACK)" bash scripts/assert-metrics-surfaces-answer.sh
 
 # ЗДЕСЬ БЫЛА ЦЕЛЬ assert-forwarder-narrowing — СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ (#2390).
 #

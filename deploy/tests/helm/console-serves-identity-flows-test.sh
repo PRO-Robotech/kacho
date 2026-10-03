@@ -520,14 +520,42 @@ if [ "${1:-}" = "--self-test" ]; then
     done < <(find "$src" -mindepth 1 -maxdepth 1 -printf '%f\n' \
                | if [ "$order" = rev ]; then LC_ALL=C sort -r; else LC_ALL=C sort; fi)
   }
+  # times_kept <имя копии> <источник> <копия> — утверждение САМОПРОВЕРКИ, что
+  # копия сняла времена изменения источника: перечень «путь → mtime» каждого
+  # файла копии равен перечню источника. Свойство судится по КОПИИ, а не по тексту
+  # команды, которой её сняли: голый `cp -r` на любом из четырёх мест ставит
+  # файлам время копирования, и утверждение этого места краснеет своим именем
+  # (R39-3, круг 2: «сохранение времён в четырёх копиях держит проба»). Пустой
+  # перечень источника — тоже провал: равенство двух пустых ничего не сняло.
+  times_kept() {
+    local label="$1" a b n
+    st_checked=$((st_checked + 1))
+    a="$(cd "$2" && find . -type f -printf '%P\t%T@\n' | LC_ALL=C sort)" || a=""
+    b="$(cd "$3" && find . -type f -printf '%P\t%T@\n' | LC_ALL=C sort)" || b=""
+    n="$(printf '%s\n' "$a" | sed '/^$/d' | wc -l)"
+    if [ "$n" -gt 0 ] && [ "$a" = "$b" ]; then
+      echo "  ✓ $label — времена изменения сняты вместе с содержимым ($n файлов)"
+    else
+      echo "  ✗ $label — времена изменения копии расходятся с источником ($n файлов источника):"
+      # `diff` выходит кодом 1 на различии — под errexit и pipefail это оборвало
+      # бы самопроверку на первом же провале, без итога по остальным осям.
+      diff <(printf '%s\n' "$a") <(printf '%s\n' "$b") | head -4 | sed 's/^/      /' || true
+      st_rc=1
+    fi
+  }
   WORK="$(mktemp -d)"
   trap 'rm -rf "$WORK"' EXIT
   mkdir -p "$WORK/deploy/tests/helm" "$WORK/ui-future"
+  echo
+  echo "-- копии самопроверки снимают времена изменения (четыре места, R39-3) --"
   cp -r --preserve=timestamps "$DEPLOY_ROOT/helm" "$WORK/deploy/helm" || fatal "копия чартов не собрана — инъекциям некуда идти"
+  times_kept "копия каталога чартов" "$DEPLOY_ROOT/helm" "$WORK/deploy/helm"
   [ -d "$WORK/deploy/helm/umbrella" ] || fatal "в копии нет умбреллы ($WORK/deploy/helm/umbrella)"
   cp "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt"
   cp -r --preserve=timestamps "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
+  times_kept "копия исходника консоли" "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
   cp -r --preserve=timestamps "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
+  times_kept "нетронутый двойник исходника" "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
   cp "$0" "$WORK/deploy/tests/helm/$SCRIPT"
   # Общие реализации едут вместе с испытуемым: он подключает их по своему
   # каталогу, и без них самопроверка мерила бы отсутствие файла.
@@ -549,6 +577,7 @@ if [ "${1:-}" = "--self-test" ]; then
   restore_src() {
     rm -rf "$COPY_SRC"
     cp -r --preserve=timestamps "$WORK/ui-future-pristine" "$COPY_SRC"
+    times_kept "возврат исходника из двойника" "$WORK/ui-future-pristine" "$COPY_SRC"
     repack
   }
   repack

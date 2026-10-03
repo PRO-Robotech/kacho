@@ -143,7 +143,13 @@ import (
 // корневого Makefile (цель test-integration). Тест ниже сверяет, что копия не
 // разошлась с оригиналом: гейт, судящий по устаревшему представлению об отборе,
 // врёт тем увереннее, чем дольше живёт.
-var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)`)
+//
+// Вторая альтернатива — пакеты каталога notify с настоящей базой (kacho#2915,
+// Д90, Д92): процесс пробы-источника, его глагол Send и точка наката. Их
+// пробы гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит;
+// шире (`cmd/` всех служб) отбор не берётся — радиус не измерен.
+var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)` +
+	`|^services/notify/cmd/(notify-probe(/internal/send)?|migrator)$`)
 
 // shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
 // режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
@@ -263,15 +269,6 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// и проба, заведённая без него, была бы ровно тем классом, ради которого задача
 	// стоит. Отсюда запись, а не строка в переписи долга.
 	"internal/migratorapply": "make test-pg-outside-selection",
-
-	// Проба-источник notify (kacho#2915, D4): корень процесса и его глагол Send.
-	// Пробы корня поднимают процесс на живой базе (NTF1-N08, M08, проводка
-	// ленты), пробы глагола — постановку и гонку параллельных Send; под
-	// кратким они пропускаются, а отбор интеграционной джобы по пути
-	// (`/internal/(repo|clients|reconciler|subscriptionjournal)`) до cmd/ не
-	// достаёт. Без своего шага они не исполнялись бы нигде.
-	"services/notify/cmd/notify-probe":               "make test-pg-outside-selection",
-	"services/notify/cmd/notify-probe/internal/send": "make test-pg-outside-selection",
 
 	// Соединение наката: открывает базу, ждёт готовности и ВОЗВРАЩАЕТ себе порог
 	// уведомлений сервера перед каждой миграцией (задача #2560). Свод службы
@@ -415,6 +412,15 @@ func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
 		}
 	})
 
+	t.Run("краснеет: запись своего шага у пакета в отборе", func(t *testing.T) {
+		const notifyProbe = "services/notify/cmd/notify-probe"
+		f := judgeShortGateSelection([]string{notifyProbe}, nil,
+			map[string]string{notifyProbe: "make test-pg-outside-selection"}, "make test-pg-outside-selection")
+		if len(f) != 1 || !strings.Contains(f[0], notifyProbe) || !strings.Contains(f[0], "ВХОДИТ в отбор") {
+			t.Fatalf("запись своего шага у отобранного пакета не названа вторым исполнителем: %v", f)
+		}
+	})
+
 	t.Run("молчит: тот же пакет, названный в переписи", func(t *testing.T) {
 		if f := judgeShortGateSelection([]string{outside}, []string{outside}, nil, ""); len(f) != 0 {
 			t.Fatalf("гейт краснеет на объявленном долге: %v", f)
@@ -549,6 +555,12 @@ func judgeShortGateSelection(gated, declared []string, ownStep map[string]string
 	}
 	sort.Strings(stepRest)
 	for _, p := range stepRest {
+		if integrationSelectionRe.MatchString(p) {
+			findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
+				"ВХОДИТ в отбор интеграционной джобы — свой шаг был бы вторым исполнителем тех же "+
+				"проб, двумя местами об одном предмете; запись снимается")
+			continue
+		}
 		findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
 			"больше не пропускает тестов под кратким режимом (или исчез) — освобождать "+
 			"нечего, и запись достанется следующему как слепая зона")
@@ -584,9 +596,10 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)`
+	const want = `grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)` +
+		`|/services/notify/cmd/(notify-probe(/internal/send)?|migrator)$$'`
 	if !strings.Contains(string(raw), want) {
-		t.Fatalf("в корневом Makefile больше нет отбора %q — копия в этом файле "+
+		t.Fatalf("в корневом Makefile нет отбора %q — копия в этом файле "+
 			"(integrationSelectionRe) описывает отбор, которого не существует", want)
 	}
 }
