@@ -36,6 +36,10 @@ type rg11IntegrationInput struct {
 	ExitOverride      string
 	GitHubActions     string
 	EmptySelection    bool
+	// PackageOkOnly — производитель отчитался строкой пакета `ok`, а событий
+	// проб (pass/fail) не дал ни одного. Счёт исполненного идёт по событиям
+	// `go test -json` (kacho#2915, Д106 (г)): такой прогон — ноль исполненного.
+	PackageOkOnly bool
 }
 
 func rg11UnmetInput() rg11IntegrationInput {
@@ -63,6 +67,28 @@ func TestRG11_06(t *testing.T) {
 	t.Run("green_ci", func(t *testing.T) {
 		f := rg11NewIntegrationFixture(t)
 		got := f.check(t, "green_ci", rg11GreenInput(), 0, 0, false)
+		rg11NoAnnotation(t, got.output)
+	})
+}
+
+// Счёт исполненного integration — по событиям `go test -json` (pass/fail
+// проб), а не по строкам пакетов (kacho#2915, Д106 (г)). Строка `ok` пакета
+// без единого события пробы — ноль исполненного и отказ; близнец — тот же
+// пакет с событием pass одной пробы — зелёный.
+func TestRG11_06b(t *testing.T) {
+	t.Run("package_ok_without_test_events", func(t *testing.T) {
+		f := rg11NewIntegrationFixture(t)
+		twin, input := rg11GreenInput(), rg11GreenInput()
+		input.PackageOkOnly = true
+		rg11IntegrationDelta(t, twin, input, "PackageOkOnly", "TestRG11_06/green_ci")
+		green := f.check(t, "green_twin", twin, 0, 0, false)
+		if !strings.Contains(green.output, "integration vpc: проб исполнено по событиям go test -json 1 (pass 1 · fail 0)") {
+			t.Errorf("green twin does not print the event-based census: %s", green.output)
+		}
+		got := f.check(t, "package_ok_only", input, 2, 1, false)
+		if !strings.Contains(got.output, "проб исполнено по событиям go test -json 0") {
+			t.Errorf("package-only report is not refused by the event count: %s", got.output)
+		}
 		rg11NoAnnotation(t, got.output)
 	})
 }
@@ -169,14 +195,15 @@ type rg11IntegrationResult struct {
 
 func rg11NewIntegrationFixture(t *testing.T) rg11IntegrationFixture {
 	t.Helper()
-	for _, tool := range []string{"bash", "make", "xargs", "tee", "grep", "wc", "mktemp", "cat", "dirname", "rm"} {
+	for _, tool := range []string{"bash", "make", "xargs", "tee", "grep", "wc", "mktemp", "cat", "dirname", "rm", "sed", "tail", "python3"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Fatalf("NOT_EXECUTED: prerequisite %s: %v", tool, err)
 		}
 	}
 	source := repoRoot(t)
 	f := rg11IntegrationFixture{root: t.TempDir()}
-	for _, path := range []string{"Makefile", "deploy/scripts/classify-integration-outcome.sh", "deploy/scripts/pgtest-unavailable-mark.sh"} {
+	for _, path := range []string{"Makefile", "deploy/scripts/classify-integration-outcome.sh", "deploy/scripts/pgtest-unavailable-mark.sh",
+		".github/scripts/go-test-verdict.py", ".github/scripts/gate-skips-allowed.txt"} {
 		body := rg11ReadIntegrationFile(t, filepath.Join(source, path))
 		rg11WriteIntegrationFile(t, filepath.Join(f.root, path), body, 0o700)
 		t.Logf("source %s sha256=%x", path, sha256.Sum256(body))
@@ -293,9 +320,9 @@ case "$1" in
     cat "$RG11_PACKAGES"
     ;;
   test)
-    [ "$#" -eq 9 ] && [ "$2" = '-tags=integration' ] && [ "$3" = '-race' ] &&
-    [ "$4" = '-count=1' ] && [ "$5" = '-timeout' ] && [ "$7" = '-p' ] &&
-    [ "$8" = '1' ] && [ "$9" = 'github.com/PRO-Robotech/kacho/services/vpc/internal/repo' ] || exit 97
+    [ "$#" -eq 10 ] && [ "$2" = '-tags=integration' ] && [ "$3" = '-race' ] &&
+    [ "$4" = '-count=1' ] && [ "$5" = '-timeout' ] && [ "$7" = '-json' ] && [ "$8" = '-p' ] &&
+    [ "$9" = '1' ] && [ "${10}" = 'github.com/PRO-Robotech/kacho/services/vpc/internal/repo' ] || exit 97
     cat "$RG11_CHILD_OUTPUT"
     exit "$RG11_CHILD_EXIT"
     ;;
@@ -319,7 +346,10 @@ func (f rg11IntegrationFixture) check(t *testing.T, label string, input rg11Inte
 	t.Helper()
 	log, childExit := f.capture, "1"
 	if input.PostgresAvailable {
-		log, childExit = []byte("ok\t"+rg11IntegrationPackage+"\t0.001s\n"), "0"
+		log, childExit = rg11JSONGreen(), "0"
+		if input.PackageOkOnly {
+			log = []byte("ok\t" + rg11IntegrationPackage + "\t0.001s\n")
+		}
 	}
 	if input.RemoveMarker {
 		var kept []byte
@@ -338,6 +368,13 @@ func (f rg11IntegrationFixture) check(t *testing.T, label string, input rg11Inte
 	}
 	if input.ExitOverride != "" {
 		childExit = input.ExitOverride
+		// Производитель под `-json`, вышедший нулём, отчитался событием pass
+		// исполненной пробы: без него рецепт считает исполненное нулём и
+		// отказывает (Д106 (г)). Признак в журнале при этом остаётся — его и
+		// судит RG1.1-09.
+		if childExit == "0" && !input.PostgresAvailable {
+			log = append(append([]byte{}, log...), rg11JSONGreen()...)
+		}
 	}
 	packages := rg11IntegrationPackage + "\n"
 	if input.EmptySelection {
@@ -467,6 +504,20 @@ func rg11NoAnnotation(t *testing.T, output string) {
 	if regexp.MustCompile(`(?m)^::(?:error|warning|notice)(?: |::)`).MatchString(output) {
 		t.Errorf("unexpected GitHub Actions control annotation: %s", output)
 	}
+}
+
+// rg11JSONGreen — поток `go test -json` зелёного пакета с одной пробой: тот,
+// что производит настоящий прогон рецепта (`-json` в его argv).
+func rg11JSONGreen() []byte {
+	p := rg11IntegrationPackage
+	return []byte(`{"Action":"start","Package":"` + p + `"}
+{"Action":"run","Package":"` + p + `","Test":"TestRG11Probe"}
+{"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"=== RUN   TestRG11Probe\n"}
+{"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"--- PASS: TestRG11Probe (0.00s)\n"}
+{"Action":"pass","Package":"` + p + `","Test":"TestRG11Probe","Elapsed":0}
+{"Action":"output","Package":"` + p + `","Output":"ok  \t` + p + `\t0.001s\n"}
+{"Action":"pass","Package":"` + p + `","Elapsed":0.001}
+`)
 }
 
 func rg11ReadIntegrationFile(t *testing.T, path string) []byte {
