@@ -85,6 +85,12 @@ import (
 // принадлежит ему, а не этому слою.
 var ErrSessionCutoffUnsupported = errors.New("session cutoff: authority does not offer this question")
 
+// MisaddressedListenerPredicate — предикат снятия в подсказке дежурному у
+// диагноза «спрошен не тот слушатель» (kacho#2741). Один источник для пути
+// запроса и для перепроса открытых потоков (streamrevocation): подсказка о двух
+// полосах одного механизма не расходится, потому что второй копии нет.
+const MisaddressedListenerPredicate = "не исчезает раскатом — исправьте адрес внутреннего слушателя службы доступа"
+
 // SessionCutoffReader — порт НАШЕГО авторитета отзыва, спрошенного ПРО СУБЪЕКТА.
 //
 // Реализуется адаптером над `InternalSessionRevocationsService.SessionCutoffOf`
@@ -195,7 +201,7 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 			if errors.Is(err, ErrIntrospectionMisconfigured) {
 				msg, predicate = "session revocation not enforced on the browser lane: "+
 					"the asked listener does not serve the identity service (misaddressed)",
-					"не исчезает раскатом — исправьте адрес внутреннего слушателя службы доступа"
+					MisaddressedListenerPredicate
 			}
 			a.logger.Error(msg, "err", err,
 				"route", route,
