@@ -317,20 +317,10 @@ autoscaling:
   targetCPUUtilizationPercentage: 70
 
 # ─── NetworkPolicy ───────────────────────────────────────────────────────────
-networkPolicy:
-  enable: true
-  # Selector that matches kacho-api-gateway pods (allowed to reach :9090).
-  apiGatewayPodSelector:
-    matchLabels:
-      app: kacho-api-gateway
-  # Selector(s) matching peer services allowed to reach :9091 (internal).
-  internalPodSelector:
-    matchLabels:
-      kacho.io/peer: "true"
-  # Allow Prometheus to scrape :9101.
-  metricsPodSelector:
-    matchLabels:
-      app.kubernetes.io/name: prometheus
+# Политику входа к подам этой службы рендерит УМБРЕЛЛА
+# (deploy/helm/umbrella/templates/networkpolicy-nlb.yaml): отправителя она
+# называет метками его пода, а метки края ставит чарт края — этот чарт их не
+# видит. Ручка включения — `kacho-nlb.networkPolicy.enable` в значениях умбреллы.
 
 # ─── ServiceMonitor (Prometheus Operator) ────────────────────────────────────
 # metricsScrape — объявление СБОРА величин диагностической поверхности.

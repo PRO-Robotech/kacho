@@ -3,18 +3,23 @@
 
 // identity_mail_lane_single_declaration_test.go — MAIL-54 приёмки ID-MAIL-1.
 //
-// ПРЕДМЕТ. Почтовая полоса службы личности объявляется ОДНИМ местом — нашей
-// конфигурацией личности, питаемой `global.kacho.identity.smtp.*` (решение Р27),
+// ПРЕДМЕТ. Почтовая полоса объявляется ОДНИМ местом — разделом `invite-mail`
+// настроек нашей службы, питаемым `global.kacho.identity.smtp.*` (решение Р27),
 // и оснастка боевой раскатки посылает оператора ИМЕННО ТУДА.
 //
-// ЗАЧЕМ. Процесс службы личности получает НЕСКОЛЬКО файлов настроек и сливает
-// их по порядку; наш идёт вторым. Значит раздел, объявленный нами, замещает
-// одноимённый раздел поставщика ЦЕЛИКОМ, а не дополняет его. Пока об одной
-// полосе высказываются два места, какое из них доедет до процесса — решает
-// порядок слияния, а не решение. А пока оснастка раскатки называет оператору
-// координату, отличную от единственного объявления, обязанность оператора
-// НЕИСПОЛНИМА: он кладёт настоящий узел туда, куда его послали, раскатка
-// зелёная, поды стартуют, письма уходят в никуда, и сигнала нет ни одного.
+// ЧЕЙ ЭТО НОСИТЕЛЬ ТЕПЕРЬ (kacho#2818). Прежде единственным объявлением был
+// раздел `courier` настроек внешнего поставщика личности, которые рендерил наш
+// подчарт; их подчарт больше не производит, и объявление полосы — раздел нашего
+// отправителя (`charts/kaname/templates/configmap.yaml`). Встроенный блок
+// `courier` в значениях профиля остаётся вторым мнением о той же полосе и
+// судится по-прежнему.
+//
+// ЗАЧЕМ. Пока об одной полосе высказываются два места, какое из них доедет до
+// процесса — решает порядок слияния, а не решение. А пока оснастка раскатки
+// называет оператору координату, отличную от единственного объявления,
+// обязанность оператора НЕИСПОЛНИМА: он кладёт настоящий узел туда, куда его
+// послали, раскатка зелёная, поды стартуют, письма уходят в никуда, и сигнала
+// нет ни одного.
 //
 // ТРИ УТВЕРЖДЕНИЯ, ТРИ ПАРЫ ПЕРЕПИСИ. У сценария их три, и одно общее число не
 // позволило бы отличить «ноль находок» от «ноль прочитанного» ни у одного:
@@ -35,9 +40,8 @@
 // обзором, и так и записано. Обещать здесь гейт значило бы завести форму без
 // содержания.
 //
-// ЧЕГО ГЕЙТ НЕ УТВЕРЖДАЕТ. Какая из двух координат замещается — свойство чужого
-// процесса, из нашего дерева не читаемое. Для находки это и не нужно: две
-// разные координаты одной полосы суть дефект при любом победителе.
+// ЧЕГО ГЕЙТ НЕ УТВЕРЖДАЕТ. Какая из двух координат замещается — для находки это
+// не нужно: две разные координаты одной полосы суть дефект при любом победителе.
 package deploy_test
 
 import (
@@ -51,18 +55,18 @@ import (
 )
 
 // mailLaneFeedPath — ЕДИНСТВЕННЫЙ путь значений, из которого рендерится раздел
-// `courier.smtp` нашей конфигурации личности. Он же — координата, которую
-// оснастка раскатки обязана называть оператору.
+// `invite-mail` настроек нашей службы. Он же — координата, которую оснастка
+// раскатки обязана называть оператору.
 const mailLaneFeedPath = "global.kacho.identity.smtp"
 
 // mailLaneFeedURI — координата адреса подключения внутри полосы. Именно её
 // оператор задаёт в слое учётных данных боевой площадки.
 const mailLaneFeedURI = mailLaneFeedPath + ".connectionURI"
 
-// Наш шаблон конфигурации личности — единственное законное объявление раздела
-// `courier` — адресуется существующей константой `identityConfigTemplate`
-// (identity_config_template_test.go). Второй копии координаты здесь
-// не заводится: это ровно тот класс, который третье утверждение ниже ловит.
+// Наш шаблон — единственное законное объявление полосы (раздел `invite-mail`) —
+// адресуется существующей константой `mailSenderConfigTemplate`
+// (identity_mail_lane_feeds_both_senders_test.go). Второй копии координаты
+// здесь не заводится.
 
 // cutoverScript — оснастка боевой раскатки. Перечень разрешённых координат слоя
 // учётных данных в ней — ЕДИНСТВЕННОЕ указание, которое оператор вообще
@@ -70,14 +74,14 @@ const mailLaneFeedURI = mailLaneFeedPath + ".connectionURI"
 const cutoverScript = "helm/umbrella/cutover-fe3455.sh"
 
 // mailLaneMention — упоминание почтовой полосы в объявлении развёртывания.
-// Ключевые формы обеих сторон: наша (`smtp:` / `connectionURI`) и поставщика
-// (`courier:` / `connection_uri`).
-var mailLaneMention = regexp.MustCompile(`(?m)^\s*(courier|smtp)\s*:|connection_?URI|connection_uri`)
+// Ключевые формы: наша (`smtp:` / `connectionURI` / `invite-mail:`) и
+// поставщика (`courier:` / `connection_uri`).
+var mailLaneMention = regexp.MustCompile(`(?m)^\s*(courier|smtp|invite-mail)\s*:|connection_?URI|connection_uri`)
 
-// courierSectionDecl — объявление раздела `courier` В ЗНАЧЕНИЯХ, то есть
-// встроенный блок профиля. Наш шаблон под этот предикат не подпадает: он
-// рендерит раздел, а не объявляет его значением.
-var courierSectionDecl = regexp.MustCompile(`(?m)^\s*courier\s*:`)
+// mailSectionDecl — объявление раздела почтовой полосы: наш раздел
+// `invite-mail` (в шаблоне — рендер, в значениях — встроенный блок) и раздел
+// `courier` поставщика (встроенный блок профиля).
+var mailSectionDecl = regexp.MustCompile(`(?m)^\s*(courier|invite-mail)\s*:`)
 
 // umbrellaDeclarationFiles — все объявления развёртывания зонтичного чарта:
 // профили, значения подчартов и шаблоны. Перечень ВЫВОДИТСЯ обходом, а не
@@ -109,38 +113,26 @@ func umbrellaDeclarationFiles(t *testing.T, root string) []string {
 	return out
 }
 
-// identityConfigSections — разделы верхнего уровня НАШЕЙ конфигурации личности.
-// ВЫВОДЯТСЯ из шаблона: перечень, выписанный вторым местом, и есть тот класс,
-// который третье утверждение сценария ловит.
-func identityConfigSections(t *testing.T, tpl string) []string {
+// ourConfigSections — разделы верхнего уровня настроек НАШЕЙ службы: ключи
+// блока `config.yaml` шаблона на глубине раздела. ВЫВОДЯТСЯ из шаблона:
+// перечень, выписанный вторым местом, и есть тот класс, который третье
+// утверждение сценария ловит.
+func ourConfigSections(t *testing.T, tpl string) []string {
 	t.Helper()
 	raw, err := os.ReadFile(tpl)
 	if err != nil {
-		t.Fatalf("шаблон конфигурации личности %s не читается: %v", tpl, err)
+		t.Fatalf("шаблон настроек службы %s не читается: %v", tpl, err)
 	}
-	lines := strings.Split(string(raw), "\n")
-	start := -1
-	for i, l := range lines {
-		if strings.Contains(l, `define "kacho.identity.configYaml"`) {
-			start = i
-			break
-		}
+	body := string(raw)
+	at := strings.Index(body, "\n  config.yaml: |\n")
+	if at < 0 {
+		t.Fatalf("в %s нет блока `config.yaml` — форма шаблона сменилась, и перечень "+
+			"разделов вывести неоткуда", tpl)
 	}
-	if start < 0 {
-		t.Fatalf("в %s нет определения `kacho.identity.configYaml` — форма шаблона "+
-			"сменилась, и перечень разделов вывести неоткуда", tpl)
-	}
-	end := len(lines)
-	for i := start + 1; i < len(lines); i++ {
-		if strings.Contains(lines[i], "{{- define ") {
-			end = i
-			break
-		}
-	}
-	top := regexp.MustCompile(`(?m)^([a-z_]+):`)
+	top := regexp.MustCompile(`(?m)^    ([a-z][a-z-]*):\s*$`)
 	seen := map[string]bool{}
 	var out []string
-	for _, m := range top.FindAllStringSubmatch(strings.Join(lines[start:end], "\n"), -1) {
+	for _, m := range top.FindAllStringSubmatch(body[at:], -1) {
 		if !seen[m[1]] {
 			seen[m[1]] = true
 			out = append(out, m[1])
@@ -148,9 +140,9 @@ func identityConfigSections(t *testing.T, tpl string) []string {
 	}
 	sort.Strings(out)
 	if len(out) == 0 {
-		t.Fatalf("разделов конфигурации личности не выведено ни одного — предикат "+
-			"перестал читать форму шаблона %s. «Ноль находок» здесь неотличимо от "+
-			"«ноль прочитанного», поэтому это отказ, а не тишина", tpl)
+		t.Fatalf("разделов настроек службы не выведено ни одного — предикат перестал читать "+
+			"форму шаблона %s. «Ноль находок» здесь неотличимо от «ноль прочитанного», "+
+			"поэтому это отказ, а не тишина", tpl)
 	}
 	return out
 }
@@ -203,15 +195,16 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 	t.Helper()
 	var findings []string
 	files := umbrellaDeclarationFiles(t, root)
-	sections := identityConfigSections(t, tpl)
-	t.Logf("осмотрено: объявлений развёртывания %d, разделов нашей конфигурации личности %d: %v",
+	sections := ourConfigSections(t, tpl)
+	t.Logf("осмотрено: объявлений развёртывания %d, разделов настроек нашей службы %d: %v",
 		len(files), len(sections), sections)
 
 	// ── ПАРА 1: объявления ────────────────────────────────────────────────
 	//
 	// Читаются все места, где встречается почтовая полоса. ОБЪЯВЛЕНИЕМ
-	// считается место, фиксирующее СОСТАВ раздела `courier`: наш шаблон,
-	// который его рендерит, и встроенный блок `courier` в значениях профиля.
+	// считается место, фиксирующее СОСТАВ раздела полосы: наш шаблон, который
+	// рендерит `invite-mail`, и встроенный блок `invite-mail` либо `courier` в
+	// значениях профиля.
 	//
 	// Величина по пути питания (`global.kacho.identity.smtp.*`) объявлением НЕ
 	// является: она КОРМИТ единственное объявление, а не заводит второе.
@@ -233,24 +226,24 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 		isTemplate := strings.Contains(f, "/templates/")
 		if isTemplate {
 			// Наш шаблон — единственное законное объявление. Второй шаблон,
-			// рендерящий `courier`, — находка.
-			if courierSectionDecl.MatchString(body) && f != identityConfigTemplate {
+			// рендерящий раздел полосы, — находка.
+			if mailSectionDecl.MatchString(body) && f != tpl {
 				declarations = append(declarations,
-					fmt.Sprintf("%s — второй ШАБЛОН, рендерящий раздел `courier`", f))
+					fmt.Sprintf("%s — второй ШАБЛОН, рендерящий раздел почтовой полосы", f))
 			}
-			if f == identityConfigTemplate && courierSectionDecl.MatchString(body) {
+			if f == tpl && mailSectionDecl.MatchString(body) {
 				declarations = append(declarations,
 					fmt.Sprintf("%s — наш шаблон (ЕДИНСТВЕННОЕ законное объявление)", f))
 			}
 			continue
 		}
 
-		// Значения: встроенный блок `courier` — всегда второе объявление.
-		if courierSectionDecl.MatchString(body) {
+		// Значения: встроенный блок полосы — всегда второе объявление.
+		if mailSectionDecl.MatchString(body) {
 			for i, l := range strings.Split(body, "\n") {
-				if courierSectionDecl.MatchString(l) {
+				if mailSectionDecl.MatchString(l) {
 					declarations = append(declarations, fmt.Sprintf(
-						"%s:%d — ВСТРОЕННЫЙ блок `courier` в значениях: он замещает наше "+
+						"%s:%d — ВСТРОЕННЫЙ блок почтовой полосы в значениях: он замещает наше "+
 							"объявление либо замещается им, и какое победит, решал бы порядок слияния",
 						f, i+1))
 				}
@@ -269,7 +262,7 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 	if len(declarations) != 1 {
 		findings = append(findings, fmt.Sprintf(
 			"объявлений почтовой полосы %d, а решение Р27 требует РОВНО ОДНО — "+
-				"нашу конфигурацию личности, питаемую %s:\n  %s",
+				"раздел нашего отправителя, питаемый %s:\n  %s",
 			len(declarations), mailLaneFeedPath, strings.Join(declarations, "\n  ")))
 	}
 
@@ -314,9 +307,9 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 
 	// ── ПАРА 3: перечни ───────────────────────────────────────────────────
 	//
-	// Перечень разделов конфигурации личности машинно выводим из нашего
-	// шаблона. Второе его изложение — то же «два места об одном предмете»,
-	// что чинит Р11: рукописный перечень переживает правку шаблона молча.
+	// Перечень разделов настроек нашей службы машинно выводим из шаблона.
+	// Второе его изложение — то же «два места об одном предмете», что чинит
+	// Р11: рукописный перечень переживает правку шаблона молча.
 	blocks := commentBlocks(t, files)
 	var lists []string
 	for _, b := range blocks {
@@ -341,11 +334,10 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 	}
 	for _, l := range lists {
 		findings = append(findings, fmt.Sprintf(
-			"рукописный перечень разделов конфигурации личности: %s.\n"+
+			"рукописный перечень разделов настроек службы: %s.\n"+
 				"Перечень выводится из %s (сегодня их %d: %v) — второе изложение "+
 				"переживает правку шаблона молча и становится ложью, не будучи видимо "+
-				"ничем. Снимите перечень либо сведите его к тому, что действительно "+
-				"остаётся за подчартом поставщика", l, tpl,
+				"ничем. Снимите перечень", l, tpl,
 			len(sections), sections))
 	}
 	return findings
@@ -353,7 +345,7 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 
 // TestMailLaneIsDeclaredOnce — MAIL-54 на рабочем дереве.
 func TestMailLaneIsDeclaredOnce(t *testing.T) {
-	for _, f := range mailLaneAssertions(t, umbrellaDir, identityConfigTemplate,
+	for _, f := range mailLaneAssertions(t, umbrellaDir, mailSenderConfigTemplate,
 		filepath.Join(umbrellaDir, filepath.Base(cutoverScript))) {
 		t.Error(f)
 	}

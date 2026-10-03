@@ -1,0 +1,61 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+NetworkPolicy: вход к подам kacho-nlb — только от тех, кто к ним звонит.
+
+Звонит один край: адрес публичного слушателя (:9090) ему нужен для запросов
+арендатора, адрес внутреннего (:9091) — для журнала изменений и Internal*.
+Других отправителей в установке нет: ни одна служба адреса kacho-nlb в
+настройках не получает. Что это так на каждой цепочке, держит
+deploy/network_policy_admission_render_test.go — он же краснеет, если звонящий
+появится, а правило его не назовёт.
+
+ПОЧЕМУ ПОЛИТИКА ЖИВЁТ В УМБРЕЛЛЕ, а не в чарте службы. Отправителя называют
+МЕТКАМИ его пода, а метки края ставит чарт края. Чарт службы их не видит и
+выписывал по памяти: политика ждала `app: kacho-api-gateway`, под края нёс
+`app: api-gateway`, и край не доставал до службы при зелёных рендере, установке
+и готовности (kacho#2941). Умбрелла видит оба чарта и берёт метку края из его
+же определения (`_network-identity.tpl`) — так же, как политика внутреннего
+слушателя vpc рядом.
+
+Чего здесь больше нет, и почему:
+  - правило `kacho.io/peer: "true"` на :9091 — этой метки не несёт ни один под,
+    и ни один сосед к kacho-nlb не звонит: правило не пропускало никого;
+  - правило сборщика величин на :9101 — селектор пода без селектора пространства
+    выбирает только поды ЭТОГО пространства, а сборщика в установке нет: правило
+    тоже не пропускало никого. Диагностическая поверхность под этой политикой
+    закрыта для всех, как и была на деле.
+
+Ручка — `kacho-nlb.networkPolicy.enable` (прежний адрес, профили его уже несут);
+умолчание включено (values.yaml), отладочный профиль её выключает.
+*/ -}}
+{{- $nlb := index .Values "kacho-nlb" | default dict }}
+{{- $np := $nlb.networkPolicy | default dict }}
+{{- if and (or (not (hasKey $nlb "enabled")) $nlb.enabled) $np.enable }}
+{{- $ports := $nlb.ports | default dict }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ required "kacho-nlb.name обязателен" $nlb.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "umbrella.appSelectorLabels" (dict "root" $ "chart" "kacho-nlb") | nindent 4 }}
+    app.kubernetes.io/part-of: kacho
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "umbrella.appSelectorLabels" (dict "root" $ "chart" "kacho-nlb") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Публичный :9090 и внутренний :9091 — только край.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "umbrella.edgeSelectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ required "kacho-nlb.ports.grpc обязателен" $ports.grpc }}
+        - protocol: TCP
+          port: {{ required "kacho-nlb.ports.internalGrpc обязателен" $ports.internalGrpc }}
+{{- end }}

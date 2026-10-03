@@ -25,20 +25,19 @@
 // конвейера, то есть ровно то, что дерево и содержит.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ПРЕДИКАТ ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ — И БЕРЁТСЯ У СОСЕДА
+// ПРЕДИКАТ ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ
 //
-// «Работа подъёма» опознаётся по рецепту (`dev-up`/`dev-prod-up`), и признак
-// этот объявлен ОДИН раз — в identity_hook_provenance_reaches_every_stand_test.go
-// (`provStandRecipes`). Второе его объявление здесь разошлось бы с первым молча:
-// переименуют рецепт — один гейт ослепнет, другой нет, и заметить это будет
-// нечем. Файлы лежат в одном пакете `deploy_test`, поэтому источник читается, а
-// не копируется.
+// «Работа подъёма» опознаётся по рецепту (`dev-up`/`dev-prod-up`) — по тому, ЧТО
+// работа делает, а не по имени файла или задания. Выписанный перечень работ
+// назвал бы сегодняшние и не рос бы вместе с деревом: заведённая завтра работа
+// подъёма осталась бы без вопроса молча — ровно тот дефект, который здесь
+// закрывают.
 //
-// Обход при этом СВОЙ (`revFacts`), и это не дублирование: предмет поиска у
-// соседа другой — его отчёт, а не наш владелец. Будь обход общим, правка одного
-// гейта меняла бы предмет второго. Общее — ровно признак подъёма и форма разбора
-// объявления; перепись каждый печатает свою, потому что «ноль находок» обязано
-// быть отличимо от «ноль прочитанного» у КАЖДОГО из них.
+// Признак и форма разбора объявлены здесь ОДИН раз (`standRecipes`,
+// `standWorkflow`). Прежде их объявлял сосед — гейт отчёта о происхождении
+// величины обратного вызова; отчёт снят вместе с поставщиком личности, чей
+// отправитель эту величину держал (kacho#1276), и признак переехал к
+// единственному оставшемуся читателю, а не остался в снятом файле.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ГРАНИЦА НАЗВАНА ЧЕСТНО
@@ -58,6 +57,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -74,6 +74,55 @@ const revOwner = "../.github/scripts/stand-revision-verdict.sh"
 // работы зовут владельца от `$GITHUB_WORKSPACE`, и полный путь сделал бы предикат
 // зависимым от способа адресации, а не от того, что шаг ДЕЛАЕТ.
 const revOwnerCall = "stand-revision-verdict.sh"
+
+// standRecipes — рецепты, поднимающие стенд. Признак, а не перечень работ:
+// работа опознаётся по тому, ЧТО она делает. `own-up` поднимает цепочку `own` из
+// сборки дерева (kacho#2931).
+var standRecipes = []string{"dev-prod-up", "dev-up", "own-up"}
+
+// standWorkflow — форма разбора объявления конвейера: задания, их матрица и тела
+// шагов. Матрица читается затем, что шаг вправе назвать рецепт измерением
+// (`make ${{ matrix.stack }}-up`): буквального имени рецепта в теле тогда нет, и
+// поиск по тексту работу подъёма не узнал бы — ровно так он ослеп на
+// production-posture.yml при переходе на ноги по цепочкам.
+type standWorkflow struct {
+	Jobs map[string]struct {
+		Strategy struct {
+			Matrix any `yaml:"matrix"`
+		} `yaml:"strategy"`
+		Steps []struct {
+			Run string `yaml:"run"`
+		} `yaml:"steps"`
+	} `yaml:"jobs"`
+}
+
+// runNamesARecipe — тело шага называет рецепт подъёма: буквально либо через
+// измерение ЛИТЕРАЛЬНОЙ матрицы, раскрытое по её значениям. Матрица из выражения
+// не раскрывается — её значений в объявлении нет; такой шаг узнаётся, только если
+// рецепт назван буквально.
+func runNamesARecipe(run string, matrix any) bool {
+	texts := []string{run}
+	if m, ok := matrix.(map[string]any); ok {
+		for dim, vals := range m {
+			list, ok := vals.([]any)
+			if !ok {
+				continue
+			}
+			ref := regexp.MustCompile(`\$\{\{\s*matrix\.` + regexp.QuoteMeta(dim) + `\s*\}\}`)
+			for _, v := range list {
+				texts = append(texts, ref.ReplaceAllString(run, fmt.Sprint(v)))
+			}
+		}
+	}
+	for _, text := range texts {
+		for _, recipe := range standRecipes {
+			if strings.Contains(text, recipe) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // revJob — то, что гейт вывел об одном задании конвейера.
 type revJob struct {
@@ -108,12 +157,8 @@ func scanStandRevisionCoverage(jobs []revJob) []string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ОБХОД — свой, но по ОБЩЕМУ признаку подъёма.
-//
-// Признак (`provStandRecipes`) и форма разбора (`provWorkflow`) берутся у соседа
-// по пакету: два объявления одного предиката разошлись бы молча. Сам обход здесь
-// свой, потому что предмет поиска другой — свой владелец, а не чужой отчёт; будь
-// он общим, правка одного гейта меняла бы предмет второго.
+// ОБХОД — по признаку подъёма (`standRecipes`) и форме разбора
+// (`standWorkflow`), объявленным выше один раз.
 
 func revFacts(t *testing.T) (jobs []revJob, files, steps int) {
 	t.Helper()
@@ -127,7 +172,7 @@ func revFacts(t *testing.T) (jobs []revJob, files, steps int) {
 		if rerr != nil {
 			continue
 		}
-		var wf provWorkflow
+		var wf standWorkflow
 		if yaml.Unmarshal(raw, &wf) != nil {
 			// Неразбираемое объявление — предмет соседних гейтов; здесь оно
 			// пропускается, но остаётся ВИДНЫМ в переписи (files растёт, steps нет).
@@ -144,10 +189,8 @@ func revFacts(t *testing.T) (jobs []revJob, files, steps int) {
 			j := revJob{workflow: filepath.Base(p), job: n}
 			for _, s := range wf.Jobs[n].Steps {
 				steps++
-				for _, recipe := range provStandRecipes {
-					if strings.Contains(s.Run, recipe) {
-						j.raises = true
-					}
+				if runNamesARecipe(s.Run, wf.Jobs[n].Strategy.Matrix) {
+					j.raises = true
 				}
 				if strings.Contains(s.Run, revOwnerCall) {
 					j.asks = true
@@ -188,7 +231,7 @@ func TestEveryStandJobAsksWhichTreeItRuns(t *testing.T) {
 	if len(raising) == 0 {
 		t.Fatalf("не найдено НИ ОДНОГО задания, поднимающего стенд (рецепты %v) — "+
 			"либо рецепты переименованы, либо разбор ослеп; в обоих случаях гейт "+
-			"перестал что-либо требовать", provStandRecipes)
+			"перестал что-либо требовать", standRecipes)
 	}
 
 	if _, err := os.Stat(revOwner); err != nil {
@@ -235,5 +278,23 @@ func TestScanStandRevisionCoverage_SelfTest(t *testing.T) {
 	orphan := []revJob{{workflow: "проверки.yml", job: "линт", raises: false, asks: true}}
 	if got := scanStandRevisionCoverage(orphan); len(got) == 0 {
 		t.Errorf("(B) вопрос без стенда ПРОПУЩЕН")
+	}
+}
+
+// Рецепт, названный измерением литеральной матрицы, узнаётся; тот же шаг с
+// измерением, не дающим рецепта, — нет (законный близнец); буквальный — как прежде.
+func TestRunNamesARecipeThroughALiteralMatrix(t *testing.T) {
+	run := `.github/scripts/stand-up.sh --dir deploy -- make ${{ matrix.stack }}-up`
+	if !runNamesARecipe(run, map[string]any{"stack": []any{"dev-prod", "own"}}) {
+		t.Error("рецепт, названный измерением литеральной матрицы, не узнан — работа подъёма ослепла бы")
+	}
+	if runNamesARecipe(run, map[string]any{"stack": []any{"lint"}}) {
+		t.Error("законный близнец: измерение не даёт рецепта подъёма, а шаг узнан поднимающим")
+	}
+	if runNamesARecipe(run, "${{ fromJSON(x) }}") {
+		t.Error("матрица из выражения раскрыта догадкой")
+	}
+	if !runNamesARecipe("make dev-up CLUSTER_NAME=x", nil) {
+		t.Error("буквальный рецепт перестал узнаваться")
 	}
 }

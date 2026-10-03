@@ -74,6 +74,9 @@ type workflowFile struct {
 				WorkingDirectory string `yaml:"working-directory"`
 			} `yaml:"run"`
 		} `yaml:"defaults"`
+		Strategy struct {
+			Matrix any `yaml:"matrix"`
+		} `yaml:"strategy"`
 		Steps []struct {
 			Run              string `yaml:"run"`
 			WorkingDirectory string `yaml:"working-directory"`
@@ -569,60 +572,66 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 		sort.Strings(jobNames)
 		for _, jobName := range jobNames {
 			job := wf.Jobs[jobName]
+			legs := literalMatrixLegs(job.Strategy.Matrix)
 			for i, step := range job.Steps {
 				if step.Run == "" {
 					continue
 				}
-				where := e.Name() + " job " + jobName + " step " + itoa(i)
-				script := stripShellComments(maskExpressions(joinContinuations(step.Run)))
+				for _, leg := range stepLegs(step.Run, legs) {
+					// The coordinate keeps its form «<file> job <job> step <n>» — other
+					// readers parse it (RG11 snapshot collector). The leg is named by
+					// the target itself: its value is what the matrix substituted.
+					where := e.Name() + " job " + jobName + " step " + itoa(i)
+					script := stripShellComments(maskExpressions(joinContinuations(leg.run)))
 
-				base := step.WorkingDirectory
-				if base == "" {
-					base = job.Defaults.Run.WorkingDirectory
-				}
-				if base == "" {
-					base = wf.Defaults.Run.WorkingDirectory
-				}
-				if base == "" {
-					base = "."
-				}
-
-				ordinary := []byte(script)
-				for start := 0; start < len(script); {
-					cmd := readShellCommand(script, start)
-					start = cmd.end
-					wrapped, recognized, err := standUpMake(root, base, script, cmd)
-					if !recognized {
-						continue
+					base := step.WorkingDirectory
+					if base == "" {
+						base = job.Defaults.Run.WorkingDirectory
 					}
-					// Even an invalid recognized wrapper owns its span: its label
-					// and child must never be mistaken for ordinary make commands.
-					for pos := cmd.start; pos < cmd.end; pos++ {
-						if ordinary[pos] != '\n' {
-							ordinary[pos] = ' '
+					if base == "" {
+						base = wf.Defaults.Run.WorkingDirectory
+					}
+					if base == "" {
+						base = "."
+					}
+
+					ordinary := []byte(script)
+					for start := 0; start < len(script); {
+						cmd := readShellCommand(script, start)
+						start = cmd.end
+						wrapped, recognized, err := standUpMake(root, base, script, cmd)
+						if !recognized {
+							continue
+						}
+						// Even an invalid recognized wrapper owns its span: its label
+						// and child must never be mistaken for ordinary make commands.
+						for pos := cmd.start; pos < cmd.end; pos++ {
+							if ordinary[pos] != '\n' {
+								ordinary[pos] = ' '
+							}
+						}
+						if err != nil {
+							t.Errorf("%s: stand-up make command cannot be read: %v", where, err)
+							continue
+						}
+						for _, inv := range wrapped {
+							inv.workflow = where
+							out = append(out, inv)
 						}
 					}
-					if err != nil {
-						t.Errorf("%s: stand-up make command cannot be read: %v", where, err)
-						continue
-					}
-					for _, inv := range wrapped {
-						inv.workflow = where
-						out = append(out, inv)
-					}
-				}
-				for _, m := range makeRe.FindAllStringSubmatch(string(ordinary), -1) {
-					dir, targets := parseMakeArgs(m[1])
-					if len(targets) == 0 {
-						continue // bare `make` with only flags — nothing to resolve
-					}
-					dirs := []string{base}
-					if dir != "" {
-						dirs = expandLoopVars(t, script, dir, where)
-					}
-					for _, d := range dirs {
-						for _, tgt := range targets {
-							out = append(out, makeInvocation{workflow: where, dir: d, target: tgt})
+					for _, m := range makeRe.FindAllStringSubmatch(string(ordinary), -1) {
+						dir, targets := parseMakeArgs(m[1])
+						if len(targets) == 0 {
+							continue // bare `make` with only flags — nothing to resolve
+						}
+						dirs := []string{base}
+						if dir != "" {
+							dirs = expandLoopVars(t, script, dir, where)
+						}
+						for _, d := range dirs {
+							for _, tgt := range targets {
+								out = append(out, makeInvocation{workflow: where, dir: d, target: tgt})
+							}
 						}
 					}
 				}
@@ -649,6 +658,115 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 // what CI executes.
 func joinContinuations(script string) string {
 	return strings.ReplaceAll(script, "\\\n", " ")
+}
+
+// literalMatrixLegs returns the legs of a LITERAL matrix — every dimension a list
+// of scalars, no include/exclude — as dimension→value maps; nil for any other
+// matrix (or none).
+//
+// WHY. A step may name its make target through a matrix dimension
+// (`make ${{ matrix.stack }}-up`). Masked, that target became `GH_EXPR-up`, and
+// the gate reported that the Makefile declares no such target — a finding about
+// its own reader. A LITERAL matrix, unlike a matrix from an expression, is not
+// decided at run time: its values are declared in the workflow, so expanding
+// them is reading, not guessing. Each leg is then checked on its own, which is
+// stricter than a mask: every value must resolve, not «some value goes here».
+//
+// Legs are expanded ONLY for a step whose make TARGET names a dimension
+// (targetNamesAMatrixDim). A dimension inside a `VAR=value` override does not
+// choose the Makefile target, the masked reading of such a step was already
+// exact, and multiplying it per leg would change what the census counts without
+// changing what it knows (the RG11 inventory counts it once).
+func literalMatrixLegs(matrix any) []map[string]string {
+	m, ok := matrix.(map[string]any)
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	if _, inc := m["include"]; inc {
+		return nil
+	}
+	if _, exc := m["exclude"]; exc {
+		return nil
+	}
+	dims := make([]string, 0, len(m))
+	for d := range m {
+		dims = append(dims, d)
+	}
+	sort.Strings(dims)
+	legs := []map[string]string{{}}
+	for _, d := range dims {
+		vals, ok := m[d].([]any)
+		if !ok || len(vals) == 0 {
+			return nil
+		}
+		var next []map[string]string
+		for _, leg := range legs {
+			for _, v := range vals {
+				switch v.(type) {
+				case map[string]any, []any:
+					return nil
+				}
+				n := map[string]string{d: fmt.Sprint(v)}
+				for k, vv := range leg {
+					n[k] = vv
+				}
+				next = append(next, n)
+			}
+		}
+		legs = next
+	}
+	return legs
+}
+
+var matrixDimRe = regexp.MustCompile(`\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}`)
+
+type stepLeg struct{ run string }
+
+// stepLegs — the step body once per literal-matrix leg when it names a matrix
+// dimension, otherwise once as written. A dimension the matrix does not declare
+// stays an expression and is masked like any other.
+// wrappedMakeRe — the child make of the stand-up wrapper (`… -- make <target>`),
+// which makeRe does not see: `make` there follows `--`, not a separator.
+var wrappedMakeRe = regexp.MustCompile(`\s--\s+make\s+([^;&|\n]+)`)
+
+// targetNamesAMatrixDim — some make command of the step names its TARGET through
+// a matrix dimension, i.e. the masked reading would leave an expression where a
+// Makefile target must stand.
+func targetNamesAMatrixDim(run string) bool {
+	script := maskExpressions(matrixDimRe.ReplaceAllString(stripShellComments(joinContinuations(run)), "GHMATRIX"))
+	var argLists []string
+	for _, m := range makeRe.FindAllStringSubmatch(script, -1) {
+		argLists = append(argLists, m[1])
+	}
+	for _, m := range wrappedMakeRe.FindAllStringSubmatch(script, -1) {
+		argLists = append(argLists, m[1])
+	}
+	for _, a := range argLists {
+		_, targets := parseMakeArgs(a)
+		for _, tgt := range targets {
+			if strings.Contains(tgt, "GHMATRIX") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stepLegs(run string, legs []map[string]string) []stepLeg {
+	if len(legs) == 0 || !targetNamesAMatrixDim(run) {
+		return []stepLeg{{run: run}}
+	}
+	out := make([]stepLeg, 0, len(legs))
+	for _, leg := range legs {
+		body := matrixDimRe.ReplaceAllStringFunc(run, func(ref string) string {
+			if v, ok := leg[matrixDimRe.FindStringSubmatch(ref)[1]]; ok {
+				return v
+			}
+			return ref
+		})
+		out = append(out, stepLeg{run: body})
+	}
+	return out
 }
 
 // maskExpressions collapses a GitHub expression into ONE space-free token before
@@ -780,4 +898,50 @@ func TestStorageKnownFailingGateIsInvokedByCI(t *testing.T) {
 	}
 	t.Error("no workflow issues `make -C services/storage audit-known-failing` — a gate " +
 		"nothing runs cannot notice that an exclusion outlived its subject")
+}
+
+// TestLiteralMatrixLegsAreCheckedOneByOne — a target named through a LITERAL
+// matrix dimension is resolved per leg: the leg whose value the Makefile does not
+// declare is reported, its twin is silent; a matrix from an expression stays
+// masked (its values are decided at run time, and expanding them would be a guess).
+func TestLiteralMatrixLegsAreCheckedOneByOne(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".github", "workflows"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	wf := "jobs:\n" +
+		"  literal:\n    strategy:\n      matrix:\n        stack: [a, b]\n" +
+		"    steps:\n      - run: make ${{ matrix.stack }}-up\n" +
+		"  expression:\n    strategy:\n      matrix: ${{ fromJSON(x) }}\n" +
+		"    steps:\n      - run: make ${{ matrix.stack }}-up\n" +
+		"  override:\n    strategy:\n      matrix:\n        stack: [a, b]\n" +
+		"    steps:\n      - run: make a-up V=${{ matrix.stack }}\n"
+	if err := os.WriteFile(filepath.Join(root, ".github", "workflows", "w.yml"), []byte(wf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Makefile"), []byte("a-up:\n\t@true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	invs := collectMakeInvocations(t, root)
+	for _, inv := range invs {
+		got[inv.target] = true
+	}
+	// Two literal legs, one mask, and the override step read ONCE: a dimension
+	// in `V=…` does not choose the target, so it is not multiplied per leg.
+	if len(invs) != 4 {
+		t.Errorf("expected 4 invocations (a-up, b-up, GH_EXPR-up, a-up once), read %d: %+v", len(invs), invs)
+	}
+	for _, want := range []string{"a-up", "b-up", "GH_EXPR-up"} {
+		if !got[want] {
+			t.Errorf("invocation %q not read (read: %v)", want, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("expected exactly the two literal legs and one masked form, read %v", got)
+	}
+	targets, ok := makeTargets(root, ".")
+	if !ok || !targets["a-up"] || targets["b-up"] {
+		t.Fatalf("synthetic Makefile misread: %v", targets)
+	}
 }

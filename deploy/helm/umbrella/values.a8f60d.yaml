@@ -106,12 +106,6 @@ ingress-nginx:
 # ОЧИСТКА ДВУХ РУЧЕК — НЕ ФОРМАЛЬНОСТЬ. `cookieDomain`/`webauthnRpId` объявляет
 # слой под нами (values.dev.yaml, `kacho.local`). Оставить их значило бы принять
 # величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
-#
-# `kratosPublicBaseURL` здесь НЕ объявлен намеренно: относительный
-# `/.ory/kratos/public/` приходит из values.dev.yaml, и именно он работает на
-# живом стенде (консоль проксирует службу через себя же, same-origin). Второе
-# объявление того же предмета разошлось бы с первым молча — тот же довод, что у
-# предела процессора pg-iam ниже.
 global:
   kacho:
     identity:
@@ -292,26 +286,6 @@ pg-registry:
   readReplicas:
     persistence:
       enabled: false
-pg-kratos:
-  primary:
-    persistence:
-      enabled: false
-    resources: *id001
-  volumePermissions:
-    enabled: false
-  readReplicas:
-    persistence:
-      enabled: false
-pg-hydra:
-  primary:
-    persistence:
-      enabled: false
-    resources: *id001
-  volumePermissions:
-    enabled: false
-  readReplicas:
-    persistence:
-      enabled: false
 # ── ПОТОЛОК ФЛОТА ЗДЕСЬ НИЖЕ, И ЭТО ТО ЖЕ РЕШЕНИЕ О РАЗМЕРЕ (#1451) ─────────
 #
 # Обе службы объявляют autoscaling.maxReplicas = 5 в своих значениях, и до сих
@@ -462,19 +436,6 @@ kacho-nlb:
     repository: docker.io/prorobotech/kacho-nlb
     tag: main-275240ef
     pullPolicy: IfNotPresent
-hydra:
-  deployment:
-    resources: *id002
-kratos:
-  deployment:
-    resources: *id002
-kratos-selfservice-ui:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      memory: 512Mi
 uif:
   enabled: true
   image: docker.io/prorobotech/kacho-ui-future-host:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37

@@ -40,6 +40,16 @@ deploy/helm/umbrella/values.image-ids.yaml
 # по нему владелец решает, идти ли в сеть. Меняется вместе с архивами выше и
 # ни одним Dockerfile не читается.
 deploy/helm/umbrella/.kacho-deps-fingerprint
+# значения карты манифестов модулей: их пишет цель `module-manifests-configmap`
+# (deploy/Makefile, MODULE_MANIFESTS_VALUES) на каждом `make dev-up` и
+# `make stack-up`, в git их нет (deploy/.gitignore), и ни одним Dockerfile они
+# не читаются — тот же класс, что файлы выше: сборка после подъёма стенда
+# получала другой контекст при неизменном исходнике.
+deploy/helm/umbrella/values.module-manifests.yaml
+# накладка сборки: её пишет цель `own-up` (deploy/Makefile, LOCAL_IMAGES_VALUES)
+# ПОСЛЕ сборки образов, в git её нет (deploy/.gitignore), Dockerfile её не читает —
+# тот же класс: следующая сборка получила бы другой контекст при том же исходнике.
+deploy/helm/umbrella/values.local-images.yaml
 
 # Второй экземпляр того же класса — артефакты прогонов e2e. Отчёты newman,
 # окружение, пропатченное посевом фикстур (в нём токены — они меняются на каждом
@@ -143,8 +153,10 @@ ui-future/.dev-logs
 **/public/monaco
 # вспомогательные бинари инструментов
 services/*/bin
-# профиль значений, собираемый под конкретный стенд
+# слой секретов площадки (values.fe3455-secrets.yaml) и он же под прежним именем
+# (до #2998) — копия под прежним именем может жить в клоне оператора
 deploy/helm/*/values.*-ory.yaml
+deploy/helm/*/values.*-secrets.yaml
 # Terraform-провайдер: его не читает НИ ОДИН Dockerfile
 #
 # Шестнадцать Dockerfile копируют корень репозитория целиком, поэтому без этой строки
