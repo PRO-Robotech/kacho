@@ -315,8 +315,8 @@ func slRunCollector(t *testing.T, workloads, unreadable string) (string, int, st
 // попадает в сбор — потому что перечень спрашивается у стенда.
 func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
 	t.Parallel()
-	const workloads = "deployment.apps/kaname deployment.apps/kratos " +
-		"deployment.apps/kratos-courier deployment.apps/hydra statefulset.apps/zot"
+	const workloads = "deployment.apps/kaname deployment.apps/sessions " +
+		"deployment.apps/sessions-courier deployment.apps/issuer statefulset.apps/zot"
 	out, code, dir := slRunCollector(t, workloads, "")
 	if code != 0 {
 		t.Fatalf("сборщик вынес вердикт (код %d), а он диагностика: второе красное рядом "+
@@ -326,7 +326,7 @@ func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
 		t.Errorf("перепись не назвала оба числа рядом — «журналы собраны» неотличимо от "+
 			"«собраны не все»:\n%s", out)
 	}
-	for _, name := range []string{"kratos", "kratos-courier", "hydra", "zot"} {
+	for _, name := range []string{"sessions", "sessions-courier", "issuer", "zot"} {
 		hits, err := filepath.Glob(filepath.Join(dir, "*"+name+"*.log"))
 		if err != nil || len(hits) == 0 {
 			t.Errorf("журнал %q не собран — служба поднята и в сбор не попала, "+
@@ -342,18 +342,18 @@ func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
 func TestSL_UnreadableLogIsNamedByNumberAndAnnotation(t *testing.T) {
 	t.Parallel()
 	out, code, dir := slRunCollector(t,
-		"deployment.apps/kaname deployment.apps/kratos", "kratos")
+		"deployment.apps/kaname deployment.apps/sessions", "sessions")
 	if code != 0 {
 		t.Fatalf("сборщик вынес вердикт (код %d) на недоступном журнале\n%s", code, out)
 	}
 	if !strings.Contains(out, "недоступно 1") {
 		t.Errorf("недоступный журнал не назван числом:\n%s", out)
 	}
-	if !strings.Contains(out, "::warning") || !strings.Contains(out, "kratos") {
+	if !strings.Contains(out, "::warning") || !strings.Contains(out, "sessions") {
 		t.Errorf("недоступный журнал не назван аннотацией с именем службы — «собрали не всё» "+
 			"неотличимо от «всё хорошо»:\n%s", out)
 	}
-	body, err := os.ReadFile(filepath.Join(dir, "deployment-kratos.log")) // #nosec G304 -- каталог пробы
+	body, err := os.ReadFile(filepath.Join(dir, "deployment-sessions.log")) // #nosec G304 -- каталог пробы
 	if err != nil {
 		t.Fatalf("файл недоступного журнала не создан: %v", err)
 	}

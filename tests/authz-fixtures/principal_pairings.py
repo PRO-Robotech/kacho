@@ -119,6 +119,11 @@ PRINCIPAL_PAIRINGS = {
     "svaNoGrantId": "jwtSANoGrant",
     "svaPureNoGrantId": "jwtPureNoBindings",
     "svaStorageCreateListOnlyId": "jwtStorageCreateListOnlyA",
+    # Люди набора `iam-account-id-at-create` (kacho#2984): персональный токен
+    # нашей чеканки несёт принципала-человека, и его id обязан быть тем, кому
+    # посев выдал (или не выдал) `system_admin`.
+    "cloudAdminHumanUserId": "jwtCloudAdminHuman",
+    "plainHumanUserId": "jwtPlainHuman",
 }
 
 

@@ -9,7 +9,7 @@ its three surfaces:
 - **control-plane authz** — `cases/registry-authz.py` (existence-hiding / listauthz /
   grant-latency / owner-tuple), also black-box through api-gateway;
 - **data-plane + token-exchange** — `scripts/dataplane-e2e.sh` (Docker Registry v2 / OCI
-  handshake, push/pull, `/v2/` Bearer, IAM `/iam/token` shim, Hydra federation), a bash
+  handshake, push/pull, `/v2/` Bearer, IAM `/iam/token` shim), a bash
   harness driving the docker CLI + raw HTTP, **not** a gen.py collection.
 
 `validate-cases.py` enforces that every case-id emitted by `gen.py` (i.e. from
@@ -38,7 +38,7 @@ so `validate-cases.py` does not gate them).
 | `CONF` | conflict / immutability / concurrency (UNIQUE, immutable field) |
 | `AZ` | authorization (existence-hiding deny→404, listauthz, grant-latency, owner-tuple) |
 | `DP` | data-plane (Docker Registry v2 / OCI HTTP surface) |
-| `TX` | token-exchange (IAM `/iam/token` shim, Hydra federation, JWKS) |
+| `TX` | token-exchange (IAM `/iam/token` shim, JWKS of the platform issuer) |
 
 ---
 
@@ -203,7 +203,7 @@ the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistenc
 ## 3. Data-plane + token-exchange — `scripts/dataplane-e2e.sh` (PENDING — not yet in repo)
 
 > STATUS: **not yet present** in `tests/newman/scripts/`. This is a **bash harness** (docker
-> CLI login/push/pull + raw-HTTP `/v2/`, `/iam/token`, Hydra `/oauth2/token`), run against
+> CLI login/push/pull + raw-HTTP `/v2/` and `/iam/token`), run against
 > the live stack; it is **not** a gen.py collection and is not gated by `validate-cases.py`.
 > The scenario ids below are the **intended** coverage from REG-10..REG-25/35/37 (data-plane)
 > and REG-TX-01..22 (token-exchange). Each maps 1:1 to a scenario in the acceptance docs.
@@ -235,25 +235,23 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | `DP-DELETETAG-VDELETE` | DP, CRUD | P1 | DeleteTag async `v_delete` + repo-unregister on last tag (worker-principal) | REG-25 |
 | `DP-TOKEN-SAKEY-VALID` | DP, TX | P1 | IAM `/token` with a valid SA-key → identity-JWT accepted at `/v2/` | REG-11 |
 | `DP-TOKEN-SAKEY-INVALID-401` | DP, TX, NEG | P1 | IAM `/token` with invalid/revoked SA-key → 401 | REG-12 |
-| `DP-TOKEN-JWKS-VERIFY` | DP, TX | P1 | registry verifies token via IAM/Hydra JWKS (does not trust blindly) + revocation-residual | REG-13, REG-39 |
+| `DP-TOKEN-JWKS-VERIFY` | DP, TX | P1 | registry verifies token via the platform issuer JWKS (does not trust blindly) + revocation-residual | REG-13, REG-39 |
 
-### 3b. Token-exchange (Hydra federation, Variant H) — REG-TX-01..22
+### 3b. Token-exchange — REG-TX-01..22
 
-> **ИМЕНА СЦЕНАРИЕВ НЕСУТ `HYDRA` ИСТОРИЧЕСКИ — предмет у них шире имени.** Идентификаторы
-> сохранены дословно: они машинно сверяются (`validate-cases.py`, гейт покрытия дерева), и
-> переименование сломало бы сверку, ничего не уточнив. Читать их надо как «полоса
-> токен-обмена», а не как «полоса конкретного поставщика».
+Идентификаторы сценариев этой полосы — намеченные (харнесс их не печатает, а
+`validate-cases.py` их не судит, см. начало файла); имя прежнего внешнего издателя из них
+снято вместе с ним (#1276, #2998).
 
-Издателей на этой полосе **может быть два**, и какой из них выпустил токен, объявляет
-посадка: там, где объявлена своя чеканка, докерный токен выпускает подписант платформы, а
-там, где не объявлена, — внешний поставщик (`private_key_jwt` shim + k8s `jwt-bearer`).
-Плоскость данных сверяет подпись по набору ключей **объявленного издателя** — запись
-выбирается по издателю из самого токена, а не перебором. Per-request Check остаётся authZ;
+Принимаемых издателей перечисляет посадка; профили развёртывания объявляют одного —
+подписанта платформы, который и выпускает докерный токен. Плоскость данных сверяет подпись
+по набору ключей **объявленного издателя** — запись выбирается по издателю из самого
+токена, а не перебором. Per-request Check остаётся authZ;
 токены identity-only, авторизация — всегда per-request Check плоскости данных.
 
 | Intended scenario id | Classes | Prio | Meaning | Verifies |
 |---|---|---|---|---|
-| `TX-HYDRA-DISCOVERY-JWKS` | TX | P0 | Hydra OIDC-discovery + JWKS reachable (verify-source for data-plane) | REG-TX-01 |
+| `TX-ISSUER-DISCOVERY-JWKS` | TX | P0 | platform issuer discovery + JWKS reachable (verify-source for data-plane) | REG-TX-01 |
 | `TX-DOCKER-LOGIN-HAPPY` | TX, DP | P0 | docker login базовым токеном доступа → `/iam/token` → identity-JWT | REG-TX-02 |
 | `TX-DOCKER-ANON-401` | TX, NEG | P0 | `/iam/token` shim without Basic → 401 + `WWW-Authenticate` (docker-CLI contract) | REG-TX-03 |
 | `TX-DOCKER-INVALID-CREDENTIAL-401` | TX, NEG | P1 | docker с негодным/отозванным удостоверением → 401; ключевой материал в поле пароля → тот же 401 (#1143) | REG-TX-04 |
@@ -265,16 +263,18 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | `TX-IDENTITY-ONLY-CHECK` | TX, AZ | P1 | identity-only token — per-request Check still enforces authZ (docker + k8s) | REG-TX-10 |
 | `TX-SAKEY-ISSUE-STANDARD` | TX, CRUD | P1 | Issue SA-key STANDARD (полоса провайдера; докер-вход им НЕ выполняется, #1143) — async Operation | REG-TX-11 |
 | `TX-SAKEY-ISSUE-FEDERATED` | TX, CRUD | P1 | Issue SA-key FEDERATED (k8s) — trusted_subjects, no private key | REG-TX-12 |
-| `TX-DP-HYDRA-JWKS-SWITCH` | TX, DP | P0 | data-plane verifies Hydra JWKS (switched off IAM RS256 — CRIT) | REG-TX-13 |
+| `TX-DP-ISSUER-JWKS-VERIFY` | TX, DP | P0 | data-plane verifies the JWKS of the issuer named in the token (IAM-native RS256 registry-token off — CRIT) | REG-TX-13 |
 | `TX-SAKEY-ISSUE-VALIDATION-AUTHZ` | TX, VAL, AZ | P1 | federation-config validation (literal-anchored subject, https issuer) + authz on Issue | REG-TX-14 |
 | `TX-SAKEY-REVOKE` | TX, NEG | P1 | Revoke SA-key → subsequent provider + k8s exchange denied | REG-TX-15 |
-| `TX-HYDRA-WIRING` | TX | P1 | fe3455 iam→hydra-admin cluster-internal wiring fix present | REG-TX-16 |
 | `TX-RS256-DEPRECATION` | TX | P2 | IAM-native RS256 registry-token deprecated / removed | REG-TX-17 |
 | `TX-TOKEN-RATE-LIMIT` | TX | P2 | rate-limit on `/iam/token` shim and `/v2/` | REG-TX-18, REG-43 |
 | `TX-FEDERATION-OUT-AUDIENCE` | TX, NEG | P2 | federation-out audience — only `registry.kacho.local` accepted | REG-TX-19 |
-| `TX-HYDRA-MINT-UNAVAIL-FAILCLOSED` | TX, NEG | P0 | Hydra unavailable on mint path (docker shim) → fail-closed, no-leak | REG-TX-20 |
-| `TX-DP-JWKS-UNAVAIL-FAILCLOSED` | TX, DP, NEG | P0 | Hydra JWKS unreachable / unknown-kid → fail-closed + kid-miss refetch, cache-TTL | REG-TX-21 |
+| `TX-MINT-UNAVAIL-FAILCLOSED` | TX, NEG | P0 | token mint unavailable on the docker shim path → fail-closed, no-leak | REG-TX-20 |
+| `TX-DP-JWKS-UNAVAIL-FAILCLOSED` | TX, DP, NEG | P0 | issuer JWKS unreachable / unknown-kid → fail-closed + kid-miss refetch, cache-TTL | REG-TX-21 |
 | `TX-E2E-LIVE-GATE` | TX, DP, CRUD | P0 | end-to-end live: docker login+pull + k8s projected-token pull; negatives in same run | REG-TX-22 |
+
+У REG-TX-16 сценария нет: его предмет — провязка службы доступа к внешнему издателю на
+стенде — снят вместе с издателем (#1276).
 
 ---
 
@@ -287,7 +287,7 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 24 | RG-1-A01..C04 + A02/A05/A06/A10/A17/A19/C02/X01 parity |
 | Control-plane authz | `cases/registry-authz.py` | present | 18 | REG-01a/05/06/07/26/28/29/30/36 + per-repo v_* (RG-1 A06/A08/A15/X04) + hide-existence byte-identity |
 | Data-plane OCI proxy | `scripts/dataplane-e2e.sh` | **pending** | 18 intended | REG-10..25, 35, 37, 39 |
-| Token-exchange (Hydra) | `scripts/dataplane-e2e.sh` | **pending** | 22 intended | REG-TX-01..22 |
+| Token-exchange | `scripts/dataplane-e2e.sh` | **pending** | 21 intended | REG-TX-01..22 (без REG-TX-16) |
 
 Not covered by newman/harness (out of scope, see TEST-PLAN §Out-of-scope): real GC
 execution internals, zot HA/S3 failover, OCI-1.1 Referrers signature verification,

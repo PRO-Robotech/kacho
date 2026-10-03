@@ -287,7 +287,7 @@ set -euo pipefail
 . "$(dirname "$0")/outcome.sh"
 EXPECTED_ASSERTIONS=1
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-require_dep_chart "$ROOT/helm/umbrella" hydra
+require_dep_chart "$ROOT/helm/umbrella" postgresql
 SYN
 
   # (J) ОБЪЯВИЛ КОНТРАКТ И НЕ НАПЕЧАТАЛ ПЕРЕПИСЬ: причину назвал своими словами в

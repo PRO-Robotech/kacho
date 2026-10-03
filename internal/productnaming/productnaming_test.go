@@ -211,7 +211,6 @@ func TestIsProductImageRepoSeesBothNamingForms(t *testing.T) {
 	for _, repo := range []string{
 		"bitnamilegacy/postgresql",
 		"axllent/mailpit",
-		"oryd/hydra",
 	} {
 		if productnaming.IsProductImageRepo(repo) {
 			t.Errorf("IsProductImageRepo(%q) = true — чужой образ зачтён нашим", repo)

@@ -53,26 +53,30 @@ func TestParseFindingsReadsRealBufOutput(t *testing.T) {
 
 // TestPremiseSymbolIsQuoted — ПРОВЕРКА СОБСТВЕННОЙ ПРЕДПОСЫЛКИ гейта.
 //
-// Сопоставление опирается на факт о чужом выводе: buf называет символ в кавычках.
-// Факт меняется — сопоставление перестаёт работать молча, поэтому он утверждается
-// отдельно и на реальной фикстуре. Обратная сторона в TestSymbolMismatchIsItsOwnOutcome:
-// отказ предпосылки виден как отдельный исход, а не как ложное «послабление истекло».
+// Символ находки собирается из факта о чужом выводе: buf называет в кавычках и
+// предмет разрыва, и объемлющий символ (`field "10" … on message "SecurityGroupRule"`).
+// Факт меняется — символ перестаёт собираться молча, поэтому он утверждается отдельно и
+// на реальной фикстуре. Обратная сторона в TestSymbolMismatchIsItsOwnOutcome: отказ
+// предпосылки виден как отдельный исход, а не как ложное «послабление истекло».
 func TestPremiseSymbolIsQuoted(t *testing.T) {
 	got := loadReal(t)
-	want := map[string]string{
-		"FIELD_NO_DELETE": "predefined_target",
-		"RPC_NO_DELETE":   "AddRoutes",
+	want := map[string][2]string{
+		"FIELD_NO_DELETE": {"10", `on message "SecurityGroupRule"`},
+		"RPC_NO_DELETE":   {"AddRoutes", `on service "RouteTableService"`},
 	}
 	for _, f := range got {
-		sym, ok := want[f.Type]
+		parts, ok := want[f.Type]
 		if !ok {
 			t.Fatalf("в фикстуре правило %s, для которого предпосылка не заявлена", f.Type)
 		}
-		if !strings.Contains(f.Message, `"`+sym+`"`) {
-			t.Errorf("предпосылка нарушена: сообщение правила %s не называет символ %q в кавычках: %s", f.Type, sym, f.Message)
+		subject, container := parts[0], parts[1]
+		i, j := strings.Index(f.Message, `"`+subject+`"`), strings.Index(f.Message, container)
+		if i < 0 || j < 0 || i > j {
+			t.Errorf("предпосылка нарушена: сообщение правила %s не называет предмет %q в кавычках "+
+				"до контейнера %s: %s", f.Type, subject, container, f.Message)
 		}
 	}
-	t.Logf("осмотрено: правил %d, у каждого символ в кавычках подтверждён на реальном выводе", len(want))
+	t.Logf("осмотрено: правил %d, у каждого предмет и контейнер в кавычках подтверждены на реальном выводе", len(want))
 }
 
 // TestUndeclaredBreakIsRed — защита от СЛУЧАЙНОГО разрыва сохранена.
@@ -104,8 +108,8 @@ func decl(rule, path, symbol string) Declaration {
 // неотличимо от работающего гейта.
 func TestDeclaredBreakPasses(t *testing.T) {
 	decls := []Declaration{
-		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "AddRoutes"),
-		decl("FIELD_NO_DELETE", "kacho/cloud/vpc/v1/security_group.proto", "predefined_target"),
+		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RouteTableService.AddRoutes"),
+		decl("FIELD_NO_DELETE", "kacho/cloud/vpc/v1/security_group.proto", "SecurityGroupRule.10"),
 	}
 	res := Adjudicate(loadReal(t), decls)
 	if !res.Clean() {
@@ -122,7 +126,7 @@ func TestDeclaredBreakPasses(t *testing.T) {
 // TestExpiredDeclarationIsRed — послабление истекает САМО. Это то, чем адъюдикация
 // отличается от исключения по пути в конфигурации buf.
 func TestExpiredDeclarationIsRed(t *testing.T) {
-	decls := []Declaration{decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/gateway_service.proto", "Detach")}
+	decls := []Declaration{decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/gateway_service.proto", "GatewayService.Detach")}
 	res := Adjudicate(nil, decls)
 	if res.Clean() {
 		t.Fatal("запись, которой больше нечего исключать, прошла — послабление переживёт свой предмет")
@@ -164,7 +168,7 @@ func TestEmptyLedgerOnTrunkIsThePointNotAFailure(t *testing.T) {
 	// Зеркало: тот же ноль находок, но перечень НЕ пуст — красное. Иначе «проходит на
 	// пустом» было бы неотличимо от «проходит на чём угодно, где нет находок».
 	red := Adjudicate(nil, []Declaration{
-		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "AddRoutes"),
+		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RouteTableService.AddRoutes"),
 	})
 	if red.Clean() {
 		t.Fatalf("на стволе запись без предмета прошла — истечение не обнаруживается там, где происходит:\n%s", red.Report())
@@ -176,7 +180,7 @@ func TestEmptyLedgerOnTrunkIsThePointNotAFailure(t *testing.T) {
 
 // TestSymbolMismatchIsItsOwnOutcome — отказ предпосылки НЕ маскируется под истечение.
 func TestSymbolMismatchIsItsOwnOutcome(t *testing.T) {
-	decls := []Declaration{decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RemoveRoutes")}
+	decls := []Declaration{decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RouteTableService.RemoveRoutes")}
 	res := Adjudicate(loadReal(t), decls)
 	if len(res.SymbolMismatch) != 1 {
 		t.Fatalf("несовпадений символа: %d, ожидалось 1\n%s", len(res.SymbolMismatch), res.Report())
@@ -185,7 +189,7 @@ func TestSymbolMismatchIsItsOwnOutcome(t *testing.T) {
 		t.Errorf("несовпадение символа отнесено к истечению — исходы слиты: %+v", res.Expired)
 	}
 	rep := res.Report()
-	if !strings.Contains(rep, "СИМВОЛ НЕ СОВПАЛ") || !strings.Contains(rep, "AddRoutes") {
+	if !strings.Contains(rep, "СИМВОЛ НЕ СОВПАЛ") || !strings.Contains(rep, `symbol="RouteTableService.AddRoutes"`) {
 		t.Errorf("отчёт не называет ни исход, ни фактический символ:\n%s", rep)
 	}
 }
@@ -220,7 +224,7 @@ func TestInvalidDeclarationIsRed(t *testing.T) {
 		})
 	}
 	// Положительный контроль: годная запись негодной не считается.
-	ok := decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "AddRoutes")
+	ok := decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RouteTableService.AddRoutes")
 	if problems := ok.Validate(); len(problems) != 0 {
 		t.Errorf("годная запись объявлена негодной: %v", problems)
 	}

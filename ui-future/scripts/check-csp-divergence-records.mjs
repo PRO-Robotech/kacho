@@ -35,8 +35,8 @@
  *
  * ── Проверка СВОЕЙ предпосылки ───────────────────────────────────────────────
  *
- * Гейт обоснован тем, что в дереве есть: объявления политики, шаблон края консоли,
- * умбрелла с пином провайдера, объявления antd и сам файл записей. Пропадёт любое —
+ * Гейт обоснован тем, что в дереве есть: объявления политики, объявления antd и сам
+ * файл записей. Пропадёт любое —
  * это ПАДЕНИЕ с кодом 2, а не «ноль находок»: иначе гейт переживёт свой предмет.
  * Печатается объём осмотренного, чтобы «ноль находок» было отличимо от «ноль
  * прочитанного».
@@ -57,19 +57,8 @@ if (!fs.existsSync(path.join(uiRoot, "package.json"))) {
   console.error("::error::запускать из ui-future/ (нет package.json в текущем каталоге)");
   process.exit(2);
 }
-const repoRoot = path.resolve(uiRoot, "..");
-const UMBRELLA = "deploy/helm/umbrella";
-if (!fs.existsSync(path.join(repoRoot, UMBRELLA))) {
-  console.error(
-    `::error::нет ${UMBRELLA} рядом с ui-future — пин провайдера страницы входа брать неоткуда. ` +
-      "Гейт обоснован его существованием: это падение, а не «ноль находок».",
-  );
-  process.exit(2);
-}
-
 const RECORDS_DOC = "docs/architecture/known-divergences.md";
 const VALUES = "deploy/values.yaml";
-const NGINX_TEMPLATE = "deploy/templates/configmap-nginx.yaml";
 
 const volume = { files: 0 };
 function read(absPath) {
@@ -143,54 +132,6 @@ const BASELINE = new Set(["'self'", "'none'", "data:", "blob:"]);
 
 // ── пины, против которых измерены записи ─────────────────────────────────────
 
-/**
- * Пины стороннего UI входа/регистрации: `repository` + `tag` умбреллы (умолчание
- * чарта и переопределения профилей). Читается ОБЪЯВЛЕНИЕ, а не отрендеренный
- * шаблон: рендер требует helm и сети, поэтому пропускался бы ровно там, где некому
- * заметить.
- */
-function providerPins() {
-  const pins = new Set();
-  const marker = "kratos-selfservice-ui";
-  for (const rel of trackedFiles(repoRoot, `${UMBRELLA}/*.yaml`).concat(
-    trackedFiles(repoRoot, `${UMBRELLA}/charts/*/values.yaml`),
-  )) {
-    const lines = read(path.join(repoRoot, rel)).split("\n");
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i];
-      if (/^\s*#/.test(line)) continue;
-
-      const single = /^\s*image:\s*["']?([^"'\s#]+)["']?\s*$/.exec(line);
-      if (single && single[1].includes(marker)) {
-        pins.add(single[1]);
-        continue;
-      }
-
-      const repo = /^(\s*)repository:\s*["']?([^"'\s#]+)["']?/.exec(line);
-      if (!repo || !repo[2].includes(marker)) continue;
-      const indent = repo[1].length;
-      let tag = null;
-      // `tag` — СОСЕД `repository` в том же отображении. Между ними законно стоят
-      // другие ключи (`pullPolicy`, `digest`) и комментарии, поэтому поиск
-      // прекращается только на дедента и на начале следующего образа, а не на
-      // первом же соседе — иначе законная раскладка читалась бы как «без тега».
-      for (let j = i + 1; j < lines.length; j += 1) {
-        if (lines[j].trim() === "" || /^\s*#/.test(lines[j])) continue;
-        const curIndent = lines[j].length - lines[j].trimStart().length;
-        if (curIndent < indent) break;
-        if (/^\s*repository:/.test(lines[j])) break;
-        const t = /^\s*tag:\s*["']?([^"'\s#]+)["']?/.exec(lines[j]);
-        if (t && curIndent === indent) {
-          tag = t[1];
-          break;
-        }
-      }
-      pins.add(tag ? `${repo[2]}:${tag}` : `${repo[2]}:БЕЗ-ТЕГА(${rel}:${i + 1})`);
-    }
-  }
-  return pins;
-}
-
 /** Пины UI-набора: объявления antd в отслеживаемых package.json консоли. */
 function antdPins() {
   const pins = new Set();
@@ -230,75 +171,6 @@ function subjectStyleSrcUnsafeInline(declarations) {
       };
 }
 
-/**
- * Предмет записи о странице входа: край консоли проксирует полосу входа стороннему
- * UI провайдера личности, и серверные заголовки (в т.ч. политика) на эту полосу
- * НАСЛЕДУЮТСЯ. nginx наследует `add_header` с внешнего уровня, только пока у полосы
- * нет СВОИХ: появился хоть один — политика на страницу входа больше не едет, и
- * запись описывает не то, что происходит.
- */
-function subjectProxiedLoginUnderOurPolicy(declarations) {
-  const text = read(path.join(uiRoot, NGINX_TEMPLATE));
-  const lines = text.split("\n");
-
-  let head = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/^\s*location\s+.*\blogin\b/.test(lines[i]) && lines[i].includes("{")) head = i;
-  }
-  if (head === -1) {
-    return {
-      ok: false,
-      why:
-        `${NGINX_TEMPLATE} больше не объявляет полосу входа — предмет записи исчез: ` +
-        "страницу входа отдаёт что-то другое, запись обязана быть перемерена или снята",
-    };
-  }
-
-  const indent = lines[head].length - lines[head].trimStart().length;
-  let end = lines.length;
-  for (let i = head + 1; i < lines.length; i += 1) {
-    const cur = lines[i].length - lines[i].trimStart().length;
-    if (lines[i].trim() === "}" && cur === indent) {
-      end = i;
-      break;
-    }
-  }
-  const block = lines.slice(head, end).join("\n");
-
-  if (!/proxy_pass\s+http:\/\/\$/.test(block) || !/KRATOS_UI/.test(block)) {
-    return {
-      ok: false,
-      why:
-        "полоса входа больше не проксируется стороннему UI провайдера личности — " +
-        "запись принимала нарушение на ЧУЖОЙ странице, у неё нет предмета",
-    };
-  }
-  if (/add_header/.test(block)) {
-    return {
-      ok: false,
-      why:
-        "у полосы входа появились СВОИ заголовки: nginx наследует внешние add_header, " +
-        "только пока своих нет, — значит политика консоли на страницу входа больше не " +
-        "едет, и запись описывает не то, что происходит",
-    };
-  }
-
-  const relaxed = declarations.filter((d) => {
-    const scriptSrc = parsePolicy(d.policy).get("script-src") ?? [];
-    return scriptSrc.some((t) => t !== "'self'");
-  });
-  if (relaxed.length > 0) {
-    return {
-      ok: false,
-      why:
-        `script-src ослаблен (${relaxed.map((r) => r.where).join(", ")}) — ` +
-        "запись прямо запрещает этот исход: послабление ради чужого встроенного скрипта " +
-        "открывает исполнение произвольных встроенных скриптов на странице ввода пароля",
-    };
-  }
-  return { ok: true, detail: "полоса входа проксируется, политика на неё наследуется" };
-}
-
 // ── записи, известные гейту ──────────────────────────────────────────────────
 
 const RECORDS = [
@@ -308,13 +180,6 @@ const RECORDS = [
     subject: subjectStyleSrcUnsafeInline,
     pins: antdPins,
     pinsAbout: "версия UI-набора, чей рантайм-движок стилей и требует послабления",
-  },
-  {
-    id: "login-page-inline-script",
-    claims: () => false, // не послабление политики, а нарушение, оставленное стоять
-    subject: subjectProxiedLoginUnderOurPolicy,
-    pins: providerPins,
-    pinsAbout: "версия стороннего UI входа — единственное, от чего зависит его разметка",
   },
 ];
 

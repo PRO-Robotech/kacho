@@ -112,20 +112,15 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 # ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
-deploy/scripts/admin-hop-cluster-half-inject.sh
 deploy/scripts/cert-issuance-policy-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/scripts/identity-provider-absent-cluster-half-inject.sh
 deploy/scripts/sarif-archive-uris-inject.sh
 deploy/tests/helm/cert-issuance-policy-render-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
-deploy/tests/helm/identity-hook-credential-provenance-inject.sh
-deploy/tests/helm/identity-hook-credential-source-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
-deploy/tests/helm/identity-mail-lane-runtime-inject.sh
-deploy/tests/helm/identity-session-secret-source-inject.sh
-deploy/tests/helm/identity-substitution-output-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
 deploy/tests/helm/servername-checked-against-the-peer-inject.sh
@@ -177,7 +172,6 @@ scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|ну�
 # исключать (файла нет либо он переименован в форму доказательства), объявляется
 # находкой. Пустая ведомость — законное состояние и НЕ поломка.
 NOT_A_PROOF="
-deploy/scripts/inject-admin-hop-defects.sh|вносит дефекты в ЖИВОЙ стенд, а не доказывает гейт; запускается целью admin-hop-injection под стражем контекста
 deploy/scripts/run-injection-proofs.sh|это ОБХОДЧИК доказательств, а не доказательство; слово в имени от предмета обхода. Запускать его собой значило бы рекурсию
 gateway/scripts/inject-catalog-splice-defects.sh|доказательство гейта склейки, но НЕ этого обхода: вносит пропажу домена в РЕАЛЬНОЕ дерево контрактов и требует buf+go+python3, поэтому зовётся отдельной целью catalog-splice-inject (gateway/Makefile) руками при правке гейта
 gateway/scripts/inject-domain-generation-defects.sh|доказательство гейта разреза, но НЕ этого обхода: правит рабочее дерево и требует buf+go, поэтому зовётся отдельной целью domain-generation-inject (gateway/Makefile) руками при правке гейта или генераторов

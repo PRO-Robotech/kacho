@@ -47,7 +47,7 @@ func TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL(t *testing.
 
 	const (
 		platformIssuer = "https://kaname.kacho.local"
-		legacyIssuer   = "https://hydra.api.kacho.cloud"
+		legacyIssuer   = "https://legacy.api.kacho.cloud"
 		platformPath   = "/.well-known/kaname/jwks.json"
 		legacyPath     = "/.well-known/jwks.json"
 	)

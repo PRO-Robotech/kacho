@@ -10,8 +10,9 @@
 ничего. Поэтому — отказ рендера с именем замены, а не тишина.
 */}}
 {{- if hasKey (.Values.mtls | default dict) "hooksAndMetrics" }}
-{{- fail "kaname: mtls.hooksAndMetrics снята — она накрывала ДВА слушателя с противоположными требованиями (обратные вызовы службы личности и скрейп). Объявите mtls.hooks и mtls.metrics по отдельности; открытый текст на слушателе обратных вызовов возможен только через mtls.plaintextExceptions.hooks" }}
+{{- fail "kaname: mtls.hooksAndMetrics снята — она накрывала ДВА слушателя с противоположными требованиями (обратные вызовы службы личности и скрейп). Слушателя обратных вызовов у службы больше нет (kaname#363); транспорт скрейпа объявляется mtls.metrics" }}
 {{- end }}
+{{- include "kaname.refuseRetiredKnobs" . }}
 {{- if hasKey (.Values.mtls | default dict) "rest" }}
 {{- fail "kaname: mtls.rest снята — она накрывала ОБА собственных REST-фронта. Объявите mtls.publicRest и mtls.internalRest по отдельности" }}
 {{- end }}
@@ -248,41 +249,23 @@ spec:
               containerPort: {{ .Values.ports.internalGrpc }}
             # Диагностическая поверхность процесса (:9095): `/metrics`, а с
             # ревизии службы, несущей kaname#360, — и `/healthz`, `/readyz`.
-            # Поднимается при ЛЮБОЙ посадке, поэтому по этому порту идут пробы, а
+            # Поднимается всегда, поэтому по этому порту идут пробы, а
             # оператор, ищущий, куда постучаться за причиной неготовности, читает
             # именно `ports:`. Номер — тот же ключ, что у объявления сбора
             # (`metricsScrape.port`): у одной поверхности один адрес.
             - name: metrics
               containerPort: {{ .Values.metricsScrape.port }}
-            # HTTP-слушатель перехватов (перехваты выдачи и обновления токена,
-            # приём событий). Cluster-internal.
-            #
-            # ТОЛЬКО там, где процесс его поднимает (`kaname.hooksLaneRaised`,
-            # kacho#2871): под посадкой `own` поставщика нет, слушатель не
-            # строится, и порт, объявленный подом, называл бы дверь, за которой
-            # никого нет.
-            #
-            # Здесь стояло, что этот же порт отдаёт пакет правил наложения.
-            # Такого маршрута у службы нет ни одного: наложение снято вместе со
-            # своим потребителем, а комментарий пережил предмет и продолжал
-            # обещать выдачу, которой не бывает.
-            {{- if include "kaname.hooksLaneRaised" $ }}
-            - name: http-hooks
-              containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
-            {{- end }}
             # Docker Registry v2 `/iam/token` auth-server HTTP listener — отдельный,
             # external-reachable порт (:9096), куда data-plane реестра проксирует
-            # docker-обмен SA-key/user-token → identity-JWT. Отличается от hooks (:9092)
-            # и metrics (:9095). Публикуется как Service-порт registry-token.
+            # docker-обмен SA-key/user-token → identity-JWT. Отличается от metrics
+            # (:9095). Публикуется как Service-порт registry-token.
             - name: registry-token
               containerPort: {{ .Values.ports.registryToken | default 9096 }}
-            # Cluster-INTERNAL listener of verification KEY SETS, one-way server-TLS,
-            # one record per accepted issuer: OUR key set at the path declared by
-            # `config.authn.tokenSigning.keySetPath` (the signer of every token the
-            # service mints), and at `/.well-known/jwks.json` a short-TTL mirror of the
-            # previous issuer's PUBLIC JWKS — kept only while tokens of its issue are
-            # still presentable (#2564). The registry data-plane reads the record named
-            # by the token's issuer (`registry.tokenAcceptance.issuerKeySets`).
+            # Cluster-INTERNAL listener of the verification KEY SET, one-way server-TLS:
+            # OUR key set at the path declared by `config.authn.tokenSigning.keySetPath`
+            # (the signer of every token the service mints) — one record, ours
+            # (kaname#361). The registry data-plane reads the record named by the
+            # token's issuer (`registry.tokenAcceptance.issuerKeySets`).
             # Exposed ONLY on kaname-internal (never external, ban #6).
             - name: http-jwks
               containerPort: {{ .Values.ports.jwksProxy | default 9097 }}
@@ -299,7 +282,7 @@ spec:
             {{- end }}
             # Слушатель полосы входа паролем (Ф3, kacho#1269): по нему край
             # ретранслирует четыре глагола формы. Порт объявляется ПРОФИЛЕМ,
-            # умолчания нет; поднимается посадкой `own`.
+            # умолчания нет; незаданный порт — отказ старта с именем ручки.
             {{- if .Values.ports.loginLane }}
             - name: http-login-lane
               containerPort: {{ .Values.ports.loginLane }}
@@ -373,60 +356,10 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
-            # ─── СЛУШАТЕЛЬ ОБРАТНЫХ ВЫЗОВОВ СЛУЖБЫ ЛИЧНОСТИ (:9092) ───────────
-            #
-            # РУЧКА У НЕГО СВОЯ, И ЭТО НЕСУЩЕЕ СВОЙСТВО, А НЕ АККУРАТНОСТЬ. Здесь
-            # стояло условие, накрывавшее ДВА слушателя разом — этот и слушатель
-            # скрейпа, — и у них ПРОТИВОПОЛОЖНЫЕ требования. У этого есть
-            # вызывающий, который ходит по открытому http и своего доверия не
-            # несёт: вебхук службы личности. Завернув его в TLS вместе с соседом,
-            # получаем «клиент прислал http-запрос на https-сервер», проваленный
-            # хук и полностью неработающую выдачу токенов. Оставив соседа
-            # открытым вместе с ним, получаем отказ старта: страж боевой посадки
-            # справедливо не пускает счётчики процесса в открытую.
-            #
-            # Одним значением эти два требования не выполнить НИ В КАКОМ
-            # положении, поэтому профиль боевой посадки был невыразим by
-            # construction, а служба не поднималась вовсе. Теперь ручка — одна на
-            # одного слушателя, и профиль объявляет каждую отдельно.
-            #
-            # ОТКРЫТЫЙ ТЕКСТ ЗДЕСЬ ВОЗМОЖЕН ТОЛЬКО ОБЪЯВЛЕННЫМ ИСКЛЮЧЕНИЕМ —
-            # `mtls.plaintextExceptions.hooks`, — и исключение это ЕДИНСТВЕННОЕ:
-            # у остальных слушателей такой ручки нет вовсе, поэтому область
-            # исключения сужена до одного слушателя не уговором, а построением.
-            #
-            # Транспорт переиспользует ТОТ ЖЕ серверный набор внутреннего УЦ, что
-            # смонтирован выше, — новой PKI не заводится. Режим выбирается
-            # CLIENTAUTHMODE:
-            #   - server-tls-only → шифрование и аутентификация СЕРВЕРА, без
-            #     требования клиентского сертификата. Полоса несёт четыре
-            #     обработчика, чьего вызывающего аутентифицирует общий секрет в
-            #     заголовке (`X-Kacho-Hook-Token`), а не транспорт: клиентского
-            #     сертификата вебхуки службы личности предъявить не умеют;
-            #   - mutual → сертификат клиента требуется и верифицируется (когда
-            #     он у вызывающего появится).
-            #
-            # ТРАНСПОРТ ЭТОГО СЛУШАТЕЛЯ И СХЕМА ОБРАТНОГО ВЫЗОВА — ОДИН ПРЕДМЕТ,
-            # объявленный в двух местах: здесь и в `global` схемой адреса. Их
-            # согласие держит deploy/identity_callback_transport_test.go: полоса,
-            # объявленная открытой к слушателю под TLS (и наоборот), — находка.
-            - name: KANAME_HOOKS_SERVER_MTLS_ENABLE
-              value: "true"
-            - name: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
-              value: {{ .Values.mtls.hooksClientAuthMode | default "server-tls-only" | quote }}
-            - name: KANAME_HOOKS_SERVER_MTLS_CERTFILE
-              value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KANAME_HOOKS_SERVER_MTLS_KEYFILE
-              value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES
-              value: {{ printf "%s/ca.crt" $srv | quote }}
-            {{- end }}
             {{- if (dig "metrics" .Values.mtls.httpListeners .Values.mtls) }}
             # ─── СЛУШАТЕЛЬ СКРЕЙПА (:9095) ───────────────────────────────────
             #
-            # Отделён от слушателя обратных вызовов выше: требование у него
-            # ПРОТИВОПОЛОЖНОЕ. Счётчики процесса суть внутренняя кардинальность,
+            # Счётчики процесса суть внутренняя кардинальность,
             # которую канон держит вне всякой поверхности, читаемой посторонним;
             # открытый текст выносит её всякому, кто слушает сеть пода. Отсюда:
             # объявленного исключения у этого слушателя НЕТ и быть не может —
@@ -453,8 +386,8 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- if (dig "jwksProxy" .Values.mtls.httpListeners .Values.mtls) }}
-            # registry-iam-jwks-unify — server-TLS for the cluster-INTERNAL Hydra-JWKS
-            # proxy listener (:9097, GET /.well-known/jwks.json). Reuses the SAME SEC-F
+            # registry-iam-jwks-unify — server-TLS for the cluster-INTERNAL key-set
+            # listener (:9097). Reuses the SAME SEC-F
             # internal-CA server cert-trio mounted above (no new PKI). ONE-WAY
             # (server-tls-only) ON PURPOSE: the route serves PUBLIC OIDC verification
             # keys and is unauthenticated-by-design — the registry data-plane verifier
@@ -628,25 +561,6 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- end }}
-            {{- if (dig "hooks" false .Values.mtls.plaintextExceptions) }}
-            # ─── ОБЪЯВЛЕННОЕ ИСКЛЮЧЕНИЕ: слушатель обратных вызовов открыт ───
-            #
-            # Страж старта в боевой посадке не пускает НИ ОДНО HTTP-ребро открытым
-            # текстом. У этого — и только у этого — исключение возможно, и оно
-            # обязано быть ОБЪЯВЛЕНО: вызывающий ходит по открытому http и своего
-            # доверия не несёт, поэтому TLS здесь означал бы не защиту, а
-            # неработающую выдачу токенов. Измерено на стенде, а не выведено.
-            #
-            # Ручки для остальных слушателей НЕ СУЩЕСТВУЕТ — ни в чарте, ни в
-            # процессе, — поэтому область исключения сужена до одного слушателя
-            # построением, а не дисциплиной профиля.
-            #
-            # Объявить исключение ВМЕСТЕ с транспортом нельзя: процесс отвечает
-            # отказом старта — два правила об одном предмете говорят
-            # противоположное, и молча выбирать между ними он не вправе.
-            - name: KANAME_HOOKS_SERVER_PLAINTEXT_ACKNOWLEDGED
-              value: "true"
-            {{- end }}
             # АДРЕСА КРАЯ ЗДЕСЬ НЕТ — направление развёрнуто (задача продукта #1024).
             #
             # Стояла обязательная ручка адреса края: владелец прав дозванивался до
@@ -656,16 +570,6 @@ spec:
             #
             # Соединение открывает ПОТРЕБИТЕЛЬ: край сам читает журнал смены субъекта
             # курсором. Владелец прав о крае не знает, и знать ему нечем.
-            # ─── KAC-127 Phase 2 — AuthN core env vars ──────────────────
-            # Hydra ↔ kaname shared secret для token_hook / refresh_hook.
-            # Создаётся отдельным Secret kaname-hook-token (см. cluster overrides);
-            # optional: true позволяет pod'у стартовать на E0/E1 (до Phase 2 включения).
-            - name: KANAME_HOOK_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.platform.hooks.tokenHookSecretName }}
-                  key: {{ .Values.platform.hooks.tokenHookSecretKey }}
-                  optional: true
             # Ключ ОБЁРТКИ приватной половины подписного ключа (AES-256-GCM).
             #
             # Форма значения — HEX, 64 знака на ключ: резолв
@@ -685,7 +589,7 @@ spec:
                   key: {{ .Values.platform.iam.jwks.encKeySecretKey }}
                   optional: true
             # Перечень ключей ОБЁРТКИ секретов второго фактора (Ф12, kacho#1281) —
-            # условие старта под `identityProvider: own`.
+            # условие старта.
             #
             # СВОЯ ручка, а не ключ обёртки ключницы выше (Ф12 Р2): предмет другой —
             # секретов много, по одному на человека, — и смена одного перечня не
@@ -765,25 +669,6 @@ spec:
             - name: KANAME_SAKEY_ACCESS_TOKEN_TTL
               value: {{ .accessTokenTtl | quote }}
             {{- end }}
-            # bindDpop — register each key's OAuth2 client so the provider mints
-            # SENDER-CONSTRAINED tokens (RFC 9449) rather than plain bearers.
-            # Binding is registration metadata: it applies to keys issued AFTER
-            # this is switched on; pre-existing keys must be rotated. Enable this
-            # BEFORE the gateway's requireMachineTokenBinding.
-            {{- if .bindDpop }}
-            - name: KANAME_SAKEY_BIND_DPOP
-              value: "true"
-            {{- end }}
-            {{- end }}
-            {{- /* ИЗДАТЕЛЬ ПОСТАВЩИКА — ТОЛЬКО ПОД ПОСАДКОЙ С ВНЕШНИМ ПОСТАВЩИКОМ
-            (kacho#2816). Под `own` поставщика нет: служба зеркала его набора ключей
-            не публикует, дорог к нему не строит, и выставленный адрес называл бы
-            соседа, которого на стенде нет. Признак — посадка, объявленная НАШЕЙ
-            службой, а не флаг чужого подчарта. Под `external` строка рендерится
-            побайтово как прежде. */}}
-            {{- if ne (toString .Values.config.authn.identityProvider) "own" }}
-            - name: KANAME_HYDRA_ISSUER
-              value: {{ printf "https://%s.%s" .Values.platform.subdomains.hydra .Values.platform.domain | quote }}
             {{- end }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
             # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
@@ -800,67 +685,6 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
-            {{- with .Values.platform.iam.hydraTokenURL }}
-            # In-cluster Hydra token-эндпоинт для client_credentials-обмена в
-            # registry `/iam/token` shim. Без него ResolveHydraTokenURL() падает на
-            # внешний issuer-URL, недостижимый изнутри кластера. Пусто → не эмитится
-            # (dev/local сохраняет прежний fallback).
-            - name: KANAME_HYDRA_TOKEN_URL
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraTokenCaFile }}
-            # Trust anchor for the token-endpoint hop, which carries a signed client
-            # assertion out and the minted bearer back. Same discipline as the admin
-            # hop: empty → default transport; set → the only anchor; unreadable →
-            # refuse the start rather than fall back to the system roots.
-            - name: KANAME_HYDRA_TOKEN_CA_FILE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraJwksUrl }}
-            # registry-iam-jwks-unify — upstream Hydra PUBLIC JWKS URL that the
-            # cluster-INTERNAL jwks-proxy listener (:9097) mirrors byte-for-byte.
-            # Empty → not emitted → iam falls back to
-            # ResolveHydraIssuer()+"/.well-known/jwks.json" (dev/local unchanged).
-            # Prod sets the in-cluster hydra-public base so the iam→Hydra fetch stays
-            # inside the cluster.
-            #
-            # ЭТА РУЧКА ОПИСЫВАЕТ ЗЕРКАЛО, А НЕ ВСЮ ВЫДАЧУ. Здесь стояло
-            # «Hydra remains the signer/issuer» — утверждение, пережившее свой
-            # предмет: там, где объявлена своя чеканка, платформа чеканит свои
-            # токены сама, а слушатель :9097 отдаёт ВТОРУЮ запись — набор из
-            # нашей ключницы по своему пути.
-            - name: KANAME_HYDRA_JWKS_URL
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraJwksCaFile }}
-            # Trust anchor for that upstream fetch. Empty → the default transport,
-            # which is what the provider's plaintext in-cluster listener needs. Set →
-            # that bundle becomes the ONLY anchor for the hop, and one that cannot be
-            # read refuses the start — the keyset fetched here is what the whole
-            # data-plane verifies tokens against, so an unverified peer on this hop
-            # chooses the platform's signing keys.
-            - name: KANAME_HYDRA_JWKS_CA_FILE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraAdminUrl }}
-            # In-cluster Hydra ADMIN endpoint (POST /admin/clients + jwt-bearer
-            # trust-grants) for sa_keys (SAKeyService.Issue/Revoke) + user_tokens.
-            # Empty → not emitted → ResolveHydraAdminURL() derives
-            # `https://hydra-admin.<domain>` from the issuer, which is UNREACHABLE
-            # in-cluster (public ingress host does not resolve) → CreateOAuthClient
-            # fails → SAKey.Issue op errors ("internal worker error"). Every deployed
-            # profile points this at the cluster-internal hydra-admin Service.
-            - name: KANAME_HYDRA_ADMIN_URL
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.platform.iam.hydraAdminCaFile }}
-            # Trust anchor for the provider-ADMIN hop (https). Unset → the default
-            # system-root pool, which an internal-CA certificate never chains to.
-            # Set → that bundle becomes the ONLY anchor for the hop, and one that
-            # cannot be read refuses the start.
-            - name: KANAME_HYDRA_ADMIN_CA_FILE
-              value: {{ . | quote }}
-            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
@@ -872,12 +696,11 @@ spec:
           # «открыт ли порт»: iam с недоступной базой оставался Ready, а он фронтит
           # authN+authZ каждому сервису платформы.
           #
-          # ПОЧЕМУ ДИАГНОСТИКА, А НЕ ВЕБХУКИ (kacho#2871, служба — kaname#360).
-          # Пробы шли на слушатель вебхуков поставщика, а его процесс под посадкой
-          # `own` не поднимает вовсе: kubelet стучался бы в закрытый порт, под
-          # `own` не становился готовым никогда, а проба живости перезапускала
-          # контейнер по кругу. Диагностика поднимается при ЛЮБОЙ посадке —
-          # поэтому пробы здесь.
+          # ПОЧЕМУ ДИАГНОСТИКА (kacho#2871, служба — kaname#360). Пробы шли на
+          # слушатель вебхуков прежнего поставщика, которого процесс не поднимает:
+          # kubelet стучался бы в закрытый порт, под не становился готовым
+          # никогда, а проба живости перезапускала контейнер по кругу.
+          # Диагностика поднимается всегда — поэтому пробы здесь.
           #
           # Схема следует TLS диагностического слушателя: та же ручка, что
           # включает его транспорт (`KANAME_METRICS_SERVER_MTLS_ENABLE` выше) и
@@ -902,7 +725,7 @@ spec:
               {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 30
-          # Ресурсы — через `kaname.containerResources`: на посадке `own` запрос
-          # памяти выводится из предела (kacho#2727), довод — у помощника.
+          # Ресурсы — через `kaname.containerResources`: запрос памяти выводится
+          # из предела (kacho#2727), довод — у помощника.
           resources:
             {{- include "kaname.containerResources" . | nindent 12 }}

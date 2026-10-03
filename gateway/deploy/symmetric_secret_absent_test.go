@@ -13,7 +13,7 @@
 // fixtures, which never read these files.
 //
 // WHY THIS READS DECLARATIONS, NOT A RENDER. Same reason as its neighbour
-// revocation_endpoint_test.go and as deploy/helm/umbrella/token_shape_test.go: the
+// revocation_endpoint_test.go and as deploy/posture_parity_test.go: the
 // contract is what a profile DECLARES, the check then needs no chart tooling, and
 // it therefore can never skip.
 // A guard that can skip is the one that will skip on the day it matters.
