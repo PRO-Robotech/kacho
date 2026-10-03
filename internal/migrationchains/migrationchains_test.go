@@ -204,15 +204,22 @@ func TestTheTreeHasItsChains(t *testing.T) {
 	}
 }
 
-// DatabaseOf читает имя базы из обеих записей DSN, которыми зовут точку
-// наката, и не берёт его ниоткуда больше (окружение PGDATABASE — не источник).
+// DatabaseOf читает имя базы тем же разбором, каким соединяется драйвер
+// (pgconn.ParseConfig, Д83): в обеих записях DSN и при втором источнике имени в
+// одной строке — query-параметр dbname/database у URL, ключ database у
+// ключевой формы — решает то имя, к которому драйвер и соединится.
 func TestDatabaseOfReadsBothDSNForms(t *testing.T) {
-	t.Setenv("PGDATABASE", "kacho_from_env")
+	t.Setenv("PGDATABASE", "")
 	cases := map[string]string{
+		// Близнецы: один источник имени.
 		"postgres://u:p@db:5432/kacho_notifyprobe?sslmode=require":                     "kacho_notifyprobe",
 		"postgresql://u@db/kacho_notify":                                               "kacho_notify",
 		"host=db port=5432 user=u password=p dbname=kacho_notifyprobe sslmode=require": "kacho_notifyprobe",
 		"host=db password='a b\\' c' dbname = 'kacho_x'":                               "kacho_x",
+		// Второй источник имени (DSN-DB-DIVERGENCE): драйвер соединяется по нему.
+		"postgres://u@h/kacho_notifyprobe?dbname=kacho_notify":   "kacho_notify",
+		"postgres://u@h/kacho_notifyprobe?database=kacho_notify": "kacho_notify",
+		"dbname=kacho_notifyprobe database=kacho_notify":         "kacho_notify",
 	}
 	for dsn, want := range cases {
 		got, err := migrationchains.DatabaseOf(dsn)
@@ -222,7 +229,46 @@ func TestDatabaseOfReadsBothDSNForms(t *testing.T) {
 	}
 	for _, dsn := range []string{"host=db user=u", "postgres://u@db:5432/", "host=db dbname='open", "::bad"} {
 		if got, err := migrationchains.DatabaseOf(dsn); err == nil {
-			t.Errorf("DatabaseOf(%q) = %q без отказа — имя базы взято не из DSN", dsn, got)
+			t.Errorf("DatabaseOf(%q) = %q без отказа — DSN базы не называет", dsn, got)
+		}
+	}
+}
+
+// DatabaseOf и драйвер — один разбор: окружение PGDATABASE, которое драйвер
+// читает при DSN без имени базы, решает и выбор цепочки. Близнец — DSN с
+// именем базы: окружение его не перебивает.
+func TestDatabaseOfFollowsTheDriverOnEnvironment(t *testing.T) {
+	t.Setenv("PGDATABASE", "kacho_from_env")
+	if got, err := migrationchains.DatabaseOf("host=db user=u"); err != nil || got != "kacho_from_env" {
+		t.Errorf("DSN без имени при PGDATABASE: %q, %v; драйвер соединится с kacho_from_env", got, err)
+	}
+	if got, err := migrationchains.DatabaseOf("host=db user=u dbname=kacho_notifyprobe"); err != nil || got != "kacho_notifyprobe" {
+		t.Errorf("DSN с именем при PGDATABASE: %q, %v; ожидалось kacho_notifyprobe", got, err)
+	}
+}
+
+// SEC-W1-01 — текст отказа разбора не несёт ни строки DSN, ни её кусков, в
+// обеих записях. Маркеры — пароль целиком и его части, узел и пользователь.
+func TestDatabaseOfRefusalCarriesNoPieceOfTheDSN(t *testing.T) {
+	t.Setenv("PGDATABASE", "")
+	cases := map[string][]string{
+		"postgres://notifyprobe:Sup3r%Secret@db-host-x:5432/kacho_notifyprobe?sslmode=require": {
+			"Sup3r", "Secret", "%Se", "notifyprobe:", "db-host-x", "postgres://"},
+		"host=db-host-x port=5432 user=notify password=Tail0f Secret dbname='open": {
+			"Tail0f", "Secret", "db-host-x", "notify", "password", "host="},
+		"host=db-host-x user=u password='Tail0f Secret": {
+			"Tail0f", "Secret", "db-host-x", "password", "host="},
+	}
+	for dsn, markers := range cases {
+		_, err := migrationchains.DatabaseOf(dsn)
+		if err == nil {
+			t.Errorf("DSN %q принят — проба отказа без отказа", dsn)
+			continue
+		}
+		for _, m := range markers {
+			if strings.Contains(err.Error(), m) {
+				t.Errorf("отказ разбора несёт кусок DSN %q: %v", m, err)
+			}
 		}
 	}
 }

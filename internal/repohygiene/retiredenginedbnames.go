@@ -84,6 +84,10 @@ type RetiredEngineDatabaseObject struct {
 	Name string
 	// Migration — базовое имя миграции, которая объект завела.
 	Migration string
+	// Path — путь файла этой миграции от корня, с НАСТОЯЩИМ каталогом цепочки
+	// (у службы их бывает больше одного: `internal/migrations`,
+	// `internal/probemigrations`). Им называет файл текст находки.
+	Path string
 }
 
 // Key — устойчивое имя строки ведомости.
@@ -112,13 +116,23 @@ func (c RetiredEngineDatabaseCensus) String() string {
 		c.Files, c.Services, c.Statements, c.Live)
 }
 
+// sqlIdent — идентификатор SQL в обеих законных записях: голый
+// (`notifyprobe_outbox`) и в двойных кавычках (`"notifyprobe_outbox"`, кавычка
+// внутри удвоена); с цепочкой схемы через точку в любой из записей
+// (`"kacho_notifyprobe"."notifyprobe_outbox"`). Голая запись — единственная,
+// которую разбор знал прежде: цепочка пробы notify пишет имена в кавычках со
+// схемой, и её объекты разбор не видел вовсе — ни объекта, ни оператора.
+const sqlIdentPart = `(?:"(?:[^"]|"")+"|[a-zA-Z_]\w*)`
+
+const sqlIdent = sqlIdentPart + `(?:\s*\.\s*` + sqlIdentPart + `)*`
+
 var (
-	reCreateObject = regexp.MustCompile(`(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER|FUNCTION|SEQUENCE|TYPE|VIEW)\b(?:\s+IF\s+NOT\s+EXISTS)?\s+([a-zA-Z_][\w.]*)`)
-	reDropObject   = regexp.MustCompile(`(?is)\bDROP\s+(TABLE|INDEX|TRIGGER|FUNCTION|SEQUENCE|TYPE|VIEW)\b(?:\s+IF\s+EXISTS)?\s+([a-zA-Z_][\w.]*)`)
-	reAddConstr    = regexp.MustCompile(`(?is)\bCONSTRAINT\s+([a-zA-Z_]\w*)\s+(?:CHECK|PRIMARY|UNIQUE|FOREIGN|EXCLUDE)\b`)
-	reDropConstr   = regexp.MustCompile(`(?is)\bDROP\s+CONSTRAINT\b(?:\s+IF\s+EXISTS)?\s+([a-zA-Z_]\w*)`)
-	reRenameObject = regexp.MustCompile(`(?is)\bALTER\s+(TABLE|INDEX|SEQUENCE|TYPE|VIEW|TRIGGER)\b(?:\s+IF\s+EXISTS)?\s+(?:ONLY\s+)?([a-zA-Z_][\w.]*)\s+RENAME\s+TO\s+([a-zA-Z_][\w.]*)`)
-	reRenameConstr = regexp.MustCompile(`(?is)\bRENAME\s+CONSTRAINT\s+([a-zA-Z_]\w*)\s+TO\s+([a-zA-Z_]\w*)`)
+	reCreateObject = regexp.MustCompile(`(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER|FUNCTION|SEQUENCE|TYPE|VIEW)\b(?:\s+IF\s+NOT\s+EXISTS)?\s+(` + sqlIdent + `)`)
+	reDropObject   = regexp.MustCompile(`(?is)\bDROP\s+(TABLE|INDEX|TRIGGER|FUNCTION|SEQUENCE|TYPE|VIEW)\b(?:\s+IF\s+EXISTS)?\s+(` + sqlIdent + `)`)
+	reAddConstr    = regexp.MustCompile(`(?is)\bCONSTRAINT\s+(` + sqlIdentPart + `)\s+(?:CHECK|PRIMARY|UNIQUE|FOREIGN|EXCLUDE)\b`)
+	reDropConstr   = regexp.MustCompile(`(?is)\bDROP\s+CONSTRAINT\b(?:\s+IF\s+EXISTS)?\s+(` + sqlIdentPart + `)`)
+	reRenameObject = regexp.MustCompile(`(?is)\bALTER\s+(TABLE|INDEX|SEQUENCE|TYPE|VIEW|TRIGGER)\b(?:\s+IF\s+EXISTS)?\s+(?:ONLY\s+)?(` + sqlIdent + `)\s+RENAME\s+TO\s+(` + sqlIdent + `)`)
+	reRenameConstr = regexp.MustCompile(`(?is)\bRENAME\s+CONSTRAINT\s+(` + sqlIdentPart + `)\s+TO\s+(` + sqlIdentPart + `)`)
 	reLeadingDigit = regexp.MustCompile(`^(\d+)`)
 )
 
@@ -176,7 +190,7 @@ func FindRetiredEngineDatabaseObjects(sources map[string]string) ([]RetiredEngin
 				if !carriesRetiredEngineToken(name) {
 					continue
 				}
-				o := RetiredEngineDatabaseObject{Service: svc, Kind: strings.ToUpper(m[1]), Name: name, Migration: base}
+				o := RetiredEngineDatabaseObject{Service: svc, Kind: strings.ToUpper(m[1]), Name: name, Migration: base, Path: p}
 				live[o.Key()] = o
 			}
 			for _, m := range reAddConstr.FindAllStringSubmatch(up, -1) {
@@ -185,7 +199,7 @@ func FindRetiredEngineDatabaseObjects(sources map[string]string) ([]RetiredEngin
 				if !carriesRetiredEngineToken(name) {
 					continue
 				}
-				o := RetiredEngineDatabaseObject{Service: svc, Kind: "CONSTRAINT", Name: name, Migration: base}
+				o := RetiredEngineDatabaseObject{Service: svc, Kind: "CONSTRAINT", Name: name, Migration: base, Path: p}
 				live[o.Key()] = o
 			}
 			for _, m := range reRenameObject.FindAllStringSubmatch(up, -1) {
@@ -197,11 +211,11 @@ func FindRetiredEngineDatabaseObjects(sources map[string]string) ([]RetiredEngin
 				if !carriesRetiredEngineToken(to) {
 					continue
 				}
-				mig := base
+				mig, mpath := base, p
 				if had {
-					mig = prev.Migration
+					mig, mpath = prev.Migration, prev.Path
 				}
-				o := RetiredEngineDatabaseObject{Service: svc, Kind: kind, Name: to, Migration: mig}
+				o := RetiredEngineDatabaseObject{Service: svc, Kind: kind, Name: to, Migration: mig, Path: mpath}
 				live[o.Key()] = o
 			}
 			for _, m := range reRenameConstr.FindAllStringSubmatch(up, -1) {
@@ -213,11 +227,11 @@ func FindRetiredEngineDatabaseObjects(sources map[string]string) ([]RetiredEngin
 				if !carriesRetiredEngineToken(to) {
 					continue
 				}
-				mig := base
+				mig, mpath := base, p
 				if had {
-					mig = prev.Migration
+					mig, mpath = prev.Migration, prev.Path
 				}
-				o := RetiredEngineDatabaseObject{Service: svc, Kind: "CONSTRAINT", Name: to, Migration: mig}
+				o := RetiredEngineDatabaseObject{Service: svc, Kind: "CONSTRAINT", Name: to, Migration: mig, Path: mpath}
 				live[o.Key()] = o
 			}
 			for _, m := range reDropObject.FindAllStringSubmatch(up, -1) {
@@ -256,13 +270,25 @@ func carriesRetiredEngineToken(name string) bool {
 	return false
 }
 
-// bareName — имя без схемы и без кавычек.
+// bareName — имя без схемы и без кавычек: последний сегмент цепочки через
+// точку, точка внутри кавычек сегментом не делит; удвоенная кавычка внутри
+// кавычек — одна кавычка имени.
 func bareName(ident string) string {
-	ident = strings.Trim(ident, `"`)
-	if i := strings.LastIndex(ident, "."); i >= 0 {
-		ident = ident[i+1:]
+	last := 0
+	inQuote := false
+	for i := 0; i < len(ident); i++ {
+		switch c := ident[i]; {
+		case c == '"':
+			inQuote = !inQuote
+		case c == '.' && !inQuote:
+			last = i + 1
+		}
 	}
-	return strings.Trim(ident, `"`)
+	seg := strings.TrimSpace(ident[last:])
+	if len(seg) >= 2 && seg[0] == '"' && seg[len(seg)-1] == '"' {
+		return strings.ReplaceAll(seg[1:len(seg)-1], `""`, `"`)
+	}
+	return seg
 }
 
 // upSection — часть миграции, которая ПРИМЕНЯЕТСЯ.

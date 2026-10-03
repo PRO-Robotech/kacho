@@ -117,6 +117,11 @@ type Config struct {
 	// пустой строки, поэтому тега `envconfig` у поля нет; ручка — [credentialKnob].
 	credential Credential
 
+	// recipientKey — ключ сетки на адресата (З24): ключевой материал HMAC.
+	// Читается [os.LookupEnv], а не загрузчиком: значение в перепись и в
+	// строковый вид не попадает; ручка — [recipientKeyKnob].
+	recipientKey RecipientKey
+
 	// sources — разобранный перечень; заполняет [Config.Validate].
 	sources []Source
 
@@ -130,6 +135,37 @@ var credentialKnob = Knob{
 	Name: "notify.smtp.credential",
 	Env:  "KACHO_NOTIFY_SMTP_CREDENTIAL",
 	Kind: reflect.String,
+}
+
+// recipientKeyKnob — ключ сетки на адресата (З24). Переменная — только ссылка
+// `secretKeyRef` на объект `<полное имя>-recipient-key` чарта notify.
+var recipientKeyKnob = Knob{
+	Name: "notify.recipientKey",
+	Env:  "KACHO_NOTIFY_RECIPIENT_KEY",
+	Kind: reflect.String,
+}
+
+// RecipientKeyMinBytes — нижняя граница длины ключа сетки (Д89). Ключ —
+// материал HMAC-SHA256 (строки сетки на адресата и отпечаток ограды ключа,
+// З24): короче размера выхода хеша он ослабляет и то, и другое, а отпечаток
+// ключа в аннотации пода становится оракулом перебора. Граница включена.
+const RecipientKeyMinBytes = 32
+
+// RecipientKey — ключ сетки на адресата. Значение в журнал не попадает:
+// [RecipientKey.String] его не раскрывает.
+type RecipientKey struct {
+	value []byte
+}
+
+// Bytes — копия ключа для HMAC.
+func (k RecipientKey) Bytes() []byte { return append([]byte(nil), k.value...) }
+
+// String не раскрывает значения.
+func (k RecipientKey) String() string {
+	if len(k.value) == 0 {
+		return "не задан"
+	}
+	return "задан"
 }
 
 // Credential — удостоверение ретранслятора. Значение в журнал не попадает:
@@ -179,7 +215,7 @@ func Knobs() []Knob {
 		name, opts, _ := strings.Cut(f.Tag.Get("knob"), ",")
 		out = append(out, Knob{Name: name, Env: env, Kind: f.Type.Kind(), Optional: opts == "optional"})
 	}
-	return append(out, credentialKnob)
+	return append(out, credentialKnob, recipientKeyKnob)
 }
 
 func knobByEnv(env string) Knob {
@@ -255,8 +291,15 @@ func Load() (Config, error) {
 	}
 	v, ok := os.LookupEnv(credentialKnob.Env)
 	c.credential = Credential{present: ok, value: v}
+	if key, ok := os.LookupEnv(recipientKeyKnob.Env); ok {
+		c.recipientKey = RecipientKey{value: []byte(key)}
+	}
 	return c, nil
 }
+
+// RecipientKey — ключ сетки на адресата; годен только после успешного
+// [Config.Validate].
+func (c Config) RecipientKey() RecipientKey { return c.recipientKey }
 
 // Credential — удостоверение ретранслятора (три состояния).
 func (c Config) Credential() Credential { return c.credential }
@@ -317,6 +360,7 @@ func (c *Config) Validate() error {
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
 	c.validateRelayCredential(&fs)
+	c.validateRecipientKey(&fs)
 
 	return fs.err()
 }
@@ -442,6 +486,19 @@ func (c *Config) validateOrigin(fs *findings) {
 		fs.add(k, "origin %q: параметры запроса не допускаются", c.Origin)
 	case u.Fragment != "" || strings.Contains(c.Origin, "#"):
 		fs.add(k, "origin %q: фрагмент не допускается", c.Origin)
+	}
+}
+
+// validateRecipientKey — страж ключа сетки (Д89, fail-closed): незаданный уже
+// назван общим перебором; заданный короче [RecipientKeyMinBytes] — отказ.
+// Ни значение, ни его длина в текст отказа не попадают.
+func (c *Config) validateRecipientKey(fs *findings) {
+	if c.unset[recipientKeyKnob.Env] {
+		return
+	}
+	if len(c.recipientKey.value) < RecipientKeyMinBytes {
+		fs.add(recipientKeyKnob, "ключ сетки короче %d байт — ключ HMAC-SHA256 обязан быть не короче "+
+			"выхода хеша (З24, Д89)", RecipientKeyMinBytes)
 	}
 }
 

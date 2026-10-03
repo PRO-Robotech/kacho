@@ -22,6 +22,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -46,6 +48,8 @@ const (
 	KeyringKnob = "KACHO_NOTIFYPROBE_NOTIFICATIONS_FEED_KEYRING"
 	// NotifySANKnob — SPIFFE-идентификатор notify (строка таблицы звена Р2).
 	NotifySANKnob = "KACHO_NOTIFYPROBE_NOTIFY_SAN"
+	// authZCacheTTLKnob — окно отзыва; имя нужно тексту отказа загрузки.
+	authZCacheTTLKnob = "KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL"
 )
 
 // Config — конфигурация notify-probe.
@@ -93,8 +97,12 @@ type Config struct {
 	// AuthZTrustDomain — домен доверия установки; умолчания нет, пустое — отказ
 	// старта.
 	AuthZTrustDomain string `envconfig:"KACHO_NOTIFYPROBE_AUTHZ_TRUST_DOMAIN"`
-	// AuthZCacheTTL — окно положительных вердиктов (оно же окно отзыва). Ноль —
-	// объявленная политика платформы.
+	// AuthZCacheTTL — окно положительных вердиктов (оно же окно отзыва).
+	// Умолчание 5s — значение pkg/authz.RevocationPolicy; его сверяет перепись
+	// окна отзыва (tools/revocationwindowgate). Неположительное значение —
+	// отказ загрузки с именем ручки: у окна два читателя (дескриптор отвергает
+	// ≤0, сужатель потока подставил бы своё умолчание), и смысл у нуля один —
+	// отказ старта, а не «политика по умолчанию».
 	AuthZCacheTTL time.Duration `envconfig:"KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL" default:"5s"`
 	// AuthZDenyBudgetPerSec — темп непоглощаемых кешем исходов проверки на
 	// принципала; по исчерпании звено отвечает ResourceExhausted, не спрашивая
@@ -151,6 +159,10 @@ func load(lookup func(string) (string, bool), readFile func(string) ([]byte, err
 	if err := corecfg.LoadPrefixed(envPrefix, &c); err != nil {
 		return Config{}, err
 	}
+	if c.AuthZCacheTTL <= 0 {
+		return Config{}, fmt.Errorf("%s: окно отзыва %s неположительно — окно обязано быть больше нуля "+
+			"(значение политики платформы — 5s)", authZCacheTTLKnob, c.AuthZCacheTTL)
+	}
 	// Флаг — первым из ручек ленты: без него не решается, обязательны ли
 	// кольцо и SAN.
 	en, err := feed.ParseEnabled(FlagKnob, lookup)
@@ -186,13 +198,23 @@ func (c Config) InternalServerCreds() (grpc.ServerOption, error) {
 // schemaOptionsParam — libpq `options=-c search_path=kacho_notifyprobe,public`.
 const schemaOptionsParam = "options=-c%20search_path%3Dkacho_notifyprobe%2Cpublic"
 
+// baseDSN — строка соединения. Имя, пароль и база экранируются построителем
+// адреса, а не склейкой строки: пароль с `@`, `/`, `?`, `#`, `%` иначе дал бы
+// иную строку соединения (форма та же, что у шлюза каталога,
+// services/notify/internal/config).
 func (c Config) baseDSN() string {
 	mode := c.DBSSLMode
 	if mode == "" {
 		mode = "disable"
 	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&%s",
-		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName, mode, schemaOptionsParam)
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.DBUser, c.DBPassword),
+		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:     "/" + c.DBName,
+		RawQuery: "sslmode=" + url.QueryEscape(mode) + "&" + schemaOptionsParam,
+	}
+	return u.String()
 }
 
 // DSN — строка подключения пула pgx (несёт pool_max_conns).
