@@ -412,6 +412,15 @@ func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
 		}
 	})
 
+	t.Run("краснеет: запись своего шага у пакета в отборе", func(t *testing.T) {
+		const notifyProbe = "services/notify/cmd/notify-probe"
+		f := judgeShortGateSelection([]string{notifyProbe}, nil,
+			map[string]string{notifyProbe: "make test-pg-outside-selection"}, "make test-pg-outside-selection")
+		if len(f) != 1 || !strings.Contains(f[0], notifyProbe) || !strings.Contains(f[0], "ВХОДИТ в отбор") {
+			t.Fatalf("запись своего шага у отобранного пакета не названа вторым исполнителем: %v", f)
+		}
+	})
+
 	t.Run("молчит: тот же пакет, названный в переписи", func(t *testing.T) {
 		if f := judgeShortGateSelection([]string{outside}, []string{outside}, nil, ""); len(f) != 0 {
 			t.Fatalf("гейт краснеет на объявленном долге: %v", f)
@@ -546,6 +555,12 @@ func judgeShortGateSelection(gated, declared []string, ownStep map[string]string
 	}
 	sort.Strings(stepRest)
 	for _, p := range stepRest {
+		if integrationSelectionRe.MatchString(p) {
+			findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
+				"ВХОДИТ в отбор интеграционной джобы — свой шаг был бы вторым исполнителем тех же "+
+				"проб, двумя местами об одном предмете; запись снимается")
+			continue
+		}
 		findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
 			"больше не пропускает тестов под кратким режимом (или исчез) — освобождать "+
 			"нечего, и запись достанется следующему как слепая зона")
