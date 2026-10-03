@@ -62,6 +62,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/gitenv"
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 const (
@@ -986,10 +988,13 @@ func migrateFindings(objs []renderedObj) []string {
 				pw = nstr(ndig(e, "valueFrom", "secretKeyRef", "name")) != ""
 			}
 		}
-		// dbname — ТОЧНЫМ значением разобранного поля, не подстрокой: подстрока
-		// принимает dbname=kacho_notifyprobe (база пробы) за базу службы (Д84).
-		if db, ok := dsnField(dsn, "dbname"); !ok || db != "kacho_notify" {
-			out = append(out, "DSN контейнера migrate называет базу «"+db+"», а не ровно kacho_notify")
+		// dbname — ТОЧНЫМ значением, не подстрокой: подстрока принимает
+		// dbname=kacho_notifyprobe (база пробы) за базу службы (Д84). Читает его
+		// та же функция, которой точка наката выбирает цепочку
+		// (migrationchains.DatabaseOf над разбором драйвера, Д93), — своего
+		// разбора DSN у пробы нет.
+		if db, err := migrationchains.DatabaseOf(dsn); err != nil || db != "kacho_notify" {
+			out = append(out, fmt.Sprintf("DSN контейнера migrate называет базу «%s» (%v), а не ровно kacho_notify", db, err))
 		}
 		if !pw {
 			out = append(out, "пароль базы у migrate не ссылкой на секрет")
@@ -1018,16 +1023,49 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	}
 }
 
-// dsnField — значение поля key строки DSN вида «k=v k=v» (форма, которую
-// печатает шаблон чарта; значения без пробелов и кавычек). Второе значение —
-// поле найдено.
-func dsnField(dsn, key string) (string, bool) {
-	for _, tok := range strings.Fields(dsn) {
-		if k, v, ok := strings.Cut(tok, "="); ok && k == key {
-			return v, true
+// migrateDeployment — синтетическое развёртывание notify с контейнером migrate
+// и DSN dsn: вход решения migrateFindings без рендера.
+func migrateDeployment(dsn string) []renderedObj {
+	return []renderedObj{{kind: "Deployment", name: "kacho-notify", doc: map[string]any{
+		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"initContainers": []any{map[string]any{
+				"name": "migrate", "command": []any{"kacho-migrator"}, "args": []any{"up"},
+				"env": []any{
+					map[string]any{"name": "KACHO_MIGRATOR_DSN", "value": dsn},
+					map[string]any{"name": "KACHO_NOTIFY_DB_PASSWORD",
+						"valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": "s", "key": "k"}}},
+				},
+			}},
+		}}},
+	}}}
+}
+
+// Д93 — имя базы DSN контейнера migrate читается разбором драйвера, а не своим:
+// каждая законная запись libpq, которую драйвер читает как kacho_notify, —
+// молчание; запись с другой базой — красный. Свой разбор «k=v через пробел»
+// не видел кавычек и пробелов вокруг «=» и называл годную запись чужой.
+func TestMigrateDSNDatabaseIsReadByTheDriverParse(t *testing.T) {
+	t.Setenv("PGDATABASE", "")
+	for _, dsn := range []string{
+		"host=h port=5432 user=notify dbname=kacho_notify sslmode=require",
+		"host=h port=5432 user=notify dbname = kacho_notify sslmode=require",
+		"host=h port=5432 user=notify dbname='kacho_notify' sslmode=require",
+		"postgres://notify@h:5432/kacho_notify?sslmode=require",
+	} {
+		if f := migrateFindings(migrateDeployment(dsn)); len(f) != 0 {
+			t.Errorf("DSN %q называет kacho_notify, а проба красная: %v", dsn, f)
 		}
 	}
-	return "", false
+	for _, dsn := range []string{
+		"host=h dbname=kacho_notifyprobe sslmode=require",
+		"host=h dbname='kacho_notify x' sslmode=require",
+		"host=h sslmode=require",
+		"host=h dbname='open",
+	} {
+		if f := migrateFindings(migrateDeployment(dsn)); len(f) == 0 {
+			t.Errorf("DSN %q не называет ровно kacho_notify, а проба молчит", dsn)
+		}
+	}
 }
 
 // ─── нога фикстурной копии ЗОНТИКА (N02, N20, N25; CX1-94, CX1-97, CX1-99, М43, М45) ─

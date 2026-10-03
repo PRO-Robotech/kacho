@@ -597,8 +597,11 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 
 	binDir := t.TempDir()
 	cfgDir := t.TempDir()
-	proven, failed, notRun := 0, 0, 0
+	proven, failed, outOfPoll := 0, 0, 0
 	perService := map[string]int{}
+	// pointsOutOfPoll — точки, у которых ВСЕ формы вне опроса (носитель не
+	// отрендерен профилем, Д91): в знаменатель они не входят.
+	pointsOutOfPoll := 0
 
 	for _, pkg := range points {
 		service := pointService(pkg)
@@ -620,6 +623,7 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 		}
 
 		bin := buildApplyPoint(t, root, binDir, pkg, service)
+		pointPolled := false
 
 		// Каждая выведенная форма — на строке ЕЁ базы (Д84): у точки, выбирающей
 		// цепочку по имени базы, форма доказывается только на строке, чей
@@ -632,9 +636,11 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 				t.Errorf("служба %s, форма `%s` (%s): %s", service, form, form.origin, f)
 				failed++
 			}
-			if pairing.notRun != "" {
-				notRun++
-				t.Logf("  служба %s · форма `%s` · источник %s · %s", service, form, form.origin, pairing.notRun)
+			if pairing.outOfPoll != "" {
+				outOfPoll++
+				t.Logf("  %s · форма `%s` · источник %s", pairing.outOfPoll, form, form.origin)
+			} else {
+				pointPolled = true
 			}
 			for _, c := range pairing.rows {
 
@@ -679,6 +685,9 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 				}
 			}
 		}
+		if !pointPolled {
+			pointsOutOfPoll++
+		}
 	}
 
 	services := make([]string, 0, len(perService))
@@ -689,16 +698,20 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 	for _, svc := range services {
 		t.Logf("  доказано форм×строк у %s: %d", svc, perService[svc])
 	}
-	t.Logf("перепись: точек наката %d, манифестных форм×строк доказано %d, не выполнилось %d "+
-		"(третья категория: не зелёное и не красное — причины выше)", len(points), proven, notRun)
+	polled := len(points) - pointsOutOfPoll
+	t.Logf("перепись: точек наката %d, из них в опросе %d, вне опроса %d (носитель формы не отрендерен "+
+		"профилем — строки выше, Д91); манифестных форм×строк доказано %d, форм вне опроса %d",
+		len(points), polled, pointsOutOfPoll, proven, outOfPoll)
 
 	switch {
 	case failed > 0:
 		t.Errorf("накат в манифестной форме доказан для %d, отказали %d — находки выше", proven, failed)
-	case proven+notRun < len(points):
-		t.Errorf("доказано %d форм при %d точках наката и нуле отказов — прогон отфильтрован "+
+	case polled == 0:
+		t.Errorf("точек в опросе 0 из %d — доказывать нечего, это отказ, а не зелёный", len(points))
+	case proven < polled:
+		t.Errorf("доказано %d форм при %d точках в опросе и нуле отказов — прогон отфильтрован "+
 			"(-run), и его зелёное относится к %d, а не к %d",
-			proven, len(points), proven, len(points))
+			proven, polled, proven, polled)
 	}
 }
 
