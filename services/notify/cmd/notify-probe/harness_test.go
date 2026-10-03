@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -262,20 +263,21 @@ func keyringFile(t *testing.T) string {
 	return p
 }
 
-// dbEnv — переменные базы пробы из строки подключения pgtest.
+// dbEnv — переменные базы пробы из строки подключения pgtest, прочитанной
+// разбором драйвера (pgconn.ParseConfig, Д93): части те, с которыми драйвер
+// соединился бы по этой строке. Текст отказа строки не цитирует.
 func dbEnv(t *testing.T, dsn string) map[string]string {
 	t.Helper()
-	u, err := url.Parse(dsn)
+	c, err := pgconn.ParseConfig(dsn)
 	if err != nil {
-		t.Fatalf("строка подключения pgtest не разбирается: %v", err)
+		t.Fatal("строка подключения pgtest не разобрана драйвером (текст разбора несёт куски строки)")
 	}
-	pw, _ := u.User.Password()
 	return map[string]string{
-		"KACHO_NOTIFYPROBE_DB_HOST":     u.Hostname(),
-		"KACHO_NOTIFYPROBE_DB_PORT":     u.Port(),
-		"KACHO_NOTIFYPROBE_DB_USER":     u.User.Username(),
-		"KACHO_NOTIFYPROBE_DB_PASSWORD": pw,
-		"KACHO_NOTIFYPROBE_DB_NAME":     u.Path[1:],
+		"KACHO_NOTIFYPROBE_DB_HOST":     c.Host,
+		"KACHO_NOTIFYPROBE_DB_PORT":     strconv.Itoa(int(c.Port)),
+		"KACHO_NOTIFYPROBE_DB_USER":     c.User,
+		"KACHO_NOTIFYPROBE_DB_PASSWORD": c.Password,
+		"KACHO_NOTIFYPROBE_DB_NAME":     c.Database,
 	}
 }
 

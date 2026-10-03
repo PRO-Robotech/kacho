@@ -6,7 +6,6 @@ package migratorapply_test
 import (
 	"context"
 	"database/sql"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/PRO-Robotech/corelib/treecorpus"
 
 	"github.com/PRO-Robotech/kacho/internal/migrationchains"
+	"github.com/PRO-Robotech/kacho/internal/pgdsn"
 )
 
 // applyBudget — предел на один запуск точки наката. Самая длинная цепочка дерева
@@ -211,15 +211,15 @@ func appliedCount(t *testing.T, dsn string) int {
 }
 
 // replaceDBName подменяет имя базы в DSN, оставляя всё прочее нетронутым: контроль
-// обязан отличаться от годного входа ровно тем, что проверяется.
+// обязан отличаться от годного входа ровно тем, что проверяется. DSN читает разбор
+// драйвера (pgdsn.WithDatabase → pgconn.ParseConfig, Д93).
 func replaceDBName(t *testing.T, dsn, name string) string {
 	t.Helper()
-	u, err := url.Parse(dsn)
+	out, err := pgdsn.WithDatabase(dsn, name)
 	if err != nil {
-		t.Fatalf("DSN пробы неразбираем (%q): %v", dsn, err)
+		t.Fatalf("DSN пробы: %v", err)
 	}
-	u.Path = "/" + name
-	return u.String()
+	return out
 }
 
 // runMigrator запускает собранный бинарь и возвращает исход вместе с выводом.

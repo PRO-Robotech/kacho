@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/migrationchains"
@@ -375,29 +377,20 @@ type dsnParts struct {
 	user, password, host, port, name string
 }
 
+// splitDSN читает части разбором драйвера (pgconn.ParseConfig, Д93): части те,
+// с которыми драйвер соединился бы по этой строке, — в любой её записи и без
+// процентного кодирования в учётных данных.
 func splitDSN(t *testing.T, dsn string) dsnParts {
 	t.Helper()
-	rest, ok := strings.CutPrefix(dsn, "postgres://")
-	if !ok {
-		t.Fatalf("DSN пробы не в форме postgres://… (%q) — разобрать по частям нечем", dsn)
+	c, err := pgconn.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal("DSN пробы не разобран драйвером (текст разбора несёт куски строки)")
 	}
-	if i := strings.IndexAny(rest, "?"); i >= 0 {
-		rest = rest[:i]
+	if c.Database == "" {
+		t.Fatal("в DSN пробы нет имени базы")
 	}
-	cred, hostPart, ok := strings.Cut(rest, "@")
-	if !ok {
-		t.Fatalf("в DSN пробы нет учётных данных (%q)", dsn)
-	}
-	user, password, _ := strings.Cut(cred, ":")
-	hostPort, name, ok := strings.Cut(hostPart, "/")
-	if !ok {
-		t.Fatalf("в DSN пробы нет имени базы (%q)", dsn)
-	}
-	host, port, ok := strings.Cut(hostPort, ":")
-	if !ok {
-		t.Fatalf("в DSN пробы нет порта (%q)", dsn)
-	}
-	return dsnParts{user: user, password: password, host: host, port: port, name: name}
+	return dsnParts{user: c.User, password: c.Password, host: c.Host,
+		port: strconv.Itoa(int(c.Port)), name: c.Database}
 }
 
 // serviceEnvPrefix — приставка переменных окружения службы, спрошенная у

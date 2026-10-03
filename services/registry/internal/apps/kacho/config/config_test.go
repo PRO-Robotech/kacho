@@ -4,11 +4,11 @@
 package config
 
 import (
-	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,8 +206,8 @@ func TestConfig_IAMProjectEdge_Override(t *testing.T) {
 // (@ / : ? #) обязан percent-энкодиться в userinfo, иначе pgx/libpq-парсер
 // раскусит DSN не так: 'postgres://registry:p@ss.host@dbhost/...' → host
 // 'ss.host', выдернутый ИЗ секрета (CWE-116; коннект в чужой хост + leak
-// фрагмента пароля в error-строке). Проверяем через тот же url-парсинг, что
-// применяет pgx.
+// фрагмента пароля в error-строке). Проверяем разбором самого драйвера
+// (pgconn.ParseConfig, Д93): значения — те, с которыми он соединился бы.
 func TestConfig_DSN_PasswordPercentEncoded(t *testing.T) {
 	const rawPassword = "p@ss/w:rd?x#y one"
 	env := baseEnv()
@@ -221,19 +221,17 @@ func TestConfig_DSN_PasswordPercentEncoded(t *testing.T) {
 	require.NoError(t, LoadInto(&c, env))
 
 	for _, dsn := range []string{c.DSN(), c.MigrateDSN()} {
-		u, err := url.Parse(dsn)
-		require.NoErrorf(t, err, "DSN must parse as a URL: %q", dsn)
-		require.Equal(t, "postgres", u.Scheme)
-		require.Equal(t, "registry", u.User.Username())
-		gotPw, hasPw := u.User.Password()
-		require.True(t, hasPw, "password present in userinfo")
-		require.Equal(t, rawPassword, gotPw, "raw password must round-trip exactly")
+		require.True(t, strings.HasPrefix(dsn, "postgres://"), "DSN is in URL form")
+		pc, err := pgconn.ParseConfig(dsn)
+		require.NoError(t, err, "DSN must parse by the driver")
+		require.Equal(t, "registry", pc.User)
+		require.Equal(t, rawPassword, pc.Password, "raw password must round-trip exactly")
 		// host НЕ должен вытечь из пароля.
-		require.Equal(t, "dbhost.internal", u.Hostname(), "host must not be parsed out of the secret")
-		require.Equal(t, "6432", u.Port())
-		require.Equal(t, "/kacho_registry", u.Path)
-		require.Equal(t, "disable", u.Query().Get("sslmode"))
-		require.Contains(t, u.Query().Get("options"), "search_path=kacho_registry,public",
+		require.Equal(t, "dbhost.internal", pc.Host, "host must not be parsed out of the secret")
+		require.Equal(t, uint16(6432), pc.Port)
+		require.Equal(t, "kacho_registry", pc.Database)
+		require.True(t, pc.TLSConfig == nil && len(pc.Fallbacks) == 0, "sslmode=disable: plain channel, no fallbacks")
+		require.Contains(t, pc.RuntimeParams["options"], "search_path=kacho_registry,public",
 			"search_path option preserved")
 	}
 }
@@ -245,9 +243,7 @@ func TestConfig_DSN_StatementTimeout(t *testing.T) {
 	t.Run("default_present_on_pool_dsn", func(t *testing.T) {
 		var c Config
 		require.NoError(t, LoadInto(&c, baseEnv()))
-		u, err := url.Parse(c.DSN())
-		require.NoError(t, err)
-		require.Contains(t, u.Query().Get("options"), "-c statement_timeout=30s",
+		require.Contains(t, u_options(t, c.DSN()), "-c statement_timeout=30s",
 			"pool DSN must carry a statement_timeout backstop by default")
 	})
 	t.Run("override", func(t *testing.T) {
@@ -273,12 +269,13 @@ func TestConfig_DSN_StatementTimeout(t *testing.T) {
 	})
 }
 
-// u_options — helper: извлекает decoded libpq `options` из DSN.
+// u_options — helper: libpq `options` из DSN, прочитанный разбором драйвера
+// (pgconn.ParseConfig, Д93).
 func u_options(t *testing.T, dsn string) string {
 	t.Helper()
-	u, err := url.Parse(dsn)
+	pc, err := pgconn.ParseConfig(dsn)
 	require.NoError(t, err)
-	return u.Query().Get("options")
+	return pc.RuntimeParams["options"]
 }
 
 // TestConfig_DSN_PoolMaxConns — pool_max_conns остаётся pgx-специфичным параметром
