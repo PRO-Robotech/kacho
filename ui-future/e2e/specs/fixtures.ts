@@ -1,11 +1,18 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, test as base, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { expect, test as base, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
 import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
+import {
+  OUTSIDE_TEST,
+  REGISTRATION_ATTACHMENT,
+  isRegistration,
+  noteRegistration,
+  takeRegistrations,
+} from "./registration-budget.ts";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
 
@@ -69,8 +76,20 @@ import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
  */
 export const test = base.extend<
   { sourceAxisLedger: void; issuanceLedger: void },
-  { issuanceGuardedBrowser: void; standCookieCarrier: void }
+  { issuanceGuardedBrowser: void; standCookieCarrier: void; registrationWatchedBrowser: void }
 >({
+  // СЧЁТ РЕГИСТРАЦИЙ ИСТОЧНИКА (kacho#2909) — в каждом контексте браузера, который
+  // заводит набор: штатном и заведённом пробой самой. Каждая регистрация
+  // списывается с окна источника стенда, а источник у набора один; запись
+  // сдаётся вложением пробы (`sourceAxisLedger` ниже), судит
+  // `scripts/registration-budget.ts`. Правило счёта — `specs/registration-budget.ts`.
+  registrationWatchedBrowser: [
+    async ({ browser }, use) => {
+      watchRegistrationsInBrowser(browser);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
   // ПЕЧЕНЬЕ СТЕНДА ПО HTTP (#1274) — в каждом контексте браузера, который заводит
   // набор: `page.request` контекста носит Secure-печенье службы в происхождение
   // стенда. Без этого на стенде по http обращения `page.request` уходят без
@@ -118,6 +137,15 @@ export const test = base.extend<
           contentType: "application/json",
         });
       }
+      // Счёт регистраций (kacho#2909) — тем же разбором: посев и контексты пробы
+      // к этому моменту закрыты, запись полна.
+      const registrations = takeRegistrations(testInfo.testId);
+      if (registrations > 0) {
+        await testInfo.attach(REGISTRATION_ATTACHMENT, {
+          body: JSON.stringify({ scenario: testInfo.title, registrations }),
+          contentType: "application/json",
+        });
+      }
     },
     { auto: true },
   ],
@@ -153,6 +181,38 @@ export const test = base.extend<
     testInfo.attachments.push({ name: "trace", path: tracePath, contentType: "application/zip" });
   },
 });
+
+const REGISTRATION_WATCHED = Symbol("kacho.registration-watched-browser");
+
+/** Проба, за которой пишется обращение; вне пробы — отдельный ключ, отдаваемый следующей. */
+function currentTestId(): string {
+  try {
+    return base.info().testId;
+  } catch {
+    return OUTSIDE_TEST;
+  }
+}
+
+/**
+ * Каждый контекст этого браузера считает отправленные регистрации (kacho#2909).
+ * Заменяется `newContext` ЭКЗЕМПЛЯРА — через него идут и штатная фабрика
+ * контекста, и `browser.newPage`, и контексты, заведённые пробой. Считается
+ * ОТПРАВЛЕННОЕ (`request`), а не отвеченное: служба списывает окно до решения,
+ * а ответ подставленный пробой лишь завышает счёт — сторона ошибки безопасная.
+ */
+export function watchRegistrationsInBrowser(browser: Browser): void {
+  const own = browser as Browser & { [REGISTRATION_WATCHED]?: true };
+  if (own[REGISTRATION_WATCHED]) return;
+  own[REGISTRATION_WATCHED] = true;
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (options) => {
+    const context = await newContext(options);
+    context.on("request", (req) => {
+      if (isRegistration(req.method(), new URL(req.url()).pathname)) noteRegistration(currentTestId());
+    });
+    return context;
+  };
+}
 
 /**
  * Записывать отказы `401` полосы формы, полученные страницами контекста, за
