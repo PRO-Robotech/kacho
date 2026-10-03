@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -34,7 +35,7 @@ func TestLogout_EndsEveryCarrierNameWhateverTheBrowserPresents(t *testing.T) {
 	names := middleware.SessionCarrierNames()
 	require.NotEmpty(t, names, "перечень гасимых имён пуст — гасить нечего, и проба судила бы о непрочитанном")
 
-	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{Logger: newLogger()})
+	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second, Logger: newLogger()})
 	require.NoError(t, err)
 
 	// Обработчик выхода посадки не читает, поэтому единственное, чем браузер

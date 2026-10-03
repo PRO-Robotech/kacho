@@ -172,15 +172,21 @@ def _assert_sent_bearer_shape(*, segments: int, alg: str,
     return lines
 
 
-# Отказ аутентификации, каким его видит клиент. Оба места, которые его пишут
-# (`writeHTTPUnauthorized` в auth.go и `writeHTTPUnauth` в
-# permission_denied_response.go), кладут `{"code":16}` и заголовок вызова
-# RFC 6750 — поэтому утверждается и то, и другое.
+# Отказ аутентификации, каким его видит клиент, — ответ Р2 приёмки KA1
+# (`docs/specs/sub-phase-KA1-edge-refusals-and-call-budgets-acceptance.md`,
+# сценарий KA1-16): один отказ `401`, побайтово одинаковый для всех причин. Его
+# пишет ОДИН писатель края (`gateway/internal/authnrefusal`), поэтому значение
+# вызова теперь пиннится: двух законных текстов больше нет, и второй текст был бы
+# находкой — причина отказа, вытекшая наружу.
 #
-# ЗНАЧЕНИЕ заголовка вызова НЕ пиннится: два законных пути пишут разный текст
-# (`Bearer error="invalid_token"…` против `Bearer realm="kacho"`), и пин выбрал
-# бы ОДИН внутренний путь, то есть утверждал бы про устройство края, а не про
-# его контракт. Утверждается схема вызова — она у обоих одна и она обязательна.
+# Форма утверждается ПО ПОЛЯМ разобранного тела (порядок ключей сериализатора
+# предметом не является), а равенство ответов разных причин — побайтово по
+# тексту тела и по `WWW-Authenticate` (`_REFUSAL_SAME_AS_ANONYMOUS` ниже).
+_R2_CHALLENGE = 'Bearer realm="kacho", error="invalid_token"'
+_R2_MESSAGE = "authentication failed"
+_R2_REASON = "AUTHN_REQUIRED"
+_R2_DOMAIN = "kaname.cloud.iam.v1"
+
 _REJECTED = [
     "pm.test('край ответил 401 — предъявитель не принят', () => {",
     "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
@@ -189,9 +195,53 @@ _REJECTED = [
     "  const j = pm.response.json();",
     "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
     "});",
-    "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+    "pm.test(" + js_str("KA1-16: тело — отказ Р2: текст «" + _R2_MESSAGE + "», одна ErrorInfo "
+                        + _R2_REASON + " без metadata — причина наружу не выходит") + ", () => {",
+    "  const j = pm.response.json();",
+    f"  pm.expect(j.message, JSON.stringify(j)).to.eql({js_str(_R2_MESSAGE)});",
+    "  pm.expect(j.details, JSON.stringify(j)).to.be.an('array').with.lengthOf(1);",
+    "  const d = j.details[0];",
+    "  pm.expect(d['@type'], JSON.stringify(d)).to.eql('type.googleapis.com/google.rpc.ErrorInfo');",
+    f"  pm.expect(d.reason, JSON.stringify(d)).to.eql({js_str(_R2_REASON)});",
+    f"  pm.expect(d.domain, JSON.stringify(d)).to.eql({js_str(_R2_DOMAIN)});",
+    "  pm.expect(d.metadata, 'metadata несёт причину отказа: ' + JSON.stringify(d)).to.be.undefined;",
+    "});",
+    "pm.test(" + js_str("KA1-16: вызов — " + _R2_CHALLENGE + " (без error_description)") + ", () => {",
     "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
-    "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+    f"  pm.expect(h, 'WWW-Authenticate').to.eql({js_str(_R2_CHALLENGE)});",
+    "});",
+]
+
+# Эталон равенства — ответ АНОНИМНОМУ запросу (кейс IBT-10-ANONYMOUS-REJECTED
+# идёт в наборе раньше прочих отказов и кладёт сюда тело и вызов). Каждый из
+# четырёх остальных отказов сравнивается с ним побайтово — значит, пять ответов
+# попарно равны (KA1-16: «тела пяти ответов попарно равны, и равны их
+# WWW-Authenticate»). Близнец — `list-accounts-as-bootstrap` (`200`).
+_KA1_REFUSAL_BODY_VAR = "ka1RefusalBodyAnonymous"
+_KA1_REFUSAL_CHALLENGE_VAR = "ka1RefusalChallengeAnonymous"
+
+_STASH_ANONYMOUS_REFUSAL = [
+    f"pm.environment.set({js_str(_KA1_REFUSAL_BODY_VAR)}, pm.response.text());",
+    f"pm.environment.set({js_str(_KA1_REFUSAL_CHALLENGE_VAR)},"
+    " pm.response.headers.get('WWW-Authenticate') || '');",
+]
+
+_REFUSAL_SAME_AS_ANONYMOUS = [
+    f"const _anonBody = pm.environment.get({js_str(_KA1_REFUSAL_BODY_VAR)}) || '';",
+    f"const _anonChallenge = pm.environment.get({js_str(_KA1_REFUSAL_CHALLENGE_VAR)}) || '';",
+    # Эталона нет — значит, анонимный кейс не исполнился: третий исход, а не
+    # «отказы равны» и не «отказы различны». Метка — от производителя набора.
+    f"pm.test({js_str(f'{PRECONDITION_MARK} KA1-16: эталон анонимного отказа захвачен (с чем сравнивать)')},"
+    " () => {",
+    "  pm.expect(_anonBody, 'тело анонимного отказа не захвачено — кейс "
+    "IBT-10-ANONYMOUS-REJECTED не исполнился').to.not.eql('');",
+    "});",
+    "pm.test('KA1-16: тело отказа побайтово равно ответу анонимному запросу', () => {",
+    "  pm.expect(pm.response.text(), 'тело этого отказа против анонимного').to.eql(_anonBody);",
+    "});",
+    "pm.test('KA1-16: WWW-Authenticate равен вызову ответа анонимному запросу', () => {",
+    "  pm.expect(pm.response.headers.get('WWW-Authenticate') || '',"
+    " 'вызов этого отказа против анонимного').to.eql(_anonChallenge);",
     "});",
 ]
 
@@ -292,6 +342,7 @@ CASES.append(Case(
                 "    'Authorization как отправлен: ' + _sent).to.eql(true);",
                 "});",
                 *_REJECTED,
+                *_STASH_ANONYMOUS_REFUSAL,
             ],
         ),
     ],
@@ -349,6 +400,7 @@ CASES.append(Case(
                 # без длины эти два кейса стали бы неразличимы.
                 *_assert_sent_bearer_shape(segments=3, alg="HS256", sig_len=43),
                 *_REJECTED,
+                *_REFUSAL_SAME_AS_ANONYMOUS,
             ],
         ),
     ],
@@ -395,6 +447,7 @@ CASES.append(Case(
                 "  pm.expect(_tok.split('.')[2], _tok).to.eql('');",
                 "});",
                 *_REJECTED,
+                *_REFUSAL_SAME_AS_ANONYMOUS,
             ],
         ),
     ],
@@ -554,6 +607,7 @@ def tampered_signature_case(*, case_id: str, title: str, env_var: str,
                 " + ')').to.not.eql(_b.length - 1);",
                 "});",
                 *_REJECTED,
+                *_REFUSAL_SAME_AS_ANONYMOUS,
             ],
         ),
         ],

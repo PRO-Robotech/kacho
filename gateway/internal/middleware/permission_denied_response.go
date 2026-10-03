@@ -252,57 +252,10 @@ func writeHTTPNotFound(w http.ResponseWriter, desc permissionDeniedDescriptor) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// buildGRPCUnauthStatus constructs a *status.Status for missing/invalid
-// credentials. Returns Unauthenticated (16) with attached ErrorInfo so the
-// client can distinguish "no credentials" from "authenticated but denied".
-// It must be code 16 (Unauthenticated), not 7 (PermissionDenied).
-func buildGRPCUnauthStatus(desc permissionDeniedDescriptor, reasons []string) *status.Status {
-	msg := "unauthenticated: credentials required"
-	st := status.New(codes.Unauthenticated, msg)
-
-	info := &errdetails.ErrorInfo{
-		Reason: "AUTHN_REQUIRED",
-		Domain: "kaname.cloud.iam.v1",
-		Metadata: map[string]string{
-			"fqn":          desc.FQN,
-			"deny_reasons": strings.Join(reasons, "; "),
-		},
-	}
-
-	stWithDetails, derr := st.WithDetails(info)
-	if derr != nil {
-		return st
-	}
-	return stWithDetails
-}
-
-// writeHTTPUnauth renders a 401 Unauthorized response for missing/invalid
-// credentials. The JSON body uses code 16 (gRPC Unauthenticated) so that
-// REST clients receive a machine-readable status consistent with the gRPC
-// surface. Also sets WWW-Authenticate: Bearer per RFC 7235. Must be 401 +
-// code 16, not 403 + code 7.
-func writeHTTPUnauth(w http.ResponseWriter, desc permissionDeniedDescriptor, reasons []string) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="kacho"`)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-
-	body := map[string]any{
-		"code":    16, // gRPC code Unauthenticated
-		"message": "unauthenticated: credentials required",
-		"details": []map[string]any{
-			{
-				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
-				"reason": "AUTHN_REQUIRED",
-				"domain": "kaname.cloud.iam.v1",
-				"metadata": map[string]string{
-					"fqn":          desc.FQN,
-					"deny_reasons": strings.Join(reasons, "; "),
-				},
-			},
-		},
-	}
-	_ = json.NewEncoder(w).Encode(body)
-}
+// Отказ «удостоверение не принято» (401 / UNAUTHENTICATED) здесь не строится:
+// у края один его производитель — пакет authnrefusal (приёмка KA1, Р2). Прежде
+// здесь стояла своя форма с глаголом и причинами отказа в `metadata` — то есть
+// ровно с тем, что отказ обязан не различать.
 
 // writeHTTPDeny renders a 403 response with the same descriptor / reasons.
 // `acrChallenge` — when non-empty, sets WWW-Authenticate per RFC 9470 §3.

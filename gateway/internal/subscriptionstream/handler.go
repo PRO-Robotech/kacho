@@ -23,6 +23,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/safeconv"
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -288,8 +289,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(principalmeta.HeaderPrincipalID) == "" &&
 			r.Header.Get(principalmeta.HeaderGRPCMetaPrincipalID) == "" {
 			h.refusedAuthN.Add(1)
-			writeRefusal(w, refusal{status: http.StatusUnauthorized, code: 16,
-				msg: "subscription requires an authenticated caller"})
+			// Единый отказ края (приёмка KA1, Р2) — тот же, что у слоя
+			// аутентификации; «нужен названный вызывающий» — в счётчике выше.
+			authnrefusal.WriteHTTP(w)
 			return
 		}
 		h.refusedSubjectKind.Add(1)

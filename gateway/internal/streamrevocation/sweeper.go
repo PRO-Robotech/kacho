@@ -502,7 +502,7 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 	sess, found, err := s.cfg.Authority.ResolveHumanSession(ctx, bearer)
 	switch {
 	case err != nil:
-		// Включая «метода нет»: путь запроса отказывает и на нём (F4d-23), годность
+		// Включая «метода нет»: путь запроса отказывает и на нём (ответ Р1 приёмки KA1), годность
 		// носителя не подтверждена ничем.
 		return verdictUnanswered
 	case !found:
@@ -525,7 +525,13 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 
 // cutoffVerdict — отсечка субъекта против момента аутентификации потока.
 func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential) verdict {
-	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, c.UserID)
+	// Учётная запись потока на этой полосе — сессия человека; субъект вопроса
+	// собирает тот же единственный конструктор, что у полосы личности.
+	cs, ok := middleware.NewCutoffSubject("user", c.UserID)
+	if !ok {
+		return verdictUnanswered
+	}
+	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, cs)
 	switch {
 	case errors.Is(err, middleware.ErrSessionCutoffUnsupported):
 		return verdictUnsupported

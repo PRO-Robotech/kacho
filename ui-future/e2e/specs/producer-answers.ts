@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import type { Route } from "@playwright/test";
+import {
+  EDGE_AUTHN_FAILED as EDGE_AUTHN_FAILED_SOURCE,
+  EDGE_CREDENTIAL_STATE_UNKNOWN as EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE,
+  type EdgeAnswer,
+} from "../../shared/src/test/edge-answers";
 
 /**
  * Ответы, которые проба ПОДСТАВЛЯЕТ, — в той форме, в какой их отдаёт
@@ -13,11 +18,11 @@ import type { Route } from "@playwright/test";
  * Подстановка нужна там, где условие нельзя создать иначе: служба не отвечает
  * краю (F8-10, F8-19, F8-25) и сессия не свежа (F8-29, Р9 ось 3а). Подставленный
  * ответ снисходительнее настоящего — и проба зеленеет на экране, который на
- * настоящем ответе ломается: у ответа края F8-25 есть вызов
- * `WWW-Authenticate: Bearer error="invalid_token"` и НЕТ поля `details`, и экран,
- * читающий их иначе, чем рукописное тело, проба бы не поймала. Поэтому тела и
- * заголовки собраны здесь по коду производителя, с координатой, и пробы берут
- * их отсюда, а не набирают рукой.
+ * настоящем ответе ломается: у ответа края F8-25 (приёмка KA1, Р1) статус `503`,
+ * НЕТ вызова `WWW-Authenticate` и НЕТ поля `details`, и экран, читающий их
+ * иначе, чем рукописное тело, проба бы не поймала. Поэтому тела и заголовки
+ * собраны здесь по коду производителя, с координатой, и пробы берут их отсюда,
+ * а не набирают рукой.
  *
  * ПРОИЗВОДИТЕЛИ
  *
@@ -25,10 +30,13 @@ import type { Route } from "@playwright/test";
  *     `writeRefusal` (тело `{code, message, details}`, `details` — всегда
  *     массив, `ErrorInfo` с доменом отказа) и `writeJSON` (`Content-Type:
  *     application/json`, `Cache-Control: no-store`);
- *   край — `gateway/internal/middleware/auth.go`, `writeHTTPUnauthorized`:
- *     `Content-Type: application/json`, вызов
- *     `Bearer error="invalid_token", error_description="<текст>"` и тело
- *     `{"code":16,"message":"<текст>"}` — без `details`.
+ *   край — ответы на предъявленное удостоверение (приёмка KA1) набраны ОДИН
+ *     раз, в `shared/src/test/edge-answers.ts`, и сверены там с литералами
+ *     производителя модульной пробой (`edge-answers.test.ts`): отказ `401`
+ *     (Р2, `gateway/internal/authnrefusal`) — один на все причины, с вызовом
+ *     `Bearer realm="kacho", error="invalid_token"` без `error_description` и
+ *     причиной `AUTHN_REQUIRED`; ответ `503` на молчание авторитета (Р1) — без
+ *     вызова и без `details`.
  *
  * ЧЕГО ЗДЕСЬ НЕТ. Захвата с живого стенда: подстановка собрана по коду
  * производителя, и расхождение кода и развёрнутого образа она не увидит.
@@ -54,16 +62,8 @@ function laneRefusal(producer: string, status: number, code: number, message: st
   return { producer, status, headers: LANE_HEADERS, body: JSON.stringify({ code, message, details }) };
 }
 
-function edgeUnauthorized(producer: string, description: string): ProducerAnswer {
-  return {
-    producer,
-    status: 401,
-    headers: {
-      "Content-Type": "application/json",
-      "WWW-Authenticate": `Bearer error="invalid_token", error_description="${description}"`,
-    },
-    body: `{"code":16,"message":"${description}"}`,
-  };
+function edgeAnswer(a: EdgeAnswer): ProducerAnswer {
+  return { producer: a.producer, status: a.status, headers: a.headers, body: a.text };
 }
 
 /** Служба не выполнила глагол (не ответило хранилище) — `writeError`, ветвь недоступности. */
@@ -91,11 +91,11 @@ export const SESSION_NOT_FRESH = laneRefusal(
   "SESSION_NOT_FRESH",
 );
 
-/** Край: служба не ответила о сессии на глаголе с носителем (F4d-23). */
-export const EDGE_SESSION_ENDED = edgeUnauthorized(
-  "gateway auth_own_session.go → writeHTTPUnauthorized(sessionCutoffDenyDescription)",
-  "session ended; sign in again",
-);
+/** Край: служба не ответила о предъявленном на глаголе с носителем (KA1, Р1) — носитель цел. */
+export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE);
+
+/** Край: удостоверение не принято (KA1, Р2) — один отказ на все причины. */
+export const EDGE_AUTHN_FAILED = edgeAnswer(EDGE_AUTHN_FAILED_SOURCE);
 
 /** Ответить подставленным ответом производителя — телом и заголовками. */
 export function fulfillWith(route: Route, answer: ProducerAnswer): Promise<void> {
