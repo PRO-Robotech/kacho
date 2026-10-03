@@ -381,6 +381,11 @@ type Stand struct {
 	CertA, CertB Cert
 
 	BasicGood, BasicUnknownID, BasicWrongSecret string
+
+	// Auth — слой аутентификации харнесса. Открыт для сборок, которые ставят за
+	// ним СВОЙ обработчик (П10: мост к бэкенду и ручка потока), — тот же слой,
+	// а не второй, собранный рядом.
+	Auth *middleware.AuthInterceptor
 }
 
 // lookup — резолв субъекта по `sub` для токена без утверждений принципала
@@ -445,6 +450,7 @@ func New(t *testing.T, opt Options) *Stand {
 		WithRequireMachineTokenBinding(opt.RequireBinding).
 		WithStepUp(middleware.NewStepUpGate(nil), middleware.NewCatalogPermissionLookup(catalog), middleware.NewRestRouter())
 
+	st.Auth = auth
 	var probe http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
