@@ -253,7 +253,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 // Здесь стоял `http.StatusServiceUnavailable`, то есть 503 в поле, где кода 503
 // не существует вовсе, — вызывающий вместо «повтори позже» (14, UNAVAILABLE)
 // получал величину вне словаря. Соседние писатели отказа края поле заполняют
-// верно и служат образцом: 401 → 16 (`writeHTTPUnauthorized`), 403 → 7
+// верно и служат образцом: 401 → 16 (`authnrefusal.WriteHTTP`), 403 → 7
 // (`writeHTTPDeny`), отказ слоя прав при недоступном источнике вердикта → 14
 // (`authz.go`, ветвь `outcomeError`) — то же число, что и здесь.
 // Закреплено `TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus`.
