@@ -185,7 +185,12 @@ func (a *AuthInterceptor) reportOwnSessionUnavailable(err error, route string) {
 		return
 	}
 	msg := "human session lookup unanswered; refusing browser session"
-	if errors.Is(err, ErrHumanSessionUnsupported) {
+	switch {
+	case errors.Is(err, ErrIntrospectionMisconfigured):
+		// kacho#2741: спрошен не тот слушатель — настройка, раскат не лечит.
+		msg = "human session lookup: the asked listener does not serve the identity service " +
+			"(misaddressed — fix the address); refusing browser session"
+	case errors.Is(err, ErrHumanSessionUnsupported):
 		msg = "human session lookup not offered by the authority; refusing browser session (image skew)"
 	}
 	a.logger.Error(msg, "err", err, "route", route,

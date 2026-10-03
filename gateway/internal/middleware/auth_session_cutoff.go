@@ -187,12 +187,21 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// своим счётчиком, чтобы застрявшее расхождение версий не оставило
 		// полосу без проверки молча.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			a.logger.Error("session revocation not enforced on the browser lane: "+
+			// Подсказка называет ВЕРНОЕ действие (kacho#2741): адаптер различает
+			// «не тот слушатель» (настройка) и «глагола нет у сборки» (раскат).
+			msg, predicate := "session revocation not enforced on the browser lane: "+
 				"the authority does not offer this question (image skew)",
+				"исчезает, когда служба прав докатится до того же дерева"
+			if errors.Is(err, ErrIntrospectionMisconfigured) {
+				msg, predicate = "session revocation not enforced on the browser lane: "+
+					"the asked listener does not serve the identity service (misaddressed)",
+					"не исчезает раскатом — исправьте адрес внутреннего слушателя службы доступа"
+			}
+			a.logger.Error(msg, "err", err,
 				"route", route,
 				"session_cutoff_unsupported_total", total,
 				"occurrences_since_last_report", represents,
-				"predicate", "исчезает, когда служба прав докатится до того же дерева")
+				"predicate", predicate)
 		}
 		return sessionCutoffUnsupported
 	}

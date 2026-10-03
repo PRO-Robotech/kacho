@@ -11,6 +11,8 @@ package clients
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -63,6 +65,32 @@ type SessionRevocationsAdapter struct {
 // не удалось» (fail-closed на каждой полосе).
 var errNoCallBudget = errors.New("identity adapter: assembled without a call budget (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET)")
 
+// unimplementedDiagnosis — какой из ДВУХ диагнозов несёт «метода нет» соседа
+// (kacho#2741). Корзин две, третьей нет:
+//
+//   - слушатель не знает СЛУЖБЫ вовсе («unknown service …» — так отвечает
+//     библиотека сервера, у которого служба не зарегистрирована): спрошен не тот
+//     слушатель. Это настройка адреса, повтор и раскат её не лечат —
+//     существующая корзина неисправности настройки
+//     (middleware.ErrIntrospectionMisconfigured);
+//   - служба есть, а глагола у сборки нет («unknown method …», «method … not
+//     implemented»): окно раската, которое сходится само.
+//
+// Различение идёт по тексту библиотеки gRPC — другого признака на проводе у
+// этих двух состояний нет; текст порождает библиотека сервера, а не служба, и
+// он стабилен как её поведение. Признак «вопрос не предложен» (unsupported)
+// остаётся при обоих: исход полосы и ответ арендатору от диагноза не зависят —
+// меняется только подсказка дежурному.
+func unimplementedDiagnosis(err error, unsupported error) error {
+	if strings.HasPrefix(status.Convert(err).Message(), "unknown service ") {
+		return fmt.Errorf("%w: %w: the asked listener does not serve the identity service at all "+
+			"(misaddressed — fix the address; a rollout will not cure it): %v",
+			unsupported, middleware.ErrIntrospectionMisconfigured, err)
+	}
+	return fmt.Errorf("%w: the identity service does not offer this verb yet "+
+		"(image skew — converges with the rollout): %v", unsupported, err)
+}
+
 // errNoCutoffSubject — вопрос об отсечке без субъекта (нулевое значение
 // middleware.CutoffSubject). Вызывающий читает его как «спросить не удалось».
 var errNoCutoffSubject = errors.New("identity adapter: session cutoff asked without a subject")
@@ -111,7 +139,7 @@ func (a *SessionRevocationsAdapter) ResolveHumanSession(
 	resp, err := a.human.Resolve(ctx, &iamv1.ResolveHumanSessionRequest{Bearer: bearer})
 	if err != nil {
 		if status.Code(err) == codes.Unimplemented {
-			return middleware.HumanSession{}, false, middleware.ErrHumanSessionUnsupported
+			return middleware.HumanSession{}, false, unimplementedDiagnosis(err, middleware.ErrHumanSessionUnsupported)
 		}
 		return middleware.HumanSession{}, false, err
 	}
@@ -164,7 +192,7 @@ func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 	case status.Code(err) == codes.Unauthenticated:
 		return false, nil
 	case status.Code(err) == codes.Unimplemented:
-		return false, streamrevocation.ErrBasicCredentialLivenessUnsupported
+		return false, unimplementedDiagnosis(err, streamrevocation.ErrBasicCredentialLivenessUnsupported)
 	default:
 		return false, err
 	}
@@ -244,7 +272,7 @@ func (a *SessionRevocationsAdapter) SessionCutoffOf(
 		// поэтому перевод в типизированный признак делается здесь, а решение —
 		// на слое, который им пользуется.
 		if status.Code(err) == codes.Unimplemented {
-			return time.Time{}, false, middleware.ErrSessionCutoffUnsupported
+			return time.Time{}, false, unimplementedDiagnosis(err, middleware.ErrSessionCutoffUnsupported)
 		}
 		return time.Time{}, false, err
 	}
