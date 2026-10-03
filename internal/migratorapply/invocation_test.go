@@ -15,6 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/corelib/treecorpus"
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
@@ -95,62 +96,65 @@ var (
 	argsLine    = regexp.MustCompile(`^\s*args:\s*\[(.+)\]\s*$`)
 )
 
-// subchartKey — ключ подчарта в наложении значений зонта (`kaname:` в нулевой
-// колонке). Им наложение называет службу, которую настраивает.
-//
-// Приставкой имени платформы образец НЕ сужается: часть продукта вправе носить
-// СВОЁ имя (#2076), и сужение по `kacho-` не отвергало бы такой ключ, а НЕ
-// ВИДЕЛО его — форма вызова у переименованной части оставалась бы без хозяина.
-// Кому принадлежит распознанный ключ, решает владелец имён.
-var subchartKey = regexp.MustCompile(`^([a-z][a-z0-9-]*):`)
-
-// serviceOfManifest — чей это манифест. Выводится из ПУТИ, а не из содержимого:
-// имя службы внутри файла бывает шаблонным (`{{ .Values.name }}`).
-//
-// Две раскладки, обе живые: `services/<svc>/deploy/…` и чарт зонта
-// `deploy/helm/umbrella/charts/kacho-<svc>/…`. Путь, не подошедший ни под одну,
-// возвращает пустую строку — тогда службу называет ключ подчарта, см.
-// serviceForForm. Приписать форму соседу хуже, чем остановиться: покрытой
-// оказалась бы не та точка наката.
-func serviceOfManifest(rel string) string {
-	rel = filepath.ToSlash(rel)
-	if s, ok := strings.CutPrefix(rel, "services/"); ok {
-		if i := strings.Index(s, "/"); i > 0 {
-			return s[:i]
-		}
-		return ""
-	}
-	if s, ok := strings.CutPrefix(rel, "deploy/helm/umbrella/charts/"); ok {
-		if i := strings.Index(s, "/"); i > 0 {
-			if svc, known := productnaming.ServiceDir(s[:i]); known {
-				return svc
-			}
-		}
-	}
-	return ""
-}
-
 // serviceForForm — чью форму вызова объявляет строка line файла rel.
 //
-// Источников ДВА, и второй не запасной: наложение значений зонта
-// (`deploy/helm/umbrella/values.*.yaml`) настраивает ВСЕ подчарты одним файлом,
-// поэтому путь там службы не называет — её называет ключ подчарта над строкой.
-// Обход, знающий только путь, на таком файле остановился бы; знающий только
-// первый попавшийся ключ — приписал бы форму соседу.
-func serviceForForm(rel string, lines []string, at int) string {
-	if s := serviceOfManifest(rel); s != "" {
-		return s
-	}
-	for i := at; i >= 0; i-- {
-		m := subchartKey.FindStringSubmatch(lines[i])
-		if m == nil {
-			continue
-		}
-		if svc, known := productnaming.ServiceDir(m[1]); known {
+// Ответ берётся у владельца имён частей, [productnaming.PartOfLine], а не
+// выводится здесь второй копией: своя копия уже расходилась с ним дважды
+// (kacho#2260, kacho#2915).
+//
+// Две раскладки пути вне подчартов зонта (Д77 (а)) — чарт поставки
+// `deploy/helm/<чарт>/…` и шаблон зонта `deploy/helm/umbrella/templates/<файл>`
+// (служба — первый сегмент имени файла до `-` или `.`) — дают службу, ТОЛЬКО
+// если каталог `services/<служба>` есть в индексе git tree. Иначе путь службы
+// не даёт: чарт без службы в дереве — не служба, и приписать ему форму значило
+// бы покрыть точку наката, которой нет. Тогда действует прежний порядок —
+// ключ подчарта, затем отказ «ЧЬЮ — не выводится».
+func serviceForForm(tree *treecorpus.Tree, rel string, lines []string, at int) string {
+	rel = filepath.ToSlash(rel)
+	if svc, ok := umbrellaTemplateService(rel); ok {
+		if tree.HasDir("services/" + svc) {
 			return svc
 		}
+		return keyedService(lines, at)
 	}
-	return ""
+	svc, _ := productnaming.PartOfLine(rel, lines, at)
+	if svc != "" && isDeliveryChart(rel) && !tree.HasDir("services/"+svc) {
+		return keyedService(lines, at)
+	}
+	return svc
+}
+
+// umbrellaTemplatesPrefix — шаблоны самого зонта (не подчартов).
+const umbrellaTemplatesPrefix = "deploy/helm/umbrella/templates/"
+
+// umbrellaTemplateService — служба шаблона зонта по имени файла.
+func umbrellaTemplateService(rel string) (string, bool) {
+	name, ok := strings.CutPrefix(rel, umbrellaTemplatesPrefix)
+	if !ok || strings.Contains(name, "/") {
+		return "", false
+	}
+	if i := strings.IndexAny(name, "-."); i > 0 {
+		return name[:i], true
+	}
+	return "", false
+}
+
+// isDeliveryChart — путь лежит в чарте поставки вне зонта `deploy/helm/<чарт>/`.
+func isDeliveryChart(rel string) bool {
+	s, ok := strings.CutPrefix(rel, "deploy/helm/")
+	if !ok {
+		return false
+	}
+	i := strings.IndexByte(s, '/')
+	return i > 0 && s[:i] != "umbrella" && s[:i] != "vendor"
+}
+
+// keyedService — прежний порядок без вывода из пути: служба по ключу подчарта
+// над строкой. Путь подаётся нейтральный, чтобы владелец имён судил только
+// ключ, а не раскладку пути, уже отвергнутую выше.
+func keyedService(lines []string, at int) string {
+	svc, _ := productnaming.PartOfLine("", lines, at)
+	return svc
 }
 
 // parseFlowSequence разбирает потоковую последовательность YAML из строк в
@@ -189,6 +193,11 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 
 	forms := make(map[string][]invocationForm)
 	filesRead := 0
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		t.Fatalf("индекс git не прочитан (%v) — чья форма вызова, судится по каталогу службы в "+
+			"индексе, и без него вывод службы из пути был бы догадкой", err)
+	}
 
 	for _, sub := range manifestRoots {
 		files, err := treecorpus.UnderWithSuffix(filepath.Join(root, sub), ".yaml", ".yml", ".tpl")
@@ -210,7 +219,7 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 			if relErr != nil {
 				t.Fatalf("относительный путь для %s: %v", abs, relErr)
 			}
-			for _, form := range formsInManifest(t, rel, string(body)) {
+			for _, form := range formsInManifest(t, tree, rel, string(body)) {
 				if form.service == "" {
 					t.Fatalf("%s объявляет форму вызова накатчика (%v), но ЧЬЮ — не выводится "+
 						"ни из пути, ни из ключа подчарта. Приписать форму соседу хуже, чем "+
@@ -229,7 +238,7 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 // Читается пара «command + следующий args»: nlb объявляет путь бинаря в command, а
 // аргументы — отдельным args, и разбор, знающий только command, потерял бы ровно ту
 // форму, ради которой заведена задача #1650.
-func formsInManifest(t *testing.T, rel, body string) []invocationForm {
+func formsInManifest(t *testing.T, tree *treecorpus.Tree, rel, body string) []invocationForm {
 	t.Helper()
 
 	var out []invocationForm
@@ -265,7 +274,7 @@ func formsInManifest(t *testing.T, rel, body string) []invocationForm {
 				"мигратора есть отказ, а не накат", rel, i+1)
 		}
 		out = append(out, invocationForm{
-			service: serviceForForm(rel, lines, i),
+			service: serviceForForm(tree, rel, lines, i),
 			argv:    argv,
 			origin:  fmt.Sprintf("%s:%d", rel, i+1),
 		})
@@ -297,7 +306,7 @@ func TestEveryApplyPointHasItsInvocationFormDerived(t *testing.T) {
 
 	covered := 0
 	for _, pkg := range points {
-		service, _ := migrationsDirOf(pkg)
+		service := pointService(pkg)
 		got := forms[service]
 		if len(got) == 0 {
 			t.Errorf("у точки наката %s НЕТ ни одной формы вызова в манифестах под %v. "+
@@ -318,8 +327,7 @@ func TestEveryApplyPointHasItsInvocationFormDerived(t *testing.T) {
 	// её форма в манифестах была, а точки в перечне не было (kacho#2183).
 	inPoints := make(map[string]bool, len(points))
 	for _, pkg := range points {
-		service, _ := migrationsDirOf(pkg)
-		inPoints[service] = true
+		inPoints[pointService(pkg)] = true
 	}
 	// ТРЕТИЙ ИСХОД, названный после разреза монорепо: форма объявлена нашим
 	// манифестом для части, чьи ИСХОДНИКИ живут в другом репозитории. Точки
@@ -435,21 +443,29 @@ func serviceConfigYAML(dsn string) string {
 // DSN доставляется ТОЙ полосой, которую называет сам манифест, и полоса выводится
 // из него, а не из перечня сервисов:
 //
+//   - манифест формы называет `KACHO_MIGRATOR_DSN` → DSN этой переменной (Д77 (в):
+//     точка, не читающая конфигурации процесса, — notify — получает DSN только ею);
 //   - форма несёт `--config <путь>` → конфигурация файлом, путь подменяется;
 //   - манифест называет `KACHO_<SVC>_CONFIG_PATH` → конфигурация файлом по этому пути;
 //   - иначе → конфигурация окружением `KACHO_<SVC>_DB_*`.
+//
+// Переменная `KACHO_MIGRATOR_DSN` гасится у всех служб, чей манифест её НЕ
+// называет: иначе полоса конфигурации зеленела бы на DSN из окружения прогона.
 //
 // Флаг `--dsn` не подставляется НИКОГДА, и это предмет: первый источник приоритета
 // (`--dsn` > `KACHO_MIGRATOR_DSN` > конфигурация) доказан пробой наката рядом, а
 // последний — тот, которым пользуются все развёртывания дерева, — не был доказан
 // ничем. Именно его и гоняет эта полоса.
-func invocationEnv(t *testing.T, service string, form invocationForm, dsn, dir string) ([]string, []string) {
+func invocationEnv(t *testing.T, service string, form invocationForm, dsn, dir string, lane dsnLane) ([]string, []string) {
 	t.Helper()
 
 	argv := append([]string(nil), form.argv...)
+	if lane == laneMigratorDSN {
+		return argv, []string{migratorDSNEnv + "=" + dsn}
+	}
 	// Переменная общего приоритета гасится: не погасив её, полоса конфигурации
 	// зеленела бы на DSN из окружения прогона — то есть доказывала бы не себя.
-	env := []string{"KACHO_MIGRATOR_DSN="}
+	env := []string{migratorDSNEnv + "="}
 
 	writeConfig := func(path string) {
 		if err := os.WriteFile(path, []byte(serviceConfigYAML(dsn)), 0o600); err != nil {
@@ -483,6 +499,42 @@ func invocationEnv(t *testing.T, service string, form invocationForm, dsn, dir s
 		pfx+"_DB_NAME="+p.name,
 		pfx+"_DB_SSLMODE=disable",
 	)
+}
+
+// migratorDSNEnv — переменная DSN второго приоритета общего тракта наката.
+const migratorDSNEnv = "KACHO_MIGRATOR_DSN"
+
+// dsnLane — полоса доставки DSN форме вызова.
+type dsnLane int
+
+const (
+	// laneServiceConfig — конфигурация службы (файл или окружение KACHO_<SVC>_*).
+	laneServiceConfig dsnLane = iota
+	// laneMigratorDSN — переменная KACHO_MIGRATOR_DSN, названная манифестом формы.
+	laneMigratorDSN
+)
+
+func (l dsnLane) String() string {
+	if l == laneMigratorDSN {
+		return migratorDSNEnv
+	}
+	return "конфигурация службы"
+}
+
+// laneOf — полоса, которую называет манифест: файл, из которого форма
+// выведена, называет KACHO_MIGRATOR_DSN — полоса этой переменной; иначе —
+// конфигурация службы. Признак берётся у манифеста формы, а не у перечня служб.
+func laneOf(t *testing.T, root string, form invocationForm) dsnLane {
+	t.Helper()
+	file, _, _ := strings.Cut(form.origin, ":")
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	if err != nil {
+		t.Fatalf("манифест формы %s не прочитан: %v", form.origin, err)
+	}
+	if strings.Contains(string(body), migratorDSNEnv) {
+		return laneMigratorDSN
+	}
+	return laneServiceConfig
 }
 
 // manifestNamesConfigPath — называет ли манифест сервиса путь конфигурации.
@@ -538,12 +590,21 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 		t.Fatal("манифестов НЕ ПРОЧИТАНО ни одного — доказывать нечего")
 	}
 
+	chainsOf := map[string][]migrationchains.Chain{}
+	for _, c := range treeChains(t, root) {
+		chainsOf[c.Point] = append(chainsOf[c.Point], c)
+	}
+
 	binDir := t.TempDir()
 	cfgDir := t.TempDir()
-	proven, failed := 0, 0
+	proven, failed, outOfPoll := 0, 0, 0
+	perService := map[string]int{}
+	// pointsOutOfPoll — точки, у которых ВСЕ формы вне опроса (носитель не
+	// отрендерен профилем, Д91): в знаменатель они не входят.
+	pointsOutOfPoll := 0
 
 	for _, pkg := range points {
-		service, migDir := migrationsDirOf(pkg)
+		service := pointService(pkg)
 		serviceForms := uniqueForms(forms[service])
 		if len(serviceForms) == 0 {
 			// Перепись выше уже назвала это находкой; здесь молчать нельзя тем
@@ -553,56 +614,191 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 			failed++
 			continue
 		}
+		chains := chainsOf[pkg]
+		if len(chains) == 0 {
+			t.Errorf("у точки %s нет ни одной цепочки в перечне дерева — накат в манифестной "+
+				"форме доказывать не на чем", pkg)
+			failed++
+			continue
+		}
 
 		bin := buildApplyPoint(t, root, binDir, pkg, service)
+		pointPolled := false
 
+		// Каждая выведенная форма — на строке ЕЁ базы (Д84): у точки, выбирающей
+		// цепочку по имени базы, форма доказывается только на строке, чей
+		// Database равен dbname манифеста формы; у точки без таблицы — на её
+		// строке, как прежде (Д77 (б)).
 		for _, form := range serviceForms {
-			ok := t.Run(service+"/"+strings.ReplaceAll(form.String(), " ", "_"), func(t *testing.T) {
-				want := chainLength(t, root, migDir)
-				if want == 0 {
-					t.Fatalf("в %s НЕТ ни одного файла миграции — эталона для сверки "+
-						"не существует", migDir)
-				}
-				dsn := pgtest.NewEmptyDB(t)
-				argv, env := invocationEnv(t, service, form, dsn, cfgDir)
-
-				out, err := runMigratorEnv(t, bin, env, argv...)
-				if err != nil {
-					t.Fatalf("накат %s в манифестной форме `%s` (%s) ОТКАЗАЛ (%v) — "+
-						"это и означает «сервис не разворачивается»:\n%s",
-						service, form, form.origin, err, out)
-				}
-				if got := appliedCount(t, dsn); got != want {
-					t.Fatalf("накат %s в форме `%s` вышел успехом, но применил %d миграций "+
-						"из %d объявленных цепочкой. Успех на неполном накате хуже отказа: "+
-						"схема не та, а вердикт зелёный.\n%s", service, form, got, want, out)
-				}
-				// Повторный накат: init-контейнер запускается на КАЖДОМ развёртывании.
-				if out, err := runMigratorEnv(t, bin, env, argv...); err != nil {
-					t.Fatalf("повторный накат %s в форме `%s` отказал (%v):\n%s",
-						service, form, err, out)
-				}
-				if got := appliedCount(t, dsn); got != want {
-					t.Fatalf("повторный накат %s изменил число применённых: %d вместо %d",
-						service, got, want)
-				}
-				proven++
-			})
-			if !ok {
+			lane := laneOf(t, root, form)
+			pairing := formRows(root, form, chains)
+			for _, f := range pairing.findings {
+				t.Errorf("служба %s, форма `%s` (%s): %s", service, form, form.origin, f)
 				failed++
 			}
+			if pairing.outOfPoll != "" {
+				outOfPoll++
+				t.Logf("  %s · форма `%s` · источник %s", pairing.outOfPoll, form, form.origin)
+			} else {
+				pointPolled = true
+			}
+			for _, c := range pairing.rows {
+
+				name := chainLabel(c) + "/" + strings.ReplaceAll(form.String(), " ", "_")
+				ok := t.Run(name, func(t *testing.T) {
+					want := chainLength(t, root, c.Dir)
+					if want == 0 {
+						t.Fatalf("в %s НЕТ ни одного файла миграции — эталона для сверки "+
+							"не существует", c.Dir)
+					}
+					dsn := chainDSN(t, c)
+					argv, env := invocationEnv(t, service, form, dsn, cfgDir, lane)
+
+					out, err := runMigratorEnv(t, bin, env, argv...)
+					if err != nil {
+						t.Fatalf("накат %s в манифестной форме `%s` (%s, полоса DSN %s, база %s) "+
+							"ОТКАЗАЛ (%v) — это и означает «сервис не разворачивается»:\n%s",
+							service, form, form.origin, lane, databaseColumn(c), err, out)
+					}
+					got := appliedCount(t, dsn)
+					t.Logf("  служба %s · форма `%s` · источник %s · Database %s · полоса DSN %s · "+
+						"применено %d / объявлено %d", service, form, form.origin, databaseColumn(c), lane, got, want)
+					if got != want {
+						t.Fatalf("накат %s в форме `%s` вышел успехом, но применил %d миграций "+
+							"из %d объявленных цепочкой. Успех на неполном накате хуже отказа: "+
+							"схема не та, а вердикт зелёный.\n%s", service, form, got, want, out)
+					}
+					// Повторный накат: init-контейнер запускается на КАЖДОМ развёртывании.
+					if out, err := runMigratorEnv(t, bin, env, argv...); err != nil {
+						t.Fatalf("повторный накат %s в форме `%s` отказал (%v):\n%s",
+							service, form, err, out)
+					}
+					if got := appliedCount(t, dsn); got != want {
+						t.Fatalf("повторный накат %s изменил число применённых: %d вместо %d",
+							service, got, want)
+					}
+					proven++
+					perService[service]++
+				})
+				if !ok {
+					failed++
+				}
+			}
+		}
+		if !pointPolled {
+			pointsOutOfPoll++
 		}
 	}
 
-	t.Logf("перепись: точек наката %d, манифестных форм доказано %d", len(points), proven)
+	services := make([]string, 0, len(perService))
+	for svc := range perService {
+		services = append(services, svc)
+	}
+	sort.Strings(services)
+	for _, svc := range services {
+		t.Logf("  доказано форм×строк у %s: %d", svc, perService[svc])
+	}
+	polled := len(points) - pointsOutOfPoll
+	t.Logf("перепись: точек наката %d, из них в опросе %d, вне опроса %d (носитель формы не отрендерен "+
+		"профилем — строки выше, Д91); манифестных форм×строк доказано %d, форм вне опроса %d",
+		len(points), polled, pointsOutOfPoll, proven, outOfPoll)
 
 	switch {
 	case failed > 0:
 		t.Errorf("накат в манифестной форме доказан для %d, отказали %d — находки выше", proven, failed)
-	case proven < len(points):
-		t.Errorf("доказано %d форм при %d точках наката и нуле отказов — прогон отфильтрован "+
+	case polled == 0:
+		t.Errorf("точек в опросе 0 из %d — доказывать нечего, это отказ, а не зелёный", len(points))
+	case proven < polled:
+		t.Errorf("доказано %d форм при %d точках в опросе и нуле отказов — прогон отфильтрован "+
 			"(-run), и его зелёное относится к %d, а не к %d",
-			proven, len(points), proven, len(points))
+			proven, polled, proven, polled)
+	}
+}
+
+// TestPointWithoutServiceConfigRefusesTheConfigLane — инъекция Д77 (в): форма
+// службы, чей манифест подаёт DSN переменной KACHO_MIGRATOR_DSN, запущенная
+// полосой конфигурации (KACHO_<SVC>_DB_*, переменная погашена), ОТКАЗЫВАЕТ —
+// точка конфигурации процесса не читает. Близнец — та же форма полосой
+// KACHO_MIGRATOR_DSN в TestEveryMigratorAppliesItsChainInItsManifestForm
+// (применено = объявлено). Будь у точки запасная полоса — инъекция позеленела
+// бы, и доказательство в манифестной форме доказывало бы не ту полосу.
+func TestPointWithoutServiceConfigRefusesTheConfigLane(t *testing.T) {
+	if testing.Short() {
+		t.Skip("накат идёт против живой базы (testcontainers): под кратким режимом пропускается, " +
+			"гоняет цель test-pg-outside-selection")
+	}
+	root := repoRoot(t)
+	forms, _ := manifestForms(t, root)
+	chainsOf := map[string][]migrationchains.Chain{}
+	for _, c := range treeChains(t, root) {
+		chainsOf[c.Service] = append(chainsOf[c.Service], c)
+	}
+	judged := 0
+	services := make([]string, 0, len(forms))
+	for svc := range forms {
+		services = append(services, svc)
+	}
+	sort.Strings(services)
+	for _, service := range services {
+		for _, form := range uniqueForms(forms[service]) {
+			if laneOf(t, root, form) != laneMigratorDSN || len(chainsOf[service]) == 0 {
+				continue
+			}
+			c := chainsOf[service][0]
+			bin := buildApplyPoint(t, root, t.TempDir(), c.Point, service)
+			dsn := chainDSN(t, c)
+			argv, env := invocationEnv(t, service, form, dsn, t.TempDir(), laneServiceConfig)
+			out, err := runMigratorEnv(t, bin, env, argv...)
+			if err == nil {
+				t.Errorf("форма %s (%s) полосой конфигурации службы ПРИМЕНИЛА накат — у точки "+
+					"есть запасная полоса DSN, и манифестная полоса %s не единственная:\n%s",
+					service, form.origin, migratorDSNEnv, out)
+				continue
+			}
+			judged++
+			t.Logf("  %s `%s` (%s): полоса конфигурации отвергнута, как и должна: %v",
+				service, form, form.origin, err)
+		}
+	}
+	t.Logf("перепись: форм с полосой %s судимо %d", migratorDSNEnv, judged)
+	if judged == 0 {
+		t.Fatalf("форм с полосой %s в дереве 0 — инъекции не на чем стоять", migratorDSNEnv)
+	}
+}
+
+// TestPointRefusesADatabaseOutsideItsTable — инъекция CX1-115 (г): строке с
+// именем базы подана база pgtest.NewEmptyDB (имя `kacho_*_tNNNN`) → точка
+// отказывает с именем базы. Близнец — база с именем строки в
+// TestEveryMigratorAppliesItsChainToALiveDatabase (применено = объявлено).
+func TestPointRefusesADatabaseOutsideItsTable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("накат идёт против живой базы (testcontainers): под кратким режимом пропускается, " +
+			"гоняет цель test-pg-outside-selection")
+	}
+	root := repoRoot(t)
+	judged := 0
+	for _, c := range treeChains(t, root) {
+		if c.Database == "" {
+			continue
+		}
+		bin := buildApplyPoint(t, root, t.TempDir(), c.Point, c.Service)
+		dsn := pgtest.NewEmptyDB(t)
+		name, _ := migrationchains.DatabaseOf(dsn)
+		out, err := runMigrator(t, bin, "up", "--dsn", dsn)
+		switch {
+		case err == nil:
+			t.Errorf("точка %s приняла базу %s вне своей таблицы — у неё есть запасная ветка на "+
+				"имя базы:\n%s", c.Point, name, out)
+		case !strings.Contains(out, name):
+			t.Errorf("точка %s отказала базе %s, не назвав её:\n%s", c.Point, name, out)
+		default:
+			judged++
+			t.Logf("  точка %s · строка %s · база %s отвергнута с именем", c.Point, c.Database, name)
+		}
+	}
+	t.Logf("перепись: строк с именем базы судимо %d", judged)
+	if judged == 0 {
+		t.Fatal("строк таблиц цепочек с именем базы в дереве 0 — инъекции не на чем стоять")
 	}
 }
 

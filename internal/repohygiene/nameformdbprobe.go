@@ -179,8 +179,10 @@ func analyseNameFormDBCoverage(files map[string]string, canonPattern string, ent
 		body := files[p]
 
 		switch {
-		case strings.HasSuffix(rel, ".sql") &&
-			strings.Contains(rel, "/internal/migrations/"):
+		// Какие .sql — миграции, решает СОСТАВ корпуса: его собирает вызывающий
+		// по перечню цепочек migrationchains (kacho#2915, CX1-114), а не сегмент
+		// пути, которого цепочка пробы notify не несёт.
+		case strings.HasSuffix(rel, ".sql"):
 			cov.MigrationsRead++
 			migrationsBySvc[svc] = append(migrationsBySvc[svc], rel)
 		case strings.HasSuffix(rel, "_test.go"):

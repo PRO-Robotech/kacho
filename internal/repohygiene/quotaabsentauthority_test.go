@@ -175,30 +175,32 @@ func TestQuotaChargeTriggerReadsTheAuthorityDeclaration(t *testing.T) {
 func auditQuotaAbsentAuthority(t *testing.T, root string) (quotaAbsentCensus, []string) {
 	t.Helper()
 
-	base := filepath.Join(root, "services")
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		t.Fatalf("чтение каталога сервисов: %v", err)
+	// Цепочки службы — у migrationchains (gateChainDirs), а не из имени
+	// службы: у services/notify их несколько (kacho#2915, CX1-114).
+	chainDirsOf := map[string][]string{}
+	var services []string
+	for _, cd := range gateChainDirs(t, root) {
+		if _, seen := chainDirsOf[cd.Service]; !seen {
+			services = append(services, cd.Service)
+		}
+		chainDirsOf[cd.Service] = append(chainDirsOf[cd.Service], cd.Dir)
 	}
+	sort.Strings(services)
 
 	var (
 		census   quotaAbsentCensus
 		findings []string
 	)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		svc := e.Name()
-		migDir := filepath.Join(base, svc, "internal", "migrations")
-		if _, statErr := os.Stat(migDir); statErr != nil {
-			continue
-		}
+	for _, svc := range services {
 		census.Services++
 
-		files, listErr := treecorpus.UnderWithSuffix(migDir, ".sql")
-		if listErr != nil {
-			t.Fatalf("состав миграций %s: %v", svc, listErr)
+		var files []string
+		for _, migDir := range chainDirsOf[svc] {
+			chainSQL, listErr := treecorpus.UnderWithSuffix(migDir, ".sql")
+			if listErr != nil {
+				t.Fatalf("состав миграций %s: %v", svc, listErr)
+			}
+			files = append(files, chainSQL...)
 		}
 
 		type def struct {

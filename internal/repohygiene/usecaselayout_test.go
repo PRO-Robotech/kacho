@@ -49,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -194,38 +195,103 @@ func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
 func TestUseCaseLayoutPremiseHolds(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	total := 0
+	svcs := serviceDirs(t, root)
 
-	for _, svc := range serviceDirs(t, root) {
-		// Сегмент берётся у службы, а не выписывается: одна строка на всех
-		// молча обходила бы не тот каталог у той, что назвалась своим именем.
-		api := filepath.Join(root, svc, "internal", "apps",
-			servicelayout.UseCaseSegment(filepath.Base(svc)), "api")
-		entries, err := os.ReadDir(api)
-		if err != nil {
-			t.Fatalf("%s: нет `internal/apps/<сегмент>/api/` (%v). Предпосылка запрета "+
-				"второй раскладки (TestUseCaseLayerHasOneLayout) больше не выполняется: "+
-				"этот сервис держит слой бизнес-логики где-то ещё. Реши, где он живёт, "+
-				"и приведи к общему дому — либо пересмотри запрет.", svc, err)
-		}
-		pkgs := 0
-		for _, e := range entries {
-			if e.IsDir() && countGoFiles(filepath.Join(api, e.Name())) > 0 {
-				pkgs++
-			}
-		}
-		if pkgs == 0 {
-			t.Fatalf("%s: `internal/apps/<сегмент>/api/` есть, но ни одного пакета с .go "+
-				"в нём нет. Предпосылка запрета второй раскладки не выполняется — "+
-				"use-case этого сервиса лежит не там, где утверждает правило.", svc)
-		}
-		total += pkgs
+	shapes := make(map[string]useCaseLayerShape, len(svcs))
+	for _, svc := range svcs {
+		shapes[svc] = readUseCaseLayerShape(root, svc)
+	}
+
+	names := make([]string, 0, len(svcs))
+	for _, svc := range svcs {
+		names = append(names, filepath.Base(svc))
+	}
+	const gate = "TestUseCaseLayoutPremiseHolds"
+	for _, f := range surfaceDecisionRecordFindings(noUseCaseLayer, names, gate, readTreeRecord(root)) {
+		t.Error(f)
+	}
+	findings, total := useCasePremiseFindings(svcs, shapes, noUseCaseLayer)
+	for _, f := range findings {
+		t.Error(f)
 	}
 
 	// Перепись: предпосылка проверена по КАЖДОМУ сервису, и это число названо —
-	// иначе «предпосылка держится» неотличимо от «сервисов не нашлось».
-	t.Logf("перепись: сервисов осмотрено %d, пакетов слоя в них суммарно %d",
-		len(serviceDirs(t, root)), total)
+	// иначе «предпосылка держится» неотличимо от «сервисов не нашлось». Записи
+	// решения названы отдельным числом: «освобождено решением» не сливается с
+	// «осмотрено».
+	t.Logf("перепись: сервисов осмотрено %d, пакетов слоя в них суммарно %d, "+
+		"служб без слоя по решению (noUseCaseLayer) %d",
+		len(svcs), total, len(noUseCaseLayer))
+}
+
+// useCaseLayerShape — что у службы есть из дома слоя бизнес-логики.
+type useCaseLayerShape struct {
+	apps bool // каталог `internal/apps/` существует
+	api  bool // каталог `internal/apps/<сегмент>/api/` существует
+	pkgs int  // пакетов с .go непосредственно под `api/`
+}
+
+// readUseCaseLayerShape — снять форму с дерева. Ничего не решает.
+func readUseCaseLayerShape(root, svc string) useCaseLayerShape {
+	var shape useCaseLayerShape
+	if info, err := os.Stat(filepath.Join(root, svc, "internal", "apps")); err == nil && info.IsDir() {
+		shape.apps = true
+	}
+	// Сегмент берётся у службы, а не выписывается: одна строка на всех
+	// молча обходила бы не тот каталог у той, что назвалась своим именем.
+	api := filepath.Join(root, svc, "internal", "apps",
+		servicelayout.UseCaseSegment(filepath.Base(svc)), "api")
+	entries, err := os.ReadDir(api)
+	if err != nil {
+		return shape
+	}
+	shape.api = true
+	for _, e := range entries {
+		if e.IsDir() && countGoFiles(filepath.Join(api, e.Name())) > 0 {
+			shape.pkgs++
+		}
+	}
+	return shape
+}
+
+// useCasePremiseFindings — РЕШЕНИЕ о предпосылке, чистой функцией: доказательство
+// способности упасть (surfacedecision_injection_test.go) прогоняет ЕЁ.
+//
+// Служба, записанная в noUseCaseLayer, держит предпосылку иначе: у неё НЕТ
+// `internal/apps/` вовсе. Появился каталог — запись пережила предмет, и это
+// находка, а не молчаливое продолжение освобождения. Запрет второй раскладки
+// (TestUseCaseLayerHasOneLayout) записанную службу по-прежнему обходит: решение
+// снимает требование дома, а не запрет второго.
+func useCasePremiseFindings(svcs []string, shapes map[string]useCaseLayerShape,
+	ledger []surfaceDecision,
+) (findings []string, total int) {
+	recorded := recordedServices(ledger)
+	for _, svc := range svcs {
+		shape := shapes[svc]
+		if recorded[filepath.Base(svc)] {
+			if shape.apps {
+				findings = append(findings, svc+": запись noUseCaseLayer пережила свой предмет — "+
+					"у службы появился `internal/apps/`. Снимите запись: дальше предпосылка "+
+					"судится как у всех служб")
+			}
+			continue
+		}
+		switch {
+		case !shape.api:
+			findings = append(findings, svc+": нет `internal/apps/<сегмент>/api/`. Предпосылка "+
+				"запрета второй раскладки (TestUseCaseLayerHasOneLayout) больше не выполняется: "+
+				"этот сервис держит слой бизнес-логики где-то ещё. Реши, где он живёт, и приведи "+
+				"к общему дому — либо, если у службы нет входящего RPC и класть некуда, запиши "+
+				"решение в noUseCaseLayer")
+		case shape.pkgs == 0:
+			findings = append(findings, svc+": `internal/apps/<сегмент>/api/` есть, но ни одного "+
+				"пакета с .go в нём нет. Предпосылка запрета второй раскладки не выполняется — "+
+				"use-case этого сервиса лежит не там, где утверждает правило.")
+		}
+		total += shape.pkgs
+	}
+	sort.Strings(findings)
+	return findings, total
 }
 
 // serviceDirs — каталоги сервисов (`services/<svc>`), у которых есть `internal`.

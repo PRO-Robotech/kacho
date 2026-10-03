@@ -390,12 +390,6 @@ func enumDictionaryInventory(t *testing.T, root string, corpus migrationSQLCorpu
 		return cached
 	}
 
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
-	if err != nil {
-		t.Fatalf("чтение %s: %v", servicesDir, err)
-	}
-
 	inv := enumDictInventory{
 		dict:   map[string]sqlEnumDict{},
 		source: map[string]string{},
@@ -406,12 +400,10 @@ func enumDictionaryInventory(t *testing.T, root string, corpus migrationSQLCorpu
 	nameSource := map[string]string{}
 	// live — «<сервис>:<таблица>» → имя ограничения → его словарь.
 	live := map[string]map[string]sqlEnumDict{}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		svc := e.Name()
-		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
+	// Цепочки — у migrationchains (gateChainDirs), а не из имени службы
+	// (kacho#2915, CX1-114).
+	for _, cd := range gateChainDirs(t, root) {
+		svc, dir := cd.Service, cd.Dir
 		sqls, globErr := corpus(dir)
 		if globErr != nil {
 			t.Fatalf("состав %s: %v", dir, globErr)

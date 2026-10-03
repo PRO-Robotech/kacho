@@ -42,6 +42,7 @@ package repohygiene
 // было бы неотличимо от переезда.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,13 +160,23 @@ func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
 	}
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
+	judge, recordFindings := censusSubjects(svcs, noListingSurface,
+		func(svc string) int { return len(treeListings(t, root, svc)) })
+	for _, f := range recordFindings {
+		t.Error(f)
+	}
+	if len(judge) == 0 {
+		t.Fatalf("служб для анализатора 0 из %d — перепись беспредметна", len(svcs))
+	}
+	t.Logf("служб %d · судится анализатором %d · записано без списочной поверхности (noListingSurface) %d",
+		len(svcs), len(judge), len(svcs)-len(judge))
 
 	type row struct {
 		svc        string
 		tree, seen int
 	}
 	var rows []row
-	for _, svc := range svcs {
+	for _, svc := range judge {
 		tree := treeListings(t, root, svc)
 		seen := analyserListingCount(t, root, svc)
 		rows = append(rows, row{svc, len(tree), seen})
@@ -274,4 +285,32 @@ func TestCIRunsThisCensus(t *testing.T) {
 			t.Fatalf("ci.yaml runs the census with -short, which skips it: %s", strings.TrimSpace(line))
 		}
 	}
+}
+
+// censusSubjects — службы, чей анализатор перепись зовёт, и находки по
+// записям noListingSurface (Д88).
+//
+// Предпосылка одна на четыре теста покрытия списков, и источник у неё один —
+// ведомость noListingSurface: записанная служба анализатора и цели
+// `audit-list-filter` не имеет, и звать её анализатор значит получить отказ
+// make, а не измерение. Запись не глушит службу молча: у записанной службы
+// обход дерева обязан находить 0 транспортных списков; первый List* — находка
+// «запись пережила предмет», и служба судится анализатором, как все.
+func censusSubjects(svcs []string, records []surfaceDecision, treeCount func(string) int) (judge, findings []string) {
+	recorded := make(map[string]bool, len(records))
+	for _, r := range records {
+		recorded[r.Service] = true
+	}
+	for _, svc := range svcs {
+		if !recorded[svc] {
+			judge = append(judge, svc)
+			continue
+		}
+		if n := treeCount(svc); n > 0 {
+			findings = append(findings, fmt.Sprintf("services/%s записана в noListingSurface, а обход дерева "+
+				"нашёл %d транспортных List* — запись пережила предмет, и служба судится анализатором", svc, n))
+			judge = append(judge, svc)
+		}
+	}
+	return judge, findings
 }

@@ -121,8 +121,7 @@ func TestRetiredEngineNameTakesNoNewDatabaseObject(t *testing.T) {
 			"продлевать НОВЫМ объектом нельзя — оно уже стоило заведённой по нему задачи #1667.\n")
 		for _, k := range added {
 			o := byKey[k]
-			fmt.Fprintf(&b, "  + %-11s %-46s services/%s/internal/migrations/%s\n",
-				o.Kind, o.Name, o.Service, o.Migration)
+			b.WriteString(retiredEngineFindingLine(o))
 		}
 		b.WriteString("Исходов два: назвать объект по домену-владельцу (registry так и сделал — " +
 			"`registry_outbox` вместо имени движка), либо, если имя взято осознанно, " +
@@ -144,6 +143,12 @@ func TestRetiredEngineNameTakesNoNewDatabaseObject(t *testing.T) {
 	if len(added) == 0 && len(removed) == 0 {
 		t.Logf("состав сходится: %d объектов в ведомости, %d в дереве", len(want), len(got))
 	}
+}
+
+// retiredEngineFindingLine — строка находки «новое имя»: род, имя и файл
+// миграции НАСТОЯЩИМ путём — каталог цепочки не выводится из имени службы.
+func retiredEngineFindingLine(o RetiredEngineDatabaseObject) string {
+	return fmt.Sprintf("  + %-11s %-46s %s\n", o.Kind, o.Name, o.Path)
 }
 
 // diffSortedStrings — что появилось в got сверх want и чего в got не хватает.
@@ -169,33 +174,31 @@ func diffSortedStrings(want, got []string) (added, removed []string) {
 	return added, removed
 }
 
-// readServiceMigrations — содержимое всех .sql каталогов services/*/internal/migrations.
+// readServiceMigrations — содержимое всех .sql каждой цепочки дерева. Каталоги
+// цепочек — у migrationchains (gateChainDirs), а не из имени службы
+// (kacho#2915, CX1-114). Ключ — путь от корня.
 func readServiceMigrations(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
-	if err != nil {
-		t.Fatalf("чтение %s: %v", servicesDir, err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dir := filepath.Join(servicesDir, e.Name(), "internal", "migrations")
-		files, err := os.ReadDir(dir)
+	for _, cd := range gateChainDirs(t, root) {
+		files, err := os.ReadDir(cd.Dir)
 		if err != nil {
-			continue // сервис без каталога миграций — законно
+			continue // цепочка без каталога на диске — законно для синтетики
 		}
 		for _, f := range files {
 			if f.IsDir() || !strings.HasSuffix(f.Name(), ".sql") {
 				continue
 			}
-			body, err := os.ReadFile(filepath.Join(dir, f.Name()))
+			abs := filepath.Join(cd.Dir, f.Name())
+			body, err := os.ReadFile(abs)
 			if err != nil {
-				t.Fatalf("чтение %s: %v", filepath.Join(dir, f.Name()), err)
+				t.Fatalf("чтение %s: %v", abs, err)
 			}
-			out[filepath.ToSlash(filepath.Join("services", e.Name(), "internal", "migrations", f.Name()))] = string(body)
+			rel, err := filepath.Rel(root, abs)
+			if err != nil {
+				t.Fatalf("относительный путь %s: %v", abs, err)
+			}
+			out[filepath.ToSlash(rel)] = string(body)
 		}
 	}
 	return out

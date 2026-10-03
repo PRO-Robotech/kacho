@@ -212,9 +212,15 @@ func judgeClientIdentityLeaves(scopes []certScope) []leafFinding {
 
 // leafScanRoots — корни обхода. Выводятся из раскладки монорепо, а не
 // перечисляют чарты: новый чарт попадает под проверку сам.
+//
+// Чарт notify лежит вне умбреллы (`deploy/helm/notify`, в зонтик входит записью
+// `file://../notify`), поэтому корень зонтика его не накрывает — он назван
+// отдельным корнем, БЕЗ условия (N27): объявления клиентской личности в нём
+// судятся так же, как в любом чарте, и их число печатается объёмом осмотренного.
 func leafScanRoots() []string {
 	return []string{
 		umbrellaDir,
+		notifyChartDir,
 		filepath.Join(repoRoot, "services"),
 		filepath.Join(repoRoot, "gateway", "deploy"),
 	}
@@ -620,6 +626,15 @@ func TestClientIdentityNeverPresentsTheServerLeaf(t *testing.T) {
 		t.Logf("   чарт %-52s личностей %d · листов %d · нагрузка %v · секрет клиента %q",
 			sc.chart, len(sc.client), len(sc.server), sc.workload, sc.clientSecret)
 	}
+	notifyClient, notifyServer := 0, 0
+	for _, sc := range scopes {
+		if sc.chart == notifyChartDir {
+			notifyClient += len(sc.client)
+			notifyServer += len(sc.server)
+		}
+	}
+	t.Logf("   корень %s (без условия, N27): объявлений клиентской личности %d · листов слушателей %d",
+		notifyChartDir, notifyClient, notifyServer)
 
 	if filesRead == 0 {
 		t.Fatalf("не прочитано ни одного файла — вердикт беспредметен: корни обхода %v", leafScanRoots())

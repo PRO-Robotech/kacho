@@ -4,7 +4,7 @@
 """Production-mode SA-principal matrix seed for the newman regression suites (#59).
 
 The whole 6-subject authz matrix + per-service resource deps. EVERY authenticating
-token is a Hydra-signed RS256 ServiceAccount token (acr-exempt, api-audience) — no
+token is a platform-signed (kaname) RS256 ServiceAccount token (acr-exempt, api-audience) — no
 HS256 dev-bypass, no interactive OIDC. The authz-deny EXPECT matrices are purely
 grant-semantic (editor/viewer/admin/no-grant/cross-account/cross-project), so each
 "subject" slot is backed by a ServiceAccount with the exact bindings the matrix
@@ -344,6 +344,74 @@ def user_platform_token(uid, created_by):
 CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
 
 
+# Вопрос «держит ли субъект `system_admin` на кластере» задаётся МОДЕЛИ ПРАВ
+# напрямую (`AuthorizeService.Check`), а не чтением ресурса от имени человека.
+#
+# ПОЧЕМУ НЕ ЧТЕНИЕМ (kacho#2984, разбор красного посева на 7f2afe93). Прежняя
+# редакция читала посеянный аккаунт `kacho-system` токеном человека. Персональный
+# токен, обменянный у нашего издателя, `acr` не несёт (уровень входа приносит
+# только интерактивный вход), а чтение аккаунта в каталоге края требует
+# `required_acr_min=1`. Край отвечал отказом пола уверенности — `{code: 16,
+# message: insufficient_user_authentication}` — ДО всякого вопроса к модели, и
+# цикл ждал 60 с того, что не наступит ни при какой задержке выдачи: отказ
+# повышения уровня входа не есть «выдача ещё не видна».
+#
+# Спрашивает бутстрап-удостоверение: машинный принципал от пола уверенности
+# освобождён, администратор облака вправе спросить о чужом субъекте, и ответ
+# называет ровно отношение, которое заводит `GrantAdmin`.
+CLUSTER_ROOT_REF = {"type": "cluster", "id": "cluster_root"}
+
+
+def _cluster_admin_check(user_id):
+    """Ответ модели: держит ли `user:<user_id>` `system_admin` на кластере."""
+    return _curl("POST", "/iam/v1/authorize:check", boot, {
+        "subject": f"user:{user_id}", "resource": CLUSTER_ROOT_REF,
+        "action": "iam.cluster_admins.list", "requiredRelation": "system_admin"})
+
+
+def _is_check_answer(resp):
+    """Ответ — вердикт модели, а не отказ вопроса (тело ошибки несёт `code`)."""
+    return isinstance(resp, dict) and "code" not in resp and "checkedAt" in resp
+
+
+def _await_cloud_admin_visible(user_id, budget=60):
+    """Выдача администратора облака видна модели прав — или громкий отказ посева.
+
+    Выдача приходит в хранилище прав асинхронно, поэтому вопрос повторяется в
+    бюджете. Повторяется ТОЛЬКО ответ «нет» и недоступность модели (`14`):
+    отказ самого вопроса — другой исход, и ожидание его не снимет.
+    """
+    deadline = time.time() + budget
+    last = {}
+    while time.time() < deadline:
+        last = _cluster_admin_check(user_id)
+        if _is_check_answer(last) and last.get("allowed") is True:
+            return
+        if not _is_check_answer(last) and last.get("code") != 14:
+            raise SystemExit(
+                f"[prodseed] вопрос модели о выдаче system_admin человеку user:{user_id} "
+                f"ОТВЕРГНУТ, вердикта нет: {last}. Это не задержка выдачи.")
+        time.sleep(1.0)
+    raise SystemExit(
+        f"[prodseed] выдача system_admin человеку user:{user_id} НЕ ВИДНА модели за "
+        f"{budget} с: последний ответ модели {last}. Слот администратора облака без "
+        "права не отдаётся.")
+
+
+def _assert_not_cloud_admin(user_id):
+    """Близнец вопроса: человек без выдачи получает от модели «нет».
+
+    Без него «да» выше было бы неотличимо от вопроса, отвечающего «да» всем.
+    """
+    resp = _cluster_admin_check(user_id)
+    # Ложное `allowed` край может и не вывести (нулевое значение поля), поэтому
+    # «нет» — это вердикт без `allowed: true`, а не обязательно `allowed: false`.
+    if not _is_check_answer(resp) or resp.get("allowed") is True:
+        raise SystemExit(
+            f"[prodseed] человек без выдачи user:{user_id} не получил от модели «нет» "
+            f"на вопрос о system_admin: {resp}. Вопрос о выдаче ничего не различает.")
+
+
 def seed_fga_tuple(fga_subject, relation, obj):
     """Посеять факт отношения (<fga_subject> #<relation> @obj) через журнал iam.
 
@@ -536,7 +604,7 @@ def _seed_network(project_id, name):
 def seed() -> dict:
     """Provision the production-mode matrix and return the fixtures dict.
 
-    Every authenticating token in the result is a Hydra-signed RS256 ServiceAccount
+    Every authenticating token in the result is a platform-signed RS256 ServiceAccount
     Bearer obtained through the iam facade — MintBootstrapToken (mTLS gRPC, iam :9091)
     for the admin, then SAKeyService.Issue + a private_key_jwt client_assertion
     exchange for each subject. Nothing here is minted by the harness.
@@ -759,6 +827,31 @@ def seed() -> dict:
     seed_fga_cluster(f"user:{usr_utok}", "system_viewer")
     tok_user_platform = user_platform_token(usr_utok, usr_utok)
 
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-account-id-at-create` (kacho#2984; служба —
+    # PRO-Robotech/kaname#549, приёмка службы `account-id-may-be-supplied-at-create.md`,
+    # стадия S2, AID-K1 и AID-K2). Указать `id` при создании аккаунта вправе только
+    # ЧЕЛОВЕК, держащий `system_admin` на кластере: машинный администратор получает
+    # отказ по роду принципала (Р3 приёмки), поэтому `jwtBootstrap` этим субъектом
+    # служить не может. Оба — свои люди, а не матричные: каждое заведение аккаунта
+    # списывает место окна темпа заведений личности, и чужой набор, делящий человека,
+    # упёрся бы в потолок от этого набора.
+    #
+    # Администратор облака получает выдачу тем же глаголом, что цель набора
+    # `cluster_admin` (`InternalClusterService.GrantAdmin` под бутстрап-удостоверением).
+    # Выдача утверждается вопросом к модели прав о самом отношении `system_admin`
+    # (`_await_cloud_admin_visible`), и у вопроса есть близнец — человек без выдачи
+    # получает «нет»: «выдано» не должно быть неотличимо от «выдано и не видно модели».
+    h_cloud_admin = human(f"prodseed-acc-id-admin-{RID}@example.com")
+    _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
+                 {"subjectType": "USER", "subjectId": h_cloud_admin.user_id}, base=INTERNAL),
+           boot, "userId")
+    tok_cloud_admin_human = user_platform_token(h_cloud_admin.user_id, h_cloud_admin.user_id)
+    _await_cloud_admin_visible(h_cloud_admin.user_id)
+    # Человек без роли на кластере — сторона отказа права (AID-K2) и её близнец.
+    h_plain = human(f"prodseed-acc-id-plain-{RID}@example.com")
+    _assert_not_cloud_admin(h_plain.user_id)
+    tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
+
     fixtures = {
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
@@ -768,6 +861,13 @@ def seed() -> dict:
         # обменянный у нашего издателя. Слот читает суита края.
         "jwtUserTokenPlatformIssuer": tok_user_platform,
         "userTokenPlatformUserId": usr_utok,
+        # Люди набора `iam-account-id-at-create` (kacho#2984): человек-администратор
+        # облака и человек без роли на кластере. Пары «id ↔ предъявитель» объявлены
+        # в principal_pairings.PRINCIPAL_PAIRINGS и сверяются ниже.
+        "jwtCloudAdminHuman": tok_cloud_admin_human,
+        "cloudAdminHumanUserId": h_cloud_admin.user_id,
+        "jwtPlainHuman": tok_plain_human,
+        "plainHumanUserId": h_plain.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

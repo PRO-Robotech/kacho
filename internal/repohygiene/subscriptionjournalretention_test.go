@@ -93,14 +93,15 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 			continue
 		}
 		owner := "services/" + e.Name()
-		declDir := filepath.Join(servicesRoot, e.Name(), "internal", "subscriptionjournal")
-		if _, err := os.Stat(declDir); err != nil {
-			// У владельца журнала нет — законное состояние (`geo`, `iam`).
-			continue
-		}
-		files, err := treecorpus.UnderWithSuffix(declDir, ".go")
+		// Объявление журнала ищется по ВСЕМУ прод-дереву владельца, а не в
+		// каталоге `internal/subscriptionjournal`: журнал пробы-источника notify
+		// объявлен под корнем своего процесса
+		// (`cmd/notify-probe/internal/journal`, kacho#2915, Д74), и поиск по
+		// одному каталогу его не видел — инъекция «журнал без правила
+		// хранения» оставалась зелёной.
+		files, err := treecorpus.UnderWithSuffix(filepath.Join(servicesRoot, e.Name()), ".go")
 		if err != nil {
-			t.Fatalf("обход %s: %v", declDir, err)
+			t.Fatalf("обход %s: %v", owner, err)
 		}
 		var lane JournalLane
 		got := false
@@ -112,12 +113,16 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 			if rerr != nil {
 				t.Fatalf("чтение %s: %v", path, rerr)
 			}
-			census.FilesRead++
 			l, found, perr := ScanJournalLane(owner, path, src)
 			if perr != nil {
 				t.Fatalf("разбор %s: %v", path, perr)
 			}
 			if found {
+				census.FilesRead++
+				if got {
+					t.Fatalf("у владельца %s два объявления журнала (%s и %s) — гейт судит полосу "+
+						"владельца одной записью и второй не увидел бы", owner, lane.File, path)
+				}
 				lane, got = l, true
 			}
 		}
@@ -174,11 +179,23 @@ func collectJournalLanes(t *testing.T, servicesRoot string) ([]JournalLane, Jour
 // порог о нём не узнает.
 func ageColumnDefaultsToDatabaseClock(t *testing.T, l JournalLane) bool {
 	t.Helper()
+	// Миграции владельца — все цепочки его каталога у migrationchains, а не
+	// services/<svc>/internal/migrations: журнал пробы notify объявлен в цепочке
+	// internal/probemigrations (kacho#2915, CX1-114).
 	svc := strings.TrimPrefix(l.Owner, "services/")
-	dir := filepath.Join(journalLaneServicesRoot, svc, "internal", "migrations")
-	files, err := treecorpus.UnderWithSuffix(dir, ".sql")
-	if err != nil {
-		t.Fatalf("обход миграций %s: %v", l.Owner, err)
+	var files []string
+	for _, cd := range migrationDirs(t, filepath.Dir(journalLaneServicesRoot)) {
+		if cd.Service != svc {
+			continue
+		}
+		chainSQL, err := treecorpus.UnderWithSuffix(cd.Dir, ".sql")
+		if err != nil {
+			t.Fatalf("обход миграций %s: %v", l.Owner, err)
+		}
+		files = append(files, chainSQL...)
+	}
+	if len(files) == 0 {
+		t.Fatalf("у владельца журнала %s миграций в перечне цепочек 0 — схема журнала не читается", l.Owner)
 	}
 	table := TableNameOf(l.Table)
 	for _, path := range files {

@@ -28,6 +28,8 @@
 package repohygiene
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -276,4 +278,41 @@ RUN go build -ldflags "-X main.buildVersion=v1.2.3 -X main.buildCommit=deadbeef"
 	require.Emptyf(t, b.ArgsUnseen, "ссылки на аргумент нет, значит и невидимого аргумента "+
 		"нет: держатель не вправе краснеть на том, чего не судит. Что литерал — это "+
 		"ВТОРАЯ величина об одном предмете, названо в шапке отдельно и здесь не судится")
+}
+
+// TestBuildStampInjection_ThirdRootOfTheNotifyCatalogWithoutAnImageLine —
+// правило двух процессов одного каталога (Д74): образ каталога services/notify
+// один, бинари его корней собирает один Dockerfile. Настоящий Dockerfile
+// каталога и два его корня — оба собраны и проштампованы (близнец, молчание);
+// третий корень-фикстура `cmd/x` без строки сборки — находка с именем корня.
+func TestBuildStampInjection_ThirdRootOfTheNotifyCatalogWithoutAnImageLine(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	docker, err := os.ReadFile(filepath.Join(root, "services/notify/Dockerfile"))
+	require.NoError(t, err)
+	files := map[string][]byte{
+		"services/notify/Dockerfile":               docker,
+		"services/notify/cmd/notify/main.go":       []byte(srcDeclaresStamp),
+		"services/notify/cmd/notify-probe/main.go": []byte(srcDeclaresStamp),
+	}
+	binaries, census, err := AuditBuildStampReach(files)
+	require.NoError(t, err)
+	require.Equal(t, 2, census.Declaring)
+	for _, b := range binaries {
+		require.Truef(t, b.Stamped, "близнец: корень %s собран образом каталога и обязан быть проштампован", b.Dir)
+	}
+
+	files["services/notify/cmd/x/main.go"] = []byte(srcDeclaresStamp)
+	binaries, census, err = AuditBuildStampReach(files)
+	require.NoError(t, err)
+	require.Equal(t, 3, census.Declaring)
+	found := false
+	for _, b := range binaries {
+		if b.Dir == "services/notify/cmd/x" {
+			found = true
+			require.Emptyf(t, b.BuiltBy, "третий корень без строки сборки назван собранным: %v", b.BuiltBy)
+			require.False(t, b.Stamped)
+		}
+	}
+	require.True(t, found, "третий корень services/notify/cmd/x не назван переписью")
 }

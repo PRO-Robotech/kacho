@@ -3,8 +3,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # seed-secrets-refuse-unknown-state-test.sh — посев секретов стенда не читает
-# отказ API-сервера как «секрета нет» и не требует секрета, которого посадка не
-# читает (задача #2803).
+# отказ API-сервера как «секрета нет» (задача #2803).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ПРЕДМЕТ
@@ -16,11 +15,11 @@
 #    объект ПЕРЕЗАПИСЫВАЕТ. Для ключей обёртки перевыпуск необратим: записанное
 #    прежним ключом больше не открывается, и отказ при этом тихий.
 #
-# 2. ТРЕБУЕМОСТЬ В ОБХОД ПОСАДКИ. Перечень требуемых брал ВСЕ имена, которые
-#    заводит посев, безусловно. Под посадкой `external` ключ обёртки секретов
-#    второго фактора подключён `optional: true`, и служба его не требует; шапка
-#    посева обещает, что такой стенд поднимается и без него, а предполёт
-#    отказывал.
+# 2. ТРЕБУЕМОСТЬ В ОБХОД ПОСАДКИ — снята вместе со второй посадкой службы
+#    (kaname#363, kacho#2818). Прежде под посадкой `external` ключ обёртки
+#    секретов второго фактора службой не требовался, и предполёт обязан был его
+#    не называть; посадка у службы одна, и ключ требуется на каждом стенде —
+#    это утверждение 8.
 #
 # 3. ПРОБА НЕ ВИДЕЛА СНЯТИЯ СВОЕГО ПРЕДМЕТА (задача #2844). Прежде отказ
 #    сервера отказывал на `get` ВСЕХ секретов сразу, и утверждение требовало
@@ -56,7 +55,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ЧТО ИМЕННО УТВЕРЖДАЕТСЯ — ПАРАМИ, У КАЖДОГО ОТРИЦАНИЯ ЕСТЬ БЛИЗНЕЦ
 #
-#   1  находка : (×5 секретов × 3 класса отказа) секрет K существует, `get` K
+#   1  находка : (×N секретов посева × 3 класса отказа; N выводится из посева)
+#                секрет K существует, `get` K
 #                отвечает отказом НЕ NotFound, прочие — NotFound → dev-prod-secrets.sh
 #                отказывает, после `get` K не обращается ни к чему, отказ
 #                называет K, resourceVersion K не сдвинулся;
@@ -64,19 +64,15 @@
 #                существует, `get` его отвечает отказом → код 2 (контракт
 #                посева), после отказа ни одного обращения (ничего не
 #                заведено), отказ называет секрет, объект не тронут;
-#   3  близнец : секретов нет (`get` → NotFound) → посев заводит все пять;
+#   3  близнец : секретов нет (`get` → NotFound) → посев заводит все N;
 #   4  близнец : секрет существует и `get` его видит → переиспользуется,
 #                resourceVersion не сдвинулся;
 #   5  гонка   : `get` сказал NotFound, а объект уже заведён (между проверкой и
 #                заведением) → создание отвечает AlreadyExists, посев
 #                переиспользует, resourceVersion не сдвинулся;
-#   6  находка : рендер `external`, ключ второго фактора подключён
-#                `optional: true` и отсутствует → stack-secrets.sh его
-#                отсутствующим НЕ называет;
-#   7  близнец : тот же ключ, та же посадка, ссылка БЕЗ `optional` (копия чарта
-#                с одной снятой строкой) → называет;
-#   8  близнец : посадка `own` — служба ключ требует → называет;
-#   9  близнец : (×5) копия dev-prod-secrets.sh, где отказ `get` K читается как
+#   8  находка : стек own — служба ключ второго фактора требует, секрета нет →
+#                называет (утверждений 6 и 7 о посадке `external` больше нет);
+#   9  близнец : (×N) копия dev-prod-secrets.sh, где отказ `get` K читается как
 #                NotFound → мир 1 для K краснеет на каждом классе и называет
 #                посев и секрет;
 #  10  близнец : копия stack-secrets.sh, где secret_state читает любой отказ
@@ -89,18 +85,11 @@
 #  14  близнец : dev-prod-secrets.sh стирает секрет (delete) после отказа →
 #                мир 1 краснеет по каждому секрету, называя delete;
 #  15  близнец : то же для stack-secrets.sh в цикле требуемых;
-#  16  законный: кавычки вокруг $out сняты → все 18 миров зелены, близнецы
+#  16  законный: кавычки вокруг $out сняты → все 3N+3 миров зелены, близнецы
 #                строятся.
 # Миры 1 и 2 и близнецы 9–16 копят находки, а не обрываются на первой:
 # посев, у которого различение снято в двух местах, называется весь. Миры
 # независимы и идут параллельно.
-#
-# НОСИТЕЛЬ ПОСАДКИ `external` — КОПИЯ ДЕРЕВА, А НЕ СТЕНД ТАБЛИЦЫ. Посадку `own`
-# объявляют все стенды deploy/stacks.txt (#2735), и стенда `external` в таблице
-# нет. Утверждения 6 и 7 поэтому идут по копии дерева, в которой у корня
-# цепочки `prod` сменён ровно один факт — посадка обеих половин (`own` →
-# `external`); всё остальное — рендер той же цепочки тем же helm. Утверждение 8
-# — на настоящем стенде `own`.
 #
 # КЛАСТЕРА ЗДЕСЬ НЕТ. `kubectl` и `kind` подменены двойниками в PATH: двойник
 # держит состояние объектов на диске (имя → resourceVersion) и отвечает ровно
@@ -116,9 +105,24 @@ UMBRELLA="$DEPLOY/helm/umbrella"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-# 36 = мир отказа на каждый класс × (пять секретов посева + один stack-secrets.sh) = 18,
-# близнецы снятого различения по секрету посева = 5, прочие миры и близнецы = 13.
-EXPECTED_ASSERTIONS=36
+
+# ── СЕКРЕТЫ ПОСЕВА ВЫВОДЯТСЯ ИЗ САМОГО ПОСЕВА, А НЕ ВЫПИСЫВАЮТСЯ ────────────────
+# Прежде перечень стоял здесь литералом из четырёх имён — и пережил бы снятие
+# любого из них: общий секрет обратных вызовов ушёл из посева вместе с обоими
+# читателями (kacho#2818, kacho#1276), а мир отказа на нём продолжал бы ждать от
+# посева обращения, которого посев больше не делает. Имя берётся из исполняемой
+# части посева (строки-комментарии сняты) по глаголу заведения — тому же, по
+# которому имена посева читает предполёт стенда (`scripts/stack-secrets.sh`,
+# источник (б)).
+SEED_NAMES="$(grep -v '^[[:space:]]*#' "$DEPLOY/scripts/dev-prod-secrets.sh" \
+  | grep -oE 'create secret generic [a-z0-9][a-z0-9-]*' | awk '{print $4}' | paste -sd' ')"
+SEED_N="$(wc -w <<<"$SEED_NAMES" | tr -d ' ')"
+[ "${SEED_N:-0}" -gt 0 ] || fatal "из посева dev-prod-secrets.sh не прочитано ни одного секрета — миров отказа строить не на чем"
+# Утверждений: миров отказа 3 × (N + 1) — N секретов посева и один секрет
+# stack-secrets.sh на каждом из трёх классов (утверждения 1–2), — плюс N близнецов
+# утверждения 9 и 11 утверждений, от числа секретов не зависящих. При N=4 это
+# прежние 30.
+EXPECTED_ASSERTIONS=$((14 + 4 * SEED_N))
 
 require_helm
 require_python_yaml
@@ -266,7 +270,6 @@ stack() {  # stack-secrets.sh <стек> [каталог deploy] в подмен
          bash "$root/scripts/stack-secrets.sh" "$1" 2>&1)"; RC=$?
 }
 
-SEED_NAMES="kaname-jwks-enc-key kaname-second-factor-enc-key kaname-hook-token kaname-bootstrap-sa-key kaname-mail-keys"
 # Секрет базы, требуемый стендом own: на нём мир 2 судит stack-secrets.sh.
 STACK_REFUSED=kacho-umbrella-pg-iam
 export PROBE_CONTEXT=kind-probe
@@ -332,15 +335,16 @@ expect_reds() {
 
 # ── 1–2. НАХОДКА: отказ get — отказ шага, на ТОМ ЖЕ секрете, объект цел ────
 WORLDS="$(refusal_worlds "$DEPLOY" all)"
-[ "$(printf '%s\n' "$WORLDS" | grep -c '^\(ok\|red\)|')" -eq 18 ] \
-  || fail "1–2: миров отказа исполнено не 18 (по три класса: пять секретов у dev-prod-secrets.sh, один у stack-secrets.sh). Вывод:
+WORLDS_N=$((3 * SEED_N + 3))
+[ "$(printf '%s\n' "$WORLDS" | grep -c '^\(ok\|red\)|')" -eq "$WORLDS_N" ] \
+  || fail "1–2: миров отказа исполнено не $WORLDS_N (по три класса: $SEED_N секретов у dev-prod-secrets.sh, один у stack-secrets.sh). Вывод:
 $WORLDS"
 while IFS='|' read -r verdict seedname class secret what; do
   [ "$verdict" = red ] && violation "1–2: посев $seedname · сервер отказал ($class) на get $secret: $what — отказ API-сервера прочитан как «секрета нет»"
   ok
 done <<<"$WORLDS"
 
-# ── 3. БЛИЗНЕЦ: секретов нет — посев заводит все пять ──────────────────────
+# ── 3. БЛИЗНЕЦ: секретов нет — посев заводит все ───────────────────────────
 fresh
 GET_MODE=ok DEFAULT_PRESENT=0 seed
 missing=""; for n in $SEED_NAMES; do [ "$(rv "$n")" = 1 ] || missing="$missing $n"; done
@@ -365,53 +369,7 @@ GET_MODE=notfound DEFAULT_PRESENT=0 seed
 $OUT"
 ok
 
-# ── копия дерева с посадкой `external` у корня цепочки prod ────────────────
-MIRROR="$WORK/mirror"; mkdir -p "$MIRROR/scripts" "$MIRROR/tests/helm" "$MIRROR/helm"
-cp "$DEPLOY/stacks.txt" "$MIRROR/"
-cp "$DEPLOY/scripts/stack-secrets.sh" "$DEPLOY/scripts/dev-prod-secrets.sh" "$MIRROR/scripts/"
-cp "$DEPLOY/tests/helm/stacks.sh" "$MIRROR/tests/helm/"
-cp -r "$UMBRELLA" "$MIRROR/helm/umbrella"
-python3 - "$MIRROR/helm/umbrella/values.prod.yaml" <<'PY' || fatal "6: копия боевого профиля не переведена на посадку external — судить утверждения 6 и 7 не на чем"
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-# Обе половины посадки объявлены в корне цепочки ровно по разу; иное число
-# значит, что профиль сменил форму, и копия утверждала бы не то.
-s2, n = re.subn(r"(?m)^(\s*identityProvider:\s*)own\s*$", r"\1external", s)
-assert n == 2, f"объявлений посадки own в корне prod найдено {n}, ожидалось 2"
-open(p, "w").write(s2)
-PY
-
-# ── 6. НАХОДКА: external, optional-ссылка, секрета нет — не требуется ───────
-# Площадка НЕ локальная: предполёт только судит и называет недостающее.
-fresh
-PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod "$MIRROR"
-[ "$RC" -eq 0 ] && [[ "$OUT" != *"kaname-second-factor-enc-key"* ]] \
-  || fail "6: стек prod в копии с посадкой external: ключ второго фактора подключён optional: true и служба его не требует, а предполёт вышел $RC и назвал его. Вывод:
-$OUT"
-ok
-
-# ── 7. БЛИЗНЕЦ: та же посадка, ссылка БЕЗ optional — называет ──────────────
-TPL="$MIRROR/helm/umbrella/charts/kaname/templates/deployment.yaml"
-python3 - "$TPL" <<'PY' || fatal "7: копия шаблона службы доступа не подготовлена — снимать optional не на чем"
-import sys
-p = sys.argv[1]; s = open(p).read()
-anchor = "- name: KANAME_SECOND_FACTOR_ENC_KEY"
-i = s.index(anchor)
-j = s.index("optional: true", i)
-line_start = s.rindex("\n", 0, j) + 1
-line_end = s.index("\n", j) + 1
-assert s[line_start:line_end].strip() == "optional: true"
-s = s[:line_start] + s[line_end:]
-open(p, "w").write(s)
-PY
-fresh
-PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod "$MIRROR"
-[ "$RC" -ne 0 ] && [[ "$OUT" == *"kaname-second-factor-enc-key"* ]] \
-  || fail "7: ссылка на ключ второго фактора БЕЗ optional, секрета нет — предполёт вышел $RC и его не назвал: близнец утверждения 6 не различает. Вывод:
-$OUT"
-ok
-
-# ── 8. БЛИЗНЕЦ: посадка own — служба ключ требует — называет ───────────────
+# ── 8. НАХОДКА: стек own — служба ключ требует — называет ─────────────────
 fresh
 PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack own
 [ "$RC" -ne 0 ] && [[ "$OUT" == *"kaname-second-factor-enc-key"* ]] \
@@ -528,7 +486,7 @@ delete_after_refusal_stack()   { python3 "$WORK/twin.py" delete-stack "$1"; }
 UNBUILT=0
 unbuilt() { echo "  ⊘ $1" >&2; UNBUILT=$((UNBUILT + 1)); }
 
-# ── 9. БЛИЗНЕЦ (×5): dev-prod-secrets.sh без различения в ветке K ──────────
+# ── 9. БЛИЗНЕЦ (×N): dev-prod-secrets.sh без различения в ветке K ──────────
 for k in $SEED_NAMES; do
   t="$(twin_tree "devprod-$k")"
   if ! msg="$(unseparate_devprod "$t/scripts/dev-prod-secrets.sh" "$k" 2>&1)"; then
@@ -558,8 +516,8 @@ if ! msg="$(unseparate_devprod "$t/scripts/dev-prod-secrets.sh" all 2>&1 && unse
 else
   got="$(refusal_worlds "$t" all)"
   named="$(printf '%s\n' "$got" | grep '^red|' | cut -d'|' -f2 | sort | uniq -c | awk '{print $2 "×" $1}' | paste -sd' ')"
-  [ "$named" = "dev-prod-secrets.sh×15 stack-secrets.sh×3" ] \
-    || violation "11: оба посева без различения — ждали красными все восемнадцать миров (dev-prod-secrets.sh×15 stack-secrets.sh×3), получили: ${named:-ни одного}"
+  [ "$named" = "dev-prod-secrets.sh×$((3 * SEED_N)) stack-secrets.sh×3" ] \
+    || violation "11: оба посева без различения — ждали красными все $WORLDS_N миров (dev-prod-secrets.sh×$((3 * SEED_N)) stack-secrets.sh×3), получили: ${named:-ни одного}"
   ok
 fi
 
@@ -597,7 +555,7 @@ if ! msg="$(delete_after_refusal_devprod "$t/scripts/dev-prod-secrets.sh" 2>&1)"
 else
   got="$(refusal_worlds "$t" dev-prod "" timeout)"
   [ "$(reds "$got")" = "$(expect_reds dev-prod-secrets.sh timeout "$SEED_NAMES")" ] \
-    && [ "$(printf '%s\n' "$got" | grep -c '^red|.*последнее обращение: delete secret ')" -eq 5 ] \
+    && [ "$(printf '%s\n' "$got" | grep -c '^red|.*последнее обращение: delete secret ')" -eq "$SEED_N" ] \
     || violation "14: в копии dev-prod-secrets.sh отказ шага стирает секрет (delete) — ждали красными миры по каждому секрету с обращением delete после отказа, получили: ${got:-пусто}"
   ok
 fi
@@ -623,8 +581,8 @@ else
   got="$(refusal_worlds "$t" all)"
   built="$(cp "$t/scripts/dev-prod-secrets.sh" "$WORK/respelled-dp.sh" && cp "$t/scripts/stack-secrets.sh" "$WORK/respelled-st.sh" \
            && unseparate_devprod "$WORK/respelled-dp.sh" all 2>&1 && unseparate_stack "$WORK/respelled-st.sh" 2>&1 && echo built)"
-  [ -z "$(reds "$got")" ] && [ "$(printf '%s\n' "$got" | grep -c '^ok|')" -eq 18 ] && [ "${built##*$'\n'}" = built ] \
-    || violation "16: посевы с кавычками, снятыми вокруг \$out, — ждали 18 зелёных миров и построенных близнецов, получили: миры ${got:-пусто}; конструктор: ${built:-пусто}"
+  [ -z "$(reds "$got")" ] && [ "$(printf '%s\n' "$got" | grep -c '^ok|')" -eq "$WORLDS_N" ] && [ "${built##*$'\n'}" = built ] \
+    || violation "16: посевы с кавычками, снятыми вокруг \$out, — ждали $WORLDS_N зелёных миров и построенных близнецов, получили: миры ${got:-пусто}; конструктор: ${built:-пусто}"
   ok
 fi
 
@@ -635,4 +593,4 @@ if [ "$UNBUILT" -gt 0 ]; then
   [ "$VIOLATIONS" -gt 0 ] && fail "$SCRIPT — находок $VIOLATIONS (перечень выше); кроме того близнецов не построено $UNBUILT"
   fatal "$SCRIPT — близнецов не построено $UNBUILT (перечень выше): форма посева конструктору близнецов не узнана, и что миры видят снятие различения, НЕ ДОКАЗАНО. Это отказ инструмента пробы, а не находка о посеве"
 fi
-outcome_verdict "миров отказа 18 (по классам срок, сеть, RBAC: dev-prod-secrets.sh 15, stack-secrets.sh 3) + близнецов 12 (снятое различение 7, класс RBAC 2, глагол после отказа 2, законное переписывание 1); прочих миров 6"
+outcome_verdict "миров отказа $WORLDS_N (по классам срок, сеть, RBAC: dev-prod-secrets.sh $((3 * SEED_N)), stack-secrets.sh 3) + близнецов $((SEED_N + 7)) (снятое различение $((SEED_N + 2)), класс RBAC 2, глагол после отказа 2, законное переписывание 1); прочих миров 6"

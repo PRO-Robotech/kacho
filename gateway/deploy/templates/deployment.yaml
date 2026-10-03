@@ -10,7 +10,7 @@ spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app: {{ .Values.name }}
+      {{- include "api-gateway.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -56,7 +56,7 @@ spec:
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "api-gateway" "unset" (.Values.global | default dict) | quote }}
       labels:
-        app: {{ .Values.name }}
+        {{- include "api-gateway.selectorLabels" . | nindent 8 }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый security-floor, идентичный
       # kaname/geo/nlb/registry. До этого у gateway securityContext не было вовсе:
@@ -263,7 +263,9 @@ spec:
             # (service accounts) present a bound token; unbound ⇒ 401. Machines
             # are exempt from step-up because they have no second factor, so
             # proof-of-possession is what replaces it. The human path is
-            # unaffected. Default off — see values.yaml for the rollout order.
+            # unaffected. Default off: no machine token issued on this platform
+            # carries `cnf`, so turning it on rejects every service-account
+            # token — see values.yaml.
             {{- if .Values.authn.requireMachineTokenBinding }}
             - name: KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING
               value: "true"

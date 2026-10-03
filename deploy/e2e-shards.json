@@ -11,7 +11,7 @@
     "  полный стенд           29 workload   8298Mi   2980m",
     "  ядро без сервисных     18 workload   2730Mi   1330m",
     "то есть 45% запрошенного CPU стенда не зависит от того, что тестируется",
-    "(iam+geo+gateway+hydra+kratos+cert-manager+ingress и их базы), а 55%",
+    "(iam+geo+gateway+поставщик личности того замера+cert-manager+ingress и их базы), а 55%",
     "— зависит и снимается. Раннер даёт 4 ядра: 2980m запросов на 4000m",
     "allocatable — это и есть измеренная причина (BatchCheck Unavailable, окно",
     "материализации p90 11с против 5с локально).",
@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 58 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 67 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -160,30 +160,52 @@
     "registry": ["registry", "subscription"]
   },
 
+  "_ban6_undeployed_carriers": [
+    "Носитель, чей композиционный корень регистрирует Internal*-службу, а процесс",
+    "НЕ ЗАПУСКАЕТ ни один шаблон чарта дерева: экземпляра нет ни в одном профиле,",
+    "и ни один шард домен измерить не может. Запись называет процесс, причину и",
+    "предикат снятия; assert-shard-coverage.py сверяет её с деревом в обе стороны:",
+    "носитель обязан служить провязанный домен (иначе запись без предмета), процесс",
+    "не запускает ни один отслеживаемый шаблон `*/templates/*` — первым элементом",
+    "команды либо образом контейнера (и в шаблонной форме — репозиторий разрешается",
+    "значениями чарта и зонтика по ссылкам строки `image:`), а не подстрокой имени в тексте (иначе запись",
+    "ИСТЕКЛА и домен обязан взять шард), домен записи не берёт ни один шард (иначе",
+    "запись лишняя). Домен засчитывается неизмеряемым, только когда ВСЕ его",
+    "носители в записях: поперечный `subscription` у notify судится как прежде —",
+    "его измеряют шарды остальных носителей."
+  ],
+  "ban6_undeployed_carriers": {
+    "notify": {
+      "process": "kacho-notify-probe",
+      "reason": "внутренний слушатель каталога services/notify поднимает только процесс пробы-источника notify-probe (у шлюза notify gRPC-слушателя нет); развёртывание пробы в дереве ещё не заведено, экземпляра нет ни в одном профиле",
+      "lifted_by": "развёртывание notify-probe в deploy/helm/umbrella/templates/notify-probe.yaml (#2915, полоса D3): шаблон назовёт процесс, запись истечёт, домен notify возьмёт шард стенда с пробой"
+    }
+  },
+
   "shards": [
     {
       "id": "vpc",
       "suites": ["vpc"],
       "components": ["vpc", "pg-vpc"],
-      "why": "19 коллекций / 3725 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
+      "why": "21 коллекция / 3896 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
     },
     {
       "id": "nlb",
       "suites": ["nlb"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb"],
-      "why": "9 коллекций / 1773 запроса. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
+      "why": "10 коллекций / 1789 запросов. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
     },
     {
       "id": "compute-storage",
       "suites": ["compute", "storage"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
-      "why": "7+9 коллекций / 1334 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
+      "why": "7+10 коллекций / 1392 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
     },
     {
       "id": "edge",
       "suites": ["geo", "registry", "api-gateway"],
       "components": ["registry", "pg-registry"],
-      "why": "7+5+2 коллекции / 427 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam, registry→registry). Самый лёгкий стенд."
+      "why": "7+5+7 коллекций / 498 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
     }
   ]
 }
