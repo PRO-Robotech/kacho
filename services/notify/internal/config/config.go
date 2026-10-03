@@ -229,6 +229,9 @@ func knobByEnv(env string) Knob {
 
 // KnobOfField — ручка поля [Config] по его тегу: имя для текста отказа там,
 // где ручку судит не этот пакет (материал удостоверения пира — корень).
+// Паника на неизвестном имени недостижима, пока каждый вызов передаёт имя
+// существующего поля в форме, видимой разбору: это судит перепись
+// TestKnobOfFieldIsCalledOnlyWithExistingFields (GS-I4).
 func KnobOfField(field string) Knob {
 	f, ok := reflect.TypeFor[Config]().FieldByName(field)
 	if !ok {

@@ -30,6 +30,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/authz"
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
@@ -50,6 +51,10 @@ const (
 	NotifySANKnob = "KACHO_NOTIFYPROBE_NOTIFY_SAN"
 	// authZCacheTTLKnob — окно отзыва; имя нужно тексту отказа загрузки.
 	authZCacheTTLKnob = "KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL"
+	// revocationWindowKey — запись окна этой ручки в политике платформы
+	// (corelib/authz.RevocationPolicy.Windows): текст отказа берёт значение
+	// оттуда, а не литералом, и не солжёт при смене политики.
+	revocationWindowKey = "notify " + authZCacheTTLKnob
 )
 
 // Config — конфигурация notify-probe.
@@ -98,7 +103,8 @@ type Config struct {
 	// старта.
 	AuthZTrustDomain string `envconfig:"KACHO_NOTIFYPROBE_AUTHZ_TRUST_DOMAIN"`
 	// AuthZCacheTTL — окно положительных вердиктов (оно же окно отзыва).
-	// Умолчание 5s — значение pkg/authz.RevocationPolicy; его сверяет перепись
+	// Умолчание 5s — значение corelib/authz.RevocationPolicy (запись
+	// revocationWindowKey); его сверяет перепись
 	// окна отзыва (tools/revocationwindowgate). Неположительное значение —
 	// отказ загрузки с именем ручки: у окна два читателя (дескриптор отвергает
 	// ≤0, сужатель потока подставил бы своё умолчание), и смысл у нуля один —
@@ -161,7 +167,8 @@ func load(lookup func(string) (string, bool), readFile func(string) ([]byte, err
 	}
 	if c.AuthZCacheTTL <= 0 {
 		return Config{}, fmt.Errorf("%s: окно отзыва %s неположительно — окно обязано быть больше нуля "+
-			"(значение политики платформы — 5s)", authZCacheTTLKnob, c.AuthZCacheTTL)
+			"(значение политики платформы — %s)", authZCacheTTLKnob, c.AuthZCacheTTL,
+			authz.RevocationPolicy.Windows[revocationWindowKey])
 	}
 	// Флаг — первым из ручек ленты: без него не решается, обязательны ли
 	// кольцо и SAN.

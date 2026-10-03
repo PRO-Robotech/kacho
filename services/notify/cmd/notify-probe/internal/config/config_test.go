@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 const (
@@ -175,6 +177,21 @@ func TestAuthZCacheTTLNonPositiveRefusesNamingTheKnob(t *testing.T) {
 			_, err := loadWith(t, with(baseEnv(), ttlKnob, v))
 			requireRefusalNames(t, err, ttlKnob)
 		})
+	}
+}
+
+// Текст отказа окна называет значение политики платформы из её записи для
+// этой ручки, а не литералом: запись обязана существовать (иначе текст
+// назвал бы 0s), и значение в тексте — ровно её значение.
+func TestAuthZCacheTTLRefusalNamesThePolicyValue(t *testing.T) {
+	want, ok := authz.RevocationPolicy.Windows[revocationWindowKey]
+	if !ok || want <= 0 {
+		t.Fatalf("в corelib/authz.RevocationPolicy.Windows нет записи %q (или она неположительна: %s) — "+
+			"текст отказа назвал бы значение политики, которого нет", revocationWindowKey, want)
+	}
+	_, err := loadWith(t, with(baseEnv(), ttlKnob, "0s"))
+	if err == nil || !strings.Contains(err.Error(), "значение политики платформы — "+want.String()) {
+		t.Fatalf("отказ окна не называет значение политики %s: %v", want, err)
 	}
 }
 
