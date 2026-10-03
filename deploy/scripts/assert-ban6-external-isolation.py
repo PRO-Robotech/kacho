@@ -559,6 +559,67 @@ def _kube_secret_file(ns: str, secret: str, key: str, dest: str) -> bool:
     return True
 
 
+# ─────────────────── ветка Д85: notify при пустой таблице модулей ──────────────
+#
+# Объекты чарта notify рендерятся только при непустой таблице подключаемых
+# модулей; до полосы D2 она пуста, и предмета у живой пробы по домену notify
+# на стенде нет by construction. Исход тогда — ТРЕТЬЯ категория «НЕ ВЫПОЛНИЛОСЬ:
+# перечень пуст» с печатью предпосылки, а не зелёный и не красный (Д85).
+# Ветку включает ПУСТАЯ ТАБЛИЦА (ответ обёртки копии осмотра), а не отсутствие
+# подов: таблица непуста, а подов notify 0 — красный. Ответа о таблице нет —
+# ветки нет, домен меряется как прочие. Ветку снимает D2 (git grep
+# NOTIFY_EMPTY_TABLE_BRANCH → 0 тем же изменением, что наполняет таблицу).
+NOTIFY_EMPTY_TABLE_BRANCH = "notify"
+NOTIFY_INSPECT = os.environ.get("NOTIFY_INSPECT") or os.path.join(
+    REPO_ROOT, "deploy", "scripts", "render-notify-inspect.sh")
+NOTIFY_POD_SELECTOR = "app=kacho-notify"
+MEASURE, NOT_RUN, RED = "measure", "not_run", "red"
+
+
+def notify_table_rows() -> int | None:
+    """Число строк таблицы модулей чарта notify; None — обёртка не ответила."""
+    try:
+        r = subprocess.run(["bash", NOTIFY_INSPECT, "--table"], capture_output=True,
+                           text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = r.stdout.strip()
+    return int(out) if r.returncode == 0 and out.isdigit() else None
+
+
+def notify_pods(ns: str) -> int | None:
+    """Число подов чарта notify на стенде; None — кластер не опрошен."""
+    try:
+        r = subprocess.run(["kubectl", "-n", ns, "get", "pods", "-l", NOTIFY_POD_SELECTOR,
+                            "-o", "name"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return len([ln for ln in r.stdout.splitlines() if ln.strip()])
+
+
+def notify_branch(table: int | None, pods: int | None) -> tuple[str, str]:
+    """Исход домена notify по предпосылке таблицы (Д85).
+
+    → (MEASURE | NOT_RUN | RED, текст). Подов не спрашивают, пока таблица пуста:
+    ветку включает таблица, а не отсутствие подов.
+    """
+    if table is None:
+        return MEASURE, "ответа о таблице модулей notify нет — ветки нет, домен меряется как прочие"
+    if table == 0:
+        return NOT_RUN, ("НЕ ВЫПОЛНИЛОСЬ: перечень пуст — таблица модулей чарта notify пуста, "
+                         "объектов notify 0 в каждой цепочке, измерять на стенде нечего "
+                         "(Д85; ветку снимает D2)")
+    if pods is None:
+        return NOT_RUN, (f"НЕ ВЫПОЛНИЛОСЬ: таблица модулей notify непуста ({table}), а поды "
+                         f"notify ({NOTIFY_POD_SELECTOR}) не опрошены — кластер не ответил")
+    if pods == 0:
+        return RED, (f"таблица модулей notify непуста ({table}), а подов notify "
+                     f"({NOTIFY_POD_SELECTOR}) 0 — чарт обязан был их поднять")
+    return MEASURE, f"таблица модулей notify непуста ({table}), подов notify {pods}"
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--namespace", default=os.environ.get("KACHO_NS", "kacho"))
@@ -680,6 +741,18 @@ def main(argv: list[str]) -> int:
               + (f"; НЕ развёрнуто здесь ({len(skipped)}): {', '.join(skipped)} — "
                  f"их измеряет другой шард (полноту держит assert-shard-coverage.py)"
                  if skipped else ""))
+        # Ветка Д85 решается ДО встречного контроля: домен без предмета на
+        # стенде не спрашивают, а его исход печатается отдельно и в вердикт
+        # зелёным не засчитывается.
+        branch_rc = 0
+        if NOTIFY_EMPTY_TABLE_BRANCH in domains:
+            table = notify_table_rows()
+            pods = notify_pods(ns) if table else None
+            verdict, text = notify_branch(table, pods)
+            print(f"  notify — {text}")
+            if verdict != MEASURE:
+                domains = [d for d in domains if d != NOTIFY_EMPTY_TABLE_BRANCH]
+                branch_rc = 1 if verdict == RED else 2
         confirmed: set[str] = set()
         unconfirmed: list[tuple[str, str]] = []
 
@@ -784,7 +857,7 @@ def main(argv: list[str]) -> int:
         # Метод НЕ развёрнутого домена из предмета исключается: он «недостижим на
         # внешнем листенере» просто потому, что его сервиса нет на кластере, и
         # засчитать это в изоляцию значило бы получить зелёное из отсутствия.
-        rows = [r for r in rows if not only or domain_of(r[0]) in only]
+        rows = [r for r in rows if domain_of(r[0]) in domains]
         for pkg, svc, meth in rows:
             method = f"{pkg}.{svc}/{meth}"
             v, d = classify(grpc_probe(addr, method, cacert=ca,
@@ -830,6 +903,14 @@ def main(argv: list[str]) -> int:
         print("FAIL: пробы без ответа по существу — харнесс, а не изоляция: "
               + ", ".join(m for m, _ in unresolved))
         rc = 2 if rc == 0 else rc
+    if branch_rc == 1:
+        print("FAIL: таблица модулей notify непуста, а подов notify на стенде нет")
+        rc = 1
+    elif branch_rc == 2 and rc == 0:
+        print(f"НЕ ВЫПОЛНИЛОСЬ: перечень пуст — домен notify не измерен (Д85); "
+              f"остальные {len(domains)} доменов: {isolated}/{total} Internal*-методов "
+              f"недостижимы — третий исход из вердикта не вычитается")
+        rc = 2
     if rc == 0:
         print(f"OK: BAN6-EXT-GRPC — {isolated}/{total} Internal*-методов недостижимы "
               f"на advertised external листенере при живом публичном контроле")
@@ -1037,6 +1118,35 @@ def self_test() -> int:
           f"нет ни одного метода в предмете: {', '.join(missing) if missing else 'нет'} — "
           f"{'ПРОВАЛ' if missing else 'ОК'}")
     rc |= 1 if missing else 0
+
+    # ── ветка Д85: исход домена notify по предпосылке таблицы модулей ──────
+    print("\nсамопроверка ветки Д85 (notify по таблице модулей):")
+
+    def branch(label: str, table, pods, want: str, needle: str) -> None:
+        nonlocal rc
+        got, text = notify_branch(table, pods)
+        ok = got == want and needle in text
+        print(f"  {label:<58} → {got:<8} {'ОК' if ok else f'ПРОВАЛ (ждали {want} и «{needle}»)'}"
+              f"  [{text}]")
+        rc |= 0 if ok else 1
+
+    branch("таблица пуста → НЕ ВЫПОЛНИЛОСЬ: перечень пуст", 0, None, NOT_RUN,
+           "НЕ ВЫПОЛНИЛОСЬ: перечень пуст")
+    branch("таблица пуста, поды есть → всё равно перечень пуст", 0, 1, NOT_RUN,
+           "перечень пуст")
+    branch("таблица непуста, подов 0 → КРАСНЫЙ", 1, 0, RED, "подов notify")
+    branch("таблица непуста, поды не опрошены → не выполнилось", 1, None, NOT_RUN,
+           "не опрошены")
+    branch("таблица непуста, под есть → домен меряется", 1, 1, MEASURE, "подов notify 1")
+    branch("ответа о таблице нет → ветки нет, домен меряется", None, None, MEASURE,
+           "ветки нет")
+    # Предпосылка ветки — НАСТОЯЩАЯ обёртка на дереве: таблица сегодня пуста.
+    real = notify_table_rows()
+    got, _ = notify_branch(real, None)
+    ok = real == 0 and got == NOT_RUN
+    print(f"  дерево как есть: строк таблицы {real} → {got} "
+          f"{'ОК' if ok else 'ПРОВАЛ (ждали 0 строк и НЕ ВЫПОЛНИЛОСЬ; если таблицу наполнил D2 — снять ветку)'}")
+    rc |= 0 if ok else 1
 
     print("\nсамопроверка перечисления предмета:")
     rows = internal_rpcs()
