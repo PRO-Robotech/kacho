@@ -15,11 +15,10 @@ package main
 import (
 	"io"
 	"log/slog"
-
-	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/stackenv"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 )
 
 func TestEveryDeployedStackDeclaresWhatTheStartGuardsRequire(t *testing.T) {

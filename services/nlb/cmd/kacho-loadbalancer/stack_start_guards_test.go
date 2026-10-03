@@ -13,10 +13,10 @@ package main
 // их объявление не выражает; его величины судят пробы носителя на фикстуре.
 
 import (
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/stackenv"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 )
 
 func TestEveryDeployedStackDeclaresWhatTheStartGuardsRequire(t *testing.T) {

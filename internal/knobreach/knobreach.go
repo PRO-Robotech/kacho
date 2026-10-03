@@ -395,7 +395,7 @@ func dump(b *strings.Builder, v reflect.Value, seen map[uintptr]bool, depth int)
 	case reflect.Float32, reflect.Float64:
 		b.WriteString(strconv.FormatFloat(v.Float(), 'g', -1, 64))
 	case reflect.Complex64, reflect.Complex128:
-		b.WriteString(fmt.Sprint(v.Complex()))
+		fmt.Fprint(b, v.Complex())
 	default:
 		// Функции, каналы, небезопасные указатели: их значение — адрес, и в
 		// снимок он не идёт, иначе два одинаковых исхода различались бы.

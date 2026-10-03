@@ -4,7 +4,7 @@
 package main
 
 // stack_start_guards_test.go — каждый развёртываемый стенд объявляет то, чего
-// требуют стражи старта compute (kacho#941): окружение контейнера, отрендеренное
+// требуют стражи старта compute: окружение контейнера, отрендеренное
 // настоящим helm из цепочки профилей, подаётся тому же загрузчику и тем же
 // стражам, что исполняет процесс. Устройство вопроса — internal/stackenv.
 //
@@ -15,11 +15,10 @@ package main
 import (
 	"io"
 	"log/slog"
-
-	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/stackenv"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 )
 
 func TestEveryDeployedStackDeclaresWhatTheStartGuardsRequire(t *testing.T) {
