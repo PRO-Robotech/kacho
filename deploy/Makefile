@@ -993,6 +993,12 @@ own-up: preflight
 # — та же цель, что у `dev-up`; на кластере, где cert-manager уже стоит (свой той
 # же версии либо чужой, как у оператора a8f60d), она его не переставляет.
 #
+# ЗАВИСИМОСТИ УМБРЕЛЛЫ — ТЕМ ЖЕ ШАГОМ, ЧТО У `dev-up` (kacho#2885), до первого
+# helm: архивы локальных подчартов в git не лежат. Без шага копия без архивов
+# отказывала на `stack-secrets` («missing in charts/ directory»), а копия со
+# старыми архивами молча применяла прежний шаблон подчарта. Порядок держит
+# deploy/umbrella_apply_runs_deps_first_test.go — для каждой цели файла.
+#
 #   make -C deploy stack-up STACK=a8f60d
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
@@ -1035,6 +1041,7 @@ stack-up:
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
+	bash scripts/helm-umbrella-deps.sh; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
@@ -1829,6 +1836,7 @@ spire-bootstrap:
 	  WHAT="создание namespace spire-system и применение манифестов SPIRE Server/Agent (корень доверия mesh)"
 	@echo "Phase 10: bootstrapping SPIRE Server + Agent..."
 	@kubectl create namespace spire-system --dry-run=client -o yaml | kubectl apply -f -
+	@bash scripts/helm-umbrella-deps.sh
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set spire-server.enabled=true \
 		--set spire-agent.enabled=true \
@@ -1856,6 +1864,7 @@ spire-rotate-trust-domain:
 # Dry-run Cilium policies — render и валидация без apply.
 cilium-policy-dry-run:
 	@echo "Phase 10: rendering CiliumNetworkPolicy manifests..."
+	@bash scripts/helm-umbrella-deps.sh
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set cilium.enabled=true \
 		--show-only charts/cilium/templates/network-policies.yaml \
