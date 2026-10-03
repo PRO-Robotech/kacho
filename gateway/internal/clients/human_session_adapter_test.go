@@ -188,8 +188,19 @@ func TestHumanSessionAdapter_F3_13_ClassifiesUnavailableAndUnimplemented(t *test
 	stub.resolve = nil
 	cut := t1.Add(123456 * time.Microsecond)
 	stub.cutoff = timestamppb.New(cut)
-	got, found, err := ad.SessionCutoffOf(ctx, "usr-1")
+	got, found, err := ad.SessionCutoffOf(ctx, cutoffSubject(t, "usr-1"))
 	if err != nil || !found || !got.Equal(cut) {
 		t.Fatalf("отсечка на проводе: %v found=%v err=%v, ожидалось %v", got, found, err, cut)
 	}
+}
+
+// cutoffSubject — субъект вопроса об отсечке, собранный единственным
+// конструктором (kacho#2760 п. 2).
+func cutoffSubject(t *testing.T, userID string) middleware.CutoffSubject {
+	t.Helper()
+	s, ok := middleware.NewCutoffSubject("user", userID)
+	if !ok {
+		t.Fatalf("субъект отсечки для %q не собран", userID)
+	}
+	return s
 }

@@ -525,7 +525,13 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 
 // cutoffVerdict — отсечка субъекта против момента аутентификации потока.
 func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential) verdict {
-	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, c.UserID)
+	// Учётная запись потока на этой полосе — сессия человека; субъект вопроса
+	// собирает тот же единственный конструктор, что у полосы личности.
+	cs, ok := middleware.NewCutoffSubject("user", c.UserID)
+	if !ok {
+		return verdictUnanswered
+	}
+	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, cs)
 	switch {
 	case errors.Is(err, middleware.ErrSessionCutoffUnsupported):
 		return verdictUnsupported

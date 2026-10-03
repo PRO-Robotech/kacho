@@ -47,7 +47,7 @@ type fakeCut struct {
 	err    error
 }
 
-func (f *fakeCut) SessionCutoffOf(context.Context, string) (time.Time, bool, error) {
+func (f *fakeCut) SessionCutoffOf(context.Context, middleware.CutoffSubject) (time.Time, bool, error) {
 	return f.cutoff, f.found, f.err
 }
 

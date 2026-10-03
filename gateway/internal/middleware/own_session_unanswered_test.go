@@ -106,7 +106,8 @@ type cutoffBook struct {
 	asked   int
 }
 
-func (c *cutoffBook) SessionCutoffOf(_ context.Context, userID string) (time.Time, bool, error) {
+func (c *cutoffBook) SessionCutoffOf(_ context.Context, subject CutoffSubject) (time.Time, bool, error) {
+	userID := subject.UserID()
 	c.asked++
 	if c.err != nil {
 		return time.Time{}, false, c.err

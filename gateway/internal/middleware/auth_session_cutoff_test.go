@@ -34,9 +34,9 @@ type fakeCutoff struct {
 	forID  string
 }
 
-func (f *fakeCutoff) SessionCutoffOf(_ context.Context, userID string) (time.Time, bool, error) {
+func (f *fakeCutoff) SessionCutoffOf(_ context.Context, subject CutoffSubject) (time.Time, bool, error) {
 	f.asked++
-	f.forID = userID
+	f.forID = subject.UserID()
 	return f.cutoff, f.found, f.err
 }
 

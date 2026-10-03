@@ -96,7 +96,7 @@ var ErrSessionCutoffUnsupported = errors.New("session cutoff: authority does not
 // вызывающий обязан их различать. Слитые в одно, они дали бы либо мягкий проход
 // на молчащем авторитете, либо отказ каждому, кого никто не отзывал.
 type SessionCutoffReader interface {
-	SessionCutoffOf(ctx context.Context, userID string) (cutoff time.Time, found bool, err error)
+	SessionCutoffOf(ctx context.Context, subject CutoffSubject) (cutoff time.Time, found bool, err error)
 }
 
 // sessionCutoffVerdict — четыре ответа полосы. Разные исходы держатся врозь
@@ -174,12 +174,14 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 	}
 	// Отсечка ключуется человеком. Личность другого вида на этой полосе не
 	// появляется, и спрашивать про неё по словарю людей значило бы задавать
-	// вопрос про субъекта, которого в таблице не бывает.
-	if subj.Type != "user" || subj.ID == "" {
+	// вопрос про субъекта, которого в таблице не бывает — это решает
+	// конструктор субъекта вопроса (cutoff_subject.go), а не условие здесь.
+	cs, ok := NewCutoffSubject(subj.Type, subj.ID)
+	if !ok {
 		return sessionCutoffNotAsked
 	}
 
-	cutoff, found, err := a.sessionCutoff.SessionCutoffOf(ctx, subj.ID)
+	cutoff, found, err := a.sessionCutoff.SessionCutoffOf(ctx, cs)
 	if errors.Is(err, ErrSessionCutoffUnsupported) {
 		// Окно раската: край впереди службы прав. Проходим — но громко, и со
 		// своим счётчиком, чтобы застрявшее расхождение версий не оставило

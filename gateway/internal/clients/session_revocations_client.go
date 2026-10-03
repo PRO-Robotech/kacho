@@ -63,6 +63,10 @@ type SessionRevocationsAdapter struct {
 // не удалось» (fail-closed на каждой полосе).
 var errNoCallBudget = errors.New("identity adapter: assembled without a call budget (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET)")
 
+// errNoCutoffSubject — вопрос об отсечке без субъекта (нулевое значение
+// middleware.CutoffSubject). Вызывающий читает его как «спросить не удалось».
+var errNoCutoffSubject = errors.New("identity adapter: session cutoff asked without a subject")
+
 // bounded — контекст вызова с бюджетом адаптера.
 func (a *SessionRevocationsAdapter) bounded(ctx context.Context) (context.Context, context.CancelFunc, error) {
 	if a.budget <= 0 {
@@ -219,8 +223,14 @@ func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti st
 // одно они дали бы либо мягкий проход на молчащем авторитете, либо отказ
 // каждому, кого никто не отзывал.
 func (a *SessionRevocationsAdapter) SessionCutoffOf(
-	ctx context.Context, userID string,
+	ctx context.Context, subject middleware.CutoffSubject,
 ) (time.Time, bool, error) {
+	userID := subject.UserID()
+	if userID == "" {
+		// Нулевое значение — субъект, собранный мимо конструктора: спрашивать
+		// не о ком, и вопрос с пустым субъектом не задаётся.
+		return time.Time{}, false, errNoCutoffSubject
+	}
 	ctx, cancel, berr := a.bounded(ctx)
 	defer cancel()
 	if berr != nil {
