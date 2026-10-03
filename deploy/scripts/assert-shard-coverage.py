@@ -1777,6 +1777,25 @@ def _self_test() -> int:
                             f"docker.io/prorobotech/{proc}\n      tag: \"1.0.0\"\n")
         run(base, "(у2ж) образ через include помощника, значение в поддереве зонтика → ИСТЕКЛА",
             want_red=True, expect="ИСТЕКЛА", templates=tpl, values=v)
+        # (у2и) близнец SAN: помощник образа читает рядом и идентичность пробы
+        # (`spiffe://…/sa/<процесс>`), репозиторий — другой процесс. Сегмент SAN
+        # образом не читается: запись НЕ истекла.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/notify/templates/_probe_image.tpl"] = (
+            '{{- define "notify.probeImage" -}}'
+            '{{ printf "%s:%s" .Values.probe.image.repository .Values.probe.image.tag }}'
+            '{{- /* {{ .Values.probe.identity }} */ -}}'
+            '{{- end -}}\n')
+        tpl["deploy/helm/notify/templates/probe.yaml"] = (
+            '      containers:\n        - name: probe\n'
+            '          image: {{ include "notify.probeImage" . | quote }}\n')
+        v = dict(vals)
+        v[uv] = vals[uv] + ("\nnotify:\n  probe:\n    identity: "
+                            f"spiffe://kacho.cloud/ns/kacho/sa/{proc}\n    image:\n"
+                            "      repository: docker.io/prorobotech/kacho-notify\n"
+                            "      tag: \"1.0.0\"\n")
+        run(base, "(у2и) близнец: SAN процесса рядом в помощнике образа → НЕ истекла",
+            want_red=False, templates=tpl, values=v)
         # (у2з) пустая ведомость значений при записи → отказ, а не «не запускает».
         run(base, "(у2з) файлов значений не прочитано при записи → отказ", want_red=True,
             expect="файлов значений чартов не прочитано", values={})
