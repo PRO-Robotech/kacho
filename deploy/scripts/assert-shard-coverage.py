@@ -244,11 +244,11 @@ def chart_templates(root: pathlib.Path) -> dict:
     return out
 
 
-_LAUNCH_KEY = re.compile(r'^(?P<ind>\s*)(?:-\s+)?(?P<key>command|image):\s*(?P<val>.*)$')
+_LAUNCH_KEY = re.compile(r'^(?P<ind>\s*)(?:-\s+)?(?P<key>command|args|image):\s*(?P<val>.*)$')
 
 
 def _argv0(val: str) -> str:
-    """Первый элемент значения `command:` в форме потока (`["a", "b"]`) либо
+    """Первый элемент значения `command:`/`args:` в форме потока (`["a", "b"]`) либо
     скаляра; пустая строка — значение не задано в строке (блочный список)."""
     v = val.split(" #", 1)[0].strip()
     if v.startswith("["):
@@ -265,9 +265,9 @@ def _image_name(val: str) -> str:
 
 
 def launches(text: str, proc: str) -> bool:
-    """Шаблон ЗАПУСКАЕТ процесс `proc`: первый элемент `command:` контейнера
-    (поток, скаляр или блочный список) называет исполняемый файл с базовым
-    именем `proc`, либо образ контейнера — репозиторий с последним сегментом
+    """Шаблон ЗАПУСКАЕТ процесс `proc`: первый элемент `command:` либо `args:`
+    контейнера (поток, скаляр или блочный список) называет исполняемый файл с
+    базовым именем `proc`, либо образ контейнера — репозиторий с последним сегментом
     `proc`. Подстрока имени где-либо ещё (SAN, адрес, имя Service, таблица
     источников) запуском не является (Д86)."""
     lines = text.splitlines()
@@ -1452,17 +1452,32 @@ def _self_test() -> int:
         run(base, "(у2в) запуск образом процесса → запись ИСТЕКЛА", want_red=True,
             expect="ИСТЕКЛА", templates=tpl)
 
-        # (у2г) БЛИЗНЕЦ ПОДСТРОКИ (Д86): имя пробы в таблице источников и в
-        # адресе Service без запуска процесса — запись НЕ истекла, дерево зелёное.
+        # (у2г) запуск первым элементом args (образ без своей точки входа).
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f'          args: ["{proc}", "serve"]\n')
+        run(base, "(у2г) запуск первым элементом args → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        # БЛИЗНЕЦЫ ПОДСТРОКИ (Д86): имя процесса в тексте шаблона без контейнера,
+        # который его запускает, — запись НЕ истекла, дерево зелёное. Прежний
+        # предикат (`proc in text`) красил оба.
+        # (у6) сегмент SAN и адрес пробы в таблице источников notify.
         tpl = dict(chart_templates(ROOT))
         tpl["deploy/helm/notify/templates/sources-twin.yaml"] = (
             "data:\n  KACHO_NOTIFY_SOURCES: '[{\"module\":\"probe\",\"feedAddr\":"
             f"\"{proc}:9091\",\"san\":\"spiffe://kacho.cloud/ns/kacho/sa/{proc}\"}}]'\n"
-            f"metadata:\n  name: {proc}\n"
             f"      containers:\n        - name: notify\n"
             f'          command: ["/usr/local/bin/kacho-notify", "serve", "--peer={proc}"]\n'
             f'          image: "docker.io/prorobotech/kacho-notify:1.0.0"\n')
-        run(base, "(у2г) имя пробы в таблице источников без запуска → запись НЕ истекла",
+        run(base, "(у6) SAN пробы в таблице источников без контейнера → запись НЕ истекла",
+            want_red=False, templates=tpl)
+        # (у7) Service с именем процесса без контейнера.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe-svc.yaml"] = (
+            f"kind: Service\nmetadata:\n  name: {proc}\nspec:\n  selector:\n"
+            f"    app: {proc}\n  ports:\n    - port: 9091\n")
+        run(base, "(у7) Service с именем процесса без контейнера → запись НЕ истекла",
             want_red=False, templates=tpl)
 
         m = copy.deepcopy(base)
