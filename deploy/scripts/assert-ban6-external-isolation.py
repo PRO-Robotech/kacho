@@ -963,6 +963,8 @@ def _self_test_main_notify_branch() -> int:
       б) профиль рендерит, подов нагрузки 0 → код 1, причина названа;
       в) профиль рендерит, поды есть → домен notify меряется СОБСТВЕННЫМ слушателем
          носителя (svc/kacho-notify-probe :9091, Д94) — код 0;
+      е) профиль рендерит лишь шлюз kacho-notify, носителя нет → вне опроса: поды
+         шлюза носителем домена не считаются (Д94);
       г) ответа о рендере нет → ветки нет, домен меряется как прочие; листенер
          notify не отвечает → встречный контроль не подтверждён, код 2;
       д) дерево как есть: НАСТОЯЩИЙ рендер профиля dev-prod → вне опроса, код 0.
@@ -1051,20 +1053,30 @@ def _self_test_main_notify_branch() -> int:
             print("\n".join("      " + ln for ln in text.splitlines()[-12:]))
         rc |= 0 if ok else 1
 
-    hit = [("Deployment", "kacho-notify-probe", {"app": "kacho-notify-probe"})]
+    def renders(*procs):
+        """Подставной рендер: нагрузка есть ровно у названных процессов — вопрос
+        гейта о ДРУГОМ процессе (например, о шлюзе вместо носителя) получает ноль."""
+        def fn(st, pr):
+            hits = ([("Deployment", pr, {"app": pr})] if pr in procs else [])
+            return f"профиль {st}: …, запускают {pr}: {len(hits)}", hits
+        return fn
+
+    carrier = INTERNAL_ENDPOINTS[NOTIFY_DOMAIN][0].split("/", 1)[-1]
     print("\nсамопроверка ветки Д91 через main() (notify по рендеру профиля):")
     run_case("а) профиль не рендерит notify → зелёный, вне опроса",
-             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 0", []),
-             None, True, 0,
+             renders(), None, True, 0,
              ["notify: профиль dev-prod его не рендерит — вне опроса", "OK: BAN6-EXT-GRPC",
               "вне опроса по профилю dev-prod: доменов 1 (notify)"], forbid_notify_ask=True)
-    run_case("б) профиль рендерит, подов 0 → КРАСНЫЙ",
-             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 1", hit),
-             0, True, 1, ["подов его нагрузки 0", "FAIL: профиль рендерит носителя notify"])
-    run_case("в) профиль рендерит, поды есть → собственный слушатель носителя",
-             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 1", hit),
-             1, True, 0, ["ОБСЛУЖЕН у носителя 'notify'", "OK: BAN6-EXT-GRPC"])
-    run_case("г) ответа о рендере нет → меряется как прочие, листенер молчит → код 2",
+    run_case("б) профиль рендерит носителя, подов 0 → КРАСНЫЙ",
+             renders(carrier), 0, True, 1,
+             ["подов его нагрузки 0", "FAIL: профиль рендерит носителя notify"])
+    run_case("в) профиль рендерит носителя, поды есть → его собственный слушатель",
+             renders(carrier), 1, True, 0, ["ОБСЛУЖЕН у носителя 'notify'", "OK: BAN6-EXT-GRPC"])
+    run_case("е) профиль рендерит лишь шлюз kacho-notify → носитель вне опроса (Д94)",
+             renders("kacho-notify"), None, True, 0,
+             ["notify: профиль dev-prod его не рендерит — вне опроса", "OK: BAN6-EXT-GRPC"],
+             forbid_notify_ask=True)
+    run_case("г) ответа о рендере нет → меряется как прочие, листенер молчит",
              lambda st, pr: (None, ["helm отказал (инъекция)"]),
              None, False, 2, ["ветки Д91 нет", "НЕ ПОДТВЕРЖДЁН"])
     run_case("д) дерево как есть (настоящий рендер dev-prod) → вне опроса",
