@@ -38,7 +38,7 @@ import (
 )
 
 // credentialStateUnknownReason — текст ответа Р1 на обеих поверхностях.
-const credentialStateUnknownReason = "credential state could not be established"
+const credentialStateUnknownReason = "credential state could not be established" // #nosec G101 -- текст ответа на молчание авторитета, а не удостоверение
 
 // writeCredentialStateUnknown — ответ Р1 REST-поверхности: единственный писатель
 // для всех трёх полос.
