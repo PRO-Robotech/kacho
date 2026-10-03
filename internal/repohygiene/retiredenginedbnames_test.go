@@ -121,8 +121,7 @@ func TestRetiredEngineNameTakesNoNewDatabaseObject(t *testing.T) {
 			"продлевать НОВЫМ объектом нельзя — оно уже стоило заведённой по нему задачи #1667.\n")
 		for _, k := range added {
 			o := byKey[k]
-			fmt.Fprintf(&b, "  + %-11s %-46s services/%s/internal/migrations/%s\n",
-				o.Kind, o.Name, o.Service, o.Migration)
+			b.WriteString(retiredEngineFindingLine(o))
 		}
 		b.WriteString("Исходов два: назвать объект по домену-владельцу (registry так и сделал — " +
 			"`registry_outbox` вместо имени движка), либо, если имя взято осознанно, " +
@@ -144,6 +143,12 @@ func TestRetiredEngineNameTakesNoNewDatabaseObject(t *testing.T) {
 	if len(added) == 0 && len(removed) == 0 {
 		t.Logf("состав сходится: %d объектов в ведомости, %d в дереве", len(want), len(got))
 	}
+}
+
+// retiredEngineFindingLine — строка находки «новое имя»: род, имя и файл
+// миграции НАСТОЯЩИМ путём — каталог цепочки не выводится из имени службы.
+func retiredEngineFindingLine(o RetiredEngineDatabaseObject) string {
+	return fmt.Sprintf("  + %-11s %-46s %s\n", o.Kind, o.Name, o.Path)
 }
 
 // diffSortedStrings — что появилось в got сверх want и чего в got не хватает.
