@@ -986,8 +986,10 @@ func migrateFindings(objs []renderedObj) []string {
 				pw = nstr(ndig(e, "valueFrom", "secretKeyRef", "name")) != ""
 			}
 		}
-		if !strings.Contains(dsn, "dbname=kacho_notify") {
-			out = append(out, "DSN контейнера migrate не называет базу kacho_notify: "+dsn)
+		// dbname — ТОЧНЫМ значением разобранного поля, не подстрокой: подстрока
+		// принимает dbname=kacho_notifyprobe (база пробы) за базу службы (Д84).
+		if db, ok := dsnField(dsn, "dbname"); !ok || db != "kacho_notify" {
+			out = append(out, "DSN контейнера migrate называет базу «"+db+"», а не ровно kacho_notify")
 		}
 		if !pw {
 			out = append(out, "пароль базы у migrate не ссылкой на секрет")
@@ -1008,6 +1010,24 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	if f := migrateFindings(mustRenderNotify(t, inj, standaloneLeg())); len(f) == 0 {
 		t.Errorf("инъекция «контейнер migrate снят»: проба промолчала")
 	}
+	// Близнец подстроки: имя базы пробы содержит имя базы службы префиксом.
+	if f := migrateFindings(mustRenderNotify(t, chart, standaloneLeg(), "db.name=kacho_notifyprobe")); len(f) == 0 {
+		t.Errorf("инъекция dbname=kacho_notifyprobe: проба промолчала — dbname сверяется подстрокой")
+	} else {
+		t.Logf("инъекция dbname=kacho_notifyprobe → красный: %s", f[0])
+	}
+}
+
+// dsnField — значение поля key строки DSN вида «k=v k=v» (форма, которую
+// печатает шаблон чарта; значения без пробелов и кавычек). Второе значение —
+// поле найдено.
+func dsnField(dsn, key string) (string, bool) {
+	for _, tok := range strings.Fields(dsn) {
+		if k, v, ok := strings.Cut(tok, "="); ok && k == key {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 // ─── нога фикстурной копии ЗОНТИКА (N02, N20, N25; CX1-94, CX1-97, CX1-99, М43, М45) ─
