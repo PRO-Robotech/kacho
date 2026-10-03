@@ -267,20 +267,9 @@ func main() {
 		logger.Error("api-gateway refusing to start", "err", audErr)
 		os.Exit(1)
 	}
-	issuerRecords := make([]middleware.IssuerKeySet, 0, len(acceptance))
-	acceptedIssuers := make([]string, 0, len(acceptance))
-	platformAccepted := false
-	for _, b := range acceptance {
-		issuerRecords = append(issuerRecords, middleware.IssuerKeySet{
-			Issuer:                  b.Issuer,
-			KeySetURL:               b.KeySetURL,
-			TokenTypes:              b.TokenTypes,
-			TolerateAbsentTokenType: b.TolerateAbsentTokenType,
-			ReadRevocation:          b.ReadRevocation,
-		})
-		acceptedIssuers = append(acceptedIssuers, b.Issuer)
-		platformAccepted = platformAccepted || b.ReadRevocation
-	}
+	// Перевод объявления в записи проверяющего — ОДНА функция на процесс и на
+	// пробу приёмки KA1 (KA1-35): копия цикла здесь разошлась бы с ней молча.
+	issuerRecords, acceptedIssuers, platformAccepted := middleware.IssuerKeySetsFromAcceptance(acceptance)
 
 	// МЯГКИЙ ПРОХОД ОДИН, И У НЕГО ОДИН ПРОИЗВОДИТЕЛЬ — незаявленный адресат
 	// (ветка then ниже). Дойти до него может только класс разработки: в боевом
