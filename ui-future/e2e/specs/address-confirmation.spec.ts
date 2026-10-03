@@ -36,6 +36,7 @@ import {
 } from "./fixtures";
 import { issuingDocuments, substituteDocumentReads, type IssuedCall, type IssuingDocuments } from "./issuing-document";
 import { awaitLetter, conditionNotCreated, stationMailbox, type Letter, type Mailbox } from "./mail-receiver";
+import { EDGE_AUTHN_FAILED, bodyOf } from "./producer-answers";
 
 /**
  * Дальше входа — только с подтверждённым адресом почты: консоль (приёмка F6b, S2).
@@ -372,7 +373,6 @@ const PROJECTS = "/iam/v1/projects";
 const ACCOUNTS = "/iam/v1/accounts";
 const NETWORKS = "/vpc/v1/networks";
 const CHECK_CODE_TEXT = "Проверьте код или отправьте новое письмо.";
-const SESSION_ENDED_TEXT = "session ended; sign in again";
 
 /** Пути, чьи ответы снимаются до страницы: глаголы полосы и запрос письма. */
 const ANSWERED_PATHS: readonly string[] = [...LANE_VERBS, VERIFY_EMAIL];
@@ -435,26 +435,37 @@ async function expectAddressRefusal(res: APIResponse, where: string): Promise<Ed
   return a;
 }
 
-/** Отказ F4d-22: `401`, текст отсечки, вызов края и ГАСЯЩЕЕ печенье носителя. */
+/**
+ * Отказ F4d-22 в форме приёмки KA1 (Р2): `401`, тело и вызов — побайтово те
+ * единственные, что край пишет на любую причину непринятия удостоверения
+ * (причины в ответе нет), и ГАСЯЩЕЕ печенье носителя полосы сессии.
+ */
 async function expectSessionEnded(res: APIResponse, where: string): Promise<void> {
   const a = await edgeAnswerOf(res);
   const carrierEnded = headerValues(a, "set-cookie").some(
     (v) => v.startsWith(`${SESSION_COOKIE}=;`) && /max-age=0/i.test(v),
   );
+  const canon = bodyOf(EDGE_AUTHN_FAILED);
   expect(
     {
       status: a.status,
       code: a.code,
       message: a.message,
+      reason: a.reason,
+      domain: a.domain,
       challenge: headerValues(a, "www-authenticate").join(" · "),
+      body: a.text,
       carrierEnded,
     },
     `${where}: ответ края ${a.status} ${a.text.slice(0, 300)}; set-cookie: ${headerValues(a, "set-cookie").join(" | ")}`,
   ).toEqual({
-    status: 401,
-    code: 16,
-    message: SESSION_ENDED_TEXT,
-    challenge: `Bearer error="invalid_token", error_description="${SESSION_ENDED_TEXT}"`,
+    status: EDGE_AUTHN_FAILED.status,
+    code: canon.code,
+    message: canon.message,
+    reason: "AUTHN_REQUIRED",
+    domain: "kaname.cloud.iam.v1",
+    challenge: EDGE_AUTHN_FAILED.headers["WWW-Authenticate"],
+    body: EDGE_AUTHN_FAILED.body,
     carrierEnded: true,
   });
 }

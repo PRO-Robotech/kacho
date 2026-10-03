@@ -207,10 +207,14 @@ func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http
 func (h *SessionIdentityHandler) sessionRevoked(
 	ctx context.Context, subj Subject, authenticatedAt time.Time,
 ) bool {
-	if h.sessionCutoff == nil || subj.Type != "user" || subj.ID == "" {
+	if h.sessionCutoff == nil {
 		return false
 	}
-	cutoff, found, err := h.sessionCutoff.SessionCutoffOf(ctx, subj.ID)
+	cs, ok := NewCutoffSubject(subj.Type, subj.ID)
+	if !ok {
+		return false
+	}
+	cutoff, found, err := h.sessionCutoff.SessionCutoffOf(ctx, cs)
 	if errors.Is(err, ErrSessionCutoffUnsupported) {
 		// Окно раската — та же посадка, что на полосе личности: проходим, громко.
 		h.logger.Error("/me: session revocation not enforced — the authority does not " +

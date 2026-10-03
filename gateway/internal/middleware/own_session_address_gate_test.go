@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // addressRefusalWant — отказ Р3 побайтово: значение службы (`kaname`
@@ -493,7 +495,7 @@ func TestOwnSessionAddressGate_F6b_07_CutoffIsDecidedBeforeTheAddress(t *testing
 	rig := newAddressRig(t, unverifiedOwnSession())
 	rig.cut.found, rig.cut.cutoff = true, ownAuthAt
 	rec := rig.present(http.MethodGet, "/iam/v1/projects", true)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 		t.Fatalf("отсечённая сессия обязана получить F4d-22, получено %d %s", rec.Code, rec.Body.String())
 	}
 	if !ourCarrierEnded(rec.Result()) {
@@ -533,16 +535,16 @@ func TestOwnSessionAddressGate_F6b_08_AddressIsDecidedBeforeTheFloor(t *testing.
 	}
 }
 
-// F6b-09 — служба не ответила о сессии: F4d-23, прохода «адрес неизвестен» нет.
+// F6b-09 — служба не ответила о сессии: ответ Р1 (KA1), прохода «адрес неизвестен» нет.
 func TestOwnSessionAddressGate_F6b_09_UnansweredSessionIsF4d23NotAPass(t *testing.T) {
 	rig := newAddressRig(t, unverifiedOwnSession())
 	rig.reader.err = errors.New("authority unavailable")
 	rec := rig.present(http.MethodGet, "/iam/v1/projects", true)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
-		t.Fatalf("служба не ответила: ожидался F4d-23, получено %d %s", rec.Code, rec.Body.String())
+	if !isCredentialStateUnknown(rec) {
+		t.Fatalf("служба не ответила: ожидался ответ Р1 приёмки KA1 (503, носитель цел), получено %d %s", rec.Code, rec.Body.String())
 	}
 	if ourCarrierEnded(rec.Result()) {
-		t.Fatal("F4d-23 носитель не гасит")
+		t.Fatal("ответ Р1 носитель не гасит")
 	}
 	if rig.next.served != 0 {
 		t.Fatalf("при неответе службы запрос дошёл до следующего звена %d раз", rig.next.served)
@@ -563,11 +565,11 @@ func TestOwnSessionAddressGate_F6b_11_VerificationVerbsAreRelayedAndReadTheCarri
 		if rec := rig.present(http.MethodPost, p, false); rec.Code != http.StatusOK || rig.reached[p] != 2 {
 			t.Fatalf("(б) %s: %d, ретранслирован %d", p, rec.Code, rig.reached[p])
 		}
-		// (в) носитель при службе, не ответившей о сессии, — F4d-23 края.
+		// (в) носитель при службе, не ответившей о сессии, — ответ Р1 края (KA1).
 		rig.reader.err = errors.New("authority unavailable")
 		rec := rig.present(http.MethodPost, p, true)
-		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) || rig.reached[p] != 2 {
-			t.Fatalf("(в) %s: ожидался F4d-23 без ретрансляции, получено %d %s, ретранслирован %d", p, rec.Code, rec.Body.String(), rig.reached[p])
+		if !isCredentialStateUnknown(rec) || rig.reached[p] != 2 {
+			t.Fatalf("(в) %s: ожидался ответ Р1 без ретрансляции, получено %d %s, ретранслирован %d", p, rec.Code, rec.Body.String(), rig.reached[p])
 		}
 	}
 	// Близнец: регистрация в случае (в) ретранслируется — носителя она не читает.

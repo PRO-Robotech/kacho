@@ -120,7 +120,7 @@ func TestSECK_RESTMux_MTLSBackend_ListNetworks_200(t *testing.T) {
 		"vpc": gatewayClientCreds(t, ca, muxTestServerSAN),
 	}
 
-	h, err := NewMux(context.Background(), addrs, nil /* conns */, dialOpts)
+	h, err := NewMux(context.Background(), addrs, nil /* conns */, dialOpts, 30*time.Second)
 	require.NoError(t, err)
 
 	rec := doMuxGET(t, h, "/vpc/v1/networks?projectId=prj-1")
@@ -148,7 +148,7 @@ func TestSECK_RESTMux_InsecureDialVsMTLSBackend_Not200(t *testing.T) {
 	addrs := map[string]string{"vpc": addr}
 	// No per-backend creds for vpc → NewMux must fall back to insecure (which is
 	// exactly the pre-fix behavior). Against an mTLS backend this fails the call.
-	h, err := NewMux(context.Background(), addrs, nil, nil /* dialOpts */)
+	h, err := NewMux(context.Background(), addrs, nil, nil /* dialOpts */, 30*time.Second)
 	require.NoError(t, err)
 
 	rec := doMuxGET(t, h, "/vpc/v1/networks?projectId=prj-1")
@@ -168,7 +168,7 @@ func TestSECK_RESTMux_WrongServerName_HandshakeRejected(t *testing.T) {
 		"vpc": gatewayClientCreds(t, ca, "iam.kacho.svc"),
 	}
 
-	h, err := NewMux(context.Background(), addrs, nil, dialOpts)
+	h, err := NewMux(context.Background(), addrs, nil, dialOpts, 30*time.Second)
 	require.NoError(t, err)
 
 	rec := doMuxGET(t, h, "/vpc/v1/networks?projectId=prj-1")
@@ -187,7 +187,7 @@ func TestSECK_RESTMux_NilCreds_InsecureBackend_200(t *testing.T) {
 	t.Cleanup(srv.Stop)
 
 	addrs := map[string]string{"vpc": lis.Addr().String()}
-	h, err := NewMux(context.Background(), addrs, nil, nil /* dialOpts → insecure */)
+	h, err := NewMux(context.Background(), addrs, nil, nil /* dialOpts → insecure */, 30*time.Second)
 	require.NoError(t, err)
 
 	rec := doMuxGET(t, h, "/vpc/v1/networks?projectId=prj-1")

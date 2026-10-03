@@ -3,6 +3,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+import { EDGE_CREDENTIAL_STATE_UNKNOWN, laneAnswerOf } from "@shared/test/edge-answers";
 import { SESSION, SIGNED_IN, installLane, refusal, type LaneAnswer } from "@shared/test/lane-fake";
 
 // Параметры учётной записи (приёмка F8, S2): смена пароля и второй фактор
@@ -70,16 +71,19 @@ describe("параметры учётной записи", () => {
     });
   });
 
-  it("F8-25 · отказ края на глаголе с носителем назван, экран остаётся на месте", async () => {
+  it("F8-25 · служба молчит краю на глаголе с носителем (KA1, Р1): ответ назван, повторить можно, экран на месте", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
-      "POST /iam/v1/auth/password": { status: 401, body: { code: 16, message: "session ended; sign in again" } },
+      "POST /iam/v1/auth/password": laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN),
     });
     renderPage();
     const password = await screen.findByRole("region", { name: "Пароль" });
     fireEvent.click(within(password).getByRole("button", { name: "Сменить пароль" }));
-    expect(await within(password).findByRole("alert")).toHaveTextContent("session ended; sign in again");
+    const alert = await within(password).findByRole("alert");
+    expect(alert).toHaveTextContent("credential state could not be established");
+    expect(alert).toHaveTextContent("Отправьте форму ещё раз.");
+    expect(lane.of("POST", "/iam/v1/auth/password")).toHaveLength(1);
   });
 
   it("F8-26/F8-27 · заведение: материал из ответа, подтверждение, коды один раз, состояние перечитано", async () => {
