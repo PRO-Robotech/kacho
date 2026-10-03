@@ -25,6 +25,15 @@
 kacho#2818 (раздел «Снятие kacho#2818» ниже), третьим — задачей kacho#1276
 (разделы «Снятие kacho#1276» и «Снятие kacho#1276, часть 2» … «часть 5»).
 
+**Как здесь написано имя снятого файла.** Документ — запись решений, и снятые
+пробы, гейты и скрипты он называет намеренно: строка «снять · да» записи Б и
+строка «снять» записи А — история исхода, а не утверждение о нынешнем дереве.
+Поэтому путь или имя файла, которого в стволе нет, пишется **без оформления
+кодом**, а рядом в той же строке стоит, каким изменением он снят (задача и
+коммит). В оформлении кодом стоит только то, что в дереве есть сегодня: путь
+живой пробы, координата `путь:строка` и образец с заполнителем. Гейт записи
+читает ячейку пути в обеих формах одинаково — снимает обрамление перед сверкой.
+
 ## Предмет снятия
 
 Снимается **внешний поставщик личности**: подчарты-архивы
@@ -57,10 +66,11 @@ deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.
 
 Четвёртого исхода и корзины «прочее» нет. Исход выводится из **разбора
 содержимого** — что проба читает и что утверждает, — а не из совпадения слова:
-слово с именем поставщика в этом дереве стоит и в наших собственных координатах
-(тело `_identity-provider.tpl`, путь `/etc/kaname-identity-rendered/`), а четыре
-шаблона поставщика в нашем подчарте после #2759 не несут его в имени, — признак
-по слову ошибается в обе стороны.
+на ревизии прочтения слово с именем поставщика стояло и в наших собственных
+координатах (тело шаблона _identity-provider.tpl нашего подчарта, путь
+монтирования /etc/kaname-identity-rendered/; оба сняты задачей kacho#2818,
+`92097320166`), а четыре шаблона поставщика в нашем подчарте после #2759 не несли
+его в имени, — признак по слову ошибается в обе стороны.
 
 ## Объём осмотренного
 
@@ -156,9 +166,10 @@ kacho#2818 пробы унесли своих помощников к читат
 другом словаре («перевести», «переутвердить») и на другом дереве. С того
 основания:
 
-- состав: проба `identity_seed_matches_chart_schema_test.go` снята вместе с
-  посевом (kacho#2858), появилась `identity_config_template_test.go` — дом
-  общей координаты, которую прежде держал снятый посев;
+- состав: проба identity_seed_matches_chart_schema_test.go снята вместе с
+  посевом (kacho#2858), появилась identity_config_template_test.go — дом
+  общей координаты, которую прежде держал снятый посев (позже снята и она —
+  kacho#2818, `92097320166`);
 - посадку `own` объявили все стенды, стек поставщика выключен в базе зонта, и
   слушатель хуков под `own` не строится. Отсюда другой исход у проб, чей
   носитель после снятия в этом дереве не существует: транспорт обратных
@@ -248,19 +259,19 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 
 | # | гейт признака | исход | изменение | класс отказа | чем держится класс | довод (координата) |
 |---:|---|---|---|---|---|---|
-| 1 | `identity_callback_transport_test.go` | снять | #2818 (`92097320166`) | транспорт обратного вызова к слушателю хуков зашит в шаблон либо расходится со слушателем: сведения о личности едут открытым текстом, либо вызов не доезжает — молча | невоспроизводим | слушателя хуков у службы нет, порт хуков запрещён безусловно `deploy/kaname_hooks_port_follows_posture_test.go:18-20`; возврат полосы хуков в подчарт — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:95` |
-| 2 | `identity_chart_default_premise_test.go` | снять | #1276 (`3af063bd6f3`) | предпосылка о чужом чарте: безопасное умолчание ручки режима разработки в архиве поставщика перевернулось бы при обновлении чарта молча | невоспроизводим | архивов и зависимостей поставщика в зонте нет; возврат его компонента — находка `deploy/own_posture_foreign_identity_test.go:237` |
-| 3 | `identity_config_digest_binds_the_same_text_test.go` | снять | #2818 (`92097320166`) | правка карты настроек не перекатывает под: отпечаток в шаблоне пода считается по другому тексту (инцидент 2026-07-25) | преемник | карта нашей службы связана отпечатком того же шаблона `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:90`; перекатку при смене содержимого судит поведенчески `deploy/tests/helm/config-rollout-binding-test.sh:5` |
-| 4 | `identity_config_reaches_the_process_test.go` | снять | #2818 (`92097320166`) | #904: конфигурация объявлена, но никем не смонтирована — объявлено всё, не работает ничто, и снаружи это неотличимо от исправной работы | преемник | у нашей службы величины, подаваемые только файлом настроек, без файла отказывают в старте, и отказ не молчит: `kaname:internal/apps/kaname/config/required_settings_test.go#TestRequiredSettings_TableCannotLie` |
-| 5 | `identity_courier_arg_premise_test.go` | снять | #1276 (`3af063bd6f3`) | предпосылка о чужом чарте: почтовый процесс поставщика не наследует аргументов основного | невоспроизводим | второго процесса у службы нет, архива поставщика нет; возврат его компонента — находка `deploy/own_posture_foreign_identity_test.go:237` |
-| 6 | `identity_courier_reads_what_it_mounts_test.go` | снять | #2818 (`92097320166`) | два процесса поставщика читают разные файлы настроек: почтовые величины приняты и проигнорированы | преемник | отправитель письма у нас один и питается ровно узлом `global.kacho.identity.smtp` — `deploy/identity_mail_lane_feeds_both_senders_test.go:262-288` |
-| 7 | `identity_dev_flag_declaration_test.go` | снять | #1276 (`3af063bd6f3`) | боевой стенд держит поставщика в режиме разработки: печенье сессии без атрибута Secure (CWE-614), и ни одна проба этого не видит | преемник | ручки режима разработки у службы нет, печенье сессии выдаётся с Secure всегда: `kaname:internal/handler/loginlanehttp/handler_test.go#TestLane_F3_01_LoginIssuesTheSessionCookieAndANewFormContext`; возврат компонента поставщика — находка `deploy/own_posture_foreign_identity_test.go:237` |
-| 8 | `identity_flow_path_is_served_injection_test.go` | снять | #1276 (`3af063bd6f3`) | инъекция гейта строки 9: способность упасть, смолчать и отличить «не обслуживается» от «неразрешимо» | преемник | самопроверка преемника в обе стороны — `deploy/tests/helm/console-serves-identity-flows-test.sh:70` |
-| 9 | `identity_flow_path_is_served_test.go` | снять | #1276 (`3af063bd6f3`) | адрес потока, выданный браузеру, не обслуживается раздачей консоли: `200` и пустая оболочка вместо экрана (замер боевого стенда 2026-08-23) | преемник | экраны церемоний ведёт консоль (приёмка F8, Р1): на цепочке own полосы к чужому экрану нет, и такая цепочка с консолью есть — `deploy/tests/helm/console-serves-identity-flows-test.sh:5` |
-| 10 | `identity_inherited_schemas_are_declared_test.go` | снять | #2818 (`92097320166`) | #1236: наш конфиг снимает схему, на которую ссылаются существующие личности, — их чтение отвечает `500` | невоспроизводим | схем личности по имени у службы нет (пин kaname `caf1c95caeb9`: SQL-файлов 46, с именем схемы 0; Go-файлов 3212, с ним 1 — о схеме контракта, не личности); возврат секции схем в подчарт — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
-| 11 | `identity_inherited_schemas_injection_test.go` | снять | #2818 (`92097320166`) | инъекция гейта строки 10 по пяти осям | невоспроизводим | та же предпосылка, что у строки 10; возврат секции схем — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
-| 12 | `identity_registration_lanes_issue_a_session_test.go` | снять | #2818 (`92097320166`) | полоса регистрации доводит регистрацию до конца и не выдаёт сессии, тогда как соседняя выдаёт | преемник | полоса без следствия «сессия» не собирается — `kaname:internal/apps/kaname/api/registration/register_test.go#TestRegister_R4_LaneMustDeclareEveryConsequence`; сессия выдаётся тем же писателем, что регистрация, — `kaname:internal/apps/kaname/api/registration/register_test.go#TestRegister_F4_01_ThreeConsequencesInOneWriterInDeclaredOrder` |
-| 13 | `identity_seed_matches_chart_schema_test.go` | снять | #2858 (`5f689f36438`) | посев писал признаки не по действующей схеме (следствие #904): заведение личности отказывало, и церемония вставала на четвёртой стадии | невоспроизводим | посева в дереве платформы нет — объявление и посев церемонии уехали в дерево службы (kaname#398); схемы признаков у службы нет (замер строки 10); возврат секции схем — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
+| 1 | identity_callback_transport_test.go | снять | #2818 (`92097320166`) | транспорт обратного вызова к слушателю хуков зашит в шаблон либо расходится со слушателем: сведения о личности едут открытым текстом, либо вызов не доезжает — молча | невоспроизводим | слушателя хуков у службы нет, порт хуков запрещён безусловно `deploy/kaname_hooks_port_follows_posture_test.go:18-20`; возврат полосы хуков в подчарт — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:95` |
+| 2 | identity_chart_default_premise_test.go | снять | #1276 (`3af063bd6f3`) | предпосылка о чужом чарте: безопасное умолчание ручки режима разработки в архиве поставщика перевернулось бы при обновлении чарта молча | невоспроизводим | архивов и зависимостей поставщика в зонте нет; возврат его компонента — находка `deploy/own_posture_foreign_identity_test.go:237` |
+| 3 | identity_config_digest_binds_the_same_text_test.go | снять | #2818 (`92097320166`) | правка карты настроек не перекатывает под: отпечаток в шаблоне пода считается по другому тексту (инцидент 2026-07-25) | преемник | карта нашей службы связана отпечатком того же шаблона `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:90`; перекатку при смене содержимого судит поведенчески `deploy/tests/helm/config-rollout-binding-test.sh:5` |
+| 4 | identity_config_reaches_the_process_test.go | снять | #2818 (`92097320166`) | #904: конфигурация объявлена, но никем не смонтирована — объявлено всё, не работает ничто, и снаружи это неотличимо от исправной работы | преемник | у нашей службы величины, подаваемые только файлом настроек, без файла отказывают в старте, и отказ не молчит: `kaname:internal/apps/kaname/config/required_settings_test.go#TestRequiredSettings_TableCannotLie` |
+| 5 | identity_courier_arg_premise_test.go | снять | #1276 (`3af063bd6f3`) | предпосылка о чужом чарте: почтовый процесс поставщика не наследует аргументов основного | невоспроизводим | второго процесса у службы нет, архива поставщика нет; возврат его компонента — находка `deploy/own_posture_foreign_identity_test.go:237` |
+| 6 | identity_courier_reads_what_it_mounts_test.go | снять | #2818 (`92097320166`) | два процесса поставщика читают разные файлы настроек: почтовые величины приняты и проигнорированы | преемник | отправитель письма у нас один и питается ровно узлом `global.kacho.identity.smtp` — `deploy/identity_mail_lane_feeds_both_senders_test.go:262-288` |
+| 7 | identity_dev_flag_declaration_test.go | снять | #1276 (`3af063bd6f3`) | боевой стенд держит поставщика в режиме разработки: печенье сессии без атрибута Secure (CWE-614), и ни одна проба этого не видит | преемник | ручки режима разработки у службы нет, печенье сессии выдаётся с Secure всегда: `kaname:internal/handler/loginlanehttp/handler_test.go#TestLane_F3_01_LoginIssuesTheSessionCookieAndANewFormContext`; возврат компонента поставщика — находка `deploy/own_posture_foreign_identity_test.go:237` |
+| 8 | identity_flow_path_is_served_injection_test.go | снять | #1276 (`3af063bd6f3`) | инъекция гейта строки 9: способность упасть, смолчать и отличить «не обслуживается» от «неразрешимо» | преемник | самопроверка преемника в обе стороны — `deploy/tests/helm/console-serves-identity-flows-test.sh:70` |
+| 9 | identity_flow_path_is_served_test.go | снять | #1276 (`3af063bd6f3`) | адрес потока, выданный браузеру, не обслуживается раздачей консоли: `200` и пустая оболочка вместо экрана (замер боевого стенда 2026-08-23) | преемник | экраны церемоний ведёт консоль (приёмка F8, Р1): на цепочке own полосы к чужому экрану нет, и такая цепочка с консолью есть — `deploy/tests/helm/console-serves-identity-flows-test.sh:5` |
+| 10 | identity_inherited_schemas_are_declared_test.go | снять | #2818 (`92097320166`) | #1236: наш конфиг снимает схему, на которую ссылаются существующие личности, — их чтение отвечает `500` | невоспроизводим | схем личности по имени у службы нет (пин kaname `caf1c95caeb9`: SQL-файлов 46, с именем схемы 0; Go-файлов 3212, с ним 1 — о схеме контракта, не личности); возврат секции схем в подчарт — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
+| 11 | identity_inherited_schemas_injection_test.go | снять | #2818 (`92097320166`) | инъекция гейта строки 10 по пяти осям | невоспроизводим | та же предпосылка, что у строки 10; возврат секции схем — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
+| 12 | identity_registration_lanes_issue_a_session_test.go | снять | #2818 (`92097320166`) | полоса регистрации доводит регистрацию до конца и не выдаёт сессии, тогда как соседняя выдаёт | преемник | полоса без следствия «сессия» не собирается — `kaname:internal/apps/kaname/api/registration/register_test.go#TestRegister_R4_LaneMustDeclareEveryConsequence`; сессия выдаётся тем же писателем, что регистрация, — `kaname:internal/apps/kaname/api/registration/register_test.go#TestRegister_F4_01_ThreeConsequencesInOneWriterInDeclaredOrder` |
+| 13 | identity_seed_matches_chart_schema_test.go | снять | #2858 (`5f689f36438`) | посев писал признаки не по действующей схеме (следствие #904): заведение личности отказывало, и церемония вставала на четвёртой стадии | невоспроизводим | посева в дереве платформы нет — объявление и посев церемонии уехали в дерево службы (kaname#398); схемы признаков у службы нет (замер строки 10); возврат секции схем — находка `deploy/kaname_subchart_retired_identity_wiring_test.go:81` |
 | 14 | `identity_chart_premise_reachability_test.go` | оставить | — | тег сборки, который не зовёт ни одно задание, выводит пробы из конвейера без единого красного; раскол, переживший свою предпосылку | проба на месте | `deploy/identity_chart_premise_reachability_test.go:66-97` |
 | 15 | `identity_domainless_landing_injection_test.go` | переписать | #2818 (`92097320166`) | инъекция гейта строки 16 | проба на месте | `deploy/identity_domainless_landing_injection_test.go:41-64` |
 | 16 | `identity_domainless_landing_is_expressible_test.go` | переписать | #2818 (`92097320166`) | #1222: посадка «консоль на голом IP» невыразима — вход ломается при монтировании настроек личности | проба на месте | `deploy/identity_domainless_landing_is_expressible_test.go:116-138` |
@@ -311,17 +322,17 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 
 | # | проба | исход | исполнено | фрагмент имени | довод |
 |---:|---|---|---|---|---|
-| 1 | `deploy/browser_facing_url_test.go` | снять | да | — | браузерный адрес потока поставщика; снята с объявлениями `ui_url` и полосой раздачи консоли к его экрану — #1276 (`3af063bd6f3`) |
+| 1 | deploy/browser_facing_url_test.go | снять | да | — | браузерный адрес потока поставщика; снята с объявлениями `ui_url` и полосой раздачи консоли к его экрану — #1276 (`3af063bd6f3`) |
 | 2 | `deploy/chart_values_keys_carry_their_own_product_prefix_injection_test.go` | переписать | да | — | синтетика ключей значений на нашем носителе — #2818 (`92097320166`) |
 | 3 | `deploy/db_footprint_declaration_test.go` | переписать | да | — | отрицательный контроль «чужое хранилище не признано нашим» судил три снятых хранилища по именам (0 из 3 в зонте); признак вынесен в чистую функцию и отрицание судится на синтетике с близнецом (`TestOursByDBHost_ForeignStoreIsNotOurs`) — #1276, часть 2 |
 | 4 | `deploy/dbhba_tls_required_test.go` | оставить | — | — | судит `pg_hba` баз зонта; проза границы о хранилищах поставщика в настоящем времени (3 строки) стала ложью с их снятием и правлена — #1276, часть 2 |
 | 5 | `deploy/dbtls_declaration_test.go` | оставить | — | — | судит `sslmode` наших клиентов; проза границы о хранилищах поставщика и их послаблении в шапке профиля (которого там нет) правлена — #1276, часть 2 |
-| 6 | `deploy/helm/umbrella/admin_hop_transport_test.go` | снять | да | — | транспорт административного слушателя издателя; снята с его терминатором — #1276 (`3af063bd6f3`), классификация стека переехала в `deploy/helm/umbrella/stack_production_class_test.go` |
+| 6 | deploy/helm/umbrella/admin_hop_transport_test.go | снять | да | — | транспорт административного слушателя издателя; снята с его терминатором — #1276 (`3af063bd6f3`), классификация стека переехала в `deploy/helm/umbrella/stack_production_class_test.go` |
 | 7 | `deploy/helm/umbrella/identity_posture_profiles_test.go` | оставить | — | — | согласие двух половин стенда о посадке; половина службы — одна посадка own (#2818), вторая — край |
 | 8 | `deploy/helm/umbrella/login_console_test.go` | переписать | да | — | ветвь посадки external, судившая выключатель экрана входа поставщика, снята — подчарта в зонте нет, путь отвечал «ключа нет» на 7 из 7 стеков; возврат держит предпосылка `TestLoginConsole_EveryKeyItReadsBelongsToAChartOfTheUmbrella` — #1276, часть 2; слой учётных данных площадки переименован — #2998 |
-| 9 | `deploy/helm/umbrella/provider_road_posture_injection_test.go` | снять | да | — | инъекция пробы административной дороги к поставщику; снята с ней — #2818 (`92097320166`) |
-| 10 | `deploy/helm/umbrella/provider_road_posture_test.go` | снять | да | — | административная дорога к поставщику; у пина её нет (kaname#362), снята — #2818 (`92097320166`) |
-| 11 | `deploy/helm/umbrella/token_shape_test.go` | снять | да | — | форма токена издателя поставщика; снята с его настройками — #1276 (`3af063bd6f3`) |
+| 9 | deploy/helm/umbrella/provider_road_posture_injection_test.go | снять | да | — | инъекция пробы административной дороги к поставщику; снята с ней — #2818 (`92097320166`) |
+| 10 | deploy/helm/umbrella/provider_road_posture_test.go | снять | да | — | административная дорога к поставщику; у пина её нет (kaname#362), снята — #2818 (`92097320166`) |
+| 11 | deploy/helm/umbrella/token_shape_test.go | снять | да | — | форма токена издателя поставщика; снята с его настройками — #1276 (`3af063bd6f3`) |
 | 12 | `deploy/image_name_agrees_with_the_source_of_names_test.go` | оставить | — | — | судит имена образов продукта; из перечня чужих образов границы сняты два ключа поставщика, которых в профилях нет — #1276, часть 2 |
 | 13 | `deploy/kaname_subchart_retired_exchange_road_test.go` | оставить | — | `platform.iam.hydraTokenURL` | проба отсутствия, страж возврата дороги обмена к издателю поставщика (#2936): профиль, объявивший снятую ручку — адрес его token-эндпоинта, якорь доверия к нему или его издателя — значением либо пустой строкой, получает отказ рендера подчарта службы с именем ручки, близнец без ручки рендерится; поставщика называют литералы трёх ручек — ровно то, что мог написать оператор, и предмет пробы — отказ на них, а не провязка (её судит `deploy/kaname_subchart_retired_identity_wiring_test.go`) |
 | 14 | `deploy/kaname_subchart_retired_identity_wiring_injection_test.go` | оставить | — | `kaname-kratos-config` | страж возврата: синтетика провязки поставщика в подчарте службы (#2818) |
@@ -330,38 +341,38 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 17 | `deploy/nginx_upstream_form_test.go` | переписать | да | — | распознаватель ключей апстрима нёс три ключа поставщика без носителя в чарте консоли (0 объявлений у каждого); сняты, объявлений под судом 9 до и после, носитель каждой формы держит `TestNginxUpstreamKeyFormsEachHaveACarrier` — #1276, часть 2 |
 | 18 | `deploy/own_posture_foreign_identity_injection_test.go` | оставить | — | `pg-kratos` | страж возврата: инъекция компонента поставщика в зонт (#2735, #1276) |
 | 19 | `deploy/own_posture_foreign_identity_test.go` | оставить | — | `foreignIdentityRepoMark` | страж возврата компонента поставщика в зонт (#2735, #1276) |
-| 20 | `deploy/provider_raised_by_probe_test.go` | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
+| 20 | deploy/provider_raised_by_probe_test.go | снять | да | — | поставщик, поднятый пробой ради перебивания ключа файла; поднимать нечего — #2818 (`92097320166`); след в рендере судит `deploy/stack_render_carries_no_vendor_residue_test.go` |
 | 21 | `deploy/published_image_pin_is_reachable_test.go` | оставить | — | — | судит пины образов продукта; из перечня сторонних образов границы снят образ экрана входа поставщика, которого в дереве нет — #1276, часть 2 |
 | 22 | `deploy/stack_render_carries_no_vendor_residue_test.go` | оставить | — | `var vendorResidueWord` | страж возврата следа поставщика в рендере каждой цепочки (#2818) |
 | 23 | `deploy/stack_table_test.go` | переписать | да | — | слой учётных данных площадки вне git: слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
-| 24 | `deploy/tests/conformance/fido/run-fido-conformance.sh` | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
-| 25 | `deploy/tests/conformance/oidc/run-oidc-conformance.sh` | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
-| 26 | `deploy/tests/helm/admin-hop-address-census-test.sh` | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
-| 27 | `deploy/tests/helm/admin-hop-pod-shape-test.sh` | снять | да | — | форма пода терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
-| 28 | `deploy/tests/helm/admin-hop-port-policy-test.sh` | снять | да | — | политика порта терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
+| 24 | deploy/tests/conformance/fido/run-fido-conformance.sh | снять | да | — | ручной прогон соответствия FIDO против адресов службы личности поставщика (148 строк, вызывающих 0); предмет снят с поставщиком, проба снята — #1276, часть 2; ключ доступа держат пробы Ф7 пина службы (`TestAccessKey_F7_*`) |
+| 25 | deploy/tests/conformance/oidc/run-oidc-conformance.sh | снять | да | — | ручной прогон соответствия OIDC против издателя поставщика (161 строка, вызывающих 0); издатель снят, проба снята — #1276, часть 2 |
+| 26 | deploy/tests/helm/admin-hop-address-census-test.sh | снять | да | — | перепись адресов административного слушателя издателя; снята с терминатором — #1276 (`3af063bd6f3`) |
+| 27 | deploy/tests/helm/admin-hop-pod-shape-test.sh | снять | да | — | форма пода терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
+| 28 | deploy/tests/helm/admin-hop-port-policy-test.sh | снять | да | — | политика порта терминатора административного слушателя; снята с ним — #1276 (`3af063bd6f3`) |
 | 29 | `deploy/tests/helm/config-rollout-binding-test.sh` | переписать | да | — | судит перекатку при смене содержимого карт; синтетика самопроверки переименована на нейтральное имя аннотации секрета — #1276, часть 4 |
 | 30 | `deploy/tests/helm/console-serves-identity-flows-test.sh` | оставить | — | `ORY_BAND` | страж возврата полосы раздачи к экрану поставщика на цепочке own (#2777, F8) |
 | 31 | `deploy/tests/helm/edge-keyset-hop-test.sh` | оставить | — | `PROVIDER_SPELLING=` | страж возврата снятых ключей издателя в чарте края |
-| 32 | `deploy/tests/helm/iam-hooks-metrics-mtls-test.sh` | снять | да | — | mTLS слушателей хуков и метрик; полоса хуков снята — #2818 (`92097320166`), половина метрик — новая проба `deploy/tests/helm/iam-metrics-mtls-test.sh` |
+| 32 | deploy/tests/helm/iam-hooks-metrics-mtls-test.sh | снять | да | — | mTLS слушателей хуков и метрик; полоса хуков снята — #2818 (`92097320166`), половина метрик — новая проба `deploy/tests/helm/iam-metrics-mtls-test.sh` |
 | 33 | `deploy/tests/helm/iam-metrics-mtls-test.sh` | переписать | да | — | судит mTLS слушателя метрик; история дефекта #1195 в прозе пересказана без имени поставщика — #1276, часть 4 |
-| 34 | `deploy/tests/helm/identity-callback-credential-source.py` | снять | да | — | разбор снятой пробы источника величины обратного вызова; снят с ней — #1276 (`3af063bd6f3`) |
+| 34 | deploy/tests/helm/identity-callback-credential-source.py | снять | да | — | разбор снятой пробы источника величины обратного вызова; снят с ней — #1276 (`3af063bd6f3`) |
 | 35 | `deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh` | переписать | да | — | самопроверка стражей на нашем признаке, без ключей поставщика — #1276 (`3af063bd6f3`) |
 | 36 | `deploy/tests/helm/identity-guards-on-our-own-posture-test.sh` | переписать | да | — | судит стражей чарта по нашему признаку (#2732); ключей поставщика пробы не задают, его выключатель назывался только в прозе истории — пересказана без имени — #1276, часть 4 |
-| 37 | `deploy/tests/helm/identity-hook-credential-provenance-inject.sh` | снять | да | — | инъекция отчёта о происхождении величины обратного вызова (строка 23 ведомости); снята вместе с отчётом после его вызовов в конвейере — #1276, часть 3 |
-| 38 | `deploy/tests/helm/identity-hook-credential-source-inject.sh` | снять | да | — | инъекция источника величины хуков; полосы хуков у пина нет — #2818 (`92097320166`) |
-| 39 | `deploy/tests/helm/identity-hook-credential-source.py` | снять | да | — | разбор источника величины хуков; снят с полосой — #2818 (`92097320166`) |
-| 40 | `deploy/tests/helm/identity-mail-lane-runtime-inject.sh` | снять | да | — | почтовый процесс поставщика на исполнении; второго отправителя нет — #2818 (`92097320166`) |
-| 41 | `deploy/tests/helm/identity-session-secret-source-test.sh` | снять | да | — | секреты сессии, которые чеканит чарт поставщика; снята — #2818 (`92097320166`) |
-| 42 | `deploy/tests/helm/identity-substitution-output-inject.sh` | снять | да | — | шаг подстановки в настройки поставщика; шаблон снят — #2818 (`92097320166`) |
+| 37 | deploy/tests/helm/identity-hook-credential-provenance-inject.sh | снять | да | — | инъекция отчёта о происхождении величины обратного вызова (строка 23 ведомости); снята вместе с отчётом после его вызовов в конвейере — #1276, часть 3 |
+| 38 | deploy/tests/helm/identity-hook-credential-source-inject.sh | снять | да | — | инъекция источника величины хуков; полосы хуков у пина нет — #2818 (`92097320166`) |
+| 39 | deploy/tests/helm/identity-hook-credential-source.py | снять | да | — | разбор источника величины хуков; снят с полосой — #2818 (`92097320166`) |
+| 40 | deploy/tests/helm/identity-mail-lane-runtime-inject.sh | снять | да | — | почтовый процесс поставщика на исполнении; второго отправителя нет — #2818 (`92097320166`) |
+| 41 | deploy/tests/helm/identity-session-secret-source-test.sh | снять | да | — | секреты сессии, которые чеканит чарт поставщика; снята — #2818 (`92097320166`) |
+| 42 | deploy/tests/helm/identity-substitution-output-inject.sh | снять | да | — | шаг подстановки в настройки поставщика; шаблон снят — #2818 (`92097320166`) |
 | 43 | `deploy/tests/helm/jobs-cronjobs-hardening-test.sh` | переписать | да | — | судит жёсткость заданий; «здесь стояло» в прозе пересказано без имени поставщика — #1276, часть 4 |
-| 44 | `deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh` | снять | да | — | усиление экрана входа поставщика; переименована #2759 (`689bb77e848`) в `identity-selfservice-ui-hardening-test.sh` и снята с каталогом экрана — #1276 (`3af063bd6f3`) |
+| 44 | deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh | снять | да | — | усиление экрана входа поставщика; переименована #2759 (`689bb77e848`) в identity-selfservice-ui-hardening-test.sh и снята с каталогом экрана — #1276 (`3af063bd6f3`) |
 | 45 | `deploy/tests/helm/machine-credential-posture-test.sh` | переписать | да | — | посадка машинных учётных данных без половины издателя — #1276 (`3af063bd6f3`) |
 | 46 | `deploy/tests/helm/neighbour-address-form-test.sh` | переписать | да | — | судит форму адреса соседа; замер в прозе пересказан в прошедшем времени без имени снятой ручки, синтетика самопроверки — на нейтральном имени — #1276, часть 4 |
 | 47 | `deploy/tests/helm/networkpolicy-egress-test.sh` | переписать | да | — | судит сетевые политики; описание реального случая в прозе — без имени поставщика (снимок прежней редакции — строка 80) — #1276, часть 4 |
 | 48 | `deploy/tests/helm/outbox-autovacuum-naptime-test.sh` | переписать | да | — | перечень баз без баз поставщика — #1276 (`3af063bd6f3`) |
 | 49 | `deploy/tests/helm/outcome-contract-inject.sh` | переписать | да | — | контракт исходов без проб перехода — #1276 (`3af063bd6f3`) |
 | 50 | `deploy/tests/helm/prerequisite-secrets-test.sh` | переписать | да | — | судит обязательные ссылки на секреты; история случая и её конец — без имени поставщика — #1276, часть 4 |
-| 51 | `deploy/tests/helm/provider-up.sh` | снять | да | — | подъём поставщика пробой; поднимать нечего — #1276 (`3af063bd6f3`) |
+| 51 | deploy/tests/helm/provider-up.sh | снять | да | — | подъём поставщика пробой; поднимать нечего — #1276 (`3af063bd6f3`) |
 | 52 | `deploy/tests/helm/rendered-documents-well-formed-test.sh` | переписать | да | — | судит форму документов рендера; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
 | 53 | `deploy/tests/helm/three-outcomes-distinguishable-test.sh` | переписать | да | — | перечень прогона без снятых проб поставщика — #1276 (`3af063bd6f3`) |
 | 54 | `deploy/tests/helm/trusted-forwarder-profiles-test.sh` | переписать | да | — | судит доверенных пересыльщиков профилей; слой учётных данных площадки переименован по тому, что несёт (`values.fe3455-secrets.yaml`), — имя поставщика из пробы ушло — #2998 |
@@ -398,7 +409,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 85 | `services/registry/internal/clients/jwks/f1_harness_test.go` | переписать | да | — | судит набор ключей реестра; адрес прежнего издателя в синтетике — нейтральное имя той же формы — #1276, часть 5 |
 | 86 | `services/registry/internal/dataplane/handler_anon_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
 | 87 | `services/registry/internal/domain/fga_subject_test.go` | переписать | да | — | судит анонимного субъекта; проза называет идентификатор настроенным анонимным принципалом (`AnonymousClientID` службы доступа), а не клиентом прежнего издателя — #2930 (комментарии registry) |
-| 88 | `tests/authz-fixtures/mint_rs256.py` | переписать | да | — | посев читает поле клиента под его живыми именами; прежнее поле с именем поставщика в контракте службы доступа зарезервировано (kaname `service_account_oauth_client.proto`, `reserved`), ответ его не несёт, и ветвь снята — #2998 |
+| 88 | `tests/authz-fixtures/mint_rs256.py` | переписать | да | — | посев читает поле клиента под его живыми именами; прежнее поле с именем поставщика в контракте службы доступа зарезервировано (kaname [proto/kaname/cloud/iam/v1/service_account_oauth_client.proto](https://github.com/PRO-Robotech/kaname/blob/8a84dcff6eb1ccde68113353ba28d1e1e399f0e6/proto/kaname/cloud/iam/v1/service_account_oauth_client.proto#L44-L45), `reserved`), ответ его не несёт, и ветвь снята — #2998 |
 | 89 | `tests/authz-fixtures/prodrun.sh` | переписать | да | — | прогонщик посева; проза о сроке токена называет срок службы доступа, а не поставщика — #2998 |
 | 90 | `tests/authz-fixtures/prodseed_all.py` | переписать | да | — | посев матрицы; проза о подписи предъявителей называет подписанта платформы — #2998 |
 | 91 | `tests/authz-fixtures/prodseed_matrix.py` | переписать | да | — | посев матрицы; проза о подписи предъявителей называет подписанта платформы — #2998 |
@@ -406,9 +417,9 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | 93 | `ui-future/dashboard/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
 | 94 | `ui-future/deploy/console_serving_neighbours_injection_test.go` | оставить | — | `location ^~ /.ory/idp/public/` | страж возврата полосы соседа в раздаче консоли: инъекция |
 | 95 | `ui-future/deploy/console_serving_neighbours_test.go` | оставить | — | `/.ory/` | страж возврата полосы соседа в раздаче консоли |
-| 96 | `ui-future/deploy/identity_dev_ceremony_band_injection_test.go` | снять | да | — | инъекция полосы раздачи церемоний режима разработки к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`) |
-| 97 | `ui-future/deploy/identity_dev_ceremony_band_test.go` | снять | да | — | полоса раздачи церемоний режима разработки к экрану поставщика; снята — #1276 (`3af063bd6f3`) |
-| 98 | `ui-future/deploy/identity_serving_precedence_test.go` | снять | да | — | старшинство полосы раздачи к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`); возврат полосы на own — находка `deploy/tests/helm/console-serves-identity-flows-test.sh` |
+| 96 | ui-future/deploy/identity_dev_ceremony_band_injection_test.go | снять | да | — | инъекция полосы раздачи церемоний режима разработки к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`) |
+| 97 | ui-future/deploy/identity_dev_ceremony_band_test.go | снять | да | — | полоса раздачи церемоний режима разработки к экрану поставщика; снята — #1276 (`3af063bd6f3`) |
+| 98 | ui-future/deploy/identity_serving_precedence_test.go | снять | да | — | старшинство полосы раздачи к экрану поставщика; снята с полосой — #1276 (`3af063bd6f3`); возврат полосы на own — находка `deploy/tests/helm/console-serves-identity-flows-test.sh` |
 | 99 | `ui-future/e2e/specs/identity-ceremony.spec.ts` | оставить | — | `/.ory/idp/public/sessions/whoami` | перепись обращений к поставщику в браузерной пробе: подсаженные обращения — её инъекция |
 | 100 | `ui-future/host/src/pages/ReachabilityPage/ReachabilityPage.test.tsx` | оставить | — | `RETIRED_IDENTITY_PROVIDER_EDGE` | страж возврата адреса поставщика на странице достижимости |
 | 101 | `ui-future/host/src/utils/auth.test.ts` | оставить | — | `.ory` | страж возврата: адрес входа не ведёт к поставщику |
@@ -435,7 +446,7 @@ git, стоявшие здесь «оставить», переписаны за
 
 ## Снятие kacho#1276, часть 3: отчёт о происхождении величины обратного вызова
 
-Строка 23 ведомости (`identity_hook_provenance_reaches_every_stand_test.go`)
+Строка 23 ведомости (identity_hook_provenance_reaches_every_stand_test.go)
 снята вместе с предметом, который она держала: работа, поднимающая стенд, звала
 отчёт о происхождении величины обратного вызова. Величину держали две стороны —
 отправитель-поставщик и проверяющая служба; отправителя в зонте нет (подчарты
@@ -444,7 +455,7 @@ git, стоявшие здесь «оставить», переписаны за
 проба (эта строка), затем вызовы отчёта в трёх рабочих потоках конвейера
 (`console-e2e.yml`, `e2e-newman.yml`, `production-posture.yml`; у первой — и
 служебный id шага в перечне разметчика исхода), затем сам отчёт
-`deploy/scripts/identity-hook-credential-provenance.sh` и его инъекция (строка 37
+deploy/scripts/identity-hook-credential-provenance.sh и его инъекция (строка 37
 записи Б, снята из состава `deploy/scripts/run-injection-proofs.sh`). Отчёт не
 уходит раньше своих вызовов: между вторым и третьим изменением он лежит в дереве
 незваным, а не зовётся в пустоту.
@@ -513,8 +524,8 @@ go test ./internal/repohygiene/ -run 'TestRetiredVendor(Mentions|Exceptions)' -c
 
 - **снята мёртвая ветвь пробросов к поставщику**: блок пробросов в обоих
   прогонщиках (`deploy/scripts/newman-parallel.sh`, `deploy/scripts/newman-e2e.sh`)
-  вместе с ручками его портов, его страж `deploy/scripts/assert-provider-forwards-follow-the-landing.sh`,
-  помощник посадки `deploy/scripts/identity-provider-landing.py`, их шаг в
+  вместе с ручками его портов, его страж deploy/scripts/assert-provider-forwards-follow-the-landing.sh,
+  помощник посадки deploy/scripts/identity-provider-landing.py, их шаг в
   `.github/workflows/e2e-newman.yml` и их строки в составе самопроверок
   `deploy/scripts/run-gate-self-tests.sh`. Поставщика нет ни на одной цепочке, и
   ветвь «посадка не own» открывала пробросы к службам, которых нет; адрес его
