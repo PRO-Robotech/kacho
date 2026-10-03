@@ -60,7 +60,7 @@
 # «пережила предмет»); 2 — не выполнилось (рендер не прошёл, инструмента нет).
 set -uo pipefail
 
-SCRIPT="$(basename "$0")"
+SCRIPT="${0##*/}"
 DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOP="$(cd "$DEPLOY/.." && pwd)"
 CHART="$DEPLOY/helm/notify"
@@ -70,8 +70,20 @@ RELEASE="kacho-notify"
 
 die2() { echo "НЕ ВЫПОЛНИЛОСЬ: $*" >&2; exit 2; }
 
+# need_tools — КАЖДЫЙ внешний инструмент обёртки спрошен ДО первого шага.
+#
+# Нехватка инструмента внутри подстановки не роняет обёртку сама: `tr`,
+# отсутствующий в `define_names … | tr …`, давал ПУСТЫЕ множества имён у фикстуры
+# и у чарта, и сверка п. 3 «множества равны» проходила на двух пустых — то есть
+# копия объявлялась проверенной, не прочитав ни одного имени (замер 2026-10-03 под
+# PATH сканирующей пробы RG1.1: без `tr`, `sha256sum`, `cut` обёртка выходила
+# кодом 0). Перечень ниже — все внешние команды файла; отсутствие любой —
+# «не выполнилось» с её именем.
 need_tools() {
-  command -v helm >/dev/null 2>&1 || die2 "helm не в PATH — каталог чарта и копию рендерить нечем"
+  local t
+  for t in helm python3 mktemp mkdir cp rm cat sha256sum cut tr head sed; do
+    command -v "$t" >/dev/null 2>&1 || die2 "$t не в PATH — обёртке копии осмотра нечем исполнить свой шаг"
+  done
   python3 -c 'import yaml' 2>/dev/null || die2 "python3 с модулем yaml недоступен — рендер разобрать нечем"
 }
 
@@ -129,11 +141,30 @@ print(len(t), json.dumps(r, separators=(",", ":")))
 
 # only_sources_differs <каталог чарта> <копия> — 0, если копия отличается от
 # каталога РОВНО файлом templates/_sources.tpl; иначе 1. Различия — в stdout.
+#
+# Различия считаются ОТНОСИТЕЛЬНЫМИ путями обхода обоих каталогов, а не сверкой
+# строки вывода `diff -rq` с ожидаемой: `diff` заключает путь с пробелом в
+# кавычки, и строка «ровно один файл» не совпадала на каталоге копии с пробелом в
+# пути — копия, отличающаяся ровно таблицей, объявлялась отличающейся не тем
+# (замер 2026-10-03: TMPDIR `scratch with spaces` сканирующей пробы RG1.1).
 only_sources_differs() {
-  local d
-  d="$(LC_ALL=C diff -rq "$1" "$2" 2>&1)"
-  printf '%s' "$d"
-  [ "$d" = "Files $1/templates/_sources.tpl and $2/templates/_sources.tpl differ" ]
+  python3 - "$1" "$2" <<'PY'
+import filecmp, os, sys
+a, b = sys.argv[1], sys.argv[2]
+def files(root):
+    out = set()
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            out.add(os.path.relpath(os.path.join(d, f), root))
+    return out
+fa, fb = files(a), files(b)
+diffs = sorted("только в каталоге: " + p for p in fa - fb) \
+    + sorted("только в копии: " + p for p in fb - fa) \
+    + sorted("различается: " + p for p in fa & fb
+             if not filecmp.cmp(os.path.join(a, p), os.path.join(b, p), shallow=False))
+print("\n".join(diffs))
+sys.exit(0 if diffs == ["различается: templates/_sources.tpl"] else 1)
+PY
 }
 
 render_chart() { # <каталог чарта> <куда> → код helm
@@ -173,8 +204,11 @@ cmd_into() {
     exit 1
   fi
 
-  fx_names="$(define_names "$FIXTURE" | tr '\n' ' ')"
-  ch_names="$(define_names "$CHART/templates/_sources.tpl" | tr '\n' ' ')"
+  fx_names="$(define_names "$FIXTURE" | tr '\n' ' ')" || die2 "имена define фикстуры не прочитаны"
+  ch_names="$(define_names "$CHART/templates/_sources.tpl" | tr '\n' ' ')" || die2 "имена define чарта не прочитаны"
+  # Два ПУСТЫХ множества равны — и сверка ниже прошла бы, не прочитав ни имени.
+  # У фикстуры define есть by construction (она подменяет таблицу помощников).
+  [ -n "${fx_names// /}" ] || die2 "у фикстуры $FIXTURE не прочитано ни одного имени define — сверять множества не с чем"
   if [ "$fx_names" != "$ch_names" ]; then
     echo "КРАСНЫЙ: имена define фикстуры и чарта различаются — копия судила бы не тот чарт:"
     echo "         фикстура: ${fx_names:-—}"
@@ -255,6 +289,27 @@ self_test() {
   check "копия с лишним шаблоном → не ровно один файл, лишний назван" 1 "extra.yaml" "$rc" "$out"
   out="$(only_sources_differs "$CHART" "$work/pair/same")"; rc=$?
   check "копия без подмены → не ровно один файл" 1 "" "$rc" "$out"
+
+  # Близнец по месту: копия в каталоге с ПРОБЕЛОМ в пути строится так же — предикат
+  # «ровно один файл» судит относительные пути, а не текст вывода `diff`.
+  out="$(bash "$0" --into "$work/with space/twin" 2>&1)"; rc=$?
+  check "каталог копии с пробелом в пути → копия построена" 0 "объектов копии:" "$rc" "$out"
+
+  # Инъекция: PATH без одного внешнего инструмента (`tr`) при прочих на месте →
+  # «не выполнилось» с его именем, а не копия, объявленная проверенной на двух
+  # пустых множествах имён. Близнец — тот же собранный PATH со всеми
+  # инструментами: копия строится (иначе красное могло прийти от самой сборки PATH).
+  mkdir -p "$work/bin-all" "$work/bin-no-tr"
+  local t p
+  for t in bash helm python3 mktemp mkdir cp rm cat sha256sum cut tr head sed dirname; do
+    p="$(command -v "$t")" || continue
+    ln -s "$p" "$work/bin-all/$t"
+    [ "$t" = tr ] || ln -s "$p" "$work/bin-no-tr/$t"
+  done
+  out="$(PATH="$work/bin-all" "$work/bin-all/bash" "$0" --into "$work/path-twin" 2>&1)"; rc=$?
+  check "собранный PATH со всеми инструментами → копия построена" 0 "объектов копии:" "$rc" "$out"
+  out="$(PATH="$work/bin-no-tr" "$work/bin-no-tr/bash" "$0" --into "$work/path-inj" 2>&1)"; rc=$?
+  check "PATH без tr → не выполнилось, инструмент назван" 2 "tr не в PATH" "$rc" "$out"
 
   echo "утверждений: $n, провалов: $fails"
   [ "$n" -gt 0 ] || { echo "НЕ ВЫПОЛНИЛОСЬ: ни одного утверждения"; return 2; }
