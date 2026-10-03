@@ -69,6 +69,9 @@ expect() {
   local kind="$1" want="$2" needle="$3" copy out code
   copy="$tmp/$kind/$GATE"
   mkdir -p "$tmp/$kind"
+  # Владелец пина кластера (kacho#2879) — сосед гейта, и копия зовёт его рядом с
+  # собой: без него копия отказала бы проверкой контекста, а не суждением.
+  cp stand-cluster-pin.sh "$tmp/$kind/" || { fail=$((fail + 1)); echo "  [ПРОВАЛ] $kind: владелец пина не скопирован"; return; }
   if ! out="$(mutate "$kind" "$copy" 2>&1)"; then
     fail=$((fail + 1)); echo "  [ПРОВАЛ] $kind: $out"; return
   fi

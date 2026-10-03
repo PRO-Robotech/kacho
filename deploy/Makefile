@@ -6,7 +6,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         psql-iam logs-iam build-services \
-        guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
+        guard-kind-context guard-stand-cluster guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline \
         dialled-transport-discipline delete-step-discipline \
@@ -1167,8 +1167,14 @@ assert-jobs-healthy:
 # (pg_stat_ssl), (C) сохранённые настройки по ВСЕМ путям доставки как backstop.
 # Устойчива к тому, что под не перезапускался — «Ready» больше ничего не «доказывает».
 #
-# guard-kind-context: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
-# прод) контексте это как минимум утечка диагностики.
+# guard-stand-cluster: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
+# прод) контексте это как минимум утечка диагностики, а вердикт был бы о другом
+# стенде. Цель пинится по КЛАСТЕРУ объявленного стенда (kacho#2879): kind — по
+# адресу, который выдаёт движок; стенд вне kind — по объявлению
+# STAND_APISERVER=<адрес apiserver'а> (величина из командной строки make уходит в
+# окружение рецепта сама, и часть D гейта сверяет тот же адрес). Прежний пин по
+# kind отказывал стенду вне kind целиком, и тот не получал вердикта посадки вовсе:
+#   make -C deploy assert-production-posture STAND_APISERVER=https://<apiserver>
 # POSTURE_PROFILE пиньтся ЗДЕСЬ, а не наследуется из окружения: иначе
 # `POSTURE_PROFILE=dev make assert-production-posture` сузил бы боевой гейт до
 # одного измерения и увёл бы его в зелёное — ручка, снимающая защиту, которую
@@ -1179,8 +1185,15 @@ assert-jobs-healthy:
 # служба обязана быть красной, а не незамеченной. Стенд шарда поднимает
 # подмножество ОСОЗНАННО, и осознанность выражается ровно тем способом, который
 # гейт для этого и завёл, — явным исключением по имени.
-assert-production-posture: guard-kind-context
+assert-production-posture: guard-stand-cluster
 	@POSTURE_PROFILE=production POSTURE_SKIP="$(POSTURE_SKIP)" bash scripts/assert-production-posture.sh
+
+# guard-stand-cluster — пин ЧИТАЮЩЕГО гейта по кластеру объявленного стенда.
+# Владелец пина один — scripts/stand-cluster-pin.sh; его же зовёт часть D гейта
+# посадки, поэтому цель и часть не могут разойтись о том, какой кластер судят.
+# Несовпадение — «условие не создано» (код 2) с обоими адресами.
+guard-stand-cluster:
+	@CLUSTER_NAME=$(CLUSTER_NAME) STAND_APISERVER="$(STAND_APISERVER)" bash scripts/stand-cluster-pin.sh
 
 # assert-metrics-surfaces-answer — диагностическая поверхность КАЖДОГО процесса
 # отвечает, а не только объявлена.
