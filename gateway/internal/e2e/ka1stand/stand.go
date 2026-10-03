@@ -41,6 +41,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -175,8 +176,35 @@ type Authority struct {
 
 func newAuthority(t *testing.T) *Authority {
 	t.Helper()
+	a, srv := newAuthorityServer(t)
+	srv.Start()
+	t.Cleanup(srv.Close)
+	// Освобождение — раньше закрытия сервера (очистки идут в обратном порядке):
+	// закрытие ждёт ответа на каждый принятый запрос.
+	t.Cleanup(func() { close(a.Q.release) })
+	a.url = srv.URL + "/internal/tokens/introspect"
+	return a
+}
+
+// NewTLSAuthority — авторитет отзыва нашей чеканки по https (П11). Второй
+// результат — сертификат сервера авторитета.
+func NewTLSAuthority(t *testing.T) (*Authority, *x509.Certificate) {
+	t.Helper()
+	a, srv := newAuthorityServer(t)
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(a.Q.release) })
+	a.url = srv.URL + "/internal/tokens/introspect"
+	return a, srv.Certificate()
+}
+
+// URL — адрес авторитета.
+func (a *Authority) URL() string { return a.url }
+
+func newAuthorityServer(t *testing.T) (*Authority, *httptest.Server) {
+	t.Helper()
 	a := &Authority{Q: newQuestion()}
-	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := a.Q.gate(r.Context()); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
@@ -186,12 +214,7 @@ func newAuthority(t *testing.T) *Authority {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": JTIOf(r.Form.Get("token")) != JTIRevoked})
 	}))
-	t.Cleanup(srv.Close)
-	// Освобождение — раньше закрытия сервера (очистки идут в обратном порядке):
-	// закрытие ждёт ответа на каждый принятый запрос.
-	t.Cleanup(func() { close(a.Q.release) })
-	a.url = srv.URL + "/internal/tokens/introspect"
-	return a
+	return a, srv
 }
 
 // ─── П3: служба доступа на внутреннем слушателе ──────────────────────────────
@@ -367,6 +390,27 @@ type Options struct {
 	// `1s` (посев П13): передаёт харнесс, а не проба, чьё «Дано» величины не
 	// называет.
 	IdentityCallBudget time.Duration
+
+	// ExtraIssuer — запись приёма П7 (Предмет 4): издатель, объявленный ЭТОЙ
+	// строкой, с набором ключей харнесса (подписант — Stand.Extra) и чтением
+	// отзыва записью службы доступа. Пусто — записи нет.
+	ExtraIssuer string
+
+	// FromConfig — записи приёма, адресат и авторитет отзыва нашей чеканки,
+	// взятые из РАЗОБРАННОЙ конфигурации (KA1-35, П11) вместо записей харнесса.
+	// Пусто — записи харнесса (П1, П2).
+	FromConfig *ConfigAcceptance
+}
+
+// ConfigAcceptance — то, что харнесс из разобранной конфигурации берёт у
+// процесса: записи проверяющего (переведённые middleware.IssuerKeySetsFromAcceptance),
+// адресат и авторитет отзыва нашей чеканки, плюс клиент, доверяющий наборам и
+// авторитету по https.
+type ConfigAcceptance struct {
+	Records      []middleware.IssuerKeySet
+	Audience     string
+	AuthorityURL string
+	HTTPClient   *http.Client
 }
 
 // DefaultIdentityCallBudget — величина профилей Р4 для вопросов службе доступа (П13).
@@ -378,8 +422,10 @@ type Stand struct {
 	srvCA    *x509.CertPool
 
 	Ours, Legacy, Undeclared *Signer
-	OurAuth                  *Authority
-	Ident                    *Identity
+	// Extra — подписант записи П7 (Options.ExtraIssuer); nil — записи нет.
+	Extra   *Signer
+	OurAuth *Authority
+	Ident   *Identity
 
 	CertA, CertB Cert
 
@@ -418,22 +464,37 @@ func New(t *testing.T, opt Options) *Stand {
 	st.BasicWrongSecret = st.Ident.mintBasic(t, BasicID, false)
 	require.NotEqual(t, st.BasicGood, st.BasicWrongSecret)
 
+	records := []middleware.IssuerKeySet{
+		{Issuer: LegacyIssuer, KeySetURL: st.Legacy.url,
+			TokenTypes:              []string{middleware.LegacyTokenType, middleware.PlatformTokenType},
+			TolerateAbsentTokenType: true},
+		{Issuer: PlatformIssuer, KeySetURL: st.Ours.url,
+			TokenTypes: []string{middleware.PlatformTokenType}, ReadRevocation: true},
+	}
+	if opt.ExtraIssuer != "" {
+		st.Extra = NewSigner(t, opt.ExtraIssuer, "ka1-extra")
+		records = append(records, middleware.IssuerKeySet{
+			Issuer: opt.ExtraIssuer, KeySetURL: st.Extra.url,
+			TokenTypes:              []string{middleware.LegacyTokenType, middleware.PlatformTokenType},
+			TolerateAbsentTokenType: true,
+		})
+	}
+	audience, authorityURL := Audience, st.OurAuth.url
+	var hop *http.Client
+	if fc := opt.FromConfig; fc != nil {
+		records, audience, authorityURL, hop = fc.Records, fc.Audience, fc.AuthorityURL, fc.HTTPClient
+	}
 	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		Issuers: []middleware.IssuerKeySet{
-			{Issuer: LegacyIssuer, KeySetURL: st.Legacy.url,
-				TokenTypes:              []string{middleware.LegacyTokenType, middleware.PlatformTokenType},
-				TolerateAbsentTokenType: true},
-			{Issuer: PlatformIssuer, KeySetURL: st.Ours.url,
-				TokenTypes: []string{middleware.PlatformTokenType}, ReadRevocation: true},
-		},
-		ExpectedAudience: Audience,
+		Issuers:          records,
+		ExpectedAudience: audience,
+		HTTPClient:       hop,
 	})
 	require.NoError(t, err)
 
 	// Читатель отзыва нашей чеканки — тот же, что собирает процесс; его срок —
 	// умолчание загрузчика KACHO_INTROSPECTION_TIMEOUT_MS (1000).
 	platformIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		IntrospectionURL: st.OurAuth.url, TTL: time.Millisecond, Timeout: time.Second,
+		IntrospectionURL: authorityURL, HTTPClient: hop, TTL: time.Millisecond, Timeout: time.Second,
 	})
 	require.NoError(t, err)
 
@@ -780,10 +841,31 @@ type Signer struct {
 // NewSigner поднимает набор ключей издателя на петле.
 func NewSigner(t *testing.T, issuer, kid string) *Signer {
 	t.Helper()
+	s, srv := newSignerServer(t, issuer, kid)
+	srv.Start()
+	t.Cleanup(srv.Close)
+	s.url = srv.URL + "/.well-known/jwks.json"
+	return s
+}
+
+// NewTLSSigner — тот же набор ключей, отдаваемый по https (П11: боевая посадка
+// требует https у адреса набора). Второй результат — сертификат сервера набора,
+// которому доверяет клиент края.
+func NewTLSSigner(t *testing.T, issuer, kid string) (*Signer, *x509.Certificate) {
+	t.Helper()
+	s, srv := newSignerServer(t, issuer, kid)
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	s.url = srv.URL + "/.well-known/jwks.json"
+	return s, srv.Certificate()
+}
+
+func newSignerServer(t *testing.T, issuer, kid string) (*Signer, *httptest.Server) {
+	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	s := &Signer{issuer: issuer, kid: kid, priv: priv}
-	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]any{{
 			"kty": "EC", "kid": kid, "alg": "ES256", "use": "sig", "crv": "P-256",
@@ -791,9 +873,7 @@ func NewSigner(t *testing.T, issuer, kid string) *Signer {
 			"y": base64.RawURLEncoding.EncodeToString(priv.Y.FillBytes(make([]byte, 32))),
 		}}})
 	}))
-	t.Cleanup(srv.Close)
-	s.url = srv.URL + "/.well-known/jwks.json"
-	return s
+	return s, srv
 }
 
 // KeySetURL — адрес набора ключей издателя.

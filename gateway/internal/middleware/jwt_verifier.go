@@ -46,6 +46,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/PRO-Robotech/corelib/tokenpolicy"
+	"github.com/PRO-Robotech/kacho/gateway/internal/issuercanon"
 )
 
 // VerifiedToken — output of JWTVerifier.Verify. Carries all claims required by
@@ -310,7 +311,11 @@ func (v *JWTVerifier) Issuers() []string {
 // ReadsRevocationFor отвечает, объявлено ли чтение отзыва на предъявлении для
 // токенов этого издателя.
 func (v *JWTVerifier) ReadsRevocationFor(issuer string) bool {
-	rec, ok := v.records[issuer]
+	canonical, err := issuercanon.Canonical(issuer)
+	if err != nil {
+		return false
+	}
+	rec, ok := v.records[canonical]
 	return ok && rec.readRevocation
 }
 
@@ -552,7 +557,14 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	if err != nil {
 		return nil, fmt.Errorf("invalid jwt claims: %w", err)
 	}
-	rec, ok := v.records[unverified]
+	// Запись выбирается КАНОНИЧЕСКОЙ формой издателя (issuercanon, приёмка KA1
+	// Р5): та же функция ключевала записи при сборке. `iss`, не приводимый к
+	// канону, записи не имеет.
+	canonical, cerr := issuercanon.Canonical(unverified)
+	if cerr != nil {
+		return nil, ErrNoIssuerRecord
+	}
+	rec, ok := v.records[canonical]
 	if !ok {
 		// Издатель в текст не уносится: он пришёл от предъявителя.
 		return nil, ErrNoIssuerRecord
@@ -582,15 +594,16 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	//    проверит, а не встретив — не возразит. Токен без срока живёт вечно, и
 	//    заметить это на положительном пути нельзя.
 	//
-	//    Издатель сверяется ТОЙ ЖЕ библиотекой, что и подпись, и сверяется с
-	//    издателем ВЫБРАННОЙ записи: разобранное до проверки подписи значение
-	//    выбрало запись и на этом свою роль исчерпало.
+	//    Издатель ПРОВЕРЕННОГО тела сверяется с издателем ВЫБРАННОЙ записи в
+	//    канонической форме (ниже, после подписи): разобранное до проверки
+	//    подписи значение выбрало запись и на этом свою роль исчерпало.
+	//    Сверка строкой библиотеки здесь не годится — она точная, а запись
+	//    ключуется каноном.
 	parser := jwt.NewParser(
 		jwt.WithValidMethods([]string{hdr.Alg}),
 		jwt.WithLeeway(v.clockSkew),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
-		jwt.WithIssuer(rec.issuer),
 		jwt.WithTimeFunc(v.now),
 	)
 	claims := jwt.MapClaims{}
@@ -604,8 +617,13 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 		return nil, errors.New("jwt invalid")
 	}
 
-	// 5. Validate aud (golang-jwt checked exp/nbf/iat with leeway and iss above).
+	// 5. Издатель проверенного тела — тот же, что выбрал запись, в каноне.
 	iss, _ := claims["iss"].(string)
+	if verifiedIss, cerr := issuercanon.Canonical(iss); cerr != nil || verifiedIss != rec.issuer {
+		return nil, fmt.Errorf("jwt verify: %w", jwt.ErrTokenInvalidIssuer)
+	}
+
+	// 6. Validate aud (golang-jwt checked exp/nbf/iat with leeway above).
 	auds, err := extractAudience(claims)
 	if err != nil {
 		return nil, err

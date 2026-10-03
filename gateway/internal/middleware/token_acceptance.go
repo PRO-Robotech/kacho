@@ -45,6 +45,7 @@ import (
 	"github.com/PRO-Robotech/corelib/tokenpolicy"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/issuercanon"
 )
 
 const (
@@ -152,9 +153,14 @@ func normaliseIssuerKeySets(sources []IssuerKeySet) (map[string]*issuerRecord, e
 	}
 	out := make(map[string]*issuerRecord, len(sources))
 	for _, s := range sources {
-		issuer := strings.TrimSpace(s.Issuer)
-		if issuer == "" {
+		if strings.TrimSpace(s.Issuer) == "" {
 			return nil, errors.New("jwt verifier: key-set record with an empty issuer")
+		}
+		// Запись ключуется КАНОНИЧЕСКОЙ формой издателя (issuercanon, приёмка
+		// KA1 Р5) — той же, что выбирает запись по `iss` предъявленного токена.
+		issuer, cerr := issuercanon.Canonical(strings.TrimSpace(s.Issuer))
+		if cerr != nil {
+			return nil, fmt.Errorf("jwt verifier: key-set record: %w", cerr)
 		}
 		if _, dup := out[issuer]; dup {
 			return nil, fmt.Errorf("jwt verifier: issuer %q is declared twice — "+

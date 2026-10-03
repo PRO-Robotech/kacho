@@ -110,11 +110,14 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 	t.Helper()
 	cert, key, ca := ka1Material(t)
 	listen = ka1FreeAddr(t)
-	appEnv := "dev"
+	appEnv, authz := "dev", "false"
 	if mode != "dev" {
-		appEnv = "production"
+		// Боевая посадка: класс окружения боевой, проверка прав включена — без
+		// неё боевой процесс в старте отказывает сам (страж прав).
+		appEnv, authz = "production", "true"
 	}
 	return map[string]string{
+		"KACHO_API_GATEWAY_AUTHZ_ENABLED":                       authz,
 		"KACHO_APP_ENV":                                         appEnv,
 		"KACHO_API_GATEWAY_AUTHN_MODE":                          mode,
 		"KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN":                  "kacho.test",
@@ -240,7 +243,7 @@ func ka1StartGuard(t *testing.T, knob, twin string) {
 		}
 	}
 	t.Run("близнец "+twin, func(t *testing.T) {
-		env, listen := ka1EdgeEnv(t, "dev")
+		env, listen := ka1EdgeEnv(t, "production")
 		env[knob] = twin
 		got := ka1RunEdge(t, env, listen)
 		if got.exited || got.healthz != http.StatusOK {

@@ -41,6 +41,8 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/tokenpolicy"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/issuercanon"
 )
 
 const (
@@ -86,24 +88,35 @@ func (c Config) isProductionPosture() bool {
 	return true
 }
 
-// AcceptedTokenIssuers возвращает ЭЛЕМЕНТЫ перечня принимаемых издателей.
+// AcceptedTokenIssuers возвращает ЭЛЕМЕНТЫ перечня принимаемых издателей — в
+// КАНОНИЧЕСКОЙ форме (issuercanon, приёмка KA1 Р5): той же, которой проверяющий
+// выбирает запись по `iss` предъявленного токена.
 //
 // Пустые элементы отбрасываются намеренно: значение «,» непусто как строка и
 // пусто как перечень, и именно это различие обязан видеть страж старта.
+//
+// Два отказа: элемент, не являющийся абсолютным http(s)-URL (издателю такой
+// формы записи быть не может), и два элемента с одной канонической формой —
+// один издатель, объявленный дважды; отказ называет оба написания.
 func (c Config) AcceptedTokenIssuers() ([]string, error) {
 	out := make([]string, 0, 2)
-	seen := map[string]bool{}
+	seen := map[string]string{}
 	for _, raw := range strings.Split(c.TokenIssuers, ",") {
 		iss := strings.TrimSpace(raw)
 		if iss == "" {
 			continue
 		}
-		if seen[iss] {
-			return nil, fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUERS names issuer %q twice — "+
-				"one issuer, one record", iss)
+		canonical, err := issuercanon.Canonical(iss)
+		if err != nil {
+			return nil, fmt.Errorf("%s: issuer %q is not an absolute http(s) URL — an issuer of "+
+				"another form has no record and cannot be compared with a presented iss: %w", knobIssuers, iss, err)
 		}
-		seen[iss] = true
-		out = append(out, iss)
+		if first, dup := seen[canonical]; dup {
+			return nil, fmt.Errorf("%s names one issuer twice: %q and %q are the same issuer in "+
+				"canonical form %q — one issuer, one record", knobIssuers, first, iss, canonical)
+		}
+		seen[canonical] = iss
+		out = append(out, canonical)
 	}
 	return out, nil
 }
@@ -126,10 +139,17 @@ func (c Config) TokenIssuerKeySetMap() (map[string]string, error) {
 		if issuer == "" {
 			return nil, fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS entry %q names no issuer", pair)
 		}
-		if _, dup := out[issuer]; dup {
-			return nil, fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS names issuer %q twice — "+
-				"one issuer, one key-set record", issuer)
+		// Ключ привязки — тот же канон, что у перечня и у `iss` (Р5).
+		canonical, cerr := issuercanon.Canonical(issuer)
+		if cerr != nil {
+			return nil, fmt.Errorf("%s entry %q names issuer %q, which is not an absolute http(s) URL "+
+				"(a record keyed by it would never be selected): %w", knobDeclaredKeySets, pair, issuer, cerr)
 		}
+		if _, dup := out[canonical]; dup {
+			return nil, fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS names issuer %q twice "+
+				"(canonical form %q) — one issuer, one key-set record", issuer, canonical)
+		}
+		issuer = canonical
 		if err := absoluteKeySetURL(keySetURL); err != nil {
 			return nil, fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS record for issuer %q: %w",
 				issuer, err)
@@ -214,6 +234,12 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 
 	platform := strings.TrimSpace(c.PlatformTokenIssuer)
 	if platform != "" {
+		canonical, cerr := issuercanon.Canonical(platform)
+		if cerr != nil {
+			return nil, fmt.Errorf("KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER %q is not an absolute "+
+				"http(s) URL (our own minting is stamped with a URL): %w", platform, cerr)
+		}
+		platform = canonical
 		known := false
 		for _, iss := range issuers {
 			if iss == platform {
