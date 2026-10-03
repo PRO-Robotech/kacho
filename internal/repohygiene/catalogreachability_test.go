@@ -103,6 +103,12 @@ import (
 // BeginAssertion,FinishAssertion}`: ключи доступа человека, обслуживаемые
 // службой в её дереве. Перемерено прогоном после регенерации: строк службы
 // 116 из 349.
+//
+// Подъём пина на 0dd03218 (kacho#3000, ствол службы на фундаменте v1.10.0) снял
+// ОДНУ — `InternalUserService/OnRecoveryCompleted`: служба сняла внутренний
+// глагол, оставшийся от снятого поставщика (kaname#564), и край перестал
+// нести его строку регенерацией каталога. Перемерено прогоном после
+// регенерации: строк каталога 348.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -176,7 +182,6 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf",
 	"kaname.cloud.iam.v1.InternalUserService/Get",
-	"kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
 	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 	"kaname.cloud.iam.v1.MembershipService/Create",
 	"kaname.cloud.iam.v1.MembershipService/Get",
