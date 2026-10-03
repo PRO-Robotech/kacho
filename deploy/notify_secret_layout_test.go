@@ -49,6 +49,7 @@
 package deploy_test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io/fs"
 	"os"
@@ -593,6 +594,54 @@ func TestNotifyRecipientKeyIsNeverGenerated(t *testing.T) {
 		t.Errorf("инъекция randAlphaNum: аннотации равны — проба детерминизма промолчала (%s)", why)
 	} else {
 		t.Logf("инъекция randAlphaNum → красный: %s", why)
+	}
+}
+
+// TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender — ключ сетки короче
+// 32 байт — отказ РЕНДЕРА с именем ручки и границей (Д94), той же границей, что
+// страж старта (Д89). Близнец — ключ ровно 32 байт: рендер проходит, и объект
+// ключа несёт его. Граница — в БАЙТАХ, как у стража (`len` Go): 16 кириллических
+// букв — 32 байта (проходит), 15 — 30 (отказ). Ни значение, ни длина в текст
+// отказа не попадают.
+func TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender(t *testing.T) {
+	chart := notifyFixtureChart(t, nil)
+	cases := []struct {
+		name, key string
+		refused   bool
+	}{
+		{"31 байт ASCII", strings.Repeat("k", 31), true},
+		{"32 байта ASCII (близнец)", strings.Repeat("k", 32), false},
+		{"15 кириллических букв — 30 байт", strings.Repeat("ключ", 3) + "клю", true},
+		{"16 кириллических букв — 32 байта (близнец)", strings.Repeat("ключ", 4), false},
+	}
+	for _, c := range cases {
+		if got := len(c.key) < 32; got != c.refused {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: кейс %q построен неверно — длина %d байт", c.name, len(c.key))
+		}
+		out, err := renderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key)
+		switch {
+		case c.refused && err == nil:
+			t.Errorf("%s: рендер прошёл — короткий ключ обязан быть отказом рендера (Д94)", c.name)
+		case c.refused && !(strings.Contains(out, "notify.recipientKey") && strings.Contains(out, "короче 32 байт")):
+			t.Errorf("%s: отказ без имени ручки или границы:\n%s", c.name, out)
+		case c.refused && strings.Contains(out, c.key):
+			t.Errorf("%s: значение ключа попало в текст отказа", c.name)
+		case !c.refused && err != nil:
+			t.Errorf("%s: рендер отказал на ключе, равном границе:\n%s", c.name, out)
+		case !c.refused:
+			var got string
+			if sec := objsOfKind(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key), "Secret"); len(sec) == 1 {
+				raw, decErr := base64.StdEncoding.DecodeString(nstr(ndig(sec[0].doc, "data", "recipientKey")))
+				if decErr == nil {
+					got = string(raw)
+				}
+			}
+			if got != c.key {
+				t.Errorf("%s: объект ключа не несёт заданный ключ (получено %d байт)", c.name, len(got))
+			}
+		default:
+			t.Logf("%s → отказ рендера с именем ручки и границей", c.name)
+		}
 	}
 }
 
