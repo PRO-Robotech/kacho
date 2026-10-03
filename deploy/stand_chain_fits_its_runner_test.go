@@ -30,7 +30,8 @@
 // промежуточная фаза тоже стоит на узле целиком):
 //
 //	запросы цепочки       — рендер умбреллы ручками UMBRELLA_OPTS рецепта;
-//	+ релиз cert-manager  — рендер его чарта ручками рецепта cert-manager-up;
+//	+ релизы до продукта — рендер чарта каждого релиза рецепта cert-manager-up
+//	                       (cert-manager и контроллер политики выпуска) его ручками;
 //	+ плоскость kind      — базовая линия kindControlPlaneCPU, ИЗМЕРЕННАЯ;
 //	≤ ёмкость узла ранера — по метке `runs-on` работы (runnerCapacitySource).
 //
@@ -444,20 +445,58 @@ var umbrellaOptsRe = regexp.MustCompile(`(?m)^UMBRELLA_OPTS\s*:?=(.*)$`)
 // setFlags — значения `--set` из строки флагов helm. Иной флаг — отказ:
 // значения, которые проба не наложила, сделали бы её рендер чужим стендом.
 func setFlags(flags string, allowed map[string]int) ([]string, error) {
+	sets, setJSON, err := releaseFlags(flags, allowed)
+	if err == nil && len(setJSON) > 0 {
+		err = fmt.Errorf("флаг %q проба не моделирует", "--set-json")
+	}
+	return sets, err
+}
+
+// releaseFlags — значения `--set` и `--set-json` из строки флагов helm. Иной
+// флаг — отказ, по той же причине, что у setFlags.
+//
+// Значение `--set-json` снимается с кавычек оболочки и с удвоения `$$` рецепта
+// make; переменная оболочки внутри (`$approve`, `$issuer`) остаётся ЛИТЕРАЛОМ.
+// Это не послабление: ручки, которые так задаёт рецепт, называют выпускающих
+// для права одобрения (строка RBAC), и на запросы процессора пода не влияют, а
+// ключ ручки наложен — чарт, отвергающий его форму, откажет рендеру и здесь.
+func releaseFlags(flags string, allowed map[string]int) (sets, setJSON []string, err error) {
 	f := strings.Fields(flags)
-	var sets []string
 	for i := 0; i < len(f); i++ {
 		switch {
 		case f[i] == "--set" && i+1 < len(f):
 			sets = append(sets, f[i+1])
 			i++
+		case f[i] == "--set-json" && i+1 < len(f):
+			v, err := shellWord(f[i+1])
+			if err != nil {
+				return nil, nil, fmt.Errorf("значение --set-json %s: %w", f[i+1], err)
+			}
+			setJSON = append(setJSON, v)
+			i++
 		case allowed[f[i]] > 0:
 			i += allowed[f[i]] - 1
 		default:
-			return nil, fmt.Errorf("флаг %q проба не моделирует", f[i])
+			return nil, nil, fmt.Errorf("флаг %q проба не моделирует", f[i])
 		}
 	}
-	return sets, nil
+	return sets, setJSON, nil
+}
+
+// shellWord — одно слово рецепта так, как его получит helm: внешние кавычки
+// оболочки сняты, `\"` внутри двойных — кавычка, `$$` make — `$`. Слово, чьи
+// кавычки не закрыты в нём же (значение с пробелом), — отказ: разбиение по
+// пробелам прочитало бы его половину.
+func shellWord(w string) (string, error) {
+	switch {
+	case len(w) >= 2 && w[0] == '"' && w[len(w)-1] == '"':
+		w = strings.ReplaceAll(w[1:len(w)-1], `\"`, `"`)
+	case len(w) >= 2 && w[0] == '\'' && w[len(w)-1] == '\'':
+		w = w[1 : len(w)-1]
+	case strings.ContainsAny(w, `"'`):
+		return "", fmt.Errorf("кавычки слова не закрыты в нём же")
+	}
+	return strings.ReplaceAll(w, "$$", "$"), nil
 }
 
 // umbrellaSets — `--set` ручки UMBRELLA_OPTS.
@@ -469,28 +508,81 @@ func umbrellaSets(makefile string) ([]string, error) {
 	return setFlags(m[1], nil)
 }
 
+// helmRelease — отдельный релиз, который рецепт cert-manager-up ставит ДО
+// продукта: его поды стоят на том же узле, что цепочка.
+type helmRelease struct {
+	Name, Chart   string
+	Sets, SetJSON []string
+}
+
+// releaseVars — релизы, которые проба умеет моделировать: имя релиза и его
+// чарт — переменными Makefile. Перечень ЗАКРЫТ: релиз рецепта, которого здесь
+// нет, — отказ, а не пропуск. Так покраснел бы второй релиз (контроллер
+// политики выпуска сертификатов служб, kacho#2916), заведённый в рецепт после
+// пробы: молча он бы в сумму не попал.
+var releaseVars = []struct{ ReleaseVar, ChartVar string }{
+	{"CERT_MANAGER_RELEASE", "CERT_MANAGER_CHART"},
+	{"APPROVER_POLICY_RELEASE", "APPROVER_POLICY_CHART"},
+}
+
 var (
-	certManagerChartRe   = regexp.MustCompile(`(?m)^CERT_MANAGER_CHART\s*:?=\s*(\S+)\s*$`)
-	certManagerInstallRe = regexp.MustCompile(`helm upgrade --install \$\(CERT_MANAGER_RELEASE\) \$\(CERT_MANAGER_CHART\)(.*?)--wait\b`)
-	recipeContinuation   = regexp.MustCompile(`\\\n\s*`)
+	helmInstallRe      = regexp.MustCompile(`helm upgrade --install (\S+) (\S+)(.*?)--wait\b`)
+	recipeContinuation = regexp.MustCompile(`\\\n\s*`)
 )
 
-// certManagerRelease — чарт и `--set` ручки отдельного релиза cert-manager,
-// прочитанные из рецепта cert-manager-up.
-func certManagerRelease(makefile string) (chart string, sets []string, err error) {
-	m := certManagerChartRe.FindStringSubmatch(makefile)
+// makeVar — значение простой переменной Makefile (`NAME := value`).
+func makeVar(makefile, name string) (string, bool) {
+	m := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `\s*:?=\s*(\S+)\s*$`).FindStringSubmatch(makefile)
 	if m == nil {
-		return "", nil, fmt.Errorf("CERT_MANAGER_CHART в Makefile не объявлен")
+		return "", false
 	}
+	return m[1], true
+}
+
+// releasesBeforeProduct — релизы рецепта cert-manager-up, каждый со своим
+// чартом и ручками, в порядке рецепта.
+func releasesBeforeProduct(makefile string) ([]helmRelease, error) {
 	t, ok := parseRecipeTargets(makefile)["cert-manager-up"]
 	if !ok {
-		return "", nil, fmt.Errorf("цели cert-manager-up в Makefile нет")
+		return nil, fmt.Errorf("цели cert-manager-up в Makefile нет")
 	}
 	recipe := recipeContinuation.ReplaceAllString(strings.Join(t.recipe, "\n"), " ")
-	inst := certManagerInstallRe.FindStringSubmatch(recipe)
-	if inst == nil {
-		return "", nil, fmt.Errorf("применение релиза cert-manager в рецепте cert-manager-up не распознано")
+	installs := helmInstallRe.FindAllStringSubmatch(recipe, -1)
+	if len(installs) == 0 {
+		return nil, fmt.Errorf("применение релиза в рецепте cert-manager-up не распознано")
 	}
-	sets, err = setFlags(inst[1], map[string]int{"-n": 2, "--create-namespace": 1})
-	return m[1], sets, err
+	out := make([]helmRelease, 0, len(installs))
+	for _, in := range installs {
+		var rel helmRelease
+		known := false
+		for _, rv := range releaseVars {
+			if in[1] != "$("+rv.ReleaseVar+")" {
+				continue
+			}
+			known = true
+			if in[2] != "$("+rv.ChartVar+")" {
+				return nil, fmt.Errorf("релиз %s ставится чартом %s, а не объявленным $(%s)", in[1], in[2], rv.ChartVar)
+			}
+			chart, ok := makeVar(makefile, rv.ChartVar)
+			if !ok {
+				return nil, fmt.Errorf("%s в Makefile не объявлен", rv.ChartVar)
+			}
+			name, ok := makeVar(makefile, rv.ReleaseVar)
+			if !ok {
+				name = strings.ToLower(strings.ReplaceAll(rv.ReleaseVar, "_", "-"))
+			}
+			rel = helmRelease{Name: name, Chart: chart}
+		}
+		if !known {
+			return nil, fmt.Errorf("рецепт cert-manager-up ставит релиз %s (чарт %s), которого проба не "+
+				"моделирует — его запросы не попали бы в сумму узла", in[1], in[2])
+		}
+		var err error
+		rel.Sets, rel.SetJSON, err = releaseFlags(in[3], map[string]int{"-n": 2, "--create-namespace": 1})
+		if err != nil {
+			return nil, fmt.Errorf("релиз %s: %w", rel.Name, err)
+		}
+		out = append(out, rel)
+	}
+	return out, nil
 }

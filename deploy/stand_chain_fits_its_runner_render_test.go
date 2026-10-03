@@ -7,7 +7,7 @@
 // конвейером на kind, помещается в узел ранера по запросам процессора» ПО
 // РЕНДЕРУ. Предмет, единица и чего гейт не утверждает — в шапке
 // stand_chain_fits_its_runner_test.go; здесь только сбор входа: ноги, рендеры
-// цепочек и релиза cert-manager, ёмкость и предпосылки базовой линии.
+// цепочек и релизов до продукта (cert-manager, контроллер политики выпуска), ёмкость и предпосылки базовой линии.
 package deploy_test
 
 import (
@@ -37,23 +37,26 @@ func renderDocBodies(t *testing.T, what, rendered string) []map[string]any {
 	return out
 }
 
-// renderCertManagerRelease — рендер отдельного релиза cert-manager тем чартом и
-// теми ручками, что применяет рецепт cert-manager-up.
-func renderCertManagerRelease(t *testing.T, chart string, sets []string) string {
+// renderRelease — рендер отдельного релиза до продукта тем чартом и теми
+// ручками, что применяет рецепт cert-manager-up.
+func renderRelease(t *testing.T, rel helmRelease) string {
 	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Fatalf("helm не в PATH — рендерная проба под тегом helmcharts обязана исполняться, а не пропускаться")
 	}
-	args := []string{"template", "kacho-cert-manager", chart, "-n", "kacho"}
-	for _, s := range sets {
+	args := []string{"template", rel.Name, rel.Chart, "-n", "kacho"}
+	for _, s := range rel.Sets {
 		args = append(args, "--set", s)
+	}
+	for _, s := range rel.SetJSON {
+		args = append(args, "--set-json", s)
 	}
 	var so, se bytes.Buffer
 	cmd := exec.Command("helm", args...)
 	cmd.Stdout, cmd.Stderr = &so, &se
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("рендер релиза cert-manager (%s %v) не выполнен (%v) — условие не создано:\n%s",
-			chart, sets, err, se.String())
+		t.Fatalf("рендер релиза %s (%s %v %v) не выполнен (%v) — условие не создано:\n%s",
+			rel.Name, rel.Chart, rel.Sets, rel.SetJSON, err, se.String())
 	}
 	return so.String()
 }
@@ -73,14 +76,20 @@ func TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ручки применения умбреллы не прочитаны: %v — рендер был бы не тем стендом", err)
 	}
-	chart, cmSets, err := certManagerRelease(makefile)
+	rels, err := releasesBeforeProduct(makefile)
 	if err != nil {
-		t.Fatalf("релиз cert-manager рецепта не прочитан: %v", err)
+		t.Fatalf("релизы рецепта cert-manager-up не прочитаны: %v", err)
 	}
-	release, err := renderCPURequests(renderDocBodies(t, "релиза cert-manager",
-		renderCertManagerRelease(t, chart, cmSets)), 1)
+	// Все релизы до продукта стоят на узле вместе: их поды — одна слагаемая.
+	var relBodies []map[string]any
+	relNames := make([]string, 0, len(rels))
+	for _, r := range rels {
+		relBodies = append(relBodies, renderDocBodies(t, "релиза "+r.Name, renderRelease(t, r))...)
+		relNames = append(relNames, r.Name)
+	}
+	release, err := renderCPURequests(relBodies, 1)
 	if err != nil {
-		t.Fatalf("запросы релиза cert-manager не вычислены: %v", err)
+		t.Fatalf("запросы релизов до продукта не вычислены: %v", err)
 	}
 
 	// ПРЕДПОСЫЛКИ БАЗОВОЙ ЛИНИИ: один узел, образ пина, пин той версии, на
@@ -162,8 +171,8 @@ func TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests(t *testing.T) {
 		labels = append(labels, fmt.Sprintf("%s %dm", l, v))
 	}
 	sort.Strings(labels)
-	t.Logf("релиз cert-manager: объектов с подами %d · запросы %dm; плоскость управления kind %s: %dm; "+
-		"ёмкость узла: %s", len(release.Lines), release.Total(), kindBaselineKindVersion, kindBaselineMilli(),
+	t.Logf("релизы до продукта (%s): объектов с подами %d · запросы %dm; плоскость управления kind %s: %dm; "+
+		"ёмкость узла: %s", strings.Join(relNames, ", "), len(release.Lines), release.Total(), kindBaselineKindVersion, kindBaselineMilli(),
 		strings.Join(labels, ", "))
 	for _, c := range cases {
 		total := c.Umbrella.Total() + c.Release.Total() + kindBaselineMilli()

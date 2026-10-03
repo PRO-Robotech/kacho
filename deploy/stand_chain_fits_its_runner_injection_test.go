@@ -228,6 +228,12 @@ func TestRunnerFitRecipe_ReadsTheFlagsAndRefusesAnUnknownOne(t *testing.T) {
 	if _, err := setFlags("--set a=1 -f extra.yaml", nil); err == nil {
 		t.Error("флаг -f прочитан молча — значения, которых проба не наложила, сделали бы рендер чужим стендом")
 	}
+	if _, err := setFlags(`--set a=1 --set-json "b=[1]"`, nil); err == nil {
+		t.Error("--set-json в ручках умбреллы прочитан молча — рендер цепочки его не накладывает")
+	}
+	if _, _, err := releaseFlags(`--set-json "b=[1, 2]"`, nil); err == nil {
+		t.Error("значение --set-json с пробелом прочитано половиной")
+	}
 	mk := "UMBRELLA_OPTS := --set cert-manager.enabled=false\n" +
 		"CERT_MANAGER_CHART   := ./charts/cm.tgz\n" +
 		"cert-manager-up: guard\n" +
@@ -238,12 +244,54 @@ func TestRunnerFitRecipe_ReadsTheFlagsAndRefusesAnUnknownOne(t *testing.T) {
 	if got, err := umbrellaSets(mk); err != nil || strings.Join(got, ",") != "cert-manager.enabled=false" {
 		t.Errorf("UMBRELLA_OPTS не прочитан: %v, %v", got, err)
 	}
-	chart, sets, err := certManagerRelease(mk)
-	if err != nil || chart != "./charts/cm.tgz" || strings.Join(sets, ",") != "crds.enabled=true" {
-		t.Errorf("релиз cert-manager не прочитан: %q %v %v", chart, sets, err)
+	rels, err := releasesBeforeProduct(mk)
+	if err != nil || len(rels) != 1 || rels[0].Chart != "./charts/cm.tgz" || strings.Join(rels[0].Sets, ",") != "crds.enabled=true" {
+		t.Errorf("релиз cert-manager не прочитан: %+v %v", rels, err)
 	}
 	withValues := strings.Replace(mk, "--set crds.enabled=true", "-f cm-values.yaml", 1)
-	if _, _, err := certManagerRelease(withValues); err == nil {
+	if _, err := releasesBeforeProduct(withValues); err == nil {
 		t.Error("файл значений релиза cert-manager прочитан молча — его запросы проба не наложила бы")
+	}
+}
+
+// TestRunnerFitRecipe_EveryReleaseBeforeTheProductIsModelled — рецепт
+// cert-manager-up ставит ДВА релиза до продукта (cert-manager и контроллер
+// политики выпуска, kacho#2916), и оба стоят на узле. Релиз, который рецепт
+// ставит, а проба не узнала, — отказ: его запросы в сумму не попали бы молча.
+// Ручка `--set-json` читается (значение снимается с кавычек оболочки), а не
+// отвергается и не пропускается.
+func TestRunnerFitRecipe_EveryReleaseBeforeTheProductIsModelled(t *testing.T) {
+	mk := "CERT_MANAGER_CHART   := ./charts/cm.tgz\n" +
+		"APPROVER_POLICY_CHART   := ./charts/ap.tgz\n" +
+		"cert-manager-up: guard\n" +
+		"\t@set -e; \\\n" +
+		"\t  helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n \"$$ns\" --create-namespace \\\n" +
+		"\t    --set crds.enabled=true \\\n" +
+		"\t    --set-json \"approveSignerNames=[\\\"$$approve\\\"]\" \\\n" +
+		"\t    --wait --timeout 5m; \\\n" +
+		"\thelm upgrade --install $(APPROVER_POLICY_RELEASE) $(APPROVER_POLICY_CHART) -n \"$$ns\" \\\n" +
+		"\t  --set crds.enabled=true \\\n" +
+		"\t  --set-json \"app.approveSignerNames=[\\\"clusterissuers.cert-manager.io/$$issuer\\\"]\" \\\n" +
+		"\t  --wait --timeout 5m\n"
+	rels, err := releasesBeforeProduct(mk)
+	if err != nil || len(rels) != 2 {
+		t.Fatalf("релизы до продукта не прочитаны: %v, %v", rels, err)
+	}
+	if r := rels[0]; r.Chart != "./charts/cm.tgz" || strings.Join(r.Sets, ",") != "crds.enabled=true" ||
+		strings.Join(r.SetJSON, ",") != `approveSignerNames=["$approve"]` {
+		t.Errorf("релиз cert-manager прочитан не тем: %+v", r)
+	}
+	if r := rels[1]; r.Chart != "./charts/ap.tgz" || strings.Join(r.Sets, ",") != "crds.enabled=true" ||
+		strings.Join(r.SetJSON, ",") != `app.approveSignerNames=["clusterissuers.cert-manager.io/$issuer"]` {
+		t.Errorf("релиз контроллера политики прочитан не тем: %+v", r)
+	}
+	unknown := strings.Replace(mk, "--wait --timeout 5m\n",
+		"--wait --timeout 5m; \\\n\thelm upgrade --install other ./charts/other.tgz --wait\n", 1)
+	if _, err := releasesBeforeProduct(unknown); err == nil || !strings.Contains(err.Error(), "other") {
+		t.Errorf("третий релиз рецепта прошёл молча — его запросы не попали бы в сумму: %v", err)
+	}
+	noPolicy := strings.Replace(mk, "$(APPROVER_POLICY_CHART)", "./x.tgz", 1)
+	if _, err := releasesBeforeProduct(noPolicy); err == nil {
+		t.Error("релиз, поставленный не объявленным чартом, прошёл молча")
 	}
 }
