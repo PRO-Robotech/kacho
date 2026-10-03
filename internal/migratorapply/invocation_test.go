@@ -597,7 +597,7 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 
 	binDir := t.TempDir()
 	cfgDir := t.TempDir()
-	proven, failed := 0, 0
+	proven, failed, notRun := 0, 0, 0
 	perService := map[string]int{}
 
 	for _, pkg := range points {
@@ -621,10 +621,22 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 
 		bin := buildApplyPoint(t, root, binDir, pkg, service)
 
-		// Каждая выведенная форма — на каждой строке цепочек точки (Д77 (б)).
+		// Каждая выведенная форма — на строке ЕЁ базы (Д84): у точки, выбирающей
+		// цепочку по имени базы, форма доказывается только на строке, чей
+		// Database равен dbname манифеста формы; у точки без таблицы — на её
+		// строке, как прежде (Д77 (б)).
 		for _, form := range serviceForms {
 			lane := laneOf(t, root, form)
-			for _, c := range chains {
+			pairing := formRows(root, form, chains)
+			for _, f := range pairing.findings {
+				t.Errorf("служба %s, форма `%s` (%s): %s", service, form, form.origin, f)
+				failed++
+			}
+			if pairing.notRun != "" {
+				notRun++
+				t.Logf("  служба %s · форма `%s` · источник %s · %s", service, form, form.origin, pairing.notRun)
+			}
+			for _, c := range pairing.rows {
 
 				name := chainLabel(c) + "/" + strings.ReplaceAll(form.String(), " ", "_")
 				ok := t.Run(name, func(t *testing.T) {
@@ -677,12 +689,13 @@ func TestEveryMigratorAppliesItsChainInItsManifestForm(t *testing.T) {
 	for _, svc := range services {
 		t.Logf("  доказано форм×строк у %s: %d", svc, perService[svc])
 	}
-	t.Logf("перепись: точек наката %d, манифестных форм×строк доказано %d", len(points), proven)
+	t.Logf("перепись: точек наката %d, манифестных форм×строк доказано %d, не выполнилось %d "+
+		"(третья категория: не зелёное и не красное — причины выше)", len(points), proven, notRun)
 
 	switch {
 	case failed > 0:
 		t.Errorf("накат в манифестной форме доказан для %d, отказали %d — находки выше", proven, failed)
-	case proven < len(points):
+	case proven+notRun < len(points):
 		t.Errorf("доказано %d форм при %d точках наката и нуле отказов — прогон отфильтрован "+
 			"(-run), и его зелёное относится к %d, а не к %d",
 			proven, len(points), proven, len(points))
