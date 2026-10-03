@@ -505,6 +505,11 @@ if [ "${1:-}" = "--self-test" ]; then
   # `umbrella/charts/notify-*.tgz`, оказывался «новее» его, и копия дерева,
   # свежая в оригинале, объявлялась несвежей — вердикт самопроверки решал порядок
   # readdir. Ось «порядок обхода» ниже держит это инъекцией в обе стороны.
+  # Класс — каждая копия, чьи файлы потом судит проверка свежести: каталог
+  # чартов, исходник консоли, его нетронутый двойник и возврат исходника из
+  # двойника (`restore_src`) — четыре места, все с сохранением времён (R39-3).
+  # Голый `cp -r` здесь остаётся ровно в одном месте — ветке `drop` оси порядка,
+  # и это контроль, а не копия для суждения.
   copy_ordered() { # <источник> <приёмник> <fwd|rev> <keep|drop> — по одному элементу верхнего уровня
     local src="$1" dst="$2" order="$3" keep="$4" e
     mkdir -p "$dst" || return 1
@@ -522,7 +527,7 @@ if [ "${1:-}" = "--self-test" ]; then
   [ -d "$WORK/deploy/helm/umbrella" ] || fatal "в копии нет умбреллы ($WORK/deploy/helm/umbrella)"
   cp "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt"
   cp -r --preserve=timestamps "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
-  cp -r "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
+  cp -r --preserve=timestamps "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
   cp "$0" "$WORK/deploy/tests/helm/$SCRIPT"
   # Общие реализации едут вместе с испытуемым: он подключает их по своему
   # каталогу, и без них самопроверка мерила бы отсутствие файла.
@@ -543,7 +548,7 @@ if [ "${1:-}" = "--self-test" ]; then
   # и следующая обязана отличаться от близнеца РОВНО одним фактом.
   restore_src() {
     rm -rf "$COPY_SRC"
-    cp -r "$WORK/ui-future-pristine" "$COPY_SRC"
+    cp -r --preserve=timestamps "$WORK/ui-future-pristine" "$COPY_SRC"
     repack
   }
   repack
