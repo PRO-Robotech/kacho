@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EDGE_AUTHN_FAILED, EDGE_CREDENTIAL_STATE_UNKNOWN, EDGE_UNANSWERED_MESSAGE } from "./edge-answers";
@@ -51,5 +51,46 @@ describe("ответы края в пробах консоли — копия п
     expect(EDGE_CREDENTIAL_STATE_UNKNOWN.text).toBe(
       `${JSON.stringify({ code: 14, message: goLiteral(src, "credentialStateUnknownReason") })}\n`,
     );
+  });
+});
+
+// Шапка разборщика (`api/rpc-status.ts`) объясняет, почему «поля `details` нет»
+// и «`details` пуст» — одно значение, и называет для этого писателей края. Писатель,
+// которого край больше не производит, делает объяснение ложным, а терпимость
+// разборщика — подпорой без производителя (так шапка пережила снятый
+// `writeHTTPUnauthorized`). Здесь каждый писатель края, названный шапкой, обязан
+// быть объявлен в дереве края, и шапка обязана назвать того, кто тело без
+// `details` действительно пишет.
+describe("шапка разборщика отказа называет живых писателей края", () => {
+  function gatewayFuncs(): Set<string> {
+    const out = new Set<string>();
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".go") && !e.name.endsWith("_test.go")) {
+          for (const m of readFileSync(p, "utf8").matchAll(/^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(/gm)) {
+            out.add(`${path.basename(path.dirname(p))}.${m[1]}`);
+            out.add(m[1]);
+          }
+        }
+      }
+    };
+    walk(path.join(repoRoot, "gateway"));
+    return out;
+  }
+
+  it("каждый писатель края в шапке объявлен в дереве края; тело без `details` — `writeCredentialStateUnknown`", () => {
+    const header = source("ui-future/shared/src/api/rpc-status.ts").split("\nexport ")[0];
+    // Писатели службы доступа живут в другом продукте (`kaname`) — их шапка
+    // называет с пакетом `loginlanehttp`, и дерево края о них не судит.
+    const named = [...header.matchAll(/`((?:[a-z]\w*\.)?[wW]rite\w*)`/g)]
+      .map((m) => m[1])
+      .filter((n) => !n.startsWith("loginlanehttp."));
+    const funcs = gatewayFuncs();
+    expect(funcs.size).toBeGreaterThan(0);
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((n) => !funcs.has(n))).toEqual([]);
+    expect(named).toEqual(expect.arrayContaining(["authnrefusal.WriteHTTP", "writeCredentialStateUnknown"]));
   });
 });
