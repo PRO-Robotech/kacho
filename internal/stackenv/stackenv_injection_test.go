@@ -190,3 +190,28 @@ func TestReadChainsRefusesAnUnparsedLineAndAnEmptyTable(t *testing.T) {
 		}
 	}
 }
+
+// Слой стенда — имя из таблицы стендов, а читается он ВНУТРИ каталога умбреллы:
+// имя, выводящее за каталог, не обязано разрешаться в чужой файл. Законный
+// близнец — тот же файл значений, названный изнутри умбреллы, — читается.
+func TestSubchartValuesRefusesALayerOutsideTheUmbrella(t *testing.T) {
+	base := t.TempDir()
+	umbrella := filepath.Join(base, "umbrella")
+	if err := os.MkdirAll(umbrella, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("svc:\n  replicas: 2\n")
+	for _, p := range []string{filepath.Join(umbrella, "values.yaml"), filepath.Join(umbrella, "values.dev.yaml"), filepath.Join(base, "outside.yaml")} {
+		if err := os.WriteFile(p, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := SubchartValues(umbrella, Chain{Name: "twin", Profiles: []string{"values.dev.yaml"}}, "svc"); err != nil {
+		t.Fatalf("законный близнец: слой внутри умбреллы не прочитан: %v", err)
+	}
+	_, err := SubchartValues(umbrella, Chain{Name: "escape", Profiles: []string{"../outside.yaml"}}, "svc")
+	if err == nil {
+		t.Fatal("слой \"../outside.yaml\" прочитан из-за пределов умбреллы — имя из таблицы стендов вывело чтение наружу")
+	}
+	t.Logf("отказ на выходе за умбреллу: %v", err)
+}

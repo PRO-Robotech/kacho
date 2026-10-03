@@ -61,6 +61,7 @@ type Chain struct {
 // ReadChains читает таблицу стендов. Нераспознанная строка и пустая таблица —
 // отказ: «стендов меньше» и «предикат перестал узнавать строки» неразличимы.
 func ReadChains(stacksFile string) ([]Chain, error) {
+	// #nosec G304 -- путь называет проба: корень дерева и константа deploy/stacks.txt (probe.go), не внешний вход
 	raw, err := os.ReadFile(stacksFile)
 	if err != nil {
 		return nil, fmt.Errorf("таблица стендов %s не читается: %w", stacksFile, err)
@@ -102,14 +103,17 @@ func Merge(dst, src map[string]any) map[string]any {
 	return dst
 }
 
-func readYAMLMap(path string) (map[string]any, error) {
-	raw, err := os.ReadFile(path)
+// readYAMLMap читает файл значений ВНУТРИ root: имя слоя приходит из таблицы
+// стендов, и выйти им за каталог умбреллы нельзя — os.Root отказывает на
+// `..` и на символической ссылке наружу.
+func readYAMLMap(root *os.Root, name string) (map[string]any, error) {
+	raw, err := root.ReadFile(name)
 	if err != nil {
 		return nil, err
 	}
 	var m map[string]any
 	if err := yaml.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("разбор %s: %w", path, err)
+		return nil, fmt.Errorf("разбор %s: %w", name, err)
 	}
 	return m, nil
 }
@@ -117,10 +121,15 @@ func readYAMLMap(path string) (map[string]any, error) {
 // SubchartValues — значения подчарта службы на стенде: поддерево key и `global`
 // из `values.yaml` умбреллы и из каждого профиля цепочки, по порядку.
 func SubchartValues(umbrellaDir string, chain Chain, key string) (map[string]any, error) {
+	root, err := os.OpenRoot(umbrellaDir)
+	if err != nil {
+		return nil, fmt.Errorf("стенд %s: каталог умбреллы %s не открывается: %w", chain.Name, umbrellaDir, err)
+	}
+	defer func() { _ = root.Close() }()
 	layers := append([]string{"values.yaml"}, chain.Profiles...)
 	out := map[string]any{}
 	for _, layer := range layers {
-		tree, err := readYAMLMap(filepath.Join(umbrellaDir, layer))
+		tree, err := readYAMLMap(root, layer)
 		if err != nil {
 			return nil, fmt.Errorf("стенд %s, слой %s: %w", chain.Name, layer, err)
 		}
@@ -248,6 +257,7 @@ func Render(chartDir string, values map[string]any, envPrefix string, workDir st
 	if err := os.WriteFile(vf, raw, 0o600); err != nil {
 		return Env{}, err
 	}
+	// #nosec G204 -- argv[0] — helm из PATH (LookPath выше), операнды — каталог чарта из корня дерева и файл значений во временном каталоге пробы; шелла нет
 	cmd := exec.Command(helm, "template", "kacho", chartDir, "--namespace", "kacho", "-f", vf)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -392,10 +402,10 @@ func EnvFromManifests(manifests []byte, envPrefix string) (Env, error) {
 				}
 				rel = p
 			}
-			switch {
-			case m.SubPath == "":
+			switch m.SubPath {
+			case "":
 				out.Files[filepath.Join(m.MountPath, rel)] = v
-			case m.SubPath == rel:
+			case rel:
 				out.Files[m.MountPath] = v
 			}
 		}
