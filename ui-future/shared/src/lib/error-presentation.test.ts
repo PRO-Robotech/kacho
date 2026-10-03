@@ -7,6 +7,7 @@
 // A 403, by contrast, is unambiguous and must stay a 403.
 
 import { ApiError, apiErrorFromBody } from "@shared/api/client";
+import { EDGE_AUTHN_FAILED } from "@shared/test/edge-answers";
 import { NOT_FOUND_IS_AMBIGUOUS, presentError, QUOTA_SHOWCASE_HINT, errorText  } from "./error-presentation";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,16 +304,17 @@ describe("полоса отказа читается по признаку, а �
   });
 
   it("AUTHN_REQUIRED говорит, что делать, вместо английской строки края", () => {
-    // Край отвечает `unauthenticated: credentials required`. Арендатору это не
-    // сообщает ни что произошло, ни что делать: сессия истекла — надо войти.
-    const p = presentError(
-      new ApiError(401, 16, refusalDetails("AUTHN_REQUIRED", "kaname.cloud.iam.v1"),
-        "unauthenticated: credentials required"),
-    );
+    // Тело — копия производителя (`authnrefusal.WriteHTTP`, сверена с краем в
+    // `@shared/test/edge-answers.test.ts`): `authentication failed` и один
+    // `ErrorInfo`. Арендатору текст не сообщает ни что произошло, ни что
+    // делать: сессия истекла — надо войти.
+    const edge = apiErrorFromBody(EDGE_AUTHN_FAILED.status, "Unauthorized", EDGE_AUTHN_FAILED.text);
+    expect(edge.message).toBe("authentication failed");
+    const p = presentError(edge);
 
-    expect(p.subTitle).not.toBe("unauthenticated: credentials required");
+    expect(p.subTitle).not.toBe("authentication failed");
     expect(p.subTitle).toContain("Войдите заново");
-    expect(p.devDetail).toContain("unauthenticated: credentials required");
+    expect(p.devDetail).toContain("authentication failed");
   });
 
   it("QUOTA_RATE_EXCEEDED — ТРЕТЬЯ полоса: ждёт САМ вызывающий, а не администратор", () => {
