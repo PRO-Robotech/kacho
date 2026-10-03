@@ -29,32 +29,32 @@ type BearerLaneState struct {
 }
 
 const (
-	bearerSourceAuthority = "authority"
-	bearerSourceRecord    = "record"
+	presentedSourceAuthority = "authority"
+	presentedSourceRecord    = "record"
 
 	// Исходы — по веткам revocationCheck / platformRevocationCheck.
-	bearerOutcomeLive          = "live"          // источник ответил: жив
-	bearerOutcomeRevoked       = "revoked"       // источник ответил: отозван — единый отказ 401
-	bearerOutcomeUnanswered    = "unanswered"    // источник не ответил — ответ Р1 (503)
-	bearerOutcomeMisconfigured = "misconfigured" // ответил не источник отзыва — ответ Р1 (503)
-	bearerOutcomeNoIdentifier  = "no_identifier" // спросить нечем: у токена нет jti — ответ Р1 (503)
-	bearerOutcomeNotWired      = "not_wired"     // читатель не провязан: авторитет — Р1; запись — не спрашивали
+	presentedOutcomeLive          = "live"          // источник ответил: жив
+	presentedOutcomeRevoked       = "revoked"       // источник ответил: отозван — единый отказ 401
+	presentedOutcomeUnanswered    = "unanswered"    // источник не ответил — ответ Р1 (503)
+	presentedOutcomeMisconfigured = "misconfigured" // ответил не источник отзыва — ответ Р1 (503)
+	presentedOutcomeNoIdentifier  = "no_identifier" // спросить нечем: у токена нет jti — ответ Р1 (503)
+	presentedOutcomeNotWired      = "not_wired"     // читатель не провязан: авторитет — Р1; запись — не спрашивали
 )
 
 // bearerLaneStates — закрытый перечень состояний в порядке объявления.
 var bearerLaneStates = []BearerLaneState{
-	{bearerSourceAuthority, bearerOutcomeLive},
-	{bearerSourceAuthority, bearerOutcomeRevoked},
-	{bearerSourceAuthority, bearerOutcomeUnanswered},
-	{bearerSourceAuthority, bearerOutcomeMisconfigured},
-	{bearerSourceAuthority, bearerOutcomeNoIdentifier},
-	{bearerSourceAuthority, bearerOutcomeNotWired},
-	{bearerSourceRecord, bearerOutcomeLive},
-	{bearerSourceRecord, bearerOutcomeRevoked},
-	{bearerSourceRecord, bearerOutcomeUnanswered},
-	{bearerSourceRecord, bearerOutcomeMisconfigured},
-	{bearerSourceRecord, bearerOutcomeNoIdentifier},
-	{bearerSourceRecord, bearerOutcomeNotWired},
+	{presentedSourceAuthority, presentedOutcomeLive},
+	{presentedSourceAuthority, presentedOutcomeRevoked},
+	{presentedSourceAuthority, presentedOutcomeUnanswered},
+	{presentedSourceAuthority, presentedOutcomeMisconfigured},
+	{presentedSourceAuthority, presentedOutcomeNoIdentifier},
+	{presentedSourceAuthority, presentedOutcomeNotWired},
+	{presentedSourceRecord, presentedOutcomeLive},
+	{presentedSourceRecord, presentedOutcomeRevoked},
+	{presentedSourceRecord, presentedOutcomeUnanswered},
+	{presentedSourceRecord, presentedOutcomeMisconfigured},
+	{presentedSourceRecord, presentedOutcomeNoIdentifier},
+	{presentedSourceRecord, presentedOutcomeNotWired},
 }
 
 // BearerLaneStates — перечень состояний полосы: словарь меток прибора.
@@ -76,9 +76,8 @@ func bearerStateIndex(source, outcome string) int {
 	return -1
 }
 
-// record — одно событие состояния. Неизвестное состояние — ошибка сборки
-// полосы, и она не теряется: паники на пути запроса нет, но и клетки нет —
-// это держит TestBearerLaneRecordsOnlyDeclaredStates.
+// record — одно событие состояния. Пары, которые пишет код полосы, сверяются с
+// перечнем в обе стороны пробой TestBearerLaneRecordsOnlyDeclaredStates.
 func (c *BearerLaneCounts) record(source, outcome string) {
 	if c == nil {
 		return
@@ -88,9 +87,43 @@ func (c *BearerLaneCounts) record(source, outcome string) {
 	}
 }
 
-// BearerLaneSnapshot — прочитанные клетки полосы предъявителя.
+// BearerSourceCells — клетки одного источника вопроса об отзыве.
+type BearerSourceCells struct {
+	Live, Revoked, Unanswered, Misconfigured, NoIdentifier, NotWired uint64
+}
+
+// BearerLaneSnapshot — прочитанные клетки полосы предъявителя по источникам.
 type BearerLaneSnapshot struct {
-	cells [12]uint64
+	Authority BearerSourceCells
+	Record    BearerSourceCells
+}
+
+// cell — клетка слепка для состояния; nil — состояние вне перечня.
+func (s *BearerLaneSnapshot) cell(st BearerLaneState) *uint64 {
+	var src *BearerSourceCells
+	switch st.Source {
+	case presentedSourceAuthority:
+		src = &s.Authority
+	case presentedSourceRecord:
+		src = &s.Record
+	default:
+		return nil
+	}
+	switch st.Outcome {
+	case presentedOutcomeLive:
+		return &src.Live
+	case presentedOutcomeRevoked:
+		return &src.Revoked
+	case presentedOutcomeUnanswered:
+		return &src.Unanswered
+	case presentedOutcomeMisconfigured:
+		return &src.Misconfigured
+	case presentedOutcomeNoIdentifier:
+		return &src.NoIdentifier
+	case presentedOutcomeNotWired:
+		return &src.NotWired
+	}
+	return nil
 }
 
 // Snapshot — слепок клеток для коллектора диагностической поверхности.
@@ -99,24 +132,26 @@ func (c *BearerLaneCounts) Snapshot() BearerLaneSnapshot {
 	if c == nil {
 		return s
 	}
-	for i := range c.cells {
-		s.cells[i] = c.cells[i].Load()
+	for i, st := range bearerLaneStates {
+		if p := s.cell(st); p != nil {
+			*p = c.cells[i].Load()
+		}
 	}
 	return s
 }
 
 // Value — величина клетки состояния; неизвестное состояние — ноль.
 func (s BearerLaneSnapshot) Value(st BearerLaneState) uint64 {
-	if i := bearerStateIndex(st.Source, st.Outcome); i >= 0 {
-		return s.cells[i]
+	if p := s.cell(st); p != nil {
+		return *p
 	}
 	return 0
 }
 
 // Set задаёт величину клетки — для проб прибора, собирающих слепок вручную.
 func (s *BearerLaneSnapshot) Set(st BearerLaneState, v uint64) {
-	if i := bearerStateIndex(st.Source, st.Outcome); i >= 0 {
-		s.cells[i] = v
+	if p := s.cell(st); p != nil {
+		*p = v
 	}
 }
 

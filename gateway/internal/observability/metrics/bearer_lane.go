@@ -37,12 +37,43 @@ func (c *bearerLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- bearerLaneRevocationDesc
 }
 
-// Collect обходит ЗАКРЫТЫЙ перечень состояний полосы, а не ключи слепка:
-// клетка состояния, которого ещё не было, обязана стоять нулём.
+// Метки — закрытый словарь: источник — константа, исход — ключ литерального
+// набора констант. Клетка исхода, которого ещё не было, стоит нулём.
+const (
+	bearerSourceAuthority      = "authority"
+	bearerSourceRecord         = "record"
+	bearerOutcomeLive          = "live"
+	bearerOutcomeRevoked       = "revoked"
+	bearerOutcomeUnanswered    = "unanswered"
+	bearerOutcomeMisconfigured = "misconfigured"
+	bearerOutcomeNoIdentifier  = "no_identifier" // #nosec G101 -- значение метки исхода, а не удостоверение
+	bearerOutcomeNotWired      = "not_wired"
+)
+
+// Collect — ни одного внешнего вызова: `read` возвращает величины, уже лежащие
+// в процессе.
 func (c *bearerLaneCollector) Collect(ch chan<- prometheus.Metric) {
 	s := c.read()
-	for _, st := range middleware.BearerLaneStates() {
+	for outcome, value := range map[string]uint64{
+		bearerOutcomeLive:          s.Authority.Live,
+		bearerOutcomeRevoked:       s.Authority.Revoked,
+		bearerOutcomeUnanswered:    s.Authority.Unanswered,
+		bearerOutcomeMisconfigured: s.Authority.Misconfigured,
+		bearerOutcomeNoIdentifier:  s.Authority.NoIdentifier,
+		bearerOutcomeNotWired:      s.Authority.NotWired,
+	} {
 		ch <- prometheus.MustNewConstMetric(bearerLaneRevocationDesc, prometheus.CounterValue,
-			float64(s.Value(st)), st.Source, st.Outcome)
+			float64(value), bearerSourceAuthority, outcome)
+	}
+	for outcome, value := range map[string]uint64{
+		bearerOutcomeLive:          s.Record.Live,
+		bearerOutcomeRevoked:       s.Record.Revoked,
+		bearerOutcomeUnanswered:    s.Record.Unanswered,
+		bearerOutcomeMisconfigured: s.Record.Misconfigured,
+		bearerOutcomeNoIdentifier:  s.Record.NoIdentifier,
+		bearerOutcomeNotWired:      s.Record.NotWired,
+	} {
+		ch <- prometheus.MustNewConstMetric(bearerLaneRevocationDesc, prometheus.CounterValue,
+			float64(value), bearerSourceRecord, outcome)
 	}
 }

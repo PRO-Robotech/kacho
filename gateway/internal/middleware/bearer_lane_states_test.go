@@ -23,10 +23,10 @@ func recordedBearerStates(t *testing.T, src string) map[BearerLaneState]int {
 		t.Fatal(err)
 	}
 	consts := map[string]string{
-		"bearerSourceAuthority": bearerSourceAuthority, "bearerSourceRecord": bearerSourceRecord,
-		"bearerOutcomeLive": bearerOutcomeLive, "bearerOutcomeRevoked": bearerOutcomeRevoked,
-		"bearerOutcomeUnanswered": bearerOutcomeUnanswered, "bearerOutcomeMisconfigured": bearerOutcomeMisconfigured,
-		"bearerOutcomeNoIdentifier": bearerOutcomeNoIdentifier, "bearerOutcomeNotWired": bearerOutcomeNotWired,
+		"presentedSourceAuthority": presentedSourceAuthority, "presentedSourceRecord": presentedSourceRecord,
+		"presentedOutcomeLive": presentedOutcomeLive, "presentedOutcomeRevoked": presentedOutcomeRevoked,
+		"presentedOutcomeUnanswered": presentedOutcomeUnanswered, "presentedOutcomeMisconfigured": presentedOutcomeMisconfigured,
+		"presentedOutcomeNoIdentifier": presentedOutcomeNoIdentifier, "presentedOutcomeNotWired": presentedOutcomeNotWired,
 	}
 	val := func(e ast.Expr) string {
 		switch v := e.(type) {
@@ -92,13 +92,13 @@ func TestBearerLaneRecordsOnlyDeclaredStates(t *testing.T) {
 // объявленного — молчит.
 func TestBearerLaneStatesInjection(t *testing.T) {
 	bad := recordedBearerStates(t, `package p
-func f(a *A) { a.bearerLane.record(bearerSourceRecord, "rumour") }`)
-	if bad[BearerLaneState{Source: bearerSourceRecord, Outcome: "rumour"}] != 1 {
+func f(a *A) { a.bearerLane.record(presentedSourceRecord, "rumour") }`)
+	if bad[BearerLaneState{Source: presentedSourceRecord, Outcome: "rumour"}] != 1 {
 		t.Fatalf("запись необъявленного состояния не распознана: %v", bad)
 	}
 	good := recordedBearerStates(t, `package p
-func f(a *A) { a.bearerLane.record(bearerSourceAuthority, bearerOutcomeLive) }`)
-	if good[BearerLaneState{Source: bearerSourceAuthority, Outcome: bearerOutcomeLive}] != 1 || len(good) != 1 {
+func f(a *A) { a.bearerLane.record(presentedSourceAuthority, presentedOutcomeLive) }`)
+	if good[BearerLaneState{Source: presentedSourceAuthority, Outcome: presentedOutcomeLive}] != 1 || len(good) != 1 {
 		t.Fatalf("запись объявленного состояния распознана неверно: %v", good)
 	}
 }
