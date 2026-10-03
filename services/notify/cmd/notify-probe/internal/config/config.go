@@ -155,20 +155,28 @@ type Config struct {
 
 // Load загружает конфигурацию из окружения процесса.
 func Load() (Config, error) {
-	return load(os.LookupEnv, os.ReadFile)
+	return load(os.LookupEnv, os.ReadFile, policyWindow())
+}
+
+// policyWindow — значение политики платформы для окна этой ручки
+// (corelib/authz.RevocationPolicy.Windows). Load и проба берут его одной
+// функцией; load получает значение параметром, чтобы проба могла подать
+// значение, отличное от умолчания тега, и отличить подстановку от литерала.
+func policyWindow() time.Duration {
+	return authz.RevocationPolicy.Windows[revocationWindowKey]
 }
 
 // load — Load с поданными окружением и файловой системой: страж согласия
 // флага, кольца и SAN судится одной функцией, и проба зовёт её, а не копию.
-func load(lookup func(string) (string, bool), readFile func(string) ([]byte, error)) (Config, error) {
+// window — значение политики окна отзыва, которое называет текст отказа.
+func load(lookup func(string) (string, bool), readFile func(string) ([]byte, error), window time.Duration) (Config, error) {
 	var c Config
 	if err := corecfg.LoadPrefixed(envPrefix, &c); err != nil {
 		return Config{}, err
 	}
 	if c.AuthZCacheTTL <= 0 {
 		return Config{}, fmt.Errorf("%s: окно отзыва %s неположительно — окно обязано быть больше нуля "+
-			"(значение политики платформы — %s)", authZCacheTTLKnob, c.AuthZCacheTTL,
-			authz.RevocationPolicy.Windows[revocationWindowKey])
+			"(значение политики платформы — %s)", authZCacheTTLKnob, c.AuthZCacheTTL, window)
 	}
 	// Флаг — первым из ручек ленты: без него не решается, обязательны ли
 	// кольцо и SAN.

@@ -46,8 +46,15 @@ func baseEnv() map[string]string {
 
 // loadWith — load над поданным окружением: теги читает envconfig из окружения
 // процесса, поэтому оно выставляется t.Setenv; флаг, кольцо и SAN читает
-// та же функция поданным lookup — ровно как в Load.
+// та же функция поданным lookup — ровно как в Load. Значение политики окна —
+// то же, что подаёт Load (policyWindow).
 func loadWith(t *testing.T, env map[string]string) (Config, error) {
+	t.Helper()
+	return loadWithWindow(t, env, policyWindow())
+}
+
+// loadWithWindow — loadWith с поданным значением политики окна отзыва.
+func loadWithWindow(t *testing.T, env map[string]string, window time.Duration) (Config, error) {
 	t.Helper()
 	for _, k := range []string{"KACHO_NOTIFYPROBE_DB_PASSWORD", FlagKnob, KeyringKnob, NotifySANKnob} {
 		t.Setenv(k, "")
@@ -68,7 +75,7 @@ func loadWith(t *testing.T, env map[string]string) (Config, error) {
 		}
 		return nil, fs.ErrNotExist
 	}
-	return load(lookup, readFile)
+	return load(lookup, readFile, window)
 }
 
 func without(env map[string]string, key string) map[string]string {
@@ -192,6 +199,24 @@ func TestAuthZCacheTTLRefusalNamesThePolicyValue(t *testing.T) {
 	_, err := loadWith(t, with(baseEnv(), ttlKnob, "0s"))
 	if err == nil || !strings.Contains(err.Error(), "значение политики платформы — "+want.String()) {
 		t.Fatalf("отказ окна не называет значение политики %s: %v", want, err)
+	}
+}
+
+// Текст отказа окна подставляет значение политики, а не литерал умолчания:
+// поданное значение (7s) отлично от умолчания тега и от записи политики (5s),
+// поэтому литерал «5s» в тексте отказа здесь краснеет (опыт B1 круга PR #2991).
+// Близнец — то же значение политики при положительном окне: загрузка принята.
+func TestAuthZCacheTTLRefusalSubstitutesTheGivenPolicyValue(t *testing.T) {
+	const window = 7 * time.Second
+	if window == policyWindow() {
+		t.Fatalf("значение пробы %s совпало со значением политики — проба не отличит литерал от подстановки", window)
+	}
+	_, err := loadWithWindow(t, with(baseEnv(), ttlKnob, "0s"), window)
+	if err == nil || !strings.Contains(err.Error(), "значение политики платформы — "+window.String()+")") {
+		t.Fatalf("отказ окна не подставил поданное значение политики %s: %v", window, err)
+	}
+	if _, err := loadWithWindow(t, with(baseEnv(), ttlKnob, "5s"), window); err != nil {
+		t.Fatalf("близнец: положительное окно при значении политики %s отвергнуто: %v", window, err)
 	}
 }
 
