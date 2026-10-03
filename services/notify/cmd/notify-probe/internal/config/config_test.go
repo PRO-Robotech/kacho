@@ -1,0 +1,215 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package config
+
+// config_test.go — страж согласия флага доставки, кольца ключей и таблицы
+// звена идентичности (NTF1-N08 на уровне разбора ручек).
+//
+// Базовое окружение одно (baseEnv); каждое отрицание меняет РОВНО ОДИН факт
+// против положительного близнеца и утверждает имя своей ручки в тексте отказа.
+
+import (
+	"encoding/base64"
+	"errors"
+	"io/fs"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+const (
+	keyringPath = "/run/secrets/notifyprobe/keyring.json"
+	notifySAN   = "spiffe://kacho.cloud/ns/kacho/sa/kacho-notify"
+)
+
+// keyringFile — файл кольца формы фундамента: активный ключ, 32 байта.
+func keyringFile() []byte {
+	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	return []byte(`{"active":{"id":1,"key":"` + key + `"}}`)
+}
+
+// baseEnv — окружение, с которым проба стартует с включённой доставкой.
+func baseEnv() map[string]string {
+	return map[string]string{
+		"KACHO_NOTIFYPROBE_DB_PASSWORD": "pw",
+		FlagKnob:                        "true",
+		KeyringKnob:                     keyringPath,
+		NotifySANKnob:                   notifySAN,
+	}
+}
+
+// loadWith — load над поданным окружением: теги читает envconfig из окружения
+// процесса, поэтому оно выставляется t.Setenv; флаг, кольцо и SAN читает
+// та же функция поданным lookup — ровно как в Load.
+func loadWith(t *testing.T, env map[string]string) (Config, error) {
+	t.Helper()
+	for _, k := range []string{"KACHO_NOTIFYPROBE_DB_PASSWORD", FlagKnob, KeyringKnob, NotifySANKnob} {
+		t.Setenv(k, "")
+	}
+	// Окно отзыва снимается с окружения прогона: незаданное — умолчание тега.
+	t.Setenv(ttlKnob, "")
+	os.Unsetenv(ttlKnob)
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+	lookup := func(k string) (string, bool) {
+		v, ok := env[k]
+		return v, ok
+	}
+	readFile := func(p string) ([]byte, error) {
+		if p == keyringPath {
+			return keyringFile(), nil
+		}
+		return nil, fs.ErrNotExist
+	}
+	return load(lookup, readFile)
+}
+
+func without(env map[string]string, key string) map[string]string {
+	out := map[string]string{}
+	for k, v := range env {
+		if k != key {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func with(env map[string]string, key, value string) map[string]string {
+	out := map[string]string{}
+	for k, v := range env {
+		out[k] = v
+	}
+	out[key] = value
+	return out
+}
+
+func requireRefusalNames(t *testing.T, err error, knob string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("старт принят, а обязан быть отказом с именем %s", knob)
+	}
+	if !strings.Contains(err.Error(), knob) {
+		t.Fatalf("отказ не называет ручку %s:\n%v", knob, err)
+	}
+}
+
+// NTF1-N08 — переменная флага не задана: отказ с её именем.
+func TestFlagUnsetRefusesNamingTheVariable(t *testing.T) {
+	_, err := loadWith(t, without(baseEnv(), FlagKnob))
+	requireRefusalNames(t, err, FlagKnob)
+}
+
+// Иное написание флага — тоже отказ: false из «0» или «TRUE» неотличим от
+// выключенного модуля, и разбор принимает ровно два слова.
+func TestFlagForeignSpellingRefusesNamingTheVariable(t *testing.T) {
+	for _, v := range []string{"", "1", "TRUE", "yes", " true"} {
+		t.Run(v, func(t *testing.T) {
+			_, err := loadWith(t, with(baseEnv(), FlagKnob, v))
+			requireRefusalNames(t, err, FlagKnob)
+		})
+	}
+}
+
+// Близнец NTF1-N08: «true» и «false» принимаются, и значение доезжает.
+func TestFlagTrueAndFalseAreAccepted(t *testing.T) {
+	on, err := loadWith(t, baseEnv())
+	if err != nil {
+		t.Fatalf("true отвергнут: %v", err)
+	}
+	if !on.Notifications.Set() || !on.Notifications.On() {
+		t.Fatalf("true разобран как %+v", on.Notifications)
+	}
+	if on.Keyring == nil {
+		t.Fatal("при включённой доставке кольцо не собрано")
+	}
+
+	// Выключенная доставка ни кольца, ни SAN не требует: их нет в окружении.
+	off, err := loadWith(t, without(without(with(baseEnv(), FlagKnob, "false"), KeyringKnob), NotifySANKnob))
+	if err != nil {
+		t.Fatalf("false отвергнут: %v", err)
+	}
+	if !off.Notifications.Set() || off.Notifications.On() {
+		t.Fatalf("false разобран как %+v", off.Notifications)
+	}
+	if off.Keyring != nil {
+		t.Fatal("при выключенной доставке кольцо прочитано — ручка, которой нет, читается")
+	}
+}
+
+// Включённая доставка без кольца — отказ с именем ручки кольца.
+func TestEnabledWithoutKeyringRefusesNamingTheKnob(t *testing.T) {
+	_, err := loadWith(t, without(baseEnv(), KeyringKnob))
+	requireRefusalNames(t, err, KeyringKnob)
+}
+
+// Включённая доставка с нечитаемым кольцом — отказ с именем ручки, без
+// содержимого файла.
+func TestEnabledWithUnreadableKeyringRefusesNamingTheKnob(t *testing.T) {
+	_, err := loadWith(t, with(baseEnv(), KeyringKnob, "/nowhere/keyring.json"))
+	requireRefusalNames(t, err, KeyringKnob)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("причина отказа потеряна: %v", err)
+	}
+}
+
+// Включённая доставка без SAN notify — отказ с именем ручки SAN.
+func TestEnabledWithoutNotifySANRefusesNamingTheKnob(t *testing.T) {
+	_, err := loadWith(t, without(baseEnv(), NotifySANKnob))
+	requireRefusalNames(t, err, NotifySANKnob)
+}
+
+// ttlKnob — ручка окна отзыва пробы. Окно читают два места с разным смыслом
+// нуля (дескриптор отвергает ≤0, сужатель потока подставляет своё умолчание),
+// поэтому смысл сводится на загрузке: неположительное — отказ с именем ручки.
+const ttlKnob = "KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL"
+
+// GS-C1 — неположительное окно отзыва: отказ загрузки с именем ручки.
+func TestAuthZCacheTTLNonPositiveRefusesNamingTheKnob(t *testing.T) {
+	for _, v := range []string{"0s", "-1s"} {
+		t.Run(v, func(t *testing.T) {
+			_, err := loadWith(t, with(baseEnv(), ttlKnob, v))
+			requireRefusalNames(t, err, ttlKnob)
+		})
+	}
+}
+
+// Близнец GS-C1 — положительное окно (5s — значение RevocationPolicy) принято
+// и доезжает до поля.
+func TestAuthZCacheTTLPositiveIsAccepted(t *testing.T) {
+	c, err := loadWith(t, with(baseEnv(), ttlKnob, "5s"))
+	if err != nil {
+		t.Fatalf("окно 5s отвергнуто: %v", err)
+	}
+	if c.AuthZCacheTTL != 5*time.Second {
+		t.Fatalf("окно разобрано как %s, ожидалось 5s", c.AuthZCacheTTL)
+	}
+}
+
+// GS-I1 — имя и пароль базы с символами адреса доезжают до драйвера как есть:
+// разбор драйвера (pgconn.ParseConfig) читает из DSN ровно поданные значения.
+// Близнец — пароль без особых символов.
+func TestDSNCarriesCredentialsTheDriverReadsBack(t *testing.T) {
+	for _, pw := range []string{"plain-password", "p@ss/w?rd#1%2", "a b:c"} {
+		c := Config{DBHost: "db", DBPort: "5432", DBUser: "u@x", DBPassword: pw,
+			DBName: "kacho_notifyprobe", DBSSLMode: "require", DBMaxConns: 4}
+		for name, dsn := range map[string]string{"DSN": c.DSN(), "SingleConnDSN": c.SingleConnDSN()} {
+			pc, err := pgconn.ParseConfig(dsn)
+			if err != nil {
+				t.Fatalf("%s с паролем %q не разобран драйвером: %v", name, pw, err)
+			}
+			if pc.User != "u@x" || pc.Password != pw || pc.Database != "kacho_notifyprobe" ||
+				pc.Host != "db" || pc.Port != 5432 {
+				t.Fatalf("%s с паролем %q разобран как user=%q password=%q db=%q host=%q port=%d",
+					name, pw, pc.User, pc.Password, pc.Database, pc.Host, pc.Port)
+			}
+			if got := pc.RuntimeParams["options"]; got != "-c search_path=kacho_notifyprobe,public" {
+				t.Fatalf("%s: options=%q, ожидалось «-c search_path=kacho_notifyprobe,public»", name, got)
+			}
+		}
+	}
+}

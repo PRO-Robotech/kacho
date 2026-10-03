@@ -496,14 +496,66 @@ if [ "${1:-}" = "--self-test" ]; then
   # консоли приезжает в умбреллу по `file://../../../ui-future/deploy`, то есть
   # копия обязана иметь и `deploy/`, и `ui-future/deploy/` — иначе инъекция в
   # шаблон раздачи не доехала бы до рендера, а доказательство стало бы вакуумным.
+  #
+  # ВРЕМЕНА ИЗМЕНЕНИЯ КОПИРУЮТСЯ ВМЕСТЕ С СОДЕРЖИМЫМ, и это несущее. Гейт
+  # проверяет свежесть архивов локальных зависимостей (`require_fresh_dep_charts`:
+  # исходник не новее своего архива). Голый `cp -r` ставит каждому файлу время
+  # КОПИРОВАНИЯ, и тогда исход зависел от порядка обхода каталога: исходник
+  # чарта notify (`deploy/helm/notify/`), скопированный ПОСЛЕ архива
+  # `umbrella/charts/notify-*.tgz`, оказывался «новее» его, и копия дерева,
+  # свежая в оригинале, объявлялась несвежей — вердикт самопроверки решал порядок
+  # readdir. Ось «порядок обхода» ниже держит это инъекцией в обе стороны.
+  # Класс — каждая копия, чьи файлы потом судит проверка свежести: каталог
+  # чартов, исходник консоли, его нетронутый двойник и возврат исходника из
+  # двойника (`restore_src`) — четыре места, все с сохранением времён (R39-3).
+  # Голый `cp -r` здесь остаётся ровно в одном месте — ветке `drop` оси порядка,
+  # и это контроль, а не копия для суждения.
+  copy_ordered() { # <источник> <приёмник> <fwd|rev> <keep|drop> — по одному элементу верхнего уровня
+    local src="$1" dst="$2" order="$3" keep="$4" e
+    mkdir -p "$dst" || return 1
+    while IFS= read -r e; do
+      [ -n "$e" ] || continue
+      if [ "$keep" = keep ]; then cp -r --preserve=timestamps "$src/$e" "$dst/$e" || return 1
+      else cp -r "$src/$e" "$dst/$e" || return 1; fi
+    done < <(find "$src" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+               | if [ "$order" = rev ]; then LC_ALL=C sort -r; else LC_ALL=C sort; fi)
+  }
+  # times_kept <имя копии> <источник> <копия> — утверждение САМОПРОВЕРКИ, что
+  # копия сняла времена изменения источника: перечень «путь → mtime» каждого
+  # файла копии равен перечню источника. Свойство судится по КОПИИ, а не по тексту
+  # команды, которой её сняли: голый `cp -r` на любом из четырёх мест ставит
+  # файлам время копирования, и утверждение этого места краснеет своим именем
+  # (R39-3, круг 2: «сохранение времён в четырёх копиях держит проба»). Пустой
+  # перечень источника — тоже провал: равенство двух пустых ничего не сняло.
+  times_kept() {
+    local label="$1" a b n
+    st_checked=$((st_checked + 1))
+    a="$(cd "$2" && find . -type f -printf '%P\t%T@\n' | LC_ALL=C sort)" || a=""
+    b="$(cd "$3" && find . -type f -printf '%P\t%T@\n' | LC_ALL=C sort)" || b=""
+    n="$(printf '%s\n' "$a" | sed '/^$/d' | wc -l)"
+    if [ "$n" -gt 0 ] && [ "$a" = "$b" ]; then
+      echo "  ✓ $label — времена изменения сняты вместе с содержимым ($n файлов)"
+    else
+      echo "  ✗ $label — времена изменения копии расходятся с источником ($n файлов источника):"
+      # `diff` выходит кодом 1 на различии — под errexit и pipefail это оборвало
+      # бы самопроверку на первом же провале, без итога по остальным осям.
+      diff <(printf '%s\n' "$a") <(printf '%s\n' "$b") | head -4 | sed 's/^/      /' || true
+      st_rc=1
+    fi
+  }
   WORK="$(mktemp -d)"
   trap 'rm -rf "$WORK"' EXIT
   mkdir -p "$WORK/deploy/tests/helm" "$WORK/ui-future"
-  cp -r "$DEPLOY_ROOT/helm" "$WORK/deploy/helm" || fatal "копия чартов не собрана — инъекциям некуда идти"
+  echo
+  echo "-- копии самопроверки снимают времена изменения (четыре места, R39-3) --"
+  cp -r --preserve=timestamps "$DEPLOY_ROOT/helm" "$WORK/deploy/helm" || fatal "копия чартов не собрана — инъекциям некуда идти"
+  times_kept "копия каталога чартов" "$DEPLOY_ROOT/helm" "$WORK/deploy/helm"
   [ -d "$WORK/deploy/helm/umbrella" ] || fatal "в копии нет умбреллы ($WORK/deploy/helm/umbrella)"
   cp "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt"
-  cp -r "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
-  cp -r "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
+  cp -r --preserve=timestamps "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
+  times_kept "копия исходника консоли" "$DEPLOY_ROOT/../ui-future/deploy" "$WORK/ui-future/deploy"
+  cp -r --preserve=timestamps "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
+  times_kept "нетронутый двойник исходника" "$WORK/ui-future/deploy" "$WORK/ui-future-pristine"
   cp "$0" "$WORK/deploy/tests/helm/$SCRIPT"
   # Общие реализации едут вместе с испытуемым: он подключает их по своему
   # каталогу, и без них самопроверка мерила бы отсутствие файла.
@@ -524,7 +576,8 @@ if [ "${1:-}" = "--self-test" ]; then
   # и следующая обязана отличаться от близнеца РОВНО одним фактом.
   restore_src() {
     rm -rf "$COPY_SRC"
-    cp -r "$WORK/ui-future-pristine" "$COPY_SRC"
+    cp -r --preserve=timestamps "$WORK/ui-future-pristine" "$COPY_SRC"
+    times_kept "возврат исходника из двойника" "$WORK/ui-future-pristine" "$COPY_SRC"
     repack
   }
   repack
@@ -556,6 +609,49 @@ if [ "${1:-}" = "--self-test" ]; then
   echo
   echo "-- законный вход: копия дерева как есть --"
   st_probe "дерево как есть → зелёное" 0 "PASS:"
+
+  # ── ОСЬ ПОРЯДКА ОБХОДА: вердикт свежести не зависит от порядка readdir ────
+  # Две копии каталога чартов — прямым и обратным порядком элементов верхнего
+  # уровня, — обе с сохранением времён: исход свежести ОДИН. Контроль в обратную
+  # сторону — те же два порядка БЕЗ сохранения времён: исходы расходятся (обратный
+  # порядок кладёт исходник notify после его архива), то есть ось способна
+  # различить дефект, который она держит.
+  fresh_rc() { # <каталог helm копии> → код require_fresh_dep_charts на её умбрелле
+    local r=0
+    ( require_fresh_dep_charts "$1/umbrella" ) >"$1.out" 2>&1 || r=$?
+    echo "$r"
+  }
+  order_axis() { # <имя> <keep|drop> <ждём: same|differ>
+    local label="$1" keep="$2" want="$3" a b
+    st_checked=$((st_checked + 1))
+    # Копия лежит на глубине дерева (`<корень>/deploy/helm`): относительные
+    # `file://../../../…` умбреллы обязаны вести внутрь корня копии, а не в
+    # чужой каталог рядом с ним.
+    rm -rf "$WORK/order-fwd" "$WORK/order-rev"
+    if ! copy_ordered "$DEPLOY_ROOT/helm" "$WORK/order-fwd/deploy/helm" fwd "$keep" \
+       || ! copy_ordered "$DEPLOY_ROOT/helm" "$WORK/order-rev/deploy/helm" rev "$keep"; then
+      echo "  ✗ $label — копии порядка не сняты"; st_rc=1; return
+    fi
+    a="$(fresh_rc "$WORK/order-fwd/deploy/helm")"; b="$(fresh_rc "$WORK/order-rev/deploy/helm")"
+    if { [ "$want" = same ] && [ "$a" = 0 ] && [ "$b" = 0 ]; } \
+       || { [ "$want" = differ ] && [ "$a" != "$b" ]; }; then
+      echo "  ✓ $label — свежесть: прямой порядок код $a, обратный код $b"
+    else
+      echo "  ✗ $label — свежесть: прямой порядок код $a, обратный код $b (ждали: $want)"; st_rc=1
+      head -3 "$WORK/order-fwd/deploy/helm.out" "$WORK/order-rev/deploy/helm.out" 2>/dev/null | sed 's/^/      /'
+    fi
+    rm -rf "$WORK/order-fwd" "$WORK/order-rev"
+  }
+  echo
+  echo "-- ось порядка обхода (свежесть архивов локальных зависимостей) --"
+  if ls "$DEPLOY_ROOT"/helm/umbrella/charts/notify-*.tgz >/dev/null 2>&1 && [ -d "$DEPLOY_ROOT/helm/notify" ]; then
+    order_axis "порядок обхода другой, времена сохранены → вердикт тот же (свежо)" keep same
+    order_axis "контроль: времена НЕ сохранены → исход решает порядок" drop differ
+  else
+    st_checked=$((st_checked + 1))
+    echo "  ✗ ось порядка обхода — нет пары «исходник deploy/helm/notify ↔ архив umbrella/charts/notify-*.tgz»: оси нечего различать"
+    st_rc=1
+  fi
 
   # ── ВНЕШНИЙ МИР — ВТОРОЙ ЗАКОННЫЙ ВХОД, А НЕ СОСТОЯНИЕ ДЕРЕВА ─────────────
   #

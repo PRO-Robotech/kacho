@@ -1180,6 +1180,16 @@ kacho-nlb:
 #                                   while any ScopeFiltered entry exists
 #   config.trustedForwarderSANs   → who may forward an end-user identity (without it
 #                                   any certificate-verified peer may act as any tenant)
+# ─── notify — шлюз уведомлений (NTF-1, полоса D1) ─────────────────────────────
+# Посадка боевая, канал базы kacho_notify шифрован — объявлены профилем, а не
+# умолчанием подчарта. Объекты notify в `prod` не рендерятся: выведенный перечень
+# источников `prod` пуст по построению (замысел З28), узел почты задаёт оператор
+# установки (Д48).
+notify:
+  authMode: production
+  db:
+    sslMode: require
+
 storage:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).
   authMode: production

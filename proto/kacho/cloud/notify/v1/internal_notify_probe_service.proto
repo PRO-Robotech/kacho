@@ -1,0 +1,63 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package kacho.cloud.notify.v1;
+
+import "corelib/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1";
+
+// InternalNotifyProbeService — глагол стендовой пробы-источника `notify-probe`
+// (NTF-1, Р16, З29): поставить письмо шаблона `probe-hello` класса `notice` на
+// названный адрес, чтобы сквозная проба увидела его у приёмника стенда.
+//
+// # Только внутренний слушатель
+//
+// Префикс `Internal` выводит службу из внешнего маршрутизатора механически
+// (ban #6), `google.api.http` не объявлен. Проба — стендовый объект: в цепочке
+// `prod` её нет вовсе (гейт NTF1-I04).
+//
+// # Почему ответ не `Operation`
+//
+// `Send` не создаёт ресурс платформы, исход которого клиент узнаёт поллом.
+// Глагол ставит строку в ленту пробы в своей транзакции; ответ отдаётся после
+// коммита и равен закоммиченному. Исход доставки решает служба отправки, и
+// виден он у приёмника и в её метриках, а не в ответе источника.
+service InternalNotifyProbeService {
+  // Send — поставить письмо `probe-hello` на адрес.
+  //
+  // Шаблон, класс и значение атрибута `target` (путь `/` — origin установки)
+  // задаёт сама проба; вызывающий называет только адресата. Порядок проверок:
+  // первым — флаг доставки источника: при выключенной доставке —
+  // `FAILED_PRECONDITION` `email delivery is not configured in this installation`
+  // с `ErrorInfo` причины `NOTIFICATION_DELIVERY_NOT_CONFIGURED`, до чтения
+  // адреса; вторым — форма адреса: пустой `address` — `INVALID_ARGUMENT`
+  // `address: required`, адрес, который не нормализуется, — `INVALID_ARGUMENT`
+  // с именем поля `address` и без его значения. Обе проверки стоят до обращения
+  // к базе.
+  //
+  // Право — `system_admin` на синглтоне `cluster`: письмо ставит оператор
+  // стенда, а не тенант. Отношение подстановочным знаком не выполняется.
+  rpc Send(SendRequest) returns (SendResponse) {
+    option (corelib.authz.v1.permission)        = "notify.probeNotifications.send";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "1";
+  }
+}
+
+message SendRequest {
+  // address — адрес почты адресата. Обязателен; нормализуется функцией
+  // фундамента `notify/address.Normalize` до постановки.
+  string address = 1;
+}
+
+message SendResponse {
+  // notification_id — идентификатор поставленной строки ленты (`ntf-…`).
+  string notification_id = 1;
+}

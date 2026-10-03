@@ -30,7 +30,6 @@ package repohygiene
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -40,15 +39,9 @@ func TestRetiredMigrationLedgerNeverCoversALiveMigration(t *testing.T) {
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 
-	services := make([]string, 0, len(dirs))
-	for svc := range dirs {
-		services = append(services, svc)
-	}
-	sort.Strings(services)
-
 	ledgers, entries, filesSeen := 0, 0, 0
-	for _, svc := range services {
-		dir := dirs[svc]
+	for _, cd := range dirs {
+		svc, dir := cd.Service, cd.Dir
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatalf("%s: read %s: %v", svc, dir, err)
@@ -84,8 +77,8 @@ func TestRetiredMigrationLedgerNeverCoversALiveMigration(t *testing.T) {
 	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
 	if filesSeen == 0 {
 		t.Fatalf("во всех %d каталогах миграций не прочитано ни одного .sql — гейт не утверждал ничего",
-			len(services))
+			len(dirs))
 	}
 	t.Logf("перепись: каталогов миграций %d, файлов миграций %d, надгробий %d, записей в них %d",
-		len(services), filesSeen, ledgers, entries)
+		len(dirs), filesSeen, ledgers, entries)
 }

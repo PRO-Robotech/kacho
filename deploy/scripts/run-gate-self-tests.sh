@@ -149,6 +149,7 @@ deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/identity-provider-landing.py
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
+deploy/scripts/render-notify-inspect.sh
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh

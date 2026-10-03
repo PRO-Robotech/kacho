@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/gitenv"
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // ledgerPath — ведомость приёмок, под которыми ведётся кодирование дерева.
@@ -152,11 +154,21 @@ func auditNewMigrations(root, base string, l ledger) (int, []string, error) {
 		return 0, nil, err
 	}
 
+	// Миграция — файл цепочки из перечня migrationchains, а не путь с сегментом
+	// /internal/migrations/ (kacho#2915, CX1-114).
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		return 0, nil, err
+	}
+	chains, err := chainsOfComposition(root, tree.SortedFiles())
+	if err != nil {
+		return 0, nil, err
+	}
+
 	var added int
 	var findings []string
 	for _, rel := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if rel == "" || !strings.Contains(rel, "/internal/migrations/") ||
-			!strings.HasSuffix(rel, ".sql") {
+		if rel == "" || !migrationchains.IsChainSQL(chains, rel) {
 			continue
 		}
 		added++

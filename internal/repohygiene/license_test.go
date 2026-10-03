@@ -118,19 +118,37 @@ func inScope(rel string) bool {
 // как префикс `proto/gen/` — путь polyrepo. При переезде в монорепу он протух МОЛЧА
 // (стабы теперь в pkg/api/), и гейт вывалил 78 генерённых .pb.gw.go. Маркер переживает
 // любую смену раскладки; путь — нет.
+//
+// Не-Go файлы генератор маркирует тем же маркером в синтаксисе комментария
+// своего языка: `-- Code generated … DO NOT EDIT.` у SQL (миграция ленты
+// `notifygen init`), `# Code generated … DO NOT EDIT.` у YAML и скриптов
+// (ревизия шаблона `notifygen`). Маркер обязан стоять в ведущем блоке
+// комментариев — до первой строки кода; ниже он проза, а не маркер.
 func isGenerated(rel string, body []byte) bool {
-	if filepath.Ext(rel) != ".go" {
+	prefix := ""
+	switch filepath.Ext(rel) {
+	case ".go":
+		prefix = "//"
+	case ".sql":
+		prefix = "--"
+	case ".yaml", ".yml", ".sh", ".py":
+		prefix = "#"
+	default:
 		return false
 	}
 	sc := bufio.NewScanner(bytes.NewReader(body))
-	// Маркер обязан стоять до объявления package — хватит первых строк.
+	// Маркер обязан стоять до первой строки кода — хватит первых строк.
 	for i := 0; i < 10 && sc.Scan(); i++ {
 		line := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(line, "// Code generated") && strings.HasSuffix(line, "DO NOT EDIT.") {
-			return true
+		if line == "" {
+			continue
 		}
-		if strings.HasPrefix(line, "package ") {
+		if !strings.HasPrefix(line, prefix) {
 			return false
+		}
+		text := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if strings.HasPrefix(text, "Code generated") && strings.HasSuffix(text, "DO NOT EDIT.") {
+			return true
 		}
 	}
 	return false
