@@ -88,18 +88,9 @@ const (
 	revocationUnanswerable
 )
 
-// revocationDenyDescription — the client-visible reason on a revoked credential,
-// on the REST surface. It names the caller's OWN token state and nothing about
-// anyone else's, so it is not an oracle; it tells a client to re-authenticate
-// rather than retry.
-//
-// The gRPC surface deliberately does NOT carry it: that path answers every
-// authN failure with one constant message, so a caller cannot tell a revoked
-// token from a bad signature or an unprovisioned subject (see authFailedMsg —
-// varying the text there is the enumeration oracle it exists to prevent). A
-// machine-readable reason for gRPC belongs in ErrorInfo.details, which is a
-// contract change, not a message tweak.
-const revocationDenyDescription = "token revoked"
+// A revoked credential is refused with the edge's one authentication refusal
+// (authnrefusal, KA1 Р2) on both surfaces: a caller cannot tell a revoked token
+// from a bad signature or an unprovisioned subject. Which it was goes to the log.
 
 // revocationSourceAuthority / revocationSourceRecord — which of OUR two sources
 // gave the answer, as the refusal log names it. The lane is chosen by the issuer

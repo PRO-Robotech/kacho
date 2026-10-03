@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -231,7 +232,7 @@ func denyBody(t *testing.T) string {
 	book, cut := f12Books()
 	chain, _ := formChain(t, book, cut)
 	rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, platformPath, nil), carrierB))
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 		t.Fatalf("эталон F4d-22 не получен: %d %s", rec.Code, rec.Body.String())
 	}
 	return rec.Body.String()

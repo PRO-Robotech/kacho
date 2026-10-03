@@ -19,6 +19,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -151,7 +152,9 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		if verr != nil {
 			h.logger.Warn("logout: access-token verification failed", "err", verr)
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_token"})
+			// Единый отказ края (приёмка KA1, Р2): тот же, что у слоя
+			// аутентификации на любой причине.
+			authnrefusal.WriteHTTP(w)
 			return
 		}
 		caller = vc
@@ -162,7 +165,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//    never act on a client-supplied subject.
 	if revokeRequested && caller == nil {
 		h.logger.Warn("logout: revocation requested without a validated access token — refused")
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "authentication required to revoke sessions"})
+		authnrefusal.WriteHTTP(w)
 		return
 	}
 

@@ -17,8 +17,8 @@
 // # Что полоса делает на каждом исходе — на путях платформы и на «кто я»
 //
 //   - носителя нет → анонимно дальше, как сегодня (судит следующее звено);
-//   - «сессии нет» при носителе → F4d-22: 401 текстом отсечки, носитель
-//     гасится. Пять причин (неизвестен · снят выходом · истёк · заблокирована ·
+//   - «сессии нет» при носителе → F4d-22: единый отказ 401 края (приёмка KA1,
+//     Р2), носитель гасится. Пять причин (неизвестен · снят выходом · истёк · заблокирована ·
 //     отсечён) — один отказ (Ф1-17, Ф3-10). ЭТО СМЕНА ПОВЕДЕНИЯ полосы: прежняя
 //     полоса пропускала такой носитель анонимно с целым печеньем (§1.8);
 //   - служба не ответила ни на один из двух вопросов, ответила UNAVAILABLE либо
@@ -122,7 +122,7 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 		}
 		a.sessionLane.recordNoSession()
 		EndSessionCarriers(w)
-		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		writeAuthnRefusal(w)
 		return r, false, true
 	}
 
@@ -132,7 +132,7 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 		// На ЛЮБОМ пути, включая глаголы формы (Ф3-51).
 		a.sessionLane.recordCutoffDenied()
 		EndSessionCarriers(w)
-		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		writeAuthnRefusal(w)
 		return r, false, true
 	case sessionCutoffUnanswered:
 		if relayOnUnavailable {

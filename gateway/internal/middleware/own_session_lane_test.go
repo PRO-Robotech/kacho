@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -158,7 +159,7 @@ func TestOwnSessionLane_F3_10_NoSessionIsOneRefusalThatEndsTheCarrier(t *testing
 	if bodies[0] != bodies[1] {
 		t.Fatalf("тела отказа на пути платформы и на «кто я» различаются:\n%s\n%s", bodies[0], bodies[1])
 	}
-	if !strings.Contains(bodies[0], sessionCutoffDenyDescription) {
+	if !strings.Contains(bodies[0], authnrefusal.Message) {
 		t.Fatalf("текст отказа обязан быть текстом отсечки (один отказ на пять причин): %s", bodies[0])
 	}
 	if next.served != 0 {
@@ -413,7 +414,7 @@ func TestOwnSessionLane_F3_51_FormVerbsRefuseTheCutOffCarrierAndRelayNoSession(t
 	verbs := []string{LoginLanePathPassword, LoginLanePathLogout, LoginLanePathLogin}
 	for _, p := range verbs {
 		rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{}`)), "s1-cut"))
-		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 			t.Fatalf("%s с носителем отсечённой сессии: обязан быть F4d-22 на крае, получено %d %s", p, rec.Code, rec.Body.String())
 		}
 		if !ourCarrierEnded(rec.Result()) {
@@ -538,7 +539,7 @@ func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *t
 	chain := a.HTTP(mux)
 	for _, p := range verbs {
 		rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{}`)), "s1-cut"))
-		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 			t.Fatalf("%s с носителем отсечённой сессии: обязан быть F4d-22 на крае, получено %d %s", p, rec.Code, rec.Body.String())
 		}
 		if !ourCarrierEnded(rec.Result()) {

@@ -59,8 +59,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/PRO-Robotech/corelib/credsecret"
 	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
+	"github.com/PRO-Robotech/corelib/credsecret"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
@@ -96,9 +96,9 @@ const (
 // литералом, а не берёт у производителя: утверждается текст приёмки, и общий
 // с продуктом источник сделал бы пробу согласной с любой его правкой.
 const (
-	ka1UnavailableBody = `{"code":14,"message":"credential state could not be established"}`
-	ka1UnavailableText = "credential state could not be established"
-	ka1RefusalBody     = `{"code":16,"message":"authentication failed","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"AUTHN_REQUIRED","domain":"kaname.cloud.iam.v1"}]}`
+	ka1UnavailableBody  = `{"code":14,"message":"credential state could not be established"}`
+	ka1UnavailableText  = "credential state could not be established"
+	ka1RefusalBody      = `{"code":16,"message":"authentication failed","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"AUTHN_REQUIRED","domain":"kaname.cloud.iam.v1"}]}`
 	ka1RefusalChallenge = `Bearer realm="kacho", error="invalid_token"`
 	ka1RefusalText      = "authentication failed"
 )

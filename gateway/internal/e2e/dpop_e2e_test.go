@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
@@ -271,9 +272,9 @@ func TestE2E_DPoPRequiredButMissing(t *testing.T) {
 	// No DPoP header.
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+	// Единый отказ края (приёмка KA1, Р2): причина — в журнале, не в вызове.
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "DPoP")
-	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "invalid_dpop_proof")
+	assert.Equal(t, authnrefusal.Challenge, rec.Header().Get("WWW-Authenticate"))
 }
 
 func TestE2E_DPoPReplayRejected(t *testing.T) {
@@ -299,7 +300,7 @@ func TestE2E_DPoPReplayRejected(t *testing.T) {
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, build())
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "invalid_dpop_proof")
+	assert.Equal(t, authnrefusal.Challenge, rec.Header().Get("WWW-Authenticate"))
 }
 
 func TestE2E_NoAuthorizationHeader_PassesThrough(t *testing.T) {

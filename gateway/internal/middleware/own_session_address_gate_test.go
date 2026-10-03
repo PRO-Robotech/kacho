@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // addressRefusalWant — отказ Р3 побайтово: значение службы (`kaname`
@@ -493,7 +495,7 @@ func TestOwnSessionAddressGate_F6b_07_CutoffIsDecidedBeforeTheAddress(t *testing
 	rig := newAddressRig(t, unverifiedOwnSession())
 	rig.cut.found, rig.cut.cutoff = true, ownAuthAt
 	rec := rig.present(http.MethodGet, "/iam/v1/projects", true)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 		t.Fatalf("отсечённая сессия обязана получить F4d-22, получено %d %s", rec.Code, rec.Body.String())
 	}
 	if !ourCarrierEnded(rec.Result()) {

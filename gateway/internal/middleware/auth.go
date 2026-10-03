@@ -64,6 +64,7 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/operations"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 
 	"github.com/PRO-Robotech/corelib/servicecontract"
@@ -87,14 +88,11 @@ const (
 	AuthModeProductionStrict = servicecontract.ModeProductionStrict
 )
 
-// authFailedMsg is the single, constant client-visible message for every
-// authN-failure returned by the gRPC interceptor. It deliberately does NOT
-// echo backend/JWT error detail (info-exposure, CWE-209) and does NOT vary by
-// whether the token was malformed vs the subject was unprovisioned — a varying
-// message is a provisioned-subject enumeration oracle (CWE-204). The detailed
-// cause is logged server-side only (mirrors the redaction already done in
-// authz.go). The REST path uses its own fixed strings via writeHTTPUnauthorized.
-const authFailedMsg = "authentication failed"
+// ОТКАЗ В УДОСТОВЕРЕНИИ НА ОБЕИХ ПОВЕРХНОСТЯХ ОДИН — authnrefusal (приёмка KA1,
+// Р2): один текст, одна деталь, один вызов, для всех причин. Он не повторяет
+// подробностей проверки (CWE-209) и не меняется от того, что именно не так с
+// предъявленным, — различимый ответ был бы оракулом (CWE-204). Причина пишется в
+// журнал края и только туда.
 
 // SubjectLookuper — port-интерфейс для subject-резолва. Реализация —
 // `internal/clients/iam_subject_client.go` (gRPC-direct к kaname:9091).
@@ -428,7 +426,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		case AuthModeDev:
 			return a.injectAnonymous(ctx), nil
 		default: // production / production-strict
-			return nil, status.Error(codes.Unauthenticated, "missing Bearer token")
+			a.logger.Debug("auth: refused — no credential presented", "method", fullMethod)
+			return nil, authnrefusal.Err()
 		}
 	}
 
@@ -449,7 +448,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// полосы (credential_state_unknown.go).
 			return nil, credentialStateUnknownError()
 		case err != nil:
-			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
+			a.logger.Warn("auth: basic credential refused", "method", fullMethod)
+			return nil, authnrefusal.Err()
 		}
 		// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ГЛАГОЛА
 		// (#1215). Спрашивается ровно там же, где на прочих полосах, — ДО
@@ -458,11 +458,11 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		// свойство ВСЯКОГО обращения, а не свойство того, чем его подписали.
 		as := a.basicCredentialAssurance(cred, fullMethod)
 		if suErr := a.stepUpVerdictGRPC(fullMethod, as, stepUpLaneBasic); suErr != nil {
-			// Отказ рендерится ЕДИНЫМ отказом полосы — байт-в-байт тем же, что
-			// на негодном секрете. Различимый подтверждал бы годность
+			// Отказ — ЕДИНЫЙ отказ края (Р2), байт-в-байт тот же, что на
+			// негодном секрете. Различимый подтверждал бы годность
 			// предъявленного, а церемонии, которая подняла бы уровень, у этой
 			// полосы нет (auth_basic_stepup.go, разбор оракула).
-			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
+			return nil, authnrefusal.Err()
 		}
 		ctx = a.injectPrincipal(ctx, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
 		// Уровень удостоверения — вместе с принципалом и по той же причине
@@ -497,7 +497,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			}
 			a.logger.Warn("auth: bearer JWT validation failed (JWKS)",
 				"method", fullMethod, "err", verr)
-			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+			return nil, authnrefusal.Err()
 		}
 		// Machine principals must prove possession — parity with the REST path.
 		// A gap on either surface makes the other pointless: a replayer just
@@ -505,7 +505,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		if a.machineBindingViolation(vt) {
 			a.logger.Warn("auth: machine token is not sender-constrained; rejected",
 				"method", fullMethod)
-			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+			return nil, authnrefusal.Err()
 		}
 		// A verified signature says who minted the token and when it expires. It
 		// does not say the token is still good — a sign-out or a revoked key
@@ -520,7 +520,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// carries the same constant message (no varying text to read state off).
 			a.logger.Warn("auth: token revoked per our revocation source; rejected",
 				"method", fullMethod, "source", revocationSourceOf(vt))
-			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+			return nil, authnrefusal.Err()
 		case revocationUnanswerable:
 			// The question went unanswered, and «could not establish» is not
 			// «live». Three causes lead here, and the log in revocationCheck names
@@ -560,13 +560,14 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	if err != nil {
 		a.logger.Warn("auth: JWT validation failed",
 			"method", fullMethod, "err", err)
-		return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+		return nil, authnrefusal.Err()
 	}
 
 	// Resolve subject via kaname (gRPC-direct).
 	subjectID, _ := claims["sub"].(string)
 	if subjectID == "" {
-		return nil, status.Error(codes.Unauthenticated, "token missing subject")
+		a.logger.Warn("auth: token carries no subject", "method", fullMethod)
+		return nil, authnrefusal.Err()
 	}
 
 	// Service Account / API-token principals. A token minted by an issuer's
@@ -614,7 +615,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 // leave this branch as the way in for the very credential it constrains.
 func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, subjectID string, vt *VerifiedToken) (context.Context, error) {
 	if subjectID == "" {
-		return nil, status.Error(codes.Unauthenticated, "token missing subject")
+		a.logger.Warn("auth: token carries no subject and no principal claims", "method", fullMethod)
+		return nil, authnrefusal.Err()
 	}
 	subj, err := a.subjectLookup.LookupByExternalID(ctx, subjectID)
 	if err != nil {
@@ -628,7 +630,7 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 			// перебора личностей и утечки текста ошибки iam).
 			a.logger.Warn("auth: principal not usable per kaname (rejecting)",
 				"method", fullMethod, "external_id", subjectID, "err", err)
-			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+			return nil, authnrefusal.Err()
 		default: // dev
 			a.logger.Debug("auth: principal not usable per kaname, fallback to anonymous",
 				"method", fullMethod, "external_id", subjectID, "err", err)
@@ -639,7 +641,7 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 	if a.machineBindingViolationFor(vt, subj.Type) {
 		a.logger.Warn("auth: machine token (resolved by lookup) is not sender-constrained; rejected",
 			"method", fullMethod)
-		return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+		return nil, authnrefusal.Err()
 	}
 
 	// Inject Principal в ctx + metadata (backend читает через corelib).
@@ -902,16 +904,12 @@ func setPrincipalHeaders(r *http.Request, pType, pID, displayName string) {
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, displayName)
 }
 
-// writeHTTPUnauthorized emits a 401 with a gRPC-shaped JSON body (code 16 =
-// Unauthenticated) and a `WWW-Authenticate` challenge. Used by the REST auth
-// path when a Bearer token is present but fails validation — authN failures
-// must surface as 401, never as 403 (which is the authZ verdict).
-func writeHTTPUnauthorized(w http.ResponseWriter, desc string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("WWW-Authenticate",
-		`Bearer error="invalid_token", error_description="`+desc+`"`)
-	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`{"code":16,"message":"` + desc + `"}`))
+// writeAuthnRefusal — отказ `401` REST-поверхности: удостоверение не принято.
+// Один на все причины и все полосы (authnrefusal, приёмка KA1 Р2) — authN-отказ
+// всегда 401, никогда 403 (тот — вердикт прав). Причину вызывающий пишет в
+// журнал сам, до вызова.
+func writeAuthnRefusal(w http.ResponseWriter) {
+	authnrefusal.WriteHTTP(w)
 }
 
 // isClientForgeableIdentityHeader reports whether an inbound header name /
@@ -1008,9 +1006,39 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 			if a.tryDevSecretJWT(w, r, next) {
 				return
 			}
+			if a.refuseUncredentialed(w, r) {
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// refuseUncredentialed — запрос дошёл до конца полос без личности: ни одна
+// полоса не признала предъявленного своим. В боевой посадке на пути запроса это
+// отказ «удостоверение не принято» — тот же, что у всех прочих причин (приёмка
+// KA1, Р2, строка (а) «удостоверения нет»), — и выносит его слой
+// аутентификации, а не слой прав: свойство «отказ один» держится там, где
+// вынесены остальные отказы, а не зависит от того, смонтирован ли следующий
+// слой. Нативная поверхность делает то же в `authorize`.
+//
+// Не отвергается:
+//   - посадка `dev` — анонимный проход есть её объявленное свойство;
+//   - перечень прохода (`isPublicHTTPPath`) — пробы живости, выход, «кто я»,
+//     записи объявления: они действуют ни от чьего имени;
+//   - предъявитель по схеме `DPoP` — его судит слой доказательства владения
+//     (`DPoPMiddleware`) либо, где тот не смонтирован, слой прав; оба отвечают
+//     тем же отказом.
+func (a *AuthInterceptor) refuseUncredentialed(w http.ResponseWriter, r *http.Request) bool {
+	if a.mode == AuthModeDev || isPublicHTTPPath(r.URL.Path) {
+		return false
+	}
+	if scheme, _, _ := strings.Cut(r.Header.Get("Authorization"), " "); strings.EqualFold(scheme, "DPoP") {
+		return false
+	}
+	a.logger.Info("auth.HTTP: refused — no credential any lane accepts", "path", r.URL.Path)
+	writeAuthnRefusal(w)
+	return true
 }
 
 // tryBasicCredential — полоса базового секрета на REST-поверхности края.
@@ -1036,7 +1064,8 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 		writeCredentialStateUnknown(w)
 		return true
 	case err != nil:
-		writeHTTPUnauthorized(w, basicCredentialRefusalText())
+		a.logger.Warn("auth.HTTP: basic credential refused", "path", r.URL.Path)
+		writeAuthnRefusal(w)
 		return true
 	}
 	// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ОБРАЩЕНИЯ
@@ -1050,11 +1079,12 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 	// чеканило себе смену вопреки объявлению `BasicCredentialLevel`.
 	as := a.basicCredentialAssurance(cred, r.URL.Path)
 	if _, suErr := a.stepUpVerdictHTTP(r, as, stepUpLaneBasic); suErr != nil {
-		// Отказ рендерится ЕДИНЫМ отказом полосы, а не вызовом RFC 9470 —
-		// байт-в-байт тем же ответом, что на негодном секрете. Разбор — в
-		// auth_basic_stepup.go: различимый исход подтверждал бы годность
-		// предъявленного по глаголу, который вызывающему недоступен.
-		writeHTTPUnauthorized(w, basicCredentialRefusalText())
+		// Отказ рендерится ЕДИНЫМ отказом края (Р2), а не вызовом RFC 9470 —
+		// байт-в-байт тем же ответом, что на негодном секрете и на любой
+		// другой причине. Разбор — в auth_basic_stepup.go: различимый исход
+		// подтверждал бы годность предъявленного по глаголу, который
+		// вызывающему недоступен.
+		writeAuthnRefusal(w)
 		return true
 	}
 	setPrincipalHeaders(r, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
@@ -1141,7 +1171,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 			return true
 		}
 		a.logger.Warn("auth.HTTP: bearer JWT validate failed (JWKS)", "err", verr.Error())
-		writeHTTPUnauthorized(w, "token validation failed")
+		writeAuthnRefusal(w)
 		return true
 	}
 	// Machine principals must prove possession. Checked BEFORE the principal is
@@ -1149,7 +1179,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 	if a.machineBindingViolation(vt) {
 		a.logger.Warn("auth.HTTP: machine token is not sender-constrained; rejected",
 			"path", r.URL.Path)
-		writeHTTPUnauthorized(w, "sender-constrained token required")
+		writeAuthnRefusal(w)
 		return true
 	}
 	// Is the token still live? The signature cannot answer that; our revocation
@@ -1168,7 +1198,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 		case revocationRevoked:
 			a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
 				"path", r.URL.Path, "source", revocationSourceOf(vt))
-			writeHTTPUnauthorized(w, revocationDenyDescription)
+			writeAuthnRefusal(w)
 			return true
 		case revocationUnanswerable:
 			// Our source was silent, the check has no source, or the token has no
@@ -1204,7 +1234,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 	// Claims absent → fall back to SubjectLookuper on the verified sub.
 	if vt.Subject == "" {
 		a.logger.Warn("auth.HTTP: bearer JWT has empty sub and no kaname_principal_* claims")
-		writeHTTPUnauthorized(w, "token missing subject")
+		writeAuthnRefusal(w)
 		return true
 	}
 	if subj, lerr := a.subjectLookup.LookupByExternalID(r.Context(), vt.Subject); lerr != nil {
@@ -1214,7 +1244,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 		// kaname_principal_* claims. Same requirement, same rejection.
 		a.logger.Warn("auth.HTTP: machine token (resolved by lookup) is not sender-constrained; rejected",
 			"path", r.URL.Path)
-		writeHTTPUnauthorized(w, "sender-constrained token required")
+		writeAuthnRefusal(w)
 		return true
 	} else {
 		setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
@@ -1245,13 +1275,13 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 		// 401 BEFORE authz, never pass it through as anonymous (which
 		// surfaces as 403).
 		a.logger.Warn("auth.HTTP: JWT validate failed", "err", jwtErr.Error())
-		writeHTTPUnauthorized(w, "token validation failed")
+		writeAuthnRefusal(w)
 		return true
 	}
 	subjectID, _ := claims["sub"].(string)
 	if subjectID == "" {
 		a.logger.Warn("auth.HTTP: JWT has empty sub")
-		writeHTTPUnauthorized(w, "token missing subject")
+		writeAuthnRefusal(w)
 		return true
 	}
 	// Service Account / API-token principals.

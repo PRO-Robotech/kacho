@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // cutoffLookup — SubjectLookuper, резолвящий ровно названного субъекта.
@@ -269,7 +271,7 @@ func TestCookieLane_RefusalMessageNamesOwnSessionOnly(t *testing.T) {
 	body, _ := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 
-	if !strings.Contains(string(body), sessionCutoffDenyDescription) {
+	if !strings.Contains(string(body), authnrefusal.Message) {
 		t.Fatalf("отказ не назвал состояние собственной сессии вызывающего: %s", string(body))
 	}
 	for _, leak := range []string{"usr-1", "a@example.com"} {
