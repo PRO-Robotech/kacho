@@ -27,8 +27,8 @@ func bearerWindowOfProd(t *testing.T, sets ...string) []bearerWindowLifespan {
 // TestMAIL51Injection_LawfulTemplateIsSilent — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ.
 func TestMAIL51Injection_LawfulTemplateIsSilent(t *testing.T) {
 	findings, bounding := bearerWindowFindings("prod", bearerWindowOfProd(t))
-	if len(findings) != 0 || bounding != 2 {
-		t.Fatalf("законный близнец: находок %v, ограничивающих %d (ждали 0 и 2)", findings, bounding)
+	if len(findings) != 0 || bounding != 3 {
+		t.Fatalf("законный близнец: находок %v, ограничивающих %d (ждали 0 и 3)", findings, bounding)
 	}
 }
 
@@ -37,6 +37,7 @@ func TestMAIL51Injection_RaisedCeilingIsAFinding(t *testing.T) {
 	for _, c := range []struct{ set, key string }{
 		{"config.authn.login.recoveryCodeTtl=6m", "recovery-code-ttl"},
 		{"config.authn.login.verificationCodeTtl=31m", "verification-code-ttl"},
+		{"config.authn.login.registrationCodeTtl=25h", "registration-code-ttl"},
 	} {
 		findings, _ := bearerWindowFindings("prod", bearerWindowOfProd(t, c.set))
 		if len(findings) != 1 || !strings.Contains(findings[0], c.key) || !strings.Contains(findings[0], "превышает потолок") {
