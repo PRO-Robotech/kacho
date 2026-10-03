@@ -4,7 +4,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"io/fs"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -99,5 +104,92 @@ func TestRemovedRowRefusesTheProbeDatabase(t *testing.T) {
 	_, _, err := selectChain(table, embedded, "postgres://u:p@db:5432/kacho_notifyprobe")
 	if err == nil || !strings.Contains(err.Error(), "kacho_notifyprobe") {
 		t.Fatalf("строка снята, а база пробы не отвергнута с именем: %v", err)
+	}
+}
+
+// helperEnv — переменная, по которой тестовый бинарь исполняет main() точки:
+// отказ точки наблюдается тем же каналом, что у init-контейнера, — stderr
+// процесса и его код выхода.
+const helperEnv = "KACHO_NOTIFY_MIGRATOR_TEST_RUN_MAIN"
+
+// TestHelperRunsMain — не проба: тело процесса-помощника.
+func TestHelperRunsMain(t *testing.T) {
+	if os.Getenv(helperEnv) != "1" {
+		return
+	}
+	os.Args = []string{binaryName, "up"}
+	main()
+	os.Exit(0)
+}
+
+// runPoint исполняет main() точки с DSN в KACHO_MIGRATOR_DSN; stderr и код.
+func runPoint(t *testing.T, dsn string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunsMain$")
+	cmd.Env = append(os.Environ(), helperEnv+"=1", "KACHO_MIGRATOR_DSN="+dsn, "PGDATABASE=")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stderr.String(), err
+}
+
+// SEC-W1-01, наблюдаемое: отказ точки на DSN с паролем-маркером в обеих
+// записях — stderr не несёт маркера ни целиком, ни частью. Близнец — годный
+// DSN с тем же маркером и базой вне таблицы: отказ называет базу (канал
+// наблюдения жив), маркера нет.
+func TestPointRefusalCarriesNoPasswordMarker(t *testing.T) {
+	cases := []struct {
+		dsn     string
+		markers []string
+		names   string
+	}{
+		{"postgres://notifyprobe:Sup3r%Secret@db-host-x:5432/kacho_notifyprobe?sslmode=require",
+			[]string{"Sup3r", "Secret", "%Se"}, pointDir},
+		{"host=db-host-x port=5432 user=notify password=Tail0f Secret dbname='kacho_notifyprobe sslmode=require",
+			[]string{"Tail0f", "Secret"}, pointDir},
+		// Близнец: DSN разбирается, база вне таблицы — отказ с её именем.
+		{"postgres://notifyprobe:Sup3rSecret@db-host-x:5432/kacho_vpc?sslmode=require",
+			[]string{"Sup3r", "Secret"}, "kacho_vpc"},
+	}
+	for _, c := range cases {
+		stderr, err := runPoint(t, c.dsn)
+		if err == nil {
+			t.Errorf("DSN %q: точка вышла успехом, а обязана отказать до соединения:\n%s", c.dsn, stderr)
+			continue
+		}
+		if !strings.Contains(stderr, c.names) {
+			t.Errorf("DSN %q: stderr не называет %q — отказ не тот:\n%s", c.dsn, c.names, stderr)
+		}
+		for _, m := range c.markers {
+			if strings.Contains(stderr, m) {
+				t.Errorf("DSN %q: stderr точки несёт кусок пароля %q:\n%s", c.dsn, m, stderr)
+			}
+		}
+	}
+}
+
+// Д83 — после соединения точка сверяет current_database() со строкой таблицы
+// до первого оператора goose: неравенство — отказ с обоими именами, без
+// наката. Близнец — равенство → накат разрешён. Ошибка чтения — отказ, а не
+// «сверка пройдена».
+func TestConnectedDatabaseMustBeTheRowDatabase(t *testing.T) {
+	ctx := context.Background()
+	answer := func(name string, err error) func(context.Context) (string, error) {
+		return func(context.Context) (string, error) { return name, err }
+	}
+	if err := confirmDatabase(ctx, answer("kacho_notifyprobe", nil), "kacho_notifyprobe"); err != nil {
+		t.Fatalf("близнец: база соединения равна строке, а отказ: %v", err)
+	}
+	err := confirmDatabase(ctx, answer("kacho_notify", nil), "kacho_notifyprobe")
+	if err == nil {
+		t.Fatal("соединение с kacho_notify при строке kacho_notifyprobe принято — накат ушёл бы в чужую базу")
+	}
+	for _, s := range []string{"kacho_notify", "kacho_notifyprobe", pointDir, "наката нет"} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("отказ сверки не называет %q: %v", s, err)
+		}
+	}
+	if err := confirmDatabase(ctx, answer("", errors.New("conn reset")), "kacho_notifyprobe"); err == nil {
+		t.Fatal("ошибка чтения current_database() принята за пройденную сверку")
 	}
 }

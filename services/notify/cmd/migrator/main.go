@@ -18,6 +18,11 @@
 // выбора цепочки — тоже: их появление сделало бы инъекцию «строка снята»
 // зелёной.
 //
+// Имя базы берётся разбором драйвера (`migrationchains.DatabaseOf` над
+// `pgconn.ParseConfig`) — тем же, каким накат соединяется, а после соединения
+// и до первого оператора goose точка сверяет `SELECT current_database()` со
+// строкой таблицы: неравенство — отказ без наката (Д83).
+//
 // # DSN — только `--dsn` или KACHO_MIGRATOR_DSN
 //
 // Конфигурации процесса точка не читает: у каталога их две, и выбор по ней был
@@ -94,7 +99,7 @@ func main() {
 		fail(err)
 	}
 
-	_, fsys, err := selectChain(chainsTable, embedded, dsn)
+	row, fsys, err := selectChain(chainsTable, embedded, dsn)
 	if err != nil {
 		fail(err)
 	}
@@ -110,7 +115,12 @@ func main() {
 		fail(err)
 	}
 
-	if err := run(context.Background(), runner, opts); err != nil {
+	ctx := context.Background()
+	if err := confirmDatabase(ctx, connectedDatabase(dsn, opts.Dialect), row.Database); err != nil {
+		fail(err)
+	}
+
+	if err := run(ctx, runner, opts); err != nil {
 		fail(fmt.Errorf("migrate %s: %w", opts.Command, err))
 	}
 }
@@ -189,4 +199,46 @@ func run(ctx context.Context, r *migratorrun.Runner, opts migratorcli.Options) e
 		return r.Status(ctx, os.Stdout)
 	}
 	return fmt.Errorf("unhandled command %q", opts.Command)
+}
+
+// confirmDatabase — сверка после соединения (Д83): база, к которой открыто
+// соединение (`SELECT current_database()`), равна базе строки таблицы, по
+// которой выбрана цепочка. Сверка стоит до первого оператора goose: выбор
+// цепочки по разбору DSN и соединение — два места решения о базе, и второе
+// судит первое на живом сервере, а не на строке. Неравенство — отказ с обоими
+// именами; ошибка чтения — тоже отказ: «сверить не удалось» не равно «сверка
+// пройдена».
+func confirmDatabase(ctx context.Context, current func(context.Context) (string, error), want string) error {
+	got, err := current(ctx)
+	if err != nil {
+		return fmt.Errorf("точка наката %s: имя базы соединения не прочитано, сверка со строкой %q "+
+			"не пройдена — наката нет: %w", pointDir, want, err)
+	}
+	if got != want {
+		return fmt.Errorf("точка наката %s: соединение открыто к базе %q, а цепочка выбрана строкой %q — "+
+			"наката нет", pointDir, got, want)
+	}
+	return nil
+}
+
+// connectedDatabase — чтение `current_database()` соединением, открытым тем же
+// трактом, каким откроет его накат ([migratorcli.OpenDB]: тот же разбор DSN,
+// тот же барьер готовности сервера). Соединение закрывается сразу после чтения.
+func connectedDatabase(dsn, dialect string) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		spec, err := migratorcli.ResolveDialectSpec(dialect)
+		if err != nil {
+			return "", err
+		}
+		db, err := migratorcli.OpenDB(ctx, dsn, spec, migratorcli.NewNoticeRelay(serviceName, os.Stderr))
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = db.Close() }()
+		var name string
+		if err := db.QueryRowContext(ctx, "SELECT current_database()").Scan(&name); err != nil {
+			return "", fmt.Errorf("SELECT current_database(): %w", err)
+		}
+		return name, nil
+	}
 }

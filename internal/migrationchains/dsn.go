@@ -5,101 +5,46 @@ package migrationchains
 
 import (
 	"errors"
-	"fmt"
-	"net/url"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// DatabaseOf — имя базы, названное самим DSN, в обеих записях, которыми зовут
-// точку наката: URL (`postgres://…/<база>`) и ключевая форма libpq
-// (`… dbname=<база> …`, её собирает манифест развёртывания).
+// DatabaseOf — имя базы, к которой соединится драйвер по этому DSN (Д83).
 //
-// Имя берётся ТОЛЬКО из строки: окружение (`PGDATABASE`) и умолчание «база =
-// пользователь» источником не являются — точка, выбирающая цепочку по имени
-// базы, иначе выбирала бы её по третьему месту решения. DSN без имени базы —
-// отказ, а не пустое имя. Соединения функция не открывает и конфигурации
-// драйвера не строит: разбор конфигурации соединения принадлежит общему
-// тракту наката (`corelib/migratorcli`).
+// Разбор — [pgconn.ParseConfig], ТОТ ЖЕ, каким общий тракт наката
+// (`corelib/migratorcli.OpenDB` → `pgx.ParseConfig`) строит соединение. Своего
+// разбора здесь нет: два разбора одной строки расходились (DSN-DB-DIVERGENCE) —
+// при втором источнике имени в строке (query-параметр `dbname`/`database` у
+// URL, ключ `database` у ключевой формы) точка выбирала цепочку по одному имени,
+// а драйвер соединялся с другим, и цепочка уезжала в чужую базу. Окружение
+// (`PGDATABASE`), которое драйвер читает при DSN без имени, решает и здесь — по
+// той же причине: решение о цепочке судит ту базу, к которой будет соединение.
+//
+// Имя пусто (ни строка, ни окружение его не называют) — отказ, а не пустое имя.
+//
+// Текст отказа разбора — только вид отказа: ни строки DSN, ни её кусков. Текст
+// ошибки драйвера сюда не переносится НИ целиком, НИ обёрткой: маска пароля у
+// драйвера частичная (пароль с `@` или `%` уходит хвостом в «узел»), а обёрнутая
+// ошибка `url.Parse` несёт строку целиком (SEC-W1-01). Отказ уходит в журнал
+// init-контейнера, который читает каждый с правом `pods/log`.
 func DatabaseOf(dsn string) (string, error) {
-	s := strings.TrimSpace(dsn)
-	if strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://") {
-		u, err := url.Parse(s)
-		if err != nil {
-			return "", fmt.Errorf("DSN не разобран как URL: %w", err)
-		}
-		name := strings.TrimPrefix(u.Path, "/")
-		if name == "" || strings.Contains(name, "/") {
-			return "", errors.New("DSN не называет базу (путь URL пуст)")
-		}
-		return url.PathUnescape(name)
-	}
-	kv, err := keywordPairs(s)
+	cfg, err := pgconn.ParseConfig(dsn)
 	if err != nil {
-		return "", err
+		return "", errors.New("DSN не разобран драйвером (" + dsnForm(dsn) + "); " +
+			"текст разбора не печатается — он несёт куски строки соединения")
 	}
-	name, ok := kv["dbname"]
-	if !ok || name == "" {
-		return "", errors.New("DSN не называет базу (ключа dbname нет)")
+	if cfg.Database == "" {
+		return "", errors.New("DSN не называет базу: имени нет ни в строке, ни в окружении PGDATABASE")
 	}
-	return name, nil
+	return cfg.Database, nil
 }
 
-// keywordPairs разбирает ключевую форму libpq: пары `ключ = значение`,
-// значение — слово либо строка в одинарных кавычках с экранированием `\`.
-func keywordPairs(s string) (map[string]string, error) {
-	out := map[string]string{}
-	i := 0
-	skip := func() {
-		for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
-			i++
-		}
+// dsnForm — запись DSN для текста отказа: вид, не содержимое.
+func dsnForm(dsn string) string {
+	s := strings.TrimSpace(dsn)
+	if strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://") {
+		return "запись URL"
 	}
-	for {
-		skip()
-		if i >= len(s) {
-			return out, nil
-		}
-		start := i
-		for i < len(s) && s[i] != '=' && s[i] != ' ' && s[i] != '\t' {
-			i++
-		}
-		key := s[start:i]
-		skip()
-		if key == "" || i >= len(s) || s[i] != '=' {
-			return nil, fmt.Errorf("DSN не разобран: у ключа %q нет `=`", key)
-		}
-		i++
-		skip()
-		var val strings.Builder
-		if i < len(s) && s[i] == '\'' {
-			i++
-			closed := false
-			for i < len(s) {
-				c := s[i]
-				if c == '\\' && i+1 < len(s) {
-					val.WriteByte(s[i+1])
-					i += 2
-					continue
-				}
-				i++
-				if c == '\'' {
-					closed = true
-					break
-				}
-				val.WriteByte(c)
-			}
-			if !closed {
-				return nil, fmt.Errorf("DSN не разобран: значение ключа %q без закрывающей кавычки", key)
-			}
-		} else {
-			for i < len(s) && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
-				if s[i] == '\\' && i+1 < len(s) {
-					i++
-				}
-				val.WriteByte(s[i])
-				i++
-			}
-		}
-		out[key] = val.String()
-	}
+	return "ключевая запись libpq"
 }
