@@ -4,6 +4,7 @@
 package migrationchains_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -355,4 +356,50 @@ func TestOrphanSQLAnywhereUnderInternalIsRefused(t *testing.T) {
 			t.Fatalf("перечень %+v, %v; ожидались две цепочки без отказа", got, err)
 		}
 	})
+}
+
+// CX1-125 (Д93) — ветка отказа по каждой записи DSN, которую разбор драйвера
+// ОТВЕРГАЕТ, и отдельно — запись, которую он принимает без имени базы. Маркер
+// пароля стоит хвостом: в ключевой записи драйвер маскирует только значение
+// `password=` и печатает хвост `MARKERTAIL` как есть, в записи URL — `%` без
+// двух знаков. Проба печатает ветку («разбор» | «нет базы») и требует ту,
+// которую даёт драйвер; ни одна подстрока маркера длиной ≥ 4 в текст не
+// попадает, и отказ ничего не оборачивает (`errors.Unwrap == nil`): обёрнутая
+// ошибка драйвера несла бы хвост маркера в журнал init-контейнера.
+func TestDatabaseOfRefusalBranchCarriesNoMarker(t *testing.T) {
+	t.Setenv("PGDATABASE", "")
+	const marker = "MARKERTAIL"
+	cases := []struct{ form, dsn, branch string }{
+		{"ключевая, хвост пароля последним", "host=db-host-x user=u dbname=kacho_notify password=abc " + marker, "разбор"},
+		{"URL, % без двух знаков", "postgres://u:abc%" + marker + "@db-host-x/kacho_notify", "разбор"},
+		{"ключевая, хвост пароля перед dbname", "host=db-host-x user=u password=abc " + marker + " dbname=kacho_notify", "нет базы"},
+	}
+	for _, c := range cases {
+		got, err := migrationchains.DatabaseOf(c.dsn)
+		if err == nil {
+			t.Errorf("%s: DSN принят с базой %q — проба отказа без отказа", c.form, got)
+			continue
+		}
+		branch := "иная"
+		switch {
+		case strings.HasPrefix(err.Error(), "DSN не разобран драйвером"):
+			branch = "разбор"
+		case strings.HasPrefix(err.Error(), "DSN не называет базу"):
+			branch = "нет базы"
+		}
+		t.Logf("%s: ветка отказа %q", c.form, branch)
+		if branch != c.branch {
+			t.Errorf("%s: ветка отказа %q, драйвер даёт %q: %v", c.form, branch, c.branch, err)
+		}
+		if errors.Unwrap(err) != nil {
+			t.Errorf("%s: отказ оборачивает ошибку (%v) — текст драйвера уходит в журнал вместе с ним", c.form, errors.Unwrap(err))
+		}
+		for i := 0; i+4 <= len(marker); i++ {
+			for j := i + 4; j <= len(marker); j++ {
+				if s := marker[i:j]; strings.Contains(err.Error(), s) {
+					t.Errorf("%s: отказ несёт кусок маркера %q: %v", c.form, s, err)
+				}
+			}
+		}
+	}
 }
