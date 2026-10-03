@@ -830,6 +830,12 @@ func main() {
 	// Клетки полосы предъявителя (kacho#2740): исход вопроса об отзыве по
 	// источнику — на приборе, а не только строкой журнала раз в окно.
 	diagMetrics.RegisterBearerLane(authInterceptor.BearerLane().Snapshot)
+	// Клетки окон доклада (kacho#2740): итог каждого окна журнала — на приборе,
+	// а строка журнала раз в окно называет лишь первое событие окна.
+	diagMetrics.RegisterLogWindows(func() gwmetrics.LogWindowSources {
+		return gwmetrics.LogWindowSources{Auth: authInterceptor.LogWindows(),
+			DPoP: dpopMiddleware.AuthMethodsUnusableWindow()}
+	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {

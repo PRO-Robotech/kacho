@@ -62,6 +62,11 @@ import (
 // Связь «метод читает ИМЕННО ЭТО поле» проверяется по получателю, а не по имени
 // метода: имя не гарантирует ничего.
 //
+// Это ПЕРВАЯ разновидность. Вторая — итог под замком (целое поле под
+// `sync.Mutex`, отданное результатом метода; kacho#2740) — разобрана в
+// `accumulatorlockedtotal_test.go`: её носитель, докладчик окна журнала края,
+// не нёс ни одного признака первой, и перепись его не читала.
+//
 // # ЗАЩЁЛКА — НЕ ВЕЛИЧИНА, и это выяснила ИНЪЕКЦИЯ, а не чтение
 //
 // Первая редакция предиката считала накопителем всякий тип со счётным атомарным
@@ -175,10 +180,25 @@ type accumulator struct {
 	typ      string
 	accessor string
 	where    string // файл:строка объявления метода-слепка
+	// handOuts — у итога под замком ([collectLockedTotals]): ВСЕ методы, отдающие
+	// итог результатом. Читатель засчитывается, если снаружи читают хоть один.
+	// Пусто у атомарной разновидности: там слепок один — accessor.
+	handOuts []string
+	// totals — у итога под замком: поля-итоги, ради которых носитель найден.
+	totals []string
 }
 
 // id — координата носителя одной строкой; ключ сверки с таблицей находок.
 func (a accumulator) id() string { return a.dir + "." + a.typ + "." + a.accessor }
+
+// readAccessors — имена методов, ссылка на которые снаружи делает величину
+// прочитанной.
+func (a accumulator) readAccessors() []string {
+	if len(a.handOuts) > 0 {
+		return a.handOuts
+	}
+	return []string{a.accessor}
+}
 
 // goFileFacts — то, что обход вынимает из одного файла.
 type goFileFacts struct {
@@ -392,6 +412,7 @@ func collectAccumulators(t *testing.T, facts []goFileFacts) []accumulator {
 			})
 		}
 	}
+	out = append(out, collectLockedTotals(facts)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].id() < out[j].id() })
 	return out
 }
@@ -471,6 +492,14 @@ func accumulatorVerdict(accs []accumulator, readers map[string]map[string]string
 			open++
 			continue
 		}
+		if len(a.handOuts) > 0 {
+			findings = append(findings, a.where+" — "+a.pkg+"."+a.typ+": итог под замком ("+
+				strings.Join(a.totals, ", ")+") отдают только "+strings.Join(a.handOuts, ", ")+
+				", и ни один не читает не-тестовый пакет, импортирующий "+a.dir+
+				": величина уходит лишь в свой пакет (строку журнала), клетки на приборе у неё нет, "+
+				"и её ноль не отличим от «этот код не исполнялся»")
+			continue
+		}
 		findings = append(findings, a.where+" — "+a.pkg+"."+a.typ+"."+a.accessor+
 			"() не читает ни один не-тестовый пакет, импортирующий "+a.dir+
 			": величина считается в никуда, и её ноль не отличим от «этот код не исполнялся»")
@@ -490,7 +519,19 @@ func accumulatorVerdict(accs []accumulator, readers map[string]map[string]string
 // readerOf называет файл, из которого величины носителя действительно читают, —
 // либо пусто, если такого нет.
 func readerOf(a accumulator, readers map[string]map[string]string, importersOf map[string]map[string]bool) string {
-	for dir, rel := range readers[a.accessor] {
+	for _, accessor := range a.readAccessors() {
+		if rel := readerOfAccessor(a.dir, accessor, readers, importersOf); rel != "" {
+			return rel
+		}
+	}
+	return ""
+}
+
+// readerOfAccessor — файл, читающий метод accessor носителя из каталога dir.
+func readerOfAccessor(declDir, accessor string, readers map[string]map[string]string,
+	importersOf map[string]map[string]bool,
+) string {
+	for dir, rel := range readers[accessor] {
 		// Требование ровно одно: читающий пакет ИМПОРТИРУЕТ объявителя.
 		//
 		// Оно закрывает сразу две вещи. Совпадение имени без импорта — не
@@ -504,7 +545,7 @@ func readerOf(a accumulator, readers map[string]map[string]string, importersOf m
 		// была недостижима, и проба, якобы её державшая, оставалась зелёной при
 		// её снятии. Ослабнет условие импорта — покраснеет
 		// TestAccumulatorGateDoesNotCountAReadInTheDeclaringPackage.
-		if !importersOf[a.dir][dir] {
+		if !importersOf[declDir][dir] {
 			continue
 		}
 		return rel
@@ -550,15 +591,25 @@ func TestDeclaredAccumulatorsHaveANonTestReader(t *testing.T) {
 
 	// Объём осмотренного — отдельное утверждение: «ноль находок» обязано быть
 	// отличимо от «ноль прочитанного».
-	t.Logf("осмотрено не-тестовых файлов Go: %d; накопителей объявлено: %d; "+
-		"из них с читателем: %d; открытых находок чужих полос: %d",
-		scanned, len(accs), withReader, open)
+	locked, outsideProcess := collectLockedTotalsCensus(facts)
+	t.Logf("осмотрено не-тестовых файлов Go: %d; накопителей объявлено: %d "+
+		"(из них итогов под замком: %d; итогов под замком вне процесса, у дублёров для проб, "+
+		"не судится: %d); из них с читателем: %d; открытых находок чужих полос: %d",
+		scanned, len(accs), len(locked), outsideProcess, withReader, open)
 	if scanned == 0 {
 		t.Fatal("осмотрено ноль файлов — гейт не читал дерева, и его молчание ничего не значит")
 	}
 	if len(accs) == 0 {
 		t.Fatal("накопителей в дереве не найдено ни одного — предикат обхода разъехался с " +
 			"кодом, и молчание гейта означает не благополучие, а слепоту")
+	}
+	// Предпосылка второй разновидности — отдельно: пустой обход итогов под
+	// замком при живых атомарных означал бы, что расширение (kacho#2740) ослепло,
+	// а общее число этого не покажет.
+	if len(locked) == 0 {
+		t.Fatal("итогов под замком в коде процесса не найдено ни одного — предикат второй " +
+			"разновидности разъехался с кодом (докладчик окна журнала края — её носитель), " +
+			"и молчание гейта о ней означает слепоту, а не благополучие")
 	}
 
 	if len(stale) > 0 {
