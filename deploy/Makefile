@@ -6,7 +6,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         psql-iam logs-iam build-services \
-        guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
+        guard-kind-context guard-stand-cluster guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline \
         dialled-transport-discipline delete-step-discipline \
@@ -993,6 +993,12 @@ own-up: preflight
 # — та же цель, что у `dev-up`; на кластере, где cert-manager уже стоит (свой той
 # же версии либо чужой, как у оператора a8f60d), она его не переставляет.
 #
+# ЗАВИСИМОСТИ УМБРЕЛЛЫ — ТЕМ ЖЕ ШАГОМ, ЧТО У `dev-up` (kacho#2885), до первого
+# helm: архивы локальных подчартов в git не лежат. Без шага копия без архивов
+# отказывала на `stack-secrets` («missing in charts/ directory»), а копия со
+# старыми архивами молча применяла прежний шаблон подчарта. Порядок держит
+# deploy/umbrella_apply_runs_deps_first_test.go — для каждой цели файла.
+#
 #   make -C deploy stack-up STACK=a8f60d
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
@@ -1035,6 +1041,7 @@ stack-up:
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
+	bash scripts/helm-umbrella-deps.sh; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
@@ -1160,8 +1167,14 @@ assert-jobs-healthy:
 # (pg_stat_ssl), (C) сохранённые настройки по ВСЕМ путям доставки как backstop.
 # Устойчива к тому, что под не перезапускался — «Ready» больше ничего не «доказывает».
 #
-# guard-kind-context: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
-# прод) контексте это как минимум утечка диагностики.
+# guard-stand-cluster: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
+# прод) контексте это как минимум утечка диагностики, а вердикт был бы о другом
+# стенде. Цель пинится по КЛАСТЕРУ объявленного стенда (kacho#2879): kind — по
+# адресу, который выдаёт движок; стенд вне kind — по объявлению
+# STAND_APISERVER=<адрес apiserver'а> (величина из командной строки make уходит в
+# окружение рецепта сама, и часть D гейта сверяет тот же адрес). Прежний пин по
+# kind отказывал стенду вне kind целиком, и тот не получал вердикта посадки вовсе:
+#   make -C deploy assert-production-posture STAND_APISERVER=https://<apiserver>
 # POSTURE_PROFILE пиньтся ЗДЕСЬ, а не наследуется из окружения: иначе
 # `POSTURE_PROFILE=dev make assert-production-posture` сузил бы боевой гейт до
 # одного измерения и увёл бы его в зелёное — ручка, снимающая защиту, которую
@@ -1172,8 +1185,15 @@ assert-jobs-healthy:
 # служба обязана быть красной, а не незамеченной. Стенд шарда поднимает
 # подмножество ОСОЗНАННО, и осознанность выражается ровно тем способом, который
 # гейт для этого и завёл, — явным исключением по имени.
-assert-production-posture: guard-kind-context
+assert-production-posture: guard-stand-cluster
 	@POSTURE_PROFILE=production POSTURE_SKIP="$(POSTURE_SKIP)" bash scripts/assert-production-posture.sh
+
+# guard-stand-cluster — пин ЧИТАЮЩЕГО гейта по кластеру объявленного стенда.
+# Владелец пина один — scripts/stand-cluster-pin.sh; его же зовёт часть D гейта
+# посадки, поэтому цель и часть не могут разойтись о том, какой кластер судят.
+# Несовпадение — «условие не создано» (код 2) с обоими адресами.
+guard-stand-cluster:
+	@CLUSTER_NAME=$(CLUSTER_NAME) STAND_APISERVER="$(STAND_APISERVER)" bash scripts/stand-cluster-pin.sh
 
 # assert-metrics-surfaces-answer — диагностическая поверхность КАЖДОГО процесса
 # отвечает, а не только объявлена.
@@ -1829,6 +1849,7 @@ spire-bootstrap:
 	  WHAT="создание namespace spire-system и применение манифестов SPIRE Server/Agent (корень доверия mesh)"
 	@echo "Phase 10: bootstrapping SPIRE Server + Agent..."
 	@kubectl create namespace spire-system --dry-run=client -o yaml | kubectl apply -f -
+	@bash scripts/helm-umbrella-deps.sh
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set spire-server.enabled=true \
 		--set spire-agent.enabled=true \
@@ -1856,6 +1877,7 @@ spire-rotate-trust-domain:
 # Dry-run Cilium policies — render и валидация без apply.
 cilium-policy-dry-run:
 	@echo "Phase 10: rendering CiliumNetworkPolicy manifests..."
+	@bash scripts/helm-umbrella-deps.sh
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set cilium.enabled=true \
 		--show-only charts/cilium/templates/network-policies.yaml \
