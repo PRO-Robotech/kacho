@@ -93,6 +93,7 @@ type LogoutHandler struct {
 	logger      *slog.Logger
 	verifier    CallerVerifier
 	revocations SessionRevocationsClient
+	callBudget  time.Duration
 }
 
 // LogoutHandlerConfig — DI bag.
@@ -100,6 +101,12 @@ type LogoutHandlerConfig struct {
 	Logger      *slog.Logger
 	Verifier    CallerVerifier           // validates the caller's access token; nil ⇒ revocation fails closed (401)
 	Revocations SessionRevocationsClient // optional — nil disables revocation
+	// CallBudget — бюджет вызова отзыва при выходе: ручка
+	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4), та же, что у
+	// прочих вопросов края службе доступа. Обязателен: исход выхода от него не
+	// зависит (best-effort, `warnings`), зависит только срок, через который
+	// приходит ответ, — и этот срок выбирает профиль, а не константа.
+	CallBudget time.Duration
 }
 
 // NewLogoutHandler constructs the handler. Logger is required (we never want
@@ -108,10 +115,14 @@ func NewLogoutHandler(cfg LogoutHandlerConfig) (*LogoutHandler, error) {
 	if cfg.Logger == nil {
 		return nil, errors.New("logout handler: logger is required")
 	}
+	if cfg.CallBudget <= 0 {
+		return nil, errors.New("logout handler: CallBudget (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET) is required and must be positive")
+	}
 	return &LogoutHandler{
 		logger:      cfg.Logger,
 		verifier:    cfg.Verifier,
 		revocations: cfg.Revocations,
+		callBudget:  cfg.CallBudget,
 	}, nil
 }
 
@@ -173,7 +184,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//    collected, not fatal — the user must still see a successful logout.
 	var revocErrs []string
 	if caller != nil && h.revocations != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), h.callBudget)
 		req := &iamv1.RevokeRequest{
 			TokenJti:            caller.JTI,
 			UserId:              caller.Subject,

@@ -107,7 +107,7 @@ func humanSession(userID string, authAt time.Time) *iamv1.HumanSession {
 // laneOverStub — полоса личности края поверх НАСТОЯЩЕГО адаптера.
 func laneOverStub(t *testing.T, conn *grpc.ClientConn) http.Handler {
 	t.Helper()
-	ad := clients.NewSessionRevocationsAdapter(conn)
+	ad := clients.NewSessionRevocationsAdapter(conn, time.Second)
 	a := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithHumanSession(ad).
@@ -159,7 +159,7 @@ func TestHumanSessionAdapter_F3_16_MicrosecondCutoffIsComparedInclusivelyOnTheWi
 func TestHumanSessionAdapter_F3_13_ClassifiesUnavailableAndUnimplemented(t *testing.T) {
 	t1 := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 	stub := &serviceStub{sessions: map[string]*iamv1.HumanSession{"s1": humanSession("usr-1", t1)}}
-	ad := clients.NewSessionRevocationsAdapter(dialStub(t, stub))
+	ad := clients.NewSessionRevocationsAdapter(dialStub(t, stub), time.Second)
 	ctx := context.Background()
 
 	sess, found, err := ad.ResolveHumanSession(ctx, "s1")

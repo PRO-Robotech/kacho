@@ -185,6 +185,19 @@ type Config struct {
 	// буферизации ответа промежуточным звеном.
 	SubscriptionHeartbeat time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT" default:"20s"`
 
+	// IdentityCallBudgetRaw / BackendCallBudgetRaw — объявленные профилем
+	// значения бюджетов вызовов края к соседям, КАК ЕСТЬ (callbudget.go). Тег
+	// объявляет ручку загрузчику; разбор и суждение — в loadCallBudgets, которая
+	// спрашивает окружение ещё и о том, объявлена ли переменная вообще: тег не
+	// различает «переменной нет» и «переменная пуста», а отказ в старте обязан
+	// их различать. Умолчания нет.
+	IdentityCallBudgetRaw string `envconfig:"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET"`
+	BackendCallBudgetRaw  string `envconfig:"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET"`
+	// IdentityCallBudget / BackendCallBudget — разобранные величины; Load
+	// возвращает конфигурацию только с обеими строго положительными.
+	IdentityCallBudget time.Duration `ignored:"true"`
+	BackendCallBudget  time.Duration `ignored:"true"`
+
 	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
 	//
 	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
@@ -1009,6 +1022,9 @@ func hostFromAddr(addr string) string {
 func Load() (Config, error) {
 	var cfg Config
 	if err := corecfg.Load(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadCallBudgets(&cfg, os.LookupEnv); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

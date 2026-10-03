@@ -123,7 +123,6 @@ func (s State) String() string {
 type Question struct {
 	state   atomic.Int32
 	delay   atomic.Int64
-	asked   atomic.Int64
 	release chan struct{}
 }
 
@@ -135,16 +134,12 @@ func (q *Question) Set(s State) { q.state.Store(int32(s)) }
 // Delay задаёт управляемую задержку ответа в состоянии «отвечает».
 func (q *Question) Delay(d time.Duration) { q.delay.Store(int64(d)) }
 
-// Asked — сколько раз вопрос был задан.
-func (q *Question) Asked() int64 { return q.asked.Load() }
-
 // gate — что сосед делает с вопросом ДО ответа. nil — отвечать.
 //
 // «Молчит» — соединение принято, ответа нет до освобождения пробой (или пока
 // спрашивающий сам не оборвёт вызов). Освобождение ответа не даёт: молчавший
 // сосед ответить уже не успел.
 func (q *Question) gate(ctx context.Context) error {
-	q.asked.Add(1)
 	switch State(q.state.Load()) {
 	case Silent:
 		select {
@@ -367,7 +362,15 @@ type Options struct {
 	// DPoP — включён KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP: смонтированы
 	// DPoPMiddleware и NewCnfBindingInterceptor, как в main.go.
 	DPoP bool
+	// IdentityCallBudget — бюджет вопросов края службе доступа
+	// (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET). Ноль — величина профилей Р4,
+	// `1s` (посев П13): передаёт харнесс, а не проба, чьё «Дано» величины не
+	// называет.
+	IdentityCallBudget time.Duration
 }
+
+// DefaultIdentityCallBudget — величина профилей Р4 для вопросов службе доступа (П13).
+const DefaultIdentityCallBudget = time.Second
 
 type Stand struct {
 	restURL  string
@@ -434,19 +437,23 @@ func New(t *testing.T, opt Options) *Stand {
 	})
 	require.NoError(t, err)
 
-	adapter := clients.NewSessionRevocationsAdapter(st.Ident.conn)
+	budget := opt.IdentityCallBudget
+	if budget == 0 {
+		budget = DefaultIdentityCallBudget
+	}
+	adapter := clients.NewSessionRevocationsAdapter(st.Ident.conn, budget)
 	catalog, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", lookup{}, logger).
 		WithVerifier(verifier).
-		WithRevocationCheck(middleware.NewOwnRevocationSource(adapter), time.Hour).
+		WithRevocationCheck(middleware.NewOwnRevocationSource(adapter, budget), time.Hour).
 		WithPlatformRevocationCheck(platformIntrospection, time.Hour).
 		WithHumanSession(adapter).
 		WithSessionCutoffCheck(adapter, time.Hour).
 		WithBasicCredentialLane(middleware.NewBasicCredentialLane(
-			middleware.NewBasicAuthorityFromStub(iamv1.NewInternalIAMServiceClient(st.Ident.conn)))).
+			middleware.NewBasicAuthorityFromStub(iamv1.NewInternalIAMServiceClient(st.Ident.conn)), budget)).
 		WithRequireMachineTokenBinding(opt.RequireBinding).
 		WithStepUp(middleware.NewStepUpGate(nil), middleware.NewCatalogPermissionLookup(catalog), middleware.NewRestRouter())
 

@@ -79,6 +79,8 @@ type EdgeUnauthCensus struct {
 	Producers int
 	// StepUp — из них — указаний повысить уровень (Р3).
 	StepUp int
+	// Harness — файлов пакетов-харнессов проб, выведенных из-под суда.
+	Harness int
 }
 
 // FindEdgeUnauthProducers находит производителей отказа 401 края вне его дома.
@@ -102,6 +104,12 @@ func findEdgeUnauthProducers(sources map[string]string, allowed map[string]int) 
 	for _, rel := range paths {
 		if !strings.HasPrefix(rel, edgeUnauthScope) || strings.HasPrefix(rel, edgeUnauthHome) ||
 			strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		// Пакет-харнесс проб отказ края не производит: его UNAUTHENTICATED — ответ
+		// дублёра службы доступа (testharness.go).
+		if IsTestHarnessPath(rel) {
+			census.Harness++
 			continue
 		}
 		file, err := parser.ParseFile(fset, rel, sources[rel], 0)

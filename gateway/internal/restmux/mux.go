@@ -113,6 +113,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"strings"
 
@@ -347,7 +348,15 @@ func NewMux(
 	addrs map[string]string,
 	conns map[string]*grpc.ClientConn,
 	dialOpts map[string]grpc.DialOption,
+	backendBudget time.Duration,
 ) (http.Handler, error) {
+	// Бюджет вызова моста к бэкенду — ручка KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
+	// (приёмка KA1, Р4). Без него зависший бэкенд держит запрос, пока его держит
+	// клиент: сервер края ответ не ограничивает (WriteTimeout не задан
+	// намеренно — потоки). Умолчания нет.
+	if backendBudget <= 0 {
+		return nil, fmt.Errorf("REST bridge: backend call budget (KACHO_API_GATEWAY_BACKEND_CALL_BUDGET) must be positive, got %s", backendBudget)
+	}
 	// Boot-guard: таблица внутренних REST-маршрутов строится из proto-дескрипторов
 	// (internal_routes.go). Пустая таблица означала бы, что дескрипторы не
 	// слинкованы, и admin-поверхности молча уехали бы на публичный mux —
@@ -425,6 +434,9 @@ func NewMux(
 			transport,
 			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
 			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
+			// Каждый УНАРНЫЙ вызов моста ограничен бюджетом; потоковые — нет:
+			// поток живёт по своему сроку (приёмка KA1, KA1-24).
+			grpc.WithChainUnaryInterceptor(backendBudgetInterceptor(backendBudget)),
 		}
 	}
 
@@ -1049,4 +1061,19 @@ func NewMux(
 	})
 
 	return dispatcher, nil
+}
+
+// backendBudgetInterceptor ограничивает унарный вызов моста бюджетом. Исход
+// истечения — DEADLINE_EXCEEDED (код 4), а не UNAVAILABLE: исход вызова бэкенда
+// при истечении срока неизвестен (мутация могла быть закоммичена), и
+// UNAVAILABLE предлагал бы повтор как безопасный. Статус 504 край производит
+// своей таблицей (runtime.HTTPStatusFromCode). `WithTimeout` берёт меньший из
+// двух сроков — более ранний срок, пришедший с запросом, остаётся в силе.
+func backendBudgetInterceptor(budget time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx, cancel := context.WithTimeout(ctx, budget)
+		defer cancel()
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }

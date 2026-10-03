@@ -157,7 +157,7 @@ func newF6bStand(t *testing.T) *f6bStand {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	st.auth = middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", nil, logger).
 		WithHumanSession(st.session).
-		WithBasicCredentialLane(middleware.NewBasicCredentialLane(st.basic)).
+		WithBasicCredentialLane(middleware.NewBasicCredentialLane(st.basic, time.Second)).
 		WithVerifier(verifier).
 		WithRevocationCheck(recordCheck, time.Hour).
 		WithPlatformRevocationCheck(ourCheck, time.Hour)

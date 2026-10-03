@@ -136,11 +136,13 @@ func main() {
 	// природы, и заметить это можно было бы только по жалобе клиента.
 	basicLane := middleware.NewBasicCredentialLane(
 		middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
+		cfg.IdentityCallBudget,
 	).WithLogger(logger)
 	authInterceptor = authInterceptor.WithBasicCredentialLane(basicLane)
 	logger.Info("basic credential lane wired",
 		"authority", cfg.IAMInternalAddr,
 		"verdict_window", middleware.BasicCredentialVerdictWindow.String(),
+		"per_call_budget", cfg.IdentityCallBudget.String(),
 		// Потолок объявляется при старте: «сколько там записей» обязано быть
 		// известно ДО того, как рост станет предметом разбора (#1218).
 		"verdict_cache_capacity", basicLane.CacheStats().Capacity)
@@ -163,7 +165,7 @@ func main() {
 	// край читает, на конфигурации, разобранной из окружения.
 	var ourSessionReader middleware.HumanSessionReader
 	if iamConn := backends["iamInternal"]; iamConn != nil {
-		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn)
+		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget)
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
@@ -396,11 +398,12 @@ func main() {
 			"dialled — the edge cannot ask whether a presented token was revoked (refuse to start)")
 	}
 	authInterceptor = authInterceptor.WithRevocationCheck(
-		middleware.NewOwnRevocationSource(clients.NewSessionRevocationsAdapter(recordConn)), 0)
+		middleware.NewOwnRevocationSource(
+			clients.NewSessionRevocationsAdapter(recordConn, cfg.IdentityCallBudget), cfg.IdentityCallBudget), 0)
 	logger.Info("revocation check active on the authN path",
 		"record_lane_source", "our revocation record (by token identifier)",
 		"record_lane_unanswered_verdict", "refuse",
-		"per_call_budget", middleware.OwnRevocationCallBudget.String())
+		"per_call_budget", cfg.IdentityCallBudget.String())
 
 	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
 	//
@@ -471,7 +474,7 @@ func main() {
 	// поставщиком.
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		authInterceptor = authInterceptor.WithSessionCutoffCheck(
-			clients.NewSessionRevocationsAdapter(iamConn), 0)
+			clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget), 0)
 		logger.Info("session revocation is read on the browser lane",
 			"keyed_by", "subject + authentication instant",
 			"unanswered_verdict", "refuse",
@@ -665,7 +668,8 @@ func main() {
 	logoutHandler, lerr := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
 		Logger:      logger,
 		Verifier:    logoutVerifier,
-		Revocations: clients.NewSessionRevocationsAdapter(recordConn),
+		Revocations: clients.NewSessionRevocationsAdapter(recordConn, cfg.IdentityCallBudget),
+		CallBudget:  cfg.IdentityCallBudget,
 	})
 	if lerr != nil {
 		log.Fatalf("logout handler: %v", lerr)
@@ -1054,7 +1058,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)
 	}
-	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds)
+	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget)
 	if err != nil {
 		log.Fatalf("rest mux: %v", err)
 	}
@@ -1076,9 +1080,9 @@ func main() {
 	// посадках — точки предъявления вложены (Ф3-52, F4d-28).
 	sessionIdentity := wireWhoAmICarrierReader(
 		middleware.NewSessionIdentityHandler(logger).
-			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
+			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"], cfg.IdentityCallBudget)).
 			WithAdminChecker(iamSubjectClient), // permissions = ["*","admin"] для system-admin
-		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
+		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"], cfg.IdentityCallBudget))
 	sessionIdentity.Register(httpMux)
 
 	// ЗАПИСИ ОБЪЯВЛЕНИЯ — глаголы полосы формы (Ф3 Р2; Ф4 регистрация, Ф5

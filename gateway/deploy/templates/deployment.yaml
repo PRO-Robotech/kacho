@@ -169,6 +169,13 @@ spec:
               value: {{ .Values.subscriptionStream.maxStreams | quote }}
             - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
               value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
+            # Бюджеты вызовов края к соседям (приёмка KA1, Р4): умолчания в
+            # процессе нет, поэтому значение обязано быть объявлено — пустое
+            # роняет отрисовку здесь, а не старт пода.
+            - name: KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET
+              value: {{ required "callBudgets.identity: бюджет вызова края к службе доступа обязан быть объявлен" .Values.callBudgets.identity | quote }}
+            - name: KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
+              value: {{ required "callBudgets.backend: бюджет вызова моста к бэкенду обязан быть объявлен" .Values.callBudgets.backend | quote }}
             {{- if .Values.tls.enabled }}
             - name: KACHO_API_GATEWAY_TLS_LISTEN_ADDR
               value: ":{{ .Values.tlsPort }}"

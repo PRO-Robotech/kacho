@@ -85,7 +85,7 @@ func wiringMuxAddrs() map[string]string {
 // under the old model the ingress-facing plaintext listener was treated as
 // internal and served Internal* REST to the edge.
 func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
-	dispatcher, err := restmux.NewMux(context.Background(), wiringMuxAddrs(), nil, nil)
+	dispatcher, err := restmux.NewMux(context.Background(), wiringMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

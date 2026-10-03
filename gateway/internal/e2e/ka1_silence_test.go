@@ -158,3 +158,38 @@ func ka1LanesAgree(t *testing.T, s ka1stand.State) {
 		}
 	}
 }
+
+// ─── стадия S2: молчание в пределах бюджета (харнесс передаёт бюджет П13) ────
+
+// requireWithin — ответ пришёл раньше предела от начала запроса.
+func requireWithin(t *testing.T, where string, got ka1stand.Shot, limit time.Duration) {
+	t.Helper()
+	if got.TimedOut || got.Elapsed >= limit {
+		t.Errorf("%s: ответ не пришёл раньше %s от начала запроса (%s)", where, limit, got)
+	}
+}
+
+// KA1-03 (а) — наша сессия, служба молчит на вопрос о сессии: ответ Р1 раньше
+// 2500ms (бюджет харнесса 1s, П13).
+func TestKA1_03a_SessionQuestionSilentIsAnsweredWithinBudget(t *testing.T) {
+	st := ka1stand.New(t, ka1stand.Options{})
+	st.Ident.SessionQ.Set(ka1stand.Silent)
+	got := st.REST(t, http.MethodGet, ka1stand.ListRoute, ka1stand.SessionCarrier(ka1stand.SessionLive))
+	ka1stand.RequireUnavailable(t, "KA1-03 (а) молчит", got)
+	requireWithin(t, "KA1-03 (а)", got, 2500*time.Millisecond)
+}
+
+// KA1-04 (а) — сессия жива, служба молчит об отсечке: ответ Р1 раньше 2500ms.
+func TestKA1_04a_CutoffQuestionSilentIsAnsweredWithinBudget(t *testing.T) {
+	st := ka1stand.New(t, ka1stand.Options{})
+	st.Ident.CutoffQ.Set(ka1stand.Silent)
+	got := st.REST(t, http.MethodGet, ka1stand.ListRoute, ka1stand.SessionCarrier(ka1stand.SessionLive))
+	ka1stand.RequireUnavailable(t, "KA1-04 (а) молчит", got)
+	requireWithin(t, "KA1-04 (а)", got, 2500*time.Millisecond)
+}
+
+// KA1-07 (`молчит`) — три полосы на молчащем авторитете: ответ Р1, попарно
+// равный, каждый раньше 2500ms.
+func TestKA1_07_SilentStateAgreesWithinBudget(t *testing.T) {
+	ka1LanesAgree(t, ka1stand.Silent)
+}

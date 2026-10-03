@@ -11,6 +11,7 @@ import "testing"
 const edgeUnauthPkg = "package x\n\nimport (\n\t\"net/http\"\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n)\n\n"
 
 func TestEdgeUnauthInjection_SecondRESTWriterIsFound(t *testing.T) {
+	t.Parallel()
 	src := edgeUnauthPkg + "func refuse(w http.ResponseWriter) {\n\tw.WriteHeader(http.StatusUnauthorized)\n}\n"
 	f, c := findEdgeUnauthProducers(map[string]string{"gateway/internal/x/x.go": src}, nil)
 	if len(f) != 1 || f[0].File != "gateway/internal/x/x.go" || f[0].Line != 10 || f[0].Func != "refuse" {
@@ -19,6 +20,7 @@ func TestEdgeUnauthInjection_SecondRESTWriterIsFound(t *testing.T) {
 }
 
 func TestEdgeUnauthInjection_SecondNativeBuilderIsFound(t *testing.T) {
+	t.Parallel()
 	src := edgeUnauthPkg + "func refuse() error {\n\treturn status.Error(codes.Unauthenticated, \"why\")\n}\n"
 	f, _ := findEdgeUnauthProducers(map[string]string{"gateway/internal/x/x.go": src}, nil)
 	if len(f) != 1 || f[0].Func != "refuse" {
@@ -29,6 +31,7 @@ func TestEdgeUnauthInjection_SecondNativeBuilderIsFound(t *testing.T) {
 // Законные близнецы той же формы: сравнение чужого ответа, классификация чужого
 // кода и вызов единственного производителя — молчат.
 func TestEdgeUnauthInjection_ReadersAndTheProducerAreSilent(t *testing.T) {
+	t.Parallel()
 	src := edgeUnauthPkg + `func read(code int, err error) bool {
 	if code == http.StatusUnauthorized {
 		return true
@@ -53,6 +56,7 @@ func TestEdgeUnauthInjection_ReadersAndTheProducerAreSilent(t *testing.T) {
 
 // Исключение Р3 без предмета — находка; с предметом — молчит.
 func TestEdgeUnauthInjection_StepUpExemptionExpiresWithItsSubject(t *testing.T) {
+	t.Parallel()
 	allowed := map[string]int{"gateway/internal/x/x.go#challenge": 1}
 	with := edgeUnauthPkg + "func challenge(w http.ResponseWriter) { w.WriteHeader(http.StatusUnauthorized) }\n"
 	if f, c := findEdgeUnauthProducers(map[string]string{"gateway/internal/x/x.go": with}, allowed); len(f) != 0 || c.StepUp != 1 {
@@ -66,6 +70,7 @@ func TestEdgeUnauthInjection_StepUpExemptionExpiresWithItsSubject(t *testing.T) 
 
 // Пустой обход — не вердикт: перепись называет ноль прочитанного.
 func TestEdgeUnauthInjection_EmptyWalkReadsZero(t *testing.T) {
+	t.Parallel()
 	if _, c := findEdgeUnauthProducers(map[string]string{}, nil); c.Files != 0 {
 		t.Fatalf("пустой вход дал перепись %+v", c)
 	}

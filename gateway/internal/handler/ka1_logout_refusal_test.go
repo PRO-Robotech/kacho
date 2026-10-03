@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 )
@@ -39,7 +40,7 @@ func ka1LogoutRequest() *http.Request {
 // с `ok:true`.
 func TestKA1_13a_LogoutRefusalIsTheOneRefusal(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger: newLogger(), Revocations: rev,
 		Verifier: &fakeVerifier{err: errors.New("ka1: presenter refused")},
 	})
@@ -59,7 +60,7 @@ func TestKA1_13a_LogoutRefusalIsTheOneRefusal(t *testing.T) {
 		t.Errorf("KA1-13 (а): отвергнутый вызывающий дошёл до отзыва (%d вызовов)", rev.calls.Load())
 	}
 
-	twin, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	twin, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger: newLogger(), Revocations: rev,
 		Verifier: &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr-00000000000000ka1", JTI: "jti-ka1-live"}},
 	})

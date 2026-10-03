@@ -41,8 +41,8 @@ func edgeUnauthTreeSources(t *testing.T) map[string]string {
 func TestEdgeUnauthenticatedHasOneProducer(t *testing.T) {
 	t.Parallel()
 	findings, census := FindEdgeUnauthProducers(edgeUnauthTreeSources(t))
-	t.Logf("перепись: файлов края разобрано %d · не разобрано %d · мест производства 401 %d · из них указаний Р3 %d (объявлено %d)",
-		census.Files, census.Unparsed, census.Producers, census.StepUp, len(edgeStepUpProducers))
+	t.Logf("перепись: файлов края разобрано %d · не разобрано %d · харнесса проб вне суда %d · мест производства 401 %d · из них указаний Р3 %d (объявлено %d)",
+		census.Files, census.Unparsed, census.Harness, census.Producers, census.StepUp, len(edgeStepUpProducers))
 	if census.Files == 0 {
 		t.Fatal("разобрано ноль файлов края — гейт беспредметен: «ноль находок» здесь неотличимо от «ноль прочитанного»")
 	}

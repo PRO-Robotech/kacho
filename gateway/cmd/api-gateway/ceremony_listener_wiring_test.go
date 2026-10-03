@@ -120,7 +120,7 @@ func ask(t *testing.T, base, method, target, contentType, body string) edgeAnswe
 }
 
 func TestCeremonyListenerWiring_L13_TheInternalAdminListener404sTheCeremonyAndTheExternalRelaysIt(t *testing.T) {
-	dispatcher, err := restmux.NewMux(context.Background(), wiringMuxAddrs(), nil, nil)
+	dispatcher, err := restmux.NewMux(context.Background(), wiringMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

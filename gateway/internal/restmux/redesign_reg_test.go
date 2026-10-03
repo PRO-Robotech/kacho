@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -34,7 +35,7 @@ func redesignMuxAddrs() map[string]string {
 // listener (route found — NOT a route-level 404). Unreachable backend 127.0.0.1:1
 // yields a downstream gRPC error, never a 404.
 func TestRedesign_PublicRoutesRegistered(t *testing.T) {
-	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -76,7 +77,7 @@ func TestRedesign_PublicRoutesRegistered(t *testing.T) {
 // InternalImageService.GetInternal default unbound-route) must be served on the
 // INTERNAL listener (route found — NOT a route-level 404).
 func TestRedesign_InternalRoutes_InternalListenerServes(t *testing.T) {
-	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestRedesign_InternalRoutes_InternalListenerServes(t *testing.T) {
 // endpoint (ban #6). isInternalPath catches both the `/internal/` path segment and
 // the Internal*Service default unbound-route (mirrors the gRPC HasInternalSuffix block).
 func TestRedesign_InternalRoutes_ExternalListenerRejected(t *testing.T) {
-	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), redesignMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
