@@ -30,9 +30,12 @@
     правами базы, ручной запуск), голова не из этого репозитория, ветка вне
     правила — на этой редакции правило равно фильтру `workflow_run.branches`:
     ствол `main` и ничего больше; собственное событие процесса вне перечня и
-    собственный `push` в ссылку вне правила (см. «Собственные события»);
+    собственный `push` в ссылку вне правила (см. «Собственные события»). Ветки
+    вне правила представлены у ОБОИХ правил ветки по классам имён: ветка-номер,
+    ветка-номер с сутью, ветка эпика, ветка линии `release/<предмет>`;
   * ЗАКОННЫЕ (публикация есть): `push` этого репозитория в `main`; собственный
-    `push` в ствол и метки версии; ручной запуск. Без них гейт молчал
+    `push` в ствол и метки версии; ручной запуск, в том числе на ветке каждого
+    из классов имён выше. Без них гейт молчал
     бы на процессе, который не публикует НИЧЕГО, — запрет без положительного
     контроля.
 
@@ -541,6 +544,14 @@ SCENES = [
           _wr("push", "2942", THIS_REPO), False, True),
     Scene("workflow_run ← push, ветка-номер с сутью вне правила 2942-x",
           _wr("push", "2942-x", THIS_REPO), False, True),
+    # Классы имён веток (kacho#2971): ветка эпика — номер корня релиза, ветка
+    # линии — `release/<предмет>`. Эпик представлен измеренным именем ветки эпика
+    # на origin; порчу, называющую поимённо ДРУГОЙ номер, сцена не видит — её
+    # держит только форма «ветка-номер», если порча записана формой.
+    Scene("workflow_run ← push, ветка эпика вне правила 1266",
+          _wr("push", "1266", THIS_REPO), False, True),
+    Scene("workflow_run ← push, ветка линии вне правила release/platform",
+          _wr("push", "release/platform", THIS_REPO), False, True),
     # ── собственные события процесса ──
     # Чужие: событие вне перечня разрешённых. Решение обязано отказать им ЯВНО, а
     # не пропустить как «не workflow_run»: запрос из ветки этого репозитория и
@@ -570,6 +581,14 @@ SCENES = [
           _own("push", "refs/heads/KAC-1"), False, True),
     Scene("собственный push, ветка вне правила KAC-1/x",
           _own("push", "refs/heads/KAC-1/x"), False, True),
+    Scene("собственный push, ветка-номер вне правила 2942",
+          _own("push", "refs/heads/2942"), False, True),
+    Scene("собственный push, ветка-номер с сутью вне правила 2942-x",
+          _own("push", "refs/heads/2942-x"), False, True),
+    Scene("собственный push, ветка эпика вне правила 1266",
+          _own("push", "refs/heads/1266"), False, True),
+    Scene("собственный push, ветка линии вне правила release/platform",
+          _own("push", "refs/heads/release/platform"), False, True),
     Scene("собственный push, метка вне правила v1.2",
           _own("push", "refs/tags/v1.2"), False, True),
     Scene("собственный push, метка вне правила v1.2.3-rc",
@@ -585,6 +604,16 @@ SCENES = [
     Scene("собственный push метки v1.2.3", _own("push", "refs/tags/v1.2.3"), True),
     Scene("собственный workflow_dispatch на ветке feature/x",
           _own("workflow_dispatch", "refs/heads/feature/x"), True),
+    # Законные близнецы классов имён (kacho#2971): ручной запуск судит право
+    # запустившего, и на ветке любого класса он публикует.
+    Scene("собственный workflow_dispatch на ветке-номере 2942",
+          _own("workflow_dispatch", "refs/heads/2942"), True),
+    Scene("собственный workflow_dispatch на ветке-номере с сутью 2942-x",
+          _own("workflow_dispatch", "refs/heads/2942-x"), True),
+    Scene("собственный workflow_dispatch на ветке эпика 1266",
+          _own("workflow_dispatch", "refs/heads/1266"), True),
+    Scene("собственный workflow_dispatch на ветке линии release/platform",
+          _own("workflow_dispatch", "refs/heads/release/platform"), True),
 ]
 
 
@@ -1366,6 +1395,36 @@ def self_test(root: Path) -> int:
            mutate("^refs/heads/main$", "^(refs/heads/main)$"), 0)
     expect("законный близнец: правило ветки исходного прогона с якорями вокруг группы",
            mutate("^main$", "^(main)$"), 0)
+
+    # Классы имён веток (kacho#2971): ветки-номера, ветки эпиков, ветки линий.
+    # Порча, расширяющая право на класс, краснеет слоем 2 у ОБОИХ правил ветки —
+    # головы исходного прогона и собственного push; законный близнец того же
+    # класса (ручной запуск на такой ветке) молчит — это проверяет контроль.
+    wr_rule, own_rule = "^main$", "^refs/heads/main$"
+    branch_classes = [
+        ("ветки-номера", "[0-9]+", "ветка-номер вне правила 2942"),
+        ("ветки-номера с сутью", "[0-9]+-[^/]+", "ветка-номер с сутью вне правила 2942-x"),
+        ("ветку эпика поимённо", "1266", "ветка эпика вне правила 1266"),
+        ("ветки линий", "release/[^/]+", "ветка линии вне правила release/platform"),
+    ]
+    for cls, rx, scene in branch_classes:
+        expect(f"слой 2: правило ветки исходного прогона расширено на {cls}",
+               mutate(wr_rule, f"^(main|{rx})$"), 1,
+               ["слой 2", f"workflow_run ← push, {scene}"], "слой 2")
+        expect(f"слой 2: правило собственного push расширено на {cls}",
+               mutate(own_rule, f"^refs/heads/(main|{rx})$"), 1,
+               ["слой 2", f"собственный push, {scene}"], "слой 2")
+    lawful_dispatch = [sc.name for sc in SCENES
+                       if sc.lawful and sc.github.get("event_name") == "workflow_dispatch"]
+    for twin in ("ветке-номере 2942", "ветке-номере с сутью 2942-x", "ветке эпика 1266",
+                 "ветке линии release/platform"):
+        probes += 1
+        name = f"собственный workflow_dispatch на {twin}"
+        if name in lawful_dispatch:
+            print(f"✓ законный близнец класса: сцена [{name}] законная")
+        else:
+            print(f"✗ законный близнец класса: сцены [{name}] нет среди законных")
+            fails += 1
 
     # ── триггеры: событие вне перечня в `on:` ──
     expect("триггеры: процесс поднимается запросом",
