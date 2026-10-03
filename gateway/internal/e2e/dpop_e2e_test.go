@@ -216,12 +216,13 @@ func buildMiddleware(t *testing.T, iss *issuerFixture) http.Handler {
 	})
 	require.NoError(t, err)
 	mw, err := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-		Verifier:  verifier,
-		DPoP:      dpopValidator,
-		MTLS:      middleware.NewMTLSBoundValidator(),
-		StepUp:    middleware.NewStepUpGate(time.Now),
-		Logger:    slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
-		APIDomain: apiDomain,
+		Revocation: dpopTestRevocation(),
+		Verifier:   verifier,
+		DPoP:       dpopValidator,
+		MTLS:       middleware.NewMTLSBoundValidator(),
+		StepUp:     middleware.NewStepUpGate(time.Now),
+		Logger:     slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
+		APIDomain:  apiDomain,
 	})
 	require.NoError(t, err)
 	return mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +382,8 @@ func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
 		ReplayCache: middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{}),
 	})
 	mw, _ := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-		Verifier: verifier, DPoP: dpopValidator,
+		Revocation: dpopTestRevocation(),
+		Verifier:   verifier, DPoP: dpopValidator,
 		MTLS:      middleware.NewMTLSBoundValidator(),
 		StepUp:    middleware.NewStepUpGate(time.Now),
 		Logger:    slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
@@ -409,7 +411,8 @@ func TestE2E_ProductionStrict_RejectsAnonymous(t *testing.T) {
 		ReplayCache: middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{}),
 	})
 	mw, _ := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-		Verifier: verifier, DPoP: dpopValidator,
+		Revocation: dpopTestRevocation(),
+		Verifier:   verifier, DPoP: dpopValidator,
 		MTLS:                  middleware.NewMTLSBoundValidator(),
 		StepUp:                middleware.NewStepUpGate(time.Now),
 		Logger:                slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
@@ -442,7 +445,8 @@ func TestE2E_StepUpRequired_Challenge(t *testing.T) {
 	replay := middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{})
 	dpopValidator, _ := middleware.NewDPoPValidator(middleware.DPoPValidatorConfig{ReplayCache: replay})
 	mw, _ := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-		Verifier: verifier, DPoP: dpopValidator,
+		Revocation: dpopTestRevocation(),
+		Verifier:   verifier, DPoP: dpopValidator,
 		MTLS:      middleware.NewMTLSBoundValidator(),
 		StepUp:    middleware.NewStepUpGate(time.Now),
 		Logger:    slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
@@ -469,3 +473,12 @@ func TestE2E_StepUpRequired_Challenge(t *testing.T) {
 
 // _ = ed25519 keeps the import used should we add EdDSA tests later.
 var _ = ed25519.PublicKey(nil)
+
+// dpopTestRevocation — слой аутентификации без читателей отзыва: записи этих
+// проб отзыва не читают (полоса не нашей чеканки), и вердикт «не спрашивали»
+// пропускает — предмет проб здесь доказательство владения, а не отзыв (его
+// держит TestDPoPSchemePresentationReadsTheRevocationVerdict).
+func dpopTestRevocation() middleware.PresentedRevocationVerdict {
+	return middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", nil,
+		slog.New(slog.NewJSONHandler(io.Discard, nil)))
+}

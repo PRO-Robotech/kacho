@@ -1193,20 +1193,8 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 	// cannot surrender. The health probes and the interactive login flow are in
 	// the same list for the same reason — none of them acts on the credential's
 	// authority.
-	if !isPublicHTTPPath(r.URL.Path) {
-		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
-		case revocationRevoked:
-			a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
-				"path", r.URL.Path, "source", revocationSourceOf(vt))
-			writeAuthnRefusal(w)
-			return true
-		case revocationUnanswerable:
-			// Our source was silent, the check has no source, or the token has no
-			// identifier to ask by — the same three causes, and the one answer every
-			// lane gives when our authority is silent (KA1 Р1).
-			writeCredentialStateUnknown(w)
-			return true
-		}
+	if a.refuseRevokedHTTP(w, r, vt) {
+		return true
 	}
 	// Did the caller authenticate strongly enough for THIS call? Asked before the
 	// principal is written, so a request that has not met the floor never reaches

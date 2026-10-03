@@ -530,7 +530,8 @@ func New(t *testing.T, opt Options) *Stand {
 		})
 		require.NoError(t, derr)
 		mw, merr := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-			Verifier: verifier, DPoP: dv, MTLS: middleware.NewMTLSBoundValidator(),
+			Revocation: auth,
+			Verifier:   verifier, DPoP: dv, MTLS: middleware.NewMTLSBoundValidator(),
 			StepUp:           middleware.NewStepUpGate(time.Now),
 			PermissionLookup: middleware.NewCatalogPermissionLookup(catalog),
 			RestRouter:       middleware.NewRestRouter(),

@@ -598,9 +598,10 @@ func main() {
 			log.Fatalf("step-up permission catalog: %v", scErr)
 		}
 
-		// No revocation wiring here on purpose: the check is mounted above, on the
-		// layer that always runs. Asking again in this middleware would introspect
-		// the same token twice per request whenever this toggle is on.
+		// Revocation: the check is mounted above, on the layer that always runs,
+		// for the Bearer scheme; this middleware asks it only for the DPoP scheme,
+		// which that layer does not parse — asking again for Bearer would
+		// introspect the same token twice per request (kacho#2742).
 		dpopMiddleware, verifierErr = middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
 			Verifier:              verifier,
 			DPoP:                  dpopValidator,
@@ -611,6 +612,8 @@ func main() {
 			Logger:                logger,
 			APIDomain:             cfg.APIDomain,
 			RequireForAllRequests: cfg.Posture() == middleware.AuthModeProductionStrict,
+			// Вердикт отзыва для схемы DPoP — общим словарём слоя аутентификации.
+			Revocation: authInterceptor,
 		})
 		if verifierErr != nil {
 			log.Fatalf("dpop middleware: %v", verifierErr)

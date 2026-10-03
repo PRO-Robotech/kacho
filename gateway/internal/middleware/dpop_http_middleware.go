@@ -65,6 +65,10 @@ type DPoPMiddleware struct {
 	// → 401 (production-strict equivalent for the DPoP path).
 	requireForAllRequests bool
 
+	// revocation — вердикт отзыва общим словарём слоя аутентификации (см.
+	// DPoPMiddlewareConfig.Revocation).
+	revocation PresentedRevocationVerdict
+
 	// authMethodsUnusable — своё окно доклада о способах подтверждения, которые
 	// край не смог довезти до модели прав. Своё, а не общее со слоем
 	// аутентификации: слои монтируются независимо, и слитое окно подавляло бы
@@ -133,6 +137,13 @@ type DPoPMiddlewareConfig struct {
 
 	// RequireForAllRequests — production-strict; reject anonymous traffic.
 	RequireForAllRequests bool
+
+	// Revocation — вердикт отзыва ОБЩИМ словарём слоя аутентификации
+	// (AuthInterceptor). Обязателен: токен по схеме `DPoP` слой аутентификации
+	// не разбирает, и подпись его проверяет только этот слой — значит и об
+	// отзыве обязан спросить он, иначе отозванный токен с годным доказательством
+	// проходил бы (kacho#2742).
+	Revocation PresentedRevocationVerdict
 }
 
 // NewDPoPMiddleware constructs the orchestrator. Verifier + DPoP + StepUp
@@ -146,6 +157,10 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 	}
 	if cfg.StepUp == nil {
 		return nil, errors.New("dpop middleware: StepUp gate is required")
+	}
+	if cfg.Revocation == nil {
+		return nil, errors.New("dpop middleware: Revocation verdict is required (the always-on " +
+			"authentication layer does not read DPoP-scheme tokens, so this layer must ask)")
 	}
 	if cfg.MTLS == nil {
 		cfg.MTLS = NewMTLSBoundValidator()
@@ -169,6 +184,7 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 		logger:                cfg.Logger,
 		apiDomain:             cfg.APIDomain,
 		requireForAllRequests: cfg.RequireForAllRequests,
+		revocation:            cfg.Revocation,
 		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 	}, nil
 }
@@ -241,6 +257,16 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 				authnrefusal.WriteHTTP(w)
 				return
 			}
+		}
+
+		// 3a. Отзыв — для схемы `DPoP`. Схему `Bearer` уже спросил слой
+		//     аутентификации, который работает всегда (tryBearerJWT): второй
+		//     вопрос о том же токене удвоил бы интроспекцию на запрос. Схему
+		//     `DPoP` тот слой не разбирает — подпись проверена только здесь, и
+		//     здесь же обязан быть прочитан вердикт отзыва, тем же общим
+		//     словарём (kacho#2742).
+		if strings.EqualFold(scheme, "DPoP") && m.revocation.refuseRevokedHTTP(w, r, verified) {
+			return
 		}
 
 		// 4. Step-up gate. Resolve the canonical gRPC FQN from the REST

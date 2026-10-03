@@ -316,3 +316,44 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 		return revocationUnanswerable
 	}
 }
+
+// PresentedRevocationVerdict — вердикт отзыва для ПОВЕРХНОСТИ ПРЕДЪЯВЛЕНИЯ,
+// которая проверила подпись сама (схема `DPoP` в DPoPMiddleware). Реализует его
+// только AuthInterceptor: поверхность обязана читать вердикт ОБЩИМ словарём
+// (revocationCheck), а не своим, — иначе отзыв, исполняемый на одной схеме,
+// обходится другой (kacho#2742).
+type PresentedRevocationVerdict interface {
+	refuseRevokedHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool
+}
+
+// refuseRevokedHTTP спрашивает об отзыве проверенного токена и, если запрос
+// обслуживать нельзя, пишет ответ: отозван — единый отказ края (Р2); источник не
+// ответил, проверка собрана без источника, у токена нет идентификатора — ответ
+// Р1. Возвращает true, когда ответ написан.
+//
+// The pre-auth allow-list is exempt, and sign-out is why: a user whose session
+// was revoked elsewhere must still be able to complete a sign-out and clear
+// their cookies. The health probes and the interactive login flow are in the
+// same list for the same reason — none of them acts on the credential's
+// authority.
+func (a *AuthInterceptor) refuseRevokedHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool {
+	if isPublicHTTPPath(r.URL.Path) {
+		return false
+	}
+	switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
+	case revocationRevoked:
+		a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
+			"path", r.URL.Path, "source", revocationSourceOf(vt))
+		writeAuthnRefusal(w)
+		return true
+	case revocationUnanswerable:
+		// Our source was silent, the check has no source, or the token has no
+		// identifier to ask by — the same three causes, and the one answer every
+		// lane gives when our authority is silent (KA1 Р1).
+		writeCredentialStateUnknown(w)
+		return true
+	}
+	return false
+}
+
+var _ PresentedRevocationVerdict = (*AuthInterceptor)(nil)
