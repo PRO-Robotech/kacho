@@ -19,7 +19,8 @@ import {
   type SeededSecondFactor,
 } from "./ceremony-seed";
 import { CANCELLED_BY_PAGE, ceremonyCensus, formatCall, test, type CeremonyCall, type CeremonyCensus } from "./fixtures";
-import { EDGE_SESSION_ENDED, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
+import { challengeError } from "../../shared/src/api/step-up";
+import { EDGE_CREDENTIAL_STATE_UNKNOWN, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
  * Параметры учётной записи на `/settings` — смена пароля и второй фактор
@@ -149,12 +150,15 @@ async function loginStatus(testInfo: TestInfo, email: string, password: string):
   }
 }
 
-/** Текст вызова края, гасящего носитель, не нашедший записи (F4d-22, §1.9). */
-const SESSION_ENDED_TEXT = bodyOf(EDGE_SESSION_ENDED).message;
-
-/** Ответ края `401` «сессия кончилась» — тот, что гасит носитель у браузера. */
+/**
+ * Отказ края в носителе (приёмка KA1, Р2) — тот, что гасит носитель у браузера
+ * (F4d-22, §1.9). Причины отказ не несёт ни в тексте, ни в вызове, поэтому
+ * узнаётся он тем же признаком, по которому его узнаёт консоль: `401` и
+ * `error="invalid_token"` вызова, разобранного разборщиком консоли. Отказ службы
+ * полосы формы вызова не несёт и сюда не попадает.
+ */
 function endedSession(call: CeremonyCall): boolean {
-  return call.outcome === 401 && (call.challenge ?? "").includes(SESSION_ENDED_TEXT);
+  return call.outcome === 401 && challengeError(call.challenge) === "invalid_token";
 }
 
 /** Путь платформы, на котором край носитель, не нашедший записи, гасит (§1.9). */
@@ -372,7 +376,7 @@ test("F8-46 · чтение, бывшее в полёте при смене па
     expect(new URL(page.url()).pathname, "страница уведена со своего адреса").toBe("/settings");
     expect(
       census.calls.filter(endedSession).map(formatCall),
-      `обращение страницы получило ответ «${SESSION_ENDED_TEXT}»`,
+      `обращение страницы получило отказ края в носителе (401, error="invalid_token")`,
     ).toEqual([]);
   });
 });
@@ -420,17 +424,19 @@ test("F8-24 · текущий пароль неверен: отказ назва
   });
 });
 
-test("F8-25 · служба молчит на глаголе с носителем: отказ края назван, сессия не гасится", async ({
+test("F8-25 · служба молчит на глаголе с носителем: ответ края назван, сессия не гасится", async ({
   page,
 }, testInfo) => {
   // verifies #1274 — близнец F8-23: изменено только то, отвечает ли служба краю.
-  // Ответ края (F4d-23) подставляется так, как его отдаёт производитель: тело
-  // без `details` и вызов `Bearer error="invalid_token"` (условие C20). Экран
-  // обязан назвать отказ, а не принять вызов края за «войдите».
-  const ended = bodyOf(EDGE_SESSION_ENDED);
+  // verifies #2728 — ответ края на молчание авторитета (приёмка KA1, Р1)
+  // подставляется так, как его отдаёт производитель: `503`, тело без `details`,
+  // без вызова и без печенья (условие C20). Экран обязан назвать ответ и не
+  // уводить на вход: носитель цел.
+  const ended = bodyOf(EDGE_CREDENTIAL_STATE_UNKNOWN);
   await page.route(
     (u) => u.pathname === LANE.password,
-    (route) => (route.request().method() === "POST" ? fulfillWith(route, EDGE_SESSION_ENDED) : route.continue()),
+    (route) =>
+      route.request().method() === "POST" ? fulfillWith(route, EDGE_CREDENTIAL_STATE_UNKNOWN) : route.continue(),
   );
   await withHuman(testInfo, "F8-25", page.context(), async (_seed, human) => {
     const s = await openSettings(page);
@@ -438,8 +444,8 @@ test("F8-25 · служба молчит на глаголе с носителе
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [res] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
-    expect(res.status()).toBe(401);
-    await expect(s.password.refusal, "отказ края не назван на экране").toContainText(ended.message);
+    expect(res.status()).toBe(EDGE_CREDENTIAL_STATE_UNKNOWN.status);
+    await expect(s.password.refusal, "ответ края не назван на экране").toContainText(ended.message);
     expect(new URL(page.url()).pathname, "консоль ушла с экрана параметров").toBe("/settings");
     expect(await bearerOf(page.context()), "консоль погасила носитель сессии").toBe(before);
   });

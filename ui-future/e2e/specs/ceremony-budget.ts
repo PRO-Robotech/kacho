@@ -17,10 +17,14 @@
  * ПРАВИЛО СЧЁТА — В ТОЙ ПАРЕ, КОТОРУЮ ВИДИТ БРАУЗЕР (Р7). Браузер мест вызова
  * службы не видит; он видит пару «путь · отказ». В счёт идёт ответ `401` с
  * `code` = 16 и текстом `authentication failed` на путях СЕМИ глаголов, пишущих
- * след. Отказ края с тем же кодом и другим текстом (`session ended; sign in
- * again`) в счёт не идёт; тот же отказ на глаголе вне семи (регистрация) — тоже.
- * Счёт по этой паре НЕ МЕНЬШЕ истинного: исчерпание ёмкости проверяющего даёт ту
- * же пару без следа — сторона ошибки выбрана безопасной, сторож краснеет раньше.
+ * след. Отказ КРАЯ в удостоверении (приёмка KA1, Р2) несёт тот же код и тот же
+ * текст — и в счёт не идёт: след пишет служба, а край отвечает раньше неё.
+ * Различает их причина тела — `AUTHN_REQUIRED` несёт только край
+ * (`gateway/internal/authnrefusal`), у отказа службы `details` пуст. Тот же отказ
+ * на глаголе вне семи (регистрация) в счёт тоже не идёт. Счёт НЕ МЕНЬШЕ
+ * истинного: исчерпание ёмкости проверяющего даёт ту же пару без следа, а
+ * неизвестная причина идёт в счёт — сторона ошибки выбрана безопасной, сторож
+ * краснеет раньше.
  *
  * КТО ПИШЕТ И КТО СУДИТ. Пишут все обращения прогона, какие только тратят ось:
  * контекст страницы пробы (ответы страницы) и посев (ответы своего контекста
@@ -28,9 +32,12 @@
  * `BUDGET_ATTACHMENT`; судит — `scripts/ceremony-budget.ts` по отчёту, когда
  * прогон закончен. В файловую систему проба не пишет: запись несёт отчёт.
  *
- * Модуль без зависимостей: его читает и фикстура, и сторож, запускаемый голым
- * `node` после прогона.
+ * Модуль без зависимостей, кроме разборщика тела консоли (`rpc-status.ts`, сам
+ * без зависимостей): его читает и фикстура, и сторож, запускаемый голым `node`
+ * после прогона, — поэтому путь импорта с расширением.
  */
+
+import { parseRpcStatus, reasonOfDetails } from "../../shared/src/api/rpc-status.ts";
 
 /** Имя вложения, которым проба сдаёт свою запись. */
 export const BUDGET_ATTACHMENT = "f8-41-source-axis-refusals";
@@ -49,12 +56,20 @@ export const SOURCE_AXIS_VERBS: readonly string[] = [
 /** Текст отказа, идущего в счёт, — один на все причины. */
 export const AUTHENTICATION_FAILED = "authentication failed";
 
+/** Причина отказа КРАЯ в удостоверении (приёмка KA1, Р2): след оси он не пишет. */
+export const EDGE_REFUSAL_REASON = "AUTHN_REQUIRED";
+
 /** Отказ `401` полосы формы — в той форме, в какой его получил выпускающий. */
 export interface RecordedRefusal {
   path: string;
   status: number;
   code: number | null;
   message: string;
+  /**
+   * `ErrorInfo.reason` тела; `null` — причины не назвали. Записи прежних
+   * отчётов поля не несут — для счёта это то же, что `null`.
+   */
+  reason?: string | null;
 }
 
 /** Запись одной пробы. */
@@ -66,21 +81,22 @@ export interface ScenarioRefusals {
 /** Записывается ли ответ: `401` на пути полосы формы — любой, судит сторож. */
 export function recordableRefusal(path: string, status: number, text: string): RecordedRefusal | null {
   if (status !== 401 || !path.startsWith("/iam/v1/auth/")) return null;
-  let code: number | null = null;
-  let message = "";
-  try {
-    const body = JSON.parse(text) as { code?: unknown; message?: unknown };
-    code = typeof body.code === "number" ? body.code : null;
-    message = typeof body.message === "string" ? body.message : "";
-  } catch {
-    // Тело не `google.rpc.Status` — записывается как есть; в счёт оно не пойдёт.
-  }
-  return { path, status, code, message };
+  // Разборщик тела — тот же, что у экранов консоли. Тело не `google.rpc.Status` —
+  // записывается без кода и текста; в счёт оно не пойдёт.
+  const body = parseRpcStatus(text);
+  if (!body) return { path, status, code: null, message: "", reason: null };
+  return { path, status, code: body.code, message: body.message, reason: reasonOfDetails(body.details) };
 }
 
 /** Идёт ли отказ в счёт оси источника. */
 export function countsTowardSourceAxis(r: RecordedRefusal): boolean {
-  return r.status === 401 && r.code === 16 && r.message === AUTHENTICATION_FAILED && SOURCE_AXIS_VERBS.includes(r.path);
+  return (
+    r.status === 401 &&
+    r.code === 16 &&
+    r.message === AUTHENTICATION_FAILED &&
+    r.reason !== EDGE_REFUSAL_REASON &&
+    SOURCE_AXIS_VERBS.includes(r.path)
+  );
 }
 
 export interface BudgetVerdict {

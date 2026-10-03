@@ -11,7 +11,10 @@
  *   • одиннадцать отказов в счёт — в бюджете; двенадцатый, на пути СНЯТИЯ
  *     второго фактора, — красное с числом и с именем сценария;
  *   • тот же отказ на пути глагола вне семи (регистрация) — в счёт не идёт;
- *   • отказ края с тем же кодом и другим текстом — в счёт не идёт;
+ *   • отказ края в удостоверении (приёмка KA1, Р2) — в счёт не идёт, хотя его
+ *     код и текст те же, что у отказа службы: различает их причина
+ *     `AUTHN_REQUIRED`, которую несёт только край, — и запись снимает её с тела
+ *     ответа;
  *   • три прогона: 33 — в бюджете, 34 — красное;
  *   • бюджета нет — отказ, а не «бюджет ноль»; отчёт без проб — отказ.
  */
@@ -19,7 +22,14 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { judgeBudget, type RecordedRefusal, type ScenarioRefusals } from "../specs/ceremony-budget.ts";
+import { EDGE_AUTHN_FAILED } from "../../shared/src/test/edge-answers.ts";
+import {
+  countsTowardSourceAxis,
+  judgeBudget,
+  recordableRefusal,
+  type RecordedRefusal,
+  type ScenarioRefusals,
+} from "../specs/ceremony-budget.ts";
 import { NO_VERDICT, budgetFromEnv, run as guard, scenarioRefusalsOf } from "./ceremony-budget.ts";
 
 let failed = 0;
@@ -72,15 +82,43 @@ console.log("ПРОГОН 2 — подсаженный отказ на пути 
 
 console.log("ПРОГОН 3 — отказ вне семи глаголов и отказ края в счёт не идут");
 {
+  // Отказ края (KA1, Р2) записан так, как его записывает фиксация ответа, — из
+  // тела производителя; код и текст у него те же, что у отказа службы.
+  const edge = recordableRefusal("/iam/v1/auth/password", EDGE_AUTHN_FAILED.status, EDGE_AUTHN_FAILED.text);
+  check(
+    edge !== null && edge.code === failedLogin.code && edge.message === failedLogin.message,
+    "отказ края записан с тем же кодом и текстом, что отказ службы",
+  );
   const twin = [
     ...eleven,
-    ...run(
-      ["регистрация", [{ ...failedLogin, path: "/iam/v1/auth/register" }]],
-      ["край", [{ ...failedLogin, path: "/iam/v1/auth/password", message: "session ended; sign in again" }]],
-    ),
+    ...run(["регистрация", [{ ...failedLogin, path: "/iam/v1/auth/register" }]], ["край", edge ? [edge] : []]),
   ];
   const v = judgeBudget([twin], 11);
   check(v.ok && v.total === 11, `в бюджете: всего ${v.total} — подсадки вне правила не сосчитаны`);
+}
+
+console.log("ПРОГОН 3а — запись различает отказ службы и отказ края по причине тела");
+{
+  const service = recordableRefusal(
+    "/iam/v1/auth/login",
+    401,
+    '{"code":16,"message":"authentication failed","details":[]}',
+  );
+  const edge = recordableRefusal("/iam/v1/auth/login", EDGE_AUTHN_FAILED.status, EDGE_AUTHN_FAILED.text);
+  check(service !== null && countsTowardSourceAxis(service), "отказ службы (`details` пуст) — в счёт");
+  check(edge !== null && !countsTowardSourceAxis(edge), "отказ края (`AUTHN_REQUIRED`) — не в счёт");
+  // Неизвестная причина у того же кода и текста — в счёт: сторона ошибки та же,
+  // что у всего сторожа, — счёт не меньше истинного.
+  const unknown = recordableRefusal(
+    "/iam/v1/auth/login",
+    401,
+    JSON.stringify({
+      code: 16,
+      message: "authentication failed",
+      details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SOMETHING_NEW", domain: "x" }],
+    }),
+  );
+  check(unknown !== null && countsTowardSourceAxis(unknown), "неизвестная причина — в счёт");
 }
 
 console.log("ПРОГОН 4 — три прогона подряд: 33 в бюджете, 34 — нет");
@@ -158,4 +196,4 @@ if (failed > 0) {
   console.error(`\nсамопроверка сторожа бюджета оси источника: провалов ${failed}`);
   process.exit(1);
 }
-console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 7)");
+console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 8)");

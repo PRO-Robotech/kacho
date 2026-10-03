@@ -1,16 +1,19 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+import { EDGE_AUTHN_FAILED, EDGE_CREDENTIAL_STATE_UNKNOWN } from "@shared/test/edge-answers";
 import { refusalOf } from "./login-lane";
 import { refusalActionOf, type RefusalAction, type RefusalSurface } from "./refusal-action";
 
 // Решение «что делать на отказ» на ТЕЛЕ И ЗАГОЛОВКАХ каждого производителя
 // (приёмка F8, условие C2). Производители — служба доступа
 // (`kaname` `internal/handler/loginlanehttp/handler.go`, `writeRefusal`: тело
-// `{code, message, details}`, `details` всегда массив) и край
-// (`gateway/internal/middleware/auth.go`, `writeHTTPUnauthorized`: тело без
-// `details` и вызов `Bearer error="invalid_token"`; `authz.go` — вызов пола RFC
-// 9470). Действие выбирают машинные признаки; статус — нет.
+// `{code, message, details}`, `details` всегда массив) и край (приёмка KA1:
+// `gateway/internal/authnrefusal`, один отказ `401` с вызовом
+// `Bearer realm="kacho", error="invalid_token"` и причиной `AUTHN_REQUIRED`;
+// ответ `503` без вызова на молчание авторитета; `authz.go` — вызов пола RFC
+// 9470). Тела и заголовки края — `@shared/test/edge-answers`. Действие выбирают
+// машинные признаки; статус — нет.
 
 interface Producer {
   who: string;
@@ -44,10 +47,16 @@ const PRODUCERS: Record<string, Producer> = {
     body: { code: 16, message: "authentication failed", details: [] },
   },
   ended: {
-    who: "край: сессия кончилась либо служба не ответила (F4d-23)",
-    status: 401,
-    body: { code: 16, message: "session ended; sign in again" },
-    headers: { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' },
+    who: "край: удостоверение не принято (KA1 Р2)",
+    status: EDGE_AUTHN_FAILED.status,
+    body: EDGE_AUTHN_FAILED.text,
+    headers: EDGE_AUTHN_FAILED.headers,
+  },
+  edgeUnanswered: {
+    who: "край: авторитет не ответил (KA1 Р1)",
+    status: EDGE_CREDENTIAL_STATE_UNKNOWN.status,
+    body: EDGE_CREDENTIAL_STATE_UNKNOWN.text,
+    headers: EDGE_CREDENTIAL_STATE_UNKNOWN.headers,
   },
   floor: {
     who: "край: пол уровня",
@@ -133,6 +142,7 @@ describe("C2 · действие на отказ — по машинным пр�
     notFresh: "step-up-freshness",
     authFailed: "show",
     ended: "show",
+    edgeUnanswered: "show",
     floor: "step-up-floor",
     tooMany: "show",
     unavailable: "show",
@@ -155,6 +165,7 @@ describe("C2 · действие на отказ — по машинным пр�
     notFresh: "step-up-freshness",
     authFailed: "sign-in",
     ended: "sign-in",
+    edgeUnanswered: "show",
     floor: "step-up-floor",
     tooMany: "show",
     unavailable: "show",
@@ -177,13 +188,18 @@ describe("C2 · действие на отказ — по машинным пр�
     expect(new Set([actionOf(PRODUCERS.authFailed, "platform"), actionOf(PRODUCERS.floor, "platform")]).size).toBe(2);
   });
 
-  it("Р10 · «сессия кончилась» на платформе — «войдите»: повтора с текущим носителем нет", () => {
+  it("Р10 · отказ края в удостоверении на платформе — «войдите»: повтора с текущим носителем нет", () => {
     // Повтор (условие C18 редакции 6) невыполним: ответ края на прежний
     // носитель гасит печенье, повторять нечем. Перевыпуск упорядочивает
     // транспорт вкладки (`carrier-order.ts`), и такого ответа вкладке не
     // приходит вовсе.
     expect(actionOf(PRODUCERS.ended, "platform")).toBe("sign-in");
     expect(actionOf(PRODUCERS.ended, "ceremony")).toBe("show");
+  });
+
+  it("KA1 Р1 · авторитет края не ответил — ни на одной поверхности не «войдите»: носитель цел", () => {
+    expect(actionOf(PRODUCERS.edgeUnanswered, "platform")).toBe("show");
+    expect(actionOf(PRODUCERS.edgeUnanswered, "ceremony")).toBe("show");
   });
 });
 

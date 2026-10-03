@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { EDGE_AUTHN_FAILED, EDGE_CREDENTIAL_STATE_UNKNOWN, responseOf } from "@shared/test/edge-answers";
 import { stubNetwork } from "@shared/test/network-stub";
 
 const redirectToLogin = jest.fn();
@@ -33,8 +34,6 @@ const FLOOR = {
   "WWW-Authenticate":
     'Bearer error="insufficient_user_authentication", error_description="Required ACR 2", acr_values="2"',
 };
-/** Край: носитель не находит записи (`writeHTTPUnauthorized`). */
-const ENDED = { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' };
 
 const jsonResponse = (body: unknown) => {
   return Promise.resolve({
@@ -80,18 +79,32 @@ describe("api-client", () => {
     expect(redirectToLogin).not.toHaveBeenCalled();
   });
 
-  it("Р10 · «сессия кончилась» — сессии нет: на вход, повтора с текущим носителем нет", async () => {
+  it("Р10 · отказ края в удостоверении (KA1, Р2) — сессии нет: на вход, повтора с текущим носителем нет", async () => {
     // Повтор (условие C18 редакции 6) невыполним: ответ края гасит носитель.
     // Перевыпуск упорядочивает транспорт вкладки (`@shared/api/carrier-order`),
     // и ответа на прежний носитель после перевыпуска это чтение не получает.
+    // Причина `AUTHN_REQUIRED` в теле действия не выбирает: выбирает вызов.
     let n = 0;
     stubNetwork(() => {
       n += 1;
-      return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
+      return responseOf(EDGE_AUTHN_FAILED);
     });
-    await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
+    await expect(apiGet("/iam/v1/accounts")).rejects.toThrow("authentication failed");
     expect(n).toBe(1);
     expect(redirectToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("KA1 Р1 · авторитет края не ответил (503) — отказ назван, на вход не уводит, повтора нет", async () => {
+    // Сессия цела: край не смог установить состояние удостоверения, а не отверг
+    // его. Уход на вход при живой сессии послал бы человека чинить исправное.
+    let n = 0;
+    stubNetwork(() => {
+      n += 1;
+      return responseOf(EDGE_CREDENTIAL_STATE_UNKNOWN);
+    });
+    await expect(apiGet("/iam/v1/accounts")).rejects.toThrow("credential state could not be established");
+    expect(n).toBe(1);
+    expect(redirectToLogin).not.toHaveBeenCalled();
   });
 
   it("includes browser credentials on API requests", async () => {
