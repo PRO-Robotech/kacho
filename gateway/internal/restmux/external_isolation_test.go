@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -139,7 +140,7 @@ var internalRESTPaths = []struct{ method, path string }{
 // pinned the difference between «:internal is special» and every other id.
 func TestExternalListener_RejectsInternalPaths(t *testing.T) {
 	addrs, adminLiteral := splitAddrs(t)
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestExternalListener_RejectsInternalPaths(t *testing.T) {
 // gRPC error (NOT a route-level 404). A bare 404 here means the route was
 // rejected — which would break UI / admin-tooling / port-forward / newman.
 func TestInternalListener_ServesInternalPaths(t *testing.T) {
-	h, err := NewMux(context.Background(), muxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), muxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -218,7 +219,7 @@ func TestInternalListener_ServesInternalPaths(t *testing.T) {
 // TestExternalListener_PublicPathsStillServed — public REST paths on the
 // external listener are unaffected (not rejected).
 func TestExternalListener_PublicPathsStillServed(t *testing.T) {
-	h, err := NewMux(context.Background(), muxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), muxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

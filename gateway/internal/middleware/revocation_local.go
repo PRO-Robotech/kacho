@@ -31,6 +31,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // errOwnRevocationSourceSilent — наша запись отзыва не ответила.
@@ -39,18 +40,6 @@ import (
 // читателем. Сравнивать текст ошибки нельзя: его пишет сосед, и он меняется от
 // его версии.
 var errOwnRevocationSourceSilent = errors.New("наш источник отзыва не ответил")
-
-// OwnRevocationCallBudget — бюджет ОДНОГО вопроса нашей записи отзыва.
-//
-// Названный бюджет обязателен: вопрос стоит на пути запроса, а сырой контекст
-// запроса пределом не является. Неотвечающий сосед без бюджета держит горутину
-// столько, сколько держится клиент.
-//
-// Величина — та же, что у полосы базового секрета
-// (`BasicCredentialCallBudget`): тот же сосед, то же соединение, тот же путь
-// запроса и та же семантика молчания (fail-closed). Два разных числа на одном
-// ребре были бы двумя решениями об одном предмете.
-const OwnRevocationCallBudget = BasicCredentialCallBudget
 
 // SessionRevocationsReader — наша запись отзыва: знает ли служба доступа, что
 // удостоверение с этим идентификатором отозвано.
@@ -66,14 +55,24 @@ type SessionRevocationsReader interface {
 // получает три исхода.
 type OwnRevocationSource struct {
 	local SessionRevocationsReader
+	// budget — бюджет ОДНОГО вопроса нашей записи отзыва. Названный бюджет
+	// обязателен: вопрос стоит на пути запроса, а сырой контекст запроса пределом
+	// не является — неотвечающий сосед без бюджета держит горутину столько,
+	// сколько держится клиент. Величина — ручка
+	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4), та же, что у
+	// прочих вопросов края тому же соседу: два числа на одном ребре были бы
+	// двумя решениями об одном предмете.
+	budget time.Duration
 }
 
 // NewOwnRevocationSource собирает читателя.
 //
-// Участник обязателен: читатель без источника отвечал бы на вопрос о
-// безопасности, ничего не спросив.
-func NewOwnRevocationSource(local SessionRevocationsReader) *OwnRevocationSource {
-	return &OwnRevocationSource{local: local}
+// Участник и бюджет обязательны: читатель без источника отвечал бы на вопрос о
+// безопасности, ничего не спросив, а без бюджета — ждал бы соседа сколько угодно.
+// Неполная сборка не паникует, а отказывает на каждом вопросе признаком неверной
+// настройки (Introspect).
+func NewOwnRevocationSource(local SessionRevocationsReader, budget time.Duration) *OwnRevocationSource {
+	return &OwnRevocationSource{local: local, budget: budget}
 }
 
 // Introspect спрашивает нашу запись отзыва.
@@ -83,20 +82,20 @@ func NewOwnRevocationSource(local SessionRevocationsReader) *OwnRevocationSource
 func (c *OwnRevocationSource) Introspect(
 	ctx context.Context, jti, _ string,
 ) (IntrospectionResult, error) {
-	if c == nil || c.local == nil {
+	if c == nil || c.local == nil || c.budget <= 0 {
 		// «Не должен наступить» — не «не может», а тихо пропустить запрос здесь
 		// значит снять контроль целиком. Признак — ErrIntrospectionMisconfigured:
 		// неполная сборка не лечится повтором и не проходит сама.
 		return IntrospectionResult{}, fmt.Errorf(
-			"%w: проверка отзыва собрана без источника — край не может установить, "+
-				"действительно ли предъявленное удостоверение",
+			"%w: проверка отзыва собрана без источника либо без бюджета — край не может "+
+				"установить, действительно ли предъявленное удостоверение",
 			ErrIntrospectionMisconfigured)
 	}
 
 	// СВОЙ предел на вызове соседа. Ставится ЗДЕСЬ, а не в адаптере: бюджет —
 	// решение о пути запроса, а адаптер знает только транспорт. `WithTimeout`
 	// берёт МЕНЬШИЙ из двух пределов, поэтому предел вызывающего остаётся в силе.
-	callCtx, cancel := context.WithTimeout(ctx, OwnRevocationCallBudget)
+	callCtx, cancel := context.WithTimeout(ctx, c.budget)
 	defer cancel()
 
 	revoked, err := c.local.IsSessionRevoked(callCtx, jti)

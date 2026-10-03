@@ -23,6 +23,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/operations"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -156,7 +157,7 @@ func TestAuth_ProductionStrict_NoBearer_Rejected(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unauthenticated, st.Code())
-	assert.Contains(t, st.Message(), "missing Bearer")
+	assert.Equal(t, authnrefusal.Message, st.Message())
 }
 
 func TestAuth_Production_SubjectNotFound_Rejected(t *testing.T) {

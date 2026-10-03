@@ -43,6 +43,9 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/tokenpolicy"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/issuercanon"
 )
 
 const (
@@ -150,9 +153,14 @@ func normaliseIssuerKeySets(sources []IssuerKeySet) (map[string]*issuerRecord, e
 	}
 	out := make(map[string]*issuerRecord, len(sources))
 	for _, s := range sources {
-		issuer := strings.TrimSpace(s.Issuer)
-		if issuer == "" {
+		if strings.TrimSpace(s.Issuer) == "" {
 			return nil, errors.New("jwt verifier: key-set record with an empty issuer")
+		}
+		// Запись ключуется КАНОНИЧЕСКОЙ формой издателя (issuercanon, приёмка
+		// KA1 Р5) — той же, что выбирает запись по `iss` предъявленного токена.
+		issuer, cerr := issuercanon.Canonical(strings.TrimSpace(s.Issuer))
+		if cerr != nil {
+			return nil, fmt.Errorf("jwt verifier: key-set record: %w", cerr)
 		}
 		if _, dup := out[issuer]; dup {
 			return nil, fmt.Errorf("jwt verifier: issuer %q is declared twice — "+
@@ -233,4 +241,29 @@ func keyIDWellFormed(kid string) bool {
 		}
 	}
 	return true
+}
+
+// IssuerKeySetsFromAcceptance переводит ОБЪЯВЛЕНИЕ приёма (разобранное
+// `config.Config.TokenAcceptance`) в записи проверяющего подписи и называет то,
+// что композиционный корень пишет в журнал старта: принимаемых издателей и
+// признак «наш издатель принят».
+//
+// Код один на процесс и на пробу: харнесс приёмки KA1 (KA1-35) строит записи
+// проверяющего из разобранной конфигурации ЭТОЙ функцией, а не копией цикла
+// композиционного корня — копия разошлась бы с процессом молча.
+func IssuerKeySetsFromAcceptance(bindings []config.TokenIssuerBinding) (records []IssuerKeySet, accepted []string, platformAccepted bool) {
+	records = make([]IssuerKeySet, 0, len(bindings))
+	accepted = make([]string, 0, len(bindings))
+	for _, b := range bindings {
+		records = append(records, IssuerKeySet{
+			Issuer:                  b.Issuer,
+			KeySetURL:               b.KeySetURL,
+			TokenTypes:              b.TokenTypes,
+			TolerateAbsentTokenType: b.TolerateAbsentTokenType,
+			ReadRevocation:          b.ReadRevocation,
+		})
+		accepted = append(accepted, b.Issuer)
+		platformAccepted = platformAccepted || b.ReadRevocation
+	}
+	return records, accepted, platformAccepted
 }

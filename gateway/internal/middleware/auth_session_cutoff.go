@@ -96,7 +96,7 @@ var ErrSessionCutoffUnsupported = errors.New("session cutoff: authority does not
 // вызывающий обязан их различать. Слитые в одно, они дали бы либо мягкий проход
 // на молчащем авторитете, либо отказ каждому, кого никто не отзывал.
 type SessionCutoffReader interface {
-	SessionCutoffOf(ctx context.Context, userID string) (cutoff time.Time, found bool, err error)
+	SessionCutoffOf(ctx context.Context, subject CutoffSubject) (cutoff time.Time, found bool, err error)
 }
 
 // sessionCutoffVerdict — четыре ответа полосы. Разные исходы держатся врозь
@@ -123,16 +123,18 @@ const (
 	sessionCutoffUnsupported
 )
 
-// sessionCutoffDenyDescription — что видит клиент на отвергнутой сессии.
-// Называет состояние ЕГО СОБСТВЕННОЙ сессии и ничего про чужие, поэтому
-// оракулом не является; говорит «войди заново», а не «повтори».
+// Что видит клиент на отвергнутой сессии — единый отказ края (authnrefusal,
+// приёмка KA1 Р2): тот же текст, тело и вызов, что у любой другой причины на
+// любой полосе. Полосу сессии отличает ПОВЕДЕНИЕ, а не текст: вместе с отказом
+// край гасит носитель, и набор гашения зависит от полосы, выбранной
+// вызывающим, а не от причины.
 //
-// ТОТ ЖЕ ТЕКСТ ИДЁТ И НА НЕДОСТУПНОСТЬ АВТОРИТЕТА (F4d-23; приёмка Ф3 Д3,
-// Ф3-13). Прежде «спросить не удалось» отвечало другим текстом — и различимый
-// текст был оракулом исправности соседа: по нему можно было отличить «меня
-// отозвали» от «служба лежит». Носитель при этом различается ПОВЕДЕНИЕМ, а не
-// текстом: на отсечке он гасится, на недоступности остаётся цел.
-const sessionCutoffDenyDescription = "session ended; sign in again"
+// На недоступность авторитета этот отказ НЕ идёт. Прежде шёл (F4d-23): довод
+// был, что различимый ответ — оракул исправности соседа. Он не держится — та же
+// величина отдаётся общедоступным `/readyz`, — а цена была настоящей: `401` на
+// НАШУ неисправность уводил человека на вход при живой сессии. Молчание
+// авторитета получает ответ Р1 приёмки KA1 (credential_state_unknown.go), один
+// на все полосы; носитель цел.
 
 // WithSessionCutoffCheck — провязывает читателя нашей отсечки на браузерную
 // полосу. nil оставляет полосу непровязанной.
@@ -172,23 +174,34 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 	}
 	// Отсечка ключуется человеком. Личность другого вида на этой полосе не
 	// появляется, и спрашивать про неё по словарю людей значило бы задавать
-	// вопрос про субъекта, которого в таблице не бывает.
-	if subj.Type != "user" || subj.ID == "" {
+	// вопрос про субъекта, которого в таблице не бывает — это решает
+	// конструктор субъекта вопроса (cutoff_subject.go), а не условие здесь.
+	cs, ok := NewCutoffSubject(subj.Type, subj.ID)
+	if !ok {
 		return sessionCutoffNotAsked
 	}
 
-	cutoff, found, err := a.sessionCutoff.SessionCutoffOf(ctx, subj.ID)
+	cutoff, found, err := a.sessionCutoff.SessionCutoffOf(ctx, cs)
 	if errors.Is(err, ErrSessionCutoffUnsupported) {
 		// Окно раската: край впереди службы прав. Проходим — но громко, и со
 		// своим счётчиком, чтобы застрявшее расхождение версий не оставило
 		// полосу без проверки молча.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			a.logger.Error("session revocation not enforced on the browser lane: "+
+			// Подсказка называет ВЕРНОЕ действие (kacho#2741): адаптер различает
+			// «не тот слушатель» (настройка) и «глагола нет у сборки» (раскат).
+			msg, predicate := "session revocation not enforced on the browser lane: "+
 				"the authority does not offer this question (image skew)",
+				"исчезает, когда служба прав докатится до того же дерева"
+			if errors.Is(err, ErrIntrospectionMisconfigured) {
+				msg, predicate = "session revocation not enforced on the browser lane: "+
+					"the asked listener does not serve the identity service (misaddressed)",
+					"не исчезает раскатом — исправьте адрес внутреннего слушателя службы доступа"
+			}
+			a.logger.Error(msg, "err", err,
 				"route", route,
 				"session_cutoff_unsupported_total", total,
 				"occurrences_since_last_report", represents,
-				"predicate", "исчезает, когда служба прав докатится до того же дерева")
+				"predicate", predicate)
 		}
 		return sessionCutoffUnsupported
 	}

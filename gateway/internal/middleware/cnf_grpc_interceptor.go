@@ -36,10 +36,10 @@ import (
 	"log/slog"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // CnfBindingInterceptor enforces RFC 7800 `cnf` binding on the gRPC surface.
@@ -104,15 +104,13 @@ func (c *CnfBindingInterceptor) enforce(ctx context.Context, fullMethod string) 
 		if verr := c.mtls.Validate(vt, peerTLSState(ctx), nil); verr != nil {
 			c.logger.Warn("cnf-grpc: mTLS-bound token validation failed",
 				"method", fullMethod, "err", verr)
-			return status.Errorf(codes.Unauthenticated,
-				"sender-constrained token validation failed: %v", verr)
+			return authnrefusal.Err()
 		}
 	case vt.Cnf.HasJkt:
 		// DPoP proof has no defined binding over native gRPC → fail closed.
 		c.logger.Warn("cnf-grpc: DPoP-bound token presented on native gRPC surface; rejected (use REST endpoint)",
 			"method", fullMethod)
-		return status.Error(codes.Unauthenticated,
-			"DPoP-bound token cannot be validated on the native gRPC surface; use the REST endpoint")
+		return authnrefusal.Err()
 	}
 	return nil
 }

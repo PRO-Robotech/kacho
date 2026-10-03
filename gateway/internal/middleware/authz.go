@@ -60,6 +60,7 @@ import (
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
 
@@ -515,9 +516,9 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			}
 			writeHTTPDeny(w, decision.descriptor, decision.reasons, challenge)
 		case outcomeUnauthenticated:
-			// No credentials → 401 Unauthorized + code 16,
-			// not 403 Forbidden + code 7.
-			writeHTTPUnauth(w, decision.descriptor, decision.reasons)
+			// No credentials → 401 Unauthorized + code 16, not 403 Forbidden +
+			// code 7 — the edge's one authentication refusal (KA1 Р2).
+			writeAuthnRefusal(w)
 		case outcomeInvalidArgument:
 			// Request rejected on its own shape (malformed resource id, ambiguous
 			// scope) → 400 + code 3, Check not run.
@@ -631,7 +632,9 @@ type decision struct {
 func (d decision) gRPCStatus() *status.Status {
 	switch d.outcome {
 	case outcomeUnauthenticated:
-		return buildGRPCUnauthStatus(d.descriptor, d.reasons)
+		// Единый отказ края (приёмка KA1, Р2): ни глагола, ни причины в ответе —
+		// они в журнале решения.
+		return authnrefusal.Status()
 	case outcomeInvalidArgument:
 		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:

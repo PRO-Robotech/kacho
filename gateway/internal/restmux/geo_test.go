@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -36,7 +37,7 @@ func geoMuxAddrs() map[string]string {
 // route-level 404). The unreachable backend at 127.0.0.1:1 yields a downstream
 // gRPC error, never a 404. A 404 means the geo public handler was not registered.
 func TestGeo_S5_PublicReadRoutesRegistered(t *testing.T) {
-	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -70,7 +71,7 @@ func TestGeo_S5_PublicReadRoutesRegistered(t *testing.T) {
 // at 127.0.0.1:1 yields a downstream gRPC error (NOT a route-level 404). A 404 means
 // the geo Internal* handler was not registered on the internal mux.
 func TestGeo_S5_AdminCRUDRoutesRegistered_InternalListener(t *testing.T) {
-	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestGeo_S5_AdminCRUDRoutesRegistered_InternalListener(t *testing.T) {
 // existence with a 404 (ban #6, security.md §Internal-vs-external). A mutation must
 // not execute and the route must not be served on external.
 func TestGeo_S5_InternalPathsRejectedOnExternal(t *testing.T) {
-	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), geoMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -146,7 +147,7 @@ func TestGeo_S5_GeoInternalGuard_NoInternalAddr(t *testing.T) {
 	addrs := geoMuxAddrs()
 	addrs["geoInternal"] = "" // internal backend absent
 
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

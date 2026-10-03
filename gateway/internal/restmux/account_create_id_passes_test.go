@@ -10,11 +10,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // account_create_id_passes_test.go — край доносит поле `id` тела
@@ -82,7 +84,7 @@ func TestEdgeCarriesTheSuppliedAccountIdToTheService(t *testing.T) {
 	addr, rec := startAccountRecorder(t)
 	addrs := geoMuxAddrs()
 	addrs["iam"] = addr
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

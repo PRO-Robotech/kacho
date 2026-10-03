@@ -32,7 +32,9 @@
 // `Index.Errors`, и вызывающий обязан считать индекс негодным, а не «пустым».
 //
 // Тесты (`_test.go`) НЕ читаются намеренно: правило требует читателя в
-// ПРОД-коде — тестовый читатель не делает поле применённым.
+// ПРОД-коде — тестовый читатель не делает поле применённым. По той же причине не
+// читаются пакеты-харнессы проб (`repohygiene.TestHarnessPackages`): Go считает
+// их непроверочными, но продуктом они не являются (см. `Index.SkippedTestHarness`).
 package protofieldreaders
 
 import (
@@ -50,6 +52,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/repohygiene"
 )
 
 // DefaultPatterns — деревья прод-кода, где законно живёт читатель поля запроса:
@@ -108,6 +112,12 @@ type Index struct {
 	// construction, но объём осмотренного обязан называть и их: «ноль находок»
 	// должно быть отличимо от «ноль прочитанного».
 	SkippedNoProdFiles []string `json:"skipped_no_prod_files"`
+	// SkippedTestHarness — пакеты-харнессы проб (`repohygiene.TestHarnessPackages`):
+	// непроверочные по меркам Go, но не продукт. Их серверы — дублёры соседей, их
+	// чтения — чтения пробы; в индексе прод-кода они дали бы и ложного читателя
+	// поля, и ложную «регистрацию сервера» домена, вынесенного отдельным продуктом.
+	// Называются переписью, а не исчезают молча.
+	SkippedTestHarness []string `json:"skipped_test_harness"`
 	// Errors — предпосылка не выполнена: эти пакеты НЕ протипизированы, их чтения
 	// невидимы. Непустой список делает индекс негодным целиком.
 	Errors []string `json:"errors"`
@@ -226,6 +236,17 @@ func Build(patterns ...string) (*Index, error) {
 				ix.SkippedNoProdFiles = append(ix.SkippedNoProdFiles, p.ImportPath)
 				continue
 			}
+			// Харнесс проб признаётся ПО ОБЩЕМУ ПЕРЕЧНЮ, который судят и прочие
+			// гейты продуктового дерева, а не своей копией: что харнесс не стал
+			// продуктом, держит TestHarnessPackagesAreImportedOnlyByTests.
+			if relDir, rerr := filepath.Rel(cwd, p.Dir); rerr == nil &&
+				repohygiene.IsTestHarnessPath(filepath.ToSlash(relDir)+"/") {
+				if !seenPkg[p.ImportPath] {
+					seenPkg[p.ImportPath] = true
+					ix.SkippedTestHarness = append(ix.SkippedTestHarness, p.ImportPath)
+				}
+				continue
+			}
 			for _, orig := range w.origin {
 				byPattern[orig]++
 			}
@@ -330,6 +351,7 @@ func Build(patterns ...string) (*Index, error) {
 	sort.Slice(ix.Packages, func(i, j int) bool { return ix.Packages[i].Path < ix.Packages[j].Path })
 	sort.Slice(ix.Modules, func(i, j int) bool { return ix.Modules[i].Dir < ix.Modules[j].Dir })
 	sort.Strings(ix.SkippedNoProdFiles)
+	sort.Strings(ix.SkippedTestHarness)
 	sort.Strings(ix.Errors)
 	return ix, nil
 }
