@@ -48,6 +48,8 @@
 #
 #   --chart <каталог>  — каталог чарта вместо `deploy/helm/notify` (самопроверка и
 #                        инъекции гейтов-потребителей).
+#   --fixture <файл>   — фикстура таблицы вместо `deploy/testdata/notify-inspect/
+#                        _sources.tpl` (самопроверка).
 #
 # Пути — от каталога `deploy/`, найденного по месту ЭТОГО файла: копия
 # развёртывания, запущенная из временного каталога (самопроверки гейтов), судит
@@ -290,6 +292,16 @@ self_test() {
   out="$(only_sources_differs "$CHART" "$work/pair/same")"; rc=$?
   check "копия без подмены → не ровно один файл" 1 "" "$rc" "$out"
 
+  # Инъекция: имена define записаны сырой строкой (`define \`имя\``) — helm её
+  # принимает, а читатель имён (образец с двойными кавычками) не видит. У чарта и
+  # у фикстуры множества читаются ПУСТЫМИ, и сверка «множества равны» прошла бы
+  # на двух пустых. Ждём «не выполнилось» с причиной, а не построенную копию.
+  cp -r "$CHART" "$work/raw"
+  sed -i 's/define "\([^"]*\)"/define `\1`/' "$work/raw/templates/_sources.tpl"
+  sed 's/define "\([^"]*\)"/define `\1`/' "$FIXTURE" >"$work/raw-fixture.tpl"
+  out="$(bash "$0" --chart "$work/raw" --fixture "$work/raw-fixture.tpl" --into "$work/inj3" 2>&1)"; rc=$?
+  check "имена define не прочитаны ни у чарта, ни у фикстуры → не выполнилось" 2 "не прочитано ни одного имени define" "$rc" "$out"
+
   # Близнец по месту: копия в каталоге с ПРОБЕЛОМ в пути строится так же — предикат
   # «ровно один файл» судит относительные пути, а не текст вывода `diff`.
   out="$(bash "$0" --into "$work/with space/twin" 2>&1)"; rc=$?
@@ -322,8 +334,9 @@ while [ $# -gt 0 ]; do
     --table) mode=table ;;
     --into) mode=into; into="${2:-}"; shift ;;
     --chart) CHART="$(cd "${2:-}" && pwd)" || die2 "каталога чарта ${2:-} нет"; shift ;;
+    --fixture) FIXTURE="${2:-}"; shift ;;
     --self-test) mode=self ;;
-    *) echo "использование: $SCRIPT --table | --into <каталог> [--chart <каталог>] | --self-test" >&2; exit 2 ;;
+    *) echo "использование: $SCRIPT --table | --into <каталог> [--chart <каталог>] [--fixture <файл>] | --self-test" >&2; exit 2 ;;
   esac
   shift
 done
