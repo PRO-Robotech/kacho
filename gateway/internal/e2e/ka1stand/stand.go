@@ -673,7 +673,11 @@ func Bearer(tok string) Presented {
 
 func SessionCarrier(v string) Presented {
 	return func(r *http.Request) {
-		r.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: v})
+		// Признаки Secure/HttpOnly на печенье ЗАПРОСА не уезжают (в заголовок
+		// Cookie идут только имя и значение); они стоят затем, чтобы форма
+		// печенья была той же, что у носителя, который выдаёт служба.
+		r.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: v,
+			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	}
 }
 
