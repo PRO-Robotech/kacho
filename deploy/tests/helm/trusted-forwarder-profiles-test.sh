@@ -99,10 +99,10 @@ PROFILES="$(stacks_table | tr ':' '|')"
 # Посадки он не несёт, поэтому его отсутствие в CI ничего не скрывает;
 # добавляется к набору, только когда файл на месте. Что именно измерено,
 # печатается ниже — «измерили меньше» не должно выглядеть как «измерили всё».
-OPTIONAL_ORY="values.fe3455-ory.yaml"
-if [ -f "$UMBRELLA/$OPTIONAL_ORY" ]; then
+OPTIONAL_CREDS="values.fe3455-secrets.yaml"
+if [ -f "$UMBRELLA/$OPTIONAL_CREDS" ]; then
   PROFILES="$PROFILES
-fe3455+ory|$(stacks_chain fe3455 ','),$OPTIONAL_ORY"
+fe3455+creds|$(stacks_chain fe3455 ','),$OPTIONAL_CREDS"
 fi
 
 # render <файлы-через-запятую> <имя профиля> — манифест профиля в $HELM_OUT.

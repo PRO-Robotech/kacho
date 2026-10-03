@@ -33,6 +33,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/corelib/db"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
@@ -161,7 +162,7 @@ func TestE2E_REG33IP_RevokeSafety_RealHandlerRealPGRealForward(t *testing.T) {
 	// РЕАЛЬНЫЙ HTTP reverse-proxy в httptest-«zot»: 201 на manifest-PUT, 200 на pull.
 	var zotHits int
 	var zotMu sync.Mutex
-	zot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	zot := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		zotMu.Lock()
 		zotHits++
 		zotMu.Unlock()

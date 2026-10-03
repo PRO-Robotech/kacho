@@ -61,9 +61,10 @@ Rubric reference: envconfig-vs-YAML (evgeniy); CWE-1188. Contract impact: none.
 ## 2. One in-process cache intentionally NOT folded into `internal/lrucache`
 
 The audit recommended consolidating the hand-rolled TTL+LRU caches into one
-generic primitive. Five now share `internal/lrucache` (authz decision cache,
-subject cache, DPoP replay cache, introspection cache, and — as of
-sec-hardening-r9b — the `KratosClient` whoami cache). One is **deliberately left
+generic primitive. Four now share `internal/lrucache` (authz decision cache,
+subject cache, DPoP replay cache and introspection cache); a fifth — the session
+cache of the previous identity provider's session client — was folded in by
+sec-hardening-r9b and retired together with that client (#2792). One is **deliberately left
 separate** because forcing it onto the primitive would change its semantics, not
 just its mechanics:
 
@@ -84,18 +85,6 @@ just its mechanics:
   cache at all. That makes folding it into a cache primitive doubly wrong: the
   admission contract now has to hold across processes, which no in-process
   primitive can express. See §3a.
-
-### Migrated (was 2b): `KratosClient` whoami cache
-
-The whoami cache previously hand-rolled two maps (positive / negative) with
-bespoke `evictLocked` / `enforceCapLocked` cap enforcement. It now uses a single
-`lrucache.Cache[string, kratosCacheEntry]` where the positive/negative class is a
-field on the value (`active`) and the dual TTL (positive 30s, negative 5s) is
-expressed per entry via `PutWithTTL`. The attacker-controlled-cookie keyspace is
-still bounded by the primitive's hard cap (`kratosCacheMaxEntries`). The earlier
-"dual-TTL split-cache needs two primitives" rationale did not hold: one keyed
-value + `PutWithTTL` covers it, so the eviction/cap path is now tested exactly
-once in `internal/lrucache`.
 
 Rubric reference: pkg/ reuse principle. Contract impact: none —
 unexported, in-process, no wire/API/DB change.

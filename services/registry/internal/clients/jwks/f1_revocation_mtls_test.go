@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // testPKI — минимальный внутренний удостоверяющий центр пробы: якорь, пара
@@ -125,7 +127,7 @@ type mutualAuthority struct {
 func newMutualAuthority(t *testing.T, pki testPKI) *mutualAuthority {
 	t.Helper()
 	a := &mutualAuthority{}
-	a.srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	a.srv = privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a.asked.Add(1)
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
 			a.withoutClient.Add(1)

@@ -97,6 +97,18 @@ import (
 // `UserService/ResetSecondFactor` (Ф12 Р10, kacho#1281) и
 // `MembershipService/ListMine` (kaname#206); обе обслуживаются службой в её
 // дереве. Перемерено прогоном после регенерации: строк службы 110 из 343.
+//
+// Край Ф7 (kacho#2718, пин службы на f8fc5a37) добавил ШЕСТЬ —
+// `AccessKeyService/{BeginRegistration,FinishRegistration,List,Revoke,
+// BeginAssertion,FinishAssertion}`: ключи доступа человека, обслуживаемые
+// службой в её дереве. Перемерено прогоном после регенерации: строк службы
+// 116 из 349.
+//
+// Подъём пина на 0dd03218 (kacho#3000, ствол службы на фундаменте v1.10.0) снял
+// ОДНУ — `InternalUserService/OnRecoveryCompleted`: служба сняла внутренний
+// глагол, оставшийся от снятого поставщика (kaname#564), и край перестал
+// нести его строку регенерацией каталога. Перемерено прогоном после
+// регенерации: строк каталога 348.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -112,6 +124,12 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
 	"kaname.cloud.iam.v1.AccessBindingService/Revoke",
 	"kaname.cloud.iam.v1.AccessBindingService/Update",
+	"kaname.cloud.iam.v1.AccessKeyService/BeginAssertion",
+	"kaname.cloud.iam.v1.AccessKeyService/BeginRegistration",
+	"kaname.cloud.iam.v1.AccessKeyService/FinishAssertion",
+	"kaname.cloud.iam.v1.AccessKeyService/FinishRegistration",
+	"kaname.cloud.iam.v1.AccessKeyService/List",
+	"kaname.cloud.iam.v1.AccessKeyService/Revoke",
 	"kaname.cloud.iam.v1.AccountService/Create",
 	"kaname.cloud.iam.v1.AccountService/Delete",
 	"kaname.cloud.iam.v1.AccountService/Get",
@@ -164,7 +182,6 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf",
 	"kaname.cloud.iam.v1.InternalUserService/Get",
-	"kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
 	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 	"kaname.cloud.iam.v1.MembershipService/Create",
 	"kaname.cloud.iam.v1.MembershipService/Get",

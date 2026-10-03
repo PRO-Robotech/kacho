@@ -91,6 +91,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _js_code_and_literals,
     js_comment,
     js_regex_literal_text,
+    js_regex_src,
     js_str,
     load_cases_module,
     _MUTATION_METHODS,
@@ -2977,6 +2978,10 @@ _INJECTED = {
     "conformance_lifecycle_pack": conformance_lifecycle_pack,
     "js_str": js_str,
     "js_regex_literal_text": js_regex_literal_text,
+    # Образец регулярного выражения ЦЕЛИКОМ, с проверкой, что литерал `/…/` его
+    # переживёт (#1209): модуль `authz-sa-apitoken` собирает образец
+    # идентификатора операции из приставки и отдаёт его сюда, а не вклеивает.
+    "js_regex_src": js_regex_src,
 }
 
 

@@ -443,3 +443,7 @@ func TestPreflightPredicates_RecogniseTheRealTree(t *testing.T) {
 	t.Logf("предпосылки: строк таблицы %d, секретов заводит посев %d, требуется всего %d",
 		len(f.producers), seeded, len(f.required))
 }
+
+// scalarLine — `ключ: значение` внутри блока. Переехал сюда из снятой пробы
+// источника величины обратного вызова (kacho#2818): читатель остался живым.
+var scalarLine = regexp.MustCompile(`^(\s*)([a-zA-Z][a-zA-Z0-9_]*):\s*(\S.*?)\s*$`)

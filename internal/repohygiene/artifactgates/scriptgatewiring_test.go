@@ -164,10 +164,10 @@ func findToolScriptGates(t *testing.T, root string) []string {
 //
 // Без этого шага гейт, вызванный из другого — уже вызванного — гейта, читался
 // бы как немой: обход достижимости идёт по workflow'ам и Makefile'ам и внутрь
-// шелла не заходит. Реальные пары в этом дереве:
-// `assert-production-posture.sh` → `assert-admin-hop-transport.sh` →
-// `remeasure-provider-listener-tls.sh`. Ложное срабатывание на них выключило бы
-// гейт при первой же встрече — поэтому расширение обязательно, а не удобно.
+// шелла не заходит. Реальная пара в этом дереве:
+// `assert-production-posture.sh` → `assert-identity-provider-absent.sh`. Ложное
+// срабатывание на ней выключило бы гейт при первой же встрече — поэтому
+// расширение обязательно, а не удобно.
 //
 // Единственное исключение — selfTestOnlyRunner, см. его комментарий.
 func reachableIncludingScripts(t *testing.T, root string) []string {

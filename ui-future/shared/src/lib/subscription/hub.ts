@@ -56,6 +56,8 @@
 // балансировщика его нет ни у одного вида) и не все рода изменения (у снятия —
 // ни у кого). Разбор — в `use-resource-stream.ts`.
 
+import { carrierVerbPending, orderedTransport, registerOrderedStream } from "@shared/api/carrier-order";
+
 /** Адрес единственной проекции потока. Тот же, что объявлен краем. */
 export const STREAM_PATH = "/subscription/v1/events";
 
@@ -213,9 +215,18 @@ const defaultDeps: HubDeps = {
   // отвечает как есть, и компилятор это видит сам. Стоявшее прежде
   // `as unknown as EventSourceLike` не сужало и не расширяло ничего — зато
   // сняло бы проверку, начни объявление и браузер расходиться.
+  //
+  // Поток и разбор отказа — обращения вкладки к краю (приёмка F8, Р10). Разбор
+  // выпускает упорядочивающий транспорт. Приёмник строится здесь — дом клиента
+  // потока один (#1021), — но стоит на учёте того же упорядочения: хаб
+  // закрывает поток перед глаголом, ставящим носитель, открывает после исхода
+  // и не открывает, пока глагол идёт (`track`, `ensureOpen`).
   open: (url) => new EventSource(url, { withCredentials: true }),
   diagnose: async (url) => {
-    const res = await fetch(url, { headers: { Accept: "text/event-stream" }, credentials: "same-origin" });
+    const res = await orderedTransport.fetch(url, {
+      headers: { Accept: "text/event-stream" },
+      credentials: "same-origin",
+    });
     const body = await res.text();
     return { status: res.status, contentType: res.headers.get("content-type") ?? "", body: body.slice(0, 300) };
   },
@@ -348,8 +359,46 @@ export class SubscriptionHub {
   private diagnosingSince: number | null = null;
   private watchers = new Set<() => void>();
   private nextId = 1;
+  /**
+   * Снятие хаба с учёта упорядочения вкладки; `null` — не на учёте.
+   *
+   * На учёте хаб стоит, пока у него есть каналы, — и ТОЛЬКО тогда: глагол,
+   * ставящий носитель, закрывает его потоки до своего выпуска и открывает после
+   * исхода (приёмка F8, Р10). Хаб без каналов закрывать нечего, а учёт,
+   * переживший последний канал, держал бы хаб живым за пределами страницы.
+   */
+  private unregister: (() => void) | null = null;
 
   constructor(private readonly deps: HubDeps = defaultDeps) {}
+
+  /**
+   * Закрыть все потоки СЕЙЧАС — перед выпуском глагола, ставящего носитель.
+   *
+   * Это не отказ: окна молчания канал не получает, подписчики остаются, а
+   * покрытие снимается — списки возвращаются к опросу, пока потока нет.
+   */
+  private suspend(): void {
+    let changed = false;
+    for (const ch of this.channels.values()) {
+      if (!ch.source) continue;
+      ch.source.close();
+      ch.source = null;
+      if (ch.open) changed = true;
+      ch.open = false;
+    }
+    if (changed) this.announce();
+  }
+
+  private track(): void {
+    if (this.unregister || this.channels.size === 0) return;
+    this.unregister = registerOrderedStream({ suspend: () => this.suspend(), resume: () => this.openWaiting() });
+  }
+
+  private untrack(): void {
+    if (this.channels.size > 0 || !this.unregister) return;
+    this.unregister();
+    this.unregister = null;
+  }
 
   /** Ключ канала: поток открывается к ОДНОМУ владельцу и одному проекту. */
   private static key(owner: string, projectId: string | null): string {
@@ -406,6 +455,7 @@ export class SubscriptionHub {
         subscribers: new Map(),
       };
       this.channels.set(key, ch);
+      this.track();
     }
     const id = this.nextId++;
     ch.subscribers.set(id, { kind: target.kind, handler });
@@ -422,6 +472,7 @@ export class SubscriptionHub {
         const held = live.source !== null;
         live.source?.close();
         this.channels.delete(key);
+        this.untrack();
         // Место освободилось — отдать его ждущему. Потолок, который только
         // запрещает, сделал бы первого подписчика вечным владельцем места:
         // его список ушёл, а ждущий остался бы на опросе до перезагрузки.
@@ -480,6 +531,10 @@ export class SubscriptionHub {
 
     // ПОРЯДОК ПРОВЕРОК НЕСУЩИЙ, и каждая стоит там, где стоит, по причине.
     //
+    // 0. Идёт глагол, ставящий носитель: между его выпуском и исходом вкладка
+    //    не выпускает ничего (приёмка F8, Р10 п. 2). Канал остаётся подписанным,
+    //    и после исхода его открывает упорядочение (`resume` → `openWaiting`).
+    if (carrierVerbPending()) return;
     // 1. Край уже сказал, что журналов не служит. Ответ этот — про КРАЙ, и
     //    спрашивать его снова другим владельцем значит получить то же самое,
     //    заплатив ещё одним запросом и ещё одной строкой в журнале браузера.
@@ -524,7 +579,8 @@ export class SubscriptionHub {
         return;
       }
       const live = this.channels.get(key);
-      if (!live) return;
+      // Кадр закрытого приёмника — не о текущем потоке канала.
+      if (!live || live.source !== source) return;
       live.knownKinds = new Set(opened.knownKinds ?? []);
       live.open = true;
       this.announce();
@@ -534,7 +590,7 @@ export class SubscriptionHub {
       const event = parseFrame(ev.data)?.event;
       if (!event) return;
       const live = this.channels.get(key);
-      if (!live) return;
+      if (!live || live.source !== source) return;
       // Событие раздаётся ФАКТОМ ИЗМЕНЕНИЯ и всем подписчикам своего вида: род
       // изменения здесь не различается намеренно — снятие предмета единственное
       // сообщает, что строки больше нет, и состояния оно не несёт ни у одного
@@ -546,7 +602,9 @@ export class SubscriptionHub {
 
     source.onerror = () => {
       const live = this.channels.get(key);
-      if (!live) return;
+      // Отказ закрытого приёмника — не отказ канала: закрыл его сам хаб (снятие
+      // подписки, глагол, ставящий носитель), и окна молчания он не заводит.
+      if (!live || live.source !== source) return;
       // Приёмник переподключается сам, пока соединение живо (`CONNECTING`);
       // закрытым он становится там, где повтора не будет — отказ до заголовков
       // (`501` без объявленного владельца, `403`, `429`) либо неверный тип.

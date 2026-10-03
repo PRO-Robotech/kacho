@@ -479,5 +479,16 @@ chain on the seeded umbrella stack).
 | `authz-deny.py` | `AZD-*` | ~42 | 42-50 |
 | `list-filter.py` | `LF-*` | 4 | 4 |
 | `cross-resource.py` | `XRES-*` | 12 | 12 |
+| `label-revoke-nlb.py` | `T31-LBLREVOKE-NLB-*` | 1 | 1 |
 
 Total ≥320 unique catalogued cases (production-readiness target per acceptance §12.1).
+
+---
+
+## 10. Отзыв выдачи ARM_LABELS при смене меток на listener (`cases/label-revoke-nlb.py`, коллекция `label-revoke-nlb`)
+
+Перенесён из набора службы доступа задачей #2912 (сторона службы — PRO-Robotech/kaname#415). Проба видимости — `InternalIAMService.Check` (`v_list`) на внутреннем слушателе края (`Step.internal`).
+
+| id | что утверждает |
+|---|---|
+| `T31-LBLREVOKE-NLB-LISTENER-04` | revoke04_listener: nlb.listener Create emits labels + Update label-remove revokes (double-bug, Check v_list True→False) |

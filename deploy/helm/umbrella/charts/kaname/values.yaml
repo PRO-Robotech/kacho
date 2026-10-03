@@ -24,73 +24,7 @@
 # standalone, без umbrella) — `api.kacho.cloud`.
 platform:
   domain: api.kacho.cloud
-  subdomains:
-    # `app` и `kratos` ПЕРЕЕХАЛИ в `global.kacho.identity` вместе с содержимым
-    # настроек службы личности: оно обязано вычисляться и в контексте подчарта
-    # провайдера, где значений kaname нет. Здесь остаётся только то, что
-    # читают шаблоны САМОГО подчарта, — иначе ключ до процесса не доедет,
-    # а оператор прочтёт строку как заявление о посадке.
-    hydra: hydra
   iam:
-    # In-cluster Hydra token-эндпоинт (POST /oauth2/token) для client_credentials-обмена
-    # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
-    # issuer-URL (недостижимый в кластере). Prod-профиль ставит cluster-internal Service.
-    hydraTokenURL: ""
-    # Trust anchor for the token-endpoint hop (env KANAME_HYDRA_TOKEN_CA_FILE).
-    # That hop carries a signed client assertion out and the minted bearer back, so
-    # the same discipline applies as for the admin hop: empty → default transport;
-    # set → the only anchor; unreadable → refuse the start. Production refuses to
-    # start on an https address with this empty.
-    hydraTokenCaFile: ""
-    # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
-    # (:9097) mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). Empty → iam falls
-    # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
-    # hydra-public base so the iam→Hydra fetch stays inside the cluster.
-    #
-    # ЗДЕСЬ СТОЯЛО «Hydra remains the token signer/issuer — iam only proxies», и это
-    # пережило свой предмет. Платформа чеканит СВОИ токены своим подписантом
-    # там, где объявлена своя чеканка (`authn.token-signing`), и тот же слушатель
-    # :9097 отдаёт ВТОРУЮ запись — набор из НАШЕЙ ключницы по своему пути
-    # (`authn.token-signing.key-set-path`). Проксированием описывается ТОЛЬКО
-    # эта ручка: зеркало прежнего издателя — дословная копия его набора, и киды
-    # в нём его. Перепутать записи значит проверять токен одного издателя ключом
-    # другого — развязка «издатель → источник набора» существует ради этого.
-    hydraJwksUrl: ""
-    # Trust anchor for the JWKS upstream fetch when that hop is served over TLS
-    # (env KANAME_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
-    # what the provider's plaintext in-cluster public listener needs today. Set →
-    # that bundle becomes the ONLY anchor for the hop, and one that cannot be read
-    # REFUSES THE START rather than silently falling back to the system roots. A
-    # production-class iam refuses to start when the address is https and this is
-    # empty: the provider's in-cluster certificate is internal-CA issued, the system
-    # roots never chain to it, and the address would read as hardened while every
-    # fetch failed. The bundle is already in the pod when mtls.enable is on, at
-    # <mtls.mountPath>/server/ca.crt — no extra volume is needed.
-    hydraJwksCaFile: ""
-    # In-cluster Hydra ADMIN URL (POST /admin/clients + jwt-bearer trust-grants) used by
-    # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KANAME_HYDRA_ADMIN_URL).
-    # Empty → ResolveHydraAdminURL() derives `https://hydra-admin.<domain>` from the issuer,
-    # which is UNREACHABLE from inside the cluster (public ingress hostname does not resolve
-    # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
-    # Every deployed profile MUST point this at the cluster-internal hydra-admin Service.
-    # Every deployed profile MUST declare it: a production-class iam REFUSES TO
-    # START when it is left to the derivation (config.validateProductionProviderAdminHop).
-    hydraAdminUrl: ""
-    # Trust anchor for the provider-ADMIN hop when that hop is served over TLS
-    # (env KANAME_HYDRA_ADMIN_CA_FILE). The hop carries the administrative
-    # bearer on every OAuth2 client registration, trust grant and session
-    # teardown, and the admin API it opens authenticates nobody — so production
-    # addresses it over https, and https here is only meaningful if the peer is
-    # VERIFIED. The provider's in-cluster certificate is issued by the internal
-    # CA, which this process does not trust by default (its default pool is the
-    # system roots).
-    #
-    # The internal-CA bundle is already in the pod when mtls.enable is on, at
-    # <mtls.mountPath>/server/ca.crt — the same CA that signs the provider's admin
-    # certificate — so no extra volume is needed. A bundle that cannot be read, or
-    # that holds no certificate, REFUSES THE START rather than silently falling
-    # back to the system roots.
-    hydraAdminCaFile: ""
     # Bootstrap-token (#58) — non-interactive production-seed entry point
     # (InternalBootstrapTokenService.MintBootstrapToken, :9091). The signing key is
     # an ES256 (P-256, PKCS#8) private-key PEM held in a Secret; empty secret name →
@@ -132,9 +66,8 @@ platform:
     # secondFactor — КООРДИНАТА СЕКРЕТА с перечнем ключей обёртки секретов второго
     # фактора (Ф12, kacho#1281; переменная KANAME_SECOND_FACTOR_ENC_KEY).
     #
-    # Требуется стражем старта ТОЛЬКО под `config.authn.identityProvider: own`; под
-    # `external` второго фактора нет, секрета может не быть вовсе, и `optional: true`
-    # у ссылки оставляет такой стенд поднимаемым.
+    # Требуется стражем старта; `optional: true` у ссылки оставляет решение об
+    # отсутствии секрета стражу, который называет ручку, а не kubelet.
     #
     # Здесь КООРДИНАТА, а не величина: сама величина живёт в объекте Secret кластера,
     # потому что профиль отслеживается git. Умолчание имени — то же соглашение, что у
@@ -158,35 +91,23 @@ platform:
     #                   and the provider-global TTL applies, so an existing
     #                   deployment is unchanged. Production pins it explicitly
     #                   (values.prod.yaml); the local e2e stand deliberately does
-    #                   NOT, because its Hydra access_token TTL is widened to
-    #                   cover long serial newman waves.
+    #                   NOT, because its previous issuer's access_token TTL is
+    #                   widened to cover long serial newman waves.
     saKey:
       defaultTtl: "2160h"   # 90d
       maxTtl: "8760h"       # 365d
       accessTokenTtl: ""
-      # bindDpop — issue sender-constrained (RFC 9449) machine tokens. OFF by
-      # default and deliberately NOT flipped here: it only affects keys issued
-      # after it is on, so it must be enabled first, existing keys rotated, and
-      # only then may the gateway require binding.
-      #
-      # AND IT HAS A READER ONLY WHILE THE CONTOUR IS NOT TRANSLATED (#1137).
-      # Binding is registration metadata for the client MIRROR at the previous
-      # issuer. A profile that turns on `config.authn.clientToken.enabled`
-      # creates no mirror at all, so there this knob is read by nothing — the
-      # operator would declare a control that nothing enforces. iam REFUSES TO
-      # START in that combination, and tests/helm/machine-credential-posture-test.sh
-      # refuses the profile before any pod is created.
-      bindDpop: false
-  hooks:
-    tokenHookSecretName: kaname-hook-token
-    tokenHookSecretKey: token
+      # Ключа `bindDpop` здесь НЕТ, и профиль, объявивший его, получает отказ
+      # рендера (`kaname.refuseRetiredKnobs`, kacho#2949): токен-эндпоинт, где
+      # обменивается ключ служебной учётки, доказательства владения не
+      # принимает, и машинный токен `cnf` не несёт ни на одном профиле.
 
 # ─── Умолчания глобальных значений службы личности ────────────────────────────
 #
 # АВТОРИТЕТНОЕ объявление — в умбрелле (values.yaml, `global.kacho.identity`):
-# только оттуда значения доходят до подчарта ПРОВАЙДЕРА, где по ним считается
-# отпечаток содержимого настроек. Значения `global`, объявленные подчартом,
-# соседям не раздаются — это свойство Helm, а не наше решение.
+# оттуда узел читают и этот подчарт, и стражи рендера зонта (почтовая полоса).
+# Значения `global`, объявленные подчартом, соседям не раздаются — это свойство
+# Helm, а не наше решение.
 #
 # Здесь они нужны ровно для одного: чтобы `helm template charts/kaname`
 # рендерился САМ ПО СЕБЕ, без умбреллы. На таком рендере стоит самопроверка
@@ -195,6 +116,11 @@ platform:
 # пуст, и гейт «пропускает» внесённый дефект — то есть перестаёт краснеть там,
 # где обязан.
 #
+# Копия несёт ТОЛЬКО то, что читают шаблоны подчарта: имя доверяющей стороны
+# ключей доступа и происхождение консоли (`kaname.identity.webauthnRpId`,
+# `kaname.identity.consoleOrigin`) и почтовую полосу. Узлы, которые читали
+# настройки прежнего поставщика личности, ушли вместе с ними (kacho#2818).
+#
 # Расхождение этой копии с авторитетной держит гейт, а не внимание:
 # deploy/identity_global_defaults_agree_test.go.
 global:
@@ -202,63 +128,13 @@ global:
     identity:
       domain: api.kacho.cloud
       appSubdomain: app
-      kratosSubdomain: kratos
-      # ─── браузерные адреса: ПУСТО ⇒ вывести из `domain` ──────────────────
-      # Та же идиома, что у `hooks.host`/`hooks.port`. Объявлены затем, чтобы
-      # посадка, где консоль стоит не на `https://<app>.<domain>`, была
-      # ВЫРАЗИМА: стенд разработки раздаёт её по `http://console.kacho.local:28080`
-      # (kind отображает 80 → 28080, слушателя на 443 нет), а потоки — в корне.
+      # Происхождение консоли. ПУСТО ⇒ вывести `https://<appSubdomain>.<domain>`.
+      # Объявлено затем, чтобы посадка, где консоль стоит не там, была ВЫРАЗИМА:
+      # стенд разработки раздаёт её по `http://console.kacho.local:28080` (kind
+      # отображает 80 → 28080, слушателя на 443 нет).
       appBaseURL: ""
-      kratosPublicBaseURL: ""
-      # ─── префикс путей потоков: ПУСТО, то есть КОРЕНЬ ───────────────────
-      # Пустая строка здесь — не «ручка не настроена», а РЕШЕНИЕ, и принято оно
-      # замером на стенде (#1048), а не вкусом. Раздача консоли обслуживает
-      # потоки в КОРНЕ — `^/(login|registration|…)(/|$)` в
-      # ui-future/deploy/templates/configmap-nginx.yaml — и проксирует их службе
-      # Ory. Путь с лишним сегментом в эту регулярку не попадает и уезжает в
-      # SPA-заглушку `location /`, которая отвечает `200` с оболочкой консоли:
-      # отказ выглядит УСПЕХОМ. Ни `404`, ни записи в журнале — только «вход не
-      # открывается», и искать причину неоткуда.
-      #
-      # Почему корень, а не `/auth`. Прежде здесь стояло `/auth`, и ни один
-      # профиль этого не переопределял, кроме стенда разработки. Боевой не
-      # переопределяет и сейчас — значит величина, стоящая ЗДЕСЬ, и есть
-      # величина боя. Возвращать `/auth` можно только вместе с полосой в
-      # раздаче: два места об одном предмете, и их согласие держит
-      # deploy/identity_flow_path_is_served_test.go, а не внимание.
-      flowPathPrefix: ""
-      # Домен cookie сессии и `rp.id` ключей доступа. Пусто ⇒ `domain`.
-      # Cookie с чужим доменом браузер отвергает целиком, поэтому величина
-      # обязана быть родительской для хоста консоли.
-      cookieDomain: ""
+      # Имя доверяющей стороны ключей доступа. Пусто ⇒ `domain`.
       webauthnRpId: ""
-      # ─── ПОСАДКА БЕЗ ДОМЕННОГО ИМЕНИ ────────────────────────────────────
-      # `true` объявляет ФАКТ о посадке: у её внешнего origin доменного имени
-      # НЕТ — браузер приходит на голый IP-литерал (так стоит консоль на
-      # управляемом кластере a8f60d: ни имени, ни TLS снаружи).
-      #
-      # Следствий два, и оба ВЫНУЖДЕНЫ стандартами, а не выбраны:
-      #   · печенье сессии становится host-only — ключ `domain` не печатается
-      #     вовсе (RFC 6265 §5.1.3: domain-match с IP-литералом ложен всегда,
-      #     значит ЛЮБОЕ значение заставляет браузер отбросить печенье целиком,
-      #     и вход не состоится молча);
-      #   · ключи доступа выключаются — RP ID по WebAuthn L3 §5.1.3 обязан быть
-      #     валидным доменным именем, у IP-литерала его нет by construction.
-      #
-      # Отдельная ручка, а не «пусто ⇒ не печатать»: пустое у `cookieDomain`
-      # уже занято смыслом «не объявлено ⇒ вывести из `domain`», на нём стоит
-      # боевой профиль. Второй смысл у пустого снял бы `domain` печенья в бою.
-      # Одна ручка на два следствия: факт о посадке ОДИН, а две ручки о нём
-      # разошлись бы молча.
-      #
-      # Объявив `true`, профиль ОБЯЗАН очистить `cookieDomain`/`webauthnRpId`,
-      # если их объявил слой под ним, — иначе рендер отказывает и называет обе
-      # величины. Молча выбросить принятое нельзя.
-      domainless: false
-      hooks:
-        scheme: http
-        host: ""
-        port: ""
       # ─── ПОЧТОВАЯ ПОЛОСА: УМОЛЧАНИЯ НЕТ (Р3 приёмки ID-MAIL-1) ──────────
       # Пусто ⇒ отказ, а не «разумное значение». Разбор — в умбрелле
       # (values.yaml, тот же узел): здесь копия ради одиночного рендера
@@ -271,30 +147,11 @@ global:
         credentialSecret:
           name: ""
           key: ""
-
-# Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
-# флагами; в Phase 2 поднимаются вместе с kaname (один namespace, один Helm
-# release). При желании задеплоить Kratos в отдельный namespace — отключить
-# здесь и завести в стороннем chart'е.
-kratos:
-  identitySchema:
-    enabled: true
-  config:
-    enabled: true
-    # ─── smtp и hooks ПЕРЕЕХАЛИ в `global.kacho.identity` (umbrella values.yaml) ─
-    #
-    # Не «вынесены для красоты»: содержимое настроек службы личности читается из
-    # ДВУХ контекстов — нашего подчарта, где рендерится карта настроек, и
-    # подчарта провайдера, где в шаблон пода кладётся ОТПЕЧАТОК её содержимого.
-    # Без отпечатка правка карты не перекатывает под, и процесс живёт со старым
-    # содержимым (настройки читаются один раз, на старте). Общими для обоих
-    # контекстов являются только `.Values.global` и `.Release`, поэтому иного
-    # места у этих значений нет.
-    #
-    # Здесь они НЕ дублируются намеренно: два объявления одного предмета
-    # разошлись бы молча, и привязка стала бы ложной ровно тогда, когда нужна.
-    # Единственное объявление содержимого —
-    # charts/kaname/templates/_kratos-identity.tpl.
+        # Якорь проверки сертификата узла — тоже источник (секрет и ключ), а не
+        # величина. Разбор — в умбрелле.
+        trustAnchorSecret:
+          name: ""
+          key: ""
 
 # JWKS rotator CronJob — УДАЛЁН (был вестигиальным) и НЕ возвращается.
 #
@@ -370,23 +227,16 @@ containerSecurityContext:
 ports:
   grpc: 9090
   internalGrpc: 9091
-  # HTTP-слушатель перехватов (перехваты выдачи и обновления токена, приём
-  # событий). Здесь стояло, что он же отдаёт пакет правил наложения: такого
-  # маршрута у службы нет ни одного, а комментарий пережил предмет (#2141).
-  hooksHttp: 9092
   # Docker Registry v2 `/iam/token` auth-server HTTP listener — external-reachable
-  # (TLS terminated externally), distinct from hooks (:9092) / metrics (:9095). The
+  # (TLS terminated externally), distinct from metrics (:9095). The
   # registry data-plane TLS-sidecar proxies docker token exchange here.
   registryToken: 9096
-  # Cluster-INTERNAL listener of verification KEY SETS, one record per accepted
-  # issuer (`jwksproxyhttp.NewBinding`): OUR key set at
+  # Cluster-INTERNAL listener of the verification KEY SET: OUR key set at
   # `config.authn.tokenSigning.keySetPath` — the signer of every token the service
-  # mints — and, at `/.well-known/jwks.json`, a short-TTL mirror of the previous
-  # issuer's PUBLIC JWKS, kept only while tokens of its issue are still presentable
-  # (#2564). The registry data-plane and the edge read the record named by the
-  # token's issuer (`tokenAcceptance.issuerKeySets`); there is no fallback across
-  # records. ONE-WAY server-TLS, exposed ONLY on the kaname-internal Service
-  # (never external, ban #6).
+  # mints; one record, ours (kaname#361). The registry data-plane and the edge read
+  # the record named by the token's issuer (`tokenAcceptance.issuerKeySets`).
+  # ONE-WAY server-TLS, exposed ONLY on the kaname-internal Service (never
+  # external, ban #6).
   jwksProxy: 9097
   # Собственные REST-фронты службы (KAN-REST-1). Вынесенная отдельным продуктом,
   # служба края платформы не имеет by construction — её HTTP-поверхность обязана
@@ -403,10 +253,8 @@ ports:
   #   internalRest: 9099  # внутренний фронт: объявляет ПРОФИЛЬ
   # Слушатель полосы входа паролем (Ф3, kacho#1269): четыре глагола формы, на
   # которые край ретранслирует вход, выход, смену пароля и признак формы.
-  # Поднимается ПОСАДКОЙ `config.authn.identityProvider: own`, а не адресом: под
-  # `external` процесс адрес читает, объявляет поверхность выключенной с причиной
-  # и слушателя не поднимает. Умолчания нет по той же причине, что у фронтов:
-  # под `own` незаданный адрес — отказ старта с именем ручки
+  # Умолчания нет по той же причине, что у фронтов: незаданный адрес — отказ
+  # старта с именем ручки
   # (`KANAME_API_SERVER__LOGIN_LANE_ENDPOINT`). Порт свой — от фронтов отличен.
   #   loginLane: 9100     # объявляет ПРОФИЛЬ (см. values.prod.yaml умбреллы)
 
@@ -422,9 +270,6 @@ service:
   internal:
     type: ClusterIP
     port: 9091
-    # Порт перехватов, выставленный на внутренний Service (cluster-internal
-    # only, запрет #6).
-    hooksHttpPort: 9092
     # Внутренний REST-фронт: выставлен ТОЛЬКО на внутренний Service. Номер
     # выводится из `ports.internalRest`, если профиль не назвал его отдельно.
     #   internalRestPort: 9099   # объявляет ПРОФИЛЬ
@@ -432,9 +277,9 @@ service:
     # Service — его единственный вызывающий край платформы. Номер выводится из
     # `ports.loginLane`, если профиль не назвал его отдельно.
     #   loginLanePort: 9100      # объявляет ПРОФИЛЬ
-    # Cluster-INTERNAL Hydra-JWKS proxy port (GET /.well-known/jwks.json), exposed
-    # ONLY on kaname-internal (never the public Service, ban #6). Consumed by
-    # service-internal.yaml — the registry data-plane fetches JWKS from here.
+    # Cluster-INTERNAL key-set listener port, exposed ONLY on kaname-internal
+    # (never the public Service, ban #6). Consumed by service-internal.yaml —
+    # the registry data-plane fetches the service's key set from here.
     jwksProxyPort: 9097
 
 # Эти шесть ключей — умолчания ВСЕХ стеков, а не только стенда: боевые профили
@@ -474,15 +319,13 @@ config:
     # Объявлен здесь по тому же доводу, что три выше: зонт — объявление НАШЕГО
     # стенда, и не назвать величину значит не поднять стенд вовсе. Проверка
     # потолков у службы БЕЗУСЛОВНА (`validate.go`): она не смотрит ни на режим, ни
-    # на посадку, поэтому незаданный потолок роняет старт и под `external`.
+    # на посадку, поэтому незаданный потолок роняет старт.
     #
-    # ПИН СЛУЖБЫ ЭТОТ ПОТОЛОК ПОКА НЕ ЧИТАЕТ, и это названо, а не умолчано: на
-    # `16b5cade` таблица потолков трёхстрочная, четвёртая строка пришла в
-    # `39628487` (kaname#270). Лишний ключ карты настроек службе безвреден —
-    # разбор настроек нестрогий (viper), неизвестный ключ игнорируется, — а с
-    # первым же подъёмом пина величина становится условием старта. Обратный
-    # порядок (поднять пин, потом дописать чарт) дал бы стенд, который не
-    # поднимается ни при каком профиле.
+    # Пин службы (`0dd03218a613`, kacho#3000) этот потолок ЧИТАЕТ: четвёртая
+    # строка таблицы пришла в `39628487` (kaname#270), и величина — условие
+    # старта. Ключ заведён здесь раньше подъёма пина намеренно: обратный порядок
+    # (поднять пин, потом дописать чарт) дал бы стенд, который не поднимается ни
+    # при каком профиле.
     accessKeysPerUser: 8
   # Фоновые задания. Величина ОБЪЯВЛЕНА здесь, а не вшита в процесс: период
   # обновления снимка каталога и есть верхняя граница отставания снимка от базы
@@ -508,14 +351,9 @@ config:
     # отказ рендера с обеими величинами. Полоса поднята, а имени нет нигде —
     # отказ старта процесса.
     #
-    # `service` — это НЕ только fallback для `?service=`: оно же уходит в
-    # issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте
-    # КАЖДОГО выпускаемого SA-ключа. Расхождение с тем, что docker шлёт в
-    # `?service=`, ломает login:
-    #   Hydra: "Requested audience '<host>' has not been whitelisted by the
-    #           OAuth 2.0 Client" (400) → shim отдаёт 401 → docker: unauthorized.
-    # ⚠ audience фиксируется в клиенте В МОМЕНТ выпуска ключа → ключи, выпущенные
-    # с неверным значением, надо ПЕРЕВЫПУСТИТЬ.
+    # `service` — это НЕ только fallback для `?service=`: оно же адресат `aud`,
+    # который полоса чеканит (#321). Расхождение с тем, что docker шлёт в
+    # `?service=`, ломает login: shim отдаёт 401 → docker: unauthorized.
     #
     # `issuer` — `iss` + realm в WWW-Authenticate; должен совпадать с realm'ом
     # data-plane реестра (KACHO_REGISTRY_TOKEN_REALM).
@@ -552,34 +390,15 @@ config:
   # TestR7_3_32_NoProfileNamesTheRetiredLanding.
   authn:
     # secure-by-default (core rule #16); dev — явный opt-in dev-профиля.
-    # ─── посадка личности (#1125) ─────────────────────────────────────────────
-    # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА: `external` — внешний поставщик удостоверений,
-    # `own` — наша собственная чеканка. Разводит требования старта: под
-    # `external` обязательны три адреса поставщика, под `own` — ни одного, зато
-    # обязательны своя чеканка и свой вход человека.
-    #
-    # УМОЛЧАНИЯ У ПРОЦЕССА НЕТ, и это осознанно: каждое из двух возможных
-    # умолчаний неверно по-своему — `external` заставило бы профиль, поля не
-    # объявивший, требовать адресов, которых у него нет; `own` МОЛЧА сняло бы
-    # эти требования с профиля, который просто забыли обновить. Поэтому
-    # умолчание живёт ЗДЕСЬ, в базовом профиле, где его видит читающий, а не в
-    # коде, где его не видит никто.
-    #
-    # Значение `external` — сегодняшняя посадка ВСЯКОГО развёрнутого стенда, и
-    # менять её этой задачей не предполагается: перевод стенда — отдельный шаг
-    # со своей проверкой посадки живого процесса.
-    #
-    # Значение объявлено ПЕРЕХОДНЫМ: оно уходит вместе с последним стендом,
-    # который его выбирает.
-    identityProvider: external
-    # ─── полоса входа паролем (Ф3, kacho#1269) — ТОЛЬКО под `own` ───────────
+    # ─── посадки личности здесь НЕТ (kacho#2818) ─────────────────────────────
+    # Посадка у службы одна (kaname#363), и ключ посадки она отвергает при любом
+    # значении. Ручка `identityProvider` снята вместе с читателем; профиль,
+    # всё ещё её объявляющий, получает отказ рендера (`kaname.refuseRetiredKnobs`).
+    # ─── полоса входа паролем (Ф3, kacho#1269) ─────────────────────────────
     # Рендерится в config.yaml как authn.login.* (env-override:
-    # KANAME_AUTHN__LOGIN__<KEY>). Каждая величина — условие старта под
-    # `identityProvider: own`; умолчания нет ни у одной, пустое значение — отказ
-    # старта с именем ручки. Под `external` блок не читается: вход человека
-    # исполняет поставщик. Образец — тот же, что у собственного чарта службы;
-    # боевой профиль умбреллы объявляет его на `external` по приёмке Ф3 (Р3,
-    # Р11, Ф3-42), чтобы перевод стенда на `own` не заводил полосу с нуля:
+    # KANAME_AUTHN__LOGIN__<KEY>). Каждая величина — условие старта; умолчания нет
+    # ни у одной, пустое значение — отказ старта с именем ручки. Образец — тот же,
+    # что у собственного чарта службы:
     #   login:
     #     sessionTtl: 24h               # абсолютный срок нашей сессии
     #     cookieDomain: none            # `none` — печенье только на хост (#1222)
@@ -598,13 +417,20 @@ config:
     #     memoryReserveBytes: 268435456 # резерв памяти процесса сверх проверяющего
     #     recoveryCodeTtl: 5m           # срок кода восстановления доступа (Ф5,
     #                                   # kacho#2701; KANAME_AUTHN__LOGIN__RECOVERY_CODE_TTL)
-    # ─── регистрация нашей полосой (Ф4, kacho#2699) — ТОЛЬКО под `own` ────────
+    #     # подтверждение адреса (kaname#456, Р7, Р9) — пять величин без умолчания,
+    #     # KANAME_AUTHN__LOGIN__VERIFICATION_{CODE_TTL,CODE_ATTEMPTS,RESEND_INTERVAL,
+    #     # RESEND_LIMIT,RESEND_WINDOW}; величины профиля продукта:
+    #     verificationCodeTtl: 30m        # срок кода подтверждения от выдачи письма
+    #     verificationCodeAttempts: 5     # неподошедших предъявлений на код
+    #     verificationResendInterval: 60s # промежуток между письмами одному человеку
+    #     verificationResendLimit: 5      # писем одному человеку за окно
+    #     verificationResendWindow: 24h   # скользящее окно счёта писем
+    # ─── регистрация нашей полосой (Ф4, kacho#2699) ─────────────────────────
     # Рендерится в config.yaml как authn.registration.* (env-override:
-    # KANAME_AUTHN__REGISTRATION__<KEY>). Обе величины — условие старта под
-    # `identityProvider: own`, умолчания нет ни у одной (Ф4 Р5, Ф4-18/19). Первое
+    # KANAME_AUTHN__REGISTRATION__<KEY>). Обе величины — условие старта,
+    # умолчания нет ни у одной (Ф4 Р5, Ф4-18/19). Первое
     # заведение аккаунта — сама регистрация — проходит безусловно; величина
     # ограничивает следующие за окно, 0 законен («сверх первого — ни одного»).
-    # Под `external` блок не читается: строку авторитета правит администратор.
     # Образец — величина справочника службы (3 за 1 ч):
     #   registration:
     #     admissionsPerWindow: 3        # KANAME_AUTHN__REGISTRATION__ADMISSIONS_PER_WINDOW
@@ -614,37 +440,45 @@ config:
     # Рендерится в config.yaml как authn.self-service-freshness (env-override:
     # KANAME_AUTHN__SELF_SERVICE_FRESHNESS).
     #
-    # Условие старта под `identityProvider: own`: заведение и подтверждение второго
+    # Условие старта: заведение и подтверждение второго
     # фактора требуют предъявления не старше окна, и тем же окном ограничен срок
     # неподтверждённого заведения. УМОЛЧАНИЯ НЕТ намеренно — перенос прежней величины
     # (15 мин) объявляет профиль, где его видит читающий, а не построение, где его не
-    # видит никто. Под `external` страж её не читает.
+    # видит никто.
     #   selfServiceFreshness: 15m
     #
     # ─── привязка ключей доступа (Ф7, kacho#1273) ─────────────────────────────
     # Рендерится в config.yaml как authn.access-keys.* (env-override:
     # KANAME_AUTHN__ACCESS_KEYS__{RP_ID,ORIGINS,ALGORITHMS}).
     #
-    # Три величины КОНТРАКТА, каждая — условие старта под `identityProvider: own`;
+    # Три величины КОНТРАКТА, каждая — условие старта;
     # умолчания нет ни у одной, и это не забывчивость:
-    #   rpId       — доменное имя установки строчными, без схемы, порта и пути: к
+    #   rp-id      — доменное имя установки строчными, без схемы, порта и пути: к
     #                нему браузер привязывает КАЖДЫЙ ключ (WebAuthn L2 §5.1.3).
-    #                Подставить его за оператора нельзя — имя чужое, и ключи,
-    #                привязанные не к тому имени, перестают предъявляться;
+    #                Ручки в этом блоке у него НЕТ (kacho#2905): чарт берёт его из
+    #                узла `identity` раздела `global` — `webauthnRpId`, а пусто —
+    #                `domain`, одним шаблоном (`kaname.identity.webauthnRpId`).
+    #                Второе объявление рядом с общим разошлось бы с ним молча, а
+    #                ключи, привязанные не к тому имени, перестают предъявляться.
+    #                Объявленный здесь `rpId` роняет рендер с именем ключа;
     #   origins    — перечень происхождений консоли `https://хост[:порт]`, каждое
     #                под именем доверяющей стороны; сверяется побайтово. ПУСТОЙ
     #                список — законная величина «никого»: служба стартует и
     #                отвергает всякий ключ. Незаданный перечень — отказ старта:
-    #                «принимаем любое» не политика, а отсутствие привязки;
+    #                «принимаем любое» не политика, а отсутствие привязки.
+    #                `originFromConsole: true` вместо перечня — происхождение
+    #                консоли посадки из того же узла (`appBaseURL`, а пусто —
+    #                `https://<appSubdomain>.<domain>`); обе ручки сразу — отказ
+    #                рендера;
     #   algorithms — идентификаторы COSE: -7 (ES256), -8 (EdDSA), -257 (RS256).
     #                Пустого «никого» здесь не бывает — перечень без единого
     #                алгоритма делает церемонию невыполнимой.
     #
     # Образец НЕРЕЗОЛВИМЫЙ намеренно (RFC 2606) и согласован сам с собой: хост
     # происхождения лежит под именем доверяющей стороны, иначе страж отверг бы и
-    # образец.
+    # образец (имя — `webauthnRpId: access.example.invalid` узла `identity` в
+    # `global`).
     #   accessKeys:
-    #     rpId: access.example.invalid
     #     origins:
     #       - https://console.access.example.invalid
     #     algorithms: [-7, -257]
@@ -803,6 +637,8 @@ initContainer:
     enabled: true
     command: ["/usr/local/bin/kaname-migrator", "up"]
 
+# Ресурсы контейнера службы. `requests.memory` НЕ читается: запрос памяти равен `limits.memory` — пределу,
+# который несёт бюджет полосы входа (`kaname.containerResources`, kacho#2727).
 resources:
   requests:
     cpu: 100m
@@ -863,44 +699,22 @@ mtls:
   # стартует сервис»: то есть верного значения у ручки не было НИ ОДНОГО, и
   # боевой профиль был невыразим by construction. Служба не поднималась вовсе.
   #
-  # hooks: false          # :9092 — обратные вызовы службы личности
   # metrics: false        # :9095 — скрейп счётчиков процесса
   # registryToken: false  # :9096 — докерная полоса выдачи токена
-  # jwksProxy: false      # :9097 — зеркало ключей проверки подписи
+  # jwksProxy: false      # :9097 — набор ключей проверки подписи
   # publicRest: false     # :9098 — собственный публичный REST-фронт
   # internalRest: false   # :9099 — собственный внутренний REST-фронт
   # loginLane: false      # :9100 — слушатель полосы входа паролем (Ф3); транспорт
   #                       #         ВЗАИМНЫЙ, вызывающий — ровно край платформы
-  # ─── ОБЪЯВЛЕННЫЕ ИСКЛЮЧЕНИЯ: ОТКРЫТЫЙ ТЕКСТ КАК РЕШЕНИЕ ───────────────────
+  # ОТКРЫТОГО ТЕКСТА КАК ОБЪЯВЛЕННОГО ИСКЛЮЧЕНИЯ БОЛЬШЕ НЕТ НИ У ОДНОГО СЛУШАТЕЛЯ.
+  # Единственное стояло у слушателя обратных вызовов прежнего поставщика
+  # личности; слушателя у службы нет (kaname#363), и исключение ушло вместе с
+  # ним (kacho#2818).
   #
-  # Ключ ЕДИНСТВЕННЫЙ, и это не недоделка, а область исключения: у остальных
-  # слушателей ручки нет ни в чарте, ни в процессе, поэтому объявить им открытый
-  # текст НЕЧЕМ. Сужение держится построением, а не дисциплиной профиля.
-  #
-  # Основание у этого исключения измерено на стенде: вызывающий слушателя :9092 —
-  # вебхук службы личности — ходит по открытому http и своего доверия не несёт.
-  # Завёрнутый в TLS слушатель отвечает ему «клиент прислал http-запрос на
-  # https-сервер», хук проваливается, и выдача токенов не работает целиком.
-  #
-  # Объявить исключение ВМЕСТЕ с транспортом нельзя: процесс отвечает отказом
-  # старта — два правила об одном предмете говорят противоположное.
-  #
-  # Схема обратного вызова службы личности (ключ `identity.hooks.scheme` в общих
-  # значениях зонтичного чарта) обязана следовать за этой ручкой: полоса,
-  # объявленная открытой к слушателю под TLS — и наоборот, — это два правила об
-  # одном предмете. Их согласие держит deploy/identity_callback_transport_test.go.
-  plaintextExceptions:
-    hooks: false
-  # Per-edge TLS ClientAuth mode for the HTTP listeners (kacho-iam#137). Default
-  # server-tls-only: the hooks edge carries four HMAC-authed Ory webhook
-  # endpoints (Hydra token/refresh + Kratos provision/recovery) — none presents a
-  # client cert
-  # — RequireAndVerifyClientCert would reject them at the handshake (bug #122); the
-  # metrics edge has no scrape client cert wired yet. server-tls-only encrypts the
-  # transport without an impossible client-cert requirement; HMAC stays the
-  # caller-auth on hooks. Flip to "mutual" per edge when a client cert is
-  # provisioned (e.g. an internal-CA Prometheus scrape client for metrics).
-  hooksClientAuthMode: server-tls-only
+  # Per-edge TLS ClientAuth mode for the metrics listener. Default
+  # server-tls-only: the metrics edge has no scrape client cert wired yet.
+  # Flip to "mutual" when a client cert is provisioned (e.g. an internal-CA
+  # Prometheus scrape client).
   metricsClientAuthMode: server-tls-only
   # jwks-proxy (:9097) HTTP listener ClientAuth mode. ONE-WAY server-tls-only ON
   # PURPOSE: the JWKS route serves PUBLIC OIDC verification keys and is

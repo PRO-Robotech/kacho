@@ -73,9 +73,48 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * ФОРМЫ ЗАПИСИ геометрии — ВСЕ законные, а не одна (#1274, круг 1 ревью).
+ *
+ * Прежде гейт знал одну форму — проп `labelCol` в разметке — и читал только
+ * `components/`. Две копии прошли мимо него молча: объект свойств формы
+ * (`labelCol: { flex: … }` в раскрытии `{...PROPS}`) и геометрия, выписанная
+ * руками, без формы вовсе (`flex: "0 0 200px"` у подписи страницы параметров
+ * учётной записи в `pages/`). Обе — копии одного числа, ради снятия которых
+ * `FormGrid` и заведён.
+ *
+ * Третья форма узнаётся по ЧИСЛУ, а не по свойству: ширину колонки можно
+ * выписать `flex`, `flexBasis`, `width`, и перечень свойств отстал бы от первой
+ * же новой записи. Строковый литерал, несущий ширину колонки в пикселях, вне
+ * `FormGrid` есть копия by construction — `FormGrid` объявляет её числом.
+ */
+/**
+ * Ширина колонки — из ОБЪЯВЛЕНИЯ `FormGrid`, а не выписанная здесь: выписанное
+ * число разошлось бы с каноном молча. Читается текстом, а не импортом: модуль
+ * тянет библиотеку компонентов, а гейту нужна одна константа.
+ */
+const FORM_LABEL_WIDTH = Number(/FORM_LABEL_WIDTH = (\d+)/.exec(stripComments(readFileSync(join(ROOT, HOME), "utf8")))?.[1]);
+
+const DECLARATION_FORMS: ReadonlyArray<{ name: string; re: RegExp; sample: string }> = [
+  { name: "проп формы в разметке", re: /labelCol=\{\{\s*flex:/, sample: `<Form labelCol={{ flex: "200px" }}>` },
+  { name: "проп формы в объекте", re: /labelCol:\s*\{\s*flex:/, sample: `const P = { labelCol: { flex: "200px" } };` },
+  {
+    name: "ширина колонки руками",
+    re: new RegExp(`["'\`][^"'\`\\n]*\\b${FORM_LABEL_WIDTH}px\\b`),
+    sample: `<label style={{ flex: "0 0 200px" }}>`,
+  },
+];
+
+function declares(src: string): string[] {
+  const code = stripComments(src);
+  return DECLARATION_FORMS.filter((f) => f.re.test(code)).map((f) => f.name);
+}
+
 describe("ширина колонки подписи объявлена одним файлом", () => {
-  const files = sources(join(ROOT, "components"));
-  const declaring = files.filter((p) => /labelCol=\{\{\s*flex:/.test(stripComments(readFileSync(p, "utf8"))));
+  // Обход — весь `shared/src`, а не `components/`: страница церемонии в `pages/`
+  // несла копию, которой гейт не видел по раскладке, а не по форме.
+  const files = sources(ROOT);
+  const declaring = files.filter((p) => declares(readFileSync(p, "utf8")).length > 0);
 
   it("перепись непуста — иначе «ноль находок» означало бы «ноль прочитанного»", () => {
     expect(files.length).toBeGreaterThan(100);
@@ -84,7 +123,23 @@ describe("ширина колонки подписи объявлена одни
   const relative = declaring.map((p) => p.slice(ROOT.length + 1));
 
   it("объявление ровно одно, и это FormGrid", () => {
-    expect(relative.filter((p) => !EXEMPTIONS.includes(p))).toEqual([HOME]);
+    const found = relative
+      .filter((p) => !EXEMPTIONS.includes(p))
+      .map((p) => `${p} (${declares(readFileSync(join(ROOT, p), "utf8")).join(", ")})`);
+    expect(found).toEqual([`${HOME} (проп формы в разметке)`]);
+  });
+
+  // Распознаватель обязан знать КАЖДУЮ форму: форма, которой он не знает, даёт
+  // не красное и не зелёное, а молчание. Каждая узнаётся на своём образце и
+  // замолкает на том же образце в комментарии.
+  it.each(DECLARATION_FORMS.map((f) => [f.name, f] as const))("форма «%s» узнаётся и в комментарии молчит", (_n, f) => {
+    expect(f.re.test(stripComments(f.sample))).toBe(true);
+    expect(f.re.test(stripComments(`// здесь стояло ${f.sample}\nexport const x = 1;`))).toBe(false);
+  });
+
+  it("число без пикселей и чужое число копией не считаются", () => {
+    expect(declares(`const c = { width: ${FORM_LABEL_WIDTH} };`)).toEqual([]);
+    expect(declares(`const s = { flex: "0 0 160px" };`)).toEqual([]);
   });
 
   it("послаблению есть что исключать — иначе оно переживёт свой предмет", () => {

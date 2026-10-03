@@ -3,9 +3,8 @@
 # SPDX-License-Identifier: BUSL-1.1
 """Production-mode SA-principal matrix seed for the newman regression suites (#59).
 
-Generalises `prodseed_network.py` from the single vpc `network` collection to the
-whole 6-subject authz matrix + per-service resource deps. EVERY authenticating
-token is a Hydra-signed RS256 ServiceAccount token (acr-exempt, api-audience) — no
+The whole 6-subject authz matrix + per-service resource deps. EVERY authenticating
+token is a platform-signed (kaname) RS256 ServiceAccount token (acr-exempt, api-audience) — no
 HS256 dev-bypass, no interactive OIDC. The authz-deny EXPECT matrices are purely
 grant-semantic (editor/viewer/admin/no-grant/cross-account/cross-project), so each
 "subject" slot is backed by a ServiceAccount with the exact bindings the matrix
@@ -34,6 +33,16 @@ sentence was WRONG for half of them and that error cost nine assertions that nev
     `IssueSAKeyRequest.ttl_seconds` does NOT shorten it — that field bounds the KEY's own
     expiry row, not the `access_token_lifespan` stamped on the OAuth client, so it cannot
     be used to make the wave quicker.
+
+ЛЮДИ ПОСЕВА — ТОЛЬКО РЕГИСТРАЦИЕЙ И ПИСЬМОМ (приёмка F6b, Р17; kacho#2901). Каждый
+человек этого посева заводится тем путём, что человек продукта: регистрация на внешнем
+слушателе края, письмо регистрации у приёмника писем стенда, код из письма глаголом
+подтверждения под сессией регистрации (`verified_human.py`). Хуком поставщика человек
+здесь не заводится: такой человек подтвердить адрес не может никогда. Идентификаторы
+человека, его аккаунта и проекта берутся ответами края («кто я», перечни аккаунтов и
+проектов), а не чтением хранилища службы. Перепись людей печатается в конце посева и
+держит виды (F6b-51); письма нет в срок — посев останавливается «условием не создано»
+(код 75), и прогон относит наборы к «не выполнилось».
 
 THE OTHER STRUCTURAL LIMIT, MEASURED 2026-07-30 — no human principal reaches the edge.
 An Account is owned by a User by construction, so a case that CREATES an account needs a
@@ -66,14 +75,18 @@ Emits a superset fixtures dict on stdout; patch-env.py merges it into any suite 
 from __future__ import annotations
 
 import argparse
+import datetime
+import inspect
 import json
 import os
+import secrets
 import subprocess
 import sys
 import time
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
+import verified_human as vh  # noqa: E402
 # Declared id↔token pairings + their check. Own module because THIS one mints the
 # bootstrap Bearer at import time — a checker that cannot be imported without a
 # cluster cannot be self-tested, and this is the part that must be provable offline.
@@ -84,7 +97,10 @@ from principal_pairings import unpaired_principals  # noqa: E402
 # same seeder works behind a different forward map without editing the file.
 INTERNAL = os.environ.get("INTERNAL_BASE_URL", "http://localhost:18081")
 PUBLIC = os.environ.get("BASE_URL", "http://localhost:18080")
-IAM_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
+# ЗДЕСЬ СТОЯЛИ АДРЕС ВНУТРЕННЕГО СЛУШАТЕЛЯ СЛУЖБЫ ДОСТУПА И КЛИЕНТСКИЙ ЛИСТ К НЕМУ —
+# ими посев заводил людей хуком поставщика. Людей посев теперь заводит регистрацией
+# через край (kacho#2901), и у трёх величин не осталось читателя; сняты вместе с
+# предметом, а не оставлены «на случай».
 # ЗДЕСЬ СТОЯЛИ АДРЕС ОБМЕНА У ПРЕЖНЕГО ИЗДАТЕЛЯ И АДРЕСАТ ЕГО УТВЕРЖДЕНИЯ —
 # у них не осталось читателя (задача #1120).
 #
@@ -101,10 +117,9 @@ API_AUD = os.environ.get("API_AUDIENCE", "https://api.kacho.cloud")
 # здесь только читаются, чтобы объявление осталось в ОДНОМ месте.
 PLATFORM_ASSERT_AUD = m.PLATFORM_ASSERTION_AUDIENCE
 PLATFORM_TOKEN_URL = m.PLATFORM_TOKEN_URL
-# GATEWAY-identity client cert for the iam :9091 grpcurl calls (NOT the mint's
-# operator identity — see mint_rs256.ensure_iam_internal_cert).
-MTLS_CERT = m.IAM_INTERNAL_MTLS_CERT
-MTLS_KEY = m.IAM_INTERNAL_MTLS_KEY
+# Поверхность чтения приёмника писем стенда. Проброс к ней открывает прогонщик
+# (deploy/scripts/newman-parallel.sh, MAILBOX_PORT) тем же порядком, что к краю.
+MAILBOX_URL = os.environ.get("MAILBOX_URL", "http://localhost:18025")
 PG_IAM_POD = os.environ.get("PG_IAM_POD", "kacho-umbrella-pg-iam-0")
 KACHO_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
 
@@ -161,66 +176,33 @@ def _await(resp, token, key):
     return (done.get("metadata") or {}).get(key, "")
 
 
-def _psql(sql):
-    """Run a read-only query against the iam DB from inside its own pod."""
-    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
-    return subprocess.run(args, capture_output=True, text=True).stdout.strip()
+# ── люди посева (Р17) ─────────────────────────────────────────────────────────
+#
+# Пароль — свой у прогона и не выписан литералом: люди посева входят только
+# сессией регистрации, а пароль нужен службе как предъявленная при регистрации
+# величина. Отличим от настоящего по построению — случайная строка прогона.
+HUMAN_PASSWORD = f"Seed-{RID}-{secrets.token_urlsafe(18)}-9x"
+EDGE = vh.EdgeHttp(PUBLIC)
+MAILBOX = vh.Mailbox(MAILBOX_URL)
+HUMANS: list = []
 
 
-def upsert_user(ext_id, wait_s=40):
-    """InternalUserService.UpsertFromIdentity → user id, waited to DURABILITY.
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-    The returned Operation is NOT pollable from here, and that is CORRECT, not a defect:
-    the call arrives on the cluster-internal listener over mTLS, so no end-user principal
-    is forwarded and the Operation is stamped `system/bootstrap`. The gateway's ops-proxy
-    ownership check then refuses to let ANY tenant principal — our ServiceAccount admin
-    included — read a system-owned Operation, because that would be a cross-tenant BOLA
-    (gateway/internal/opsproxy, TestOpsProxy_Get_OwnershipCheck_DeniesTenantReadingSystem
-    OwnedOp). Polling it anyway just burns the whole budget and then continues blind.
 
-    So wait on what we actually need instead: the `users` row itself. `metadata.userId` is
-    PRE-ALLOCATED and comes back even when the async worker later fails, so returning it
-    unchecked would hand out a phantom id — the same class as reading an id out of an
-    Operation without checking `error` first. The row appearing IS the durability signal
-    (and migration 0049 rejects an AccessBinding whose subject User does not exist, which
-    is exactly what a phantom id would produce three steps later).
+def human(email, kind=vh.KIND_VERIFIED):
+    """Завести человека шагами Р17; место заведения — строка ВЫЗЫВАЮЩЕГО.
+
+    Вид объявлен здесь, у места заведения: по умолчанию Ф-п (подтверждённый).
+    Вид Ф-н посев наборов не заводит — его заводит только проба посева,
+    утверждающая положение подтверждения (F6b-47, F6b-49).
     """
-    body = json.dumps({"externalId": ext_id, "email": ext_id, "displayName": ext_id})
-    args = ["grpcurl", "-insecure", "-cert", MTLS_CERT, "-key", MTLS_KEY,
-            "-d", body, IAM_GRPC, "kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
-    out = subprocess.run(args, capture_output=True, text=True).stdout
-    d = json.loads(out or "{}")
-    uid = (d.get("metadata") or {}).get("userId", "")
-    if not uid:
-        return ""
-    deadline = time.time() + wait_s
-    while time.time() < deadline:
-        if _psql(f"SELECT 1 FROM kaname.users WHERE id='{uid}' LIMIT 1;") == "1":
-            return uid
-        time.sleep(1)
-    raise RuntimeError(f"user {ext_id} ({uid}) never became durable in {wait_s}s — "
-                       f"the upsert worker failed; the id would be a phantom")
-
-
-def db_lookup(ext_id):
-    """Discover a user's personal account + default project (ids the production
-    upsert created; every real auth stays RS256)."""
-    sql = (f"SET search_path=kaname,public; "
-           f"SELECT a.id||'|'||p.id FROM accounts a "
-           f"JOIN users u ON u.id=a.owner_user_id "
-           f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
-           f"WHERE u.external_id='{ext_id}' LIMIT 1;")
-    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
-    for _ in range(25):
-        out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
-        row = next((ln for ln in out.splitlines() if "|" in ln), None)
-        if row:
-            acct, proj = row.split("|")
-            return acct.strip(), proj.strip()
-        time.sleep(1)
-    raise RuntimeError(f"db_lookup({ext_id}) empty after retries")
+    place = f"{os.path.basename(__file__)}:{inspect.stack()[1].lineno}"
+    h = vh.enroll(EDGE, MAILBOX, email, HUMAN_PASSWORD, kind, clock=_now, sleep=time.sleep, place=place)
+    h.account_id, h.project_id = vh.own_account_and_project(EDGE, h, time.sleep, admin_bearer=boot)
+    HUMANS.append(h)
+    return h
 
 
 def make_sa(account_id, name):
@@ -360,6 +342,74 @@ def user_platform_token(uid, created_by):
 
 
 CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
+
+
+# Вопрос «держит ли субъект `system_admin` на кластере» задаётся МОДЕЛИ ПРАВ
+# напрямую (`AuthorizeService.Check`), а не чтением ресурса от имени человека.
+#
+# ПОЧЕМУ НЕ ЧТЕНИЕМ (kacho#2984, разбор красного посева на 7f2afe93). Прежняя
+# редакция читала посеянный аккаунт `kacho-system` токеном человека. Персональный
+# токен, обменянный у нашего издателя, `acr` не несёт (уровень входа приносит
+# только интерактивный вход), а чтение аккаунта в каталоге края требует
+# `required_acr_min=1`. Край отвечал отказом пола уверенности — `{code: 16,
+# message: insufficient_user_authentication}` — ДО всякого вопроса к модели, и
+# цикл ждал 60 с того, что не наступит ни при какой задержке выдачи: отказ
+# повышения уровня входа не есть «выдача ещё не видна».
+#
+# Спрашивает бутстрап-удостоверение: машинный принципал от пола уверенности
+# освобождён, администратор облака вправе спросить о чужом субъекте, и ответ
+# называет ровно отношение, которое заводит `GrantAdmin`.
+CLUSTER_ROOT_REF = {"type": "cluster", "id": "cluster_root"}
+
+
+def _cluster_admin_check(user_id):
+    """Ответ модели: держит ли `user:<user_id>` `system_admin` на кластере."""
+    return _curl("POST", "/iam/v1/authorize:check", boot, {
+        "subject": f"user:{user_id}", "resource": CLUSTER_ROOT_REF,
+        "action": "iam.cluster_admins.list", "requiredRelation": "system_admin"})
+
+
+def _is_check_answer(resp):
+    """Ответ — вердикт модели, а не отказ вопроса (тело ошибки несёт `code`)."""
+    return isinstance(resp, dict) and "code" not in resp and "checkedAt" in resp
+
+
+def _await_cloud_admin_visible(user_id, budget=60):
+    """Выдача администратора облака видна модели прав — или громкий отказ посева.
+
+    Выдача приходит в хранилище прав асинхронно, поэтому вопрос повторяется в
+    бюджете. Повторяется ТОЛЬКО ответ «нет» и недоступность модели (`14`):
+    отказ самого вопроса — другой исход, и ожидание его не снимет.
+    """
+    deadline = time.time() + budget
+    last = {}
+    while time.time() < deadline:
+        last = _cluster_admin_check(user_id)
+        if _is_check_answer(last) and last.get("allowed") is True:
+            return
+        if not _is_check_answer(last) and last.get("code") != 14:
+            raise SystemExit(
+                f"[prodseed] вопрос модели о выдаче system_admin человеку user:{user_id} "
+                f"ОТВЕРГНУТ, вердикта нет: {last}. Это не задержка выдачи.")
+        time.sleep(1.0)
+    raise SystemExit(
+        f"[prodseed] выдача system_admin человеку user:{user_id} НЕ ВИДНА модели за "
+        f"{budget} с: последний ответ модели {last}. Слот администратора облака без "
+        "права не отдаётся.")
+
+
+def _assert_not_cloud_admin(user_id):
+    """Близнец вопроса: человек без выдачи получает от модели «нет».
+
+    Без него «да» выше было бы неотличимо от вопроса, отвечающего «да» всем.
+    """
+    resp = _cluster_admin_check(user_id)
+    # Ложное `allowed` край может и не вывести (нулевое значение поля), поэтому
+    # «нет» — это вердикт без `allowed: true`, а не обязательно `allowed: false`.
+    if not _is_check_answer(resp) or resp.get("allowed") is True:
+        raise SystemExit(
+            f"[prodseed] человек без выдачи user:{user_id} не получил от модели «нет» "
+            f"на вопрос о system_admin: {resp}. Вопрос о выдаче ничего не различает.")
 
 
 def seed_fga_tuple(fga_subject, relation, obj):
@@ -554,7 +604,7 @@ def _seed_network(project_id, name):
 def seed() -> dict:
     """Provision the production-mode matrix and return the fixtures dict.
 
-    Every authenticating token in the result is a Hydra-signed RS256 ServiceAccount
+    Every authenticating token in the result is a platform-signed RS256 ServiceAccount
     Bearer obtained through the iam facade — MintBootstrapToken (mTLS gRPC, iam :9091)
     for the admin, then SAKeyService.Issue + a private_key_jwt client_assertion
     exchange for each subject. Nothing here is minted by the harness.
@@ -570,31 +620,37 @@ def seed() -> dict:
     # v6-capable pool and fails FailedPrecondition.
     _seed_address_pool("ru-central1-a", "kac-seed-ext-pool-a", ["198.51.100.0/24"])
 
-    owner_a = f"prodseed-owner-a-{RID}@example.com"
-    owner_b = f"prodseed-owner-b-{RID}@example.com"
-    usr_owner_a = upsert_user(owner_a)
-    usr_owner_b = upsert_user(owner_b)
-    acctA, projA1 = db_lookup(owner_a)
-    acctB, projB1 = db_lookup(owner_b)
+    # F6b-53: поверхность чтения приёмника отвечает ДО первого человека — иначе
+    # «письма нет» было бы неотличимо от «читать нечем».
+    vh.mailbox_precondition(MAILBOX)
+
+    h_owner_a = human(f"prodseed-owner-a-{RID}@example.com")
+    h_owner_b = human(f"prodseed-owner-b-{RID}@example.com")
+    usr_owner_a, acctA, projA1 = h_owner_a.user_id, h_owner_a.account_id, h_owner_a.project_id
+    usr_owner_b, acctB, projB1 = h_owner_b.user_id, h_owner_b.account_id, h_owner_b.project_id
 
     # AccessBinding-subject users (userNOBId/userINVId/userAAAId/userAABId/userPA1Id).
     # The iam newman cases reference these as subjectId when creating AccessBindings and
     # as ownerUserId / reviewerUserId. Migration 0049 (access_binding_subject_exists)
-    # rejects a Create whose subject User does not exist → the stale hardcoded env values
-    # (usr… baked into local.postman_environment.json by the dev-mode setup.sh) do NOT
-    # exist in a fresh production-mode iam DB, so Create fails FAILED_PRECONDITION
-    # ("referenced resource not found") and every downstream Get/Delete/revoke cascades
-    # (404/403). Seed REAL users here and emit their ids so prod-mode binding cases resolve
-    # a live subject. userAAAId/userAABId map to the owner users (accountAId is owned by
-    # userAAAId — iam-account.py ownerUserId assertions); NOB/INV/PA1 are plain users.
-    usr_nob = upsert_user(f"prodseed-nob-{RID}@example.com")
-    usr_inv = upsert_user(f"prodseed-inv-{RID}@example.com")
-    usr_pa1 = upsert_user(f"prodseed-pa1-{RID}@example.com")
+    # rejects a Create whose subject User does not exist, so these are REAL people of this
+    # run, each enrolled by registration and confirmed by the letter (Р17).
+    # userAAAId/userAABId map to the owner users (accountAId is owned by userAAAId —
+    # iam-account.py ownerUserId assertions); NOB/INV/PA1 are plain users.
+    usr_nob = human(f"prodseed-nob-{RID}@example.com").user_id
+    usr_inv = human(f"prodseed-inv-{RID}@example.com").user_id
+    usr_pa1 = human(f"prodseed-pa1-{RID}@example.com").user_id
     # kacho-iam#276 — the NEVER-granted leak-guard subject. `userNOBId` is used DOUBLY
     # (grant TARGET in the access-binding suites, leak-guard VICTIM in the see-nothing
     # probes), so the guards read this dedicated user/SA instead. Seeded as a real user
     # (the id is asserted) whose token slot is the no-grant SA below.
-    usr_pure_nob = upsert_user(f"prodseed-pure-nob-{RID}@example.com")
+    usr_pure_nob = human(f"prodseed-pure-nob-{RID}@example.com").user_id
+    # ЦЕЛЬ ВЫДАЧИ АДМИНИСТРАТОРА ОБЛАКА для набора `cluster_admin` (F6b-55). Случай
+    # людей не заводит — место заведения одно, посев; цель отдаётся слотами
+    # `clusterTargetUserId` и `clusterTargetEmail`. Свой человек, а не один из
+    # матричных: выдача администратора облака общему субъекту испортила бы чужие
+    # наборы. Свежесть цели — на прогон посева: набор исполняется только бегуном
+    # после его посева (newman-parallel.sh сеет один раз на вызов).
+    h_cluster_target = human(f"prodseed-cluster-target-{RID}@example.com")
     projA2 = _await(_curl("POST", "/iam/v1/projects", boot,
                           {"accountId": acctA, "name": f"prodseed-a2-{RID}"}), boot, "projectId")
 
@@ -760,14 +816,41 @@ def seed() -> dict:
     # Субъект СВОЙ, а не один из матричных: выпуск персонального токена — это
     # мутация над `iam_user`, и вешать её на пользователя, чью видимость
     # утверждают чужие кейсы, значило бы менять их фикстуру ради этой.
-    usr_utok = upsert_user(f"prodseed-utok-{RID}@example.com")
-    acct_utok, _ = db_lookup(f"prodseed-utok-{RID}@example.com")
+    # Субъект — Ф-п: служба выпускает личный токен только подтверждённому
+    # владельцу (Р5 службы), и край его принимает (F6b-48).
+    h_utok = human(f"prodseed-utok-{RID}@example.com")
+    usr_utok, acct_utok = h_utok.user_id, h_utok.account_id
     grant_user(usr_utok, ROLE_ADMIN, A, acct_utok)
     # Тот же пол каталога, что у матричных субъектов: без `viewer@cluster`
     # глобальный справочник читать нельзя, и 200 на маршруте края ничего бы не
     # сказал о полосе.
     seed_fga_cluster(f"user:{usr_utok}", "system_viewer")
     tok_user_platform = user_platform_token(usr_utok, usr_utok)
+
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-account-id-at-create` (kacho#2984; служба —
+    # PRO-Robotech/kaname#549, приёмка службы `account-id-may-be-supplied-at-create.md`,
+    # стадия S2, AID-K1 и AID-K2). Указать `id` при создании аккаунта вправе только
+    # ЧЕЛОВЕК, держащий `system_admin` на кластере: машинный администратор получает
+    # отказ по роду принципала (Р3 приёмки), поэтому `jwtBootstrap` этим субъектом
+    # служить не может. Оба — свои люди, а не матричные: каждое заведение аккаунта
+    # списывает место окна темпа заведений личности, и чужой набор, делящий человека,
+    # упёрся бы в потолок от этого набора.
+    #
+    # Администратор облака получает выдачу тем же глаголом, что цель набора
+    # `cluster_admin` (`InternalClusterService.GrantAdmin` под бутстрап-удостоверением).
+    # Выдача утверждается вопросом к модели прав о самом отношении `system_admin`
+    # (`_await_cloud_admin_visible`), и у вопроса есть близнец — человек без выдачи
+    # получает «нет»: «выдано» не должно быть неотличимо от «выдано и не видно модели».
+    h_cloud_admin = human(f"prodseed-acc-id-admin-{RID}@example.com")
+    _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
+                 {"subjectType": "USER", "subjectId": h_cloud_admin.user_id}, base=INTERNAL),
+           boot, "userId")
+    tok_cloud_admin_human = user_platform_token(h_cloud_admin.user_id, h_cloud_admin.user_id)
+    _await_cloud_admin_visible(h_cloud_admin.user_id)
+    # Человек без роли на кластере — сторона отказа права (AID-K2) и её близнец.
+    h_plain = human(f"prodseed-acc-id-plain-{RID}@example.com")
+    _assert_not_cloud_admin(h_plain.user_id)
+    tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
 
     fixtures = {
         "jwtBootstrap": boot,
@@ -778,6 +861,13 @@ def seed() -> dict:
         # обменянный у нашего издателя. Слот читает суита края.
         "jwtUserTokenPlatformIssuer": tok_user_platform,
         "userTokenPlatformUserId": usr_utok,
+        # Люди набора `iam-account-id-at-create` (kacho#2984): человек-администратор
+        # облака и человек без роли на кластере. Пары «id ↔ предъявитель» объявлены
+        # в principal_pairings.PRINCIPAL_PAIRINGS и сверяются ниже.
+        "jwtCloudAdminHuman": tok_cloud_admin_human,
+        "cloudAdminHumanUserId": h_cloud_admin.user_id,
+        "jwtPlainHuman": tok_plain_human,
+        "plainHumanUserId": h_plain.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,
@@ -872,6 +962,9 @@ def seed() -> dict:
         "userINVId": usr_inv,
         "userPA1Id": usr_pa1,
         "userPureNoBindingsId": usr_pure_nob,
+        # Цель выдачи администратора облака набора cluster_admin (F6b-55).
+        "clusterTargetUserId": h_cluster_target.user_id,
+        "clusterTargetEmail": h_cluster_target.email,
         # pre-existing GET-probe networks of the authz-deny matrix
         "seedNetworkA1Id": seed_net_a1,
         "seedNetworkB1Id": seed_net_b1,
@@ -895,6 +988,11 @@ def seed() -> dict:
         "baseUrl": PUBLIC,
         "internalBaseUrl": INTERNAL,
     }
+    # F6b-51: перепись людей посева — каждый заведён регистрацией и объявлен
+    # видом; Ф-п с неподтверждённым адресом — находка, и наборы не начинаются.
+    people = vh.census(HUMANS, fixtures)
+    if people:
+        raise vh.Finding("перепись людей посева: " + "; ".join(people))
     broken = unpaired_principals(fixtures)
     if broken:
         raise RuntimeError(
@@ -913,4 +1011,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--deps", default="", help="comma list: vpc,compute,storage,registry,nlb")
     ap.parse_args()
-    print(json.dumps(seed()))
+    try:
+        print(json.dumps(seed()))
+    except vh.Unmet as e:
+        print(f"[prodseed] {e}", file=sys.stderr)
+        sys.exit(vh.RC_UNMET)
+    except vh.Finding as e:
+        print(f"[prodseed] НАХОДКА: {e}", file=sys.stderr)
+        sys.exit(vh.RC_FINDING)

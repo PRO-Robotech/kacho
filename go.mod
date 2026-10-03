@@ -116,8 +116,8 @@ require (
 )
 
 require (
-	github.com/PRO-Robotech/corelib v1.8.0
-	github.com/PRO-Robotech/kaname v0.4.1-0.20260917085954-16b5cadead2a
+	github.com/PRO-Robotech/corelib v1.10.0
+	github.com/PRO-Robotech/kaname v0.4.1-0.20261003010741-0dd03218a613
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -146,4 +146,9 @@ require (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
+)
+
+tool (
+	github.com/PRO-Robotech/kaname/tools/modelcanoncheck
+	github.com/PRO-Robotech/kaname/tools/modulemanifestcheck
 )

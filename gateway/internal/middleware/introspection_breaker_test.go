@@ -23,9 +23,12 @@
 //     not once per distinct credential;
 //   - it CLOSES BACK — recovery is noticed within a bounded window, by one probe,
 //     not by a restart and not "eventually";
-//   - it still PASSES — withholding the question must not turn an outage of the
-//     identity provider into an outage of this API, and must not quietly acquire
-//     the power to refuse, which belongs to the wrong-address verdict alone.
+//   - it KEEPS THE VERDICT — a question the breaker withholds is answered exactly
+//     as a real non-answer is: not «inactive» (nobody said the token is dead) and
+//     not «misconfigured» (no number of silences is evidence about the address).
+//     The caller refuses it for the reason it refuses every unanswered question
+//     (auth_revocation.go: «could not establish» is not «live»), and the operator
+//     reads the outage it is, not a configuration fault.
 package middleware_test
 
 import (
@@ -33,7 +36,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,6 +45,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // breakerTrip — how many consecutive unanswered questions the cache is expected
@@ -87,7 +90,7 @@ type flippableServer struct {
 func newFlippableServer(t *testing.T, status int, body string) *flippableServer {
 	t.Helper()
 	fs := &flippableServer{status: status, body: body}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fs.hits.Add(1)
 		fs.mu.Lock()
 		status, body := fs.status, fs.body
@@ -134,10 +137,10 @@ func askDistinct(t *testing.T, c *middleware.IntrospectionCache, tag string, n i
 func newBreakerCache(t *testing.T, url string, clock *testClock) *middleware.IntrospectionCache {
 	t.Helper()
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: url,
-		TTL:                   time.Hour,
-		Now:                   clock.now,
-		Timeout:               5 * time.Second,
+		IntrospectionURL: url,
+		TTL:              time.Hour,
+		Now:              clock.now,
+		Timeout:          5 * time.Second,
 	})
 	require.NoError(t, err)
 	return c
@@ -169,20 +172,23 @@ func TestIntrospection_DeadProvider_DistinctTokens_AskBoundedNumberOfTimes(t *te
 		tokens, fs.count(), breakerTrip)
 }
 
-// Withholding the question must not acquire the power to refuse. The soft pass
-// is the whole reason the unanswered branch is separate from the wrong-address
-// one: an identity provider outage must not take this API down with it.
+// Withholding the question must not change the answer. While the breaker is open
+// the verdict has to remain the SAME verdict a real non-answer produces — not
+// "inactive" (nobody said the token is dead, and a client told to re-authenticate
+// would do so for nothing) and not "misconfigured" (no number of unanswered
+// questions is evidence about the address, and the operator would be sent to fix
+// a setting that is right).
 //
-// So while the breaker is open the verdict has to remain the SAME verdict a real
-// non-answer produces — not "inactive" (nobody said the token is dead) and not
-// "misconfigured" (that one refuses, and no number of unanswered questions is
-// evidence about the address).
-func TestIntrospection_BreakerOpen_StillPasses(t *testing.T) {
+// What the caller does with a non-answer — it refuses, on every lane — is held at
+// the caller: auth_revocation.go, and in internal/e2e
+// TestF1b09_OurTokenRevocationIsAskedOfOurAuthorityAndFailsClosed. What this test
+// holds is that the breaker hands the caller nothing but a non-answer.
+func TestIntrospection_BreakerOpen_KeepsTheNonAnswerVerdict(t *testing.T) {
 	clock := newTestClock()
 	fs := newFlippableServer(t, http.StatusBadGateway, `{"error":"bad gateway"}`)
 	c := newBreakerCache(t, fs.URL, clock)
 
-	errs := askDistinct(t, c, "soft", breakerTrip+20)
+	errs := askDistinct(t, c, "withheld", breakerTrip+20)
 	asked := fs.count()
 	require.LessOrEqual(t, asked, int32(breakerTrip), "breaker never opened (%d round-trips)", asked)
 
@@ -192,8 +198,8 @@ func TestIntrospection_BreakerOpen_StillPasses(t *testing.T) {
 		assert.NotErrorIs(t, e, middleware.ErrTokenInactive,
 			"a question we chose not to ask is not the provider saying the token is dead")
 		assert.NotErrorIs(t, e, middleware.ErrIntrospectionMisconfigured,
-			"an unanswered provider is not a wrong address; that verdict refuses service and "+
-				"must never be reached by counting silences")
+			"an unanswered provider is not a wrong address; that verdict is held for the "+
+				"process and names a setting to fix, and must never be reached by counting silences")
 	}
 }
 
@@ -262,11 +268,13 @@ func TestIntrospection_BreakerHalfOpen_ProbesOnceThenClosesAgain(t *testing.T) {
 			"breaker just reschedules the stampede", fs.count()-tripped)
 }
 
-// A wrong address must keep refusing, and must not be reachable by counting
-// silences. These are the two verdicts that differ in what they DO — one passes,
-// one refuses — so the breaker must not blur them in either direction: it must
-// not soften a refusal into a pass, and unanswered questions must not accumulate
-// into a refusal.
+// A wrong address must keep its own verdict, and must not be reachable by
+// counting silences. Both verdicts refuse the request; they differ in what the
+// process remembers and what the operator reads — a wrong address is held for the
+// process and reported with the setting to fix, a non-answer is held per token
+// and reported as an outage to wait out. So the breaker must not blur them in
+// either direction: it must not recast a wrong address as a non-answer, and
+// unanswered questions must not accumulate into a wrong address.
 func TestIntrospection_Breaker_DoesNotTouchTheWrongAddressVerdict(t *testing.T) {
 	clock := newTestClock()
 	fs := newFlippableServer(t, http.StatusNotFound, `not found`)
@@ -275,8 +283,9 @@ func TestIntrospection_Breaker_DoesNotTouchTheWrongAddressVerdict(t *testing.T) 
 	for i := range breakerTrip + 10 {
 		_, err := c.Introspect(context.Background(), fmt.Sprintf("jti-bad-%d", i), "raw")
 		require.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
-			"token %d: a wrong address must keep refusing; a breaker that softens it into a "+
-				"pass switches the control off exactly when it is provably broken", i)
+			"token %d: a wrong address must keep its own verdict; a breaker that recasts it as "+
+				"a non-answer reports a configuration fault as an outage, and the operator waits "+
+				"for a recovery no retry brings", i)
 	}
 }
 

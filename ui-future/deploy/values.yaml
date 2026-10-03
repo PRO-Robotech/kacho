@@ -32,7 +32,7 @@ subscriptionStream:
 
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
-# Everything the console talks to (api-gateway, kratos, hydra) is reached
+# Everything the console talks to (the api-gateway) is reached
 # same-origin through the host nginx proxy, so a 'self'-based CSP is sufficient.
 #
 # style-src carries 'unsafe-inline' (script-src does NOT). antd v6 renders its
@@ -45,23 +45,6 @@ subscriptionStream:
 # `csp:style-src-unsafe-inline`); revisit if antd exposes nonce-based
 # StyleProvider integration. Запись держит scripts/check-csp-divergence-records.mjs:
 # уехал пин antd — обоснование про v6 больше не относится к дереву, гейт краснеет.
-#
-# ОЖИДАЕМОЕ НАРУШЕНИЕ НА СТРАНИЦЕ ВХОДА, КОТОРОЕ НЕ НАДО «ЧИНИТЬ» ОТСЮДА.
-# Полосу входа/регистрации край консоли проксирует стороннему UI провайдера
-# личности, поэтому эта политика применяется и к чужой странице; одну её
-# конструкцию она отвергает, и браузер печатает об этом ошибку. Отказ ничего не
-# ломает — измерено на стенде.
-#
-# Отсюда следует ровно один запрет, и он адресован тому, кто правит эту строку:
-# `script-src` НЕ ослаблять и хеш не добавлять. Послабление ради чужого
-# встроенного скрипта открыло бы исполнение произвольных встроенных скриптов на
-# страницах ВВОДА ПАРОЛЯ, а хеш протух бы при первом обновлении провайдера.
-#
-# Разбор, отвергнутые способы снять, условие снятия и пины, против которых оно
-# измерено, — в ОДНОМ месте: docs/architecture/known-divergences.md, запись
-# `csp:login-page-inline-script`. Держит её (и роняет прогон, когда условие
-# наступило) scripts/check-csp-divergence-records.mjs — включая случай, когда
-# `script-src` ослаблен ровно тем способом, который запрещён абзацем выше.
 security:
   enabled: true
   # HSTS: force https on subsequent navigations (SSL-strip / downgrade defense).
@@ -115,31 +98,19 @@ host:
   # поисковый список применяется, и короткая форма правильна — см. #145).
   # Признак различения: КТО резолвит, а не «какая форма короче».
   #
-  # ─── ПУСТОЙ АДРЕС ВНЕШНЕГО ПОСТАВЩИКА ЛИЧНОСТИ ОЗНАЧАЕТ «ЕГО НА ЭТОЙ ПОСАДКЕ
-  #     НЕТ», И ЭТО РЕШЕНИЕ, А НЕ НЕДОСТАЧА ──────────────────────────────────
+  # ─── АДРЕСА ВНЕШНЕГО ПОСТАВЩИКА ЛИЧНОСТИ У ЧАРТА НЕТ ────────────────────
   #
-  # Три адреса ниже (`kratosPublic`, `hydraPublic`, `kratosUi`) ведут к внешнему
-  # поставщику личности, и каждый из них ОДИН И ТОТ ЖЕ раз решает две вещи: куда
-  # проксировать и проксировать ли вообще. Пустая величина снимает
-  # соответствующий блок раздачи целиком (`templates/configmap-nginx.yaml`).
-  # Второй ручки «а обслуживать ли» здесь нет намеренно: две величины об одном
-  # предмете разошлись бы молча, и раздача проксировала бы в пустоту.
-  #
-  # У `kratosUi` цена решения выше прочих: под ним стоит полоса потоков
-  # `^/(login|registration|…)` — ЕДИНСТВЕННАЯ работающая церемония входа, потому
-  # что собственных экранов входа у консоли нет ни одного (семь таких страниц
-  # сняты #1225; разбор — ui-future/shared/src/pages/auth/README.md). Посадка,
-  # опустошившая эту величину, ОБЯЗАНА тем же изменением снять и объявления
-  # браузерных адресов потока (ключ `ui_url` в чартах): объявление без обслуживания
-  # выглядит работающим — неизвестный раздаче путь достаётся общему `location /`,
-  # и тот отвечает `200` оболочкой консоли. Держит
-  # deploy/tests/helm/console-serves-identity-flows-test.sh — он судит РЕНДЕР
-  # каждой цепочки deploy/stacks.txt.
+  # Ни экрана входа поставщика, ни его публичного края раздача не знает:
+  # поставщик снят (#1276), адреса церемоний (`/login`, `/registration`, …)
+  # достаются оболочке консоли, и маршруты для них — предмет самой консоли
+  # (приёмка F8, Р1). Держит deploy/tests/helm/console-serves-identity-flows-test.sh
+  # — он судит РЕНДЕР каждой цепочки deploy/stacks.txt: на цепочке, где обе
+  # половины стоят на посадке own, полоса к чужому экрану и полоса к публичному
+  # краю поставщика — находка, и таких цепочек с консолью обязана быть хотя бы
+  # одна (приёмка F8, §4). Отсутствие адресов поставщика у наших нагрузок держит
+  # deploy/stack_render_carries_no_vendor_residue_test.go.
   upstreams:
     apiGateway: api-gateway.kacho.svc.cluster.local:8080
-    kratosPublic: kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
-    hydraPublic: kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444
-    kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000
     dashboard: ""
     vpc: ""
     iam: ""

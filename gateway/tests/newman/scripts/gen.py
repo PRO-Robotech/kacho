@@ -50,13 +50,14 @@ import functools
 import json
 import re
 import sys
+import urllib.parse
 import uuid
 import importlib.util
 from pathlib import Path
 from dataclasses import dataclass, field, replace
 
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # --- общий слой генератора (задача #1367) ------------------------------------
 # Помощники ниже общие для ВСЕХ наборов newman и живут в дереве в одном
@@ -87,6 +88,8 @@ sys.path.insert(0, str(_kacholib_dir()))
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
+    assert_created_at_seconds,
+    assert_field_violation,
     _assert_delete_operation_outcome,
     assert_grpc_code,
     _assert_published_id_outcome,
@@ -151,6 +154,17 @@ class Step:
     # Internal* RPCs are served ONLY on "internal"; "public" 404s them by design
     # (ban #6), which is what the "external" negatives assert.
     mux: str = "public"
+    # Проверка цепочки сертификата снимается ЯВНО и только шагом, который это
+    # объявил. Внешний TLS-слушатель края предъявляет лист внутреннего
+    # удостоверяющего центра на имя службы в кластере, а проброс идёт на петлю:
+    # предмет такой пробы — какие маршруты слушатель ОБСЛУЖИВАЕТ, а не чья
+    # цепочка доверия у туннеля. Умолчание — строгая проверка.
+    insecure_tls: bool = False
+    # Тело `application/x-www-form-urlencoded` парами «имя, значение» — форма,
+    # которой говорит координата выдачи края (`/iam/v1/token`, RFC 6749 §4.1.3).
+    # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
+    # молча перезаписало бы первое, поэтому пара — отказ генерации.
+    form: Optional[List[Tuple[str, str]]] = None
 
 
 @dataclass
@@ -280,6 +294,25 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     ]
 
 
+def assert_answered(label: str) -> List[str]:
+    """Утверждать, что ответ ВООБЩЕ ПРИШЁЛ, прежде чем утверждать о нём хоть что-то.
+
+    Запрос, умерший до завершения обмена (отказ соединения, TLS, таймаут), всё
+    равно доводит newman до скрипта проверок — с пустым ответом, где
+    `pm.response.code` не число. Проба, чьё первое утверждение ждёт отказа
+    (`404` на внешнем слушателе), без этой строки не отличала бы «маршрута нет» от
+    «до слушателя не дозвонились»: вторая находка — о харнессе, а не об изоляции,
+    и доказательством изоляции служить не может.
+    """
+    return [
+        f"pm.test({js_str(f'{label}: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)')}, () => {{",
+        "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края')"
+        ".to.not.be.undefined;",
+        "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+        "});",
+    ]
+
+
 def assert_iam_operation_envelope() -> List[str]:
     """IAM mutations return an Operation whose id carries the `iop` prefix."""
     return [
@@ -358,6 +391,32 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
             f"{var} is not set — the newman runner "
             "(deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot "
             "run, and a check that cannot run MUST NOT be silently dropped.") + ");",
+        "  });",
+        "  pm.execution.skipRequest();",
+        "}",
+    ]
+
+
+def require_env_slot(var: str, why: str = "") -> List[str]:
+    """Pre-request block: the step needs the SEED slot {{<var>}}; FAIL (marked), then skip, if unset.
+
+    Та же форма, что у `require_env_url` и стража субъекта в `_auth_pre_script`, но о
+    СЛОТЕ ПОСЕВА, который подставляется в путь или тело шага (kacho#2901, приёмка F6b,
+    F6b-55). Без стража шаг ушёл бы с пустым идентификатором, и отказ продукта на
+    пустом пути читался бы находкой о нём — тогда как предмет шага не создал посев.
+    Поэтому утверждение с МЕТКОЙ третьего исхода и пропуск: вердиктный гейт наборов
+    относит набор к «не выполнилось», а не к красным и не к зелёным.
+    """
+    reason = f" — {why}" if why else ""
+    return [
+        f"// SEED-SLOT GUARD — {js_comment(var)} is written by the authz-fixture seed.",
+        "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+        f"if (!(pm.environment.get({js_str(var)}) || pm.variables.get({js_str(var)}))) {{",
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {var} is set (seed slot){reason}')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{var} is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) "
+            "did not provide this slot. The step would run with an empty identifier and its "
+            "refusal would read as a finding about the product.") + ");",
         "  });",
         "  pm.execution.skipRequest();",
         "}",
@@ -488,7 +547,11 @@ _INJECTED = {
     "assert_error_message_eql": assert_error_message_eql,
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
+    "assert_answered": assert_answered,
+    "assert_field_violation": assert_field_violation,
+    "assert_created_at_seconds": assert_created_at_seconds,
     "require_env_url": require_env_url,
+    "require_env_slot": require_env_slot,
     "poll_operation": poll_operation,
     "POLL_CAP": POLL_CAP,
     "POLL_DELAY_MS": POLL_DELAY_MS,
@@ -537,6 +600,42 @@ def _gateway_pre_head(step, var):
     return require_env_url(var, step.path, why)
 
 
+def _form_raw(pairs: List[Tuple[str, str]]) -> str:
+    """Пары формы — в строку `application/x-www-form-urlencoded`.
+
+    Значение кодируется целиком (`safe=''`): `/`, `:`, `?`, `&`, `=` в адресе
+    возврата разорвали бы форму. Подстановок набора в значениях формы здесь нет
+    ни одной и не принимается: значение, известное только при прогоне, кладёт
+    пред-скрипт шага, а не литерал формы.
+    """
+    for k, v in pairs:
+        if "{{" in k or "{{" in v:
+            raise ValueError(f"форма: подстановка в паре {k!r}={v!r} — значение, "
+                             f"известное только при прогоне, кладёт пред-скрипт шага")
+    return "&".join(f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+                    for k, v in pairs)
+
+
+def _gateway_item_hook(step, item):
+    """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
+
+    Шаг без этих полей эмитится байт в байт как прежде: ослабленная проверка
+    сертификата и тело формы появляются в элементе коллекции только там, где
+    кейс их назвал.
+    """
+    if step.insecure_tls:
+        item["protocolProfileBehavior"] = {"strictSSL": False}
+    if step.form is not None:
+        if step.body is not None:
+            raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "
+                             f"запроса одно, и второе молча перезаписало бы первое")
+        item["request"]["header"] = [
+            {"key": "Content-Type", "value": "application/x-www-form-urlencoded"}]
+        # Режим `raw`, как у JSON: страж неразрешённой подстановки уровня
+        # коллекции читает адрес, а тело формы подстановок не несёт (см. `_form_raw`).
+        item["request"]["body"] = {"mode": "raw", "raw": _form_raw(step.form)}
+
+
 _EMIT = Emit(
     id_slug="kacho-gateway",
     # Слаг идентификатора и видимое имя РАСХОДЯТСЯ, и это не описка: слаг —
@@ -548,6 +647,7 @@ _EMIT = Emit(
     auth_pre=_auth_pre_script,
     host_var=_gateway_host_var,
     pre_head=_gateway_pre_head,
+    item_hook=_gateway_item_hook,
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
     path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
 )

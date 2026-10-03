@@ -4,19 +4,6 @@ import react from "@vitejs/plugin-react";
 import federation from "@originjs/vite-plugin-federation";
 
 const apiGateway = process.env.KACHO_API_BASE || "http://localhost:8080";
-const kratos = process.env.KACHO_KRATOS_BASE || "http://localhost:4433";
-const kratosUi = process.env.KACHO_KRATOS_UI_BASE || "http://localhost:4300";
-const hydra = process.env.KACHO_HYDRA_BASE || "http://localhost:4444";
-const kratosUiRoutes = [
-  "/login",
-  "/registration",
-  "/recovery",
-  "/verification",
-  "/settings",
-  "/error",
-  "/consent",
-  "/logout",
-];
 
 export default defineConfig({
   plugins: [
@@ -90,33 +77,6 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
-      "/.ory/kratos/public": {
-        target: kratos,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/\.ory\/kratos\/public/, ""),
-      },
-      "/self-service": {
-        target: kratos,
-        changeOrigin: true,
-      },
-      "/.ory/hydra/public": {
-        target: hydra,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/\.ory\/hydra\/public/, ""),
-      },
-      "/oauth2": {
-        target: hydra,
-        changeOrigin: true,
-      },
-      ...Object.fromEntries(
-        kratosUiRoutes.map((route) => [
-          route,
-          {
-            target: kratosUi,
-            changeOrigin: true,
-          },
-        ]),
-      ),
     },
   },
   build: {

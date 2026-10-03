@@ -253,8 +253,9 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.ProjectService/Update":         {},
 	"/kaname.cloud.iam.v1.ProjectService/Delete":         {},
 	"/kaname.cloud.iam.v1.ProjectService/ListOperations": {},
-	// iam.v1 — UserService (НЕТ публичного Create — Users создаются через
-	// InternalUserService.UpsertFromIdentity).
+	// iam.v1 — UserService (НЕТ публичного Create — людей заводят регистрация
+	// и приглашение службы доступа; служебный InternalUserService.UpsertFromIdentity
+	// живёт только на внутреннем слушателе).
 	// Update — публичная async-мутация: mutable только labels (identity-поля
 	// immutable), возвращает Operation; parity с RoleService/ServiceAccountService.
 	"/kaname.cloud.iam.v1.UserService/Get":            {},
@@ -297,6 +298,19 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
 	"/kaname.cloud.iam.v1.UserTokenService/List":   {},
 	"/kaname.cloud.iam.v1.UserTokenService/Revoke": {},
+	// iam.v1 — AccessKeyService (Ф7, kacho#2718) — ключи доступа человека.
+	// Регистрация, перечень и снятие (REST .../users/{user_id}/accessKeys…):
+	// те же `token_issuer` / `token_reader` на iam_user по user_id, что у
+	// UserTokenService, пол acr 1. Два глагола утверждения (REST
+	// /iam/v1/accessKeys:beginAssertion|:finishAssertion) освобождены с
+	// `SELF_SERVICE`: субъект — сам вызывающий, пола нет — глагол производит
+	// уровень, а не потребляет; личность вызывающего краю нужна, как везде.
+	"/kaname.cloud.iam.v1.AccessKeyService/BeginRegistration":  {},
+	"/kaname.cloud.iam.v1.AccessKeyService/FinishRegistration": {},
+	"/kaname.cloud.iam.v1.AccessKeyService/List":               {},
+	"/kaname.cloud.iam.v1.AccessKeyService/Revoke":             {},
+	"/kaname.cloud.iam.v1.AccessKeyService/BeginAssertion":     {},
+	"/kaname.cloud.iam.v1.AccessKeyService/FinishAssertion":    {},
 	// iam.v1 — ServiceAccountService
 	"/kaname.cloud.iam.v1.ServiceAccountService/Get":    {},
 	"/kaname.cloud.iam.v1.ServiceAccountService/List":   {},

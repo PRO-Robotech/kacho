@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
+import ts from "typescript";
+import { CEREMONY_ADDRESSES, CEREMONY_ROUTING } from "@shared/pages/auth/ceremony-addresses";
 import App from "./App";
 
 const jsonResponse = (body: unknown) => {
@@ -10,6 +15,34 @@ const jsonResponse = (body: unknown) => {
   } as Response);
 };
 
+/**
+ * Ответ края о сессии — по построению стража над каркасом (приёмка F6b, Р7):
+ * каркас открывается ТОЛЬКО на «адрес подтверждён». Пробы каркаса ниже судят
+ * каркас, поэтому их «Дано» — подтверждённая сессия; неподтверждённая и
+ * неизвестная — свои пробы стража.
+ */
+const sessionOf = (emailVerified: boolean | null) =>
+  emailVerified === null
+    ? { user: null }
+    : {
+        user: { id: "usr-1", email: "a@kacho.local", displayName: "a", subjectType: "user", permissions: [] },
+        session: { expiresAt: "2026-09-24T00:00:00Z", assuranceLevel: "1", emailVerified },
+      };
+
+function urlOf(input: RequestInfo | URL): string {
+  return new URL(
+    typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+    "http://console.test",
+  ).pathname;
+}
+
+/** Сеть каркаса: «кто я» отвечает сессией с данной подтверждённостью, прочее — пустым списком. */
+function stubConsole(emailVerified: boolean | null) {
+  return stubNetwork((input) =>
+    urlOf(input) === "/iam/v1/auth/me" ? jsonResponse(sessionOf(emailVerified)) : jsonResponse({ accounts: [] }),
+  );
+}
+
 describe("App", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -18,7 +51,7 @@ describe("App", () => {
     // держалось бы на соседе, а не на коде.
     delete document.documentElement.dataset.theme;
     window.history.pushState(null, "", "/");
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
+    stubConsole(true);
   });
 
   afterEach(() => {
@@ -102,6 +135,87 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Virtual Private Cloud" })).toHaveAttribute("data-active", "true");
   });
 
+  /*
+   * Адреса церемоний принадлежат консоли МАРШРУТОМ (приёмка F8, Р3): все шесть
+   * получают маршрут, четыре консоль ведёт, два отвечают названной страницей —
+   * и ни один не уводится замыкающим правилом на панель. Радиус правки назван:
+   * адрес вне шести (`/error`) по-прежнему уходит на панель.
+   */
+  // Заголовок экрана по адресу — для ВСЕХ адресов перечня, который читает
+  // маршрутизатор (условие C1): адрес, добавленный в перечень без экрана,
+  // краснит эту пробу, а не уходит на панель молча.
+  const SCREEN_TITLE: Record<string, string> = {
+    login: "Вход в консоль",
+    registration: "Новая учётная запись",
+    logout: "Выход из консоли",
+    verification: "Подтвердите адрес почты",
+  };
+  const outsideShell = CEREMONY_ADDRESSES.filter((a) => CEREMONY_ROUTING[a].kind !== "in-shell").map((a) => {
+    const serving = CEREMONY_ROUTING[a];
+    return [a, serving.kind === "screen" ? SCREEN_TITLE[serving.screen] : "Такого адреса здесь нет"];
+  });
+
+  it("C1 · перечень адресов церемоний — шесть, без /error и /consent", () => {
+    expect([...CEREMONY_ADDRESSES].sort()).toEqual(
+      ["/login", "/logout", "/recovery", "/registration", "/settings", "/verification"].sort(),
+    );
+  });
+
+  it.each(outsideShell)(
+    "F8-01/F8-03 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель",
+    async (path, title) => {
+      window.history.pushState(null, "", path);
+      // Экран подтверждения — экран НЕПОДТВЕРЖДЁННОЙ сессии; прочим экранам
+      // вне каркаса сессия не нужна (Р7: без сессии — как до этой под-фазы).
+      stubConsole(path === "/verification" ? false : null);
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+      expect(window.location.pathname).toBe(path);
+      // Экраны церемоний стоят вне каркаса: рейла с разделами у них нет.
+      expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
+    },
+  );
+
+  it("F8-01 · /settings — экран параметров учётной записи внутри каркаса", async () => {
+    window.history.pushState(null, "", "/settings");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
+    expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
+  });
+
+  it("C1 · маршрутизатор берёт адреса церемоний из ОДНОГО перечня, а не пишет их литералами", () => {
+    // Второй перечень тех же адресов разошёлся бы с первым молча: адрес,
+    // добавленный в перечень и забытый в маршрутизаторе, ушёл бы на панель.
+    const file = fileURLToPath(new URL("./App.tsx", import.meta.url));
+    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const literals: string[] = [];
+    const walk = (n: ts.Node) => {
+      if (
+        (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) &&
+        (CEREMONY_ADDRESSES as readonly string[]).includes(n.text)
+      ) {
+        literals.push(`${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}: ${n.text}`);
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    expect(literals).toEqual([]);
+  });
+
+  it("радиус правки: адрес вне шести церемоний по-прежнему уходит на панель", async () => {
+    window.history.pushState(null, "", "/error");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Сервисы облака" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/dashboard");
+  });
+
   it("routes IAM module paths to the IAM remote", async () => {
     window.history.pushState(null, "", "/iam/accounts");
 
@@ -116,5 +230,72 @@ describe("App", () => {
       "data-active",
       "true",
     );
+  });
+});
+
+// ─── приёмка F6b, Р7 · страж над каркасом ─────────────────────────────────────
+//
+// Каркас открывается только на «адрес подтверждён». Неподтверждённая сессия на
+// любом адресе консоли, кроме четырёх экранов вне каркаса, уходит на экран
+// подтверждения с адресом возврата; чтения каркаса (`/iam/v1/accounts`) при этом
+// не выпускаются. Сквозная проба того же предмета — `address-confirmation.spec.ts`.
+describe("F6b · страж над каркасом консоли", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    delete document.documentElement.dataset.theme;
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const GUARDED: Array<[string, string]> = [
+    ["/", "/verification"],
+    ["/dashboard", "/verification?returnTo=%2Fdashboard"],
+    ["/projects/prj-1/vpc/networks", "/verification?returnTo=%2Fprojects%2Fprj-1%2Fvpc%2Fnetworks"],
+    ["/projects/prj-1/compute", "/verification?returnTo=%2Fprojects%2Fprj-1%2Fcompute"],
+    ["/iam/", "/verification?returnTo=%2Fiam%2F"],
+    ["/system/", "/verification?returnTo=%2Fsystem%2F"],
+    ["/settings", "/verification?returnTo=%2Fsettings"],
+    ["/recovery", "/verification?returnTo=%2Frecovery"],
+    ["/no-such-address", "/verification?returnTo=%2Fno-such-address"],
+  ];
+
+  it.each(GUARDED)(
+    "F6b-15 · %s у неподтверждённой сессии ведёт на экран подтверждения, каркас не монтируется",
+    async (path, expected) => {
+      window.history.pushState(null, "", path);
+      const network = stubConsole(false);
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: "Подтвердите адрес почты" })).toBeInTheDocument();
+      expect(`${window.location.pathname}${window.location.search}`).toBe(expected);
+      expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
+      const asked = network.mock.calls.map(([input]) => urlOf(input));
+      expect(asked.length).toBeGreaterThan(0);
+      expect(asked.filter((u) => u !== "/iam/v1/auth/me" && u !== "/iam/v1/auth/csrf")).toEqual([]);
+    },
+  );
+
+  it("F6b-16 · близнец: подтверждённая сессия на тех же адресах получает каркас", async () => {
+    window.history.pushState(null, "", "/settings");
+    const network = stubConsole(true);
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
+    expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
+    expect(network.mock.calls.map(([input]) => urlOf(input))).toContain("/iam/v1/accounts");
+  });
+
+  it("F6b-16 · близнец: /recovery у подтверждённой сессии — названная страница, как до этой под-фазы", async () => {
+    window.history.pushState(null, "", "/recovery");
+    stubConsole(true);
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Такого адреса здесь нет" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/recovery");
   });
 });

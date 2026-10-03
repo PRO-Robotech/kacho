@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Хук коммита: правило атрибуции в МОМЕНТ записи, до того как коммит станет
+# фактом (kacho-workspace#861). Предикат — scripts/hooks/attribution-rule.sh (там
+# же правило и решения); провязка — `make install-hooks`; проба —
+# scripts/hooks/attribution-inject.sh.
+#
+# ИСХОДЫ: 0 — атрибуции нет, хук молчит; 1 — отказ, коммит не записан:
+#   · в сообщении атрибуция — строка названа, под ней «как правильно»;
+#   · судить нечем — нет файла сообщения, сообщение пусто, нет предиката:
+#     «ноль прочитанного» зелёным не бывает.
+#
+# СЛЕПЫЕ ЗОНЫ хука коммита — `--no-verify`, cherry-pick, rebase, am, commit-tree:
+# git его там не зовёт. Их закрывает страж отправки
+# (scripts/hooks/prepush-attribution.sh): он судит уже ЗАПИСАННЫЕ коммиты.
+set -uo pipefail
+
+src="${BASH_SOURCE[0]}"
+case "$src" in */*) here="${src%/*}" ;; *) here=. ;; esac
+here="$(cd "$here" && pwd)"
+refuse() { # <причина> [<строка>…] — приставка только у первой строки
+    {
+        printf 'commit-msg ОТКАЗ — %s\n' "$1"
+        shift
+        [ "$#" -eq 0 ] || printf '%s\n' "$@"
+    } >&2
+    exit 1
+}
+[ -f "$here/attribution-rule.sh" ] ||
+    refuse "предиката нет ($here/attribution-rule.sh) — судить нечем, коммит не записан"
+# shellcheck source=scripts/hooks/attribution-rule.sh
+. "$here/attribution-rule.sh"
+
+file="${1:-}"
+[ -n "$file" ] && [ -r "$file" ] ||
+    refuse "файла сообщения нет («$file») — судить нечего, а «ноль прочитанного» не зелёное"
+msg="$(attribution_message "$file")"
+[ -n "${msg//[[:space:]]/}" ] || refuse "сообщение пусто — судить нечего"
+
+if attr="$(attribution_line "$msg")"; then
+    refuse "атрибуция в сообщении (scripts/hooks/attribution-rule.sh):" \
+        "  · «$attr»" \
+        "как правильно: удалите строку «$attr» — трейлеры Co-Authored-By (с любым значением) и Claude-Session:, строка «Generated with Claude Code» и ссылки claude.ai/code в сообщение не пишутся"
+fi
+exit 0

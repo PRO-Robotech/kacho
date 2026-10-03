@@ -63,11 +63,12 @@ var profileNamePattern = regexp.MustCompile(`values[A-Za-z0-9._-]*\.yaml`)
 
 // knownUntrackedProfiles — профили, которые в дереве не лежат и лежать не
 // могут, но в цепочке участвуют. Сегодня такой ровно один: слой учётных данных
-// боевой площадки. Он назван здесь, чтобы предикат «это профиль умбреллы»
+// боевой площадки (адрес почтового ретранслятора; учётные данные снятого
+// поставщика личности из него ушли, #1276). Он назван здесь, чтобы предикат «это профиль умбреллы»
 // узнавал его наравне с отслеживаемыми, — иначе строка, называющая ЕГО и один
 // отслеживаемый профиль, читалась бы как одиночная и вторая копия цепочки
 // прошла бы незамеченной.
-var knownUntrackedProfiles = []string{"values.fe3455-ory.yaml"}
+var knownUntrackedProfiles = []string{"values.fe3455-secrets.yaml"}
 
 // umbrellaProfileNames — множество имён профилей умбреллы: отслеживаемые файлы
 // дерева плюс известные неотслеживаемые. Выводится, а не выписывается.
@@ -471,7 +472,7 @@ func TestStackTablePredicates_RecogniseTheRealTree(t *testing.T) {
 	known := umbrellaProfileNames(t)
 	for _, want := range []string{
 		"values.dev.yaml", "values.dev-prod.yaml", "values.prod.yaml",
-		"values.fe3455-ory-posture.yaml", "values.prorobotech.yaml", "values.a8f60d.yaml",
+		"values.fe3455-prod.yaml", "values.prorobotech.yaml", "values.a8f60d.yaml",
 	} {
 		if !known[want] {
 			t.Errorf("профиль %s не выведен из дерева — обход перестал его узнавать; выведено: %v",
@@ -491,11 +492,11 @@ func TestStackTablePredicates_RecogniseTheRealTree(t *testing.T) {
 	// заводит вторую копию беззвучно — именно так копии и появились.
 	corpus := chainCarrierCorpus(t)
 	homes := map[string]bool{
-		filepath.Join("deploy", "tests", "helm", "admin-hop-address-census-test.sh"): false,
-		filepath.Join("gateway", "deploy", "revocation_endpoint_test.go"):            false,
-		filepath.Join("deploy", "Makefile"):                                          false,
-		filepath.Join(".github", "workflows", "ci.yaml"):                             false,
-		filepath.Join("deploy", "stacks.txt"):                                        false,
+		filepath.Join("deploy", "tests", "helm", "prerequisite-secrets-test.sh"): false,
+		filepath.Join("gateway", "deploy", "revocation_endpoint_test.go"):        false,
+		filepath.Join("deploy", "Makefile"):                                      false,
+		filepath.Join(".github", "workflows", "ci.yaml"):                         false,
+		filepath.Join("deploy", "stacks.txt"):                                    false,
 	}
 	root := mustAbs(t, repoRoot)
 	for _, p := range corpus {

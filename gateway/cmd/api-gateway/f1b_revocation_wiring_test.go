@@ -1,35 +1,48 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// f1b_revocation_wiring_test.go — читатель отзыва НАШИХ токенов провязывается
-// НЕЗАВИСИМО от адреса прежнего провайдера.
+// f1b_revocation_wiring_test.go — провязка полос отзыва в композиционном
+// корне: ни одна полоса не стоит в ветке, которая может её не завести.
 //
 // # Предмет
 //
-// Он стоял ВНУТРИ ветки «адрес прежнего провайдера задан», и это делало
-// невыразимой посадку, к которой фаза ведёт: «принимаем ТОЛЬКО нашего
-// издателя». Такой профиль адреса прежнего провайдера не задаёт — задавать
-// нечего, — и наш читатель не провязывался вовсе, а следом старт отвергался.
-// Отказ был честный, но отвергал он не ошибку оператора, а состояние, которое
-// обязано быть законным: возможность, объявленная и неисполнимая ни при каком
-// входе, — тот же класс, что поле, которое требуют и прислать нельзя.
+// Читатель отзыва НАШИХ токенов прежде стоял ВНУТРИ ветки «адрес прежнего
+// провайдера задан», и это делало невыразимой посадку «принимаем ТОЛЬКО нашего
+// издателя». Ветки прежнего провайдера больше нет вовсе (#2734) — её случай
+// снят вместе с предметом, — но класс остался: полоса отзыва, провязанная
+// условно, в ветке «не заведена» пропускает токен, ни о чём не спросив. Полоса
+// ЗАПИСИ отзыва (токены записей, которые наша чеканка не пометила) обязана
+// поэтому провязываться БЕЗУСЛОВНО: вызов стоит в main и исполняется на каждом
+// его проходе.
+//
+// # Безусловность — отсутствие ЛЮБОЙ формы, а не только `if` (kacho#2890)
+//
+// Безусловность судится по пути от main до вызова (executionForms): ветка if,
+// ветка case у switch и select, тело цикла, замыкание, оператор go и defer,
+// правый операнд && и || — всякая форма, в соседней стороне которой вызов не
+// исполняется, — находка с её типом узла и координатой. Находка и переход goto
+// в main, и функция-помощник вместо main. Замыкание — находка всегда, где бы
+// его ни позвали: вызовов замыкания судья не прослеживает. Каждую форму держит
+// строка TestRecordLaneInjection_EveryFormThatMayNotRunIsNamed на настоящем
+// корне.
 //
 // # Почему проверяется ИСХОДНИК, а не поведение
 //
 // `main()` из пробы не исполнить: он дозванивается до соседей и занимает
 // слушатели. Чтение исходника СЛАБЕЕ исполнения, и здесь оно применяется ровно
 // к тому свойству, которого «оно собирается» не показывает, — к ВЛОЖЕННОСТИ
-// одного решения в другое. Ровно та же форма и то же обоснование, что у
-// соседней пробы провязки административного хопа.
+// одного решения в другое.
 //
 // Разбор ведётся по дереву синтаксиса, а не по тексту: предмет здесь —
 // вложенность узлов, и предикат по подстроке отвечал бы на другой вопрос.
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 )
 
@@ -51,91 +64,151 @@ func f1bFindCall(f *ast.File, name string) []token.Pos {
 	return out
 }
 
-// legacyProviderURLBinding — имя, которым композиционный корень связывает адрес
-// прежнего провайдера. Ветка ищется по ЭТОЙ привязке: имя названо здесь, чтобы
-// его переименование роняло пробу переписью («ветка не найдена»), а не делало
-// её тихо беспредметной.
-const legacyProviderURLBinding = "introspectionURL"
-
-// legacyProviderBranchMinLines — порог, ниже которого найденная область считается
-// вырожденной. Настоящая ветка несёт построение кэша, выбор источников и
-// провязку; двухстрочная — это соседний страж, найденный по ошибке.
-const legacyProviderBranchMinLines = 10
-
-// f1bLegacyProviderBranch возвращает тело ветки, гейтующей адрес ПРЕЖНЕГО
-// провайдера, — то есть ту область, внутри которой наш читатель стоять не
-// вправе.
-func f1bLegacyProviderBranch(f *ast.File) *ast.BlockStmt {
-	var found *ast.BlockStmt
+// enclosingNodes — узлы разбора, охватывающие позицию, от файла вглубь.
+func enclosingNodes(f *ast.File, pos token.Pos) []ast.Node {
+	var path []ast.Node
 	ast.Inspect(f, func(n ast.Node) bool {
-		ifs, ok := n.(*ast.IfStmt)
-		if !ok || found != nil {
-			return true
+		if n == nil || pos < n.Pos() || pos >= n.End() {
+			return false
 		}
-		// Различитель — ПРИВЯЗКА имени в Init, а не упоминание метода где-то
-		// внутри условия. Упоминание ловит и соседнюю двухстрочную ветку стража
-		// настройки, где Init читает тот же адрес: первая редакция этой функции
-		// так и делала, находила её и проходила ВПУСТУЮ. Область, найденная не
-		// та, — это молчание, неотличимое от исполненного свойства.
-		assign, ok := ifs.Init.(*ast.AssignStmt)
-		if !ok || len(assign.Lhs) != 1 {
-			return true
-		}
-		ident, ok := assign.Lhs[0].(*ast.Ident)
-		if !ok || ident.Name != legacyProviderURLBinding {
-			return true
-		}
-		found = ifs.Body
+		path = append(path, n)
 		return true
 	})
-	return found
+	return path
 }
 
-func TestF1b_OurRevocationReaderIsWiredIndependentlyOfTheLegacyProvider(t *testing.T) {
+// within — лежит ли позиция в узле.
+func within(n ast.Node, pos token.Pos) bool {
+	return n != nil && n.Pos() <= pos && pos < n.End()
+}
+
+// executionForms — формы на пути к позиции, в соседней стороне которых она не
+// исполняется: тело или else ветки if (условие и инициализация исполняются
+// всегда), ветка case у switch и type switch, ветка select, цикл for (кроме
+// инициализации), тело range, замыкание, правый операнд && и ||, вызов под go и
+// defer (аргументы вычисляются сразу и формой не считаются). Каждая названа
+// типом узла и координатой; функция, охватывающая позицию, формой не считается —
+// её судит вызывающий.
+func executionForms(fset *token.FileSet, path []ast.Node, pos token.Pos) []string {
+	var forms []string
+	for _, n := range path {
+		conditional := false
+		switch x := n.(type) {
+		case *ast.IfStmt:
+			conditional = within(x.Body, pos) || within(x.Else, pos)
+		case *ast.CaseClause, *ast.CommClause, *ast.FuncLit:
+			conditional = true
+		case *ast.ForStmt:
+			conditional = !within(x.Init, pos)
+		case *ast.RangeStmt:
+			conditional = within(x.Body, pos)
+		case *ast.BinaryExpr:
+			conditional = (x.Op == token.LAND || x.Op == token.LOR) && within(x.Y, pos)
+		case *ast.GoStmt:
+			conditional = !inArgs(x.Call, pos)
+		case *ast.DeferStmt:
+			conditional = !inArgs(x.Call, pos)
+		}
+		if conditional {
+			forms = append(forms, fmt.Sprintf("%T у %s", n, fset.Position(n.Pos())))
+		}
+	}
+	return forms
+}
+
+// inArgs — лежит ли позиция в аргументах вызова.
+func inArgs(call *ast.CallExpr, pos token.Pos) bool {
+	for _, a := range call.Args {
+		if within(a, pos) {
+			return true
+		}
+	}
+	return false
+}
+
+// straightLineFinding — пусто, если позиция стоит в main и исполняется на
+// каждом его проходе; иначе — что её отделяет. Переход goto где угодно в main
+// — находка: путь, через который он прыгает, судья не строит.
+func straightLineFinding(fset *token.FileSet, f *ast.File, pos token.Pos) string {
+	at := fset.Position(pos)
+	path := enclosingNodes(f, pos)
+	var fn *ast.FuncDecl
+	for _, n := range path {
+		if fd, ok := n.(*ast.FuncDecl); ok {
+			fn = fd
+		}
+	}
+	switch {
+	case fn == nil:
+		return fmt.Sprintf("%s стоит вне объявления функции", at)
+	case fn.Recv != nil || fn.Name.Name != "main":
+		return fmt.Sprintf("%s стоит в функции %s, а не в main — её вызовы судья не прослеживает", at, fn.Name.Name)
+	}
+	if forms := executionForms(fset, path, pos); len(forms) > 0 {
+		return fmt.Sprintf("%s исполняется не на каждом проходе main: охватывают %s", at, strings.Join(forms, " → "))
+	}
+	var jumps []string
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if br, ok := n.(*ast.BranchStmt); ok && br.Tok == token.GOTO {
+			jumps = append(jumps, fmt.Sprintf("%T у %s", br, fset.Position(br.Pos())))
+		}
+		return true
+	})
+	if len(jumps) > 0 {
+		return fmt.Sprintf("%s стоит в main с переходом goto (%s) — путь, через который он прыгает, судья не строит",
+			at, strings.Join(jumps, ", "))
+	}
+	return ""
+}
+
+func parseCompositionRoot(t *testing.T) (*token.FileSet, *ast.File) {
+	t.Helper()
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", nil, 0)
 	if err != nil {
 		t.Fatalf("композиционный корень не разбирается: %v", err)
 	}
+	return fset, f
+}
 
-	// Положительный контроль: читатель вообще провязывается. Без него проба
-	// молчала бы на дереве, где его сняли целиком.
-	calls := f1bFindCall(f, "WithPlatformRevocationCheck")
-	if len(calls) == 0 {
-		t.Fatalf("читатель отзыва НАШИХ токенов не провязывается в композиционном корне " +
-			"вовсе — объявленный контроль без читателя не отказал бы ни разу за свою жизнь")
+// recordLaneFinding — пусто, если полоса записи отзыва провязана ровно один раз
+// и безусловно, а положительный контроль разбора форм найден условным; census
+// называет осмотренное.
+func recordLaneFinding(fset *token.FileSet, f *ast.File) (finding, census string) {
+	calls := f1bFindCall(f, "WithRevocationCheck")
+	if len(calls) != 1 {
+		return fmt.Sprintf("полоса записи отзыва провязана %d раз, ожидался ровно 1 — ни одного значит "+
+			"«токен проходит, ни о чём не спросив», два — два решения об одном предмете", len(calls)), ""
 	}
-
-	branch := f1bLegacyProviderBranch(f)
-	if branch == nil {
-		t.Fatalf("в композиционном корне не найдена ветка адреса прежнего провайдера — " +
-			"предмет вложенности искать не в чем, и молчание этой пробы сказано ни о чём")
+	if why := straightLineFinding(fset, f, calls[0]); why != "" {
+		return "полоса записи отзыва провязана условно: " + why + " — в соседней стороне формы край " +
+			"пропускал бы токен, ни о чём не спросив", ""
 	}
-
-	for _, pos := range calls {
-		if pos > branch.Lbrace && pos < branch.Rbrace {
-			t.Fatalf("читатель отзыва НАШИХ токенов провязан ВНУТРИ ветки адреса прежнего "+
-				"провайдера (%s внутри %s..%s).\n\n"+
-				"Тогда посадка «принимаем только нашего издателя» невыразима: профиль, не "+
-				"задающий адреса прежнего провайдера, не провязывает наш читатель и следом "+
-				"отвергает старт. Отказ честный, но отвергает он не ошибку оператора, а "+
-				"состояние, которое обязано быть законным.",
-				fset.Position(pos), fset.Position(branch.Lbrace), fset.Position(branch.Rbrace))
-		}
+	// Положительный контроль разбора форм: вызов, заведомо стоящий в ветке
+	// (читатель отзыва НАШИХ токенов — под «наш издатель принимается»), обязан
+	// быть найден условным. Иначе «безусловно» выше верно про что угодно.
+	platform := f1bFindCall(f, "WithPlatformRevocationCheck")
+	if len(platform) == 0 {
+		return "читатель отзыва НАШИХ токенов не провязывается вовсе — объявленный контроль " +
+			"без читателя не отказал бы ни разу за свою жизнь", ""
 	}
-
-	// Область обязана быть НЕВЫРОЖДЕННОЙ: ветка в две строки означает, что
-	// найдена не та, и «вне неё» тогда верно про что угодно.
-	span := fset.Position(branch.Rbrace).Line - fset.Position(branch.Lbrace).Line
-	if span < legacyProviderBranchMinLines {
-		t.Fatalf("ветка прежнего провайдера найдена вырожденной — строк %d при пороге %d "+
-			"(%s..%s). Это не «свойство исполнено», а «искали не там»: утверждение «наш "+
-			"читатель вне неё» на двухстрочной области верно про что угодно.",
-			span, legacyProviderBranchMinLines,
-			fset.Position(branch.Lbrace), fset.Position(branch.Rbrace))
+	control := straightLineFinding(fset, f, platform[0])
+	if control == "" {
+		return fmt.Sprintf("положительный контроль не сработал: условный вызов %s найден безусловным — "+
+			"разбор форм слеп, и утверждение о безусловности ничего не значит",
+			fset.Position(platform[0])), ""
 	}
+	return "", fmt.Sprintf("перепись: полоса записи — вызовов 1, форм на пути от main 0 (%s); полоса нашей "+
+		"чеканки — вызовов %d, условна (%s)", fset.Position(calls[0]), len(platform), control)
+}
 
-	t.Logf("перепись: вызовов провязки нашего читателя %d, все вне ветки прежнего провайдера "+
-		"(%s..%s, строк %d)", len(calls),
-		fset.Position(branch.Lbrace), fset.Position(branch.Rbrace), span)
+// TestRecordLaneOfRevocationIsWiredUnconditionally — полоса записи отзыва
+// провязана ровно один раз и безусловно.
+func TestRecordLaneOfRevocationIsWiredUnconditionally(t *testing.T) {
+	fset, f := parseCompositionRoot(t)
+	finding, census := recordLaneFinding(fset, f)
+	if finding != "" {
+		t.Fatal(finding)
+	}
+	t.Log(census)
 }

@@ -187,7 +187,16 @@ describe("Tabs рисует подписи всех вкладок и содер
 
   it("переключение уходит ключом вкладки", () => {
     const onChange = jest.fn();
-    render(<S.Tabs activeKey="a" onChange={onChange} items={[{ key: "a", label: "Обзор" }, { key: "b", label: "Связи" }]} />);
+    render(
+      <S.Tabs
+        activeKey="a"
+        onChange={onChange}
+        items={[
+          { key: "a", label: "Обзор" },
+          { key: "b", label: "Связи" },
+        ]}
+      />,
+    );
     fireEvent.click(screen.getByText("Связи"));
     expect(onChange).toHaveBeenCalledWith("b");
   });
@@ -230,7 +239,12 @@ describe("Collapse рисует подписи панелей и содержи�
       <S.Collapse
         activeKey={["1"]}
         items={[
-          { key: "0", label: "правило первое", extra: <button type="button">снять</button>, children: <span>тело 0</span> },
+          {
+            key: "0",
+            label: "правило первое",
+            extra: <button type="button">снять</button>,
+            children: <span>тело 0</span>,
+          },
           { key: "1", label: "правило второе", children: <span>тело 1</span> },
         ]}
       />,
@@ -288,5 +302,30 @@ describe("Spin рисует свою подпись загрузки", () => {
   it("без подписи текста нет — контроль в обратную сторону", () => {
     const { container } = render(<S.Spin />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("Alert рисует действие рядом с текстом", () => {
+  it("кнопка действия видна внутри предупреждения", () => {
+    render(<S.Alert message="Не удалось" action={<button type="button">Проверить снова</button>} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Не удалось");
+    expect(screen.getByRole("button", { name: "Проверить снова" })).toBeInTheDocument();
+  });
+
+  it("без действия кнопки нет — контроль в обратную сторону", () => {
+    render(<S.Alert message="Не удалось" />);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("Radio.Group отдаёт корню id и атрибуты доступности", () => {
+  it("отметка отказа у группы наблюдаема", () => {
+    render(<S.Radio.Group aria-label="Способ" aria-invalid options={[{ value: "a", label: "А" }]} />);
+    expect(screen.getByRole("radiogroup", { name: "Способ" })).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("без отметки её нет — контроль в обратную сторону", () => {
+    render(<S.Radio.Group aria-label="Способ" options={[{ value: "a", label: "А" }]} />);
+    expect(screen.getByRole("radiogroup", { name: "Способ" })).not.toHaveAttribute("aria-invalid");
   });
 });

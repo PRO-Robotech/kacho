@@ -12,13 +12,14 @@ public-vs-internal.
 ## Что делает gateway
 
 - **AuthN.** Bearer-JWT (RS256/ES256/EdDSA, проверка по JWKS: alg-whitelist,
-  iss/aud/typ/exp/nbf, обязательный срок, ротация ключей по kid). Издатель —
-  **множество**: платформа чеканит свои токены сама, прежний издатель на переходе
-  остаётся, и у каждого принимаемого издателя **своя** объявленная запись
-  источника ключей — ключ одного не проверяет токен, объявляющий другого. Отзыв
+  iss/aud/typ/exp/nbf, обязательный срок, ротация ключей по kid). Принимаются
+  издатели объявленного перечня; профили поставки объявляют одного — платформу,
+  которая чеканит свои токены сама. У каждого принимаемого издателя **своя**
+  объявленная запись источника ключей — ключ одного не проверяет токен,
+  объявляющий другого. Отзыв
   наших токенов читается у нас на пути запроса, и недоступность авторитета там
   даёт отказ. Плюс sender-constrained токены
-  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); session-cookie Ory Kratos для SPA;
+  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); печенье НАШЕЙ сессии для SPA;
   HMAC-токены для локальной разработки. Невалидный токен → `401`, никогда не
   понижается до anonymous. В `production-strict` анонимный доступ запрещен.
 - **AuthZ.** Каждый RPC проходит per-RPC проверку прав (`AuthorizeService.Check`
@@ -107,11 +108,10 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 | `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc:9090` | backend nlb |
 | `KACHO_API_GATEWAY_AUTHN_MODE` | `dev` | `dev` / `production` / `production-strict` |
 | `KACHO_API_GATEWAY_AUTHZ_ENABLED` | `false` | per-RPC authz-middleware |
-| `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; вырожденное значение — отказ в старте |
+| `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; **обязателен** — не объявлен либо вырожден ⇒ отказ в старте |
 | `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS` | пусто | привязка «издатель=адрес его набора ключей»; адрес объявляется, не выводится |
 | `KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER` | пусто | наш издатель; выбирает строгую полосу приёма и чтение отзыва |
 | `KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL` | пусто | наш авторитет отзыва; при принимаемом нашем издателе не задан ⇒ **отказ в старте**, мягкого прохода на этой полосе нет |
-| `KACHO_HYDRA_ISSUER` | derived | прежний скалярный пин; действует, пока `_TOKEN_ISSUERS` не объявлен |
 
 В production-окружении (`KACHO_APP_ENV=production`) gateway **отказывается стартовать**
 при authz-disabled / fail-open / неproduction-режиме authN — secure-by-default.
@@ -137,7 +137,7 @@ DPoP-proof и REST-роутера.
 ```
 cmd/api-gateway/                 — composition root (wiring всех listener'ов и middleware)
 cmd/protoc-gen-kacho-permissions — генератор permission-каталога из proto доменов
-internal/middleware/             — AuthN (JWT/DPoP/mTLS/Kratos), AuthZ, кэши, OIDC, idempotency
+internal/middleware/             — AuthN (JWT/DPoP/mTLS/сессия), AuthZ, кэши, idempotency
 internal/proxy/                  — gRPC transparent-proxy (Resolver + allowlist routing)
 internal/restmux/                — grpc-gateway REST (public + internal split-mux)
 internal/opsproxy/               — OperationService fan-out по prefix

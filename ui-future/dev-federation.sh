@@ -137,6 +137,6 @@ done
 echo
 echo "Консоль: http://localhost:$HOST_PORT"
 echo "Журналы: $LOGS"
-echo "Стенд kind достигается через ./proxies.sh (шлюз :8080, kratos :4433, ui :4300, hydra :4444)."
+echo "Стенд kind достигается через ./proxies.sh (шлюз :8080)."
 echo "Ctrl+C — остановить всё."
 wait

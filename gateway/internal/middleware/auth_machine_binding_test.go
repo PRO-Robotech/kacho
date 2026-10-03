@@ -80,7 +80,7 @@ func humanToken(bound bool) *VerifiedToken {
 }
 
 // asymBearer — a syntactically asymmetric JWT so isAsymmetricJWT routes the
-// request down the Hydra-JWT path. The stub verifier ignores the contents.
+// request down the bearer-JWT path. The stub verifier ignores the contents.
 const asymBearer = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4In0.sig"
 
 func bindingInterceptor(t *testing.T, vt *VerifiedToken, require bool) *AuthInterceptor {

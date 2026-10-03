@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 
 const redirectToLogin = jest.fn();
 jest.unstable_mockModule("./auth", () => ({
@@ -6,7 +7,34 @@ jest.unstable_mockModule("./auth", () => ({
   loginUrl: () => "/login",
 }));
 
+// Уход на экран подтверждения — переход документа (приёмка F6b, F6b-25).
+const leaveToAddressConfirmation = jest.fn();
+jest.unstable_mockModule("@shared/pages/auth/address-confirmation-exit", () => ({
+  leaveToAddressConfirmation,
+}));
+
 const { apiGet } = await import("./api-client");
+const { setStepUpRequester } = await import("@shared/api/step-up");
+
+/** Ответ с заголовками — так, как его видит `fetch`. */
+const answered = (status: number, body: string, headers: Record<string, string> = {}) => {
+  const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (n: string) => h[n.toLowerCase()] ?? null },
+    text: () => Promise.resolve(body),
+    statusText: String(status),
+  } as unknown as Response);
+};
+
+/** Вызов пола края RFC 9470 — тот же производитель, что у платформы (`authz.go`). */
+const FLOOR = {
+  "WWW-Authenticate":
+    'Bearer error="insufficient_user_authentication", error_description="Required ACR 2", acr_values="2"',
+};
+/** Край: носитель не находит записи (`writeHTTPUnauthorized`). */
+const ENDED = { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' };
 
 const jsonResponse = (body: unknown) => {
   return Promise.resolve({
@@ -29,10 +57,45 @@ describe("api-client", () => {
   afterEach(() => {
     jest.restoreAllMocks();
     redirectToLogin.mockClear();
+    setStepUpRequester(null);
+  });
+
+  it("C15 · вызов пола — повышение и ОДИН повтор, а не переход на вход", async () => {
+    const asked = jest.fn(() => Promise.resolve());
+    setStepUpRequester(asked);
+    let n = 0;
+    stubNetwork(() =>
+      ++n === 1
+        ? answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR)
+        : jsonResponse({ ok: 1 }),
+    );
+    await expect(apiGet("/vpc/v1/networks")).resolves.toEqual({ ok: 1 });
+    expect(asked).toHaveBeenCalledWith({ cause: "floor", acr: "2" });
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("C15 · вызов пола, повышать некому — отказ назван, на вход не уводит", async () => {
+    stubNetwork(() => answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR));
+    await expect(apiGet("/vpc/v1/networks")).rejects.toBeInstanceOf(Error);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("Р10 · «сессия кончилась» — сессии нет: на вход, повтора с текущим носителем нет", async () => {
+    // Повтор (условие C18 редакции 6) невыполним: ответ края гасит носитель.
+    // Перевыпуск упорядочивает транспорт вкладки (`@shared/api/carrier-order`),
+    // и ответа на прежний носитель после перевыпуска это чтение не получает.
+    let n = 0;
+    stubNetwork(() => {
+      n += 1;
+      return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
+    });
+    await expect(apiGet("/vpc/v1/networks")).rejects.toBeInstanceOf(Error);
+    expect(n).toBe(1);
+    expect(redirectToLogin).toHaveBeenCalledTimes(1);
   });
 
   it("includes browser credentials on API requests", async () => {
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ ok: true }));
+    stubNetwork(() => jsonResponse({ ok: true }));
 
     await apiGet("/vpc/v1/networks");
 
@@ -43,9 +106,7 @@ describe("api-client", () => {
   });
 
   it("redirects to login on a 401 with a non-JSON (HTML/plaintext) body", async () => {
-    jest
-      .spyOn(global, "fetch")
-      .mockImplementation(() => rawResponse(401, "<html><body>401 Unauthorized</body></html>"));
+    stubNetwork(() => rawResponse(401, "<html><body>401 Unauthorized</body></html>"));
 
     await expect(apiGet("/vpc/v1/networks")).rejects.toBeInstanceOf(Error);
 
@@ -54,9 +115,51 @@ describe("api-client", () => {
   });
 
   it("does not surface a JSON parse error on a non-JSON error body", async () => {
-    jest.spyOn(global, "fetch").mockImplementation(() => rawResponse(500, "upstream connect error"));
+    stubNetwork(() => rawResponse(500, "upstream connect error"));
 
     // The rejection must carry the HTTP-derived message, not an opaque SyntaxError.
     await expect(apiGet("/vpc/v1/networks")).rejects.not.toThrow(SyntaxError);
+  });
+});
+
+describe("F6b-25 · отказ адреса на чтении каркаса", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    redirectToLogin.mockClear();
+    leaveToAddressConfirmation.mockClear();
+  });
+
+  const ADDRESS_NOT_VERIFIED = JSON.stringify({
+    code: 7,
+    message: "email address is not verified",
+    details: [
+      { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "EMAIL_NOT_VERIFIED", domain: "iam.kaname.cloud" },
+    ],
+  });
+  const CATALOG_DENIED = JSON.stringify({
+    code: 7,
+    message: "permission denied",
+    details: [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        reason: "AUTHZ_DENIED",
+        domain: "kaname.cloud.iam.v1",
+        metadata: { deny_reasons: "no path" },
+      },
+    ],
+  });
+
+  it("F6b-25 · EMAIL_NOT_VERIFIED края — на экран подтверждения, а не на вход", async () => {
+    stubNetwork(() => answered(403, ADDRESS_NOT_VERIFIED));
+    await expect(apiGet("/vpc/v1/networks")).rejects.toBeInstanceOf(Error);
+    expect(leaveToAddressConfirmation).toHaveBeenCalledTimes(1);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("F6b-26 · близнец: отказ по каталогу прав того же статуса и кода никуда не уводит", async () => {
+    stubNetwork(() => answered(403, CATALOG_DENIED));
+    await expect(apiGet("/vpc/v1/networks")).rejects.toBeInstanceOf(Error);
+    expect(leaveToAddressConfirmation).not.toHaveBeenCalled();
+    expect(redirectToLogin).not.toHaveBeenCalled();
   });
 });

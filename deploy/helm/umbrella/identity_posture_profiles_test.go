@@ -1,22 +1,21 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// identity_posture_profiles_test.go — ДВЕ ПОЛОВИНЫ одного стенда объявляют одну
-// и ту же посадку личности (задача #1125, подфаза Ф4д эпика #896).
+// identity_posture_profiles_test.go — ДВЕ ПОЛОВИНЫ одного стенда решают о личности
+// одинаково (задача #1125, подфаза Ф4д эпика #896; kacho#2818).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// Посадку читают ДВА процесса: служба прав и край. Половины разводят по ней
-// РАЗНЫЕ требования — служба прав три адреса поставщика, край один. Профиль,
-// объявивший посадку одной половине и забывший второй, даёт стенд, у которого
-// половины решают о личности по-разному, и НИКТО ЭТОГО НЕ РЕШАЛ: расхождение
-// возникает побочным эффектом правки.
+// Посадку читали ДВА процесса: служба доступа и край. Профиль, объявивший её
+// одной половине и забывший вторую, давал стенд, у которого половины решают о
+// личности по-разному, и НИКТО ЭТОГО НЕ РЕШАЛ.
 //
-// Проверяется именно РАЗНИЦА, а не каждая половина отдельно. Проба каждой
-// половины требует знать, какой посадка должна быть, — а это и есть спорный
-// вопрос профиля. Сравнение половин спрашивает другое: «решал ли кто-нибудь,
-// что они различаются». На это ответ есть всегда.
+// С kaname#363 у службы посадка одна — своя полоса, — и ключа посадки у неё
+// нет (kacho#2818): её подчарт отказывает в рендере профилю, который его всё
+// ещё объявляет. Разница половин теперь выражается одним способом — край
+// объявил не `own`, — и проба спрашивает ровно это, плюс то, что ни один
+// профиль не объявляет снятого ключа службы.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧИТАЕТ ОБЪЯВЛЕНИЯ, А НЕ РЕНДЕР
@@ -43,10 +42,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// kanameLanding — посадка службы доступа на любом стенде: одна, своя полоса
+// (kaname#363). Ключа посадки у её подчарта нет (kacho#2818).
+const kanameLanding = "own"
+
 // postureDeclaration — что профиль объявил каждой половине.
 type postureDeclaration struct {
 	Profile string
-	IAM     string // config.authn.identityProvider у подчарта службы прав
+	IAM     string // config.authn.identityProvider у подчарта службы — снятый ключ
 	Edge    string // authn.identityProvider у подчарта края
 }
 
@@ -62,8 +65,8 @@ func (d postureDeclaration) halves() []string {
 	return out
 }
 
-// Профиль, объявивший посадку хотя бы одной половине, обязан объявить её ОБЕИМ,
-// и объявить ОДИНАКОВО.
+// Профиль, объявивший посадку краю, объявляет посадку службы (`own`); снятого
+// ключа службы не объявляет ни один профиль.
 func TestIdentityPostureHalvesOfAProfileAgree(t *testing.T) {
 	decls := readPostureDeclarations(t)
 	if len(decls) == 0 {
@@ -85,36 +88,37 @@ func TestIdentityPostureHalvesOfAProfileAgree(t *testing.T) {
 	}
 }
 
-// Базовые значения ПОДЧАРТОВ обязаны объявлять посадку — и одну и ту же.
+// Базовый профиль КРАЯ объявляет посадку, и она равна посадке службы; базовый
+// профиль службы снятого ключа не несёт.
 //
-// Это и есть «умолчание живёт в профиле, а не в коде»: у процессов умолчания
-// нет by construction, поэтому базовый профиль каждой половины обязан назвать
-// значение, иначе ни один стенд не поднимется вовсе.
+// Это «умолчание живёт в профиле, а не в коде»: у края умолчания нет by
+// construction, поэтому его базовый профиль обязан назвать значение.
 func TestIdentityPostureIsDeclaredByBothSubchartDefaults(t *testing.T) {
 	iam := readNested(t, filepath.Join(iamChartDir, "values.yaml"),
 		"config", "authn", "identityProvider")
 	edge := readNested(t, filepath.Join("..", "..", "..", "gateway", "deploy", "values.yaml"),
 		"authn", "identityProvider")
 
-	t.Logf("перепись: базовых профилей подчартов 2 · объявляют посадку %d",
-		boolToInt(iam != "")+boolToInt(edge != ""))
+	t.Logf("перепись: базовых профилей подчартов 2 · объявляют посадку %d (служба — снятым ключом %d)",
+		boolToInt(iam != "")+boolToInt(edge != ""), boolToInt(iam != ""))
 
-	if iam == "" {
-		t.Error("базовый профиль службы прав посадку не объявляет — умолчания нет ни у него, ни у процесса, " +
-			"и всякий стенд, не назвавший её сам, не поднимется")
+	if iam != "" {
+		t.Errorf("базовый профиль службы доступа объявляет снятый ключ посадки (%q) — служба его "+
+			"отвергает при любом значении (kaname#363), и её подчарт откажет в рендере", iam)
 	}
 	if edge == "" {
-		t.Error("базовый профиль края посадку не объявляет — то же самое")
+		t.Error("базовый профиль края посадку не объявляет — умолчания нет ни у него, ни у процесса, " +
+			"и всякий стенд, не назвавший её сам, не поднимется")
 	}
-	if iam != "" && edge != "" && iam != edge {
-		t.Errorf("базовые профили половин объявляют разное: iam=%q gateway=%q — "+
-			"это расхождение, а не выбор", iam, edge)
+	if edge != "" && edge != kanameLanding {
+		t.Errorf("базовый профиль края объявляет посадку %q, а у службы она одна — %q: "+
+			"половины разошлись, и этого никто не решал", edge, kanameLanding)
 	}
 }
 
 // Законный близнец: профиль, посадку НЕ объявляющий вовсе, находкой не
-// считается — он наследует базовые значения подчартов, а те согласованы
-// проверкой выше. Без этого случая проба краснела бы на каждом узком профиле.
+// считается — он наследует базовое значение края, а оно согласовано с посадкой
+// службы проверкой выше. Без этого случая проба краснела бы на каждом узком профиле.
 func TestAProfileDeclaringNeitherHalfIsNotAFinding(t *testing.T) {
 	decls := readPostureDeclarations(t)
 	silent := 0
@@ -199,20 +203,18 @@ func boolToInt(b bool) int {
 // разошлась бы с настоящей пробой молча.
 func judgePostureDeclarations(decls []postureDeclaration) (declaring int, findings []string) {
 	for _, d := range decls {
-		h := d.halves()
-		if len(h) == 0 {
-			continue // профиль посадку не объявляет — наследует базовые значения подчартов
+		if len(d.halves()) == 0 {
+			continue // профиль посадку не объявляет — наследует базовое значение края
 		}
 		declaring++
-		if len(h) == 1 {
-			findings = append(findings, d.Profile+": посадку объявила ТОЛЬКО одна половина ("+
-				strings.Join(h, ", ")+") — вторая унаследует базовое значение подчарта, и половины "+
-				"одного стенда разойдутся без чьего-либо решения")
-			continue
+		if d.IAM != "" {
+			findings = append(findings, d.Profile+": объявлен снятый ключ посадки службы "+
+				"(kaname.config.authn.identityProvider="+d.IAM+") — служба отвергает его при любом "+
+				"значении (kaname#363), и её подчарт откажет в рендере")
 		}
-		if d.IAM != d.Edge {
-			findings = append(findings, d.Profile+": половины объявили РАЗНОЕ ("+
-				strings.Join(h, ", ")+") — это расхождение, а не выбор")
+		if d.Edge != "" && d.Edge != kanameLanding {
+			findings = append(findings, d.Profile+": половины объявили РАЗНОЕ (gateway="+d.Edge+
+				", у службы посадка одна — "+kanameLanding+") — это расхождение, а не выбор")
 		}
 	}
 	return declaring, findings
@@ -226,28 +228,30 @@ func judgePostureDeclarations(decls []postureDeclaration) (declaring int, findin
 // Дефект: половины объявили РАЗНОЕ. Обязано находиться.
 func TestInjection_HalvesDeclaringDifferentPosturesAreFound(t *testing.T) {
 	_, findings := judgePostureDeclarations([]postureDeclaration{
-		{Profile: "values.synthetic.yaml", IAM: "own", Edge: "external"},
+		{Profile: "values.synthetic.yaml", Edge: "external"},
 	})
 	if len(findings) != 1 || !strings.Contains(findings[0], "РАЗНОЕ") {
 		t.Fatalf("расхождение половин не найдено: %v", findings)
 	}
 }
 
-// Дефект: посадку объявила ТОЛЬКО одна половина. Обязано находиться — вторая
-// молча унаследует базовое значение, и стенд разъедется.
+// Дефект: профиль всё ещё объявляет снятый ключ посадки службы. Обязано
+// находиться при любом значении — служба его отвергает.
 func TestInjection_OnlyOneHalfDeclaringIsFound(t *testing.T) {
-	_, findings := judgePostureDeclarations([]postureDeclaration{
-		{Profile: "values.synthetic.yaml", IAM: "own"},
-	})
-	if len(findings) != 1 || !strings.Contains(findings[0], "ТОЛЬКО одна половина") {
-		t.Fatalf("односторонняя декларация не найдена: %v", findings)
+	for _, v := range []string{"own", "external"} {
+		_, findings := judgePostureDeclarations([]postureDeclaration{
+			{Profile: "values.synthetic.yaml", IAM: v, Edge: "own"},
+		})
+		if len(findings) != 1 || !strings.Contains(findings[0], "снятый ключ посадки службы") {
+			t.Fatalf("снятый ключ службы (%s) не найден: %v", v, findings)
+		}
 	}
 }
 
 // Законный близнец: обе половины объявили ОДНО И ТО ЖЕ — проба молчит.
 func TestInjection_HalvesInAgreementAreSilent(t *testing.T) {
 	declaring, findings := judgePostureDeclarations([]postureDeclaration{
-		{Profile: "values.synthetic.yaml", IAM: "own", Edge: "own"},
+		{Profile: "values.synthetic.yaml", Edge: "own"},
 	})
 	if len(findings) != 0 {
 		t.Fatalf("согласие половин объявлено находкой: %v", findings)

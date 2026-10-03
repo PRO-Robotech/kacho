@@ -32,11 +32,26 @@
 // они разделены ТАК ЖЕ, как на пути запроса; расхождение полос здесь было бы
 // расхождением одного механизма с самим собой:
 //
-//   - удостоверение с идентификатором — по нему (`IsRevoked`);
-//   - браузерная сессия — по паре (человек, момент аутентификации)
-//     (`SessionCutoffOf`): идентификатора у неё нет вовсе;
+//   - токен — вопросом, который путь запроса выбирает пометкой записи издателя:
+//     токен нашей чеканки — сверкой по самому токену ([Config.OurTokens]), токен
+//     иной принятой записи — записью отзыва по идентификатору (`IsRevoked`);
+//   - наша сессия — ответом о сессии по носителю (`Resolve`) и по паре (человек,
+//     момент аутентификации) (`SessionCutoffOf`): идентификатора у неё нет;
 //   - базовый секрет — по идентификатору СТРОКИ удостоверения
 //     (`CheckBasicCredentialLive`, kacho#1450).
+//
+// # Отметка адреса почты — тем же вопросом, что путь запроса (kacho#2900)
+//
+// Подтверждённость адреса служба называет только в ответ о предъявленном: о
+// сессии — по носителю, о нашем токене — сверкой по токену; вопроса по
+// идентификатору, который её называл бы, у неё нет. Поэтому на этих двух полосах
+// перепрос спрашивает ПРЕДЪЯВЛЕННЫМ, которое записала полоса приёма
+// (`principalmeta.Presented`), и закрывает поток ровно там, где путь запроса
+// отказал бы следующему обращению: сессии нет, адрес не подтверждён, токен не
+// действует. Не записанное предъявленное — не «спросить не о чем», а «спросить
+// нечем»: «адрес неизвестен» проходом не бывает (F6b-09), поток закрывается.
+// Базовому секрету ту же отметку судит служба на вопросе о живости (приёмка F6b,
+// §3.2), и предъявленного ему не нужно.
 //
 // Третья полоса появилась позже двух первых, и её отсутствие не было тихим:
 // такие потоки считались НЕСПРАШИВАЕМЫМИ и печатались числом. Вопроса о них не
@@ -46,12 +61,12 @@
 //
 // # Чего этот перепрос НЕ спрашивает, и это названо, а не подразумевается
 //
-// Отзывов ПРОВАЙДЕРА он не видит. На пути запроса их спрашивают интроспекцией,
-// а она требует предъявленного удостоверения ЦЕЛИКОМ; держать его в памяти края
-// весь срок соединения значило бы завести хранилище носителей на девяносто
-// секунд ради вопроса, который наш авторитет и так закрывает для выхода и
-// принудительного выхода. Истечение срока самого удостоверения тоже не предмет
-// этого перепроса: истечение — не отзыв, у него своя величина и свой читатель.
+// Отзывов чужого поставщика он не видит: поставщика нет (#2734), и спрашивать о
+// них некого. Предъявленное целиком он держит не новым хранилищем, а ссылкой на
+// значение, которое поток и так держит весь свой срок в заголовках своего запроса
+// (разбор — `principalmeta/presented.go`). Истечение срока самого удостоверения
+// тоже не предмет этого перепроса: истечение — не отзыв, у него своя величина и
+// свой читатель.
 package streamrevocation
 
 import (
@@ -81,18 +96,18 @@ type Streams interface {
 
 // Authority — НАШ авторитет отзыва, спрошенный про ПРЕДЪЯВЛЕННОЕ.
 //
-// Оба вопроса объявлены ОДНИМ портом, а не двумя полями: их задаёт один и тот
-// же авторитет одному и тому же соседу, и разъехаться они могут только в одну
+// Вопросы объявлены ОДНИМ портом, а не полем на каждый: их задаёт один и тот
+// же спрашивающий одному и тому же соседу, и разъехаться они могут только в одну
 // сторону — когда провязали половину. Половина, которую можно провязать
 // отдельно, есть половина, которую можно ЗАБЫТЬ отдельно, и забытая выглядела
 // бы как исполняемый контроль ровно для той полосы, что осталась.
 //
-// Оба вопроса уже объявлены полосой запроса (`middleware`), и здесь они не
-// переобъявляются: третье описание того же вопроса разошлось бы с первыми
-// двумя молча.
+// Вопросы о сессии уже объявлены полосой запроса (`middleware`), и здесь они не
+// переобъявляются: второе описание того же вопроса разошлось бы с первым молча.
 type Authority interface {
 	middleware.SessionRevocationsReader
 	middleware.SessionCutoffReader
+	middleware.HumanSessionReader
 	BasicCredentialLivenessReader
 }
 
@@ -155,6 +170,14 @@ const (
 	// считать это отказом значило бы закрывать потоки всего флота на всё окно
 	// раската, при том что состояние сходится само.
 	verdictUnsupported
+	// verdictAddressUnverified — сессия жива, адрес её человека не подтверждён.
+	// Поток закрываем: путь запроса отказал бы следующему обращению рубежом
+	// адреса (F6b Р4). Держится врозь от отзыва: оператору это разное.
+	verdictAddressUnverified
+	// verdictPresentedMissing — полоса, чей вопрос задаётся предъявленным, его
+	// не записала либо у перепроса нет читателя этой полосы. Спросить нечем, а
+	// «не спросили» не есть «годен»: поток закрываем, громко — это дефект сборки.
+	verdictPresentedMissing
 	// verdictLivenessUnsupported — то же окно раската, но у ВОПРОСА О ЖИВОСТИ
 	// базового удостоверения.
 	//
@@ -175,6 +198,13 @@ type Config struct {
 
 	// Authority — наш авторитет отзыва. ОБЯЗАТЕЛЕН по тому же доводу.
 	Authority Authority
+
+	// OurTokens — сверка токенов НАШЕЙ чеканки: ТОТ ЖЕ читатель, которым путь
+	// запроса спрашивает о них (кэш вердиктов у них общий, поэтому поток видит
+	// ровно то, что увидел бы новый запрос). Ноль законен там, где наш издатель
+	// не принят; тогда токен нашей чеканки на потоке закрывается — путь запроса в
+	// этом состоянии отказывает ему всегда.
+	OurTokens middleware.TokenRevocationChecker
 
 	// Interval — период перепроса. ОБЯЗАТЕЛЕН и умолчания не имеет: это и есть
 	// ОБЪЯВЛЕННОЕ ОКНО отзыва для открытого соединения, а величина, которую
@@ -289,14 +319,25 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 	}
 
 	var closed, asked, unanswered, unaskable, unsupported, livenessUnsupported int
+	var addressUnverified, presentedMissing int
+	closeAll := func(streams []subscriptionstream.OpenStream) {
+		for _, st := range streams {
+			st.Close()
+		}
+		closed += len(streams)
+	}
 	for cred, streams := range byCred {
 		switch s.ask(ctx, cred) {
 		case verdictRevoked:
-			for _, st := range streams {
-				st.Close()
-			}
-			closed += len(streams)
+			closeAll(streams)
 			asked++
+		case verdictAddressUnverified:
+			closeAll(streams)
+			addressUnverified += len(streams)
+			asked++
+		case verdictPresentedMissing:
+			closeAll(streams)
+			presentedMissing += len(streams)
 		case verdictLive:
 			asked++
 		case verdictUnsupported:
@@ -325,6 +366,8 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		s.cfg.Logger.Info("subscription credential recheck",
 			"streams", len(open), "credentials", len(byCred),
 			"streams_closed", closed,
+			"streams_closed_address_unverified", addressUnverified,
+			"streams_closed_presented_missing", presentedMissing,
 			// Величины держатся ВРОЗЬ: слитые в одну, они смешали бы
 			// исполненный контроль с разными способами его не исполнить, и по
 			// смешанной величине нельзя принять ни одного решения. Окна раската
@@ -345,6 +388,12 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		s.cfg.Logger.Warn("open subscription stream carries no askable credential",
 			"streams_unaskable", unaskable,
 			"predicate", "исчезает, когда полоса аутентификации назовёт удостоверение потока")
+	}
+	if presentedMissing > 0 {
+		s.cfg.Logger.Error("open subscription stream cannot be asked its lane's question: "+
+			"the presented credential was not recorded or the lane's reader is not wired; closed",
+			"streams_closed_presented_missing", presentedMissing,
+			"predicate", "исчезает, когда полоса приёма записывает предъявленное, а сборка провязывает читателя её полосы")
 	}
 	if unsupported > 0 {
 		s.cfg.Logger.Error("session revocation not enforced on open subscription streams: "+
@@ -395,6 +444,43 @@ func (s *Sweeper) ask(ctx context.Context, c principalmeta.Credential) verdict {
 		}
 
 	case c.JTI != "":
+		return s.askToken(ctx, c)
+
+	case c.UserID != "":
+		return s.askSession(ctx, c)
+
+	default:
+		return verdictUnaskable
+	}
+}
+
+// askToken — полоса токена: вопрос выбирает пометка записи издателя, которую
+// записала полоса предъявителя, — та же, по которой выбрал его путь запроса.
+func (s *Sweeper) askToken(ctx context.Context, c principalmeta.Credential) verdict {
+	raw, ours, recorded := c.Presented.Token()
+	switch {
+	case !recorded:
+		// Какой вопрос задаёт этому токену путь запроса, здесь не знать нечем.
+		return verdictPresentedMissing
+
+	case ours && s.cfg.OurTokens == nil:
+		return verdictPresentedMissing
+
+	case ours:
+		// Сверка по самому токену: она называет и отзыв, и отметку адреса
+		// владельца-человека (Р5а службы). Любой ответ, кроме двух, — «спросить не
+		// удалось», ровно как на пути запроса.
+		_, err := s.cfg.OurTokens.Introspect(ctx, c.JTI, raw)
+		switch {
+		case err == nil:
+			return verdictLive
+		case errors.Is(err, middleware.ErrTokenInactive):
+			return verdictRevoked
+		default:
+			return verdictUnanswered
+		}
+
+	default:
 		revoked, err := s.cfg.Authority.IsSessionRevoked(ctx, c.JTI)
 		if err != nil {
 			return verdictUnanswered
@@ -403,35 +489,65 @@ func (s *Sweeper) ask(ctx context.Context, c principalmeta.Credential) verdict {
 			return verdictRevoked
 		}
 		return verdictLive
+	}
+}
 
-	case c.UserID != "":
-		cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, c.UserID)
-		switch {
-		case errors.Is(err, middleware.ErrSessionCutoffUnsupported):
-			return verdictUnsupported
-		case err != nil:
-			return verdictUnanswered
-		case !found:
-			// Пустой ответ означает ПУСТО. Человек, которого никто не отзывал,
-			// продолжает читать свой поток.
-			return verdictLive
-		case c.AuthenticatedAt.IsZero():
-			// Отсечка есть, а сравнивать не с чем: провайдер момента не назвал.
-			// Пропустить — значит дать обходить отзыв ОТСУТСТВИЕМ поля в чужом
-			// ответе. Та же посадка принята полосой запроса.
-			return verdictRevoked
-		case c.AuthenticatedAt.After(cutoff):
-			// Отсечка действует ВПЕРЁД и включает свой момент: сессия,
-			// аутентифицировавшаяся РОВНО в него, недействительна. Иначе
-			// принудительный выход, совпавший по метке со входом, не подействовал
-			// бы — а совпадают они тем чаще, чем грубее разрешение метки.
-			return verdictLive
-		default:
-			return verdictRevoked
-		}
+// askSession — полоса нашей сессии, в порядке пути запроса: сессия по носителю
+// → отсечка → адрес (auth_own_session.go).
+func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) verdict {
+	bearer := c.Presented.SessionBearer()
+	if bearer == "" {
+		return verdictPresentedMissing
+	}
+	sess, found, err := s.cfg.Authority.ResolveHumanSession(ctx, bearer)
+	switch {
+	case err != nil:
+		// Включая «метода нет»: путь запроса отказывает и на нём (F4d-23), годность
+		// носителя не подтверждена ничем.
+		return verdictUnanswered
+	case !found:
+		// Один ответ на все причины (снята выходом, истекла, заблокирована):
+		// путь запроса отвечает на него отказом F4d-22.
+		return verdictRevoked
+	}
 
+	cut := s.cutoffVerdict(ctx, c)
+	switch cut {
+	case verdictRevoked, verdictUnanswered:
+		return cut
+	}
+	if !sess.EmailVerified {
+		// Рубеж адреса (F6b Р4): путь потока в перечень прохода не входит.
+		return verdictAddressUnverified
+	}
+	return cut
+}
+
+// cutoffVerdict — отсечка субъекта против момента аутентификации потока.
+func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential) verdict {
+	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, c.UserID)
+	switch {
+	case errors.Is(err, middleware.ErrSessionCutoffUnsupported):
+		return verdictUnsupported
+	case err != nil:
+		return verdictUnanswered
+	case !found:
+		// Пустой ответ означает ПУСТО. Человек, которого никто не отзывал,
+		// продолжает читать свой поток.
+		return verdictLive
+	case c.AuthenticatedAt.IsZero():
+		// Отсечка есть, а сравнивать не с чем: провайдер момента не назвал.
+		// Пропустить — значит дать обходить отзыв ОТСУТСТВИЕМ поля в чужом
+		// ответе. Та же посадка принята полосой запроса.
+		return verdictRevoked
+	case c.AuthenticatedAt.After(cutoff):
+		// Отсечка действует ВПЕРЁД и включает свой момент: сессия,
+		// аутентифицировавшаяся РОВНО в него, недействительна. Иначе
+		// принудительный выход, совпавший по метке со входом, не подействовал
+		// бы — а совпадают они тем чаще, чем грубее разрешение метки.
+		return verdictLive
 	default:
-		return verdictUnaskable
+		return verdictRevoked
 	}
 }
 

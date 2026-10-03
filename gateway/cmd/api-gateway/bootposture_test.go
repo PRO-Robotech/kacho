@@ -55,7 +55,7 @@ func TestBootPosture_Production(t *testing.T) {
 		HybridMTLSExternal: true,
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.Own)), map[string]any{
 		"msg":           observability.BootPostureMsg,
 		"service":       "api-gateway",
 		"auth_mode":     "production-strict",
@@ -76,7 +76,7 @@ func TestBootPosture_PublicMTLSNeedsTheTLSListener(t *testing.T) {
 		HybridMTLSExternal: true, // no cert/key/addr → TLS listener never starts
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.Own)), map[string]any{
 		"public_mtls": false,
 	})
 }
@@ -91,7 +91,7 @@ func TestBootPosture_PublicMTLSNeedsTheTLSListener(t *testing.T) {
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	cfg := config.Config{AuthNMode: "dev"}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.Own)), map[string]any{
 		"service":       "api-gateway",
 		"auth_mode":     "dev",
 		"db_sslmode":    "n/a",
