@@ -559,39 +559,57 @@ def _kube_secret_file(ns: str, secret: str, key: str, dest: str) -> bool:
     return True
 
 
-# ─────────────────── ветка Д85: notify при пустой таблице модулей ──────────────
+# ─────────────────── ветка Д91: notify, которого профиль НЕ РЕНДЕРИТ ─────────
 #
-# Объекты чарта notify рендерятся только при непустой таблице подключаемых
-# модулей; до полосы D2 она пуста, и предмета у живой пробы по домену notify
-# на стенде нет by construction. Исход тогда — ТРЕТЬЯ категория «НЕ ВЫПОЛНИЛОСЬ:
-# перечень пуст» с печатью предпосылки, а не зелёный и не красный (Д85).
-# Ветку включает ПУСТАЯ ТАБЛИЦА (ответ обёртки копии осмотра), а не отсутствие
-# подов: таблица непуста, а подов notify 0 — красный. Ответа о таблице нет —
-# ветки нет, домен меряется как прочие. Ветку снимает D2 (git grep
-# NOTIFY_EMPTY_TABLE_BRANCH → 0 тем же изменением, что наполняет таблицу).
-NOTIFY_EMPTY_TABLE_BRANCH = "notify"
-NOTIFY_INSPECT = os.environ.get("NOTIFY_INSPECT") or os.path.join(
-    REPO_ROOT, "deploy", "scripts", "render-notify-inspect.sh")
-NOTIFY_POD_SELECTOR = "app=kacho-notify"
-MEASURE, NOT_RUN, RED = "measure", "not_run", "red"
+# Знаменатель гейта — носители, ОТРЕНДЕРЕННЫЕ профилем стенда (Д91). Носитель
+# домена notify — процесс пробы-источника (`kacho-notify-probe`, собственный
+# слушатель :9091 по карте INTERNAL_ENDPOINTS — канон гейта, Д94); до полос
+# D2/D3 профиль его не рендерит, и предмета у живой пробы домена нет by
+# construction. Такой домен печатается строкой «notify: профиль <имя> его не
+# рендерит — вне опроса» с числом носителей и в знаменатель не входит: это
+# ЗЕЛЁНЫЙ по названному объёму, а не третья категория и не код 2.
+#
+# Факт «не отрендерен» гейт проверяет САМ — рендером профиля
+# (`profile_launches.py`), — а не выводит из отсутствия подов: профиль носителя
+# рендерит, а подов его нагрузки (по селектору ОТРЕНДЕРЕННОЙ нагрузки) 0 —
+# красный. Ответа о рендере нет (профиль не назван, helm отказал) — ветки нет,
+# домен меряется как прочие. Ветку снимает D2/D3 (git grep NOTIFY_DOMAIN →
+# 0 тем же изменением, что развёртывает носителя).
+NOTIFY_DOMAIN = "notify"
+MEASURE, OFF_PROFILE, NOT_RUN, RED = "measure", "off_profile", "not_run", "red"
 
 
-def notify_table_rows() -> int | None:
-    """Число строк таблицы модулей чарта notify; None — обёртка не ответила."""
+def notify_carrier_process() -> str:
+    """Процесс носителя домена notify — из его эндпоинта в карте гейта (Д94)."""
+    return INTERNAL_ENDPOINTS[NOTIFY_DOMAIN][0].split("/", 1)[-1]
+
+
+def _profile_launches_module():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile_launches.py")
+    spec = importlib.util.spec_from_file_location("profile_launches", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def notify_render(stack: str, proc: str) -> tuple[str | None, list]:
+    """→ (строка итога рендера, нагрузки, запускающие proc) либо (None, [текст отказа])."""
+    pl = _profile_launches_module()
     try:
-        r = subprocess.run(["bash", NOTIFY_INSPECT, "--table"], capture_output=True,
-                           text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError):
+        line, hits = pl.answer(stack, proc)
+    except (pl.NotRun, OSError, subprocess.SubprocessError) as err:
+        return None, [str(err)]
+    return line, hits
+
+
+def notify_pods(ns: str, selector: dict) -> int | None:
+    """Число подов по селектору отрендеренной нагрузки; None — кластер не опрошен."""
+    sel = ",".join(f"{k}={v}" for k, v in sorted(selector.items()))
+    if not sel:
         return None
-    out = r.stdout.strip()
-    return int(out) if r.returncode == 0 and out.isdigit() else None
-
-
-def notify_pods(ns: str) -> int | None:
-    """Число подов чарта notify на стенде; None — кластер не опрошен."""
     try:
-        r = subprocess.run(["kubectl", "-n", ns, "get", "pods", "-l", NOTIFY_POD_SELECTOR,
-                            "-o", "name"], capture_output=True, text=True, timeout=60)
+        r = subprocess.run(["kubectl", "-n", ns, "get", "pods", "-l", sel, "-o", "name"],
+                           capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0:
@@ -599,25 +617,30 @@ def notify_pods(ns: str) -> int | None:
     return len([ln for ln in r.stdout.splitlines() if ln.strip()])
 
 
-def notify_branch(table: int | None, pods: int | None) -> tuple[str, str]:
-    """Исход домена notify по предпосылке таблицы (Д85).
+def notify_branch(ns: str, stack: str) -> tuple[str, str]:
+    """Исход домена notify по рендеру профиля стенда (Д91).
 
-    → (MEASURE | NOT_RUN | RED, текст). Подов не спрашивают, пока таблица пуста:
-    ветку включает таблица, а не отсутствие подов.
+    → (MEASURE | OFF_PROFILE | NOT_RUN | RED, текст). Подов не спрашивают, пока
+    профиль носителя не рендерит: ветку включает рендер, а не отсутствие подов.
     """
-    if table is None:
-        return MEASURE, "ответа о таблице модулей notify нет — ветки нет, домен меряется как прочие"
-    if table == 0:
-        return NOT_RUN, ("НЕ ВЫПОЛНИЛОСЬ: перечень пуст — таблица модулей чарта notify пуста, "
-                         "объектов notify 0 в каждой цепочке, измерять на стенде нечего "
-                         "(Д85; ветку снимает D2)")
-    if pods is None:
-        return NOT_RUN, (f"НЕ ВЫПОЛНИЛОСЬ: таблица модулей notify непуста ({table}), а поды "
-                         f"notify ({NOTIFY_POD_SELECTOR}) не опрошены — кластер не ответил")
-    if pods == 0:
-        return RED, (f"таблица модулей notify непуста ({table}), а подов notify "
-                     f"({NOTIFY_POD_SELECTOR}) 0 — чарт обязан был их поднять")
-    return MEASURE, f"таблица модулей notify непуста ({table}), подов notify {pods}"
+    proc = notify_carrier_process()
+    line, hits = notify_render(stack, proc)
+    if line is None:
+        return MEASURE, (f"ответа о рендере носителя {proc} профилем нет ({hits[0]}) — "
+                         f"ветки Д91 нет, домен меряется как прочие")
+    if not hits:
+        return OFF_PROFILE, (f"notify: профиль {stack} его не рендерит — вне опроса "
+                             f"(носителей вне опроса: 1 — {proc}; рендер: {line})")
+    counts = [notify_pods(ns, sel) for _, _, sel in hits]
+    names = ", ".join(f"{k}/{n}" for k, n, _ in hits)
+    if any(c is None for c in counts):
+        return NOT_RUN, (f"НЕ ВЫПОЛНИЛОСЬ: профиль {stack} рендерит носителя {proc} "
+                         f"({names}), а его поды не опрошены — кластер не ответил")
+    if sum(counts) == 0:
+        return RED, (f"профиль {stack} рендерит носителя notify ({names}, процесс {proc}), "
+                     f"а подов его нагрузки 0 — чарт обязан был их поднять")
+    return MEASURE, (f"профиль {stack} рендерит носителя notify ({names}), подов "
+                     f"{sum(counts)} — домен меряется собственным слушателем носителя")
 
 
 def main(argv: list[str]) -> int:
@@ -641,6 +664,10 @@ def main(argv: list[str]) -> int:
     # не может выпасть из измерения, оставшись при этом «зелёным».
     ap.add_argument("--domains", default=os.environ.get("BAN6_DOMAINS", ""),
                     help="домены, развёрнутые на этом стенде (через пробел); пусто = все")
+    # --stack — профиль (имя стека deploy/stacks.txt), которым поднят стенд: им
+    # судится факт «носитель notify не отрендерен» (ветка Д91).
+    ap.add_argument("--stack", default=os.environ.get("KACHO_STAND_STACK", ""),
+                    help="профиль стенда (имя стека deploy/stacks.txt)")
     args = ap.parse_args(argv)
     ns, wd = args.namespace, args.workdir
     only = {d for d in args.domains.replace(",", " ").split() if d}
@@ -741,18 +768,19 @@ def main(argv: list[str]) -> int:
               + (f"; НЕ развёрнуто здесь ({len(skipped)}): {', '.join(skipped)} — "
                  f"их измеряет другой шард (полноту держит assert-shard-coverage.py)"
                  if skipped else ""))
-        # Ветка Д85 решается ДО встречного контроля: домен без предмета на
-        # стенде не спрашивают, а его исход печатается отдельно и в вердикт
-        # зелёным не засчитывается.
+        # Ветка Д91 решается ДО встречного контроля: носителя, которого профиль
+        # не рендерит, не спрашивают — домен вне знаменателя и назван строкой.
         branch_rc = 0
-        if NOTIFY_EMPTY_TABLE_BRANCH in domains:
-            table = notify_table_rows()
-            pods = notify_pods(ns) if table else None
-            verdict, text = notify_branch(table, pods)
-            print(f"  notify — {text}")
+        off_profile: list[str] = []
+        if NOTIFY_DOMAIN in domains:
+            verdict, text = notify_branch(ns, args.stack)
+            print(f"  {text}")
             if verdict != MEASURE:
-                domains = [d for d in domains if d != NOTIFY_EMPTY_TABLE_BRANCH]
-                branch_rc = 1 if verdict == RED else 2
+                domains = [d for d in domains if d != NOTIFY_DOMAIN]
+                if verdict == OFF_PROFILE:
+                    off_profile.append(NOTIFY_DOMAIN)
+                else:
+                    branch_rc = 1 if verdict == RED else 2
         confirmed: set[str] = set()
         unconfirmed: list[tuple[str, str]] = []
 
@@ -904,13 +932,15 @@ def main(argv: list[str]) -> int:
               + ", ".join(m for m, _ in unresolved))
         rc = 2 if rc == 0 else rc
     if branch_rc == 1:
-        print("FAIL: таблица модулей notify непуста, а подов notify на стенде нет")
+        print("FAIL: профиль рендерит носителя notify, а подов его нагрузки на стенде нет")
         rc = 1
     elif branch_rc == 2 and rc == 0:
-        print(f"НЕ ВЫПОЛНИЛОСЬ: перечень пуст — домен notify не измерен (Д85); "
-              f"остальные {len(domains)} доменов: {isolated}/{total} Internal*-методов "
-              f"недостижимы — третий исход из вердикта не вычитается")
+        print("НЕ ВЫПОЛНИЛОСЬ: поды отрендеренного носителя notify не опрошены — "
+              "третий исход из вердикта не вычитается")
         rc = 2
+    if off_profile:
+        print(f"вне опроса по профилю {args.stack}: доменов {len(off_profile)} "
+              f"({', '.join(off_profile)}) — носитель не отрендерен, в знаменатель не входит (Д91)")
     if rc == 0:
         print(f"OK: BAN6-EXT-GRPC — {isolated}/{total} Internal*-методов недостижимы "
               f"на advertised external листенере при живом публичном контроле")
@@ -918,6 +948,130 @@ def main(argv: list[str]) -> int:
 
 
 # ─────────────────────────── самопроверка ────────────────────────────────────
+
+
+def _self_test_main_notify_branch() -> int:
+    """Ветку Д91 держит самопроверка ЧЕРЕЗ main(), а не через функцию рядом.
+
+    Внешние зависимости main() подменяются на время прогона (инструмент, секреты,
+    дескрипторы, посев, проброс, расшифровки grpcurl, рендер профиля и поды), а
+    предмет — синтетический: домен `vpc` (носитель vpc) и домен `notify` (носитель
+    notify, процесс пробы). Каждый случай меняет против близнеца ОДИН факт:
+
+      а) профиль не рендерит носителя notify → код 0, строка «вне опроса», vpc
+         измерен, у листенера notify не спрошено НИЧЕГО;
+      б) профиль рендерит, подов нагрузки 0 → код 1, причина названа;
+      в) профиль рендерит, поды есть → домен notify меряется СОБСТВЕННЫМ слушателем
+         носителя (svc/kacho-notify-probe :9091, Д94) — код 0;
+      г) ответа о рендере нет → ветки нет, домен меряется как прочие; листенер
+         notify не отвечает → встречный контроль не подтверждён, код 2;
+      д) дерево как есть: НАСТОЯЩИЙ рендер профиля dev-prod → вне опроса, код 0.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    rc = 0
+    rows = [("kacho.cloud.vpc.v1", "InternalVpcService", "Get"),
+            ("kacho.cloud.notify.v1", "InternalNotifyProbeService", "Emit")]
+    b6 = {"hosts": {"vpc": ["vpc"], "notify": ["notify"]}, "served": {"vpc", "notify"},
+          "unserved": {}, "proto_files_read": 2, "domains_with_contract": 2}
+    targets = {"svc/api-gateway": 1}
+    for i, (t, _, _) in enumerate(INTERNAL_ENDPOINTS.values(), start=2):
+        targets[t] = i
+    notify_port = targets[INTERNAL_ENDPOINTS[NOTIFY_DOMAIN][0]]
+
+    class FakeForward:
+        def __init__(self, ns, target, port):
+            self.local, self.ready, self.error = targets.get(target, 99), True, ""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    asked: list[str] = []
+
+    def fake_probe(addr, method, **kw):
+        port = int(addr.rsplit(":", 1)[1])
+        if port == 1:
+            if method in LIVENESS_METHODS:
+                return "{}"
+            return "ERROR:\n  Code: NotFound\n  Message: unknown method: /" + method
+        if port == notify_port:
+            asked.append(method)
+            if not state["notify_listener"]:
+                return 'Failed to dial target host "127.0.0.1:%d": connection refused' % port
+        own = {"vpc": "kacho.cloud.vpc.v1", "notify": "kacho.cloud.notify.v1"}
+        mine = [d for d, ip in targets.items() if ip == port]
+        host = next((h for h, (t, _, _) in INTERNAL_ENDPOINTS.items() if t in mine), "")
+        if method.startswith(own.get(host, "-") + "."):
+            return "ERROR:\n  Code: PermissionDenied\n  Message: no relation"
+        return "ERROR:\n  Code: Unimplemented\n  Message: unknown service"
+
+    state: dict = {}
+    saved = {k: globals()[k] for k in ("subject_rpcs", "PortForward", "grpc_probe",
+                                        "_kube_secret_file", "build_protoset",
+                                        "notify_render", "notify_pods", "FIXTURES")}
+    saved_which = shutil.which
+
+    def run_case(label, render, pods, listener, want_rc, needles, forbid_notify_ask=False):
+        nonlocal rc
+        state["notify_listener"] = listener
+        asked.clear()
+        with tempfile.TemporaryDirectory() as wd:
+            fx = os.path.join(wd, "fixtures.json")
+            with open(fx, "w", encoding="utf-8") as fh:
+                json.dump({"jwtBootstrap": "t"}, fh)
+            g = globals()
+            g.update(subject_rpcs=lambda: (list(rows), dict(b6)), PortForward=FakeForward,
+                     grpc_probe=fake_probe, _kube_secret_file=lambda *a: True,
+                     build_protoset=lambda dest: dest, FIXTURES=fx)
+            if render is not None:
+                g["notify_render"] = render
+            g["notify_pods"] = lambda ns, sel: pods
+            shutil.which = lambda name: "/stub/" + name
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                    got = main(["--namespace", "kacho", "--workdir", wd, "--stack", "dev-prod"])
+            finally:
+                shutil.which = saved_which
+                g.update(saved)
+        text = out.getvalue()
+        missing = [n for n in needles if n not in text]
+        bad_ask = forbid_notify_ask and asked
+        ok = got == want_rc and not missing and not bad_ask
+        print(f"  {label:<62} → код {got} {'ОК' if ok else 'ПРОВАЛ'}"
+              + (f" (ждали код {want_rc}; нет: {missing}"
+                 f"{'; листенер notify спрошен: ' + ', '.join(asked) if bad_ask else ''})"
+                 if not ok else ""))
+        if not ok:
+            print("\n".join("      " + ln for ln in text.splitlines()[-12:]))
+        rc |= 0 if ok else 1
+
+    hit = [("Deployment", "kacho-notify-probe", {"app": "kacho-notify-probe"})]
+    print("\nсамопроверка ветки Д91 через main() (notify по рендеру профиля):")
+    run_case("а) профиль не рендерит notify → зелёный, вне опроса",
+             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 0", []),
+             None, True, 0,
+             ["notify: профиль dev-prod его не рендерит — вне опроса", "OK: BAN6-EXT-GRPC",
+              "вне опроса по профилю dev-prod: доменов 1 (notify)"], forbid_notify_ask=True)
+    run_case("б) профиль рендерит, подов 0 → КРАСНЫЙ",
+             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 1", hit),
+             0, True, 1, ["подов его нагрузки 0", "FAIL: профиль рендерит носителя notify"])
+    run_case("в) профиль рендерит, поды есть → собственный слушатель носителя",
+             lambda st, pr: ("профиль dev-prod: …, запускают kacho-notify-probe: 1", hit),
+             1, True, 0, ["ОБСЛУЖЕН у носителя 'notify'", "OK: BAN6-EXT-GRPC"])
+    run_case("г) ответа о рендере нет → меряется как прочие, листенер молчит → код 2",
+             lambda st, pr: (None, ["helm отказал (инъекция)"]),
+             None, False, 2, ["ветки Д91 нет", "НЕ ПОДТВЕРЖДЁН"])
+    run_case("д) дерево как есть (настоящий рендер dev-prod) → вне опроса",
+             None, None, True, 0,
+             ["notify: профиль dev-prod его не рендерит — вне опроса", "OK: BAN6-EXT-GRPC"],
+             forbid_notify_ask=True)
+    return rc
 
 
 def self_test() -> int:
@@ -1119,34 +1273,7 @@ def self_test() -> int:
           f"{'ПРОВАЛ' if missing else 'ОК'}")
     rc |= 1 if missing else 0
 
-    # ── ветка Д85: исход домена notify по предпосылке таблицы модулей ──────
-    print("\nсамопроверка ветки Д85 (notify по таблице модулей):")
-
-    def branch(label: str, table, pods, want: str, needle: str) -> None:
-        nonlocal rc
-        got, text = notify_branch(table, pods)
-        ok = got == want and needle in text
-        print(f"  {label:<58} → {got:<8} {'ОК' if ok else f'ПРОВАЛ (ждали {want} и «{needle}»)'}"
-              f"  [{text}]")
-        rc |= 0 if ok else 1
-
-    branch("таблица пуста → НЕ ВЫПОЛНИЛОСЬ: перечень пуст", 0, None, NOT_RUN,
-           "НЕ ВЫПОЛНИЛОСЬ: перечень пуст")
-    branch("таблица пуста, поды есть → всё равно перечень пуст", 0, 1, NOT_RUN,
-           "перечень пуст")
-    branch("таблица непуста, подов 0 → КРАСНЫЙ", 1, 0, RED, "подов notify")
-    branch("таблица непуста, поды не опрошены → не выполнилось", 1, None, NOT_RUN,
-           "не опрошены")
-    branch("таблица непуста, под есть → домен меряется", 1, 1, MEASURE, "подов notify 1")
-    branch("ответа о таблице нет → ветки нет, домен меряется", None, None, MEASURE,
-           "ветки нет")
-    # Предпосылка ветки — НАСТОЯЩАЯ обёртка на дереве: таблица сегодня пуста.
-    real = notify_table_rows()
-    got, _ = notify_branch(real, None)
-    ok = real == 0 and got == NOT_RUN
-    print(f"  дерево как есть: строк таблицы {real} → {got} "
-          f"{'ОК' if ok else 'ПРОВАЛ (ждали 0 строк и НЕ ВЫПОЛНИЛОСЬ; если таблицу наполнил D2 — снять ветку)'}")
-    rc |= 0 if ok else 1
+    rc |= _self_test_main_notify_branch()
 
     print("\nсамопроверка перечисления предмета:")
     rows = internal_rpcs()
