@@ -12,9 +12,12 @@
 // lasted. Hence: one line per window, carrying the running total and how many
 // occurrences it stands for.
 //
-// The counters are reported through the log rather than through a metric family
-// because this process exposes no metrics endpoint (see the note in
-// authz_metrics.go); a gauge nothing scrapes would be a number nobody can read.
+// The line is the narrative of a window — when it started, how many it stands
+// for. The DURATION of a state is read on the diagnostic surface: the bearer
+// lane's outcomes are cells there (bearer_lane.go → kacho_api_gateway_bearer_lane_
+// revocation_total), as the session lane's are (human_session.go). The note that
+// stood here — «this process exposes no metrics endpoint» — outlived its subject:
+// the edge serves a diagnostic surface (KACHO_API_GATEWAY_METRICS_ADDR).
 package middleware
 
 import (

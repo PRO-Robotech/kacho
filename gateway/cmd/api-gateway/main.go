@@ -827,6 +827,9 @@ func main() {
 		return gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
 			Relays: handler.LoginLaneRelaySnapshots(loginLaneRelay, issuanceRelay)}
 	})
+	// Клетки полосы предъявителя (kacho#2740): исход вопроса об отзыве по
+	// источнику — на приборе, а не только строкой журнала раз в окно.
+	diagMetrics.RegisterBearerLane(authInterceptor.BearerLane().Snapshot)
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {

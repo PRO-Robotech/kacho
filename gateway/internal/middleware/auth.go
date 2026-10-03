@@ -179,6 +179,9 @@ type AuthInterceptor struct {
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts
+	// bearerLane — клетки полосы предъявителя (kacho#2740): исход вопроса об
+	// отзыве по источнику. Заводится сразу, чтобы ноль отличался от «полосы нет».
+	bearerLane *BearerLaneCounts
 	// ownAssuranceOffAxis — окно доклада полосы НАШЕЙ сессии об ответе службы с
 	// уровнем вне оси сессии (Ф11-19, own_session_assurance.go): диагноз «служба
 	// отдала то, чего не производит».
@@ -223,6 +226,7 @@ func NewAuthInterceptor(mode AuthMode, devSecret string, lookup SubjectLookuper,
 		mdKeyPrincipalDisplay: principalmeta.MetaPrincipalDisplay,
 		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 		sessionLane:           &SessionLaneCounts{},
+		bearerLane:            &BearerLaneCounts{},
 	}
 }
 

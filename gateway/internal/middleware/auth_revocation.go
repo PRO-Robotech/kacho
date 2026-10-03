@@ -182,6 +182,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		return a.platformRevocationCheck(ctx, vt, surface, route)
 	}
 	if a.revocation == nil {
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeNotWired)
 		return revocationNotAsked
 	}
 	// A token with no identifier cannot be asked about: our record is keyed on the
@@ -190,6 +191,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	// than waved through: «the control did not run» must never look like «the
 	// control passed».
 	if vt.JTI == "" {
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeNoIdentifier)
 		if report, total, represents := a.revocationSkips.observe(); report {
 			a.logger.Error("revocation check impossible: token carries no identifier; refusing",
 				"surface", surface, "route", route,
@@ -202,12 +204,15 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	_, err := a.revocation.Introspect(ctx, vt.JTI, vt.Raw)
 	switch {
 	case err == nil:
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeLive)
 		return revocationLive
 
 	case errors.Is(err, ErrTokenInactive):
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeRevoked)
 		return revocationRevoked
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeMisconfigured)
 		// Проверка собрана неполно. Это не лечится повтором, и продолжить значило
 		// бы обслуживать каждый следующий запрос с молча отсутствующей проверкой
 		// отзыва. Подсказка называет ЖИВУЮ причину: читатель на этом пути один
@@ -226,6 +231,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	default:
 		// Источник не ответил. Недоступность НАШЕЙ записи не есть разрешение
 		// пользоваться токеном, который мы, возможно, уже отозвали.
+		a.bearerLane.record(bearerSourceRecord, bearerOutcomeUnanswered)
 		if report, total, represents := a.revocationFailures.observe(); report {
 			a.logger.Error("our revocation record did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,
@@ -274,12 +280,14 @@ func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 //  3. авторитет не ответил ⇒ ОТКАЗ. «Не дозвонился» не есть «разрешено».
 func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *VerifiedToken, surface, route string) revocationVerdict {
 	if a.platformRevocation == nil {
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeNotWired)
 		a.logger.Error("revocation reader for our own issuer is not wired; refusing",
 			"surface", surface, "route", route,
 			"hint", "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL must address our revocation authority")
 		return revocationUnanswerable
 	}
 	if vt.JTI == "" {
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeNoIdentifier)
 		a.logger.Error("our own token carries no identifier to revoke by; refusing",
 			"surface", surface, "route", route)
 		return revocationUnanswerable
@@ -288,12 +296,15 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 	_, err := a.platformRevocation.Introspect(ctx, vt.JTI, vt.Raw)
 	switch {
 	case err == nil:
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeLive)
 		return revocationLive
 
 	case errors.Is(err, ErrTokenInactive):
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeRevoked)
 		return revocationRevoked
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeMisconfigured)
 		if report, total, represents := a.platformRevocationFailures.observe(); report {
 			a.logger.Error("our revocation authority is misconfigured; refusing requests",
 				"err", err, "surface", surface, "route", route,
@@ -307,6 +318,7 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 	default:
 		// Недоступность НАШЕГО сервиса не есть разрешение пользоваться токеном,
 		// который мы, возможно, уже отозвали.
+		a.bearerLane.record(bearerSourceAuthority, bearerOutcomeUnanswered)
 		if report, total, represents := a.platformRevocationFailures.observe(); report {
 			a.logger.Error("our revocation authority did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,
