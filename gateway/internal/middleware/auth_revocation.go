@@ -88,18 +88,9 @@ const (
 	revocationUnanswerable
 )
 
-// revocationDenyDescription — the client-visible reason on a revoked credential,
-// on the REST surface. It names the caller's OWN token state and nothing about
-// anyone else's, so it is not an oracle; it tells a client to re-authenticate
-// rather than retry.
-//
-// The gRPC surface deliberately does NOT carry it: that path answers every
-// authN failure with one constant message, so a caller cannot tell a revoked
-// token from a bad signature or an unprovisioned subject (see authFailedMsg —
-// varying the text there is the enumeration oracle it exists to prevent). A
-// machine-readable reason for gRPC belongs in ErrorInfo.details, which is a
-// contract change, not a message tweak.
-const revocationDenyDescription = "token revoked"
+// A revoked credential is refused with the edge's one authentication refusal
+// (authnrefusal, KA1 Р2) on both surfaces: a caller cannot tell a revoked token
+// from a bad signature or an unprovisioned subject. Which it was goes to the log.
 
 // revocationSourceAuthority / revocationSourceRecord — which of OUR two sources
 // gave the answer, as the refusal log names it. The lane is chosen by the issuer
@@ -118,11 +109,6 @@ func revocationSourceOf(vt *VerifiedToken) string {
 	}
 	return revocationSourceRecord
 }
-
-// revocationUnavailableReason — what a caller is told when the check cannot
-// answer. Deliberately thin: which of this deployment's addresses is wrong is
-// the operator's business, and it goes to the log, not to the wire.
-const revocationUnavailableReason = "revocation check unavailable"
 
 // WithRevocationCheck mounts the RECORD lane of the revocation check — the
 // question asked about a token of any accepted record our own minting did not
@@ -196,6 +182,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		return a.platformRevocationCheck(ctx, vt, surface, route)
 	}
 	if a.revocation == nil {
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeNotWired)
 		return revocationNotAsked
 	}
 	// A token with no identifier cannot be asked about: our record is keyed on the
@@ -204,6 +191,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	// than waved through: «the control did not run» must never look like «the
 	// control passed».
 	if vt.JTI == "" {
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeNoIdentifier)
 		if report, total, represents := a.revocationSkips.observe(); report {
 			a.logger.Error("revocation check impossible: token carries no identifier; refusing",
 				"surface", surface, "route", route,
@@ -216,12 +204,15 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	_, err := a.revocation.Introspect(ctx, vt.JTI, vt.Raw)
 	switch {
 	case err == nil:
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeLive)
 		return revocationLive
 
 	case errors.Is(err, ErrTokenInactive):
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeRevoked)
 		return revocationRevoked
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeMisconfigured)
 		// Проверка собрана неполно. Это не лечится повтором, и продолжить значило
 		// бы обслуживать каждый следующий запрос с молча отсутствующей проверкой
 		// отзыва. Подсказка называет ЖИВУЮ причину: читатель на этом пути один
@@ -240,6 +231,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	default:
 		// Источник не ответил. Недоступность НАШЕЙ записи не есть разрешение
 		// пользоваться токеном, который мы, возможно, уже отозвали.
+		a.bearerLane.record(presentedSourceRecord, presentedOutcomeUnanswered)
 		if report, total, represents := a.revocationFailures.observe(); report {
 			a.logger.Error("our revocation record did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,
@@ -288,12 +280,14 @@ func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 //  3. авторитет не ответил ⇒ ОТКАЗ. «Не дозвонился» не есть «разрешено».
 func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *VerifiedToken, surface, route string) revocationVerdict {
 	if a.platformRevocation == nil {
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeNotWired)
 		a.logger.Error("revocation reader for our own issuer is not wired; refusing",
 			"surface", surface, "route", route,
 			"hint", "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL must address our revocation authority")
 		return revocationUnanswerable
 	}
 	if vt.JTI == "" {
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeNoIdentifier)
 		a.logger.Error("our own token carries no identifier to revoke by; refusing",
 			"surface", surface, "route", route)
 		return revocationUnanswerable
@@ -302,12 +296,15 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 	_, err := a.platformRevocation.Introspect(ctx, vt.JTI, vt.Raw)
 	switch {
 	case err == nil:
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeLive)
 		return revocationLive
 
 	case errors.Is(err, ErrTokenInactive):
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeRevoked)
 		return revocationRevoked
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeMisconfigured)
 		if report, total, represents := a.platformRevocationFailures.observe(); report {
 			a.logger.Error("our revocation authority is misconfigured; refusing requests",
 				"err", err, "surface", surface, "route", route,
@@ -321,6 +318,7 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 	default:
 		// Недоступность НАШЕГО сервиса не есть разрешение пользоваться токеном,
 		// который мы, возможно, уже отозвали.
+		a.bearerLane.record(presentedSourceAuthority, presentedOutcomeUnanswered)
 		if report, total, represents := a.platformRevocationFailures.observe(); report {
 			a.logger.Error("our revocation authority did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,
@@ -330,3 +328,44 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 		return revocationUnanswerable
 	}
 }
+
+// PresentedRevocationVerdict — вердикт отзыва для ПОВЕРХНОСТИ ПРЕДЪЯВЛЕНИЯ,
+// которая проверила подпись сама (схема `DPoP` в DPoPMiddleware). Реализует его
+// только AuthInterceptor: поверхность обязана читать вердикт ОБЩИМ словарём
+// (revocationCheck), а не своим, — иначе отзыв, исполняемый на одной схеме,
+// обходится другой (kacho#2742).
+type PresentedRevocationVerdict interface {
+	refuseRevokedHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool
+}
+
+// refuseRevokedHTTP спрашивает об отзыве проверенного токена и, если запрос
+// обслуживать нельзя, пишет ответ: отозван — единый отказ края (Р2); источник не
+// ответил, проверка собрана без источника, у токена нет идентификатора — ответ
+// Р1. Возвращает true, когда ответ написан.
+//
+// The pre-auth allow-list is exempt, and sign-out is why: a user whose session
+// was revoked elsewhere must still be able to complete a sign-out and clear
+// their cookies. The health probes and the interactive login flow are in the
+// same list for the same reason — none of them acts on the credential's
+// authority.
+func (a *AuthInterceptor) refuseRevokedHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool {
+	if isPublicHTTPPath(r.URL.Path) {
+		return false
+	}
+	switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
+	case revocationRevoked:
+		a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
+			"path", r.URL.Path, "source", revocationSourceOf(vt))
+		writeAuthnRefusal(w)
+		return true
+	case revocationUnanswerable:
+		// Our source was silent, the check has no source, or the token has no
+		// identifier to ask by — the same three causes, and the one answer every
+		// lane gives when our authority is silent (KA1 Р1).
+		writeCredentialStateUnknown(w)
+		return true
+	}
+	return false
+}
+
+var _ PresentedRevocationVerdict = (*AuthInterceptor)(nil)

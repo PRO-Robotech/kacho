@@ -47,7 +47,7 @@ type fakeCut struct {
 	err    error
 }
 
-func (f *fakeCut) SessionCutoffOf(context.Context, string) (time.Time, bool, error) {
+func (f *fakeCut) SessionCutoffOf(context.Context, middleware.CutoffSubject) (time.Time, bool, error) {
 	return f.cutoff, f.found, f.err
 }
 
@@ -267,10 +267,13 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 	if stub.count() != 3 {
 		t.Fatalf("ретранслировано %d, ожидалось 3", stub.count())
 	}
-	// Тот же дублёр на смене пароля → F4d-23 на крае, ретранслировано 0 сверх.
+	// Тот же дублёр на смене пароля → ответ Р1 приёмки KA1 на крае (503, носитель
+	// цел; заменил F4d-23), ретранслировано 0 сверх.
 	rec := httptest.NewRecorder()
 	chain.ServeHTTP(rec, formRequest(http.MethodPost, middleware.LoginLanePathPassword, `{}`))
-	if rec.Code != http.StatusUnauthorized || stub.count() != 3 {
+	if rec.Code != http.StatusServiceUnavailable || stub.count() != 3 ||
+		!strings.Contains(rec.Body.String(), "credential state could not be established") ||
+		len(rec.Result().Header["Set-Cookie"]) != 0 {
 		t.Fatalf("смена пароля при недоступном Resolve: %d, ретранслировано %d", rec.Code, stub.count())
 	}
 

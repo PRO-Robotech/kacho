@@ -32,6 +32,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -47,7 +48,7 @@ var bootstrapMintRESTPaths = []struct{ method, path string }{
 // TestBootstrapMint_NoRESTRoute_OnInternalListener — the mint is unrouted on the
 // cluster-internal listener (the only listener that serves Internal* REST).
 func TestBootstrapMint_NoRESTRoute_OnInternalListener(t *testing.T) {
-	h, err := NewMux(context.Background(), muxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), muxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -70,7 +71,7 @@ func TestBootstrapMint_NoRESTRoute_OnInternalListener(t *testing.T) {
 // TestBootstrapMint_NoRESTRoute_OnExternalListener — and, a fortiori, unrouted on
 // the external listener.
 func TestBootstrapMint_NoRESTRoute_OnExternalListener(t *testing.T) {
-	h, err := NewMux(context.Background(), muxAddrs(), nil, nil)
+	h, err := NewMux(context.Background(), muxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

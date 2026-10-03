@@ -50,7 +50,7 @@ func TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus(t *testing.T) {
 
 	t.Run("unavailable", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		writeHTTPServiceUnavailable(rec, revocationUnavailableReason)
+		writeHTTPServiceUnavailable(rec, credentialStateUnknownReason)
 
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("HTTP-статус: получено %d, ожидалось %d", rec.Code, http.StatusServiceUnavailable)
@@ -64,7 +64,7 @@ func TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus(t *testing.T) {
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: сосед, у которого поле уже верно.
 	t.Run("unauthenticated control", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		writeHTTPUnauthorized(rec, "token validation failed")
+		writeAuthnRefusal(rec)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("HTTP-статус: получено %d, ожидалось %d", rec.Code, http.StatusUnauthorized)

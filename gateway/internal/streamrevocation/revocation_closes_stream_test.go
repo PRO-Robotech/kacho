@@ -438,7 +438,7 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 		// НАСТОЯЩИЙ адаптер: он и переводит «метода нет» в признак окна раската,
 		// и он же исполняется в бою. Подделка на его месте проверяла бы наш
 		// собственный перевод, а не тот, что стоит на пути.
-		Authority: clients.NewSessionRevocationsAdapter(iamConn),
+		Authority: clients.NewSessionRevocationsAdapter(iamConn, time.Second),
 		Interval:  20 * time.Millisecond,
 		// Заведомо больше пробы: предмет — приехавший отзыв, а не исчерпание
 		// срока неподтверждённого чтения.

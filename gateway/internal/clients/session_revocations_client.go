@@ -10,6 +10,9 @@ package clients
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -44,15 +47,72 @@ type SessionRevocationsAdapter struct {
 	// в точке сборки был бы половиной, которую можно провязать — и забыть —
 	// отдельно.
 	human iamv1.InternalHumanSessionServiceClient
+
+	// budget — бюджет КАЖДОГО вызова этого адаптера: ручка
+	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4). Ставится ЗДЕСЬ,
+	// на каждом глаголе, потому что все они стоят на пути запроса (вопрос о
+	// сессии, об отсечке, об отзыве, о годности базового) либо на выходе, а
+	// контекст вызывающего пределом не является: зависший сосед держал бы запрос
+	// столько, сколько его держит клиент. `WithTimeout` берёт МЕНЬШИЙ из двух
+	// сроков, поэтому более ранний срок вызывающего остаётся в силе. Что предел
+	// стоит на каждом глаголе, держит перепись
+	// TestEveryIdentityAdapterVerbIsBounded (internal/repohygiene).
+	budget time.Duration
+}
+
+// errNoCallBudget — адаптер собран без бюджета: спросить соседа в пределе
+// нечем. Отказ, а не ожидание без предела; вызывающий читает его как «спросить
+// не удалось» (fail-closed на каждой полосе).
+var errNoCallBudget = errors.New("identity adapter: assembled without a call budget (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET)")
+
+// unimplementedDiagnosis — какой из ДВУХ диагнозов несёт «метода нет» соседа
+// (kacho#2741). Корзин две, третьей нет:
+//
+//   - слушатель не знает СЛУЖБЫ вовсе («unknown service …» — так отвечает
+//     библиотека сервера, у которого служба не зарегистрирована): спрошен не тот
+//     слушатель. Это настройка адреса, повтор и раскат её не лечат —
+//     существующая корзина неисправности настройки
+//     (middleware.ErrIntrospectionMisconfigured);
+//   - служба есть, а глагола у сборки нет («unknown method …», «method … not
+//     implemented»): окно раската, которое сходится само.
+//
+// Различение идёт по тексту библиотеки gRPC — другого признака на проводе у
+// этих двух состояний нет; текст порождает библиотека сервера, а не служба, и
+// он стабилен как её поведение. Признак «вопрос не предложен» (unsupported)
+// остаётся при обоих: исход полосы и ответ арендатору от диагноза не зависят —
+// меняется только подсказка дежурному.
+func unimplementedDiagnosis(err error, unsupported error) error {
+	if strings.HasPrefix(status.Convert(err).Message(), "unknown service ") {
+		return fmt.Errorf("%w: %w: the asked listener does not serve the identity service at all "+
+			"(misaddressed — fix the address; a rollout will not cure it): %v",
+			unsupported, middleware.ErrIntrospectionMisconfigured, err)
+	}
+	return fmt.Errorf("%w: the identity service does not offer this verb yet "+
+		"(image skew — converges with the rollout): %v", unsupported, err)
+}
+
+// errNoCutoffSubject — вопрос об отсечке без субъекта (нулевое значение
+// middleware.CutoffSubject). Вызывающий читает его как «спросить не удалось».
+var errNoCutoffSubject = errors.New("identity adapter: session cutoff asked without a subject")
+
+// bounded — контекст вызова с бюджетом адаптера.
+func (a *SessionRevocationsAdapter) bounded(ctx context.Context) (context.Context, context.CancelFunc, error) {
+	if a.budget <= 0 {
+		return ctx, func() {}, errNoCallBudget
+	}
+	c, cancel := context.WithTimeout(ctx, a.budget)
+	return c, cancel, nil
 }
 
 // NewSessionRevocationsAdapter wires the adapter onto an existing gRPC
-// connection to kaname:9091.
-func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocationsAdapter {
+// connection to kaname:9091, every verb bounded by budget
+// (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET).
+func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface, budget time.Duration) *SessionRevocationsAdapter {
 	return &SessionRevocationsAdapter{
 		client: iamv1.NewInternalSessionRevocationsServiceClient(cc),
 		iam:    iamv1.NewInternalIAMServiceClient(cc),
 		human:  iamv1.NewInternalHumanSessionServiceClient(cc),
+		budget: budget,
 	}
 }
 
@@ -66,15 +126,20 @@ func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocatio
 //   - `OK, !found` → «сессии нет» — один ответ на все причины, БЕЗ ошибки;
 //   - `UNIMPLEMENTED` → типизированный признак ErrHumanSessionUnsupported
 //     (окно раската): знание о кодах транспорта принадлежит адаптеру, решение —
-//     полосе (там это отказ F4d-23, а не проход);
+//     полосе (там это ответ Р1 приёмки KA1, а не проход);
 //   - прочее → «спросить не удалось», ошибка без подмены.
 func (a *SessionRevocationsAdapter) ResolveHumanSession(
 	ctx context.Context, bearer string,
 ) (middleware.HumanSession, bool, error) {
+	ctx, cancel, berr := a.bounded(ctx)
+	defer cancel()
+	if berr != nil {
+		return middleware.HumanSession{}, false, berr
+	}
 	resp, err := a.human.Resolve(ctx, &iamv1.ResolveHumanSessionRequest{Bearer: bearer})
 	if err != nil {
 		if status.Code(err) == codes.Unimplemented {
-			return middleware.HumanSession{}, false, middleware.ErrHumanSessionUnsupported
+			return middleware.HumanSession{}, false, unimplementedDiagnosis(err, middleware.ErrHumanSessionUnsupported)
 		}
 		return middleware.HumanSession{}, false, err
 	}
@@ -114,6 +179,11 @@ func (a *SessionRevocationsAdapter) ResolveHumanSession(
 func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 	ctx context.Context, credentialID string,
 ) (bool, error) {
+	ctx, cancel, berr := a.bounded(ctx)
+	defer cancel()
+	if berr != nil {
+		return false, berr
+	}
 	_, err := a.iam.CheckBasicCredentialLive(ctx,
 		&iamv1.CheckBasicCredentialLiveRequest{CredentialId: credentialID})
 	switch {
@@ -122,7 +192,7 @@ func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 	case status.Code(err) == codes.Unauthenticated:
 		return false, nil
 	case status.Code(err) == codes.Unimplemented:
-		return false, streamrevocation.ErrBasicCredentialLivenessUnsupported
+		return false, unimplementedDiagnosis(err, streamrevocation.ErrBasicCredentialLivenessUnsupported)
 	default:
 		return false, err
 	}
@@ -132,6 +202,11 @@ func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 // Operation envelope. Returns the underlying gRPC error unchanged — the
 // handler caller is responsible for mapping it to a user-visible warning.
 func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.RevokeRequest) error {
+	ctx, cancel, berr := a.bounded(ctx)
+	defer cancel()
+	if berr != nil {
+		return berr
+	}
 	_, err := a.client.Revoke(ctx, in)
 	return err
 }
@@ -149,6 +224,11 @@ func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.Revoke
 // исходы, и вызывающий (middleware.OwnRevocationSource) обязан их различать,
 // иначе недоступность соседа читалась бы как отзыв, а отзыв — как недоступность.
 func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti string) (bool, error) {
+	ctx, cancel, berr := a.bounded(ctx)
+	defer cancel()
+	if berr != nil {
+		return false, berr
+	}
 	resp, err := a.client.IsRevoked(ctx, &iamv1.IsRevokedRequest{TokenJti: jti})
 	if err != nil {
 		return false, err
@@ -171,8 +251,19 @@ func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti st
 // одно они дали бы либо мягкий проход на молчащем авторитете, либо отказ
 // каждому, кого никто не отзывал.
 func (a *SessionRevocationsAdapter) SessionCutoffOf(
-	ctx context.Context, userID string,
+	ctx context.Context, subject middleware.CutoffSubject,
 ) (time.Time, bool, error) {
+	userID := subject.UserID()
+	if userID == "" {
+		// Нулевое значение — субъект, собранный мимо конструктора: спрашивать
+		// не о ком, и вопрос с пустым субъектом не задаётся.
+		return time.Time{}, false, errNoCutoffSubject
+	}
+	ctx, cancel, berr := a.bounded(ctx)
+	defer cancel()
+	if berr != nil {
+		return time.Time{}, false, berr
+	}
 	resp, err := a.client.SessionCutoffOf(ctx, &iamv1.SessionCutoffOfRequest{UserId: userID})
 	if err != nil {
 		// «Метода нет» — НЕ «не ответил». Раскат не атомарен: реплика края
@@ -181,7 +272,7 @@ func (a *SessionRevocationsAdapter) SessionCutoffOf(
 		// поэтому перевод в типизированный признак делается здесь, а решение —
 		// на слое, который им пользуется.
 		if status.Code(err) == codes.Unimplemented {
-			return time.Time{}, false, middleware.ErrSessionCutoffUnsupported
+			return time.Time{}, false, unimplementedDiagnosis(err, middleware.ErrSessionCutoffUnsupported)
 		}
 		return time.Time{}, false, err
 	}

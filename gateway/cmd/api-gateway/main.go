@@ -136,11 +136,13 @@ func main() {
 	// природы, и заметить это можно было бы только по жалобе клиента.
 	basicLane := middleware.NewBasicCredentialLane(
 		middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
+		cfg.IdentityCallBudget,
 	).WithLogger(logger)
 	authInterceptor = authInterceptor.WithBasicCredentialLane(basicLane)
 	logger.Info("basic credential lane wired",
 		"authority", cfg.IAMInternalAddr,
 		"verdict_window", middleware.BasicCredentialVerdictWindow.String(),
+		"per_call_budget", cfg.IdentityCallBudget.String(),
 		// Потолок объявляется при старте: «сколько там записей» обязано быть
 		// известно ДО того, как рост станет предметом разбора (#1218).
 		"verdict_cache_capacity", basicLane.CacheStats().Capacity)
@@ -163,7 +165,7 @@ func main() {
 	// край читает, на конфигурации, разобранной из окружения.
 	var ourSessionReader middleware.HumanSessionReader
 	if iamConn := backends["iamInternal"]; iamConn != nil {
-		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn)
+		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget)
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
@@ -265,20 +267,9 @@ func main() {
 		logger.Error("api-gateway refusing to start", "err", audErr)
 		os.Exit(1)
 	}
-	issuerRecords := make([]middleware.IssuerKeySet, 0, len(acceptance))
-	acceptedIssuers := make([]string, 0, len(acceptance))
-	platformAccepted := false
-	for _, b := range acceptance {
-		issuerRecords = append(issuerRecords, middleware.IssuerKeySet{
-			Issuer:                  b.Issuer,
-			KeySetURL:               b.KeySetURL,
-			TokenTypes:              b.TokenTypes,
-			TolerateAbsentTokenType: b.TolerateAbsentTokenType,
-			ReadRevocation:          b.ReadRevocation,
-		})
-		acceptedIssuers = append(acceptedIssuers, b.Issuer)
-		platformAccepted = platformAccepted || b.ReadRevocation
-	}
+	// Перевод объявления в записи проверяющего — ОДНА функция на процесс и на
+	// пробу приёмки KA1 (KA1-35): копия цикла здесь разошлась бы с ней молча.
+	issuerRecords, acceptedIssuers, platformAccepted := middleware.IssuerKeySetsFromAcceptance(acceptance)
 
 	// МЯГКИЙ ПРОХОД ОДИН, И У НЕГО ОДИН ПРОИЗВОДИТЕЛЬ — незаявленный адресат
 	// (ветка then ниже). Дойти до него может только класс разработки: в боевом
@@ -396,11 +387,12 @@ func main() {
 			"dialled — the edge cannot ask whether a presented token was revoked (refuse to start)")
 	}
 	authInterceptor = authInterceptor.WithRevocationCheck(
-		middleware.NewOwnRevocationSource(clients.NewSessionRevocationsAdapter(recordConn)), 0)
+		middleware.NewOwnRevocationSource(
+			clients.NewSessionRevocationsAdapter(recordConn, cfg.IdentityCallBudget), cfg.IdentityCallBudget), 0)
 	logger.Info("revocation check active on the authN path",
 		"record_lane_source", "our revocation record (by token identifier)",
 		"record_lane_unanswered_verdict", "refuse",
-		"per_call_budget", middleware.OwnRevocationCallBudget.String())
+		"per_call_budget", cfg.IdentityCallBudget.String())
 
 	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
 	//
@@ -471,7 +463,7 @@ func main() {
 	// поставщиком.
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		authInterceptor = authInterceptor.WithSessionCutoffCheck(
-			clients.NewSessionRevocationsAdapter(iamConn), 0)
+			clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget), 0)
 		logger.Info("session revocation is read on the browser lane",
 			"keyed_by", "subject + authentication instant",
 			"unanswered_verdict", "refuse",
@@ -606,9 +598,10 @@ func main() {
 			log.Fatalf("step-up permission catalog: %v", scErr)
 		}
 
-		// No revocation wiring here on purpose: the check is mounted above, on the
-		// layer that always runs. Asking again in this middleware would introspect
-		// the same token twice per request whenever this toggle is on.
+		// Revocation: the check is mounted above, on the layer that always runs,
+		// for the Bearer scheme; this middleware asks it only for the DPoP scheme,
+		// which that layer does not parse — asking again for Bearer would
+		// introspect the same token twice per request (kacho#2742).
 		dpopMiddleware, verifierErr = middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
 			Verifier:              verifier,
 			DPoP:                  dpopValidator,
@@ -619,6 +612,8 @@ func main() {
 			Logger:                logger,
 			APIDomain:             cfg.APIDomain,
 			RequireForAllRequests: cfg.Posture() == middleware.AuthModeProductionStrict,
+			// Вердикт отзыва для схемы DPoP — общим словарём слоя аутентификации.
+			Revocation: authInterceptor,
 		})
 		if verifierErr != nil {
 			log.Fatalf("dpop middleware: %v", verifierErr)
@@ -665,7 +660,8 @@ func main() {
 	logoutHandler, lerr := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
 		Logger:      logger,
 		Verifier:    logoutVerifier,
-		Revocations: clients.NewSessionRevocationsAdapter(recordConn),
+		Revocations: clients.NewSessionRevocationsAdapter(recordConn, cfg.IdentityCallBudget),
+		CallBudget:  cfg.IdentityCallBudget,
 	})
 	if lerr != nil {
 		log.Fatalf("logout handler: %v", lerr)
@@ -831,6 +827,9 @@ func main() {
 		return gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
 			Relays: handler.LoginLaneRelaySnapshots(loginLaneRelay, issuanceRelay)}
 	})
+	// Клетки полосы предъявителя (kacho#2740): исход вопроса об отзыве по
+	// источнику — на приборе, а не только строкой журнала раз в окно.
+	diagMetrics.RegisterBearerLane(authInterceptor.BearerLane().Snapshot)
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {
@@ -1054,7 +1053,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)
 	}
-	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds)
+	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget)
 	if err != nil {
 		log.Fatalf("rest mux: %v", err)
 	}
@@ -1076,9 +1075,9 @@ func main() {
 	// посадках — точки предъявления вложены (Ф3-52, F4d-28).
 	sessionIdentity := wireWhoAmICarrierReader(
 		middleware.NewSessionIdentityHandler(logger).
-			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
+			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"], cfg.IdentityCallBudget)).
 			WithAdminChecker(iamSubjectClient), // permissions = ["*","admin"] для system-admin
-		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
+		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"], cfg.IdentityCallBudget))
 	sessionIdentity.Register(httpMux)
 
 	// ЗАПИСИ ОБЪЯВЛЕНИЯ — глаголы полосы формы (Ф3 Р2; Ф4 регистрация, Ф5

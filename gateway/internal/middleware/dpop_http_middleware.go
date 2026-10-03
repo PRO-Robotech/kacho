@@ -45,6 +45,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -63,6 +64,10 @@ type DPoPMiddleware struct {
 	// requireForAllRequests — when true, missing Bearer/DPoP header
 	// → 401 (production-strict equivalent for the DPoP path).
 	requireForAllRequests bool
+
+	// revocation — вердикт отзыва общим словарём слоя аутентификации (см.
+	// DPoPMiddlewareConfig.Revocation).
+	revocation PresentedRevocationVerdict
 
 	// authMethodsUnusable — своё окно доклада о способах подтверждения, которые
 	// край не смог довезти до модели прав. Своё, а не общее со слоем
@@ -132,6 +137,13 @@ type DPoPMiddlewareConfig struct {
 
 	// RequireForAllRequests — production-strict; reject anonymous traffic.
 	RequireForAllRequests bool
+
+	// Revocation — вердикт отзыва ОБЩИМ словарём слоя аутентификации
+	// (AuthInterceptor). Обязателен: токен по схеме `DPoP` слой аутентификации
+	// не разбирает, и подпись его проверяет только этот слой — значит и об
+	// отзыве обязан спросить он, иначе отозванный токен с годным доказательством
+	// проходил бы (kacho#2742).
+	Revocation PresentedRevocationVerdict
 }
 
 // NewDPoPMiddleware constructs the orchestrator. Verifier + DPoP + StepUp
@@ -145,6 +157,10 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 	}
 	if cfg.StepUp == nil {
 		return nil, errors.New("dpop middleware: StepUp gate is required")
+	}
+	if cfg.Revocation == nil {
+		return nil, errors.New("dpop middleware: Revocation verdict is required (the always-on " +
+			"authentication layer does not read DPoP-scheme tokens, so this layer must ask)")
 	}
 	if cfg.MTLS == nil {
 		cfg.MTLS = NewMTLSBoundValidator()
@@ -168,6 +184,7 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 		logger:                cfg.Logger,
 		apiDomain:             cfg.APIDomain,
 		requireForAllRequests: cfg.RequireForAllRequests,
+		revocation:            cfg.Revocation,
 		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 	}, nil
 }
@@ -193,8 +210,8 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 		// 1. No Authorization header → respect requireForAllRequests; otherwise pass.
 		if token == "" {
 			if m.requireForAllRequests {
-				m.challenge(w, r, http.StatusUnauthorized,
-					`Bearer error="invalid_token", error_description="missing access token"`, nil)
+				m.logger.Info("dpop-mw: refused — no access token", "path", path)
+				authnrefusal.WriteHTTP(w)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -205,8 +222,7 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 		verified, err := m.verifier.Verify(r.Context(), token)
 		if err != nil {
 			m.logger.Warn("dpop-mw: jwt verify failed", "err", err, "path", path)
-			m.challenge(w, r, http.StatusUnauthorized,
-				`Bearer error="invalid_token", error_description="`+sanitizeErr(err)+`"`, nil)
+			authnrefusal.WriteHTTP(w)
 			return
 		}
 
@@ -220,8 +236,7 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 			}
 			if err := m.dpop.Validate(verified, req); err != nil {
 				m.logger.Warn("dpop-mw: dpop validate failed", "err", err, "path", path)
-				m.challenge(w, r, http.StatusUnauthorized,
-					`DPoP error="invalid_dpop_proof", error_description="`+sanitizeErr(err)+`"`, nil)
+				authnrefusal.WriteHTTP(w)
 				return
 			}
 		case verified.Cnf.HasX5tS:
@@ -231,18 +246,27 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 			}
 			if err := m.mtls.Validate(verified, connState, nil); err != nil {
 				m.logger.Warn("dpop-mw: mtls validate failed", "err", err, "path", path)
-				m.challenge(w, r, http.StatusUnauthorized,
-					`Bearer error="invalid_token", error_description="`+sanitizeErr(err)+`"`, nil)
+				authnrefusal.WriteHTTP(w)
 				return
 			}
 		default:
 			// Plain bearer — accepted when scheme=Bearer; reject when scheme=DPoP
 			// (mismatched expectation: client signalled DPoP, but token has no jkt).
 			if strings.EqualFold(scheme, "DPoP") {
-				m.challenge(w, r, http.StatusUnauthorized,
-					`DPoP error="invalid_token", error_description="access token has no cnf.jkt"`, nil)
+				m.logger.Warn("dpop-mw: DPoP scheme with a token that has no cnf.jkt", "path", path)
+				authnrefusal.WriteHTTP(w)
 				return
 			}
+		}
+
+		// 3a. Отзыв — для схемы `DPoP`. Схему `Bearer` уже спросил слой
+		//     аутентификации, который работает всегда (tryBearerJWT): второй
+		//     вопрос о том же токене удвоил бы интроспекцию на запрос. Схему
+		//     `DPoP` тот слой не разбирает — подпись проверена только здесь, и
+		//     здесь же обязан быть прочитан вердикт отзыва, тем же общим
+		//     словарём (kacho#2742).
+		if strings.EqualFold(scheme, "DPoP") && m.revocation.refuseRevokedHTTP(w, r, verified) {
+			return
 		}
 
 		// 4. Step-up gate. Resolve the canonical gRPC FQN from the REST
@@ -253,6 +277,8 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 			challenge := BuildStepUpChallenge(req, verified.ACR)
 			m.logger.Info("dpop-mw: step-up required",
 				"path", path, "presented_acr", verified.ACR, "required", req.RequiredACRMin)
+			// Указание повысить уровень, а не отказ (приёмка KA1, Р3): токен
+			// признан годным. Перепись производителей 401 знает место поимённо.
 			m.challenge(w, r, http.StatusUnauthorized, challenge, nil)
 			return
 		}
@@ -367,20 +393,6 @@ func grpcMethodForPath(path string) string {
 		return path
 	}
 	return "/" + path
-}
-
-// sanitizeErr returns a single-line human description suitable for HTTP
-// header value. Strips quotation marks + control chars (RFC 6750 section 3 forbids
-// quoted-strings with embedded `"`).
-func sanitizeErr(err error) string {
-	s := err.Error()
-	s = strings.ReplaceAll(s, "\"", "")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	if len(s) > 256 {
-		s = s[:256]
-	}
-	return s
 }
 
 // challenge writes a 401 with a single WWW-Authenticate header + JSON body.

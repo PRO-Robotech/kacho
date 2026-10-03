@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,7 +57,7 @@ func newLogger() *slog.Logger {
 }
 
 func TestLogout_POSTOnly(t *testing.T) {
-	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{Logger: newLogger()})
+	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second, Logger: newLogger()})
 	require.NoError(t, err)
 	req := httptest.NewRequest(http.MethodGet, "/oauth/logout", nil)
 	rec := httptest.NewRecorder()
@@ -65,7 +66,7 @@ func TestLogout_POSTOnly(t *testing.T) {
 }
 
 func TestLogout_ClearsCookies(t *testing.T) {
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{Logger: newLogger()})
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second, Logger: newLogger()})
 	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -104,7 +105,7 @@ func TestLogout_ClearsCookies(t *testing.T) {
 // sub/jti, and IGNORES an attacker-supplied `subject`/`token_jti` in the body.
 func TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 		Verifier: &fakeVerifier{caller: &handler.VerifiedCaller{
@@ -136,7 +137,7 @@ func TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject(t *testing.T) {
 // hard 401, and no revocation is attempted (no silent fallthrough to the body).
 func TestLogout_InvalidToken_401(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 		Verifier:    &fakeVerifier{err: errors.New("bad signature")},
@@ -153,7 +154,7 @@ func TestLogout_InvalidToken_401(t *testing.T) {
 
 func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 	rev := &recordingRevocations{err: errors.New("iam unreachable")}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 		Verifier:    &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr", JTI: "jti"}},
@@ -178,7 +179,7 @@ func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 // нашу запись ровно один раз, ответ — успех без предупреждений.
 func TestLogout_MakesNoOutboundCallBeyondOurRecord(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 		Verifier:    &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr_a", JTI: "jti-a"}},
@@ -196,7 +197,7 @@ func TestLogout_MakesNoOutboundCallBeyondOurRecord(t *testing.T) {
 
 func TestLogout_NoSubject_NoRevocationCall(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 	})
@@ -208,7 +209,7 @@ func TestLogout_NoSubject_NoRevocationCall(t *testing.T) {
 }
 
 func TestLogout_Construction_RequiresLogger(t *testing.T) {
-	_, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{})
+	_, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second})
 	require.Error(t, err)
 }
 
@@ -218,7 +219,7 @@ func TestLogout_Construction_RequiresLogger(t *testing.T) {
 // revocation (401) and never touch iam.
 func TestLogout_UnauthenticatedRevokeRejected(t *testing.T) {
 	rev := &recordingRevocations{}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
 		// No Verifier wired ⇒ no credential can be authenticated ⇒ fail closed.
