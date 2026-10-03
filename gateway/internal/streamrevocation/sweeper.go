@@ -502,7 +502,7 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 	sess, found, err := s.cfg.Authority.ResolveHumanSession(ctx, bearer)
 	switch {
 	case err != nil:
-		// Включая «метода нет»: путь запроса отказывает и на нём (F4d-23), годность
+		// Включая «метода нет»: путь запроса отказывает и на нём (ответ Р1 приёмки KA1), годность
 		// носителя не подтверждена ничем.
 		return verdictUnanswered
 	case !found:

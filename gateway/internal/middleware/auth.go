@@ -445,8 +445,9 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		switch {
 		case errors.Is(err, ErrCredentialStateUnknown):
 			// Отдельный исход и наружу тоже: это не отказ в удостоверении, а
-			// неспособность установить его состояние.
-			return nil, status.Error(codes.Unavailable, "credential state could not be established")
+			// неспособность установить его состояние — ответ Р1, один на все
+			// полосы (credential_state_unknown.go).
+			return nil, credentialStateUnknownError()
 		case err != nil:
 			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
 		}
@@ -527,9 +528,9 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// source, or the token carries no identifier to ask by. None of them is
 			// a verdict on the credential, so the answer is Unavailable and one
 			// constant text, not a sign-in challenge; a retry clears the first
-			// cause and not the other two — the same code the authority lane gives
-			// for the same three facts.
-			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
+			// cause and not the other two. The answer is the one every lane gives
+			// when our authority is silent (credential_state_unknown.go, KA1 Р1).
+			return nil, credentialStateUnknownError()
 		}
 		// Same floor, same reason, on the native surface — where the method is
 		// named by the transport and needs no route resolution.
@@ -1029,7 +1030,10 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 	switch {
 	case errors.Is(err, ErrCredentialStateUnknown):
 		// 503, а не 401: вызывающему нечего исправлять сменой удостоверения.
-		http.Error(w, "credential state could not be established", http.StatusServiceUnavailable)
+		// Ответ Р1 — тот же, что у двух других полос, побайтово
+		// (credential_state_unknown.go); прежде здесь стоял текстовый ответ
+		// библиотеки, и полоса расходилась с соседями формой тела.
+		writeCredentialStateUnknown(w)
 		return true
 	case err != nil:
 		writeHTTPUnauthorized(w, basicCredentialRefusalText())
@@ -1168,9 +1172,9 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 			return true
 		case revocationUnanswerable:
 			// Our source was silent, the check has no source, or the token has no
-			// identifier to ask by — the same three causes, the same refusal and the
-			// same constant text as on the native surface above.
-			writeHTTPServiceUnavailable(w, revocationUnavailableReason)
+			// identifier to ask by — the same three causes, and the one answer every
+			// lane gives when our authority is silent (KA1 Р1).
+			writeCredentialStateUnknown(w)
 			return true
 		}
 	}

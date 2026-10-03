@@ -119,11 +119,6 @@ func revocationSourceOf(vt *VerifiedToken) string {
 	return revocationSourceRecord
 }
 
-// revocationUnavailableReason — what a caller is told when the check cannot
-// answer. Deliberately thin: which of this deployment's addresses is wrong is
-// the operator's business, and it goes to the log, not to the wire.
-const revocationUnavailableReason = "revocation check unavailable"
-
 // WithRevocationCheck mounts the RECORD lane of the revocation check — the
 // question asked about a token of any accepted record our own minting did not
 // mark — on both the REST and the gRPC surface. A nil checker leaves it

@@ -184,8 +184,10 @@ func TestCookieLane_UnansweredAuthorityRefusesButKeepsCarrier(t *testing.T) {
 
 	res, served := runCookieLane(t, time.Now(), cut)
 
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("молчащий СВОЙ авторитет обязан давать отказ: получено %d", res.StatusCode)
+	// Ответ Р1 приёмки KA1: 503, а не 401 — наша неисправность не посылает
+	// человека на вход.
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("молчащий СВОЙ авторитет обязан давать ответ Р1 (503): получено %d", res.StatusCode)
 	}
 	if served {
 		t.Fatal("запрос прошёл при неотвеченном вопросе об отзыве")

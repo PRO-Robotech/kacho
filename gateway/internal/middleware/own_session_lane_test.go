@@ -231,12 +231,13 @@ func TestOwnSessionLane_F3_13_UnavailableAndUnimplementedRefuseWithTheCutoffText
 	} {
 		reader.err = err
 		rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, platformPath, nil), "s1"))
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("%s: обязан быть отказ F4d-23 (401), получено %d", name, rec.Code)
+		// Ответ Р1 приёмки KA1 заменил F4d-23: недоступность — 503, а не текст
+		// отсечки; 401 на нашу неисправность уводил человека на вход.
+		if !isCredentialStateUnknown(rec) {
+			t.Fatalf("%s: обязан быть ответ Р1 (503), получено %d %s", name, rec.Code, rec.Body.String())
 		}
-		if rec.Body.String() != denied.Body.String() {
-			t.Fatalf("%s: текст недоступности отличается от текста отсечки — оракул исправности соседа (Д3):\n%s\n%s",
-				name, rec.Body.String(), denied.Body.String())
+		if rec.Body.String() == denied.Body.String() {
+			t.Fatalf("%s: ответ на недоступность совпал с отказом по отсечке", name)
 		}
 		if len(rec.Result().Header["Set-Cookie"]) != 0 {
 			t.Fatalf("%s: носитель обязан остаться целым, Set-Cookie: %v", name, rec.Result().Header["Set-Cookie"])
@@ -270,17 +271,18 @@ func TestOwnSessionLane_F3_13_CutoffUnsupportedPassesLoudlyWithACounter(t *testi
 	}
 }
 
-// Д3: недоступность отсечки отвечает тем же текстом, что отказ по отсечке.
-func TestSessionLane_F3_13_UnavailableTextEqualsTheDenyText(t *testing.T) {
+// Недоступность отсечки отвечает ответом Р1 приёмки KA1, а не отказом по
+// отсечке: решение Д3 / F4d-23 («тот же текст») заменено таблицей Р6 приёмки
+// KA1. Тело — то же, что у прочих полос на молчании нашего авторитета.
+func TestSessionLane_F3_13_UnavailableIsTheCredentialStateUnknownAnswer(t *testing.T) {
 	deny, _ := runCookieLane(t, ownAuthAt, &fakeCutoff{found: true, cutoff: ownAuthAt.Add(time.Hour)})
 	unavailable, _ := runCookieLane(t, ownAuthAt, &fakeCutoff{err: errors.New("unreachable")})
-	if deny.StatusCode != http.StatusUnauthorized || unavailable.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("оба исхода обязаны быть 401: %d / %d", deny.StatusCode, unavailable.StatusCode)
+	if deny.StatusCode != http.StatusUnauthorized || unavailable.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("отсечка — 401, недоступность — 503: получено %d / %d", deny.StatusCode, unavailable.StatusCode)
 	}
-	db, _ := io.ReadAll(deny.Body)
 	ub, _ := io.ReadAll(unavailable.Body)
-	if string(db) != string(ub) {
-		t.Fatalf("тексты различаются (Д3, F4d-23):\n%s\n%s", db, ub)
+	if string(ub) != credentialStateUnknownBody() {
+		t.Fatalf("тело недоступности не ответ Р1:\n%s", ub)
 	}
 }
 
@@ -469,7 +471,7 @@ func TestOwnSessionLane_F3_51_FormVerbsRefuseTheCutOffCarrierAndRelayNoSession(t
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ф3-17 / Ф3-20 «д» (половина полосы) — недоступность ретранслируется на
-// выходе, входе и признаке; на смене пароля — F4d-23.
+// выходе, входе и признаке; на смене пароля — ответ Р1 (KA1).
 
 func TestOwnSessionLane_F3_17_UnavailabilityIsRelayedExceptOnPasswordChange(t *testing.T) {
 	reader := &fakeHumanSession{err: errors.New("rpc error: code = Unavailable")}
@@ -491,11 +493,8 @@ func TestOwnSessionLane_F3_17_UnavailabilityIsRelayedExceptOnPasswordChange(t *t
 		t.Fatalf("ретранслировано %d, ожидалось 3", relay.served)
 	}
 	rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodPost, LoginLanePathPassword, strings.NewReader(`{}`)), "s1"))
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
-		t.Fatalf("смена пароля при недоступном Resolve обязана получать F4d-23 (401 текстом отсечки): %d %s", rec.Code, rec.Body.String())
-	}
-	if len(rec.Result().Header["Set-Cookie"]) != 0 {
-		t.Fatal("носитель на F4d-23 обязан остаться целым")
+	if !isCredentialStateUnknown(rec) {
+		t.Fatalf("смена пароля при недоступном Resolve обязана получать ответ Р1 (503, носитель цел): %d %s", rec.Code, rec.Body.String())
 	}
 	if relay.served != 3 {
 		t.Fatalf("смена пароля ретранслирована при недоступности: %d", relay.served)
@@ -506,8 +505,8 @@ func TestOwnSessionLane_F3_17_UnavailabilityIsRelayedExceptOnPasswordChange(t *t
 	chain2 := a2.HTTP(mux)
 	serve(chain2, withOurCarrier(httptest.NewRequest(http.MethodPost, LoginLanePathLogout, strings.NewReader(`{}`)), "s1"))
 	rec = serve(chain2, withOurCarrier(httptest.NewRequest(http.MethodPost, LoginLanePathPassword, strings.NewReader(`{}`)), "s1"))
-	if relay.served != 4 || rec.Code != http.StatusUnauthorized {
-		t.Fatalf("недоступная отсечка: выход обязан ретранслироваться (счёт %d), смена — F4d-23 (%d)", relay.served, rec.Code)
+	if relay.served != 4 || !isCredentialStateUnknown(rec) {
+		t.Fatalf("недоступная отсечка: выход обязан ретранслироваться (счёт %d), смена — ответ Р1 (%d)", relay.served, rec.Code)
 	}
 }
 
@@ -520,7 +519,7 @@ func TestOwnSessionLane_F3_17_UnavailabilityIsRelayedExceptOnPasswordChange(t *t
 // «сессии нет» ретранслируется (исход судит служба), недоступность вопросов
 // края ретранслируется — ни один из трёх не меняет состояния ПОД сессией
 // носителя (регистрация заводит новую личность, восстановление ключуется кодом,
-// а не носителем), поэтому асимметрия смены пароля (F4d-23) на них не
+// а не носителем), поэтому асимметрия смены пароля (ответ Р1 (KA1)) на них не
 // распространяется. Решение записано здесь, а не выведено умолчанием: до
 // расширения перечня те же запросы получали 401 на «сессии нет» — как пути
 // платформы.
@@ -569,7 +568,7 @@ func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *t
 	}
 
 	// Недоступность вопросов края — ретрансляция (служба ответит своим 503), а
-	// не F4d-23: состояния под сессией носителя эти глаголы не меняют.
+	// не ответ Р1 (KA1): состояния под сессией носителя эти глаголы не меняют.
 	unavailable := ownLane(t, &fakeHumanSession{err: errors.New("rpc error: code = Unavailable")}, &fakeCutoff{})
 	relay2 := &countingNext{}
 	mux2 := http.NewServeMux()
@@ -587,11 +586,11 @@ func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *t
 		t.Fatalf("ретранслировано %d при недоступности, ожидалось %d", relay2.served, len(verbs))
 	}
 	// Положительный контроль асимметрии: смена пароля на той же полосе —
-	// по-прежнему F4d-23, иначе утверждение выше зеленело бы на полосе,
+	// по-прежнему отказ (ответ Р1), иначе утверждение выше зеленело бы на полосе,
 	// ретранслирующей всё подряд.
 	rec := serve(chain2, withOurCarrier(httptest.NewRequest(http.MethodPost, LoginLanePathPassword, strings.NewReader(`{}`)), "s1"))
-	if rec.Code != http.StatusUnauthorized || relay2.served != len(verbs) {
-		t.Fatalf("смена пароля при недоступном Resolve обязана получать F4d-23, а не ретранслироваться: %d, ретранслировано %d", rec.Code, relay2.served)
+	if !isCredentialStateUnknown(rec) || relay2.served != len(verbs) {
+		t.Fatalf("смена пароля при недоступном Resolve обязана получать ответ Р1, а не ретранслироваться: %d, ретранслировано %d", rec.Code, relay2.served)
 	}
 	t.Logf("перепись: глаголов Ф4/Ф5 %d · исходов проверено по каждому 3 (отсечка · «сессии нет» · недоступность)", len(verbs))
 }

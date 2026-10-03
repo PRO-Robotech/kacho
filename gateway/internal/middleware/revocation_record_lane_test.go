@@ -126,13 +126,13 @@ func recordLaneGRPCErr(a *AuthInterceptor) error {
 func recordLaneRefusalText(t *testing.T, a *AuthInterceptor, fed string) {
 	t.Helper()
 	_, _, msg := recordLaneRESTBody(a)
-	if msg != revocationUnavailableReason {
-		t.Fatalf("тело отказа REST: %q, ожидался постоянный текст %q", msg, revocationUnavailableReason)
+	if msg != credentialStateUnknownReason {
+		t.Fatalf("тело отказа REST: %q, ожидался постоянный текст %q", msg, credentialStateUnknownReason)
 	}
 	grpcMsg := status.Convert(recordLaneGRPCErr(a)).Message()
-	if grpcMsg != revocationUnavailableReason {
+	if grpcMsg != credentialStateUnknownReason {
 		t.Fatalf("сообщение отказа нативной поверхности: %q, ожидался постоянный текст %q",
-			grpcMsg, revocationUnavailableReason)
+			grpcMsg, credentialStateUnknownReason)
 	}
 	if fed == "" {
 		return

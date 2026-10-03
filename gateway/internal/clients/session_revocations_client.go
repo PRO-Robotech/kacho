@@ -66,7 +66,7 @@ func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocatio
 //   - `OK, !found` → «сессии нет» — один ответ на все причины, БЕЗ ошибки;
 //   - `UNIMPLEMENTED` → типизированный признак ErrHumanSessionUnsupported
 //     (окно раската): знание о кодах транспорта принадлежит адаптеру, решение —
-//     полосе (там это отказ F4d-23, а не проход);
+//     полосе (там это ответ Р1 приёмки KA1, а не проход);
 //   - прочее → «спросить не удалось», ошибка без подмены.
 func (a *SessionRevocationsAdapter) ResolveHumanSession(
 	ctx context.Context, bearer string,
