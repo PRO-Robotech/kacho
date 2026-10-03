@@ -517,11 +517,17 @@ test-unit: $(HOOKS_NOTICE)
 ## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
 ## которого «ничего не нашлось» — законный исход (код 1).
 ##
-## НОЛЬ ИСПОЛНЕННЫХ ПРОБ — ОТКАЗ (kacho#2915, Д92). Служба в перечне без единого
-## отобранного пакета и прогон, у которого все пробы пропустились, печатали
-## `ok`/«пропуск» и выходили нулём — зелёный при нуле исполненного. Теперь цель
-## гонит `go test -v`, считает строки `--- PASS|FAIL` верхнего уровня и
-## печатает «проб исполнено N, пропущено M»; N = 0 при зелёном исходе — отказ.
+## НОЛЬ ИСПОЛНЕННОГО — ОТКАЗ (kacho#2915, Д92). Служба в перечне без единого
+## отобранного пакета и прогон, ни один пакет которого не исполнил проб
+## (`[no tests to run]`), печатали «пропуск»/`ok` и выходили нулём — зелёный при
+## нуле исполненного. Теперь цель печатает «пакетов исполнило пробы N, без проб
+## M» и при зелёном исходе с N = 0 отказывает. Единица счёта — ПАКЕТ, а не
+## проба: строка `go test` без `-v` числа проб не несёт, а форма команды
+## закреплена пробой выпуска RG1.1 (services/storage/tools, argv ровно из девяти
+## слов). Остаток назван: пакет, у которого исполнились только пропуски, печатает
+## `ok` и этим счётом не отличим от исполнившего; без `-short` пропуск у пакетов
+## с базой — исход окружения. Счёт проб печатается, когда вызывающий даёт
+## `GOFLAGS=-v`.
 ##
 ## Вторая альтернатива отбора — пакеты каталога notify с настоящей базой
 ## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92): их пробы
@@ -575,12 +581,14 @@ ifdef SVC
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l)) — ОТКАЗ: исполнено проб 0" >&2; exit 1; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); rc=0; \
-	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -v -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
 	out=0; deploy/scripts/classify-integration-outcome.sh "$$rc" "$$log" || out=$$?; \
-	ran=$$(grep -cE '^--- (PASS|FAIL):' "$$log" || true); skipped=$$(grep -cE '^--- SKIP:' "$$log" || true); \
+	ran=$$(grep -E '^(ok|FAIL)[[:space:]]+[^[:space:]]+' "$$log" | grep -cv 'no tests to run' || true); \
+	idle=$$(grep -cE '^ok[[:space:]].*no tests to run' "$$log" || true); \
+	probes=$$(grep -cE '^--- (PASS|FAIL):' "$$log" || true); \
 	rm -f "$$log"; \
-	echo "integration $(SVC): проб исполнено $$ran, пропущено $$skipped"; \
-	if [ "$$out" -eq 0 ] && [ "$$ran" -eq 0 ]; then echo "integration $(SVC): исполнено проб 0 — ОТКАЗ, а не зелёный" >&2; exit 1; fi; \
+	echo "integration $(SVC): пакетов исполнило пробы $$ran, без проб $$idle; проб по строкам -v $$probes (GOFLAGS=-v даёт счёт проб)"; \
+	if [ "$$out" -eq 0 ] && [ "$$ran" -eq 0 ]; then echo "integration $(SVC): ни один пакет не исполнил проб — ОТКАЗ, а не зелёный" >&2; exit 1; fi; \
 	exit $$out
 else
 	@set -e; for svc in $(SERVICES); do \

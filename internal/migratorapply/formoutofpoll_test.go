@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
+
 	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
@@ -74,25 +76,30 @@ func TestNotifyFormIsNotAThirdCategory(t *testing.T) {
 	}
 }
 
-// copyChart копирует каталог чарта src в dst.
+// copyChart копирует каталог чарта src в dst. Состав — у индекса git
+// (treecorpus.Under), а не с диска: распаковки зависимостей и прочее
+// игнорируемое в копию не попадают.
 func copyChart(t *testing.T, src, dst string) {
 	t.Helper()
-	err := filepath.WalkDir(src, func(p string, d os.DirEntry, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		rel, _ := filepath.Rel(src, p)
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o750)
-		}
-		body, rerr := os.ReadFile(p) // #nosec G304 -- чарт дерева
-		if rerr != nil {
-			return rerr
-		}
-		return os.WriteFile(target, body, 0o600)
-	})
+	files, err := treecorpus.Under(src)
 	if err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: копия чарта %s не снята: %v", src, err)
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: состав чарта %s не взят у индекса: %v", src, err)
+	}
+	for _, abs := range files {
+		rel, err := filepath.Rel(src, abs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := os.ReadFile(abs) // #nosec G304 -- файл индекса дерева
+		if err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s не прочитан: %v", abs, err)
+		}
+		target := filepath.Join(dst, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
