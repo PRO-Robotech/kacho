@@ -903,7 +903,9 @@ jobs:
       # Имя профиля не выписывается здесь литералом: стенд шарда поднимает
       # `make dev-up`, и его профиль объявлен ОДИН раз — `STAND_STACK` в
       # deploy/Makefile (последний профиль цепочки dev-up). Здесь он
-      # СПРАШИВАЕТСЯ у той же единственной записи. Ответа нет (make отказал или
+      # СПРАШИВАЕТСЯ у той же единственной записи — объявленной целью
+      # `print-stand-stack` (цель, а не `--eval`: команды make конвейера сверяет
+      # с объявленными целями TestEveryCIMakeCommandResolves). Ответа нет (make отказал или
       # напечатал пустое) — гейт не зовётся, шаг отдаёт «не выполнилось» (код 2)
       # строкой причины, а не молчаливым обрывом под `bash -e`.
       #
@@ -913,8 +915,7 @@ jobs:
       - name: гейт — ban #6 на внешнем листенере (gRPC, домены шарда)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' }}
         run: |
-          if ! stand_stack="$(make -s -C deploy --no-print-directory \
-                 --eval 'print-stand-stack: ; @echo $(STAND_STACK)' print-stand-stack)" \
+          if ! stand_stack="$(make -s -C deploy --no-print-directory print-stand-stack)" \
              || [ -z "$stand_stack" ]; then
             echo "НЕ ВЫПОЛНИЛОСЬ: профиль стенда шарда не прочитан из deploy/Makefile (STAND_STACK) — чей рендер судить, неизвестно"
             exit 2

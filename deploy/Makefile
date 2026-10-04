@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up wait-edge-ready generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
-	assert-metrics-surfaces-answer \
+	assert-metrics-surfaces-answer print-stand-stack \
         assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
@@ -1265,6 +1265,12 @@ assert-production-posture: guard-kind-context
 STAND_STACK ?= dev-prod
 assert-metrics-surfaces-answer: guard-kind-context
 	@KACHO_STAND_STACK="$(STAND_STACK)" bash scripts/assert-metrics-surfaces-answer.sh
+
+# print-stand-stack — печатает STAND_STACK: профиль стенда, поднятого `dev-up`.
+# Его спрашивает конвейер (шаг гейта ban #6 шарда, .github/workflows/e2e-newman.yml,
+# Д112 (б)), чтобы имя профиля не выписывалось вторым литералом рядом с этим.
+print-stand-stack:
+	@echo "$(STAND_STACK)"
 
 # ЗДЕСЬ БЫЛА ЦЕЛЬ assert-forwarder-narrowing — СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ (#2390).
 #
