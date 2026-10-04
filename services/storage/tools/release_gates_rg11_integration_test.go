@@ -40,6 +40,16 @@ type rg11IntegrationInput struct {
 	// проб (pass/fail) не дал ни одного. Счёт исполненного идёт по событиям
 	// `go test -json` (kacho#2915, Д106 (г)): такой прогон — ноль исполненного.
 	PackageOkOnly bool
+	// AllSkipped — производитель отчитался событиями, но единственная проба
+	// пакета ушла в `skip`: прогонщик выходит нулём (пропуск вне пакетов гейтов
+	// дерева не судится), и ноль исполненного ловит ТОЛЬКО ветка рецепта
+	// `pass + fail == 0`.
+	AllSkipped bool
+	// UnfinishedProbe — к зелёному потоку добавлена проба с `run` и без
+	// терминального события: `go test` вышел нулём, событие pass есть, а
+	// прогонщик отказывает кодом 2 (третья категория). Такой исход ловит ТОЛЬКО
+	// ветка рецепта `vrc ≠ 0`.
+	UnfinishedProbe bool
 }
 
 func rg11UnmetInput() rg11IntegrationInput {
@@ -88,6 +98,56 @@ func TestRG11_06b(t *testing.T) {
 		got := f.check(t, "package_ok_only", input, 2, 1, false)
 		if !strings.Contains(got.output, "проб исполнено по событиям go test -json 0") {
 			t.Errorf("package-only report is not refused by the event count: %s", got.output)
+		}
+		rg11NoAnnotation(t, got.output)
+	})
+}
+
+// Две ветки отказа рецепта судятся каждая своим входом, на котором другая
+// молчит (kacho#2915, возврат check-verifier на 4954f14f08a). Вход RG11_06b
+// (`ok` без событий) ловят ОБЕ ветки разом — прогонщик выходит кодом 2 и счёт
+// равен нулю, — поэтому снятие любой одной там не видно.
+//   - all_probes_skipped: прогонщик чист (код 0), исполнено 0 — краснеет
+//     только при живой ветке `pass + fail == 0`;
+//   - runner_refused_with_passed_events: исполнено 1, прогонщик отказал
+//     (код 2) — краснеет только при живой ветке `vrc ≠ 0`.
+//
+// Близнец обоих — зелёный поток с pass одной пробы.
+func TestRG11_06c(t *testing.T) {
+	t.Run("all_probes_skipped", func(t *testing.T) {
+		f := rg11NewIntegrationFixture(t)
+		twin, input := rg11GreenInput(), rg11GreenInput()
+		input.AllSkipped = true
+		rg11IntegrationDelta(t, twin, input, "AllSkipped", "TestRG11_06/green_ci")
+		f.check(t, "green_twin", twin, 0, 0, false)
+		got := f.check(t, "all_probes_skipped", input, 2, 1, false)
+		for _, want := range []string{
+			"проб исполнено 0 · упало 0 · пакетов упало 0 · сборок упало 0 · ПРОПУЩЕНО 1 · НЕ ВЫПОЛНИЛОСЬ 0",
+			"ЧИСТО",
+			"проб исполнено по событиям go test -json 0 (pass 0 · fail 0) · пропущено 1 · не выполнилось 0",
+			"проб исполнено по событиям 0 либо прогонщик отказал (код 0)",
+		} {
+			if !strings.Contains(got.output, want) {
+				t.Errorf("all-skipped run: output lacks %q: %s", want, got.output)
+			}
+		}
+		rg11NoAnnotation(t, got.output)
+	})
+	t.Run("runner_refused_with_passed_events", func(t *testing.T) {
+		f := rg11NewIntegrationFixture(t)
+		twin, input := rg11GreenInput(), rg11GreenInput()
+		input.UnfinishedProbe = true
+		rg11IntegrationDelta(t, twin, input, "UnfinishedProbe", "TestRG11_06/green_ci")
+		f.check(t, "green_twin", twin, 0, 0, false)
+		got := f.check(t, "runner_refused", input, 2, 1, false)
+		for _, want := range []string{
+			"НЕ ВЫПОЛНИЛОСЬ: проб начато и не завершено 1",
+			"проб исполнено по событиям go test -json 1 (pass 1 · fail 0) · пропущено 0 · не выполнилось 1",
+			"проб исполнено по событиям 0 либо прогонщик отказал (код 2)",
+		} {
+			if !strings.Contains(got.output, want) {
+				t.Errorf("runner-refused run: output lacks %q: %s", want, got.output)
+			}
 		}
 		rg11NoAnnotation(t, got.output)
 	})
@@ -350,6 +410,12 @@ func (f rg11IntegrationFixture) check(t *testing.T, label string, input rg11Inte
 		if input.PackageOkOnly {
 			log = []byte("ok\t" + rg11IntegrationPackage + "\t0.001s\n")
 		}
+		if input.AllSkipped {
+			log = rg11JSONSkipped()
+		}
+		if input.UnfinishedProbe {
+			log = append(rg11JSONGreen(), []byte(`{"Action":"run","Package":"`+rg11IntegrationPackage+`","Test":"TestRG11Unfinished"}`+"\n")...)
+		}
 	}
 	if input.RemoveMarker {
 		var kept []byte
@@ -515,6 +581,21 @@ func rg11JSONGreen() []byte {
 {"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"=== RUN   TestRG11Probe\n"}
 {"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"--- PASS: TestRG11Probe (0.00s)\n"}
 {"Action":"pass","Package":"` + p + `","Test":"TestRG11Probe","Elapsed":0}
+{"Action":"output","Package":"` + p + `","Output":"ok  \t` + p + `\t0.001s\n"}
+{"Action":"pass","Package":"` + p + `","Elapsed":0.001}
+`)
+}
+
+// rg11JSONSkipped — поток `go test -json` пакета, единственная проба которого
+// ушла в `t.Skip`: события есть, исполненных проб нет, пакет отчитался `ok`.
+func rg11JSONSkipped() []byte {
+	p := rg11IntegrationPackage
+	return []byte(`{"Action":"start","Package":"` + p + `"}
+{"Action":"run","Package":"` + p + `","Test":"TestRG11Probe"}
+{"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"=== RUN   TestRG11Probe\n"}
+{"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"    probe_test.go:1: integration database unavailable\n"}
+{"Action":"output","Package":"` + p + `","Test":"TestRG11Probe","Output":"--- SKIP: TestRG11Probe (0.00s)\n"}
+{"Action":"skip","Package":"` + p + `","Test":"TestRG11Probe","Elapsed":0}
 {"Action":"output","Package":"` + p + `","Output":"ok  \t` + p + `\t0.001s\n"}
 {"Action":"pass","Package":"` + p + `","Elapsed":0.001}
 `)
