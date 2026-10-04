@@ -12,10 +12,11 @@ import {
   seedAddress,
   seedConfirmedHuman,
   seedHuman,
+  seedSecondFactor,
   type Cookie,
   type Seed,
 } from "./ceremony-seed";
-import { test } from "./fixtures";
+import { runTag, test } from "./fixtures";
 import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver";
 
 /**
@@ -30,6 +31,9 @@ import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver
  *
  *   Ф3 — `docs/engineering/acceptance/login-lane-issues-our-session-and-logout-ends-it-server-side.md`
  *        20ccad56e52ff778ed598c997834b5369e47508694178f2f363f2dd89795dfa5 — APPROVED
+ *        (тот же отпечаток на ветках 296 и 537);
+ *   Ф12 — `docs/engineering/acceptance/second-factor-totp-and-recovery-codes.md`
+ *        c5e535f0573e5ed86a229af1688b05ffad5c179b41b4f99b643cc1c06298486d — APPROVED
  *        (тот же отпечаток на ветках 296 и 537);
  *   Ф5 — `docs/engineering/acceptance/recovery-of-access.md`
  *        17b2d02c8bff38378135467750b21e026118c62fd9d8828538c6315b6d4644e3 — APPROVED
@@ -57,6 +61,10 @@ import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver
  *   Ф5-24: под `R` и под `L` (вход новым паролем) — тот же человек в «кто я» и
  *          тот же исход глагола платформы. Изменён один факт — множество
  *          предъявленного (код восстановления против пароля).
+ *   Ф12-20: глагол с полом «2» под сессией входа паролем — отказ с вызовом
+ *          повышения; тот же глагол после повышения запасным кодом — проходит.
+ *          Изменён один факт — уровень сессии; глагол с полом «1» проходит под
+ *          обеими (ступень не плата за рутину).
  */
 
 /** Ответ «кто я» без личности — побайтово (Ф3-14, обработчик края). */
@@ -285,3 +293,74 @@ test("Ф5-24 · сессия восстановления полноправна
   }
 });
 
+test("Ф12-20 · через край пол «2» отвергает сессию пароля и проходит после повышения кодом", async ({ browserName: _browserName }, testInfo) => {
+  // verifies #1281 — Ф12-20 (Ф12 c5e535f0…) через край на посадке own; он же предикат #1280 (Ф11-25, Ф11-26).
+  test.setTimeout(240_000);
+
+  // Дано: человек с подтверждённым адресом и заведённым фактором; запасные коды — из подтверждения.
+  const owner = await newSeed(testInfo);
+  const human = await seedConfirmedHuman(owner, seedAddress("f12-20"));
+  const factor = await seedSecondFactor(owner);
+  expect(factor.assuranceLevel, "подтверждение фактора обязано поднять сессию посева до «2»").toBe("2");
+
+  // Сессия L1 — вход ОДНИМ паролем (Ф12-14): уровень «1» при заведённом факторе.
+  const lane = await signedIn(testInfo, human.email, human.password, "L1");
+  try {
+    const me = JSON.parse(await (await lane.read(SESSION_IDENTITY)).text()) as { session?: { assuranceLevel?: unknown } };
+    expect(String(me.session?.assuranceLevel), "вход паролем без кода — сессия «1» (Ф12-14)").toBe("1");
+
+    // Предмет: группа аккаунта человека — заведение полом «1», удаление полом «2».
+    await expect
+      .poll(
+        async () => {
+          const res = await lane.read(PLATFORM_VERB);
+          return res.ok() ? (((await res.json()) as { accounts?: unknown[] }).accounts ?? []).length : -res.status();
+        },
+        { message: "аккаунт человека не появился — предмет пробы не собран", timeout: 45_000 },
+      )
+      .toBeGreaterThan(0);
+    const accounts = (await (await lane.read(PLATFORM_VERB)).json()) as { accounts: Array<{ id: string }> };
+    const created = await lane.api.post("/iam/v1/groups", {
+      data: { accountId: accounts.accounts[0].id, name: `e2e-f12-20-${runTag()}`, description: "Ф12-20" },
+    });
+    expect(created.status(), `заведение группы (пол «1») под L1: ${await created.text()}`).toBe(200);
+    const groupId = ((await created.json()) as { metadata?: { groupId?: string } }).metadata?.groupId ?? "";
+    expect(groupId, "операция не назвала идентификатор группы").not.toBe("");
+    const groupPath = `/iam/v1/groups/${groupId}`;
+    // Чтение группы — глагол с полом «1» под носителем L1 (IAM-INT-1-22, первая половина).
+    await expect
+      .poll(async () => (await lane.read(groupPath)).status(), {
+        message: "своя свежая группа не читается под L1 — право не материализовалось либо id фантомен",
+        timeout: 45_000,
+      })
+      .toBe(200);
+
+    // Когда/Тогда (Ф11-25): глагол с полом «2» под L1 — 401 · code 16 · вызов повышения с acr_values="2".
+    const denied = await answerOf(await lane.api.delete(groupPath));
+    expect(denied.status, `пол «2» под сессией «1» обязан отвергаться 401: ${denied.text}`).toBe(401);
+    expect((JSON.parse(denied.text) as { code?: unknown }).code, "код отказа — UNAUTHENTICATED (16)").toBe(16);
+    const challenge = denied.challenge;
+    expect(challenge, "вызов повышения обязан назвать требуемый уровень").toContain('acr_values="2"');
+    expect(challenge, "вызов повышения обязан назвать предъявленный уровень").toContain("presented ACR 1");
+
+    // Повышение запасным кодом через край (ретранслировано, Ф12-38): новый носитель уровня «2».
+    const before = (await carrierOf(lane, "L1")).value;
+    const raised = await lane.submit(LANE.stepUp, "step-up", { method: "lookup_secret", code: factor.backupCodes[3] });
+    const raisedBody = lastIssued(lane, LANE.stepUp).body as { session?: { assuranceLevel?: unknown } } | null;
+    expect(raised.status(), `повышение запасным кодом отвергнуто: ${JSON.stringify(raisedBody)}`).toBe(200);
+    expect(String(raisedBody?.session?.assuranceLevel), "повышение обязано дать сессию «2»").toBe("2");
+    expect((await carrierOf(lane, "L2")).value, "повышение обязано перевыпустить носитель").not.toBe(before);
+
+    // Ступень не плата за рутину (IAM-INT-1-22): глагол с полом «1» проходит под ОБОИМИ
+    // носителями — под L1 он прошёл выше (чтение группы до отказа), под L2 — здесь.
+    // Носитель L1 после повышения не предъявляется: повышение перевыпускает носитель
+    // (Ф12-38), и «оба носителя» сценария — носитель до повышения и носитель после.
+    expect((await lane.read(groupPath)).status(), "пол «1» под носителем L2 обязан проходить").toBe(200);
+
+    // Тогда (Ф11-26): тот же глагол с полом «2» по новому носителю проходит.
+    const passed = await answerOf(await lane.api.delete(groupPath));
+    expect(passed.status, `пол «2» после повышения обязан проходить: ${passed.text}`).toBe(200);
+  } finally {
+    await Promise.all([owner.dispose(), lane.dispose()]);
+  }
+});
