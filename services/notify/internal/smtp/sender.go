@@ -207,7 +207,7 @@ func handshakeFailure(err error) Failure {
 		return FailureUntrusted
 	}
 	var nerr net.Error
-	if errors.As(err, &nerr) || isClosed(err) {
+	if errors.As(err, &nerr) || isClosed(err) || errors.Is(err, context.Canceled) {
 		return FailureDisconnect
 	}
 	return FailureNoTLS
