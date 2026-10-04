@@ -197,3 +197,22 @@ entries:
       KAN-Q1-06 и KAN-Q4-13). ВНЕ санкции этой миграции — стадии S2, S3 и S4:
       переезд каталога видов в фундамент, уход службы доступа из потребителей и
       снятие авторитета величин идут своими изменениями.
+  - acceptance: sub-phase-NTF-3-kacho-modules-notifications-acceptance.md
+    verdict: APPROVED
+    verdict_dated: "2026-09-30"
+    workspace_revision: 3475f155b
+    note: >-
+      Круг 1 на редакцию 33, вердикт вынесен acceptance-reviewer и привязан к
+      ОТПЕЧАТКУ содержимого, а не к слову в шапке: шапка документа несёт
+      статическую форму DRAFT и сама называет источник действующего вердикта —
+      запись ревью и внешнее событие (`.claude/skills/change-graph/SKILL.md` §3).
+      Запись — `docs/specs/reviews/sub-phase-NTF-3-kacho-modules-notifications-acceptance/ac1f9fc91e4b13e248b9a9bc3a9d31a3c015021714a3461ecc02dbf651ca4ac1.yaml`
+      (`verdict: APPROVED`, коммит a319b2402), событие полномочия — коммит
+      3475f155b; обе ревизии лежат на ветке `issue-880` воркспейса, а не в его
+      стволе. Предикат: `git show 3475f155b:docs/specs/sub-phase-NTF-3-kacho-modules-notifications-acceptance.md
+      | sha256sum` даёт ac1f9fc9…4ca4ac1, и запись с этим именем на той же
+      ревизии несёт APPROVED. Рецепт по шапке (`scripts/docs-gate/verdict.py`)
+      печатает на этой ревизии DRAFT — это статическая форма, а не вердикт.
+      ОБЪЁМ САНКЦИИ МИГРАЦИЙ, ЦИТИРУЮЩИХ ДОКУМЕНТ, — полоса S1-A1 задачи
+      PRO-Robotech/kacho#2918: колонка `initiator` журналов пяти модулей и слово
+      `notification` в ограничении вида журнала nlb (Р2, NTF3-62, З2, З5).

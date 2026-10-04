@@ -318,7 +318,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	"services/compute/internal/migrations": "make test-pg-outside-selection",
 	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
-	"services/vpc/internal/migrations":     "make test-pg-outside-selection",
+	// Пробы журнала registry (задача #2918, NTF3-62 и УК3-28): колонка инициатора,
+	// её умолчание и функция базы registries_journal_emit судятся вставкой в
+	// настоящий Postgres, а у пакета миграций registry стража сносов нет — без
+	// этой цели его пробы не исполнялись бы нигде.
+	"services/registry/internal/migrations": "make test-pg-outside-selection",
+	"services/vpc/internal/migrations":      "make test-pg-outside-selection",
 
 	// Фоновые проходы nlb (реклейм VIP застрявших балансировщиков и слив
 	// таргетов). Двадцать проб, все с настоящим Postgres, все гейтятся кратким
