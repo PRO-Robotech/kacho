@@ -26,6 +26,7 @@ func scanJF(t *testing.T, body string) []JournalFaultMapper {
 }
 
 func TestJournalFaultGateFindsAnUnguardedCheckDecision(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"case": `func m(err error) error {
 	f := pgfault.Classify(err)
@@ -70,6 +71,7 @@ func TestJournalFaultGateFindsAnUnguardedCheckDecision(t *testing.T) {
 }
 
 func TestJournalFaultGateIsSilentOnTheGuardedTwin(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"case": `func m(err error) error {
 	f := pgfault.Classify(err)
@@ -101,6 +103,7 @@ func TestJournalFaultGateIsSilentOnTheGuardedTwin(t *testing.T) {
 }
 
 func TestJournalFaultGateIgnoresThePredicateDefinitionAndOtherClasses(t *testing.T) {
+	t.Parallel()
 	got := scanJF(t, `func isCheckViolation(err error) bool { return pgfault.Classify(err).Is(pgfault.Check) }
 func IsCheckViolation(err error) bool { return isCheckViolation(err) }
 func u(err error) error {
@@ -114,6 +117,7 @@ func u(err error) error {
 }
 
 func TestJournalInitiatorConstraintScanSkipsCommentsAndReadsTheName(t *testing.T) {
+	t.Parallel()
 	sql := `-- ALTER TABLE x.fake_outbox ADD COLUMN initiator text CONSTRAINT wrong_name
 -- +goose Up
 ALTER TABLE kacho_vpc.vpc_outbox

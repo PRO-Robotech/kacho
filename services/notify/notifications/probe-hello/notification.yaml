@@ -12,3 +12,4 @@ attributes:
   target: {type: path, presence: required}
 subject:
   ru: "Проба доставки почты"
+  en: "Mail delivery probe"

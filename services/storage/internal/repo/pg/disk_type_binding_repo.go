@@ -356,7 +356,7 @@ func mapDiskTypeBindingErr(err error, c dtbErrCtx) error {
 	if f.FromDatabase() {
 		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
 		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
-		// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
 		if journalfault.Report(f, "kind", "disk_type_binding", "id", c.bindingID) {
 			return storageerr.ErrInternal
 		}

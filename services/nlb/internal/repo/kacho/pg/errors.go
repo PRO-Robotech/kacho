@@ -62,7 +62,7 @@ func mapPgErr(err error, kind, id string) error {
 	f := pgfault.Classify(err)
 	// Отказ журнала по инициатору — дефект записи сервиса (значение производит
 	// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
-	// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+	// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
 	if journalfault.Report(f, "kind", kind, "id", id) {
 		return fmt.Errorf("%w: %v", kacho.ErrInternal, err)
 	}

@@ -65,7 +65,7 @@ func wrapPgErr(err error, kind, id string) error {
 	}
 	// Отказ журнала по инициатору — дефект записи сервиса (значение производит
 	// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
-	// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+	// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
 	if journalfault.Report(pgfault.Classify(err), "kind", kind, "id", id) {
 		return ports.ErrInternal
 	}

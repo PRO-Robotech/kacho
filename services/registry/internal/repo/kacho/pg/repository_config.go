@@ -392,7 +392,7 @@ func mapConfigErr(err error) error {
 	if f.FromDatabase() {
 		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
 		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
-		// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
 		if journalfault.Report(f, "resource", "repository_config") {
 			return regerrors.ErrInternal
 		}
