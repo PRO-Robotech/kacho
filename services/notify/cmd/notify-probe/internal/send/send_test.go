@@ -149,7 +149,7 @@ func TestSendReturnsTheIDOfTheCommittedRow(t *testing.T) {
 	}
 	var template, state string
 	if err := pool.QueryRow(context.Background(),
-		`SELECT template, state FROM `+journal.FeedOutbox+` WHERE id = $1`, id).Scan(&template, &state); err != nil {
+		`SELECT template, state FROM `+feedTable+` WHERE id = $1`, id).Scan(&template, &state); err != nil {
 		t.Fatalf("строки с id %s в ленте нет: %v", id, err)
 	}
 	if template != "probe-hello" || state != "pending" {
@@ -159,10 +159,9 @@ func TestSendReturnsTheIDOfTheCommittedRow(t *testing.T) {
 
 // Гонка: N параллельных Send — N разных id, и каждый — своя закоммиченная
 // строка. Ответ, выведенный из «последней строки ленты», дал бы здесь чужой id.
-//
-// Гонка вероятностная: раундов parallelRounds по n вызовов на одной базе —
-// инъекция READ COMMITTED краснит пробу на каждом прогоне замера (см. отчёт
-// полосы), а не через раз.
+// Детерминированное чередование с конкурентом держит
+// TestSendReturnsItsOwnIDUnderACompetingWrite; эта проба — та же гарантия под
+// настоящим параллелизмом, раундов parallelRounds по n вызовов.
 func TestParallelSendsGetTheirOwnIDs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("гонка идёт против живой базы (testcontainers): под кратким режимом пропускается, " +
@@ -207,7 +206,7 @@ func parallelSendsRound(t *testing.T) {
 		seen[ids[i]] = true
 	}
 	var rows int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM `+journal.FeedOutbox).Scan(&rows); err != nil {
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM `+feedTable).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	if rows != n {
@@ -216,7 +215,7 @@ func parallelSendsRound(t *testing.T) {
 	for id := range seen {
 		var one int
 		if err := pool.QueryRow(context.Background(),
-			`SELECT count(*) FROM `+journal.FeedOutbox+` WHERE id = $1`, id).Scan(&one); err != nil || one != 1 {
+			`SELECT count(*) FROM `+feedTable+` WHERE id = $1`, id).Scan(&one); err != nil || one != 1 {
 			t.Fatalf("id %s: строк %d (%v)", id, one, err)
 		}
 	}
