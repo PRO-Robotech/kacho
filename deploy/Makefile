@@ -12,7 +12,8 @@
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
-        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up
+        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
+        bootstrap-cloud-admin
 
 SHELL := bash
 
@@ -947,6 +948,7 @@ own-up: preflight
 	$(MAKE) --no-print-directory seed-geo; \
 	$(MAKE) --no-print-directory seed-storage; \
 	$(MAKE) --no-print-directory seed-vpc-pools; \
+	$(MAKE) --no-print-directory bootstrap-cloud-admin; \
 	$(MAKE) --no-print-directory assert-rollout-ready; \
 	$(MAKE) --no-print-directory assert-production-posture; \
 	echo "own stand is UP and READY in $$(( $$(date +%s) - start ))s (цепочка own, образы сборки дерева)"
@@ -1239,6 +1241,21 @@ assert-metrics-surfaces-answer: guard-kind-context
 # недопустим.
 assert-outbox-autovacuum: guard-kind-context
 	@bash scripts/assert-outbox-autovacuum.sh
+
+# bootstrap-cloud-admin — ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА СТЕНДА (kacho#2878).
+#
+# Шаг подъёма: человек с адресом и паролем из секрета стенда
+# (`kaname.platform.iam.bootstrapRootAdmin.secretName`) заводится путём продукта
+# — регистрацией на внешнем слушателе края, кодом из письма приёмника стенда и
+# подтверждением, — а право `system_admin` на кластере ему выдаёт посев
+# бутстрапа службы доступа. Шаг ждёт, пока чтение раздела «Система»
+# (`GET /vpc/v1/addressPools` на внутреннем слушателе) ответит 200. Повторный
+# подъём человека не заводит заново и удостоверения не меняет. Величины секрета
+# не печатаются. Стоит в own-up после применения и готовности края и раньше
+# гейтов готовности и посадки — держит deploy/stand_cloud_admin_bootstrap_test.go.
+# Как войти оператору — deploy/README.md, «Администратор облака стенда».
+bootstrap-cloud-admin: guard-kind-context
+	@STACK_NAMESPACE=kacho bash scripts/bootstrap-cloud-admin.sh
 
 # helm-deps — материализация зависимостей умбреллы ЧЕРЕЗ MAKE.
 #

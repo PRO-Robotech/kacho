@@ -662,6 +662,21 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
+            {{- /* ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА (kacho#2878) — адрес ссылкой на
+            секрет, обязательной; литерал той же переменной в карте `env` —
+            второе место об одном предмете, отказ. */}}
+            {{- with ((.Values.platform).iam).bootstrapRootAdmin }}
+            {{- if .secretName }}
+            {{- if hasKey ($.Values.env | default dict) "KANAME_BOOTSTRAP_ROOT_EMAIL" }}
+            {{- fail (printf "kaname: KANAME_BOOTSTRAP_ROOT_EMAIL объявлена дважды — ссылкой на секрет (platform.iam.bootstrapRootAdmin.secretName = %q) и литералом карты env. Адрес первого администратора облака задаётся одним местом; оставьте ссылку" .secretName) }}
+            {{- end }}
+            - name: KANAME_BOOTSTRAP_ROOT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName | quote }}
+                  key: {{ .emailKey | default "email" | quote }}
+            {{- end }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
