@@ -1,0 +1,46 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+Сертификат внешнего входа консоли (kacho#3024). Поставщик — `issuerRef`
+профиля: этот чарт поставщика не заводит, потому что поставщик публичного
+сертификата — решение площадки (имя, способ подтверждения владения), а не
+продукта.
+*/}}
+{{- if and .Values.publicFront.enabled .Values.publicFront.tls.certificate.create }}
+{{- include "ui.publicFrontGuard" . }}
+{{- $c := .Values.publicFront.tls.certificate }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.publicFront.tls.secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.publicFront.tls.secretName | quote }}
+  {{- with $c.duration }}
+  duration: {{ . | quote }}
+  {{- end }}
+  {{- with $c.renewBefore }}
+  renewBefore: {{ . | quote }}
+  {{- end }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - server auth
+  {{- with $c.dnsNames }}
+  dnsNames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $c.ipAddresses }}
+  ipAddresses:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  issuerRef:
+    name: {{ $c.issuerRef.name | quote }}
+    kind: {{ $c.issuerRef.kind | quote }}
+    group: {{ $c.issuerRef.group | quote }}
+{{- end }}
