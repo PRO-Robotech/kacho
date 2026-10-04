@@ -327,9 +327,12 @@ test("Ф12-20 · через край пол «2» отвергает сесси�
     const groupId = ((await created.json()) as { metadata?: { groupId?: string } }).metadata?.groupId ?? "";
     expect(groupId, "операция не назвала идентификатор группы").not.toBe("");
     const groupPath = `/iam/v1/groups/${groupId}`;
-    // Чтение группы — глагол с полом «1» под носителем L1 (IAM-INT-1-22, первая половина).
+    // Чтение группы по её собственному адресу — подтверждение, что id не фантом
+    // несозданного ресурса, и оно же глагол с полом «1» под носителем L1
+    // (IAM-INT-1-22, первая половина). Контекст запросов — тот же, что у L1.
+    const request = lane.api;
     await expect
-      .poll(async () => (await lane.read(groupPath)).status(), {
+      .poll(async () => (await request.get(`/iam/v1/groups/${groupId}`)).status(), {
         message: "своя свежая группа не читается под L1 — право не материализовалось либо id фантомен",
         timeout: 45_000,
       })
