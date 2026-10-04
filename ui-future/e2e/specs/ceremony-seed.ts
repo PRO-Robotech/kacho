@@ -12,6 +12,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { noteRefusal, recordableRefusal } from "./ceremony-budget";
+import { isRegistration, noteRegistration } from "./registration-budget.ts";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
@@ -108,6 +109,9 @@ export function seedAddress(scenario: string): string {
 }
 
 async function record(issued: IssuedCall[], method: "GET" | "POST", path: string, res: APIResponse) {
+  // Регистрация посева списывает то же окно источника, что и регистрация экраном
+  // (kacho#2909): она идёт в счёт сторожа за текущей пробой.
+  if (isRegistration(method, new URL(path, "http://seed.invalid").pathname)) noteRegistration(test.info().testId);
   const text = await res.text();
   // Отказ посева тратит ту же ось источника, что и отказ страницы: он идёт в
   // запись сторожа бюджета (F8-41) за текущей пробой.
