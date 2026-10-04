@@ -7,9 +7,11 @@
 # дерева читают её по пути через internal/migrationchains.List.
 #
 # Баз у каталога две (database per service): kacho_notifyprobe — проба-источник
-# cmd/notify-probe; kacho_notify — шлюз cmd/notify (строку вносит N7 вместе с
-# цепочкой). Имя базы вне таблицы — отказ точки с именем базы и перечнем
+# cmd/notify-probe; kacho_notify — шлюз cmd/notify (сетка, потолок потока и
+# ограда ключа сетки, замысел З24). Имя базы вне таблицы — отказ точки с именем базы и перечнем
 # допустимых, без наката. Пустая таблица — отказ, а не «накатывать нечего».
 chains:
   - database: kacho_notifyprobe
     dir: services/notify/internal/probemigrations
+  - database: kacho_notify
+    dir: services/notify/internal/migrations

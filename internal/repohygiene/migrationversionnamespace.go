@@ -187,9 +187,12 @@ var frozenLegacyMigrations = map[string]string{
 	// метки времени заведения. Пустая запись — «под надзором, legacy-номеров
 	// ноль», а не пропуск.
 	"services/notify/internal/probemigrations": "",
-	"services/registry/internal/migrations":    "1-17",
-	"services/storage/internal/migrations":     "1-25",
-	"services/vpc/internal/migrations":         "1-45",
+	// Цепочка шлюза notify (база kacho_notify, полоса N7, З24): заведена после
+	// закрытия порядковой эры, legacy-номеров ноль.
+	"services/notify/internal/migrations":   "",
+	"services/registry/internal/migrations": "1-17",
+	"services/storage/internal/migrations":  "1-25",
+	"services/vpc/internal/migrations":      "1-45",
 }
 
 // migrationVersionCensus — объём осмотренного. Отдельное утверждение: «ноль

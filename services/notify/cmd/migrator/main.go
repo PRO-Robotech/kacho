@@ -54,6 +54,7 @@ import (
 	"github.com/PRO-Robotech/corelib/migratorrun"
 
 	"github.com/PRO-Robotech/kacho/internal/migrationchains"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/probemigrations"
 )
 
@@ -95,6 +96,7 @@ var chainsTable []byte
 // embedded — встроенные FS цепочек точки по каталогу от корня. Строка таблицы
 // без FS здесь и FS без строки таблицы — отказ старта (sameSets).
 var embedded = map[string]fs.FS{
+	"services/notify/internal/migrations":      migrations.FS,
 	"services/notify/internal/probemigrations": probemigrations.FS,
 }
 
