@@ -26,11 +26,12 @@
 //	    без `LOCAL` и параметр старта сессии `-c kacho_journal.initiator=` в
 //	    не-тестовом коде — находка где угодно в стволе: сессионная настройка
 //	    стала бы инициатором ЧУЖОЙ следующей транзакции соединения;
-//	(д) вызов `journaltx.AsComponent` в не-тестовом дереве модулей вне двух пар
-//	    §8 замысла — `(storage, reconciler)`, `(nlb, free-ip-runner)` — находка
-//	    (в том числе любой вызов в compute, CX3H-02); отсутствие вызова пары —
-//	    тоже находка: фоновый путь без личности компонента получил бы отказ
-//	    `journaltx.Begin`. Перечень вызывающих печатается.
+//	(д) фоновые пути, пишущие журнал, — таблица пар (модуль, процесс)
+//	    [JournaledComponentPairs] (решение Д116), и только они: вызов
+//	    `journaltx.AsComponent` в не-тестовом дереве модулей с парой вне таблицы —
+//	    находка (в том числе любой вызов в compute, CX3H-02); пара таблицы без
+//	    ровно одного вызова — тоже находка: фоновый путь без личности компонента
+//	    получил бы отказ `journaltx.Begin`. Перечень вызывающих печатается.
 //
 // # Журналируемые таблицы ВЫВЕДЕНЫ из дерева
 //
@@ -76,15 +77,28 @@ const (
 	JWRuleComponent   = "(д)"
 )
 
-// JournaledComponentPair — пара личности компонента §8 замысла.
+// JournaledComponentPair — пара личности компонента: фоновый путь модуля,
+// пишущий журнал от имени процесса, а не запроса.
 type JournaledComponentPair struct {
 	Module, Service, Role string
 }
 
-// JournaledComponentPairs — две законные пары `AsComponent` в дереве модулей.
+// JournaledComponentPairs — таблица фоновых путей (решение Д116): законные пары
+// `AsComponent` в дереве модулей, у каждой ровно один вызов.
+//
+//   - `(storage, reconciler)` — сверщик состояния томов (замысел §8);
+//   - `(nlb, free-ip-runner)` — освобождение адресов застрявших балансировщиков
+//     (замысел §8);
+//   - `(nlb, target-drain-runner)` — снятие истёкших целей (`TargetDrainRunner`,
+//     Д116);
+//   - `(registry, orphan-sweep)` — подметальщик объектов прав без живого
+//     репозитория: снятие идёт тем же писателем намерения, что push, и после Д115
+//     открывается помощником журнала.
 var JournaledComponentPairs = []JournaledComponentPair{
 	{Module: "storage", Service: "storage", Role: "reconciler"},
 	{Module: "nlb", Service: "nlb", Role: "free-ip-runner"},
+	{Module: "nlb", Service: "nlb", Role: "target-drain-runner"},
+	{Module: "registry", Service: "registry", Role: "orphan-sweep"},
 }
 
 // JournaledWriteOptions — вход гейта.
@@ -901,7 +915,7 @@ func jwAuditFile(fset *token.FileSet, pk *jwPkg, f *ast.File, rel, module string
 					}
 				}
 				if !lawful {
-					add(JWRuleComponent, call.Pos(), fmt.Sprintf("AsComponent(%s, %s) вне пар §8 замысла для модуля %s", svc, role, module))
+					add(JWRuleComponent, call.Pos(), fmt.Sprintf("AsComponent(%s, %s) вне пар таблицы фоновых путей (Д116) для модуля %s", svc, role, module))
 				}
 				return true
 			}

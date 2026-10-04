@@ -446,6 +446,14 @@ func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.R
 // intent'ы одного repo-объекта сериализуются (второй ждёт commit первого → получает
 // больший маркер), а разные repo-объекты друг друга не блокируют. Lock — xact-scoped,
 // снимается на commit/rollback.
+//
+// Транзакцию открывает помощник записи журнала `journaltx.Begin` (решение Д115):
+// инициатор — принципал контекста. На push им служит `sub` проверенного токена
+// реестра (data-plane кладёт его в контекст только после проверки подписи), на
+// DeleteTag — принципал запроса, у подметальщика — личность компонента
+// `(registry, orphan-sweep)`. Контекст без принципала — отказ до обращения к
+// базе: ни строки очереди, ни признака, никакой подстановки системного
+// инициатора.
 func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
 		return err
@@ -453,7 +461,7 @@ func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, int
 	if len(intent.Tuples) == 0 {
 		return nil
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return wrapPgErr(err, "registry_outbox", intent.ResourceID)
 	}

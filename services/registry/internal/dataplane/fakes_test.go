@@ -6,8 +6,12 @@ package dataplane
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -34,6 +38,11 @@ func (b *syncBuffer) String() string {
 
 // ---- fake TokenVerifier ---------------------------------------------------
 
+// fakeVerifier отдаёт `sub` как проверенный. Субъект, который пишет новый
+// репозиторий, обязан иметь форму id сервисного аккаунта (`sva-` и 17 знаков
+// алфавита `corelib/ids`, здесь `sva-0000000000000000c`): из него data-plane
+// выводит инициатора записи (Д115), а `sub` без формы инициатора на пути записи —
+// отказ (handler_push_initiator_test.go).
 type fakeVerifier struct {
 	subject string
 	err     error
@@ -228,18 +237,51 @@ func (f *fakeForwarder) count() int {
 // ---- fake RepoRegistrar (register-on-first-push) --------------------------
 
 type fakeRepoReg struct {
-	mu      sync.Mutex
-	intents []domain.RegisterIntent
-	err     error
-	ctxErr  error // ctx.Err() наблюдённый в момент вызова (detach-регресс REG-14e)
+	mu         sync.Mutex
+	intents    []domain.RegisterIntent
+	initiators []auth.Initiator
+	refused    int // вызовов, отвергнутых за отсутствием инициатора (как journaltx.Begin)
+	err        error
+	ctxErr     error // ctx.Err() наблюдённый в момент вызова (detach-регресс REG-14e)
 }
 
+// RegisterRepository выполняет контракт настоящего писателя (Д115): транзакцию
+// намерения открывает `journaltx.Begin`, и инициатора он берёт из принципала
+// контекста ТОЙ ЖЕ функцией `auth.InitiatorOf`; контекст без принципала либо с
+// принципалом без формы инициатора — отказ до записи, намерение не ложится.
 func (r *fakeRepoReg) RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := operations.PrincipalFromContextOK(ctx)
+	if !ok {
+		r.refused++
+		return fmt.Errorf("fake repo registrar: no principal in context: %w", auth.ErrNoInitiator)
+	}
+	initiator, err := auth.InitiatorOf(p)
+	if err != nil {
+		r.refused++
+		return fmt.Errorf("fake repo registrar: %w", err)
+	}
 	r.intents = append(r.intents, intent)
+	r.initiators = append(r.initiators, initiator)
 	r.ctxErr = ctx.Err()
-	r.mu.Unlock()
 	return r.err
+}
+
+// registeredInitiators — инициаторы транзакций принятых намерений.
+func (r *fakeRepoReg) registeredInitiators() []auth.Initiator {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]auth.Initiator, len(r.initiators))
+	copy(out, r.initiators)
+	return out
+}
+
+// refusedCalls — вызовов, отвергнутых за отсутствием инициатора.
+func (r *fakeRepoReg) refusedCalls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.refused
 }
 
 // observedCtxErr — состояние ctx.Err() в момент durable-emit. nil ⇒ контекст не был

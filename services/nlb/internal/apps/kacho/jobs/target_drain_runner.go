@@ -37,7 +37,18 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
+
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+)
+
+// Личность компонента прохода — пара таблицы фоновых путей (решение Д116):
+// инициатор строки `nlb_target_group UPDATED`, которую пишет снятие истёкших
+// целей, — `system:nlb-target-drain-runner`. Пару читает гейт УК3-27 (д) из
+// этих констант (`internal/repohygiene/journaledwrites.go`).
+const (
+	targetDrainComponentService = "nlb"
+	targetDrainComponentRole    = "target-drain-runner"
 )
 
 // ЗДЕСЬ СТОЯЛ ОДИН ОПЕРАТОР — снятие истёкших целей и строка журнала общим
@@ -155,8 +166,17 @@ func (r *TargetDrainRunner) tick(ctx context.Context) {
 // drainOnce — один проход: снятие истёкших целей + строка журнала на каждую
 // затронутую группу, ОДНОЙ writer-транзакцией.
 //
+// Личность прохода — первым оператором: `journaltx.AsComponent` кладёт в контекст
+// принципал компонента, и writer-транзакцию открывает помощник записи журнала с
+// этим инициатором. Контекст с иным принципалом — ошибка программы:
+// `ErrComponentOverPrincipal` возвращается до транзакции, цели не снимаются.
+//
 // Возвращает (снято строк, различных групп, ошибка).
 func (r *TargetDrainRunner) drainOnce(ctx context.Context) (int64, int, error) {
+	ctx, err := journaltx.AsComponent(ctx, targetDrainComponentService, targetDrainComponentRole)
+	if err != nil {
+		return 0, 0, fmt.Errorf("target drain component identity: %w", err)
+	}
 	w, err := r.repo.Writer(ctx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("drain expired targets: %w", err)

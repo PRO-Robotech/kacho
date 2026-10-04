@@ -62,8 +62,9 @@ CREATE TRIGGER volumes_storage_outbox_emit
     FOR EACH ROW EXECUTE FUNCTION kacho_storage.storage_outbox_emit();
 `
 
-// Законный стенд: три модуля, у каждого журнал; запись — помощником; чтение —
-// ReadOnly; точка сохранения — на транзакции; две пары AsComponent.
+// Законный стенд: четыре модуля, у каждого журнал; запись — помощником; чтение —
+// ReadOnly; точка сохранения — на транзакции; по вызову AsComponent на каждую
+// пару таблицы фоновых путей (Д116).
 func newJWStand(t *testing.T) *jwStand {
 	t.Helper()
 	s := &jwStand{root: t.TempDir()}
@@ -71,6 +72,7 @@ func newJWStand(t *testing.T) *jwStand {
 		{"storage", "kacho_storage.storage_outbox"},
 		{"nlb", "kacho_nlb.nlb_outbox"},
 		{"compute", "compute_outbox"},
+		{"registry", "kacho_registry.registry_resource_journal"},
 	} {
 		s.write(t, "services/"+m.mod+"/internal/subscriptionjournal/journal.go",
 			"package subscriptionjournal\n\nconst Table = \""+m.table+"\"\n")
@@ -171,6 +173,50 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 `)
+	s.write(t, "services/nlb/internal/jobs/target_drain_runner.go", `package jobs
+
+import (
+	"context"
+
+	"github.com/PRO-Robotech/corelib/journaltx"
+)
+
+const (
+	drainComponentService = "nlb"
+	drainComponentRole    = "target-drain-runner"
+)
+
+func drainOnce(ctx context.Context) (context.Context, error) {
+	return journaltx.AsComponent(ctx, drainComponentService, drainComponentRole)
+}
+`)
+	s.write(t, "services/registry/internal/repo/orphan_sweep.go", `package repo
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PRO-Robotech/corelib/journaltx"
+)
+
+type RegistryRepo struct {
+	pool *pgxpool.Pool
+	opts journaltx.Options
+}
+
+func (r *RegistryRepo) Sweep(ctx context.Context) error {
+	ctx, err := journaltx.AsComponent(ctx, "registry", "orphan-sweep")
+	if err != nil {
+		return err
+	}
+	tx, err := journaltx.Begin(ctx, r.pool, r.opts)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+`)
 	s.write(t, "services/compute/internal/repo/instance.go", `package repo
 
 import (
@@ -230,7 +276,9 @@ func TestJournaledWritesGateIsSilentOnTheLawfulStand(t *testing.T) {
 	require.Equal(t, 2, st.PoolStatements, "QueryRow и Exec на пуле осмотрены")
 	require.Len(t, st.AsComponent, 1)
 	nlb, _ := census.Module("nlb")
-	require.Len(t, nlb.AsComponent, 1)
+	require.Len(t, nlb.AsComponent, 2, "две пары nlb: free-ip-runner и target-drain-runner")
+	reg, _ := census.Module("registry")
+	require.Len(t, reg.AsComponent, 1)
 	require.Equal(t, 1, census.SetConfigCalls, "локальный вызов set_config посева осмотрен и не находка")
 }
 
@@ -357,7 +405,7 @@ func (r *InstanceRepo) FinishStuckDeletes(ctx context.Context) error {
 	require.Len(t, findings, 1)
 }
 
-// TestJournaledWritesGateCatchesAMissingComponentPair — пара §8 без вызова:
+// TestJournaledWritesGateCatchesAMissingComponentPair — пара таблицы без вызова:
 // фоновый путь nlb остался без личности компонента.
 func TestJournaledWritesGateCatchesAMissingComponentPair(t *testing.T) {
 	t.Parallel()
@@ -368,6 +416,47 @@ func TestJournaledWritesGateCatchesAMissingComponentPair(t *testing.T) {
 	require.Len(t, got, 1, "%v", findings)
 	require.Equal(t, "nlb", got[0].Module)
 	require.Contains(t, got[0].Detail, "(nlb, free-ip-runner): 0, ожидается ровно 1")
+}
+
+// TestJournaledWritesGateCatchesAnUndeclaredBackgroundPath — Д116: фоновый путь
+// модуля, чья пара (модуль, процесс) в таблице не объявлена, — находка с
+// координатой; объявленные пары того же модуля (законный близнец — стенд) молчат.
+func TestJournaledWritesGateCatchesAnUndeclaredBackgroundPath(t *testing.T) {
+	t.Parallel()
+	s := newJWStand(t)
+	s.write(t, "services/nlb/internal/jobs/listener_sweeper.go", `package jobs
+
+import (
+	"context"
+
+	"github.com/PRO-Robotech/corelib/journaltx"
+)
+
+func sweepOnce(ctx context.Context) (context.Context, error) {
+	return journaltx.AsComponent(ctx, "nlb", "listener-sweeper")
+}
+`)
+	findings, census := s.audit(t)
+	got := jwOnly(findings, JWRuleComponent)
+	require.Len(t, got, 1, "%v", findings)
+	require.Equal(t, "nlb", got[0].Module)
+	require.Equal(t, "services/nlb/internal/jobs/listener_sweeper.go:10", got[0].Pos)
+	require.Contains(t, got[0].Detail, "AsComponent(nlb, listener-sweeper) вне пар")
+	nlb, _ := census.Module("nlb")
+	require.Len(t, nlb.AsComponent, 3, "перечень вызывающих печатает и необъявленный путь")
+	require.Len(t, findings, 1)
+}
+
+// TestJournaledWritesGateCatchesAMissingDrainPair — Д116: третья пара nlb
+// объявлена, а её вызов снят — проход снятия целей остался без личности.
+func TestJournaledWritesGateCatchesAMissingDrainPair(t *testing.T) {
+	t.Parallel()
+	s := newJWStand(t)
+	s.write(t, "services/nlb/internal/jobs/target_drain_runner.go", "package jobs\n")
+	findings, _ := s.audit(t)
+	got := jwOnly(findings, JWRuleComponent)
+	require.Len(t, got, 1, "%v", findings)
+	require.Contains(t, got[0].Detail, "(nlb, target-drain-runner): 0, ожидается ровно 1")
 }
 
 // TestJournaledWritesGateCatchesAnInsertNamingTheInitiatorColumn — правило (в);
@@ -486,5 +575,5 @@ func TestJournaledWritesGateFailsOnAnEmptyWalk(t *testing.T) {
 	s := &jwStand{root: t.TempDir()}
 	findings, census := s.audit(t)
 	require.NotEmpty(t, JournaledWritePremiseFailures(census), "пустой обход обязан быть отказом предпосылки")
-	require.Len(t, jwOnly(findings, JWRuleComponent), 2, "пары §8 без модулей — находки")
+	require.Len(t, jwOnly(findings, JWRuleComponent), len(JournaledComponentPairs), "пары таблицы без модулей — находки")
 }

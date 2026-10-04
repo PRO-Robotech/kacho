@@ -138,7 +138,7 @@ func TestCatalog_NoPageSize_UsesDefaultWindow_NotCeiling(t *testing.T) {
 	}
 	az := &fakeAuthz{} // allow-all: считаем ЧИСЛО вопросов, а не исход
 	be := &fakeBackend{catalog: names}
-	h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, &fakeForwarder{}, &fakeRepoReg{})
+	h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, &fakeForwarder{}, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodGet, "/v2/_catalog", true)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -162,7 +162,7 @@ func TestCatalog_ExplicitPageSize_StillReachesCeiling(t *testing.T) {
 	}
 	az := &fakeAuthz{}
 	be := &fakeBackend{catalog: names}
-	h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, &fakeForwarder{}, &fakeRepoReg{})
+	h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, &fakeForwarder{}, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodGet, "/v2/_catalog?n="+strconv.Itoa(catalogMaxPageSize), true)
 	require.Equal(t, http.StatusOK, rec.Code)
