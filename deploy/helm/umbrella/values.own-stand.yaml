@@ -123,6 +123,15 @@ kaname:
       bootstrapToken:
         signingKeySecretName: kaname-bootstrap-sa-key
         signingKeySecretKey: private_key_pem
+      # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА СТЕНДА (kacho#2878). Здесь — только ИМЯ
+      # секрета: адрес и пароль лежат в нём (ключи `email`, `password`), на kind
+      # его чеканит stack-secrets.sh, на площадке заводит оператор. Человека
+      # заводит шаг подъёма `bootstrap-cloud-admin` путём продукта (регистрация,
+      # код из письма, подтверждение), право выдаёт посев бутстрапа службы.
+      # Способ входа — deploy/README.md, «Администратор облака стенда».
+      bootstrapRootAdmin:
+        secretName: stand-cloud-admin
+        emailKey: email
 
 # Приёмник писем — часть поставки СТЕНДА; боевая площадка его не получает, там
 # полоса ведёт во внешний ретранслятор. Величины (образ с дайджестом, аппетит,
