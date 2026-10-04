@@ -65,7 +65,7 @@ type testContext struct {
 func newTestCtx(t testing.TB) *testContext {
 	t.Helper()
 	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 	return &testContext{Pool: pool, Repo: kachopg.New(pool, nil)}
@@ -74,7 +74,7 @@ func newTestCtx(t testing.TB) *testContext {
 // newRepo — short helper для тестов, которым не нужен raw-pool доступ.
 func newRepo(t testing.TB, dsn string) (*kachopg.Repository, func()) {
 	t.Helper()
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	return kachopg.New(pool, nil), func() { pool.Close() }
 }
@@ -147,7 +147,7 @@ func newTG(projectID, name string) *domain.TargetGroup {
 // commitWriter — helper: открыть writer, выполнить fn, commit.
 func commitWriter(t testing.TB, repo kacho.Repository, fn func(w kacho.RepositoryWriter)) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

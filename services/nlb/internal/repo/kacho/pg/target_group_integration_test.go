@@ -20,7 +20,7 @@ import (
 func TestTG_CRUD_WithHealthCheck(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGCC1234567890ll", "crud-tg")
 	tg.HealthCheck = domain.HealthCheck{
@@ -53,7 +53,7 @@ func TestTG_CRUD_WithHealthCheck(t *testing.T) {
 func TestTG_Port_RoundTrip(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGPT1234567890ll", "port-tg")
 	tg.Port = 9090
@@ -76,7 +76,7 @@ func TestTG_Port_RoundTrip(t *testing.T) {
 func TestTG_Port_CheckConstraint(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	for _, bad := range []domain.LbPort{0, 70000} {
 		tg := newTG("prj01TGPC1234567890ll", "")
@@ -92,7 +92,7 @@ func TestTG_Port_CheckConstraint(t *testing.T) {
 func TestTG_AddTargets_Idempotent(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGIT1234567890ll", "idem-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -132,7 +132,7 @@ func TestTG_AddTargets_Idempotent(t *testing.T) {
 func TestTG_AddTargets_IPRef_And_ExternalIP(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGIP1234567890ll", "ip-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -188,7 +188,7 @@ func TestTG_Target_4WayOneOfCheck(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
 	pool := tc.Pool
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	tg := newTG("prj01TG4W1234567890ll", "oneof-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		_, err := w.TargetGroups().Insert(ctx, tg)
@@ -211,7 +211,7 @@ func TestTG_DrainConsistency_Trigger(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
 	pool := tc.Pool
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDC1234567890ll", "dc-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -249,7 +249,7 @@ func TestTG_MarkDraining_SetsStatusAndStamp(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
 	pool := tc.Pool
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDR1234567890ll", "drain-tg")
 	t1 := domain.Target{
@@ -301,7 +301,7 @@ func TestTG_MarkDraining_SetsStatusAndStamp(t *testing.T) {
 func TestTG_DeleteTargetsDraining_ClearsOnlyDrained(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDD1234567890ll", "drain-del-tg")
 	drained := domain.Target{
@@ -388,7 +388,7 @@ func TestTG_AddTargets_ReactivatesDrainingTarget(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
 	pool := tc.Pool
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGRA1234567890ll", "reactivate-tg")
 	t1 := domain.Target{
@@ -453,7 +453,7 @@ func TestTG_AddTargets_ReactivatesDrainingTarget(t *testing.T) {
 func TestTG_Delete_FK_RESTRICT_Targets(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDF1234567890ll", "del-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -477,7 +477,7 @@ func TestTG_Delete_FK_RESTRICT_Targets(t *testing.T) {
 func TestTG_DereDelayOutOfRange(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDS1234567890ll", "dr-tg")
 	tg.DeregistrationDelay = domain.LbDuration(9999 * time.Second) // out of range

@@ -38,7 +38,7 @@ func TestIntegration_Network_VPC_1_10_RemoveBlockCoversSubnetBeyondFirstPage(t *
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

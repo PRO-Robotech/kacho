@@ -38,7 +38,7 @@ import (
 // `TestSecondAttachmentIsReachableThroughTheProductPath` ниже.
 func attachTo(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID, instanceName, device string) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO volume_attachments
 		   (volume_id, instance_id, instance_name, project_id, zone_id, device_name, auto_delete)
 		 VALUES ($1,$2,$3,'prj-1','region-1-a',$4,false)`,
@@ -71,7 +71,7 @@ func instanceIDsOf(v *domain.Volume) map[string]bool {
 func TestGetReturnsEveryAttachmentOfTheVolume(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-multi-get", 10<<30)
 
 	attachTo(t, pool, v.ID, "epd00000000000000011", "web-1", "sdb")
@@ -111,7 +111,7 @@ func TestGetReturnsEveryAttachmentOfTheVolume(t *testing.T) {
 func TestListDoesNotDuplicateAMultiplyAttachedVolume(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Первый том — многопривязочный, второй — без привязок. Порядок обхода задан
 	// курсором `(created_at, id)`, поэтому многопривязочный обходится первым.
@@ -167,7 +167,7 @@ func TestListDoesNotDuplicateAMultiplyAttachedVolume(t *testing.T) {
 func TestSecondAttachmentIsReachableThroughTheProductPath(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// ── полюс «способность объявлена»: вторая привязка проходит ────────────────
 	multiType := seedTypeWithMultiAttach(t, pool, true)
@@ -208,11 +208,11 @@ func TestReadPathAnswersStatusReasonAndUsedBytes(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	store := reconciler.NewStore(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// ── потребление: пишется БОЕВЫМ путём подтверждения ───────────────────────
 	used := mkVolumeCreating(t, r, "prj-observed", "vol-used", 10<<30)
-	applied, err := store.Confirm(ctx, reconciler.KindVolume, used.ID, blockbackend.Observed{
+	applied, err := store.Confirm(componentCtx(), reconciler.KindVolume, used.ID, blockbackend.Observed{
 		State: blockbackend.ObservedReady, SizeBytes: 10 << 30,
 		UsedBytes: 4 << 30, HasUsedBytes: true,
 	})
@@ -227,7 +227,7 @@ func TestReadPathAnswersStatusReasonAndUsedBytes(t *testing.T) {
 
 	// ── причина отказа: пишется БОЕВЫМ путём объявления ошибки ────────────────
 	failed := mkVolumeCreating(t, r, "prj-observed", "vol-reason", 10<<30)
-	require.NoError(t, store.MarkError(ctx, reconciler.KindVolume, failed.ID,
+	require.NoError(t, store.MarkError(componentCtx(), reconciler.KindVolume, failed.ID,
 		domain.ReasonBackendCapacityExhausted,
 		blockbackend.Observed{State: blockbackend.ObservedError}))
 
@@ -271,7 +271,7 @@ func TestReadPathAnswersStatusReasonAndUsedBytes(t *testing.T) {
 // множественной привязки.
 func seedTypeWithMultiAttach(t *testing.T, pool *pgxpool.Pool, multi bool) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// Идентификатор класса диска — человекочитаемый СЛАГ, назначаемый
 	// администратором (`block-standard`, `block-fast`; миграция 0003 объявляет это
 	// прямо), а НЕ чеканимый id. Прежде фикстура звала `NewHyphenID("dt")` и
@@ -307,7 +307,7 @@ func mkVolumeOnType(t *testing.T, pool *pgxpool.Pool, r *pg.VolumeRepo,
 	project, name, diskTypeID string,
 ) *domain.Volume {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v, _, err := r.Insert(ctx, &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,

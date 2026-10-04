@@ -30,7 +30,7 @@ func TestIntegration_AddressRepo_IPv6_AllocateAndFree(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	p, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -57,7 +57,9 @@ func TestIntegration_AddressRepo_IPv6_AllocateAndFree(t *testing.T) {
 		VALUES ($1, 'test-v6-pool', '', '{}'::jsonb, ARRAY[]::text[], ARRAY['2001:db8::/64']::text[], 1, false, now(), now(), '{}'::jsonb, 0)`,
 		poolID)
 	require.NoError(t, err, "insert v6 pool")
-	t.Cleanup(func() { _, _ = p.Exec(context.Background(), `DELETE FROM address_pools WHERE id = $1`, poolID) })
+	t.Cleanup(func() {
+		_, _ = p.Exec(journalPrincipalCtx(context.Background()), `DELETE FROM address_pools WHERE id = $1`, poolID)
+	})
 
 	// Step 1: InitIPv6PoolCursor — идемпотент.
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {

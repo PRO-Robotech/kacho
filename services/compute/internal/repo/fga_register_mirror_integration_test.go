@@ -51,7 +51,7 @@ func Test_Beta01_CreateInstance_IntentCarriesLabelsAndParent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func Test_Beta02_CreateInstance_NoLabels_IntentEmptyLabels(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func Test_Beta04_UpdateLabels_EmitsNewIntent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func Test_BetaHardening_RegisterIntentStampsMonotonicSourceVersion(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -194,7 +194,7 @@ func Test_BetaHardening_UnregisterIntentStampsTombstoneVersion(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -232,7 +232,7 @@ func Test_Beta04b_UpdateNonLabels_NoNewIntent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -266,7 +266,7 @@ func Test_Beta07_DeleteInstance_UnregisterIntent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -302,7 +302,7 @@ func Test_Beta05_ConcurrentUpdateLabels_OutboxConsistent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

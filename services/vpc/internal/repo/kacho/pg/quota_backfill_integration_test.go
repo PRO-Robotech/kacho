@@ -64,7 +64,7 @@ func quotaDisableCharging(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 	}
 	t.Cleanup(func() {
 		for _, tbl := range tables {
-			_, _ = pool.Exec(context.Background(), fmt.Sprintf(
+			_, _ = pool.Exec(journalPrincipalCtx(context.Background()), fmt.Sprintf(
 				"ALTER TABLE kacho_vpc.%s ENABLE TRIGGER %s_quota_count", tbl, tbl))
 		}
 	})
@@ -89,7 +89,7 @@ func TestQuotaMaterialise_SeedsUsageFromRowsThatAlreadyExist(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -135,7 +135,7 @@ func TestQuotaMaterialise_SeededUsageStillRefusesAtTheCeiling(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -205,7 +205,7 @@ func TestQuotaMaterialise_SystemChildrenAreNotSeeded(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -276,7 +276,7 @@ func TestQuotaRecount_DivergenceIsImpossibleAfterOrdinaryTraffic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -332,7 +332,7 @@ func TestQuotaRecount_VerifierNamesADivergenceItIsShown(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

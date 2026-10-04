@@ -52,7 +52,7 @@ func TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestCQRS_Address_SetInternalIPv6_ConflictKeepsTXAlive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

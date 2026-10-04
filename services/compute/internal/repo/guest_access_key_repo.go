@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
@@ -22,12 +23,13 @@ import (
 
 // GuestAccessKeyRepo — хранение публичных ключей входа в машину.
 type GuestAccessKeyRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewGuestAccessKeyRepo создаёт репозиторий ключей.
 func NewGuestAccessKeyRepo(pool *pgxpool.Pool) *GuestAccessKeyRepo {
-	return &GuestAccessKeyRepo{pool: pool}
+	return &GuestAccessKeyRepo{pool: pool, journal: journalOptions()}
 }
 
 const guestKeyCols = `id, project_id, name, public_key, fingerprint, labels, created_at`
@@ -131,7 +133,7 @@ func (r *GuestAccessKeyRepo) Insert(ctx context.Context, k *domain.GuestAccessKe
 		return nil, nil, err
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -200,7 +202,7 @@ func (r *GuestAccessKeyRepo) Update(ctx context.Context, id string, u ports.Gues
 		add("labels", labelsJSON)
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, ports.ErrInternal
 	}
@@ -246,7 +248,7 @@ func (r *GuestAccessKeyRepo) Update(ctx context.Context, id string, u ports.Gues
 // снятие мимо неё оставило бы машину со ссылкой в никуда. Отказ хранилища
 // отображается в понятный ответ вызывающему.
 func (r *GuestAccessKeyRepo) Delete(ctx context.Context, id string) error {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return ports.ErrInternal
 	}

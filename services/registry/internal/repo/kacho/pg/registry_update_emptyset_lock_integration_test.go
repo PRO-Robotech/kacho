@@ -25,7 +25,7 @@ import (
 func TestRepo_UpdateEmptySet_LocksMirroredRow(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))

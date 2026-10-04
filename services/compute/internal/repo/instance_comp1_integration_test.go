@@ -46,7 +46,7 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

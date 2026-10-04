@@ -168,7 +168,7 @@ func waitOutboxDrained(t *testing.T, pool *pgxpool.Pool) {
 // second one undoes the first.
 func TestIntegration_MoveProjection_LandsOnDestination(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := ctxNamedCaller()
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
 	h := makeHandler(t, repo, opsRepo)

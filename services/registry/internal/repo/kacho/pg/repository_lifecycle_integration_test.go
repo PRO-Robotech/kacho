@@ -21,7 +21,7 @@ import (
 func TestRepoConfig_REG_1_21_InsertDefaultDurable(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc21")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
@@ -35,7 +35,7 @@ func TestRepoConfig_REG_1_21_InsertDefaultDurable(t *testing.T) {
 func TestRepoConfig_REG_1_22_InsertEphemeral(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc22")
 
 	cfg := newCfg(regID, "scratch/tmp", domain.VisibilityPrivate, nil)
@@ -51,7 +51,7 @@ func TestRepoConfig_REG_1_22_InsertEphemeral(t *testing.T) {
 func TestRepoConfig_REG_1_23_UpdateAutoPromote(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc23")
 
 	cfg := newCfg(regID, "pushed/img", domain.VisibilityPrivate, nil)
@@ -74,7 +74,7 @@ func TestRepoConfig_REG_1_23_UpdateAutoPromote(t *testing.T) {
 func TestRepoConfig_REG_1_25_ConcurrentPromote_LifecycleCAS(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc25")
 
 	cfg := newCfg(regID, "pushed/img", domain.VisibilityPrivate, nil)
@@ -109,7 +109,7 @@ func TestRepoConfig_REG_1_25_ConcurrentPromote_LifecycleCAS(t *testing.T) {
 // (within-service инвариант на DB-уровне, ban #10).
 func TestRepoConfig_REG_1_24_LifecycleCheck_RejectsOutOfRange(t *testing.T) {
 	pool := setupTestDB(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc24")
 
 	_, err := pool.Exec(ctx, `

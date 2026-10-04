@@ -71,7 +71,7 @@ func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *
 // createNetworkVia вызывает Network.Create, дожидается операции и возвращает новый id.
 func createNetworkVia(t *testing.T, h *networkapp.Handler, or *repomock.OpsRepo, projectID, name string, labels map[string]string) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	op, err := h.Create(ctx, &vpcv1.CreateNetworkRequest{
 		ProjectId: projectID,
 		Name:      name,
@@ -118,7 +118,7 @@ func TestNetworkRepo_T31Revoke01_LabelRemoveEmitsMirrorUpsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestNetworkRepo_T31Add01_LabelAddMaterializesGrant(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestNetworkRepo_T31Change01_LabelSwapMigratesGrant(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestNetworkRepo_T31Idm01_NonLabelUpdateNoEmit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -247,7 +247,7 @@ func TestNetworkRepo_T31FullPatch01_EmptyMaskEmits(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -295,7 +295,7 @@ func TestNetworkRepo_T31Atom01_RollbackNoIntent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -359,7 +359,7 @@ func TestNetworkRepo_T31Conc01_ConcurrentLabelFlip_LastSourceWins(t *testing.T) 
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -452,7 +452,7 @@ func TestNetworkRepo_T31Unavail01_IamDown_IntentDurable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

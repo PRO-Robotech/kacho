@@ -39,7 +39,7 @@ func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// min_disk_bytes is derived from the source snapshot: 20 GiB.
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-min-disk", 20<<30)
@@ -63,7 +63,7 @@ func TestVolumeSourceImageAtMinDiskSeeded(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-at-min", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-at-min", imageRegionFixture, snapID)
@@ -84,7 +84,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-victim", "snap-victim-min", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-victim", "img-victim-min", imageRegionFixture, snapID)
@@ -105,7 +105,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 func TestVolumeWithoutSourceUnaffectedByMinDisk(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "plain-vol-min-disk",
@@ -120,7 +120,7 @@ func TestVolumeWithoutSourceUnaffectedByMinDisk(t *testing.T) {
 func TestVolumeSourceSnapshotUnaffectedByMinDisk(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-lane-min", 20<<30)
 

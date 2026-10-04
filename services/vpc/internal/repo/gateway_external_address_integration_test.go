@@ -155,7 +155,7 @@ func TestIntegration_Gateway_NatCreate_AllocatesAndBindsExternalAddress(t *testi
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	before := f.freeCount(t, ctx)
@@ -199,7 +199,7 @@ func TestIntegration_Gateway_EgressOnly_TakesNoAddressAndNoLease(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	// Якорю нужен IPv6-блок — вид «только исход» его требует.
@@ -231,7 +231,7 @@ func TestIntegration_Gateway_AnchorPlacementDecidesPool(t *testing.T) {
 		{"anycast-якорь берёт зоне-независимый адрес", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := journalPrincipalCtx(context.Background())
 			f := newGatewayFixture(t, ctx, tc.zoneID, "198.51.100.0/28")
 
 			gwID, _, errMsg := f.createGateway(t, ctx, "gw-coherence", domain.GatewayTypeNat)
@@ -258,7 +258,7 @@ func TestIntegration_Gateway_ZonalAnchorDoesNotFallBackToAnycastPool(t *testing.
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
@@ -283,7 +283,7 @@ func TestIntegration_Gateway_Delete_ReturnsLeaseAndReleasesAddress(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	before := f.freeCount(t, ctx)
@@ -319,7 +319,7 @@ func TestIntegration_Gateway_PoolSurvivesAllocateReleaseRoundTrip(t *testing.T) 
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// /29 → 6 пригодных адресов; берём весь пул целиком, чтобы «снова проходит»
 	// означало именно возврат, а не запас.
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/29")
@@ -362,7 +362,7 @@ func TestIntegration_Gateway_OneAddressCannotBackTwoGateways(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	gwID, _, errMsg := f.createGateway(t, ctx, "gw-owner", domain.GatewayTypeNat)
@@ -393,7 +393,7 @@ func TestIntegration_Gateway_KindAndAddressAreBoundByTheDatabase(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	gwID, _, errMsg := f.createGateway(t, ctx, "gw-bicond", domain.GatewayTypeNat)
@@ -420,7 +420,7 @@ func TestIntegration_Gateway_ConcurrentCreates_EachGetsItsOwnAddress(t *testing.
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/29")
 	capacity := f.freeCount(t, ctx)
 	require.Positive(t, capacity)
@@ -483,7 +483,7 @@ func TestIntegration_Gateway_FailedCreateStrandsNoLease(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGatewayFixture(t, ctx, "zone-a", "198.51.100.0/28")
 
 	before := f.freeCount(t, ctx)

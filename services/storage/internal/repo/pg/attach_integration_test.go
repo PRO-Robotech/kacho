@@ -39,7 +39,7 @@ func mkAttach(volumeID, instanceID, device string, boot bool) *domain.VolumeAtta
 func attachRowCount(t *testing.T, pool *pgxpool.Pool, volumeID string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM volume_attachments WHERE volume_id=$1`, volumeID).Scan(&n))
 	return n
 }
@@ -49,7 +49,7 @@ func attachRowCount(t *testing.T, pool *pgxpool.Pool, volumeID string) int {
 func TestAttachHappyDerivedInUse(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-attach-1", 10<<30)
 
 	require.NoError(t, r.Attach(ctx, mkAttach(v.ID, "epd00000000000000001", "sdb", false)))
@@ -67,7 +67,7 @@ func TestAttachHappyDerivedInUse(t *testing.T) {
 func TestAttachIdempotentReplay(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-replay", 10<<30)
 
 	a := mkAttach(v.ID, "epd00000000000000002", "sdb", false)
@@ -81,7 +81,7 @@ func TestAttachIdempotentReplay(t *testing.T) {
 func TestAttachVolumeNotReady(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-creating", 10<<30)
 	_, err := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, v.ID)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestAttachVolumeNotReady(t *testing.T) {
 func TestAttachZoneProjectMismatch(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-zone", 10<<30) // zone region-1-a, project prj-1
 
 	// расходится ТОЛЬКО зона → zone-текст.
@@ -137,7 +137,7 @@ func TestAttachDoubleRace(t *testing.T) {
 			<-start
 			// разные инстансы, одинаковое device (конфликт — только PK volume_id).
 			a := mkAttach(v.ID, fmt.Sprintf("epd0000000000000010%d", idx), "sdb", false)
-			err := r.Attach(context.Background(), a)
+			err := r.Attach(journalPrincipalCtx(context.Background()), a)
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -161,7 +161,7 @@ func TestAttachDoubleRace(t *testing.T) {
 func TestAttachDeviceCollision(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-dev-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-dev-2", 10<<30)
 
@@ -177,7 +177,7 @@ func TestAttachDeviceCollision(t *testing.T) {
 func TestAttachSecondBoot(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-boot-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-boot-2", 10<<30)
 	const ins = "epd00000000000000006"
@@ -193,7 +193,7 @@ func TestAttachSecondBoot(t *testing.T) {
 func TestDetachIdempotent(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-detach", 10<<30)
 	const ins = "epd00000000000000008"
 	require.NoError(t, r.Attach(ctx, mkAttach(v.ID, ins, "sdb", false)))
@@ -211,7 +211,7 @@ func TestDetachIdempotent(t *testing.T) {
 func TestListAttachmentsBatched(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-la-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-la-2", 10<<30)
 	v3 := mkVolume(t, pool, r, "prj-1", "vol-la-3", 10<<30)
@@ -238,7 +238,7 @@ func TestListAttachmentsBatched(t *testing.T) {
 func TestAttachAutoDeviceNameRace(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// vol-A занимает sdb; N томов конкурентно гонятся за первыми свободными именами.
 	// N высок, чтобы (без retry) большинство горутин прочитали один committed-снимок
 	// used-set, выбрали одно имя и столкнулись на 23505 → RED; с retry — все различны.
@@ -259,7 +259,7 @@ func TestAttachAutoDeviceNameRace(t *testing.T) {
 		go func(idx int, volumeID string) {
 			defer wg.Done()
 			<-start
-			errs[idx] = r.Attach(context.Background(), mkAttach(volumeID, ins, "", false)) // пустой device → auto
+			errs[idx] = r.Attach(journalPrincipalCtx(context.Background()), mkAttach(volumeID, ins, "", false)) // пустой device → auto
 		}(i, vid)
 	}
 	close(start)
@@ -286,7 +286,7 @@ func TestAttachAutoDeviceNameRace(t *testing.T) {
 func TestAttachNoFreeDevice(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const ins = "epd00000000000000220"
 	// занять все 25 имён sdb..sdz явными attach разных томов.
 	for c := byte('b'); c <= 'z'; c++ {
@@ -317,7 +317,7 @@ func uniqueStrings(in []string) []string {
 func TestAttachAutoDeviceName(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-auto-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-auto-2", 10<<30)
 	const ins = "epd00000000000000201"

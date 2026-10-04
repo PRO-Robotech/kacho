@@ -58,7 +58,7 @@ func TestGuestKeyBinding_ForeignKeyNeverAttaches(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -114,7 +114,7 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

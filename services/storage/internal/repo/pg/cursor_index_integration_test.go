@@ -143,7 +143,7 @@ func TestIntegration_VolumesCursorIndex_PageDoesNotReadTheWholeProject(t *testin
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := newTestPool(t)
 
 	requireRepoShape(t, "volume_repo.go",
@@ -174,7 +174,7 @@ func TestIntegration_ImagesCursorIndex_PageDoesNotReadTheWholeProject(t *testing
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := newTestPool(t)
 
 	requireRepoShape(t, "image_repo.go",
@@ -204,7 +204,7 @@ func TestIntegration_SnapshotsCursorIndex_PageDoesNotReadTheWholeProject(t *test
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := newTestPool(t)
 
 	// Форма пинится С АЛИАСОМ: у снимка FROM перестал быть одной таблицей

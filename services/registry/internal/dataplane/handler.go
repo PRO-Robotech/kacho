@@ -17,6 +17,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/PRO-Robotech/corelib/operations"
+
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
@@ -108,6 +110,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		h.challenge(w, invalidToken)
 		return
+	}
+	// Д115: принципал записи — только из `sub` проверенного токена. Он едет
+	// контекстом до писателя намерения, где `journaltx.Begin` делает его
+	// инициатором транзакции; нет его — путь записи нового репозитория
+	// отказывает (forwardManifestPut).
+	if principal, verified := h.verifiedPrincipal(subject); verified {
+		r = r.WithContext(operations.WithPrincipal(r.Context(), principal))
 	}
 
 	// REG-35: data-plane HTTP-метод DELETE не проксируется — единственный путь
@@ -536,6 +545,17 @@ func (h *Handler) forwardManifestPut(w http.ResponseWriter, r *http.Request, p p
 		if status >= 200 && status < 300 {
 			h.recordPushGrant(r.Context(), p, subject)
 		}
+		return
+	}
+
+	// Д115: регистрация нового репозитория пишется от имени проверенного `sub`,
+	// и без него закрепить её нечем — отказ ДО движка: манифест, принятый
+	// движком без регистрации, повтор клиента не сошёл бы (принципала не
+	// появится), а подстановки «system» нет.
+	if _, verified := operations.PrincipalFromContextOK(r.Context()); !verified {
+		h.logger.Warn("data-plane push refused: no verified principal to register the repository",
+			"repo", p.registryID+"/"+p.repo)
+		writeDenied(w)
 		return
 	}
 

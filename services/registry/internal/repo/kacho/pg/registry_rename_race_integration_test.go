@@ -34,7 +34,7 @@ func mirrorUpdate(rr *domain.Registry) domain.RegisterIntent {
 func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	a := newReg("prj-P", "alpha", nil)
 	_, _, err := repo.Insert(ctx, a, domain.RegisterIntentForCreate(a, "user", "usr-alice"))
@@ -64,7 +64,7 @@ func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 func TestRepo_ConcurrentRenameToSameName_ExactlyOne(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const n = 8
 	ids := make([]string, n)

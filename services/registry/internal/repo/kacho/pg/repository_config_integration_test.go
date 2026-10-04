@@ -32,7 +32,7 @@ func seedRegistry(t *testing.T, pool *pgxpool.Pool, project, name string) string
 	t.Helper()
 	repo := kachopg.NewRegistryRepo(pool)
 	reg := newReg(project, name, nil)
-	created, _, err := repo.Insert(context.Background(), reg,
+	created, _, err := repo.Insert(journalPrincipalCtx(context.Background()), reg,
 		domain.RegisterIntentForCreate(reg, "user", "usr-seed"))
 	require.NoError(t, err)
 	return created.ID
@@ -53,7 +53,7 @@ func newCfg(regID, name string, vis domain.Visibility, labels map[string]string)
 func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	regID := seedRegistry(t, pool, "prj-P", "reg-a01")
 	cfg := &domain.RepositoryConfig{
@@ -88,7 +88,7 @@ func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 func TestRepoConfig_RG1A02_DuplicateInsert_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a02")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
@@ -111,7 +111,7 @@ func TestRepoConfig_RG1A02_DuplicateInsert_AlreadyExists(t *testing.T) {
 func TestRepoConfig_InsertMissingRegistry_FK_FailedPrecondition(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := repo.InsertConfig(ctx, newCfg("regNONEXISTENT", "backend/api", domain.VisibilityPrivate, nil))
 	require.Error(t, err)
@@ -128,7 +128,7 @@ func TestRepoConfig_InsertMissingRegistry_FK_FailedPrecondition(t *testing.T) {
 func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-vis")
 
 	pub, _, err := repo.InsertConfig(ctx, newCfg(regID, "public/img", domain.VisibilityPublic, nil))
@@ -151,7 +151,7 @@ func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 func TestRepoConfig_RG1A16_RenameRekey(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a16")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "old/name", domain.VisibilityPrivate,
@@ -177,7 +177,7 @@ func TestRepoConfig_RG1A16_RenameRekey(t *testing.T) {
 func TestRepoConfig_RG1A17_RenameCollision_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a17")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
@@ -201,7 +201,7 @@ func TestRepoConfig_RG1A17_RenameCollision_AlreadyExists(t *testing.T) {
 func TestRepoConfig_RenameMissingSource_NotFound(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-rns")
 
 	_, _, err := repo.RekeyConfig(ctx, regID, "ghost/x", "new/y")
@@ -213,7 +213,7 @@ func TestRepoConfig_RenameMissingSource_NotFound(t *testing.T) {
 func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-upd")
 
 	_, _, err := repo.InsertConfig(ctx, &domain.RepositoryConfig{
@@ -254,7 +254,7 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 func TestRepoConfig_RG1A13_DeleteConfig(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-del")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
@@ -273,7 +273,7 @@ func TestRepoConfig_RG1A13_DeleteConfig(t *testing.T) {
 func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "a/b", domain.VisibilityPrivate, nil))
@@ -294,7 +294,7 @@ func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-list")
 
 	for _, n := range []string{"cfg/only", "hidden/svc", "zzz/last"} {
@@ -321,7 +321,7 @@ func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 func countConfigs(t *testing.T, pool *pgxpool.Pool, regID, name string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM kacho_registry.repository_configs WHERE registry_id=$1 AND name=$2`,
 		regID, name).Scan(&n))
 	return n

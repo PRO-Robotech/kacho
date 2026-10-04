@@ -30,7 +30,7 @@ import (
 func TestRepo_RepoIntent_SerializesOnPerRepoAdvisoryLock(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Реестр СЕЯТСЯ по-настоящему: эмиссия интента репозитория теперь той же транзакцией
 	// пишет durable-признак его существования (миграция 0014), а тот ссылается на

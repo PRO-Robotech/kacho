@@ -28,7 +28,7 @@ import (
 func TestRepoConfig_RG1A04_ConcurrentCreate_PKRace(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a04")
 
 	const n = 8
@@ -74,7 +74,7 @@ func TestRepoConfig_RG1A04_ConcurrentCreate_PKRace(t *testing.T) {
 func TestRepoConfig_RG1A18_ConcurrentRename_PKRace(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a18")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
@@ -133,7 +133,7 @@ func TestRepoConfig_RG1A18_ConcurrentRename_PKRace(t *testing.T) {
 func TestRepoConfig_RG1B09_ConcurrentVisibilityFlip_CAS(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-b09")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "race/img", domain.VisibilityPrivate, nil))

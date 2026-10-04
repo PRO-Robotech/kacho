@@ -83,7 +83,7 @@ const probeRegion = "region-1"
 // Ровно один из двух идентификаторов непуст: домен требует одного источника.
 func seedVolumeFrom(t *testing.T, s *stand, name, snapshotID, imageID string) *domain.Volume {
 	t.Helper()
-	v, _, err := pg.NewVolumeRepo(s.pool).Insert(context.Background(), &domain.Volume{
+	v, _, err := pg.NewVolumeRepo(s.pool).Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:             ids.NewID(domain.PrefixVolume),
 		ProjectID:      probeProject,
 		Name:           name,
@@ -107,7 +107,7 @@ func seedVolumeFrom(t *testing.T, s *stand, name, snapshotID, imageID string) *d
 // утверждала бы про состояние, которого не создавала.
 func createSnapshot(t *testing.T, s *stand, name string) *domain.Snapshot {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	src := s.createVolume(t, probeProject, name+"-src")
 	confirmReady(t, s, reconciler.KindVolume, src.ID)
 	sn, _, err := pg.NewSnapshotRepo(s.pool).Insert(ctx, &domain.Snapshot{
@@ -131,7 +131,7 @@ func createSnapshot(t *testing.T, s *stand, name string) *domain.Snapshot {
 // выглядела бы исполненной.
 func confirmReady(t *testing.T, s *stand, kind reconciler.Kind, id string) {
 	t.Helper()
-	ok, err := reconciler.NewStore(s.pool).Confirm(context.Background(), kind, id,
+	ok, err := reconciler.NewStore(s.pool).Confirm(componentCtx(), kind, id,
 		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: 1 << 30})
 	if err != nil || !ok {
 		t.Fatalf("%s %s не доведён до готовности (ok=%v, err=%v)", kind, id, ok, err)
@@ -146,7 +146,7 @@ func confirmReady(t *testing.T, s *stand, kind reconciler.Kind, id string) {
 // поле, ради которого состояние этому виду и заводится.
 func TestSnapshotStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	repo := pg.NewSnapshotRepo(s.pool)
 	sn := createSnapshot(t, s, "snap-state-equals-read")
 
@@ -203,7 +203,7 @@ func TestSnapshotStateStaysFreshWhenAVolumeIsSeededAndRemoved(t *testing.T) {
 	}
 
 	// ── снятие ребёнка обязано доехать так же ─────────────────────────────────
-	if _, err := s.pool.Exec(context.Background(),
+	if _, err := s.pool.Exec(journalPrincipalCtx(context.Background()),
 		`DELETE FROM volumes WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не снялся: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestSnapshotStateStaysFreshWhenAVolumeIsSeededAndRemoved(t *testing.T) {
 // производителя — событие подписчикам снимка на переименовании чужого тома.
 func TestVolumeUpdateDoesNotWakeItsSourceSubscribers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	sn := createSnapshot(t, s, "snap-no-spurious")
 	v := seedVolumeFrom(t, s, "vol-no-spurious", sn.ID, "")
 
@@ -251,7 +251,7 @@ func TestVolumeUpdateDoesNotWakeItsSourceSubscribers(t *testing.T) {
 // нём не говорит ничего.
 func TestImageStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	repo := pg.NewImageRepo(s.pool)
 	img, _, err := repo.Insert(ctx, &domain.Image{
 		ID:           ids.NewID(domain.PrefixImage),

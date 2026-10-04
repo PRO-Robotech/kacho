@@ -34,7 +34,7 @@ import (
 // seedRegQuota заводит одну строку учёта ТЕМ ЖЕ оператором, что и продукт.
 func seedRegQuota(t testing.TB, pool *pgxpool.Pool, carrierType, carrierID, kind string, limit int64) {
 	t.Helper()
-	n, err := kachopg.MaterializeQuotas(context.Background(), pool, []kachopg.QuotaRow{{
+	n, err := kachopg.MaterializeQuotas(journalPrincipalCtx(context.Background()), pool, []kachopg.QuotaRow{{
 		CarrierType:   carrierType,
 		CarrierID:     carrierID,
 		Kind:          kind,
@@ -50,7 +50,7 @@ func seedRegQuota(t testing.TB, pool *pgxpool.Pool, carrierType, carrierID, kind
 // seedRegNestedDefault заводит проектный резолв вложенного вида.
 func seedRegNestedDefault(t testing.TB, pool *pgxpool.Pool, projectID, kind string, limit int64) {
 	t.Helper()
-	n, err := kachopg.MaterializeNestedDefaults(context.Background(), pool, []kachopg.QuotaRow{{
+	n, err := kachopg.MaterializeNestedDefaults(journalPrincipalCtx(context.Background()), pool, []kachopg.QuotaRow{{
 		CarrierID:     projectID,
 		Kind:          kind,
 		Limit:         limit,
@@ -67,7 +67,7 @@ func seedRegNestedDefault(t testing.TB, pool *pgxpool.Pool, projectID, kind stri
 func regQuotaUsed(t testing.TB, pool *pgxpool.Pool, carrierType, carrierID, kind string) (int64, bool) {
 	t.Helper()
 	var used int64
-	err := pool.QueryRow(context.Background(),
+	err := pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT used FROM kacho_registry.project_resource_quotas
 		  WHERE carrier_type = $1 AND carrier_id = $2 AND kind = $3`,
 		carrierType, carrierID, kind).Scan(&used)
@@ -103,7 +103,7 @@ func insertRepoRegistration(ctx context.Context, pool *pgxpool.Pool, registryID,
 func TestQuota_REG_NotProvisionedIsRefusal(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-noceiling"
 	noCeiling := newReg(project, "reg-no-ceiling", nil)
@@ -131,7 +131,7 @@ func TestQuota_REG_NotProvisionedIsRefusal(t *testing.T) {
 func TestQuota_REG_ExceededAndRefund(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-exhaust"
 	const kind = "registry.registries"
@@ -166,7 +166,7 @@ func TestQuota_REG_ExceededAndRefund(t *testing.T) {
 func TestQuota_REG_NestedCarrierIsTheParent(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-nested"
 	const nested = "registry.registries.repositories"
@@ -225,7 +225,7 @@ func TestQuota_REG_NestedCarrierIsTheParent(t *testing.T) {
 func TestQuota_REG_CascadeRefundsWithoutItsParent(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-cascade"
 	const nested = "registry.registries.repositories"

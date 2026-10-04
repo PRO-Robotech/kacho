@@ -55,7 +55,7 @@ func newPool(t *testing.T) *pgxpool.Pool {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
 	dsn := pgtest.NewDB(t) + "&pool_max_conns=8"
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(context.Background(), fixtureInitiatorDSN(t, dsn))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	seedQuotaFor(t, pool, "prj-cycle")

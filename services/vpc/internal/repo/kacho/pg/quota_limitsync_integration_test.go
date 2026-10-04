@@ -64,7 +64,7 @@ func TestLimitSync_ProjectChangeReachesTheLivingRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 	proj := quotaProjection(t, pool)
@@ -121,7 +121,7 @@ func TestLimitSync_AccountChangeReachesEveryProjectOfThatAccount(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 	proj := quotaProjection(t, pool)
@@ -171,7 +171,7 @@ func TestLimitSync_LessSpecificScopeNeverOverridesAMoreSpecificOne(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 	proj := quotaProjection(t, pool)
@@ -238,7 +238,7 @@ func TestLimitSync_StaleRevisionIsNotApplied(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 	proj := quotaProjection(t, pool)
@@ -281,7 +281,7 @@ func TestLimitSync_WithdrawalRemovesTheRowAndUsageComesBackCounted(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 	proj := quotaProjection(t, pool)
@@ -334,7 +334,7 @@ func TestLimitSync_CursorAndCountersAreObservable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	proj := quotaProjection(t, pool)
 

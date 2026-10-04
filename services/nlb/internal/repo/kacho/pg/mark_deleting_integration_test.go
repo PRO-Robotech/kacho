@@ -24,7 +24,7 @@ import (
 func TestMarkDeleting_Guards(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	t.Run("protected → FailedPrecondition", func(t *testing.T) {
 		lb := newLB("prj0MDGUARD000000001", "md-protected")
@@ -96,7 +96,7 @@ func TestMarkDeleting_Guards(t *testing.T) {
 func TestListenerInsert_RejectsDeletingParent(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj0LSTDELPARENT0001", "lst-del-parent")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -126,7 +126,7 @@ func TestListenerInsert_RejectsDeletingParent(t *testing.T) {
 func TestMarkDeleting_vs_ListenerInsert_Race(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj0MDRACE0000000001", "md-race")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

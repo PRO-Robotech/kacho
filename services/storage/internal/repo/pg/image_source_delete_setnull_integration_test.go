@@ -31,7 +31,7 @@ func TestImageSourceSnapshotDeleteSetNull(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-provenance", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "prov-from-snap", "ru-central1", snapID)
@@ -63,7 +63,7 @@ func TestImageSourceVolumeDeleteSetNull(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	srcVolID := imgFixtureVolumeRow(t, pool, "prj-1", "golden-src-vol", "region-1-a", "", 32<<30)
 	img, _, err := ir.Insert(ctx, &domain.Image{

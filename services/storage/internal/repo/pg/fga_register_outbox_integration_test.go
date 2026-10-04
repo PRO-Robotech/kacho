@@ -36,7 +36,7 @@ type fgaOutboxRow struct {
 // selectFGARows читает все строки fga_register_outbox (по возрастанию id).
 func selectFGARows(t *testing.T, pool *pgxpool.Pool) []fgaOutboxRow {
 	t.Helper()
-	rows, err := pool.Query(context.Background(),
+	rows, err := pool.Query(journalPrincipalCtx(context.Background()),
 		`SELECT event_type, resource_kind, resource_id, payload, (sent_at IS NULL)
 		   FROM kacho_storage.fga_register_outbox ORDER BY id ASC`)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestVolumeInsert_EmitsFGARegisterIntent(t *testing.T) {
 func TestVolumeDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-del", 10<<30)
 	require.NoError(t, r.Delete(ctx, v.ID))
@@ -104,7 +104,7 @@ func TestSnapshotInsert_EmitsFGARegisterIntent(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, vr, "prj-1", "vol-src", 10<<30)
 	s, _, err := sr.Insert(ctx, &domain.Snapshot{
@@ -134,7 +134,7 @@ func TestSnapshotDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, vr, "prj-1", "vol-src2", 10<<30)
 	s, _, err := sr.Insert(ctx, &domain.Snapshot{
@@ -161,7 +161,7 @@ func TestVolumeInsert_FailedFK_NoFGAIntent(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	_, _, err := r.Insert(context.Background(), &domain.Volume{
+	_, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  "prj-1",
 		Name:       "vol-orphan",
@@ -223,7 +223,7 @@ func TestFGARegisterDrainer_AppliesIntentToIAM(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(journalPrincipalCtx(context.Background()))
 	defer cancel()
 	go func() { _ = d.Run(ctx) }()
 
@@ -237,7 +237,7 @@ func TestFGARegisterDrainer_AppliesIntentToIAM(t *testing.T) {
 	// backlog очищен: строка помечена sent (sent_at NOT NULL).
 	require.Eventually(t, func() bool {
 		var pending int
-		if qerr := pool.QueryRow(context.Background(),
+		if qerr := pool.QueryRow(journalPrincipalCtx(context.Background()),
 			`SELECT count(*) FROM kacho_storage.fga_register_outbox WHERE sent_at IS NULL`).Scan(&pending); qerr != nil {
 			return false
 		}

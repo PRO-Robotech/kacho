@@ -45,7 +45,7 @@ const imgFixtureRegion = "region-1"
 // где предмет пробы её наследование.
 func imgFixtureDiskTypeRow(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO disk_types (id, name, description, zone_ids, performance_tier, lifecycle)
 		 VALUES ($1,$1,'fixture','[]'::jsonb,'BALANCED','ACTIVE') ON CONFLICT (id) DO NOTHING`,
 		imgFixtureDiskType)
@@ -58,7 +58,7 @@ func imgFixtureDiskTypeRow(t *testing.T, pool *pgxpool.Pool) string {
 // наследовать.
 func imgFixtureClass(t *testing.T, pool *pgxpool.Pool, zone string) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	imgFixtureDiskTypeRow(t, pool)
 
 	backendID := "sb-imgfixture" + zone
@@ -92,7 +92,7 @@ func imgFixtureVolumeRow(t *testing.T, pool *pgxpool.Pool, project, name, zone, 
 	if bindingID != "" {
 		binding = &bindingID
 	}
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO volumes (id, project_id, name, zone_id, disk_type_id, size_bytes, state,
 		                      binding_id, backend_object)
 		 VALUES ($1,$2,$3,$4,$5,$6,'READY',$7,$8)`,
@@ -106,7 +106,7 @@ func imgFixtureVolumeRow(t *testing.T, pool *pgxpool.Pool, project, name, zone, 
 func imgFixtureSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name, volumeID, bindingID string) string {
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO snapshots (id, project_id, name, source_volume_id, size_bytes, state,
 		                        binding_id, backend_object)
 		 VALUES ($1,$2,$3,$4,$5,'READY',$6,$7)`,
@@ -125,7 +125,7 @@ func imgFixtureSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name, volu
 func TestImageBornCreatingInheritsBinding(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "src-vol", "region-1-a", bindingID, 20<<30)
@@ -167,7 +167,7 @@ func TestImageBornCreatingInheritsBinding(t *testing.T) {
 func TestImageInheritsBindingFromSnapshot(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "snap-src-vol", "region-1-a", bindingID, 20<<30)
@@ -195,7 +195,7 @@ func TestImageInheritsBindingFromSnapshot(t *testing.T) {
 func TestImageSourceNotReadyRejected(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "vol-creating", "region-1-a", bindingID, 20<<30)
@@ -242,7 +242,7 @@ func TestImageSourceNotReadyRejected(t *testing.T) {
 func TestImageForeignProjectSourceStateStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
 	victim := imgFixtureVolumeRow(t, pool, "prj-victim", "victim-vol", "region-1-a", bindingID, 20<<30)
@@ -266,7 +266,7 @@ func TestImageForeignProjectSourceStateStaysHidden(t *testing.T) {
 func TestImageStatusReasonPersisted(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-reason", 1<<30)
 
@@ -300,7 +300,7 @@ func TestImageStatusReasonPersisted(t *testing.T) {
 func TestImageSeededVolumesListed(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-seeded", 20<<30)
@@ -349,7 +349,7 @@ func TestImageSeededVolumesListed(t *testing.T) {
 func TestImageRegisterBornReady(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	imgID := ids.NewID(domain.PrefixImage)
 	img, regs, err := ir.Register(ctx, &domain.Image{
@@ -387,7 +387,7 @@ func TestImageRegisterBornReady(t *testing.T) {
 func TestImageRegisterDuplicateBackendObjectRejected(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const object = "kc7f-img-ubuntu-2404-20260812"
 	_, _, err := ir.Register(ctx, &domain.Image{
@@ -434,7 +434,7 @@ func TestVolumeSeedFromNotReadyImageRejected(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	imgFixtureClass(t, pool, "region-1-a")
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-boot", 20<<30)

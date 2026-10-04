@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/validate"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
@@ -32,11 +33,14 @@ import (
 // заполняемое use-case'ом на чтении из storage. Здесь остаётся только строка
 // `instances` (+ same-DB NIC-mirror child таблица, cascade).
 type InstanceRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewInstanceRepo создаёт InstanceRepo.
-func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo { return &InstanceRepo{pool: pool} }
+func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo {
+	return &InstanceRepo{pool: pool, journal: journalOptions()}
+}
 
 // instanceCols — колонки таблицы instances (COMP-1 redesign; vendor-cruft-колонки
 // сняты миграцией 0016). effective_resources распакованы в eff_* скаляры;
@@ -147,7 +151,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -281,7 +285,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		requireStopped = true
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -355,7 +359,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 // SetStatusCAS атомарно переводит instance из expected-status в next-status
 // (within-service-инвариант на DB-уровне, conditional UPDATE WHERE id AND status).
 func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, next domain.InstanceStatus) (*domain.Instance, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, ports.ErrInternal
 	}
@@ -463,7 +467,7 @@ func (r *InstanceRepo) GateForAttach(ctx context.Context, id string) (string, st
 // release'ом привязок в delete-саге, чтобы конкурентный AttachDisk-гейт видел
 // DELETING и падал (attach-vs-delete race). Повтор на уже-DELETING — no-op OK.
 func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Instance, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, ports.ErrInternal
 	}
@@ -576,7 +580,7 @@ func (r *InstanceRepo) TryClaimStuckDeleteSweep(ctx context.Context) (func(conte
 }
 
 func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return ports.ErrInternal
 	}

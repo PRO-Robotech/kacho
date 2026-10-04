@@ -62,7 +62,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Приватные ресурсы «жертвы».
 	victimVol := mkVolume(t, pool, vr, projVictim, "victim-vol", 8<<30)

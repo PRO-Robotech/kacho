@@ -39,7 +39,7 @@ import (
 func TestRegistryDelete_WithdrawsEveryChildRepositoryRegistration(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 
 	children := []string{"team/app", "team/api", "infra/base"}
@@ -73,7 +73,7 @@ func TestRegistryDelete_WithdrawsEveryChildRepositoryRegistration(t *testing.T) 
 func TestRegistryDelete_NoChildren_EmitsOnlyItsOwnWithdrawal(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade-empty")
 
 	require.NoError(t, repo.Delete(ctx, regID,
@@ -95,7 +95,7 @@ func TestRegistryDelete_NoChildren_EmitsOnlyItsOwnWithdrawal(t *testing.T) {
 func TestRegistryDelete_ChildWithdrawalIsAtomicWithTheDelete(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade-idem")
 
 	require.NoError(t, repo.RegisterRepository(ctx,

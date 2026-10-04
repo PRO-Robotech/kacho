@@ -54,7 +54,7 @@ type concurrentAttachResult struct {
 // тронет строку — иначе гонка вырождается в последовательность.
 func runConcurrentAttachVIP(t *testing.T, repo kacho.Repository, cands []vipAttachCandidate) *concurrentAttachResult {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	res := &concurrentAttachResult{}
 
 	start := make(chan struct{})
@@ -112,10 +112,10 @@ func runConcurrentAttachVIP(t *testing.T, repo kacho.Repository, cands []vipAtta
 // lbAddressV4 — читает текущий address_v4 LB-строки через committed-snapshot Reader.
 func lbAddressV4(t *testing.T, repo kacho.Repository, lbID string) string {
 	t.Helper()
-	rd, err := repo.Reader(context.Background())
+	rd, err := repo.Reader(journalPrincipalCtx(context.Background()))
 	require.NoError(t, err)
 	defer func() { _ = rd.Close() }()
-	rec, err := rd.LoadBalancers().Get(context.Background(), lbID)
+	rec, err := rd.LoadBalancers().Get(journalPrincipalCtx(context.Background()), lbID)
 	require.NoError(t, err)
 	return string(rec.AddressV4)
 }
@@ -129,7 +129,7 @@ func lbAddressV4(t *testing.T, repo kacho.Repository, lbID string) string {
 func TestLB_AttachVIP_ConcurrentSingleVIPRace(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newInternalHandle("prj01VIPRACE00000001", "vip-race", domain.IPVersionV4)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -162,7 +162,7 @@ func TestLB_AttachVIP_ConcurrentSingleVIPRace(t *testing.T) {
 func TestLB_AttachVIP_ConcurrentPerRegionDoubleClaim(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	a := newInternalHandle("prj01REGCLAIM0000001", "reg-claim-a", domain.IPVersionV4)
 	b := newInternalHandle("prj01REGCLAIM0000001", "reg-claim-b", domain.IPVersionV4)
@@ -213,7 +213,7 @@ func TestLB_AttachVIP_ConcurrentPerRegionDoubleClaim(t *testing.T) {
 func TestLB_AttachVIP_ConcurrentCrossRegionScope(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	a := newInternalHandle("prj01XREGION00000001", "xreg-a", domain.IPVersionV4)
 	b := newInternalHandle("prj01XREGION00000001", "xreg-b", domain.IPVersionV4)

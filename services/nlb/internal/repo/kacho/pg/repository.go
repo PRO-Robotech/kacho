@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
+
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -31,6 +33,9 @@ const finalizeTimeout = 10 * time.Second
 type Repository struct {
 	master *pgxpool.Pool
 	slave  *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля), с
+	// которыми Writer открывает каждую пишущую транзакцию.
+	journal journaltx.Options
 }
 
 // New собирает Repository поверх master- и опц. slave-pool'ов.
@@ -44,8 +49,16 @@ func New(masterPool, slavePool *pgxpool.Pool) *Repository {
 	if slavePool == nil {
 		slavePool = masterPool
 	}
-	return &Repository{master: masterPool, slave: slavePool}
+	return &Repository{master: masterPool, slave: slavePool, journal: journalOptions()}
 }
+
+// journalOptions — Options помощника записи журнала для Writer репозитория.
+//
+// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
+// Ручку `KACHO_NLB_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
+// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
+// тем же изменением эта функция снимается.
+func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
 
 // Reader открывает read-only TX (read-committed) на slave-pool'е (или master
 // fallback). Возвращённый reader обязан быть закрыт через Close — это
@@ -60,8 +73,14 @@ func (r *Repository) Reader(ctx context.Context) (kacho.RepositoryReader, error)
 
 // Writer открывает RW TX на master-pool'е. Caller обязан вызвать либо Commit,
 // либо Abort (Abort идемпотентен — безопасно через defer сразу после открытия).
+//
+// Транзакцию открывает помощник записи журнала `journaltx.Begin`: первым
+// оператором он выставляет инициатора изменения локально к транзакции, а
+// инициатора берёт только из принципала контекста. Контекст без принципала —
+// отказ до обращения к базе (`auth.ErrNoInitiator`), транзакция не открывается:
+// строку журнала без инициатора база всё равно не приняла бы (NTF-3, З4).
 func (r *Repository) Writer(ctx context.Context) (kacho.RepositoryWriter, error) {
-	tx, err := r.master.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := journaltx.Begin(ctx, r.master, r.journal)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +132,7 @@ func (r *readerImpl) Close() error {
 
 // writerImpl — RW TX state.
 type writerImpl struct {
-	tx        pgx.Tx
+	tx        *journaltx.Tx
 	finalised bool // true после Commit или Abort — защита от double-finalize
 	// fgaEmitSeq — порядковый номер следующего FGA-register-intent'а этой tx.
 	// Живёт на writer'е, а не на эмиттере: FGARegisterOutbox() возвращает новый

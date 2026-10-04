@@ -37,7 +37,7 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 	pool := newTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
 		ID: "block-zoned-a", Name: "block-zoned-a", ZoneIDs: []string{"region-1-a"},
@@ -66,7 +66,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 	pool := newTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
 		ID: "block-zoned-b", Name: "block-zoned-b", ZoneIDs: []string{"region-1-a", "region-1-b"},
@@ -95,7 +95,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Половина первая: зона, где класс привязан, — принимается.
 	v, _, err := vr.Insert(ctx, &domain.Volume{
@@ -121,7 +121,7 @@ func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 func TestVolumeOnMissingDiskTypeStillReportsMissing(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-no-such-type",
