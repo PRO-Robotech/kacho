@@ -169,7 +169,7 @@ func (l *loop) claim(ctx context.Context) bool {
 	defer cancel()
 	sentAt := time.Now()
 	resp, err := l.feed.Claim(callCtx, &notifyv1.ClaimRequest{
-		Max:     uint32(size), // #nosec G115 -- size в [1..feed.MaxClaim]
+		Max:     uint32(size),
 		Classes: l.classes,
 	})
 	if err != nil {
