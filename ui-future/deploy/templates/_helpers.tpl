@@ -130,6 +130,79 @@
 {{- default .Values.port .Values.host.port -}}
 {{- end -}}
 
+{{/*
+─── ВНЕШНИЙ ВХОД КОНСОЛИ (publicFront, kacho#3024) ───────────────────────────
+
+`ui.publicFrontOrigin` — происхождение консоли, ПРОВЕРЕННОЕ на то, что этот вход
+способен его обслужить: схема `https`, без пути и порта, отличного от 443, а
+хост — среди имён сертификата, когда сертификат заводит чарт. Величина одна —
+`global.kacho.identity.appBaseURL`, её же служба доступа читает как адрес
+консоли. Любое несоответствие — отказ рендера с именем ручки: вход, чьё
+происхождение браузер не примет защищённым, вернул бы ровно тот отказ формы,
+ради которого вход заведён.
+*/}}
+{{- define "ui.publicFrontOrigin" -}}
+{{- $pf := .Values.publicFront -}}
+{{- $id := ((.Values.global).kacho).identity | default dict -}}
+{{- $origin := trimSuffix "/" ($id.appBaseURL | default "") -}}
+{{- if not $origin -}}
+{{- fail "uif.publicFront.enabled: global.kacho.identity.appBaseURL пуст — вход не знает происхождения, на которое переадресовывать и которое покрывать сертификатом" -}}
+{{- end -}}
+{{- $u := urlParse $origin -}}
+{{- if ne $u.scheme "https" -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q не по https — Secure-печенье формы с него браузер не хранит (kacho#3024)" $origin) -}}
+{{- end -}}
+{{- if or $u.path $u.query $u.fragment -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q несёт путь или запрос — происхождение это схема, хост и порт" $origin) -}}
+{{- end -}}
+{{- $host := $u.host -}}
+{{- if regexMatch ":[0-9]+$" $host -}}
+{{- if not (hasSuffix ":443" $host) -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q называет порт, отличный от 443, а вход публикует TLS на 443" $origin) -}}
+{{- end -}}
+{{- $host = trimSuffix ":443" $host -}}
+{{- end -}}
+{{- if $pf.tls.certificate.create -}}
+{{- $names := concat ($pf.tls.certificate.dnsNames | default list) ($pf.tls.certificate.ipAddresses | default list) -}}
+{{- if not (has $host $names) -}}
+{{- fail (printf "uif.publicFront.tls.certificate: хост происхождения консоли %q не назван ни в dnsNames, ни в ipAddresses — браузер отвергнет сертификат" $host) -}}
+{{- end -}}
+{{- end -}}
+{{- printf "https://%s" $host -}}
+{{- end -}}
+
+{{/* `ui.publicFrontGuard` — отказ рендера на неполном блоке; печатает пусто. */}}
+{{- define "ui.publicFrontGuard" -}}
+{{- $pf := .Values.publicFront -}}
+{{- if $pf.enabled -}}
+{{- if not $pf.tls.secretName -}}
+{{- fail "uif.publicFront.tls.secretName пуст — вход без сертификата TLS не завершает" -}}
+{{- end -}}
+{{- if $pf.tls.certificate.create -}}
+{{- if not $pf.tls.certificate.issuerRef.name -}}
+{{- fail "uif.publicFront.tls.certificate.issuerRef.name пуст — сертификат некому выписать (либо certificate.create: false и секрет заводит оператор)" -}}
+{{- end -}}
+{{- if not (or $pf.tls.certificate.dnsNames $pf.tls.certificate.ipAddresses) -}}
+{{- fail "uif.publicFront.tls.certificate: ни dnsNames, ни ipAddresses не объявлены — сертификату нечего удостоверять" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (and (gt (int $pf.tls.reloadIntervalSeconds) 0) (le (int $pf.tls.reloadIntervalSeconds) 3600)) -}}
+{{- fail "uif.publicFront.tls.reloadIntervalSeconds вне (0, 3600] — продлённый сертификат раздача не перечитала бы вовремя" -}}
+{{- end -}}
+{{- if eq (int $pf.httpsPort) (int $pf.redirectPort) -}}
+{{- fail "uif.publicFront: httpsPort и redirectPort совпадают" -}}
+{{- end -}}
+{{- if or (eq (int $pf.httpsPort) (int (include "ui.hostPort" .))) (eq (int $pf.redirectPort) (int (include "ui.hostPort" .))) -}}
+{{- fail "uif.publicFront: httpsPort/redirectPort совпадает с внутренним портом раздачи" -}}
+{{- end -}}
+{{- $_ := include "ui.publicFrontOrigin" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ui.publicFrontServiceName" -}}
+{{- .Values.publicFront.service.name | default (printf "%s-public" (include "ui.hostName" .)) -}}
+{{- end -}}
+
 {{- define "ui.hostReplicas" -}}
 {{- default .Values.replicas .Values.host.replicas -}}
 {{- end -}}
