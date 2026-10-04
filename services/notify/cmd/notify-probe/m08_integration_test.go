@@ -155,7 +155,7 @@ func (lp liveProbe) seed(t *testing.T, n int) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := notify.SendProbeHello(ctx, tx, notify.ProbeHelloAttrs{To: "probe@example.com", Target: "/"}); err != nil {
+		if _, err := notify.SendProbeHello(ctx, tx, notify.ProbeHelloAttrs{To: "probe@example.com", Target: "/"}); err != nil {
 			_ = tx.Rollback(ctx)
 			t.Fatalf("постановка probe-hello: %v", err)
 		}
