@@ -41,7 +41,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 NS="${STACK_NAMESPACE:-kacho}"
 RELEASE="${STACK_RELEASE:-kacho-umbrella}"
-SECRET="${KACHO_CLOUD_ADMIN_SECRET:-kacho-stand-cloud-admin}"
+SECRET="${KACHO_CLOUD_ADMIN_SECRET:-stand-cloud-admin}"
 
 log() { printf '=== bootstrap-cloud-admin: %s\n' "$1"; }
 die() { printf 'ABORT: bootstrap-cloud-admin — %s\n' "$1" >&2; exit "${2:-2}"; }

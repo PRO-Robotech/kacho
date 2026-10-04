@@ -130,7 +130,7 @@ kaname:
       # код из письма, подтверждение), право выдаёт посев бутстрапа службы.
       # Способ входа — deploy/README.md, «Администратор облака стенда».
       bootstrapRootAdmin:
-        secretName: kacho-stand-cloud-admin
+        secretName: stand-cloud-admin
         emailKey: email
 
 # Приёмник писем — часть поставки СТЕНДА; боевая площадка его не получает, там

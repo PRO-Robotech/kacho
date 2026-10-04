@@ -1304,13 +1304,17 @@ kaname:
     # ListObjects to resolve the caller's allowed-id set; without this the RPC
     # returns Unimplemented and the handler-side scope-filter fails 503.
     KACHO_AUTHZ_LISTOBJECTS: "on"
-    # Bug B fix: bootstrap cluster-admin. kaname's startup reconciler grants
-    # `system_admin@cluster_root` to this user and enqueues the FGA tuple
-    # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
-    # backdoor that bypassed the drainer). The user row is mirrored on first
-    # fixture upsert; the reconciler retries until the grant commits. The
-    # authz-fixtures bootstrap user is admin@prorobotech.ru.
-    KANAME_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
+    # Адрес первого администратора облака (KANAME_BOOTSTRAP_ROOT_EMAIL) —
+    # не здесь: его объявляет ручка чарта `platform.iam.bootstrapRootAdmin`
+    # (ниже, kacho#2878), родовой проброс той же переменной рендер отвергает.
+  # Первый администратор облака стенда разработки — человек фикстур проб
+  # (tests/authz-fixtures, prodseed_matrix.py: адрес задан там же). Посев
+  # бутстрапа службы выдаёт ему `system_admin` на кластере, как только
+  # фикстура его заводит; повторяется до выдачи.
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        email: "admin@prorobotech.ru"
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
 #

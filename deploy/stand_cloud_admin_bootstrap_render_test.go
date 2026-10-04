@@ -80,11 +80,18 @@ func TestBootstrapRootEmailDeclaredTwiceIsRefusedByRender(t *testing.T) {
 	if _, err := renderStack(t, chain); err != nil {
 		t.Fatalf("законный близнец: стек %s отвергнут рендером: %v", cloudAdminStack, err)
 	}
-	out, err := renderStack(t, chain, "kaname.env."+bootstrapRootEnv+"=someone")
-	if err == nil {
-		t.Fatalf("инъекция: %s объявлена и ссылкой, и литералом карты env — рендер прошёл", bootstrapRootEnv)
+	cases := []struct{ name, set, want string }{
+		{"ссылка и литерал карты env", "kaname.env." + bootstrapRootEnv + "=someone", bootstrapRootEnv},
+		{"ссылка и величина email", "kaname.platform.iam.bootstrapRootAdmin.email=someone@example.com", "объявлен дважды"},
 	}
-	if !strings.Contains(out, bootstrapRootEnv) {
-		t.Errorf("инъекция: рендер отказал, но текст не называет %s:\n%s", bootstrapRootEnv, lastLines(out, 5))
+	for _, c := range cases {
+		out, err := renderStack(t, chain, c.set)
+		if err == nil {
+			t.Errorf("инъекция «%s»: рендер прошёл", c.name)
+			continue
+		}
+		if !strings.Contains(out, c.want) {
+			t.Errorf("инъекция «%s»: рендер отказал, но текст не называет %q:\n%s", c.name, c.want, lastLines(out, 5))
+		}
 	}
 }

@@ -123,13 +123,13 @@ Postgres использует `emptyDir` — данные не сохраняю�
 
 Адрес и пароль лежат только в объекте Secret кластера; профиль называет его имя
 (`kaname.platform.iam.bootstrapRootAdmin.secretName`, у стенда `own` —
-`kacho-stand-cloud-admin`, ключи `email` и `password`). На kind секрет чеканит
+`stand-cloud-admin`, ключи `email` и `password`). На kind секрет чеканит
 `scripts/stack-secrets.sh` при первом подъёме, на площадке его заводит оператор.
 Ни в дереве, ни в журнале подъёма величин нет. Оператор стенда берёт их сам:
 
 ```bash
-kubectl -n kacho get secret kacho-stand-cloud-admin -o jsonpath='{.data.email}' | base64 -d
-kubectl -n kacho get secret kacho-stand-cloud-admin -o jsonpath='{.data.password}' | base64 -d
+kubectl -n kacho get secret stand-cloud-admin -o jsonpath='{.data.email}' | base64 -d
+kubectl -n kacho get secret stand-cloud-admin -o jsonpath='{.data.password}' | base64 -d
 ```
 
 и входит паролем в консоль. Раздел «Система» ходит к админ-API внутреннего
