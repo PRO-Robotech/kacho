@@ -84,7 +84,15 @@ export const UNMET_LETTER = "условие не создано: письмо п
 export const LETTER_BUDGET_MS = 45_000;
 
 /** Строка письма, за которой стоит код (тело письма — `RenderVerificationMail` службы). */
-const CODE_LINE = "Код подтверждения:";
+export const CODE_LINE = "Код подтверждения:";
+
+/**
+ * Строка письма восстановления доступа, за которой стоит код (тело письма —
+ * `RenderRecoveryMail` службы, приёмка Ф5). Строка своя, а не общая с письмом
+ * подтверждения: письмо одного вида не годится за письмо другого, и проба,
+ * ждущая код восстановления, не примет код подтверждения адреса.
+ */
+export const RECOVERY_CODE_LINE = "Код восстановления:";
 
 /** Алфавит кода — Крокфорд, 10 значащих знаков (Р7 службы); дефисы и пробелы не значимы. */
 const CODE_SIGNIFICANT = /^[0-9A-HJKMNP-TV-Z]{10}$/i;
@@ -133,9 +141,9 @@ export interface Letter {
  * «Код подтверждения:». Пусто — кода в теле нет. Код не приводится: экран
  * отправляет его как введён, приведение делает служба (Р7 службы).
  */
-export function codeOf(text: string): string {
+export function codeOf(text: string, codeLine: string = CODE_LINE): string {
   const lines = text.split(/\r?\n/);
-  const at = lines.findIndex((l) => l.trim() === CODE_LINE);
+  const at = lines.findIndex((l) => l.trim() === codeLine);
   if (at < 0) return "";
   const line = lines.slice(at + 1).find((l) => l.trim() !== "")?.trim() ?? "";
   return CODE_SIGNIFICANT.test(line.replace(/[-\s]/g, "")) ? line : "";
@@ -230,6 +238,7 @@ export async function awaitLetter(
   address: string,
   before: ReadonlySet<string>,
   budgetMs: number = LETTER_BUDGET_MS,
+  codeLine: string = CODE_LINE,
 ): Promise<Letter> {
   // Исход последнего опроса — объектом, а не переменными: присваивания внутри
   // опроса разбор потока управления снаружи не видит.
@@ -268,10 +277,12 @@ export async function awaitLetter(
     `писем на ${address} после регистрации ${fresh.length}, ждали ровно одно: первое письмо ставит ` +
       "регистрация (Р15 службы), а экран подтверждения при открытии письма не просит",
   ).toBe(1);
-  const letter = fresh[0];
+  // Код читается по строке ТОГО вида письма, которого ждёт вызывающий: письмо
+  // другого вида кода под этой строкой не несёт и отвергается здесь же.
+  const letter = { ...fresh[0], code: codeOf(fresh[0].text, codeLine) };
   expect(
     letter.code,
-    `письмо на ${address} принято приёмником, но кода подтверждения в его теле нет:\n${letter.text.slice(0, 600)}`,
+    `письмо на ${address} принято приёмником, но кода под строкой «${codeLine}» в его теле нет:\n${letter.text.slice(0, 600)}`,
   ).not.toBe("");
   return letter;
 }
