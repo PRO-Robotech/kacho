@@ -144,11 +144,8 @@ func (c *session) run(ctx context.Context, s *Sender, helo string, env Envelope,
 			c.quit()
 			return Attempt{Stage: StageTLS, Failure: FailureNoTLS}
 		}
+		// Отказ STARTTLS — попытка стадии TLS с кодом узла; клетку решает таблица.
 		if a, ok := c.cmd(StageTLS, 220, "STARTTLS"); !ok {
-			if a.Failure == FailureNone {
-				// Предложил и отверг: письмо открытым текстом не уходит — нет TLS.
-				a.Failure = FailureNoTLS
-			}
 			return a
 		}
 		if a, ok := c.handshake(ctx, s.tls); !ok {

@@ -29,8 +29,8 @@ var (
 	outcomeDefer    = feed.Outcome{Kind: feed.KindDefer, Reason: feed.ReasonPlatformUnavailable}
 )
 
-// Строки таблицы (З26). Каждая — своя клетка с именем; две строки одной клетки
-// не делят имя.
+// Строки таблицы (З26). Имя — у клетки; «нет TLS» одна клетка на два входа:
+// отказ без кода и 5xx на STARTTLS.
 var (
 	cellAccepted = Cell{Name: "accepted", Outcome: outcomeSent}
 
@@ -97,8 +97,8 @@ func failureCell(f Failure) Cell {
 }
 
 // permanentCell — 5xx по стадии. На RCPT — отказ получателя; на приветствии,
-// AUTH, MAIL FROM и DATA — отказ установки. 5xx на стадии, где таблица его не
-// называет (TLS, после принятия письма), — «код вне таблицы».
+// AUTH, MAIL FROM и DATA — отказ установки; на STARTTLS — нет TLS. 5xx после
+// принятия письма и на стадии вне перечня — «код вне таблицы».
 func permanentCell(st Stage, enhanced string) Cell {
 	switch st {
 	case StageRcpt:
@@ -111,7 +111,10 @@ func permanentCell(st Stage, enhanced string) Cell {
 		return cellMailRefused
 	case StageData:
 		return cellDataRefused
-	case StageTLS, StageDone:
+	case StageTLS:
+		// Узел предложил STARTTLS и отверг его: письмо открытым текстом не уходит.
+		return cellNoTLS
+	case StageDone:
 		return cellOutOfTable
 	}
 	return cellOutOfTable

@@ -68,7 +68,7 @@ const (
 	FailureNone Failure = iota
 	// FailureUnreachable — соединение с узлом не установлено.
 	FailureUnreachable
-	// FailureNoTLS — узел не предложил STARTTLS, отверг его либо не говорит TLS
+	// FailureNoTLS — узел не предложил STARTTLS либо не говорит TLS
 	// по адресу `smtps`: письмо открытым текстом не уходит (NTF1-G07).
 	FailureNoTLS
 	// FailureUntrusted — сертификат узла не проверен доверенным набором (NTF1-G08).

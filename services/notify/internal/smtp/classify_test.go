@@ -191,3 +191,27 @@ func TestClassify_OutcomesStayInTheSenderVocabulary(t *testing.T) {
 		t.Fatal("пустой обход входов")
 	}
 }
+
+// Узел предложил STARTTLS и отверг его: 4xx — временная недоступность, 5xx — нет
+// TLS; оба — DEFER с вкладом в размыкатель и без misconfigured, письмо открытым
+// текстом не уходит (З26 «нет TLS»). Близнец — 5xx той же формы на MAIL FROM:
+// отказ установки; изменённый факт — стадия.
+func TestClassify_StartTLSRefusalIsNoTLS(t *testing.T) {
+	twin := smtp.Classify(smtp.Attempt{Stage: smtp.StageMail, Code: 554, Enhanced: "5.7.0"})
+	if twin.Outcome != deferUnav || !twin.Misconfigured || twin.RelayUnavailable {
+		t.Fatalf("близнец MAIL 554: %+v", twin)
+	}
+	noTLS := smtp.Classify(smtp.Attempt{Stage: smtp.StageTLS, Failure: smtp.FailureNoTLS})
+	for _, a := range []smtp.Attempt{
+		{Stage: smtp.StageTLS, Code: 554, Enhanced: "5.7.0"},
+		{Stage: smtp.StageTLS, Code: 502},
+	} {
+		c := smtp.Classify(a)
+		if c != noTLS {
+			t.Errorf("STARTTLS отвергнут %+v: %+v, ожидалась клетка «нет TLS» %+v", a, c, noTLS)
+		}
+	}
+	if c := smtp.Classify(smtp.Attempt{Stage: smtp.StageTLS, Code: 454, Enhanced: "4.7.0"}); c.Outcome != deferUnav || c.Misconfigured || !c.RelayUnavailable {
+		t.Errorf("STARTTLS 454: %+v, ожидалась временная недоступность", c)
+	}
+}
