@@ -22,7 +22,7 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 		if _, c := judgePublicFronts([]publicFrontRender{r}); c.Fronts == 1 {
 			r := r
 			front = &r
-			raw = renderChainCached(t, stacks[r.Stack])
+			raw = renderOfFront(t, stacks, r.Stack)
 			break
 		}
 	}
@@ -30,6 +30,9 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 		t.Fatal("в дереве нет цепочки с внешним входом консоли — инъекциям некуда попасть")
 	}
 	host := strings.TrimPrefix(front.Origin, "https://")
+	if host == "" || host == front.Origin {
+		t.Fatalf("происхождение входа %q не по https — инъекциям не от чего отталкиваться", front.Origin)
+	}
 	cases := []struct {
 		name, from, to string
 		origin         string
@@ -95,4 +98,20 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// renderOfFront — сырой рендер цепочки входа: дерева — как есть, фикстурной —
+// с ручками фикстуры поверх её профилей.
+func renderOfFront(t *testing.T, stacks map[string][]string, stack string) string {
+	t.Helper()
+	if chain, ok := stacks[stack]; ok {
+		return renderChainCached(t, chain)
+	}
+	if base, ok := strings.CutSuffix(stack, "+вход-фикстура"); ok {
+		if chain, ok := stacks[base]; ok {
+			return renderChainCached(t, chain, publicFrontFixtureSets...)
+		}
+	}
+	t.Fatalf("цепочка входа %q не опознана ни в дереве, ни как фикстура", stack)
+	return ""
 }
