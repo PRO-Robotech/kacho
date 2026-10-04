@@ -114,6 +114,12 @@ import (
 // `corelib.notify.InternalNotificationFeedService/{Ack,Claim}`. Они СНЯТЫ вместе
 // с записью mountAllow: ленту монтирует корень пробы-источника
 // `services/notify/cmd/notify-probe` (полоса D4), её строки резолвятся.
+//
+// Подъём пина на 745640d6 (kacho#2918, волна NTF-3 модули-1) добавил ПЯТЬ —
+// `InternalNotificationGrantService/{ResolveSend,Revoke,Restore}` (K3, NTF-1
+// Р2/Р5) и `InternalNotificationRecipientService/{Resolve,ListProjectAudience}`
+// (X4D): внутренние глаголы службы, обслуживаемые ею в её дереве. Перемерено
+// прогоном после регенерации: строк каталога 356.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -181,6 +187,11 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalModuleService/Get",
 	"kaname.cloud.iam.v1.InternalModuleService/List",
 	"kaname.cloud.iam.v1.InternalModuleService/Plan",
+	"kaname.cloud.iam.v1.InternalNotificationGrantService/ResolveSend",
+	"kaname.cloud.iam.v1.InternalNotificationGrantService/Restore",
+	"kaname.cloud.iam.v1.InternalNotificationGrantService/Revoke",
+	"kaname.cloud.iam.v1.InternalNotificationRecipientService/ListProjectAudience",
+	"kaname.cloud.iam.v1.InternalNotificationRecipientService/Resolve",
 	"kaname.cloud.iam.v1.InternalOperationsService/ListIamOperations",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",

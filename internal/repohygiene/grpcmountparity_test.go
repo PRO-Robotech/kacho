@@ -97,6 +97,12 @@ import (
 // дерева ленту не монтировал. Запись СНЯТА вместе со своим предметом: ленту
 // монтирует корень пробы-источника `services/notify/cmd/notify-probe` на
 // внутреннем слушателе (NTF1-C02, полоса D4), и исключать стало нечего.
+//
+// Подъём пина модуля на 745640d6 (kacho#2918) добавил службе ДВА сервиса —
+// `InternalNotificationGrantService` (K3, звено выдачи NTF-1) и
+// `InternalNotificationRecipientService` (X4D, справочник адресов NTF-3); их
+// монтирует, как и остальные, только она. Записи заведены по тому же
+// основанию; перепись печатается прогоном.
 var mountAllow = []string{
 	"kaname.cloud.iam.v1.AccessBindingService",
 	"kaname.cloud.iam.v1.AccessKeyService",
@@ -110,6 +116,8 @@ var mountAllow = []string{
 	"kaname.cloud.iam.v1.InternalIAMService",
 	"kaname.cloud.iam.v1.InternalInteractiveClientService",
 	"kaname.cloud.iam.v1.InternalModuleService",
+	"kaname.cloud.iam.v1.InternalNotificationGrantService",
+	"kaname.cloud.iam.v1.InternalNotificationRecipientService",
 	"kaname.cloud.iam.v1.InternalOperationsService",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService",
 	"kaname.cloud.iam.v1.InternalUserService",
