@@ -79,7 +79,13 @@ metadata:
 automountServiceAccountToken: false
 ---
 {{/* Серверный лист: оба слушателя пробы. Имена — те, которыми к пробе
-     обращается notify (служба ниже), без `client auth`. */}}
+     обращается notify (служба ниже), без `client auth`.
+     URI-SAN — идентичность учётки пробы, та же, что у клиентского листа ниже.
+     notify зовёт сервер ленты источника по ТОЧНОМУ SAN записи перечня
+     (services/notify/internal/source/loop.go, exactSANCreds: ровно один
+     URI-SAN, равный `san` записи) — лист с одними DNS-именами он отвергает на
+     рукопожатии, и письмо пробы не доставляется никогда (решение Д112 (а)).
+     Сходимость держит deploy/notify_source_server_leaf_test.go. */}}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -106,6 +112,8 @@ spec:
     - {{ printf "%s.%s" $name $ns | quote }}
     - {{ printf "%s.%s.svc" $name $ns | quote }}
     - {{ printf "%s.%s.svc.cluster.local" $name $ns | quote }}
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $ns $name | quote }}
   usages:
     - server auth
 ---
