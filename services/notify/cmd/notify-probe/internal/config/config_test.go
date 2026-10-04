@@ -255,3 +255,62 @@ func TestDSNCarriesCredentialsTheDriverReadsBack(t *testing.T) {
 		}
 	}
 }
+
+// withPolicyWindow подменяет запись политики платформы для окна этой ручки на
+// время пробы: шов — сама политика (corelib/authz.RevocationPolicy.Windows),
+// откуда Load берёт значение через policyWindow. Подменяется ссылка на
+// перепись, а не её содержимое: общая карта фундамента не меняется, и по
+// завершении пробы на место возвращается та же самая карта.
+func withPolicyWindow(t *testing.T, window time.Duration) {
+	t.Helper()
+	orig := authz.RevocationPolicy.Windows
+	windows := make(map[string]time.Duration, len(orig)+1)
+	for k, v := range orig {
+		windows[k] = v
+	}
+	windows[revocationWindowKey] = window
+	authz.RevocationPolicy.Windows = windows
+	t.Cleanup(func() { authz.RevocationPolicy.Windows = orig })
+}
+
+// processEnv — окружение процесса для Load: доставка выключена (Load читает
+// флаг из окружения процесса, и выключенная доставка не требует кольца с
+// диска), окно отзыва — поданное значение.
+func processEnv(t *testing.T, ttl string) {
+	t.Helper()
+	t.Setenv("KACHO_NOTIFYPROBE_DB_PASSWORD", "pw")
+	t.Setenv(FlagKnob, "false")
+	t.Setenv(KeyringKnob, "")
+	t.Setenv(NotifySANKnob, "")
+	t.Setenv(ttlKnob, ttl)
+}
+
+// B1 по классу: значение политики в тексте отказа судится по ВСЕМУ пути
+// Load → policyWindow → запись политики, а не по поданному параметру load.
+// Запись политики подменена на 7s — значение, отличное и от умолчания тега, и
+// от действующей записи (5s), — поэтому литерал 5s в любом звене источника
+// (Load подаёт 5*time.Second; policyWindow возвращает 5*time.Second) здесь
+// краснеет. Близнец — то же значение политики при положительном окне: Load
+// принимает загрузку, и окно доезжает до поля.
+func TestLoadRefusalNamesTheValueOfThePolicyRecord(t *testing.T) {
+	const window = 7 * time.Second
+	if live := authz.RevocationPolicy.Windows[revocationWindowKey]; live == window {
+		t.Fatalf("значение пробы %s совпало с действующей записью политики — проба не отличит литерал от подстановки", window)
+	}
+	withPolicyWindow(t, window)
+
+	processEnv(t, "0s")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "значение политики платформы — "+window.String()+")") {
+		t.Fatalf("Load не подставил значение записи политики %s в текст отказа окна: %v", window, err)
+	}
+
+	processEnv(t, "3s")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("близнец: положительное окно при записи политики %s отвергнуто: %v", window, err)
+	}
+	if c.AuthZCacheTTL != 3*time.Second {
+		t.Fatalf("близнец: окно разобрано как %s, ожидалось 3s", c.AuthZCacheTTL)
+	}
+}
