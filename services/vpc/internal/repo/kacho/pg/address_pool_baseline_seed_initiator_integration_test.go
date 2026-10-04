@@ -25,6 +25,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
@@ -129,4 +130,36 @@ func TestAddressPoolBaseline_NTF3162_StandSeedWritesJournalWithInitiator(t *test
 	require.Equal(t, 1, laneCount(t, pool), "повторный посев изменил полосу")
 	t.Logf("NTF3-162: P0=%d, строка %d (%s %s %s, initiator=%q); близнец: P1=%d, строк после — 0",
 		p0, got.Seq, got.Kind, got.ResourceID, got.Event, got.Initiator, p1)
+}
+
+// TestAddressPoolBaseline_SeedRefusesAJournalWithoutTheInitiatorColumn — посев
+// «после миграций под-фазы» проверяется файлом, а не подразумевается рецептом:
+// на базе, чей журнал vpc ещё без колонки `initiator` (служба старой ревизии),
+// посев отказывает до вставки с кодом `55000` и не пишет ни пула, ни строки
+// журнала. Без этой проверки вставка прошла бы молча и записала строку журнала
+// без инициатора. Законный близнец — та же база с колонкой: проба NTF3-162 выше.
+func TestAddressPoolBaseline_SeedRefusesAJournalWithoutTheInitiatorColumn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	pool, b := newBaselinePool(t)
+	ctx := context.Background()
+
+	requireJournalCarriesInitiatorColumn(t, pool)
+	// Единственный изменённый факт против NTF3-162: колонки инициатора нет.
+	_, err := pool.Exec(ctx, `ALTER TABLE kacho_vpc.vpc_outbox DROP COLUMN initiator`)
+	require.NoError(t, err)
+	p0 := vpcJournalPosition(t, pool)
+
+	_, err = pool.Exec(ctx, b.SQL)
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "посев на журнале без колонки инициатора не отказал")
+	require.Equal(t, "55000", pgErr.Code, "код отказа посева: %s", pgErr.Message)
+	require.Contains(t, pgErr.Message, "initiator", "отказ не называет колонку")
+
+	var pools, journal int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM address_pools WHERE id = $1`, b.ID).Scan(&pools))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM vpc_outbox WHERE sequence_no > $1`, p0).Scan(&journal))
+	require.Zero(t, pools, "отказавший посев оставил пул")
+	require.Zero(t, journal, "отказавший посев оставил строку журнала")
 }
