@@ -60,14 +60,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-forward() { # forward <svc> <удалённый порт> → печатает локальный порт
+# forward <svc> <удалённый порт> — поднимает проброс и кладёт локальный порт в
+# FWD_PORT. Не через подстановку `$(…)`: она исполняется в подоболочке, и pid
+# проброса, записанный там в PF_PIDS, до trap не доходит — проброс пережил бы
+# шаг (так и наблюдалось на первой ноге own).
+FWD_PORT=""
+forward() {
   local svc="$1" port="$2" lp _
   lp="$(free_port)"
   kubectl -n "$NS" port-forward "svc/$svc" "$lp:$port" >/dev/null 2>&1 &
   PF_PIDS+=("$!")
   for _ in $(seq 1 40); do
     if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.5); sys.exit(s.connect_ex(('127.0.0.1',$lp)))" 2>/dev/null; then
-      echo "$lp"; return 0
+      FWD_PORT="$lp"; return 0
     fi
     sleep 0.5
   done
@@ -87,9 +92,12 @@ if [ "${1:-}" != "--prove-twin" ]; then
   export KACHO_CLOUD_ADMIN_EMAIL KACHO_CLOUD_ADMIN_PASSWORD
 fi
 
-gw="$(forward api-gateway 8080)" || die "проброс к внешнему слушателю края не поднялся" 75
-gwi="$(forward api-gateway 8081)" || die "проброс к внутреннему слушателю края не поднялся" 75
-mb="$(forward "$RELEASE-mailpit" 8025)" || die "проброс к приёмнику писем стенда не поднялся" 75
+forward api-gateway 8080 || die "проброс к внешнему слушателю края не поднялся" 75
+gw="$FWD_PORT"
+forward api-gateway 8081 || die "проброс к внутреннему слушателю края не поднялся" 75
+gwi="$FWD_PORT"
+forward "$RELEASE-mailpit" 8025 || die "проброс к приёмнику писем стенда не поднялся" 75
+mb="$FWD_PORT"
 log "пробросы: край (внешний, внутренний) и приёмник писем подняты; снимаются на выходе"
 
 KACHO_EDGE_URL="http://127.0.0.1:$gw" \
