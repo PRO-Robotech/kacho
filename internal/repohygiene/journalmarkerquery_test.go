@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // journalCensusFloor — нижняя граница переписи носителей.
@@ -35,16 +37,18 @@ const journalCensusFloor = 500
 // и снимают, и последнее слово за последней миграцией.
 func journalTablesFromMigrations(t *testing.T, root string, rels []string) ([]JournalTable, DeliveryMarkerCensus, int) {
 	t.Helper()
+	// Миграция — файл цепочки из перечня migrationchains, а не путь с сегментом
+	// /internal/migrations/ (kacho#2915, CX1-114); владелец — каталог службы цепочки.
+	chains, err := chainsOfComposition(root, rels)
+	if err != nil {
+		t.Fatalf("перечень цепочек: %v", err)
+	}
 	byOwner := map[string][]string{}
 	for _, rel := range rels {
-		if !strings.HasSuffix(rel, ".sql") {
+		if !migrationchains.IsChainSQL(chains, rel) {
 			continue
 		}
-		idx := strings.Index(rel, "/internal/migrations/")
-		if idx < 0 {
-			continue
-		}
-		owner := rel[:idx]
+		owner := "services/" + strings.Split(rel, "/")[1]
 		byOwner[owner] = append(byOwner[owner], rel)
 	}
 	var (

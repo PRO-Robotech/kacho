@@ -145,26 +145,23 @@ func judgeDropGuardProducers(owners []dropGuardOwner, exemptions map[string]stri
 	return findings
 }
 
-// dropGuardOwners — обход дерева. Перечень ВЫВОДИТСЯ, а не выписывается.
+// dropGuardOwners — обход дерева. Перечень ВЫВОДИТСЯ, а не выписывается:
+// каталоги цепочек — у migrationchains.List (через migrationDirs), а не из
+// имени службы (kacho#2915, CX1-114).
 func dropGuardOwners(t *testing.T, root string) []dropGuardOwner {
 	t.Helper()
-	services, err := os.ReadDir(filepath.Join(root, "services"))
-	if err != nil {
-		t.Fatalf("не прочитан каталог служб: %v", err)
-	}
-
 	var out []dropGuardOwner
-	for _, svc := range services {
-		if !svc.IsDir() {
+	for _, cd := range migrationDirs(t, root) {
+		if _, statErr := os.Stat(filepath.Join(cd.Dir, dropGuardManifest)); statErr != nil {
 			continue
 		}
-		dir := filepath.Join(root, "services", svc.Name(), "internal", "migrations")
-		if _, statErr := os.Stat(filepath.Join(dir, dropGuardManifest)); statErr != nil {
-			continue
+		rel, err := filepath.Rel(root, cd.Dir)
+		if err != nil {
+			t.Fatalf("относительный путь %s: %v", cd.Dir, err)
 		}
 		out = append(out, dropGuardOwner{
-			Pkg:      "services/" + svc.Name() + "/internal/migrations",
-			HasProbe: dirCallsDropGuardRunner(t, dir),
+			Pkg:      filepath.ToSlash(rel),
+			HasProbe: dirCallsDropGuardRunner(t, cd.Dir),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Pkg < out[j].Pkg })

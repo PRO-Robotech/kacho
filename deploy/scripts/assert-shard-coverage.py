@@ -225,9 +225,427 @@ def tracked_requests(root: pathlib.Path, tree: dict[str, list[str]]) -> dict[str
     return out
 
 
+def chart_templates(root: pathlib.Path) -> dict:
+    """путь → текст каждого ОТСЛЕЖИВАЕМОГО шаблона чарта (`*/templates/*`).
+
+    Единица — элемент индекса git, а не файл на диске: под деревом лежат
+    распакованные архивы зависимостей и копии полос.
+    """
+    r = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--", "*/templates/*"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return {}
+    out = {}
+    for rel in filter(None, r.stdout.split("\0")):
+        try:
+            out[rel] = (root / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return out
+
+
+_LAUNCH_KEY = re.compile(r'^(?P<ind>\s*)(?:-\s+)?(?P<key>command|args|image):\s*(?P<val>.*)$')
+
+
+def _argv0(val: str) -> str:
+    """Первый элемент значения `command:`/`args:` в форме потока (`["a", "b"]`) либо
+    скаляра; пустая строка — значение не задано в строке (блочный список)."""
+    v = val.split(" #", 1)[0].strip()
+    if v.startswith("["):
+        v = v[1:].split(",", 1)[0].rstrip("]")
+    return v.strip().strip("'\"").strip()
+
+
+def _image_name(val: str) -> str:
+    """Последний сегмент пути репозитория образа без тега и дайджеста."""
+    v = val.split(" #", 1)[0].strip().strip("'\"")
+    v = v.split("@", 1)[0]
+    last = v.rsplit("/", 1)[-1]
+    return last.split(":", 1)[0]
+
+
+def chart_values(root: pathlib.Path) -> dict:
+    """путь → текст каждого ОТСЛЕЖИВАЕМОГО файла значений и `Chart.yaml` чартов.
+
+    Нужны распознавателю запуска образом в ШАБЛОННОЙ форме: строка `image:` чарта
+    почти всегда ссылается на значения (`{{ .Values.image.repository }}:…`,
+    `{{ include "<чарт>.image" . }}`), и имя репозитория стоит в values, а не в
+    шаблоне. Единица — элемент индекса git, как у шаблонов.
+    """
+    r = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--",
+                        "*/values*.yaml", "*/Chart.yaml"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return {}
+    out = {}
+    for rel in filter(None, r.stdout.split("\0")):
+        try:
+            out[rel] = (root / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return out
+
+
+_ACTION = re.compile(r'\{\{-?(.*?)-?\}\}', re.S)
+_SOURCE = re.compile(r'(?<![\w"])(\$[A-Za-z_]\w*|\$|)((?:\.[A-Za-z_][\w-]*)+)')
+_INCLUDE_REF = re.compile(r'\b(?:include|template)\s+"([^"]+)"')
+_DEFAULT_LIT = re.compile(r'\bdefault\s+"([^"]*)"')
+_DEFINE = re.compile(r'\{\{-?\s*define\s+"([^"]+)"\s*-?\}\}')
+
+
+def _yaml_load(text: str):
+    import yaml
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+
+
+class ImageResolver:
+    """Кандидаты имени образа для строки `image:` в ШАБЛОННОЙ форме.
+
+    Строка, несущая `{{`, сама имени образа не называет — его называют значения
+    чарта. Разрешение идёт по ССЫЛКАМ действия шаблона, а не по тексту рядом:
+
+      * `.Values.<путь>` (и `$.Values.<путь>`) — путь в файлах значений чарта
+        (`<чарт>/values*.yaml`) и в поддеревьях зонтичных чартов, подключающих его
+        `file://` (ключ — `alias` либо `name` зависимости);
+      * `$имя.<поля>` — присваивание `$имя := <выражение>` (в том числе
+        `range … $имя := <выражение>` — тогда элементы списка) в тексте того же
+        файла либо того `define`, где стоит строка; выражение разрешается тем же
+        способом, поля дописываются к его пути;
+      * `fromYaml (include "<имя>" .)` с полями — ключ `"<поле>"` словаря,
+        который собирает `define` (форма объекта настроек);
+      * `include "<имя>" .` без полей — ссылки текста этого `define`, транзитивно,
+        в пределах шаблонов ТОГО ЖЕ чарта;
+      * `default "<литерал>"` — литерал тоже кандидат.
+
+    Значение-строка — кандидат; значение-таблица — её `repository` либо `image`.
+    Строка со схемой (`spiffe://…`, `https://…`) кандидатом не бывает: ссылка на
+    образ схемы не несёт, а сегмент SAN `sa/<процесс>` иначе читался бы образом.
+
+    Ссылка, которую разрешить не удалось, — НЕ «не запускает»: она считается и
+    называется переписью (`unresolved`), чтобы слепое пятно было видно, а не
+    молчаливо.
+    """
+
+    def __init__(self, templates: dict, values: dict) -> None:
+        self.templates = templates
+        self.values = values
+        self.stats = {"templated": 0, "resolved": 0, "unresolved": []}
+        self._parsed: dict[str, object] = {}
+        self._umbrella_keys = self._parents()
+        self._seen_lines: set[tuple[str, str]] = set()
+
+    def _doc(self, path: str):
+        if path not in self._parsed:
+            text = self.values.get(path)
+            self._parsed[path] = _yaml_load(text) if text is not None else None
+        return self._parsed[path]
+
+    def _parents(self) -> dict[str, list[tuple[str, str]]]:
+        """каталог подчарта → [(каталог зонтика, ключ значений)] по `file://`."""
+        out: dict[str, list[tuple[str, str]]] = {}
+        for path in self.values:
+            if not path.endswith("/Chart.yaml"):
+                continue
+            doc = self._doc(path)
+            parent = path[: -len("/Chart.yaml")]
+            deps = (doc.get("dependencies") or []) if isinstance(doc, dict) else []
+            for dep in deps:
+                repo = str(dep.get("repository") or "")
+                if not repo.startswith("file://"):
+                    continue
+                parts: list[str] = []
+                for seg in f"{parent}/{repo[len('file://'):]}".split("/"):
+                    if seg == "..":
+                        if parts:
+                            parts.pop()
+                    elif seg not in ("", "."):
+                        parts.append(seg)
+                key = str(dep.get("alias") or dep.get("name") or "")
+                if key:
+                    out.setdefault("/".join(parts), []).append((parent, key))
+        return out
+
+    def _values_files(self, chart: str) -> list[str]:
+        return [p for p in sorted(self.values)
+                if p.startswith(chart + "/") and "/" not in p[len(chart) + 1:]
+                and p.rsplit("/", 1)[-1].startswith("values") and p.endswith(".yaml")]
+
+    def _value_roots(self, chart: str) -> list:
+        roots = [self._doc(p) for p in self._values_files(chart)]
+        for parent, key in self._umbrella_keys.get(chart, []):
+            for p in self._values_files(parent):
+                doc = self._doc(p)
+                if isinstance(doc, dict) and key in doc:
+                    roots.append(doc[key])
+        return [r for r in roots if r is not None]
+
+    def _defines(self, chart: str) -> dict[str, str]:
+        """имя define → его текст (до следующего define либо конца файла)."""
+        out: dict[str, str] = {}
+        for path, text in self.templates.items():
+            if not path.startswith(chart + "/templates/"):
+                continue
+            marks = list(_DEFINE.finditer(text))
+            for k, m in enumerate(marks):
+                end = marks[k + 1].start() if k + 1 < len(marks) else len(text)
+                out[m.group(1)] = text[m.end():end]
+        return out
+
+    @staticmethod
+    def _assignment(scope: str, var: str) -> tuple[str, bool] | None:
+        """Выражение присваивания `$var` в тексте области; второе — элементы списка."""
+        rng = re.search(r'range\s+(?:\$\w+\s*,\s*)?\$' + re.escape(var) + r'\s*:=\s*(.*?)-?\}\}',
+                        scope, re.S)
+        if rng:
+            return rng.group(1), True
+        m = re.search(r'\$' + re.escape(var) + r'\s*:?=\s*(.*?)-?\}\}', scope, re.S)
+        return (m.group(1), False) if m else None
+
+    def _expr_paths(self, expr: str, scope: str, defines: dict, fields: list[str],
+                    depth: int) -> tuple[list[list[str]], list[str], bool]:
+        """→ (пути в значениях, литералы, всё ли разрешено) для выражения."""
+        if depth > 8:
+            return [], [], False
+        paths: list[list[str]] = []
+        lits = list(_DEFAULT_LIT.findall(expr))
+        ok = True
+        head = expr.split("|", 1)[0]
+        inc = _INCLUDE_REF.search(head)
+        if inc and fields:
+            body = defines.get(inc.group(1))
+            if body is None:
+                return paths, lits, False
+            km = re.search(r'"' + re.escape(fields[0]) + r'"\s+\(?\s*([^)\n]*)', body)
+            if not km:
+                return paths, lits, False
+            p2, l2, ok2 = self._expr_paths(km.group(1), body, defines, fields[1:], depth + 1)
+            return paths + p2, lits + l2, ok2
+        if inc:
+            body = defines.get(inc.group(1))
+            if body is None:
+                return paths, lits, False
+            # Действия управления (`if`, `else`, `end`) источников не несут — они
+            # не провал разрешения. Провал — ссылка, которую разрешить не удалось,
+            # либо ни одного пути и литерала на всё тело.
+            for a in _ACTION.findall(body):
+                if not _SOURCE.search(a.split("|", 1)[0]) and not _INCLUDE_REF.search(a):
+                    lits += _DEFAULT_LIT.findall(a)
+                    continue
+                p2, l2, ok2 = self._expr_paths(a, body, defines, [], depth + 1)
+                paths += p2
+                lits += l2
+                ok = ok and ok2
+            return paths, lits, ok and bool(paths or lits)
+        found = False
+        for var, dotted in _SOURCE.findall(head):
+            keys = dotted.strip(".").split(".")
+            if var in ("", "$"):
+                if keys[0] != "Values":
+                    continue
+                paths.append(keys[1:] + fields)
+                found = True
+                continue
+            asg = self._assignment(scope, var[1:])
+            if asg is None:
+                ok = False
+                continue
+            sub, is_range = asg
+            p2, l2, ok2 = self._expr_paths(sub, scope, defines,
+                                           (["[]"] if is_range else []) + keys + fields,
+                                           depth + 1)
+            paths += p2
+            lits += l2
+            ok = ok and ok2
+            found = True
+        if not found and not lits:
+            ok = False
+        return paths, lits, ok
+
+    @staticmethod
+    def _lookup(node, keys: list[str]) -> list:
+        if not keys:
+            return [node]
+        k, rest = keys[0], keys[1:]
+        if k == "[]":
+            items = node if isinstance(node, list) else (
+                list(node.values()) if isinstance(node, dict) else [])
+            out = []
+            for it in items:
+                out += ImageResolver._lookup(it, rest)
+            return out
+        if isinstance(node, dict) and k in node:
+            return ImageResolver._lookup(node[k], rest)
+        return []
+
+    @staticmethod
+    def _strings(node) -> list[str]:
+        if isinstance(node, str):
+            return [node]
+        if isinstance(node, dict):
+            for k in ("repository", "image"):
+                if isinstance(node.get(k), str):
+                    return [node[k]]
+        return []
+
+    def candidates(self, template_path: str, val: str) -> list[str]:
+        if "{{" not in val:
+            return [val]
+        chart = template_path.split("/templates/", 1)[0]
+        defines = self._defines(chart)
+        text = self.templates.get(template_path, "")
+        # Область присваиваний — define, внутри которого стоит строка, иначе файл.
+        scope = text
+        for body in defines.values():
+            if val in body and body in text:
+                scope = body
+                break
+        roots = self._value_roots(chart)
+        found: list[str] = []
+        ok = True
+        for action in _ACTION.findall(val):
+            paths, lits, a_ok = self._expr_paths(action, scope, defines, [], 0)
+            ok = ok and a_ok
+            found += lits
+            for keys in paths:
+                for root in roots:
+                    for node in self._lookup(root, keys):
+                        found += self._strings(node)
+        line = (template_path, val)
+        if line not in self._seen_lines:
+            self._seen_lines.add(line)
+            self.stats["templated"] += 1
+            if ok:
+                self.stats["resolved"] += 1
+            else:
+                self.stats["unresolved"].append(f"{template_path}: {val}")
+        return [c for c in found if "://" not in c]
+
+
+def launches(text: str, proc: str, path: str = "", resolver: ImageResolver | None = None) -> bool:
+    """Шаблон ЗАПУСКАЕТ процесс `proc`: первый элемент `command:` либо `args:`
+    контейнера (поток, скаляр или блочный список) называет исполняемый файл с
+    базовым именем `proc`, либо образ контейнера — репозиторий с последним сегментом
+    `proc`. Образ в ШАБЛОННОЙ форме (`{{ .Values.… }}`, `{{ include "….image" . }}`)
+    разрешается значениями чарта (`ImageResolver`); без распознавателя шаблонная
+    строка не называет ничего. Подстрока имени где-либо ещё (SAN, адрес, имя
+    Service, таблица источников) запуском не является (Д86)."""
+    lines = text.splitlines()
+    for i, ln in enumerate(lines):
+        m = _LAUNCH_KEY.match(ln)
+        if not m:
+            continue
+        val = m.group("val")
+        if m.group("key") == "image":
+            raw = val.split(" #", 1)[0].strip()
+            names = ([raw] if "{{" not in raw or resolver is None
+                     else resolver.candidates(path, raw))
+            if any(_image_name(c) == proc for c in names):
+                return True
+            continue
+        first = _argv0(val)
+        if not first:
+            ind = len(m.group("ind"))
+            for nxt in lines[i + 1:]:
+                if not nxt.strip() or nxt.lstrip().startswith("#"):
+                    continue
+                stripped = nxt.lstrip()
+                if len(nxt) - len(stripped) < ind or not stripped.startswith("- "):
+                    break
+                first = _argv0(stripped[2:])
+                break
+        if first and first.rsplit("/", 1)[-1] == proc:
+            return True
+    return False
+
+
+def undeployed_carriers(root: pathlib.Path, records: dict, b6: dict, union_b6: set,
+                        templates: dict | None = None,
+                        values: dict | None = None) -> tuple[dict, list, dict]:
+    """Записи «носитель не развёрнут» (`ban6_undeployed_carriers` манифеста).
+
+    ПРЕДМЕТ. Домен входит в популяцию ban #6, когда его контракт регистрирует
+    композиционный корень. Бывает носитель, чей корень регистрирует службу, а
+    НИ ОДИН чарт дерева этот процесс не запускает: экземпляра нет ни в одном
+    профиле, и ни один шард домен измерить не может — встречный контроль спросил
+    бы листенер, которого нет нигде. Требовать от шарда такой домен значило бы
+    требовать зелёного из отсутствия; молча снять его — завести невидимое
+    послабление. Поэтому запись ЕСТЬ, с причиной, и ВЫВОДИТСЯ ОБРАТНО из дерева:
+
+      * носитель записи обязан служить хотя бы один провязанный домен — иначе
+        запись без предмета (находка);
+      * процесс записи не ЗАПУСКАЕТ ни один отслеживаемый шаблон чарта (команда
+        либо образ контейнера, `launches`) — иначе носитель развёрнут, и запись
+        ИСТЕКЛА (находка: домен обязан взять шард). Подстрока имени в тексте
+        шаблона запуском НЕ считается: таблица источников notify называет
+        процесс пробы в SAN и адресе, не запуская его (Д86);
+      * домен засчитывается «не измеряемым» только когда ВСЕ его носители — в
+        записях; поперечный домен с развёрнутым носителем судится как прежде;
+      * домен записи, который уже берёт шард, — запись лишняя (находка).
+
+    Пустой обход шаблонов — отказ, а не «процесс нигде не назван».
+
+    → (домен → {carrier, process, reason, lifted_by}, находки, перепись).
+    """
+    findings: list[str] = []
+    hosts = b6.get("hosts", {})
+    served = set(b6.get("served", set()))
+    tpl = chart_templates(root) if templates is None else templates
+    vals = chart_values(root) if values is None else values
+    resolver = ImageResolver(tpl, vals)
+    stats = {"records": len(records), "templates_read": len(tpl), "values_read": len(vals),
+             "image_stats": resolver.stats}
+    if records and not tpl:
+        findings.append("записи «носитель не развёрнут» есть, а шаблонов чартов не прочитано "
+                        "НИ ОДНОГО — истечение записей проверить не на чем; это отказ, а не "
+                        "«процесс нигде не назван»")
+        return {}, findings, stats
+    if records and not vals:
+        findings.append("записи «носитель не развёрнут» есть, а файлов значений чартов не "
+                        "прочитано НИ ОДНОГО — образ в шаблонной форме разрешить нечем, и "
+                        "запуск образом остался бы невидимым; это отказ, а не «не запускает»")
+        return {}, findings, stats
+    valid: dict[str, dict] = {}
+    for carrier, rec in sorted(records.items()):
+        proc = str(rec.get("process") or "")
+        doms = sorted(d for d in served if carrier in hosts.get(d, []))
+        if not proc or not rec.get("reason") or not rec.get("lifted_by"):
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' без процесса, причины "
+                            f"или предиката снятия — запись, которую нельзя проверить, не заводится")
+            continue
+        if not doms:
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' без предмета: носитель "
+                            f"не служит ни одного провязанного домена — удали запись")
+            continue
+        named = sorted(path for path, text in tpl.items()
+                       if launches(text, proc, path, resolver))
+        if named:
+            findings.append(f"запись «носитель не развёрнут» '{carrier}' ИСТЕКЛА: процесс {proc} "
+                            f"запускает шаблон {', '.join(named)} — домен(ы) "
+                            f"{', '.join(doms)} обязан взять шард, а запись снимается")
+            continue
+        valid[carrier] = dict(rec, carrier=carrier, domains=doms)
+    pending: dict[str, dict] = {}
+    for d in sorted(served):
+        hs = hosts.get(d, [])
+        if hs and all(h in valid for h in hs):
+            info = valid[hs[0]]
+            if d in union_b6:
+                findings.append(f"домен '{d}' в записи «носитель не развёрнут», а шард его уже "
+                                f"измеряет — запись лишняя, удали её")
+                continue
+            pending[d] = {"carrier": info["carrier"], "process": info["process"],
+                          "reason": info["reason"], "lifted_by": info["lifted_by"]}
+    return pending, findings, stats
+
+
 def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
           ban6: dict | None = None,
-          shard_doc: pathlib.Path | None = None) -> tuple[list[str], dict]:
+          shard_doc: pathlib.Path | None = None,
+          templates: dict | None = None,
+          values: dict | None = None) -> tuple[list[str], dict]:
     """`ban6` — перепись популяции запрета #6; по умолчанию берётся из дерева.
 
     Параметр существует ради самопроверки: инъекция на СИНТЕТИЧЕСКОЙ переписи
@@ -395,7 +813,10 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
     if contract_b6 and not want_b6:
         findings.append("ни один Internal*-контракт дерева не регистрируется прод-кодом — "
                         "предикат провязки не нашёл предмет; это отказ, а не «нечего измерять»")
-    for d in sorted(want_b6 - union_b6):
+    pending_b6, pending_findings, pending_stats = undeployed_carriers(
+        root, manifest.get("ban6_undeployed_carriers", {}), b6, union_b6, templates, values)
+    findings += pending_findings
+    for d in sorted(want_b6 - union_b6 - set(pending_b6)):
         findings.append(f"домен '{d}' несёт Internal*-контракт, ПРОВЯЗАННЫЙ прод-кодом, "
                         f"но ban #6 для него не измеряет НИ ОДИН шард — метод остался бы "
                         f"«изолированным» просто потому, что его никто не спрашивал")
@@ -651,6 +1072,8 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
             f"итог судится отдельно")
 
     stats = {
+        "ban6_pending": pending_b6,
+        "ban6_pending_stats": pending_stats,
         "ban6_cross_domains": cross_b6,
         "transports_declared": len(transports),
         "transport_dialers": transport_dialers,
@@ -696,6 +1119,21 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
         print(f"   {dom:12s} контракт приземлён ({', '.join(svcs)}), но НЕ провязан ни "
               f"одним композиционным корнем — у ban #6 нет предмета; провяжут → домен "
               f"войдёт в охват сам, и этот гейт покраснеет, пока его не возьмёт шард")
+    # Домен, чей единственный носитель не развёрнут НИ ОДНИМ шаблоном дерева,
+    # называется на каждом прогоне вместе с причиной и предикатом снятия.
+    ps = st["ban6_pending_stats"]
+    im = ps.get("image_stats", {})
+    unres = im.get("unresolved", [])
+    print(f"ban #6: записей «носитель не развёрнут» {ps['records']}; шаблонов чартов "
+          f"осмотрено {ps['templates_read']}; файлов значений {ps.get('values_read', 0)}; "
+          f"строк образа в шаблонной форме {im.get('templated', 0)}, из них разрешено "
+          f"значениями {im.get('resolved', 0)}, НЕ разрешено {len(unres)}")
+    for u in unres:
+        print(f"   образ не разрешён (запуск по нему не судим): {u}")
+    for dom, info in sorted(st["ban6_pending"].items()):
+        print(f"   {dom:12s} НЕ ИЗМЕРЯЕТСЯ НИ ОДНИМ ШАРДОМ: носитель '{info['carrier']}' "
+              f"(процесс {info['process']}) не развёрнут ни одним шаблоном чарта — "
+              f"{info['reason']}; снимается: {info['lifted_by']}")
     # Домен, служимый НЕСКОЛЬКИМИ носителями, называется отдельно: у него нет
     # своего сервиса, поэтому «кто его измеряет» не выводится из имени.
     for dom, info in st["ban6_cross_domains"].items():
@@ -866,7 +1304,8 @@ def _self_test() -> int:
     ok = True
 
     def run(m: dict, label: str, want_red: bool, expect: str | None = None,
-            ban6: dict | None = None, shard_doc: pathlib.Path | None = None) -> None:
+            ban6: dict | None = None, shard_doc: pathlib.Path | None = None,
+            templates: dict | None = None, values: dict | None = None) -> None:
         """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
 
         Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
@@ -881,7 +1320,8 @@ def _self_test() -> int:
             json.dump(m, fh)
             p = pathlib.Path(fh.name)
         try:
-            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc)
+            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc,
+                                templates=templates, values=values)
         finally:
             p.unlink(missing_ok=True)
         red = bool(findings)
@@ -980,9 +1420,13 @@ def _self_test() -> int:
     m["shards"][0]["components"] = m["shards"][0]["components"] + ["kaname"]
     run(m, "(г) компонент вне gates", want_red=True)
 
-    # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml
+    # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml. Вход —
+    # НАСТОЯЩАЯ зависимость зонта без условия (`pg-geo`), а не имя, которого в
+    # Chart.yaml нет: прежний вход (подчарт экрана входа поставщика) снят вместе
+    # со своей зависимостью (#1276), и отсутствующее имя судило бы уже не ту
+    # форму — «нет зависимости», а не «зависимость без условия».
     m = copy.deepcopy(base)
-    m["gates"] = m["gates"] + ["kratos-selfservice-ui"]
+    m["gates"] = m["gates"] + ["pg-geo"]
     run(m, "(д) gate без condition в Chart.yaml", want_red=True,
         expect="НЕТ `condition:")
 
@@ -1260,6 +1704,149 @@ def _self_test() -> int:
                                            why="набирают его при 7 коллекциях")
     run(m, "(т8) знаменатель в ГЛУБИНЕ манифеста тоже судится", want_red=True,
         expect="объём осмотренного назван неверно")
+
+    # ── записи «носитель не развёрнут» (ban6_undeployed_carriers) ───────────
+    #
+    # Близнец — дерево как есть (п.11 и прочие близнецы выше): запись notify
+    # законна, пока процесс пробы не запускает ни один шаблон. Ниже — четыре
+    # стороны той же записи, каждая одним фактом.
+    if "notify" in base.get("ban6_undeployed_carriers", {}):
+        m = copy.deepcopy(base)
+        m["ban6_undeployed_carriers"] = {}
+        run(m, "(у1) запись notify снята → домен не измеряет НИ ОДИН шард", want_red=True,
+            expect="домен 'notify' несёт Internal*-контракт")
+
+        tpl = dict(chart_templates(ROOT))
+        proc = base["ban6_undeployed_carriers"]["notify"]["process"]
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f'command: ["/usr/local/bin/{proc}", "serve"]\n')
+        run(base, "(у2) процесс записи запускает шаблон → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        # (у2б) запуск блочным списком команды — тот же факт другой формой.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f"      containers:\n        - name: probe\n          command:\n"
+            f"            - /usr/local/bin/{proc}\n            - serve\n")
+        run(base, "(у2б) запуск блочным списком команды → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        # (у2в) запуск образом, чей репозиторий назван процессом.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f'          image: "docker.io/prorobotech/{proc}:1.0.0"\n')
+        run(base, "(у2в) запуск образом процесса → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        # (у2г) запуск первым элементом args (образ без своей точки входа).
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
+            f'          args: ["{proc}", "serve"]\n')
+        run(base, "(у2г) запуск первым элементом args → запись ИСТЕКЛА", want_red=True,
+            expect="ИСТЕКЛА", templates=tpl)
+
+        # (у2д) запуск образом в ШАБЛОННОЙ форме: строка `image:` ссылается на
+        # значения, репозиторий процесса назван в values зонтика. Близнец (у2е) —
+        # та же строка и те же ключи, репозиторий называет ДРУГОЙ процесс: запись
+        # не истекла. Между ними различие РОВНО одно — значение `repository`.
+        probe_tpl = ('      containers:\n        - name: probe\n'
+                     '          image: "{{ .Values.notifyProbe.image.repository }}:'
+                     '{{ .Values.notifyProbe.image.tag }}"\n')
+        vals = dict(chart_values(ROOT))
+        uv = "deploy/helm/umbrella/values.yaml"
+
+        def with_probe_repo(repo: str) -> dict:
+            v = dict(vals)
+            v[uv] = vals[uv] + (f"\nnotifyProbe:\n  image:\n    repository: "
+                                f"docker.io/prorobotech/{repo}\n    tag: \"1.0.0\"\n")
+            return v
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = probe_tpl
+        run(base, "(у2д) образ шаблонной формы, репозиторий процесса в values → ИСТЕКЛА",
+            want_red=True, expect="ИСТЕКЛА", templates=tpl, values=with_probe_repo(proc))
+        run(base, "(у2е) близнец: та же форма, репозиторий другого процесса → НЕ истекла",
+            want_red=False, templates=tpl, values=with_probe_repo("kacho-notify"))
+        # (у2ж) образ через помощник подчарта (`include "<чарт>.image"`), значение — в
+        # поддереве зонтика под ключом зависимости. Форма чарта notify в дереве.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/notify/templates/_probe_image.tpl"] = (
+            '{{- define "notify.probeImage" -}}'
+            '{{ .Values.probe.image.repository }}:{{ .Values.probe.image.tag }}'
+            '{{- end -}}\n')
+        tpl["deploy/helm/notify/templates/probe.yaml"] = (
+            '      containers:\n        - name: probe\n'
+            '          image: {{ include "notify.probeImage" . | quote }}\n')
+        v = dict(vals)
+        v[uv] = vals[uv] + (f"\nnotify:\n  probe:\n    image:\n      repository: "
+                            f"docker.io/prorobotech/{proc}\n      tag: \"1.0.0\"\n")
+        run(base, "(у2ж) образ через include помощника, значение в поддереве зонтика → ИСТЕКЛА",
+            want_red=True, expect="ИСТЕКЛА", templates=tpl, values=v)
+        # (у2и) близнец SAN: помощник образа читает рядом и идентичность пробы
+        # (`spiffe://…/sa/<процесс>`), репозиторий — другой процесс. Сегмент SAN
+        # образом не читается: запись НЕ истекла.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/notify/templates/_probe_image.tpl"] = (
+            '{{- define "notify.probeImage" -}}'
+            '{{ printf "%s:%s" .Values.probe.image.repository .Values.probe.image.tag }}'
+            '{{- /* {{ .Values.probe.identity }} */ -}}'
+            '{{- end -}}\n')
+        tpl["deploy/helm/notify/templates/probe.yaml"] = (
+            '      containers:\n        - name: probe\n'
+            '          image: {{ include "notify.probeImage" . | quote }}\n')
+        v = dict(vals)
+        v[uv] = vals[uv] + ("\nnotify:\n  probe:\n    identity: "
+                            f"spiffe://kacho.cloud/ns/kacho/sa/{proc}\n    image:\n"
+                            "      repository: docker.io/prorobotech/kacho-notify\n"
+                            "      tag: \"1.0.0\"\n")
+        run(base, "(у2и) близнец: SAN процесса рядом в помощнике образа → НЕ истекла",
+            want_red=False, templates=tpl, values=v)
+        # (у2з) пустая ведомость значений при записи → отказ, а не «не запускает».
+        run(base, "(у2з) файлов значений не прочитано при записи → отказ", want_red=True,
+            expect="файлов значений чартов не прочитано", values={})
+
+        # БЛИЗНЕЦЫ ПОДСТРОКИ (Д86): имя процесса в тексте шаблона без контейнера,
+        # который его запускает, — запись НЕ истекла, дерево зелёное. Прежний
+        # предикат (`proc in text`) красил оба.
+        # (у6) сегмент SAN и адрес пробы в таблице источников notify.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/notify/templates/sources-twin.yaml"] = (
+            "data:\n  KACHO_NOTIFY_SOURCES: '[{\"module\":\"probe\",\"feedAddr\":"
+            f"\"{proc}:9091\",\"san\":\"spiffe://kacho.cloud/ns/kacho/sa/{proc}\"}}]'\n"
+            f"      containers:\n        - name: notify\n"
+            f'          command: ["/usr/local/bin/kacho-notify", "serve", "--peer={proc}"]\n'
+            f'          image: "docker.io/prorobotech/kacho-notify:1.0.0"\n')
+        run(base, "(у6) SAN пробы в таблице источников без контейнера → запись НЕ истекла",
+            want_red=False, templates=tpl)
+        # (у7) Service с именем процесса без контейнера.
+        tpl = dict(chart_templates(ROOT))
+        tpl["deploy/helm/umbrella/templates/notify-probe-svc.yaml"] = (
+            f"kind: Service\nmetadata:\n  name: {proc}\nspec:\n  selector:\n"
+            f"    app: {proc}\n  ports:\n    - port: 9091\n")
+        run(base, "(у7) Service с именем процесса без контейнера → запись НЕ истекла",
+            want_red=False, templates=tpl)
+
+        m = copy.deepcopy(base)
+        m["ban6_undeployed_carriers"] = dict(
+            m["ban6_undeployed_carriers"],
+            dns={"process": "kacho-dns", "reason": "x", "lifted_by": "y"})
+        run(m, "(у3) запись о носителе без провязанного домена → без предмета",
+            want_red=True, expect="без предмета")
+
+        m = copy.deepcopy(base)
+        m["shards"][0]["components"] = m["shards"][0]["components"] + ["notify-probe"]
+        m["gates"] = sorted(set(m["gates"]) | {"notify-probe"})
+        m["gate_ban6_domains"] = dict(m["gate_ban6_domains"], **{"notify-probe": ["notify"]})
+        m.setdefault("gate_images", {})
+        m["gate_images"] = dict(m["gate_images"], **{"notify-probe": "notify"})
+        run(m, "(у4) домен записи уже берёт шард → запись лишняя", want_red=True,
+            expect="запись лишняя")
+
+        run(base, "(у5) пустой обход шаблонов при записи → отказ", want_red=True,
+            expect="шаблонов чартов не прочитано", templates={})
+    else:
+        print("  [FAIL] запись «носитель не развёрнут» notify в манифесте не найдена — "
+              "её стороны не проверены")
+        ok = False
 
     print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
     ok = _self_test_population() and ok

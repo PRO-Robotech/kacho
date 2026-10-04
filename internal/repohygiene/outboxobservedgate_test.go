@@ -1297,16 +1297,25 @@ func deliveryColumnInventory(t *testing.T, root string) (decls []deliveryColumnD
 	if err != nil {
 		t.Fatalf("читаю %s: %v", servicesDir, err)
 	}
+	// Цепочки службы — у migrationchains (gateChainDirs), а не из имени службы:
+	// у services/notify их несколько (kacho#2915, CX1-114).
+	chainDirsOf := map[string][]string{}
+	for _, cd := range gateChainDirs(t, root) {
+		chainDirsOf[cd.Service] = append(chainDirsOf[cd.Service], cd.Dir)
+	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		svc := e.Name()
-		migDir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, serr := treecorpus.UnderWithSuffix(migDir, ".sql")
-		if serr != nil {
-			// Служба без каталога миграций — законный случай, а не отказ.
-			sqls = nil
+		var sqls []string
+		for _, migDir := range chainDirsOf[svc] {
+			chainSQL, serr := treecorpus.UnderWithSuffix(migDir, ".sql")
+			if serr != nil {
+				// Цепочка без миграций — законный случай, а не отказ.
+				continue
+			}
+			sqls = append(sqls, chainSQL...)
 		}
 		sort.Strings(sqls) // имя миграции начинается с версии ⇒ лексикографический порядок = порядок применения
 		sources := make([]rawMigration, 0, len(sqls))

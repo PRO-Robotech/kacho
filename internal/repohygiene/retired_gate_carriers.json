@@ -93,6 +93,82 @@
       "fate": "gone"
     },
     {
+      "carrier": "deploy/identity_delivery_flows_declared_once_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-18: потоки письма поставщика объявлены одним местом, профиль второго мнения о них не заводит",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_file_keys_survive_the_environment_injection_test.go",
+      "reason": "инъекцией доказывал, что ключ файла настроек поставщика не перебит одноимённой переменной окружения его процесса",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_flow_path_is_served_injection_test.go",
+      "reason": "инъекцией доказывал, что гейт согласия адресов потока поставщика (объявления ui_url против полосы раздачи консоли) падает, молчит и отличает «не обслуживается» от «неразрешимо»",
+      "successor": "снято kacho#1276 вместе с подчартами поставщика личности: объявления зависимостей, архивы, каталог charts/identity-selfservice-ui, их базы и настройки поставщика в профилях зонта сняты одним изменением — судить нечего. Возврат поставщика в зонт — находка deploy/own_posture_foreign_identity_test.go (сторона дерева), его след в рендере каждой цепочки — находка deploy/stack_render_carries_no_vendor_residue_test.go; объявлений ui_url и полосы раздачи к экрану поставщика нет ни в одном чарте, адреса церемоний обслуживает оболочка консоли (приёмка F8, Р1), возврат полосы на цепочке посадки own — находка deploy/tests/helm/console-serves-identity-flows-test.sh",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_inherited_schemas_injection_test.go",
+      "reason": "инъекцией доказывал, что наша секция схем поставщика покрывает схемы слоя под нами при замещающем слиянии списков",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_method_comment_matches_declaration_injection_test.go",
+      "reason": "инъекцией доказывал, что перечень полос входа сверяется с разобранным объявлением поставщика, а не с комментарием",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_replaced_lists_injection_test.go",
+      "reason": "инъекцией доказывал, что список, объявленный обеими сторонами настроек поставщика, несёт явное решение",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_schema_body_single_node_injection_test.go",
+      "reason": "инъекцией доказывал, что тело схемы личности объявлено в профиле одним узлом по обеим формам записи — нашей секции унаследованных схем и секции подчарта поставщика",
+      "successor": "снято kacho#1276 вместе с подчартами поставщика личности: объявления зависимостей, архивы, каталог charts/identity-selfservice-ui, их базы и настройки поставщика в профилях зонта сняты одним изменением — судить нечего. Возврат поставщика в зонт — находка deploy/own_posture_foreign_identity_test.go (сторона дерева), его след в рендере каждой цепочки — находка deploy/stack_render_carries_no_vendor_residue_test.go; секции поставщика и узла унаследованных схем в профилях нет",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_session_secret_source_injection_test.go",
+      "reason": "инъекцией доказывал, что гейт называет недостающую величину сессии поставщика и не требует секрета от профиля извне git",
+      "successor": "снято kacho#1276 вместе с подчартами поставщика личности: объявления зависимостей, архивы, каталог charts/identity-selfservice-ui, их базы и настройки поставщика в профилях зонта сняты одним изменением — судить нечего. Возврат поставщика в зонт — находка deploy/own_posture_foreign_identity_test.go (сторона дерева), его след в рендере каждой цепочки — находка deploy/stack_render_carries_no_vendor_residue_test.go; секретов, которые чеканил его чарт, нет. Величины НАШЕЙ сессии судит страж рендера templates/identity-session-secret-guard.yaml, его пробу — deploy/tests/helm/identity-guards-on-our-own-posture-test.sh",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_step_declaration_parses_injection_test.go",
+      "reason": "инъекцией доказывал, что объявление шага подстановки настроек поставщика разбирается как YAML и не дублирует имён",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_step_survives_kubernetes_expansion_injection_test.go",
+      "reason": "инъекцией доказывал, что текст шага подстановки настроек поставщика доезжает до оболочки мимо подстановки Kubernetes",
+      "successor": "снято kacho#2818 вместе с провязкой поставщика в подчарте службы доступа: пин kaname на kaname#363 держит одну посадку, конфигурации и процесса поставщика в дереве нет — судить нечего. Отсутствие следа поставщика в рендере судят deploy/kaname_subchart_retired_identity_wiring_test.go и deploy/stack_render_carries_no_vendor_residue_test.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_verification_mirrors_the_requirement_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-16: требование подтверждённого адреса у поставщика не стоит при выключенном потоке подтверждения",
+      "successor": "снято kacho#2818: выключатель потока подтверждения был ручкой поставщика, его в дереве нет; у полосы службы на пине caf1c95c ручек глагола подтверждения пять и выключателя среди них нет (internal/apps/kaname/config/login_lane.go), то есть состояние, которое судил носитель, в настройках не выразимо",
+      "fate": "gone"
+    },
+    {
+      "carrier": "deploy/identity_verified_address_required_on_both_lanes_injection_test.go",
+      "reason": "инъекцией доказывал MAIL-52: требование подтверждённого адреса на входе стоит на каждой полосе поставщика",
+      "successor": "снято kacho#2818: полос поставщика нет, требование живёт в коде службы — правило выдачи удостоверения человеку, которое каждая полоса выдачи обязана спросить (kaname#456); его судит гейт полос выдачи службы",
+      "fate": "carried",
+      "carried_to": {
+        "repo": "PRO-Robotech/kaname",
+        "path": "internal/check/address_admission_gates_test.go"
+      }
+    },
+    {
       "carrier": "deploy/internal_rest_client_auth_parity_injection_test.go",
       "reason": "доказательство падучести снятого выше носителя",
       "successor": "носитель снят вместе со своим гейтом, но ПРЕДМЕТ не исчез: он уехал вместе со службой и стережётся по координате carried_to. Прежняя редакция говорила «снято вместе с носителем», то есть «предмета больше нет», — и это было ложью (#2602)",
@@ -1695,6 +1771,24 @@
         "repo": "PRO-Robotech/corelib",
         "path": "treecorpus/index_cache_test.go"
       }
+    },
+    {
+      "carrier": "ui-future/deploy/identity_dev_ceremony_band_injection_test.go",
+      "reason": "инъекцией доказывал, что проба полосы сборщика краснеет на безусловном монтировании и на умолчании адреса и молчит на условных формах",
+      "successor": "снято kacho#1276 вместе со своим гейтом ui-future/deploy/identity_dev_ceremony_band_test.go и его предметом: полосы нет ни в одной конфигурации сборщика — вносить дефект некуда",
+      "fate": "gone"
+    },
+    {
+      "carrier": "ui-future/deploy/identity_dev_ceremony_band_test.go",
+      "reason": "судил, что полоса сборщика, отдающая адреса церемоний внешнему экрану, монтируется только при объявленном адресе и без его умолчания",
+      "successor": "снято kacho#1276 вместе с полосой в обеих конфигурациях сборщика: внешнего экрана входа нет, адреса церемоний в разработке и на стенде отдаёт консоль — судить нечего. Возврат полосы под именем поставщика — рост убывающего потолка привязок internal/repohygiene/retiredidentityvendorceiling.go",
+      "fate": "gone"
+    },
+    {
+      "carrier": "ui-future/deploy/identity_serving_precedence_test.go",
+      "reason": "судил порядок разрешения раздачи консоли для полосы к экрану входа поставщика (регулярка-полоса против регулярки статики и заглушки одностраничного приложения) и согласие её сегментов с полосой сборщика",
+      "successor": "снято kacho#1276 вместе с полосой: внешний экран входа снят, полосы нет ни в раздаче, ни в сборщике, адреса церемоний достаются оболочке консоли — судить нечего. Разбор объявления раздачи и доказательство, что выбор блока режет в обе стороны, переехали тем же изменением в ui-future/deploy/console_serving_template_test.go: их читают живые пробы пакета",
+      "fate": "gone"
     }
   ],
   "retired_scopes": [

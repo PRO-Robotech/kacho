@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // serviceMigrationSets и serviceRootSources читают ИНДЕКС git: вердикт обязан
@@ -47,11 +49,6 @@ func schemaReaderTreeFacts(t *testing.T) (services []string, withMigrations []st
 		svc := parts[1]
 		seenService[svc] = true
 
-		if strings.HasPrefix(rel, "services/"+svc+"/internal/migrations/") &&
-			strings.HasSuffix(rel, ".sql") {
-			hasMigrations[svc] = true
-		}
-
 		if !strings.HasPrefix(rel, "services/"+svc+"/cmd/") ||
 			!strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			continue
@@ -63,6 +60,22 @@ func schemaReaderTreeFacts(t *testing.T) (services []string, withMigrations []st
 			t.Fatalf("файл %s есть в индексе и не читается с диска: %v", rel, rerr)
 		}
 		roots = append(roots, schemaReaderSource{Service: svc, Rel: rel, Body: string(b)})
+	}
+
+	// Служба с миграциями — служба, у которой цепочка с файлами есть в
+	// перечне migrationchains, а не служба с каталогом internal/migrations:
+	// цепочка пробы notify лежит в internal/probemigrations (kacho#2915, CX1-114).
+	chains, cerr := migrationchains.FromTree(tree)
+	if cerr != nil {
+		t.Fatalf("перечень цепочек дерева: %v", cerr)
+	}
+	for _, c := range chains {
+		for _, rel := range tree.SortedFiles() {
+			if strings.HasPrefix(rel, c.Dir+"/") && strings.HasSuffix(rel, ".sql") {
+				hasMigrations[c.Service] = true
+				break
+			}
+		}
 	}
 
 	for s := range seenService {

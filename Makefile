@@ -245,7 +245,7 @@ UNIT_TIMEOUT ?= 40m
 INTEGRATION_TIMEOUT ?= 25m
 
 # Сервисы, у которых есть интеграционные пакеты. Совпадает с матрицей CI.
-SERVICES ?= vpc compute geo nlb storage registry
+SERVICES ?= vpc compute geo nlb storage registry notify
 
 # ─── ВТОРОГО МОДУЛЯ В ДЕРЕВЕ НЕТ ─────────────────────────────────────────────
 #
@@ -517,6 +517,25 @@ test-unit: $(HOOKS_NOTICE)
 ## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
 ## которого «ничего не нашлось» — законный исход (код 1).
 ##
+## НОЛЬ ИСПОЛНЕННОГО — ОТКАЗ (kacho#2915, Д92, Д106 (г)). Служба в перечне без
+## единого отобранного пакета и прогон, ни одна проба которого не исполнилась,
+## печатали «пропуск»/`ok` и выходили нулём — зелёный при нуле исполненного.
+## Единица счёта — ПРОБА, по СОБЫТИЯМ `go test -json` (`pass`/`fail` с именем
+## пробы), а не пакет: строка `ok` пакета, у которого исполнились одни пропуски,
+## по пакетному счёту не отличалась от исполнившего. События читает прогонщик
+## юнитов (`.github/scripts/go-test-verdict.py`): он пропускает вывод насквозь
+## (классификатор ниже читает тот же текст) и печатает перепись; цель печатает
+## «проб исполнено по событиям go test -json N (pass · fail) · пропущено ·
+## не выполнилось» и при зелёном исходе с N = 0 отказывает. Код `go test`
+## (через `xargs`) классификатор получает прежним, код прогонщика судится
+## отдельно. Форма команды закреплена пробой выпуска RG1.1
+## (services/storage/tools, argv из десяти слов, `-json` в нём).
+##
+## Вторая альтернатива отбора — пакеты каталога notify с настоящей базой
+## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92): их пробы
+## гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит. Шире
+## (`cmd/` всех служб) отбор не берётся — радиус не измерен.
+##
 ## `-tags=integration` ОБЯЗАТЕЛЕН, и добавлен он позже самой цели (#489). Без
 ## него файл под `//go:build integration` не попадает в сборку НИ В ОДНОМ
 ## прогоне: юнит-джоба идёт с `-short`, а эта — шла без тегов. У compute так
@@ -560,13 +579,22 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; fi; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)'); \
-	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/cmd/(notify-probe(/internal/send)?|migrator)$$'); \
+	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l)) — ОТКАЗ: исполнено проб 0" >&2; exit 1; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
-	log=$$(mktemp); rc=0; \
-	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
+	log=$$(mktemp); \
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -json -p 1 2>&1 \
+	  | python3 $(CURDIR)/.github/scripts/go-test-verdict.py --ledger $(CURDIR)/.github/scripts/gate-skips-allowed.txt \
+	  | tee "$$log"; \
+	codes=("$${PIPESTATUS[@]}"); rc=$${codes[1]}; vrc=$${codes[2]}; \
 	out=0; deploy/scripts/classify-integration-outcome.sh "$$rc" "$$log" || out=$$?; \
-	rm -f "$$log"; exit $$out
+	census=$$(sed -nE 's/.*проб исполнено ([0-9]+) · упало ([0-9]+) .*ПРОПУЩЕНО ([0-9]+) · НЕ ВЫПОЛНИЛОСЬ ([0-9]+).*/\1 \2 \3 \4/p' "$$log" | tail -n 1); \
+	rm -f "$$log"; \
+	read -r pass fail skip unrun <<< "$${census:-x x x x}"; \
+	if [ "$$pass" = x ]; then echo "integration $(SVC): перепись прогонщика не напечатана — счёт исполненного НЕ ИЗМЕРЕН, ОТКАЗ" >&2; exit 1; fi; \
+	echo "integration $(SVC): проб исполнено по событиям go test -json $$((pass + fail)) (pass $$pass · fail $$fail) · пропущено $$skip · не выполнилось $$unrun"; \
+	if [ "$$out" -eq 0 ] && { [ $$((pass + fail)) -eq 0 ] || [ "$$vrc" -ne 0 ]; }; then echo "integration $(SVC): проб исполнено по событиям 0 либо прогонщик отказал (код $$vrc) — ОТКАЗ, а не зелёный" >&2; exit 1; fi; \
+	exit $$out
 else
 	@set -e; for svc in $(SERVICES); do \
 		echo "=== integration: $$svc ==="; \

@@ -127,6 +127,25 @@ func TestStandPsqlInjection_DatabaseNoSubchartDeclaresIsAFinding(t *testing.T) {
 		"то же имя цели с ОБЪЯВЛЕННОЙ базой обязано молчать — различие ровно в одном факте")
 }
 
+func TestStandPsqlInjection_TableEntryOutlivingItsDatabaseIsAFinding(t *testing.T) {
+	// Таблица называет службу, базы которой не объявляет НИ ОДИН стек (подчарт
+	// снят): запись пережила свой предмет. Близнец — та же таблица без неё.
+	recipe := "psql:\n\tkubectl exec -- psql -U $(PSQL_USER_$(SVC)) -d $(PSQL_DB_$(SVC))\n"
+
+	stale := injStandTable()
+	stale["DB_retired"] = "retired"
+	stale["USER_retired"] = "retired"
+	got := injStandAudit(t, recipe, stale)
+	require.Len(t, got, 2, "обе записи снятой службы — DB и USER — обязаны быть находками: %v", got)
+	joined := strings.Join(got, "\n")
+	require.Contains(t, joined, "PSQL_DB_retired")
+	require.Contains(t, joined, "PSQL_USER_retired")
+	require.Contains(t, joined, "пережила свою базу")
+
+	require.Empty(t, injStandAudit(t, recipe, injStandTable()),
+		"таблица, где у каждой записи есть объявленная база, обязана молчать")
+}
+
 func TestStandPsqlInjection_ProseAboutPsqlIsNotARecipe(t *testing.T) {
 	// Распознаватель обязан судить ИСПОЛНЯЕМУЮ часть: строка комментария,
 	// объясняющая сам предмет, рецептом не является — иначе гейт краснел бы на

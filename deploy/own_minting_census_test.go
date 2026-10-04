@@ -137,9 +137,6 @@ var mintingDependents = []mintingKnob{
 // предмет гейтов посадки, а не этого.
 const mintingPostureOwn = "own"
 
-// mintingPosturePath — ручка посадки службы под деревом значений умбреллы.
-var mintingPosturePath = []string{"kaname", "config", "authn", "identityProvider"}
-
 // jwksListenerCallerVerifyingModes — режимы проверки клиента у слушателя набора
 // ключей, при которых служба признаёт, что вызывающий авторитета отзыва
 // ПРОВЕРЕН. Перечень повторяет предикат службы (JWKSProxyVerifiesCaller), а не
@@ -170,9 +167,10 @@ var mintingConsumers = []mintingKnob{
 // находка (прощение выдано тому, кого теперь судят).
 var stacksNotMintingTheirOwnTokens = map[string]string{
 	// Пусто. Под посадкой `own` стенд без чеканки не поднимается вовсе, и запись о
-	// нём гейт сам называет находкой: законна запись только о стенде на внешнем
-	// поставщике. Сколько стендов на какой посадке — строка переписи, а не этот
-	// текст. Запись стояла у первой фазы `dev` с доводом «чеканка включается
+	// нём гейт сам называет находкой. Законной была лишь запись о стенде на
+	// внешнем поставщике; второй посадки у службы больше нет (kaname#363), и
+	// законной записи сюда не бывает — ведомость остаётся, чтобы названный стенд
+	// был находкой с именем, а не молчанием. Запись стояла у первой фазы `dev` с доводом «чеканка включается
 	// боевым слоем»; под `own` первая фаза без чеканки не стартовала, и на ней
 	// ложился подъём всех стендов конвейера (#2735).
 }
@@ -325,7 +323,9 @@ func judgeStackMinting(stack string, merged map[string]any, excused map[string]s
 			"стенд %s: kaname.config.authn.tokenSigning.enabled — %s", stack, problem))
 	}
 	v.on = on
-	v.own = asString(lookupAny(merged, mintingPosturePath...)) == mintingPostureOwn
+	// Посадка службы одна на каждом стенде — своя (kanameLanding, kaname#363):
+	// ключа посадки у подчарта нет (kacho#2818), читать его не с чего.
+	v.own = kanameLanding == mintingPostureOwn
 	v.issuer = strings.TrimSpace(asString(lookupAny(merged,
 		"kaname", "config", "authn", "tokenSigning", "issuer")))
 
@@ -366,11 +366,6 @@ func judgeStackMinting(stack string, merged map[string]any, excused map[string]s
 					"чужого набора под этой посадкой нет, своего без чеканки нет, у публикатора "+
 					"набора ключей не остаётся ни одной записи, и служба откажет в старте, %s",
 				stack, mintingPostureOwn, reason))
-		} else if _, named := excused[stack]; !named {
-			v.findings = append(v.findings, fmt.Sprintf(
-				"стенд %s своей чеканки не объявляет и НЕ НАЗВАН в ведомости: стенд без "+
-					"чеканки — это решение, у которого есть автор и предикат снятия, а "+
-					"безымянный пропуск неотличим от забытой ручки", stack))
 		}
 		// Потребитель, объявивший НАШЕГО издателя там, где его никто не чеканит,
 		// принимает издателя, которого не существует.
@@ -607,4 +602,32 @@ func readSubchartDefaults(t *testing.T, path string) map[string]any {
 		t.Fatalf("умолчания подчарта %s пусты — унаследованную посадку судить не с чем", path)
 	}
 	return tree
+}
+
+// mergedValuesOfStack — действующие значения стека: умолчания чарта, затем
+// профили слева направо, ровно как их получает helm. Возвращает ещё и объём
+// прочитанного: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+// Переехал сюда из снятой пробы унаследованных схем поставщика (kacho#2818):
+// читатели остались живыми.
+func mergedValuesOfStack(t *testing.T, chain []string) (map[string]any, int, int) {
+	t.Helper()
+	files, bytesRead := 0, 0
+	read := func(p string) map[string]any {
+		raw, err := os.ReadFile(filepath.Clean(p))
+		if err != nil {
+			t.Fatalf("профиль %s не читается: %v — предпосылка исчезла, а не дерево стало чистым", p, err)
+		}
+		files++
+		bytesRead += len(raw)
+		var tree map[string]any
+		if err := yaml.Unmarshal(raw, &tree); err != nil {
+			t.Fatalf("профиль %s не разбирается как YAML: %v", p, err)
+		}
+		return tree
+	}
+	merged := read(filepath.Join(umbrellaDir, "values.yaml"))
+	for _, p := range chain {
+		merged = mergeValues(merged, read(filepath.Join(umbrellaDir, p)))
+	}
+	return merged, files, bytesRead
 }

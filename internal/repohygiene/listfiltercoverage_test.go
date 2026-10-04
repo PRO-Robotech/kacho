@@ -29,6 +29,11 @@
 // that premise assertion fails and names it — which is a decision to record, not a
 // skip to take silently.
 //
+// The record lives in noListingSurface (surfacedecision_test.go): reason, issue and
+// a prose document naming the premise test. It is not a predicate — it names one
+// service by hand — and it expires on its own: the first List* in the recorded
+// service fails the premise test and demands the analyser back.
+//
 // # Why the service list comes from git and not from the disk
 //
 // A stray directory beside the repository must not change the verdict, and a
@@ -48,6 +53,7 @@ package repohygiene
 // было бы неотличимо от переезда.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -137,12 +143,7 @@ func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
-	var missing []string
-	for _, svc := range svcs {
-		if !hasAnalyser(root, svc) {
-			missing = append(missing, svc)
-		}
-	}
+	findings := analyserCoverageFindings(svcs, func(svc string) bool { return hasAnalyser(root, svc) }, noListingSurface)
 
 	// The census is an assertion, not narration: "examined N" has to be readable off
 	// a passing run, or a run that examined nothing looks exactly like a clean one.
@@ -152,15 +153,46 @@ func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 			"is reading the wrong tree", len(svcs))
 	}
 
+	t.Logf("recorded as having no listing surface (judged by the premise test): %d", len(noListingSurface))
+	for _, f := range findings {
+		t.Error(f)
+	}
+}
+
+// analyserCoverageFindings — the decision of the coverage half, as a pure function
+// so the injection proof (surfacedecision_injection_test.go) drives THIS code.
+//
+// A service recorded in noListingSurface is not "missing": its record is judged
+// by TestCoverage_PremiseEveryServiceHasAListingSurface and expires the moment a
+// List* appears. A recorded service that nevertheless carries an analyser is a
+// finding — the record and the tree contradict each other, and one of them lies.
+func analyserCoverageFindings(svcs []string, has func(svc string) bool, ledger []surfaceDecision) []string {
+	recorded := recordedServices(ledger)
+	var missing, contradicted []string
+	for _, svc := range svcs {
+		switch present := has(svc); {
+		case recorded[svc] && present:
+			contradicted = append(contradicted, svc)
+		case !recorded[svc] && !present:
+			missing = append(missing, svc)
+		}
+	}
+	var out []string
 	if len(missing) > 0 {
-		t.Errorf("%d of %d service(s) have no public-List analyser: %s\n"+
+		out = append(out, fmt.Sprintf("%d of %d service(s) have no public-List analyser: %s\n"+
 			"  a service nobody analyses is unjudged, which is the defect this class of gate "+
 			"exists to prevent — not an exemption.\n"+
 			"  add services/<svc>/tools/auditlistfilter (see pkg/listfiltergate for the "+
 			"analyser and services/<svc>/tools/auditlistfilter/profile.go for how a service "+
 			"declares its layout), a Makefile target, and the CI step.",
-			len(missing), len(svcs), strings.Join(missing, " "))
+			len(missing), len(svcs), strings.Join(missing, " ")))
 	}
+	if len(contradicted) > 0 {
+		out = append(out, fmt.Sprintf("service(s) recorded in noListingSurface carry an analyser "+
+			"anyway: %s — the record says there is nothing to analyse, the tree says otherwise; "+
+			"drop the record or the analyser", strings.Join(contradicted, " ")))
+	}
+	return out
 }
 
 // TestCoverage_PredicateFindsAMissingAnalyser is the paired positive.
@@ -229,13 +261,30 @@ func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
 			"wiring was not examined, so nothing about it is proven")
 	}
 
+	t.Logf("checked CI wiring for %d service(s); recorded as having no listing surface: %d",
+		len(svcs), len(noListingSurface))
+	for _, f := range ciRunFindings(svcs, ran, noListingSurface) {
+		t.Error(f)
+	}
+}
+
+// ciRunFindings — the decision of the CI-wiring half, as a pure function.
+//
+// A service recorded in noListingSurface has no analyser and no target, so the
+// step must not drive it: naming it would fail the step on a missing target, and
+// leaving that failure in place would be read as a broken analyser.
+func ciRunFindings(svcs, ran []string, ledger []surfaceDecision) []string {
+	recorded := recordedServices(ledger)
 	inCI := map[string]bool{}
 	for _, s := range ran {
 		inCI[s] = true
 	}
-	var notRun []string
+	var notRun, runRecorded []string
 	for _, svc := range svcs {
-		if !inCI[svc] {
+		switch {
+		case recorded[svc] && inCI[svc]:
+			runRecorded = append(runRecorded, svc)
+		case !recorded[svc] && !inCI[svc]:
 			notRun = append(notRun, svc)
 		}
 	}
@@ -253,19 +302,25 @@ func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
 		}
 	}
 
-	t.Logf("checked CI wiring for %d service(s)", len(svcs))
+	var out []string
 	if len(notRun) > 0 {
-		t.Errorf("%d service(s) are not named in the audit-list-filter CI step: %s\n"+
+		out = append(out, fmt.Sprintf("%d service(s) are not named in the audit-list-filter CI step: %s\n"+
 			"  an analyser that exists but is never invoked is indistinguishable from an "+
 			"absent one, and worse, because it counts as present in the census.",
-			len(notRun), strings.Join(notRun, " "))
+			len(notRun), strings.Join(notRun, " ")))
+	}
+	if len(runRecorded) > 0 {
+		out = append(out, fmt.Sprintf("the audit-list-filter CI step drives service(s) recorded in "+
+			"noListingSurface: %s — there is no analyser to run; drop the name or the record",
+			strings.Join(runRecorded, " ")))
 	}
 	if len(stale) > 0 {
-		t.Errorf("the audit-list-filter CI step names %d entry(ies) that are not services in "+
+		out = append(out, fmt.Sprintf("the audit-list-filter CI step names %d entry(ies) that are not services in "+
 			"the committed tree: %s\n"+
 			"  the invocation has nothing left to invoke; drop it, or the next directory of "+
-			"that name inherits an expectation nobody stated.", len(stale), strings.Join(stale, " "))
+			"that name inherits an expectation nobody stated.", len(stale), strings.Join(stale, " ")))
 	}
+	return out
 }
 
 // ciAuditedServices extracts the service list from the `for svc in …; do` line that
@@ -318,26 +373,55 @@ func TestCoverage_PremiseEveryServiceHasAListingSurface(t *testing.T) {
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
-	var without []string
 	counts := map[string]int{}
 	for _, svc := range svcs {
-		n := countListDeclarations(t, root, svc)
-		counts[svc] = n
-		if n == 0 {
-			without = append(without, svc)
-		}
+		counts[svc] = countListDeclarations(t, root, svc)
 	}
 	for _, svc := range svcs {
 		t.Logf("  services/%-9s %3d List* transport declaration(s)", svc, counts[svc])
 	}
+	t.Logf("recorded as having no listing surface: %d", len(noListingSurface))
+	const gate = "TestCoverage_PremiseEveryServiceHasAListingSurface"
+	for _, f := range surfaceDecisionRecordFindings(noListingSurface, svcs, gate, readTreeRecord(root)) {
+		t.Error(f)
+	}
+	for _, f := range listingSurfaceFindings(svcs, counts, noListingSurface) {
+		t.Error(f)
+	}
+}
+
+// listingSurfaceFindings — the premise decision, as a pure function.
+//
+// A service with no List* is a finding unless noListingSurface records it; a
+// recorded service that HAS a List* is a finding too — the record outlived its
+// subject, and keeping it would exempt a real listing surface from the analyser.
+func listingSurfaceFindings(svcs []string, counts map[string]int, ledger []surfaceDecision) []string {
+	recorded := recordedServices(ledger)
+	var without, outlived []string
+	for _, svc := range svcs {
+		switch n := counts[svc]; {
+		case n == 0 && !recorded[svc]:
+			without = append(without, svc)
+		case n > 0 && recorded[svc]:
+			outlived = append(outlived, fmt.Sprintf("%s (%d)", svc, n))
+		}
+	}
+	var out []string
 	if len(without) > 0 {
-		t.Errorf("%d service(s) declare no List* transport method: %s\n"+
+		out = append(out, fmt.Sprintf("%d service(s) declare no List* transport method: %s\n"+
 			"  the unconditional \"every service has an analyser\" rule assumed every service "+
 			"has a listing surface. That is no longer true, so the rule now demands an "+
 			"analyser with nothing to analyse. Decide explicitly: either the service really "+
-			"has no public list (record it), or its transport layout is not being read.",
-			len(without), strings.Join(without, " "))
+			"has no public list (record it in noListingSurface), or its transport layout is "+
+			"not being read.",
+			len(without), strings.Join(without, " ")))
 	}
+	if len(outlived) > 0 {
+		out = append(out, fmt.Sprintf("noListingSurface record(s) outlived their subject — the "+
+			"service now declares List*: %s; drop the record and add the analyser, its "+
+			"Makefile target and the CI step", strings.Join(outlived, " ")))
+	}
+	return out
 }
 
 // countListDeclarations counts methods whose name starts with List, declared on a

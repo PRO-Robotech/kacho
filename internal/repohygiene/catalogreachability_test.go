@@ -104,14 +104,17 @@ import (
 // службой в её дереве. Перемерено прогоном после регенерации: строк службы
 // 116 из 349.
 //
-// Лента уведомлений (kacho#2915) добавила ДВЕ строки не службы доступа —
-// `corelib.notify.InternalNotificationFeedService/{Ack,Claim}`: контракт общий,
-// сервер ленты поднимает модуль-источник у себя, край их не обслуживает
-// (префикс `Internal`). Следствие записи mountAllow того же коммита. Перемерено
-// прогоном после регенерации каталога: строк каталога 351.
+// Подъём пина на 0dd03218 (kacho#3000, ствол службы на фундаменте v1.10.0) снял
+// ОДНУ — `InternalUserService/OnRecoveryCompleted`: служба сняла внутренний
+// глагол, оставшийся от снятого поставщика (kaname#564), и край перестал
+// нести его строку регенерацией каталога. Перемерено прогоном после
+// регенерации: строк каталога 348.
+//
+// Лента уведомлений (kacho#2915) заводила здесь ДВЕ строки не службы доступа —
+// `corelib.notify.InternalNotificationFeedService/{Ack,Claim}`. Они СНЯТЫ вместе
+// с записью mountAllow: ленту монтирует корень пробы-источника
+// `services/notify/cmd/notify-probe` (полоса D4), её строки резолвятся.
 var knownInertCatalogRows = []string{
-	"corelib.notify.InternalNotificationFeedService/Ack",
-	"corelib.notify.InternalNotificationFeedService/Claim",
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
 	"kaname.cloud.iam.v1.AccessBindingService/ExpandAccess",
@@ -184,7 +187,6 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf",
 	"kaname.cloud.iam.v1.InternalUserService/Get",
-	"kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
 	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 	"kaname.cloud.iam.v1.MembershipService/Create",
 	"kaname.cloud.iam.v1.MembershipService/Get",

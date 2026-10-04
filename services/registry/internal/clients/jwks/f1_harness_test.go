@@ -38,7 +38,7 @@ const (
 	// testPlatformIss — издатель, под которым чеканит НАША платформа.
 	testPlatformIss = "https://kaname.kacho.local"
 	// testLegacyIss — прежний издатель; его запись — зеркало, живёт до F4.
-	testLegacyIss = "https://hydra.api.kacho.cloud"
+	testLegacyIss = "https://legacy.api.kacho.cloud"
 	// typAccessJWT — тип токена доступа нашей чеканки (RFC 9068).
 	typAccessJWT = "at+jwt"
 	// typJWT — тип токена прежнего издателя.
