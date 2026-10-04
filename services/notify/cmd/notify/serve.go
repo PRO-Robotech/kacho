@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/observability"
@@ -16,6 +17,7 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // runServe — подъём процесса после стража конфигурации. Каждая ошибка
@@ -42,6 +44,28 @@ func runServe(cfg config.Config, logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
+	reg := newRegistry()
+
+	// Ограда ключа сетки — после миграций (init-контейнер точки наката) и до
+	// первого `Claim`: действующий ключ задаёт последняя стартовавшая реплика
+	// (З24, CX1-68). Отказ записи, включая предел ожидания замка, — отказ
+	// старта ненулевым кодом; журнал называет время ожидания и не несёт ни
+	// ключа, ни отпечатка.
+	lim, err := limits.New(limits.Options{
+		Pool:       pool,
+		Key:        cfg.RecipientKey().Bytes(),
+		Grid:       cfg.Grid(),
+		Now:        time.Now,
+		Registerer: reg,
+		Logger:     logger,
+	})
+	if err != nil {
+		return fmt.Errorf("сетка лимитов: %w", err)
+	}
+	if err := lim.WriteFence(ctx); err != nil {
+		return err
+	}
+
 	agg := health.New([]health.Checker{
 		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
 	})
@@ -50,7 +74,7 @@ func runServe(cfg config.Config, logger *slog.Logger) error {
 		agg.SetShuttingDown()
 	}()
 
-	diag, err := describeDiagnosticSurface(cfg.DiagAddr, newRegistry(), agg, desc.Spec().Mode, logger)
+	diag, err := describeDiagnosticSurface(cfg.DiagAddr, reg, agg, desc.Spec().Mode, logger)
 	if err != nil {
 		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}

@@ -84,15 +84,18 @@ func TestTableAndEmbeddedSetsMustBeEqual(t *testing.T) {
 	if _, _, err := selectChain(chainsTable, embedded, probeDSN); err != nil {
 		t.Fatalf("таблица точки и её встроенные FS расходятся: %v", err)
 	}
-	extra := map[string]fs.FS{
-		"services/notify/internal/probemigrations": probemigrations.FS,
-		"services/notify/internal/migrations":      fstest.MapFS{},
+	// Каталог без строки — посторонний: обе строки таблицы (kacho_notifyprobe,
+	// kacho_notify) свои FS имеют, лишняя FS — третья.
+	extra := map[string]fs.FS{}
+	for d, f := range embedded {
+		extra[d] = f
 	}
+	extra["services/notify/internal/othermigrations"] = fstest.MapFS{}
 	_, _, err := selectChain(chainsTable, extra, probeDSN)
 	if err == nil {
 		t.Fatal("встроенная FS без строки таблицы принята")
 	}
-	for _, s := range []string{"services/notify/internal/migrations", "services/notify/internal/probemigrations"} {
+	for _, s := range []string{"services/notify/internal/othermigrations", "services/notify/internal/probemigrations"} {
 		if !strings.Contains(err.Error(), s) {
 			t.Errorf("отказ не называет %q: %v", s, err)
 		}
@@ -105,7 +108,11 @@ func TestTableAndEmbeddedSetsMustBeEqual(t *testing.T) {
 // Инъекция (Д74): строка kacho_notifyprobe снята из таблицы → накат пробы
 // отказывает с именем базы.
 func TestRemovedRowRefusesTheProbeDatabase(t *testing.T) {
-	table := []byte("chains:\n  - database: kacho_other\n    dir: services/notify/internal/probemigrations\n")
+	// Снята ровно строка пробы: каталог остаётся под чужим именем, строка шлюза
+	// — как в таблице точки, поэтому равенство каталогов и FS не нарушено, и
+	// отказ — именно выбора базы.
+	table := []byte("chains:\n  - database: kacho_other\n    dir: services/notify/internal/probemigrations\n" +
+		"  - database: kacho_notify\n    dir: services/notify/internal/migrations\n")
 	_, _, err := selectChain(table, embedded, "postgres://u:p@db:5432/kacho_notifyprobe")
 	if err == nil || !strings.Contains(err.Error(), "kacho_notifyprobe") {
 		t.Fatalf("строка снята, а база пробы не отвергнута с именем: %v", err)

@@ -33,6 +33,8 @@ import (
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/notify/feed"
 	"github.com/PRO-Robotech/corelib/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // Границы ручек — §8 замысла NTF-1.
@@ -112,6 +114,25 @@ type Config struct {
 	// N13 (Д44, CX1-77, CX1-79), поэтому тег `optional`.
 	SMTPConnectionURI string `envconfig:"KACHO_NOTIFY_SMTP_CONNECTION_URI" knob:"notify.smtp.connectionURI,optional"`
 
+	// ── лимиты Р10 (З24, NTF1-H08) ──────────────────────────────────────────
+
+	// LimitSecurityPerDay — сетка security на адресата за сутки UTC, в [1..1000].
+	LimitSecurityPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_SECURITY_PER_DAY" knob:"notify.limits.recipient.security.perDay"`
+
+	// LimitNoticePerHour — сетка notice на адресата за час, в [1..10000].
+	LimitNoticePerHour int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_HOUR" knob:"notify.limits.recipient.notice.perHour"`
+
+	// LimitNoticePerDay — сетка notice на адресата за сутки UTC, в [1..10000].
+	LimitNoticePerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_DAY" knob:"notify.limits.recipient.notice.perDay"`
+
+	// LimitGlobalPerDay — суточный потолок потока установки, в [1..10000000].
+	LimitGlobalPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_GLOBAL_PER_DAY" knob:"notify.limits.global.perDay"`
+
+	// SourceLimits — ручки на источник: JSON-объект «модуль → {rate, burst,
+	// paused}», параметризующий перечень [Config.Sources] (Р10). Разбор и
+	// страж — validateSourceLimits.
+	SourceLimits string `envconfig:"KACHO_NOTIFY_SOURCE_LIMITS" knob:"notify.sourceLimits"`
+
 	// credential — удостоверение ретранслятора: три состояния, а не строка
 	// (CX1-81 (а)). Читается [os.LookupEnv], а не загрузчиком с подстановкой
 	// пустой строки, поэтому тега `envconfig` у поля нет; ручка — [credentialKnob].
@@ -148,8 +169,9 @@ var recipientKeyKnob = Knob{
 // RecipientKeyMinBytes — нижняя граница длины ключа сетки (Д89). Ключ —
 // материал HMAC-SHA256 (строки сетки на адресата и отпечаток ограды ключа,
 // З24): короче размера выхода хеша он ослабляет и то, и другое, а отпечаток
-// ключа в аннотации пода становится оракулом перебора. Граница включена.
-const RecipientKeyMinBytes = 32
+// ключа в аннотации пода становится оракулом перебора. Граница включена;
+// число одно на страж и на сетку — [limits.KeyMinBytes].
+const RecipientKeyMinBytes = limits.KeyMinBytes
 
 // RecipientKey — ключ сетки на адресата. Значение в журнал не попадает:
 // [RecipientKey.String] его не раскрывает.
@@ -362,6 +384,8 @@ func (c *Config) Validate() error {
 
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
+	c.validateGrid(&fs)
+	c.validateSourceLimits(&fs)
 	c.validateRelayCredential(&fs)
 	c.validateRecipientKey(&fs)
 

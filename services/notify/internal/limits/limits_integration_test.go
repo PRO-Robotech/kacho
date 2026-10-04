@@ -628,7 +628,11 @@ func TestLimits_SDRK1_ReserveWaitIsBoundedByStatementTimeout(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = holder.Rollback(ctx) }()
+			// Откат держателя — ровно один, из таймера либо из конца пробы:
+			// pgxpool.Tx не допускает одновременных вызовов из двух горутин.
+			var once sync.Once
+			release := func() { once.Do(func() { _ = holder.Rollback(ctx) }) }
+			defer release()
 			if _, err := holder.Exec(ctx, `SELECT count FROM global_daily FOR UPDATE`); err != nil {
 				t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: держатель строки потолка не взял замок: %v", err)
 			}
@@ -636,7 +640,8 @@ func TestLimits_SDRK1_ReserveWaitIsBoundedByStatementTimeout(t *testing.T) {
 			if !long {
 				hold = 300 * time.Millisecond
 			}
-			go func() { time.Sleep(hold); _ = holder.Rollback(ctx) }()
+			timer := time.AfterFunc(hold, release)
+			defer timer.Stop()
 
 			before := counter(t, r.reg, "notify_reserve_db_errors_total", nil)
 			start := time.Now()

@@ -357,13 +357,21 @@ func (p *commitSwallower) serve() {
 	}
 }
 
+// commitQuery — сообщение Query протокола Postgres с текстом ровно `commit`
+// (байт типа, длина 11, текст, нуль), в нижнем регистре. Признак — сообщение
+// целиком, а не подстрока: `begin isolation level read committed`, которым
+// pgx открывает транзакцию с явным READ COMMITTED (З24, CX1-68 (б)), несёт
+// подстроку «commit», и прокси, судящий по подстроке, глотал бы BEGIN вместо
+// COMMIT — держатель вовсе не начинал бы транзакцию.
+var commitQuery = []byte{'q', 0, 0, 0, 11, 'c', 'o', 'm', 'm', 'i', 't', 0}
+
 func (p *commitSwallower) clientToServer(c, u net.Conn) {
 	buf := make([]byte, 64*1024)
 	silent := false
 	for {
 		n, err := c.Read(buf)
 		if n > 0 && !silent {
-			if p.swallow && bytes.Contains(bytes.ToLower(buf[:n]), []byte("commit")) {
+			if p.swallow && bytes.Contains(bytes.ToLower(buf[:n]), commitQuery) {
 				silent = true
 				continue
 			}
