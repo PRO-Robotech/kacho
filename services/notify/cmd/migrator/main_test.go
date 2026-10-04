@@ -133,7 +133,19 @@ func TestHelperRunsMain(t *testing.T) {
 		return
 	}
 	if db := os.Getenv(helperRowEnv); db != "" {
-		chainsTable = []byte("chains:\n  - database: " + db + "\n    dir: services/notify/internal/probemigrations\n")
+		dir := "services/notify/internal/probemigrations"
+		if d := os.Getenv(helperDirEnv); d != "" {
+			dir = d
+		}
+		// Таблица подмены — одна строка, поэтому из встроенных FS остаётся только
+		// FS её каталога: равенство множеств судится как в бою, и FS, которой у
+		// точки нет, подмена не создаёт.
+		chainsTable = []byte("chains:\n  - database: " + db + "\n    dir: " + dir + "\n")
+		for d := range embedded {
+			if d != dir {
+				delete(embedded, d)
+			}
+		}
 	}
 	if answer := os.Getenv(helperAnswerEnv); answer != "" {
 		currentDatabaseQuery = "SELECT '" + answer + "'::text"
