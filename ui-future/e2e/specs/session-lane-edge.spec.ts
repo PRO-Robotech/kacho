@@ -54,10 +54,16 @@ import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver
  *   Ф3-26: прежние сессии `S1`, `S2` после завершения восстановления — отказ;
  *          сессия `R`, выданная этим завершением, — проходит. Изменён один факт —
  *          момент аутентификации относительно отсечки.
+ *   Ф5-24: под `R` и под `L` (вход новым паролем) — тот же человек в «кто я» и
+ *          тот же исход глагола платформы. Изменён один факт — множество
+ *          предъявленного (код восстановления против пароля).
  */
 
 /** Ответ «кто я» без личности — побайтово (Ф3-14, обработчик края). */
 const NO_IDENTITY = `{"user":null}`;
+
+/** Глагол платформы, на котором сравниваются две сессии (Ф5-24): каталог — `<exempt>` без пола уровня. */
+const PLATFORM_VERB = "/iam/v1/accounts?pageSize=1000";
 
 /** Ключи состава «кто я» — дословно Ф3-14 «Тогда». */
 const USER_KEYS = ["displayName", "email", "id", "permissions", "subjectType"];
@@ -175,7 +181,7 @@ interface Recovered {
 }
 
 /**
- * Дано Ф3-26: человек с подтверждённым адресом и ДВЕ живые сессии; затем
+ * Дано Ф3-26 и Ф5-24: человек с подтверждённым адресом и ДВЕ живые сессии; затем
  * код восстановления запрошен (Ф5-01) и предъявлен с новым паролем (Ф5-03) СВОИМ
  * контекстом. Каждый шаг утверждает свой исход: шаг, собравший условие молча,
  * при отказе назвал бы виновником утверждение сценария.
@@ -232,6 +238,50 @@ test("Ф3-26 · завершение восстановления гасит в�
     expect((JSON.parse(underR.text) as { user?: { email?: unknown } }).user?.email).toBe(got.human.email);
   } finally {
     await Promise.all([got.first, got.second, got.recovering, oldOne, oldTwo].map((s) => s.dispose()));
+  }
+});
+
+test("Ф5-24 · сессия восстановления полноправна: тот же человек и тот же исход глагола, что у сессии входа", async ({ browserName: _browserName }, testInfo) => {
+  // verifies #2707 — Ф5-24 (Ф5 17b2d02c…): половина через край, связка службы с платформой.
+  test.setTimeout(240_000);
+  const got = await recovered(testInfo, "f5-24");
+  const relogged = await signedIn(testInfo, got.human.email, RECOVERED_PASSWORD, "L");
+  try {
+    const underR = await answerOf(await got.recovering.read(SESSION_IDENTITY));
+    const underL = await answerOf(await relogged.read(SESSION_IDENTITY));
+    expect(underR.status, `R: «кто я» — ${underR.text}`).toBe(200);
+    expect(underL.status, `L: «кто я» — ${underL.text}`).toBe(200);
+
+    // «Кто я» под R и под L — один человек, один состав; ключа требования нет ни в одном.
+    const viewR = JSON.parse(underR.text) as { user: Record<string, unknown>; session: Record<string, unknown> };
+    const viewL = JSON.parse(underL.text) as { user: Record<string, unknown>; session: Record<string, unknown> };
+    expect(viewR.user, "«кто я» под R и под L обязан назвать одного человека тем же составом").toEqual(viewL.user);
+    expect(Object.keys(viewR.session).sort(), `состав session под R: ${underR.text}`).toEqual(SESSION_KEYS);
+    expect(Object.keys(viewL.session).sort(), `состав session под L: ${underL.text}`).toEqual(SESSION_KEYS);
+    expect(viewR.user.email).toBe(got.human.email);
+
+    // Глагол платформы под R и под L — тот же исход. Аккаунт человека заводится
+    // сам и не сразу; ждётся УСЛОВИЕ — появление аккаунта под L, — а не время.
+    await expect
+      .poll(
+        async () => {
+          const res = await relogged.read(PLATFORM_VERB);
+          if (!res.ok()) return `L: ${res.status()}`;
+          const body = (await res.json()) as { accounts?: unknown[] };
+          return (body.accounts ?? []).length > 0 ? "есть" : "нет аккаунта";
+        },
+        { message: "аккаунт человека под L не появился — глагол платформы сравнивать не на чем", timeout: 45_000 },
+      )
+      .toBe("есть");
+    const platformL = await answerOf(await relogged.read(PLATFORM_VERB));
+    const platformR = await answerOf(await got.recovering.read(PLATFORM_VERB));
+    expect(
+      { status: platformR.status, text: platformR.text },
+      "глагол платформы под сессией восстановления обязан дать тот же исход, что под сессией входа",
+    ).toEqual({ status: platformL.status, text: platformL.text });
+    expect(platformR.status).toBe(200);
+  } finally {
+    await Promise.all([got.first, got.second, got.recovering, relogged].map((s) => s.dispose()));
   }
 });
 
