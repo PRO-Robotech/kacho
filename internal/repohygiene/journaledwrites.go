@@ -325,6 +325,7 @@ func jwJournaledTables(root, module, journal string) ([]string, int, error) {
 			continue
 		}
 		n++
+		// #nosec G304 -- путь получен обходом каталога миграций ЭТОГО дерева, не извне
 		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			return nil, 0, err
@@ -1064,6 +1065,8 @@ func jwAuditTrunkSessionSettings(root string, roots []string) (files, setConfigs
 					return true
 				})
 			} else {
+				// #nosec G304 G122 -- путь получен обходом ствола ЭТОГО дерева (WalkDir); гейт
+				// только читает, гонки «проверка — использование» у чтения нет
 				raw, rerr := os.ReadFile(p)
 				if rerr != nil {
 					return rerr
