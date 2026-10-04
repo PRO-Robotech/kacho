@@ -6,10 +6,10 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEK
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/PRO-Robotech/corelib v1.10.1-0.20261004054822-21c784a9b1dc h1:gv327RKNOQ0g1VWPPI9iLOn/9hhYJ1gCqxRsBmdjcJA=
-github.com/PRO-Robotech/corelib v1.10.1-0.20261004054822-21c784a9b1dc/go.mod h1:Wa9ZZIkr7DVr82wtGSYUl5lRS99SvlPSQ8NMhok+S9g=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261004063557-a3c0158af93e h1:zHu6N0z9hgC/Gz6IcXkdid9vydchWc6oGeL7hOgq588=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261004063557-a3c0158af93e/go.mod h1:3HZRvJWw9QWhKHN84pTTEsR17Wq92LwJS9MWlrSUSno=
+github.com/PRO-Robotech/corelib v1.10.1-0.20261004184251-5f7161577634 h1:jN2scrGsFr3QzgvpHKWYuhGYzxQUqiCFTlNq7YHaouw=
+github.com/PRO-Robotech/corelib v1.10.1-0.20261004184251-5f7161577634/go.mod h1:Wa9ZZIkr7DVr82wtGSYUl5lRS99SvlPSQ8NMhok+S9g=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261004202607-745640d6c296 h1:b13t6/BMMVVSIGypG4a9piMWXvKPlyf4C+L1L1O26vw=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261004202607-745640d6c296/go.mod h1:fONPy+feD3NeAfU1i/mDZ6xBVHo0oftxTFf9XIKm34M=
 github.com/ProtonMail/go-crypto v1.3.0 h1:ILq8+Sf5If5DCpHQp4PbZdS1J7HDFRXz/+xKBiRGFrw=
 github.com/ProtonMail/go-crypto v1.3.0/go.mod h1:9whxjD8Rbs29b4XWbB8irEcE8KHMqaR2e7GWU1R+/PE=
 github.com/agext/levenshtein v1.2.2 h1:0S/Yg6LYmFJ5stwQeRp6EeOcCbj7xiqQSdNelsXvaqE=

@@ -626,6 +626,15 @@ data:
     {{- end }}
     notifications:
       enabled: {{ $ntf.enabled }}
+      {{- /* Полоса отсечки выдачи (NTF1-F20; Д112 (в)): ключ отдаётся ВСЕГДА —
+      строитель службы без него отказывает в старте; пустота, ноль и
+      не-длительность — отказ рендера с именем ключа здесь, а не отказ пода. */}}
+      {{- $cgMsg := "kaname: config.notifications.cutoffGuard не задан — полоса отсечки выдачи уведомлений (ключ процесса `notifications.cutoff-guard`) умолчания у службы не имеет; объявите её в профиле длительностью в границах [1s..10m] (приёмка NTF-1 Р5, NTF1-F20)" }}
+      {{- $cg := toString (required $cgMsg $ntf.cutoffGuard) }}
+      {{- if or (not (regexMatch "^([0-9]+(ns|us|ms|s|m|h))+$" $cg)) (regexMatch "^(0+(ns|us|ms|s|m|h))+$" $cg) }}
+      {{- fail (printf "kaname: config.notifications.cutoffGuard = %q — ожидается положительная длительность (`30s`, `1m`) в границах [1s..10m] (ключ процесса `notifications.cutoff-guard`, NTF1-F20)" $cg) }}
+      {{- end }}
+      cutoff-guard: {{ $cg | quote }}
 
     {{- /* ─── Фоновые задания: секции `jobs` здесь НЕТ (kacho#2915) ─────────
 
