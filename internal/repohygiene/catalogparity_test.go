@@ -108,6 +108,24 @@ var catalogProtoPackages = []string{
 	"kacho.cloud.notify.v1",
 }
 
+// notifyFeedMethods — методы ленты уведомлений модуля-источника (NTF1-C07):
+// обход аннотаций обязан их видеть.
+var notifyFeedMethods = []string{
+	"/corelib.notify.InternalNotificationFeedService/Claim",
+	"/corelib.notify.InternalNotificationFeedService/Ack",
+}
+
+// laneMismatch — находка обхода по одному методу: метод без полосы края
+// называется полным именем и жалобой разбора. Одна функция для гейта и
+// инъекции (catalogparitynotify_injection_test.go).
+func laneMismatch(fullMethod string, a catalogderive.Annotations) (lane, finding string) {
+	lane, complaint := annotationLane(a)
+	if complaint != "" {
+		return "", fmt.Sprintf("%s: %s", fullMethod, complaint)
+	}
+	return lane, ""
+}
+
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки
 // `scope_filtered`, но выведенная карта НЕ провязывается в цепочку
 // интерсепторов.
@@ -184,10 +202,10 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 		seen[fullMethod] = true
 		// Полоса судится ДО сверки со строкой: на методе без аннотации строка
 		// тоже пуста, и одна лишь сверка прошла бы его молча.
-		lane, complaint := annotationLane(a)
-		if complaint != "" {
+		lane, finding := laneMismatch(fullMethod, a)
+		if finding != "" {
 			unannotated++
-			mismatches = append(mismatches, fmt.Sprintf("%s: %s", fullMethod, complaint))
+			mismatches = append(mismatches, finding)
 		} else {
 			lanes[lane]++
 		}
@@ -229,6 +247,21 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	// Что при этом УТРАЧЕНО: расхождение копии края с копией службы не ловится в
 	// этом дереве НИЧЕМ. Свойство «каталог порождён из аннотаций» держится
 	// по-прежнему — им и занят весь обход выше.
+
+	// NTF1-C07: методы ленты обязаны быть среди обойдённых. Без строки
+	// `corelib.notify` в перечне пакетов пакет не обходится вовсе, и о ленте
+	// гейт молчал бы «чисто».
+	feedWalked := 0
+	for _, m := range notifyFeedMethods {
+		if seen[m] {
+			feedWalked++
+			continue
+		}
+		t.Errorf("NTF1-C07: метод ленты %s не обойдён — пакет corelib.notify вне перечня "+
+			"catalogProtoPackages либо стабы не слинкованы; аннотация права на нём не сверяется", m)
+	}
+	t.Logf("NTF1-C07: методов ленты среди обойдённых %d из %d %v", feedWalked, len(notifyFeedMethods),
+		notifyFeedMethods)
 
 	t.Logf("перепись: строк каталога %d, обойдённых RPC %d в %d пакетах "+
 		"(exempt %d · scope_filtered %d · relation %d · без аннотации %d), расхождений %d; "+

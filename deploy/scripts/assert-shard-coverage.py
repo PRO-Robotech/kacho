@@ -1707,16 +1707,49 @@ def _self_test() -> int:
 
     # ── записи «носитель не развёрнут» (ban6_undeployed_carriers) ───────────
     #
-    # Близнец — дерево как есть (п.11 и прочие близнецы выше): запись notify
-    # законна, пока процесс пробы не запускает ни один шаблон. Ниже — четыре
-    # стороны той же записи, каждая одним фактом.
-    if "notify" in base.get("ban6_undeployed_carriers", {}):
+    # Запись notify сняло само дерево: шаблон зонта
+    # deploy/helm/umbrella/templates/notify-probe.yaml запускает процесс пробы
+    # (kacho#2915, полоса D3), и домен notify взяло ядро манифеста. Механизм
+    # записи при этом остаётся и обязан доказывать себя, поэтому стороны записи
+    # судятся на ВОССТАНОВЛЕННОМ состоянии до D3: та же запись notify, домен и
+    # образ notify вне ядра, а шаблона пробы в обходе нет. Каждая сторона ниже —
+    # одним фактом против этого близнеца.
+    #
+    # (у0) — суд самого дерева: запись, возвращённая в манифест при шаблоне пробы
+    # как есть, ИСТЕКАЕТ. Это доказательство того, что снятие записи — следствие
+    # дерева, а не правки манифеста.
+    probe_tpl_path = "deploy/helm/umbrella/templates/notify-probe.yaml"
+    real_tpl = dict(chart_templates(ROOT))
+    if probe_tpl_path not in real_tpl:
+        print(f"  [FAIL] шаблона пробы {probe_tpl_path} в обходе нет — снятие записи notify "
+              f"держится ни на чём, и стороны записи не судятся")
+        ok = False
+    elif base.get("ban6_undeployed_carriers"):
+        print("  [FAIL] в манифесте есть записи «носитель не развёрнут» "
+              f"{sorted(base['ban6_undeployed_carriers'])} при развёрнутом носителе notify — "
+              "самопроверка ждала пустую ведомость; пересмотри её состав")
+        ok = False
+    else:
+        pre_tpl = {k: v for k, v in real_tpl.items() if k != probe_tpl_path}
+        rec_base = copy.deepcopy(base)
+        rec_base["ban6_undeployed_carriers"] = {"notify": {
+            "process": "kacho-notify-probe",
+            "reason": "восстановленное состояние до D3: развёртывания пробы нет",
+            "lifted_by": "развёртывание notify-probe шаблоном зонта"}}
+        rec_base["core_ban6_domains"] = [d for d in base["core_ban6_domains"] if d != "notify"]
+        rec_base["core_images"] = [i for i in base["core_images"] if i != "notify"]
+        run(rec_base, "(у0) дерево как есть: шаблон зонта запускает пробу → запись ИСТЕКЛА",
+            want_red=True, expect="ИСТЕКЛА")
+        run(rec_base, "(у00) близнец: восстановленное состояние до D3 → запись законна",
+            want_red=False, templates=pre_tpl)
+        base = rec_base
+
         m = copy.deepcopy(base)
         m["ban6_undeployed_carriers"] = {}
         run(m, "(у1) запись notify снята → домен не измеряет НИ ОДИН шард", want_red=True,
-            expect="домен 'notify' несёт Internal*-контракт")
+            expect="домен 'notify' несёт Internal*-контракт", templates=pre_tpl)
 
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         proc = base["ban6_undeployed_carriers"]["notify"]["process"]
         tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
             f'command: ["/usr/local/bin/{proc}", "serve"]\n')
@@ -1724,7 +1757,7 @@ def _self_test() -> int:
             expect="ИСТЕКЛА", templates=tpl)
 
         # (у2б) запуск блочным списком команды — тот же факт другой формой.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
             f"      containers:\n        - name: probe\n          command:\n"
             f"            - /usr/local/bin/{proc}\n            - serve\n")
@@ -1732,14 +1765,14 @@ def _self_test() -> int:
             expect="ИСТЕКЛА", templates=tpl)
 
         # (у2в) запуск образом, чей репозиторий назван процессом.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
             f'          image: "docker.io/prorobotech/{proc}:1.0.0"\n')
         run(base, "(у2в) запуск образом процесса → запись ИСТЕКЛА", want_red=True,
             expect="ИСТЕКЛА", templates=tpl)
 
         # (у2г) запуск первым элементом args (образ без своей точки входа).
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = (
             f'          args: ["{proc}", "serve"]\n')
         run(base, "(у2г) запуск первым элементом args → запись ИСТЕКЛА", want_red=True,
@@ -1760,7 +1793,7 @@ def _self_test() -> int:
             v[uv] = vals[uv] + (f"\nnotifyProbe:\n  image:\n    repository: "
                                 f"docker.io/prorobotech/{repo}\n    tag: \"1.0.0\"\n")
             return v
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/umbrella/templates/notify-probe.yaml"] = probe_tpl
         run(base, "(у2д) образ шаблонной формы, репозиторий процесса в values → ИСТЕКЛА",
             want_red=True, expect="ИСТЕКЛА", templates=tpl, values=with_probe_repo(proc))
@@ -1768,7 +1801,7 @@ def _self_test() -> int:
             want_red=False, templates=tpl, values=with_probe_repo("kacho-notify"))
         # (у2ж) образ через помощник подчарта (`include "<чарт>.image"`), значение — в
         # поддереве зонтика под ключом зависимости. Форма чарта notify в дереве.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/notify/templates/_probe_image.tpl"] = (
             '{{- define "notify.probeImage" -}}'
             '{{ .Values.probe.image.repository }}:{{ .Values.probe.image.tag }}'
@@ -1784,7 +1817,7 @@ def _self_test() -> int:
         # (у2и) близнец SAN: помощник образа читает рядом и идентичность пробы
         # (`spiffe://…/sa/<процесс>`), репозиторий — другой процесс. Сегмент SAN
         # образом не читается: запись НЕ истекла.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/notify/templates/_probe_image.tpl"] = (
             '{{- define "notify.probeImage" -}}'
             '{{ printf "%s:%s" .Values.probe.image.repository .Values.probe.image.tag }}'
@@ -1802,13 +1835,13 @@ def _self_test() -> int:
             want_red=False, templates=tpl, values=v)
         # (у2з) пустая ведомость значений при записи → отказ, а не «не запускает».
         run(base, "(у2з) файлов значений не прочитано при записи → отказ", want_red=True,
-            expect="файлов значений чартов не прочитано", values={})
+            expect="файлов значений чартов не прочитано", templates=pre_tpl, values={})
 
         # БЛИЗНЕЦЫ ПОДСТРОКИ (Д86): имя процесса в тексте шаблона без контейнера,
         # который его запускает, — запись НЕ истекла, дерево зелёное. Прежний
         # предикат (`proc in text`) красил оба.
         # (у6) сегмент SAN и адрес пробы в таблице источников notify.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/notify/templates/sources-twin.yaml"] = (
             "data:\n  KACHO_NOTIFY_SOURCES: '[{\"module\":\"probe\",\"feedAddr\":"
             f"\"{proc}:9091\",\"san\":\"spiffe://kacho.cloud/ns/kacho/sa/{proc}\"}}]'\n"
@@ -1818,7 +1851,7 @@ def _self_test() -> int:
         run(base, "(у6) SAN пробы в таблице источников без контейнера → запись НЕ истекла",
             want_red=False, templates=tpl)
         # (у7) Service с именем процесса без контейнера.
-        tpl = dict(chart_templates(ROOT))
+        tpl = dict(pre_tpl)
         tpl["deploy/helm/umbrella/templates/notify-probe-svc.yaml"] = (
             f"kind: Service\nmetadata:\n  name: {proc}\nspec:\n  selector:\n"
             f"    app: {proc}\n  ports:\n    - port: 9091\n")
@@ -1830,7 +1863,7 @@ def _self_test() -> int:
             m["ban6_undeployed_carriers"],
             dns={"process": "kacho-dns", "reason": "x", "lifted_by": "y"})
         run(m, "(у3) запись о носителе без провязанного домена → без предмета",
-            want_red=True, expect="без предмета")
+            want_red=True, expect="без предмета", templates=pre_tpl)
 
         m = copy.deepcopy(base)
         m["shards"][0]["components"] = m["shards"][0]["components"] + ["notify-probe"]
@@ -1839,14 +1872,10 @@ def _self_test() -> int:
         m.setdefault("gate_images", {})
         m["gate_images"] = dict(m["gate_images"], **{"notify-probe": "notify"})
         run(m, "(у4) домен записи уже берёт шард → запись лишняя", want_red=True,
-            expect="запись лишняя")
+            expect="запись лишняя", templates=pre_tpl)
 
         run(base, "(у5) пустой обход шаблонов при записи → отказ", want_red=True,
             expect="шаблонов чартов не прочитано", templates={})
-    else:
-        print("  [FAIL] запись «носитель не развёрнут» notify в манифесте не найдена — "
-              "её стороны не проверены")
-        ok = False
 
     print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
     ok = _self_test_population() and ok

@@ -532,7 +532,8 @@ test-unit: $(HOOKS_NOTICE)
 ## (services/storage/tools, argv из десяти слов, `-json` в нём).
 ##
 ## Вторая альтернатива отбора — пакеты каталога notify с настоящей базой
-## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92): их пробы
+## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92; сетка
+## лимитов шлюза internal/limits — полоса N7, З24): их пробы
 ## гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит. Шире
 ## (`cmd/` всех служб) отбор не берётся — радиус не измерен.
 ##
@@ -579,7 +580,7 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; fi; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/cmd/(notify-probe(/internal/send)?|migrator)$$'); \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/(cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l)) — ОТКАЗ: исполнено проб 0" >&2; exit 1; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); \
@@ -848,3 +849,75 @@ release-artifact:
 	@test -n "$(ARTIFACT_ISSUE)" || { echo "нужен ARTIFACT_ISSUE — номер задачи в $(ARTIFACT_REPO), напр. ARTIFACT_ISSUE=123" >&2; exit 2; }
 	scripts/release/publish-service-artifact.sh $(ARTIFACT_SVC) $(ARTIFACT_REPO) \
 	  --confirm $(ARTIFACT_REPO) --issue $(ARTIFACT_ISSUE) $(if $(REV),--rev $(REV))
+
+# notifications-check и notify-tree-gates — вызов проверок NTF-1 в CI дерева
+# (NTF1-D08, замысел #2915 З31). Шаги конвейера `make notifications-check
+# BASE=HEAD^1` и `make notify-tree-gates` судит гейт
+# internal/repohygiene/notifywiring_test.go — тонкий вызывающий
+# `treehygiene.AuditNotifyWiring` corelib, где и живёт ведомость: снятый шаг,
+# условие на шаге, мелкий клон, снятая цель — красный.
+#
+# ТЕЛА ЭТИХ ЦЕЛЕЙ D08 НЕ СУДИТ: о цели он спрашивает лишь «make -n выходит
+# нулём и печатает непустое», и тело `@echo ok` ему отвечает — конвейер и D08
+# зелёные, сверка D07 не исполняется. Тела держат пробы того же файла:
+# `make -n notifications-check BASE=<б>` печатает ровно один вызов
+# генератора пина с `-check -base <б>` без гасителя кода, цель без BASE и с
+# базой, не разрешающейся в коммит, выходит ненулевым кодом; `make -n
+# notify-tree-gates` печатает ровно один `go test` с `-run`, чьё множество
+# имён равно множеству проб internal/repohygiene/notifytreegates_test.go.
+#
+# Генератор исполняется версией пина corelib из go.mod (`go run` пути пакета):
+# другой версии у него здесь нет, и `notifygen -version` печатает её первой
+# строкой — вердикт читается вместе с тем, чей он.
+NOTIFYGEN := $(GO) run github.com/PRO-Robotech/corelib/cmd/notifygen
+
+# БАЗА — ОБЯЗАТЕЛЬНЫЙ ВХОД, умолчания нет. Правило ревизии шаблона (NTF1-D07)
+# судит дерево против ревизии ствола; без неё сверять не с чем, а пустая база
+# дала бы зелёный без сверки. Поэтому без BASE цель не исполняет сверку и
+# называет это третьим исходом — «УСЛОВИЕ НЕ СОЗДАНО», ненулевым кодом. В CI
+# база — первый родитель клона с полной историей (`fetch-depth: 0`): на запросе
+# это голова базы запроса (checkout берёт merge-ревизию), на `push` и ручном
+# запуске — первый родитель. База, не разрешающаяся в коммит (в том числе
+# `HEAD^1` в клоне `--depth 1`), — красный генератора «база не найдена»
+# (D07 (д)). Строка «база <коммит>: …» вывода — отпечаток базы, которой
+# судили; строка «шаблонов N, …» — число шаблонов дерева (DoD S3 п.12).
+.PHONY: notifications-check notify-tree-gates
+## notifications-check — шаблоны извещений: ревизия, эталон, миграции ленты и правило базы против BASE=<ревизия>
+notifications-check:
+	@test -n "$(BASE)" || { \
+	  echo "УСЛОВИЕ НЕ СОЗДАНО: правило базы NTF1-D07 судит дерево против ревизии ствола, а BASE не задан."; \
+	  echo "  Вызов: make notifications-check BASE=<ревизия> (в CI — BASE=HEAD^1 на клоне с полной историей)."; \
+	  echo "  Пустая база дала бы зелёный без сверки, поэтому вердикта нет — ни зелёного, ни красного."; \
+	  exit 2; }
+	$(NOTIFYGEN) -version
+	$(NOTIFYGEN) -check -base "$(BASE)"
+
+# Гейты дерева NTF-1 по kacho (З16): NTF1-B27 (гейт и приёмник address.Domain),
+# NTF1-B28 (гейт), NTF1-B28 (гейт `Put`), узел «ошибка Value() отброшена»,
+# NTF1-B19 (писатели таблиц ленты). Узлы живут в corelib `treehygiene`; пробы
+# internal/repohygiene/notifytreegates_test.go — тонкие вызывающие.
+#
+# ПЕРЕЧЕНЬ ПРОБ ЗАКРЫТ И СЧИТАЕТСЯ. `go test -run` по образцу, не совпавшему ни
+# с одной пробой, выходит НУЛЁМ («no tests to run»): переименованная проба
+# выпала бы из прогона молча. Поэтому цель сверяет число исполненных
+# зелёными проб верхнего уровня с числом имён перечня — меньше значит, что
+# часть гейтов не исполнялась, и это красный, а не зелёный. Перечень и пробы
+# файла — одно множество (TestNTF1D08_NotifyTreeGatesRecipeRunsEveryGate).
+NOTIFY_TREE_GATES := TestNTF1B27Gate_OnKacho TestNTF1B27Receiver_OnKacho \
+	TestNTF1B28Gate_OnKacho TestNTF1B28PutGate_OnKacho TestUK46ValueErrorDiscard_OnKacho \
+	TestNTF1B19FeedWriters_OnKacho
+NOTIFY_TREE_GATES_RUN := ^($(subst $(eval) ,|,$(strip $(NOTIFY_TREE_GATES))))$$
+
+## notify-tree-gates — гейты дерева NTF-1 по kacho (B27, B28, B28 Put, B19) с объёмом осмотренного
+notify-tree-gates:
+	@log=$$(mktemp) || { echo "НЕ ВЫПОЛНИЛОСЬ: файл вывода прогона не заведён"; exit 2; }; rc=0; \
+	$(GO) test ./internal/repohygiene/ -count=1 -timeout $(UNIT_TIMEOUT) -v -run '$(NOTIFY_TREE_GATES_RUN)' > "$$log" 2>&1 || rc=$$?; \
+	cat "$$log"; \
+	want=$(words $(NOTIFY_TREE_GATES)); \
+	passed=$$(grep -cE '^--- PASS: Test[A-Za-z0-9_]+ ' "$$log" || true); \
+	rm -f "$$log"; \
+	echo "notify-tree-gates: проб в перечне $$want · исполнено зелёными $$passed · код go test $$rc"; \
+	if [ "$$rc" -ne 0 ]; then exit "$$rc"; fi; \
+	if [ "$$passed" -ne "$$want" ]; then \
+	  echo "НЕ ВЫПОЛНИЛОСЬ: зелёными исполнено $$passed проб из $$want — часть гейтов перечня не исполнялась (переименована, пропущена, снята)"; \
+	  exit 1; fi

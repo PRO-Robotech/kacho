@@ -36,6 +36,25 @@ func roster(t *testing.T, recs ...map[string]any) *string {
 	return &s
 }
 
+// rosterEdits — правки фикстуры под перечень recs: сам перечень и ручки на
+// источник его модулей. Ручки на источник параметризуют перечень (Р10): запись
+// модуля вне перечня — отказ старта, поэтому мир перечня из одного `probe`
+// несёт ручки ровно этого модуля, а не фикстурные двух.
+func rosterEdits(t *testing.T, recs ...map[string]any) map[string]*string {
+	t.Helper()
+	limits := map[string]any{}
+	for _, r := range recs {
+		if m, ok := r["module"].(string); ok && m != "" {
+			limits[m] = map[string]any{"rate": 5, "burst": 5, "paused": false}
+		}
+	}
+	b, err := json.Marshal(limits)
+	if err != nil {
+		t.Fatalf("сборка ручек на источник пробы: %v", err)
+	}
+	return map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, recs...), "KACHO_NOTIFY_SOURCE_LIMITS": str(string(b))}
+}
+
 // NTF1-G01 — перечень источников: пустой или неполный — отказ старта с именем
 // ручки и, для неполной записи, с её модулем и недостающим полем; полный — старт.
 func TestNTF1G01SourceRosterEmptyOrIncompleteRefusesStart(t *testing.T) {
@@ -64,7 +83,7 @@ func TestNTF1G01SourceRosterEmptyOrIncompleteRefusesStart(t *testing.T) {
 		t.Run("нет поля "+field, func(t *testing.T) {
 			rec := fullRecord()
 			delete(rec, field)
-			useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, rec)})
+			useFixture(t, rosterEdits(t, rec))
 			want := []string{`нет поля "` + field + `"`}
 			if field != "module" {
 				want = append(want, `модуль "probe"`)
@@ -76,7 +95,7 @@ func TestNTF1G01SourceRosterEmptyOrIncompleteRefusesStart(t *testing.T) {
 	}
 
 	t.Run("близнец: полный перечень", func(t *testing.T) {
-		useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, fullRecord())})
+		useFixture(t, rosterEdits(t, fullRecord()))
 		cfg, err := config.Load()
 		if err != nil {
 			t.Fatalf("загрузка: %v", err)
@@ -100,7 +119,7 @@ func TestNTF1G01SourceRosterEmptyOrIncompleteRefusesStart(t *testing.T) {
 	t.Run("близнец: формы адресата пусты, но поле есть", func(t *testing.T) {
 		rec := fullRecord()
 		rec["recipientForms"] = []string{}
-		useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, rec)})
+		useFixture(t, rosterEdits(t, rec))
 		if err := start(t); err != nil {
 			t.Fatalf("запись без форм адресата отвергнута: %v", err)
 		}
@@ -135,25 +154,25 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			rec := fullRecord()
 			rec[c.field] = c.value
-			useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, rec)})
+			useFixture(t, rosterEdits(t, rec))
 			requireOnlyRefusal(t, start(t), "notify.sources", `"`+c.field+`"`)
 		})
 	}
 	t.Run("лишнее поле", func(t *testing.T) {
 		rec := fullRecord()
 		rec["templates"] = "x"
-		useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, rec)})
+		useFixture(t, rosterEdits(t, rec))
 		requireOnlyRefusal(t, start(t), "notify.sources", `"templates"`)
 	})
 	t.Run("модуль дважды", func(t *testing.T) {
-		useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, fullRecord(), fullRecord())})
+		useFixture(t, rosterEdits(t, fullRecord(), fullRecord()))
 		requireOnlyRefusal(t, start(t), "notify.sources", `"probe"`, "дважды")
 	})
 	t.Run("перечень классов закрытый — тот же, что у ленты", func(t *testing.T) {
 		for _, c := range feed.Classes() {
 			rec := fullRecord()
 			rec["classes"] = []string{string(c)}
-			useFixture(t, map[string]*string{"KACHO_NOTIFY_SOURCES": roster(t, rec)})
+			useFixture(t, rosterEdits(t, rec))
 			if err := start(t); err != nil {
 				t.Fatalf("класс ленты %q отвергнут перечнем notify: %v", c, err)
 			}

@@ -7,7 +7,7 @@
 //
 // # Ответ синхронный, а не Operation
 //
-// Постановка — одна транзакция (`feed.Put` через порождённый SendProbeHello и
+// Постановка — одна транзакция (`feed.PutID` через порождённый SendProbeHello и
 // строка журнала подписки в ней же); ответ отдаётся после коммита и равен
 // закоммиченному, асинхронной работы после ответа нет. Исход доставки решает
 // служба отправки, и виден он у приёмника и в её метриках.
@@ -24,43 +24,17 @@
 //
 // # Как узнаётся id своей строки
 //
-// `feed.Put` id не возвращает: он выдаётся внутри постановки. Строка читается
-// в той же транзакции, и транзакция открывается уровнем REPEATABLE READ: её
-// снимок берётся первым оператором, до выдачи транзакции номера, поэтому чужая
-// строка, видимая в снимке, закоммичена раньше — её `xmin` предшествует номеру
-// этой транзакции, и `age(xmin) > 0`. Строка, вставленная этой транзакцией (в
-// точке сохранения постановки — номером подтранзакции, старше номера
-// транзакции), даёт `age(xmin) <= 0`. На уровне READ COMMITTED каждый оператор
-// берёт новый снимок, и параллельная постановка с номером старше, успевшая
-// закоммититься, попала бы в него с `age(xmin) <= 0` рядом со своей строкой:
-// строк стало бы две, и Send ответил бы INTERNAL («строк ленты этой транзакции
-// 2») — ложный отказ, а не чужой id. Гонку держит проба
-// TestParallelSendsGetTheirOwnIDs. Строк своей транзакции не ровно одна —
-// внутренняя ошибка, а не «первая попавшаяся».
+// Его отвечает постановка: порождённый SendProbeHello зовёт `feed.PutID`, и
+// тот возвращает id строки, вставленной своим оператором. Лента не читается,
+// имени её таблицы глагол не знает (NTF1-B19), уровень изоляции — умолчание
+// пула. Конкурирующая постановка в той же ленте ответа не трогает: id выдан
+// этой постановке, а не найден среди строк. Держат пробы
+// TestSendIssuesOnlyTheFoundationStatements (операторы Send — ровно операторы
+// постановки фундамента) и TestSendReturnsItsOwnIDUnderACompetingWrite.
 //
-// # Цена: полный проход ленты на каждый Send
-//
-// У `age(xmin)` индекса нет, и запрос id своей строки — последовательный
-// проход по всей таблице ленты пробы внутри транзакции постановки: цена Send
-// растёт линейно с числом строк ленты, а не с числом своих (их одна). Это
-// принято для пробы-источника: Send зовёт только сквозная проба стенда, и
-// лента пробы растёт на строку за её прогон, — и не годится для источника с
-// потоком постановок. Условие снятия — у фундамента: `feed.Put`
-// возвращает id поставленной строки (`INSERT … RETURNING id` в
-// `corelib/notify/feed`), и тогда этот запрос, уровень REPEATABLE READ и
-// шапка выше снимаются одним изменением. Проверка условия: `go doc
-// github.com/PRO-Robotech/corelib/notify/feed Put` — сигнатура, возвращающая
-// id.
-//
-// # REPEATABLE READ и limits шаблона
-//
-// Уровень REPEATABLE READ безопасен, пока постановка ничего не обновляет: у
-// шаблона без limits `feed.Put` только вставляет строку ленты и сигнал. Limits
-// у шаблона сделали бы постановку обновлением счётчика окна (`INSERT … ON
-// CONFLICT DO UPDATE`), и две параллельные постановки на одно окно под
-// REPEATABLE READ давали бы 40001 (serialization failure); повтора транзакции
-// у Send нет. Предпосылку «limits у probe-hello пусты» держит проба
-// TestSentTemplateDeclaresNoLimits (инъекция limit → красный с именем шаблона).
+// Постановка, не записавшая строки (флаг выключен у шаблона класса notice),
+// id не несёт; у probe-hello флаг проверен в пункте 1, и такой исход —
+// внутренняя ошибка, а не пустой id в ответе.
 package send
 
 import (
@@ -69,7 +43,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -79,14 +52,10 @@ import (
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	notify "github.com/PRO-Robotech/kacho/services/notify"
-	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/journal"
 )
 
 // target — значение атрибута target письма: путь `/` — origin установки.
 const target = "/"
-
-// ownRowQuery — id строк ленты, вставленных этой транзакцией (см. шапку).
-const ownRowQuery = `SELECT id FROM ` + journal.FeedOutbox + ` WHERE age(xmin) <= 0`
 
 // Server — служба InternalNotifyProbeService.
 type Server struct {
@@ -99,7 +68,7 @@ type Server struct {
 // New — служба над базой пробы db и источником ленты source; log — журнал
 // корня (внутренняя ошибка уходит в журнал, наружу — только "internal error").
 func New(db journaltx.TxStarter, source *feed.Source, log *slog.Logger) *Server {
-	return &Server{db: repeatableRead{db}, source: source, log: log}
+	return &Server{db: db, source: source, log: log}
 }
 
 // Send ставит письмо probe-hello на адрес.
@@ -131,7 +100,8 @@ func (s *Server) Send(ctx context.Context, req *notifyv1.SendRequest) (*notifyv1
 	return nil, status.Error(codes.Internal, "internal error")
 }
 
-// put — транзакция постановки: строка ленты, строка журнала, id своей строки.
+// put — транзакция постановки: строка ленты и строка журнала; id своей
+// строки отвечает постановка.
 func (s *Server) put(ctx context.Context, addr string) (string, error) {
 	tx, err := journaltx.Begin(ctx, s.db, journaltx.NewOptions(s.source.Enabled()))
 	if err != nil {
@@ -139,30 +109,16 @@ func (s *Server) put(ctx context.Context, addr string) (string, error) {
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
-	if err := notify.SendProbeHello(ctx, tx, notify.ProbeHelloAttrs{To: addr, Target: target}); err != nil {
+	queued, err := notify.SendProbeHello(ctx, tx, notify.ProbeHelloAttrs{To: addr, Target: target})
+	if err != nil {
 		return "", fmt.Errorf("постановка probe-hello: %w", err)
 	}
-	rows, err := tx.Query(ctx, ownRowQuery)
-	if err != nil {
-		return "", fmt.Errorf("id поставленной строки: %w", err)
-	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return "", fmt.Errorf("id поставленной строки: %w", err)
-	}
-	if len(ids) != 1 {
-		return "", fmt.Errorf("строк ленты этой транзакции %d, а постановка одна", len(ids))
+	id, ok := queued.ID()
+	if !ok {
+		return "", errors.New("постановка probe-hello не записала строки ленты при включённом флаге")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("коммит постановки: %w", err)
 	}
-	return ids[0], nil
-}
-
-// repeatableRead открывает транзакции уровнем REPEATABLE READ (см. шапку).
-type repeatableRead struct{ db journaltx.TxStarter }
-
-func (r repeatableRead) BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error) {
-	opts.IsoLevel = pgx.RepeatableRead
-	return r.db.BeginTx(ctx, opts)
+	return id, nil
 }

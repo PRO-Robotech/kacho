@@ -20,8 +20,10 @@ own certs live in its own chart). Issued by the umbrella mTLS ClusterIssuer
 is installed and Ready BEFORE these are applied (dev-up two-phase / pre-existing
 controller), so the webhook admits them and the Secret is issued while `--wait`
 converges the consuming pod. A server cert is emitted when mtls.serverSecretName
-is set; a client cert when mtls.clientSecretName is set. This template is identical
-across every component chart — behaviour is driven entirely by mtls.* values.
+is set; a client cert when mtls.clientSecretName is set. Behaviour is driven by
+mtls.* values. One deliberate difference from the service charts' copy: kaname's
+SERVER leaf also carries the service URI-SAN, because notify dials kaname as a
+roster source by exact SAN (see the server block below).
 */}}
 {{- if $m.serverSecretName }}
 apiVersion: cert-manager.io/v1
@@ -51,6 +53,13 @@ spec:
     - {{ printf "%s.%s.svc" $h $ns | quote }}
     - {{ printf "%s.%s" $h $ns | quote }}
     {{- end }}
+  # URI-SAN of the server leaf = the service identity (same URI as the client
+  # leaf below). notify dials kaname's feed server by the EXACT SAN of its roster
+  # record (services/notify/internal/source/loop.go, exactSANCreds: exactly one
+  # URI-SAN equal to the record's `san`); a DNS-only leaf is refused at the
+  # handshake (decision Д112 (а)). Held by deploy/notify_source_server_leaf_test.go.
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $spNs $sa | quote }}
   usages:
     - server auth        # server-only — NO client auth on the server leaf
 {{- end }}

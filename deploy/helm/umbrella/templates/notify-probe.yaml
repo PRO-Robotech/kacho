@@ -1,0 +1,370 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+СТЕНДОВАЯ ПРОБА-ИСТОЧНИК notify — `notify-probe` (NTF-1, полоса D3; замысел
+З29, З32 «Два процесса одного каталога», «Накат схемы» — Д74, Д77).
+
+ЗАЧЕМ. Сквозная проба ядра notify на поднятом стенде без настоящего источника
+невыполнима: проба — служба kacho, подключённая к notify процедурой «подключить
+службу», и её внутренний глагол `InternalNotifyProbeService/Send` ставит письмо
+на адрес. Читает письмо приёмник стенда (templates/mail-receiver.yaml).
+
+ЧТО ЭТОТ ФАЙЛ УТВЕРЖДАЕТ И ЧЕМ ДЕРЖИТСЯ:
+  · проба — СТЕНДОВЫЙ объект: рендерится только при `notifyProbe.enabled`, и в
+    цепочке `prod` её нет (NTF1-I04; гейт deploy/mail_receiver_core_test.go);
+  · процесс стартует на накатанной схеме своей базы: инициализирующий
+    контейнер `migrate` зовёт точку наката каталога формой
+    `kacho-migrator up` с DSN базы `kacho_notifyprobe` (Д74, Д77); форму судят
+    перепись форм и доказательство наката в манифестной форме
+    (internal/migratorapply);
+  · образ один на каталог notify (`notify.image`): бинари `kacho-notify-probe`
+    и `kacho-migrator` лежат в нём, второго написания образа нет.
+
+ЧЕГО ФАЙЛ НЕ УТВЕРЖДАЕТ: что проба ПОДНЯЛАСЬ — это вопрос подъёма в боевой
+посадке (полоса D6), а не рендера.
+*/}}
+{{/* Имя пробы — постоянное, а не из имени выпуска: по нему пробу спрашивает
+     встречный контроль ban #6 (`svc/kacho-notify-probe` в карте носителей
+     deploy/scripts/assert-ban6-external-isolation.py) и называет таблица
+     источников notify (сегмент `sa/` идентичности пробы). Выпуск стенда
+     `kacho-umbrella` дал бы `kacho-umbrella-notify-probe` — и то и другое
+     промахнулось бы мимо пробы (deploy/mail_receiver_core_test.go,
+     TestNotifyProbeServiceIsTheBan6Carrier). */}}
+{{- define "kacho.notifyProbe.fullname" -}}
+kacho-notify-probe
+{{- end }}
+{{- if (.Values.notifyProbe).enabled }}
+{{- $p := .Values.notifyProbe }}
+{{- $ns := .Release.Namespace }}
+{{- $name := include "kacho.notifyProbe.fullname" . }}
+{{- $img := (.Values.notify).image | default dict }}
+{{- $image := printf "%s:%s" $img.repository (required "notify.image.tag: проба notify-probe включена (notifyProbe.enabled), а тег образа каталога notify не задан — задайте тег образа, опубликованного конвейером" $img.tag) }}
+{{- $dbpw := $p.db.passwordSecret }}
+{{- $dbpwName := required "notifyProbe.db.passwordSecret.name: проба notify-probe включена, а секрет пароля базы kacho_notifyprobe не назван" $dbpw.name }}
+{{- $ring := $p.feedKeyringSecret | default dict }}
+{{/* ── ОТКАЗ РЕНДЕРА: листу пробы не из чего выпуститься ───────────────────
+     Оба слушателя пробы и её ребро к владельцу модели прав — только mTLS
+     (ban #16, sec-transport-mtls-or-tlsjwt). Выключенный внутренний УЦ
+     оставляет выразимой лишь незашифрованную посадку — её не бывает. */}}
+{{- if not (.Values.mtls).enabled }}
+{{- fail "kacho-umbrella: проба notify-probe включена (notifyProbe.enabled), а `mtls.enabled` выключен — внутреннего удостоверяющего нет, листы пробы выпустить нечем, и её слушатели выразимы только незашифрованными (ban #16)" }}
+{{- end }}
+{{- $issuerName := ((.Values.mtls).internalCA).clusterIssuerName | default "kacho-internal-ca" }}
+{{/* Домен доверия — ОДНО объявление зонта (`umbrella.trustDomain`) на обе
+     стороны: им чеканится клиентский лист пробы и его же процесс признаёт
+     своим. Второе объявление в разделе пробы разошлось бы с первым молча
+     (internal/repohygiene/trustdomainposture_test.go). */}}
+{{- $trust := include "umbrella.trustDomain" . }}
+{{/* Имена секретов листов объявлены в значениях, а не выведены из имени
+     выпуска: секрет клиента обязан объявлять тот, кто его монтирует
+     (deploy/client_identity_leaf_test.go, задача #2186) — иначе блок клиентского
+     листа выразим ненаписанным, и ребро к владельцу модели прав предъявляет
+     пустой каталог. */}}
+{{- $srvSecret := required "notifyProbe.mtls.serverSecretName: проба notify-probe включена, а имя секрета серверного листа не задано" ($p.mtls).serverSecretName }}
+{{- $cliSecret := required "notifyProbe.mtls.clientSecretName: проба notify-probe включена, а имя секрета клиентского листа (ребро к владельцу модели прав) не задано" ($p.mtls).clientSecretName }}
+{{- $srvDir := "/var/run/kacho/notify-probe/tls/server" }}
+{{- $cliDir := "/var/run/kacho/notify-probe/tls/client" }}
+{{- $ringDir := "/var/run/kacho/notify-probe/feed-keyring" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: notify-probe
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: helm
+automountServiceAccountToken: false
+---
+{{/* Серверный лист: оба слушателя пробы. Имена — те, которыми к пробе
+     обращается notify (служба ниже), без `client auth`.
+     URI-SAN — идентичность учётки пробы, та же, что у клиентского листа ниже.
+     notify зовёт сервер ленты источника по ТОЧНОМУ SAN записи перечня
+     (services/notify/internal/source/loop.go, exactSANCreds: ровно один
+     URI-SAN, равный `san` записи) — лист с одними DNS-именами он отвергает на
+     рукопожатии, и письмо пробы не доставляется никогда (решение Д112 (а)).
+     Сходимость держит deploy/notify_source_server_leaf_test.go. */}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $srvSecret | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: notify-probe
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $srvSecret | quote }}
+  duration: {{ (.Values.mtls).leafDuration | default "2160h" | quote }}
+  renewBefore: {{ (.Values.mtls).leafRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuerName | quote }}
+    kind: "ClusterIssuer"
+    group: cert-manager.io
+  dnsNames:
+    - {{ $name | quote }}
+    - {{ printf "%s.%s" $name $ns | quote }}
+    - {{ printf "%s.%s.svc" $name $ns | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $name $ns | quote }}
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $ns $name | quote }}
+  usages:
+    - server auth
+---
+{{/* Клиентский лист: ребро пробы к владельцу модели прав. SAN —
+     идентичность учётки пробы; иную политика выпуска не одобрит (З30). */}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $cliSecret | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: notify-probe
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $cliSecret | quote }}
+  duration: {{ (.Values.mtls).leafDuration | default "2160h" | quote }}
+  renewBefore: {{ (.Values.mtls).leafRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuerName | quote }}
+    kind: "ClusterIssuer"
+    group: cert-manager.io
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $ns $name | quote }}
+  usages:
+    - client auth
+---
+{{/* Служба — только внутренний слушатель: сервер ленты и подписки, к которым
+     ходит notify, и внутренний глагол Send (ban #6: на внешний край не выходит). */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: notify-probe
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/managed-by: helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  ports:
+    - name: grpc-internal
+      port: {{ $p.ports.internal | int }}
+      targetPort: grpc-internal
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: notify-probe
+    app.kubernetes.io/name: notify-probe
+    app.kubernetes.io/managed-by: helm
+spec:
+  replicas: {{ $p.replicaCount | int }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: notify-probe
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  template:
+    metadata:
+      labels:
+        kacho.cloud/component: notify-probe
+        app.kubernetes.io/name: notify-probe
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      annotations:
+        {{- if $p.metricsScrape.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $p.ports.diag | quote }}
+        prometheus.io/path: /metrics
+        {{- else }}
+        kacho.cloud/metrics-scrape-disabled-because: {{ $p.metricsScrape.disabledBecause | quote }}
+        {{- end }}
+        # Привязка пода к содержимому образа каталога notify (тег `:dev` неизменен).
+        kacho.cloud/image-id: {{ dig "kachoImageIds" "notify" "unset" (.Values.global | default dict) | quote }}
+    spec:
+      serviceAccountName: {{ $name | quote }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      # ── НАКАТ СХЕМЫ kacho_notifyprobe ДО СТАРТА ПРОЦЕССА (Д74, Д77) ──────────
+      # Точка наката каталога выбирает цепочку по имени базы в DSN; DSN — только
+      # KACHO_MIGRATOR_DSN, собранный из ручек базы пробы и ссылки на секрет
+      # пароля (конфигурации процесса точка не читает).
+      initContainers:
+        - name: migrate
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ $img.pullPolicy | default "IfNotPresent" | quote }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          command: ["/usr/local/bin/kacho-migrator", "up"]
+          env:
+            - name: KACHO_NOTIFYPROBE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbpwName | quote }}
+                  key: {{ $dbpw.key | quote }}
+            - name: KACHO_MIGRATOR_DSN
+              value: {{ printf "host=%s port=%v user=%s password=$(KACHO_NOTIFYPROBE_DB_PASSWORD) dbname=%s sslmode=%s" .Values.notifyProbe.db.host .Values.notifyProbe.db.port .Values.notifyProbe.db.user .Values.notifyProbe.db.name .Values.notifyProbe.db.sslMode | quote }}
+      containers:
+        - name: notify-probe
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ $img.pullPolicy | default "IfNotPresent" | quote }}
+          command: ["/usr/local/bin/kacho-notify-probe"]
+          args: ["serve"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: grpc
+              containerPort: {{ $p.ports.grpc | int }}
+            - name: grpc-internal
+              containerPort: {{ $p.ports.internal | int }}
+            - name: diag
+              containerPort: {{ $p.ports.diag | int }}
+          env:
+            - name: KACHO_NOTIFYPROBE_AUTH_MODE
+              value: {{ $p.authMode | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_HOST
+              value: {{ $p.db.host | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_PORT
+              value: {{ $p.db.port | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_USER
+              value: {{ $p.db.user | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_NAME
+              value: {{ $p.db.name | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_SSLMODE
+              value: {{ $p.db.sslMode | quote }}
+            - name: KACHO_NOTIFYPROBE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbpwName | quote }}
+                  key: {{ $dbpw.key | quote }}
+            - name: KACHO_NOTIFYPROBE_GRPC_PORT
+              value: {{ $p.ports.grpc | quote }}
+            - name: KACHO_NOTIFYPROBE_INTERNAL_PORT
+              value: {{ $p.ports.internal | quote }}
+            - name: KACHO_NOTIFYPROBE_METRICS_ADDR
+              value: {{ printf ":%v" $p.ports.diag | quote }}
+            - name: KACHO_NOTIFYPROBE_AUTHZ_IAM_GRPC_ADDR
+              value: {{ $p.authz.iamGrpcAddr | quote }}
+            - name: KACHO_NOTIFYPROBE_AUTHZ_TRUST_DOMAIN
+              value: {{ $trust | quote }}
+            - name: KACHO_NOTIFYPROBE_AUTHZ_TRUSTED_FORWARDER_SANS
+              value: {{ join "," ($p.authz.trustedForwarderSANs | default list) | quote }}
+            # Флаг доставки извещений пробы (Р9, NTF1-N07 (б)): ключ модуля
+            # таблицы флага. Ключа нет — пустое значение, и страж старта пробы
+            # отказывает с именем ручки: «незадано» не читается как «выключено».
+            - name: KACHO_NOTIFYPROBE_NOTIFICATIONS_ENABLED
+              value: {{ dig "kacho" "notifications" "modules" "notifyProbe" "enabled" "" (.Values.global | default dict) | toString | quote }}
+            - name: KACHO_NOTIFYPROBE_NOTIFY_SAN
+              value: {{ $p.notifySAN | quote }}
+            {{- if $ring.name }}
+            - name: KACHO_NOTIFYPROBE_NOTIFICATIONS_FEED_KEYRING
+              value: {{ printf "%s/%s" $ringDir $ring.key | quote }}
+            {{- end }}
+            - name: KACHO_NOTIFYPROBE_PUBLIC_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_NOTIFYPROBE_PUBLIC_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_PUBLIC_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_INTERNAL_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_NOTIFYPROBE_INTERNAL_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_INTERNAL_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srvDir | quote }}
+            - name: KACHO_NOTIFYPROBE_IAM_AUTHZ_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_NOTIFYPROBE_IAM_AUTHZ_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cliDir | quote }}
+            - name: KACHO_NOTIFYPROBE_IAM_AUTHZ_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cliDir | quote }}
+            - name: KACHO_NOTIFYPROBE_IAM_AUTHZ_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cliDir | quote }}
+            - name: KACHO_NOTIFYPROBE_IAM_AUTHZ_MTLS_SERVERNAME
+              value: {{ $p.authz.iamServerName | quote }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: server-tls
+              mountPath: {{ $srvDir | quote }}
+              readOnly: true
+            - name: client-tls
+              mountPath: {{ $cliDir | quote }}
+              readOnly: true
+            {{- if $ring.name }}
+            - name: feed-keyring
+              mountPath: {{ $ringDir | quote }}
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: diag
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: diag
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml $p.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: server-tls
+          secret:
+            secretName: {{ $srvSecret | quote }}
+        - name: client-tls
+          secret:
+            secretName: {{ $cliSecret | quote }}
+        {{- if $ring.name }}
+        - name: feed-keyring
+          secret:
+            secretName: {{ $ring.name | quote }}
+            items:
+              - key: {{ $ring.key | quote }}
+                path: {{ $ring.key | quote }}
+        {{- end }}
+{{- end }}

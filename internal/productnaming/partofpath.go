@@ -114,3 +114,27 @@ func PartOfLine(rel string, lines []string, at int) (string, bool) {
 	}
 	return "", false
 }
+
+// umbrellaTemplatesPrefix — шаблоны самого зонта (не подчартов).
+const umbrellaTemplatesPrefix = "deploy/helm/umbrella/templates/"
+
+// UmbrellaTemplatePart — КАНДИДАТ в части продукта для шаблона самого зонта
+// `deploy/helm/umbrella/templates/<файл>`: первый сегмент имени файла до `-`
+// либо `.` (Д77 (а) NTF-1; проба notify-probe разворачивается шаблоном зонта,
+// полоса D3).
+//
+// Кандидат, а не ответ: шаблоны зонта называются и не по частям
+// (`mail-receiver.yaml`, `clusterissuer.yaml`), и приписать такой файл
+// несуществующей части хуже, чем остановиться. Поэтому [PartOfPath] эту
+// раскладку НЕ знает, а вызывающий подтверждает кандидата наличием каталога
+// `services/<кандидат>` в индексе — состава дерева этот пакет не читает.
+func UmbrellaTemplatePart(rel string) (string, bool) {
+	name, ok := strings.CutPrefix(filepath.ToSlash(rel), umbrellaTemplatesPrefix)
+	if !ok || strings.Contains(name, "/") {
+		return "", false
+	}
+	if i := strings.IndexAny(name, "-."); i > 0 {
+		return name[:i], true
+	}
+	return "", false
+}

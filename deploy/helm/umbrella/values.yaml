@@ -121,7 +121,7 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: 484-notify-06966a08
+    tag: 484-notify-a3c0158a
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
@@ -723,6 +723,80 @@ notify:
   image:
     repository: docker.io/prorobotech/kacho-notify
     tag: ""
+
+# ─── notify-probe — стендовая проба-источник notify (NTF-1, полоса D3) ────────
+#
+# Поднимается шаблоном templates/notify-probe.yaml. Проба — СТЕНДОВЫЙ объект
+# (приёмка NTF1-I04, решение Р16): в цепочке `prod` её нет, и держит это гейт
+# deploy/mail_receiver_core_test.go. Умолчание `false` — факт о посадке, а не
+# выключенный контроль: включают пробу профили стендов (полоса D2, замысел З28).
+#
+# Образ — образ каталога notify (`notify.image` выше, бинарь
+# `kacho-notify-probe`, замысел З32 «Два процесса одного каталога»): второго
+# написания образа нет.
+#
+# Ручки процесса без умолчания в коде доезжают до процесса как есть: пустое
+# значение отвергает его страж старта с именем ручки (адрес владельца модели
+# прав, круг пересылающих, SAN notify, кольцо ключей ленты). Единственные отказы
+# рендера — ссылка на секрет пароля базы (без неё манифест невыразим) и
+# выключенный внутренний УЦ (листу пробы не из чего выпуститься).
+notifyProbe:
+  enabled: false
+  # Посадка — только боевая (ban #16): `production` либо `production-strict`.
+  authMode: production
+  replicaCount: 1
+  # Собственная база `kacho_notifyprobe` (database-per-service). DSN точки наката
+  # (`KACHO_MIGRATOR_DSN` контейнера migrate) собирается из этих же ручек и
+  # ссылки на секрет пароля — одно написание на процесс и накат (Д77).
+  db:
+    host: ""
+    port: 5432
+    user: notifyprobe
+    name: kacho_notifyprobe
+    sslMode: require
+    passwordSecret:
+      name: ""
+      key: password
+  ports:
+    grpc: 9090
+    internal: 9091
+    diag: 9095
+  metricsScrape:
+    enabled: true
+    disabledBecause: ""
+  # Домен доверия SPIFFE-идентичности пробы — не здесь: он один на зонт
+  # (`umbrella.trustDomain`, templates/_trust-domain.tpl), им выпускается
+  # клиентский лист (`spiffe://<домен>/ns/<пространство>/sa/<учётка>`) и его же
+  # процесс признаёт своим.
+  # Секреты листов пробы (выпускает внутренний УЦ): серверный — оба слушателя,
+  # клиентский — ребро к владельцу модели прав. Секрет клиента объявляет чарт,
+  # который его монтирует (deploy/client_identity_leaf_test.go).
+  mtls:
+    serverSecretName: kacho-notify-probe-server-tls
+    clientSecretName: kacho-notify-probe-client-tls
+  authz:
+    # Внутренний адрес владельца модели прав (проверка Claim/Ack, сужение потока).
+    iamGrpcAddr: ""
+    # Имя, сверяемое с сертификатом владельца модели прав.
+    iamServerName: ""
+    # Круг пересылающих личность пользователя. Пустой список — отказ старта в
+    # боевой посадке (корень не сужает круг на пустом списке).
+    trustedForwarderSANs: []
+  # SPIFFE-идентификатор notify — строка таблицы звена идентичности служб
+  # `{SAN notify → notify}` (обязателен при включённой доставке).
+  notifySAN: ""
+  # Кольцо ключей ленты (секрет в покое, З11) — ссылка на объект и ключ.
+  # Пусто — переменной пути нет, и процесс с включённой доставкой не стартует.
+  feedKeyringSecret:
+    name: ""
+    key: keyring
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 # ─── security.txt (RFC 9116) — served at /.well-known/security.txt via api-gateway
 # ingress; runtime-configurable per cluster.

@@ -6,6 +6,7 @@ package migratorapply_test
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -113,7 +114,7 @@ var (
 // ключ подчарта, затем отказ «ЧЬЮ — не выводится».
 func serviceForForm(tree *treecorpus.Tree, rel string, lines []string, at int) string {
 	rel = filepath.ToSlash(rel)
-	if svc, ok := umbrellaTemplateService(rel); ok {
+	if svc, ok := productnaming.UmbrellaTemplatePart(rel); ok {
 		if tree.HasDir("services/" + svc) {
 			return svc
 		}
@@ -124,21 +125,6 @@ func serviceForForm(tree *treecorpus.Tree, rel string, lines []string, at int) s
 		return keyedService(lines, at)
 	}
 	return svc
-}
-
-// umbrellaTemplatesPrefix — шаблоны самого зонта (не подчартов).
-const umbrellaTemplatesPrefix = "deploy/helm/umbrella/templates/"
-
-// umbrellaTemplateService — служба шаблона зонта по имени файла.
-func umbrellaTemplateService(rel string) (string, bool) {
-	name, ok := strings.CutPrefix(rel, umbrellaTemplatesPrefix)
-	if !ok || strings.Contains(name, "/") {
-		return "", false
-	}
-	if i := strings.IndexAny(name, "-."); i > 0 {
-		return name[:i], true
-	}
-	return "", false
 }
 
 // isDeliveryChart — путь лежит в чарте поставки вне зонта `deploy/helm/<чарт>/`.
@@ -727,6 +713,7 @@ func TestPointWithoutServiceConfigRefusesTheConfigLane(t *testing.T) {
 		chainsOf[c.Service] = append(chainsOf[c.Service], c)
 	}
 	judged := 0
+	binOf, dsnOf := map[string]string{}, map[string]string{}
 	services := make([]string, 0, len(forms))
 	for svc := range forms {
 		services = append(services, svc)
@@ -738,8 +725,15 @@ func TestPointWithoutServiceConfigRefusesTheConfigLane(t *testing.T) {
 				continue
 			}
 			c := chainsOf[service][0]
-			bin := buildApplyPoint(t, root, t.TempDir(), c.Point, service)
-			dsn := chainDSN(t, c)
+			// База строки заводится ОДИН раз на службу: у каталога notify две
+			// формы с полосой DSN (шлюз и проба, Д74), и вторая попытка завести
+			// ту же базу отказала бы условием, а не продуктом.
+			key := c.Point + "\x00" + c.Database
+			if _, ok := binOf[key]; !ok {
+				binOf[key] = buildApplyPoint(t, root, t.TempDir(), c.Point, service)
+				dsnOf[key] = chainDSN(t, c)
+			}
+			bin, dsn := binOf[key], dsnOf[key]
 			argv, env := invocationEnv(t, service, form, dsn, t.TempDir(), laneServiceConfig)
 			out, err := runMigratorEnv(t, bin, env, argv...)
 			if err == nil {
@@ -797,17 +791,39 @@ func TestPointRefusesADatabaseOutsideItsTable(t *testing.T) {
 
 // uniqueForms схлопывает повторы: одна и та же форма объявлена и шаблоном чарта, и
 // его values. Доказывать её дважды незачем, а вот потерять — нельзя.
+//
+// Повтор — та же запись вызова В ТОМ ЖЕ ЧАРТЕ ([formChartKey]), а не та же
+// запись вообще: у каталога notify два развёртывания с одной записью
+// `kacho-migrator up` — шлюз (чарт notify, база kacho_notify) и проба (шаблон
+// зонтика, база kacho_notifyprobe; Д74). Схлопнутые по одной записи, они
+// оставили бы вторую форму без пары и без доказательства — молча.
 func uniqueForms(in []invocationForm) []invocationForm {
 	seen := make(map[string]bool, len(in))
 	var out []invocationForm
 	for _, f := range in {
-		key := f.String()
+		key := formChartKey(f) + "\x00" + f.String()
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		out = append(out, f)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].String() != out[j].String() {
+			return out[i].String() < out[j].String()
+		}
+		return out[i].origin < out[j].origin
+	})
 	return out
+}
+
+// formChartKey — чарт, которому принадлежит манифест формы: `<чарт>/templates/…`
+// → `<чарт>`; файл значений `<чарт>/values*.yaml` → его каталог. Шаблон и values
+// одного чарта дают один ключ.
+func formChartKey(f invocationForm) string {
+	file, _, _ := strings.Cut(f.origin, ":")
+	if dir, _, ok := strings.Cut(file, "/templates/"); ok {
+		return dir
+	}
+	return path.Dir(file)
 }
