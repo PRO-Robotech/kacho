@@ -395,6 +395,83 @@ func TestJournaledWritesGateCatchesASessionLevelInitiator(t *testing.T) {
 		"параметр старта в тестовом файле — законный контроль, не находка")
 }
 
+// TestJournaledWritesGateResolvesAFieldPromotedFromAnEmbeddedStruct — получатель
+// через поле встроенной структуры пакета (`w.tx`, где `tx` объявлено у встроенного
+// читателя). Имя поля в пакете неоднозначно по типу (у писателя рядом —
+// `*journaltx.Tx`), поэтому без продвижения полей разбор не установил бы тип и
+// назвал бы точку сохранения неосмотренной.
+//
+// Обе стороны: законный близнец — точка сохранения на продвинутой транзакции —
+// молчит и считается точкой сохранения; дефект той же формы — открытие на
+// продвинутом ПУЛЕ — краснеет правилом (а) с типом получателя, а не «не
+// установлен».
+func TestJournaledWritesGateResolvesAFieldPromotedFromAnEmbeddedStruct(t *testing.T) {
+	const embedded = `package pg
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PRO-Robotech/corelib/journaltx"
+)
+
+type writerImpl struct {
+	tx   *journaltx.Tx
+	pool *pgxpool.Conn
+}
+
+type groupReader struct {
+	tx pgx.Tx
+}
+
+type groupWriter struct {
+	groupReader
+}
+
+func (w *groupWriter) Move(ctx context.Context) error {
+	sp, err := w.tx.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	return sp.Commit(ctx)
+}
+`
+	s := newJWStand(t)
+	s.write(t, "services/nlb/internal/repo/pg/group.go", embedded)
+	findings, census := s.audit(t)
+	require.Empty(t, findings, "законный близнец: точка сохранения на продвинутой транзакции")
+	nlb, _ := census.Module("nlb")
+	require.Equal(t, 1, nlb.BeginOnTx, "точка сохранения осмотрена")
+	require.Equal(t, 0, nlb.BeginUnresolved)
+
+	s = newJWStand(t)
+	s.write(t, "services/nlb/internal/repo/pg/group.go", embedded+`
+type poolHolder struct {
+	pool *pgxpool.Pool
+}
+
+type announceStore struct {
+	poolHolder
+}
+
+func (a *announceStore) Report(ctx context.Context) error {
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+`)
+	findings, _ = s.audit(t)
+	got := jwOnly(findings, JWRuleBegin)
+	require.Len(t, got, 1, "%v", findings)
+	require.Equal(t, "services/nlb/internal/repo/pg/group.go:42", got[0].Pos)
+	require.Contains(t, got[0].Detail, "Begin на *pgxpool.Pool")
+	require.Len(t, findings, 1)
+}
+
 // TestJournaledWritesGateFailsOnAnEmptyWalk — пустое дерево — не вердикт.
 func TestJournaledWritesGateFailsOnAnEmptyWalk(t *testing.T) {
 	s := &jwStand{root: t.TempDir()}

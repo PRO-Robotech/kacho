@@ -397,7 +397,45 @@ type jwPkg struct {
 	rels    []string
 	consts  map[string]string
 	structs map[string]map[string]string // тип → поле → тип поля
+	embeds  map[string][]string          // тип → встроенные типы пакета (продвижение полей)
 	fields  map[string]map[string]bool   // поле → множество типов (по пакету)
+}
+
+// jwFieldType — тип поля name структуры owner с продвижением через встроенные
+// структуры пакета (поиск в ширину, как правило выбора Go: ближайший уровень
+// побеждает; два одноимённых поля на одном уровне — неоднозначность, ""). ok=false —
+// поле не найдено.
+func (pk *jwPkg) jwFieldType(owner, name string) (string, bool) {
+	level := []string{owner}
+	seen := map[string]bool{owner: true}
+	for depth := 0; depth < 4 && len(level) > 0; depth++ {
+		found := map[string]bool{}
+		var next []string
+		for _, t := range level {
+			if fm, ok := pk.structs[t]; ok {
+				if ft, ok := fm[name]; ok {
+					found[ft] = true
+				}
+			}
+			for _, e := range pk.embeds[t] {
+				if !seen[e] {
+					seen[e] = true
+					next = append(next, e)
+				}
+			}
+		}
+		switch len(found) {
+		case 0:
+			level = next
+			continue
+		case 1:
+			for ft := range found {
+				return ft, true
+			}
+		}
+		return "", true
+	}
+	return "", false
 }
 
 func jwIsPool(t string) bool {
@@ -452,7 +490,7 @@ func jwAuditModule(root, name string, pairs []JournaledComponentPair) (Journaled
 		dir := filepath.Dir(p)
 		pk := pkgs[dir]
 		if pk == nil {
-			pk = &jwPkg{consts: map[string]string{}, structs: map[string]map[string]string{}, fields: map[string]map[string]bool{}}
+			pk = &jwPkg{consts: map[string]string{}, structs: map[string]map[string]string{}, embeds: map[string][]string{}, fields: map[string]map[string]bool{}}
 			pkgs[dir] = pk
 		}
 		pk.files = append(pk.files, f)
@@ -490,6 +528,14 @@ func jwAuditModule(root, name string, pairs []JournaledComponentPair) (Journaled
 						fm := map[string]string{}
 						for _, fld := range st.Fields.List {
 							typ := types.ExprString(fld.Type)
+							if len(fld.Names) == 0 {
+								// Встроенная структура пакета: её поля продвигаются
+								// (jwFieldType). Встроенный тип другого пакета разбор не
+								// раскрывает — его поля остаются неустановленными.
+								if et := strings.TrimPrefix(typ, "*"); !strings.Contains(et, ".") {
+									pk.embeds[ts.Name.Name] = append(pk.embeds[ts.Name.Name], et)
+								}
+							}
 							for _, n := range fld.Names {
 								fm[n.Name] = typ
 								if pk.fields[n.Name] == nil {
@@ -653,10 +699,8 @@ func jwTypeOf(e ast.Expr, sc *jwScope, pk *jwPkg, depth int) string {
 		} else {
 			owner = strings.TrimPrefix(jwTypeOf(x.X, sc, pk, depth+1), "*")
 		}
-		if fm, ok := pk.structs[owner]; ok {
-			if t, ok := fm[x.Sel.Name]; ok {
-				return t
-			}
+		if t, ok := pk.jwFieldType(owner, x.Sel.Name); ok {
+			return t
 		}
 		if ts := pk.fields[x.Sel.Name]; len(ts) == 1 {
 			for t := range ts {

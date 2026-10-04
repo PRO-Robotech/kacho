@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -35,11 +36,14 @@ const registryColumns = `id, project_id, name, description, labels, status, crea
 
 // RegistryRepo — реализация registry.RegistryRepo поверх pgxpool.
 type RegistryRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewRegistryRepo создаёт RegistryRepo поверх pgxpool.
-func NewRegistryRepo(pool *pgxpool.Pool) *RegistryRepo { return &RegistryRepo{pool: pool} }
+func NewRegistryRepo(pool *pgxpool.Pool) *RegistryRepo {
+	return &RegistryRepo{pool: pool, journal: journalOptions()}
+}
 
 // ready — pool обязан быть подан composition root'ом (иначе Unavailable, не паника).
 func (r *RegistryRepo) ready() error {
@@ -194,7 +198,7 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 		return nil, domain.RegisterIntent{}, regerrors.ErrInternal
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, domain.RegisterIntent{}, wrapPgErr(err, "Registry", reg.ID)
 	}
@@ -259,7 +263,7 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 		// default_visibility — последнее применяемое поле; idx дальше не читается.
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
 	}
@@ -303,16 +307,28 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 // идемпотентно DELETING→DELETING, чтобы retry/крэш-рекавери довели удаление до
 // конца). 0 rows только когда строки нет (уже удалена) → ErrNotFound. revert в
 // ACTIVE невозможен (нет пути DELETING→ACTIVE).
+//
+// Запись идёт транзакцией помощника записи журнала: `registries` — журналируемая
+// таблица (функция базы пишет строку журнала на её изменении), и строку журнала
+// без инициатора база не принимает (NTF-3, З4). Оператор в транзакции один.
 func (r *RegistryRepo) MarkDeleting(ctx context.Context, id string) (*domain.Registry, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
+	if err != nil {
+		return nil, wrapPgErr(err, "Registry", id)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	q := fmt.Sprintf(`
 		UPDATE %s.registries SET status = 'DELETING'
 		WHERE id = $1 AND status IN ('ACTIVE', 'DELETING')
 		RETURNING %s`, schema, registryColumns)
-	reg, err := scanRegistry(r.pool.QueryRow(ctx, q, id))
+	reg, err := scanRegistry(tx.QueryRow(ctx, q, id))
 	if err != nil {
+		return nil, wrapPgErr(err, "Registry", id)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, wrapPgErr(err, "Registry", id)
 	}
 	return reg, nil
@@ -338,7 +354,7 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 	if err := r.ready(); err != nil {
 		return err
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return wrapPgErr(err, "Registry", id)
 	}

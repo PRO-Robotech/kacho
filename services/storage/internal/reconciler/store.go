@@ -9,8 +9,10 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/singlepass"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -77,10 +79,59 @@ type Row struct {
 // Store — доступ сверщика к нашим строкам.
 type Store struct {
 	pool *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля).
+	journal journaltx.Options
 }
 
 // NewStore собирает хранилище сверщика.
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool) *Store {
+	return &Store{pool: pool, journal: journalOptions()}
+}
+
+// journalOptions — Options помощника записи журнала для записей перехода.
+//
+// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
+// Ручку `KACHO_STORAGE_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
+// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
+// тем же изменением эта функция снимается.
+func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
+
+// Личность компонента сверщика — пара §8 замысла issue-2918 (З4, З13):
+// инициатор строк журнала, которые порождают записи перехода, —
+// `system:storage-reconciler`.
+const (
+	componentService = "storage"
+	componentRole    = "reconciler"
+)
+
+// inComponentTx исполняет запись перехода fn транзакцией помощника записи
+// журнала под личностью компонента сверщика.
+//
+// Таблицы сверщика (`volumes`, `snapshots`, `images`) журналируемые: функция
+// базы пишет строку журнала на их изменении, и строку без инициатора база не
+// принимает (NTF-3, З4). Поэтому каждая запись перехода — даже одиночный
+// оператор — идёт этой транзакцией.
+//
+// Личность ставит `journaltx.AsComponent`: на контексте без принципала — принципал
+// компонента, на контексте с ним же — тот же контекст. Контекст с иным
+// принципалом — ошибка программы: `ErrComponentOverPrincipal` возвращается без
+// единого оператора к базе (CX3B-25 (2)).
+func (s *Store) inComponentTx(ctx context.Context, fn func(tx *journaltx.Tx) error) error {
+	cctx, err := journaltx.AsComponent(ctx, componentService, componentRole)
+	if err != nil {
+		return fmt.Errorf("reconciler: component identity: %w", err)
+	}
+	tx, err := journaltx.Begin(cctx, s.pool, s.journal)
+	if err != nil {
+		return err
+	}
+	// Откат после успешной фиксации — no-op (pgx.ErrTxClosed).
+	defer func() { _ = tx.Rollback(cctx) }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(cctx)
+}
 
 // passLockName — имя замка прохода по одному виду ресурса. Домен в имени
 // обязателен: пространство ключей общее на всю базу.
@@ -198,7 +249,12 @@ func (s *Store) Confirm(ctx context.Context, kind Kind, id string, obs blockback
 	if kind == KindVolume {
 		args = append(args, obs.SizeBytes, usedOrNil(obs))
 	}
-	tag, err := s.pool.Exec(ctx, q, args...)
+	var tag pgconn.CommandTag
+	err = s.inComponentTx(ctx, func(tx *journaltx.Tx) error {
+		var xerr error
+		tag, xerr = tx.Exec(ctx, q, args...)
+		return xerr
+	})
 	if err != nil {
 		return false, err
 	}
@@ -238,8 +294,10 @@ func (s *Store) Observe(ctx context.Context, kind Kind, id string, obs blockback
 		return err
 	}
 	q := fmt.Sprintf(`UPDATE %s SET observed_state = $2, observed_at = now() WHERE id = $1`, table)
-	_, err = s.pool.Exec(ctx, q, id, observedName(obs.State))
-	return err
+	return s.inComponentTx(ctx, func(tx *journaltx.Tx) error {
+		_, xerr := tx.Exec(ctx, q, id, observedName(obs.State))
+		return xerr
+	})
 }
 
 // MarkError объявляет ресурс ошибочным с НАЗВАННОЙ причиной из закрытого словаря.
@@ -255,8 +313,10 @@ func (s *Store) MarkError(ctx context.Context, kind Kind, id string, reason doma
 		UPDATE %s
 		   SET state = 'ERROR', observed_state = $2, observed_at = now(), status_reason = $3
 		 WHERE id = $1 AND state <> 'DELETING'`, table)
-	_, err = s.pool.Exec(ctx, q, id, observedName(obs.State), string(reason))
-	return err
+	return s.inComponentTx(ctx, func(tx *journaltx.Tx) error {
+		_, xerr := tx.Exec(ctx, q, id, observedName(obs.State), string(reason))
+		return xerr
+	})
 }
 
 // Forget снимает строку: объект у бэкенда уже снят, держать запись больше не о чем.
@@ -269,8 +329,10 @@ func (s *Store) Forget(ctx context.Context, kind Kind, id string) error {
 		return err
 	}
 	q := fmt.Sprintf(`DELETE FROM %s WHERE id = $1 AND state = 'DELETING'`, table)
-	_, err = s.pool.Exec(ctx, q, id)
-	return err
+	return s.inComponentTx(ctx, func(tx *journaltx.Tx) error {
+		_, xerr := tx.Exec(ctx, q, id)
+		return xerr
+	})
 }
 
 // KnownObjects отдаёт имена объектов, которые НАШИ строки считают своими в

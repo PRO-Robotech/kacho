@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -42,11 +43,13 @@ import (
 // ОГРАНИЧИТЕЛЬНЫЕ внешние связи ресурсов (0017), а не воздержание вызывающего.
 type DiskTypeBindingRepo struct {
 	pool *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля).
+	journal journaltx.Options
 }
 
 // NewDiskTypeBindingRepo создаёт DiskTypeBindingRepo поверх pgxpool.
 func NewDiskTypeBindingRepo(pool *pgxpool.Pool) *DiskTypeBindingRepo {
-	return &DiskTypeBindingRepo{pool: pool}
+	return &DiskTypeBindingRepo{pool: pool, journal: journalOptions()}
 }
 
 // diskTypeBindingCols — ЕДИНСТВЕННЫЙ список колонок ревизии: один и тот же на
@@ -271,7 +274,7 @@ func (r *DiskTypeBindingRepo) Register(ctx context.Context, b *domain.DiskTypeBi
 	if err != nil {
 		return nil, storageerr.ErrInternal
 	}
-	tx, terr := r.pool.Begin(ctx)
+	tx, terr := journaltx.Begin(ctx, r.pool, r.journal)
 	if terr != nil {
 		return nil, storageerr.ErrInternal
 	}

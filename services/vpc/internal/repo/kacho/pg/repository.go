@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
+
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -40,6 +42,9 @@ import (
 type Repository struct {
 	master *pgxpool.Pool
 	slave  *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля), с
+	// которыми Writer открывает каждую пишущую транзакцию.
+	journal journaltx.Options
 }
 
 // New собирает Repository поверх master- и опц. slave-pool'ов.
@@ -55,8 +60,16 @@ func New(masterPool, slavePool *pgxpool.Pool) *Repository {
 	if slavePool == nil {
 		slavePool = masterPool
 	}
-	return &Repository{master: masterPool, slave: slavePool}
+	return &Repository{master: masterPool, slave: slavePool, journal: journalOptions()}
 }
+
+// journalOptions — Options помощника записи журнала для писателя модуля.
+//
+// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
+// Ручку `KACHO_VPC_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
+// конструктора вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а)); тем же
+// изменением эта функция снимается.
+func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
 
 // Reader открывает read-only TX (read-committed) на **slave-pool'е**, если он
 // настроен; иначе на master (fallback). Возвращенный reader обязан быть закрыт
@@ -76,10 +89,16 @@ func (r *Repository) Reader(ctx context.Context) (kacho.RepositoryReader, error)
 // Writer открывает RW TX на **master-pool'е**. Caller обязан вызвать Commit()
 // либо Abort() (Abort идемпотентен — безопасно через defer сразу после открытия).
 //
+// Транзакцию открывает помощник записи журнала `journaltx.Begin`: первым
+// оператором он выставляет инициатора изменения локально к транзакции, а
+// инициатора берёт только из принципала контекста. Контекст без принципала —
+// отказ до обращения к базе (`auth.ErrNoInitiator`), транзакция не открывается:
+// строку журнала без инициатора база всё равно не приняла бы (NTF-3, З4).
+//
 // Writes всегда идут на primary; репликация на slave — асинхронная Postgres
 // streaming replication, прозрачно для use-case'а.
 func (r *Repository) Writer(ctx context.Context) (kacho.RepositoryWriter, error) {
-	tx, err := r.master.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := journaltx.Begin(ctx, r.master, r.journal)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +187,7 @@ func (r *readerImpl) Close() error {
 
 // writerImpl — RW TX state.
 type writerImpl struct {
-	tx        pgx.Tx
+	tx        *journaltx.Tx
 	finalised bool // true после Commit() или Abort() — защита от double-finalize
 }
 
