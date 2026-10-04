@@ -121,6 +121,10 @@ func exactSANCreds(peer *tls.Config, src config.Source, log *slog.Logger) creden
 // run — цикл источника до отмены ctx: поток подписки живёт отдельно и только
 // будит `Claim`; сам `Claim` последователен — такты во время вызова не
 // копятся.
+//
+// РЕПЛИКИ: клейм — строку выдаёт аренда сервера ленты (`FOR UPDATE SKIP
+// LOCKED` в `Claim`, З8): цикл каждой реплики получает непересекающиеся
+// строки, а строку чужой аренды не получает до её конца.
 func (l *loop) run(ctx context.Context) {
 	subDone := make(chan struct{})
 	go func() {
@@ -194,6 +198,10 @@ func (l *loop) claim(ctx context.Context) bool {
 // subscribe держит поток подписки на ленту: открывает, будит `Claim` при
 // открытии и на каждое событие, после обрыва открывает заново на следующем
 // такте.
+//
+// РЕПЛИКИ: на-реплику — поток реплики только будит `Claim` своей же реплики;
+// состояния из события цикл не применяет (`sub-refetch-not-apply`), и
+// лишний сигнал даёт лишь лишний `Claim`, чья выдача ограничена арендой.
 func (l *loop) subscribe(ctx context.Context) {
 	pause := time.NewTimer(l.interval)
 	defer pause.Stop()
