@@ -45,7 +45,7 @@ func TestCQRS_NIC_InsertCommit_ReaderSees(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	projectID, subnetID := insertSubnetForNIC(t, ctx, dsn)
 
@@ -99,7 +99,7 @@ func TestCQRS_NIC_SecurityGroupIDs_DanglingRefSilentlyAccepted(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	projectID, subnetID := insertSubnetForNIC(t, ctx, dsn)
 

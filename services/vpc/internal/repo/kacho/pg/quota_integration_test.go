@@ -80,7 +80,7 @@ func TestQuota_ChargeOnInsert_RefundOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -117,7 +117,7 @@ func TestQuota_ChargeIsRolledBackWithItsTransaction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -143,7 +143,7 @@ func TestQuota_ExhaustedIsRefused_AndDistinctFromNotProvisioned(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -190,7 +190,7 @@ func TestQuota_LoweringBelowUsageIsExpressible(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -241,7 +241,7 @@ func TestQuota_ConcurrentChargeAtLastSlot(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -297,7 +297,7 @@ func TestQuota_SystemChildrenAreNotCharged(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -380,7 +380,7 @@ func TestQuota_ConcurrentChargeUnderLimit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

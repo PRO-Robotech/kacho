@@ -28,7 +28,7 @@ func TestQuota_RefusalCarriesTheProducerAmounts(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -73,7 +73,7 @@ func TestQuota_NotProvisionedCarriesTheCarrierWithoutAmounts(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

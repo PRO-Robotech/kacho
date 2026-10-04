@@ -51,7 +51,7 @@ func setupTestDBUpTo(t testing.TB, version int64) string {
 
 func insertNetwork(t *testing.T, r *kachopg.Repository, projectID, name string) *domain.Network {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
@@ -74,7 +74,7 @@ func TestNetwork_CIL0_06_GetInternalReturnsVrfId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestNetwork_CIL0_02_VrfIdUniqueUnderConcurrency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestNetwork_CIL0_03_VrfIdStableAcrossUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestNetwork_CIL0_13_BackfillUniqueVrfId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// Спец-харнес: миграции до 0006, insert raw networks, затем 0007.
 	dsn := setupTestDBUpTo(t, 6)
 	db, err := sql.Open("pgx", dsn)

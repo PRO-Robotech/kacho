@@ -56,7 +56,7 @@ func TestQuotaMaterialise_SecondPassDoesNotResetUsage(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -105,7 +105,7 @@ func TestQuotaMaterialise_RowWithoutAccountMirrorIsRejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -138,7 +138,7 @@ func TestQuotaMaterialise_MaterialisedProjectChargesAndRefuses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

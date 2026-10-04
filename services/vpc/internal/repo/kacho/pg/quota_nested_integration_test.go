@@ -67,7 +67,7 @@ func TestQuotaNested_SubnetsAreCountedInTheirNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -139,7 +139,7 @@ func TestQuotaNested_SubnetInAPreexistingNetworkStillPasses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

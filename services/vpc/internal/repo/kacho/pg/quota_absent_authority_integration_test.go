@@ -82,7 +82,7 @@ func TestQuota_KAN_Q4_03_AbsentAuthorityLetsTheMutationThrough(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -107,7 +107,7 @@ func TestQuota_KAN_Q4_05_DeployedAuthorityStillRefuses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -131,7 +131,7 @@ func TestQuota_AbsentAuthorityStillChargesTheExistingRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -155,7 +155,7 @@ func TestQuota_DeployedAuthorityRefusesTheFullRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 
@@ -180,7 +180,7 @@ func TestQuota_UnknownAuthorityBehavesAsDeployed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	r := kachopg.New(pool, nil)
 

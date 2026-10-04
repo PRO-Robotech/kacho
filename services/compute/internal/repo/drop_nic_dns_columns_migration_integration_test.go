@@ -74,7 +74,7 @@ func TestIntegration_DropNICDNSColumns_GoneAtHeadAndRepoStillWorks(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// setupTestDB гонит цепочку до head и сеет каталог machine_types, на который
 	// ссылается FK instances.machine_type_id.
@@ -341,7 +341,7 @@ func seedInstanceRow(t *testing.T, dsn string) string {
 	// WHERE name<>'', поэтому фиксированное имя ловит 23505 на втором вызове —
 	// инъекции нужны две строки в одном проекте.
 	id := ids.NewID(ids.PrefixInstance)
-	_, err = db.ExecContext(context.Background(),
+	_, err = db.ExecContext(journalPrincipalCtx(context.Background()),
 		`INSERT INTO instances (id, project_id, name, zone_id, status) VALUES ($1, $2, $3, $4, $5)`,
 		id, "proj-dns-down", "vm-"+id, "ru-central1-a", "PROVISIONING")
 	require.NoError(t, err)

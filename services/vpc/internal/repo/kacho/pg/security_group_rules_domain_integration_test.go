@@ -92,7 +92,7 @@ func TestSGRulesDomain_ConstraintPresent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -112,7 +112,7 @@ func TestSGRulesDomain_LegalShapesPass(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -162,7 +162,7 @@ func TestSGRulesDomain_UnexpressibleRejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -224,7 +224,7 @@ func TestSGRulesDomain_RepoInsertMapsAndDoesNotLeak(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -269,7 +269,7 @@ func TestSGRulesDomain_ConcurrentWritersExactlyOneWins(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -358,7 +358,7 @@ func TestSGRulesDomain_ProtocolNameSetParityWithCode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

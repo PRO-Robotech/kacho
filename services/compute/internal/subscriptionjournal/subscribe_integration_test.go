@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/corelib/outbox"
@@ -134,8 +135,10 @@ func mergeCancel(values, cancel context.Context) context.Context {
 // молча — и разошёлся бы ровно в той колонке, ради которой проба написана.
 func (s *stand) emit(t *testing.T, kind, id, projectID, change string, payload map[string]any) {
 	t.Helper()
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	// Строку журнала пишет транзакция помощника — так же, как её пишет
+	// писатель модуля: инициатор — принципал контекста.
+	ctx := journalPrincipalCtx(context.Background())
+	tx, err := journaltx.Begin(ctx, s.pool, journaltx.NewOptions(false))
 	if err != nil {
 		t.Fatalf("транзакция не началась: %v", err)
 	}
@@ -322,12 +325,21 @@ func TestSerializationFailureKeepsItsOwnReason(t *testing.T) {
 	// Через прямой INSERT, а не через `emit`: тот принимает `map[string]any` и
 	// негодную нагрузку выразить не даёт by construction. Предмет пробы — именно
 	// негодная строка, и завести её надо там, где журнал её примет.
-	ctxEmit := context.Background()
-	if _, err := s.pool.Exec(ctxEmit, `
+	// Транзакцией помощника: инициатора строке даёт только она (З4).
+	ctxEmit := journalPrincipalCtx(context.Background())
+	tx, err := journaltx.Begin(ctxEmit, s.pool, journaltx.NewOptions(false))
+	if err != nil {
+		t.Fatalf("транзакция не началась: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctxEmit) }()
+	if _, err := tx.Exec(ctxEmit, `
 		INSERT INTO compute_outbox (resource_kind, resource_id, project_id, event_type, payload)
 		VALUES ('Instance', $1, $2, 'UPDATED', '"не объект"'::jsonb)`,
 		probeMachine, probeProject); err != nil {
 		t.Fatalf("негодная строка журнала не записалась: %v", err)
+	}
+	if err := tx.Commit(ctxEmit); err != nil {
+		t.Fatalf("транзакция не зафиксировалась: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
