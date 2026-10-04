@@ -46,26 +46,38 @@ func TestCredentialFromRequest_TokenLaneCarriesItsIdentifier(t *testing.T) {
 	}
 }
 
-func TestCredentialFromRequest_BrowserLaneCarriesSubjectAndInstant(t *testing.T) {
-	at := time.Now().Add(-time.Hour).Truncate(time.Second).UTC()
-	c := principalmeta.CredentialFromRequest(req(map[string]string{
+// TestCredentialFromRequest_BrowserLaneCarriesSubjectNotInstant — браузерная
+// полоса называет человека; момента аутентификации удостоверение НЕ несёт.
+//
+// Довод свежести (`mfa-at`) в запросе стоит, и проба ставит его нарочно: его
+// единица — секунды условия `mfa_fresh`, и прочитанный как момент сессии он
+// закрывал бы годную сессию на отсечке, датированной в микросекундах
+// (kacho#2690). Момент перепрос берёт из ответа службы о сессии по носителю.
+func TestCredentialFromRequest_BrowserLaneCarriesSubjectNotInstant(t *testing.T) {
+	at := time.Date(2026, 8, 29, 11, 0, 0, 0, time.UTC)
+	withInstant := principalmeta.CredentialFromRequest(req(map[string]string{
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
 		// `jti` не ставится: у браузерной сессии его нет вовсе.
 		principalmeta.HeaderTokenMfaAt: strconv.FormatInt(at.Unix(), 10),
 	}))
-	if c.JTI != "" {
-		t.Fatalf("у браузерной сессии появился идентификатор удостоверения %q", c.JTI)
+	if withInstant.JTI != "" {
+		t.Fatalf("у браузерной сессии появился идентификатор удостоверения %q", withInstant.JTI)
 	}
-	if c.UserID != "usr00000000000000001" {
-		t.Fatalf("человек не назван (%q) — спросить про отсечку было бы не о ком", c.UserID)
+	if withInstant.UserID != "usr00000000000000001" {
+		t.Fatalf("человек не назван (%q) — спросить про отсечку было бы не о ком", withInstant.UserID)
 	}
-	if !c.AuthenticatedAt.Equal(at) {
-		t.Fatalf("момент подтверждения %v, ожидался %v — сравнивать с отсечкой было бы нечего",
-			c.AuthenticatedAt, at)
-	}
-	if !c.Askable() {
+	if !withInstant.Askable() {
 		t.Fatal("браузерная сессия объявлена неспрашиваемой")
+	}
+	// Тот же запрос без довода свежести даёт ТО ЖЕ удостоверение: довод в
+	// вопрос об отзыве не входит, и потоки одной сессии не делятся по нему.
+	without := principalmeta.CredentialFromRequest(req(map[string]string{
+		principalmeta.HeaderPrincipalType: "user",
+		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
+	}))
+	if withInstant != without {
+		t.Fatalf("довод свежести изменил удостоверение вопроса об отзыве: %+v против %+v", withInstant, without)
 	}
 }
 
@@ -78,52 +90,6 @@ func TestCredentialFromRequest_BridgeFormIsReadWhereItExists(t *testing.T) {
 	if c.JTI != "jti-bridge" || c.UserID != "usr00000000000000002" {
 		t.Fatalf("мостовая форма заголовков не прочитана: %+v — полоса аутентификации ставит "+
 			"обе формы, и читатель одной пропускал бы удостоверение целиком", c)
-	}
-}
-
-// TestCredentialFromRequest_InstantHasNoBridgeFormAndIsNotReadFromOne — ключ
-// момента подтверждения объявлен ОСТАЮЩИМСЯ НА КРАЮ: мостовой формы у него нет
-// by construction.
-//
-// Проба утверждает не вкус, а следствие решения: читать несуществующую форму
-// значило бы завести чтение, которое не сработает никогда, а выглядеть будет
-// полным. Положительный контроль — голая форма в том же запросе читается.
-func TestCredentialFromRequest_InstantHasNoBridgeFormAndIsNotReadFromOne(t *testing.T) {
-	at := time.Now().Add(-2 * time.Hour).Truncate(time.Second).UTC()
-	c := principalmeta.CredentialFromRequest(req(map[string]string{
-		principalmeta.HeaderPrincipalType:                 "user",
-		principalmeta.HeaderPrincipalID:                   "usr00000000000000003",
-		"Grpc-Metadata-" + principalmeta.HeaderTokenMfaAt: strconv.FormatInt(at.Unix(), 10),
-	}))
-	if !c.AuthenticatedAt.IsZero() {
-		t.Fatalf("момент прочитан из мостовой формы (%v), которой у этого ключа нет — "+
-			"производителя за краем у неё тоже нет, значит прочитанное положил кто-то другой",
-			c.AuthenticatedAt)
-	}
-	// Положительный контроль: голая форма читается.
-	c = principalmeta.CredentialFromRequest(req(map[string]string{
-		principalmeta.HeaderPrincipalType: "user",
-		principalmeta.HeaderPrincipalID:   "usr00000000000000003",
-		principalmeta.HeaderTokenMfaAt:    strconv.FormatInt(at.Unix(), 10),
-	}))
-	if !c.AuthenticatedAt.Equal(at) {
-		t.Fatalf("голая форма момента не прочитана (%v) — тогда отрицание выше ничего не означает",
-			c.AuthenticatedAt)
-	}
-}
-
-func TestCredentialFromRequest_UnusableInstantStaysAbsent(t *testing.T) {
-	for _, raw := range []string{"", "  ", "не-число", "0", "-1"} {
-		c := principalmeta.CredentialFromRequest(req(map[string]string{
-			principalmeta.HeaderPrincipalType: "user",
-			principalmeta.HeaderPrincipalID:   "usr00000000000000004",
-			principalmeta.HeaderTokenMfaAt:    raw,
-		}))
-		if !c.AuthenticatedAt.IsZero() {
-			t.Fatalf("значение %q принято за момент подтверждения (%v) — «провайдер момента "+
-				"не назвал» обязано остаться отсутствием величины, а не подтверждением в 1970 году",
-				raw, c.AuthenticatedAt)
-		}
 	}
 }
 

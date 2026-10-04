@@ -552,7 +552,10 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 		return verdictRevoked
 	}
 
-	cut := s.cutoffVerdict(ctx, c)
+	// Момент — из ОТВЕТА О СЕССИИ, тем же вопросом и в том же разрешении, что
+	// на пути запроса (kacho#2690): отсечка датируется в разрешении хранилища,
+	// и момент из довода свежести (секунды) закрывал бы годную сессию.
+	cut := s.cutoffVerdict(ctx, c.UserID, sess.AuthenticatedAt)
 	switch cut {
 	case verdictRevoked, verdictUnanswered:
 		return cut
@@ -564,11 +567,14 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 	return cut
 }
 
-// cutoffVerdict — отсечка субъекта против момента аутентификации потока.
-func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential) verdict {
+// cutoffVerdict — отсечка субъекта против момента аутентификации сессии потока.
+//
+// authenticatedAt — момент из ответа службы о сессии по носителю, а не из
+// заголовков открытия: сравниваемая пара та же, что у пути запроса.
+func (s *Sweeper) cutoffVerdict(ctx context.Context, userID string, authenticatedAt time.Time) verdict {
 	// Учётная запись потока на этой полосе — сессия человека; субъект вопроса
 	// собирает тот же единственный конструктор, что у полосы личности.
-	cs, ok := middleware.NewCutoffSubject("user", c.UserID)
+	cs, ok := middleware.NewCutoffSubject("user", userID)
 	if !ok {
 		return verdictUnanswered
 	}
@@ -586,12 +592,12 @@ func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential)
 		// Пустой ответ означает ПУСТО. Человек, которого никто не отзывал,
 		// продолжает читать свой поток.
 		return verdictLive
-	case c.AuthenticatedAt.IsZero():
+	case authenticatedAt.IsZero():
 		// Отсечка есть, а сравнивать не с чем: провайдер момента не назвал.
 		// Пропустить — значит дать обходить отзыв ОТСУТСТВИЕМ поля в чужом
 		// ответе. Та же посадка принята полосой запроса.
 		return verdictRevoked
-	case c.AuthenticatedAt.After(cutoff):
+	case authenticatedAt.After(cutoff):
 		// Отсечка действует ВПЕРЁД и включает свой момент: сессия,
 		// аутентифицировавшаяся РОВНО в него, недействительна. Иначе
 		// принудительный выход, совпавший по метке со входом, не подействовал
