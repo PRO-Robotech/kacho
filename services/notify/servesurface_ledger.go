@@ -22,4 +22,7 @@ package notify
 var ServeSurfaceLedger = map[string][]string{
 	// cmd/notify — шлюз NTF-1: форма хоста no-grpc, входящего глагола нет.
 	"cmd/notify": {},
+	// cmd/migrator — процесс наката цепочек миграций notify (одноразовый,
+	// задание развёртывания): ни слушателя, ни gRPC-сервиса у него нет.
+	"cmd/migrator": {},
 }
