@@ -50,7 +50,7 @@ import (
 func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-orphan")
 
 	const orphan = "team/app"
@@ -85,7 +85,7 @@ func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-live")
 
 	const live = "team/live"
@@ -106,7 +106,7 @@ func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-fresh")
 
 	const fresh = "team/fresh"
@@ -138,7 +138,7 @@ func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-idem")
 
 	const orphan = "team/idem"
@@ -169,7 +169,7 @@ func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 func TestOrphanSweep_DeclaredThroughOverlayCountsAsLive(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-overlay")
 
 	const declared = "team/declared"

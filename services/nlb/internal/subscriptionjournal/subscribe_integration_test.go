@@ -53,7 +53,7 @@ func newStand(t *testing.T) *stand {
 	}
 
 	dsn := pgtest.NewDB(t)
-	pool, err := pgxpool.New(context.Background(), dsn)
+	pool, err := pgxpool.New(context.Background(), fixtureInitiatorDSN(t, dsn))
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)
 	}

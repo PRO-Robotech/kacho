@@ -23,7 +23,7 @@ import (
 func TestRepo_REG_1_10_RegionPlacementRoundTrip(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	reg := newReg("prj-P", "payments", nil)
 	reg.RegionID = "eu-north-1"
@@ -44,7 +44,7 @@ func TestRepo_REG_1_10_RegionPlacementRoundTrip(t *testing.T) {
 // software check-then-act. Registry с пустым регионом структурно невыразим.
 func TestRepo_REG_1_14_PlacementAnchorCheck_RejectsEmptyRegion(t *testing.T) {
 	pool := setupTestDB(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Прямой INSERT в обход domain-валидации: пустой region_id должен упереться в CHECK.
 	_, err := pool.Exec(ctx, `
@@ -64,7 +64,7 @@ func TestRepo_REG_1_26_GetAbsent_DirectReadNotFound(t *testing.T) {
 	repo := kachopg.NewRegistryRepo(pool)
 	absent := ids.NewID(ids.PrefixRegistry)
 
-	_, err := repo.Get(context.Background(), absent)
+	_, err := repo.Get(journalPrincipalCtx(context.Background()), absent)
 	require.Error(t, err)
 	st := status.Convert(serviceerr.ToStatus(err))
 	require.Equal(t, codes.NotFound, st.Code(), "direct-read lane → NOT_FOUND")

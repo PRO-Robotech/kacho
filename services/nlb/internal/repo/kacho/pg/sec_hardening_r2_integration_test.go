@@ -36,7 +36,7 @@ func instTarget(idx int) domain.Target {
 func TestMoveProject_BlockedByWiredListener_Atomic(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01MOVE1234567890ll", "move-lb")
 	tg := newTG("prj01MOVE1234567890ll", "move-tg")
@@ -73,7 +73,7 @@ func TestMoveProject_BlockedByWiredListener_Atomic(t *testing.T) {
 func TestMoveProject_Allowed_NoAttach(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01MOVEOK234567890l", "move-ok-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -92,7 +92,7 @@ func TestMoveProject_Allowed_NoAttach(t *testing.T) {
 func TestMoveProject_NotFound(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestMoveProject_NotFound(t *testing.T) {
 func TestAddTargets_CumulativeCap(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj0CAP01234567890lll", "cap-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -166,7 +166,7 @@ func TestAddTargets_CumulativeCap(t *testing.T) {
 func TestAddTargets_CumulativeCap_Concurrent(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj0CAPCONC34567890ll", "cap-conc-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -252,7 +252,7 @@ func TestAddTargets_CumulativeCap_Concurrent(t *testing.T) {
 func TestDeleteIfUnprotected_Guard(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj0DELPRO34567890lll", "del-pro-lb")
 	lb.DeletionProtection = true
@@ -308,7 +308,7 @@ func TestDeleteIfUnprotected_Guard(t *testing.T) {
 func TestUnique_PortProto_Message(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj0PPMSG34567890llll", "ppmsg-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

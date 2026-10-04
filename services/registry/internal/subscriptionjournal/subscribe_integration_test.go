@@ -141,7 +141,7 @@ func TestMarkDeletingIsSeenAsAnUpdateWithItsAnchor(t *testing.T) {
 	s := newStand(t)
 	reg := s.create(t, probeProject, "going-away", nil)
 
-	if _, err := s.repo.MarkDeleting(context.Background(), reg.ID); err != nil {
+	if _, err := s.repo.MarkDeleting(journalPrincipalCtx(context.Background()), reg.ID); err != nil {
 		t.Fatalf("перевод в DELETING не прошёл: %v", err)
 	}
 
@@ -201,10 +201,10 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	s := newStandWithNarrower(t, narrowtest.Allowing(probeProject))
 	reg := s.create(t, probeProject, "removed-and-forgotten", nil)
 
-	if _, err := s.repo.MarkDeleting(context.Background(), reg.ID); err != nil {
+	if _, err := s.repo.MarkDeleting(journalPrincipalCtx(context.Background()), reg.ID); err != nil {
 		t.Fatalf("перевод в DELETING не прошёл: %v", err)
 	}
-	if err := s.repo.Delete(context.Background(), reg.ID,
+	if err := s.repo.Delete(journalPrincipalCtx(context.Background()), reg.ID,
 		domain.UnregisterIntentForDelete(reg.ID, probeProject)); err != nil {
 		t.Fatalf("удаление не прошло: %v", err)
 	}
@@ -258,15 +258,15 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 
 	// Снятие в ЧУЖОМ проекте — его вызывающий видеть не вправе.
 	alien := s.create(t, probeOtherProject, "alien", nil)
-	if _, err := s.repo.MarkDeleting(context.Background(), alien.ID); err != nil {
+	if _, err := s.repo.MarkDeleting(journalPrincipalCtx(context.Background()), alien.ID); err != nil {
 		t.Fatalf("перевод чужого реестра в DELETING не прошёл: %v", err)
 	}
-	if err := s.repo.Delete(context.Background(), alien.ID,
+	if err := s.repo.Delete(journalPrincipalCtx(context.Background()), alien.ID,
 		domain.UnregisterIntentForDelete(alien.ID, probeOtherProject)); err != nil {
 		t.Fatalf("удаление чужого реестра не прошло: %v", err)
 	}
 	// Видимое событие следом — положительный контроль живости потока.
-	if _, _, err := s.repo.Insert(context.Background(), mine,
+	if _, _, err := s.repo.Insert(journalPrincipalCtx(context.Background()), mine,
 		domain.RegisterIntentForCreate(mine, "user", "usr-alice")); err != nil {
 		t.Fatalf("свой реестр не создался: %v", err)
 	}

@@ -80,7 +80,7 @@ func TestTGMove_vs_ListenerRepoint_MoveFirst_NoCrossProject(t *testing.T) {
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
 	observer := newObserverPool(t, dsn)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const (
 		projA = "prj0TGMVRACE1A000001"
@@ -149,7 +149,7 @@ func TestTGMove_vs_ListenerRepoint_WireFirst_MoveRejected(t *testing.T) {
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
 	observer := newObserverPool(t, dsn)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const (
 		projA = "prj0TGMVRACE2A000001"
@@ -226,7 +226,7 @@ func TestLBMove_vs_ListenerWire_CascadeBlocked(t *testing.T) {
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
 	observer := newObserverPool(t, dsn)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const (
 		projA = "prj0LBMVRACE1A000001"

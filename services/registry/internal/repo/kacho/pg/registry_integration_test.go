@@ -40,7 +40,7 @@ func setupTestDB(t testing.TB) *pgxpool.Pool {
 
 	dsn := pgtest.NewDB(t)
 
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
@@ -72,7 +72,7 @@ func newReg(projectID, name string, labels map[string]string) *domain.Registry {
 func countOutbox(t *testing.T, pool *pgxpool.Pool, resourceID, eventType string) int {
 	t.Helper()
 	var n int
-	err := pool.QueryRow(context.Background(),
+	err := pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM kacho_registry.registry_outbox WHERE resource_id=$1 AND event_type=$2`,
 		resourceID, eventType).Scan(&n)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func countOutbox(t *testing.T, pool *pgxpool.Pool, resourceID, eventType string)
 func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	reg := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	intent := domain.RegisterIntentForCreate(reg, "user", "usr-alice")
@@ -110,7 +110,7 @@ func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r1 := newReg("prj-P", "team-images", nil)
 	_, _, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
@@ -132,7 +132,7 @@ func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r1 := newReg("prj-P", "team-images", nil)
 	_, _, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
@@ -156,7 +156,7 @@ func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// created_at выставляется явными возрастающими значениями (НЕ wall-clock sleep):
 	// (created_at,id)-курсор детерминирован без зависимости от разрешения/монотонности
@@ -208,7 +208,7 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
@@ -241,7 +241,7 @@ func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -280,7 +280,7 @@ func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
@@ -320,7 +320,7 @@ func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
@@ -358,7 +358,7 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 func TestRepo_REG14_RepoTupleIntent_Emit(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Реестр сеятся по-настоящему: интент репозитория той же транзакцией пишет
 	// durable-признак его существования (миграция 0014) с внешним ключом на registries.

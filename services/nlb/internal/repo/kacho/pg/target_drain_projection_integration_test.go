@@ -34,7 +34,7 @@ import (
 func TestTargetDrainProjection_DrainingIsVisibleEndToEnd(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01TGDR1234567890ll", "drain-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

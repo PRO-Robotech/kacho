@@ -19,7 +19,7 @@ import (
 func TestLB_NLB_1b_AdminStatePlacement_RoundTrip(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01EXPAND123456ll1", "expand-lb")
 	lb.AdminState = domain.AdminStateDisabled
@@ -43,7 +43,7 @@ func TestLB_NLB_1b_AdminStatePlacement_RoundTrip(t *testing.T) {
 func TestLB_NLB_1b_AdminState_EmptyCoercedEnabled(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01EXPAND123456ll2", "coerce-lb") // AdminState unset
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -58,7 +58,7 @@ func TestLB_NLB_1b_AdminState_EmptyCoercedEnabled(t *testing.T) {
 func TestLB_NLB_1b_AdminState_UpdateRoundTrip(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01EXPAND123456ll3", "mut-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -95,7 +95,7 @@ func TestLB_NLB_1b_AdminState_UpdateRoundTrip(t *testing.T) {
 func TestLB_NLB_1b_CheckConstraints(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	t.Run("admin_state out of set rejected", func(t *testing.T) {
 		lb := newLB("prj01EXPAND123456ll4", "bad-admin")
