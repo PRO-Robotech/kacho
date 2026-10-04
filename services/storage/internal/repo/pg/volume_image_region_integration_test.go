@@ -55,7 +55,7 @@ func TestVolumeSourceImageOwnProjectForeignRegionNamed(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-foreign-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-region-1", "region-1", snapID)
@@ -86,7 +86,7 @@ func TestVolumeSourceImageForeignProjectStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	victimSnap := mkSnapshotRow(t, pool, projVictim, "snap-hidden-region", 20<<30)
 	// Two victim images: one whose region matches the attacker's zone region, one
@@ -122,7 +122,7 @@ func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-same-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-same-region", "region-1", snapID)
@@ -141,7 +141,7 @@ func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 func TestVolumeWithoutSourceUnaffectedByRegion(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "plain-vol-region",
@@ -159,7 +159,7 @@ func TestVolumeSourceImageUnresolvedRegionStaysFailClosed(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-unresolved-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-unresolved-region", "region-1", snapID)

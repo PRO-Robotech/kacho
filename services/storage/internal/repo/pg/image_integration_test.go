@@ -33,7 +33,7 @@ func mkSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name string, size 
 	// вместе с размещением снимка). Фикстура без зоны была бы снисходительнее
 	// продукта и роняла бы засев тома отказом «нет размещения» — то есть проба
 	// падала бы на собственной подготовке, называя виновником продукт.
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO snapshots (id, project_id, name, size_bytes, state, zone_id)
 		 VALUES ($1,$2,$3,$4,'READY',$5)`,
 		id, project, name, size, fixtureZone)
@@ -51,7 +51,7 @@ func mkSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name string, size 
 // репозиторий значило бы проверять его собой же.
 func mkImageFromSnapshot(t *testing.T, pool *pgxpool.Pool, r *pg.ImageRepo, project, name, region, snapID string) *domain.Image {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	i, _, err := r.Insert(ctx, &domain.Image{
 		ID:             ids.NewID(domain.PrefixImage),
 		ProjectID:      project,
@@ -80,7 +80,7 @@ func mkImageFromSnapshot(t *testing.T, pool *pgxpool.Pool, r *pg.ImageRepo, proj
 func TestImageCreateBornCreating(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "golden-snap", 21474836480)
 	imgID := ids.NewID(domain.PrefixImage)
@@ -121,7 +121,7 @@ func TestImageCreateBornCreating(t *testing.T) {
 func TestImageCreateFromVolume(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "src-vol", "region-1-a", "", 32<<30)
 	img, _, err := ir.Insert(ctx, &domain.Image{
@@ -137,7 +137,7 @@ func TestImageCreateFromVolume(t *testing.T) {
 // TestImageGetNotFound — STOR-1-21: well-formed-но-нет → ErrNotFound "Image <id> not found".
 func TestImageGetNotFound(t *testing.T) {
 	r := pg.NewImageRepo(newTestPool(t))
-	_, err := r.Get(context.Background(), "img00000000000000000")
+	_, err := r.Get(journalPrincipalCtx(context.Background()), "img00000000000000000")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Image img00000000000000000 not found", err.Error()[len("not found: "):])
 }
@@ -159,7 +159,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, _, err := r.Insert(context.Background(), &domain.Image{
+			_, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Image{
 				ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "dup-img",
 				RegionID: "ru-central1", SourceSnapshot: snapID,
 			}, fixtureRegionZones)
@@ -181,7 +181,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 
 	// то же имя в другом проекте → OK (UNIQUE scoped проектом).
 	snap2 := mkSnapshotRow(t, pool, "prj-2", "snap-beta", 1<<30)
-	_, _, err := r.Insert(context.Background(), &domain.Image{
+	_, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-2", Name: "dup-img",
 		RegionID: "ru-central1", SourceSnapshot: snap2,
 	}, fixtureRegionZones)
@@ -193,7 +193,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 func TestImageSourceFKNotFound(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-snap-src",
@@ -219,7 +219,7 @@ func TestImageSourceFKNotFound(t *testing.T) {
 // source-delete. Прямой SQL-insert (обходит sync-validate), чтобы лочить именно DB-инвариант.
 func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 	pool := newTestPool(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-x", 1<<30)
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "vol-x", "region-1-a", "", 1<<30)
 
@@ -248,7 +248,7 @@ func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 func TestImageListCursorFilter(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-list", 1<<30)
 	for _, n := range []string{"img-a", "img-b", "img-c"} {
 		mkImageFromSnapshot(t, pool, r, "prj-1", n, "ru-central1", snap)
@@ -307,7 +307,7 @@ func TestImageListCursorFilter(t *testing.T) {
 func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-upd", 1<<30)
 	_ = mkImageFromSnapshot(t, pool, r, "prj-1", "alpha", "ru-central1", snap)
 	ib := mkImageFromSnapshot(t, pool, r, "prj-1", "beta", "ru-central1", snap)
@@ -328,7 +328,7 @@ func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 // DB-CHECK images_name_check (23514). Прямой SQL (domain-валидатор — отдельный уровень).
 func TestImageNameBVADBCheck(t *testing.T) {
 	pool := newTestPool(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-bva", 1<<30)
 	longName := ""
 	for i := 0; i < 64; i++ {

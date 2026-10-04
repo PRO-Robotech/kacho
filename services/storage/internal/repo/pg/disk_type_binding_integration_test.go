@@ -53,7 +53,7 @@ func bindingSample(diskTypeID, zoneID, backendID string) *domain.DiskTypeBinding
 // строки класса её не вставить вовсе.
 func bindSeedDiskType(t *testing.T, pool *pgxpool.Pool, id string) string {
 	t.Helper()
-	_, err := pg.NewDiskTypeRepo(pool).Insert(context.Background(), &domain.DiskType{
+	_, err := pg.NewDiskTypeRepo(pool).Insert(journalPrincipalCtx(context.Background()), &domain.DiskType{
 		ID: id, Name: id, PerformanceTier: domain.TierBalanced, Lifecycle: domain.LifecycleActive,
 	})
 	require.NoError(t, err)
@@ -63,7 +63,7 @@ func bindSeedDiskType(t *testing.T, pool *pgxpool.Pool, id string) string {
 // bindSeedBackend регистрирует бэкенд — вторую сторону ссылки ревизии.
 func bindSeedBackend(t *testing.T, pool *pgxpool.Pool, name string) string {
 	t.Helper()
-	b, err := pg.NewStorageBackendRepo(pool).Insert(context.Background(), sbSample(name))
+	b, err := pg.NewStorageBackendRepo(pool).Insert(journalPrincipalCtx(context.Background()), sbSample(name))
 	require.NoError(t, err)
 	return b.ID
 }
@@ -74,7 +74,7 @@ func bindSeedBackend(t *testing.T, pool *pgxpool.Pool, name string) string {
 func bindActiveCount(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM disk_type_bindings
 		  WHERE disk_type_id = $1 AND zone_id = $2 AND status = 'ACTIVE'`,
 		diskTypeID, zoneID).Scan(&n))
@@ -84,7 +84,7 @@ func bindActiveCount(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string
 // bindRevisions — номера ревизий пары в порядке возрастания.
 func bindRevisions(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string) []int32 {
 	t.Helper()
-	rows, err := pool.Query(context.Background(),
+	rows, err := pool.Query(journalPrincipalCtx(context.Background()),
 		`SELECT revision FROM disk_type_bindings
 		  WHERE disk_type_id = $1 AND zone_id = $2 ORDER BY revision`, diskTypeID, zoneID)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func bindRevisions(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string) 
 func TestDiskTypeBindingRoundTrip(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-round")
 	be := bindSeedBackend(t, pool, "ceph-round")
@@ -145,7 +145,7 @@ func TestDiskTypeBindingRoundTrip(t *testing.T) {
 func TestDiskTypeBindingRegisterSupersedesPrevious(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-sup")
 	be := bindSeedBackend(t, pool, "ceph-sup")
@@ -217,7 +217,7 @@ func bindWaitBlocked(t *testing.T, pool *pgxpool.Pool, want int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		var n int
-		if err := pool.QueryRow(context.Background(),
+		if err := pool.QueryRow(journalPrincipalCtx(context.Background()),
 			`SELECT count(*) FROM pg_stat_activity
 			  WHERE datname = current_database()
 			    AND wait_event_type = 'Lock'
@@ -241,7 +241,7 @@ func bindWaitBlocked(t *testing.T, pool *pgxpool.Pool, want int) {
 func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-race")
 	be := bindSeedBackend(t, pool, "ceph-race")
@@ -265,7 +265,7 @@ func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, rerr := r.Register(context.Background(), bindingSample(dt, "ru-central1-a", be))
+			_, rerr := r.Register(journalPrincipalCtx(context.Background()), bindingSample(dt, "ru-central1-a", be))
 			results <- rerr
 		}()
 	}
@@ -300,7 +300,7 @@ func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 		free.Add(1)
 		go func(z string) {
 			defer free.Done()
-			_, ferr := r.Register(context.Background(), bindingSample(dt, z, be))
+			_, ferr := r.Register(journalPrincipalCtx(context.Background()), bindingSample(dt, z, be))
 			freeErrs <- ferr
 		}(zone)
 	}
@@ -318,7 +318,7 @@ func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 func TestDiskTypeBindingRegisterRaceHoldsUnderAnyInterleaving(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-any")
 	be := bindSeedBackend(t, pool, "ceph-any")
@@ -393,7 +393,7 @@ func TestDiskTypeBindingRepoHasNoMutatingPath(t *testing.T) {
 func TestDiskTypeBindingNumberAndStatusAssignedByRegistry(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-assign")
 	be := bindSeedBackend(t, pool, "ceph-assign")
@@ -435,7 +435,7 @@ func TestDiskTypeBindingReferencedRevisionIsNotDeletable(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-fk")
 	be := bindSeedBackend(t, pool, "ceph-fk")
@@ -489,7 +489,7 @@ func requireFKRestrict(t *testing.T, err error, constraint string) {
 func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-ref")
 	be := bindSeedBackend(t, pool, "ceph-ref")
@@ -510,7 +510,7 @@ func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
 func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-inv")
 	be := bindSeedBackend(t, pool, "ceph-inv")
@@ -548,7 +548,7 @@ func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
 func TestDiskTypeBindingListCursor(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-page")
 	be := bindSeedBackend(t, pool, "ceph-page")

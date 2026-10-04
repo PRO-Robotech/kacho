@@ -53,7 +53,7 @@ const quotaFixtureAccount = "acc-quota-probe"
 // составе столбцов.
 func seedQuota(t *testing.T, pool *pgxpool.Pool, project, kind string, limit int64) {
 	t.Helper()
-	n, err := pg.MaterializeQuotas(context.Background(), pool, []quota.Row{{
+	n, err := pg.MaterializeQuotas(journalPrincipalCtx(context.Background()), pool, []quota.Row{{
 		CarrierType:   quota.CarrierProject,
 		CarrierID:     project,
 		Kind:          kind,
@@ -70,7 +70,7 @@ func seedQuota(t *testing.T, pool *pgxpool.Pool, project, kind string, limit int
 // readQuota читает пару «занято и предел» — то, что видит арендатор.
 func readQuota(t *testing.T, pool *pgxpool.Pool, project, kind string) (used, limit int64) {
 	t.Helper()
-	err := pool.QueryRow(context.Background(), `
+	err := pool.QueryRow(journalPrincipalCtx(context.Background()), `
 		SELECT used, limit_value FROM project_resource_quotas
 		 WHERE carrier_type = $1 AND carrier_id = $2 AND kind = $3`,
 		quota.CarrierProject, project, kind).Scan(&used, &limit)
@@ -100,7 +100,7 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 	require.Equal(t, int64(2), limit)
 
 	// Исчерпание: третья вставка отвергается, и отказ ОТЛИЧИМ от сбоя.
-	_, _, err := repo.Insert(context.Background(), &domain.Volume{
+	_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       "vol-3",
@@ -121,7 +121,7 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 		"отвергнутая вставка места НЕ занимает: списание и вставка — одна транзакция")
 
 	// Возврат: удаление освобождает место, и следующая вставка проходит.
-	require.NoError(t, repo.Delete(context.Background(), second.ID))
+	require.NoError(t, repo.Delete(journalPrincipalCtx(context.Background()), second.ID))
 	usedAfterDelete, _ := readQuota(t, pool, project, "storage.volumes")
 	require.Equal(t, int64(1), usedAfterDelete, "удаление вернуло место")
 
@@ -140,7 +140,7 @@ func TestQuota_NotProvisionedIsRefusalNotPermission(t *testing.T) {
 	repo := pg.NewVolumeRepo(pool)
 	const project = "prj-quota-unprovisioned"
 
-	_, _, err := repo.Insert(context.Background(), &domain.Volume{
+	_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       "vol-1",
@@ -182,7 +182,7 @@ func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, _, err := repo.Insert(context.Background(), &domain.Volume{
+			_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 				ID:         ids.NewID(domain.PrefixVolume),
 				ProjectID:  project,
 				Name:       fmt.Sprintf("vol-race-%d", i),
@@ -221,7 +221,7 @@ func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 func TestQuota_LoweringTheLimitBelowUsageIsAllowed(t *testing.T) {
 	pool := newTestPool(t)
 	repo := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-lower"
 
 	seedQuota(t, pool, project, "storage.volumes", 5)
@@ -272,7 +272,7 @@ func TestQuota_LoweringTheLimitBelowUsageIsAllowed(t *testing.T) {
 // при заведённой строке — то есть тихо остался бы неограниченным.
 func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 	pool := newTestPool(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-kinds"
 
 	for _, kind := range []string{"storage.volumes", "storage.snapshots", "storage.images"} {
@@ -326,7 +326,7 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 func TestQuota_AttachingAVolumeMovesNoCounter(t *testing.T) {
 	pool := newTestPool(t)
 	repo := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-attach"
 
 	seedQuota(t, pool, project, "storage.volumes", 2)

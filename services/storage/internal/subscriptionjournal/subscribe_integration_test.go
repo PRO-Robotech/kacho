@@ -28,7 +28,7 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 	s := newStand(t)
 	v := s.createVolume(t, probeProject, "web-1")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 30*time.Second)
 	defer cancel()
 	stream := s.subscribe(t, ctx, probeProject, authzfilter.ResourceTypeVolume)
 
@@ -101,11 +101,11 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	s := newStand(t)
 	v := s.createVolume(t, probeProject, "doomed")
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(ctx, reconciler.KindVolume, v.ID); err != nil {
+	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
 		t.Fatalf("сверщик не снял строку: %v", err)
 	}
 
@@ -140,7 +140,7 @@ func TestTheProjectAxisNarrowsByTheColumn(t *testing.T) {
 	other := s.createVolume(t, probeOther, "not-mine")
 	mine := s.createVolume(t, probeProject, "mine")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 30*time.Second)
 	defer cancel()
 	stream := s.subscribe(t, ctx, probeProject, authzfilter.ResourceTypeVolume)
 
@@ -177,11 +177,11 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	s := newStandWithNarrower(t, narrowtest.Allowing(probeProject))
 	v := s.createVolume(t, probeProject, "revoked")
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(ctx, reconciler.KindVolume, v.ID); err != nil {
+	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
 		t.Fatalf("сверщик не снял строку: %v", err)
 	}
 
@@ -223,11 +223,11 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 	s := newStandWithNarrower(t, narrowtest.Allowing(probeProject, mineID))
 	doomed := s.createVolume(t, probeOther, "foreign-doomed")
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, doomed.ID); err != nil {
 		t.Fatalf("чужой том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(ctx, reconciler.KindVolume, doomed.ID); err != nil {
+	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, doomed.ID); err != nil {
 		t.Fatalf("сверщик не снял чужую строку: %v", err)
 	}
 	// Видимое событие следом — положительный контроль живости потока.

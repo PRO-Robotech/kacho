@@ -76,7 +76,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 	// адресуют свои таблицы без схемы. Стенд без неё падал бы на фикстуре, а не
 	// на предмете пробы; объявлена она `pgtest.Config.SearchPath` этого пакета.
 	dsn := pgtest.NewDB(t)
-	pool, err := pgxpool.New(context.Background(), dsn)
+	pool, err := pgxpool.New(context.Background(), fixtureInitiatorDSN(t, dsn))
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)
 	}

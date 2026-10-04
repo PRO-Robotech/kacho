@@ -49,7 +49,7 @@ var fixtureRegionZones = []string{"region-1-a", "region-1-b"}
 func mkVolumeRowInZone(t *testing.T, pool *pgxpool.Pool, project, name, zone string) string {
 	t.Helper()
 	id := ids.NewID(domain.PrefixVolume)
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO volumes (id, project_id, name, zone_id, disk_type_id, size_bytes, state)
 		 VALUES ($1,$2,$3,$4,$5,$6,'READY')`,
 		id, project, name, zone, imgFixtureDiskTypeRow(t, pool), int64(20)<<30)
@@ -63,7 +63,7 @@ func mkVolumeRowInZone(t *testing.T, pool *pgxpool.Pool, project, name, zone str
 func mkSnapshotOfVolume(t *testing.T, pool *pgxpool.Pool, project, name, volumeID string) string {
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		// Зона БЕРЁТСЯ У ТОМА, а не выписывается: снимок наследует размещение
 		// источника, и выписанная копия разошлась бы с ним ровно там, где проба
 		// проверяет когерентность размещения.
@@ -79,7 +79,7 @@ func mkSnapshotOfVolume(t *testing.T, pool *pgxpool.Pool, project, name, volumeI
 func TestImageSourceVolumeForeignRegionRejected(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-foreign-region", "region-2-a")
 
@@ -97,7 +97,7 @@ func TestImageSourceVolumeForeignRegionRejected(t *testing.T) {
 func TestImageSourceVolumeSameRegionSeeded(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-same-region", "region-1-b")
 
@@ -116,7 +116,7 @@ func TestImageSourceVolumeSameRegionSeeded(t *testing.T) {
 func TestImageSourceSnapshotFollowsLineageRegion(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-lineage-foreign", "region-2-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-lineage-foreign", volID)
@@ -134,7 +134,7 @@ func TestImageSourceSnapshotFollowsLineageRegion(t *testing.T) {
 func TestImageSourceSnapshotSameRegionSeeded(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-lineage-same", "region-1-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-lineage-same", volID)
@@ -154,7 +154,7 @@ func TestImageSourceSnapshotSameRegionSeeded(t *testing.T) {
 func TestImageSourceSnapshotWithoutLineageUnaffected(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-no-lineage", 20<<30)
 

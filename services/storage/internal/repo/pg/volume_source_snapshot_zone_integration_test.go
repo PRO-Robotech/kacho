@@ -41,7 +41,7 @@ import (
 func volumeRows(t *testing.T, pool *pgxpool.Pool, id string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM volumes WHERE id = $1`, id).Scan(&n))
 	return n
 }
@@ -51,7 +51,7 @@ func volumeRows(t *testing.T, pool *pgxpool.Pool, id string) int {
 func TestVolumeFromSnapshotForeignZoneRejected(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	srcVolID := mkVolumeRowInZone(t, pool, "prj-1", "vol-snap-src-zone-b", "region-1-b")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-zone-b", srcVolID)
@@ -73,7 +73,7 @@ func TestVolumeFromSnapshotForeignZoneRejected(t *testing.T) {
 func TestVolumeFromSnapshotSameZoneSeeded(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	srcVolID := mkVolumeRowInZone(t, pool, "prj-1", "vol-snap-src-same-zone", "region-1-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-same-zone", srcVolID)
@@ -96,7 +96,7 @@ func TestVolumeFromSnapshotSameZoneSeeded(t *testing.T) {
 func TestVolumeFromSnapshotWithoutLineageUnaffected(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-orphan-for-volume", 20<<30)
 
@@ -117,7 +117,7 @@ func TestVolumeFromSnapshotWithoutLineageUnaffected(t *testing.T) {
 func TestVolumeFromSnapshotForeignProjectStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	victimVolID := mkVolumeRowInZone(t, pool, "prj-victim-zone", "vol-victim-zone-b", "region-1-b")
 	foreignSnap := mkSnapshotOfVolume(t, pool, "prj-victim-zone", "snap-victim-zone-b", victimVolID)
