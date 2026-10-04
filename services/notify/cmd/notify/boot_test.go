@@ -68,12 +68,19 @@ func processEnv(env map[string]string) []string {
 	return out
 }
 
+// processDeadline — срок одного процесса notify в пробе. Он судит только
+// процесс: бинарь собирается ДО того, как срок взведён (notifyBinary), иначе
+// холодная сборка первого подслучая съедает срок и отказ стража неотличим от
+// зависшего старта.
+const processDeadline = 30 * time.Second
+
 // runRefused запускает процесс и ждёт отказа старта.
 func runRefused(t *testing.T, env map[string]string, want ...string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	bin := notifyBinary(t)
+	ctx, cancel := context.WithTimeout(context.Background(), processDeadline)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, notifyBinary(t), "serve")
+	cmd := exec.CommandContext(ctx, bin, "serve")
 	cmd.Env = processEnv(env)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -148,9 +155,10 @@ func TestNotifyProcessPassesTheGuardWithSoundPosture(t *testing.T) {
 	env["KACHO_NOTIFY_DB_HOST"] = "127.0.0.1"
 	env["KACHO_NOTIFY_DB_PORT"] = closedPort
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	bin := notifyBinary(t)
+	ctx, cancel := context.WithTimeout(context.Background(), processDeadline)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, notifyBinary(t), "serve")
+	cmd := exec.CommandContext(ctx, bin, "serve")
 	cmd.Env = processEnv(env)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
