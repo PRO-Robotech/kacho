@@ -911,6 +911,29 @@ jobs:
       - name: точка отсчёта разрыва умеет краснеть (инъекция в обе стороны)
         run: bash scripts/release/breaking-since-release-inject.sh
 
+      # ВЫЗОВ ПРОВЕРОК NTF-1 (NTF1-D08, #2915). Два шага ниже — ведомость
+      # обязательных вызовов corelib (`treehygiene.AuditNotifyWiring`), и их
+      # судит гейт internal/repohygiene/notifywiring_test.go: тело шага — ровно
+      # слова записи, у шага и задания нет `if:` и `continue-on-error`,
+      # рабочий процесс несёт `pull_request` и `push`, checkout задания —
+      # `fetch-depth: 0`. Снятый или суженный шаг — красный гейта, а не тишина.
+      #
+      # ПОЧЕМУ В ЭТОМ ЗАДАНИИ. Сверке шаблонов нужна база — первый родитель, —
+      # а у этого задания клон уже полной глубины (выше, ради `buf breaking`);
+      # мелкий клон дал бы «база не найдена», а не пропуск. Своё задание
+      # завело бы новый контекст, которого защита ствола не требует, — его
+      # краснота слияния не останавливала бы (`.github/required-contexts.txt`).
+      #
+      # База `HEAD^1`: на запросе checkout берёт merge-ревизию, и первый
+      # родитель — голова базы запроса; на `push` и ручном запуске — первый
+      # родитель коммита. Строка «база <коммит>: …» вывода — отпечаток базы,
+      # которой судили, «шаблонов N, …» — число шаблонов дерева.
+      - name: шаблоны извещений — сверка и правило базы против первого родителя (NTF1-D07)
+        run: make notifications-check BASE=HEAD^1
+
+      - name: гейты дерева NTF-1 по kacho (NTF1-B27, B28, B28 Put, B19)
+        run: make notify-tree-gates
+
 
   authz-artifacts:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
