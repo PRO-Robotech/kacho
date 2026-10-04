@@ -32,7 +32,7 @@ func TestIntegration_Subnet_VPC_1_33_ConcurrentOverlapCidr_OneWinner(t *testing.
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

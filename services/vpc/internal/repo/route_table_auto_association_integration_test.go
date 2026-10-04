@@ -48,7 +48,7 @@ import (
 // Тестируем напрямую через repo (без service-слоя) — это DB-level гарантия.
 
 func setupAssocRepo(t *testing.T) (kacho.Repository, *pgxpool.Pool, func()) {
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func setupAssocRepo(t *testing.T) (kacho.Repository, *pgxpool.Pool, func()) {
 func requireTriggerAbsent(t *testing.T, pool *pgxpool.Pool, name string) {
 	t.Helper()
 	var cnt int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM pg_trigger WHERE tgname = $1`, name).Scan(&cnt))
 	require.Zero(t, cnt, "%s обязан быть снят: выбор RT живёт только в Subnet.Create", name)
 }
@@ -86,7 +86,7 @@ func TestIntegration_VPC_RouteTableInsert_NeverRebindsSubnets(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	r, pool, cleanup := setupAssocRepo(t)
 	defer cleanup()
 
@@ -179,7 +179,7 @@ func TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	r, _, cleanup := setupAssocRepo(t)
 	defer cleanup()
 
@@ -258,7 +258,7 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	r, _, cleanup := setupAssocRepo(t)
 	defer cleanup()
 
@@ -331,7 +331,7 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

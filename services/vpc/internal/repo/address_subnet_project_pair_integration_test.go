@@ -106,7 +106,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentInsert_OnlyOwnerProject
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestIntegration_Address_SubnetProjectPair_SettersRefuseForeignSubnet(t *tes
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

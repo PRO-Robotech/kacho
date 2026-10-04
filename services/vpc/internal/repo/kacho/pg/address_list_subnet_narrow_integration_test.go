@@ -166,7 +166,7 @@ func TestIntegration_AddressList_NarrowBySubnet_SelectsBothFamilies(t *testing.T
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -267,7 +267,7 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -472,7 +472,7 @@ func TestIntegration_AddressList_NarrowBySubnet_MatchesChildList(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

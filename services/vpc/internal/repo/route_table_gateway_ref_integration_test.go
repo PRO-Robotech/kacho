@@ -174,7 +174,7 @@ func TestRouteTableGatewayRef_Resolves(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	// Якорь шлюза — та же сеть, ТА ЖЕ зона, что у подсети таблицы, IPv4-блок.
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-ok", "zone-a", []string{"10.80.1.0/24"}, nil)
@@ -200,7 +200,7 @@ func TestRouteTableGatewayRef_AbsentGatewayIsNotFound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	absent := ids.NewID(ids.PrefixGateway)
 
@@ -215,7 +215,7 @@ func TestRouteTableGatewayRef_ForeignNetworkRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 
 	otherNet := ids.NewID(ids.PrefixNetwork)
@@ -241,7 +241,7 @@ func TestRouteTableGatewayRef_ZoneMismatchRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-zb", "zone-b", []string{"10.82.0.0/24"}, nil)
 	gwID := f.gateway(ctx, t, "gw-zone-b", anchor, domain.GatewayTypeNat)
@@ -262,7 +262,7 @@ func TestRouteTableGatewayRef_RegionalTableSubnetOutOfZonalCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 
 	// Отдельная таблица, к которой привязана ТОЛЬКО региональная подсеть.
@@ -296,7 +296,7 @@ func TestRouteTableGatewayRef_FamilyMismatchRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-v6", "zone-a",
 		[]string{"10.85.0.0/24"}, []string{"2001:db8:85::/64"})
@@ -326,7 +326,7 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-del", "zone-a", []string{"10.86.0.0/24"}, nil)
 	gwID := f.gateway(ctx, t, "gw-del", anchor, domain.GatewayTypeNat)
@@ -359,7 +359,7 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	v4only := f.anchorSubnet(ctx, t, f.networkID, "sub-v4", "zone-a", []string{"10.87.0.0/24"}, nil)
 
