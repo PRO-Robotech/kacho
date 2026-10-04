@@ -353,6 +353,11 @@ spec:
             - name: KACHO_API_GATEWAY_JWKS_CA_FILE
               value: {{ printf "%s/%s" (trimSuffix "/" .Values.tokenAcceptance.issuerKeySetsCa.mountPath) .Values.tokenAcceptance.issuerKeySetsCa.key | quote }}
             {{- end }}
+            # Круг доверенных звеньев адреса клиента (kacho#3028) — всегда, вне
+            # блока authz: им кормится и ретрансляция полосы входа. Пустой при
+            # включённом доверии — отказ старта края (config.TrustedProxyCircle).
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS
+              value: {{ join "," .Values.clientAddress.trustedProxyCIDRs | quote }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
               value: {{ .Values.authz.enabled | default false | quote }}

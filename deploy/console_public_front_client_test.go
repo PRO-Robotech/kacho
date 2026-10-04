@@ -223,60 +223,8 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 	front := frontFromRender(t)
 
 	var registers atomic.Int64
-	gw := dockerOut(t, "network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}")
-	ln, err := net.Listen("tcp", net.JoinHostPort(gw, "0"))
-	if err != nil {
-		t.Fatalf("дублёр края не слушает на шлюзе сети контейнеров %s: %v", gw, err)
-	}
-	stub := httptest.NewUnstartedServer(formLaneStandIn(&registers))
-	stub.Listener = ln
-	stub.Start()
-	defer stub.Close()
-	upstream := strings.TrimPrefix(stub.URL, "http://")
-
-	dir := t.TempDir()
-	pool := leafFor(t, dir)
-	for name, body := range map[string]string{
-		"default.conf.template": front.Conf, "05-resolver.envsh": front.Resolver, "06-tls-reload.sh": front.Reload,
-	} {
-		mode := os.FileMode(0o644)
-		if strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".envsh") {
-			mode = 0o755
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	_ = os.Chmod(dir, 0o755)
-
-	args := []string{"run", "-d", "--read-only", "--user", "101:101",
-		"--tmpfs", "/tmp:uid=101,gid=101", "--tmpfs", "/var/cache/nginx:uid=101,gid=101",
-		"--tmpfs", "/etc/nginx/conf.d:uid=101,gid=101",
-		"-v", filepath.Join(dir, "default.conf.template") + ":/etc/nginx/templates/default.conf.template:ro",
-		"-v", filepath.Join(dir, "05-resolver.envsh") + ":/docker-entrypoint.d/05-resolver-from-resolvconf.envsh:ro",
-		"-v", filepath.Join(dir, "06-tls-reload.sh") + ":/docker-entrypoint.d/06-tls-reload.sh:ro",
-		"-v", dir + ":/etc/console-tls:ro",
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.Internal),
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.HTTPS),
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
-		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
-	}
-	for _, m := range []string{"DASHBOARD", "VPC", "IAM", "NLB", "REGISTRY", "SYSTEM", "COMPUTE", "STORAGE"} {
-		args = append(args, "-e", "KACHO_UI_"+m+"_UPSTREAM=127.0.0.1:9")
-	}
-	args = append(args, front.Image)
-	id := dockerOut(t, args...)
-	defer func() {
-		if t.Failed() {
-			logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
-			t.Logf("журнал раздачи:\n%s", logs)
-		}
-		_ = exec.Command("docker", "rm", "-f", id).Run()
-	}()
-	mapped := func(p int) string {
-		out := dockerOut(t, "port", id, fmt.Sprintf("%d/tcp", p))
-		return strings.TrimSpace(strings.Split(out, "\n")[0])
-	}
+	run := startFront(t, front, formLaneStandIn(&registers))
+	id, pool, mapped := run.ID, run.Pool, run.Mapped
 	internalAddr, httpsAddr, redirectAddr := mapped(front.Internal), mapped(front.HTTPS), mapped(front.Redirect)
 	// Контроль идёт на адрес контейнера в сети моста, а НЕ на петлю: петлю
 	// cookiejar (как и браузер для localhost) считает защищённой и Secure по
@@ -412,4 +360,73 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 			t.Fatalf("с чужим Host переадресация увела на %q", loc)
 		}
 	})
+}
+
+// frontRun — поднятая раздача: контейнер, якорь её листа TLS и адрес порта.
+type frontRun struct {
+	ID     string
+	Pool   *x509.CertPool
+	Mapped func(port int) string
+}
+
+// startFront — поднимает НАСТОЯЩУЮ раздачу из рендера цепочки (образ, карта
+// настройки, порты пода), а за ней вместо края — edge. Дублёр края слушает на
+// шлюзе сети контейнеров, чтобы раздача дошла до него по адресу из окружения.
+// Контейнер снимается по окончании пробы; журнал раздачи — при её провале.
+func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun {
+	t.Helper()
+	gw := dockerOut(t, "network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}")
+	ln, err := net.Listen("tcp", net.JoinHostPort(gw, "0"))
+	if err != nil {
+		t.Fatalf("дублёр края не слушает на шлюзе сети контейнеров %s: %v", gw, err)
+	}
+	stub := httptest.NewUnstartedServer(edge)
+	stub.Listener = ln
+	stub.Start()
+	t.Cleanup(stub.Close)
+	upstream := strings.TrimPrefix(stub.URL, "http://")
+
+	dir := t.TempDir()
+	pool := leafFor(t, dir)
+	for name, body := range map[string]string{
+		"default.conf.template": front.Conf, "05-resolver.envsh": front.Resolver, "06-tls-reload.sh": front.Reload,
+	} {
+		mode := os.FileMode(0o644)
+		if strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".envsh") {
+			mode = 0o755
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = os.Chmod(dir, 0o755)
+
+	args := []string{"run", "-d", "--read-only", "--user", "101:101",
+		"--tmpfs", "/tmp:uid=101,gid=101", "--tmpfs", "/var/cache/nginx:uid=101,gid=101",
+		"--tmpfs", "/etc/nginx/conf.d:uid=101,gid=101",
+		"-v", filepath.Join(dir, "default.conf.template") + ":/etc/nginx/templates/default.conf.template:ro",
+		"-v", filepath.Join(dir, "05-resolver.envsh") + ":/docker-entrypoint.d/05-resolver-from-resolvconf.envsh:ro",
+		"-v", filepath.Join(dir, "06-tls-reload.sh") + ":/docker-entrypoint.d/06-tls-reload.sh:ro",
+		"-v", dir + ":/etc/console-tls:ro",
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.Internal),
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.HTTPS),
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
+		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
+	}
+	for _, m := range []string{"DASHBOARD", "VPC", "IAM", "NLB", "REGISTRY", "SYSTEM", "COMPUTE", "STORAGE"} {
+		args = append(args, "-e", "KACHO_UI_"+m+"_UPSTREAM=127.0.0.1:9")
+	}
+	args = append(args, front.Image)
+	id := dockerOut(t, args...)
+	t.Cleanup(func() {
+		if t.Failed() {
+			logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
+			t.Logf("журнал раздачи:\n%s", logs)
+		}
+		_ = exec.Command("docker", "rm", "-f", id).Run()
+	})
+	return frontRun{ID: id, Pool: pool, Mapped: func(p int) string {
+		out := dockerOut(t, "port", id, fmt.Sprintf("%d/tcp", p))
+		return strings.TrimSpace(strings.Split(out, "\n")[0])
+	}}
 }

@@ -63,6 +63,16 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mustSay: "не назван ни в одном сертификате",
 		},
 		{
+			name: "Service подменяет адрес клиента адресом узла",
+			from: "externalTrafficPolicy: Local", to: "externalTrafficPolicy: Cluster",
+			mustSay: "ожидался Local",
+		},
+		{
+			name: "раздача дописывает заголовок клиента вместо своего",
+			from: "proxy_set_header X-Forwarded-For $remote_addr;", to: "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+			mustSay: "ожидался $remote_addr",
+		},
+		{
 			name: "происхождение консоли по http", origin: "http://" + host,
 			mustSay: "не по https",
 		},

@@ -141,6 +141,7 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP":               "true",
 		"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET":                "1s",
 		"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET":                 "30s",
+		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS":           "10.0.0.0/8",
 	}, listen
 }
 

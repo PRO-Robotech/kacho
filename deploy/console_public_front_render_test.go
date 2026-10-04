@@ -25,7 +25,16 @@
 //     ОБЪЯВЛЕННОЕ происхождение консоли (не на заголовок `Host`), то есть по
 //     http ни одна форма не обслуживается;
 //  4. происхождение консоли — `https`, и его хост назван в сертификате, который
-//     выписывается в смонтированный секрет.
+//     выписывается в смонтированный секрет;
+//  5. адрес клиента доезжает до раздачи (kacho#3028): Service несёт
+//     `externalTrafficPolicy: Local`. При `Cluster` kube-proxy подменяет адрес
+//     источника адресом узла, раздача видит вместо клиентов один–четыре адреса
+//     узлов, и ограничение частоты «на источник» у службы доступа становится
+//     общим на всех: исчерпав его, один клиент отказывает во входе остальным;
+//  6. раздача сама пишет `X-Forwarded-For` к краю — адресом TCP-пира
+//     (`$remote_addr`), а не дописывает его к заголовку, пришедшему от клиента
+//     (`$proxy_add_x_forwarded_for`): заголовок, присланный клиентом, наружу
+//     от раздачи не уходит, и звену за ней нечего «выбирать справа».
 //
 // ЗНАМЕНАТЕЛЬ. Цепочек с таким входом обязано быть не меньше одной: стенд,
 // ради которого вход заведён, раскатывается из этого дерева, и «на всех
@@ -85,6 +94,7 @@ var (
 	listenDirective  = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)(\s+ssl)?\s*;`)
 	redirectReturn   = regexp.MustCompile(`(?m)^\s*return 308 (\S+)\$request_uri;\s*$`)
 	nginxDirective   = regexp.MustCompile(`(?m)^\s*(proxy_pass|try_files|root|alias|fastcgi_pass|grpc_pass)\b`)
+	forwardedForSet  = regexp.MustCompile(`(?mi)^\s*proxy_set_header\s+X-Forwarded-For\s+(\S+?)\s*;`)
 )
 
 // judgePublicFronts — НАХОДКИ по рендерам. Чистая функция.
@@ -134,6 +144,11 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 	}
 	if len(pl) != 2 || ports["443"] != "https" || ports["80"] != "redirect" {
 		say("порты %v, ожидались ровно 443→https и 80→redirect", ports)
+	}
+	// 5. адрес клиента не подменяется на Service
+	if p, _ := lookup(svc, "spec", "externalTrafficPolicy"); p != "Local" {
+		say("externalTrafficPolicy %v, ожидался Local — kube-proxy подменяет адрес клиента адресом узла, "+
+			"все клиенты за входом становятся одним источником для ограничения частоты (kacho#3028)", p)
 	}
 	// 2. под раздачи
 	var pod map[string]any
@@ -210,6 +225,17 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 	if err != nil || u.Scheme != "https" {
 		say("происхождение консоли %q не по https — Secure-печенье формы с него браузер не хранит", r.Origin)
 		return out
+	}
+	// 6. заголовок пересылки к краю пишет раздача, а не клиент
+	xff := forwardedForSet.FindAllStringSubmatch(conf, -1)
+	if len(xff) == 0 {
+		say("раздача не пишет X-Forwarded-For ни в одной полосе — край не узнает адреса клиента")
+	}
+	for _, m := range xff {
+		if m[1] != "$remote_addr" {
+			say("X-Forwarded-For к краю = %s, ожидался $remote_addr — заголовок, присланный клиентом, "+
+				"уходит от раздачи дальше (kacho#3028)", m[1])
+		}
 	}
 	tlsServed, redirectOnly := false, false
 	for _, m := range nginxServerBlock.FindAllStringSubmatch(conf, -1) {

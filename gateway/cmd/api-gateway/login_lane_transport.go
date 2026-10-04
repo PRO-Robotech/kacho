@@ -26,9 +26,18 @@ import (
 // доверенных прыжков стоит перед краем (адрес берётся СПРАВА). Второй
 // экземпляр с теми же ручками разошёлся бы с первым при следующей правке одной
 // из них.
-func newClientAddressOperator(cfg config.Config) *middleware.ContextExtractor {
+//
+// Круг доверенных звеньев (kacho#3028) — третья ручка того же оператора:
+// заголовок пересылки принимается только от пира из круга. Разбор и отказ
+// старта — config.TrustedProxyCircle; корень зовёт его до первой провязки.
+func newClientAddressOperator(cfg config.Config) (*middleware.ContextExtractor, error) {
+	circle, err := cfg.TrustedProxyCircle()
+	if err != nil {
+		return nil, err
+	}
 	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor,
-		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount))
+		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount),
+		middleware.WithTrustedProxies(circle...)), nil
 }
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь

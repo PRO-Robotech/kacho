@@ -597,6 +597,22 @@ kacho-geo:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
+  # КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ АДРЕСА КЛИЕНТА (kacho#3028). Край принимает
+  # `X-Forwarded-For` только от пира из этих сетей. Звено перед краем — раздача
+  # консоли и ingress-контроллер: оба — поды кластера, и их сеть у каждого
+  # кластера своя. Здесь объявлены частные диапазоны целиком (RFC 1918, RFC 6598,
+  # уникальные локальные IPv6): в них лежит сеть подов любого из наших кластеров,
+  # а публичный адрес звеном не признаётся никогда. Край снаружи опубликован
+  # только через эти звенья (его Service — ClusterIP), поэтому шире сети подов
+  # круг на деле не пускает никого. Профиль, измеривший сеть подов своего
+  # кластера, сужает круг до неё.
+  clientAddress:
+    trustedProxyCIDRs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - fc00::/7
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
@@ -676,6 +677,16 @@ type Config struct {
 	// AuthZTrustedXForwardedFor is true.
 	AuthZTrustedProxyCount int `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT" default:"1"`
 
+	// AuthZTrustedProxyCIDRs — КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ (kacho#3028): сети через
+	// запятую, из которых край принимает заголовки пересылки. Число прыжков
+	// говорит, СКОЛЬКО звеньев стоит перед краем, но не КТО они: без круга
+	// заголовок любого пира, дошедшего до края напрямую, сдвигал `client_ip` и
+	// ключ ограничения частоты входа у службы доступа. Пир вне круга —
+	// источник сам. Умолчания у ручки НЕТ: сеть, где живёт раздача, — свойство
+	// кластера, и объявляет её профиль развёртывания. Разбор и отказ старта —
+	// TrustedProxyCircle.
+	AuthZTrustedProxyCIDRs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS" default:""`
+
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
@@ -732,6 +743,43 @@ type Config struct {
 // (сколько держать запись) и сборщик (с каким шагом её убирать), — и оба обязаны
 // брать её из одного места. Два одинаковых выражения по разным файлам разошлись
 // бы молча, и уборка стала бы либо реже жизни строки, либо чаще, чем нужно.
+// TrustedProxyCIDRsKnob — имя ручки круга доверенных звеньев; его называют
+// отказы старта.
+const TrustedProxyCIDRsKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
+
+// TrustedProxyCircle — разобранный круг доверенных звеньев адреса клиента.
+//
+// Отказ старта в двух случаях. Неразборная запись: молча выпав из круга, она
+// превратила бы своё звено в «чужого», и все клиенты за ним стали бы одним
+// источником. Доверие заголовкам включено (флаг и ненулевое число прыжков), а
+// круг пуст: это противоречие, а не «никому» — стенд, забывший объявить сеть
+// раздачи, иначе снова видит всех клиентов одним адресом, и никто об этом не
+// узнаёт. При выключенном доверии пустой круг законен.
+func (c Config) TrustedProxyCircle() ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, raw := range strings.Split(c.AuthZTrustedProxyCIDRs, ",") {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf("%s: запись %q — не сеть в записи CIDR (%v)", TrustedProxyCIDRsKnob, entry, err)
+		}
+		out = append(out, p.Masked())
+	}
+	trusting := c.AuthZTrustedXForwardedFor && c.AuthZTrustedProxyCount > 0
+	if trusting && len(out) == 0 {
+		return nil, fmt.Errorf("%s пуст, а доверие заголовкам пересылки включено "+
+			"(KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF=true, KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT=%d): "+
+			"объявите сеть звена перед краем либо выключите доверие", TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCount)
+	}
+	if !trusting {
+		return nil, nil
+	}
+	return out, nil
+}
+
 func (c Config) DPoPReplayTTL() time.Duration {
 	return time.Duration(c.DPoPReplayCacheTTLSeconds) * time.Second
 }

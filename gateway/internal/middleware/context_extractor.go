@@ -42,6 +42,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -68,6 +69,15 @@ type ContextExtractor struct {
 	// 0 disables forwarded-header trust entirely (TCP peer is authoritative).
 	// Default 1 (single k8s ingress).
 	trustedProxyCount int
+
+	// trustedProxies — КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ (kacho#3028): заголовки
+	// пересылки читаются, ТОЛЬКО если TCP-пир запроса лежит в одной из этих
+	// сетей. Заголовок пишет кто угодно; число прыжков говорит, СКОЛЬКО звеньев
+	// стоит перед краем, но не КТО они, — без круга любой под кластера, дошедший
+	// до края напрямую, сдвигал бы `client_ip` и ключ ограничения частоты
+	// службы доступа одной строкой заголовка. Пустой круг — «не доверяю
+	// никому»: источник — сам TCP-пир. Это НЕ «не сужаю».
+	trustedProxies []netip.Prefix
 }
 
 // ExtractorOption configures a ContextExtractor at construction.
@@ -82,6 +92,15 @@ func WithTrustedProxyHops(n int) ExtractorOption {
 			n = 0
 		}
 		e.trustedProxyCount = n
+	}
+}
+
+// WithTrustedProxies объявляет круг доверенных звеньев (см.
+// ContextExtractor.trustedProxies). Без этой опции заголовки пересылки не
+// принимаются ни от одного пира.
+func WithTrustedProxies(prefixes ...netip.Prefix) ExtractorOption {
+	return func(e *ContextExtractor) {
+		e.trustedProxies = append([]netip.Prefix(nil), prefixes...)
 	}
 }
 
@@ -204,12 +223,12 @@ func (e *ContextExtractor) ClientIP(r *http.Request) string {
 // Forwarded headers are consulted only via clientIPFromForwardHeaders (trusted,
 // hop-indexed); otherwise the authoritative TCP peer (RemoteAddr) is used.
 func (e *ContextExtractor) resolveClientIP(r *http.Request) string {
-	if ip := e.clientIPFromForwardHeaders(r.Header.Get("X-Real-IP"), r.Header.Get("X-Forwarded-For")); ip != "" {
-		return ip
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
+	}
+	if ip := e.clientIPFromForwardHeaders(host, r.Header.Get("X-Real-IP"), r.Header.Get("X-Forwarded-For")); ip != "" {
+		return ip
 	}
 	if validIP(host) {
 		return canonicaliseIP(host)
@@ -219,15 +238,15 @@ func (e *ContextExtractor) resolveClientIP(r *http.Request) string {
 
 // resolveIPFromPeer is the gRPC peer.Addr equivalent of resolveClientIP.
 func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string) string {
-	if ip := e.clientIPFromForwardHeaders("", headerFwd); ip != "" {
-		return ip
-	}
 	if peerAddr == nil {
 		return ""
 	}
 	host, _, err := net.SplitHostPort(peerAddr.String())
 	if err != nil {
 		host = peerAddr.String()
+	}
+	if ip := e.clientIPFromForwardHeaders(host, "", headerFwd); ip != "" {
+		return ip
 	}
 	if validIP(host) {
 		return canonicaliseIP(host)
@@ -237,8 +256,10 @@ func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string
 
 // clientIPFromForwardHeaders returns the client IP asserted by trusted reverse
 // proxies, or "" when forwarded headers must not be trusted (so the caller falls
-// back to the TCP peer). Only honoured when trustedXForwardedFor is set AND at
-// least one trusted proxy hop is configured.
+// back to the TCP peer). Only honoured when trustedXForwardedFor is set, at
+// least one trusted proxy hop is configured AND the TCP peer itself lies in the
+// declared circle of trusted proxies (kacho#3028) — a header from any other
+// peer is the caller's claim about itself, not a proxy's record.
 //
 // X-Forwarded-For is parsed from the RIGHT: with N trusted hops the client IP is
 // parts[len-N] — the entry the outermost trusted proxy recorded. A client can
@@ -246,8 +267,8 @@ func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string
 // spoofed leftmost XFF can no longer drive `client_ip` / `source_ip_in_range`.
 // X-Real-IP (a single value a trusted proxy computed) is honoured only as a
 // fallback and only when a trusted proxy is present.
-func (e *ContextExtractor) clientIPFromForwardHeaders(xRealIP, xff string) string {
-	if !e.trustedXForwardedFor || e.trustedProxyCount <= 0 {
+func (e *ContextExtractor) clientIPFromForwardHeaders(peer, xRealIP, xff string) string {
+	if !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || !e.peerIsTrustedProxy(peer) {
 		return ""
 	}
 	if xff != "" {
@@ -262,6 +283,22 @@ func (e *ContextExtractor) clientIPFromForwardHeaders(xRealIP, xff string) strin
 		return canonicaliseIP(v)
 	}
 	return ""
+}
+
+// peerIsTrustedProxy — лежит ли TCP-пир в круге доверенных звеньев. Пустой
+// круг и неразборный пир — «нет».
+func (e *ContextExtractor) peerIsTrustedProxy(peer string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(peer))
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range e.trustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // canonicaliseIP normalises an IP literal (trims, lowercases IPv6) so cache
