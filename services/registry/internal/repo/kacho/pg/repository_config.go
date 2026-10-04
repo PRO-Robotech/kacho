@@ -15,6 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -389,6 +390,12 @@ func mapConfigErr(err error) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+		if journalfault.Report(f, "resource", "repository_config") {
+			return regerrors.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique: // PRIMARY KEY(registry_id, name)
 			return fmt.Errorf("%w: repository already exists", regerrors.ErrAlreadyExists)

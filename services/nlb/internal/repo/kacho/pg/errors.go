@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	coreerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/PRO-Robotech/corelib/pagetoken"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -59,6 +60,12 @@ func mapPgErr(err error, kind, id string) error {
 		return qerr
 	}
 	f := pgfault.Classify(err)
+	// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+	// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+	// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+	if journalfault.Report(f, "kind", kind, "id", id) {
+		return fmt.Errorf("%w: %v", kacho.ErrInternal, err)
+	}
 	switch f.Class {
 	case pgfault.Unique:
 		switch f.Constraint {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -353,6 +354,12 @@ func mapDiskTypeBindingErr(err error, c dtbErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+		if journalfault.Report(f, "kind", "disk_type_binding", "id", c.bindingID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			switch f.Constraint {

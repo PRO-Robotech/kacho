@@ -36,7 +36,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/pgtest"
+
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 )
 
 // journalInitiatorSetting — настройка, из которой умолчание колонки берёт инициатора.
@@ -182,7 +185,11 @@ func assertRefusedNotNull(t *testing.T, err error, column, what string) bool {
 		return false
 	}
 	ok := assert.Equal(t, sqlStateNotNull, pgErr.Code, "%s: код отказа; текст базы: %s", what, pgErr.Message)
-	return assert.Equal(t, column, pgErr.ColumnName, "%s: колонка отказа; текст базы: %s", what, pgErr.Message) && ok
+	ok = assert.Equal(t, column, pgErr.ColumnName, "%s: колонка отказа; текст базы: %s", what, pgErr.Message) && ok
+	// Маппер ошибок модуля опознаёт ЭТОТ отказ (настоящий, от базы) как отказ
+	// журнала по инициатору, а 23502 по соседней колонке — нет (законный близнец).
+	return assert.Equal(t, column == journalInitiatorColumn, journalfault.Initiator(pgfault.Classify(err)),
+		"%s: journalfault.Initiator на отказе базы (колонка %q, таблица %q)", what, pgErr.ColumnName, pgErr.TableName) && ok
 }
 
 // assertRefusedByInitiatorCheck — отказ 23514 от ограничения формы инициатора.
@@ -198,6 +205,9 @@ func assertRefusedByInitiatorCheck(t *testing.T, err error, what string) {
 	assert.Equal(t, sqlStateCheck, pgErr.Code, "%s: код отказа; текст базы: %s", what, pgErr.Message)
 	assert.Contains(t, pgErr.ConstraintName, journalInitiatorColumn,
 		"%s: отказ обязан прийти от ИМЕНОВАННОГО ограничения формы инициатора, а не от соседнего; текст базы: %s", what, pgErr.Message)
+	assert.True(t, journalfault.Initiator(pgfault.Classify(err)),
+		"%s: маппер ошибок модуля обязан опознать отказ базы как отказ журнала по инициатору (ограничение %q, таблица %q)",
+		what, pgErr.ConstraintName, pgErr.TableName)
 }
 
 // plpgsqlFrame — первая (самая глубокая) рамка PL/pgSQL в контексте отказа.

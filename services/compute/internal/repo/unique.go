@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -61,6 +62,12 @@ func wrapPgErr(err error, kind, id string) error {
 	// исчерпание от неназначенного предела.
 	if qerr := classifyQuotaErr(err); qerr != err {
 		return qerr
+	}
+	// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+	// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+	// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+	if journalfault.Report(pgfault.Classify(err), "kind", kind, "id", id) {
+		return ports.ErrInternal
 	}
 	if isUniqueViolation(err) {
 		return ports.ErrAlreadyExists

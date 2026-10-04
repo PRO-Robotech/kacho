@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -44,6 +45,12 @@ func wrapPgErr(err error, resource, id string) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (kacho#2918, journalfault).
+		if journalfault.Report(f, "resource", resource, "resource_id", id) {
+			return regerrors.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			return fmt.Errorf("%w: %s %s already exists", regerrors.ErrAlreadyExists, resource, id)
