@@ -197,12 +197,13 @@ func snapshotPool(t *testing.T, pool *pgxpool.Pool, id string) poolSnapshot {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT coalesce((SELECT next_offset::text FROM ipv6_pool_cursors WHERE pool_id = $1), '<нет>')`,
 		id).Scan(&s.Cursor))
-	// `actor` исключён намеренно и ровно один раз: посев стенда НАЗЫВАЕТ себя
-	// автором строки, путь записи такого поля не пишет. Непустота actor'а
-	// утверждается отдельно — пустой был бы утратой атрибуции.
+	// Полезная нагрузка сличается ЦЕЛИКОМ: у состояния AddressPool одна форма
+	// (NTF-3, замысел З8, CX3E-07 (б, в)). Атрибуция строки — колонка
+	// `initiator` журнала, а не ключ состояния; её утверждает проба NTF3-162
+	// (address_pool_baseline_seed_initiator_integration_test.go).
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT coalesce(jsonb_agg(jsonb_build_object(
-		            'kind', resource_kind, 'event', event_type, 'payload', payload - 'actor')
+		            'kind', resource_kind, 'event', event_type, 'payload', payload)
 		        ORDER BY sequence_no), '[]'::jsonb)::text
 		   FROM vpc_outbox WHERE resource_id = $1`, id).Scan(&s.Outbox))
 	return s
@@ -277,13 +278,13 @@ func TestStandVpcPoolBaselineMatchesTheWriterPath(t *testing.T) {
 	require.Equal(t, byWriter.Cursor, bySeed.Cursor, "курсор IPv6 у посева отличается от того, что ставит сервис")
 	require.Equal(t, byWriter.Outbox, bySeed.Outbox, "audit-строка у посева отличается по форме от той, что пишет репозиторий")
 
-	var actor string
+	var hasActor bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT coalesce(payload->>'actor', '') FROM vpc_outbox WHERE resource_id = $1`, b.ID).Scan(&actor))
-	require.NotEmpty(t, actor,
-		"audit-строка посева не называет автора — пустой actor это утрата атрибуции, а не её отсутствие")
-	t.Logf("сличено таблиц: 5 (пул, блоки, свободные адреса, курсор, журнал); свободных адресов %d; автор строки %q",
-		bySeed.FreeCount, actor)
+		`SELECT payload ? 'actor' FROM vpc_outbox WHERE resource_id = $1`, b.ID).Scan(&hasActor))
+	require.False(t, hasActor,
+		"полезная нагрузка посева несёт ключ actor — второе представление строки; атрибуция — колонка initiator")
+	t.Logf("сличено таблиц: 5 (пул, блоки, свободные адреса, курсор, журнал); свободных адресов %d",
+		bySeed.FreeCount)
 }
 
 // TestStandVpcPoolBaselineIsIdempotent — повторный подъём стенда не падает и не
