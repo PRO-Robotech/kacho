@@ -4,7 +4,7 @@
 // journal_initiator_integration_test.go — полоса RED S1-A1 (issue-2918, NTF-3) для storage:
 // журнал модуля несёт инициатора транзакции, а строки без него не существует.
 //
-// Сценарии приёмки `docs/specs/sub-phase-NTF-3-kacho-modules-notifications-acceptance.md`
+// Сценарии приёмки NTF-3 «модули kacho подключаются к сервису уведомлений» (каталог `docs/specs` воркспейса)
 // (отпечаток ac1f9fc9…): NTF3-62 — прямая вставка в `kacho_storage.storage_outbox` и три
 // функции базы: `storage_outbox_emit` (вставка диска), `storage_outbox_emit_attachment`
 // (вставка привязки диска), `storage_outbox_emit_source` (вставка диска с источником-снимком);

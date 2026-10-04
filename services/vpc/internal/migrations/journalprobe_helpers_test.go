@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // journalprobe_helpers_test.go — обвязка проб NTF3-62 и УК3-28 над журналом модуля
-// (приёмка NTF-3, `docs/specs/sub-phase-NTF-3-kacho-modules-notifications-acceptance.md`).
+// (приёмка NTF-3, NTF-3 «модули kacho подключаются к сервису уведомлений» (каталог `docs/specs` воркспейса)).
 //
 // # Почему файл повторяется в пяти пакетах
 //

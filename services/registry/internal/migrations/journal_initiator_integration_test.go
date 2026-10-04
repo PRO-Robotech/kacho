@@ -4,7 +4,7 @@
 // journal_initiator_integration_test.go — полоса RED S1-A1 (issue-2918, NTF-3) для registry:
 // журнал модуля несёт инициатора транзакции, а строки без него не существует.
 //
-// Сценарии приёмки `docs/specs/sub-phase-NTF-3-kacho-modules-notifications-acceptance.md`
+// Сценарии приёмки NTF-3 «модули kacho подключаются к сервису уведомлений» (каталог `docs/specs` воркспейса)
 // (отпечаток ac1f9fc9…): NTF3-62 — прямая вставка в `kacho_registry.registry_resource_journal`
 // и функция базы `registries_journal_emit` (вставка реестра); УК3-28 (заказ замысла
 // issue-2918, CX3C-01) — переиспользованное соединение. Обвязка — `journalprobe_helpers_test.go`.
