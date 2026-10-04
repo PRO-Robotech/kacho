@@ -30,9 +30,10 @@ var probeHelloDesc = feed.TemplateDesc{
 	},
 }
 
-// SendProbeHello ставит письмо шаблона probe-hello в транзакции tx (feed.Put).
-func SendProbeHello(ctx context.Context, tx pgx.Tx, a ProbeHelloAttrs) error {
+// SendProbeHello ставит письмо шаблона probe-hello в транзакции tx (feed.PutID) и отвечает
+// id записанной строки ленты; флаг выключен у notice — строки и id нет.
+func SendProbeHello(ctx context.Context, tx pgx.Tx, a ProbeHelloAttrs) (feed.Queued, error) {
 	values := feed.Values{Attrs: make(map[string]any, 1)}
 	values.Attrs["target"] = a.Target
-	return feed.Put(ctx, tx, probeHelloDesc, a.To, values)
+	return feed.PutID(ctx, tx, probeHelloDesc, a.To, values)
 }
