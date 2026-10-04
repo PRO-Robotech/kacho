@@ -239,6 +239,22 @@ func (h *humanStub) put(bearer, userID string, verified bool) {
 	}
 }
 
+// putAt заводит живую сессию с подтверждённым адресом, аутентифицировавшуюся
+// в НАЗВАННЫЙ момент. Момент отдаётся проводом службы как есть — в том
+// разрешении, в каком его передаёт форма ответа (`timestamppb`), — а не тем,
+// которое выбрала бы проба.
+func (h *humanStub) putAt(bearer, userID string, authenticatedAt time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sessions[bearer] = &iamv1.HumanSession{
+		UserId:          userID,
+		AuthenticatedAt: timestamppb.New(authenticatedAt),
+		ExpiresAt:       timestamppb.New(authenticatedAt.Add(24 * time.Hour)),
+		AssuranceLevel:  "1",
+		EmailVerified:   true,
+	}
+}
+
 // unverify снимает отметку адреса у сессии за носителем.
 func (h *humanStub) unverify(bearer string) {
 	h.mu.Lock()
@@ -394,6 +410,10 @@ type stand struct {
 	authority  *authorityStub
 	basic      *basicStub
 	human      *humanStub
+	// revocations — тот же НАСТОЯЩИЙ адаптер, что спрашивает сметатель. Полоса
+	// приёма, смонтированная пробой на открытие потока, спрашивает им же: два
+	// читателя одной отсечки обязаны задавать вопрос одному соседу одной формой.
+	revocations *clients.SessionRevocationsAdapter
 }
 
 func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
@@ -433,12 +453,13 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 		iamv1.RegisterInternalHumanSessionServiceServer(s, human)
 	})
 
+	revocations := clients.NewSessionRevocationsAdapter(iamConn, time.Second)
 	cfg := streamrevocation.Config{
 		Streams: projection,
 		// НАСТОЯЩИЙ адаптер: он и переводит «метода нет» в признак окна раската,
 		// и он же исполняется в бою. Подделка на его месте проверяла бы наш
 		// собственный перевод, а не тот, что стоит на пути.
-		Authority: clients.NewSessionRevocationsAdapter(iamConn, time.Second),
+		Authority: revocations,
 		Interval:  20 * time.Millisecond,
 		// Заведомо больше пробы: предмет — приехавший отзыв, а не исчерпание
 		// срока неподтверждённого чтения.
@@ -453,7 +474,7 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 		t.Fatalf("сборка сметателя: %v", err)
 	}
 	return &stand{projection: projection, sweeper: sweeper, owner: owner, authority: authority,
-		basic: basic, human: human}
+		basic: basic, human: human, revocations: revocations}
 }
 
 // openStream открывает поток названного предъявителя и ждёт, пока владелец его
