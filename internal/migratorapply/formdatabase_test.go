@@ -385,10 +385,20 @@ func TestFormPairsOnlyWithTheRowOfItsDatabase(t *testing.T) {
 	}
 }
 
+// notifyFormDatabases — база, которую называет каждая форма каталога notify, по
+// файлу формы: шлюз (чарт notify, D1) — kacho_notify, проба (шаблон зонтика,
+// D3) — kacho_notifyprobe (Д74, Д84). Форма из файла вне перечня — находка:
+// базу новой формы называет её автор, а не догадка пробы.
+var notifyFormDatabases = map[string]string{
+	"deploy/helm/notify/templates/deployment.yaml":     "kacho_notify",
+	"deploy/helm/umbrella/templates/notify-probe.yaml": "kacho_notifyprobe",
+}
+
 // TestNotifyFormPairsWithItsManifestDatabase — Д84 на дереве: форма чарта
 // notify называет kacho_notify (значение values.yaml, точное), и в паре со
 // строкой пробы её нет; исход — «вне опроса», утверждённый рендером чарта, пока
-// строки kacho_notify в таблице нет.
+// строки kacho_notify в таблице нет. Форма пробы (D3) называет
+// kacho_notifyprobe и стоит в паре ровно со строкой пробы.
 func TestNotifyFormPairsWithItsManifestDatabase(t *testing.T) {
 	root := repoRoot(t)
 	forms, _ := manifestForms(t, root)
@@ -402,14 +412,22 @@ func TestNotifyFormPairsWithItsManifestDatabase(t *testing.T) {
 			chains = append(chains, c)
 		}
 	}
+	seen := map[string]bool{}
 	for _, f := range notifyForms {
 		db, err := manifestDatabase(root, f)
 		if err != nil {
 			t.Fatalf("форма %s (%s): dbname не выведен: %v", f, f.origin, err)
 		}
-		if db != "kacho_notify" {
-			t.Errorf("форма %s (%s): dbname %q, ожидалось ровно kacho_notify", f, f.origin, db)
+		file, _, _ := strings.Cut(f.origin, ":")
+		want, known := notifyFormDatabases[file]
+		switch {
+		case !known:
+			t.Errorf("форма %s (%s): файла формы нет в перечне notifyFormDatabases — база новой "+
+				"формы не названа", f, f.origin)
+		case db != want:
+			t.Errorf("форма %s (%s): dbname %q, ожидалось ровно %s", f, f.origin, db, want)
 		}
+		seen[file] = true
 		p := formRows(root, f, chains)
 		for _, r := range p.rows {
 			if r.Database != db {
@@ -420,6 +438,11 @@ func TestNotifyFormPairsWithItsManifestDatabase(t *testing.T) {
 			t.Errorf("форма %s: %s", f, fd)
 		}
 		t.Logf("  форма %s · %s · dbname %s · строк в паре %d · %s", f, f.origin, db, len(p.rows), p.outOfPoll)
+	}
+	for file := range notifyFormDatabases {
+		if !seen[file] {
+			t.Errorf("форма из %s в переписи не найдена — запись перечня пережила предмет", file)
+		}
 	}
 }
 

@@ -36,8 +36,16 @@ func TestNotifyFormIsNotAThirdCategory(t *testing.T) {
 			chains = append(chains, c)
 		}
 	}
+	judged := 0
 	for _, f := range notifyForms {
 		p := formRows(root, f, chains)
+		if len(p.findings) == 0 && len(p.rows) > 0 {
+			// Форма в паре со строкой своей базы (проба, D3): её исход — накат,
+			// а не «вне опроса»; судит его доказательство в манифестной форме.
+			t.Logf("  форма %s · %s · в паре со строкой %s — не предмет этой пробы", f, f.origin, p.rows[0].Database)
+			continue
+		}
+		judged++
 		if len(p.findings) != 0 || !strings.Contains(p.outOfPoll, "его не рендерит") ||
 			!strings.Contains(p.outOfPoll, "вне опроса") {
 			t.Errorf("форма %s (%s): ожидалась строка «вне опроса», утверждённая рендером; получено %+v",
@@ -73,6 +81,10 @@ func TestNotifyFormIsNotAThirdCategory(t *testing.T) {
 			t.Fatalf("инъекция «таблица источников непуста»: ожидался один красный с каталогом чарта; получено %+v", inj)
 		}
 		t.Logf("инъекция «таблица источников непуста» → красный: %s", inj.findings[0])
+	}
+	if judged == 0 {
+		t.Fatal("НЕ ВЫПОЛНИЛОСЬ: форм notify вне пары 0 — предмета «вне опроса» в дереве нет, запись " +
+			"outOfPollUntilRendered пережила его")
 	}
 }
 
