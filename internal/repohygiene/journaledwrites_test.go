@@ -17,6 +17,7 @@ import (
 // им; личность компонента — две пары §8. Правила (а)–(д) — шапка
 // `journaledwrites.go`. Инъекции в обе стороны — `journaledwrites_injection_test.go`.
 func TestJournaledWritesGoThroughTheHelper(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditJournaledWrites(JournaledWriteOptions{Root: repoRoot(t)}, &log)
 	require.NoError(t, err)
@@ -34,6 +35,7 @@ func TestJournaledWritesGoThroughTheHelper(t *testing.T) {
 // таблицы, которые замысел (З4) называет журналируемыми. Если вывод перестанет
 // их видеть, правило (б) замолчит о них молча; здесь это красное.
 func TestJournaledWritesPremise_TheFiveModulesAndTheNamedTablesAreSeen(t *testing.T) {
+	t.Parallel()
 	_, census, err := AuditJournaledWrites(JournaledWriteOptions{Root: repoRoot(t)}, nil)
 	require.NoError(t, err)
 	var names []string

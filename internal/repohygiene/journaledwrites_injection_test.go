@@ -218,6 +218,7 @@ func jwOnly(findings []JournaledWriteFinding, rule string) []JournaledWriteFindi
 // TestJournaledWritesGateIsSilentOnTheLawfulStand — законный близнец всех
 // инъекций: ни одной находки, перепись непуста по каждому модулю.
 func TestJournaledWritesGateIsSilentOnTheLawfulStand(t *testing.T) {
+	t.Parallel()
 	findings, census := newJWStand(t).audit(t)
 	require.Empty(t, JournaledWritePremiseFailures(census))
 	require.Empty(t, findings)
@@ -236,6 +237,7 @@ func TestJournaledWritesGateIsSilentOnTheLawfulStand(t *testing.T) {
 // TestJournaledWritesGateCatchesAnAutocommitJournaledWrite — инъекция 1:
 // автокоммитная запись в журналируемую таблицу на пуле (М1 сверщика storage).
 func TestJournaledWritesGateCatchesAnAutocommitJournaledWrite(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "services/storage/internal/reconciler/store.go", `package reconciler
 
@@ -272,6 +274,7 @@ func (s *Store) Forget(ctx context.Context, table, id string) error {
 // TestJournaledWritesGateCatchesATransactionOpenedPastTheHelper — инъекция 2:
 // открытие транзакции мимо помощника — методом пула и пакетной функцией pgx.
 func TestJournaledWritesGateCatchesATransactionOpenedPastTheHelper(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "services/storage/internal/repo/snapshot.go", `package repo
 
@@ -308,6 +311,7 @@ func (r *SnapshotRepo) Update(ctx context.Context) error {
 // TestJournaledWritesGateCatchesAThirdComponentCallerInCompute — инъекция 3:
 // вызов AsComponent в цикле FinishStuckDeletes compute (CX3H-02).
 func TestJournaledWritesGateCatchesAThirdComponentCallerInCompute(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "services/compute/internal/repo/instance.go", `package repo
 
@@ -356,6 +360,7 @@ func (r *InstanceRepo) FinishStuckDeletes(ctx context.Context) error {
 // TestJournaledWritesGateCatchesAMissingComponentPair — пара §8 без вызова:
 // фоновый путь nlb остался без личности компонента.
 func TestJournaledWritesGateCatchesAMissingComponentPair(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "services/nlb/internal/jobs/free_ip_runner.go", "package jobs\n")
 	findings, _ := s.audit(t)
@@ -368,6 +373,7 @@ func TestJournaledWritesGateCatchesAMissingComponentPair(t *testing.T) {
 // TestJournaledWritesGateCatchesAnInsertNamingTheInitiatorColumn — правило (в);
 // близнец — та же вставка без колонки — в законном стенде (триггер).
 func TestJournaledWritesGateCatchesAnInsertNamingTheInitiatorColumn(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "services/nlb/internal/jobs/emit.go", "package jobs\n\nconst qEmit = `INSERT INTO kacho_nlb.nlb_outbox (resource_type, resource_id, action, initiator) VALUES ($1, $2, $3, $4)`\n\nconst qTwin = `INSERT INTO kacho_nlb.nlb_outbox (resource_type, resource_id, action) VALUES ($1, $2, $3)`\n")
 	findings, _ := s.audit(t)
@@ -380,6 +386,7 @@ func TestJournaledWritesGateCatchesAnInsertNamingTheInitiatorColumn(t *testing.T
 // TestJournaledWritesGateCatchesASessionLevelInitiator — правило (г): три формы
 // сессионной установки; локальные близнецы — в законном стенде.
 func TestJournaledWritesGateCatchesASessionLevelInitiator(t *testing.T) {
+	t.Parallel()
 	s := newJWStand(t)
 	s.write(t, "deploy/seed/bad.sql", "SELECT set_"+"config('kacho_journal.initiator', 'system:stand-seed', false);\nSET "+"kacho_journal.initiator = 'system:stand-seed';\n")
 	s.write(t, "services/nlb/cmd/main.go", "package main\n\nconst dsnOpts = \"options=-c "+"kacho_journal.initiator=system:nlb-free-ip-runner\"\n")
@@ -406,6 +413,7 @@ func TestJournaledWritesGateCatchesASessionLevelInitiator(t *testing.T) {
 // продвинутом ПУЛЕ — краснеет правилом (а) с типом получателя, а не «не
 // установлен».
 func TestJournaledWritesGateResolvesAFieldPromotedFromAnEmbeddedStruct(t *testing.T) {
+	t.Parallel()
 	const embedded = `package pg
 
 import (
@@ -474,6 +482,7 @@ func (a *announceStore) Report(ctx context.Context) error {
 
 // TestJournaledWritesGateFailsOnAnEmptyWalk — пустое дерево — не вердикт.
 func TestJournaledWritesGateFailsOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	s := &jwStand{root: t.TempDir()}
 	findings, census := s.audit(t)
 	require.NotEmpty(t, JournaledWritePremiseFailures(census), "пустой обход обязан быть отказом предпосылки")

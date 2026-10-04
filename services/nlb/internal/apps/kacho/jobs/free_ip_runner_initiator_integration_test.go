@@ -31,6 +31,7 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -57,7 +58,7 @@ func freeIPStand(t *testing.T) (*pgxpool.Pool, string) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM information_schema.columns
