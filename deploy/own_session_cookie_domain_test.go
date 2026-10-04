@@ -14,7 +14,8 @@
 // gateway/internal/middleware/session_carrier_names.go (раздел «Совпадение
 // гашения зависит от `Domain`») опирается на то, что так объявлено на каждой
 // цепочке, где наше печенье выдаётся, — `kaname.config.authn.login.cookieDomain:
-// none`. Выдаётся оно полосой входа, а полоса поднимается посадкой `own`.
+// none`. Выдаётся оно полосой входа службы, а посадка у службы одна — своя
+// полоса (kaname#363, kacho#2818), поэтому судится каждая цепочка.
 //
 // Пробы этого условия в дереве не было (kacho `origin/2795` @ `c5a1e7cf`):
 // условие держалось текстом шапки и тем, что сегодня его никто не нарушил.
@@ -26,11 +27,10 @@
 // ЧТО СУДИТСЯ
 //
 // По каждой цепочке deploy/stacks.txt, наложенной слева направо поверх
-// умолчаний подчарта (разобранные значения, не рендер): посадка `own` ⇒
-// `cookieDomain` объявлен и равен `none`. Цепочка не на `own` предметом не
-// является — наше печенье там не выдаётся. Перепись печатает число осмотренных
-// цепочек и число цепочек на `own`; ноль цепочек на `own` — отказ, а не
-// зелёное.
+// умолчаний подчарта (разобранные значения, не рендер): `cookieDomain`
+// объявлен и равен `none`. Прежде судилась только цепочка на посадке `own`;
+// второй посадки у службы больше нет, и ключа, её называвшего, тоже.
+// Перепись печатает число осмотренных цепочек; ноль — отказ, а не зелёное.
 //
 // Второй половины у предусловия больше нет: переходное состояние двух
 // носителей снято вместе с печеньем поставщика (kacho#2815, kacho#2792), и
@@ -56,7 +56,6 @@ var cookieDomainKey = []string{"kaname", "config", "authn", "login", "cookieDoma
 // cookieDomainFacts — что цепочка одного стенда объявила.
 type cookieDomainFacts struct {
 	Stack        string
-	Posture      string // kaname.config.authn.identityProvider
 	CookieDomain string // kaname.config.authn.login.cookieDomain
 	Declared     bool   // объявлена ли ручка вовсе
 }
@@ -64,11 +63,10 @@ type cookieDomainFacts struct {
 // cookieDomainCensus — объём осмотренного.
 type cookieDomainCensus struct {
 	Stacks int
-	Own    int
 }
 
 func (c cookieDomainCensus) String() string {
-	return fmt.Sprintf("цепочек осмотрено %d · из них на посадке own %d", c.Stacks, c.Own)
+	return fmt.Sprintf("цепочек осмотрено %d (посадка службы на каждой — %s)", c.Stacks, kanameLanding)
 }
 
 // judgeOwnCookieDomain — НАХОДКИ по цепочкам. Чистая функция: инъекция подаёт
@@ -78,19 +76,15 @@ func judgeOwnCookieDomain(facts []cookieDomainFacts) ([]string, cookieDomainCens
 	var census cookieDomainCensus
 	for _, f := range facts {
 		census.Stacks++
-		if f.Posture != "own" {
-			continue
-		}
-		census.Own++
 		switch {
 		case !f.Declared || f.CookieDomain == "":
 			findings = append(findings, fmt.Sprintf(
-				"цепочка %s на посадке own: `kaname.config.authn.login.cookieDomain` не объявлен — "+
+				"цепочка %s: `kaname.config.authn.login.cookieDomain` не объявлен — "+
 					"домен печенья нашей сессии не назван, и гашение края без `Domain` закрывает его "+
 					"только случайно. Объявите `%s`", f.Stack, ownCookieDomainWanted))
 		case f.CookieDomain != ownCookieDomainWanted:
 			findings = append(findings, fmt.Sprintf(
-				"цепочка %s на посадке own: `kaname.config.authn.login.cookieDomain` = %q, а не %q — "+
+				"цепочка %s: `kaname.config.authn.login.cookieDomain` = %q, а не %q — "+
 					"наше печенье выдаётся с `Domain`, а край гасит его без `Domain`: выход ответит "+
 					"успехом и сессию НЕ закроет. Нарушено предусловие шапки "+
 					"gateway/internal/middleware/session_carrier_names.go",
@@ -106,16 +100,10 @@ func TestOwnSessionCookieDomain_IsNoneOnEveryOwnChain(t *testing.T) {
 	findings, census := judgeOwnCookieDomain(facts)
 	t.Logf("перепись: %s", census)
 	for _, f := range facts {
-		if f.Posture == "own" {
-			t.Logf("  %s: посадка %s · cookieDomain %q", f.Stack, f.Posture, f.CookieDomain)
-		}
+		t.Logf("  %s: cookieDomain %q", f.Stack, f.CookieDomain)
 	}
 	if census.Stacks == 0 {
 		t.Fatal("таблица стеков пуста: «находок нет» здесь означало бы «сверять было не с чем»")
-	}
-	if census.Own == 0 {
-		t.Fatalf("ни одна из %d цепочек не стоит на посадке own — наше печенье нигде не выдаётся, и "+
-			"судить его домен не на чем", census.Stacks)
 	}
 	for _, f := range findings {
 		t.Error(f)
@@ -145,7 +133,6 @@ func readCookieDomainFacts(t *testing.T, mutate func(stack string, declared map[
 			mutate(name, declared)
 		}
 		f := cookieDomainFacts{Stack: name}
-		f.Posture = declaredString(lookup(declared, "kaname", "config", "authn", "identityProvider"))
 		v, ok := lookup(declared, cookieDomainKey...)
 		f.Declared = ok && v != nil
 		f.CookieDomain = declaredString(v, ok)

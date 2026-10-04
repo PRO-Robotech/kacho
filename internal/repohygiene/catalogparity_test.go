@@ -52,6 +52,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -100,6 +101,11 @@ var catalogProtoPackages = []string{
 	// другие. Пропусти его здесь, и две строки каталога остались бы без
 	// источника, а гейт назвал бы находкой сам каталог.
 	"corelib.notify",
+	// Пакет глагола пробы-источника notify (kacho#2915, З29, Д75):
+	// `InternalNotifyProbeService/Send` — постановка письма стендовой пробой.
+	// Строку каталога он порождает, как всякий аннотированный RPC; пропусти его
+	// здесь, и строка осталась бы без источника.
+	"kacho.cloud.notify.v1",
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки

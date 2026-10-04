@@ -69,8 +69,8 @@ Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.
 отдаёт `<prefix>/user/<id>`, что не может совпасть с `ExpectedAudience` шлюза; а токен
 `client_credentials` не несёт `acr`, тогда как 292 из 357 RPC каталога требуют
 `required_acr_min ≥ 1`, и `StepUpGate.Check` освобождает от acr **только**
-`kaname_principal_type == "service_account"`. User с `acr` требует интерактивного
-Kratos→Hydra логина, который машинный харнесс не проводит.
+`kaname_principal_type == "service_account"`. User с `acr` требует интерактивной
+церемонии входа, которую машинный харнесс не проводит.
 
 **Намеренно НЕ чеканится в production**: `jwtAccountAdminAStepUp` и статические
 `apiToken*` — им нужен настоящий step-up/интерактивный credential. Ключи остаются как
@@ -129,8 +129,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 2. **`AccountService.Create`** выводит `owner_user_id` из вызывающего, поэтому SA-caller
    роняет его на FK: асинхронный `9 FAILED_PRECONDITION "referenced resource not found
    or still in use"`. Создать аккаунт машинным принципалом нельзя.
-3. **`jwtAccountAdminAStepUp` / `apiToken*`** — требуют интерактивного step-up (Kratos→
-   Hydra). Не чеканятся; их кейсы падают честно.
+3. **`jwtAccountAdminAStepUp` / `apiToken*`** — требуют интерактивного step-up (церемонии
+   входа). Не чеканятся; их кейсы падают честно.
 
 ## Environment knobs
 

@@ -1,0 +1,2 @@
+{"path":"kacho/cloud/vpc/v1/network_interface.proto","start_line":22,"start_column":1,"end_line":130,"end_column":2,"type":"RESERVED_MESSAGE_NO_DELETE","message":"Previously present reserved name \"apply_state\" on message \"NetworkInterface\" was deleted."}
+{"path":"kacho/cloud/vpc/v1/network_interface.proto","start_line":22,"start_column":1,"end_line":130,"end_column":2,"type":"RESERVED_MESSAGE_NO_DELETE","message":"Previously present reserved range \"[21]\" on message \"NetworkInterface\" is missing values: [21] were removed."}

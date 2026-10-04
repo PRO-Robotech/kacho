@@ -806,6 +806,16 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kacho.cloud.notify.v1.InternalNotifyProbeService/Send",
+    "permission": "notify.probeNotifications.send",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats",
     "permission": "registry.registries.getStats",
     "required_relation": "system_viewer",
@@ -3094,16 +3104,6 @@
   },
   {
     "fqn": "kaname.cloud.iam.v1.InternalUserService/Get",
-    "permission": "\u003cexempt\u003e",
-    "required_relation": "",
-    "scope_extractor": {
-      "object_type": "",
-      "from_request_field": ""
-    },
-    "exempt_reason": "INTERNAL_LISTENER"
-  },
-  {
-    "fqn": "kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
     "permission": "\u003cexempt\u003e",
     "required_relation": "",
     "scope_extractor": {

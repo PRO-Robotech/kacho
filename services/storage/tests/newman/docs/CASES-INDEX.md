@@ -307,3 +307,13 @@ GETINTERNAL}-EXTERNAL-ABSENT` — INV-7a: Internal-only RPC отсутствую
 (→ 404), провокабельная часть CS1-S4-11. Attach-CAS happy/negative/race (CS1-S4-01..12) —
 **integration-only** (:9091 mTLS + seeded Instance + concurrent `-race`), не black-box
 (см. `docs/RESULTS.md` «Integration-only»).
+
+## Отзыв выдачи ARM_LABELS при смене меток (`cases/label-revoke-storage.py`, коллекция `label-revoke-storage`)
+
+Перенесён из набора службы доступа задачей #2912 (сторона службы — PRO-Robotech/kaname#415). Том, снимок, образ: метка снята правкой — видимость `v_list` сходится к отказу.
+
+| id | что утверждает |
+|---|---|
+| `T31-LBLREVOKE-STORAGE-VOLUME-03` | revoke03_volume: storage.volumes label-remove on Update revokes ARM_LABELS grant (Check v_list True→False) |
+| `T31-LBLREVOKE-STORAGE-SNAPSHOT-03` | revoke03_snapshot: storage.snapshots label-remove on Update revokes ARM_LABELS grant (Check v_list True→False) |
+| `T31-LBLREVOKE-STORAGE-IMAGE-03` | revoke03_image: storage.images label-remove on Update revokes ARM_LABELS grant (Check v_list True→False) |

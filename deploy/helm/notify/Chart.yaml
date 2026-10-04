@@ -1,0 +1,17 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Чарт notify — шлюз уведомлений (NTF-1, замысел З28, полоса D1).
+#
+# Лежит вне `deploy/helm/umbrella/charts/`: в рендер зонтика входит только
+# записью зависимости `file://../notify` (CX1-99) и ставится также отдельно,
+# рядом с самостоятельной kaname (NTF1-I06). Имя чарта `notify` — сегмент пути
+# `# Source:` и путь отказа шаблона `ConfigMap` (`notify/templates/configmap.yaml`,
+# в зонтике — `kacho-umbrella/charts/notify/templates/configmap.yaml`); его смена
+# правит константы проб `deploy/notify_secret_layout_test.go` тем же изменением.
+apiVersion: v2
+name: notify
+description: Kachō notification gateway — the single holder of the mail relay credential
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

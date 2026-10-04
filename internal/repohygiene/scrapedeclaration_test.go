@@ -62,7 +62,64 @@ var (
 	metricsHandleRe  = regexp.MustCompile(`Handle\("(GET )?/metrics"`)
 	metricsDefaultRe = regexp.MustCompile(
 		`METRICS_ADDR"\s+default:":(\d+)"|SetDefault\("(?:api-server\.)?metrics[-.](?:endpoint|address)",\s*"[^"]*:(\d+)"`)
+	// surfaceKnobRe — тег поля конфигурации, несущего адрес поверхности,
+	// целиком (между обратными кавычками): по нему видно, есть ли у ручки
+	// умолчание.
+	surfaceKnobRe = regexp.MustCompile("`envconfig:\"(KACHO_[A-Z0-9_]+_(?:DIAG|METRICS)_ADDR)\"[^`]*`")
 )
+
+// surfaceKnobWithoutDefault — имя переменной ручки адреса поверхности, у
+// которой в конфигурации процесса НЕТ умолчания, либо пусто.
+//
+// Такая ручка — следствие стража старта (`sec-no-silent-default-for-guarded-knob`):
+// незаданная — отказ старта. Порт поверхности тогда называет только чарт, и
+// гейт берёт его там ([chartKnobPort]). Ручка с умолчанием сюда не попадает:
+// её порт берёт ветвь [metricsDefaultRe], второго ответа об одном процессе нет.
+func surfaceKnobWithoutDefault(body []byte) string {
+	for _, m := range surfaceKnobRe.FindAllSubmatch(body, -1) {
+		if strings.Contains(string(m[0]), "default:") {
+			continue
+		}
+		return string(m[1])
+	}
+	return ""
+}
+
+// chartKnobPortRe — строка шаблона, задающая переменную значением чарта.
+func chartKnobPortRe(env string) *regexp.Regexp {
+	return regexp.MustCompile(regexp.QuoteMeta(env) + `:\s*\{\{[^}]*\.Values\.([A-Za-z0-9_.]+)`)
+}
+
+// chartKnobPort — порт поверхности по ручке без умолчания: значение чарта, из
+// которого шаблон задаёт переменную env. Второй возврат — находка (пусто при
+// успехе). Шаблоны — путь → текст; значения — разобранный values.yaml чарта.
+func chartKnobPort(templates map[string]string, env string, values map[string]any) (int, string) {
+	re := chartKnobPortRe(env)
+	files := make([]string, 0, len(templates))
+	for f := range templates {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		m := re.FindStringSubmatch(templates[f])
+		if m == nil {
+			continue
+		}
+		v, ok := valueAt(values, m[1])
+		if !ok {
+			return 0, f + " задаёт " + env + " значением .Values." + m[1] +
+				", а такого ключа в значениях чарта нет: порт поверхности не назван нигде"
+		}
+		port, ok := v.(int)
+		if !ok {
+			return 0, f + " задаёт " + env + " значением .Values." + m[1] +
+				", а оно не целое число порта: сверять объявление сбора не с чем"
+		}
+		return port, ""
+	}
+	return 0, "ни один шаблон чарта не задаёт " + env + " значением чарта, а умолчания у ручки нет: " +
+		"порт, на котором поднимется поверхность, не назван нигде — объявить сбор не на что"
+}
 
 // renderedCharts — каталоги чартов, которые КТО-ТО ДЕЙСТВИТЕЛЬНО разворачивает.
 //
@@ -156,6 +213,9 @@ type processSurface struct {
 	name      string // vpc, iam, api-gateway…
 	chartDir  string // каталог чарта, который его разворачивает
 	defaultPt int    // порт, который процесс берёт из своей конфигурации
+	// knobEnv — ручка адреса поверхности без умолчания; порт тогда называет
+	// чарт, задающий эту ручку (defaultPt == 0).
+	knobEnv string
 }
 
 // processesWithASurface — процессы, чей композиционный корень несёт обработчик
@@ -169,6 +229,7 @@ func processesWithASurface(t *testing.T, root string) []processSurface {
 	t.Helper()
 	handlers := map[string]bool{}
 	ports := map[string]int{}
+	knobs := map[string]string{}
 
 	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".go")
 	if err != nil {
@@ -207,11 +268,18 @@ func processesWithASurface(t *testing.T, root string) []processSurface {
 				ports[name] = n
 			}
 		}
+		if env := surfaceKnobWithoutDefault(body); env != "" {
+			knobs[name] = env
+		}
 	}
 
 	var out []processSurface
 	for name := range handlers {
 		port, ok := ports[name]
+		if !ok && knobs[name] != "" {
+			out = append(out, processSurface{name: name, chartDir: chartDirOf(name), knobEnv: knobs[name]})
+			continue
+		}
 		if !ok {
 			t.Errorf("%s несёт обработчик экспозиции, а умолчания адреса поверхности у него нет: "+
 				"порт, на котором она поднимется, не назван нигде — объявить сбор не на что", name)
@@ -251,9 +319,37 @@ func chartDirOf(process string) string {
 		return "deploy/helm/umbrella/charts/" + productnaming.ChartName(process)
 	case "api-gateway":
 		return "gateway/deploy"
+	case "notify":
+		// Чарт notify лежит вне каталога службы — в deploy/helm/notify, и в
+		// умбреллу входит записью зависимости `file://../notify` (замысел NTF-1
+		// З28, CX1-99): он ставится и отдельно, рядом с самостоятельной kaname
+		// (NTF1-I06), поэтому его место — среди чартов поставки, а не у кода.
+		return "deploy/helm/notify"
 	default:
 		return "services/" + process + "/deploy"
 	}
+}
+
+// readChartTemplates — шаблоны чарта: путь от каталога чарта → текст.
+func readChartTemplates(t *testing.T, root, chartDir string) map[string]string {
+	t.Helper()
+	dir := filepath.Join(root, chartDir, "templates")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("шаблоны чарта %s: %v", chartDir, err)
+	}
+	out := map[string]string{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		body, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
+		if rerr != nil {
+			t.Fatalf("шаблон %s/%s: %v", chartDir, e.Name(), rerr)
+		}
+		out["templates/"+e.Name()] = string(body)
+	}
+	return out
 }
 
 // valueAt резолвит `.Values.a.b` в значениях чарта.
@@ -353,10 +449,20 @@ func TestEveryRenderedChartDeclaresItsScrape(t *testing.T) {
 				", а такого ключа в значениях нет: объявление указывает в пустоту")
 			continue
 		}
+		want := p.defaultPt
+		if p.knobEnv != "" {
+			// Умолчания у ручки нет — порт процесса называет чарт, задающий ручку.
+			kp, finding := chartKnobPort(readChartTemplates(t, root, p.chartDir), p.knobEnv, values)
+			if finding != "" {
+				findings = append(findings, p.chartDir+" — "+finding)
+				continue
+			}
+			want = kp
+		}
 		port, _ := declared.(int)
-		if port != p.defaultPt {
+		if port != want {
 			findings = append(findings, p.chartDir+" — объявленный порт сбора "+strconv.Itoa(port)+
-				" не равен адресу, который берёт процесс ("+strconv.Itoa(p.defaultPt)+
+				" не равен адресу, который берёт процесс ("+strconv.Itoa(want)+
 				"): собиратель придёт туда, где никто не отвечает")
 		}
 	}

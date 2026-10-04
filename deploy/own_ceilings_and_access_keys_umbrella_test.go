@@ -12,10 +12,10 @@
 // растёт: четвёртая строка — `own-ceilings.access-keys-per-user` — пришла в
 // `39628487` (kaname#270). Проверка потолков у службы БЕЗУСЛОВНА (`validate.go`):
 // она не смотрит ни на режим, ни на посадку. Значит первый же подъём пина дал бы
-// службу, которая под этой копией чарта отказывает стартом НА КАЖДОМ СТЕНДЕ,
-// включая посадку `external`, — четвёртого потолка рендер не отдаёт ни при каких
-// значениях профиля. Под `own` к нему добавляются три ручки `authn.access-keys.*`
-// (`required_settings.go`, `Lanes: own`), которых в шаблоне тоже не было.
+// службу, которая под этой копией чарта отказывает стартом НА КАЖДОМ СТЕНДЕ, —
+// четвёртого потолка рендер не отдаёт ни при каких значениях профиля. К нему
+// добавляются три ручки `authn.access-keys.*` (`required_settings.go`), которых
+// в шаблоне тоже не было.
 //
 // Признак на день заведения (kacho `origin/main` @ `ac33f733`):
 //
@@ -42,10 +42,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЭТО ЗНАЧИТ НА СЕГОДНЯШНЕМ ПИНЕ, СКАЗАНО ВСЛУХ
 //
-// Пин — `4af7fd4fafb4` (kacho#2906): таблица потолков там ЧЕТЫРЁХСТРОЧНАЯ,
+// Пин — `06966a081c7a` (kacho#2914): таблица потолков там ЧЕТЫРЁХСТРОЧНАЯ,
 // четвёртая строка пришла в `39628487` (kaname#270). Выводимая половина требует
-// все четыре — перепись на этом пине: «из пина выведено ручек 4 · сверх пина
-// проверено 0». На пине заведения (`16b5cade`) таблица была трёхстрочной, и
+// все четыре — перепись печатает «из пина выведено ручек N · сверх пина
+// проверено M» на каждом прогоне. На пине заведения (`16b5cade`) таблица была трёхстрочной, и
 // четвёртый потолок держала вторая половина — фиксированным предметом этой
 // задачи. Перепись печатает обе величины: одно число скрыло бы ровно тот
 // случай, ради которого проверка заведена.
@@ -253,8 +253,9 @@ func ownCeilingsSet(keys []string) []string {
 }
 
 // TestOwnCeilings_RenderEmitsEveryCeilingOfThePin — ВЫВОДИМАЯ половина: каждый
-// потолок таблицы пиненного модуля доезжает до карты настроек, и это верно на
-// ОБЕИХ посадках (проверка потолков у службы безусловна).
+// потолок таблицы пиненного модуля доезжает до карты настроек (проверка
+// потолков у службы безусловна). Посадка у службы одна (kaname#363), и
+// рендер один — второй посадки, на которой его стоило бы повторить, нет.
 func TestOwnCeilings_RenderEmitsEveryCeilingOfThePin(t *testing.T) {
 	moduleDir := kanameModuleDir(t, "..")
 	pinned := ceilingKeysOfPin(t, moduleDir)
@@ -272,9 +273,8 @@ func TestOwnCeilings_RenderEmitsEveryCeilingOfThePin(t *testing.T) {
 	}
 	sort.Strings(want)
 
-	for _, posture := range []string{"own", "external"} {
-		sets := append([]string{"config.authn.identityProvider=" + posture}, ownCeilingsSet(want)...)
-		rendered, err := renderIdentitySubchart(t, nil, sets...)
+	for _, posture := range []string{kanameLanding} {
+		rendered, err := renderIdentitySubchart(t, nil, ownCeilingsSet(want)...)
 		if err != nil {
 			t.Fatalf("рендер подчарта на посадке %s не удался: %v\n%s", posture, err, rendered)
 		}
@@ -317,7 +317,6 @@ func TestAccessKeys_RenderEmitsTheBindingUnderOwn(t *testing.T) {
 	}
 
 	sets := []string{
-		"config.authn.identityProvider=own",
 		"global.kacho.identity.webauthnRpId=access.example.invalid",
 		"config.authn.accessKeys.origins[0]=https://console.access.example.invalid",
 		"config.authn.accessKeys.algorithms[0]=-7",
@@ -343,15 +342,15 @@ func TestAccessKeys_RenderEmitsTheBindingUnderOwn(t *testing.T) {
 			"а `global.kacho.identity.webauthnRpId` = access.example.invalid (kacho#2905)", got)
 	}
 
-	// ЗАКОННЫЙ БЛИЗНЕЦ: профиль без блока — секции нет, и это НЕ находка. Под
-	// `external` привязка не читается, а под `own` незаданное обязано доехать до
-	// стража незаданным, а не пустой строкой.
-	bare, err := renderIdentitySubchart(t, nil, "config.authn.identityProvider=external")
+	// ЗАКОННЫЙ БЛИЗНЕЦ: профиль без блока (умолчания подчарта его не несут) —
+	// секции нет, и это НЕ находка: незаданное обязано доехать до стража
+	// незаданным, а не пустой строкой.
+	bare, err := renderIdentitySubchart(t, nil)
 	if err != nil {
-		t.Fatalf("рендер подчарта на посадке external не удался: %v\n%s", err, bare)
+		t.Fatalf("рендер подчарта на умолчаниях не удался: %v\n%s", err, bare)
 	}
 	if _, present := configSection(kanameServiceConfig(t, bare), "authn", "access-keys"); present {
-		t.Error("посадка external: секция `authn.access-keys` рендерится, хотя профиль её не " +
+		t.Error("профиль без блока: секция `authn.access-keys` рендерится, хотя профиль её не " +
 			"объявлял — незаданная величина доедет до стража ПУСТОЙ, а не незаданной")
 	}
 
@@ -359,7 +358,6 @@ func TestAccessKeys_RenderEmitsTheBindingUnderOwn(t *testing.T) {
 	// быть ОТЛИЧИМА от незаданной. Ветвь по `hasKey`, а не `with`, держит ровно
 	// это различие.
 	none, err := renderIdentitySubchart(t, nil,
-		"config.authn.identityProvider=own",
 		"config.authn.accessKeys.algorithms[0]=-7",
 		"config.authn.accessKeys.origins=null")
 	if err != nil {
@@ -379,22 +377,22 @@ func TestAccessKeys_RenderEmitsTheBindingUnderOwn(t *testing.T) {
 // имя доверяющей стороны и происхождение консоли у привязки ключей доступа
 // берутся из общего узла личности, а не из литерала профиля (kacho#2905).
 //
-// Предмет — одно имя на обоих читателей. Ключ браузер привязывает к имени
-// доверяющей стороны; настройки службы личности и блок `access-keys` службы
-// доступа, назвавшие его по-разному на одной посадке, делают заведённые ключи
-// непредъявимыми на той половине, что назвала иначе. Пока имя стояло литералом
-// профиля рядом с общим ключом, расхождение ничем не держалось: у площадки
-// `fe3455` оно и было — литерал назвал одно имя, общий узел этой цепочки другое.
+// Предмет — имя доверяющей стороны и происхождение консоли выводятся из общего
+// узла. Ключ браузер привязывает к имени доверяющей стороны; пока имя стояло
+// литералом профиля рядом с общим ключом, расхождение ничем не держалось: у
+// площадки `fe3455` оно и было — литерал назвал одно имя, общий узел этой
+// цепочки другое. Прежде читателей было два — ещё настройки внешнего поставщика
+// личности; их подчарт больше не производит (kacho#2818), и судится один.
 //
-// Судится ИСХОД рендера, а не текст шаблона: сходимость двух читателей на одних
+// Судится ИСХОД рендера, а не текст шаблона: вывод из общего узла на одних
 // значениях, отказ рендера на снятой ручке и на двойном объявлении перечня, и
 // запасной путь `domain` при пустом `webauthnRpId`.
 func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t *testing.T) {
 	var converged, refused, twins int
 
-	// (а) СХОДИМОСТЬ: оба читателя на одних значениях — одно имя и одно
-	// происхождение. Цепочка стенда разработки выбрана потому, что рендерит обе
-	// карты настроек; величины подаются поверх, нерезолвимыми (RFC 2606).
+	// (а) ВЫВОД: на одних значениях общего узла — ожидаемое имя и ожидаемое
+	// происхождение. Цепочка стенда разработки — настоящий вход; величины
+	// подаются поверх, нерезолвимыми (RFC 2606).
 	for _, tc := range []struct {
 		name  string
 		sets  []string
@@ -432,18 +430,14 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 		if !ok {
 			t.Fatalf("%s: секции `authn.access-keys` нет — сходимость судить не с чем", tc.name)
 		}
-		idCfg, _ := identityConfigOf(t, out)
-		_, idRP, _ := webauthnEnabled(idCfg)
-		idOrigins := webauthnOrigins(idCfg)
-
-		if binding["rp-id"] != tc.rp || idRP != tc.rp {
-			t.Errorf("%s: имя доверяющей стороны разошлось — `access-keys.rp-id` = %v, "+
-				"`webauthn.config.rp.id` = %q, ждали оба %q", tc.name, binding["rp-id"], idRP, tc.rp)
+		if binding["rp-id"] != tc.rp {
+			t.Errorf("%s: имя доверяющей стороны не выведено из общего узла — "+
+				"`access-keys.rp-id` = %v, ждали %q", tc.name, binding["rp-id"], tc.rp)
 		}
 		got := fmt.Sprint(binding["origins"])
-		if got != "["+tc.orign+"]" || strings.Join(idOrigins, ",") != tc.orign {
-			t.Errorf("%s: происхождение консоли разошлось — `access-keys.origins` = %s, "+
-				"`webauthn.config.rp.origins` = %v, ждали оба [%s]", tc.name, got, idOrigins, tc.orign)
+		if got != "["+tc.orign+"]" {
+			t.Errorf("%s: происхождение консоли не выведено из общего узла — "+
+				"`access-keys.origins` = %s, ждали [%s]", tc.name, got, tc.orign)
 		}
 		converged++
 	}
@@ -457,13 +451,12 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 		{
 			name: "в профиле объявлен снятый rpId",
 			want: "config.authn.accessKeys.rpId снят",
-			sets: []string{"config.authn.identityProvider=own", "config.authn.accessKeys.rpId=access.example.invalid"},
+			sets: []string{"config.authn.accessKeys.rpId=access.example.invalid"},
 		},
 		{
 			name: "originFromConsole вместе с origins",
 			want: "перечень происхождений дважды",
 			sets: []string{
-				"config.authn.identityProvider=own",
 				"config.authn.accessKeys.originFromConsole=true",
 				"config.authn.accessKeys.origins[0]=https://console.access.example.invalid",
 			},
@@ -481,7 +474,6 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 	// перечнем профиля — рендер проходит. Второй отличается от отказа (б) ровно
 	// одним фактом — значением ручки.
 	out, err := renderIdentitySubchart(t, nil,
-		"config.authn.identityProvider=own",
 		"config.authn.accessKeys.originFromConsole=false",
 		"config.authn.accessKeys.origins=null")
 	if err != nil {
@@ -489,7 +481,6 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 	}
 	twins++
 	out, err = renderIdentitySubchart(t, nil,
-		"config.authn.identityProvider=own",
 		"config.authn.accessKeys.originFromConsole=false",
 		"config.authn.accessKeys.origins[0]=https://console.access.example.invalid")
 	if err != nil {
@@ -501,28 +492,12 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 	}
 	twins++
 
-	t.Logf("перепись: сходимость читателей %d · отказов рендера %d · законных близнецов %d",
+	t.Logf("перепись: вывод из общего узла %d · отказов рендера %d · законных близнецов %d",
 		converged, refused, twins)
 	if converged != 2 || refused != 2 || twins != 2 {
-		t.Fatalf("перепись неполна: сходимость %d из 2, отказов %d из 2, близнецов %d из 2",
+		t.Fatalf("перепись неполна: вывод %d из 2, отказов %d из 2, близнецов %d из 2",
 			converged, refused, twins)
 	}
-}
-
-// webauthnOrigins — перечень происхождений полосы ключей доступа в настройках
-// службы личности.
-func webauthnOrigins(cfg map[string]any) []string {
-	ss, _ := cfg["selfservice"].(map[string]any)
-	methods, _ := ss["methods"].(map[string]any)
-	wa, _ := methods["webauthn"].(map[string]any)
-	conf, _ := wa["config"].(map[string]any)
-	rp, _ := conf["rp"].(map[string]any)
-	list, _ := rp["origins"].([]any)
-	out := make([]string, 0, len(list))
-	for _, o := range list {
-		out = append(out, fmt.Sprint(o))
-	}
-	return out
 }
 
 func containsConfigKey(xs []struct{ configKey, source string }, v string) bool {

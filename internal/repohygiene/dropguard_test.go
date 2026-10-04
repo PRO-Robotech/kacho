@@ -28,30 +28,46 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/dropguard"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
-// migrationDirs — каждая директория миграций в дереве. Список ВЫЧИСЛЯЕТСЯ, а не
-// перечисляется: сервис, добавленный завтра, попадает под гейт сам, без правки
-// этого файла. Пустой результат — провал, а не «чисто».
-func migrationDirs(t *testing.T, root string) map[string]string {
+// chainDir — каталог цепочки миграций и служба, чью цепочку он несёт.
+type chainDir struct {
+	Service string
+	Label   string // служба, а у строки таблицы цепочек — служба/база
+	Dir     string // абсолютный путь
+}
+
+// migrationDirs — каждая цепочка миграций дерева у ЕДИНСТВЕННОГО её вывода,
+// [migrationchains.List] (kacho#2915, CX1-114): каталог цепочки из имени службы
+// не выводится — у services/notify цепочка пробы лежит в
+// internal/probemigrations, и вывод из имени её не видел бы. Список
+// ВЫЧИСЛЯЕТСЯ, а не перечисляется; отказ перечня (точек нет, таблица без
+// строк, цепочка без точки) — провал, а не «чисто». Печатает число цепочек по
+// services/notify и краснеет на нуле.
+func migrationDirs(t *testing.T, root string) []chainDir {
 	t.Helper()
-	out := map[string]string{}
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
+	chains, err := migrationchains.List(root)
 	if err != nil {
-		t.Fatalf("read %s: %v", servicesDir, err)
+		t.Fatalf("перечень цепочек дерева: %v — этот гейт не утверждал бы ничего", err)
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+	out := make([]chainDir, 0, len(chains))
+	notify := 0
+	for _, c := range chains {
+		label := c.Service
+		if c.Database != "" {
+			label = c.Service + "/" + c.Database
 		}
-		dir := filepath.Join(servicesDir, e.Name(), "internal", "migrations")
-		if st, serr := os.Stat(dir); serr == nil && st.IsDir() {
-			out[e.Name()] = dir
+		if c.Service == "notify" {
+			notify++
 		}
+		out = append(out, chainDir{Service: c.Service, Label: label, Dir: filepath.Join(root, filepath.FromSlash(c.Dir))})
 	}
-	if len(out) == 0 {
-		t.Fatalf("no migration directories found under %s — this gate would assert nothing", servicesDir)
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	t.Logf("цепочек осмотрено %d, из них по services/notify %d", len(out), notify)
+	if notify == 0 {
+		t.Fatalf("по services/notify цепочек 0 — точка наката каталога не видна перечню")
 	}
 	return out
 }
@@ -66,15 +82,9 @@ func TestEveryDropIsDeclaredWithANumber(t *testing.T) {
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 
-	services := make([]string, 0, len(dirs))
-	for svc := range dirs {
-		services = append(services, svc)
-	}
-	sort.Strings(services)
-
 	totalFiles, totalDrops, totalDecls := 0, 0, 0
-	for _, svc := range services {
-		dir := dirs[svc]
+	for _, cd := range dirs {
+		svc, dir := cd.Service, cd.Dir
 		inv, err := dropguard.Inventory(svc, os.DirFS(dir))
 		if err != nil {
 			t.Errorf("%s: %v", svc, err)
@@ -113,8 +123,8 @@ func TestEveryDropIsDeclaredWithANumber(t *testing.T) {
 	if totalDrops == 0 {
 		t.Fatalf("zero DROP TABLE statements found across %d migration files — either the tree stopped dropping tables, or the parser stopped reading them; both are findings", totalFiles)
 	}
-	t.Logf("census: %d service(s), %d migration file(s), %d Up-section DROP TABLE statement(s), %d declaration(s)",
-		len(services), totalFiles, totalDrops, totalDecls)
+	t.Logf("census: %d chain(s), %d migration file(s), %d Up-section DROP TABLE statement(s), %d declaration(s)",
+		len(dirs), totalFiles, totalDrops, totalDecls)
 }
 
 func underlying(err error) error {

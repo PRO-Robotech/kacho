@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // listnarrowcollector_test.go — шестой потребитель сужателя списков не может
@@ -78,6 +80,13 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 	t.Helper()
 	root := repoRoot(t)
 	consumers = map[string]*narrowConsumer{}
+	// Потребитель — ПРОЦЕСС (правило Д74, processroots.go): у каталога с двумя
+	// корнями (services/notify) каждый корень строит и наблюдает свой сужатель.
+	tree, terr := treecorpus.NewTree(root)
+	if terr != nil {
+		t.Fatalf("индекс дерева: %v", terr)
+	}
+	processRoots := catalogProcessRoots(tree.SortedFiles())
 
 	get := func(service string) *narrowConsumer {
 		if c, ok := consumers[service]; ok {
@@ -107,8 +116,9 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 			t.Fatalf("разбор %s: %v", rel, err)
 		}
 		dir := consumerDir(rel)
-		service := strings.TrimPrefix(dir, "services/")
+		service, _ := processOfFile(processRoots, filepath.ToSlash(rel))
 		inServices := strings.HasPrefix(dir, "services/")
+		consts := fileStringConsts(file)
 
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
@@ -142,10 +152,33 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 				}
 				c := get(service)
 				if len(call.Args) > 0 {
-					if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						if unquoted, uerr := strconv.Unquote(lit.Value); uerr == nil {
-							c.collector = unquoted
+					switch arg := call.Args[0].(type) {
+					case *ast.BasicLit:
+						if arg.Kind == token.STRING {
+							if unquoted, uerr := strconv.Unquote(arg.Value); uerr == nil {
+								c.collector = unquoted
+							}
 						}
+					case *ast.Ident:
+						// Имя константой того же файла (`metricsPrefix`).
+						c.collector = consts[arg.Name]
+					}
+				}
+			case sel.Sel.Name == "MustRegister" || sel.Sel.Name == "Register":
+				// Прямая регистрация коллектора в реестре процесса
+				// (`reg.MustRegister(narrowmetrics.New(…))`) — тот же второй
+				// конец провязки, что RegisterListNarrow у адаптера.
+				for _, a := range call.Args {
+					inner, ok := a.(*ast.CallExpr)
+					if !ok {
+						continue
+					}
+					isel, ok := inner.Fun.(*ast.SelectorExpr)
+					if !ok {
+						continue
+					}
+					if pid, ok := isel.X.(*ast.Ident); ok && pid.Name == "narrowmetrics" && isel.Sel.Name == "New" && inServices {
+						get(service).registered = true
 					}
 				}
 			case sel.Sel.Name == "RegisterListNarrow":
@@ -227,14 +260,17 @@ func TestEveryListNarrowConsumerRegistersItsCollector(t *testing.T) {
 	var findings []string
 	for _, name := range services {
 		c := consumers[name]
+		// Имя серии — сегмент процесса: у каталога с одним корнем — каталог,
+		// у корня каталога с несколькими — имя корня без дефисов.
+		want := processMetricSegment(name)
 		switch {
 		case c.collector == "":
 			findings = append(findings, "services/"+name+
 				" — строит сужатель ("+c.ctorSites[0]+"), но коллектора его величин нет: "+
-				"зовите narrowmetrics.New(\""+name+"\", …) в своём адаптере наблюдаемости. "+
+				"зовите narrowmetrics.New(\""+want+"\", …) в своём адаптере наблюдаемости. "+
 				"Три из четырёх полос означают страницу, ушедшую БЕЗ пообъектной проверки — "+
 				"без них она уходит молча")
-		case c.collector != name:
+		case c.collector != want:
 			findings = append(findings, "services/"+name+
 				" — коллектор собран под именем \""+c.collector+"\": серия уехала бы под чужим "+
 				"именем сервиса, и на панели это выглядело бы как чужая нагрузка")

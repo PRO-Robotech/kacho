@@ -224,6 +224,7 @@ if [[ "$want_exec" == 1 ]]; then
     10.0.0.6) ns=kacho_vpc ;;
     10.0.0.7) ns=kacho_geo ;;
     10.0.0.8) ns=kacho_storage ;;
+    10.0.0.9) ns=kacho_notify ;;
     *)        ns=kacho_unknown ;;
   esac
   case "${STUB_SURFACE:-ok}" in
@@ -250,6 +251,8 @@ case "${STUB_MODE:-live}" in
     case "$sel" in
       app.kubernetes.io/name=kaname)    echo "$kaname_row" ;;
       app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1|10.0.0.5|9102|" ;;
+      # Чарт notify несёт обе формы метки — под отвечает и узкой.
+      app.kubernetes.io/name=kacho-notify) [[ "${STUB_NOTIFY_POD:-0}" == 1 ]] && echo "kacho-notify-1|10.0.0.9|9102|" ;;
       *) : ;;
     esac ;;
   live)
@@ -262,6 +265,9 @@ case "${STUB_MODE:-live}" in
       app=kacho-storage)                echo "storage-1|10.0.0.8|9102|" ;;
       app.kubernetes.io/name=kaname)    echo "$kaname_row" ;;
       app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1|10.0.0.5|9102|" ;;
+      # Под notify есть на стенде, только когда его таблица источников непуста
+      # (до D2 — нигде): заглушка отвечает им лишь по STUB_NOTIFY_POD=1.
+      app=kacho-notify) [[ "${STUB_NOTIFY_POD:-0}" == 1 ]] && echo "kacho-notify-1|10.0.0.9|9102|" ;;
       *) : ;;
     esac ;;
 esac
@@ -269,10 +275,40 @@ exit 0
 STUB
   chmod +x "$tmp/bin/kubectl"
 
+  # Ответ «рендерит ли профиль стенда notify» подаётся подставным рендером
+  # (PROFILE_LAUNCHES): настоящий рендерит зонтик, а дерево здесь не правится.
+  # ПОСАДКА ПО УМОЛЧАНИЮ — полный стенд: профиль рендерит notify, под есть. Иначе
+  # каждое утверждение других осей на дереве до D2 шло бы с notify вне опроса, и
+  # «все 9» близнеца стало бы неотличимо от «8 и notify вне опроса». Ось Д91
+  # меняет ровно этот факт.
+  # Подставной рендер — тоже программа Python: гейт зовёт его тем же способом,
+  # что настоящий (`python3 <путь>`), иначе ось судила бы способ вызова.
+  for n in 0 1; do
+    cat >"$tmp/bin/render-$n" <<RENDER
+import sys
+a = sys.argv[1:]
+proc = a[a.index("--process") + 1]
+stack = a[a.index("--stack") + 1]
+print(f"профиль {stack}: документов 9, рабочих нагрузок 3, запускают {proc}: $n")
+if $n:
+    print("НАГРУЗКА Deployment/kacho-notify app=kacho-notify")
+RENDER
+  done
+  cat >"$tmp/bin/render-refuse" <<'RENDER'
+import sys
+print("НЕ ВЫПОЛНИЛОСЬ: рендер профиля отказал (инъекция самопроверки)", file=sys.stderr)
+sys.exit(2)
+RENDER
+  chmod +x "$tmp/bin/render-0" "$tmp/bin/render-1" "$tmp/bin/render-refuse"
+
   run_case() {  # <имя> <ожидаемый код> <обязательная подстрока> <env…>
     local name="$1" want="$2" needle="$3"; shift 3
     asserted=$((asserted + 1))
-    out="$(cd "$root" && env PATH="$tmp/bin:$PATH" "$@" bash "$root/deploy/scripts/assert-metrics-surfaces-answer.sh" 2>&1)" && rc=0 || rc=$?
+    # Посадка по умолчанию стоит ЛЕВЕЕ аргументов случая: `env` применяет
+    # присваивания слева направо, и случай перекрывает её своим значением.
+    out="$(cd "$root" && env PATH="$tmp/bin:$PATH" PROFILE_LAUNCHES="$tmp/bin/render-1" \
+      KACHO_STAND_STACK=dev-prod STUB_NOTIFY_POD=1 "$@" \
+      bash "$root/deploy/scripts/assert-metrics-surfaces-answer.sh" 2>&1)" && rc=0 || rc=$?
     # Сравнение БЕЗ внешнего процесса: `grep -q` выходит до конца входа, писатель
     # слева получает SIGPIPE, и под `pipefail` найденное объявляется ненайденным
     # (задача #658). Держит это гейт `TestPipefailVerdictNeverComesFromAPipe` —
@@ -288,7 +324,7 @@ STUB
 
   echo "== самопроверка гейта поверхностей величин =="
   run_case "стенд как живой → зелёный, опрошены все" \
-           0 "все 8 поверхностей отвечают" STUB_MODE=live
+           0 "все 9 поверхностей отвечают" STUB_MODE=live
   # Тот самый дефект, ради которого перебор форм и заведён: на стенде, где поды
   # помечены ТОЛЬКО рекомендованной схемой, резолвится меньшинство. Пробник свой
   # и поднимается всегда, поэтому исход теперь другой — «поды не найдены», а не
@@ -311,7 +347,7 @@ STUB
 
   # ── ось схемы ────────────────────────────────────────────────────────────
   run_case "слушатель под TLS, объявлено https → зелёный (законный близнец)" \
-           0 "все 8 поверхностей отвечают" \
+           0 "все 9 поверхностей отвечают" \
            STUB_MODE=live STUB_LISTENER_KANAME=tls STUB_SCHEME_KANAME=https
   run_case "тот же слушатель под TLS, объявление снято → красное с именем процесса" \
            1 "iam: ответ 000 вместо 200 по адресу http://" \
@@ -319,6 +355,38 @@ STUB
   run_case "схема вне пары http|https → красное с именем процесса" \
            1 "iam: объявление сбора называет схему 'ftp'" \
            STUB_MODE=live STUB_SCHEME_KANAME=ftp
+
+  # ── ось Д91: notify по РЕНДЕРУ профиля стенда ─────────────────────────
+  #
+  # notify служит величины и объявляет сбор, но его объекты рендерятся только
+  # при непустой таблице модулей; до D2 профиль стенда его не рендерит, и пода
+  # notify нет by construction. Знаменатель — носители, ОТРЕНДЕРЕННЫЕ профилем:
+  # не отрендеренный notify печатается строкой «вне опроса» и в знаменатель не
+  # входит — это ЗЕЛЁНЫЙ по названному объёму, не третий исход (Д91). Факт «не
+  # отрендерен» гейт проверяет сам — рендером профиля, — а не выводит из
+  # отсутствия пода. Каждый случай меняет против полного стенда ровно один факт:
+  #   а) профиль не рендерит notify, пода нет → зелёный (код 0), строка «вне
+  #      опроса» с числом носителей, остальные 8 опрошены;
+  #   б) профиль рендерит notify, пода нет   → КРАСНЫЙ с именем notify (код 1);
+  #   в) рендер профиля отказал, пода нет     → notify опрашивается как прочие и
+  #      «не выполнилось» (код 2) — без ответа о рендере вне опроса не выводится;
+  #   г) дерево как есть: НАСТОЯЩИЙ рендер профиля dev-prod → вне опроса, код 0;
+  #   д) профиль рендерит notify, под есть    → зелёный, опрошены все 9 (случай 1).
+  run_case "Д91: профиль не рендерит notify → зелёный, notify вне опроса" \
+           0 "notify: профиль dev-prod его не рендерит — вне опроса" \
+           STUB_MODE=live PROFILE_LAUNCHES="$tmp/bin/render-0" STUB_NOTIFY_POD=0
+  run_case "Д91: профиль не рендерит notify → опрошены остальные 8, носитель назван числом" \
+           0 "все 8 поверхностей отвечают и несут серии платформы; вне опроса по профилю dev-prod — 1 (notify)" \
+           STUB_MODE=live PROFILE_LAUNCHES="$tmp/bin/render-0" STUB_NOTIFY_POD=0
+  run_case "Д91: профиль рендерит notify, пода нет → КРАСНЫЙ, notify назван" \
+           1 "notify: профиль dev-prod рендерит его (нагрузок 1), а пода notify на стенде нет" \
+           STUB_MODE=live STUB_NOTIFY_POD=0
+  run_case "Д91: рендер профиля отказал → notify опрашивается, не выполнилось" \
+           2 "ответа о рендере notify профилем нет — ветки Д91 нет" \
+           STUB_MODE=live PROFILE_LAUNCHES="$tmp/bin/render-refuse" STUB_NOTIFY_POD=0
+  run_case "Д91: дерево как есть (настоящий рендер dev-prod) → notify вне опроса" \
+           0 "notify: профиль dev-prod его не рендерит — вне опроса" \
+           STUB_MODE=live PROFILE_LAUNCHES="$root/deploy/scripts/profile_launches.py" STUB_NOTIFY_POD=0
 
   # ── ось перечня частей ───────────────────────────────────────────────────
   #
@@ -394,8 +462,8 @@ GITSTUB
 
     # Законный близнец оси: та же посадка, инъекции нет. Без него «красное»
     # соседних четырёх утверждений могло бы приходить от самой посадки.
-    run_case "подставной источник без инъекции → зелёный, все 8 (законный близнец)" \
-             0 "все 8 поверхностей отвечают" \
+    run_case "подставной источник без инъекции → зелёный, все 9 (законный близнец)" \
+             0 "все 9 поверхностей отвечают" \
              STUB_MODE=live TMPDIR="$tmp" PATH="$tmp/pbin:$tmp/bin:$PATH"
     run_case "ведомость частей ОТКАЗАЛА → отказ ПО ЭТОЙ причине, а не перепись «все 7»" \
              2 "перечень частей продукта не прочитан" \
@@ -736,8 +804,54 @@ if [[ -n "$PROCESSES" ]]; then
   load_product_names $PROCESSES
 fi
 
+# ВЕТКА Д91: notify, которого ПРОФИЛЬ СТЕНДА НЕ РЕНДЕРИТ.
+#
+# Объекты чарта notify рендерятся только при непустой таблице подключаемых
+# модулей; пока она пуста (до полосы D2), профиль стенда notify не рендерит, и
+# пода notify нет by construction, а в перечень процессов notify попадает
+# обоими слагаемыми (корень служит величины, шаблон объявляет сбор).
+#
+# Знаменатель гейта — носители, ОТРЕНДЕРЕННЫЕ профилем (Д91): не отрендеренный
+# notify печатается отдельной строкой «вне опроса» с числом носителей и в
+# знаменатель не входит. Это ЗЕЛЁНЫЙ по названному объёму, а не третья
+# категория и не код 2.
+#
+# Факт «не отрендерен» гейт проверяет САМ — рендером профиля стенда
+# (`profile_launches.py`: `helm template` цепочкой профиля из stacks.txt и разбор
+# контейнеров), — а не выводит из отсутствия пода: профиль notify рендерит, а
+# пода нет — КРАСНЫЙ (чарт обязан был его поднять). Ответа о рендере нет
+# (профиль не назван, helm отказал) — ветки нет, notify опрашивается как прочие.
+# Ветку снимает D2.
+#
+# Профиль — ИМЯ стека из deploy/stacks.txt, которым поднят стенд
+# (`KACHO_STAND_STACK`; цель `make assert-metrics-surfaces-answer` передаёт
+# `dev-prod` — последний профиль, который применяет `dev-up`).
+PROFILE_LAUNCHES="${PROFILE_LAUNCHES:-$(repo_root)/deploy/scripts/profile_launches.py}"
+STAND_STACK="${KACHO_STAND_STACK:-}"
+notify_rendered=""
+notify_render_line=""
+if any_line_matches "$PROCESSES" '^notify$'; then
+  if render_out="$(python3 "$PROFILE_LAUNCHES" --stack "$STAND_STACK" \
+       --process "${PRODUCT_NAME[notify]}" 2>&1)"; then
+    notify_render_line="$(printf '%s\n' "$render_out" | head -n1)"
+    if [[ "$notify_render_line" =~ запускают\ [^:]+:\ ([0-9]+)$ ]]; then
+      notify_rendered="${BASH_REMATCH[1]}"
+    fi
+  else
+    echo "  ответа о рендере notify профилем нет — ветки Д91 нет, notify опрашивается как прочие:"
+    printf '%s\n' "$render_out" | sed 's/^/      /' | head -3
+  fi
+fi
+off_profile=0
+
 while read -r process; do
   [[ -n "$process" ]] || continue
+  if [[ "$process" == notify && "$notify_rendered" == 0 ]]; then
+    off_profile=$((off_profile + 1))
+    echo "  --  notify: профиль $STAND_STACK его не рендерит — вне опроса (носителей вне опроса: 1;" \
+         "рендер: $notify_render_line; ветку снимает D2)"
+    continue
+  fi
   expected=$((expected + 1))
   # Порт И СХЕМА берутся из ОБЪЯВЛЕНИЯ СБОРА этого же пода: аннотация и есть то
   # место, которое говорит собирателю, куда идти. Читая её, гейт проверяет ровно
@@ -747,6 +861,11 @@ while read -r process; do
   pod_ip="$(printf '%s' "$row" | cut -f3)"
   port="$(printf '%s' "$row" | cut -f4)"
   declared_scheme="$(printf '%s' "$row" | cut -f5)"
+  if [[ "$process" == notify && "$notify_rendered" =~ ^[1-9][0-9]*$ && -z "$pod_ip" ]]; then
+    failed=$((failed + 1))
+    red+=("notify: профиль $STAND_STACK рендерит его (нагрузок $notify_rendered), а пода notify на стенде нет — чарт обязан был его поднять (Д91)")
+    continue
+  fi
   if [[ -z "$pod_ip" || -z "$port" ]]; then
     not_run=$((not_run + 1))
     unknown+=("$process (под не найден либо объявления сбора у него нет: ip='$pod_ip' port='$port')")
@@ -808,7 +927,8 @@ while read -r process; do
 done < <(printf '%s\n' "$PROCESSES")
 
 echo
-echo "перепись: процессов с поверхностью в дереве — $expected; ответили — $answered; " \
+echo "перепись: процессов с поверхностью в дереве — $((expected + off_profile)); из них вне опроса" \
+     "(профиль ${STAND_STACK:-—} их не рендерит, Д91) — $off_profile; опрашивалось — $expected; ответили — $answered;" \
      "ответили не тем — $failed; опрос не выполнился — $not_run"
 echo "  опрошены по схеме: http — $by_http (из них схема досталась умолчанием объявления — $scheme_defaulted); https — $by_https"
 if [[ "$by_https" -gt 0 ]]; then
@@ -835,5 +955,12 @@ fi
 if [[ "$not_run" -gt 0 ]]; then
   # Третий исход НЕ вычитается из вердикта и не зачитывается в успех.
   exit 2
+fi
+if [[ "$off_profile" -gt 0 ]]; then
+  # Ветка Д91 — зелёный по НАЗВАННОМУ объёму: знаменатель — отрендеренные
+  # профилем носители, и не отрендеренный назван числом и именем.
+  echo "все $answered поверхностей отвечают и несут серии платформы; вне опроса по профилю" \
+       "$STAND_STACK — $off_profile (notify)"
+  exit 0
 fi
 echo "все $answered поверхностей отвечают и несут серии платформы"

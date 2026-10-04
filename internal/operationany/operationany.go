@@ -50,6 +50,10 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
+
+	probev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 )
 
 // typeURLPrefix — префикс адреса типа в `Any`. Тот же, что пишет `anypb.New`.
@@ -69,6 +73,18 @@ const typeURLPrefix = "type.googleapis.com/"
 func Anchors() []proto.Message {
 	return []proto.Message{
 		(*emptypb.Empty)(nil), // ответ всякого Delete: `Operation.response`
+		// Пакет ленты уведомлений `corelib.notify`. Его линкует всякий процесс,
+		// стоящий на `corelib/notify/feed`: сегодня notify, далее — каждый
+		// источник писем. Гейт полноты требует, чтобы край линковал
+		// НАДМНОЖЕСТВО proto-пакетов владельцев, и делает это по линковке, а не
+		// по местам упаковки — так, чтобы форма, которой ещё не написали, тоже
+		// была закрыта. Один тип пакета вносит в реестр весь его файл.
+		(*notifyv1.AckResponse)(nil),
+		// Пакет глагола пробы-источника `kacho.cloud.notify.v1` (kacho#2915, З29):
+		// его линкует корень notify-probe. Ответ Send — не Operation, но гейт
+		// полноты судит линковку, а не места упаковки, и край обязан линковать
+		// надмножество пакетов владельцев.
+		(*probev1.SendResponse)(nil),
 	}
 }
 
@@ -83,6 +99,14 @@ func Anchors() []proto.Message {
 func RequiredResponseTypeURLs() []string {
 	return []string{
 		typeURLPrefix + "google.protobuf.Empty",
+		// Намерение — разрешимость пакета `corelib.notify` на крае: процесс,
+		// линкующий ленту, способен положить её тип в `Any`, и край обязан его
+		// отобразить, а не ответить 500. Адрес назван типом, которым пакет
+		// заякорен выше.
+		typeURLPrefix + "corelib.notify.AckResponse",
+		// Разрешимость пакета `kacho.cloud.notify.v1` на крае — по той же причине,
+		// по какой выше заякорен его тип.
+		typeURLPrefix + "kacho.cloud.notify.v1.SendResponse",
 	}
 }
 

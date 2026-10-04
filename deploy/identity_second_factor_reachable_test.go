@@ -165,10 +165,6 @@ const (
 	// permissionCatalogEmbed — сторона КАТАЛОГА ПРАВ (обе встроенные копии
 	// побайтово равны и держатся своим гейтом; читаем ту, что энфорсит край).
 	permissionCatalogEmbed = "../gateway/internal/middleware/embed/permission_catalog.json"
-	// identityRenderedConfigPath — путь, по которому процесс службы личности
-	// ЧИТАЕТ наши настройки. Профиль, называющий его, доводит объявление до
-	// процесса; не называющий — оставляет процесс на умолчаниях поставщика.
-	identityRenderedConfigPath = "/etc/kaname-identity-rendered/kratos.yaml"
 )
 
 // splitYAMLPair режет `ключ: величина`, отбрасывая хвостовой комментарий.
@@ -288,9 +284,49 @@ const (
 	// laneWiringObserver — функция корня, которая получает провязанные способы
 	// входа и выводит из них `lane_presentable_acrs` самоотчёта.
 	laneWiringObserver = "observeLaneWiring"
-	// laneWiringSignInArg — позиция аргумента способов входа у наблюдателя.
-	laneWiringSignInArg = 3
 )
+
+// laneWiringSignInIndex — позиция аргумента способов входа у наблюдателя,
+// ВЫВЕДЕННАЯ из его объявления в корне пина: параметр типа `[]assurance.Method`,
+// ровно один. Прежде позиция стояла постоянной, и подъём пина, снявший у
+// наблюдателя параметр настроек (kaname#363), увёл её на соседний аргумент —
+// разбор краснел отказом формы, а не находкой (kacho#2818). Позиция — свойство
+// объявления, и читается у объявления.
+func laneWiringSignInIndex(root goPackageSource) (int, error) {
+	var found []int
+	decls := 0
+	for _, rel := range root.sortedFiles() {
+		for _, decl := range root.files[rel].Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil || fd.Name.Name != laneWiringObserver || fd.Type.Params == nil {
+				continue
+			}
+			decls++
+			pos := 0
+			for _, field := range fd.Type.Params.List {
+				n := len(field.Names)
+				if n == 0 {
+					n = 1
+				}
+				if arr, ok := field.Type.(*ast.ArrayType); ok && arr.Len == nil {
+					if sel, ok := arr.Elt.(*ast.SelectorExpr); ok && sel.Sel.Name == "Method" {
+						if x, ok := sel.X.(*ast.Ident); ok && x.Name == "assurance" {
+							for i := 0; i < n; i++ {
+								found = append(found, pos+i)
+							}
+						}
+					}
+				}
+				pos += n
+			}
+		}
+	}
+	if decls != 1 || len(found) != 1 {
+		return 0, fmt.Errorf("%w: объявлений %s %d, параметров []assurance.Method %d (%v), ждали по одному",
+			errNoSignInList, laneWiringObserver, decls, len(found), found)
+	}
+	return found[0], nil
+}
 
 // goPackageSource — пакет чужого модуля В ТОМ ВИДЕ, В КАКОМ ЕГО КОМПИЛИРУЕТ
 // СБОРКА (#2691, круг 3).
@@ -921,6 +957,10 @@ var errNoSignInList = errors.New("перечень способов входа �
 // разбор собирал постоянные В ЛЮБОМ месте тела, и помощник, отдававший из
 // перечня первый способ, читался перечнем целиком).
 func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, string, error) {
+	laneWiringSignInArg, err := laneWiringSignInIndex(root)
+	if err != nil {
+		return nil, "", err
+	}
 	var producers []string
 	for _, rel := range root.sortedFiles() {
 		ast.Inspect(root.files[rel], func(n ast.Node) bool {
@@ -2372,32 +2412,17 @@ func TestIdentity_OwnRuleIsReadFromThePin(t *testing.T) {
 	}
 }
 
-// identityChainMountsOurConfig — цепочка профилей ДОВОДИТ наши настройки до
-// процесса службы личности (а не только рендерит их).
-//
-// Спрашивается у ЦЕПОЧКИ, а не у отдельного профиля: накладка (`values.fe3455-*`)
-// поднимает продукт вместе со слоем под собой и своей провязки не несёт — судить
-// её в одиночку значило бы называть находкой нормальную раскладку слоёв.
-func identityChainMountsOurConfig(texts []string) bool {
-	for _, t := range texts {
-		if strings.Contains(t, identityRenderedConfigPath) {
-			return true
-		}
-	}
-	return false
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // КОГО СУДЯТ ЧЕТЫРЕ СТРАЖА ЛИЧНОСТИ
 //
 // Четыре проверки развёртывания (второй фактор, потоки доставки, зеркало
 // требования подтверждённого адреса, решённые замещения списков) отбирают
 // стенды одним предикатом. Предикат этот СУДИЛ ПО ЧУЖОМУ ФЛАГУ — по
-// `kratos.enabled` подчарта внешнего поставщика удостоверений.
+// флагу включения подчарта внешнего поставщика удостоверений.
 //
 // Чем это кончалось, измерено инъекцией 2026-09-21: выключение
-// чужих флагов в боевом профиле (`values.prod.yaml`: `kratos.enabled: false`,
-// `hydra.enabled: false`) уводило из-под суда РОВНО боевой стенд и стенд
+// чужих флагов в боевом профиле (`values.prod.yaml`: флаги включения обоих
+// подчартов поставщика) уводило из-под суда РОВНО боевой стенд и стенд
 // посадки `own` — 7 стендов превращались в 5, и все четыре стража оставались
 // ЗЕЛЁНЫМИ. То есть чужая ручка, к которой у стражей нет ни предмета, ни
 // владения, отключала их ровно на тех двух стендах, ради которых они заведены.
@@ -2409,50 +2434,47 @@ func identityChainMountsOurConfig(texts []string) bool {
 //	api-gateway.authn.identityProvider      — край
 //
 // Признак переживает снятие чужих служб ЦЕЛИКОМ: ручка живёт в нашем чарте, её
-// значения (`external` · `own`) объявляют, КТО проверяет человека, а не какой
-// подчарт поднят. Снять kratos и hydra из профиля можно, не тронув ни одного её
-// значения, — и стенд останется под судом, потому что о личности он по-прежнему
-// решает.
+// значения объявляют, КТО проверяет человека, а не какой подчарт поднят.
+//
+// ПОЛОВИНА СЛУЖБЫ БОЛЬШЕ НЕ ЧИТАЕТСЯ (kacho#2818). С kaname#363 посадка у службы
+// одна — своя (kanameLanding), — и ключа посадки у её подчарта нет: профиль, его
+// объявивший, получает отказ рендера. Половина службы поэтому `own` на каждом
+// стенде, а читается только половина края.
 //
 // ОТСУТСТВИЕ значения у обеих половин и у баз подчартов предикат считает НЕ
 // «стендом без личности», а исчезнувшей предпосылкой: он отвечает «нет», и у
 // каждого из четырёх стражей нулевая перепись — отказ (`t.Fatal`), а не тишина.
 
 const (
-	// iamLandingDefaults — база подчарта службы доступа: значение посадки,
-	// которое стенд получает, не объявив её сам.
-	iamLandingDefaults = umbrellaDir + "/charts/kaname/values.yaml"
-	// edgeLandingDefaults — то же у края.
+	// edgeLandingDefaults — база подчарта края: значение посадки, которое
+	// стенд получает, не объявив её сам.
 	edgeLandingDefaults = "../gateway/deploy/values.yaml"
 )
 
 // identityLanding — посадка личности стенда: что объявлено каждой половине и
 // откуда значение взято.
 type identityLanding struct {
-	IAM  string // kaname.config.authn.identityProvider
+	IAM  string // посадка службы доступа — одна (kanameLanding), не читается
 	Edge string // api-gateway.authn.identityProvider
-	Base bool   // ни один профиль цепочки посадку не назвал — значение с базы подчарта
+	Base bool   // ни один профиль цепочки посадку края не назвал — значение с базы подчарта
 }
 
 // lands — стенд решает о личности человека, то есть подлежит суду стражей.
 func (l identityLanding) lands() bool { return l.IAM != "" || l.Edge != "" }
 
-// identityLandingOfProfile — что ОДИН профиль объявил половинам.
+// identityLandingOfProfile — что ОДИН профиль объявил краю.
 //
 // Профиль, который не разбирается как YAML, значения не даёт: его форму судит
 // своя проверка, и подменять её вердикт молчаливым «посадки нет» здесь нельзя.
-func identityLandingOfProfile(text string) (iam, edge string) {
+func identityLandingOfProfile(text string) (edge string) {
 	var tree map[string]any
 	if err := yaml.Unmarshal([]byte(text), &tree); err != nil {
-		return "", ""
-	}
-	if v, ok := lookup(tree, "kaname", "config", "authn", "identityProvider"); ok {
-		iam, _ = v.(string)
+		return ""
 	}
 	if v, ok := lookup(tree, "api-gateway", "authn", "identityProvider"); ok {
 		edge, _ = v.(string)
 	}
-	return iam, edge
+	return edge
 }
 
 // identityLandingOfChain — посадка, которую получает ЦЕПОЧКА профилей.
@@ -2463,25 +2485,20 @@ func identityLandingOfProfile(text string) (iam, edge string) {
 // поэтому последнее непустое объявление побеждает.
 func identityLandingOfChain(t *testing.T, texts []string) identityLanding {
 	t.Helper()
-	var l identityLanding
+	l := identityLanding{IAM: kanameLanding}
 	for _, text := range texts {
-		iam, edge := identityLandingOfProfile(text)
-		if iam != "" {
-			l.IAM = iam
-		}
-		if edge != "" {
+		if edge := identityLandingOfProfile(text); edge != "" {
 			l.Edge = edge
 		}
 	}
-	if l.lands() {
+	if l.Edge != "" {
 		return l
 	}
-	// Цепочка промолчала — значение стенду даёт база подчарта. Это не
-	// умолчание «на всякий случай»: базы обеих половин держит проба зонта
-	// TestIdentityPostureIsDeclaredByBothSubchartDefaults, и исчезни они —
+	// Цепочка о крае промолчала — значение стенду даёт база подчарта края.
+	// Это не умолчание «на всякий случай»: базу держит проба зонта
+	// TestIdentityPostureIsDeclaredByBothSubchartDefaults, и исчезни она —
 	// не поднимется ни один стенд.
 	l.Base = true
-	l.IAM = identityLandingDefault(t, iamLandingDefaults, "config", "authn", "identityProvider")
 	l.Edge = identityLandingDefault(t, edgeLandingDefaults, "authn", "identityProvider")
 	return l
 }
