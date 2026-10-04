@@ -706,7 +706,7 @@ dev-up: preflight
 	  $(MAKE) build-ui; \
 	fi; \
 	./scripts/gen-tls-cert.sh; \
-	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory helm-deps; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \
 	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
 	echo "=== предусловные секреты: ПЕРЕД первым прогоном helm, а не между прогонами ==="; \
@@ -928,7 +928,7 @@ own-up: preflight
 	layers="./helm/umbrella/values.yaml"; for f in $$chain; do layers="$$layers ./helm/umbrella/$$f"; done; \
 	product_local_overlay dev "$$built" $$layers > ./$(LOCAL_IMAGES_VALUES); \
 	echo "=== накладка сборки: ./$(LOCAL_IMAGES_VALUES) ==="; \
-	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory helm-deps; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \
 	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
 	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=own \
@@ -994,7 +994,8 @@ own-up: preflight
 # же версии либо чужой, как у оператора a8f60d), она его не переставляет.
 #
 # ЗАВИСИМОСТИ УМБРЕЛЛЫ — ТЕМ ЖЕ ШАГОМ, ЧТО У `dev-up` (kacho#2885), до первого
-# helm: архивы локальных подчартов в git не лежат. Без шага копия без архивов
+# helm: целью `helm-deps`, записанной один раз на все цели подъёма; архивы
+# локальных подчартов в git не лежат. Без шага копия без архивов
 # отказывала на `stack-secrets` («missing in charts/ directory»), а копия со
 # старыми архивами молча применяла прежний шаблон подчарта. Порядок держит
 # deploy/umbrella_apply_runs_deps_first_test.go — для каждой цели файла.
@@ -1041,7 +1042,7 @@ stack-up:
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
-	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory helm-deps; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
@@ -1241,6 +1242,14 @@ assert-outbox-autovacuum: guard-kind-context
 
 # helm-deps — материализация зависимостей умбреллы ЧЕРЕЗ MAKE.
 #
+# ЕДИНСТВЕННОЕ МЕСТО ШАГА В ЭТОМ ФАЙЛЕ (kacho#2885). `dev-up`, `own-up`,
+# `stack-up` и остальные цели, рендерящие умбреллу, зовут ЭТУ цель
+# (`$(MAKE) --no-print-directory helm-deps`), а не скрипт: шаг, выписанный в
+# каждой цели отдельно, однажды не попал в `stack-up` вовсе, и копия без
+# архивов отказывала там, где соседняя цель проходила. Число мест держит
+# deploy/umbrella_deps_step_spelled_once_test.go, порядок —
+# deploy/umbrella_apply_runs_deps_first_test.go.
+#
 # Цель тонкая НАМЕРЕННО: она ничего не решает и ничего не классифицирует, а
 # только зовёт единственного владельца материализации. Нужна она затем, чтобы
 # шаг конвейера мог делегировать классификацию исхода единственному владельцу
@@ -1263,7 +1272,7 @@ helm-deps:
 	bash scripts/helm-umbrella-deps.sh
 
 helm-lint:
-	bash scripts/helm-umbrella-deps.sh
+	$(MAKE) --no-print-directory helm-deps
 	cd helm/umbrella && helm lint -f values.dev.yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1523,7 +1532,7 @@ helm-manifest-test: gate-self-test
 	  exit 1; \
 	fi; \
 	echo "=== зависимости умбреллы (проверки рендерят её; charts/*.tgz не в git) ==="; \
-	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory helm-deps; \
 	rm -rf helm/umbrella/tmpcharts-*; \
 	failed=""; unmet=""; total=0; \
 	for t in tests/helm/*-test.sh; do \
@@ -1849,7 +1858,7 @@ spire-bootstrap:
 	  WHAT="создание namespace spire-system и применение манифестов SPIRE Server/Agent (корень доверия mesh)"
 	@echo "Phase 10: bootstrapping SPIRE Server + Agent..."
 	@kubectl create namespace spire-system --dry-run=client -o yaml | kubectl apply -f -
-	@bash scripts/helm-umbrella-deps.sh
+	@$(MAKE) --no-print-directory helm-deps
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set spire-server.enabled=true \
 		--set spire-agent.enabled=true \
@@ -1877,7 +1886,7 @@ spire-rotate-trust-domain:
 # Dry-run Cilium policies — render и валидация без apply.
 cilium-policy-dry-run:
 	@echo "Phase 10: rendering CiliumNetworkPolicy manifests..."
-	@bash scripts/helm-umbrella-deps.sh
+	@$(MAKE) --no-print-directory helm-deps
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
 		--set cilium.enabled=true \
 		--show-only charts/cilium/templates/network-policies.yaml \
