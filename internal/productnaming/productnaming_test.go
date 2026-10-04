@@ -364,3 +364,32 @@ func TestPartOfPathKnowsADeliveryChartOutsideTheUmbrella(t *testing.T) {
 		}
 	}
 }
+
+// TestUmbrellaTemplatePartIsACandidateByFileName — четвёртая раскладка: шаблон
+// самого зонта `deploy/helm/umbrella/templates/<файл>` называет часть первым
+// сегментом имени файла до `-` или `.` (Д77 (а); проба notify-probe, NTF-1 D3).
+// Ответ — КАНДИДАТ: `mail-receiver.yaml` даёт «mail», и подтверждает часть
+// вызывающий наличием каталога `services/<часть>` в индексе. Каждый случай
+// отличается от соседа одним фактом: вложенный каталог шаблонов, подчарт зонта,
+// чарт поставки и имя файла без разделителя кандидата не дают.
+func TestUmbrellaTemplatePartIsACandidateByFileName(t *testing.T) {
+	for _, tc := range []struct {
+		rel    string
+		want   string
+		wantOK bool
+	}{
+		{"deploy/helm/umbrella/templates/notify-probe.yaml", "notify", true},
+		{"deploy/helm/umbrella/templates/notify.yaml", "notify", true},
+		{"deploy/helm/umbrella/templates/mail-receiver.yaml", "mail", true},
+		{"deploy/helm/umbrella/templates/sub/notify-probe.yaml", "", false},
+		{"deploy/helm/umbrella/templates/-probe.yaml", "", false},
+		{"deploy/helm/umbrella/charts/kacho-geo/templates/deployment.yaml", "", false},
+		{"deploy/helm/notify/templates/deployment.yaml", "", false},
+		{"services/notify/deploy/templates/notify-probe.yaml", "", false},
+	} {
+		got, ok := productnaming.UmbrellaTemplatePart(tc.rel)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("%s: UmbrellaTemplatePart дал (%q, %v), ждали (%q, %v)", tc.rel, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}

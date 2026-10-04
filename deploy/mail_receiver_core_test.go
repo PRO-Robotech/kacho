@@ -62,6 +62,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 // mailReceiverKey — ключ значений, которым приёмник включается. Он же служит
@@ -833,7 +835,10 @@ func TestStandObjectsStayOutOfTheProdChain(t *testing.T) {
 // ─── НАКАТ СХЕМЫ ПРОБЫ ДО ЕЁ СТАРТА (Д74, Д77) ──────────────────────────────
 
 // Форма вызова точки наката и база пробы — величины замысла (З32 «Накат схемы»).
-var probeMigrateCommand = []string{"/usr/local/bin/kacho-migrator", "up"}
+// Имя бинаря точки наката берётся у владельца имён частей, а не выписывается
+// литералом: литерал в deploy/ гейт имени накатчика судит по хозяину места, а у
+// пробы рендера хозяина нет (TestMigratorBinaryIsNamedTheSameEverywhere).
+var probeMigrateCommand = []string{"/usr/local/bin/" + productnaming.MigratorBinary("notify"), "up"}
 
 const (
 	probeDatabase       = "kacho_notifyprobe"
@@ -992,7 +997,8 @@ func TestNotifyProbeMigratesItsDatabaseBeforeItStarts(t *testing.T) {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s с пробой (%v): рендер отказал: %v\n%s",
 			standChain, probeStandSets, err, lastLines(out, 5))
 	}
-	deps := probeDeployments(parseRendered(t, out))
+	standObjs := parseRendered(t, out)
+	deps := probeDeployments(standObjs)
 	if len(deps) != 1 {
 		t.Fatalf("Д74: цепочка %s с пробой (%v): рабочих объектов пробы %d, ждали ровно 1", standChain, probeStandSets, len(deps))
 	}
@@ -1023,4 +1029,104 @@ func TestNotifyProbeMigratesItsDatabaseBeforeItStarts(t *testing.T) {
 		t.Errorf("инъекция «migrate снят»: находки %v, ждали одну, начинающуюся с %q", f, want)
 	}
 	t.Logf("инъекция «migrate снят» → %v; близнец (объект как есть) → находок %d", f, len(twin))
+}
+
+// ─── ИМЯ НОСИТЕЛЯ: служба пробы — та, которую спрашивает ban #6 ─────────────
+
+// ban6CarrierRe — строка носителя notify в карте встречного контроля гейта
+// ban #6 (`INTERNAL_ENDPOINTS["notify"]`). Производитель ожидаемого имени —
+// гейт, который будет звонить пробе, а не этот файл: имя, выписанное здесь
+// второй копией, разошлось бы с гейтом молча.
+var ban6CarrierRe = regexp.MustCompile(`(?m)^\s*"notify":\s*\("svc/([a-z0-9-]+)",\s*(\d+),`)
+
+// ban6NotifyCarrier — (имя службы, порт) носителя notify из карты гейта ban #6.
+func ban6NotifyCarrier(t *testing.T) (string, int) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("scripts", "assert-ban6-external-isolation.py"))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: карта носителей ban #6 не прочитана: %v", err)
+	}
+	m := ban6CarrierRe.FindAllStringSubmatch(string(raw), -1)
+	if len(m) != 1 {
+		t.Fatalf("строк носителя notify в карте ban #6 %d, ждали ровно 1 — разборщик ослеп либо карта задвоена", len(m))
+	}
+	port, err := strconv.Atoi(m[0][2])
+	if err != nil {
+		t.Fatalf("порт носителя notify %q не число: %v", m[0][2], err)
+	}
+	return m[0][1], port
+}
+
+// probeServiceFindings — служба пробы в рендере названа и слушает так, как её
+// спрашивает гейт ban #6: ровно одна Service шаблона пробы, имя want, порт port.
+// Имя, выведенное из имени выпуска, на стенде (`kacho-umbrella`) дало бы
+// `kacho-umbrella-notify-probe`, и встречный контроль звонил бы в пустоту.
+func probeServiceFindings(objs []renderedObj, want string, port int) []string {
+	var svcs []renderedObj
+	for _, o := range objs {
+		if o.source == probeTemplateSource && o.kind == "Service" {
+			svcs = append(svcs, o)
+		}
+	}
+	if len(svcs) != 1 {
+		return []string{fmt.Sprintf("служб пробы в рендере %d, ждали ровно 1", len(svcs))}
+	}
+	var out []string
+	if svcs[0].name != want {
+		out = append(out, fmt.Sprintf("Service/%s: служба пробы названа не так, как её спрашивает гейт ban #6 (svc/%s)",
+			svcs[0].name, want))
+	}
+	found := false
+	for _, pt := range nlist(ndig(svcs[0].doc, "spec", "ports")) {
+		m, _ := pt.(map[string]any)
+		if fmt.Sprint(m["port"]) == strconv.Itoa(port) {
+			found = true
+		}
+	}
+	if !found {
+		out = append(out, fmt.Sprintf("Service/%s: порта %d, на котором гейт ban #6 спрашивает носителя, нет",
+			svcs[0].name, port))
+	}
+	return out
+}
+
+// TestNotifyProbeServiceIsTheBan6Carrier — служба пробы в цепочке стенда с
+// пробой носит имя и порт носителя notify из карты гейта ban #6 (Д94).
+// Близнец — рендер как есть → молчание; инъекция — служба переименована по
+// имени выпуска → находка с именем объекта.
+func TestNotifyProbeServiceIsTheBan6Carrier(t *testing.T) {
+	want, port := ban6NotifyCarrier(t)
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	chains := deployStacksForRender(t, "operator.yaml")
+	const standChain = "dev-prod"
+	chain, ok := chains[standChain]
+	if !ok {
+		t.Fatalf("цепочки %q в таблице нет — рендерить нечего", standChain)
+	}
+	out, err := renderChainFiles(c.umbrella, chain, probeStandSets...)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s с пробой (%v): рендер отказал: %v\n%s",
+			standChain, probeStandSets, err, lastLines(out, 5))
+	}
+	objs := parseRendered(t, out)
+	twin := probeServiceFindings(objs, want, port)
+	for _, f := range twin {
+		t.Errorf("Д94: цепочка %s с пробой: %s", standChain, f)
+	}
+
+	// Инъекция: имя службы выведено из имени выпуска.
+	injected := "kacho-umbrella-" + want
+	var mutated []renderedObj
+	for _, o := range objs {
+		if o.source == probeTemplateSource && o.kind == "Service" {
+			o.name = injected
+		}
+		mutated = append(mutated, o)
+	}
+	f := probeServiceFindings(mutated, want, port)
+	wantPrefix := "Service/" + injected + ": служба пробы названа не так"
+	if len(f) != 1 || !strings.HasPrefix(f[0], wantPrefix) {
+		t.Errorf("инъекция «имя по выпуску»: находки %v, ждали одну, начинающуюся с %q", f, wantPrefix)
+	}
+	t.Logf("носитель ban #6: svc/%s :%d; инъекция «имя по выпуску» → %v; близнец → находок %d", want, port, f, len(twin))
 }

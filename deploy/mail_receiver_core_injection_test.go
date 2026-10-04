@@ -368,7 +368,7 @@ func TestInjection_StandSubjectInTheProdProfileIsFound(t *testing.T) {
 		// Проба рендерится лишь с тем, без чего её манифест невыразим: ссылкой на
 		// секрет пароля базы и тегом образа каталога (оба — отказы рендера).
 		{map[string]any{"notifyProbe.enabled": true, "notifyProbe.db.passwordSecret.name": "kacho-notifyprobe-db",
-			"notify.image.tag": "injected"}, "notify-probe: Deployment/kacho-umbrella-notify-probe"},
+			"notify.image.tag": "injected"}, "notify-probe: Deployment/kacho-notify-probe"},
 	}
 	for _, r := range rendered {
 		v, err := judgeStandChain(t, c.umbrella, injectedProdChain(t, c.umbrella, r.set))

@@ -24,8 +24,15 @@ SPDX-License-Identifier: BUSL-1.1
 ЧЕГО ФАЙЛ НЕ УТВЕРЖДАЕТ: что проба ПОДНЯЛАСЬ — это вопрос подъёма в боевой
 посадке (полоса D6), а не рендера.
 */}}
+{{/* Имя пробы — постоянное, а не из имени выпуска: по нему пробу спрашивает
+     встречный контроль ban #6 (`svc/kacho-notify-probe` в карте носителей
+     deploy/scripts/assert-ban6-external-isolation.py) и называет таблица
+     источников notify (сегмент `sa/` идентичности пробы). Выпуск стенда
+     `kacho-umbrella` дал бы `kacho-umbrella-notify-probe` — и то и другое
+     промахнулось бы мимо пробы (deploy/mail_receiver_core_test.go,
+     TestNotifyProbeServiceIsTheBan6Carrier). */}}
 {{- define "kacho.notifyProbe.fullname" -}}
-{{- printf "%s-notify-probe" .Release.Name | trunc 63 | trimSuffix "-" -}}
+kacho-notify-probe
 {{- end }}
 {{- if (.Values.notifyProbe).enabled }}
 {{- $p := .Values.notifyProbe }}
@@ -44,7 +51,18 @@ SPDX-License-Identifier: BUSL-1.1
 {{- fail "kacho-umbrella: проба notify-probe включена (notifyProbe.enabled), а `mtls.enabled` выключен — внутреннего удостоверяющего нет, листы пробы выпустить нечем, и её слушатели выразимы только незашифрованными (ban #16)" }}
 {{- end }}
 {{- $issuerName := ((.Values.mtls).internalCA).clusterIssuerName | default "kacho-internal-ca" }}
-{{- $trust := required "notifyProbe.trustDomain: домен доверия SPIFFE-идентичности пробы не задан" $p.trustDomain }}
+{{/* Домен доверия — ОДНО объявление зонта (`umbrella.trustDomain`) на обе
+     стороны: им чеканится клиентский лист пробы и его же процесс признаёт
+     своим. Второе объявление в разделе пробы разошлось бы с первым молча
+     (internal/repohygiene/trustdomainposture_test.go). */}}
+{{- $trust := include "umbrella.trustDomain" . }}
+{{/* Имена секретов листов объявлены в значениях, а не выведены из имени
+     выпуска: секрет клиента обязан объявлять тот, кто его монтирует
+     (deploy/client_identity_leaf_test.go, задача #2186) — иначе блок клиентского
+     листа выразим ненаписанным, и ребро к владельцу модели прав предъявляет
+     пустой каталог. */}}
+{{- $srvSecret := required "notifyProbe.mtls.serverSecretName: проба notify-probe включена, а имя секрета серверного листа не задано" ($p.mtls).serverSecretName }}
+{{- $cliSecret := required "notifyProbe.mtls.clientSecretName: проба notify-probe включена, а имя секрета клиентского листа (ребро к владельцу модели прав) не задано" ($p.mtls).clientSecretName }}
 {{- $srvDir := "/var/run/kacho/notify-probe/tls/server" }}
 {{- $cliDir := "/var/run/kacho/notify-probe/tls/client" }}
 {{- $ringDir := "/var/run/kacho/notify-probe/feed-keyring" }}
@@ -65,14 +83,14 @@ automountServiceAccountToken: false
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ printf "%s-server-tls" $name | quote }}
+  name: {{ $srvSecret | quote }}
   namespace: {{ $ns | quote }}
   labels:
     kacho.cloud/component: notify-probe
     app.kubernetes.io/name: notify-probe
     app.kubernetes.io/managed-by: helm
 spec:
-  secretName: {{ printf "%s-server-tls" $name | quote }}
+  secretName: {{ $srvSecret | quote }}
   duration: {{ (.Values.mtls).leafDuration | default "2160h" | quote }}
   renewBefore: {{ (.Values.mtls).leafRenewBefore | default "720h" | quote }}
   privateKey:
@@ -96,14 +114,14 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ printf "%s-client-tls" $name | quote }}
+  name: {{ $cliSecret | quote }}
   namespace: {{ $ns | quote }}
   labels:
     kacho.cloud/component: notify-probe
     app.kubernetes.io/name: notify-probe
     app.kubernetes.io/managed-by: helm
 spec:
-  secretName: {{ printf "%s-client-tls" $name | quote }}
+  secretName: {{ $cliSecret | quote }}
   duration: {{ (.Values.mtls).leafDuration | default "2160h" | quote }}
   renewBefore: {{ (.Values.mtls).leafRenewBefore | default "720h" | quote }}
   privateKey:
@@ -329,10 +347,10 @@ spec:
           emptyDir: {}
         - name: server-tls
           secret:
-            secretName: {{ printf "%s-server-tls" $name | quote }}
+            secretName: {{ $srvSecret | quote }}
         - name: client-tls
           secret:
-            secretName: {{ printf "%s-client-tls" $name | quote }}
+            secretName: {{ $cliSecret | quote }}
         {{- if $ring.name }}
         - name: feed-keyring
           secret:

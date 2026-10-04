@@ -125,6 +125,13 @@ func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 			"Прочитано файлов: %d", filesRead)
 	}
 
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		t.Fatalf("индекс git не прочитан: %v", err)
+	}
+	mentions = migratorCLIResolveUmbrellaTemplates(mentions, func(svc string) bool {
+		return tree.HasDir("services/" + svc)
+	})
 	for _, f := range migratorCLINameFindings(mentions) {
 		t.Errorf("%s", f)
 	}

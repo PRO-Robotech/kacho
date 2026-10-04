@@ -764,9 +764,16 @@ notifyProbe:
   metricsScrape:
     enabled: true
     disabledBecause: ""
-  # Домен доверия SPIFFE-идентичности пробы: им судится круг пересылающих и
-  # выпускается клиентский лист (`spiffe://<домен>/ns/<пространство>/sa/<учётка>`).
-  trustDomain: kacho.cloud
+  # Домен доверия SPIFFE-идентичности пробы — не здесь: он один на зонт
+  # (`umbrella.trustDomain`, templates/_trust-domain.tpl), им выпускается
+  # клиентский лист (`spiffe://<домен>/ns/<пространство>/sa/<учётка>`) и его же
+  # процесс признаёт своим.
+  # Секреты листов пробы (выпускает внутренний УЦ): серверный — оба слушателя,
+  # клиентский — ребро к владельцу модели прав. Секрет клиента объявляет чарт,
+  # который его монтирует (deploy/client_identity_leaf_test.go).
+  mtls:
+    serverSecretName: kacho-notify-probe-server-tls
+    clientSecretName: kacho-notify-probe-client-tls
   authz:
     # Внутренний адрес владельца модели прав (проверка Claim/Ack, сужение потока).
     iamGrpcAddr: ""

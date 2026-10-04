@@ -114,7 +114,7 @@ var (
 // ключ подчарта, затем отказ «ЧЬЮ — не выводится».
 func serviceForForm(tree *treecorpus.Tree, rel string, lines []string, at int) string {
 	rel = filepath.ToSlash(rel)
-	if svc, ok := umbrellaTemplateService(rel); ok {
+	if svc, ok := productnaming.UmbrellaTemplatePart(rel); ok {
 		if tree.HasDir("services/" + svc) {
 			return svc
 		}
@@ -125,21 +125,6 @@ func serviceForForm(tree *treecorpus.Tree, rel string, lines []string, at int) s
 		return keyedService(lines, at)
 	}
 	return svc
-}
-
-// umbrellaTemplatesPrefix — шаблоны самого зонта (не подчартов).
-const umbrellaTemplatesPrefix = "deploy/helm/umbrella/templates/"
-
-// umbrellaTemplateService — служба шаблона зонта по имени файла.
-func umbrellaTemplateService(rel string) (string, bool) {
-	name, ok := strings.CutPrefix(rel, umbrellaTemplatesPrefix)
-	if !ok || strings.Contains(name, "/") {
-		return "", false
-	}
-	if i := strings.IndexAny(name, "-."); i > 0 {
-		return name[:i], true
-	}
-	return "", false
 }
 
 // isDeliveryChart — путь лежит в чарте поставки вне зонта `deploy/helm/<чарт>/`.
