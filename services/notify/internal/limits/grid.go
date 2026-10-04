@@ -93,8 +93,9 @@ func (g Grid) values() []int {
 // Validate судит каждую ручку сетки по её границе; находки — все разом.
 func (g Grid) Validate() error {
 	var bad []string
+	values := g.values()
 	for i, b := range GridBounds() {
-		if v := g.values()[i]; !b.Contains(v) {
+		if v := values[i]; !b.Contains(v) {
 			bad = append(bad, fmt.Sprintf("%s = %d вне границы %s", b.Knob, v, b))
 		}
 	}

@@ -421,7 +421,7 @@ func poolVia(t *testing.T, dsn string, p *commitSwallower) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: пул через прокси не открыт: %v", err)
 	}
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

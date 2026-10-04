@@ -14,11 +14,18 @@ import (
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
+
+// sweepStopBound — сколько останов ждёт текущий проход уборки: партия —
+// один оператор под серверным пределом TxStatementTimeout, проход — не больше
+// retention.DefaultMaxBatchesPerPass партий; ждать дольше одного оператора с
+// запасом останову незачем — недоделанная партия откатывается сервером.
+const sweepStopBound = limits.TxStatementTimeout + 5*time.Second
 
 // runServe — подъём процесса после стража конфигурации. Каждая ошибка
 // возвращается наверх и останавливает процесс ДО подъёма поверхности.
@@ -65,6 +72,12 @@ func runServe(cfg config.Config, logger *slog.Logger) error {
 	if err := lim.WriteFence(ctx); err != nil {
 		return err
 	}
+	// Уборка окон сетки и суток потолка, закончившихся раньше порога (§6, З24).
+	sweeper, err := retention.New(retention.DefaultConfig(), lim.RetentionSubjects(), logger)
+	if err != nil {
+		return fmt.Errorf("уборка лимитов: %w", err)
+	}
+	sweeper.Start(ctx)
 
 	agg := health.New([]health.Checker{
 		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
@@ -85,5 +98,8 @@ func runServe(cfg config.Config, logger *slog.Logger) error {
 
 	<-ctx.Done()
 	logger.Info("останов по сигналу")
+	if !sweeper.Wait(sweepStopBound) {
+		logger.Warn("петля уборки лимитов не завершилась за предел останова", "bound", sweepStopBound)
+	}
 	return wait()
 }

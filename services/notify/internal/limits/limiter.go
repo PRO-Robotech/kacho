@@ -161,7 +161,7 @@ func New(o Options) (*Limiter, error) {
 	return &Limiter{
 		pool:         o.Pool,
 		key:          key,
-		fingerprint:  Fingerprint(key),
+		fingerprint:  fingerprintOf(key),
 		grid:         o.Grid,
 		now:          o.Now,
 		log:          o.Logger,
@@ -171,9 +171,9 @@ func New(o Options) (*Limiter, error) {
 	}, nil
 }
 
-// Fingerprint — отпечаток ключа сетки: первые 16 байт HMAC-SHA256 над меткой
+// fingerprintOf — отпечаток ключа сетки: первые 16 байт HMAC-SHA256 над меткой
 // (З24). Ни ключа, ни его хеша без метки в базе и журнале нет.
-func Fingerprint(key []byte) []byte {
+func fingerprintOf(key []byte) []byte {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte(fingerprintLabel))
 	return m.Sum(nil)[:16]
