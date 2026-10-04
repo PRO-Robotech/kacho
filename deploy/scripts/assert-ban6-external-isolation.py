@@ -208,10 +208,11 @@ INTERNAL_ENDPOINTS = {
     # своём :9091, публичных служб у пробы нет, а у шлюза notify gRPC-слушателя
     # нет вовсе (замысел З29, Д74). Имя — сегмент `sa/` идентичности пробы в
     # таблице источников (`kacho-notify-probe`); Service с этим именем заводит
-    # развёртывание пробы (#2915, полоса D3). До него экземпляра пробы нет ни в
-    # одном профиле, и домен `notify` не измеряет ни один шард — это запись
-    # `ban6_undeployed_carriers` в deploy/e2e-shards.json, истекающая сама, когда
-    # шаблон чарта назовёт процесс `kacho-notify-probe`.
+    # шаблон зонта deploy/helm/umbrella/templates/notify-probe.yaml (#2915,
+    # полоса D3; имя постоянное, держит deploy/mail_receiver_core_test.go,
+    # TestNotifyProbeServiceIsTheBan6Carrier). Домен `notify` — в ядре манифеста
+    # шардов (deploy/e2e-shards.json, `core_ban6_domains`); пока профиль стенда
+    # пробу не рендерит, его судит ветка Д91 ниже («вне опроса»).
     "notify": ("svc/kacho-notify-probe", 9091, "kacho-notify-probe.kacho.svc.cluster.local"),
 }
 
