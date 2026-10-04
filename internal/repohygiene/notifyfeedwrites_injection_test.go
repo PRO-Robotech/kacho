@@ -18,11 +18,11 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"github.com/PRO-Robotech/corelib/treehygiene"
 )
 
@@ -47,14 +47,9 @@ func feedWritesTree(t *testing.T, migration string) string {
 		}
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
-		cmd := exec.Command("git", args...) // #nosec G204 -- argv фиксирован
-		cmd.Dir = root
-		// Без GIT_DIR и родни: из хука git они указали бы на чужое хранилище.
-		for _, kv := range os.Environ() {
-			if !strings.HasPrefix(kv, "GIT_") {
-				cmd.Env = append(cmd.Env, kv)
-			}
-		}
+		// gitenv снимает GIT_DIR и родню: из хука git они указали бы на чужое
+		// хранилище сильнее рабочего каталога.
+		cmd := gitenv.Command(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: git %v: %v\n%s", args, err, out)
 		}
