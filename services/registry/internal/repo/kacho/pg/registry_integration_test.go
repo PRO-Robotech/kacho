@@ -21,6 +21,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/pgtest"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
@@ -166,10 +167,15 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 		r := newReg("prj-P", name, nil)
 		_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 		require.NoError(t, err)
-		_, err = pool.Exec(ctx,
+		// `registries` журналируемая: правка фикстуры идёт транзакцией помощника
+		// записи журнала, как любая запись этой таблицы (NTF-3, З4).
+		tx, err := journaltx.Begin(ctx, pool, journaltx.NewOptions(false))
+		require.NoError(t, err)
+		_, err = tx.Exec(ctx,
 			`UPDATE kacho_registry.registries SET created_at = $2 WHERE id = $1`,
 			r.ID, time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC))
 		require.NoError(t, err)
+		require.NoError(t, tx.Commit(ctx))
 	}
 	// Чужой project не течёт.
 	other := newReg("prj-Q", "delta", nil)

@@ -228,7 +228,7 @@ func (s *stand) createVolume(t *testing.T, projectID, name string) *domain.Volum
 // положительный контроль.
 func (s *stand) createVolumeWithID(t *testing.T, id, projectID, name string) *domain.Volume {
 	t.Helper()
-	v, _, err := pg.NewVolumeRepo(s.pool).Insert(context.Background(), &domain.Volume{
+	v, _, err := pg.NewVolumeRepo(s.pool).Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         id,
 		ProjectID:  projectID,
 		Name:       name,
