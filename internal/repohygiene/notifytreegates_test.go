@@ -115,6 +115,7 @@ func reportNotifyFindings(t *testing.T, gate string, fs []treehygiene.Finding) {
 // TestNTF1B27Gate_OnKacho — NTF1-B27 (гейт) по дереву kacho: ссылок на функции
 // idna вне corelib/notify/address 0.
 func TestNTF1B27Gate_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditIDNASingular(root, notifyStubDir)
 	if err != nil {
@@ -128,6 +129,7 @@ func TestNTF1B27Gate_OnKacho(t *testing.T) {
 // TestNTF1B27Receiver_OnKacho — NTF1-B27 (гейт, приёмник address.Domain) по
 // дереву kacho: узлов приёмника 0.
 func TestNTF1B27Receiver_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditDomainReceivers(root, notifyStubDir)
 	if err != nil {
@@ -141,6 +143,7 @@ func TestNTF1B27Receiver_OnKacho(t *testing.T) {
 // TestNTF1B28Gate_OnKacho — NTF1-B28 (гейт) по дереву kacho: узлов обхода
 // типобезопасности 0 по каждому из семи видов, стабы pkg/api пропущены.
 func TestNTF1B28Gate_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditTypeSafetyBypass(root, notifyStubDir)
 	if err != nil {
@@ -160,6 +163,7 @@ func TestNTF1B28Gate_OnKacho(t *testing.T) {
 // быть увидена: ноль ссылок в файлах генератора значил бы, что вход -list
 // обхода не достиг.
 func TestNTF1B28PutGate_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditFeedPutReferences(root, notifyStubDir, notifygenList(t, root))
 	if err != nil {
@@ -177,6 +181,7 @@ func TestNTF1B28PutGate_OnKacho(t *testing.T) {
 // TestUK46ValueErrorDiscard_OnKacho — узел «ошибка Value() отброшена» по
 // дереву kacho (CX1-41 (б)).
 func TestUK46ValueErrorDiscard_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditValueErrorDiscard(root, notifyStubDir)
 	if err != nil {
@@ -192,6 +197,7 @@ func TestUK46ValueErrorDiscard_OnKacho(t *testing.T) {
 // ленты производит внутренний пакет corelib, и вне `notify/feed` его не
 // импортирует компилятор, поэтому писатель в kacho — только находка.
 func TestNTF1B19FeedWriters_OnKacho(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r, err := treehygiene.AuditFeedTableWrites(root, notifyStubDir)
 	if err != nil {

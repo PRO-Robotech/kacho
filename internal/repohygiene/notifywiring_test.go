@@ -67,6 +67,7 @@ func notifyWiring(t *testing.T, dir, makefile string) treehygiene.WiringReport {
 // TestNTF1D08_KachoCIRunsTheNotifyChecks — D08 по дереву kacho: по каждой
 // записи ведомости ровно один шаг в едином рабочем процессе, находок ноль.
 func TestNTF1D08_KachoCIRunsTheNotifyChecks(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	r := notifyWiring(t, filepath.Join(root, filepath.FromSlash(notifyWorkflowsDir)), filepath.Join(root, "Makefile"))
 	logCorelibPin(t, root)
@@ -106,6 +107,7 @@ type notifyInjection struct {
 // одному шагу на запись. Копии близнеца и инъекции идут одним путём
 // «разбор → Marshal» и различаются только правкой.
 func TestNTF1D08_InjectionsInKachoAreFound(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	ledger := treehygiene.NotifyWiringLedger()
 	if len(ledger) != 2 || !strings.Contains(ledger[0], "notifications-check") || !strings.Contains(ledger[1], "notify-tree-gates") {
@@ -445,6 +447,7 @@ func linesWith(s string, words ...string) []string {
 // «УСЛОВИЕ НЕ СОЗДАНО»; база, не разрешающаяся в коммит, — красный генератора
 // «база не найдена» с ненулевым кодом (D07 (д)), а не пропуск.
 func TestNTF1D08_NotificationsCheckRecipeCallsTheGenerator(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	const base = "d08probebase"
 	out, code := makeOut(t, root, "-n", "notifications-check", "BASE="+base)
@@ -514,6 +517,7 @@ func notifyTreeGateTests(t *testing.T, root string) []string {
 // верхнего уровня файла тонких вызывающих — проба, заведённая без строки
 // перечня, и строка без пробы равно находки.
 func TestNTF1D08_NotifyTreeGatesRecipeRunsEveryGate(t *testing.T) {
+	t.Parallel()
 	root := repoRootFor(t)
 	out, code := makeOut(t, root, "-n", "notify-tree-gates")
 	if code != 0 {
