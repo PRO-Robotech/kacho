@@ -53,8 +53,9 @@ import (
 
 const forgedForwardedFor = "192.0.2.200"
 
-// seenByEdge — что раздача прислала дублёру края на один запрос.
-type seenByEdge struct{ ForwardedFor, RealIP string }
+// seenByEdge — что раздача прислала дублёру края на один запрос; LinkSAN —
+// имя звена в листе, который раздача предъявила (проверенная цепочка).
+type seenByEdge struct{ ForwardedFor, RealIP, LinkSAN string }
 
 // forwardRecorder — дублёр края: запоминает заголовки адреса по метке запроса.
 type forwardRecorder struct {
@@ -64,9 +65,11 @@ type forwardRecorder struct {
 
 func (f *forwardRecorder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
-	f.seen[r.Header.Get("X-Request-ID")] = seenByEdge{
-		ForwardedFor: r.Header.Get("X-Forwarded-For"), RealIP: r.Header.Get("X-Real-IP"),
+	s := seenByEdge{ForwardedFor: r.Header.Get("X-Forwarded-For"), RealIP: r.Header.Get("X-Real-IP")}
+	if r.TLS != nil && len(r.TLS.VerifiedChains) > 0 && len(r.TLS.VerifiedChains[0]) > 0 {
+		s.LinkSAN = strings.Join(r.TLS.VerifiedChains[0][0].DNSNames, ",")
 	}
+	f.seen[r.Header.Get("X-Request-ID")] = s
 	f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{}`))
@@ -201,6 +204,14 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 			}
 			if b.RealIP != clientBIP {
 				t.Errorf("клиент B: раздача видит пир %q, а клиент пришёл с %s — проба меряет не тот адрес", b.RealIP, clientBIP)
+			}
+		})
+		t.Run(fmt.Sprintf("предмет %s: раздача предъявила краю лист звена", ln.path), func(t *testing.T) {
+			for name, s := range map[string]seenByEdge{"A": a, "B": b} {
+				if s.LinkSAN != probeLinkSAN {
+					t.Errorf("полоса `location %s`, клиент %s: край видит лист звена %q, ожидался %q — "+
+						"без листа звена край не принял бы адрес клиента от раздачи", ln.head, name, s.LinkSAN, probeLinkSAN)
+				}
 			}
 		})
 		t.Run(fmt.Sprintf("близнец %s: два клиента — два источника", ln.path), func(t *testing.T) {

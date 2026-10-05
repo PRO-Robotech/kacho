@@ -80,8 +80,8 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 			// Полоса ресурсов к краю (а не первая найденная): строку убирают в ОДНОЙ
 			// полосе, остальные целы, — судья обязан назвать именно её.
 			name:    "полоса ресурсов к краю без своей строки X-Forwarded-For",
-			from:    "proxy_pass http://$api_gw_upstream;\n            proxy_http_version 1.1;\n            proxy_set_header Host $host;\n            proxy_set_header X-Forwarded-For $remote_addr;\n",
-			to:      "proxy_pass http://$api_gw_upstream;\n            proxy_http_version 1.1;\n            proxy_set_header Host $host;\n",
+			from:    "proxy_ssl_session_reuse on;\n            proxy_http_version 1.1;\n            proxy_set_header Host $host;\n            proxy_set_header X-Forwarded-For $remote_addr;\n",
+			to:      "proxy_ssl_session_reuse on;\n            proxy_http_version 1.1;\n            proxy_set_header Host $host;\n",
 			mustSay: "location ~ ^/(vpc|compute|storage|geo|nlb|registry|operations)/` проксирует",
 		},
 		{

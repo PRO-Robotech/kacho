@@ -585,8 +585,8 @@ func TestEdgeAdmissionRenderInjection_FrontRuleDroppedIsAnUnreachableDial(t *tes
 	if err != nil {
 		t.Fatalf("судья отказал на инъекции: %v", err)
 	}
-	if len(v.findings) != 1 || !strings.Contains(v.findings[0], "звонит api-gateway:8080") {
-		t.Fatalf("ждали ровно одну находку «раздача звонит api-gateway:8080», есть %d:\n%s",
+	if len(v.findings) != 1 || !strings.Contains(v.findings[0], "звонит api-gateway:8443") {
+		t.Fatalf("ждали ровно одну находку «раздача звонит api-gateway:8443», есть %d:\n%s",
 			len(v.findings), strings.Join(v.findings, "\n"))
 	}
 	t.Logf("находка: %s", v.findings[0])
@@ -717,18 +717,20 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 		spec := submap(ps[0], "spec")
 		return spec, slice(spec, "ingress")
 	}
-	// ruleOnPort — правило политики края, открывающее порт по имени.
-	ruleOnPort := func(t *testing.T, rules []any, port any) map[string]any {
+	// ruleOfSender — правило политики края, чей отправитель — под с меткой
+	// компонента component (раздача консоли и контроллер входа оба звонят на
+	// порт `tls`, kacho#3028 круг 5, — правило различает отправитель, а не порт).
+	ruleOfSender := func(t *testing.T, rules []any, component string) map[string]any {
 		t.Helper()
 		for _, r := range rules {
 			rm, _ := r.(map[string]any)
-			for _, p := range slice(rm, "ports") {
-				if pm, _ := p.(map[string]any); pm["port"] == port {
+			for _, ps := range npPeerSelectors(map[string]any{"spec": map[string]any{"ingress": []any{rm}}}) {
+				if stringMap(ps["matchLabels"])["app.kubernetes.io/component"] == component {
 					return rm
 				}
 			}
 		}
-		t.Fatalf("правила на порт %v в политике края нет — предпосылка инъекции", port)
+		t.Fatalf("правила с отправителем %q в политике края нет — предпосылка инъекции", component)
 		return nil
 	}
 	cases := []struct {
@@ -740,7 +742,7 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 			name: "I2b селектор раздачи расширен до всей установки",
 			mutate: func(t *testing.T, docs []map[string]any) []map[string]any {
 				_, rules := edgeRules(t, docs)
-				from := slice(ruleOnPort(t, rules, "cmux"), "from")
+				from := slice(ruleOfSender(t, rules, consoleHostComponent), "from")
 				from[0] = map[string]any{"podSelector": map[string]any{
 					"matchLabels": map[string]any{"app.kubernetes.io/instance": "kacho-umbrella"}}}
 				return docs
@@ -789,9 +791,9 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 			name: "второй отправитель в правиле звена",
 			mutate: func(t *testing.T, docs []map[string]any) []map[string]any {
 				_, rules := edgeRules(t, docs)
-				cmux := ruleOnPort(t, rules, "cmux")
-				tls := ruleOnPort(t, rules, "tls")
-				cmux["from"] = append(slice(cmux, "from"), npDeepCopy(slice(tls, "from")[0]))
+				console := ruleOfSender(t, rules, consoleHostComponent)
+				controller := ruleOfSender(t, rules, "controller")
+				console["from"] = append(slice(console, "from"), npDeepCopy(slice(controller, "from")[0]))
 				return docs
 			},
 			mustSay: "отправителей 2, ожидался ровно один",
@@ -800,8 +802,8 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 			name: "звену открыт internal-rest, до которого не звонит никто",
 			mutate: func(t *testing.T, docs []map[string]any) []map[string]any {
 				_, rules := edgeRules(t, docs)
-				cmux := ruleOnPort(t, rules, "cmux")
-				cmux["ports"] = append(slice(cmux, "ports"), map[string]any{"protocol": "TCP", "port": "internal-rest"})
+				console := ruleOfSender(t, rules, consoleHostComponent)
+				console["ports"] = append(slice(console, "ports"), map[string]any{"protocol": "TCP", "port": "internal-rest"})
 				return docs
 			},
 			mustSay: "открыт порт края 8081, до которого оно не звонит",
