@@ -29,3 +29,9 @@ global:
           key: password
         fromAddress: "noreply@operator.example"
         fromName: "Kacho Cloud"
+        # Объект ключа DKIM установки (Р19 «Подпись», §8): его создаёт оператор,
+        # чарт notify объекта не рендерит и монтирует томом без `subPath`.
+        dkim:
+          secretName: kacho-notify-dkim
+          privateKeyKey: private.key
+          selectorKey: selector

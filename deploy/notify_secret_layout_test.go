@@ -588,10 +588,14 @@ func TestNotifyRecipientKeyObjectNameIsConstant(t *testing.T) {
 	if ok, why := judge(notifyFixtureChart(t, nil)); !ok {
 		t.Errorf("имя объекта ключа сетки зависит от значения ключа: %s", why)
 	}
+	// Имя ссылки пода выводит помощник `notify.recipientKeySecretName`
+	// (_helpers.tpl; объект стенда Д123 либо объект чарта) — инъекция правит
+	// оба написания имени: объект и помощник.
 	suffix := ` }}-recipient-key-{{ .Values.recipientKey | sha256sum | trunc 8 }}`
 	inj := notifyFixtureChart(t, map[string]func(string) string{
 		"templates/recipient-key-secret.yaml": replaceOnce(` }}-recipient-key`, suffix),
-		"templates/deployment.yaml":           replaceOnce(` }}-recipient-key`, suffix),
+		"templates/_helpers.tpl": replaceOnce(`(printf "%s-recipient-key" (include "notify.fullname" .))`,
+			`(printf "%s-recipient-key-%s" (include "notify.fullname" .) (.Values.recipientKey | sha256sum | trunc 8))`),
 	})
 	if ok, why := judge(inj); ok {
 		t.Errorf("инъекция «имя от содержимого»: проба промолчала (%s)", why)

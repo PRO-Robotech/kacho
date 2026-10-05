@@ -296,23 +296,21 @@ global:
         trustAnchorSecret:
           name: kacho-mailpit-tls
           key: ca.crt
-    # Проба пишет почтовые запросы (переопределение модуля; флаг установки —
-    # values.yaml зонтика). Перечень источников notify этого стенда —
-    # `{notify-probe}`.
+    # ─── ПРОБА НЕ ПИШЕТ ПОЧТОВЫХ ЗАПРОСОВ — ПОКА (NTF-1 D10) ──────────────────
+    # Площадка тянет образы из реестра, а образа kacho-notify там нет (конвейер
+    # публикует его со ствола, службы там пока нет): notify и проба без тега
+    # рендером отвергаются, а тег, «выведенный» из коммита, назвал бы манифест,
+    # которого не существует (values.yaml, `notify.image`). Вместе с ним нужны
+    # объект ключа сетки площадки (Д123), объект ключа DKIM и зона DNS стенда
+    # значениями этого кластера. Перечень источников notify пуст; узел почты и
+    # приёмник остаются — их читает служба доступа. Возврат — одним изменением с
+    # опубликованным тегом.
     notifications:
       modules:
         notifyProbe:
-          enabled: true
+          enabled: false
 mailpit:
   enabled: true
-# Проба развёрнута на стенде (NTF1-I04: в `prod` её нет). Секреты паролей баз
-# notify и пробы заводит подъём notify (полоса D6).
+# Проба на площадке не развёрнута (см. `global.kacho.notifications` выше).
 notifyProbe:
-  enabled: true
-  db:
-    passwordSecret:
-      name: kacho-notifyprobe-db
-notify:
-  db:
-    passwordSecret:
-      name: kacho-notify-db
+  enabled: false

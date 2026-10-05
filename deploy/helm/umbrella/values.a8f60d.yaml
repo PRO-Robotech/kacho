@@ -138,6 +138,11 @@ global:
       modules:
         notifyProbe:
           enabled: false
+    # Зона DNS стенда снята (Д102): слой под нами (values.dev.yaml) её объявляет
+    # значениями kind, а полоса этого профиля — внешний ретранслятор; посев зоны
+    # стенда сюда запрещён (deploy/stacks-mail.txt, признак `relay`).
+    standDNS:
+      enabled: false
 # ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
 #
 # Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
@@ -487,4 +492,10 @@ uif:
 
 # Проба-источник notify не развёрнута (Д102; см. `global.kacho.notifications` выше).
 notifyProbe:
+  enabled: false
+
+# Базы notify и пробы (полоса D6) слой под нами включает; здесь их служб нет.
+pg-notify:
+  enabled: false
+pg-notifyprobe:
   enabled: false

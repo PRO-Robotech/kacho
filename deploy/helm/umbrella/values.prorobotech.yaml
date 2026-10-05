@@ -60,6 +60,25 @@
 
 global:
   imageRegistry: ""
+  # ─── NOTIFY НА ЭТОЙ ПЛОЩАДКЕ НЕ РЕНДЕРИТСЯ — ПОКА (NTF-1 D10, Д106 (б)) ──────
+  # Слой под нами (values.dev.yaml) включает пробу-источник и зону DNS стенда
+  # значениями kind. Здесь не исполнимо ни то, ни другое:
+  #   · образа kacho-notify в реестре нет (конвейер публикует его со ствола, а
+  #     службы там пока нет; см. `notify.image` ниже и values.yaml) — notify и
+  #     проба без тега отвергаются рендером;
+  #   · `serviceIP` и `clusterDomain` зоны стенда — величины ЭТОГО кластера, а
+  #     унаследованные — умолчание kind; тихого перехода к kind нет (Д106 (б)).
+  # Поэтому сняты оба ключа пробы и зона. Возврат — одним изменением, когда есть
+  # опубликованный тег и значения кластера: тег, `standDNS` своими значениями,
+  # ключи пробы обратно (deploy/stacks-mail.txt уже называет этот файл файлом
+  # кластера).
+  kacho:
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
+    standDNS:
+      enabled: false
 
 vpc:
   image: docker.io/prorobotech/kacho-vpc:main-d752de57
@@ -163,3 +182,11 @@ registry:
       username: ""
       password: ""
       htpasswd: ""
+
+# Проба-источник notify и базы notify здесь не поднимаются (см. шапку `global`).
+notifyProbe:
+  enabled: false
+pg-notify:
+  enabled: false
+pg-notifyprobe:
+  enabled: false

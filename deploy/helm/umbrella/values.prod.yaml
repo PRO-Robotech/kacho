@@ -1667,6 +1667,50 @@ pg-registry:
       effective_cache_size = 1GB
       autovacuum_naptime = 5s
 
+pg-notify:
+  # Шлюз уведомлений в этой цепочке НЕ поднимается (перечень источников notify пуст), и база
+  # выключена. Потолок и трата объявлены всё равно: включение базы вместе со
+  # службой не должно оставлять выбор памяти умолчанию чужого чарта.
+  # 128MB + 50 × 4MB = 328MiB ≤ 1Gi.
+  enabled: false
+  auth:
+    username: notify
+    database: kacho_notify
+  primary:
+    # Канал (TLS сервера и pg_hba, требующий его) объявляет профиль, включающий
+    # базу вместе со службой: здесь сервер TLS не отдаёт, и требование TLS в
+    # pg_hba оставило бы базу без единого входа.
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 1Gi }
+    extendedConfiguration: |
+      max_connections = 50
+      shared_buffers = 128MB
+      work_mem = 4MB
+      autovacuum_naptime = 5s
+
+pg-notifyprobe:
+  # Стендовая проба-источник в этой цепочке НЕ поднимается (перечень источников notify пуст), и база
+  # выключена. Потолок и трата объявлены всё равно: включение базы вместе со
+  # службой не должно оставлять выбор памяти умолчанию чужого чарта.
+  # 128MB + 50 × 4MB = 328MiB ≤ 1Gi.
+  enabled: false
+  auth:
+    username: notifyprobe
+    database: kacho_notifyprobe
+  primary:
+    # Канал (TLS сервера и pg_hba, требующий его) объявляет профиль, включающий
+    # базу вместе со службой: здесь сервер TLS не отдаёт, и требование TLS в
+    # pg_hba оставило бы базу без единого входа.
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 1Gi }
+    extendedConfiguration: |
+      max_connections = 50
+      shared_buffers = 128MB
+      work_mem = 4MB
+      autovacuum_naptime = 5s
+
 # Per-datastore Postgres :5432 ingress allowlist (templates/networkpolicy-datastore.yaml,
 # r5b). Default-off in the chart (kind/kindnet does not enforce NetworkPolicy; :5432
 # port-forward debugging in dev would break). Production runs a NetworkPolicy-enforcing

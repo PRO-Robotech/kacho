@@ -1,0 +1,174 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+СЕРВЕР ЗОНЫ DNS СТЕНДА (NTF-1 Р19 «Профиль стенда», замысел §12а «Зона
+стенда»; CX1-130, CX1-135; полоса D10).
+
+ЗАЧЕМ. Страж DNS установки notify на старте читает три записи домена
+отправителя (DKIM под селектором объекта ключа, SPF, DMARC) резолвером своего
+пода и без них в готовность не выходит. Домен отправителя стенда публичных
+записей не имеет и иметь не должен: ключ стенда — посев, а не ключ установки.
+Поэтому стенд поднимает свой сервер имён, авторитетный ТОЛЬКО для домена
+отправителя, и под notify смотрит на него (`dnsPolicy: None`, помощник
+`notify.dnsConfig`). Остальные имена сервер пересылает резолверу своего пода
+(`forward . /etc/resolv.conf`; сам он — `ClusterFirst`), то есть DNS кластера:
+база, kaname и приёмник достижимы по именам кластера.
+
+ЧТО ФАЙЛ УТВЕРЖДАЕТ:
+  · рендерится ровно при включённой зоне — исход помощника `notify.standDNS`
+    (ключ `global.kacho.standDNS` здесь не читается; второго места решения нет),
+    при любом перечне подключаемых: отказ помощника срабатывает и там, где
+    notify не рендерится;
+  · адрес службы — `global.kacho.standDNS.serviceIP` (файл своего кластера,
+    deploy/stacks-mail.txt); рецепт подъёма сверяет его до `helm upgrade`;
+  · образ прибит дайджестом (форма `mail-receiver.yaml`);
+  · записи зоны — объект `<релиз>-stand-dns-zone`, который заводит посев
+    `deploy/scripts/seed-stand-dkim.sh` из открытого ключа объекта ключа DKIM.
+    Закрытого ключа сервер не монтирует.
+
+ЧЕГО ФАЙЛ НЕ УТВЕРЖДАЕТ: что записи верны — это проверяет страж notify (P01
+на стенде) и сверка согласия в посеве.
+*/}}
+{{- $mode := include "notify.standDNS" . }}
+{{- if ne $mode "off" }}
+{{- $srv := include "notify.standDNSServer" . | fromJson }}
+{{- if not $srv.zone }}
+{{- fail "kacho-umbrella: зона DNS стенда включена (global.kacho.standDNS.enabled), а домен зоны не выводится из адреса отправителя узла почты (global.kacho.identity.smtp.fromAddress, форма <локальная часть>@<домен>)" }}
+{{- end }}
+{{- $img := .Values.standZoneServer.image }}
+{{- if not $img.digest }}
+{{- fail "kacho-umbrella: зона DNS стенда включена, а образ сервера зоны не прибит — `standZoneServer.image.digest` пуст. Плавающий тег означает, что два прогона одного дерева идут на разных образах" }}
+{{- end }}
+{{- if not (hasPrefix "sha256:" (toString $img.digest)) }}
+{{- fail (printf "kacho-umbrella: `standZoneServer.image.digest` = %q — это не дайджест. Ожидается форма `sha256:<64 hex>`" (toString $img.digest)) }}
+{{- end }}
+{{- $ns := .Release.Namespace }}
+{{- $name := printf "%s-stand-dns" .Release.Name }}
+{{- $port := int .Values.standZoneServer.port }}
+{{- $corefile := printf "%s:%d {\n    errors\n    file /etc/coredns/zone/db.zone %s {\n        reload 10s\n    }\n}\n.:%d {\n    errors\n    health :8080\n    ready :8181\n    forward . /etc/resolv.conf\n    cache 30\n}\n" $srv.zone $port $srv.zone $port }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-corefile" $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: stand-dns
+    app.kubernetes.io/name: stand-dns
+    app.kubernetes.io/managed-by: helm
+data:
+  Corefile: {{ $corefile | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: stand-dns
+    app.kubernetes.io/name: stand-dns
+    app.kubernetes.io/managed-by: helm
+spec:
+  type: ClusterIP
+  clusterIP: {{ $srv.serviceIP | quote }}
+  selector:
+    app.kubernetes.io/name: stand-dns
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  ports:
+    - name: dns-udp
+      port: 53
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: 53
+      targetPort: dns-tcp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: stand-dns
+    app.kubernetes.io/name: stand-dns
+    app.kubernetes.io/managed-by: helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: stand-dns
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  template:
+    metadata:
+      labels:
+        kacho.cloud/component: stand-dns
+        app.kubernetes.io/name: stand-dns
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      annotations:
+        # Домен зоны — для посева: он выводит записи для того же домена, что
+        # обслуживает сервер (одно объявление, а не второе написание).
+        kacho.cloud/stand-dns-zone: {{ $srv.zone | quote }}
+        checksum/corefile: {{ $corefile | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: coredns
+          image: {{ printf "%s@%s" $img.repository $img.digest | quote }}
+          imagePullPolicy: {{ $img.pullPolicy | default "IfNotPresent" | quote }}
+          args: ["-conf", "/etc/coredns/conf/Corefile"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: dns-udp
+              containerPort: {{ $port }}
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: {{ $port }}
+              protocol: TCP
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: ready
+              containerPort: 8181
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: ready
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.standZoneServer.resources | nindent 12 }}
+          volumeMounts:
+            - name: corefile
+              mountPath: /etc/coredns/conf
+              readOnly: true
+            - name: zone
+              mountPath: /etc/coredns/zone
+              readOnly: true
+      volumes:
+        - name: corefile
+          configMap:
+            name: {{ printf "%s-corefile" $name | quote }}
+        - name: zone
+          configMap:
+            # Объект заводит посев (seed-stand-dkim.sh) до `helm upgrade`; его
+            # отсутствие — под не стартует с именем объекта, а не пустая зона.
+            name: {{ printf "%s-zone" $name | quote }}
+{{- end }}

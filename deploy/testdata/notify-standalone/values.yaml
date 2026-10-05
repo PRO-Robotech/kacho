@@ -32,6 +32,11 @@ image:
   tag: fixture
 origin: "https://console.example.invalid"
 recipientKey: "fixture-recipient-key-not-a-secret-0123456789"
+# Ключ значением, а не объектом стенда (Д123): слой ложится и поверх цепочки
+# стенда, где профиль называет объект, — у ключа одно место, и фикстура его
+# называет явно.
+recipientKeySecret:
+  name: ""
 db:
   host: notify-postgres
   passwordSecret:

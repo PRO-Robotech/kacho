@@ -8,6 +8,7 @@ SPDX-License-Identifier: BUSL-1.1
 {{- $cred := $smtp.credentialSecret }}
 {{- $dbpw := .Values.db.passwordSecret }}
 {{- $dbpwName := required "db.passwordSecret.name (чарт notify): секрет пароля базы kacho_notify не назван" $dbpw.name }}
+{{- $dkim := include "notify.dkimNode" . | fromJson }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,6 +55,11 @@ spec:
     spec:
       serviceAccountName: {{ include "notify.fullname" . }}
       automountServiceAccountToken: false
+      {{- /* Резолвер пода: на стенде с зоной — сервер зоны стенда (`dnsPolicy:
+           None`), иначе резолвер кластера. Решает один помощник (CX1-135). */}}
+      {{- with include "notify.dnsConfig" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
@@ -62,6 +68,11 @@ spec:
         - name: peer-tls
           secret:
             secretName: {{ include "notify.fullname" . }}-peer-tls
+        # Объект ключа DKIM — ТОМОМ БЕЗ `subPath` (§12а): пара читается из одного
+        # поколения `..data`, обновление объекта приходит новым поколением.
+        - name: dkim
+          secret:
+            secretName: {{ $dkim.secretName | quote }}
         {{- if and $anchor $anchor.name }}
         - name: smtp-trust-anchor
           secret:
@@ -108,6 +119,9 @@ spec:
             - name: peer-tls
               mountPath: {{ include "notify.peerTLSDir" . | quote }}
               readOnly: true
+            - name: dkim
+              mountPath: {{ include "notify.dkimDir" . | quote }}
+              readOnly: true
             {{- if and $anchor $anchor.name }}
             - name: smtp-trust-anchor
               mountPath: {{ include "notify.anchorDir" . | quote }}
@@ -122,11 +136,12 @@ spec:
                 secretKeyRef:
                   name: {{ $dbpwName | quote }}
                   key: {{ $dbpw.key | quote }}
-            # Ключ сетки — только переменной secretKeyRef (З24).
+            # Ключ сетки — только переменной secretKeyRef (З24): объект чарта
+            # `<полное имя>-recipient-key` либо объект стенда (Д123).
             - name: KACHO_NOTIFY_RECIPIENT_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "notify.fullname" . }}-recipient-key
+                  name: {{ include "notify.recipientKeySecretName" . }}
                   key: recipientKey
             {{- if and $cred $cred.name }}
             # Удостоверение ретранслятора — ссылка на объект и ключ, названные

@@ -351,6 +351,33 @@ mailpit:
       cpu: 120m
       memory: 192Mi
 
+# ─── Сервер зоны DNS стенда (NTF-1 Р19, замысел §12а; полоса D10) ──────────────
+# Поднимается шаблоном templates/stand-dns.yaml ровно при включённой зоне —
+# исход помощника `notify.standDNS` над `global.kacho.standDNS` (объявляет
+# только профиль стенда, в файле своего кластера). Здесь — образ и аппетит.
+#
+# ОБРАЗ ПРИБИТ ДАЙДЖЕСТОМ (форма `mailpit.image`): тег рядом ради читаемости, в
+# рантайм идёт дайджест. Дайджест снят с реестра 2026-10-05 (индекс мультиарх-
+# образа), повторяется:
+#   docker buildx imagetools inspect registry.k8s.io/coredns/coredns:v1.14.2
+# Образ — тот же сервер имён, что ставит kind 0.32 узлам кластера; процесс
+# образа — `nonroot` (65532), поэтому слушатель — непривилегированный порт
+# `port`, а служба отдаёт его на 53.
+standZoneServer:
+  image:
+    repository: registry.k8s.io/coredns/coredns
+    tag: v1.14.2
+    digest: "sha256:e7e6440cfd1e919280958f5b5a6ab2b184d385bba774c12ad2a9e1e4183f90d9"
+    pullPolicy: IfNotPresent
+  port: 5353
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 96Mi
+
 # cert-manager (jetstack) sub-chart — controller + CRDs + webhook. Installed only
 # when mtls.enabled (Chart.yaml condition). Deploys into the umbrella release
 # namespace; its --cluster-resource-namespace defaults to that namespace, so the
@@ -740,8 +767,9 @@ pg-storage:
 # перечне источников (NTF1-N04). Перечень выводится из таблицы модулей чарта и
 # флага `global.kacho.notifications` (выше); на этой голове единственный источник
 # таблицы — стендовая проба `notify-probe`, поэтому notify рендерится ровно в
-# цепочках стендов с пробой (dev, dev-prod, prorobotech, fe3455) и не рендерится
-# в own, prod, a8f60d (замысел З28, таблица «Флаг и выведенный перечень»).
+# цепочках стендов с пробой (dev, dev-prod) и не рендерится в own, prod, a8f60d
+# (замысел З28, таблица «Флаг и выведенный перечень») и — до публикации образа —
+# в prorobotech, fe3455 (их профили пробу выключают; см. ниже).
 #
 # ОБРАЗ НАЗВАН, ТЕГ — НЕТ, И ЭТО ПРАВДА, А НЕ ПРОПУСК. Рецепт стенда собирает
 # kacho-notify, поэтому базовый слой обязан его назвать (гейт
@@ -801,6 +829,9 @@ notifyProbe:
     user: notifyprobe
     name: kacho_notifyprobe
     sslMode: require
+    # Ширина пула (KACHO_NOTIFYPROBE_DB_MAX_CONNS): объявлена, а не умолчание
+    # драйвера max(4, число ядер узла) — deploy/pool_fits_database_test.go.
+    maxConns: 5
     passwordSecret:
       name: ""
       key: password
@@ -963,6 +994,22 @@ registry:
 
 pg-registry:
   # Carries kacho_registry.registry_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+
+pg-notify:
+  enabled: false
+  # Carries kacho_notify CAS-строки сетки и потолка (Р10), переписываемые на
+  # каждом резерве, и уборку окон — та же свежесть статистики, что у очередей.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+
+pg-notifyprobe:
+  enabled: false
+  # Carries kacho_notifyprobe ленту извещений (notification_feed), которую
+  # notify забирает `Claim` с отбором по состоянию строки.
   primary:
     extendedConfiguration: |
       autovacuum_naptime = 5s

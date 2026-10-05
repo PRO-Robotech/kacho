@@ -71,3 +71,34 @@ notify.trustDomain — домен доверия SPIFFE-идентичности
 */}}
 {{- define "notify.anchorDir" -}}/var/run/kacho/notify/smtp-trust-anchor{{- end -}}
 {{- define "notify.peerTLSDir" -}}/var/run/kacho/notify/tls{{- end -}}
+
+{{/*
+notify.dkimNode — объект ключа DKIM установки, узел
+`global.kacho.identity.smtp.dkim` `{secretName, privateKeyKey, selectorKey}`
+(замысел §8, §12а «Ключ и селектор DKIM»), JSON. Объекта чарт НЕ рендерит: в
+боевой посадке его создаёт оператор, на стенде — посев
+`deploy/scripts/seed-stand-dkim.sh`. Пустое поле при рендерящемся notify —
+отказ рендера с полным именем ключа узла.
+*/}}
+{{- define "notify.dkimNode" -}}
+{{- $d := dig "kacho" "identity" "smtp" "dkim" (dict) (.Values.global | default dict) -}}
+{{- $secret := required "global.kacho.identity.smtp.dkim.secretName: объект ключа DKIM установки не назван, а notify рендерится (перечень источников непуст) — в боевой посадке его создаёт оператор, на стенде посев seed-stand-dkim.sh" (index $d "secretName") -}}
+{{- $key := required "global.kacho.identity.smtp.dkim.privateKeyKey: ключ объекта DKIM с закрытым ключом не назван" (index $d "privateKeyKey") -}}
+{{- $sel := required "global.kacho.identity.smtp.dkim.selectorKey: ключ объекта DKIM с селектором не назван" (index $d "selectorKey") -}}
+{{- dict "secretName" $secret "privateKeyKey" $key "selectorKey" $sel | toJson -}}
+{{- end -}}
+
+{{/*
+Каталог тома объекта ключа DKIM — без `subPath`: обновление объекта kubelet
+доставляет новым поколением `..data`, и на этом стоит смена ключа (§12а).
+*/}}
+{{- define "notify.dkimDir" -}}/etc/kacho/notify/dkim{{- end -}}
+
+{{/*
+notify.recipientKeySecretName — имя объекта ключа сетки, на которое ссылается
+переменная пода: объект стенда (`recipientKeySecret.name`, Д123) либо объект
+чарта с постоянным именем `<полное имя>-recipient-key` (CX1-68 (г)).
+*/}}
+{{- define "notify.recipientKeySecretName" -}}
+{{- (.Values.recipientKeySecret | default dict).name | default (printf "%s-recipient-key" (include "notify.fullname" .)) -}}
+{{- end -}}
