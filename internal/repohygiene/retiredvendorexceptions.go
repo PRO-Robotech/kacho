@@ -203,7 +203,7 @@ var retiredVendorExceptions = []retiredVendorException{
 	{
 		Path: "internal/repohygiene/retiredidentityvendorceiling.go", Lines: 27,
 		Kind: retiredVendorExceptionGuard, Anchor: "func vendorMarkBoundedIn(",
-		Why: "убывающий потолок привязок к поставщику по трём деревьям: рост против базы — находка",
+		Why: "убывающий потолок привязок к поставщику по трём деревьям: привязка, добавленная против базы, — находка",
 	},
 	{
 		Path: "internal/repohygiene/retiredidentityvendorceiling_injection_test.go", Lines: 69,
