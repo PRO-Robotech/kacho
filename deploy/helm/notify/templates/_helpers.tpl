@@ -35,7 +35,7 @@ notify.renders — рендерится ли notify: ровно при непу�
 включателя нет (запись зависимости зонтика без `condition`, CX1-99).
 */}}
 {{- define "notify.renders" -}}
-{{- if gt (len (include "notify.sourceRoster" (dict "global" .Values.global) | fromJsonArray)) 0 -}}true{{- end -}}
+{{- if gt (len (include "kacho.notifications.sources" (dict "global" .Values.global) | fromJsonArray)) 0 -}}true{{- end -}}
 {{- end -}}
 
 {{/*

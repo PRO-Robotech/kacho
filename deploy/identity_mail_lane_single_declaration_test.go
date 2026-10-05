@@ -68,10 +68,15 @@ const mailLaneFeedURI = mailLaneFeedPath + ".connectionURI"
 // (identity_mail_lane_feeds_both_senders_test.go). Второй копии координаты
 // здесь не заводится.
 
-// cutoverScript — оснастка боевой раскатки. Перечень разрешённых координат слоя
-// учётных данных в ней — ЕДИНСТВЕННОЕ указание, которое оператор вообще
-// получает: второго читателя, способного заметить расхождение, у него нет.
-const cutoverScript = "helm/umbrella/cutover-fe3455.sh"
+// credsLayerScript — файл перечня координат слоя учётных данных площадки
+// (`CRED_PATHS`) и его проверки; его подключает скрипт раскатки
+// cutover-fe3455.sh (NTF-1 D2, CX1-85). Перечень — ЕДИНСТВЕННОЕ указание,
+// которое оператор получает о том, что вправе лежать в слое. Путь — одна
+// константа гейта и его инъекций (CX1-90).
+const credsLayerScript = "helm/umbrella/cutover-creds-layer.sh"
+
+// credPathsBlock — блок перечня `CRED_PATHS=( … )`; в файле ровно один.
+var credPathsBlock = regexp.MustCompile(`(?s)CRED_PATHS=\((.*?)\)`)
 
 // mailLaneMention — упоминание почтовой полосы в объявлении развёртывания.
 // Ключевые формы: наша (`smtp:` / `connectionURI` / `invite-mail:`) и
@@ -268,41 +273,44 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 
 	// ── ПАРА 2: оснастка ──────────────────────────────────────────────────
 	//
-	// Почтовая координата, названная оснасткой раскатки, обязана совпадать с
-	// единственным объявлением. Несовпадение — находка, называющая ОБЕ
-	// координаты и то, что они различны.
+	// Перечень разрешённых координат слоя учётных данных площадки почтовых
+	// координат НЕ несёт: узел почты площадки объявлен отслеживаемым профилем
+	// (приёмник в кластере, Д46), и адрес, вписанный в слой, был бы вторым
+	// источником адреса одного узла с другим старшинством (CX1-85). Почтовая
+	// координата — наша (`global.kacho.identity.smtp.*`) или поставщика
+	// (`courier` / `connection_uri`) — в перечне находка с её именем. Непочтовая
+	// координата перечня законна: гейт судит почтовость, а не непустоту.
 	raw, err := os.ReadFile(script)
 	if err != nil {
 		t.Fatalf("оснастка раскатки %s не читается (%v) — предпосылка второго "+
 			"утверждения исчезла, а не оснастка стала согласной", script, err)
 	}
-	scriptBody := string(raw)
-	coordLine := regexp.MustCompile(`(?m)^([A-Za-z0-9_.]*(?:courier|smtp|connectionURI|connection_uri)[A-Za-z0-9_.]*)\s*$`)
-	var named, agreeing []string
-	for _, m := range coordLine.FindAllStringSubmatch(scriptBody, -1) {
-		named = append(named, m[1])
-		if strings.HasPrefix(m[1], mailLaneFeedPath+".") {
-			agreeing = append(agreeing, m[1])
-		}
+	blocks2 := credPathsBlock.FindAllStringSubmatch(string(raw), -1)
+	if len(blocks2) != 1 {
+		t.Fatalf("в %s блоков CRED_PATHS=( … ) %d, ожидался ровно один — перечень "+
+			"сменил форму либо раздвоился; это отказ, а не тишина", script, len(blocks2))
 	}
-	t.Logf("перепись · оснастка: указаний на координату прочитано %d · согласных с объявлением %d",
-		len(named), len(agreeing))
-	if len(named) == 0 {
-		t.Fatalf("%s не называет ни одной почтовой координаты — предикат перестал их "+
-			"узнавать либо перечень разрешённых координат сменил форму; это отказ, "+
-			"а не тишина", script)
-	}
-	for _, c := range named {
-		if strings.HasPrefix(c, mailLaneFeedPath+".") {
+	coordLine := regexp.MustCompile(`(?:courier|smtp|connectionURI|connection_uri)`)
+	read := 0
+	var mailCoords []string
+	for _, line := range strings.Split(blocks2[0][1], "\n") {
+		c := strings.Trim(strings.TrimSpace(line), `"'`)
+		if c == "" || strings.HasPrefix(c, "#") {
 			continue
 		}
+		read++
+		if coordLine.MatchString(c) {
+			mailCoords = append(mailCoords, c)
+		}
+	}
+	t.Logf("перепись · оснастка: блок CRED_PATHS в %s найден (1); координат прочитано %d · почтовых %d",
+		script, read, len(mailCoords))
+	for _, c := range mailCoords {
 		findings = append(findings, fmt.Sprintf(
-			"%s называет оператору почтовую координату %q, а полоса объявлена по "+
-				"%q — координаты РАЗЛИЧНЫ. Оператор кладёт настоящий узел туда, куда его "+
-				"послали, раскатка проходит, поды стартуют, письма уходят в никуда, и "+
-				"сигнала нет ни одного. Какая из двух замещается, гейт не утверждает: две "+
-				"разные координаты одной полосы суть дефект при любом победителе",
-			script, c, mailLaneFeedURI))
+			"%s разрешает слою учётных данных почтовую координату %q, а узел почты "+
+				"площадки объявлен профилем (%s, приёмник в кластере): у адреса одного "+
+				"узла было бы два источника с разным старшинством, слой — последним",
+			script, c, mailLaneFeedPath))
 	}
 
 	// ── ПАРА 3: перечни ───────────────────────────────────────────────────
@@ -346,7 +354,7 @@ func mailLaneAssertions(t *testing.T, root, tpl, script string) []string {
 // TestMailLaneIsDeclaredOnce — MAIL-54 на рабочем дереве.
 func TestMailLaneIsDeclaredOnce(t *testing.T) {
 	for _, f := range mailLaneAssertions(t, umbrellaDir, mailSenderConfigTemplate,
-		filepath.Join(umbrellaDir, filepath.Base(cutoverScript))) {
+		filepath.Join(umbrellaDir, filepath.Base(credsLayerScript))) {
 		t.Error(f)
 	}
 }

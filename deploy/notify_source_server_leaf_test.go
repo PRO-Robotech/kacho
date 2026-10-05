@@ -28,11 +28,11 @@ import (
 // узла клиент проверяет штатно), и у этого листа `spec.uris` — ровно `[san]`.
 // Записи без листа и листы без/с чужим URI — находки с именем записи и листа.
 //
-// ОТКУДА ЗАПИСИ. Перечень в дереве пока пуст (таблица `notify.pluggableSources`,
-// строки вносит полоса D2), и в цепочках дерева записей 0 — печатается по каждой
-// цепочке. Чтобы гейт не был инертен до D2, нога копии подставляет в таблицу
-// строки ДВУХ НАСТОЯЩИХ источников, которых notify зовёт по точному SAN (проба
-// и kaname), с SAN той формы, которую несёт запись (`spiffe://<домен>/ns/<ns>/
+// ОТКУДА ЗАПИСИ. Нога дерева — цепочки таблицы как есть: строка `notify-probe`
+// таблицы модулей (полоса D2) входит в перечень стендовых цепочек. Нога копии
+// дополняет строку `kaname` таблицы записью источника — так перечень несёт оба
+// НАСТОЯЩИХ источника, которых notify зовёт по точному SAN (проба и kaname), с
+// SAN той формы, которую несёт запись (`spiffe://<домен>/ns/<ns>/
 // sa/<учётка>`, литералом — независимый производитель), и судит НАСТОЯЩИЕ листы
 // рендера. Пустой обход ноги копии — красный.
 
@@ -54,20 +54,23 @@ var sourceLeafFixtureRows = []rosterRecord{
 		SAN: "spiffe://kacho.cloud/ns/kacho/sa/kaname"},
 }
 
-// sourceLeafFixtureTable — тело `notify.pluggableSources` со строками фикстуры.
-func sourceLeafFixtureTable() string {
-	var b strings.Builder
-	b.WriteString("{{- list")
+// kanameTableRow — строка `kaname` таблицы модулей дерева: полей источника у
+// неё нет (их вносит NTF-2).
+const kanameTableRow = `(dict "key" "kaname" "ownFlagKey" "kaname.config.notifications.enabled")`
+
+// sourceLeafKanameRow — строка `kaname` копии: та же строка дерева с записью
+// источника из sourceLeafFixtureRows (`authorization: certificate`, Д72).
+// Строку `notify-probe` копия берёт у дерева как есть.
+func sourceLeafKanameRow() string {
 	for _, r := range sourceLeafFixtureRows {
-		auth := "resolveSend"
-		if r.Module == "kaname" {
-			auth = "certificate"
+		if r.Module != "kaname" {
+			continue
 		}
-		fmt.Fprintf(&b, ` (dict "module" %q "feedAddr" %q "san" %q "classes" (list "notice") "recipientForms" (list) "authorization" %q)`,
-			r.Module, r.FeedAddr, r.SAN, auth)
+		return fmt.Sprintf(`(dict "key" "kaname" "ownFlagKey" "kaname.config.notifications.enabled" "source" `+
+			`(dict "module" %q "feedAddr" %q "san" %q "classes" (list "notice") "recipientForms" (list) "authorization" "certificate"))`,
+			r.Module, r.FeedAddr, r.SAN)
 	}
-	b.WriteString(" | toJson -}}")
-	return b.String()
+	return ""
 }
 
 // renderedRoster — записи перечня из карт настроек notify рендера.
@@ -192,7 +195,8 @@ func TestNotifySourceSANIsCarriedByTheSourceServerLeaf(t *testing.T) {
 
 	// Нога копии: таблица несёт настоящие источники; стенд с пробой.
 	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
-		"templates/_sources.tpl": replaceOnce(notifyEmptyTableBody, sourceLeafFixtureTable()),
+		"templates/_sources.tpl": replaceOnce(kanameTableRow, sourceLeafKanameRow()),
+		"values.yaml":            withSourceLimits("kaname"),
 	}})
 	const standChain = "dev-prod"
 	files := append(c.chainFiles(t, standChain), c.notifyLayer(t))

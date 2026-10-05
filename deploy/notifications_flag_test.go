@@ -223,9 +223,17 @@ func TestNTF1N01_UnsetGlobalFlagRefusesEveryChain(t *testing.T) {
 	}
 
 	// Предмет (б): снятая ручка — отказ рендера каждой цепочки с её именем.
+	// Ключ снимается в КОПИИ values.yaml зонтика (замысел З28: «ключ флага снят
+	// из values.yaml»), а не набором `--set …=null`: под `global` helm v4.2.4
+	// нулевое значение слоя не удаляет умолчание зонтика (замер полосы D2 —
+	// `helm template … --set global.kacho.notifications.enabled=null` рендерит
+	// `enabled: true`), и такое отрицание проверило бы фикстуру, а не продукт.
+	unset := notifyUmbrellaCopy(t, umbrellaCopyOpts{umbrellaEdits: map[string]func(string) string{
+		"values.yaml": replaceOnce("    notifications:\n      enabled: true\n", "    notifications:\n"),
+	}})
 	refused := 0
 	for _, n := range names {
-		_, out, err := ntfRender(t, c, c.chainFiles(t, n), ntfFlagKey+"=null")
+		_, out, err := ntfRender(t, unset, unset.chainFiles(t, n))
 		if rerr := ntfRefusalNames(out, err, ntfFlagKey); rerr != nil {
 			t.Errorf("КРАСНЫЙ: цепочка %s без %s: %v (NTF1-N01)", n, ntfFlagKey, rerr)
 			continue

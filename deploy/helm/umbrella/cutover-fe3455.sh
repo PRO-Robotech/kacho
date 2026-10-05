@@ -189,59 +189,16 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 
 # ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
 #
-# Why this gate exists. Until 2026-08-11 the whole identity-provider overlay lived
-# in the one gitignored file, so the PRODUCTION POSTURE of the identity providers
-# was invisible to git, to review and to every gate — their "no findings" over
-# that layer meant "nothing read". The provider is gone (#1276), and with it its
-# posture layer and its own credentials: the one coordinate the layer still
-# carries is OUR mail relay address.
-#
-# A convention alone would not hold that split: the easiest way to change the
-# live cluster is still to edit the file nobody sees. So the split is CHECKED
-# here — the credentials layer may declare only the coordinates below, and a
-# posture key reappearing in it refuses the cutover instead of shipping quietly.
-#
-# The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
-# a subtree wholesale would re-admit every posture key under it. A coordinate of
-# the removed provider (its DSNs and secrets) is no longer on the list: an
-# operator's copy that still carries one is refused, because nothing reads it.
-#
-# THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
-# round here. This list named the vendor subchart's own courier relay URI,
-# a coordinate that feeds the VENDOR subchart's own config file. The identity
-# process reads SEVERAL config files and merges them in order; ours is second,
-# so the `courier` section we render REPLACES the vendor's wholesale rather than
-# extending it. An operator who put the real relay where this script sent them
-# got a green cutover, running pods and mail going nowhere — with no signal at
-# all. The single declaration is `global.kacho.identity.smtp.*`
-# (_identity-provider.tpl); the credentials layer is applied LAST in the chain, so
-# a value set there wins over every profile. Held by MAIL-54
-# (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
-# list and that declaration name different coordinates.
-CRED_PATHS='
-global.kacho.identity.smtp.connectionURI
-'
-stray="$(CRED_PATHS="$CRED_PATHS" python3 - "$CHART_DIR/$CREDS_LAYER" <<'PY'
-import os, sys, yaml
-allowed = set(os.environ["CRED_PATHS"].split())
-tree = yaml.safe_load(open(sys.argv[1])) or {}
-def leaves(node, path=()):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            yield from leaves(v, path + (str(k),))
-    else:
-        yield ".".join(path)
-print("\n".join(sorted(p for p in leaves(tree) if p not in allowed)))
-PY
-)" || die "could not read $CREDS_LAYER (need python3 with PyYAML)"
+# The allow-list (CRED_PATHS), the reason the split is checked at all and the
+# check itself live in ONE place — cutover-creds-layer.sh next to this script —
+# so that the D2 cutover probe runs the very same check (NTF-1 D2, CX1-85).
+# shellcheck source=deploy/helm/umbrella/cutover-creds-layer.sh
+. "$CHART_DIR/cutover-creds-layer.sh"
+stray="$(creds_layer_stray "$CHART_DIR/$CREDS_LAYER")" || die "could not read $CREDS_LAYER (need python3 with PyYAML)"
 
 if [ -n "$stray" ]; then
-  warn "$CREDS_LAYER declares coordinates that are NOT on the credentials list:"
-  printf '  %s\n' $stray >&2
-  die "posture must live in a TRACKED profile of deploy/stacks.txt, where review and the gates
-       can see it; coordinates of the removed identity provider have no reader at all and are
-       deleted from the layer (#1276). If a coordinate above really is a credential, add it to
-       CRED_PATHS in this script with a reason. Refusing to deploy a layer that no gate has read."
+  creds_layer_refusal "$CREDS_LAYER" "$stray"
+  die "the credentials layer carries coordinates outside CRED_PATHS (deploy/helm/umbrella/cutover-creds-layer.sh)"
 fi
 log "credentials layer carries credentials only (posture is in the tracked profiles)."
 

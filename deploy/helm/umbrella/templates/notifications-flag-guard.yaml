@@ -1,0 +1,24 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+СТРАЖ СОБСТВЕННЫХ КЛЮЧЕЙ ФЛАГА МОДУЛЕЙ (NTF-1 Р9; замысел З28; NTF1-N02,
+CX1-111 (а)).
+
+Флаг модуля объявляется ОДНИМ путём — `global.kacho.notifications.modules.<ключ>.enabled`
+(deploy/helm/notify/templates/_flag.tpl). Ключ флага под ключом подчарта модуля
+(`kaname.config.notifications.enabled`, `notifyProbe.notifications.enabled`) был
+бы вторым путём к тому же значению: принят и не прочитан никем, а перечень
+источников notify и переменная процесса модуля разошлись бы молча.
+
+Только шаблон зонтика видит `.Values.<подчарт>`, поэтому страж здесь; таблицу
+модулей с путями собственных ключей он берёт у помощника чарта notify
+(`kacho.notifications.ownFlagKeys`), а не из одного образца: путь у каждого модуля
+свой. Любой такой ключ в любом слое — отказ рендера с полным путём.
+
+Ничего не рендерит.
+*/}}
+{{- $own := include "kacho.notifications.ownFlagKeys" (dict "values" .Values) }}
+{{- if $own }}
+{{- fail (printf "kacho-umbrella: собственный ключ флага модуля задан слоем значений — %s; флаг модуля объявляется только переопределением global.kacho.notifications.modules.<ключ модуля>.enabled, второго пути к значению нет (NTF-1 Р9, CX1-111)" $own) }}
+{{- end }}

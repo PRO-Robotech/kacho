@@ -62,6 +62,13 @@ DEV="$UMBRELLA/values.dev.yaml"
 # печаталась своим текстом, не сходящимся с остальным каталогом.
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
+# Рендер профиля — по ЦЕПОЧКЕ таблицы стендов через обёртку D9 (NTF-1 D2, CX1-93,
+# N18): у `prod` обёртка дописывает слой узла почты оператора последним `-f`
+# (Д48). Прямой `-f values.prod.yaml` прошёл бы мимо таблицы и мимо слоя — у
+# цепочки, где перечень источников notify непуст, рендер отказал бы, и вердикт
+# был бы о фикстуре, а не о посадке.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 EXPECTED_ASSERTIONS=11
 
 # ── Preflight: the right tools ───────────────────────────────────────────────
@@ -77,9 +84,15 @@ require_mikefarah_yq
 require_file_present "$PROD" "боевой профиль values.prod.yaml"
 require_file_present "$DEV"  "профиль стенда values.dev.yaml"
 
-# render_only <values-file> <show-only-template> — silence helm's kubeconfig warns.
+# chain_args <цепочка> — аргументы `-f` цепочки целиком, обёрткой D9 (образец
+# оператора берётся только цепочкой `prod`). Отказ обёртки — пустой вывод и код 2.
+chain_args() { render_chain_args "$1" "$UMBRELLA" operator.yaml; }
+CHAIN_PROD="$(chain_args prod)" || fatal "обёртка цепочки не дала аргументов prod"
+CHAIN_DEV="$(chain_args dev)" || fatal "обёртка цепочки не дала аргументов dev"
+# render_only <аргументы цепочки> <show-only-template> — silence helm's kubeconfig warns.
 render_only() {
-  helm template kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2" 2>/dev/null
+  # shellcheck disable=SC2086 # аргументы цепочки — список `-f <путь>`, делится по словам
+  helm template kacho-umbrella "$UMBRELLA" $1 --show-only "$2" 2>/dev/null
 }
 # env_val <ENV_NAME> <render> — value of the named container env entry ("" if absent).
 env_val() {
@@ -101,19 +114,20 @@ cm_val() {
 # ПОДОБОЛОЧКИ, и ни код, ни текст helm до вызывающего не доехали бы. Заодно снят
 # ФИКСИРОВАННЫЙ путь `/tmp/prod-guard.err`: на общей машине два прогона писали в
 # один файл, и текст отказа мог принадлежать чужому прогону.
-helm_try kacho-umbrella "$UMBRELLA" -f "$PROD"
-render_nonempty_or_fatal "values.prod.yaml (полный профиль)"
+# shellcheck disable=SC2086 # аргументы цепочки — список `-f <путь>`
+helm_try kacho-umbrella "$UMBRELLA" $CHAIN_PROD
+render_nonempty_or_fatal "цепочка prod (values.prod.yaml + слой оператора, полный профиль)"
 FULL="$HELM_OUT"; ok
 
 # ── 1. kaname — production-strict + ssl-mode != disable ───────────────────
-IAM_CM="$(render_only "$PROD" charts/kaname/templates/configmap.yaml)"
+IAM_CM="$(render_only "$CHAIN_PROD" charts/kaname/templates/configmap.yaml)"
 iam_mode="$(echo "$IAM_CM" | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 iam_ssl="$(echo "$IAM_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres."ssl-mode"' -)"
 case "$iam_mode" in production|production-strict) ;; *) violation "kaname authn.mode=$iam_mode (want production*, NOT dev)";; esac
 [ "$iam_ssl" != "disable" ] && [ -n "$iam_ssl" ] || violation "kaname ssl-mode=$iam_ssl (must NOT be disable)"; ok
 
 # ── 2. kacho-vpc — production + ssl-mode != disable ──────────────────────────
-VPC_CM="$(render_only "$PROD" charts/vpc/templates/configmap.yaml)"
+VPC_CM="$(render_only "$CHAIN_PROD" charts/vpc/templates/configmap.yaml)"
 vpc_mode="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 vpc_ssl="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres."ssl-mode"' -)"
 case "$vpc_mode" in production|production-strict) ;; *) violation "kacho-vpc authn.mode=$vpc_mode (want production*, NOT dev)";; esac
@@ -146,7 +160,7 @@ vpc_fwd="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '[.authz."trusted-fo
 [ "${vpc_fwd:-0}" -gt 0 ] || violation "kacho-vpc authz.trusted-forwarder-sans is empty (any certificate-verified peer could then act as any tenant)"; ok
 
 # ── 3. kacho-nlb — production + sslmode != disable + breakglass RETIRED ──────
-NLB_CM="$(render_only "$PROD" charts/kacho-nlb/templates/configmap.yaml)"
+NLB_CM="$(render_only "$CHAIN_PROD" charts/kacho-nlb/templates/configmap.yaml)"
 nlb_mode="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.mode' -)"
 nlb_dsn="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres.url' -)"
 case "$nlb_mode" in production|production-strict) ;; *) violation "kacho-nlb mode=$nlb_mode (want production*, NOT dev)";; esac
@@ -168,7 +182,7 @@ nlb_bg="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -
 [ "$nlb_bg" = "null" ] || violation "kacho-nlb authz.breakglass=$nlb_bg — the knob is retired; its reappearance (with ANY value) means the Check-bypass path came back"; ok
 
 # ── 4. api-gateway — production-strict AuthN + fail-closed AuthZ ──────────────
-AGW="$(render_only "$PROD" charts/api-gateway/templates/deployment.yaml)"
+AGW="$(render_only "$CHAIN_PROD" charts/api-gateway/templates/deployment.yaml)"
 agw_mode="$(env_val KACHO_API_GATEWAY_AUTHN_MODE "$AGW")"
 case "$agw_mode" in production|production-strict) ;; *) violation "api-gateway AUTHN_MODE=$agw_mode (want production*, NOT dev)";; esac
 agw_authz="$(env_val KACHO_API_GATEWAY_AUTHZ_ENABLED "$AGW")"
@@ -179,7 +193,7 @@ agw_fo="$(env_val KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN "$AGW")"
 [ -z "$(env_val KACHO_API_GATEWAY_AUTHN_DEV_SECRET "$AGW")" ] || violation "api-gateway leaks AUTHN_DEV_SECRET in production (HS256 dev path must be OFF)"; ok
 
 # ── 5. kacho-compute — fail-closed (no mode knob; posture = authz + ssl) ─────
-CMP="$(render_only "$PROD" charts/compute/templates/deployment.yaml)"
+CMP="$(render_only "$CHAIN_PROD" charts/compute/templates/deployment.yaml)"
 cmp_ssl="$(env_val KACHO_COMPUTE_DB_SSLMODE "$CMP")"
 cmp_authz_addr="$(env_val KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR "$CMP")"
 cmp_lf_fo="$(env_val KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN "$CMP")"
@@ -200,8 +214,8 @@ cmp_lf_fo="$(env_val KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN "$CMP")"
 # instances (other projects, other accounts) become readable. The service now
 # refuses to boot on that combination (config.Validate); this asserts the shipped
 # profile never asks it to.
-STO_CM="$(render_only "$PROD" charts/storage/templates/configmap.yaml)"
-STO_DEP="$(render_only "$PROD" charts/storage/templates/deployment.yaml)"
+STO_CM="$(render_only "$CHAIN_PROD" charts/storage/templates/configmap.yaml)"
+STO_DEP="$(render_only "$CHAIN_PROD" charts/storage/templates/deployment.yaml)"
 if [ -z "$STO_CM" ]; then
   violation "kacho-storage renders nothing (storage.enabled must be true in the production profile — otherwise the canonical install ships no block storage and this posture is unasserted)"
 else
@@ -251,10 +265,10 @@ grep -iqE "devSecret:" "$PROD" \
 # the old expectation. The two backend lines are unchanged and still require the
 # relaxed mode: the production overlay is what lifts them, and that is a separate
 # posture question from how a bearer is verified.
-DEV_IAM="$(render_only "$DEV" charts/kaname/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
-DEV_VPC="$(render_only "$DEV" charts/vpc/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
-DEV_AGW="$(env_val KACHO_API_GATEWAY_AUTHN_MODE "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
-DEV_AGW_SECRET="$(env_val KACHO_API_GATEWAY_AUTHN_DEV_SECRET "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
+DEV_IAM="$(render_only "$CHAIN_DEV" charts/kaname/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
+DEV_VPC="$(render_only "$CHAIN_DEV" charts/vpc/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
+DEV_AGW="$(env_val KACHO_API_GATEWAY_AUTHN_MODE "$(render_only "$CHAIN_DEV" charts/api-gateway/templates/deployment.yaml)")"
+DEV_AGW_SECRET="$(env_val KACHO_API_GATEWAY_AUTHN_DEV_SECRET "$(render_only "$CHAIN_DEV" charts/api-gateway/templates/deployment.yaml)")"
 [ "$DEV_IAM" = "dev" ] || violation "values.dev.yaml kaname authn.mode=$DEV_IAM (expected dev — dev stand changed!)"
 [ "$DEV_VPC" = "dev" ] || violation "values.dev.yaml kacho-vpc authn.mode=$DEV_VPC (expected dev — dev stand changed!)"
 case "$DEV_AGW" in production|production-strict) ;; *) violation "values.dev.yaml api-gateway AUTHN_MODE=$DEV_AGW (expected production* — a stand that is up verifies bearers by signature, whatever it is called)";; esac

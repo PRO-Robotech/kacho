@@ -122,6 +122,17 @@ global:
         trustAnchorSecret:
           name: kacho-mailpit-tls
           key: ca.crt
+    # ─── ФЛАГ ПОЧТЫ: СТЕНДОВАЯ ПРОБА ПИШЕТ ПОЧТОВЫЕ ЗАПРОСЫ (NTF-1 Р9; З28) ─────
+    # Флаг установки объявлен один раз (values.yaml зонтика, `true`); здесь —
+    # только переопределение модуля пробы. Вместе с `notifyProbe.enabled` ниже
+    # это два факта, а не два написания одного: развёрнута ли проба и пишет ли
+    # она почтовые запросы. Перечень источников notify этого стенда —
+    # `{notify-probe}`, и notify входит в рендер цепочек dev, dev-prod,
+    # prorobotech (у a8f60d переопределение снято — values.a8f60d.yaml, Д102).
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: true
 
 # ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
 # The whole scheme runs on mTLS: cert-manager mints an internal-CA, every
@@ -494,6 +505,26 @@ notify:
     tag: dev
   db:
     sslMode: require
+    # Ссылка на секрет пароля базы kacho_notify — без неё манифест невыразим
+    # (единственный отказ рендера по базе). Адрес базы и сам секрет заводит
+    # подъём notify на стенде (полоса D6); пустой адрес доезжает до процесса, и
+    # его страж старта отказывает с именем ручки.
+    passwordSecret:
+      name: kacho-notify-db
+  # Ключ сетки на адресата (З24) — NON-SECRET dev placeholder (см. шапку
+  # файла): стенд разработки, не установка. Не короче 32 байт (Д94).
+  recipientKey: "changeme-dev-notify-recipient-key-0123456789"
+
+# ─── notify-probe — стендовая проба-источник notify (NTF-1, полосы D2, D3) ────
+# Развёрнута на стенде (NTF1-I04: в `prod` её нет); пишет ли она почтовые
+# запросы — переопределение `global.kacho.notifications.modules.notifyProbe`
+# выше. Адрес базы kacho_notifyprobe и секрет пароля заводит подъём на стенде
+# (полоса D6).
+notifyProbe:
+  enabled: true
+  db:
+    passwordSecret:
+      name: kacho-notifyprobe-db
 
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
@@ -1353,12 +1384,11 @@ kaname:
       # отвергает при любом значении. Ручка снята с подчарта вместе с читателем;
       # профиль, всё ещё её объявляющий, получает отказ рендера. Посадку края
       # объявляет его собственная ручка (`api-gateway.authn.identityProvider`).
-    # ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) —
-    # объявлен ЯВНО: незаданный и не-булево — отказ рендера с именем ключа.
-    # Стенды платформы почту шлют: служба ставит письма класса security в свою
-    # ленту, их забирает служба уведомлений установки.
+    # ПОЧТА СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33). Флага здесь нет: его
+    # значение — вывод `kacho.notifications.enabledFor` над
+    # `global.kacho.notifications` (values.yaml зонтика); собственный ключ
+    # `kaname.config.notifications.enabled` — отказ рендера (CX1-111).
     notifications:
-      enabled: true
       # Полоса отсечки выдачи уведомлений (приёмка NTF-1 Р5, NTF1-F20; Д112 (в)) —
       # условие старта службы, умолчания у неё нет; граница [1s..10m].
       cutoffGuard: 30s

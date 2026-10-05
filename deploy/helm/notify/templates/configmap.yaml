@@ -27,7 +27,10 @@ data:
   KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT: {{ .Values.resolveSendTimeout | quote }}
   KACHO_NOTIFY_SMTP_SESSION_TIMEOUT: {{ .Values.smtpSessionTimeout | quote }}
   KACHO_NOTIFY_ORIGIN: {{ .Values.origin | quote }}
-  KACHO_NOTIFY_SOURCES: {{ include "notify.sourceRoster" (dict "global" .Values.global) | quote }}
+  {{- $roster := include "kacho.notifications.sources" (dict "global" .Values.global) }}
+  KACHO_NOTIFY_SOURCES: {{ $roster | quote }}
+  # Ручки на источник — записи ровно модулей перечня (NTF1-N03, H08).
+  KACHO_NOTIFY_SOURCE_LIMITS: {{ include "notify.sourceLimits" (dict "limits" .Values.sourceLimits "roster" ($roster | fromJsonArray)) | quote }}
   # ── УЗЕЛ ПОЧТЫ → КЛЮЧИ ПРОЦЕССА (Д44, Д46, Д47; CX1-77, CX1-81 (б)) ──────────
   #
   # Адрес — `tpl` значения узла под `required` с именем узла, без умолчания и
@@ -36,7 +39,7 @@ data:
   # `required` срабатывает ровно при «источник включён, а узел пуст».
   # Поля отправителя — значением узла без умолчания и без `required`: пустое
   # доезжает до процесса, и отказывает его страж (NTF2-34 (е)).
-  KACHO_NOTIFY_SMTP_CONNECTION_URI: {{ tpl (required "global.kacho.identity.smtp.connectionURI: адрес ретранслятора почты не задан, а notify рендерится (перечень источников непуст) — задайте узел почты установки" $smtp.connectionURI) $ | quote }}
+  KACHO_NOTIFY_SMTP_CONNECTION_URI: {{ tpl (required "global.kacho.identity.smtp.connectionURI: адрес ретранслятора почты не задан, а notify рендерится (перечень источников непуст) — задайте узел почты установки либо выключите генерацию почтовых запросов: global.kacho.notifications.enabled: false" $smtp.connectionURI) $ | quote }}
   KACHO_NOTIFY_SMTP_FROM_ADDRESS: {{ $smtp.fromAddress | quote }}
   KACHO_NOTIFY_SMTP_FROM_NAME: {{ $smtp.fromName | quote }}
   {{- $anchor := $smtp.trustAnchorSecret }}

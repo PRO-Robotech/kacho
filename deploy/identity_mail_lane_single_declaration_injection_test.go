@@ -63,7 +63,7 @@ func newMailLaneFixture(t *testing.T) mailLaneFixture {
 	return mailLaneFixture{
 		root:   root,
 		tpl:    filepath.Join(root, "charts", "kaname", "templates", "configmap.yaml"),
-		script: filepath.Join(root, filepath.Base(cutoverScript)),
+		script: filepath.Join(root, filepath.Base(credsLayerScript)),
 	}
 }
 
@@ -165,27 +165,39 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		}
 	})
 
-	// ── ОСЬ 2: координата оснастки ────────────────────────────────────────
-	t.Run("ось2 инъекция: координата раскатки переставлена на чужую", func(t *testing.T) {
+	// ── ОСЬ 2: почтовая координата в перечне слоя учётных данных ──────────
+	//
+	// Якорь — ограничитель блока `CRED_PATHS=(`, ровно одно вхождение (помощник
+	// правки отказывает на нуле и на двух). Два подслучая инъекции — наша
+	// почтовая координата и координата почты поставщика; близнец — непочтовая
+	// координата в том же блоке.
+	for _, c := range []struct{ name, coord string }{
+		{"почтовая координата узла", mailLaneFeedURI},
+		{"координата почты поставщика", "vendor.config.courier.smtp.connection_uri"},
+	} {
+		t.Run("ось2 инъекция: "+c.name+" в перечне слоя", func(t *testing.T) {
+			f := newMailLaneFixture(t)
+			f.edit(t, f.script, "CRED_PATHS=(\n", "CRED_PATHS=(\n  "+c.coord+"\n")
+			found := f.run(t)
+			hit := false
+			for _, x := range found {
+				if strings.Contains(x, c.coord) {
+					hit = true
+				}
+			}
+			if !hit {
+				t.Errorf("почтовая координата %q, вписанная в перечень слоя, гейтом не "+
+					"найдена с её именем (находки: %v) — адрес узла снова получил бы второй "+
+					"источник, а гейт остался бы зелёным", c.coord, found)
+			}
+		})
+	}
+	t.Run("ось2 близнец: НЕпочтовая координата перечня — молчание", func(t *testing.T) {
+		// Перечень вправе нести непочтовые координаты (учётные данные): гейт
+		// обязан судить ТОЛЬКО почтовые — покраснев на соседней, он стал бы
+		// красным на исправном дереве, и его сняли бы первым.
 		f := newMailLaneFixture(t)
-		f.edit(t, f.script,
-			"global.kacho.identity.smtp.connectionURI",
-			"vendor.config.courier.smtp.connection_uri")
-		if found := f.run(t); len(found) == 0 {
-			t.Errorf("координата, переставленная на координату ПОСТАВЩИКА, гейтом не " +
-				"найдена — то есть #1679 воспроизводится, а гейт остаётся зелёным: " +
-				"оператор кладёт узел не туда, и сигнала снова нет ни одного")
-		}
-	})
-	t.Run("ось2 близнец: НЕпочтовая координата раскатки — молчание", func(t *testing.T) {
-		// Перечень разрешённых координат вправе нести и непочтовые (строки
-		// соединения, секреты): прежде он их и нёс — учётные данные снятого
-		// поставщика личности (#1276). Гейт обязан судить ТОЛЬКО почтовую:
-		// покраснев на соседней, он стал бы красным на исправном дереве, и его
-		// сняли бы первым. Близнец вносит в перечень непочтовую координату.
-		f := newMailLaneFixture(t)
-		f.edit(t, f.script, "global.kacho.identity.smtp.connectionURI\n",
-			"global.kacho.identity.smtp.connectionURI\nkaname.config.db.password\n")
+		f.edit(t, f.script, "CRED_PATHS=(\n", "CRED_PATHS=(\n  kaname.config.db.password\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на НЕпочтовой координате перечня — он судит не свой "+
 				"предмет и на исправном дереве будет красным:\n%s", strings.Join(found, "\n"))

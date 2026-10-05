@@ -128,6 +128,16 @@ global:
       domainless: true
       cookieDomain: ""
       webauthnRpId: ""
+    # ─── ПРОБА-ИСТОЧНИК NOTIFY ЗДЕСЬ НЕ ПИШЕТ ПОЧТУ (NTF-1, Д102; замысел З28) ──
+    # Полоса этого профиля ведёт во внешний ретранслятор с настоящим доменом
+    # отправителя; notify в его рендере нет, пока записи домена не опубликованы.
+    # Слой под нами (values.dev.yaml) включает пробу — здесь оба ключа сняты:
+    # переопределение модуля и развёртывание (`notifyProbe.enabled` ниже).
+    # Перечень источников notify этой цепочки пуст.
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
 # ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
 #
 # Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
@@ -474,3 +484,7 @@ uif:
   system:
     image: docker.io/prorobotech/kacho-ui-future-system:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
+
+# Проба-источник notify не развёрнута (Д102; см. `global.kacho.notifications` выше).
+notifyProbe:
+  enabled: false

@@ -82,16 +82,13 @@ git-ignored (`deploy/.gitignore`). Гейт при этом печатал «з�
 """
 import bz2
 import gzip
-import json
 import lzma
-import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
-import tempfile
 import time
 import zipfile
 
@@ -110,87 +107,6 @@ EXEMPT = {
     "deploy/helm/umbrella/": "не рендерится без сборки ЛОКАЛЬНЫХ сабчартов из "
                              "исходников — они в git не вендорятся by construction",
 }
-
-# КОПИЯ ОСМОТРА КАК ЕДИНИЦА РЕНДЕРА СКАНА (замысел З28, решения Д80, Д81).
-#
-# Чарт notify рендерит объекты только при непустой таблице подключаемых
-# источников; до полосы D2 таблица пуста, и чарт честно не даёт сканеру НИ ОДНОЙ
-# цели — «ноль находок» по нему был бы «ноль прочитанного». Это не послабление
-# EXEMPT (чарт не исключается), а другая единица рендера: ПОКА таблица пуста,
-# сканируется копия каталога, где подменён ровно `templates/_sources.tpl`
-# (`deploy/scripts/render-notify-inspect.sh` сверяет это сама и печатает каталог
-# чарта строкой «перечень [], объектов 0»). Копию сканирует тот же файл настроек,
-# что и проход заглушек, с ногами рендера проб чарта (значения ноги без зонтика и
-# образец узла почты), и её находки той же планки (CRITICAL, HIGH) — находки
-# ГЕЙТА: шаг CI сканирует дерево и объектов notify не видит вовсе.
-#
-# Ветку включает ПУСТАЯ ТАБЛИЦА, а не ноль целей: при непустой таблице чарт
-# обязан давать цели сам, и ноль — обычная находка «НЕ ДАЛ ни одной цели».
-# Истекает с D2: обёртка на непустой таблице отказывает «копия осмотра пережила
-# предмет».
-INSPECT_COPY = {
-    "deploy/helm/notify/": {
-        "wrapper": "deploy/scripts/render-notify-inspect.sh",
-        "values": ("deploy/testdata/notify-standalone/values.yaml",
-                   "deploy/testdata/mail-node/operator.yaml"),
-    },
-}
-
-
-def scan_inspect_copy(chart_dir):
-    """→ (число целей, находки скана [строки], печать [строки]) либо None — ветки нет.
-
-    Ветки нет, когда таблица модулей непуста. Отказ обёртки или сканера —
-    «не выполнилось» (код 2 гейта), а не «осмотрено ноль».
-    """
-    spec = INSPECT_COPY[chart_dir]
-    wrapper = ROOT / spec["wrapper"]
-    t = subprocess.run(["bash", str(wrapper), "--table"], cwd=ROOT,
-                       capture_output=True, text=True, timeout=300)
-    rows = t.stdout.strip()
-    if t.returncode != 0 or not rows.isdigit():
-        print("ОТКАЗ: таблица модулей %s не прочитана обёрткой копии осмотра: %s"
-              % (chart_dir, (t.stderr or t.stdout).strip()[:300]), file=sys.stderr)
-        sys.exit(2)
-    if int(rows) > 0:
-        return None
-    work = tempfile.mkdtemp(prefix="kacho-iac-notify-inspect-")
-    try:
-        r = subprocess.run(["bash", str(wrapper), "--into", work], cwd=ROOT,
-                           capture_output=True, text=True, timeout=300)
-        printed = [line for line in (r.stdout + r.stderr).splitlines() if line.strip()]
-        if r.returncode != 0:
-            print("ОТКАЗ: копия осмотра %s не построена (код %d):\n  %s"
-                  % (chart_dir, r.returncode, "\n  ".join(printed)), file=sys.stderr)
-            sys.exit(2)
-        name, ref, cfg, _skip = iac_scan_passes.require(iac_scan_passes.STUBBED_NAME)
-        cmd = ["trivy", "config", str(pathlib.Path(work) / "notify"), "--config", cfg,
-               "--format", "json", "--severity", "CRITICAL,HIGH", "--quiet"]
-        for v in spec["values"]:
-            cmd += ["--helm-values", v]
-        env = dict(os.environ)
-        env.pop("TRIVY_IGNOREFILE", None)
-        sc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env,
-                            timeout=900)
-        if sc.returncode not in (0, 1):
-            print("ОТКАЗ: trivy на копии осмотра %s вышел с кодом %d\n%s"
-                  % (chart_dir, sc.returncode, sc.stderr[:400]), file=sys.stderr)
-            sys.exit(2)
-        doc = json.loads(sc.stdout or "{}")
-        results = doc.get("Results") or []
-        found = []
-        for res in results:
-            for m in res.get("Misconfigurations") or []:
-                if m.get("Status") == "FAIL":
-                    found.append("%s (копия осмотра) %s: %s %s — %s"
-                                 % (chart_dir, res.get("Target"), m.get("ID"),
-                                    m.get("Severity"), m.get("Title")))
-        printed.append("файл настроек прохода «%s» (%s), ноги рендера: %s"
-                       % (name, cfg, ", ".join(spec["values"])))
-        return len(results), found, printed
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
 
 def git_ls(pattern):
     r = subprocess.run(["git", "ls-files", pattern], cwd=ROOT,
@@ -545,7 +461,6 @@ def main():
         return 2
 
     no_templates, nested, exempt_ok, covered, uncovered, findings = [], [], [], [], [], []
-    inspect_printed = []
     exempt_unjudged = []
 
     for d in charts:
@@ -575,18 +490,6 @@ def main():
         if is_nested:
             nested.append(d)
             continue
-        if not hit and d in INSPECT_COPY:
-            got = scan_inspect_copy(d)
-            if got is not None:
-                n, found, printed = got
-                inspect_printed.append((d, printed))
-                findings += ["находка скана: " + f for f in found]
-                if n:
-                    covered.append((d + " (копия осмотра, Д81)", n))
-                else:
-                    findings.append("%s — копия осмотра НЕ ДАЛА сканеру ни одной цели: объекты "
-                                    "копии есть (обёртка это утвердила), а прочитано ноль" % d)
-                continue
         if hit:
             covered.append((d, len(hit)))
         else:
@@ -639,10 +542,6 @@ def main():
                                                   "Chart.yaml в оглавлении нет"))
     for d, n in covered:
         print("  осмотрен %2d целей  %s" % (n, d))
-    for d, printed in inspect_printed:
-        print("  копия осмотра       %s — таблица модулей пуста (Д80, Д81):" % d)
-        for line in printed:
-            print("                      " + line)
     for d in no_templates:
         print("  без шаблонов        %s — осматривать нечего" % d)
     for d in nested:

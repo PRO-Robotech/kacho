@@ -111,6 +111,14 @@ global:
     identity:
       hooks:
         scheme: https
+    # Стендовая проба-источник notify (`notify-probe`) вне стенда почтовых
+    # запросов не пишет и в перечень источников notify не входит (NTF1-I04):
+    # переопределение модуля под флагом установки (values.yaml зонтика, `true`).
+    # Стенды поверх этого профиля включают её сами (values.fe3455.yaml).
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
 
 
 mtls:
@@ -953,12 +961,11 @@ kaname:
         failedProofWindow: 15m
         authorizePerSourcePerSec: 10
         authorizeInFlightCeiling: 32
-    # ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) —
-    # объявлен ЯВНО: незаданный и не-булево — отказ рендера с именем ключа.
-    # Стенды платформы почту шлют: служба ставит письма класса security в свою
-    # ленту, их забирает служба уведомлений установки.
+    # ПОЧТА СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33). Флага здесь нет: его
+    # значение — вывод `kacho.notifications.enabledFor` над
+    # `global.kacho.notifications` (values.yaml зонтика); собственный ключ
+    # `kaname.config.notifications.enabled` — отказ рендера (CX1-111).
     notifications:
-      enabled: true
       # Полоса отсечки выдачи уведомлений (приёмка NTF-1 Р5, NTF1-F20; Д112 (в)) —
       # условие старта службы, умолчания у неё нет; граница [1s..10m].
       cutoffGuard: 30s

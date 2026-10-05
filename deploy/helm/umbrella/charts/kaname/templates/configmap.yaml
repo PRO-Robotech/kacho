@@ -612,20 +612,20 @@ data:
         mail-window-key-file: {{ printf "%s/%s" (required "kaname: config.authn.secrets.mountPath не задан — каталог монтирования файлов ключей почтовой полосы обязан быть назван, иначе пути настроек называют файлы, которых в поде нет" $mailKeys.mountPath) (include "kaname.mailKeys.windowFile" .) | quote }}
         device-label-key-file: {{ printf "%s/%s" (required "kaname: config.authn.secrets.mountPath не задан — каталог монтирования файлов ключей почтовой полосы обязан быть назван, иначе пути настроек называют файлы, которых в поде нет" $mailKeys.mountPath) (include "kaname.mailKeys.deviceFile" .) | quote }}
 
-    {{- /* ─── ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) ─
+    {{- /* ─── ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; NTF-1 Р9, CX1-111 (в)) ─
 
-    Объявляется ЯВНО каждым профилем: незаданный ключ и не-булево значение —
-    отказ рендера с именем ключа, а не молчаливое «выключено» или «включено».
-    Условие по истинности приняло бы строку «false» (--set-string, накладка с
-    кавычками) за «включено», а снятый ключ выключал бы почту молча. `false`
-    законно и рендерится дословно: действия, которым нужна почта, тогда получают
-    явный отказ службы, прочие исполняются. */}}
+    Значение — ТОЛЬКО вывод `kacho.notifications.enabledFor` над `.Values.global`
+    с модулем `kaname` (тело помощника — deploy/helm/notify/templates/_flag.tpl,
+    одно на релиз): переопределение `global.kacho.notifications.modules.kaname.enabled`,
+    иначе флаг установки `global.kacho.notifications.enabled`. Собственного ключа
+    `config.notifications.enabled` у подчарта нет: заданный слоем — отказ
+    стража зонтика (templates/notifications-flag-guard.yaml). Незаданный флаг и
+    не-булево — отказ помощника с именем ручки, а не молчаливое «выключено».
+    Одиночный рендер этого подчарта получает помощник обёрткой
+    `render_kaname_alone` / `renderKanameAlone`. */}}
     {{- $ntf := .Values.config.notifications | default dict }}
-    {{- if not (kindIs "bool" $ntf.enabled) }}
-    {{- fail (printf "kaname: config.notifications.enabled не булево значение (получено: %s %s) — флаг почты службы объявляется каждым профилем явно: true либо false без кавычек" (kindOf $ntf.enabled) (toJson $ntf.enabled)) }}
-    {{- end }}
     notifications:
-      enabled: {{ $ntf.enabled }}
+      enabled: {{ include "kacho.notifications.enabledFor" (dict "global" .Values.global "module" "kaname") }}
       {{- /* Полоса отсечки выдачи (NTF1-F20; Д112 (в)): ключ отдаётся ВСЕГДА —
       строитель службы без него отказывает в старте; пустота, ноль и
       не-длительность — отказ рендера с именем ключа здесь, а не отказ пода. */}}
