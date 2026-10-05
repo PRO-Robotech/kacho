@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/dkimkey"
 )
 
 const (
@@ -188,4 +189,15 @@ func containsAny(s string, subs ...string) bool {
 		}
 	}
 	return false
+}
+
+// Текст отказа «пути пары в разных каталогах» пакет чтения строит из имён
+// переменных пары: они обязаны быть теми, что читает загрузчик (тег перечня
+// ручек), иначе отказ назвал бы ручку, которой у процесса нет.
+func TestDKIMReaderNamesTheLoaderKnobs(t *testing.T) {
+	for field, want := range map[string]string{"DKIMKeyFile": dkimkey.KeyFileEnv, "DKIMSelectorFile": dkimkey.SelectorFileEnv} {
+		if got := config.KnobOfField(field).Env; got != want {
+			t.Fatalf("ручка %s читается из %s, а пакет чтения пары называет её %s", field, got, want)
+		}
+	}
 }

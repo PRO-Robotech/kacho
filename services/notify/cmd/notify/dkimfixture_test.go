@@ -42,7 +42,7 @@ func dkimFiles(t *testing.T, env map[string]string) {
 	if err := os.Mkdir(filepath.Join(dir, gen), 0o755); err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: поколение тома DKIM: %v", err)
 	}
-	files := map[string][]byte{"dkim.key": dkimKeyPEM, "dkim.selector": []byte("mail")}
+	files := map[string][]byte{"dkim.key": dkimKeyPEM, "dkim.selector": []byte(fixtureDKIMSelector)}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, gen, name), body, 0o600); err != nil {
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: файл %s: %v", name, err)
@@ -56,4 +56,23 @@ func dkimFiles(t *testing.T, env map[string]string) {
 	}
 	env["KACHO_NOTIFY_DKIM_KEY_FILE"] = filepath.Join(dir, "dkim.key")
 	env["KACHO_NOTIFY_DKIM_SELECTOR_FILE"] = filepath.Join(dir, "dkim.selector")
+}
+
+// fixtureDKIMSelector — селектор пары фикстуры.
+const fixtureDKIMSelector = "mail"
+
+// fixtureDKIMPublicKey — открытый ключ пары фикстуры: его публикует запись
+// DKIM зоны испытания.
+func fixtureDKIMPublicKey(t *testing.T) *rsa.PublicKey {
+	t.Helper()
+	dkimFiles(t, map[string]string{})
+	block, _ := pem.Decode(dkimKeyPEM)
+	if block == nil {
+		t.Fatal("НЕ ВЫПОЛНИЛОСЬ: ключ DKIM фикстуры не в форме PEM")
+	}
+	k, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: ключ DKIM фикстуры не разобран: %v", err)
+	}
+	return &k.PublicKey
 }

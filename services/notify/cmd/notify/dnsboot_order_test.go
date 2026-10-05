@@ -20,40 +20,28 @@ package main
 //
 //	func runServe(cfg config.Config, logger *slog.Logger, resolver *net.Resolver) error
 //
-// База пробы — закрытый порт петли: пул ленив, и до шага стража (шаг 6) база не
-// нужна по замыслу (§12а шаги 3–6).
+// База пробы — закрытый порт петли: пул базы собирается ПОСЛЕ стража DNS
+// (corelib db.NewPool не ленив — он проверяет связь при сборке), и до прохода
+// стража база не нужна.
 
 import (
-	"context"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/services/notify/internal/dnscheck/dnstest"
 )
 
-// silentZone — сервер имён, который принимает запросы и не отвечает.
+// silentZone — зона испытания (`dnstest`), которая принимает запросы и не
+// отвечает.
 func silentZone(t *testing.T) *net.Resolver {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: молчащая зона не поднята: %v", err)
-	}
-	t.Cleanup(func() { _ = pc.Close() })
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			if _, _, err := pc.ReadFrom(buf); err != nil {
-				return
-			}
-		}
-	}()
-	addr := pc.LocalAddr().String()
-	return &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "udp", addr)
-	}}
+	z := dnstest.Start(t)
+	z.SetMode(dnstest.Silent)
+	return z.Resolver()
 }
 
 func TestNTF1P08DiagnosticSurfaceAnswersWhileTheDNSGuardWaits(t *testing.T) {

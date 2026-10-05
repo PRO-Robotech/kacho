@@ -3,36 +3,34 @@
 
 package dnscheck_test
 
-// zone_test.go — зона DNS испытания для проб стража (полоса N14, §12а). Это
-// фикстура RED-полосы, а не двойник `dnscheck/dnstest`: тот заводит полоса
-// реализации для КАЖДОГО in-process старта notify; эта зона нужна только
-// пробам этого пакета и испытуемого не содержит.
+// zone_test.go — зона DNS испытания для проб стража (полоса N14, §12а):
+// тонкая обёртка над двойником `dnscheck/dnstest`, которым пользуется и
+// каждый in-process старт notify. Второй реализации зоны в дереве нет: пробы
+// стража и пробы старта судят один и тот же двойник.
 //
-// Сеть настоящая: UDP-сервер на петле, ответы — настоящие сообщения DNS
-// (golang.org/x/net/dns/dnsmessage). Резолвер пробы — `*net.Resolver` с
-// `PreferGo` и `Dial` на адрес зоны: стандартный разбор ответа, склейка строк
-// TXT и род ошибки — те же, что в бою. Зона не снисходительнее настоящей:
-// имени без записей она отвечает NXDOMAIN, а не пустым «успехом».
+// Сеть настоящая: UDP-сервер на петле, ответы — настоящие сообщения DNS.
+// Резолвер пробы — `*net.Resolver` с `PreferGo` и `Dial` на адрес зоны:
+// стандартный разбор ответа, склейка строк TXT и род ошибки — те же, что в
+// бою. Зона не снисходительнее настоящей: имени без записей она отвечает
+// NXDOMAIN, а не пустым «успехом».
 
 import (
 	"context"
 	"errors"
 	"net"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/dnscheck/dnstest"
 )
 
 // zoneMode — как зона отвечает.
-type zoneMode int
+type zoneMode = dnstest.Mode
 
 const (
-	zoneAnswer   zoneMode = iota // записи зоны
-	zoneServfail                 // SERVFAIL на каждый запрос
-	zoneSilent                   // запрос принят, ответа нет
+	zoneAnswer   = dnstest.Answer   // записи зоны
+	zoneServfail = dnstest.Servfail // SERVFAIL на каждый запрос
+	zoneSilent   = dnstest.Silent   // запрос принят, ответа нет
 )
 
 // arrival — запрос, пришедший в зону.
@@ -41,145 +39,29 @@ type arrival struct {
 	at   time.Time
 }
 
-type zone struct {
-	t  *testing.T
-	pc net.PacketConn
-
-	mu       sync.Mutex
-	records  map[string][][]string // абсолютное имя (нижний регистр) → записи TXT → строки записи
-	mode     zoneMode
-	failing  func() bool // при не-nil и true — SERVFAIL (поверх mode)
-	arrivals []arrival
-}
+type zone struct{ z *dnstest.Zone }
 
 func startZone(t *testing.T) *zone {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: зона испытания не поднята: %v", err)
-	}
-	z := &zone{t: t, pc: pc, records: map[string][][]string{}}
-	go z.serve()
-	t.Cleanup(func() { _ = pc.Close() })
-	return z
+	return &zone{z: dnstest.Start(t)}
 }
 
-// set заменяет записи имени; nil снимает имя из зоны.
-func (z *zone) set(name string, records ...[]string) {
-	z.mu.Lock()
-	defer z.mu.Unlock()
-	name = strings.ToLower(name)
-	if records == nil {
-		delete(z.records, name)
-		return
-	}
-	z.records[name] = records
-}
-
-func (z *zone) setMode(m zoneMode) {
-	z.mu.Lock()
-	z.mode = m
-	z.mu.Unlock()
-}
-
-func (z *zone) setFailing(f func() bool) {
-	z.mu.Lock()
-	z.failing = f
-	z.mu.Unlock()
-}
-
+// set заменяет записи имени; без записей снимает имя из зоны.
+func (z *zone) set(name string, records ...[]string) { z.z.Set(name, records...) }
+func (z *zone) setMode(m zoneMode)                   { z.z.SetMode(m) }
+func (z *zone) setFailing(f func() bool)             { z.z.SetFailing(f) }
 func (z *zone) seen() []arrival {
-	z.mu.Lock()
-	defer z.mu.Unlock()
-	return append([]arrival(nil), z.arrivals...)
-}
-
-// resolver — резолвер пробы: каждый запрос уходит в зону испытания.
-func (z *zone) resolver() *net.Resolver {
-	addr := z.pc.LocalAddr().String()
-	return &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "udp", addr)
-		},
+	var out []arrival
+	for _, a := range z.z.Seen() {
+		out = append(out, arrival{name: a.Name, at: a.At})
 	}
+	return out
 }
-
-func (z *zone) serve() {
-	buf := make([]byte, 4096)
-	for {
-		n, from, err := z.pc.ReadFrom(buf)
-		if err != nil {
-			return
-		}
-		var p dnsmessage.Parser
-		h, err := p.Start(buf[:n])
-		if err != nil {
-			continue
-		}
-		q, err := p.Question()
-		if err != nil {
-			continue
-		}
-		name := strings.ToLower(q.Name.String())
-
-		z.mu.Lock()
-		z.arrivals = append(z.arrivals, arrival{name: name, at: time.Now()})
-		mode := z.mode
-		if z.failing != nil && z.failing() {
-			mode = zoneServfail
-		}
-		recs, found := z.records[name]
-		z.mu.Unlock()
-
-		if mode == zoneSilent {
-			continue
-		}
-		rh := dnsmessage.Header{ID: h.ID, Response: true, Authoritative: true, RecursionDesired: h.RecursionDesired, RecursionAvailable: true}
-		switch {
-		case mode == zoneServfail:
-			rh.RCode = dnsmessage.RCodeServerFailure
-		case !found:
-			rh.RCode = dnsmessage.RCodeNameError
-		}
-		b := dnsmessage.NewBuilder(make([]byte, 0, 1232), rh)
-		b.EnableCompression()
-		if err := b.StartQuestions(); err != nil {
-			continue
-		}
-		if err := b.Question(q); err != nil {
-			continue
-		}
-		if err := b.StartAnswers(); err != nil {
-			continue
-		}
-		if mode == zoneAnswer && found && q.Type == dnsmessage.TypeTXT {
-			for _, r := range recs {
-				if err := b.TXTResource(dnsmessage.ResourceHeader{Name: q.Name, Class: dnsmessage.ClassINET, TTL: 60},
-					dnsmessage.TXTResource{TXT: r}); err != nil {
-					z.t.Errorf("НЕ ВЫПОЛНИЛОСЬ: зона не собрала ответ %s: %v", name, err)
-				}
-			}
-		}
-		msg, err := b.Finish()
-		if err != nil {
-			continue
-		}
-		_, _ = z.pc.WriteTo(msg, from)
-	}
-}
+func (z *zone) resolver() *net.Resolver { return z.z.Resolver() }
 
 // split255 режет значение записи на строки TXT: запись DKIM приходит
 // несколькими строками, и проверка обязана их склеить (§12а).
-func split255(s string, size int) []string {
-	var out []string
-	for len(s) > size {
-		out = append(out, s[:size])
-		s = s[size:]
-	}
-	return append(out, s)
-}
+func split255(s string, size int) []string { return dnstest.Split(s, size) }
 
 // TestZoneFixtureAnswersLikeARealServer — фикстура доказывается раньше, чем ею
 // судят: зона отдаёт склеенную запись TXT, на имя без записей — «записи нет»,
