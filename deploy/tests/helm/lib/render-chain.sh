@@ -152,6 +152,7 @@ render_kaname_alone() (
 # `helm_try` библиотеки исходов (outcome.sh) для одиночного рендера kaname:
 # HELM_OUT — stdout, HELM_RC — код, HELM_ERR — stderr без предупреждения о
 # kubeconfig, RENDERS — +1. Отказ читается `render_or_fatal`, как у `helm_try`.
+# shellcheck disable=SC2034 # HELM_OUT/HELM_RC/HELM_ERR читают вызывающий и outcome.sh
 render_kaname_alone_try() {
   local errf; errf="$(mktemp)"
   HELM_OUT="$(render_kaname_alone "$@" 2>"$errf")" && HELM_RC=0 || HELM_RC=$?
