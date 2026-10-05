@@ -5,40 +5,52 @@ package pg
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/corelib/subscription"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 )
 
-// outboxEmitter — реализация kacho.OutboxEmitter. INSERT в `nlb_outbox` в той
-// же TX, что и DML; trigger `nlb_outbox_notify_trg` шлёт
-// `pg_notify('nlb_outbox', sequence_no::text)` после commit'а.
+// outboxEmitter — реализация kacho.OutboxEmitter: строка `nlb_outbox` в той же
+// транзакции writer'а, что и DML; триггер `nlb_outbox_notify_trg` шлёт
+// `pg_notify('nlb_outbox', sequence_no::text)` после коммита.
 type outboxEmitter struct {
-	tx pgx.Tx
+	tx *journaltx.Tx
 }
 
-// Emit добавляет outbox-row в текущей TX writer'а.
+// Emit пишет строку журнала ФУНКЦИЕЙ ФУНДАМЕНТА с дескриптором nlb
+// (`subscription.Journal.Emit` объявления `subscriptionjournal.Journal()`),
+// а не своей вставкой (замысел issue-2918, З5, З6).
 //
-// CHECK constraints на resource_type / action заложены в миграции 0001 — typo
-// в caller'е → SQLSTATE 23514 → ErrInvalidArg в mapPgErr. Это намеренный
-// belt-and-suspenders: каждый caller обязан использовать константы
-// (`kacho.OutboxResource*` / `kacho.OutboxAction*` из leaf-пакета), но DB их
-// валидирует тоже.
+// Словарь у записи один — объявление владельца (`Mapping`): вид или род
+// изменения вне него, вид без объявленных формы имени и якоря, пустой якорь
+// проектного вида, снятие именованного вида без имени — отказ
+// `subscription.ErrEntryRefused` ДО оператора. Ограничение базы
+// (`nlb_outbox_resource_type_check`) остаётся последним словом, но словарь
+// у них разный: база принимает ещё ключ строки сигнала ленты, который пишет
+// не этот эмиттер.
+//
+// Отказ объявления — дефект вызывающего (слова берутся константами
+// `kacho.OutboxResource*` / `kacho.OutboxAction*`), а не ошибка ввода
+// арендатора: он уходит `kacho.ErrInternal` с сохранённой причиной
+// (`errors.Is` видит обе). Отказ базы классифицирует `mapPgErr`.
 func (e *outboxEmitter) Emit(ctx context.Context, resourceType, resourceID, projectID, action string, payload map[string]any) error {
-	payloadJSON := []byte(`{}`)
-	if len(payload) > 0 {
-		b, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("marshal outbox payload: %w", err)
-		}
-		payloadJSON = b
+	err := subscriptionjournal.Journal().Emit(ctx, e.tx, subscription.Entry{
+		Kind:      resourceType,
+		ID:        resourceID,
+		ProjectID: projectID,
+		Change:    action,
+		Payload:   payload,
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, subscription.ErrEntryRefused), errors.Is(err, subscription.ErrNotHelperTx):
+		return fmt.Errorf("%w: outbox: %w", kacho.ErrInternal, err)
 	}
-	const q = `INSERT INTO kacho_nlb.nlb_outbox
-        (resource_type, resource_id, project_id, action, payload)
-        VALUES ($1, $2, $3, $4, $5::jsonb)`
-	if _, err := e.tx.Exec(ctx, q, resourceType, resourceID, projectID, action, payloadJSON); err != nil {
-		return mapPgErr(err, "outbox", "")
-	}
-	return nil
+	return mapPgErr(err, "outbox", "")
 }

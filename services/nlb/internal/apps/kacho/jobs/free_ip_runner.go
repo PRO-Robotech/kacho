@@ -49,7 +49,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -59,9 +58,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/journaltx"
-	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/subscription"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 )
 
 // freeIPMaxPerTick — верхняя граница строк, реконсилируемых за один тик (защита
@@ -394,7 +395,12 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 			"load_balancer_id", lb.id, "status", lb.status)
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM kacho_nlb.load_balancers WHERE id = $1`, lb.id); err != nil {
+	// Снимок имени — из `RETURNING` удаляющего оператора, а не чтением до
+	// удаления (замысел issue-2918, З2 «Имя на снятии»): строка `DELETED`
+	// именованного вида несёт имя, которое было у предмета в момент снятия.
+	var name string
+	if err := tx.QueryRow(ctx,
+		`DELETE FROM kacho_nlb.load_balancers WHERE id = $1 RETURNING name`, lb.id).Scan(&name); err != nil {
 		return outcomeIdle, fmt.Errorf("delete stuck load balancer %s: %w", lb.id, err)
 	}
 
@@ -402,7 +408,7 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 	// CREATING-сирота никогда не достиг терминального статуса и не анонсировался
 	// (CREATED/fga-register не эмитились) → ничего не эмитим.
 	if lb.status == string(domain.LBStatusDeleting) {
-		if err := emitReconcileFinalize(ctx, tx, lb.id, lb.projectID); err != nil {
+		if err := emitReconcileFinalize(ctx, tx, lb.id, lb.projectID, name); err != nil {
 			return outcomeIdle, err
 		}
 	}
@@ -489,9 +495,12 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 	if addressID == "" {
 		return nil
 	}
-	// System-reconcile детачнут от tenant-request — идём под system-principal,
-	// чтобы вызов к vpc нёс identity (иначе authz_no_principal).
-	ctx = operations.WithPrincipal(ctx, operations.SystemPrincipal())
+	// Личность вызова — та, что `reconcileOne` поставил первым оператором
+	// (`journaltx.AsComponent`, принципал компонента `(nlb, free-ip-runner)`):
+	// владелец адреса получает тот же принципал, что стоит инициатором строки
+	// журнала прохода. Своей установки здесь нет — безымянная системная
+	// личность `{system, bootstrap}` на этом пути снята (замысел issue-2918,
+	// З13, CX3D-01 (б); гейт дерева — УК3-31).
 	_, err := r.addrs.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
 		ProjectID: projectID,
 		AddressID: addressID,
@@ -500,22 +509,29 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 	return err
 }
 
-// emitReconcileFinalize эмитит в текущей TX outbox DELETED (nlb_load_balancer) +
-// fga-unregister (project-hierarchy) — то же, что финальный шаг успешного Delete.
-// Все INSERT'ы — в той же TX, что и DELETE строки (атомарно).
-func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, lbID, projectID string) error {
-	lbPayload, err := json.Marshal(map[string]any{
-		"id":         lbID,
-		"project_id": projectID,
-		"reason":     "free_ip_runner_reconcile",
-	})
-	if err != nil {
-		return fmt.Errorf("marshal lb DELETED payload: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_nlb.nlb_outbox (resource_type, resource_id, project_id, action, payload)
-		VALUES ('nlb_load_balancer', $1, $2, 'DELETED', $3::jsonb)
-	`, lbID, projectID, lbPayload); err != nil {
+// emitReconcileFinalize эмитит в текущей TX строку журнала DELETED
+// (nlb_load_balancer) + fga-unregister (project-hierarchy) — то же, что финальный
+// шаг успешного Delete. Все записи — в той же TX, что и DELETE строки (атомарно).
+//
+// Строку журнала пишет функция фундамента с дескриптором nlb
+// (`subscriptionjournal.Journal().Emit`, замысел issue-2918, З5, З6), а не
+// литеральная вставка: словарь видов и родов, форма имени и якорь — из одного
+// объявления владельца; инициатор строки — из транзакции помощника, открытой
+// под личностью компонента прохода. name — снимок имени из `RETURNING`
+// удаляющего оператора.
+func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, lbID, projectID, name string) error {
+	if err := subscriptionjournal.Journal().Emit(ctx, tx, subscription.Entry{
+		Kind:      kachorepo.OutboxResourceLoadBalancer,
+		ID:        lbID,
+		ProjectID: projectID,
+		Change:    kachorepo.OutboxActionDeleted,
+		Payload: map[string]any{
+			"id":                        lbID,
+			"project_id":                projectID,
+			subscription.NamePayloadKey: name,
+			"reason":                    "free_ip_runner_reconcile",
+		},
+	}); err != nil {
 		return fmt.Errorf("emit lb DELETED: %w", err)
 	}
 
