@@ -10,6 +10,7 @@ import {
   newSeed,
   seedAddress,
   seedConfirmedHuman,
+  seedSecondFactor,
   type Seed,
 } from "./ceremony-seed";
 import {
@@ -76,6 +77,14 @@ async function levelOf(seed: Seed, who: string): Promise<string> {
   const view = lastIssued(seed, SESSION_IDENTITY).body as { session?: { assuranceLevel?: unknown } } | null;
   expect(res.status(), `${who}: «кто я» — ${JSON.stringify(view)}`).toBe(200);
   return String(view?.session?.assuranceLevel ?? "");
+}
+
+/** Состояние второго фактора своей сессией — тело, как отдал край. */
+async function factorStatus(seed: Seed, who: string): Promise<Record<string, unknown>> {
+  const res = await seed.read(LANE.secondFactor);
+  const body = lastIssued(seed, LANE.secondFactor).body as Record<string, unknown> | null;
+  expect(res.status(), `${who}: состояние второго фактора — ${JSON.stringify(body)}`).toBe(200);
+  return body ?? {};
 }
 
 /**
@@ -171,6 +180,132 @@ test("Ф3-24 · блокировка: живые сессии — отказ н�
         await operationSucceeded(readerOf(admin.seed), un, "уборка: Unblock");
       }
       await Promise.all([first.dispose(), second.dispose()]);
+    }
+  });
+});
+
+/** Предел ожидания несвежести: окно профиля (`authn.self-service-freshness`) плюс запас на шаги «Дано». */
+const STALE_BUDGET_MS = 22 * 60_000;
+/** Шаг опроса: окно — минуты, частый опрос условие не приблизит. */
+const STALE_POLL_MS = 30_000;
+
+/**
+ * Ждать УСЛОВИЕ «сессия несвежа», а не время: заведение из сессии человека с
+ * заведённым фактором отвечает отказом состояния, пока сессия свежа, и
+ * `403 SESSION_NOT_FRESH`, когда окно прошло — свежесть судится раньше состояния
+ * строки (Ф12 Р4). Это же контроль «Дано» (а): самосброс пройдёт не потому, что
+ * окно было открыто. Ни один из этих отказов в счёт попыток не идёт (Ф12-32).
+ */
+async function awaitStale(seed: Seed, who: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const res = await seed.submit(LANE.enroll, "second-factor", {});
+        const body = lastIssued(seed, LANE.enroll).body;
+        const text = JSON.stringify(body);
+        if (res.status() === 403 && text.includes("SESSION_NOT_FRESH")) return "несвежа";
+        if (res.status() === 200) return `заведение прошло — фактор не был заведён: ${text}`;
+        return `свежа: ${res.status()}`;
+      },
+      { message: `${who}: сессия не стала несвежей за окно профиля`, timeout: STALE_BUDGET_MS, intervals: [STALE_POLL_MS] },
+    )
+    .toBe("несвежа");
+}
+
+test("Ф12-45 · самосброс кодом из несвежей сессии; административный сброс своей записи — только администратору облака", async ({ browserName: _browserName }, testInfo) => {
+  // verifies #1281 — Ф12-45 (Ф12 c5e535f0…) через край на посадке own; близнец «б» — администратор облака (#2878).
+  test.setTimeout(30 * 60_000);
+  await withCloudAdmin(testInfo, async (admin) => {
+    // Дано U: фактор заведён, устройство утрачено — годны только запасные коды; S1 — вход паролем, «1».
+    const uSeed = await newSeed(testInfo);
+    const u = await seedConfirmedHuman(uSeed, seedAddress("f12-45-u"));
+    const uFactor = await seedSecondFactor(uSeed);
+    const s1 = await signedIn(testInfo, u.email, u.password, "S1");
+    // Дано L: фактор заведён, все десять кодов потреблены (Ф12-26); его сессия «1» несвежа так же, как S1.
+    const lSeed = await newSeed(testInfo);
+    const l = await seedConfirmedHuman(lSeed, seedAddress("f12-45-l"));
+    const lFactor = await seedSecondFactor(lSeed);
+    const lSession = await signedIn(testInfo, l.email, l.password, "L");
+    // Дано W: то же, что U, и сессия поднята до «2» запасным кодом (Ф12-18).
+    const wSeed = await newSeed(testInfo);
+    const w = await seedConfirmedHuman(wSeed, seedAddress("f12-45-w"));
+    const wFactor = await seedSecondFactor(wSeed);
+    const wSession = await signedIn(testInfo, w.email, w.password, "W");
+    const seeds = [uSeed, s1, lSeed, lSession, wSeed, wSession];
+    try {
+      expect(await levelOf(s1, "S1"), "S1 — вход паролем без кода (Ф12-14)").toBe("1");
+      expect(await levelOf(lSession, "L"), "сессия L — вход паролем без кода").toBe("1");
+
+      for (const [i, code] of lFactor.backupCodes.entries()) {
+        const res = await lSeed.submit(LANE.stepUp, "step-up", { method: "lookup_secret", code });
+        expect(
+          res.status(),
+          `Дано L: потребление запасного кода №${i + 1} — ${JSON.stringify(lastIssued(lSeed, LANE.stepUp).body)}`,
+        ).toBe(200);
+      }
+
+      const raised = await wSession.submit(LANE.stepUp, "step-up", { method: "lookup_secret", code: wFactor.backupCodes[0] });
+      expect(raised.status(), `Дано W: повышение запасным кодом — ${JSON.stringify(lastIssued(wSession, LANE.stepUp).body)}`).toBe(200);
+      expect(await levelOf(wSession, "W"), "Дано W: сессия поднята до «2»").toBe("2");
+      const wId = await userIdOf(wSession, "W");
+
+      // (б) W через край зовёт ResetSecondFactor со СВОИМ user_id — 403 · code 7 · AUTHZ_DENIED; у W ничего не изменено.
+      const wBefore = await factorStatus(wSession, "W до вызова");
+      const denied = await answerOf(await wSession.api.post(userVerb(wId, "resetSecondFactor"), { data: {} }));
+      expect(denied.status, `(б): административный сброс своей записи не администратором — ${denied.text}`).toBe(403);
+      const deniedBody = JSON.parse(denied.text) as { code?: unknown };
+      expect(deniedBody.code, `(б): код отказа — PERMISSION_DENIED (7): ${denied.text}`).toBe(7);
+      expect(denied.text, "(б): причина отказа — AUTHZ_DENIED, той же формы, что у распорядителя в Ф12-30").toContain(
+        "AUTHZ_DENIED",
+      );
+      expect(await factorStatus(wSession, "W после вызова"), "(б): состояние фактора W не изменено, сессия W годна").toEqual(
+        wBefore,
+      );
+      expect(wBefore.totp, "(б): фактор W заведён").toEqual(expect.objectContaining({ enrolled: true }));
+      // Одно-фактный близнец (б) — тот же вызов на своей записи администратором облака:
+      // `200`, фактор снят. Его исполняет уборка `withCloudAdmin` (resetOwnFactor) с теми
+      // же утверждениями; здесь он идёт ДО ожидания, чтобы сессия администратора «2»
+      // не пережидала окно.
+      await resetOwnFactor(admin, testInfo);
+
+      // Окно Р8 плюс ε: S1 и сессия L несвежи — условие, а не время.
+      await awaitStale(s1, "S1");
+      await awaitStale(lSession, "L");
+
+      // (а) U под S1: remove кодом №4 набора — 200; свежести сверх кода не требуется.
+      const s1Before = (await carrierOf(s1, "S1")).value;
+      const removed = await s1.submit(LANE.remove, "second-factor", { method: "lookup_secret", code: uFactor.backupCodes[3] });
+      const removedBody = lastIssued(s1, LANE.remove).body as { backupCodesRemaining?: unknown } | null;
+      expect(removed.status(), `(а): самосброс кодом из несвежей сессии — ${JSON.stringify(removedBody)}`).toBe(200);
+      expect(removedBody?.backupCodesRemaining, "(а): набора после снятия нет — остаток 0 (Р4, kaname#275)").toBe(0);
+      expect((await carrierOf(s1, "S1 после снятия")).value, "(а): снятие перевыпускает носитель").not.toBe(s1Before);
+      expect(await levelOf(s1, "S1 после снятия"), "(а): S1 на новом носителе — «2» (запасной код предъявлен)").toBe("2");
+      const uAfter = await factorStatus(s1, "U после снятия");
+      expect(uAfter.totp, `(а): строк фактора у U нет — ${JSON.stringify(uAfter)}`).toEqual(
+        expect.objectContaining({ enrolled: false }),
+      );
+      expect(Object.keys(uAfter), `(а): ключа backupCodes после снятия нет — ${JSON.stringify(uAfter)}`).not.toContain(
+        "backupCodes",
+      );
+      const reEnroll = await s1.submit(LANE.enroll, "second-factor", {});
+      expect(
+        reEnroll.status(),
+        `(а): enroll после самосброса — без нового предъявления (код снятия освежил окно): ${JSON.stringify(lastIssued(s1, LANE.enroll).body)}`,
+      ).toBe(200);
+
+      // (в) L под своей сессией: remove потреблённым кодом — 401 authentication failed; строки L не тронуты.
+      const lBefore = await factorStatus(lSession, "L до снятия");
+      const refused = await answerOf(
+        await lSession.submit(LANE.remove, "second-factor", { method: "lookup_secret", code: lFactor.backupCodes[0] }),
+      );
+      expect(refused.status, `(в): снятие потреблённым кодом — ${refused.text}`).toBe(401);
+      expect((JSON.parse(refused.text) as { code?: unknown; message?: unknown }).message, "(в): текст отказа").toBe(
+        "authentication failed",
+      );
+      expect(await factorStatus(lSession, "L после отказа"), "(в): строки L не тронуты").toEqual(lBefore);
+      expect(lBefore.totp, "(в): фактор L заведён").toEqual(expect.objectContaining({ enrolled: true }));
+    } finally {
+      await Promise.all(seeds.map((s) => s.dispose()));
     }
   });
 });
