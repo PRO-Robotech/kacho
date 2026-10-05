@@ -162,7 +162,7 @@ func TestUmbrellaDepsOrderGateFindsAMissingStep(t *testing.T) {
 		t.Fatalf("deploy/Makefile не прочитан: %v", err)
 	}
 	mk := string(raw)
-	const step = "\tbash scripts/helm-umbrella-deps.sh; \\\n"
+	const step = "\t$(MAKE) --no-print-directory helm-deps; \\\n"
 	targets := parseRecipeTargets(mk)
 	devUp := strings.Join(targets["dev-up"].recipe, "\n")
 	if !strings.Contains(devUp+"\n", strings.TrimSuffix(step, "\n")) {

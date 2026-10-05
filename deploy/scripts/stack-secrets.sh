@@ -269,6 +269,7 @@ producer_of() {
     kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
+    stand-cloud-admin)  echo "адрес и пароль первого администратора облака (ключи email + password; kacho#2878) — на площадке заводит оператор, человека заводит шаг bootstrap-cloud-admin" ;;
     *)                        echo "" ;;
   esac
 }
@@ -365,6 +366,14 @@ produce() {
         return 1
       }
       create_generic "$name" "username=$user" "password=$pass" "htpasswd=$line"
+      ;;
+    stand-cloud-admin)
+      # Адрес — на зарезервированном домене (RFC 2606): письмо стенда уходит
+      # приёмнику стенда, а не наружу. Величины не печатаются нигде — ни
+      # здесь, ни шагом, который заводит по ним человека (kacho#2878).
+      create_generic "$name" \
+        "email=cloud-admin-$(openssl rand -hex 4)@example.com" \
+        "password=$(openssl rand -hex 24)"
       ;;
     *) return 1 ;;
   esac

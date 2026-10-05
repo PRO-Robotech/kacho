@@ -9,8 +9,21 @@ metadata:
     {{- include "ui.labels" . | nindent 4 }}
 data:
   default.conf.template: |
+    {{- include "ui.publicFrontGuard" . }}
     server {
         listen {{ include "ui.hostPort" . }};
+        {{- if .Values.publicFront.enabled }}
+        # TLS пользовательского края (kacho#3024): тот же серверный блок, что и
+        # внутренний порт, — второй копии маршрутов консоли нет и разойтись нечему.
+        listen {{ .Values.publicFront.httpsPort }} ssl;
+        ssl_certificate /etc/console-tls/tls.crt;
+        ssl_certificate_key /etc/console-tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers off;
+        ssl_session_cache shared:console_tls:10m;
+        ssl_session_timeout 1d;
+        ssl_session_tickets off;
+        {{- end }}
         server_name _;
 
         resolver ${KUBE_DNS_SERVER} valid=10s ipv6=off;
@@ -238,6 +251,23 @@ data:
         gzip_types text/plain text/css application/javascript application/json image/svg+xml;
         gzip_min_length 1024;
     }
+    {{- if .Values.publicFront.enabled }}
+
+    # Порт 80 балансировщика. НЕ обслуживает ничего: ни консоль, ни края, ни
+    # формы — только переадресация на объявленное происхождение. Хост ответа
+    # берётся из объявления, а не из заголовка `Host` запроса: отражать чужой
+    # заголовок в `Location` значило бы уводить браузер туда, куда скажет
+    # запрос. `308`, а не `301`: метод и тело сохраняются, и форма, отправленная
+    # по http, уходит на https, а не теряется превращением в GET.
+    server {
+        listen {{ .Values.publicFront.redirectPort }};
+        server_name _;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+        location / {
+            return 308 {{ include "ui.publicFrontOrigin" . }}$request_uri;
+        }
+    }
+    {{- end }}
   resolver-from-resolvconf.envsh: |
     # Sourced (.envsh) до nginx 20-envsubst: экспортирует адрес кластерного DNS из
     # /etc/resolv.conf в KUBE_DNS_SERVER, чтобы envsubst подставил его в
@@ -250,6 +280,40 @@ data:
     fi
     export KUBE_DNS_SERVER="$ns"
     echo "[05-resolver] KUBE_DNS_SERVER=$ns exported for envsubst"
+  {{- if .Values.publicFront.enabled }}
+  tls-reload.sh: |
+    # Исполняется до nginx (docker-entrypoint.d) и оставляет в фоне сторожа:
+    # cert-manager продлевает сертификат В СЕКРЕТЕ, kubelet меняет файлы тома на
+    # месте, а nginx держит в памяти лист, прочитанный при старте. Без сторожа
+    # под отдавал бы прежний лист до истечения. Сторож сверяет отпечаток пары
+    # файлов и на расхождении просит nginx перечитать настройку (`-s reload`:
+    # соединения не рвутся). Проверка конфигурации — ДО перечтения: битая пара в
+    # секрете не должна гасить раздачу, она остаётся на прежнем листе и говорит
+    # об этом в журнал.
+    set -eu
+    dir=/etc/console-tls
+    every={{ int .Values.publicFront.tls.reloadIntervalSeconds }}
+    for f in "$dir/tls.crt" "$dir/tls.key"; do
+      if [ ! -s "$f" ]; then
+        echo "[06-tls-reload] FATAL: $f пуст или отсутствует — TLS пользовательского края не завершается" >&2
+        exit 1
+      fi
+    done
+    (
+      seen="$(cat "$dir/tls.crt" "$dir/tls.key" | cksum)"
+      while sleep "$every"; do
+        now="$(cat "$dir/tls.crt" "$dir/tls.key" 2>/dev/null | cksum)" || continue
+        [ "$now" = "$seen" ] && continue
+        if nginx -t -q 2>/dev/null && nginx -s reload; then
+          seen="$now"
+          echo "[06-tls-reload] сертификат пользовательского края сменился — nginx перечитал настройку"
+        else
+          echo "[06-tls-reload] сертификат сменился, но конфигурация не прошла проверку — остаёмся на прежнем листе" >&2
+        fi
+      done
+    ) &
+    echo "[06-tls-reload] сторож сертификата запущен, период ${every}s"
+  {{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap

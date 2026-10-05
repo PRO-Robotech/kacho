@@ -57,6 +57,8 @@ export type FormKind =
   | "login"
   | "logout"
   | "password"
+  | "recovery"
+  | "recovery-complete"
   | "register"
   | "second-factor"
   | "step-up"
@@ -68,6 +70,8 @@ export const LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
   confirm: "/iam/v1/auth/second-factor/confirm",
@@ -78,7 +82,7 @@ export const LANE = {
 } as const;
 
 /** Ответ края о сессии — не глагол полосы, а вопрос «кто я»; посев задаёт его своим носителем. */
-const SESSION_IDENTITY = "/iam/v1/auth/me";
+export const SESSION_IDENTITY = "/iam/v1/auth/me";
 
 /** Одно обращение посева и ответ на него — в порядке выпуска. */
 export interface IssuedCall {

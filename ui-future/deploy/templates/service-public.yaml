@@ -1,0 +1,35 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+Внешний вход консоли (kacho#3024): 443 → TLS раздачи, 80 → переадресация на
+https. Внутреннего порта раздачи здесь НЕТ намеренно: открытый http наружу не
+публикуется ни одним портом. Разбор — values.yaml, блок `publicFront`.
+*/}}
+{{- if .Values.publicFront.enabled }}
+{{- include "ui.publicFrontGuard" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.publicFrontServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+  {{- with .Values.publicFront.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  selector:
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: https
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: redirect
+{{- end }}
