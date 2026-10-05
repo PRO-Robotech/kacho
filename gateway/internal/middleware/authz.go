@@ -409,7 +409,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return nil, status.Error(codes.Unavailable, "authz service unavailable")
+			return nil, status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(ctx, req)
 		}
@@ -461,7 +461,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return status.Error(codes.Unavailable, "authz service unavailable")
+			return status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(srv, ss)
 		}
@@ -541,7 +541,7 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			m.metrics.RecordErrorRefused()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"code":14,"message":"authz service unavailable"}`))
+			_, _ = w.Write([]byte(authzUndecidedBody))
 		default:
 			next.ServeHTTP(w, r)
 		}
@@ -1316,3 +1316,13 @@ func denyDecision(fqn string, entry CatalogEntry, descriptor permissionDeniedDes
 		entry:      entry,
 	}
 }
+
+// authzUndecidedText — отказ, когда решение о правах не получено (источник
+// вердикта не ответил): `UNAVAILABLE` / `503`, повторить. Текст называет
+// исход, а не часть края, которая лежит: имя внутренней службы наружу — карта
+// топологии для того, кто изучает поверхность, и ничего не даёт арендатору
+// (kacho#3029; гейт `TestEdgeRefusalNamesNoInternalService`).
+const authzUndecidedText = "authorization could not be decided; try again later"
+
+// authzUndecidedBody — тот же отказ на REST в форме `google.rpc.Status`.
+const authzUndecidedBody = `{"code":14,"message":"` + authzUndecidedText + `","details":[]}`
