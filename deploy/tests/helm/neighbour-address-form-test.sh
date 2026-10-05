@@ -96,7 +96,8 @@
 # настройки — его nginx не резолвит, а сверяет. Признак для директивы — та же
 # конъюнкция: значение в позиции аргумента `proxy_ssl_name` И в том же блоке
 # `proxy_ssl_verify on` с `proxy_ssl_trusted_certificate`. Прощается только
-# аргумент директивы; полная форма в `proxy_pass` того же блока — находка.
+# аргумент директивы и только в разделе `data` ConfigMap; полная форма в
+# `proxy_pass` того же блока — находка.
 # Привести такое имя к короткой форме значило бы сверять лист края с именем,
 # которого нет в его SAN, либо развести адрес и имя на две величины.
 #
@@ -286,6 +287,8 @@ def is_verification_name(envname, siblings):
 #      `proxy_ssl_name` прощению не подлежит.
 # Прощается ТОЛЬКО совпадение внутри аргумента этой директивы: полная форма в
 # `proxy_pass`, `set` или `resolver` того же блока остаётся находкой.
+# И только в значении раздела `data` ConfigMap: вне текста настройки директива
+# ничего не значит, и прощать в ней нечего.
 #
 # Блоки разбираются счётом скобок; `${VAR}` (подстановка окружения при старте)
 # и строки в кавычках скобками не считаются. Разбор, не сошедшийся (лишняя
@@ -426,7 +429,13 @@ def classify(path, stack):
             if NGINX_RESOLVED.search(ctx or ''):
                 nginx_hits[ctx] = nginx_hits.get(ctx, 0) + 1
                 return
-            spans = nginx_verify_spans(node) if 'proxy_ssl_name' in node else []
+            # Круг прощения — ТЕКСТ НАСТРОЙКИ nginx: значение раздела `data`
+            # ConfigMap, откуда раздача её и монтирует. Та же директива в
+            # аннотации, env или Secret nginx'ом не читается — её значение
+            # остаётся адресом под правилом формы (kacho#3028, сужение до
+            # предмета: звено фронта кладёт настройку только в ConfigMap).
+            in_nginx_conf = kind == 'ConfigMap' and where.startswith('.data.')
+            spans = nginx_verify_spans(node) if in_nginx_conf and 'proxy_ssl_name' in node else []
             for m in ADDR.finditer(node):
                 name = m.group(0)
                 if any(a <= m.start() and m.end() <= b for a, b in spans):
@@ -966,6 +975,21 @@ data:
             proxy_ssl_name api-gateway.kacho.svc.cluster.local;
         }
     }' 1 "kacho-vpc.kacho.svc.cluster.local"
+
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: та же законная директива вне ConfigMap (аннотация нагрузки) → красный (nginx её не читает)" \
+'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  annotations:
+    kacho.cloud/nginx-snippet: |
+      location /api/ {
+          proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+          proxy_ssl_verify on;
+          proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+      }
+spec: {}' 1 "api-gateway.kacho.svc.cluster.local"
 
   # ДОКАЗАТЕЛЬСТВО, ЧТО ПРОПУСК SAN ИМЕННО СТРУКТУРНЫЙ, А НЕ ПО ИМЕНИ ПОЛЯ:
   # то же имя поля в НЕ-Certificate документе пропуску не подлежит.
