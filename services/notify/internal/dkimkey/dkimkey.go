@@ -66,7 +66,9 @@ type PairFS interface {
 type osFS struct{}
 
 func (osFS) Readlink(name string) (string, error) { return os.Readlink(name) }
-func (osFS) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
+func (osFS) ReadFile(name string) ([]byte, error) {
+	return os.ReadFile(name) // #nosec G304 -- путь собран из ручек оператора KACHO_NOTIFY_DKIM_*_FILE и поколения тома, а не из ввода запроса
+}
 
 // OS — порт чтения на файловой системе процесса.
 var OS PairFS = osFS{}
