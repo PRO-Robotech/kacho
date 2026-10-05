@@ -757,13 +757,15 @@ type Config struct {
 	MTLSStorageServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
 
 	// Hybrid external listener: when true, the external TLS listener
-	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven and the internal CA
-	// (MTLSCAFile) as ClientCAs — an OPTIONAL client cert. A browser (no cert)
-	// handshakes and takes the JWT path; a client presenting a valid Kachō cert
-	// is verified so the AuthInterceptor can derive a principal from its SPIFFE
-	// SAN (no JWT required). Default false ⇒ ClientAuth stays NoClientCert,
-	// behaviour unchanged. Internal service listeners are NOT affected by this
-	// flag (they stay strict RequireAndVerifyClientCert).
+	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven — an OPTIONAL
+	// client cert verified against the installation CA (MTLSCAFile) and the
+	// front-link anchor (see ExternalListenerClientAuth). A browser (no cert)
+	// handshakes and takes the token path. A verified cert is not an identity on
+	// the external listener: it names a front link to the client-address
+	// operator and, on the HTTP path, is compared with a bound token's cnf — no cert alone becomes
+	// a principal there (kacho#3028, rows 30 and 33). Default false ⇒
+	// ClientAuth stays NoClientCert. Internal service listeners are NOT affected
+	// by this flag (they stay strict RequireAndVerifyClientCert).
 	HybridMTLSExternal bool `envconfig:"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL" default:"false"`
 }
 
@@ -1007,10 +1009,19 @@ func (c Config) HybridMTLSEnabled() bool {
 // ExternalListenerClientAuth applies the hybrid client-auth policy to the
 // external listener's *tls.Config and returns it. When hybrid is disabled it is a
 // no-op (ClientAuth stays NoClientCert). When enabled it sets
-// tls.VerifyClientCertIfGiven with the internal CA (MTLSCAFile) as ClientCAs, so
-// a browser without a cert still handshakes (JWT path) while a client that DOES
-// present a cert has it verified against the trust anchor — the AuthInterceptor
-// then derives the principal from the verified cert's SPIFFE SAN.
+// tls.VerifyClientCertIfGiven with a client-CA pool of TWO anchors — the
+// installation CA (MTLSCAFile) and the front-link anchor
+// (TrustedProxyLinkAnchor) — so a browser without a cert still handshakes
+// (token path) while a presented cert must chain to one of them.
+//
+// A verified cert is NOT an identity on this listener (kacho#3028, channel
+// census rows 30 and 33). Its readers are: the client-address operator, which
+// reads only a leaf chaining to the front-link anchor (linktls.Anchor.Issued);
+// and the token-binding check of the HTTP path, which compares the leaf with the token's cnf
+// thumbprint. The cert-principal lane of the AuthInterceptor recognises no one
+// on the external gRPC: the root's server credentials (linktls.ServerCredentials)
+// hand the TLS state as linktls.AuthInfo, not credentials.TLSInfo. Held by
+// TestExternalGRPC_NoClientCertificateBecomesAPrincipalWithoutAToken.
 //
 // Fail-fast: hybrid enabled with no readable CA file is an error (a listener that
 // cannot verify any client cert would silently degrade every cert client to the

@@ -328,7 +328,11 @@ func main() {
 
 	// Полоса личности по сертификату (посадка hybrid) и что она видит на
 	// внешнем gRPC края — withCertPrincipalLane (external_grpc_server.go).
-	authInterceptor = withCertPrincipalLane(authInterceptor, cfg, clientAddressOp.Anchor, logger)
+	authInterceptor, err = withCertPrincipalLane(authInterceptor, cfg, clientAddressOp.Anchor, logger)
+	if err != nil {
+		logger.Error("api-gateway refusing to start: cert-principal lane", "err", err)
+		os.Exit(1)
+	}
 
 	// Machine principals are exempt from step-up (a machine has no second
 	// factor). That exemption is only defensible if the machine's token is

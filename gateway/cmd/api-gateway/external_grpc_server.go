@@ -12,6 +12,8 @@
 package main
 
 import (
+	"crypto/x509"
+	"fmt"
 	"log/slog"
 
 	"github.com/PRO-Robotech/corelib/grpcsrv"
@@ -39,10 +41,48 @@ import (
 // Второй слой — якорь звеньев аргументом полосы: даже получи полоса состояние,
 // лист звена фронта личностью не станет (строка 30); якорь — тот же, которым
 // оператор адреса узнаёт звено.
-func withCertPrincipalLane(a *middleware.AuthInterceptor, cfg config.Config, links linktls.Anchor, logger *slog.Logger) *middleware.AuthInterceptor {
+//
+// Якорь сверяется с объявленным ручкой якоря звеньев, и несовпадение — ошибка,
+// на которой корень в старте отказывает. Пустой или иной якорь сделал бы
+// второй слой пустым молча: Anchor.Foreign отдаёт всякий проверенный лист, чей
+// корень не якоря, — то есть и лист звена. Держат это
+// TestCertPrincipalLane_AnchorIsTheDeclaredLinkAnchor (сборщик) и
+// TestTrustedProxyCircleIsJudgedAtStart (процесс корня стартует с якорем
+// оператора адреса).
+func withCertPrincipalLane(a *middleware.AuthInterceptor, cfg config.Config, links linktls.Anchor, logger *slog.Logger) (*middleware.AuthInterceptor, error) {
 	if !cfg.HybridMTLSEnabled() {
-		return a
+		return a, nil
+	}
+	declared, err := cfg.TrustedProxyLinkAnchor()
+	if err != nil {
+		return nil, err
+	}
+	if !sameRoots(links.Roots(), declared) {
+		return nil, fmt.Errorf("полоса личности по сертификату собрана с якорем звеньев (корней %d), "+
+			"отличным от объявленного %s (корней %d): лист звена фронта прошёл бы в ней как лист установки",
+			len(links.Roots()), config.TrustedProxyCAFileKnob, len(declared))
 	}
 	logger.Info("hybrid mTLS external listener: cert-principal path enabled")
-	return a.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain), links)
+	return a.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain), links), nil
+}
+
+// sameRoots — одно ли это множество корней. Сравнение по байтам сертификата
+// (Equal), как у Anchor.
+func sameRoots(got, want []*x509.Certificate) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, w := range want {
+		found := false
+		for _, g := range got {
+			if g.Equal(w) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
