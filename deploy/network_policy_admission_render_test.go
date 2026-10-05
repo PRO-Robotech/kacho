@@ -27,6 +27,14 @@ const npNamespace = "kacho"
 // ровно тем вызовом helm, которым стенд поднимается.
 func npChainDocs(t *testing.T, name string) []map[string]any {
 	t.Helper()
+	return npChainDocsWith(t, name)
+}
+
+// npChainDocsWith — то же, с ручками поверх профилей цепочки (фикстура, у
+// которой то, что профиль стенда сегодня выключает, включено ручками чарта).
+func npChainDocsWith(t *testing.T, name string, extra ...string) []map[string]any {
+	t.Helper()
+	requireUmbrellaPackagedFromTree(t)
 	chain, ok := deployStacks(t)[name]
 	if !ok {
 		t.Fatalf("стека %q в таблице %s нет — предпосылка пробы исчезла, а не рендер стал чистым", name, stacksTable)
@@ -39,7 +47,7 @@ func npChainDocs(t *testing.T, name string) []map[string]any {
 	if err != nil {
 		t.Fatalf("ручки применения умбреллы не прочитаны: %v — рендер был бы не тем стендом", err)
 	}
-	return renderDocBodies(t, "цепочки "+name, renderChainCached(t, chain, sets...))
+	return renderDocBodies(t, "цепочки "+name, renderChainCached(t, chain, append(sets, extra...)...))
 }
 
 // TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods — сам гейт.

@@ -362,6 +362,7 @@ func parsePolicy(d map[string]any) (npPolicy, error) {
 
 type npServicePort struct {
 	port   int
+	name   string // имя порта службы — по нему бэкенд входа называет порт
 	target any
 }
 
@@ -573,7 +574,8 @@ func npIndexDocs(ns string, docs []map[string]any) (works []npWorkload, services
 				if target == nil {
 					target = num
 				}
-				s.ports = append(s.ports, npServicePort{port: num, target: target})
+				pname, _ := pm["name"].(string)
+				s.ports = append(s.ports, npServicePort{port: num, name: pname, target: target})
 			}
 			services[name] = s
 		case "NetworkPolicy":

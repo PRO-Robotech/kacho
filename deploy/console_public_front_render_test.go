@@ -110,6 +110,7 @@ var (
 	redirectReturn   = regexp.MustCompile(`(?m)^\s*return 308 (\S+)\$request_uri;\s*$`)
 	nginxDirective   = regexp.MustCompile(`(?m)^\s*(proxy_pass|try_files|root|alias|fastcgi_pass|grpc_pass)\b`)
 	forwardedForSet  = regexp.MustCompile(`(?mi)^\s*proxy_set_header\s+X-Forwarded-For\s+(\S+?)\s*;`)
+	realIPSet        = regexp.MustCompile(`(?mi)^\s*proxy_set_header\s+X-Real-IP\s+(\S+?)\s*;`)
 	locationHead     = regexp.MustCompile(`(?m)^[ \t]*location\s+([^{]*?)\s*\{`)
 	proxyPassLine    = regexp.MustCompile(`(?m)^\s*proxy_pass\s+(\S+?)\s*;`)
 )
@@ -169,7 +170,8 @@ func nginxLocations(conf string) ([]nginxLocation, error) {
 }
 
 // judgeLaneForwardedFor — находки п. 6 по одной карте настройки: каждая
-// проксирующая полоса пишет `X-Forwarded-For $remote_addr` сама и ровно так.
+// проксирующая полоса пишет `X-Forwarded-For $remote_addr` и
+// `X-Real-IP $remote_addr` сама и ровно так.
 // proxied — число проксирующих полос (знаменатель).
 func judgeLaneForwardedFor(conf string) (findings []string, proxied int) {
 	locs, err := nginxLocations(conf)
@@ -181,16 +183,25 @@ func judgeLaneForwardedFor(conf string) (findings []string, proxied int) {
 			continue
 		}
 		proxied++
-		xff := forwardedForSet.FindAllStringSubmatch(l.Body, -1)
-		if len(xff) == 0 {
-			findings = append(findings, fmt.Sprintf("полоса `location %s` проксирует (%s) без своей строки "+
-				"X-Forwarded-For — раздача отдаёт дальше заголовок, присланный клиентом, как есть (kacho#3028)",
-				l.Head, l.ProxyPass))
-		}
-		for _, m := range xff {
-			if m[1] != "$remote_addr" {
-				findings = append(findings, fmt.Sprintf("полоса `location %s`: X-Forwarded-For = %s, ожидался "+
-					"$remote_addr — заголовок, присланный клиентом, уходит от раздачи дальше (kacho#3028)", l.Head, m[1]))
+		// Оба заголовка адреса, которые раздача несёт дальше, она пишет сама
+		// адресом TCP-пира (kacho#3028, C1): дописанный или пропущенный заголовок
+		// отдаёт заявление клиента о себе звену за раздачей.
+		for _, h := range []struct {
+			name string
+			re   *regexp.Regexp
+		}{{"X-Forwarded-For", forwardedForSet}, {"X-Real-IP", realIPSet}} {
+			set := h.re.FindAllStringSubmatch(l.Body, -1)
+			if len(set) == 0 {
+				findings = append(findings, fmt.Sprintf("полоса `location %s` проксирует (%s) без своей строки "+
+					"%s — раздача отдаёт дальше заголовок, присланный клиентом, как есть (kacho#3028)",
+					l.Head, l.ProxyPass, h.name))
+			}
+			for _, m := range set {
+				if m[1] != "$remote_addr" {
+					findings = append(findings, fmt.Sprintf("полоса `location %s`: %s = %s, ожидался "+
+						"$remote_addr — заголовок, присланный клиентом, уходит от раздачи дальше (kacho#3028)",
+						l.Head, h.name, m[1]))
+				}
 			}
 		}
 	}
@@ -431,6 +442,7 @@ var publicFrontFixtureSets = []string{
 // происхождением и, последней, фикстурная цепочка со входом.
 func readPublicFrontRenders(t *testing.T) []publicFrontRender {
 	t.Helper()
+	requireUmbrellaPackagedFromTree(t)
 	stacks := deployStacks(t)
 	origins := map[string]string{}
 	for _, f := range readConsoleOriginFacts(t, nil) {

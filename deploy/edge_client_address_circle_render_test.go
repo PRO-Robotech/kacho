@@ -237,24 +237,39 @@ func edgePortsOf(edge npWorkload) []edgePort {
 	return out
 }
 
-// edgeFrontLinks — звенья фронта, выведенные из рендера, а не выписанные:
+// edgeFrontLinks — звенья фронта, выведенные из рендера, а не выписанные, и
+// для каждого — номера портов контейнера края, до которых он звонит:
 //
 //   - рабочий объект, в настройках которого назван адрес службы края (раздача
-//     консоли: `uif.host.upstreams.apiGateway`);
+//     консоли: `uif.host.upstreams.apiGateway`) — порт, на который ведёт
+//     названный порт службы;
 //   - контроллер входа того класса, у которого есть вход (Ingress), ведущий на
-//     службу края. Контроллер узнаётся по аргументу `--ingress-class=<класс>`.
+//     службу края, — порт, на который ведёт порт службы в бэкенде входа.
+//     Контроллер узнаётся по аргументу `--ingress-class=<класс>`.
 //
 // Иных звеньев нет: заголовок адреса пишет только то, что стоит между
-// клиентом и краем.
+// клиентом и краем. Порт звена нужен политике (п. 3): правило, открывающее
+// звену порт, до которого оно не звонит, — открытый ему вход края мимо его
+// полосы (internal-rest края не звонит никто, и открыт он быть не должен).
 func edgeFrontLinks(ns string, edge npWorkload, works []npWorkload, services map[string]npService,
-	maps map[string]map[string]any, docs []map[string]any) map[string]bool {
+	maps map[string]map[string]any, docs []map[string]any) map[string]map[int]bool {
 	edgeSvc := map[string]bool{}
 	for name, svc := range services {
 		if svc.selector.matches(edge.labels) {
 			edgeSvc[name] = true
 		}
 	}
-	links := map[string]bool{}
+	links := map[string]map[int]bool{}
+	reach := func(id string, sp npServicePort) {
+		num, _, ok := edge.containerPort(sp.target)
+		if !ok {
+			return
+		}
+		if links[id] == nil {
+			links[id] = map[int]bool{}
+		}
+		links[id][num] = true
+	}
 	for _, w := range works {
 		if w.id() == edge.id() {
 			continue
@@ -265,12 +280,12 @@ func edgeFrontLinks(ns string, edge npWorkload, works []npWorkload, services map
 			}
 			for _, sp := range services[hp.host].ports {
 				if sp.port == hp.port {
-					links[w.id()] = true
+					reach(w.id(), sp)
 				}
 			}
 		}
 	}
-	classes := map[string]bool{}
+	classPorts := map[string][]npServicePort{}
 	for _, d := range docs {
 		if docKind(d) != "Ingress" {
 			continue
@@ -288,8 +303,16 @@ func edgeFrontLinks(ns string, edge npWorkload, works []npWorkload, services map
 		}
 		for _, b := range backends {
 			bm, _ := b.(map[string]any)
-			if edgeSvc[str(submap(bm, "service"), "name")] && class != "" {
-				classes[class] = true
+			bs := submap(bm, "service")
+			name := str(bs, "name")
+			if !edgeSvc[name] || class == "" {
+				continue
+			}
+			bp := submap(bs, "port")
+			for _, sp := range services[name].ports {
+				if (bp["number"] != nil && bp["number"] == sp.port) || (str(bp, "name") != "" && str(bp, "name") == sp.name) {
+					classPorts[class] = append(classPorts[class], sp)
+				}
 			}
 		}
 	}
@@ -298,8 +321,10 @@ func edgeFrontLinks(ns string, edge npWorkload, works []npWorkload, services map
 		for _, c := range cs {
 			cm, _ := c.(map[string]any)
 			for _, a := range slice(cm, "args") {
-				if v, ok := strings.CutPrefix(fmt.Sprint(a), "--ingress-class="); ok && classes[v] {
-					links[w.id()] = true
+				if v, ok := strings.CutPrefix(fmt.Sprint(a), "--ingress-class="); ok {
+					for _, sp := range classPorts[v] {
+						reach(w.id(), sp)
+					}
 				}
 			}
 		}
@@ -360,8 +385,10 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 		}
 		return out, a
 	}
-	links := edgeFrontLinks(npNamespace, edge, works, services, maps, docs)
-	for l := range links {
+	linkPorts := edgeFrontLinks(npNamespace, edge, works, services, maps, docs)
+	links := map[string]bool{}
+	for l := range linkPorts {
+		links[l] = true
 		a.Links = append(a.Links, l)
 	}
 	sort.Strings(a.Links)
@@ -384,8 +411,19 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 			continue
 		}
 		a.Policies++
-		rawRules := slice(submap(raw[p.name], "spec"), "ingress")
+		rawSpec := submap(raw[p.name], "spec")
+		if !declaresIngressType(rawSpec) {
+			say("политика %s выбирает под края, а policyTypes не объявляет Ingress явно — изоляция входа края "+
+				"держится умолчанием сервера API, а не объявлением политики", p.name)
+		}
+		rawRules := slice(rawSpec, "ingress")
 		for _, r := range p.inRules {
+			for _, np := range r.ports {
+				if np.endPort > 0 {
+					say("политика %s, правило %d: диапазон портов %s (endPort) — порт края открывается звену "+
+						"поимённо, диапазон открывает и соседние порты пересылки", p.name, r.index, np)
+				}
+			}
 			var opened []string
 			for _, ep := range ports {
 				if r.admitsPort(ep.num, ep.name) {
@@ -411,6 +449,10 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 				continue
 			}
 			rm, _ := rawRules[r.index].(map[string]any)
+			if n := len(slice(rm, "from")); n != 1 {
+				say("%s: отправителей %d, ожидался ровно один селектор звена фронта — каждое звено открывается "+
+					"своим правилом на свой порт", where, n)
+			}
 			for _, peer := range slice(rm, "from") {
 				pm, _ := peer.(map[string]any)
 				switch {
@@ -441,6 +483,13 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 					if !links[id] {
 						say("%s: селектор %s впускает %s — не звено фронта: к краю он не звонит, а заголовок "+
 							"адреса от него край примет", where, sel, id)
+						continue
+					}
+					for _, ep := range ports {
+						if r.admitsPort(ep.num, ep.name) && !linkPorts[id][ep.num] {
+							say("%s: звену %s открыт порт края %d, до которого оно не звонит — вход края мимо "+
+								"полосы звена", where, id, ep.num)
+						}
 					}
 				}
 			}
@@ -451,6 +500,17 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 			"дошедший до края, подменяет адрес клиента одной строкой заголовка", a.Circle)
 	}
 	return out, a
+}
+
+// declaresIngressType — объявляет ли спецификация политики Ingress в policyTypes
+// явно (kacho#3028, C5).
+func declaresIngressType(spec map[string]any) bool {
+	for _, t := range slice(spec, "policyTypes") {
+		if t == "Ingress" {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEveryStackTrustsTheClientAddressOnlyFromTheFront(t *testing.T) {

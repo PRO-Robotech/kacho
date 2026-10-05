@@ -35,6 +35,7 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 	}
 	cases := []struct {
 		name, from, to string
+		all            bool // заменить каждое вхождение, а не первое
 		origin         string
 		mustSay        string
 	}{
@@ -90,6 +91,27 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mustSay: "проксирует (http://$vpc_upstream) без своей строки",
 		},
 		{
+			// X-Real-IP — второй заголовок адреса, который раздача несёт дальше
+			// (kacho#3028, C1): дописанный или пропущенный, он отдаёт заявление
+			// клиента о себе звену за раздачей так же, как X-Forwarded-For.
+			name:    "полоса к краю без своей строки X-Real-IP",
+			from:    "proxy_set_header X-Forwarded-For $remote_addr;\n            proxy_set_header X-Real-IP $remote_addr;\n            proxy_set_header X-Request-ID $http_x_request_id;\n\n",
+			to:      "proxy_set_header X-Forwarded-For $remote_addr;\n            proxy_set_header X-Request-ID $http_x_request_id;\n\n",
+			mustSay: "без своей строки X-Real-IP",
+		},
+		{
+			name: "полоса передаёт X-Real-IP клиента",
+			from: "proxy_set_header X-Real-IP $remote_addr;", to: "proxy_set_header X-Real-IP $http_x_real_ip;",
+			mustSay: "X-Real-IP = $http_x_real_ip, ожидался $remote_addr",
+		},
+		{
+			// Нулевой обход: ни одной проксирующей полосы — судье п. 6 нечего
+			// судить, и «каждая полоса пишет адрес сама» не бывает истинным пусто.
+			name: "нулевой обход — ни одной проксирующей полосы",
+			from: "proxy_pass ", to: "#proxy_pass ", all: true,
+			mustSay: "нет ни одной проксирующей полосы",
+		},
+		{
 			name: "происхождение консоли по http", origin: "http://" + host,
 			mustSay: "не по https",
 		},
@@ -101,7 +123,11 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 				if strings.Count(text, c.from) == 0 {
 					t.Fatalf("инъекция не нашла места %q в рендере — она бы ничего не проверила", c.from)
 				}
-				text = strings.Replace(text, c.from, c.to, 1)
+				n := 1
+				if c.all {
+					n = -1
+				}
+				text = strings.Replace(text, c.from, c.to, n)
 			}
 			r := publicFrontRender{Stack: front.Stack, Origin: front.Origin, Docs: decodeRender(t, text)}
 			if c.origin != "" {

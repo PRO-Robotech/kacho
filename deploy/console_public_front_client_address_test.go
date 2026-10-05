@@ -24,8 +24,8 @@
 // есть, и проба, ходящая в одну полосу, остальных не видит. Утверждается:
 //
 //	предмет  — `X-Forwarded-For`, дошедший до края, равен ровно адресу TCP-пира
-//	           раздачи (его же раздача кладёт в `X-Real-IP`) и подделанного
-//	           значения не несёт;
+//	           раздачи (его же раздача кладёт в `X-Real-IP`), и ни один из двух
+//	           заголовков подделанного значения не несёт;
 //	близнец  — два клиента дают два разных источника: подделка, одинаковая у
 //	           обоих, не сводит их в один.
 //
@@ -164,6 +164,7 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 		idA, idB := fmt.Sprintf("lane-%d-a", i), fmt.Sprintf("lane-%d-b", i)
 		req, _ := http.NewRequest(http.MethodGet, "https://"+httpsAddr+ln.path, nil)
 		req.Header.Set("X-Forwarded-For", forgedForwardedFor)
+		req.Header.Set("X-Real-IP", forgedForwardedFor)
 		req.Header.Set("X-Request-ID", idA)
 		resp, err := hostClient.Do(req)
 		if err != nil {
@@ -171,7 +172,7 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 		}
 		resp.Body.Close()
 		dockerOut(t, "exec", sidecar, "curl", "-sk", "--max-time", "10", "-o", "/dev/null",
-			"-H", "X-Forwarded-For: "+forgedForwardedFor, "-H", "X-Request-ID: "+idB,
+			"-H", "X-Forwarded-For: "+forgedForwardedFor, "-H", "X-Real-IP: "+forgedForwardedFor, "-H", "X-Request-ID: "+idB,
 			fmt.Sprintf("https://%s%s", net.JoinHostPort(frontIP, fmt.Sprint(front.HTTPS)), ln.path))
 
 		a, okA := rec.get(idA)
@@ -188,6 +189,10 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 				if strings.Contains(s.ForwardedFor, forgedForwardedFor) {
 					t.Errorf("полоса `location %s`, клиент %s: подделанный адрес дошёл до края в X-Forwarded-For=%q",
 						ln.head, name, s.ForwardedFor)
+				}
+				if strings.Contains(s.RealIP, forgedForwardedFor) {
+					t.Errorf("полоса `location %s`, клиент %s: подделанный адрес дошёл до края в X-Real-IP=%q",
+						ln.head, name, s.RealIP)
 				}
 				if s.ForwardedFor != s.RealIP {
 					t.Errorf("полоса `location %s`, клиент %s: X-Forwarded-For=%q не равен адресу пира раздачи %q",
