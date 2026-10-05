@@ -48,6 +48,13 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 MAKEFILE="$REPO_ROOT/Makefile"
 SECRETS_SH="scripts/dev-prod-secrets.sh"
+# Посевы стенда, которые зовут цели подъёма. Первый — общий (ключи службы
+# доступа); второй — объекты стенда notify (базы, ключ сетки, кольцо ленты
+# пробы; полоса D6, Д123) — отдельным скриптом, потому что dev-prod-secrets.sh
+# читает предполёт боевой раскатки площадки, где notify нет. Каждый судится так
+# же: заводит ровно то, что создаёт `create secret generic`, и только если цель
+# его зовёт.
+SEED_SCRIPTS=("$SECRETS_SH" "scripts/seed-notify-stand-secrets.sh")
 
 # Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
 # 2 условие не создано (плюс текст самого helm). Прежде «профиль цели не
@@ -94,9 +101,12 @@ provisioned_by() {
   # `dev-prod-up: dev-up` — цель исполняет рецепты своих make-предусловий.
   deps="$(printf '%s\n' "$body" | head -1 | sed -E 's/^[^:]*:[[:space:]]*//')"
   for d in $deps; do body="$body"$'\n'"$(target_body "$d")"; done
-  [[ "$body" == *"$SECRETS_SH"* ]] || return 0
-  # Скрипт заводит ровно те секреты, которые в нём создаются `create secret generic`.
-  grep -oE 'create secret generic +[a-z0-9-]+' "$REPO_ROOT/$SECRETS_SH" | awk '{print $4}'
+  local s
+  for s in "${SEED_SCRIPTS[@]}"; do
+    [[ "$body" == *"$s"* ]] || continue
+    # Скрипт заводит ровно те секреты, которые в нём создаются `create secret generic`.
+    grep -oE 'create secret generic +[a-z0-9-]+' "$REPO_ROOT/$s" | awk '{print $4}'
+  done
 }
 
 # unmet <render-файл> <список-заводимых-секретов> → строки «<секрет> <потребитель>»

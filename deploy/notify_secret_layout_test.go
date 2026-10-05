@@ -34,11 +34,12 @@
 // Цепочка `prod` через обёртку D9 на копии зонтика во временном каталоге (раздел
 // «нога фикстурной копии ЗОНТИКА» ниже): опора и отрицание, инъекции «страж
 // первым», `alias: notifyx`, копия шаблона под другим именем, состав копии.
-// Там же — решения Д76: пустая таблица источников даёт закрытый
+// Там же — решения Д76: пустой выведенный перечень даёт закрытый
 // детерминированный исход в каждой цепочке, notify без тега образа — отказ
 // рендера с именем ручки.
 //
-// Чего здесь НЕТ (зависит от D2/D6): I01, I02, I06 приёмки NTF-1.
+// Чего здесь НЕТ: I02, I06 приёмки NTF-1 (подъём — D6); I01 по цепочкам дерева —
+// deploy/notifications_flag_test.go (D2).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ИСХОДОВ ТРИ (verdict-and-landing §1)
@@ -86,14 +87,46 @@ const (
 	notifyRecipientEnv  = "KACHO_NOTIFY_RECIPIENT_KEY"
 	notifyAnchorEnv     = "KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE"
 
-	// notifyEmptyTableBody — тело закрытой таблицы подключаемых источников в
-	// дереве; копия заменяет ровно его.
-	notifyEmptyTableBody = `{{- list | toJson -}}`
-	// notifyFixtureTableBody — строка `probe-b` формы таблицы N02.
-	notifyFixtureTableBody = `{{- list (dict "module" "probe-b" "feedAddr" "probe-b:9091" ` +
+	// notifyTableTail — хвост тела таблицы модулей `_sources.tpl` дерева (строка
+	// после последней строки таблицы); копия дописывает строки перед ним.
+	notifyTableTail = "\n| toJson -}}"
+	// notifyFixtureRow — строка `probe-b` формы таблицы модулей (N02): ключ
+	// модуля, путь собственного ключа флага, запись источника.
+	notifyFixtureRow = `  (dict "key" "probeB" "ownFlagKey" "probeB.notifications.enabled" "source" ` +
+		`(dict "module" "probe-b" "feedAddr" "probe-b:9091" ` +
 		`"san" "spiffe://kacho.cloud/ns/kacho/sa/probe-b" "classes" (list "notice") ` +
-		`"recipientForms" (list) "authorization" "resolveSend") | toJson -}}`
+		`"recipientForms" (list) "authorization" "resolveSend"))`
+	// notifyValuesLimitsAnchor — пустой словарь ручек на источник в values.yaml
+	// чарта; копия заменяет его записью своего источника.
+	notifyValuesLimitsAnchor = "sourceLimits: {}"
 )
+
+// withTableRows — правка `_sources.tpl` копии: строки rows дописаны в таблицу
+// модулей перед её хвостом. Хвост не единственный — правка ничего не меняет, и
+// копия отказывает «НЕ ВЫПОЛНИЛОСЬ».
+func withTableRows(rows ...string) func(string) string {
+	return replaceOnce(notifyTableTail, "\n"+strings.Join(rows, "\n")+notifyTableTail)
+}
+
+// withSourceLimits — правка values.yaml копии чарта: ручки на источник для
+// модулей modules (фикстурные величины в границах процесса).
+func withSourceLimits(modules ...string) func(string) string {
+	var b strings.Builder
+	b.WriteString("sourceLimits:")
+	for _, m := range modules {
+		fmt.Fprintf(&b, "\n  %s:\n    rate: 5\n    burst: 5\n    paused: false", m)
+	}
+	return replaceOnce(notifyValuesLimitsAnchor, b.String())
+}
+
+// fixtureRowEdits — правки копии чарта notify: строка `probe-b` в таблице
+// модулей и её ручки на источник.
+func fixtureRowEdits() map[string]func(string) string {
+	return map[string]func(string) string{
+		"templates/_sources.tpl": withTableRows(notifyFixtureRow),
+		"values.yaml":            withSourceLimits("probe-b"),
+	}
+}
 
 // ─── рендер ────────────────────────────────────────────────────────────────
 
@@ -170,9 +203,7 @@ func replaceOnce(old, repl string) func(string) string {
 // notifyFixtureChart — копия с таблицей из одного источника плюс прочие правки.
 func notifyFixtureChart(t *testing.T, extra map[string]func(string) string) string {
 	t.Helper()
-	edits := map[string]func(string) string{
-		"templates/_sources.tpl": replaceOnce(notifyEmptyTableBody, notifyFixtureTableBody),
-	}
+	edits := fixtureRowEdits()
 	for k, f := range extra {
 		if prev, ok := edits[k]; ok {
 			edits[k] = func(s string) string { return f(prev(s)) }
@@ -340,9 +371,10 @@ func podAnnotation(objs []renderedObj, key string) string {
 
 // ─── перечень пуст → объектов нет (NTF1-N04 в этой полосе) ─────────────────
 
-// TestNotifyChartRendersNothingWithAnEmptyRoster — настоящий чарт (таблица
-// пуста) рендерит ноль объектов и не отказывает; близнец — копия с одной
-// строкой таблицы → объекты есть.
+// TestNotifyChartRendersNothingWithAnEmptyRoster — настоящий чарт с пустым
+// выведенным перечнем (нога без зонтика: единственный источник таблицы
+// выключен переопределением) рендерит ноль объектов и не отказывает; близнец —
+// копия со строкой `probe-b` таблицы → объекты есть.
 func TestNotifyChartRendersNothingWithAnEmptyRoster(t *testing.T) {
 	out, err := renderNotify(t, notifyChartDir, standaloneLeg())
 	if err != nil {
@@ -556,10 +588,14 @@ func TestNotifyRecipientKeyObjectNameIsConstant(t *testing.T) {
 	if ok, why := judge(notifyFixtureChart(t, nil)); !ok {
 		t.Errorf("имя объекта ключа сетки зависит от значения ключа: %s", why)
 	}
+	// Имя ссылки пода выводит помощник `notify.recipientKeySecretName`
+	// (_helpers.tpl; объект стенда Д123 либо объект чарта) — инъекция правит
+	// оба написания имени: объект и помощник.
 	suffix := ` }}-recipient-key-{{ .Values.recipientKey | sha256sum | trunc 8 }}`
 	inj := notifyFixtureChart(t, map[string]func(string) string{
 		"templates/recipient-key-secret.yaml": replaceOnce(` }}-recipient-key`, suffix),
-		"templates/deployment.yaml":           replaceOnce(` }}-recipient-key`, suffix),
+		"templates/_helpers.tpl": replaceOnce(`(printf "%s-recipient-key" (include "notify.fullname" .))`,
+			`(printf "%s-recipient-key-%s" (include "notify.fullname" .) (.Values.recipientKey | sha256sum | trunc 8))`),
 	})
 	if ok, why := judge(inj); ok {
 		t.Errorf("инъекция «имя от содержимого»: проба промолчала (%s)", why)
@@ -1268,7 +1304,7 @@ func notifyUmbrellaCopy(t *testing.T, opts umbrellaCopyOpts) umbrellaCopy {
 	c := umbrellaCopy{root: root, umbrella: filepath.Join(root, "deploy", umbrellaDir)}
 	notifyEdits := map[string]func(string) string{}
 	if opts.fixtureRow {
-		notifyEdits["templates/_sources.tpl"] = replaceOnce(notifyEmptyTableBody, notifyFixtureTableBody)
+		notifyEdits = fixtureRowEdits()
 	}
 	for k, f := range opts.notifyEdits {
 		if prev, ok := notifyEdits[k]; ok {
@@ -1610,11 +1646,11 @@ func TestNotifyUmbrellaCopyCompositionNamesAMissingDependency(t *testing.T) {
 	}
 }
 
-// ─── пустая таблица источников — закрытый детерминированный исход (Д76 (1)) ─
+// ─── пустой выведенный перечень — закрытый детерминированный исход (Д76 (1)) ─
 
 // inventedSourcesLayer — слой, называющий источник во всех местах, откуда
 // перечень мог бы его «взять»: ручного перечня у notify нет (NTF1-N03), и
-// пустая таблица обязана остаться пустым перечнем при любом таком слое.
+// пустой вывод обязан остаться пустым перечнем при любом таком слое.
 func inventedSourcesLayer(t *testing.T, under string) (string, int) {
 	t.Helper()
 	src := []any{map[string]any{"module": "invented", "feedAddr": "invented:9091",
@@ -1644,11 +1680,20 @@ func inventedSourcesLayer(t *testing.T, under string) (string, int) {
 	return p, len(own) + 3
 }
 
-// TestNotifyEmptyRosterIsAClosedDeterministicOutcome — таблица дерева пуста:
-// рендер не падает, объектов notify 0, источников не выдумывает (слой,
-// называющий источник, ничего не меняет), два рендера побайтно равны; то же —
-// в каждой цепочке таблицы стендов на копии зонтика. Инъекция — перечень,
-// берущий источники из значений при пустой таблице, → красный.
+// rosterOffSets — наборы «перечень пуст по флагу»: установка выключена,
+// переопределения модулей сняты (замысел З28, NTF1-N04).
+var rosterOffSets = []string{
+	"global.kacho.notifications.enabled=false",
+	"global.kacho.notifications.modules=null",
+}
+
+// TestNotifyEmptyRosterIsAClosedDeterministicOutcome — выведенный перечень
+// пуст (нога без зонтика: единственный источник дерева выключен
+// переопределением; цепочки: флаг установки выключен): рендер не падает,
+// объектов notify 0, источников не выдумывает (слой, называющий источник,
+// ничего не меняет), два рендера побайтно равны; то же — в каждой цепочке
+// таблицы стендов на копии зонтика. Инъекция — перечень, берущий источники из
+// значений при пустом выводе, → красный.
 func TestNotifyEmptyRosterIsAClosedDeterministicOutcome(t *testing.T) {
 	judge := func(chart string) (int, string, error) {
 		layer, _ := inventedSourcesLayer(t, "")
@@ -1666,23 +1711,22 @@ func TestNotifyEmptyRosterIsAClosedDeterministicOutcome(t *testing.T) {
 	n, out, err := judge(notifyChartDir)
 	switch {
 	case err != nil:
-		t.Errorf("пустая таблица: %v\n%s", err, out)
+		t.Errorf("перечень пуст: %v\n%s", err, out)
 	case n != 0:
-		t.Errorf("пустая таблица и слой, называющий источник: объектов notify %d — перечень выдуман из значений", n)
+		t.Errorf("перечень пуст и слой, называющий источник: объектов notify %d — перечень выдуман из значений", n)
 	default:
 		_, places := inventedSourcesLayer(t, "")
-		t.Logf("пустая таблица, слой с источником в %d местах: код 0, объектов 0, два рендера равны", places)
+		t.Logf("перечень пуст, слой с источником в %d местах: код 0, объектов 0, два рендера равны", places)
 	}
 
-	fallback := `{{- $t := include "notify.pluggableSources" . | fromJsonArray -}}` +
-		`{{- if $t }}{{ $t | toJson }}{{ else }}{{ dig "kacho" "notifications" "sources" (list) .global | toJson }}{{ end -}}`
+	fallback := `{{- if $out }}{{ $out | toJson }}{{ else }}{{ dig "kacho" "notifications" "sources" (list) $global | toJson }}{{ end -}}`
 	inj := notifyChartCopy(t, map[string]func(string) string{
-		"templates/_sources.tpl": replaceOnce(`{{- include "notify.pluggableSources" . -}}`, fallback),
+		"templates/_sources.tpl": replaceOnce(`{{- $out | toJson -}}`, fallback),
 	})
 	if n, _, err := judge(inj); err == nil && n == 0 {
-		t.Errorf("инъекция «перечень из значений при пустой таблице»: проба промолчала")
+		t.Errorf("инъекция «перечень из значений при пустом выводе»: проба промолчала")
 	} else {
-		t.Logf("инъекция «перечень из значений при пустой таблице» → красный: объектов %d, %v", n, err)
+		t.Logf("инъекция «перечень из значений при пустом выводе» → красный: объектов %d, %v", n, err)
 	}
 
 	// Каждая цепочка таблицы стендов на копии зонтика (prod — через обёртку).
@@ -1696,13 +1740,14 @@ func TestNotifyEmptyRosterIsAClosedDeterministicOutcome(t *testing.T) {
 	for _, name := range names {
 		layer, _ := inventedSourcesLayer(t, c.effectiveDepName(t))
 		files := append(c.chainFiles(t, name), layer)
-		out, err := c.render(files)
+		// Перечень пуст по флагу: установка выключена, переопределений нет.
+		out, err := c.render(files, rosterOffSets...)
 		if err != nil {
-			t.Errorf("цепочка %s, пустая таблица: рендер зонтика отказал: %v\n%s", name, err, lastLines(out, 5))
+			t.Errorf("цепочка %s, перечень пуст по флагу: рендер зонтика отказал: %v\n%s", name, err, lastLines(out, 5))
 			continue
 		}
 		if k := notifySourceCount(parseRendered(t, out)); k != 0 {
-			t.Errorf("цепочка %s, пустая таблица: объектов notify %d", name, k)
+			t.Errorf("цепочка %s, перечень пуст по флагу: объектов notify %d", name, k)
 			continue
 		}
 		t.Logf("цепочка %s: код 0, объектов notify 0", name)

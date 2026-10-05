@@ -528,7 +528,14 @@ func renderKanameSubchart(t *testing.T, root, chart string, s lanePrereqStack) s
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatalf("стенд %s: запись значений: %v", s.Stack, err)
 	}
-	cmd := exec.Command("helm", "template", "kaname", chart, "-f", path, "--namespace", s.Namespace)
+	// Одиночный рендер подчарта kaname — только обёрткой `render_kaname_alone`:
+	// флаг почты службы берётся помощником чарта notify, которого голый рендер
+	// подчарта не видит (замысел NTF-1 З28, CX1-113). Обёртка — шелльная,
+	// второго её тела в этом пакете нет.
+	wrapper := filepath.Join(root, "deploy", "tests", "helm", "lib", "render-chain.sh")
+	cmd := exec.Command("bash", "-c", `. "$RENDER_CHAIN_LIB" && render_kaname_alone "$@"`, "render_kaname_alone", // #nosec G204 -- фиксированная оболочка и обёртка дерева
+		"kaname", chart, "-f", path, "--namespace", s.Namespace)
+	cmd.Env = append(os.Environ(), "RENDER_CHAIN_LIB="+wrapper)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

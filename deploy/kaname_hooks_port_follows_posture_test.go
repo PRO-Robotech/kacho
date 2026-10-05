@@ -212,12 +212,13 @@ func renderKanameHooksSurface(t *testing.T, chartDir, stack string, values map[s
 	if err := os.WriteFile(file, body, 0o600); err != nil {
 		t.Fatalf("стенд %s: %v", stack, err)
 	}
-	args := []string{"template", "kacho-umbrella", chartDir, "-n", "kacho", "-f", file,
+	// Одиночный рендер подчарта — только обёрткой (renderKanameAlone, CX1-113).
+	args := []string{"-n", "kacho", "-f", file,
 		"--show-only", "templates/deployment.yaml", "--show-only", "templates/service-internal.yaml"}
 	for _, s := range sets {
 		args = append(args, "--set-string", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := renderKanameAlone(t, "kacho-umbrella", chartDir, args...)
 	if err != nil {
 		t.Fatalf("стенд %s: подчарт kaname не рендерится: %v\n%s", stack, err, out)
 	}

@@ -351,6 +351,33 @@ mailpit:
       cpu: 120m
       memory: 192Mi
 
+# ─── Сервер зоны DNS стенда (NTF-1 Р19, замысел §12а; полоса D10) ──────────────
+# Поднимается шаблоном templates/stand-dns.yaml ровно при включённой зоне —
+# исход помощника `notify.standDNS` над `global.kacho.standDNS` (объявляет
+# только профиль стенда, в файле своего кластера). Здесь — образ и аппетит.
+#
+# ОБРАЗ ПРИБИТ ДАЙДЖЕСТОМ (форма `mailpit.image`): тег рядом ради читаемости, в
+# рантайм идёт дайджест. Дайджест снят с реестра 2026-10-05 (индекс мультиарх-
+# образа), повторяется:
+#   docker buildx imagetools inspect registry.k8s.io/coredns/coredns:v1.14.2
+# Образ — тот же сервер имён, что ставит kind 0.32 узлам кластера; процесс
+# образа — `nonroot` (65532), поэтому слушатель — непривилегированный порт
+# `port`, а служба отдаёт его на 53.
+standZoneServer:
+  image:
+    repository: registry.k8s.io/coredns/coredns
+    tag: v1.14.2
+    digest: "sha256:e7e6440cfd1e919280958f5b5a6ab2b184d385bba774c12ad2a9e1e4183f90d9"
+    pullPolicy: IfNotPresent
+  port: 5353
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 96Mi
+
 # cert-manager (jetstack) sub-chart — controller + CRDs + webhook. Installed only
 # when mtls.enabled (Chart.yaml condition). Deploys into the umbrella release
 # namespace; its --cluster-resource-namespace defaults to that namespace, so the
@@ -400,6 +427,38 @@ global:
     # одного профиля не меняется.
     registry:
       serviceAud: "registry.in-cloud.io"
+    # ─── ФЛАГ УСТАНОВКИ: ГЕНЕРИРОВАТЬ ЛИ ПОЧТОВЫЕ ЗАПРОСЫ (NTF-1 Р9; замысел З28) ──
+    #
+    # Объявление ОДНО: флаг установки плюс переопределение модуля под `modules`
+    # (ключ — ключ строки таблицы модулей deploy/helm/notify/templates/_sources.tpl).
+    # Действующее значение модуля выводит ОДИН помощник
+    # `kacho.notifications.enabledFor` (deploy/helm/notify/templates/_flag.tpl):
+    # переопределение, иначе флаг установки. Из того же объявления чарт notify
+    # выводит перечень источников; ручного перечня нет (NTF1-N03, N04).
+    #
+    # Живёт в `global`, потому что его читают РАЗНЫЕ подчарты (notify — перечень,
+    # kaname — переменная процесса, зонтик — проба): под ключом одного из них
+    # значение соседу не видно. Собственный ключ флага модуля под ключом его
+    # подчарта (`kaname.config.notifications.enabled`,
+    # `notifyProbe.notifications.enabled`) — отказ рендера с полным путём
+    # (templates/notifications-flag-guard.yaml): второго пути к значению нет.
+    #
+    # Флаг установки — `true` и профилями НЕ переопределяется: `false` в боевом
+    # профиле было бы вторым написанием «установки без почты» (CX1-83 (б)).
+    # Узел `global.kacho.notifications` объявляет только этот файл: умолчание
+    # `global`, объявленное подчартом, видно лишь ему (CX1-112).
+    #
+    # ПЕРЕОПРЕДЕЛЕНИЙ МОДУЛЕЙ ЗДЕСЬ НЕТ, и это измерено, а не выбрано: снятие
+    # переопределения (`--set global.kacho.notifications.modules=null`) не
+    # снимает умолчание `global`, объявленное этим файлом (helm v4.2.4: под
+    # `global` нулевое значение слоя не удаляет ключ умолчания зонтика), — модуль
+    # с переопределением здесь не мог бы наследовать флаг установки ни в одной
+    # цепочке. Переопределение стендовой пробы объявляют корневые профили
+    # цепочек: `values.prod.yaml` — `false` (вне стенда пробы нет ни в рендере,
+    # ни в перечне notify, NTF1-I04), `values.dev.yaml`, `values.fe3455.yaml` —
+    # `true`, `values.a8f60d.yaml` — `false` (Д102).
+    notifications:
+      enabled: true
     # ─── служба личности: ЕДИНСТВЕННОЕ объявление формирующих значений ─────────
     #
     # Живёт в `global`: узел читают ДВА контекста — подчарт службы доступа
@@ -481,9 +540,11 @@ global:
       # доехавшей до процесса. Прежний шаг подстановки в настройки поставщика
       # снят вместе с ними (kacho#2818).
       #
-      # Кто эти величины задаёт: стенд — `values.dev.yaml` (там же поднимается
-      # приёмник, блок `mailpit`); боевая площадка — слой учётных данных,
-      # перечень разрешённых координат которого назван в cutover-fe3455.sh.
+      # Кто эти величины задаёт: стенды — `values.dev.yaml` и площадка fe3455 —
+      # `values.fe3455.yaml` (там же поднимается приёмник, блок `mailpit`);
+      # установка оператора — свой слой узла (образец формы —
+      # deploy/testdata/mail-node/). Слой учётных данных площадки адреса почты
+      # не несёт (перечень CRED_PATHS — cutover-creds-layer.sh).
       smtp:
         connectionURI: ""
         fromAddress: ""
@@ -701,11 +762,14 @@ pg-storage:
     extendedConfiguration: |
       autovacuum_naptime = 5s
 
-# ─── notify — шлюз уведомлений (NTF-1, замысел З28; полоса D1) ─────────────────
+# ─── notify — шлюз уведомлений (NTF-1, замысел З28; полосы D1, D2) ─────────────
 # Подчарт deploy/helm/notify; объекты рендерятся только при непустом выведенном
-# перечне источников (NTF1-N04). На этой полосе таблица подключаемых источников
-# пуста, и notify не рендерится ни в одной цепочке — его в рендер цепочек вводит
-# полоса D2 (флаг global.kacho.notifications.*, строка notify-probe).
+# перечне источников (NTF1-N04). Перечень выводится из таблицы модулей чарта и
+# флага `global.kacho.notifications` (выше); на этой голове единственный источник
+# таблицы — стендовая проба `notify-probe`, поэтому notify рендерится ровно в
+# цепочках стендов с пробой (dev, dev-prod) и не рендерится в own, prod, a8f60d
+# (замысел З28, таблица «Флаг и выведенный перечень») и — до публикации образа —
+# в prorobotech, fe3455 (их профили пробу выключают; см. ниже).
 #
 # ОБРАЗ НАЗВАН, ТЕГ — НЕТ, И ЭТО ПРАВДА, А НЕ ПРОПУСК. Рецепт стенда собирает
 # kacho-notify, поэтому базовый слой обязан его назвать (гейт
@@ -720,9 +784,27 @@ pg-storage:
 # Посадку и шифрование канала базы объявляют профили цепочек (values.dev.yaml,
 # values.prod.yaml), а не этот слой и не умолчание подчарта.
 notify:
+  # Полное имя установки — ПОСТОЯННОЕ `kacho-notify`, а не `<релиз>-notify`: оно
+  # же имя учётки и сегмент `sa/` SPIFFE-идентичности notify, а литерал
+  # `kacho-notify` закреплён приёмкой (NTF1-J03 `notify.spiffe = {T, N,
+  # kacho-notify}`) и его читают политика выпуска (assert-cert-issuance-policy.sh,
+  # NOTIFY_SA) и гейт поверхностей величин (метка пода по имени продукта).
+  # Выпуск `kacho-umbrella` давал `kacho-umbrella-notify` — мимо всех троих.
+  fullnameOverride: kacho-notify
   image:
     repository: docker.io/prorobotech/kacho-notify
     tag: ""
+  # Ручки на источник (NTF-1 Р8, Р9; NTF1-N03, H08): ключ — имя модуля записи
+  # перечня, запись — `{rate, burst, paused}` (rate [1..1000], burst [1..10000]).
+  # Ключ вне источников таблицы модулей — отказ рендера с его именем; источник
+  # перечня без записи — отказ рендера с именем модуля (умолчания нет). Пауза —
+  # только оператором (`paused: true`): у приостановленного notify забирает лишь
+  # `security`.
+  sourceLimits:
+    notify-probe:
+      rate: 5
+      burst: 5
+      paused: false
 
 # ─── notify-probe — стендовая проба-источник notify (NTF-1, полоса D3) ────────
 #
@@ -754,6 +836,9 @@ notifyProbe:
     user: notifyprobe
     name: kacho_notifyprobe
     sslMode: require
+    # Ширина пула (KACHO_NOTIFYPROBE_DB_MAX_CONNS): объявлена, а не умолчание
+    # драйвера max(4, число ядер узла) — deploy/pool_fits_database_test.go.
+    maxConns: 5
     passwordSecret:
       name: ""
       key: password
@@ -916,6 +1001,22 @@ registry:
 
 pg-registry:
   # Carries kacho_registry.registry_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+
+pg-notify:
+  enabled: false
+  # Carries kacho_notify CAS-строки сетки и потолка (Р10), переписываемые на
+  # каждом резерве, и уборку окон — та же свежесть статистики, что у очередей.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+
+pg-notifyprobe:
+  enabled: false
+  # Carries kacho_notifyprobe ленту извещений (notification_feed), которую
+  # notify забирает `Claim` с отбором по состоянию строки.
   primary:
     extendedConfiguration: |
       autovacuum_naptime = 5s

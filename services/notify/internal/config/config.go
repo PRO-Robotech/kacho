@@ -39,6 +39,8 @@ import (
 
 // Границы ручек — §8 замысла NTF-1.
 const (
+	DBMaxConnsMin         = 1
+	DBMaxConnsMax         = 100
 	ClaimIntervalMin      = time.Second
 	ClaimIntervalMax      = 5 * time.Minute
 	ResolveSendTimeoutMin = 100 * time.Millisecond
@@ -84,6 +86,13 @@ type Config struct {
 	DBName     string `envconfig:"KACHO_NOTIFY_DB_NAME" knob:"notify.db.name"`
 	DBSSLMode  string `envconfig:"KACHO_NOTIFY_DB_SSLMODE" knob:"notify.db.sslMode"`
 
+	// DBMaxConns — ширина пула базы, в [1..100] (полоса D6). Объявлена ручкой,
+	// а не умолчанием драйвера (max(4, число ядер узла)): произведение «пул ×
+	// реплики» против `max_connections` базы судит гейт развёртывания по
+	// объявленной величине. В пул уходит параметром `pool_max_conns` строки
+	// соединения ([Config.DSN]).
+	DBMaxConns int `envconfig:"KACHO_NOTIFY_DB_MAX_CONNS" knob:"notify.db.maxConns"`
+
 	// DiagAddr — адрес диагностической поверхности (`/healthz`, `/readyz`,
 	// `/metrics`), досягаемой только внутри кластера (З15).
 	DiagAddr string `envconfig:"KACHO_NOTIFY_DIAG_ADDR" knob:"notify.diagAddr"`
@@ -108,11 +117,34 @@ type Config struct {
 	// (NTF1-G01). Разбор — [Config.SourceRoster].
 	Sources string `envconfig:"KACHO_NOTIFY_SOURCES" knob:"notify.sources"`
 
-	// SMTPConnectionURI — адрес ретранслятора. В этой полосе страж читает из
-	// него только имя пользователя — для пары «имя ⇔ удостоверение» (Д45,
-	// NTF1-G15). Обязательность ручки и закрытый разбор адреса заводит полоса
-	// N13 (Д44, CX1-77, CX1-79), поэтому тег `optional`.
-	SMTPConnectionURI string `envconfig:"KACHO_NOTIFY_SMTP_CONNECTION_URI" knob:"notify.smtp.connectionURI,optional"`
+	// SMTPConnectionURI — адрес ретранслятора, ОДНА ручка узла почты без
+	// умолчания (Д44, CX1-77). Разбор — закрытой таблицей ([parseRelayURI]):
+	// схема → режим TLS, узел, порт, имя пользователя; результат — [Config.Relay].
+	SMTPConnectionURI string `envconfig:"KACHO_NOTIFY_SMTP_CONNECTION_URI" knob:"notify.smtp.connectionURI"`
+
+	// SMTPFromAddress — адрес отправителя установки (З20 «Отправитель»): форма
+	// `notify/address` с непустым доменом. Его домен — домен `From` и домен
+	// проверок DNS установки (§12а, Д101); результат — [Config.FromDomain].
+	SMTPFromAddress string `envconfig:"KACHO_NOTIFY_SMTP_FROM_ADDRESS" knob:"notify.smtp.fromAddress"`
+
+	// ── DNS установки (Р19, §12а) ───────────────────────────────────────────
+
+	// DNSBootDeadline — срок стража DNS на старте, в [10s..10m] (NTF1-P13).
+	DNSBootDeadline time.Duration `envconfig:"KACHO_NOTIFY_DNS_BOOT_DEADLINE" knob:"notify.dns.bootDeadline"`
+
+	// DNSRecheckInterval — интервал перепроверки DNS, в [1m..24h] (NTF1-P13).
+	DNSRecheckInterval time.Duration `envconfig:"KACHO_NOTIFY_DNS_RECHECK_INTERVAL" knob:"notify.dns.recheckInterval"`
+
+	// DKIMKeyFile / DKIMSelectorFile — пути файлов ключа и селектора DKIM в
+	// томе объекта, смонтированном без `subPath` (§12а «Ключ и селектор DKIM»).
+	// Оба пути — в одном каталоге тома; пара читается из одного поколения.
+	DKIMKeyFile      string `envconfig:"KACHO_NOTIFY_DKIM_KEY_FILE" knob:"notify.dkim.keyFile"`
+	DKIMSelectorFile string `envconfig:"KACHO_NOTIFY_DKIM_SELECTOR_FILE" knob:"notify.dkim.selectorFile"`
+
+	// StandDNS — зона DNS стенда (Д104): `off` либо хост приёмника стенда,
+	// равный хосту адреса ретранслятора. Не адрес резолвера и не обход
+	// проверки: страж DNS исполняется на резолвере пода при любом значении.
+	StandDNS string `envconfig:"KACHO_NOTIFY_STAND_DNS" knob:"notify.standDNS"`
 
 	// ── лимиты Р10 (З24, NTF1-H08) ──────────────────────────────────────────
 
@@ -145,6 +177,14 @@ type Config struct {
 
 	// sources — разобранный перечень; заполняет [Config.Validate].
 	sources []Source
+
+	// relay — разобранный адрес ретранслятора; relayParsed — разбор удался.
+	// Заполняет [Config.Validate].
+	relay       RelayAddress
+	relayParsed bool
+
+	// fromDomain — домен адреса отправителя; заполняет [Config.Validate].
+	fromDomain string
 
 	// unset — ручки, переменной которых нет в окружении вовсе.
 	unset map[string]bool
@@ -217,8 +257,6 @@ type Knob struct {
 	Name string
 	Env  string
 	Kind reflect.Kind
-	// Optional — незаданная ручка не отказ (решение — у предмета ручки).
-	Optional bool
 }
 
 func (k Knob) String() string { return k.Name + " (" + k.Env + ")" }
@@ -234,8 +272,7 @@ func Knobs() []Knob {
 		if env == "" {
 			continue
 		}
-		name, opts, _ := strings.Cut(f.Tag.Get("knob"), ",")
-		out = append(out, Knob{Name: name, Env: env, Kind: f.Type.Kind(), Optional: opts == "optional"})
+		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind()})
 	}
 	return append(out, credentialKnob, recipientKeyKnob)
 }
@@ -344,25 +381,30 @@ func (c Config) Mode() (servicecontract.Mode, error) { return servicecontract.Pa
 // построителем адреса, а не склейкой строки.
 func (c Config) DSN() string {
 	u := url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(c.DBUser, c.DBPassword),
-		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
-		Path:     "/" + c.DBName,
-		RawQuery: url.Values{"sslmode": []string{c.DBSSLMode}}.Encode(),
+		Scheme: "postgres",
+		User:   url.UserPassword(c.DBUser, c.DBPassword),
+		Host:   net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:   "/" + c.DBName,
+		RawQuery: url.Values{
+			"sslmode":        []string{c.DBSSLMode},
+			"pool_max_conns": []string{strconv.Itoa(c.DBMaxConns)},
+		}.Encode(),
 	}
 	return u.String()
 }
 
 // Validate — страж старта notify (ban #16, fail-closed): все находки разом.
 //
-// Порядок проверок значения не имеет: каждая судит свою ручку и не опирается
-// на исход соседней, кроме суммы сроков — она судится только при годных
-// слагаемых, иначе отказ одной ручки назывался бы дважды.
+// Каждая проверка судит свою ручку. На исход соседней опираются три — суммы
+// сроков (судится только при годных слагаемых), пары «имя ⇔ удостоверение» и
+// зоны DNS стенда (судятся только на разобранном адресе ретранслятора, поэтому
+// [Config.validateRelay] стоит раньше них): иначе отказ одной ручки назывался
+// бы дважды.
 func (c *Config) Validate() error {
 	var fs findings
 
 	for _, k := range Knobs() {
-		if k.Optional || k == credentialKnob {
+		if k == credentialKnob {
 			continue
 		}
 		if c.unset[k.Env] {
@@ -382,12 +424,18 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	c.checkInt(&fs, "DBMaxConns", c.DBMaxConns, DBMaxConnsMin, DBMaxConnsMax)
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
 	c.validateGrid(&fs)
 	c.validateSourceLimits(&fs)
+	c.validateRelay(&fs)
 	c.validateRelayCredential(&fs)
+	c.validateFromAddress(&fs)
 	c.validateRecipientKey(&fs)
+	c.validateDNS(&fs)
+	c.validateDKIM(&fs)
+	c.validateStandDNS(&fs)
 
 	return fs.err()
 }
@@ -533,7 +581,8 @@ func (c *Config) validateRecipientKey(fs *findings) {
 // (Д45) в обе стороны и три состояния удостоверения (CX1-81 (а)). Ось G15
 // «секрет почты не смонтирован» — половина этой пары (CX1-82 (б)): имя в адресе
 // есть, переменной удостоверения нет. Адрес без имени и без удостоверения
-// стартует — это приёмник стенда, сессия без `AUTH`.
+// стартует — это приёмник стенда, сессия без `AUTH`. Пара судится только на
+// разобранном адресе: неразобранный уже назван своей находкой.
 func (c *Config) validateRelayCredential(fs *findings) {
 	cred := c.credential
 	if cred.present && cred.value == "" {
@@ -541,10 +590,10 @@ func (c *Config) validateRelayCredential(fs *findings) {
 			"удостоверения выражается отсутствием переменной, а не пустой строкой")
 		return
 	}
-	user, ok := c.relayUser(fs)
-	if !ok {
+	if !c.relayParsed {
 		return
 	}
+	user := c.relay.Username
 	switch {
 	case user != "" && !cred.present:
 		fs.add(credentialKnob, "секрет почты не смонтирован: в адресе ретранслятора (%s) есть имя "+
@@ -554,24 +603,6 @@ func (c *Config) validateRelayCredential(fs *findings) {
 			"нет: удостоверение без имени не применяется ни к какой сессии (пара Д45)",
 			KnobOfField("SMTPConnectionURI"))
 	}
-}
-
-// relayUser — раскодированное имя пользователя адреса ретранслятора; пустое,
-// если адреса или имени нет. Неразбираемый адрес — находка.
-func (c *Config) relayUser(fs *findings) (string, bool) {
-	k := KnobOfField("SMTPConnectionURI")
-	if c.unset[k.Env] || c.SMTPConnectionURI == "" {
-		return "", true
-	}
-	u, err := url.Parse(c.SMTPConnectionURI)
-	if err != nil {
-		fs.add(k, "адрес ретранслятора не разбирается: %v", redactURLError(err))
-		return "", false
-	}
-	if u.User == nil {
-		return "", true
-	}
-	return u.User.Username(), true
 }
 
 // redactURLError снимает из ошибки разбора исходную строку: в адресе может

@@ -114,6 +114,19 @@ dependencies:
   - name: notify
     version: ">= 0.0.0"
     repository: file://../notify
+  # Собственные базы notify и стендовой пробы (database-per-service, ban #8;
+  # полоса D6): kacho_notify и kacho_notifyprobe — по экземпляру, как у прочих
+  # служб. Условие — как у pg-registry/pg-storage: включает профиль стенда.
+  - name: postgresql
+    alias: pg-notify
+    version: 13.4.4
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-notify.enabled
+  - name: postgresql
+    alias: pg-notifyprobe
+    version: 13.4.4
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-notifyprobe.enabled
   # Federated ui-future console (host + dashboard/vpc/iam/nlb/registry/system
   # Module-Federation remotes). Chart is named `uif` (renamed from `ui` in
   # kacho-ui-future so it never collides with the legacy `ui` chart above — two

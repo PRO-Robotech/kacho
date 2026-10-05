@@ -50,10 +50,13 @@ func TestDescriptorIsHostNoGRPC(t *testing.T) {
 	if d.HostForm() != servicecontract.HostNoGRPC || !d.NoServedServices() {
 		t.Fatalf("форма хоста %s, NoServedServices=%v; ожидалась no-grpc без сервисов", d.HostForm(), d.NoServedServices())
 	}
-	p := bootPosture(cfg, d)
+	p, err := bootPosture(cfg, d)
+	if err != nil {
+		t.Fatalf("запись самоотчёта отвергнута: %v", err)
+	}
 	if !p.NoServedServices || p.ListenerForm != observability.ListenerFormPair {
-		t.Fatalf("самоотчёт называет форму %v, NoServedServices=%v; дескриптор — %s",
-			p.ListenerForm, p.NoServedServices, d.HostForm())
+		t.Fatalf("самоотчёт: NoServedServices=%v, форма %s; дескриптор — %s без сервисов (listener_form=none)",
+			p.NoServedServices, p.ListenerForm, d.HostForm())
 	}
 	if got := p.Notifications.String(); got != observability.NotificationsNotApplicable {
 		t.Fatalf("самоотчёт notify называет флаг ленты %q; у notify ленты источника нет — %q",

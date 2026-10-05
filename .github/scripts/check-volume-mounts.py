@@ -52,12 +52,10 @@ fail-closed отказ рендера без учётных данных хра�
 """
 from __future__ import annotations
 
-import atexit
+import os
 import pathlib
-import shutil
 import subprocess
 import sys
-import tempfile
 
 import yaml
 
@@ -87,14 +85,16 @@ class Chart:
     """
 
     def __init__(self, name: str, path: str, required: list[str],
-                 toggles: list[tuple[str, str, str]], inspect_copy: bool = False):
+                 toggles: list[tuple[str, str, str]], alone: bool = False):
         self.name = name
         self.path = path
         self.required = required
         self.toggles = toggles
-        # inspect_copy — чарт, чьи объекты до наполнения его таблицы источников
-        # судятся по КОПИИ ОСМОТРА (решения Д80, Д81): см. `render_dir`.
-        self.inspect_copy = inspect_copy
+        # alone — подчарт, чей одиночный рендер идёт только обёрткой
+        # `render_kaname_alone` (deploy/tests/helm/lib/render-chain.sh): его шаблон
+        # зовёт помощник флага почты, тело которого живёт в чарте notify (NTF-1
+        # D2, замысел З28, CX1-113). См. `render`.
+        self.alone = alone
 
     def renders(self):
         """Все комбинации тумблеров: (подпись, список аргументов --set)."""
@@ -159,62 +159,32 @@ CHARTS = [
           [("mtls.enable", "false", "true"), ("mtls.httpListeners", "false", "true"),
            ("opaSidecar.enabled", "false", "true"),
            ("initContainer.migrator.enabled", "false", "true"),
-           ("initContainer.waitForExtAuth.enabled", "false", "true")]),
+           ("initContainer.waitForExtAuth.enabled", "false", "true")],
+          alone=True),
     Chart("kacho-geo", "deploy/helm/umbrella/charts/kacho-geo", [],
           [("mtls.enable", "false", "true"), ("dataMigration.enabled", "false", "true")]),
     Chart("uif", "ui-future/deploy", [], []),
     # notify (NTF-1, замысел З28): ноги рендера — собственные значения ноги без
     # зонтика и образец узла почты оператора, пути от корня репозитория (гейт
-    # зовут и из временного каталога вне дерева). Тумблер — единственное условие
-    # вокруг томов чарта: якорь доверия узла почты (`trustAnchorSecret.name`)
-    # добавляет том `smtp-trust-anchor` и его монт; `peer-tls` и `tmp` безусловны.
-    # Объекты notify рендерятся только при непустой таблице источников, а в
-    # дереве она пуста — поэтому рендер идёт по копии осмотра (`inspect_copy`).
+    # зовут и из временного каталога вне дерева). Объекты notify рендерятся только
+    # при непустом выведенном перечне источников; в ноге без зонтика единственный
+    # источник таблицы (`notify-probe`) выключен переопределением, поэтому гейт
+    # включает его сам и подаёт его ручки на источник (без записи — отказ рендера
+    # с именем модуля). Тумблер — единственное условие вокруг томов чарта: якорь
+    # доверия узла почты (`trustAnchorSecret.name`) добавляет том
+    # `smtp-trust-anchor` и его монт; `peer-tls` и `tmp` безусловны.
     Chart("notify", "deploy/helm/notify",
           ["-f", str(REPO / "deploy/testdata/notify-standalone/values.yaml"),
-           "-f", str(REPO / "deploy/testdata/mail-node/operator.yaml")],
-          [("global.kacho.identity.smtp.trustAnchorSecret.name", "", "smtp-anchor")],
-          inspect_copy=True),
+           "-f", str(REPO / "deploy/testdata/mail-node/operator.yaml"),
+           "--set", "global.kacho.notifications.modules.notifyProbe.enabled=true",
+           "--set", "sourceLimits.notify-probe.rate=5",
+           "--set", "sourceLimits.notify-probe.burst=5",
+           "--set", "sourceLimits.notify-probe.paused=false"],
+          [("global.kacho.identity.smtp.trustAnchorSecret.name", "", "smtp-anchor")]),
 ]
 
-# КОПИЯ ОСМОТРА (замысел З28, решения Д80, Д81). Пока таблица подключаемых
-# источников чарта notify пуста, чарт рендерит ноль объектов — и «в рендере нет
-# workload'ов» здесь было бы правдой о дереве, но не вердиктом о томах. Поэтому,
-# ПОКА таблица пуста, чарт с `inspect_copy` рендерится по копии каталога, где
-# подменён ровно `templates/_sources.tpl` (обёртка проверяет это сама и печатает
-# каталог чарта отдельной строкой «перечень [], объектов 0»). Непустая таблица —
-# ветки нет, рендерится сам каталог; копию снимает D2.
-INSPECT = REPO / "deploy/scripts/render-notify-inspect.sh"
-_INSPECT_DIRS: dict = {}
-
-
-def render_dir(chart: "Chart"):
-    """→ (каталог для рендера, None) либо (None, причина «не выполнилось»)."""
-    if not chart.inspect_copy:
-        return REPO / chart.path, None
-    if chart.name in _INSPECT_DIRS:
-        return _INSPECT_DIRS[chart.name]
-    t = subprocess.run(["bash", str(INSPECT), "--table"], capture_output=True, text=True)
-    if t.returncode != 0 or not t.stdout.strip().isdigit():
-        res = (None, "таблица модулей не прочитана обёрткой копии осмотра: "
-               + (t.stderr or t.stdout).strip().split("\n")[0])
-    elif int(t.stdout.strip()) > 0:
-        print("  · {}: таблица модулей непуста ({} строк) — ветки Д80 нет, рендерится "
-              "каталог чарта".format(chart.name, t.stdout.strip()))
-        res = (REPO / chart.path, None)
-    else:
-        work = pathlib.Path(tempfile.mkdtemp(prefix="kacho-notify-inspect-"))
-        atexit.register(shutil.rmtree, work, True)
-        r = subprocess.run(["bash", str(INSPECT), "--into", str(work)],
-                           capture_output=True, text=True)
-        for line in (r.stdout + r.stderr).splitlines():
-            print("  · " + line)
-        if r.returncode != 0:
-            res = (None, "копия осмотра {} не построена (код {})".format(chart.name, r.returncode))
-        else:
-            res = (work / pathlib.Path(chart.path).name, None)
-    _INSPECT_DIRS[chart.name] = res
-    return res
+# Обёртка одиночного рендера подчарта kaname (одно тело на шелле).
+RENDER_CHAIN = REPO / "deploy/tests/helm/lib/render-chain.sh"
 
 
 def pod_spec(doc):
@@ -384,11 +354,15 @@ def coverage_findings(charts=None) -> list:
 
 def render(chart: Chart, sets: list):
     """Рендер чарта. Возвращает (манифесты | None, первая строка диагностики)."""
-    where, why = render_dir(chart)
-    if where is None:
-        return None, why
-    p = subprocess.run(["helm", "template", "t", str(where)] + sets,
-                       capture_output=True, text=True)
+    where = REPO / chart.path
+    if chart.alone:
+        cmd = ["bash", "-c", '. "$RENDER_CHAIN_LIB" && render_kaname_alone "$@"',
+               "render_kaname_alone", "t", str(where)] + sets
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           env={**os.environ, "RENDER_CHAIN_LIB": str(RENDER_CHAIN)})
+    else:
+        p = subprocess.run(["helm", "template", "t", str(where)] + sets,
+                           capture_output=True, text=True)
     if p.returncode != 0:
         return None, (p.stderr or p.stdout).strip().split("\n")[0]
     return p.stdout, ""

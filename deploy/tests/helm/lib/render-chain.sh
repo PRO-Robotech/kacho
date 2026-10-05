@@ -99,3 +99,64 @@ render_chain_args() {
     printf '%s\n' "$base"
   fi
 }
+
+# ─── ОДИНОЧНЫЙ РЕНДЕР ПОДЧАРТА kaname (NTF-1, полоса D2; замысел З28, CX1-113, N35-2)
+#
+# Шаблон `ConfigMap` подчарта kaname берёт флаг почты службы помощником
+# `kacho.notifications.enabledFor`, а тело помощника одно на релиз — в чарте
+# notify (`deploy/helm/notify/templates/_flag.tpl`, `_sources.tpl`). В рендере
+# зонтика его видно; одиночный рендер `charts/kaname` его не видит и отказывает
+# «no template». Поэтому одиночный рендер идёт только через эту обёртку:
+#   1. копия каталога подчарта во временном каталоге;
+#   2. в её `templates/` — побайтовая копия файлов помощников чарта notify (в
+#      отслеживаемом дереве тело по-прежнему одно);
+#   3. первым слоем `-f` — узлы `global.kacho.notifications` и
+#      `global.kacho.spiffe`, выписанные `yq` из values.yaml зонтика в момент
+#      рендера (второго объявления значений нет; слои вызывающего — поверх).
+#
+# Использование:
+#   render_kaname_alone <релиз> <каталог подчарта> [аргументы helm template …]
+# Печать — вывод `helm template` (stdout и stderr), код — код helm. Нехватка
+# инструмента, каталога или файла помощника — код 2 с причиной в stderr.
+# Тело — подоболочка: временный каталог снимается её ловушкой, ловушки
+# вызывающего не трогаются. Двойник на Go — `renderKanameAlone` (deploy/).
+render_kaname_alone() (
+  release="${1:-}" chart="${2:-}"
+  [ -n "$release" ] && [ -n "$chart" ] || {
+    echo "FATAL: render_kaname_alone — нужны релиз и каталог подчарта: render_kaname_alone <релиз> <каталог> [аргументы helm]" >&2
+    exit 2
+  }
+  shift 2
+  [ -f "$chart/Chart.yaml" ] || { echo "FATAL: render_kaname_alone — \`$chart\` не каталог чарта (Chart.yaml нет)" >&2; exit 2; }
+  command -v helm >/dev/null 2>&1 || { echo "FATAL: render_kaname_alone — helm не в PATH" >&2; exit 2; }
+  command -v yq >/dev/null 2>&1 || { echo "FATAL: render_kaname_alone — yq не в PATH (узлы global выписываются им)" >&2; exit 2; }
+  deploy="$(cd "$_render_chain_self/../../.." && pwd)" || exit 2
+  notify_tpl="$deploy/helm/notify/templates"
+  umbrella_values="$deploy/helm/umbrella/values.yaml"
+  for f in "$notify_tpl/_flag.tpl" "$notify_tpl/_sources.tpl" "$umbrella_values"; do
+    [ -f "$f" ] || { echo "FATAL: render_kaname_alone — нет $f" >&2; exit 2; }
+  done
+  work="$(mktemp -d)" || exit 2
+  trap 'rm -rf "$work"' EXIT
+  cp -R "$chart" "$work/kaname" || exit 2
+  cp "$notify_tpl/_flag.tpl" "$notify_tpl/_sources.tpl" "$work/kaname/templates/" || exit 2
+  yq '{"global": {"kacho": {"notifications": .global.kacho.notifications, "spiffe": .global.kacho.spiffe}}} | del(.. | select(. == null))' \
+    "$umbrella_values" > "$work/globals.yaml" || {
+    echo "FATAL: render_kaname_alone — узлы global не выписаны из $umbrella_values" >&2
+    exit 2
+  }
+  helm template "$release" "$work/kaname" -f "$work/globals.yaml" "$@"
+)
+
+# render_kaname_alone_try <релиз> <каталог подчарта> [аргументы helm …] — форма
+# `helm_try` библиотеки исходов (outcome.sh) для одиночного рендера kaname:
+# HELM_OUT — stdout, HELM_RC — код, HELM_ERR — stderr без предупреждения о
+# kubeconfig, RENDERS — +1. Отказ читается `render_or_fatal`, как у `helm_try`.
+# shellcheck disable=SC2034 # HELM_OUT/HELM_RC/HELM_ERR читают вызывающий и outcome.sh
+render_kaname_alone_try() {
+  local errf; errf="$(mktemp)"
+  HELM_OUT="$(render_kaname_alone "$@" 2>"$errf")" && HELM_RC=0 || HELM_RC=$?
+  RENDERS=$((${RENDERS:-0} + 1))
+  HELM_ERR="$(grep -vE 'WARNING: Kubernetes configuration' "$errf" || true)"
+  rm -f "$errf"
+}

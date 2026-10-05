@@ -101,3 +101,25 @@ misconfiguration:
       # `assert-scan-stubs-hide-nothing.py` — снятие не меняет ни целей, ни находок.
       - zot.auth.password=trivy-scan-only
       - db.password=trivy-scan-only
+      # ── чарт notify (`deploy/helm/notify`, NTF-1 D2; замысел З28, решение Д87) ──
+      # Объекты notify рендерятся только при непустом выведенном перечне
+      # источников, а перечень выводится из флага `global.kacho.notifications`,
+      # который объявляет зонтик, а не чарт (CX1-112): без узла рендер отказывает с
+      # именем ручки, и сканер пропустил бы чарт целиком. Заглушки ниже — ровно
+      # то, без чего notify с перечнем `{notify-probe}` (единственный источник
+      # таблицы) не рендерится: флаг, запись ручек на источник (чарт судит её
+      # наличие, поля — страж старта процесса, поэтому заглушка одна), тег образа,
+      # ключ сетки, ссылка на секрет пароля базы, адрес узла почты и тройка узла
+      # DKIM (объект ключа, ключ закрытого ключа, ключ селектора — каждое поле
+      # чарт судит `required` в `notify.dkimNode`, defd00a9e64). Каждую судит
+      # `assert-scan-stubs-hide-nothing.py`: снятая, она выбивает чарт notify из
+      # осмотра (открывает), а гасить ей нечего.
+      - global.kacho.notifications.enabled=true
+      - sourceLimits.notify-probe.paused=false
+      - image.tag=trivy-scan-only
+      - recipientKey=trivy-scan-only-recipient-key-not-a-secret
+      - db.passwordSecret.name=trivy-scan-only
+      - global.kacho.identity.smtp.connectionURI=smtp://trivy-scan-only.invalid:25/
+      - global.kacho.identity.smtp.dkim.secretName=trivy-scan-only
+      - global.kacho.identity.smtp.dkim.privateKeyKey=trivy-scan-only
+      - global.kacho.identity.smtp.dkim.selectorKey=trivy-scan-only

@@ -52,8 +52,11 @@ func runServe(ctx context.Context, cfg config.Config, logger *slog.Logger) error
 		return err
 	}
 	// Самоотчёт о посадке — после принятия дескриптора и до подъёма слушателей.
-	form, none := servicehost.PostureOf(&desc)
-	observability.LogBootPosture(logger, bootPosture(cfg, p.ports.identity, form, none))
+	posture, err := bootPosture(cfg, p.ports.identity, &desc)
+	if err != nil {
+		return fmt.Errorf("самоотчёт о посадке: %w", err)
+	}
+	observability.LogBootPosture(logger, posture)
 
 	healthAgg := health.New(buildReadinessCheckers(pool,
 		schemaguard.CheckFromFS(probemigrations.FS, schemaguard.PgxVersionReader(pool))))

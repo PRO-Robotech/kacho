@@ -277,3 +277,40 @@ pg-nlb:
 # ── no ingress controller on this cluster ──
 ingress-nginx:
   enabled: false
+
+# ── УЗЕЛ ПОЧТЫ СТЕНДА И ПРОБА-ИСТОЧНИК NOTIFY (NTF-1, полоса D2; замысел З28, Д46) ──
+#
+# Узел — приёмник в кластере, в форме узла values.dev.yaml (адрес над именем
+# релиза на порт приёмника, поля отправителя, якорь — `ca.crt` секрета
+# приёмника): тем же изменением, что вводит notify в рендер цепочки, и с
+# приёмником (`mailpit.enabled`), который этот узел называет. Узел целиком, а не
+# один адрес: половину узла страж зонтика отвергает. Слой учётных данных
+# площадки адреса почты больше не несёт (cutover-creds-layer.sh, CX1-85).
+global:
+  kacho:
+    identity:
+      smtp:
+        connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
+        fromAddress: "noreply@kacho.cloud"
+        fromName: "Kacho Cloud"
+        trustAnchorSecret:
+          name: kacho-mailpit-tls
+          key: ca.crt
+    # ─── ПРОБА НЕ ПИШЕТ ПОЧТОВЫХ ЗАПРОСОВ — ПОКА (NTF-1 D10) ──────────────────
+    # Площадка тянет образы из реестра, а образа kacho-notify там нет (конвейер
+    # публикует его со ствола, службы там пока нет): notify и проба без тега
+    # рендером отвергаются, а тег, «выведенный» из коммита, назвал бы манифест,
+    # которого не существует (values.yaml, `notify.image`). Вместе с ним нужны
+    # объект ключа сетки площадки (Д123), объект ключа DKIM и зона DNS стенда
+    # значениями этого кластера. Перечень источников notify пуст; узел почты и
+    # приёмник остаются — их читает служба доступа. Возврат — одним изменением с
+    # опубликованным тегом.
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
+mailpit:
+  enabled: true
+# Проба на площадке не развёрнута (см. `global.kacho.notifications` выше).
+notifyProbe:
+  enabled: false
