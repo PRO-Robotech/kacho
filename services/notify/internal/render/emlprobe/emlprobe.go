@@ -343,7 +343,7 @@ func textOf(n *html.Node) string {
 // corelib (notify/spec/corpus/v1/<fixture>) по пину go.mod: фикстура берётся
 // пином, а не копией (polyrepo, запрет копии).
 func CorelibCorpusDir(fixture string) (string, error) {
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/PRO-Robotech/corelib").Output() // #nosec G204 -- argv фиксирован
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/PRO-Robotech/corelib").Output()
 	if err != nil {
 		return "", fmt.Errorf("emlprobe: каталог модуля corelib не найден: %w", err)
 	}

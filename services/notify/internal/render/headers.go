@@ -84,7 +84,7 @@ func qRune(r rune) string {
 	if r == ' ' {
 		return "_"
 	}
-	if r < utf8.RuneSelf && qSafe(byte(r)) {
+	if qSafe(r) {
 		return string(r)
 	}
 	var buf [utf8.UTFMax]byte
@@ -96,10 +96,11 @@ func qRune(r rune) string {
 	return b.String()
 }
 
-// qSafe — октет, который кодировка Q в имени и в теме пишет как есть
-// (RFC 2047 §5 (3)).
-func qSafe(c byte) bool {
-	return isAlnum(c) || c == '!' || c == '*' || c == '+' || c == '-' || c == '/'
+// qSafe — символ, который кодировка Q в имени и в теме пишет как есть
+// (RFC 2047 §5 (3)): буквы и цифры ASCII и «!*+-/».
+func qSafe(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+		r == '!' || r == '*' || r == '+' || r == '-' || r == '/'
 }
 
 func isAlnum(c byte) bool {
