@@ -616,9 +616,10 @@ func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID s
 // отображается в тот же контрактный текст, что даёт предпроверка use-case'а и
 // DB-guard MarkDeleting (`markDeletingBlockReason`) — см. restrict_fk.go.
 // row absent → ErrNotFound. Используется для compensation-rollback (Create).
-func (w *loadBalancerWriter) Delete(ctx context.Context, id string) error {
+// Возвращает снимок имени снятой строки (`RETURNING name`, NTF-3 З2).
+func (w *loadBalancerWriter) Delete(ctx context.Context, id string) (string, error) {
 	return deleteParentRow(ctx, w.tx, "NetworkLoadBalancer", id,
-		`DELETE FROM kacho_nlb.load_balancers WHERE id = $1`)
+		`DELETE FROM kacho_nlb.load_balancers WHERE id = $1 RETURNING name`)
 }
 
 // DeleteIfUnprotected — atomic guarded delete: удаляет строку только если

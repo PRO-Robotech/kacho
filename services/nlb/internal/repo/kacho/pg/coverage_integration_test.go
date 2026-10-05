@@ -221,13 +221,13 @@ func TestCoverage_LB_Delete_Success(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.LoadBalancers().Delete(ctx, string(lb.ID))
+		_, err := w.LoadBalancers().Delete(ctx, string(lb.ID))
 		require.NoError(t, err)
 	})
 
 	w, _ := repo.Writer(ctx)
 	defer w.Abort()
-	err := w.LoadBalancers().Delete(ctx, string(lb.ID))
+	_, err := w.LoadBalancers().Delete(ctx, string(lb.ID))
 	assert.True(t, errors.Is(err, kacho.ErrNotFound))
 }
 
@@ -244,13 +244,13 @@ func TestCoverage_TG_Delete_Success(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.TargetGroups().Delete(ctx, string(tg.ID))
+		_, err := w.TargetGroups().Delete(ctx, string(tg.ID))
 		require.NoError(t, err)
 	})
 
 	w, _ := repo.Writer(ctx)
 	defer w.Abort()
-	err := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, err := w.TargetGroups().Delete(ctx, string(tg.ID))
 	assert.True(t, errors.Is(err, kacho.ErrNotFound))
 }
 

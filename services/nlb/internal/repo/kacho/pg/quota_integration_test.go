@@ -190,7 +190,7 @@ func TestQuota_NLB_ExceededAndRefund(t *testing.T) {
 
 	// Возврат на удалении — в той же транзакции, что снятие строки ресурса.
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(first.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(first.ID))))
 	})
 	used, ok = quotaUsed(t, dsn, "project", project, kind)
 	require.True(t, ok)
@@ -288,7 +288,7 @@ func TestQuota_NLB_ParentRowsGoWithTheParent(t *testing.T) {
 	require.True(t, ok, "предусловие: строка учёта родителя существует")
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(lb.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(lb.ID))))
 	})
 
 	_, ok = quotaUsed(t, dsn, nested, string(lb.ID), nested)

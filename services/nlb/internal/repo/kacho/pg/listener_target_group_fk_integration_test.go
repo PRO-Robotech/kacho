@@ -116,7 +116,7 @@ func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) 
 		w, err := repo.Writer(ctx)
 		require.NoError(t, err)
 		defer w.Abort()
-		derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+		_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 		require.Error(t, derr, "TG.Delete must be blocked by FK RESTRICT while a listener references it")
 		assert.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "got %v", derr)
 		assert.Contains(t, derr.Error(), tgReferencedByListenerMsg, "verbatim contract text required")
@@ -137,7 +137,7 @@ func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) 
 		require.NoError(t, err)
 	})
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.TargetGroups().Delete(ctx, string(tg.ID)),
+		require.NoError(t, droppedName(w.TargetGroups().Delete(ctx, string(tg.ID))),
 			"TG.Delete must succeed after the listener reference is cleared")
 	})
 }
@@ -265,7 +265,7 @@ func TestTargetGroup_DeleteVsListenerWire_Race(t *testing.T) {
 		}()
 		ready.Done()
 		<-start
-		if err := w.TargetGroups().Delete(ctx, string(tg.ID)); err != nil {
+		if _, err := w.TargetGroups().Delete(ctx, string(tg.ID)); err != nil {
 			mu.Lock()
 			deleteErr = err
 			mu.Unlock()

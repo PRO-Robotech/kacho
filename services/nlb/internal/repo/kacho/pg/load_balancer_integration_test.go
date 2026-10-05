@@ -235,7 +235,7 @@ func TestLB_Delete_FK_RESTRICT_Listeners(t *testing.T) {
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	err = w.LoadBalancers().Delete(ctx, string(lb.ID))
+	_, err = w.LoadBalancers().Delete(ctx, string(lb.ID))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition), "want ErrFailedPrecondition (FK 23503), got %v", err)
 }

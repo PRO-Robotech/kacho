@@ -167,7 +167,7 @@ func TestFGARegisterOutbox_SECD03_UnregisterIntentOnDelete(t *testing.T) {
 		Tuples:     []domain.FGATuple{domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, string(lb.ID), projectID)},
 	}
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(lb.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(lb.ID))))
 		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unregIntent)
 		require.NoError(t, emitErrctx)
 	})

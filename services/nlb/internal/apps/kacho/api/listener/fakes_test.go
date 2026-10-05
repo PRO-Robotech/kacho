@@ -268,8 +268,8 @@ func (w *fakeLBWriter) MarkDeleting(context.Context, string) (*kachorepo.LoadBal
 func (w *fakeLBWriter) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
 	return nil, nil, errors.New("fakeLBWriter.MoveProject not implemented")
 }
-func (w *fakeLBWriter) Delete(context.Context, string) error {
-	return errors.New("fakeLBWriter.Delete not implemented")
+func (w *fakeLBWriter) Delete(context.Context, string) (string, error) {
+	return "", errors.New("fakeLBWriter.Delete not implemented")
 }
 func (w *fakeLBWriter) DeleteIfUnprotected(context.Context, string) error {
 	return errors.New("fakeLBWriter.DeleteIfUnprotected not implemented")
@@ -491,8 +491,8 @@ func (w *fakeTGWriter) RemoveTargetsMarkDraining(context.Context, string, []stri
 func (w *fakeTGWriter) DeleteTargetsDraining(context.Context, string) (int, error) {
 	return 0, errors.New("not implemented")
 }
-func (w *fakeTGWriter) Delete(context.Context, string) error {
-	return errors.New("not implemented")
+func (w *fakeTGWriter) Delete(context.Context, string) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 // ---- Outbox ----

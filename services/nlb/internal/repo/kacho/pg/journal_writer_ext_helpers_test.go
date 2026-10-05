@@ -20,3 +20,7 @@ func mustJournalWriter[T any](w T, err error) T {
 	}
 	return w
 }
+
+// droppedName — исход снятия строки без снимка имени: пробам, чей предмет не
+// имя на снятии, нужен только отказ (Delete возвращает имя из `RETURNING`).
+func droppedName(_ string, err error) error { return err }

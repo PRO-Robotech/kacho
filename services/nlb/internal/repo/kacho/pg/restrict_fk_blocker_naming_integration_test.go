@@ -97,7 +97,7 @@ func TestRestrictFK_TGDeleteBlockedByListener_NamesBlockingListeners(t *testing.
 	require.NoError(t, err)
 	defer w.Abort()
 
-	derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, derr, "удаление обязано быть отвергнуто FK RESTRICT")
 	require.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "получено %v", derr)
 	assert.NotContains(t, derr.Error(), "SQLSTATE", "сырой текст драйвера наружу не течёт")
@@ -123,7 +123,7 @@ func TestRestrictFK_TGDeleteBlockedByTargets_UsesTargetContractTone(t *testing.T
 	require.NoError(t, err)
 	defer w.Abort()
 
-	derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, derr, "удаление обязано быть отвергнуто FK RESTRICT цели")
 	require.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "получено %v", derr)
 	assert.NotContains(t, derr.Error(), "SQLSTATE")
@@ -211,7 +211,7 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 				return
 			}
 			defer w.Abort()
-			if e := w.TargetGroups().Delete(ctx, string(tg.ID)); e != nil {
+			if _, e := w.TargetGroups().Delete(ctx, string(tg.ID)); e != nil {
 				delErr = e
 				return
 			}

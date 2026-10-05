@@ -360,7 +360,7 @@ func TestTG_DeleteTargetsDraining_ClearsOnlyDrained(t *testing.T) {
 	// И она обязана держать группу: внешний ключ остаётся авторитетным backstop'ом.
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
-	err = w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, err = w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, err, "группа с живой целью не удаляется")
 	w.Abort()
 
@@ -374,7 +374,7 @@ func TestTG_DeleteTargetsDraining_ClearsOnlyDrained(t *testing.T) {
 		n, err := w.TargetGroups().DeleteTargetsDraining(ctx, string(tg.ID))
 		require.NoError(t, err)
 		assert.Equal(t, 1, n)
-		require.NoError(t, w.TargetGroups().Delete(ctx, string(tg.ID)))
+		require.NoError(t, droppedName(w.TargetGroups().Delete(ctx, string(tg.ID))))
 	})
 }
 
@@ -468,7 +468,7 @@ func TestTG_Delete_FK_RESTRICT_Targets(t *testing.T) {
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	err = w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, err = w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition), "got %v", err)
 }
