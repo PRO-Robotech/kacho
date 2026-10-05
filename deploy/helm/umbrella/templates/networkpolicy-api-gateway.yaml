@@ -19,12 +19,14 @@ NetworkPolicy: вход к поду КРАЯ — только от тех, кт�
   - контроллер входа ingress-nginx этой же установки — порт `tls`: на него
     смотрит внешний вход края (templates/api-gateway-ingress.yaml). Правило есть
     только там, где есть и вход, и контроллер;
-  - поды администрирования (`api-gateway.networkPolicy.adminPodsSelector`) —
-    порты `cmux` и `internal-rest`; пустой селектор — «никого», а не «все».
 Иных отправителей в установке нет: ни одна служба адреса края в настройках не
-получает. Что каждый, кто звонит, впущен, держит
-deploy/network_policy_admission_render_test.go; что порты пересылки не открыты
-никому сверх названных меток — deploy/edge_client_address_circle_render_test.go.
+получает. Ручки «впустить ещё поды» у этой политики НЕТ и не заводится: круг
+доверия край различает только по сети, и любой впущенный под, не стоящий между
+клиентом и краем, подменял бы адрес клиента одной строкой заголовка. Что
+каждый, кто звонит, впущен, держит deploy/network_policy_admission_render_test.go;
+что каждый впущенный на порт края — звено фронта, выведенное из рендера (тот,
+кто звонит краю по адресу из настроек, либо контроллер входа, ведущего на
+край), — deploy/edge_client_address_circle_render_test.go.
 
 Проброс порта (`kubectl port-forward`, им ходят сквозные пробы) приходит в под с
 петли и политикой не судится.
@@ -80,17 +82,6 @@ spec:
       ports:
         - protocol: TCP
           port: tls
-    {{- end }}
-    {{- with $np.adminPodsSelector }}
-    # Поды администрирования, объявленные профилем.
-    - from:
-        - podSelector:
-            {{- toYaml . | nindent 12 }}
-      ports:
-        - protocol: TCP
-          port: cmux
-        - protocol: TCP
-          port: internal-rest
     {{- end }}
     {{- if $scrape.enabled }}
     # Сбор величин — адреса клиента не принимает.

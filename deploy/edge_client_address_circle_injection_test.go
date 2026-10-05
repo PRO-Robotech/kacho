@@ -14,6 +14,7 @@
 package deploy_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -57,26 +58,111 @@ func rule(port any, from ...any) map[string]any {
 	return r
 }
 
+// rangeRule — правило, открывающее диапазон портов [from, to] без отправителей.
+func rangeRule(from, to int, proto string) map[string]any {
+	return map[string]any{"ports": []any{map[string]any{"protocol": proto, "port": from, "endPort": to}}}
+}
+
+// synthWorkload — Deployment с метками пода и строкой настроек.
+func synthWorkload(name string, labels map[string]any, env ...string) map[string]any {
+	var envs []any
+	for i, v := range env {
+		envs = append(envs, map[string]any{"name": fmt.Sprintf("ADDR_%d", i), "value": v})
+	}
+	return map[string]any{
+		"kind": "Deployment", "metadata": map[string]any{"name": name},
+		"spec": map[string]any{"template": map[string]any{
+			"metadata": map[string]any{"labels": labels},
+			"spec":     map[string]any{"containers": []any{map[string]any{"env": envs}}},
+		}},
+	}
+}
+
+// synthEdgeService — служба края: имя, по которому звено фронта звонит краю.
+func synthEdgeService() map[string]any {
+	return map[string]any{
+		"kind": "Service", "metadata": map[string]any{"name": edgeDeploymentName},
+		"spec": map[string]any{
+			"selector": map[string]any{"app": "api-gateway"},
+			"ports": []any{
+				map[string]any{"port": 8080, "targetPort": "cmux"},
+				map[string]any{"port": 8443, "targetPort": "tls"},
+			},
+		},
+	}
+}
+
 var (
+	frontLabels = map[string]any{"app": "uif", "app.kubernetes.io/component": "host", "app.kubernetes.io/instance": "rel"}
 	frontPeer   = map[string]any{"podSelector": map[string]any{"matchLabels": map[string]any{"app": "uif", "app.kubernetes.io/component": "host"}}}
 	metricsRule = rule(9095)
+	// Раздача консоли — звено фронта: адрес края у неё в настройках.
+	synthFront = synthWorkload("uif", frontLabels, "http://api-gateway:8080")
+	// Соседний рабочий объект той же установки — к краю не звонит.
+	synthNeighbour = synthWorkload("uif-vpc", map[string]any{"app": "uif-vpc", "app.kubernetes.io/instance": "rel"})
+	// Контроллер входа класса nginx и вход, ведущий на край.
+	synthController = func() map[string]any {
+		d := synthWorkload("ingress-nginx-controller", map[string]any{
+			"app.kubernetes.io/name": "ingress-nginx", "app.kubernetes.io/component": "controller", "app.kubernetes.io/instance": "rel"})
+		c := d["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+		c["args"] = []any{"/nginx-ingress-controller", "--controller-class=k8s.io/ingress-nginx", "--ingress-class=nginx"}
+		return d
+	}()
+	synthEdgeIngress = map[string]any{
+		"kind": "Ingress", "metadata": map[string]any{"name": "api-gateway"},
+		"spec": map[string]any{"ingressClassName": "nginx", "rules": []any{map[string]any{"http": map[string]any{
+			"paths": []any{map[string]any{"path": "/", "backend": map[string]any{"service": map[string]any{
+				"name": edgeDeploymentName, "port": map[string]any{"name": "tls"}}}}}}}}},
+	}
+	controllerPeer = map[string]any{"podSelector": map[string]any{"matchLabels": map[string]any{
+		"app.kubernetes.io/name": "ingress-nginx", "app.kubernetes.io/component": "controller"}}}
 )
+
+// withLinks — рендер с краем, его службой, раздачей и соседом: фон, на
+// котором судья отличает звено фронта от прочих подов.
+func withLinks(circle string, extra ...map[string]any) []map[string]any {
+	return append([]map[string]any{synthEdge(circle), synthEdgeService(), synthFront, synthNeighbour}, extra...)
+}
 
 func TestEdgeAdmissionJudgement_CanFailAndStaysSilent(t *testing.T) {
 	const private = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7"
+	noTypes := func(p map[string]any) map[string]any {
+		delete(p["spec"].(map[string]any), "policyTypes")
+		return p
+	}
+	emptyTypes := func(p map[string]any) map[string]any {
+		p["spec"].(map[string]any)["policyTypes"] = []any{}
+		return p
+	}
+	egressOnly := func(p map[string]any) map[string]any {
+		p["spec"].(map[string]any)["policyTypes"] = []any{"Egress"}
+		return p
+	}
+	named := func(name string, p map[string]any) map[string]any {
+		p["metadata"] = map[string]any{"name": name}
+		return p
+	}
 	for _, c := range []struct {
 		name    string
 		docs    []map[string]any
 		mustSay string
 	}{
 		{name: "близнец: круг и политика, впускающая раздачу на cmux, сбор открыт",
-			docs: []map[string]any{synthEdge(private), synthPolicy(rule("cmux", frontPeer), metricsRule)}},
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer), metricsRule))},
 		{name: "близнец: круг пуст — «никому», политика не нужна",
 			docs: []map[string]any{synthEdge("")}},
-		{name: "близнец: правило без портов, но с названным отправителем",
-			docs: []map[string]any{synthEdge(private), synthPolicy(rule(nil, frontPeer))}},
-		{name: "близнец: порт числом, отправитель назван",
-			docs: []map[string]any{synthEdge(private), synthPolicy(rule(8443, frontPeer))}},
+		{name: "близнец: правило без портов, но с отправителем — раздачей",
+			docs: withLinks(private, synthPolicy(rule(nil, frontPeer)))},
+		{name: "близнец: порт числом, отправитель — раздача",
+			docs: withLinks(private, synthPolicy(rule(8443, frontPeer)))},
+		{name: "близнец: контроллер входа, ведущего на край, на tls",
+			docs: withLinks(private, synthController, synthEdgeIngress, synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer)))},
+		{name: "близнец: диапазон портов мимо портов края открыт всем",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer), rangeRule(9000, 9100, "TCP")))},
+		{name: "близнец: диапазон портов края открыт всем, но по UDP",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer), rangeRule(1024, 65535, "UDP")))},
+		{name: "близнец: доп. политика только на исход, её правила входа не действуют",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer)), named("egress-only", egressOnly(synthPolicy(rule(nil)))))},
 		{name: "ручки нет",
 			docs: []map[string]any{func() map[string]any {
 				d := synthEdge(private)
@@ -84,30 +170,55 @@ func TestEdgeAdmissionJudgement_CanFailAndStaysSilent(t *testing.T) {
 				c["env"] = []any{}
 				return d
 			}()}, mustSay: "нет " + edgeCircleKnob},
-		{name: "весь адресный простор", docs: []map[string]any{synthEdge("0.0.0.0/0"), synthPolicy(rule("cmux", frontPeer))},
+		{name: "весь адресный простор", docs: withLinks("0.0.0.0/0", synthPolicy(rule("cmux", frontPeer))),
 			mustSay: "не законен"},
-		{name: "круг непуст, политики нет", docs: []map[string]any{synthEdge(private)},
+		{name: "круг непуст, политики нет", docs: withLinks(private),
 			mustSay: "не выбран ни одной политикой"},
-		{name: "политика выбирает не край", docs: []map[string]any{synthEdge(private), func() map[string]any {
+		{name: "политика выбирает не край", docs: withLinks(private, func() map[string]any {
 			p := synthPolicy(rule("cmux", frontPeer))
 			p["spec"].(map[string]any)["podSelector"] = map[string]any{"matchLabels": map[string]any{"app": "vpc"}}
 			return p
-		}()}, mustSay: "не выбран ни одной политикой"},
-		{name: "порт пересылки без отправителей", docs: []map[string]any{synthEdge(private), synthPolicy(rule("tls"))},
+		}()), mustSay: "не выбран ни одной политикой"},
+		{name: "порт пересылки без отправителей", docs: withLinks(private, synthPolicy(rule("tls"))),
 			mustSay: "открыто всем"},
-		{name: "порт пересылки числом без отправителей", docs: []map[string]any{synthEdge(private), synthPolicy(rule(8080))},
+		{name: "порт пересылки числом без отправителей", docs: withLinks(private, synthPolicy(rule(8080))),
 			mustSay: "открыто всем"},
-		{name: "все поды пространства", docs: []map[string]any{synthEdge(private),
-			synthPolicy(rule("cmux", map[string]any{"podSelector": map[string]any{}}))},
+		{name: "все поды пространства", docs: withLinks(private,
+			synthPolicy(rule("cmux", map[string]any{"podSelector": map[string]any{}}))),
 			mustSay: "все поды пространства"},
-		{name: "блок адресов", docs: []map[string]any{synthEdge(private),
-			synthPolicy(rule("cmux", map[string]any{"ipBlock": map[string]any{"cidr": "10.0.0.0/8"}}))},
+		{name: "блок адресов", docs: withLinks(private,
+			synthPolicy(rule("cmux", map[string]any{"ipBlock": map[string]any{"cidr": "10.0.0.0/8"}}))),
 			mustSay: "блок адресов"},
-		{name: "селектор пространства", docs: []map[string]any{synthEdge(private),
-			synthPolicy(rule("tls", map[string]any{"namespaceSelector": map[string]any{}}))},
+		{name: "селектор пространства", docs: withLinks(private,
+			synthPolicy(rule("tls", map[string]any{"namespaceSelector": map[string]any{}}))),
 			mustSay: "селектору пространства"},
-		{name: "правило без портов и без отправителей", docs: []map[string]any{synthEdge(private), synthPolicy(rule(nil))},
+		{name: "правило без портов и без отправителей", docs: withLinks(private, synthPolicy(rule(nil))),
 			mustSay: "открыто всем"},
+		// Формы записи, которых судья прежде не знал (kacho#3028, круг 2).
+		{name: "доп. политика без policyTypes открывает край всем",
+			docs:    withLinks(private, synthPolicy(rule("cmux", frontPeer)), named("extra", noTypes(synthPolicy(rule(nil))))),
+			mustSay: "политика extra, правило 0 (порты все) открыто всем"},
+		{name: "доп. политика с пустым policyTypes открывает край всем",
+			docs:    withLinks(private, synthPolicy(rule("cmux", frontPeer)), named("extra", emptyTypes(synthPolicy(rule(nil))))),
+			mustSay: "политика extra, правило 0 (порты все) открыто всем"},
+		{name: "диапазон портов endPort накрывает cmux, отправителей нет",
+			docs:    withLinks(private, synthPolicy(rule("cmux", frontPeer), rangeRule(1024, 65535, "TCP"))),
+			mustSay: "правило 1 (порты 8080,8081,8443) открыто всем"},
+		{name: "селектор отправителя выбирает не только раздачу",
+			docs: withLinks(private, synthPolicy(rule("cmux", map[string]any{"podSelector": map[string]any{
+				"matchLabels": map[string]any{"app.kubernetes.io/instance": "rel"}}}))),
+			mustSay: "впускает Deployment/uif-vpc — не звено фронта"},
+		{name: "селектор отправителя выражением выбирает соседа",
+			docs: withLinks(private, synthPolicy(rule("cmux", map[string]any{"podSelector": map[string]any{
+				"matchExpressions": []any{map[string]any{"key": "app", "operator": "Exists"}}}}))),
+			mustSay: "впускает Deployment/uif-vpc — не звено фронта"},
+		{name: "селектор отправителя не выбирает ни одного пода рендера (поды администрирования)",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer), rule("cmux", map[string]any{"podSelector": map[string]any{
+				"matchLabels": map[string]any{"role": "admin"}}}))),
+			mustSay: "не выбирает ни одного пода рендера"},
+		{name: "контроллер входа без входа, ведущего на край, — не звено",
+			docs:    withLinks(private, synthController, synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer))),
+			mustSay: "впускает Deployment/ingress-nginx-controller — не звено фронта"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got, a := judgeEdgeAdmission("инъекция", c.docs)
@@ -184,6 +295,78 @@ func TestEdgeAdmissionRenderInjection_SubjectStand(t *testing.T) {
 		if !strings.Contains(strings.Join(got, "\n"), "все поды пространства") {
 			t.Fatalf("расширенное правило не найдено: %v", got)
 		}
+	})
+	// Слепые формы круга 1 (check-verifier r2: I2b, I3, I7) — каждая внесена в
+	// настоящий рендер и называется своей находкой; законный близнец той же
+	// формы молчит.
+	judgeInjected := func(t *testing.T, injected []map[string]any, mustSay string) {
+		t.Helper()
+		got, _ := judgeEdgeAdmission(circleSubjectStack, injected)
+		joined := strings.Join(got, "\n")
+		if mustSay == "" {
+			if len(got) != 0 {
+				t.Fatalf("законный близнец не молчит:\n%s", joined)
+			}
+			return
+		}
+		if !strings.Contains(joined, mustSay) {
+			t.Fatalf("ни одна находка не называет %q:\n%s", mustSay, joined)
+		}
+		t.Logf("находки: %s", joined)
+	}
+	appendRule := func(t *testing.T, r map[string]any) []map[string]any {
+		t.Helper()
+		injected := npCopyDocs(docs)
+		pols := edgePolicies(t, injected)
+		if len(pols) != 1 {
+			t.Fatalf("политик края %d, ждали 1 — предпосылка инъекции", len(pols))
+		}
+		spec := pols[0]["spec"].(map[string]any)
+		spec["ingress"] = append(slice(spec, "ingress"), r)
+		return injected
+	}
+	extraPolicy := func(types []any) []map[string]any {
+		p := synthPolicy(map[string]any{})
+		p["metadata"] = map[string]any{"name": "extra-open"}
+		spec := p["spec"].(map[string]any)
+		spec["podSelector"] = map[string]any{"matchLabels": map[string]any{"app": edgeDeploymentName}}
+		if types == nil {
+			delete(spec, "policyTypes")
+		} else {
+			spec["policyTypes"] = types
+		}
+		return append(npCopyDocs(docs), p)
+	}
+	t.Run("I2b: отправитель правила раздачи расширен до всей установки", func(t *testing.T) {
+		injected := npCopyDocs(docs)
+		widened := 0
+		for _, p := range edgePolicies(t, injected) {
+			for _, ps := range npPeerSelectors(p) {
+				ps["matchLabels"] = map[string]any{"app.kubernetes.io/instance": "kacho-umbrella"}
+				delete(ps, "matchExpressions")
+				widened++
+			}
+		}
+		if widened == 0 {
+			t.Fatal("ни один отправитель политики края не назван селектором пода — предпосылка инъекции")
+		}
+		judgeInjected(t, injected, "— не звено фронта")
+	})
+	t.Run("I3: доп. политика на край без policyTypes открывает всё всем", func(t *testing.T) {
+		judgeInjected(t, extraPolicy(nil), "политика extra-open, правило 0 (порты все) открыто всем")
+	})
+	t.Run("I3: доп. политика на край с пустым policyTypes открывает всё всем", func(t *testing.T) {
+		judgeInjected(t, extraPolicy([]any{}), "политика extra-open, правило 0 (порты все) открыто всем")
+	})
+	t.Run("T3: доп. политика только на исход — близнец молчит", func(t *testing.T) {
+		judgeInjected(t, extraPolicy([]any{"Egress"}), "")
+	})
+	t.Run("I7: правило диапазоном 1024-65535 без отправителей", func(t *testing.T) {
+		judgeInjected(t, appendRule(t, map[string]any{"ports": []any{map[string]any{"protocol": "TCP", "port": 1024, "endPort": 65535}}}),
+			"открыто всем")
+	})
+	t.Run("T7: правило одним портом 1024 без отправителей — близнец молчит", func(t *testing.T) {
+		judgeInjected(t, appendRule(t, map[string]any{"ports": []any{map[string]any{"protocol": "TCP", "port": 1024}}}), "")
 	})
 	t.Run("круг края — весь адресный простор", func(t *testing.T) {
 		injected := npCopyDocs(docs)

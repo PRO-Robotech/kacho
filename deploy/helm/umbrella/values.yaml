@@ -604,9 +604,9 @@ api-gateway:
   # RFC 6598, уникальные локальные IPv6), публичный адрес звеном не признаётся
   # никогда (pkg/proxycircle, отказ старта края).
   #
-  # Звено ФРОНТА выделяет не круг, а политика сети ниже: до портов пересылки
-  # доходят только поды, названные метками (раздача консоли, контроллер входа,
-  # объявленные поды администрирования) — templates/networkpolicy-api-gateway.yaml.
+  # Звено ФРОНТА выделяет не круг, а политика сети ниже: до портов края
+  # доходят только звенья фронта (раздача консоли, контроллер входа) —
+  # templates/networkpolicy-api-gateway.yaml.
   # Непустой круг без этой политики — доверие заголовку от любого пода
   # кластера; гейт deploy/edge_client_address_circle_render_test.go краснеет на
   # такой цепочке. Профиль, выключающий политику, объявляет пустой круг.
@@ -617,12 +617,10 @@ api-gateway:
       - 192.168.0.0/16
       - 100.64.0.0/10
       - fc00::/7
-  # Политика входа к поду края (templates/networkpolicy-api-gateway.yaml).
-  # adminPodsSelector — поды администрирования, которым открыты `cmux` и
-  # `internal-rest`; пустой — никого.
+  # Политика входа к поду края (templates/networkpolicy-api-gateway.yaml):
+  # впускает только звенья фронта; иных отправителей ручкой не добавить.
   networkPolicy:
     enabled: true
-    adminPodsSelector: {}
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella
