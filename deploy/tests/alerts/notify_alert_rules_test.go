@@ -757,3 +757,84 @@ func TestNotifyAlertRules_HarnessSelfCheck(t *testing.T) {
 		}
 	}
 }
+
+// ─── Р18: grant_skew, misconfigured, срабатывание сетки security ─────────────
+
+const (
+	alertGrantSkew            = "grant_skew"
+	alertMisconfigured        = "misconfigured"
+	alertRecipientNetSecurity = "recipient_net_security"
+
+	// Ряды: отсрочки ленты источника по причине (corelib notify/feed,
+	// metrics.go), сигнал неисправности настройки и срабатывания сетки notify
+	// (З27).
+	seriesFeedDefers       = "kacho_notification_feed_defers_total"
+	seriesMisconfigured    = "notify_misconfigured_total"
+	seriesRecipientNetHits = "notify_recipient_net_hits_total"
+)
+
+// misconfiguredCauses — значения метки cause у notify_misconfigured_total.
+// Перечень держит `peeranswer.Causes()` — внутренний пакет службы, из дерева
+// проб он не импортируется; литерал — слова пакета.
+var misconfiguredCauses = []string{"resolve_send_refused", "resolve_send_protocol"}
+
+// TestNotifyAlertRules_R18_GrantSkewOnFeedDefer — приращение отсрочек ленты
+// источника с причиной grant_skew → grant_skew в firing в первом вычислении,
+// метки называют источник; близнец — отсрочка другой причины того же ряда
+// (platform_unavailable) → тишина.
+func TestNotifyAlertRules_R18_GrantSkewOnFeedDefer(t *testing.T) {
+	rule := findAlert(t, notifyAlertRules(t), alertGrantSkew)
+	ts := stepTimes(0, 6)
+	const at = 2
+	lbls := fmt.Sprintf(`module="probe-b",reason=%q`, feed.ReasonGrantSkew)
+	got := evalTimeline(t, counterLoad(seriesFeedDefers, lbls, at, 1), []alertRule{rule}, ts)
+	if !hasLabels(got[at], map[string]string{"alertname": alertGrantSkew, "module": "probe-b"}) {
+		t.Errorf("КРАСНЫЙ: отсрочка grant_skew не подняла %s в первом вычислении; firing: %v", alertGrantSkew, got[at])
+	}
+	twin := fmt.Sprintf(`module="probe-b",reason=%q`, feed.ReasonPlatformUnavailable)
+	for i, f := range evalTimeline(t, counterLoad(seriesFeedDefers, twin, at, 1), []alertRule{rule}, ts) {
+		if len(f) != 0 {
+			t.Errorf("КРАСНЫЙ: близнец (отсрочка platform_unavailable) поднял %s в шаге %d: %v", alertGrantSkew, i, f)
+		}
+	}
+}
+
+// TestNotifyAlertRules_R18_MisconfiguredByEveryCause — по каждой причине
+// ненулевой прирост → misconfigured в firing с метками source и cause;
+// близнец — ноль → тишина.
+func TestNotifyAlertRules_R18_MisconfiguredByEveryCause(t *testing.T) {
+	rule := findAlert(t, notifyAlertRules(t), alertMisconfigured)
+	ts := stepTimes(0, 6)
+	const at = 2
+	for _, c := range misconfiguredCauses {
+		lbls := fmt.Sprintf(`source="probe-b",cause=%q`, c)
+		got := evalTimeline(t, counterLoad(seriesMisconfigured, lbls, at, 1), []alertRule{rule}, ts)
+		if !hasLabels(got[at], map[string]string{"alertname": alertMisconfigured, "source": "probe-b", "cause": c}) {
+			t.Errorf("КРАСНЫЙ: cause=%s — %s не в firing в первом вычислении; firing: %v", c, alertMisconfigured, got[at])
+		}
+		for i, f := range evalTimeline(t, counterLoad(seriesMisconfigured, lbls, at, 0), []alertRule{rule}, ts) {
+			if len(f) != 0 {
+				t.Errorf("КРАСНЫЙ: cause=%s — близнец (ноль) поднял %s в шаге %d: %v", c, alertMisconfigured, i, f)
+			}
+		}
+	}
+}
+
+// TestNotifyAlertRules_R18_RecipientNetSecurityAnyHit — любое срабатывание
+// сетки класса security → тревога в первом вычислении; близнец — то же
+// приращение у класса notice → тишина (сетка notice — нагрузка, не дефект).
+func TestNotifyAlertRules_R18_RecipientNetSecurityAnyHit(t *testing.T) {
+	rule := findAlert(t, notifyAlertRules(t), alertRecipientNetSecurity)
+	ts := stepTimes(0, 6)
+	const at = 2
+	got := evalTimeline(t, counterLoad(seriesRecipientNetHits, fmt.Sprintf(`class=%q`, feed.ClassSecurity), at, 1), []alertRule{rule}, ts)
+	if !hasLabels(got[at], map[string]string{"alertname": alertRecipientNetSecurity, "class": string(feed.ClassSecurity)}) {
+		t.Errorf("КРАСНЫЙ: срабатывание сетки security не подняло %s в первом вычислении; firing: %v", alertRecipientNetSecurity, got[at])
+	}
+	twin := fmt.Sprintf(`class=%q`, feed.ClassNotice)
+	for i, f := range evalTimeline(t, counterLoad(seriesRecipientNetHits, twin, at, 1), []alertRule{rule}, ts) {
+		if len(f) != 0 {
+			t.Errorf("КРАСНЫЙ: близнец (сетка notice) поднял %s в шаге %d: %v", alertRecipientNetSecurity, i, f)
+		}
+	}
+}
