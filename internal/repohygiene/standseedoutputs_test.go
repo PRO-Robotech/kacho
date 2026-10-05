@@ -35,6 +35,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 var seedOutFileDecl = regexp.MustCompile(`OUT_FILE="\$\{OUT_FILE:-\$REPO_ROOT/([^}"]+)\}"`)
@@ -42,9 +43,21 @@ var seedOutFileDecl = regexp.MustCompile(`OUT_FILE="\$\{OUT_FILE:-\$REPO_ROOT/([
 // standSeedOutputs — путь выхода → скрипты, его объявляющие.
 func standSeedOutputs(t *testing.T, root string) map[string][]string {
 	t.Helper()
-	scripts, err := filepath.Glob(filepath.Join(root, "deploy", "scripts", "*.sh"))
-	if err != nil || len(scripts) == 0 {
-		t.Fatalf("скриптов в deploy/scripts не найдено (%v) — предмет исчез, а не стал чистым", err)
+	// Состав — у индекса git, а не обходом диска: рабочая копия агента и
+	// произведённые файлы в суд не входят (TestTreeWalkersAskTheIndex).
+	tracked, err := treecorpus.Under(root)
+	if err != nil {
+		t.Fatalf("состав дерева не прочитан: %v", err)
+	}
+	dir := filepath.Join(root, "deploy", "scripts")
+	var scripts []string
+	for _, abs := range tracked {
+		if filepath.Dir(abs) == dir && strings.HasSuffix(abs, ".sh") {
+			scripts = append(scripts, abs)
+		}
+	}
+	if len(scripts) == 0 {
+		t.Fatal("скриптов в deploy/scripts в индексе нет — предмет исчез, а не стал чистым")
 	}
 	out := map[string][]string{}
 	for _, s := range scripts {
