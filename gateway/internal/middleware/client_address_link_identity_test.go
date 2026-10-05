@@ -20,11 +20,9 @@ package middleware_test
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"testing"
 	"time"
 
@@ -38,16 +36,10 @@ const (
 	otherSAN = "spiffe://kacho.test/ns/kacho/sa/someone-else"
 )
 
-// linkState — состояние TLS пира, чья цепочка ПРОВЕРЕНА якорем и чей лист
-// несёт названное имя (URI либо DNS).
+// linkState — состояние TLS пира, чья цепочка ПРОВЕРЕНА до корня якоря
+// звеньев проб (fixtureLinkCA) и чей лист несёт названное имя (URI либо DNS).
 func linkState(san string) *tls.ConnectionState {
-	leaf := &x509.Certificate{}
-	if u, err := url.Parse(san); err == nil && u.Scheme != "" {
-		leaf.URIs = []*url.URL{u}
-	} else {
-		leaf.DNSNames = []string{san}
-	}
-	return &tls.ConnectionState{HandshakeComplete: true, VerifiedChains: [][]*x509.Certificate{{leaf}}}
+	return &tls.ConnectionState{HandshakeComplete: true, VerifiedChains: fixtureLinkCA().mustChain(san)}
 }
 
 // unverifiedState — тот же лист, предъявленный, но НЕ проверенный якорем
@@ -66,7 +58,8 @@ func trustingTheLink() *middleware.ContextExtractor {
 		middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
 		middleware.WithTrustedPeers(links{frontPod, podInCircle}),
-		middleware.WithTrustedLinkSANs(frontSAN))
+		middleware.WithTrustedLinkSANs(frontSAN),
+		middleware.WithTrustedLinkAnchor(fixtureLinkAnchor()))
 }
 
 func httpLink(peer, xff string, st *tls.ConnectionState) *http.Request {

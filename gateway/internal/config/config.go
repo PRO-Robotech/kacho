@@ -8,6 +8,7 @@ import (
 
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/netip"
@@ -711,6 +712,11 @@ type Config struct {
 	// сертификат проверяет. Разбор и отказ старта — TrustedProxyLinkSANs.
 	AuthZTrustedProxySANs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS" default:""`
 
+	// AuthZTrustedProxyCAFile — ЯКОРЬ ЗВЕНЬЕВ (kacho#3028, круг 5): файл PEM с
+	// корнями удостоверяющего центра, который выпускает сертификаты ТОЛЬКО
+	// звеньям фронта. Разбор и отказ старта — TrustedProxyLinkAnchor.
+	AuthZTrustedProxyCAFile string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE" default:""`
+
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
@@ -872,12 +878,97 @@ func (c Config) TrustedProxyLinkSANs() ([]string, error) {
 	case len(circle) == 0 && len(sans) > 0:
 		return nil, fmt.Errorf("%s=%q объявлен без круга %s и звеньев поимённо — объявляются вместе",
 			TrustedProxySANsKnob, c.AuthZTrustedProxySANs, TrustedProxyCIDRsKnob)
+	case len(sans) > 0 && strings.TrimSpace(c.AuthZTrustedProxyCAFile) == "":
+		return nil, fmt.Errorf("%s объявлен без якоря звеньев %s — имя звена читалось бы в листе якоря установки, "+
+			"а там его выдаёт себе всякий, кто заводит запрос на сертификат в любом пространстве имён",
+			TrustedProxySANsKnob, TrustedProxyCAFileKnob)
 	case len(sans) > 0 && (!c.TLSEnabled() || !c.HybridMTLSEnabled() || c.MTLSCAFile == ""):
 		return nil, fmt.Errorf("%s объявлен, а сертификат звена проверять нечем: нужен внешний TLS-слушатель "+
 			"(KACHO_API_GATEWAY_TLS_LISTEN_ADDR/_CERT_FILE/_KEY_FILE), необязательный клиентский сертификат на нём "+
 			"(KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL) и якорь (KACHO_API_GATEWAY_MTLS_CA_FILE)", TrustedProxySANsKnob)
 	}
 	return sans, nil
+}
+
+// TrustedProxyCAFileKnob — имя ручки якоря звеньев; его называют отказы старта.
+const TrustedProxyCAFileKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE"
+
+// TrustedProxyLinkAnchor — корни ЯКОРЯ ЗВЕНЬЕВ (kacho#3028, круг 5).
+//
+// Канал, который закрывает якорь, — «кто выпускает лист». Якорь установки
+// (MTLSCAFile) выпускает листы кластерным выпускающим: лист с именем звена
+// получает всякий, кто вправе завести запрос на сертификат в ЛЮБОМ
+// пространстве имён. Якорь звеньев — отдельный удостоверяющий центр, который
+// выпускает только в пространстве имён края; имя звена читается только в его
+// листе (linktls.Anchor).
+//
+// Пусто — якоря нет (законно, если и имён звеньев нет: TrustedProxyLinkSANs
+// требует их вместе). Отказ старта — при любом флаге доверия:
+//   - файл не читается либо не несёт ни одного сертификата;
+//   - сертификат файла — не удостоверяющий центр (корнем цепочки он не
+//     бывает: якорь не признал бы ни одного звена, молча);
+//   - корень файла совпадает с корнем якоря установки — ровно тот канал,
+//     который якорь закрывает.
+func (c Config) TrustedProxyLinkAnchor() ([]*x509.Certificate, error) {
+	path := strings.TrimSpace(c.AuthZTrustedProxyCAFile)
+	if path == "" {
+		return nil, nil
+	}
+	roots, err := readPEMCertificates(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyCAFileKnob, err)
+	}
+	for _, r := range roots {
+		if !r.IsCA {
+			return nil, fmt.Errorf("%s=%q: сертификат %q — не удостоверяющий центр: корнем цепочки звена он не бывает",
+				TrustedProxyCAFileKnob, path, r.Subject.String())
+		}
+	}
+	if inst := strings.TrimSpace(c.MTLSCAFile); inst != "" {
+		installation, ierr := readPEMCertificates(inst)
+		if ierr != nil {
+			return nil, fmt.Errorf("%s: якорь установки для сверки: %w", TrustedProxyCAFileKnob, ierr)
+		}
+		for _, r := range roots {
+			for _, i := range installation {
+				if r.Equal(i) {
+					return nil, fmt.Errorf("%s=%q совпадает с якорем установки KACHO_API_GATEWAY_MTLS_CA_FILE=%q "+
+						"(корень %q): лист с именем звена выдал бы себе всякий, кто заводит запрос на сертификат "+
+						"в любом пространстве имён — якорь звеньев обязан быть отдельным удостоверяющим центром",
+						TrustedProxyCAFileKnob, path, inst, r.Subject.String())
+				}
+			}
+		}
+	}
+	return roots, nil
+}
+
+// readPEMCertificates — все сертификаты файла PEM; ни одного — ошибка.
+func readPEMCertificates(path string) ([]*x509.Certificate, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("файл %q не читается: %w", path, err)
+	}
+	var out []*x509.Certificate
+	for {
+		var block *pem.Block
+		block, raw = pem.Decode(raw)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, perr := x509.ParseCertificate(block.Bytes)
+		if perr != nil {
+			return nil, fmt.Errorf("файл %q: сертификат не разбирается: %w", path, perr)
+		}
+		out = append(out, cert)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("файл %q не несёт ни одного сертификата", path)
+	}
+	return out, nil
 }
 
 // ProductionPosture — боевой ли профиль: послабление терпят только явные метки
@@ -943,6 +1034,16 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, fmt.Errorf("hybrid client-CA %q: no certificates parsed", c.MTLSCAFile)
+	}
+	// Якорь звеньев фронта (kacho#3028, круг 5) — второй корень пула: без него
+	// лист звена рукопожатие не проходит. Что лист этого корня — звено, а не
+	// личность, решают читатели цепочки (linktls.Anchor), а не пул.
+	links, err := c.TrustedProxyLinkAnchor()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range links {
+		pool.AddCert(r)
 	}
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool

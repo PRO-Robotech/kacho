@@ -21,13 +21,14 @@ import (
 
 const linkSAN = "spiffe://kacho.test/ns/kacho/sa/console-front"
 
-// linked — край за звеном: круг, звенья поимённо, имена и слушатель, который
-// проверяет клиентский сертификат якорем.
+// linked — край за звеном: круг, звенья поимённо, имена, якорь звеньев и
+// слушатель, который проверяет клиентский сертификат.
 func linked(sans string) config.Config {
 	c := trusting("10.244.0.0/16", "api-gateway-front-console")
 	c.AuthZTrustedProxySANs = sans
 	c.TLSListenAddr, c.TLSCertFile, c.TLSKeyFile = ":8443", "/tls/tls.crt", "/tls/tls.key"
 	c.HybridMTLSExternal, c.MTLSCAFile = true, "/mtls/ca.crt"
+	c.AuthZTrustedProxyCAFile = "/front-link-ca/ca.crt"
 	return c
 }
 

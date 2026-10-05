@@ -95,6 +95,13 @@ type ContextExtractor struct {
 	// личность: под с теми же метками попадает в службу фронта, адрес ушедшего
 	// пода выдаётся другому. Пусто — «никому».
 	trustedSANs map[string]struct{}
+
+	// linkAnchor — ЯКОРЬ ЗВЕНЬЕВ (kacho#3028, круг 5): имя звена читается
+	// только в листе, чья проверенная цепочка кончается корнем этого якоря.
+	// Якорь установки выпускает листы кластерным выпускающим — имя звена в его
+	// листе выдаёт себе всякий, кто заводит запрос на сертификат в любом
+	// пространстве имён. Пусто — «никому».
+	linkAnchor linktls.Anchor
 }
 
 // ExtractorOption configures a ContextExtractor at construction.
@@ -143,6 +150,13 @@ func WithTrustedLinkSANs(sans ...string) ExtractorOption {
 			e.trustedSANs[s] = struct{}{}
 		}
 	}
+}
+
+// WithTrustedLinkAnchor объявляет якорь звеньев (см.
+// ContextExtractor.linkAnchor). Без этой опции заголовки пересылки не
+// принимаются ни от одного пира.
+func WithTrustedLinkAnchor(a linktls.Anchor) ExtractorOption {
+	return func(e *ContextExtractor) { e.linkAnchor = a }
 }
 
 // NewContextExtractor constructs an extractor. now=nil falls back to
@@ -339,10 +353,10 @@ func (e *ContextExtractor) clientIP(f forwarded) string {
 
 // TrustsNobody — не принимает ли оператор заголовки пересылки ни от одного
 // пира: доверие выключено флагом, нулём прыжков, круг пуст, звеньев поимённо
-// нет либо имён звеньев в сертификате нет.
+// нет, имён звеньев в сертификате нет либо нет якоря звеньев.
 func (e *ContextExtractor) TrustsNobody() bool {
 	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0 ||
-		e.trustedPeers == nil || len(e.trustedSANs) == 0
+		e.trustedPeers == nil || len(e.trustedSANs) == 0 || e.linkAnchor.Empty()
 }
 
 // isLink — ОДИН предикат доверия к пиру: звено ли он. Звено — пир, который
@@ -369,14 +383,16 @@ func (e *ContextExtractor) isLink(f forwarded) bool {
 	return inCircle && e.linkNamed(f.link) && e.trustedPeers.Trusts(addr)
 }
 
-// linkNamed — несёт ли ПРОВЕРЕННЫЙ лист соединения имя звена. Предъявленный,
-// но не проверенный якорем сертификат (PeerCertificates без VerifiedChains) —
-// не звено: имя в нём написал кто угодно.
+// linkNamed — несёт ли ПРОВЕРЕННЫЙ лист ЯКОРЯ ЗВЕНЬЕВ имя звена.
+// Предъявленный, но не проверенный сертификат (PeerCertificates без
+// VerifiedChains) — не звено: имя в нём написал кто угодно. Проверенный
+// якорем установки — тоже не звено (круг 5): лист с любым именем там выдаёт
+// себе всякий, кто заводит запрос на сертификат в любом пространстве имён.
 func (e *ContextExtractor) linkNamed(st *tls.ConnectionState) bool {
 	if st == nil || !st.HandshakeComplete {
 		return false
 	}
-	leaf := verifiedLeaf(st.VerifiedChains)
+	leaf := e.linkAnchor.Issued(st.VerifiedChains)
 	if leaf == nil {
 		return false
 	}

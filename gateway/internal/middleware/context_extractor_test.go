@@ -25,6 +25,7 @@ var ingressCircle = func(e *middleware.ContextExtractor) {
 	middleware.WithTrustedProxies(netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("192.0.2.0/24"))(e)
 	middleware.WithTrustedPeers(links{"10.0.0.1", "192.0.2.10", "192.0.2.1"})(e)
 	middleware.WithTrustedLinkSANs(frontSAN)(e)
+	middleware.WithTrustedLinkAnchor(fixtureLinkAnchor())(e)
 }
 
 func TestContextExtractor_BuildHTTP_AlwaysHasCurrentTime(t *testing.T) {

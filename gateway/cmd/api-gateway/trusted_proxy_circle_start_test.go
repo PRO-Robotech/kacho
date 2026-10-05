@@ -33,7 +33,8 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 	const peersKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS"
 	const sansKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS"
 	const peers = "api-gateway-front-console"
-	const sans = "spiffe://kacho.test/ns/kacho/sa/console-front"
+	const sans = "api-gateway-front-console.front-link.kacho.internal"
+	const anchorKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE"
 	for _, c := range []struct{ name, value, peers, sans, mustSay, mustName string }{
 		{name: "неразборная запись", value: "10.0.0.0/8,10.0.0.300/8", peers: peers, sans: sans, mustSay: "10.0.0.300/8", mustName: knob},
 		{name: "весь адресный простор", value: "10.0.0.0/8,0.0.0.0/0", peers: peers, sans: sans, mustSay: "0.0.0.0/0", mustName: knob},
@@ -54,6 +55,25 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 			}
 			if !strings.Contains(got.journal, c.mustSay) || !strings.Contains(got.journal, c.mustName) {
 				t.Fatalf("отказ не называет %q и ручку %s:\n%s", c.mustSay, c.mustName, ka1Tail(got.journal))
+			}
+		})
+	}
+	// Якорь звеньев (круг 5): имена без него и якорь, равный якорю установки, —
+	// отказ старта процесса, называющий ручку якоря.
+	for name, mutate := range map[string]func(map[string]string){
+		"имена звеньев без якоря звеньев": func(e map[string]string) { delete(e, anchorKnob) },
+		"якорь звеньев = якорь установки": func(e map[string]string) { e[anchorKnob] = e["KACHO_API_GATEWAY_MTLS_CA_FILE"] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, listen := ka1EdgeEnv(t, "production")
+			mutate(env)
+			got := ka1RunEdge(t, env, listen)
+			if !got.exited || got.code == 0 {
+				t.Fatalf("процесс обязан отказать в старте; завершился=%v код=%d healthz=%d\n%s",
+					got.exited, got.code, got.healthz, ka1Tail(got.journal))
+			}
+			if !strings.Contains(got.journal, anchorKnob) {
+				t.Fatalf("отказ не называет ручку %s:\n%s", anchorKnob, ka1Tail(got.journal))
 			}
 		})
 	}

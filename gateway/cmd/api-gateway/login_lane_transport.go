@@ -7,92 +7,17 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/gateway/internal/frontpeers"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
-
-// startClientAddressOperator — ЕДИНСТВЕННАЯ сборка оператора адреса клиента
-// (kacho#3028, C6): её зовут корень и проба старта
-// (client_address_operator_start_test.go), и второй сборки нет.
-//
-// Один оператор на три читателя: условие `client_ip` модели прав (HTTP и
-// нативный gRPC) и `X-Forwarded-For` ретрансляции полосы формы, по которому
-// служба доступа ведёт ограничение частоты «на источник». Ручки: доверять ли
-// заголовкам пересылки, сколько доверенных прыжков стоит перед краем (адрес
-// берётся СПРАВА), круг сетей, звенья фронта поимённо (адреса подов безголовых
-// служб фронта) и имена звеньев в сертификате (C4). Разбор и отказ старта по
-// каждой — config.TrustedProxyCircle, TrustedProxyPeers, TrustedProxyLinkSANs.
-//
-// БОЕВОЙ ПРОФИЛЬ НЕ ВПРАВЕ НЕ ДОВЕРЯТЬ НИКОМУ: край за звеном фронта, не
-// принимающий заголовок ни от кого, видит всех клиентов одним адресом звена, и
-// ограничение частоты «на источник» становится общим на всех. Это отказ в
-// старте, а не предупреждение: предупреждение такого края не останавливает.
-//
-// Обновление перечня звеньев запускается здесь же, на контексте процесса
-// (frontpeers.Set.Run): сборка, вернувшая перечень, который никто не
-// обновляет, через три периода перестала бы признавать звенья молча.
-func startClientAddressOperator(ctx context.Context, cfg config.Config, resolve frontpeers.Resolver, logger *slog.Logger) (
-	*middleware.ContextExtractor, *frontpeers.Set, error) {
-	circle, err := cfg.TrustedProxyCircle()
-	if err != nil {
-		return nil, nil, err
-	}
-	names, err := cfg.TrustedProxyPeers()
-	if err != nil {
-		return nil, nil, err
-	}
-	sans, err := cfg.TrustedProxyLinkSANs()
-	if err != nil {
-		return nil, nil, err
-	}
-	opts := []middleware.ExtractorOption{
-		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount),
-		middleware.WithTrustedProxies(circle...),
-		middleware.WithTrustedLinkSANs(sans...),
-	}
-	var links *frontpeers.Set
-	if len(names) > 0 {
-		links, err = frontpeers.New(frontpeers.Options{
-			Names: names, Refresh: cfg.AuthZTrustedProxyPeersRefresh, Resolve: resolve, Logger: logger,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		opts = append(opts, middleware.WithTrustedPeers(links))
-	}
-	op := middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor, opts...)
-	if cfg.ProductionPosture() && op.TrustsNobody() {
-		return nil, nil, fmt.Errorf("боевой профиль (KACHO_APP_ENV=%q): заголовок адреса клиента не принимается ни от "+
-			"одного звена — за звеном фронта все клиенты были бы одним адресом и делили бы одно ограничение частоты "+
-			"входа; объявите круг %s, звенья поимённо %s и имена звеньев в сертификате %s "+
-			"(доверие пересылке KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF=%v, прыжков %d)", cfg.AppEnv,
-			config.TrustedProxyCIDRsKnob, config.TrustedProxyPeersKnob, config.TrustedProxySANsKnob,
-			cfg.AuthZTrustedXForwardedFor, cfg.AuthZTrustedProxyCount)
-	}
-	if links != nil {
-		go links.Run(ctx)
-	}
-	return op, links, nil
-}
-
-// lookupFrontLinks — разрешение имени службы звена в адреса её подов
-// разрешателем процесса (поиск по пространству имён пода — из его resolv.conf).
-func lookupFrontLinks(ctx context.Context, name string) ([]netip.Addr, error) {
-	return net.DefaultResolver.LookupNetIP(ctx, "ip", name)
-}
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь
 // внутреннего CA, имя сервера для SNI (ручка KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME,

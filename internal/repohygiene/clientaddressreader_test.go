@@ -40,6 +40,10 @@ func TestClientAddressHasOneReaderInTheEdge(t *testing.T) {
 		t.Fatalf("в читателях %v не найдено ни одного чтения — гейт смотрит не туда, либо читатель переименован",
 			clientAddressReaders)
 	}
+	if census.Strips == 0 {
+		t.Fatalf("снятия адреса источника на выходе края нет (%v) — службы за краем получали бы адрес словами клиента",
+			clientAddressStrips)
+	}
 	if len(findings) > 0 {
 		t.Fatalf("адрес клиента читается не одним оператором (%d):\n%s\n\nперепись: %s",
 			len(findings), strings.Join(findings, "\n"), census.Summary())

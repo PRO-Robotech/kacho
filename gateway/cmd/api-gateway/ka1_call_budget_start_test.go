@@ -109,6 +109,9 @@ func ka1FreeAddr(t *testing.T) string {
 func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string) {
 	t.Helper()
 	cert, key, ca := ka1Material(t)
+	// Якорь звеньев фронта (kacho#3028, круг 5) — ОТДЕЛЬНЫЙ удостоверяющий
+	// центр: совпадение с якорем установки — отказ старта.
+	_, _, linkCA := ka1Material(t)
 	listen = ka1FreeAddr(t)
 	appEnv, authz := "dev", "false"
 	if mode != "dev" {
@@ -145,11 +148,12 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS":           "api-gateway-front-console",
 		// Имя звена в сертификате (kacho#3028, C4) проверяется внешним
 		// TLS-слушателем с необязательным клиентским сертификатом и якорем.
-		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS": "spiffe://kacho.test/ns/kacho/sa/console-front",
-		"KACHO_API_GATEWAY_TLS_LISTEN_ADDR":          ka1FreeAddr(t),
-		"KACHO_API_GATEWAY_TLS_CERT_FILE":            cert,
-		"KACHO_API_GATEWAY_TLS_KEY_FILE":             key,
-		"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL":     "true",
+		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS":    "api-gateway-front-console.front-link.kacho.internal",
+		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE": linkCA,
+		"KACHO_API_GATEWAY_TLS_LISTEN_ADDR":             ka1FreeAddr(t),
+		"KACHO_API_GATEWAY_TLS_CERT_FILE":               cert,
+		"KACHO_API_GATEWAY_TLS_KEY_FILE":                key,
+		"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL":        "true",
 	}, listen
 }
 

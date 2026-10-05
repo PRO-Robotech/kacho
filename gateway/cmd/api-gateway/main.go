@@ -35,6 +35,7 @@ import (
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/clientaddress"
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
@@ -74,13 +75,14 @@ func main() {
 	// ОПЕРАТОР АДРЕСА КЛИЕНТА (kacho#3028) — собирается здесь, безусловно и до
 	// первой провязки: он нужен и модели прав, и ретрансляции полосы входа, и
 	// отказ по негодной настройке не вправе зависеть от того, какая из них
-	// включена в этой посадке. Сборка одна (startClientAddressOperator): она же
-	// отказывает боевому профилю, не доверяющему никому, и запускает
+	// включена в этой посадке. Сборка одна (gateway/internal/clientaddress):
+	// она же отказывает боевому профилю, не доверяющему никому, и запускает
 	// обновление перечня звеньев на контексте процесса.
-	clientAddress, _, caErr := startClientAddressOperator(ctx, cfg, lookupFrontLinks, logger)
+	clientAddressOp, caErr := clientaddress.Start(ctx, cfg, clientaddress.LookupFrontLinks, logger)
 	if caErr != nil {
 		log.Fatalf("client address startup-validation: %v", caErr)
 	}
+	clientAddress := clientAddressOp.Extractor
 	logger.Info("client address: forwarded headers are honoured only from named front links presenting their certificate",
 		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
 		"trusted_proxy_peers", cfg.AuthZTrustedProxyPeers,
@@ -330,7 +332,10 @@ func main() {
 	// the AuthInterceptor derives the principal from the verified cert and skips
 	// the JWT requirement. Default off ⇒ JWT-only authN, behaviour unchanged.
 	if cfg.HybridMTLSEnabled() {
-		authInterceptor = authInterceptor.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain))
+		// Лист звена фронта личностью не становится (kacho#3028, круг 5):
+		// якорь звеньев — тот же, которым оператор адреса узнаёт звено.
+		authInterceptor = authInterceptor.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain)).
+			WithLinkAnchor(clientAddressOp.Anchor)
 		logger.Info("hybrid mTLS external listener: cert-principal path enabled")
 	}
 

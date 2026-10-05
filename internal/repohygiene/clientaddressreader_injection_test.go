@@ -14,6 +14,9 @@ import (
 
 const caReaderFile = "gateway/internal/middleware/context_extractor.go"
 
+// caStripFile — файл снятия адреса источника на выходе края (круг 5).
+const caStripFile = "gateway/internal/principalmeta/forwarded_address.go"
+
 func judgeClientAddressOne(t *testing.T, rel, src string) ([]string, clientAddressCensus) {
 	t.Helper()
 	var c clientAddressCensus
@@ -49,6 +52,14 @@ func TestClientAddressReaderInjection(t *testing.T) {
 			`package h; import "net/http"; func w(h http.Header) { h.Set("X-Forwarded-For", "a"); h.Del("X-Real-IP") }`, false, ""},
 		{"близнец: имя в комментарии", "gateway/internal/handler/x.go",
 			"package h\n// читаем X-Forwarded-For только в операторе\nfunc f() {}", false, ""},
+		{"близнец: перечень снятия адреса на выходе края", caStripFile,
+			`package p; var forwardedAddressKeys = map[string]bool{"x-forwarded-for": true, "forwarded": true}`, false, ""},
+		{"перечень снятия под другим именем в файле снятия — чтение", caStripFile,
+			`package p; var someKeys = map[string]bool{"x-forwarded-for": true}`, true, "someKeys"},
+		{"перечень снятия с тем же именем в чужом файле — чтение", "gateway/internal/handler/x.go",
+			`package h; var forwardedAddressKeys = map[string]bool{"x-real-ip": true}`, true, "x-real-ip"},
+		{"метаданные моста в перечне снятия — чтение (C3)", caStripFile,
+			`package p; var forwardedAddressKeys = map[string]bool{"grpcgateway-x-forwarded-for": true}`, true, "C3"},
 		{"близнец: соседнее имя", "gateway/internal/handler/x.go",
 			`package h; import "net/http"; func p(r *http.Request) string { return r.Header.Get("X-Forwarded-Proto") }`, false, ""},
 	} {
@@ -60,7 +71,7 @@ func TestClientAddressReaderInjection(t *testing.T) {
 			if c.red != (len(got) > 0) {
 				t.Fatalf("ожидалось red=%v, находки %v (перепись %s)", c.red, got, census.Summary())
 			}
-			if c.red && !strings.Contains(strings.Join(got, "\n"), c.mustSay) {
+			if c.red && !strings.Contains(strings.Join(got, "\n"), c.mustSay) && !strings.Contains(census.Summary(), c.mustSay) {
 				t.Fatalf("находка не называет %q: %v", c.mustSay, got)
 			}
 		})

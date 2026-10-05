@@ -57,14 +57,24 @@ var clientAddressReaders = map[string][]string{
 	"gateway/internal/middleware/context_extractor.go": {"httpForwarded", "grpcForwarded"},
 }
 
+// clientAddressStrips — СНЯТИЕ адреса источника на выходе края (круг 5): файл
+// → имя переменной-перечня ключей, которые край снимает с исходящего вызова к
+// службе. Имя в перечне снятия не читает адрес, а убирает его — третий
+// законный вид литерала рядом с чтением в читателе и записью. Метаданные
+// моста литералом в перечне не пишутся: снятие формы моста выводится из
+// голого имени (приставка), и литерал моста — по-прежнему находка C3.
+var clientAddressStrips = map[string][]string{
+	"gateway/internal/principalmeta/forwarded_address.go": {"forwardedAddressKeys"},
+}
+
 // clientAddressCensus — объём осмотренного.
 type clientAddressCensus struct {
-	Files, Literals, Writes, ReaderReads int
+	Files, Literals, Writes, ReaderReads, Strips int
 }
 
 func (c clientAddressCensus) Summary() string {
-	return fmt.Sprintf("файлов %d · литералов имён пересылки %d · записей %d · чтений в читателе %d",
-		c.Files, c.Literals, c.Writes, c.ReaderReads)
+	return fmt.Sprintf("файлов %d · литералов имён пересылки %d · записей %d · чтений в читателе %d · снятий на выходе %d",
+		c.Files, c.Literals, c.Writes, c.ReaderReads, c.Strips)
 }
 
 // clientAddressHeaderKind — имя ли это заголовка пересылки и метаданные ли моста.
@@ -94,12 +104,38 @@ func judgeClientAddressReaders(rel string, src []byte, census *clientAddressCens
 	for _, fn := range clientAddressReaders[rel] {
 		allowed[fn] = true
 	}
+	strips := map[string]bool{}
+	for _, v := range clientAddressStrips[rel] {
+		strips[v] = true
+	}
 	var findings []string
 	var stack []ast.Node
+	// inStrip — лежит ли узел внутри объявления переменной-перечня снятия.
+	inStrip := func() bool {
+		for i := len(stack) - 1; i >= 0; i-- {
+			if vs, ok := stack[i].(*ast.ValueSpec); ok {
+				for _, n := range vs.Names {
+					if strips[n.Name] {
+						return true
+					}
+				}
+				return false
+			}
+		}
+		return false
+	}
 	enclosingFunc := func() string {
 		for i := len(stack) - 1; i >= 0; i-- {
 			if fd, ok := stack[i].(*ast.FuncDecl); ok {
 				return fd.Name.Name
+			}
+		}
+		return ""
+	}
+	enclosingVar := func() string {
+		for i := len(stack) - 1; i >= 0; i-- {
+			if vs, ok := stack[i].(*ast.ValueSpec); ok && len(vs.Names) > 0 {
+				return ", переменная " + vs.Names[0].Name
 			}
 		}
 		return ""
@@ -148,10 +184,12 @@ func judgeClientAddressReaders(rel string, src []byte, census *clientAddressCens
 			findings = append(findings, fmt.Sprintf("%s: метаданные моста %q читаются — на нативном gRPC их пишет клиент (C3)", where, v))
 		case isWriteArg(lit):
 			census.Writes++
+		case inStrip():
+			census.Strips++
 		case allowed[enclosingFunc()]:
 			census.ReaderReads++
 		default:
-			findings = append(findings, fmt.Sprintf("%s: заголовок пересылки %q читается вне оператора адреса (функция %q) — второй читатель адреса клиента (C2)", where, v, enclosingFunc()))
+			findings = append(findings, fmt.Sprintf("%s: заголовок пересылки %q читается вне оператора адреса (функция %q%s) — второй читатель адреса клиента (C2)", where, v, enclosingFunc(), enclosingVar()))
 		}
 		return true
 	})

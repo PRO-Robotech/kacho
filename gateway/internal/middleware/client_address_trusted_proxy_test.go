@@ -83,7 +83,7 @@ func trustingTheFront() *middleware.ContextExtractor {
 		middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
 		middleware.WithTrustedPeers(links{frontPod}),
-		middleware.WithTrustedLinkSANs(frontSAN))
+		middleware.WithTrustedLinkSANs(frontSAN), middleware.WithTrustedLinkAnchor(fixtureLinkAnchor()))
 }
 
 // УЗКИЙ КРУГ (kacho#3028, круг 3). Сеть круга — «под кластера», а не «звено
@@ -122,7 +122,8 @@ func TestClientAddress_CircleWithoutNamedLinksTrustsNobody(t *testing.T) {
 func TestClientAddress_NamedLinkOutsideTheCircleNetworkIsNotALink(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
-		middleware.WithTrustedPeers(links{frontPod, otherPod}), middleware.WithTrustedLinkSANs(frontSAN))
+		middleware.WithTrustedPeers(links{frontPod, otherPod}), middleware.WithTrustedLinkSANs(frontSAN),
+		middleware.WithTrustedLinkAnchor(fixtureLinkAnchor()))
 	if got := e.ClientIP(httpFrom(otherPod, forgedSource)); got != otherPod {
 		t.Fatalf("звено %s вне сети круга сдвинуло источник на %q", otherPod, got)
 	}
