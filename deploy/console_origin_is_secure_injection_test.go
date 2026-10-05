@@ -120,3 +120,82 @@ func TestConsoleOrigin_TreeInjectionNamesTheChain(t *testing.T) {
 		t.Errorf("находка не называет цепочку %s: %s", target, findings[0])
 	}
 }
+
+// TestConsoleOriginJudgement_StackKeyedDebtCoversOnlyItsChain — запись по
+// имени цепочки (её адрес в сверку не копируется) прощает http РОВНО этой
+// цепочки. Каждый случай меняет один факт против законного близнеца.
+func TestConsoleOriginJudgement_StackKeyedDebtCoversOnlyItsChain(t *testing.T) {
+	debt := plainHTTPOriginDebt{Stack: "managed", Issue: "#0", Reason: "проба"}
+	legal := func() []consoleOriginFacts {
+		return []consoleOriginFacts{
+			{Stack: "edge", Origin: "https://console.example", Declared: true},
+			{Stack: "managed", Origin: "http://192.0.2.20", Declared: true},
+		}
+	}
+	cases := []struct {
+		name    string
+		mutate  func(f []consoleOriginFacts) []consoleOriginFacts
+		debts   []plainHTTPOriginDebt
+		want    int
+		mustSay string
+	}{
+		{name: "законный близнец: http своей цепочки по записи — молчит", mutate: func(f []consoleOriginFacts) []consoleOriginFacts { return f }},
+		{
+			name: "та же цепочка, другой адрес по http — молчит: адрес живёт в профиле, не в записи",
+			mutate: func(f []consoleOriginFacts) []consoleOriginFacts {
+				f[1].Origin = "http://192.0.2.21"
+				return f
+			},
+		},
+		{
+			name: "другая цепочка по http — находка: запись не переносится на соседа",
+			mutate: func(f []consoleOriginFacts) []consoleOriginFacts {
+				f[0].Origin = "http://192.0.2.20"
+				return f
+			},
+			want:    1,
+			mustSay: "цепочка edge:",
+		},
+		{
+			name: "цепочка записи перешла на https — запись ничья, находка",
+			mutate: func(f []consoleOriginFacts) []consoleOriginFacts {
+				f[1].Origin = "https://console.managed.example"
+				return f
+			},
+			want:    1,
+			mustSay: "нечего исключать",
+		},
+		{
+			name:    "запись с обоими ключами — находка формы, цепочка не прощена",
+			mutate:  func(f []consoleOriginFacts) []consoleOriginFacts { return f },
+			debts:   []plainHTTPOriginDebt{{Stack: "managed", Origin: "http://192.0.2.20", Issue: "#0"}},
+			want:    2,
+			mustSay: "ровно одним ключом",
+		},
+		{
+			name:    "запись без задачи — находка, цепочка не прощена",
+			mutate:  func(f []consoleOriginFacts) []consoleOriginFacts { return f },
+			debts:   []plainHTTPOriginDebt{{Stack: "managed"}},
+			want:    2,
+			mustSay: "не называет задачу",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			debts := c.debts
+			if debts == nil {
+				debts = []plainHTTPOriginDebt{debt}
+			}
+			findings, census := judgeConsoleOrigins(c.mutate(legal()), debts)
+			if len(findings) != c.want {
+				t.Fatalf("находок %d, ожидалось %d: %v", len(findings), c.want, findings)
+			}
+			if c.mustSay != "" && !strings.Contains(strings.Join(findings, "\n"), c.mustSay) {
+				t.Errorf("ни одна находка не называет %q: %v", c.mustSay, findings)
+			}
+			if census.Stacks != 2 {
+				t.Errorf("перепись осмотренного %d, подано 2", census.Stacks)
+			}
+		})
+	}
+}

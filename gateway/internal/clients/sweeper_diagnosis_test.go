@@ -113,9 +113,8 @@ func TestSweeperTellsMisaddressedFromRolloutWindow(t *testing.T) {
 		{
 			name: "cutoff",
 			cred: principalmeta.Credential{
-				UserID:          "usr-00000000000002741",
-				AuthenticatedAt: time.Now(),
-				Presented:       principalmeta.PresentedSession("s-2741"),
+				UserID:    "usr-00000000000002741",
+				Presented: principalmeta.PresentedSession("s-2741"),
 			},
 			wrong: func(s *grpc.Server) {
 				iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})

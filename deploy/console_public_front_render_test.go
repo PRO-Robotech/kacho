@@ -38,9 +38,22 @@
 //     клиента как есть (nginx пересылает заголовки запроса по умолчанию), и
 //     перебор одних найденных строк такую полосу не видит вовсе.
 //
-// ЗНАМЕНАТЕЛЬ. Цепочек с таким входом обязано быть не меньше одной: стенд,
-// ради которого вход заведён, раскатывается из этого дерева, и «на всех
-// цепочках со входом всё верно» при нуле таких цепочек истинно и пусто.
+// ЗНАМЕНАТЕЛЬ. Судятся две вещи, и обе обязательны:
+//
+//   - каждая цепочка deploy/stacks.txt, которая рендерит вход, — как есть;
+//   - ФИКСТУРНАЯ цепочка: та цепочка, ради стенда которой вход заведён
+//     (`publicFrontFixtureStack`), со входом, включённым ручками чарта поверх её
+//     профилей (`publicFrontFixtureSets`). Она есть всегда, поэтому входов в
+//     переписи не меньше одного, и «на всех цепочках со входом всё верно» не
+//     бывает истинным и пустым.
+//
+// Почему фикстура, а не профиль стенда. В профиле a8f60d вход сегодня
+// ВЫКЛЮЧЕН: выпуск сертификата на IP-литерал отвергнут решением владельца, вход
+// стенда переезжает на доменное имя (kacho#3024). Открытый http этой цепочки
+// при этом не прощён молча — его называет запись-исключение сверки
+// происхождения (console_origin_is_secure_test.go) с той же задачей. Фикстура
+// держит хост в зарезервированной зоне `.example` (RFC 2606): адреса стенда в
+// сверку не копируются.
 //
 // Способность упасть — console_public_front_render_injection_test.go.
 package deploy_test
@@ -395,7 +408,27 @@ func toInt(v any) int {
 	return 0
 }
 
-// readPublicFrontRenders — рендер каждой цепочки и её объявленное происхождение.
+// publicFrontFixtureStack — цепочка, ради стенда которой вход заведён; её
+// профили — основа фикстуры.
+const publicFrontFixtureStack = "a8f60d"
+
+// publicFrontFixtureOrigin — происхождение фикстуры: зарезервированная зона
+// `.example` (RFC 2606), не адрес стенда.
+const publicFrontFixtureOrigin = "https://console.stand.example"
+
+// publicFrontFixtureSets — вход, включённый ручками чарта: ровно те, что
+// объявляет профиль, переводя стенд на вход по доменному имени.
+var publicFrontFixtureSets = []string{
+	"global.kacho.identity.appBaseURL=" + publicFrontFixtureOrigin,
+	"uif.publicFront.enabled=true",
+	"uif.publicFront.tls.secretName=console-public-tls",
+	"uif.publicFront.tls.certificate.create=true",
+	"uif.publicFront.tls.certificate.issuerRef.name=console-public",
+	"uif.publicFront.tls.certificate.dnsNames[0]=console.stand.example",
+}
+
+// readPublicFrontRenders — рендер каждой цепочки с её объявленным
+// происхождением и, последней, фикстурная цепочка со входом.
 func readPublicFrontRenders(t *testing.T) []publicFrontRender {
 	t.Helper()
 	stacks := deployStacks(t)
@@ -409,6 +442,16 @@ func readPublicFrontRenders(t *testing.T) []publicFrontRender {
 			Stack: n, Origin: origins[n], Docs: decodeRender(t, renderChainCached(t, stacks[n])),
 		})
 	}
+	chain, ok := stacks[publicFrontFixtureStack]
+	if !ok {
+		t.Fatalf("цепочки %q нет в таблице стеков — фикстуре входа не на чем стоять, "+
+			"переписи входов не с чем сверяться", publicFrontFixtureStack)
+	}
+	out = append(out, publicFrontRender{
+		Stack:  publicFrontFixtureStack + "+вход-фикстура",
+		Origin: publicFrontFixtureOrigin,
+		Docs:   decodeRender(t, renderChainCached(t, chain, publicFrontFixtureSets...)),
+	})
 	return out
 }
 

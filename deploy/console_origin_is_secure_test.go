@@ -28,6 +28,14 @@
 // которой ни одна цепочка не объявляет, — находка: исключению нечего
 // исключать, и оно обязано быть снято вместе с предметом.
 //
+// Запись держится одним из двух ключей, и ровно одним:
+//   - `Origin` — происхождение дословно; общее для нескольких цепочек (kind);
+//   - `Stack`  — имя цепочки; происхождение тогда читается из её профиля и в
+//     сверку НЕ копируется. Так записан управляемый стенд a8f60d: его адрес
+//     живёт только в профиле, второй копии адреса в дереве не заводится. Запись
+//     покрывает лишь схему http этой цепочки — та же цепочка с иной схемой или
+//     другая цепочка по http ею не прощаются.
+//
 // Способность упасть и смолчать — console_origin_is_secure_injection_test.go.
 package deploy_test
 
@@ -42,9 +50,18 @@ import (
 
 // plainHTTPOriginDebt — происхождение по http, известное и заведённое задачей.
 type plainHTTPOriginDebt struct {
-	Origin string // дословно, как объявлено
+	Origin string // дословно, как объявлено; либо пусто, если запись по Stack
+	Stack  string // имя цепочки из таблицы стеков; либо пусто, если запись по Origin
 	Issue  string // задача, снимающая запись
 	Reason string
+}
+
+// key — по чему запись опознаётся в переписи и в находках.
+func (d plainHTTPOriginDebt) key() string {
+	if d.Stack != "" {
+		return "цепочка " + d.Stack
+	}
+	return d.Origin
 }
 
 // plainHTTPOriginDebts — единственный перечень. Пополнять его — значит заводить
@@ -54,6 +71,11 @@ var plainHTTPOriginDebts = []plainHTTPOriginDebt{{
 	Issue:  "PRO-Robotech/kacho#3025",
 	Reason: "стенд kind отображает только 80 → 28080, слушателя TLS у него нет; " +
 		"сквозные пробы объявляют это происхождение защищённым своим клиентам (#1274), человеку такой обход недоступен",
+}, {
+	Stack: "a8f60d",
+	Issue: "PRO-Robotech/kacho#3024",
+	Reason: "управляемый стенд без доменного имени; выпуск сертификата на IP-литерал отвергнут решением владельца, " +
+		"вход переезжает на доменное имя с поставщиком сертификата — тогда профиль объявит https и запись станет ничьей",
 }}
 
 var (
@@ -94,9 +116,24 @@ func judgeConsoleOrigins(facts []consoleOriginFacts, debts []plainHTTPOriginDebt
 	var findings []string
 	var census consoleOriginCensus
 	used := map[string]bool{}
-	debtOf := map[string]plainHTTPOriginDebt{}
+	byOrigin := map[string]bool{}
+	byStack := map[string]bool{}
 	for _, d := range debts {
-		debtOf[d.Origin] = d
+		switch {
+		case (d.Origin == "") == (d.Stack == ""):
+			findings = append(findings, fmt.Sprintf(
+				"запись-исключение (%s) обязана держаться ровно одним ключом — Origin либо Stack: "+
+					"origin=%q stack=%q", d.Issue, d.Origin, d.Stack))
+			continue
+		case strings.TrimSpace(d.Issue) == "":
+			findings = append(findings, fmt.Sprintf(
+				"запись-исключение %q не называет задачу — исключение без предмета снятия есть прощение", d.key()))
+			continue
+		case d.Stack != "":
+			byStack[d.Stack] = true
+		default:
+			byOrigin[d.Origin] = true
+		}
 	}
 	for _, f := range facts {
 		census.Stacks++
@@ -110,7 +147,12 @@ func judgeConsoleOrigins(facts []consoleOriginFacts, debts []plainHTTPOriginDebt
 		case u.Scheme == "https":
 			census.Secure++
 		case u.Scheme == "http":
-			if _, ok := debtOf[f.Origin]; ok {
+			if byStack[f.Stack] {
+				census.Debts++
+				used["цепочка "+f.Stack] = true
+				continue
+			}
+			if byOrigin[f.Origin] {
 				census.Debts++
 				used[f.Origin] = true
 				continue
@@ -126,10 +168,13 @@ func judgeConsoleOrigins(facts []consoleOriginFacts, debts []plainHTTPOriginDebt
 		}
 	}
 	for _, d := range debts {
-		if !used[d.Origin] {
+		if !byStack[d.Stack] && !byOrigin[d.Origin] {
+			continue // уже названа находкой формы записи
+		}
+		if !used[d.key()] {
 			findings = append(findings, fmt.Sprintf(
 				"запись-исключение %q (%s) не используется ни одной цепочкой — исключению нечего исключать: "+
-					"снимите запись вместе с задачей", d.Origin, d.Issue))
+					"снимите запись вместе с задачей", d.key(), d.Issue))
 		}
 	}
 	return findings, census
