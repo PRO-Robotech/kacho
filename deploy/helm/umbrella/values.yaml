@@ -401,9 +401,9 @@ global:
       # ─── браузерный адрес консоли: ПУСТО ⇒ вывести из `domain` ───────────
       # Объявлен затем, чтобы посадка, где консоль стоит не на
       # `https://<app>.<domain>`, была ВЫРАЗИМА: стенд разработки раздаёт её по
-      # `http://console.kacho.local:28080` (kind отображает 80 → 28080, слушателя
-      # на 443 нет). Читает его помощник `kaname.identity.consoleOrigin` подчарта
-      # службы доступа (charts/kaname/templates/_helpers.tpl).
+      # `https://console.kacho.local:28443` (kind отображает порт TLS узла
+      # 443 → 28443, kacho#3025). Читает его помощник `kaname.identity.consoleOrigin`
+      # подчарта службы доступа (charts/kaname/templates/_helpers.tpl).
       appBaseURL: ""
       # `rp.id` ключей доступа. Пусто ⇒ `domain`. Имя обязано быть
       # родительским для хоста консоли: ключ, привязанный к чужому имени,

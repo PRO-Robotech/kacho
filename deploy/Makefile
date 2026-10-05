@@ -372,7 +372,7 @@ preflight:
 	@command -v kubectl >/dev/null || { echo "ERROR: kubectl not installed"; exit 1; }
 	@command -v helm >/dev/null || { echo "ERROR: helm not installed"; exit 1; }
 	@docker info >/dev/null 2>&1 || { echo "ERROR: docker daemon is not running"; exit 1; }
-	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 (443 is not published at all) and that Ingress is backend-protocol GRPCS, so REST through it answers 502 — except the three ceremony coordinates (/iam/v1/authorize, /iam/v1/token, /.well-known/oauth-authorization-server), which ride HTTPS to the same listener."
+	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 and node:443 -> host:28443 (deploy/kind/kind-config.yaml), and that Ingress is backend-protocol GRPCS, so REST through it answers 502 — except the three ceremony coordinates (/iam/v1/authorize, /iam/v1/token, /.well-known/oauth-authorization-server), which ride HTTPS to the same listener. The console answers https://console.kacho.local:28443 (needs '127.0.0.1 console.kacho.local')."
 	@echo "preflight OK"
 
 # guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст ведёт НЕ в наш kind-кластер.
@@ -699,6 +699,7 @@ dev-up: preflight
 	  exit 1; \
 	}; \
 	$(MAKE) --no-print-directory guard-kind-context; \
+	./kind/assert-port-mappings.sh $(CLUSTER_NAME); \
 	kubectl create namespace kacho --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
 	kubectl label namespace kacho \
 	  pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
@@ -786,7 +787,8 @@ dev-up: preflight
 	echo "API endpoint:"; \
 	echo "  REST   http://localhost:18080         (kubectl port-forward svc/api-gateway 18080:8080)"; \
 	echo "  TLS    https://localhost:18443        (kubectl port-forward svc/api-gateway 18443:8443 — the advertised external listener)"; \
-	echo "  Ingress http://api.kacho.local:28080  (needs '127.0.0.1 api.kacho.local' in /etc/hosts; gRPC only — backend-protocol is GRPCS, REST answers 502 except the three ceremony coordinates on HTTPS, and 443 is not published by kind)"
+	echo "  Ingress http://api.kacho.local:28080  (needs '127.0.0.1 api.kacho.local' in /etc/hosts; gRPC only — backend-protocol is GRPCS, REST answers 502 except the three ceremony coordinates on HTTPS, TLS on https://api.kacho.local:28443)"; \
+	echo "  Console https://console.kacho.local:28443  (needs '127.0.0.1 console.kacho.local' in /etc/hosts; leaf is self-signed — secret kacho/uif-console-tls, key ca.crt)"
 
 dev-down:
 	kind delete cluster --name $(CLUSTER_NAME) || true
