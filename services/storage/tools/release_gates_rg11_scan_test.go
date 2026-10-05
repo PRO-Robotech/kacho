@@ -211,13 +211,12 @@ func rg11NewScanFixture(t *testing.T, dirty bool, scanner string) *rg11ScanFixtu
 		t.Fatalf("CONDITION NOT CREATED: dirty=%v, status=%q", dirty, f.status)
 	}
 	f.env = rg11CleanEnv()
-	// The proof also runs the IaC coverage gate, which builds the notify
-	// inspection copy (deploy/scripts/render-notify-inspect.sh): helm renders it,
-	// and the wrapper's own steps need mkdir, cat, sha256sum, cut, tr and
-	// head. Without them the neighbour gate reports "not executed" (code 2) and the
-	// proof reads that as a red neighbour (kacho#2915, K1).
-	for _, name := range []string{"bash", "python3", "git", "cp", "cmp", "mktemp", "rm", "dirname", "tail", "sed", "grep",
-		"helm", "mkdir", "cat", "sha256sum", "cut", "tr", "head"} {
+	// The proof also runs the IaC coverage gate. That gate once built the notify
+	// inspection copy with helm and a shell wrapper, and this list carried their
+	// tools (kacho#2915, K1); NTF-1 D2 retired the copy with the empty module
+	// table, the scanner renders the notify chart itself, and the list is back to
+	// what the gates here call.
+	for _, name := range []string{"bash", "python3", "git", "cp", "cmp", "mktemp", "rm", "dirname", "tail", "sed", "grep"} {
 		path, err := exec.LookPath(name)
 		rg11Must(t, err)
 		path, err = filepath.Abs(path)

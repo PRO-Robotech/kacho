@@ -268,6 +268,9 @@ producer_of() {
     kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
     kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
     kaname-mail-keys)         echo "посев dev-prod-secrets.sh · на площадке — оператор: ключи почтовой полосы, ключи mail-window.key и device-label.key (случайные байты, не короче 32 каждый)" ;;
+    kacho-notify-db|kacho-notifyprobe-db) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: пароли базы notify/пробы, ключи password + postgres-password (их же берёт экземпляр базы existingSecret)" ;;
+    kacho-notify-recipient-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ сетки на адресата notify, ключ recipientKey (не короче 32 байт; смена — ротация сетки)" ;;
+    kacho-notify-probe-feed-keyring) echo "посев seed-notify-stand-secrets.sh · стендовый объект пробы-источника: кольцо ключей ленты, ключ keyring" ;;
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
     *)                        echo "" ;;
@@ -336,9 +339,19 @@ PY
 }
 
 seed_ran=0
+notify_seed_ran=0
 produce() {
   local name="$1"
   case "$name" in
+    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-probe-feed-keyring)
+      # Объекты стенда notify — свой посев (не dev-prod-secrets.sh: тот читает
+      # предполёт боевой раскатки площадки, где notify нет).
+      if [ "$notify_seed_ran" -eq 0 ]; then
+        KACHO_NAMESPACE="$NS" bash "$HERE/seed-notify-stand-secrets.sh" || return 1
+        notify_seed_ran=1
+      fi
+      kubectl -n "$NS" get secret "$name" >/dev/null 2>&1
+      ;;
     kaname-*)
       # Ключевой материал службы доступа заводит ОДИН производитель — посев.
       # Второго места о том же предмете не заводится: они разошлись бы ровно

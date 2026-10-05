@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
@@ -49,9 +50,13 @@ func TestDescriptorIsHostNoGRPC(t *testing.T) {
 	if d.HostForm() != servicecontract.HostNoGRPC || !d.NoServedServices() {
 		t.Fatalf("форма хоста %s, NoServedServices=%v; ожидалась no-grpc без сервисов", d.HostForm(), d.NoServedServices())
 	}
-	p := bootPosture(cfg, d)
-	if p.HostForm != servicecontract.HostNoGRPC.String() {
-		t.Fatalf("самоотчёт называет форму %q, дескриптор — %q", p.HostForm, d.HostForm())
+	p, err := bootPosture(cfg, d)
+	if err != nil {
+		t.Fatalf("запись самоотчёта отвергнута: %v", err)
+	}
+	if !p.NoServedServices || p.ListenerForm != observability.ListenerFormPair {
+		t.Fatalf("самоотчёт: NoServedServices=%v, форма %s; дескриптор — %s без сервисов (listener_form=none)",
+			p.NoServedServices, p.ListenerForm, d.HostForm())
 	}
 	if p.DBSSLMode != "require" {
 		t.Fatalf("самоотчёт называет sslmode %q, фикстура — require", p.DBSSLMode)

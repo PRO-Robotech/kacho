@@ -58,12 +58,20 @@ const (
 	notifyStandaloneSample = "../../testdata/mail-node/operator.yaml"
 	notifyRelease          = "kacho-notify"
 
-	// Тело пустой таблицы подключаемых источников в дереве и строка формы N02,
-	// которой копия его заменяет: с пустой таблицей объектов notify 0.
-	notifyEmptyTableBody   = `{{- list | toJson -}}`
-	notifyFixtureTableBody = `{{- list (dict "module" "probe-b" "feedAddr" "probe-b:9091" ` +
+	// Хвост тела таблицы модулей `_sources.tpl` (полоса D2: таблица модулей
+	// `{key, ownFlagKey, source}` и выведенный перечень) и строка `probe-b`,
+	// которую копия дописывает перед ним. На ноге без зонтика флаг установки
+	// включён, а проба дерева выключена переопределением (фикстура
+	// notify-standalone/values.yaml): перечень копии — ровно `probe-b`.
+	notifyTableTail  = "\n| toJson -}}"
+	notifyFixtureRow = `  (dict "key" "probeB" "ownFlagKey" "probeB.notifications.enabled" "source" ` +
+		`(dict "module" "probe-b" "feedAddr" "probe-b:9091" ` +
 		`"san" "spiffe://kacho.cloud/ns/kacho/sa/probe-b" "classes" (list "notice" "security") ` +
-		`"recipientForms" (list) "authorization" "resolveSend") | toJson -}}`
+		`"recipientForms" (list) "authorization" "resolveSend"))`
+	// Пустой словарь ручек на источник в values.yaml чарта: у модуля перечня
+	// умолчания нет, копия заменяет его записью `probe-b`.
+	notifyValuesLimitsAnchor = "sourceLimits: {}"
+	notifyFixtureLimits      = "sourceLimits:\n  probe-b:\n    rate: 5\n    burst: 5\n    paused: false"
 
 	// Имена тревог — слова приёмки и замысла (NTF1-G27, Р18; З27 CX1-67; З22 УК54).
 	alertFeedExpired   = "feed_expired"
@@ -125,18 +133,23 @@ func fixtureChart(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: копия чарта %s не снята: %v", notifyChartDir, err)
 	}
-	p := filepath.Join(dst, "templates", "_sources.tpl")
-	body, err := os.ReadFile(p) // #nosec G304 -- путь копии во временном каталоге пробы
-	if err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: таблица источников копии не прочитана: %v", err)
-	}
-	if n := strings.Count(string(body), notifyEmptyTableBody); n != 1 {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: тело пустой таблицы источников встречается в _sources.tpl %d раз(а), ожидалось 1 — "+
-			"копия не может включить notify в рендер", n)
-	}
-	next := strings.Replace(string(body), notifyEmptyTableBody, notifyFixtureTableBody, 1)
-	if err := os.WriteFile(p, []byte(next), 0o600); err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: правка таблицы источников копии: %v", err)
+	for rel, edit := range map[string][2]string{
+		"templates/_sources.tpl": {notifyTableTail, "\n" + notifyFixtureRow + notifyTableTail},
+		"values.yaml":            {notifyValuesLimitsAnchor, notifyFixtureLimits},
+	} {
+		p := filepath.Join(dst, rel)
+		body, err := os.ReadFile(p) // #nosec G304 -- путь копии во временном каталоге пробы
+		if err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: %s копии не прочитан: %v", rel, err)
+		}
+		if n := strings.Count(string(body), edit[0]); n != 1 {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: якорь правки встречается в %s %d раз(а), ожидалось 1 — "+
+				"копия не может включить notify в рендер", rel, n)
+		}
+		next := strings.Replace(string(body), edit[0], edit[1], 1)
+		if err := os.WriteFile(p, []byte(next), 0o600); err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: правка %s копии: %v", rel, err)
+		}
 	}
 	return dst
 }

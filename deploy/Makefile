@@ -786,6 +786,14 @@ dev-up: preflight
 	echo "    пустую величину, полосу отвергли бы на первом обращении, а стенд выглядел"; \
 	echo "    бы поднятым (задача #948). Значит секрет — предусловие, а не следствие."; \
 	./scripts/dev-prod-secrets.sh; \
+	echo "=== объекты стенда notify (базы, ключ сетки, кольцо ленты пробы; D6, Д123) ==="; \
+	./scripts/seed-notify-stand-secrets.sh; \
+	echo "=== зона DNS стенда и объект ключа DKIM: ПРЕДУСЛОВИЕ notify (NTF-1 Р19, D10) ==="; \
+	echo "    Страж DNS установки не выпускает notify в готовность без записей DKIM,"; \
+	echo "    SPF и DMARC домена отправителя; на стенде их отвечает сервер зоны, а пару"; \
+	echo "    ключа выпускает посев. Оба объекта монтируются томами — значит заводятся"; \
+	echo "    ДО первого прогона helm, а адрес службы зоны сверяется сервером API."; \
+	STACK_NAMESPACE=kacho STACK_RELEASE=kacho-umbrella bash scripts/seed-stand-dkim.sh dev; \
 	echo "=== манифесты модулей: ПРЕДУСЛОВИЕ, а не следствие (задача #1901) ==="; \
 	echo "    Под монтирует именованный ConfigMap с манифестами модулей, а процесс"; \
 	echo "    читает смонтированный каталог на старте и ОТКАЗЫВАЕТСЯ подниматься на"; \
@@ -1113,6 +1121,9 @@ stack-up:
 	  EXPECT_CONTEXT="$$ctx"; \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
+	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
+	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
+	  bash scripts/seed-stand-dkim.sh $(STACK) \
 	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
@@ -1669,6 +1680,8 @@ PSQL_DB_compute   := kacho_compute
 PSQL_DB_geo       := kacho_geo
 PSQL_DB_iam       := kaname
 PSQL_DB_nlb       := kacho_nlb
+PSQL_DB_notify    := kacho_notify
+PSQL_DB_notifyprobe := kacho_notifyprobe
 PSQL_DB_registry  := kacho_registry
 PSQL_DB_storage   := kacho_storage
 PSQL_DB_vpc       := kacho_vpc
@@ -1677,6 +1690,8 @@ PSQL_USER_compute  := compute
 PSQL_USER_geo      := geo
 PSQL_USER_iam      := iam
 PSQL_USER_nlb      := kacho_nlb
+PSQL_USER_notify   := notify
+PSQL_USER_notifyprobe := notifyprobe
 PSQL_USER_registry := registry
 PSQL_USER_storage  := storage
 PSQL_USER_vpc      := vpc

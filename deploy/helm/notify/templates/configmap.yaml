@@ -22,12 +22,32 @@ data:
   KACHO_NOTIFY_DB_USER: {{ .Values.db.user | quote }}
   KACHO_NOTIFY_DB_NAME: {{ .Values.db.name | quote }}
   KACHO_NOTIFY_DB_SSLMODE: {{ .Values.db.sslMode | quote }}
+  KACHO_NOTIFY_DB_MAX_CONNS: {{ .Values.db.maxConns | toString | quote }}
   KACHO_NOTIFY_DIAG_ADDR: {{ printf ":%d" (int .Values.ports.diag) | quote }}
   KACHO_NOTIFY_CLAIM_INTERVAL: {{ .Values.claimInterval | quote }}
   KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT: {{ .Values.resolveSendTimeout | quote }}
   KACHO_NOTIFY_SMTP_SESSION_TIMEOUT: {{ .Values.smtpSessionTimeout | quote }}
   KACHO_NOTIFY_ORIGIN: {{ .Values.origin | quote }}
-  KACHO_NOTIFY_SOURCES: {{ include "notify.sourceRoster" (dict "global" .Values.global) | quote }}
+  # ── DNS УСТАНОВКИ И ПОДПИСЬ DKIM (Р19, §12а; D10) ──────────────────────────
+  # Срок стража и интервал перепроверки — значения чарта; пути пары DKIM —
+  # файлы тома объекта ключа, смонтированного без `subPath` (оба в одном
+  # каталоге, CX1-134). Зона стенда — исход единственного помощника
+  # `notify.standDNS`: `off` либо хост приёмника стенда (Д104).
+  KACHO_NOTIFY_DNS_BOOT_DEADLINE: {{ .Values.dns.bootDeadline | quote }}
+  KACHO_NOTIFY_DNS_RECHECK_INTERVAL: {{ .Values.dns.recheckInterval | quote }}
+  {{- $dkim := include "notify.dkimNode" . | fromJson }}
+  KACHO_NOTIFY_DKIM_KEY_FILE: {{ printf "%s/%s" (include "notify.dkimDir" .) $dkim.privateKeyKey | quote }}
+  KACHO_NOTIFY_DKIM_SELECTOR_FILE: {{ printf "%s/%s" (include "notify.dkimDir" .) $dkim.selectorKey | quote }}
+  KACHO_NOTIFY_STAND_DNS: {{ include "notify.standDNS" . | quote }}
+  # ── ЛИМИТЫ Р10 (З24, NTF1-H07, H08) ───────────────────────────────────────
+  KACHO_NOTIFY_LIMITS_RECIPIENT_SECURITY_PER_DAY: {{ .Values.limits.recipient.security.perDay | toString | quote }}
+  KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_HOUR: {{ .Values.limits.recipient.notice.perHour | toString | quote }}
+  KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_DAY: {{ .Values.limits.recipient.notice.perDay | toString | quote }}
+  KACHO_NOTIFY_LIMITS_GLOBAL_PER_DAY: {{ .Values.limits.global.perDay | toString | quote }}
+  {{- $roster := include "kacho.notifications.sources" (dict "global" .Values.global) }}
+  KACHO_NOTIFY_SOURCES: {{ $roster | quote }}
+  # Ручки на источник — записи ровно модулей перечня (NTF1-N03, H08).
+  KACHO_NOTIFY_SOURCE_LIMITS: {{ include "notify.sourceLimits" (dict "limits" .Values.sourceLimits "roster" ($roster | fromJsonArray)) | quote }}
   # ── УЗЕЛ ПОЧТЫ → КЛЮЧИ ПРОЦЕССА (Д44, Д46, Д47; CX1-77, CX1-81 (б)) ──────────
   #
   # Адрес — `tpl` значения узла под `required` с именем узла, без умолчания и
@@ -36,7 +56,7 @@ data:
   # `required` срабатывает ровно при «источник включён, а узел пуст».
   # Поля отправителя — значением узла без умолчания и без `required`: пустое
   # доезжает до процесса, и отказывает его страж (NTF2-34 (е)).
-  KACHO_NOTIFY_SMTP_CONNECTION_URI: {{ tpl (required "global.kacho.identity.smtp.connectionURI: адрес ретранслятора почты не задан, а notify рендерится (перечень источников непуст) — задайте узел почты установки" $smtp.connectionURI) $ | quote }}
+  KACHO_NOTIFY_SMTP_CONNECTION_URI: {{ tpl (required "global.kacho.identity.smtp.connectionURI: адрес ретранслятора почты не задан, а notify рендерится (перечень источников непуст) — задайте узел почты установки либо выключите генерацию почтовых запросов: global.kacho.notifications.enabled: false" $smtp.connectionURI) $ | quote }}
   KACHO_NOTIFY_SMTP_FROM_ADDRESS: {{ $smtp.fromAddress | quote }}
   KACHO_NOTIFY_SMTP_FROM_NAME: {{ $smtp.fromName | quote }}
   {{- $anchor := $smtp.trustAnchorSecret }}

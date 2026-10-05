@@ -1,0 +1,25 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# receiver-off.yaml — второй фикстурный слой держателя NTF1-P12 (д) (CX1-141,
+# Д106 (а); deploy/notify_dns_profiles_test.go). НЕ ПРОФИЛЬ И НЕ ПОСТАВКА.
+#
+# Поверх цепочки `prod`: зона стенда включена, узел почты назван на приёмник
+# стенда этого релиза, а сам приёмник ВЫКЛЮЧЕН. Совпадение имени хоста с
+# `<релиз>-mailpit` не доказывает, что это приёмник стенда: слой вне дерева мог
+# завести службу с тем же именем, ведущую наружу. Рендер отказывает блоком (6)
+# стража почтовой полосы (единственное место этой проверки), текст называет
+# `mailpit.enabled` и `global.kacho.standDNS.enabled`.
+global:
+  kacho:
+    standDNS:
+      enabled: true
+      serviceIP: 10.96.0.53
+      clusterDomain: cluster.local
+    identity:
+      smtp:
+        connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
+        fromAddress: "noreply@kacho.cloud"
+        fromName: "Kacho Cloud"
+mailpit:
+  enabled: false

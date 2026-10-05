@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/services/notify/internal/dnscheck/dnstest"
 )
 
 // Пробы этого файла запускают НАСТОЯЩИЙ бинарь notify: отказ стража доказан
@@ -138,22 +141,21 @@ func TestNotifyProcessRefusesUnsafePosture(t *testing.T) {
 	}
 }
 
-// Близнец: исправная посадка проходит стража целиком — дескриптор принят,
-// удостоверение пира годно, самоотчёт напечатан, — и процесс доходит до
-// следующего шага подъёма: соединения со своей базой. Базы у пробы нет
-// (порт петли закрыт), поэтому процесс останавливается ИМЕННО на ней, и
-// отказ называет пул, а не ручку посадки. Подъём целиком с базой под TLS —
-// предмет профиля развёртывания на стенде, а не пробы процесса.
+// Близнец: исправная посадка проходит стража конфигурации целиком —
+// дескриптор принят, удостоверение пира годно, самоотчёт напечатан, — и
+// НАСТОЯЩИЙ бинарь доходит до следующего шага подъёма после поверхности:
+// стража DNS установки (§12а «Порядок подъёма», шаг 5). Резолвер бинаря —
+// резолвер машины прогона, зоны испытания у него нет и быть не может
+// (резолвер — порт `runServe`, а не ручка), поэтому процесс останавливается
+// ИМЕННО на страже DNS: отказ называет его, а не ручку посадки. Срок стража
+// сужен до нижней границы, чтобы исход «ответа нет» укладывался в срок пробы.
+// Шаг пула базы за стражем судит проба в процессе
+// (TestNotifyServeReachesTheDatabaseStepPastTheDNSGuard) — на зоне испытания.
 func TestNotifyProcessPassesTheGuardWithSoundPosture(t *testing.T) {
 	env := fixtureEnv(t)
 	peerTLSFiles(t, env)
 	env["KACHO_NOTIFY_DIAG_ADDR"] = freeAddr(t)
-	_, closedPort, err := net.SplitHostPort(freeAddr(t))
-	if err != nil {
-		t.Fatalf("закрытый порт базы: %v", err)
-	}
-	env["KACHO_NOTIFY_DB_HOST"] = "127.0.0.1"
-	env["KACHO_NOTIFY_DB_PORT"] = closedPort
+	env["KACHO_NOTIFY_DNS_BOOT_DEADLINE"] = "10s"
 
 	bin := notifyBinary(t)
 	ctx, cancel := context.WithTimeout(context.Background(), processDeadline)
@@ -170,14 +172,14 @@ func TestNotifyProcessPassesTheGuardWithSoundPosture(t *testing.T) {
 
 	var ee *exec.ExitError
 	if !errors.As(runErr, &ee) || ee.ExitCode() == 0 {
-		t.Fatalf("без базы процесс не остановился ненулевым кодом (err=%v):\n%s", runErr, log)
+		t.Fatalf("без зоны испытания процесс не остановился ненулевым кодом (err=%v):\n%s", runErr, log)
 	}
 	for _, w := range []string{
-		`"msg":"boot security posture"`, `"host_form":"no-grpc"`, `"db_sslmode":"require"`,
-		`"auth_mode":"production"`, "пул базы kacho_notify",
+		`"msg":"boot security posture"`, `"listener_form":"none"`, `"db_sslmode":"require"`,
+		`"auth_mode":"production"`, "servicehost: поверхность поднята", "страж DNS установки",
 	} {
 		if !strings.Contains(log, w) {
-			t.Fatalf("исправная посадка не дошла до шага базы — нет %s:\n%s", w, log)
+			t.Fatalf("исправная посадка не дошла до стража DNS — нет %s:\n%s", w, log)
 		}
 	}
 	for _, refusal := range []string{"notify отказывается стартовать", "дескриптор не принят", "ось mTLS"} {
@@ -188,4 +190,70 @@ func TestNotifyProcessPassesTheGuardWithSoundPosture(t *testing.T) {
 	if strings.Contains(log, env["KACHO_NOTIFY_DB_PASSWORD"]) {
 		t.Fatalf("журнал процесса раскрыл пароль базы:\n%s", log)
 	}
+}
+
+// Близнец в процессе: на зоне испытания с исправными записями Р19 (NTF1-P01)
+// страж DNS пройден, и подъём доходит до шага пула своей базы. Базы у пробы
+// нет (порт петли закрыт), поэтому runServe возвращает отказ, называющий
+// пул, а не ручку посадки и не проверку DNS. Подъём целиком с базой под TLS —
+// предмет профиля развёртывания на стенде, а не пробы процесса.
+func TestNotifyServeReachesTheDatabaseStepPastTheDNSGuard(t *testing.T) {
+	_, closedPort, err := net.SplitHostPort(freeAddr(t))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: закрытый порт базы: %v", err)
+	}
+	cfg := loadConfig(t, map[string]string{
+		"KACHO_NOTIFY_DIAG_ADDR": freeAddr(t),
+		"KACHO_NOTIFY_DB_HOST":   "127.0.0.1",
+		"KACHO_NOTIFY_DB_PORT":   closedPort,
+	})
+	env := map[string]string{}
+	peerTLSFiles(t, env)
+	cfg.PeerTLSCertFile = env["KACHO_NOTIFY_PEER_TLS_CERT_FILE"]
+	cfg.PeerTLSKeyFile = env["KACHO_NOTIFY_PEER_TLS_KEY_FILE"]
+	cfg.PeerTLSCAFile = env["KACHO_NOTIFY_PEER_TLS_CA_FILE"]
+
+	zone := dnstest.Start(t)
+	zone.PublishSound(cfg.FromDomain(), fixtureDKIMSelector, fixtureDKIMPublicKey(t))
+
+	var buf syncBuffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	done := make(chan error, 1)
+	go func() { done <- runServe(cfg, logger, zone.Resolver()) }()
+	var runErr error
+	select {
+	case runErr = <-done:
+	case <-time.After(processDeadline):
+		t.Fatalf("runServe не вернулся за %v:\n%s", processDeadline, buf.String())
+	}
+	log := buf.String()
+	if runErr == nil || !strings.Contains(runErr.Error(), "пул базы kacho_notify") {
+		t.Fatalf("подъём не дошёл до шага пула базы за стражем DNS (err=%v):\n%s", runErr, log)
+	}
+	for _, w := range []string{`"msg":"boot security posture"`, "страж DNS установки пройден"} {
+		if !strings.Contains(log, w) {
+			t.Fatalf("журнал подъёма не несёт %s:\n%s", w, log)
+		}
+	}
+	if strings.Contains(log, cfg.DBPassword) {
+		t.Fatalf("журнал раскрыл пароль базы:\n%s", log)
+	}
+}
+
+// syncBuffer — буфер журнала, в который пишут горутины подъёма.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

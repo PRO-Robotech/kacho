@@ -20,7 +20,7 @@
 # Всё исполняется в КОПИИ дерева вне репозитория (`git clone --shared` + наложение
 # правленых отслеживаемых файлов): рабочая копия не меняется ни на байт.
 #
-# ЗНАМЕНАТЕЛЬ — 33 утверждения; итог печатает число исполненных, и расхождение с
+# ЗНАМЕНАТЕЛЬ — 31 утверждение; итог печатает число исполненных, и расхождение с
 # этим числом — тоже повод не верить зелёному.
 set -uo pipefail
 
@@ -84,31 +84,21 @@ expect "контроль — архив осмотрен проходом вен
   "целей  deploy/helm/vendor/$ARCHIVE"
 expect "контроль — сжатый поток без оглавления назван «не чарт»" "$work/control" 0 \
   "сжатый поток без оглавления"
-# Копия осмотра (Д80, Д81): пока таблица модулей notify пуста, чарт notify
-# осматривается копией, а каталог печатается строкой «перечень [], объектов 0».
-expect "контроль — notify осмотрен копией осмотра" "$work/control" 0 \
-  "целей  deploy/helm/notify/ (копия осмотра, Д81)"
-expect "контроль — каталог notify назван своей строкой" "$work/control" 0 \
-  "deploy/helm/notify/: перечень [], объектов 0 (Д76)"
+# Чарт notify осматривается сам (NTF-1 D2, решение Д87): копия осмотра снята
+# вместе с пустой таблицей модулей, узел флага и прочие координаты рендера
+# подают заглушки прохода (trivy.yaml).
+expect "контроль — notify осмотрен своим каталогом" "$work/control" 0 \
+  "целей  deploy/helm/notify/"
 
-# Ветку включает ПУСТАЯ ТАБЛИЦА, а не ноль целей: таблица наполнена (форма после
-# D2), а скан дерева чарт по-прежнему не рендерит — ветки нет, и ноль целей
-# остаётся находкой, а не уходит в копию.
-make_copy "$work/filled" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-cp "$work/filled/deploy/testdata/notify-inspect/_sources.tpl" \
-   "$work/filled/deploy/helm/notify/templates/_sources.tpl" || exit 2
-expect "таблица notify наполнена, целей ноль — находка, а не копия" "$work/filled" 1 \
-  "deploy/helm/notify/ — чарт с шаблонами НЕ ДАЛ сканеру ни одной цели"
-
-# Находки скана копии судит ГЕЙТ (шаг CI объектов notify не видит): в каталоге
-# notify снята защита корневой ФС контейнера → находка скана с именем цели.
-make_copy "$work/rofs" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
-sed -i 's/^\(  *readOnlyRootFilesystem:\) true$/\1 false/' "$work/rofs/deploy/helm/notify/values.yaml"
-if ! grep -q 'readOnlyRootFilesystem: false' "$work/rofs/deploy/helm/notify/values.yaml"; then
-  echo "ПРОВАЛ  инъекция «корневая ФС notify записываема» не внесена"; failed=$((failed+1))
+# Заглушка флага снята — чарт notify не рендерится (флаг объявляет зонтик, а не
+# чарт) и выпадает из осмотра: находка «НЕ ДАЛ», а не тишина. Близнец — контроль.
+make_copy "$work/noflag" || { echo "ОТКАЗ: копия дерева не собрана" >&2; exit 2; }
+sed -i '/^ *- global\.kacho\.notifications\.enabled=true$/d' "$work/noflag/trivy.yaml"
+if grep -q 'global.kacho.notifications.enabled=true' "$work/noflag/trivy.yaml"; then
+  echo "ПРОВАЛ  инъекция «заглушка флага notify снята» не внесена"; failed=$((failed+1))
 else
-  expect "копия осмотра: снята защита корневой ФС — находка скана" "$work/rofs" 1 \
-    "находка скана: deploy/helm/notify/ (копия осмотра)"
+  expect "заглушка флага notify снята — чарт не дал целей" "$work/noflag" 1 \
+    "deploy/helm/notify/ — чарт с шаблонами НЕ ДАЛ сканеру ни одной цели"
 fi
 
 # ── B. Настоящий вендоренный архив вне своего каталога ──────────────────────────
@@ -330,5 +320,5 @@ git -C "$work/junk" add -- deploy/helm/junk-0.1.0.tgz || exit 2
 expect "непрочитанный архив — находка" "$work/junk" 1 \
   "deploy/helm/junk-0.1.0.tgz — архив не прочитан"
 
-echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель 33)"
-[ "$failed" = 0 ] && [ "$((passed+failed))" = 33 ] || exit 1
+echo "итог: утверждений $((passed+failed)); пройдено $passed; провалено $failed (знаменатель 31)"
+[ "$failed" = 0 ] && [ "$((passed+failed))" = 31 ] || exit 1

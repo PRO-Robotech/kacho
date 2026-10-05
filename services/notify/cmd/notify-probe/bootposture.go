@@ -8,15 +8,18 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
 )
 
-// bootPosture — самоотчёт о посадке. Звено идентичности и форма хоста берутся
-// из ТЕХ значений, что уехали в принятый дескриптор: второго литерала нет.
+// bootPosture — самоотчёт о посадке. Звено идентичности уехало в принятый
+// дескриптор, форма слушателя выводится из него же `servicehost.PostureOf`:
+// второго литерала нет.
 func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.ServiceIdentity],
-	hostForm string) observability.BootPosture {
-	return observability.BootPosture{
+	d *servicecontract.Descriptor) (observability.BootPosture, error) {
+	form, noServed := servicehost.PostureOf(d)
+	return observability.NewBootPosture(observability.BootPosture{
 		Service:           serviceName,
 		AuthMode:          cfg.AuthMode,
 		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
@@ -29,7 +32,8 @@ func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.Servic
 		IdentityProvider:   observability.IdentityProviderNotApplicable,
 		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
 		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,
-		HostForm:           hostForm,
+		ListenerForm:       form,
+		NoServedServices:   noServed,
 		ServiceIdentity:    serviceIdentityReport(identity),
-	}
+	})
 }

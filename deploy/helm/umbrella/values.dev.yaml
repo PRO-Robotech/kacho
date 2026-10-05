@@ -122,6 +122,40 @@ global:
         trustAnchorSecret:
           name: kacho-mailpit-tls
           key: ca.crt
+        # Объект ключа DKIM стенда (Р19 «Подпись», §12а): пару RSA 2048 и
+        # селектор выпускает посев `deploy/scripts/seed-stand-dkim.sh` ОДИН раз,
+        # до `helm upgrade`; в дерево пара не коммитится. Чарт notify объекта не
+        # рендерит и монтирует его томом без `subPath`.
+        dkim:
+          secretName: kacho-notify-dkim
+          privateKeyKey: private.key
+          selectorKey: selector
+    # ─── ЗОНА DNS СТЕНДА (Р19 «Профиль стенда», §12а; D10) ──────────────────
+    # Сервер зоны (templates/stand-dns.yaml) авторитетен только для домена
+    # отправителя стенда и пересылает остальные имена DNS кластера; под notify
+    # смотрит на него. Значения — kind ЭТОГО файла: `serviceIP` в статической
+    # полосе диапазона служб, объявленного deploy/kind/kind-config.yaml
+    # (`serviceSubnet: 10.96.0.0/16`; kube-dns — 10.96.0.10), `clusterDomain`
+    # — умолчание kind. Файл кластера назван третьим полем строки
+    # deploy/stacks-mail.txt; профиль на другом кластере обязан объявить свои
+    # значения либо снять их (`null`). Адрес сверяет рецепт подъёма до
+    # `helm upgrade` (`--dry-run=server`).
+    standDNS:
+      enabled: true
+      serviceIP: 10.96.0.53
+      clusterDomain: cluster.local
+    # ─── ФЛАГ ПОЧТЫ: СТЕНДОВАЯ ПРОБА ПИШЕТ ПОЧТОВЫЕ ЗАПРОСЫ (NTF-1 Р9; З28) ─────
+    # Флаг установки объявлен один раз (values.yaml зонтика, `true`); здесь —
+    # только переопределение модуля пробы. Вместе с `notifyProbe.enabled` ниже
+    # это два факта, а не два написания одного: развёрнута ли проба и пишет ли
+    # она почтовые запросы. Перечень источников notify этого стенда —
+    # `{notify-probe}`, и notify входит в рендер цепочек dev, dev-prod (у a8f60d
+    # переопределение снято — values.a8f60d.yaml, Д102; у prorobotech — до
+    # публикации образа, values.prorobotech.yaml).
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: true
 
 # ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
 # The whole scheme runs on mTLS: cert-manager mints an internal-CA, every
@@ -476,9 +510,9 @@ compute:
 
 # ─── notify — шлюз уведомлений (NTF-1, полоса D1) ─────────────────────────────
 # Образ стенда — локальная сборка `make build-services` (SERVICES называет
-# notify). Объекты чарта не рендерятся ни в одной цепочке, пока выведенный
-# перечень источников пуст: notify входит в рендер цепочек с флагом и строкой
-# `notify-probe` таблицы (полоса D2, замысел З28 «Узел стенда»). Образ назван
+# notify). Объекты чарта рендерятся при непустом выведенном перечне
+# источников: notify входит в рендер цепочек с флагом и строкой `notify-probe`
+# таблицы (полоса D2, замысел З28 «Узел стенда»). Образ назван
 # здесь, потому что рецепт стенда его собирает и загружает в узлы: образ,
 # который собирают и не просит ни один стенд, — вторая половина расхождения
 # TestEveryStandLocalImageHasAProducer.
@@ -493,7 +527,62 @@ notify:
     repository: kacho-notify   # local kind image (kacho-notify:dev)
     tag: dev
   db:
+    # База kacho_notify — свой экземпляр `pg-notify` ниже (database-per-service,
+    # полоса D6); канал шифрован с первого подъёма. Секрет пароля
+    # `kacho-notify-db` заводит посев стенда (deploy/scripts/dev-prod-secrets.sh)
+    # один раз — его же берёт экземпляр базы (`existingSecret`).
+    host: kacho-umbrella-pg-notify
     sslMode: require
+    passwordSecret:
+      name: kacho-notify-db
+  # Ключ сетки на адресата (З24) — ОБЪЕКТ СТЕНДА (Д123), а не литерал профиля:
+  # дерево публично, и ключ HMAC в нём был бы ключом каждого, кто его прочёл.
+  # Объект `kacho-notify-recipient-key` (ключ `recipientKey`, 64 hex-символа)
+  # заводит посев стенда один раз и не перечеканивает: смена ключа — ротация
+  # сетки (З24), а не побочный эффект повторного подъёма.
+  recipientKeySecret:
+    name: kacho-notify-recipient-key
+  # Origin установки — база ссылок писем, только `https://` без пути (NTF1-G06).
+  # Консоль стенда отвечает по `http` на проброшенном порту kind (`appBaseURL`
+  # выше), и ссылкой по ней письмо стенда не станет: страж старта её отверг бы.
+  # Имя — то же, под которым стенд называет консоль; ссылки писем стенда никто
+  # не открывает — сквозная проба читает письмо у приёмника.
+  origin: "https://console.kacho.local"
+  # Суточный потолок потока — доля квоты ретранслятора установки (Р10); у
+  # приёмника стенда квоты нет, значение — потолок стенда.
+  limits:
+    global:
+      perDay: 1000
+
+# ─── notify-probe — стендовая проба-источник notify (NTF-1, полосы D2, D3) ────
+# Развёрнута на стенде (NTF1-I04: в `prod` её нет); пишет ли она почтовые
+# запросы — переопределение `global.kacho.notifications.modules.notifyProbe`
+# выше. Адрес базы kacho_notifyprobe и секрет пароля заводит подъём на стенде
+# (полоса D6).
+notifyProbe:
+  enabled: true
+  db:
+    # База kacho_notifyprobe — свой экземпляр `pg-notifyprobe` ниже (D6);
+    # секрет `kacho-notifyprobe-db` заводит посев стенда.
+    host: kacho-umbrella-pg-notifyprobe
+    passwordSecret:
+      name: kacho-notifyprobe-db
+  authz:
+    # Владелец модели прав — внутренний слушатель kaname (проверка Claim/Ack,
+    # сужение потока); имя сверяется с его серверным листом.
+    iamGrpcAddr: kaname-internal.kacho.svc:9091
+    iamServerName: kaname-internal.kacho.svc
+    # Круг пересылающих личность пользователя — край (единственный, кто
+    # пересылает чужую личность внутренним службам стенда).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+  # SPIFFE-идентичность notify: учётка `kacho-notify` (notify.fullnameOverride
+  # в values.yaml; NTF1-J03).
+  notifySAN: spiffe://kacho.cloud/ns/kacho/sa/kacho-notify
+  # Кольцо ключей ленты (З11) — объект стенда, заводит посев один раз.
+  feedKeyringSecret:
+    name: kacho-notify-probe-feed-keyring
+    key: keyring
 
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
@@ -1353,12 +1442,11 @@ kaname:
       # отвергает при любом значении. Ручка снята с подчарта вместе с читателем;
       # профиль, всё ещё её объявляющий, получает отказ рендера. Посадку края
       # объявляет его собственная ручка (`api-gateway.authn.identityProvider`).
-    # ФЛАГ ПОЧТЫ СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33; kacho#2915) —
-    # объявлен ЯВНО: незаданный и не-булево — отказ рендера с именем ключа.
-    # Стенды платформы почту шлют: служба ставит письма класса security в свою
-    # ленту, их забирает служба уведомлений установки.
+    # ПОЧТА СЛУЖБЫ (приёмка NTF-2 службы Р4, NTF2-33). Флага здесь нет: его
+    # значение — вывод `kacho.notifications.enabledFor` над
+    # `global.kacho.notifications` (values.yaml зонтика); собственный ключ
+    # `kaname.config.notifications.enabled` — отказ рендера (CX1-111).
     notifications:
-      enabled: true
       # Полоса отсечки выдачи уведомлений (приёмка NTF-1 Р5, NTF1-F20; Д112 (в)) —
       # условие старта службы, умолчания у неё нет; граница [1s..10m].
       cutoffGuard: 30s
@@ -1653,6 +1741,98 @@ pg-registry:
     # разрешить собственный идентификатор пользователя, а образ записи о нём не
     # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
     # а восемь — нет.
+    tag: "16.4.0-debian-12-r0"
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+# ─── pg-notify — база kacho_notify (шлюз уведомлений; полоса D6) ───
+# Канал шифрован с ПЕРВОГО подъёма, а не с фазы dev-prod: служба, которая её
+# читает, поднимается только в боевой посадке (sslmode=require, NTF1-G15), и
+# незашифрованная база оставила бы её неготовой уже на первом прогоне helm.
+# Пароли — объект стенда `kacho-notify-db` (ключи `password` и
+# `postgres-password`), его заводит посев deploy/scripts/dev-prod-secrets.sh
+# один раз; литерала в профиле нет.
+pg-notify:
+  enabled: true
+  auth:
+    username: notify
+    database: kacho_notify
+    existingSecret: kacho-notify-db
+    secretKeys:
+      userPasswordKey: password
+      adminPasswordKey: postgres-password
+  tls:
+    enabled: true
+    autoGenerated: true
+  primary:
+    pgHbaConfiguration: |
+      local     all all                trust
+      host      all all 127.0.0.1/32   trust
+      host      all all ::1/128        trust
+      hostssl   all all 0.0.0.0/0      md5
+      hostssl   all all ::/0           md5
+      hostnossl all all 0.0.0.0/0      reject
+      hostnossl all all ::/0           reject
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+    extendedConfiguration: |
+      max_connections = 50
+      shared_buffers = 64MB
+      work_mem = 4MB
+      autovacuum_naptime = 5s
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: "16.4.0-debian-12-r0"
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+# ─── pg-notifyprobe — база kacho_notifyprobe (стендовая проба-источник; полоса D6) ───
+# Канал шифрован с ПЕРВОГО подъёма, а не с фазы dev-prod: служба, которая её
+# читает, поднимается только в боевой посадке (sslmode=require, NTF1-G15), и
+# незашифрованная база оставила бы её неготовой уже на первом прогоне helm.
+# Пароли — объект стенда `kacho-notifyprobe-db` (ключи `password` и
+# `postgres-password`), его заводит посев deploy/scripts/dev-prod-secrets.sh
+# один раз; литерала в профиле нет.
+pg-notifyprobe:
+  enabled: true
+  auth:
+    username: notifyprobe
+    database: kacho_notifyprobe
+    existingSecret: kacho-notifyprobe-db
+    secretKeys:
+      userPasswordKey: password
+      adminPasswordKey: postgres-password
+  tls:
+    enabled: true
+    autoGenerated: true
+  primary:
+    pgHbaConfiguration: |
+      local     all all                trust
+      host      all all 127.0.0.1/32   trust
+      host      all all ::1/128        trust
+      hostssl   all all 0.0.0.0/0      md5
+      hostssl   all all ::/0           md5
+      hostnossl all all 0.0.0.0/0      reject
+      hostnossl all all ::/0           reject
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+    extendedConfiguration: |
+      max_connections = 50
+      shared_buffers = 64MB
+      work_mem = 4MB
+      autovacuum_naptime = 5s
+  image:
+    repository: bitnamilegacy/postgresql
     tag: "16.4.0-debian-12-r0"
   volumePermissions:
     image:

@@ -39,6 +39,10 @@ TPL="$UMBRELLA/charts/kaname/templates/deployment.yaml"
 # этого места просто не доезжало.
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
+# Одиночный рендер подчарта kaname — только обёрткой (помощник флага почты живёт
+# в чарте notify; замысел З28, CX1-113).
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 EXPECTED_ASSERTIONS=3
 
 require_helm
@@ -90,7 +94,7 @@ ok
 # Рендерится ПОД-ЧАРТ отдельно — в отличие от умбреллы (см. DETERMINISM NOTE выше) он
 # детерминирован: пять подряд рендеров дают один и тот же состав ручек.
 gate_render() {
-  helm_try iam "$UMBRELLA/charts/kaname" --set mtls.enable=true "$@" \
+  render_kaname_alone_try iam "$UMBRELLA/charts/kaname" --set mtls.enable=true "$@" \
     --show-only templates/deployment.yaml
   render_or_fatal "под-чарт kaname standalone${*:+ [$*]}"
 }

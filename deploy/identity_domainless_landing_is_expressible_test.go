@@ -65,15 +65,16 @@ func renderIdentitySubchart(t *testing.T, valueFiles []string, sets ...string) (
 		}
 		t.Skip("helm не в PATH — рендер-гейт пропущен")
 	}
-	args := []string{"template", "kacho-umbrella", iamSubchartDir, "-n", "kacho"}
+	// Одиночный рендер подчарта — только обёрткой: помощник флага почты живёт в
+	// чарте notify (renderKanameAlone, CX1-113).
+	args := []string{"-n", "kacho"}
 	for _, f := range valueFiles {
 		args = append(args, "-f", filepath.Join(umbrellaDir, f))
 	}
 	for _, s := range sets {
 		args = append(args, "--set", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
-	return string(out), err
+	return renderKanameAlone(t, "kacho-umbrella", iamSubchartDir, args...)
 }
 
 // identityOfStack — действующий узел `global.kacho.identity` стека: профили
