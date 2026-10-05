@@ -552,9 +552,20 @@ authz: {}
 # он И в сети круга, И среди адресов названных служб. Сеть без имён и имена без
 # сети — отказ старта края; умолчание — пусто, «никому». Службы звеньев
 # рендерит умбрелла (templates/service-api-gateway-front-links.yaml).
+#
+# ИМЕНА ЗВЕНЬЕВ В ЛИСТЕ И ЯКОРЬ ЗВЕНЬЕВ (kacho#3028, круг 5). Адрес пода — не
+# личность: звено край узнаёт по имени в клиентском листе, проверенном ЯКОРЕМ
+# ЗВЕНЬЕВ — отдельным удостоверяющим центром, который выпускает только в
+# пространстве имён края (умбрелла, templates/api-gateway-front-link-pki.yaml).
+# Имена выводятся из `trustedPeers` правилом api-gateway.frontLinkSAN; ручки для
+# них нет — две записи одного имени разошлись бы. `linkAnchor.secretName` —
+# секрет удостоверяющего центра звеньев, из него монтируется только ca.crt.
 clientAddress:
   trustedProxyCIDRs: []
   trustedPeers: []
+  linkAnchor:
+    secretName: api-gateway-front-link-ca
+    mountPath: /etc/api-gateway/front-link-ca
 
 # ─── Deployment-environment label (KACHO_APP_ENV) ────────────────────────────
 # Cross-cutting, domain-LESS label (config.go binds `envconfig:"KACHO_APP_ENV"`,

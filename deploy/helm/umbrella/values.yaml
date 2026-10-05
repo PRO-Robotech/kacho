@@ -636,6 +636,53 @@ api-gateway:
 apiGatewayIngress:
   enabled: true
 
+# ─── КОНТРОЛЛЕР ВХОДА — ЗВЕНО ФРОНТА КРАЯ (kacho#3028, круг 5) ─────────────────
+# Внешний вход края (templates/api-gateway-ingress.yaml) ведёт контроллер входа,
+# и адрес клиента краю пишет он (`X-Forwarded-For $remote_addr`). Край примет
+# этот адрес, только если контроллер предъявит лист звена: лист якоря звеньев с
+# именем службы звена контроллера (templates/api-gateway-front-link-pki.yaml,
+# секрет `<край>-front-ingress-link`). Без листа край видит всех клиентов одним
+# адресом пода контроллера, и ограничение частоты входа «на источник» — общее.
+#
+# КАК. Аннотация `proxy-ssl-secret` контроллера ставит клиентский лист только
+# для HTTPS-бэкенда (`proxy_ssl_*`); основной вход края — GRPCS (`grpc_pass`),
+# и директив `grpc_ssl_*` шаблон контроллера не пишет вовсе (измерено по
+# шаблону контроллера v1.15.1). Поэтому лист ставится уровнем `http` карты
+# настройки контроллера — для ОБОИХ видов бэкенда, — а файлы листа приходят
+# томом секрета.
+#
+# ПУТЬ С ПЕРЕМЕННОЙ, а не литералом: nginx с литеральным путём читает лист один
+# раз при сборке настройки, и продлённый cert-manager'ом лист контроллер не
+# увидел бы до своей перезагрузки — истёкший лист край отверг бы в рукопожатии.
+# С переменной лист читается на каждом рукопожатии к бэкенду (соединения к
+# бэкендам долгоживущие, рукопожатия редки).
+#
+# Шаблон контроллера проверку серверного листа края не пишет; лист края
+# выпускает якорь установки, и проверка его контроллером — отдельная правка.
+ingress-nginx:
+  controller:
+    extraVolumes:
+      - name: edge-front-link
+        secret:
+          secretName: api-gateway-front-ingress-link
+          items:
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key
+    extraVolumeMounts:
+      - name: edge-front-link
+        mountPath: /etc/ingress-controller/edge-front-link
+        readOnly: true
+    config:
+      http-snippet: |
+        map "" $kacho_edge_front_link_crt { default /etc/ingress-controller/edge-front-link/tls.crt; }
+        map "" $kacho_edge_front_link_key { default /etc/ingress-controller/edge-front-link/tls.key; }
+        proxy_ssl_certificate $kacho_edge_front_link_crt;
+        proxy_ssl_certificate_key $kacho_edge_front_link_key;
+        grpc_ssl_certificate $kacho_edge_front_link_crt;
+        grpc_ssl_certificate_key $kacho_edge_front_link_key;
+
 # Federated ui-future console (aliased `uif` sub-chart). Default OFF — a bare
 # `helm upgrade` must NOT deploy it (the condition path must exist or helm treats
 # an absent value as enabled). Per-cluster overlays that run the federated console

@@ -1,0 +1,137 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+ЯКОРЬ ЗВЕНЬЕВ ФРОНТА КРАЯ И ЛИСТЫ ЗВЕНЬЕВ (kacho#3028, круг 5).
+
+ЗАЧЕМ. Край принимает адрес клиента из `X-Forwarded-For` только от звена
+фронта: пир в сети круга, адрес пода безголовой службы звена И клиентский лист
+с именем звена. Перепись четвёртого круга пропустила канал «кто выпускает
+лист»: листы установки выпускает КЛАСТЕРНЫЙ выпускающий (ClusterIssuer
+`kacho-internal-ca`), и лист с любым именем получает всякий, кто вправе завести
+запрос на сертификат в ЛЮБОМ пространстве имён кластера. Имя звена в таком
+листе — имя, которое выдаёт себе кто угодно.
+
+ЧТО ЗДЕСЬ. Отдельный удостоверяющий центр звеньев, целиком в пространстве
+имён края:
+  (1) Issuer `<край>-front-link-selfsigned` — самоподписанный корень;
+  (2) Certificate `<якорь>` (isCA) — центр звеньев; его ca.crt край монтирует
+      как якорь звеньев (`api-gateway.clientAddress.linkAnchor`), ключ центра
+      в поды не попадает;
+  (3) Issuer `<якорь>` (тип ca) — выпускающий звеньев. Он НАМЕСПЕЙСНЫЙ: запрос
+      на сертификат к нему принимается только из пространства края, и лист
+      звена получает только тот, кто уже управляет краем;
+  (4) листы звеньев — по одному на звено, которое есть в установке:
+        раздача консоли — `uif.host.edgeLink.secretName`;
+        контроллер входа — `<край>-front-ingress-link` (монтируется контроллеру
+        профилем, ведущим внешний вход: values.prod.yaml, values.dev-prod.yaml).
+      Имя в листе — правило api-gateway.frontLinkSAN по имени безголовой
+      службы звена (templates/service-api-gateway-front-links.yaml): то же
+      правило край применяет к `clientAddress.trustedPeers`, и разойтись им нечем.
+
+Край отказывает в старте, если якорь звеньев совпадает с якорем установки
+(config.TrustedProxyLinkAnchor), и не делает лист звена личностью
+(linktls.Anchor). Что у каждого имени звена ровно этот выпускающий, что звено
+лист монтирует и предъявляет краю, держит
+deploy/edge_front_link_identity_render_test.go; что край на окружении рендера
+стартует — gateway/deploy/edge_client_address_start_render_test.go.
+
+Рендерится при `mtls.enabled` (выпускает cert-manager) и только для звеньев,
+которые есть в установке.
+*/ -}}
+{{- if .Values.mtls.enabled }}
+{{- $agw := index .Values "api-gateway" | default dict }}
+{{- $base := $agw.name | default "api-gateway" }}
+{{- $ca := $agw.clientAddress | default dict }}
+{{- $anchor := required "api-gateway.clientAddress.linkAnchor.secretName обязателен: из него край читает якорь звеньев" (($ca.linkAnchor | default dict).secretName) }}
+{{- $uif := .Values.uif | default dict }}
+{{- $ing := index .Values "ingress-nginx" | default dict }}
+{{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
+{{- $tls := $agw.tls | default dict }}
+{{- $links := list }}
+{{- if $uif.enabled }}
+{{- $links = append $links (dict "svc" (printf "%s-front-console" $base) "secret" (required "uif.host.edgeLink.secretName обязателен" ((($uif.host | default dict).edgeLink | default dict).secretName))) }}
+{{- end }}
+{{- if and .Values.apiGatewayIngress.enabled $tls.enabled $ingOn }}
+{{- $links = append $links (dict "svc" (printf "%s-front-ingress" $base) "secret" (printf "%s-front-ingress-link" $base)) }}
+{{- end }}
+{{- if $links }}
+{{- $caMeta := .Values.mtls.internalCA | default dict }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $base }}-front-link-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $anchor }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  isCA: true
+  commonName: {{ $anchor | quote }}
+  secretName: {{ $anchor }}
+  duration: {{ $caMeta.caDuration | default "87600h" | quote }}
+  renewBefore: {{ $caMeta.caRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $base }}-front-link-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+  usages:
+    - cert sign
+    - crl sign
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $anchor }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  ca:
+    secretName: {{ $anchor }}
+{{- range $l := $links }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $l.secret }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  secretName: {{ $l.secret }}
+  duration: "2160h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $anchor }}
+    kind: Issuer
+    group: cert-manager.io
+  dnsNames:
+    - {{ include "api-gateway.frontLinkSAN" $l.svc | quote }}
+  usages:
+    - client auth
+    - digital signature
+{{- end }}
+{{- end }}
+{{- end }}
