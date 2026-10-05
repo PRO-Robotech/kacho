@@ -23,6 +23,8 @@ package main
 import (
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/jobs"
 	nlbpg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
@@ -107,4 +109,17 @@ func TestNTF3_NLBOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 // kacho_notifications_enabled{module="nlb"} ставит корень функцией фундамента.
 func TestNTF367_NLBRootRegistersTheGauge(t *testing.T) {
 	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}
+
+// TestNTF367_NLBGaugeFollowsTheFlag — NTF3-65 / NTF3-67: серия флага на
+// чистом реестре — 1 при true, 0 при false; конфигурация — тем же путём, что
+// на старте.
+func TestNTF367_NLBGaugeFollowsTheFlag(t *testing.T) {
+	ntf3RequireGaugeFollowsTheFlag(t, func(t *testing.T, value string, reg prometheus.Registerer) error {
+		cfg, err := ntf3Load(t, &value)
+		if err != nil {
+			t.Fatalf("ФИКСТУРА: конфигурация с %s=%s не загрузилась: %v", ntf3Knob, value, err)
+		}
+		return registerNotificationsGauge(reg, cfg.Notifications)
+	})
 }

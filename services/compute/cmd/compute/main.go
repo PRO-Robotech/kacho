@@ -244,6 +244,11 @@ func runServe(cfg config.Config) error {
 	// LRO-worker/reconciler recorder и diagnostic /metrics. Заменяет in-memory
 	// MemRecorder (метрики не экспортировались) и NopRecorder LRO-worker'а.
 	metricsAdapter := computemetrics.New(buildVersion, buildCommit)
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(metricsAdapter.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 	var outboxRec metrics.Recorder = metricsAdapter
 	var lroRec operations.Recorder = metricsAdapter
 

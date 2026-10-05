@@ -54,5 +54,8 @@ func bootPosture(cfg config.Config, mtlsCfg config.MTLSConfig) observability.Boo
 		// Звено идентичности служб — ТО, что уехало в дескриптор (serviceIdentityAxis),
 		// словом: у процесса без звена это метка неприменимости, а не пустая строка.
 		ServiceIdentity: serviceIdentityReport(),
+		// Флаг ленты, который процесс РЕАЛЬНО принял: значение, разобранное
+		// загрузчиком (cfg.Notifications), словом фундамента (NTF3-67).
+		Notifications: observability.NotificationsFlagOf(cfg.Notifications.On()),
 	}
 }

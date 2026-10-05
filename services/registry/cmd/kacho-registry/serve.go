@@ -143,6 +143,11 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", merr)
 	}
 	svcMetrics := metrics.New()
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(svcMetrics.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
 	// от живости; чарт пробирует именно её. Носитель канала к владельцу прав
 	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,

@@ -222,6 +222,11 @@ func runServe(cfg config.Config) error {
 	// не принимается. Регистрации коллекторов остаются ниже по тексту — им нужен
 	// только сам реестр, а не порядок относительно объявления.
 	svcMetrics := metrics.New()
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(svcMetrics.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 
 	desc, err := describe(cfg, logger, narrower, pg.NewExistenceProbe(pool), authzCache.Install, svcMetrics.Registerer())
 	if err != nil {

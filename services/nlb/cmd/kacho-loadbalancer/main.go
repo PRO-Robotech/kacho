@@ -221,6 +221,11 @@ func runServe(configPath string) error {
 	// не принимается. Регистрации коллекторов остаются ниже по тексту — им нужен
 	// только сам адаптер, а не порядок относительно объявления.
 	metricsAdapter := nlbmetrics.New(buildVersion, buildCommit)
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(metricsAdapter.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 
 	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {

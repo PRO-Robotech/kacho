@@ -376,6 +376,11 @@ func runServe(cfg config.Config) error {
 	// reconciler-recorder и diagnostic /metrics. Заменяет in-memory MemRecorder —
 	// метрики теперь экспортируются наружу (scrape).
 	metricsAdapter := vpcmetrics.New(buildVersion, buildCommit)
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(metricsAdapter.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 
 	// Cross-service gRPC dial — через единый builder: retries=3 / dialTimeout=10s /
 	// keepalive=30s / TLS / опц. dns:///+round_robin.
