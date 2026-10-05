@@ -1,0 +1,129 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- /*
+Тревоги notify (Р18; замысел З27; NTF1-G12, NTF1-G27, CX1-67, УК54).
+
+ОБЪЕКТ — ЧУЖОГО ВИДА: PrometheusRule объявляет оператор сбора величин, и
+кластер без его определения ресурса отказал бы установке ЦЕЛИКОМ. Поэтому
+объект рендерится, только когда кластер понимает вид
+(`.Capabilities.APIVersions`), и только когда рендерится сам notify
+(перечень источников непуст). На кластере без оператора правил нет, и
+вычислять их там некому: это граница посадки, а не выключенная тревога.
+
+ЧТО СУДИТ КАЖДОЕ ПРАВИЛО — функцию ряда, а не текст: проба
+`deploy/tests/alerts/notify_alert_rules_test.go` вычисляет каждое правило
+движком PromQL над синтетическим рядом и утверждает firing и тишину близнеца.
+Правила без `for`: каждая тревога ниже — «сразу», в первом же вычислении,
+видящем приращение (Р18, G25, G27).
+
+Перечни меток — закрытые словари corelib (`feed.Classes()`, `feed.Reasons()`,
+`feed.PutDefects()`) и notify; литералов значений в правилах нет, кроме
+исключённой пары feed_expired и класса security — их называет приёмка.
+*/ -}}
+{{- if and (include "notify.renders" .) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "notify.fullname" . }}
+  labels:
+    {{- include "notify.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: notify
+      rules:
+        # Р18, NTF1-G12: возраст старейшей строки `pending` класса security у
+        # источника достиг половины наименьшего ttl шаблонов security ТОГО ЖЕ
+        # источника в сборке notify. Срок — ряд сборки
+        # notify_template_ttl_seconds, а не литерал: правка ttl шаблона
+        # меняет порог без правки чарта. Метка `source` notify и метка `module`
+        # ленты называют модуль одним словом; label_replace сводит их.
+        - alert: security_half_ttl
+          expr: |
+            max by (module, class) (kacho_notification_feed_oldest_pending_seconds{class="security"})
+              >= on (module)
+            (
+              label_replace(
+                min by (source) (notify_template_ttl_seconds{class="security"}),
+                "module", "$1", "source", "(.*)"
+              ) / 2
+            )
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `"Письмо security источника {{ $labels.module }} ждёт половину своего срока"` }}
+            description: {{ `"Старейшая строка pending класса security источника {{ $labels.module }} старше половины наименьшего ttl шаблонов security; письмо истечёт, не дойдя."` }}
+
+        # Р18, NTF1-G27: каждая строка EXPIRED, кроме recipient_net у notice —
+        # исключением ОДНОЙ пары (CX1-54 (а)): новая причина словаря получает
+        # тревогу без правки правила.
+        - alert: feed_expired
+          expr: |
+            sum by (module, class, reason) (increase(kacho_notification_feed_outcomes_total{kind="expired"}[2m])) > 0
+            unless
+            sum by (module, class, reason) (increase(kacho_notification_feed_outcomes_total{kind="expired", class="notice", reason="recipient_net"}[2m]))
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `"Строка ленты {{ $labels.module }} истекла: {{ $labels.class }}/{{ $labels.reason }}"` }}
+            description: {{ `"Строка класса {{ $labels.class }} источника {{ $labels.module }} закрыта EXPIRED с причиной {{ $labels.reason }}: письмо не отправлено."` }}
+
+        # CX1-67: дефект программы вызывающего, отвергнутый Put (перечень
+        # feed.PutDefects()). Ноль за всю жизнь — норма; не-ноль — дефект
+        # глагола-источника, а не нагрузка.
+        - alert: feed_put_defect
+          expr: |
+            sum by (module, cause) (increase(kacho_notification_feed_put_defects_total[5m])) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `"Дефект вызывающего ленты {{ $labels.module }}: {{ $labels.cause }}"` }}
+            description: {{ `"Put источника {{ $labels.module }} отверг постановку по дефекту программы {{ $labels.cause }}; мутация вызывающего не закоммичена."` }}
+
+        # Р18, З22, УК54: строка чужой ревизии шаблона либо шаблона нет в
+        # сборке. Метка direction (older | newer | missing) различает
+        # «источник новее notify», «notify новее источника» и «шаблона нет».
+        - alert: template_skew
+          expr: |
+            sum by (source, direction) (increase(notify_template_skew_total[5m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `"Расхождение шаблонов notify и источника {{ $labels.source }}: {{ $labels.direction }}"` }}
+            description: {{ `"Строки источника {{ $labels.source }} отложены template_skew (направление {{ $labels.direction }}): ревизия строки не равна ревизии сборки notify либо шаблона в сборке нет."` }}
+
+        # Р18: отсрочка grant_skew — kaname ответил NOT_YET_GRANTED (право ещё
+        # не материализовано). Ряд — отсрочки ленты источника по причине
+        # (corelib notify/feed), значение причины — feed.ReasonGrantSkew.
+        - alert: grant_skew
+          expr: |
+            sum by (module) (increase(kacho_notification_feed_defers_total{reason="grant_skew"}[5m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `"Строки источника {{ $labels.module }} ждут материализации права"` }}
+            description: {{ `"Строки источника {{ $labels.module }} отложены grant_skew: решение kaname — права ещё нет."` }}
+
+        # Р18: неисправность настройки — чужая служба отказала либо ответила
+        # без решения (peeranswer.Causes()). Ноль за всю жизнь — норма.
+        - alert: misconfigured
+          expr: |
+            sum by (source, cause) (increase(notify_misconfigured_total[5m])) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `"Неисправность настройки notify для {{ $labels.source }}: {{ $labels.cause }}"` }}
+            description: {{ `"Вызов чужой службы для источника {{ $labels.source }} дал сигнал неисправности настройки {{ $labels.cause }}."` }}
+
+        # Р18: любое срабатывание сетки класса security. Сетка notice —
+        # нагрузка, а не дефект, и тревоги не поднимает.
+        - alert: recipient_net_security
+          expr: |
+            sum by (class) (increase(notify_recipient_net_hits_total{class="security"}[5m])) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "Сработала сетка адресата класса security"
+            description: "Резерв письма security отвергнут исчерпанным окном сетки адресата: письмо security не уйдёт."
+{{- end }}
