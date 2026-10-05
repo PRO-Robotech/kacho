@@ -50,8 +50,13 @@ type VerifiedCaller struct {
 // instance used on the principal path). Declared here so the handler is
 // unit-testable without a live JWKS endpoint.
 //
-// nil verifier ⇒ no credential can be authenticated, so every server-side
-// revocation fails closed with 401 (only cookie-clearing remains available).
+// Ошибка проверяющего различает ДВА исхода, и обработчик их не склеивает:
+// ошибка, для которой [middleware.KeySourceUnanswerable] истинна (набор
+// проверочных ключей не добыт), значит «проверяющий не решил» — выход «не
+// выполнен» (`503`); любая другая — «токен негоден», единый отказ края (`401`).
+// Адаптер обязан пропускать ошибку проверяющего края обёрнутой, не подменяя её.
+//
+// nil verifier ⇒ проверять предъявителя нечем: выход «не выполнен» (`503`).
 type CallerVerifier interface {
 	Verify(ctx context.Context, token string) (*VerifiedCaller, error)
 }
@@ -69,8 +74,9 @@ type CallerVerifier interface {
 //   - выход выполнен — `200` `{}`; сюда же относится запрос без всякого
 //     носителя (Ф3-18: различимый ответ сказал бы держателю чужой копии, жива ли она);
 //   - выход не выполнен — `503` `{"code":14,"message":"logout not performed; try again later","details":[]}`:
-//     отзыв не ответил в бюджете, проверять предъявителя нечем либо писать отзыв
-//     некуда. Удостоверение цело и по-прежнему годно, повторить можно. «Вышли»
+//     отзыв не ответил в бюджете, источник проверочных ключей не ответил
+//     (проверяющий не решил, годен ли токен), проверять предъявителя нечем либо
+//     писать отзыв некуда. Удостоверение цело и по-прежнему годно, повторить можно. «Вышли»
 //     при живом удостоверении — дефект, который Ф3 Р4 отвергла поимённо: прежде
 //     здесь при неответившем отзыве стоял `200`, и повторить выход клиенту было
 //     не с чего.
@@ -183,9 +189,20 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// Проверка предъявителя — вопрос края к источнику ключей, и бюджет у него тот
+	// же, что у отзыва: ручка профиля, а не константа (приёмка KA1, Р4).
+	ctx, cancel := context.WithTimeout(r.Context(), h.callBudget)
 	caller, verr := h.verifier.Verify(ctx, rawToken)
 	cancel()
+	if verr != nil && middleware.KeySourceUnanswerable(verr) {
+		// Набор ключей не добыт: проверяющий НЕ РЕШИЛ, годен ли токен (#1194).
+		// Ответ `401` велел бы выбросить годный токен, а на сервере он жив, —
+		// поэтому «не выполнен, повторите». Громко: сюда попадает и неверная
+		// настройка источника (`security.md` §Hardening инв. 8).
+		h.logger.Error("logout: not performed — the token key source did not answer", "err", verr)
+		writeBody(w, http.StatusServiceUnavailable, logoutNotPerformedBody)
+		return
+	}
 	if verr != nil {
 		h.logger.Warn("logout: access-token verification failed", "err", verr)
 		// Единый отказ края (приёмка KA1, Р2): тот же, что у слоя

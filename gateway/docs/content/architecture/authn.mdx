@@ -308,7 +308,7 @@ WWW-Authenticate: Bearer error="insufficient_user_authentication", error_descrip
   <thead><tr><th>HTTP</th><th>тело</th><th>когда</th></tr></thead>
   <tbody>
     <tr><td>200</td><td><code>{"{}"}</code></td><td>выход выполнен; либо носителя нет вовсе</td></tr>
-    <tr><td>503</td><td><code>{`{"code":14,"message":"logout not performed; try again later","details":[]}`}</code></td><td>отзыв не ответил в бюджете — токен цел и годен, повторить</td></tr>
+    <tr><td>503</td><td><code>{`{"code":14,"message":"logout not performed; try again later","details":[]}`}</code></td><td>отзыв не ответил в бюджете либо источник проверочных ключей не ответил (годен ли токен, не решено) — токен цел и годен, повторить. При <code>Authorization: Bearer</code> недоступный источник ключей отвечает слой аутентификации до выхода: тот же <code>503</code> и код <code>14</code>, текст <code>token key source unavailable</code></td></tr>
     <tr><td>401</td><td>единый отказ края (выше)</td><td>токен не принят; либо отзыв (<code>subject</code>, <code>token_jti</code>, <code>revoke_all</code>) запрошен без токена</td></tr>
     <tr><td>400</td><td><code>{`{"code":9,"message":"this path ends access tokens; end the browser session with POST /iam/v1/auth/logout","details":[]}`}</code></td><td>предъявлено печенье нашей сессии: этот путь его не гасит, и «вышли» при живой сессии он не отвечает</td></tr>
     <tr><td>405</td><td><code>{`{"code":12,"message":"method not allowed","details":[]}`}</code></td><td>метод не <code>POST</code>; заголовок <code>Allow: POST</code></td></tr>

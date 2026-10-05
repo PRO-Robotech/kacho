@@ -92,8 +92,15 @@ func (c jwtCaller) Verify(ctx context.Context, tok string) (*handler.VerifiedCal
 
 func newLogoutChain(t *testing.T, iss *issuerFixture, rec *sharedRecord) http.Handler {
 	t.Helper()
+	return newLogoutChainOnKeySet(t, iss.jwksURL, rec)
+}
+
+// newLogoutChainOnKeySet — та же цепочка, проверяющий которой берёт ключи по
+// keySetURL: так близнец «источник ключей не ответил» меняет ровно один факт.
+func newLogoutChainOnKeySet(t *testing.T, keySetURL string, rec *sharedRecord) http.Handler {
+	t.Helper()
 	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL,
+		Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: keySetURL,
 			TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 		ExpectedAudience: testAudience,
 	})
@@ -169,6 +176,54 @@ func TestE2E_Logout_EndsTheCredentialServerSideOnEveryAcceptedPresentation(t *te
 			require.Equal(t, `{"code":14,"message":"logout not performed; try again later","details":[]}`, out.Body.String())
 			require.Equal(t, http.StatusOK, presentOn(chain, http.MethodGet, "/iam/v1/me", tok, nil).Code,
 				"выход не выполнен — токен годен, и ответ выхода это и сказал")
+		})
+	}
+}
+
+// TestE2E_Logout_KeySourceUnanswered_IsNotPerformed — источник проверочных
+// ключей не ответил: проверяющий не решил, годен ли токен, и выход на КАЖДОМ
+// предъявлении отвечает «не выполнен» (`503`), а не «предъявитель не принят»
+// (`401`). Отзыв не записан — сказано ровно то, что произошло (kacho#2996).
+// Отличие от положительного прогона — один факт: адрес набора ключей не отвечает.
+func TestE2E_Logout_KeySourceUnanswered_IsNotPerformed(t *testing.T) {
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	dead := privateloopback.NewServer(t, http.NotFoundHandler())
+	deadURL := dead.URL + "/.well-known/jwks.json"
+	dead.Close()
+
+	forms := map[string]func(r *http.Request, tok string){
+		"Authorization: Bearer": func(r *http.Request, tok string) { r.Header.Set("Authorization", "Bearer "+tok) },
+		"Authorization: DPoP":   func(r *http.Request, tok string) { r.Header.Set("Authorization", "DPoP "+tok) },
+		"форма token":           func(_ *http.Request, _ string) {},
+	}
+	for name, present := range forms {
+		t.Run(name, func(t *testing.T) {
+			rec := &sharedRecord{revoked: map[string]bool{}}
+			chain := newLogoutChainOnKeySet(t, deadURL, rec)
+			jti := "jti-keysource-" + strings.ReplaceAll(name, " ", "-")
+			tok := plainBearer(t, iss, jti)
+			var body io.Reader
+			if name == "форма token" {
+				body = strings.NewReader(url.Values{"token": {tok}}.Encode())
+			}
+			req := httptest.NewRequest(http.MethodPost, "https://"+apiDomain+"/oauth/logout", body)
+			if body != nil {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			present(req, tok)
+			out := httptest.NewRecorder()
+			chain.ServeHTTP(out, req)
+			require.Equal(t, http.StatusServiceUnavailable, out.Code, out.Body.String())
+			var st struct {
+				Code int `json:"code"`
+			}
+			require.NoError(t, json.Unmarshal(out.Body.Bytes(), &st), out.Body.String())
+			require.Equal(t, 14, st.Code, out.Body.String())
+			require.NotContains(t, out.Body.String(), "jwks")
+			rec.mu.Lock()
+			defer rec.mu.Unlock()
+			require.False(t, rec.revoked[jti], "проверяющий не решил — отзыв не пишется")
 		})
 	}
 }
