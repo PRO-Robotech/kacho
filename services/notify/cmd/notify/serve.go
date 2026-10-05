@@ -59,7 +59,11 @@ func runServe(cfg config.Config, logger *slog.Logger, resolver *net.Resolver) er
 		return err
 	}
 
-	observability.LogBootPosture(logger, bootPosture(cfg, desc))
+	posture, err := bootPosture(cfg, desc)
+	if err != nil {
+		return fmt.Errorf("самоотчёт о посадке: %w", err)
+	}
+	observability.LogBootPosture(logger, posture)
 
 	reg := newRegistry()
 
