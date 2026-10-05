@@ -6,13 +6,20 @@ package repohygiene
 import (
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 func subscriptionKindOptions(t *testing.T) SubscriptionKindOptions {
 	t.Helper()
+	root := repoRoot(t)
+	model, err := contractsource.Path(root, ModelCanonRelToProto)
+	if err != nil {
+		t.Fatalf("каноническая модель прав не разрешается: %v — признак вида не измерить", err)
+	}
 	return SubscriptionKindOptions{
-		Root:      repoRoot(t),
-		ProtoRoot: "proto",
+		Root:      root,
+		ModelFile: model,
 		GoRoots:   []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
 		// Клиентская страница подписки: второе место об одном предмете, и
 		// сверяется оно множествами в обе стороны.
@@ -42,9 +49,9 @@ func TestSubscriptionKindVocabularyHasOneWriting(t *testing.T) {
 
 	// Премиса: прочитано то, что заведомо есть. Без неё «ноль находок» было бы
 	// достижимо пустым обходом.
-	if census.ProtoFiles < 20 || census.GoFiles < 500 {
-		t.Fatalf("файлов контракта %d, файлов прод-кода %d — обход пуст, вердикт беспредметен",
-			census.ProtoFiles, census.GoFiles)
+	if census.DeclaredTypes < 20 || census.GoFiles < 500 {
+		t.Fatalf("типов модели с v_get %d, файлов прод-кода %d — обход пуст, вердикт беспредметен",
+			census.DeclaredTypes, census.GoFiles)
 	}
 	// Вторая половина вердикта (объявлен ли тип платформой) выносится ТОЛЬКО о
 	// разрешённых словах. Ноль разрешённых означал бы, что она не вынесена ни

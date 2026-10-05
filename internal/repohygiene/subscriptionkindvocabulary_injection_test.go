@@ -20,8 +20,11 @@ import (
 	"testing"
 )
 
-// kindStand — синтетическое дерево: контракт с аннотациями типов объекта,
-// пакет-производитель имён и владелец журнала, берущий имена у него.
+// kindStandModel — путь канонической модели прав стенда от его корня.
+const kindStandModel = "proto/kaname/cloud/iam/v1/fga_model.fga"
+
+// kindStand — синтетическое дерево: каноническая модель прав, пакет-производитель
+// имён и владелец журнала, берущий имена у него.
 //
 // Это ЗАКОННОЕ состояние, и на нём анализатор обязан молчать.
 type kindStand struct {
@@ -32,26 +35,31 @@ func newKindStand(t *testing.T) *kindStand {
 	t.Helper()
 	s := &kindStand{root: t.TempDir()}
 
-	s.write(t, "proto/kacho/cloud/probe/v1/probe_service.proto", `
-syntax = "proto3";
-package kacho.cloud.probe.v1;
+	// Каноническая модель прав стенда. Признак «тип известен платформе» — тип,
+	// объявляющий `v_get` (Д127 (б)). Законные близнецы, обязанные НЕ считаться
+	// объявлением: тип в комментарии и тип без `v_get`.
+	s.write(t, kindStandModel, `model
+  schema 1.1
 
-// В комментарии стоит object_type: "probe_ghost" — и это НЕ объявление.
-// Анализатор, считающий сырой текст, объявил бы призрак известным платформе.
-service ProbeService {
-  rpc Get(GetRequest) returns (Probe) {
-    option (corelib.authz.v1.scope_extractor) = {
-      object_type:        "probe_machine"
-      from_request_field: "machine_id"
-    };
-  }
-  rpc List(ListRequest) returns (ListResponse) {
-    option (corelib.authz.v1.scope_extractor) = {
-      object_type:        "probe_balancer"
-      from_request_field: "project_id"
-    };
-  }
-}
+type user
+
+# type probe_ghost
+#   relations
+#     define v_get: [user]
+
+type probe_machine
+  relations
+    define viewer: [user]
+    define v_get: [user] or viewer
+
+type probe_balancer
+  relations
+    # kacho:latent — вид уровня кластера, кортежей пока не пишет никто
+    define v_get: [user]
+
+type probe_mute
+  relations
+    define viewer: [user]
 `)
 	// Производитель имён: единственный источник написания.
 	s.write(t, "services/probe/internal/authzfilter/actions.go", `package authzfilter
@@ -60,6 +68,7 @@ const (
 	ResourceTypeMachine  = "probe_machine"
 	ResourceTypeBalancer = "probe_balancer"
 	ResourceTypeGhost    = "probe_ghost"
+	ResourceTypeMute     = "probe_mute"
 	ResourceTypeShouting = "Probe_Machine"
 )
 
@@ -170,7 +179,7 @@ func (s *kindStand) audit(t *testing.T) ([]SubscriptionKindFinding, Subscription
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
 		Root:       s.root,
-		ProtoRoot:  "proto",
+		ModelFile:  filepath.Join(s.root, kindStandModel),
 		GoRoots:    []string{"pkg", "services"},
 		ClientPage: "gateway/docs/content/api/subscription.mdx",
 	}, &log)
@@ -212,8 +221,11 @@ func TestKindVocabularyGateIsSilentOnTheLawfulTree(t *testing.T) {
 			"и вторая половина вердикта не вынесена", census.ObjectTypesUsed)
 	}
 	if census.DeclaredTypes != 2 {
-		t.Fatalf("объявленных аннотациями типов %d, ожидалось два: призрак из комментария "+
-			"засчитан за объявление", census.DeclaredTypes)
+		t.Fatalf("типов модели с v_get %d, ожидалось два (probe_machine, probe_balancer): "+
+			"призрак из комментария либо тип без v_get засчитан за объявление", census.DeclaredTypes)
+	}
+	if census.ModelBytes == 0 {
+		t.Fatalf("модель не прочитана (0 байт) — признак не измерялся")
 	}
 }
 
@@ -297,7 +309,8 @@ func Journal() subscription.Journal {
 }
 
 // TestKindVocabularyGateCatchesATypeThePlatformDoesNotDeclare — тип объекта,
-// которого не знает ни одна аннотация контракта.
+// которого каноническая модель не объявляет (в стенде он стоит только в
+// комментарии модели).
 //
 // Инъекция берёт имя У ПРОИЗВОДИТЕЛЯ, то есть первую половину вердикта НЕ
 // нарушает: без этого красное пришло бы от соседа, и о второй половине не было
@@ -490,7 +503,7 @@ func TestKindVocabularyGateRefusesAPageItCannotParse(t *testing.T) {
 			var log strings.Builder
 			_, _, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
 				Root:       s.root,
-				ProtoRoot:  "proto",
+				ModelFile:  filepath.Join(s.root, kindStandModel),
 				GoRoots:    []string{"pkg", "services"},
 				ClientPage: "gateway/docs/content/api/subscription.mdx",
 			}, &log)
@@ -516,11 +529,15 @@ func TestKindVocabularyGateFailsOnAnEmptyWalk(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
-		"нет объявлений типа в контрактах": func(t *testing.T, s *kindStand) {
+		"нет модели": func(t *testing.T, s *kindStand) {
 			t.Helper()
 			if err := os.RemoveAll(filepath.Join(s.root, "proto")); err != nil {
 				t.Fatal(err)
 			}
+		},
+		"в модели нет ни одного типа с v_get": func(t *testing.T, s *kindStand) {
+			t.Helper()
+			s.write(t, kindStandModel, "model\n  schema 1.1\n\ntype user\n\ntype probe_mute\n  relations\n    define viewer: [user]\n")
 		},
 		"нет объявлений журнала": func(t *testing.T, s *kindStand) {
 			t.Helper()
@@ -536,12 +553,45 @@ func TestKindVocabularyGateFailsOnAnEmptyWalk(t *testing.T) {
 			var log strings.Builder
 			_, _, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
 				Root:      s.root,
-				ProtoRoot: "proto",
+				ModelFile: filepath.Join(s.root, kindStandModel),
 				GoRoots:   []string{"pkg", "services"},
 			}, &log)
 			if err == nil {
 				t.Fatalf("пустой обход (%s) дал вердикт вместо отказа: %s", name, log.String())
 			}
 		})
+	}
+}
+
+// TestKindVocabularyGateCatchesAModelTypeWithoutVGet — тип, объявленный моделью
+// БЕЗ отношения видимости `v_get` (Д127 (б)): сужать строки вида не по чему, и
+// поток по нему молчал бы вечно. Близнец — тип с `v_get`, помеченный спящим
+// (`probe_balancer`), находкой не является: пометка говорит о производителе
+// кортежей, а не о существовании типа.
+func TestKindVocabularyGateCatchesAModelTypeWithoutVGet(t *testing.T) {
+	t.Parallel()
+	s := newKindStand(t)
+	s.writePage(t, "<code>probe&#95;mute</code>", "<code>probe&#95;balancer</code>")
+	s.writeJournal(t, `
+			Kinds: map[string]subscription.Kind{
+				"Machine":       {ObjectType: authzfilter.ResourceTypeMute, Action: authzfilter.ActionMachineRead},
+				"probe_balancr": {ObjectType: authzfilter.ResourceTypeBalancer, Action: authzfilter.ActionBalancerRead},
+			},`)
+
+	findings, census := s.audit(t)
+	got := kindFindingsOf(findings, KindVocabularyUndeclared)
+	if len(got) != 1 {
+		t.Fatalf("находок о типе без v_get %d, ожидалась одна: %v", len(got), findings)
+	}
+	if !strings.Contains(got[0].What, "probe_mute") || strings.Contains(got[0].What, "probe_balancer") {
+		t.Errorf("находка называет не тот тип: %q", got[0].What)
+	}
+	if census.ObjectTypesUsed != 2 {
+		t.Errorf("разрешённых типов %d, ожидалось два", census.ObjectTypesUsed)
+	}
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyShape, KindPageOmits, KindPageInvents} {
+		if n := len(kindFindingsOf(findings, other)); n != 0 {
+			t.Errorf("инъекция задела соседнее свойство %s (%d находок): %v", other, n, findings)
+		}
 	}
 }
