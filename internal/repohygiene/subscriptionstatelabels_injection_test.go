@@ -198,6 +198,7 @@ message Gadget {
 // названное страницей либо записью решения, — каждое краснеет ОТДЕЛЬНО и
 // называет себя.
 func TestStatelessKindsLedgerJudgesEveryWay(t *testing.T) {
+	t.Parallel()
 	src := []byte(`package subscriptionjournal
 
 func build() interface{} {
