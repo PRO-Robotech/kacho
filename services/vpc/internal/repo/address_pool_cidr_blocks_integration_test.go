@@ -60,7 +60,7 @@ func TestIntegration_AddressPoolCIDR_AddCidrBlocks_PopulatesFreelist(t *testing.
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28"})
@@ -90,7 +90,7 @@ func TestIntegration_AddressPoolCIDR_RemoveInUse_FailedPrecondition(t *testing.T
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28", "203.0.113.0/28"})
@@ -138,7 +138,7 @@ func TestIntegration_AddressPoolCIDR_RemoveClean_DeletesFreeIPs(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28", "203.0.113.0/28"})
@@ -171,7 +171,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAllocVsRemove(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// Один CIDR + второй, чтобы remove не опустошал пул.
@@ -267,7 +267,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAddArrayConverges(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// Пул стартует с одним блоком A; добавляем 6 disjoint /28 конкурентно.

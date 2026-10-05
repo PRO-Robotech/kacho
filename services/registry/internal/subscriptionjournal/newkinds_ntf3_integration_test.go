@@ -148,7 +148,7 @@ func TestRegistryJournal_NTF361_RepositoryIsWithheldFromASubscriberWithoutVGet(t
 // пустым якорем по имени вида; близнец с якорем ложится.
 func TestRegistryJournal_UK313a_EmptyAnchorOfAProjectKindIsRefusedByName(t *testing.T) {
 	s := newStand(t)
-	j := subscriptionjournal.Journal(probeEndpointBase)
+	j := subscriptionjournal.Journal(probeEndpointBase, false)
 	for _, word := range []string{subscriptionjournal.JournalWordRegistry, "Repository"} {
 		t.Run(word, func(t *testing.T) {
 			id := ids.NewID(ids.PrefixRegistry)

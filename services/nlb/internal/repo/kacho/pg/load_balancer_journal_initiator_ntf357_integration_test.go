@@ -61,7 +61,7 @@ func TestLB_NTF357_CreatedByUserCarriesUserInitiator(t *testing.T) {
 	want := "user:" + userID
 	ctx := operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: userID})
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

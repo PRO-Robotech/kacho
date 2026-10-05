@@ -28,7 +28,7 @@ import (
 // rateLimitedProductionConfig — боевая посадка, где величины ОБЪЯВЛЕНЫ.
 // Положительный контроль для каждого отрицания ниже.
 func rateLimitedProductionConfig() config.Config {
-	c := config.Config{}
+	c := config.Config{Notifications: probeNotificationsOff()}
 	c.AuthN.Mode = config.ModeProduction
 	c.APIServer.RateLimit.Public = config.AdmissionLimitsConfig{
 		ReadPerSec: 100, MutationPerSec: 20, BurstFactor: 5, InFlight: 16,
@@ -131,7 +131,7 @@ func TestRequestRateGuardRefusesASelfContradictingBurst(t *testing.T) {
 // одном стенде. Граница ровно та же, что у S5/S6, и названа здесь, чтобы её не
 // приняли за послабление.
 func TestRequestRateGuardStaysSilentOnDevWithNothingDeclared(t *testing.T) {
-	c := config.Config{}
+	c := config.Config{Notifications: probeNotificationsOff()}
 	c.AuthN.Mode = config.ModeDev
 
 	require.NoError(t, c.ValidateRequestRateLimits())

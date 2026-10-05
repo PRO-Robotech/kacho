@@ -349,7 +349,7 @@ func TestCarrierRaisesTheService(t *testing.T) {
 		cfg:     cfg,
 		logger:  quietLogger(),
 		peers:   &peerClients{},
-		repo:    kachopg.New(nil, nil),
+		repo:    mustJournalWriter(kachopg.New(nil, nil, probeJournalOptions)),
 		opsRepo: operations.NewRepo(nil, "kacho_nlb"),
 	}
 

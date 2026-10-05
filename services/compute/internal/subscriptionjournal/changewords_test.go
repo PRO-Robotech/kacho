@@ -128,7 +128,7 @@ func TestChangeDictionaryIsDerivedFromTheEmitter(t *testing.T) {
 		t.Fatalf("вызовов %d, а слов ноль — разбор аргументов сломан", calls)
 	}
 
-	declared := Journal().Mapping.Changes
+	declared := Journal(false).Mapping.Changes
 
 	for word := range produced {
 		if declared[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {

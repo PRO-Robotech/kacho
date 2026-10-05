@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/operations"
@@ -135,6 +136,13 @@ func runServe(cfg config.Config) error {
 		return verr
 	}
 
+	// ── флаг ленты модуля: одно чтение ручки, одно значение у потребителей ──
+	// Загрузчик разобрал ручку один раз (cfg.Notifications, страж выше её
+	// судил). Из того же значения — словарь видов журнала и Options писателей
+	// журнала: настройка транзакции `kacho_feed.enabled` равна ручке (З11, И6).
+	feedEnabled := cfg.Notifications.On()
+	journalOpts := journaltx.NewOptions(feedEnabled)
+
 	productionMode, err := validateAuthMode(cfg, logger)
 	if err != nil {
 		return err
@@ -199,7 +207,7 @@ func runServe(cfg config.Config) error {
 	// Пул, а не одиночное соединение подписки: уборка — обычный оператор, ей
 	// выделенная сессия не нужна, а сессия подписки занята `LISTEN`.
 	if _, err := subscription.StartJournalRetentionSweep(
-		ctx, pool, subscriptionjournal.Journal(),
+		ctx, pool, subscriptionjournal.Journal(feedEnabled),
 		retention.DefaultConfig(),
 		logger.With(slog.String("component", "journal_retention_sweep")),
 	); err != nil {
@@ -292,7 +300,10 @@ func runServe(cfg config.Config) error {
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
 	// их зависимость, а её источник — соединение внутреннего контура выше.
-	svcs := buildServices(pool, projectClient, quotaLimits, quotaEdge.ReadPosture, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
+	svcs, err := buildServices(pool, journalOpts, projectClient, quotaLimits, quotaEdge.ReadPosture, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
+	if err != nil {
+		return err
+	}
 
 	// Пообъектный сужатель: он же уезжает ПРОВОДКОЙ в дескриптор, поэтому строится
 	// ДО него и ТЕМ ЖЕ объектом, что сужает строки в обработчиках. Собери его
@@ -375,8 +386,12 @@ func runServe(cfg config.Config) error {
 	// умершего worker'а — backlog-overflow, terminal-write retry exhausted,
 	// shutdown, crash mid-op — разрешаются в терминал); периодический Run — backstop
 	// под супервизором.
+	lroInstances, err := repo.NewInstanceRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 	lroReaders := operationresolver.Readers{
-		Instance: repo.NewInstanceRepo(pool),
+		Instance: lroInstances,
 	}
 	lroReconciler := startLRORecovery(ctx, pool, lroReaders, lroRec, logger)
 	background = append(background, bgWorker{"lro-reconciler", func(c context.Context) error {
@@ -1078,8 +1093,19 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient, quotaLimits quota.LimitResolver, quotaPosture quotaread.Posture, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
-	instanceRepo := repo.NewInstanceRepo(pool)
+func buildServices(pool *pgxpool.Pool, journalOpts journaltx.Options, projectClient ports.ProjectAccountClient, quotaLimits quota.LimitResolver, quotaPosture quotaread.Posture, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) (*services, error) {
+	instanceRepo, err := repo.NewInstanceRepo(pool, journalOpts)
+	if err != nil {
+		return nil, err
+	}
+	guestKeyRepo, err := repo.NewGuestAccessKeyRepo(pool, journalOpts)
+	if err != nil {
+		return nil, err
+	}
+	placementGroupRepo, err := repo.NewPlacementGroupRepo(pool, journalOpts)
+	if err != nil {
+		return nil, err
+	}
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
 	// Полоса учёта собирается ЗДЕСЬ, потому что здесь живёт пул: материализация
@@ -1102,14 +1128,14 @@ func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient,
 		instance: instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo).
 			WithQuotaGuard(quotaGuard),
 		guestAccessKey: guestaccesskey.NewService(
-			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil).
+			guestKeyRepo, opsRepo, projectClient, nil).
 			WithQuotaGuard(quotaGuard),
 		realization:   realization.NewService(instanceRepo),
 		nodeOwnership: nodeownership.NewService(instanceRepo),
 		placementGroup: placementgroup.NewService(
-			repo.NewPlacementGroupRepo(pool), opsRepo, projectClient, geoZones, geoRegions).
+			placementGroupRepo, opsRepo, projectClient, geoZones, geoRegions).
 			WithQuotaGuard(quotaGuard),
-	}
+	}, nil
 }
 
 // registerPublicServices — публичные RPC + OperationService на внешний listener
@@ -1408,7 +1434,7 @@ func buildSubscriptionServer(
 			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal: subscriptionjournal.Journal(),
+		Journal: subscriptionjournal.Journal(cfg.Notifications.On()),
 		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
 		// из пула вернулась бы в него вместе с подпиской.
 		DSN:          dsn,

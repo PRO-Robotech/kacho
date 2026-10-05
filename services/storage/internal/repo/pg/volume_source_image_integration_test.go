@@ -22,8 +22,8 @@ import (
 // существующего Image → boot-Volume засеян; Get показывает sourceImageId.
 func TestVolumeSourceImageSeed(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-seed", 20<<30)
@@ -52,7 +52,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 // 23503 → FailedPrecondition "Image <id> not found" (контрактный тон).
 func TestVolumeSourceImageFKNotFound(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{
@@ -69,8 +69,8 @@ func TestVolumeSourceImageFKNotFound(t *testing.T) {
 // (AVAILABLE, size неизменен), sourceImageId очищен; Image → NotFound.
 func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-prov", 20<<30)

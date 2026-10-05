@@ -60,7 +60,7 @@ func TestCQRS_Address_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestCQRS_Address_WriterAbort_ReaderEmpty(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestCQRS_Address_WriterSeesOwnWrites(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
@@ -164,7 +164,7 @@ func TestCQRS_Address_SetReference_CAS(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Seed Address.
 	w1, err := r.Writer(ctx)

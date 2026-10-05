@@ -36,7 +36,7 @@ func TestIntegration_AddressRepo_IPv6_AllocateAndFree(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, p)
 
-	r := kachopg.New(p, nil)
+	r := mustJournalWriter(kachopg.New(p, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {

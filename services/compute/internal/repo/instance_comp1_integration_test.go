@@ -52,7 +52,7 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	const N = 6
 	var (
@@ -115,7 +115,7 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	const project, name = "prj-recycle", "trainer-node-01"
 
 	id1 := ids.NewHyphenID(ids.PrefixInstanceHyphen)

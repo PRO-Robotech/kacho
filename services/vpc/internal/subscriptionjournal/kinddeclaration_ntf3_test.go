@@ -22,7 +22,7 @@ const addressPoolObjectType = "vpc_address_pool"
 // типом `vpc_address_pool`, якорь — уровня кластера, имя — DNS-метка; каждый
 // прочий вид vpc объявляет NameFormDNS и ScopeProject.
 func TestVpcJournal_NTF360_AddressPoolIsPublishedAsAClusterKind(t *testing.T) {
-	kinds := subscriptionjournal.Journal().Mapping.Kinds
+	kinds := subscriptionjournal.Journal(false).Mapping.Kinds
 	if len(kinds) == 0 {
 		t.Fatal("словарь видов vpc пуст — судить нечего")
 	}
@@ -55,7 +55,7 @@ func TestVpcJournal_NTF360_AddressPoolIsPublishedAsAClusterKind(t *testing.T) {
 		}
 	}
 
-	dict := subscriptionjournal.Journal().KindDictionary()
+	dict := subscriptionjournal.Journal(false).KindDictionary()
 	found := false
 	for _, d := range dict {
 		found = found || d == addressPoolObjectType

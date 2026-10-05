@@ -20,6 +20,7 @@ import (
 // настраиваемыми authz-полями.
 func prodCfg(mode Mode, iamEndpoint string) Config {
 	var c Config
+	c.Notifications = probeNotificationsOff()
 	c.AuthN.Mode = mode
 	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
@@ -152,6 +153,7 @@ func TestValidate_ProductionWithAuthzEndpointPasses(t *testing.T) {
 // чужой причине.
 func TestValidate_Dev_NoGuardrail(t *testing.T) {
 	var c Config
+	c.Notifications = probeNotificationsOff()
 	c.AuthN.Mode = ModeDev
 	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
@@ -328,6 +330,7 @@ func TestValidate_Production_SSLModeRequire_Passes(t *testing.T) {
 // vpc8-C-14: dev с ssl-mode=disable — не затронут (dev допускает plaintext).
 func TestValidate_Dev_SSLModeDisable_Passes(t *testing.T) {
 	var c Config
+	c.Notifications = probeNotificationsOff()
 	c.AuthN.Mode = ModeDev
 	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"

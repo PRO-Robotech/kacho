@@ -71,7 +71,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(false),
 		DSN:          dsn,
 		Narrower:     narrower,
 		ProjectGate:  gate,

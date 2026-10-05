@@ -96,7 +96,7 @@ func TestSecurityGroupRepo_T31Revoke02_CreateEmitsLabels_UpdateRevokes(t *testin
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}

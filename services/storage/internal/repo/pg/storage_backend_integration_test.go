@@ -217,7 +217,7 @@ func TestStorageBackendUpdateAppliesOnlyNamedFields(t *testing.T) {
 func TestStorageBackendDeleteRestrictedByBinding(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewStorageBackendRepo(pool)
-	br := pg.NewDiskTypeBindingRepo(pool)
+	br := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	referenced, err := r.Insert(ctx, sbSample("ceph-referenced"))

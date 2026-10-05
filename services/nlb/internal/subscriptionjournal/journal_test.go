@@ -24,7 +24,7 @@ import (
 // TestJournalIsAcceptedByTheCommonServer — объявление судится ТЕМ ЖЕ судьёй,
 // который судит его на подъёме. Своей копии правил здесь нет намеренно.
 func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
-	if err := Journal().Validate(); err != nil {
+	if err := Journal(false).Validate(); err != nil {
 		t.Fatalf("общий сервер ОТВЕРГ объявление журнала nlb — процесс не поднялся бы:\n%v", err)
 	}
 }
@@ -35,7 +35,7 @@ func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
 // таблица схемо-квалифицирована, канал нет. Вывод одного из другого работал бы у
 // большинства владельцев и молча ошибался здесь — то есть там, где ошибку не ищут.
 func TestChannelIsNotDerivedFromTheTableName(t *testing.T) {
-	j := Journal()
+	j := Journal(false)
 	if j.Storage.Table != "kacho_nlb.nlb_outbox" {
 		t.Fatalf("таблица журнала %q — объявление разошлось с миграцией 0001", j.Storage.Table)
 	}
@@ -56,7 +56,7 @@ func TestChannelIsNotDerivedFromTheTableName(t *testing.T) {
 // объекта, спрашивал бы модель не о том объекте — и остался бы «зелёным»:
 // проверка вернула бы отказ, событие просто не доставлялось бы.
 func TestLoadBalancerKindDoesNotInheritItsOwnJournalWord(t *testing.T) {
-	kinds := Journal().Mapping.Kinds
+	kinds := Journal(false).Mapping.Kinds
 
 	lb, ok := kinds[kachorepo.OutboxResourceLoadBalancer]
 	if !ok {
@@ -99,7 +99,7 @@ func TestLoadBalancerKindDoesNotInheritItsOwnJournalWord(t *testing.T) {
 // делает строку недоставляемой, и потеря эта тихая. Историческая строка
 // долгоживущей базы — законный вход, а не край.
 func TestChangeWordsCoverTheDatabaseConstraint(t *testing.T) {
-	changes := Journal().Mapping.Changes
+	changes := Journal(false).Mapping.Changes
 	// Дословно из `CHECK (action IN (...))`, миграция 0001.
 	for _, word := range []string{"CREATED", "UPDATED", "DELETED", "MOVED", "FAILED"} {
 		if changes[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
@@ -337,7 +337,7 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 // зелена при любом устройстве. У балансировщика они РАЗНЫЕ, и именно он
 // показывает, какое из двух написаний едет клиенту.
 func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
-	got := Journal().KindDictionary()
+	got := Journal(false).KindDictionary()
 	want := []string{
 		authzfilter.ResourceTypeListener,
 		authzfilter.ResourceTypeLoadBalancer,
@@ -347,7 +347,7 @@ func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("словарь видов nlb %q, ожидался %q (типы объекта, лексикографически)", got, want)
 	}
-	if got := Journal().KindDictionary(); len(got) != 3 {
+	if got := Journal(false).KindDictionary(); len(got) != 3 {
 		t.Fatalf("видов в словаре %d, а журнал объявляет три", len(got))
 	}
 	for _, journalWord := range []string{

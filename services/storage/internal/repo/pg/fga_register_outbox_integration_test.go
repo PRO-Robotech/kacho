@@ -56,7 +56,7 @@ func selectFGARows(t *testing.T, pool *pgxpool.Pool) []fgaOutboxRow {
 // в той же writer-TX, что и доменный INSERT (SEC-D transactional-outbox, ban #10/#16).
 func TestVolumeInsert_EmitsFGARegisterIntent(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-fga", 10<<30)
 
@@ -79,7 +79,7 @@ func TestVolumeInsert_EmitsFGARegisterIntent(t *testing.T) {
 // fga.unregister-строку (снятие owner-tuple) в той же TX, что и DELETE строки тома.
 func TestVolumeDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-del", 10<<30)
@@ -102,8 +102,8 @@ func TestVolumeDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 // fga.register-строку owner-tuple storage_snapshot в writer-TX from-READY-CAS.
 func TestSnapshotInsert_EmitsFGARegisterIntent(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, vr, "prj-1", "vol-src", 10<<30)
@@ -132,8 +132,8 @@ func TestSnapshotInsert_EmitsFGARegisterIntent(t *testing.T) {
 // TestSnapshotDelete_EmitsFGAUnregisterIntent — Snapshot.Delete пишет fga.unregister.
 func TestSnapshotDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, vr, "prj-1", "vol-src2", 10<<30)
@@ -159,7 +159,7 @@ func TestSnapshotDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 // (не dual-write) — orphan-tuple исключён by construction.
 func TestVolumeInsert_FailedFK_NoFGAIntent(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	_, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
@@ -205,7 +205,7 @@ func (f *fakeIAMRegisterClient) registerCalls() []*iamv1.RegisterResourceRequest
 // без owner-tuple gateway scope_extractor не резолвит target→project.
 func TestFGARegisterDrainer_AppliesIntentToIAM(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-drain", 10<<30) // эмитит register-intent
 

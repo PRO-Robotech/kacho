@@ -58,7 +58,7 @@ func TestIntegration_InstanceUpdate_DoesNotClobberLifecycleStatus(t *testing.T) 
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	_, _, err = instRepo.Insert(ctx, newRunningInstance(inID))
@@ -105,7 +105,7 @@ func TestIntegration_InstanceUpdate_ConcurrentWithStop_ExactlyOneStatusOutcome(t
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	_, _, err = instRepo.Insert(ctx, newRunningInstance(inID))

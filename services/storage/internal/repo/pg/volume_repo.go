@@ -68,8 +68,15 @@ func bornState(readyOnCommit bool) string {
 }
 
 // NewVolumeRepo создаёт VolumeRepo поверх pgxpool.
-func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo {
-	return &VolumeRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewVolumeRepo(pool *pgxpool.Pool, journal journaltx.Options) (*VolumeRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewVolumeRepo: %w", err)
+	}
+	return &VolumeRepo{pool: pool, journal: journal}, nil
 }
 
 // WithProjectBytesLimit задаёт предел провизионированного объёма на проект.

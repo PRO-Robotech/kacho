@@ -101,7 +101,7 @@ func TestIntegration_DropNICDNSColumns_GoneAtHeadAndRepoStillWorks(t *testing.T)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{

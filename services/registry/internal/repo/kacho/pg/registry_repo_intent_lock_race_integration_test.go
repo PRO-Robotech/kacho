@@ -29,7 +29,7 @@ import (
 // проходит без блокировки; после release внешней tx заблокированный вызов завершается.
 func TestRepo_RepoIntent_SerializesOnPerRepoAdvisoryLock(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// Реестр СЕЯТСЯ по-настоящему: эмиссия интента репозитория теперь той же транзакцией

@@ -28,6 +28,7 @@ func discardLogger() *slog.Logger {
 func TestValidateSecurityConfig(t *testing.T) {
 	bothMTLS := func() config.Config {
 		return config.Config{
+			Notifications:      probeNotificationsOff(),
 			AuthMode:           "dev",
 			AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 			PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
@@ -90,6 +91,7 @@ func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testi
 	for _, mode := range []string{"production", "production-strict"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := config.Config{
+				Notifications:      probeNotificationsOff(),
 				AuthMode:           mode,
 				AuthZBreakglass:    true,
 				AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
@@ -139,6 +141,7 @@ func TestMTLSOnBothListenersIsRefusedInAnyMode(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cfg := config.Config{
+					Notifications:      probeNotificationsOff(),
 					AuthMode:           "dev",
 					AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 					PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
@@ -208,7 +211,8 @@ func TestValidateAuthMode(t *testing.T) {
 	log := discardLogger()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := config.Config{AuthMode: tc.authMode, DBSSLMode: tc.sslMode}
+			cfg := config.Config{
+				Notifications: probeNotificationsOff(), AuthMode: tc.authMode, DBSSLMode: tc.sslMode}
 			err := validateAuthMode(cfg, log)
 			if tc.wantErr && err == nil {
 				t.Fatalf("want error, got nil")
@@ -275,6 +279,7 @@ func TestValidateSecurityConfig_Production_BreakglassRefusesBoot(t *testing.T) {
 	for _, mode := range []string{"production", "production-strict"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := config.Config{
+				Notifications:      probeNotificationsOff(),
 				AuthMode:           mode,
 				AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 				PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},

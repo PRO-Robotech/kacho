@@ -74,6 +74,7 @@ const (
 // разобранным списком.
 func prodCfg(forwarders ...string) config.Config {
 	c := config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "production",
 		DBSSLMode:                 "require",
 		AuthZIAMGRPCAddr:          "kaname-internal:9091",

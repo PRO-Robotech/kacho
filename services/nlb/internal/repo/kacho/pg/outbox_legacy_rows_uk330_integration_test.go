@@ -40,7 +40,7 @@ import (
 )
 
 // uk330Want — род изменения, в который словарь владельца переводит действие
-// журнала (`subscriptionjournal.Journal().Mapping.Changes`, комментарий там же:
+// журнала (`subscriptionjournal.Journal(false).Mapping.Changes`, комментарий там же:
 // MOVED и FAILED отдаются правкой).
 var uk330Want = map[string]subscriptionv1.SubscriptionEvent_Change{
 	kachorepo.OutboxActionCreated: subscriptionv1.SubscriptionEvent_CREATED,
@@ -71,7 +71,7 @@ func TestLB_UK330_RowsWrittenBeforeTheEmitterChangeReadTheSame(t *testing.T) {
 
 	userID := ids.NewHyphenID(ids.PrefixUser)
 	ctx := operations.WithPrincipal(bg, operations.Principal{Type: "user", ID: userID})
-	journal := subscriptionjournal.Journal()
+	journal := subscriptionjournal.Journal(false)
 	const projectID = "prj01ABC"
 	payload := map[string]any{"name": "lb-uk330"}
 
@@ -109,7 +109,7 @@ func TestLB_UK330_RowsWrittenBeforeTheEmitterChangeReadTheSame(t *testing.T) {
 
 			// (2) Та же пара, записанная эмиттером модуля, хранится той же формой.
 			emitID := ids.NewID(ids.PrefixLoadBalancer)
-			w, err := kachopg.New(pool, nil).Writer(ctx)
+			w, err := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions)).Writer(ctx)
 			require.NoError(t, err)
 			require.NoError(t, w.Outbox().Emit(ctx, kind, emitID, projectID, action, payload),
 				"УК3-30: эмиттер модуля отверг пару (%s, %s), которую прежний писатель записывал", kind, action)

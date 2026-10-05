@@ -47,7 +47,7 @@ import (
 // проверяется.
 func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *repomock.OpsRepo) {
 	t.Helper()
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}
@@ -308,7 +308,7 @@ func TestNetworkRepo_T31Atom01_RollbackNoIntent(t *testing.T) {
 
 	// Гоним writer-tx, повторяющую network/update.go (UPDATE + register emit), и
 	// делаем Abort вместо Commit — оба изменения должны откатиться вместе.
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -403,7 +403,7 @@ func TestNetworkRepo_T31Conc01_ConcurrentLabelFlip_LastSourceWins(t *testing.T) 
 	require.Nil(t, finSaved.Error)
 
 	// Финальное состояние строки.
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	rd, err := r.Reader(ctx)
 	require.NoError(t, err)

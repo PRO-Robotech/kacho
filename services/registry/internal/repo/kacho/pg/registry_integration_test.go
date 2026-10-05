@@ -84,7 +84,7 @@ func countOutbox(t *testing.T, pool *pgxpool.Pool, resourceID, eventType string)
 // round-trip полей; outbox несёт fga.register.
 func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	reg := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -110,7 +110,7 @@ func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 // outbox-intent НЕ появляются (rollback).
 func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r1 := newReg("prj-P", "team-images", nil)
@@ -132,7 +132,7 @@ func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 // повторного Create (partial-предикат исключает DELETING из индекса).
 func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r1 := newReg("prj-P", "team-images", nil)
@@ -156,7 +156,7 @@ func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 // REG-06 — List: project-scope + cursor-пагинация (created_at,id) ASC + name-filter.
 func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// created_at выставляется явными возрастающими значениями (НЕ wall-clock sleep):
@@ -213,7 +213,7 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 // Delete физически убирает строку + unregister-intent; Update на DELETING → NotFound.
 func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
@@ -246,7 +246,7 @@ func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 // ловят 23505 → ErrAlreadyExists (partial UNIQUE race, не ловится unit-тестом).
 func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const n = 8
@@ -285,7 +285,7 @@ func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 // destructive unregister-дубля).
 func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
@@ -325,7 +325,7 @@ func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 // labels; label-clear реально очищает метки в персисте.
 func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -363,7 +363,7 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 // проверяем только durable-emit в registry_outbox.
 func TestRepo_REG14_RepoTupleIntent_Emit(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// Реестр сеятся по-настоящему: интент репозитория той же транзакцией пишет

@@ -37,8 +37,8 @@ import (
 // project and region, so its minimum is not secret at this point).
 func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// min_disk_bytes is derived from the source snapshot: 20 GiB.
@@ -61,8 +61,8 @@ func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 // Exactly at the minimum is allowed — the bound is inclusive.
 func TestVolumeSourceImageAtMinDiskSeeded(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-at-min", 20<<30)
@@ -82,8 +82,8 @@ func TestVolumeSourceImageAtMinDiskSeeded(t *testing.T) {
 // become an oracle that confirms a foreign image exists (or how large it is).
 func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-victim", "snap-victim-min", 20<<30)
@@ -104,7 +104,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 // block it at any size.
 func TestVolumeWithoutSourceUnaffectedByMinDisk(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	v, _, err := vr.Insert(ctx, &domain.Volume{
@@ -119,7 +119,7 @@ func TestVolumeWithoutSourceUnaffectedByMinDisk(t *testing.T) {
 // the image lane must not spill onto it.
 func TestVolumeSourceSnapshotUnaffectedByMinDisk(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-lane-min", 20<<30)

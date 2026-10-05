@@ -68,7 +68,7 @@ func newTestCtx(t testing.TB) *testContext {
 	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
-	return &testContext{Pool: pool, Repo: kachopg.New(pool, nil)}
+	return &testContext{Pool: pool, Repo: mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))}
 }
 
 // newRepo — short helper для тестов, которым не нужен raw-pool доступ.
@@ -76,7 +76,7 @@ func newRepo(t testing.TB, dsn string) (*kachopg.Repository, func()) {
 	t.Helper()
 	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
-	return kachopg.New(pool, nil), func() { pool.Close() }
+	return mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions)), func() { pool.Close() }
 }
 
 // fixtureLbName возвращает имя, отвечающее единственной форме дерева (#715).

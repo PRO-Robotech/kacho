@@ -34,7 +34,7 @@ func newDefaultSGFixture(t *testing.T) (context.Context, kacho.Repository, *netw
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 	svc := networkinternal.NewService(cqrsadapter.NewNetwork(r), cqrsadapter.NewSecurityGroup(r))
 	return ctx, r, svc

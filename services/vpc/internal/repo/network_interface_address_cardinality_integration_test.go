@@ -35,7 +35,7 @@ func TestIntegration_NICRepo_AddressCardinality_DBCheck(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {

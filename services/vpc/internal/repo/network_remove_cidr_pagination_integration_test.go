@@ -43,7 +43,7 @@ func TestIntegration_Network_VPC_1_10_RemoveBlockCoversSubnetBeyondFirstPage(t *
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-remove-cidr-page"

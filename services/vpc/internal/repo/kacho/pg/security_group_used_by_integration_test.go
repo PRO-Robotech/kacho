@@ -79,7 +79,7 @@ func newSGUsedByEnv(ctx context.Context, t *testing.T) *sgUsedByEnv {
 
 	e := &sgUsedByEnv{
 		pool:      pool,
-		repo:      kachopg.New(pool, nil),
+		repo:      mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions)),
 		projectID: "prj-sg-usedby-own",
 		otherPrj:  "prj-sg-usedby-foreign",
 		networkID: ids.NewID(ids.PrefixNetwork),

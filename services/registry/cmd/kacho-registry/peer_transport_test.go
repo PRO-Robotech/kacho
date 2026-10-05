@@ -32,6 +32,7 @@ import (
 // измерение.
 func armedProdCfg(mode string) config.Config {
 	return config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  mode,
 		DBSSLMode:                 "require",
 		AuthZIAMGRPCAddr:          "kaname-internal.kacho.svc:9091",

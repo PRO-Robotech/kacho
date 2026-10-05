@@ -105,7 +105,7 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
+	if err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
 		t.Fatalf("сверщик не снял строку: %v", err)
 	}
 
@@ -181,7 +181,7 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
+	if err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
 		t.Fatalf("сверщик не снял строку: %v", err)
 	}
 
@@ -227,7 +227,7 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, doomed.ID); err != nil {
 		t.Fatalf("чужой том не переведён в снятие: %v", err)
 	}
-	if err := reconciler.NewStore(s.pool).Forget(componentCtx(), reconciler.KindVolume, doomed.ID); err != nil {
+	if err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Forget(componentCtx(), reconciler.KindVolume, doomed.ID); err != nil {
 		t.Fatalf("сверщик не снял чужую строку: %v", err)
 	}
 	// Видимое событие следом — положительный контроль живости потока.

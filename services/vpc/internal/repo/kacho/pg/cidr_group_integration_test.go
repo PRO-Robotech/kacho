@@ -104,7 +104,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	referenced := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "referenced", []string{"203.0.113.0/24"}, nil))
@@ -155,7 +155,7 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "grp", []string{"203.0.113.0/24"}, nil))
@@ -191,7 +191,7 @@ func TestCidrGroup_ConcurrentAddCannotExceedTheCap(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Набор заполнен до предела минус два, и оба писателя просят по два блока:
 	// пройти обязан ровно один.
@@ -261,7 +261,7 @@ func TestCidrGroup_AddIsIdempotentAndDoesNotEatTheCap(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "idem", []string{"203.0.113.0/24"}, nil))
 
@@ -299,7 +299,7 @@ func TestCidrGroup_CapIsPerFamilyAndRefusalNamesTheNumbers(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	full := make([]string, 0, domain.MaxCidrGroupBlocks)
 	for i := 0; i < domain.MaxCidrGroupBlocks; i++ {
@@ -338,7 +338,7 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "office", nil, nil))
 
@@ -398,7 +398,7 @@ func TestCidrGroup_EmptyingAReferencedSetIsRefused(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "held", []string{"203.0.113.0/24", "198.51.100.0/24"}, nil))

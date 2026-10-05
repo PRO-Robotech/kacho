@@ -202,7 +202,7 @@ func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size
 // сверщик, увидев объект у бэкенда.
 func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id string, size int64) {
 	t.Helper()
-	applied, err := reconciler.NewStore(pool).Confirm(
+	applied, err := mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)).Confirm(
 		componentCtx(), kind, id,
 		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size})
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
 // продукта. Колонка живёт в схеме со своим умолчанием и контрактом не адресуется.
 func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-data-1", 10<<30)
@@ -253,7 +253,7 @@ func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 
 // TestVolumeGetNotFound — well-formed-но-нет → ErrNotFound "Volume <id> not found".
 func TestVolumeGetNotFound(t *testing.T) {
-	r := pg.NewVolumeRepo(newTestPool(t))
+	r := mustJournalWriter(pg.NewVolumeRepo(newTestPool(t), probeJournalOptions))
 	_, err := r.Get(journalPrincipalCtx(context.Background()), "vol00000000000000000")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("not found: "):])
@@ -264,7 +264,7 @@ func TestVolumeGetNotFound(t *testing.T) {
 // (partial UNIQUE 23505, data-integrity.md чек-лист п.5). Под -race.
 func TestVolumeNameUniqueRace(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const n = 6
 	var ok, dup atomic.Int32
 	var wg sync.WaitGroup
@@ -300,7 +300,7 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 // increase → ровно один OK (size-CAS race, под -race).
 func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-resize", 10<<30)
 
@@ -349,7 +349,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 // in use" (FK RESTRICT 23503, S1-07/A3); после detach delete проходит → NotFound.
 func TestVolumeDeleteFKRestrict(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-attached", 10<<30)
 	attach(t, pool, v.ID, "epd00000000000000009")
@@ -372,7 +372,7 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 // (S1-12); из существующего снапшота → OK (same-DB FK).
 func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := r.Insert(ctx, &domain.Volume{
@@ -407,7 +407,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 // garbage token → InvalidArg (S1-03).
 func TestVolumeListCursorFilter(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	for _, n := range []string{"vol-a", "vol-b", "vol-c"} {
 		mkVolume(t, pool, r, "prj-1", n, 1<<30)
@@ -468,7 +468,7 @@ func TestVolumeListCursorFilter(t *testing.T) {
 // легальны); mutable description применяется (S1-05/S1-06).
 func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	_ = mkVolume(t, pool, r, "prj-1", "alpha", 1<<30)
 	vb := mkVolume(t, pool, r, "prj-1", "beta", 1<<30)

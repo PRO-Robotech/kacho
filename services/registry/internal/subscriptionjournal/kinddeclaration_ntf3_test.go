@@ -17,7 +17,7 @@ import (
 // DNS-метки у него нет (`NameFormNone`: грамматика имени OCI допускает `/`);
 // реестр — `NameFormDNS`, проектный.
 func TestRegistryJournal_NTF360_RepositoryIsPublishedWithoutADNSName(t *testing.T) {
-	kinds := subscriptionjournal.Journal(probeEndpointBase).Mapping.Kinds
+	kinds := subscriptionjournal.Journal(probeEndpointBase, false).Mapping.Kinds
 	if len(kinds) == 0 {
 		t.Fatal("словарь видов registry пуст — судить нечего")
 	}
@@ -50,5 +50,5 @@ func TestRegistryJournal_NTF360_RepositoryIsPublishedWithoutADNSName(t *testing.
 	if len(kinds) != len(want) {
 		t.Errorf("объявлено видов %d, ожидалось %d", len(kinds), len(want))
 	}
-	t.Logf("объявлено видов %d; словарь клиента %v", len(kinds), subscriptionjournal.Journal(probeEndpointBase).KindDictionary())
+	t.Logf("объявлено видов %d; словарь клиента %v", len(kinds), subscriptionjournal.Journal(probeEndpointBase, false).KindDictionary())
 }

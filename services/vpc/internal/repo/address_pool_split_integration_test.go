@@ -120,7 +120,7 @@ func TestAddressPoolSplit_H1_DefaultPerZoneKindUniqueUnderConcurrency(t *testing
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const concurrency = 5
@@ -244,7 +244,7 @@ func TestAddressPoolSplit_H3_FreelistAllocateConcurrentNoDup(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// Создаем pool с маленьким CIDR-блоком — гарантируем что freelist

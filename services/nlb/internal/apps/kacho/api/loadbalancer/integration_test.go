@@ -53,7 +53,7 @@ func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	// не с чего, пока у проекта нет строки учёта. Разбор и перечень идентичностей
 	// — `quota_fixture_test.go`.
 	seedQuotaFixture(t, pool)
-	return pool, kachopg.New(pool, nil)
+	return pool, mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 }
 
 // newOpsRepo создаёт реальную operations-таблицу repo на тестовом пуле.

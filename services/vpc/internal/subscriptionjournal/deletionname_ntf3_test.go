@@ -104,7 +104,7 @@ func TestVpcJournal_NTF359_EveryDeletionOfANamedKindCarriesTheNameSnapshot(t *te
 	if files == 0 || len(dels) == 0 {
 		t.Fatalf("осмотрено файлов %d, эмиссий снятия %d — пустой обход вердиктом не является", files, len(dels))
 	}
-	kinds := Journal().Mapping.Kinds
+	kinds := Journal(false).Mapping.Kinds
 	perKind := map[string]int{}
 	for _, d := range dels {
 		perKind[d.kind]++

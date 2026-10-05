@@ -40,7 +40,7 @@ func seedPlacementGroupAndKey(t *testing.T, s *stand, projectID string) (plgID, 
 		}
 	}
 	ctx := journalPrincipalCtx(context.Background())
-	g, _, err := repo.NewPlacementGroupRepo(s.pool).Insert(ctx, &domain.PlacementGroup{
+	g, _, err := mustRepo(repo.NewPlacementGroupRepo(s.pool, journaltx.NewOptions(false))).Insert(ctx, &domain.PlacementGroup{
 		ID:            ids.NewHyphenID("plg"),
 		ProjectID:     projectID,
 		Name:          "plg-1",
@@ -51,7 +51,7 @@ func seedPlacementGroupAndKey(t *testing.T, s *stand, projectID string) (plgID, 
 	if err != nil {
 		t.Fatalf("фикстура: группа размещения не создана: %v", err)
 	}
-	k, _, err := repo.NewGuestAccessKeyRepo(s.pool).Insert(ctx, &domain.GuestAccessKey{
+	k, _, err := mustRepo(repo.NewGuestAccessKeyRepo(s.pool, journaltx.NewOptions(false))).Insert(ctx, &domain.GuestAccessKey{
 		ID:          ids.NewHyphenID("gak"),
 		ProjectID:   projectID,
 		Name:        "gak-1",
@@ -163,7 +163,7 @@ func TestComputeJournal_NTF361_NewKindsAreWithheldFromASubscriberWithoutVGet(t *
 // Близнец в той же пробе — та же запись с якорем ложится. Отличие одно: якорь.
 func TestComputeJournal_UK313a_EmptyAnchorOfAProjectKindIsRefusedByName(t *testing.T) {
 	s := newStand(t)
-	j := subscriptionjournal.Journal()
+	j := subscriptionjournal.Journal(false)
 	if len(j.Mapping.Kinds) == 0 {
 		t.Fatal("словарь видов пуст — проба судила бы пустоту")
 	}
@@ -205,4 +205,13 @@ func emitViaFoundation(t *testing.T, s *stand, j subscription.Journal, e subscri
 		t.Fatalf("фикстура: транзакция не зафиксировалась: %v", err)
 	}
 	return nil
+}
+
+// mustRepo — сборка писателя журнала в пробе на построенных Options: отказ
+// конструктора здесь — ошибка программы пробы, а не исход.
+func mustRepo[T any](r T, err error) T {
+	if err != nil {
+		panic("сборка писателя журнала на построенных Options: " + err.Error())
+	}
+	return r
 }

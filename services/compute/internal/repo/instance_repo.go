@@ -38,8 +38,15 @@ type InstanceRepo struct {
 }
 
 // NewInstanceRepo создаёт InstanceRepo.
-func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo {
-	return &InstanceRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewInstanceRepo(pool *pgxpool.Pool, journal journaltx.Options) (*InstanceRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("compute: NewInstanceRepo: %w", err)
+	}
+	return &InstanceRepo{pool: pool, journal: journal}, nil
 }
 
 // instanceCols — колонки таблицы instances (COMP-1 redesign; vendor-cruft-колонки

@@ -40,7 +40,7 @@ import (
 // # Форма 2 у nlb — ноль, и это цель
 //
 // Строку журнала на Go пишет только функция фундамента с дескриптором nlb
-// (`Journal().Emit`, замысел issue-2918, З5, З6): порт `Outbox().Emit` —
+// (`Journal(false).Emit`, замысел issue-2918, З5, З6): порт `Outbox().Emit` —
 // обёрткой над ней, сборщик свободных адресов (`emitReconcileFinalize`, род
 // `DELETED`) — прямым вызовом. Оператор вставки в журнал на Go поэтому —
 // находка любого рода; живость распознавателя доказана на синтетике
@@ -148,7 +148,7 @@ func TestEveryJournalWriteFormIsAccountedFor(t *testing.T) {
 	// Прежде предпосылкой стояло «форма 2 в дереве есть заведомо: реализация
 	// порта `Emit` сама пишет строку оператором». Предмет этой предпосылки снят
 	// полосой S1-A7 (замысел issue-2918, З5, З6): порт пишет строку функцией
-	// фундамента с дескриптором (`Journal().Emit`), и операторов вставки в
+	// фундамента с дескриптором (`Journal(false).Emit`), и операторов вставки в
 	// журнал на Go у nlb НОЛЬ — это цель, а не отказ распознавателя. Поэтому
 	// живость распознавателя доказывается входом, который живёт независимо от
 	// дерева: оператор обеих разновидностей (точка и перенос), собранный из
@@ -168,7 +168,7 @@ func TestEveryJournalWriteFormIsAccountedFor(t *testing.T) {
 		t.Errorf("%s: строка журнала пишется ОПЕРАТОРОМ SQL на Go (вид %q, род %q; пустое — "+
 			"значение параметризовано).\n"+
 			"Такая точка идёт мимо функции фундамента с дескриптором nlb "+
-			"(`subscriptionjournal.Journal().Emit`): мимо словаря видов и родов владельца, "+
+			"(`subscriptionjournal.Journal(false).Emit`): мимо словаря видов и родов владельца, "+
 			"объявленных формы имени и якоря вида — отказ объявления до оператора у неё не "+
 			"наступает, и запись, которую владелец не объявлял, ложится молча. Писать строку "+
 			"через порт `Outbox().Emit` либо функцией фундамента (замысел issue-2918, З5, З6)",
@@ -181,7 +181,7 @@ func TestEveryJournalWriteFormIsAccountedFor(t *testing.T) {
 // параметризованы) узнаются, и литералы читаются против своих колонок.
 // Имена таблицы и колонок берутся из объявления журнала, а не выписываются.
 func journalStatementRecognizerFailures() []string {
-	st := Journal().Storage
+	st := Journal(false).Storage
 	cols := "(" + st.KindColumn + ", " + st.IDColumn + ", " + st.ChangeColumn + ", " + st.PayloadColumn + ")"
 	point := "INSERT INTO " + Table + " " + cols + " VALUES ('kind-x', $1, 'CHANGE-X', $2::jsonb)"
 	transport := "INSERT INTO " + Table + " " + cols + " VALUES ($1, $2, $3, $4::jsonb)"
@@ -271,8 +271,8 @@ func inspectJournalStatements(t *testing.T) journalStatementCensus {
 			}
 			res.unresolvable += countUnresolvableInserts(text)
 			for _, ins := range insertsInto(text, Table) {
-				kind, change := ins.literalOf(Journal().Storage.KindColumn),
-					ins.literalOf(Journal().Storage.ChangeColumn)
+				kind, change := ins.literalOf(Journal(false).Storage.KindColumn),
+					ins.literalOf(Journal(false).Storage.ChangeColumn)
 				res.points = append(res.points, journalStatementPoint{
 					pos:    fset.Position(lit.Pos()).String(),
 					kind:   kind,

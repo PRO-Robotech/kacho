@@ -20,10 +20,13 @@ import (
 // `pg_notify('nlb_outbox', sequence_no::text)` после коммита.
 type outboxEmitter struct {
 	tx *journaltx.Tx
+	// feedEnabled — флаг ленты модуля, с которым открыта tx
+	// (writerImpl.feedEnabled): объявление журнала строится из него.
+	feedEnabled bool
 }
 
 // Emit пишет строку журнала ФУНКЦИЕЙ ФУНДАМЕНТА с дескриптором nlb
-// (`subscription.Journal.Emit` объявления `subscriptionjournal.Journal()`),
+// (`subscription.Journal.Emit` объявления `subscriptionjournal.Journal(feedEnabled)`),
 // а не своей вставкой (замысел issue-2918, З5, З6).
 //
 // Словарь у записи один — объявление владельца (`Mapping`): вид или род
@@ -39,7 +42,7 @@ type outboxEmitter struct {
 // арендатора: он уходит `kacho.ErrInternal` с сохранённой причиной
 // (`errors.Is` видит обе). Отказ базы классифицирует `mapPgErr`.
 func (e *outboxEmitter) Emit(ctx context.Context, resourceType, resourceID, projectID, action string, payload map[string]any) error {
-	err := subscriptionjournal.Journal().Emit(ctx, e.tx, subscription.Entry{
+	err := subscriptionjournal.Journal(e.feedEnabled).Emit(ctx, e.tx, subscription.Entry{
 		Kind:      resourceType,
 		ID:        resourceID,
 		ProjectID: projectID,

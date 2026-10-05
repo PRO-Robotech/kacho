@@ -58,7 +58,7 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 		t.Fatalf("вызовов %d, а слов ноль — разбор аргументов сломан", calls)
 	}
 
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
 			t.Errorf("репозиторий пишет вид %q, а словарь его НЕ называет: строка с ним "+
@@ -89,7 +89,7 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 // нигде. Клиент, взявший его (а взять его было неоткуда, кроме неисполняемой
 // пробы), получал бы отказ на всяком другом владельце.
 func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
-	got := Journal().KindDictionary()
+	got := Journal(false).KindDictionary()
 	// Ожидаемое — перечень типов объекта, которые compute сужает поштучно
 	// (`authzfilter.PerObjectTypes`): у каждого из них есть публичное создание и
 	// тип модели, и каждый обязан быть опубликован (NTF3-60). Перечень взят у
@@ -101,7 +101,7 @@ func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
 	if !reflect.DeepEqual(sorted, want) {
 		t.Fatalf("словарь видов compute %q, ожидался %q", sorted, want)
 	}
-	for word := range Journal().Mapping.Kinds {
+	for word := range Journal(false).Mapping.Kinds {
 		for _, d := range got {
 			if d == word {
 				t.Fatalf("клиенту едет слово ХРАНИЛИЩА %q — как строка записана, есть частное дело владельца", word)

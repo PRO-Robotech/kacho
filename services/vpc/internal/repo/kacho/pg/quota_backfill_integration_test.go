@@ -91,7 +91,7 @@ func TestQuotaMaterialise_SeedsUsageFromRowsThatAlreadyExist(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill"
 
@@ -137,7 +137,7 @@ func TestQuotaMaterialise_SeededUsageStillRefusesAtTheCeiling(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill-ceil"
 
@@ -207,7 +207,7 @@ func TestQuotaMaterialise_SystemChildrenAreNotSeeded(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill-sys"
 
@@ -278,7 +278,7 @@ func TestQuotaRecount_DivergenceIsImpossibleAfterOrdinaryTraffic(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-recount"
 
@@ -334,7 +334,7 @@ func TestQuotaRecount_VerifierNamesADivergenceItIsShown(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-recount-inj"
 

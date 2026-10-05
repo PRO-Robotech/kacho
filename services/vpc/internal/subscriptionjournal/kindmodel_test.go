@@ -80,7 +80,7 @@ func TestEveryPublishedKindHasAVisibleTypeInTheAuthzModel(t *testing.T) {
 	}
 	model := string(raw)
 
-	kinds := Journal().Mapping.Kinds
+	kinds := Journal(false).Mapping.Kinds
 	if len(kinds) == 0 {
 		t.Fatal("словарь видов пуст — судить нечего")
 	}

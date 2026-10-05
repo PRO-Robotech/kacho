@@ -20,7 +20,7 @@ import (
 // REG-1-21 (F7 DB) — InsertConfig без явного lifecycle → DURABLE (default), round-trip.
 func TestRepoConfig_REG_1_21_InsertDefaultDurable(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc21")
 
@@ -34,7 +34,7 @@ func TestRepoConfig_REG_1_21_InsertDefaultDurable(t *testing.T) {
 // REG-1-22 (F7 DB) — InsertConfig с Lifecycle=EPHEMERAL → EPHEMERAL round-trip.
 func TestRepoConfig_REG_1_22_InsertEphemeral(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc22")
 
@@ -50,7 +50,7 @@ func TestRepoConfig_REG_1_22_InsertEphemeral(t *testing.T) {
 // REG-1-23 (F7 DB) — overlay-set на EPHEMERAL row → UpdateConfig auto-promote → DURABLE.
 func TestRepoConfig_REG_1_23_UpdateAutoPromote(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc23")
 
@@ -73,7 +73,7 @@ func TestRepoConfig_REG_1_23_UpdateAutoPromote(t *testing.T) {
 // single-statement SET); финальный lifecycle=DURABLE (data-integrity.md п.5 concurrent-race).
 func TestRepoConfig_REG_1_25_ConcurrentPromote_LifecycleCAS(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc25")
 

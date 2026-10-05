@@ -73,7 +73,7 @@ func TestVPC_SEC_D_01_RegisterIntentInWriterTx(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-a")
 
 	w, err := repo.Writer(ctx)
@@ -118,7 +118,7 @@ func TestVPC_SEC_D_02_AbortRollsBackRegisterIntent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-abort")
 
 	w, err := repo.Writer(ctx)
@@ -152,7 +152,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-del")
 
 	// create

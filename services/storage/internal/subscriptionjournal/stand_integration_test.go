@@ -93,7 +93,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(false),
 		DSN:          dsn,
 		Narrower:     narrower,
 		ProjectGate:  gate,
@@ -228,7 +228,7 @@ func (s *stand) createVolume(t *testing.T, projectID, name string) *domain.Volum
 // положительный контроль.
 func (s *stand) createVolumeWithID(t *testing.T, id, projectID, name string) *domain.Volume {
 	t.Helper()
-	v, _, err := pg.NewVolumeRepo(s.pool).Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
+	v, _, err := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions)).Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         id,
 		ProjectID:  projectID,
 		Name:       name,

@@ -74,7 +74,7 @@ func TestNetworkInterfaceRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *tes
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}
@@ -145,7 +145,7 @@ func TestNetworkInterfaceRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}
@@ -190,7 +190,7 @@ func TestNetworkInterfaceRepo_T32Atom01_RollbackNoIntent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}

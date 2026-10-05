@@ -49,7 +49,7 @@ import (
 // подметальщик эмитирует снятие.
 func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-orphan")
 
@@ -84,7 +84,7 @@ func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 // предыдущей.
 func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-live")
 
@@ -105,7 +105,7 @@ func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 // чужом снимке и снять то, что как раз создаётся.
 func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-fresh")
 
@@ -137,7 +137,7 @@ func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 // то есть выглядел бы работающим и был бы источником нагрузки, а не порядка.
 func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-idem")
 
@@ -168,7 +168,7 @@ func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 // заявленные через control-plane и ещё ни разу не запушенные репозитории.
 func TestOrphanSweep_DeclaredThroughOverlayCountsAsLive(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-overlay")
 

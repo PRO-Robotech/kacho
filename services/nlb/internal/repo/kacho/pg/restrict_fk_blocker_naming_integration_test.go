@@ -167,7 +167,7 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const rounds = 12

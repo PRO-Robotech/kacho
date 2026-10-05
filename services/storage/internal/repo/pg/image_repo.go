@@ -37,8 +37,15 @@ type ImageRepo struct {
 }
 
 // NewImageRepo создаёт ImageRepo поверх pgxpool.
-func NewImageRepo(pool *pgxpool.Pool) *ImageRepo {
-	return &ImageRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewImageRepo(pool *pgxpool.Pool, journal journaltx.Options) (*ImageRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewImageRepo: %w", err)
+	}
+	return &ImageRepo{pool: pool, journal: journal}, nil
 }
 
 // WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit.

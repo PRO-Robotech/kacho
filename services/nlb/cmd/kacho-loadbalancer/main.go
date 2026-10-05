@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/operations"
@@ -238,7 +239,17 @@ func runServe(configPath string) error {
 	// соседа: пул общий с мутациями (см. api/*/list.go readPage). Use-case'ы,
 	// зарегистрированные на handler-слое в следующих 'ах, получают этот
 	// repo через port-интерфейсы (`internal/repo/kacho.Repository`).
-	repo := kachopg.New(pool, nil)
+	//
+	// Флаг ленты модуля: загрузчик разобрал ручку один раз (cfg.Notifications,
+	// страж config.Load её судил). Из того же значения — словарь видов журнала и
+	// Options писателей журнала: настройка транзакции `kacho_feed.enabled` равна
+	// ручке (З11, И6).
+	feedEnabled := cfg.Notifications.On()
+	journalOpts := journaltx.NewOptions(feedEnabled)
+	repo, err := kachopg.New(pool, nil, journalOpts)
+	if err != nil {
+		return err
+	}
 	defer repo.Close()
 
 	// Operations LRO repo (общая таблица operations в kacho_nlb schema).
@@ -298,7 +309,7 @@ func runServe(configPath string) error {
 	// Пул, а не одиночное соединение подписки: уборка — обычный оператор, ей
 	// выделенная сессия не нужна, а сессия подписки занята `LISTEN`.
 	if _, err := subscription.StartJournalRetentionSweep(
-		ctx, pool, subscriptionjournal.Journal(),
+		ctx, pool, subscriptionjournal.Journal(feedEnabled),
 		retention.DefaultConfig(),
 		logger.With(slog.String("component", "journal_retention_sweep")),
 	); err != nil {
@@ -386,7 +397,7 @@ func runServe(configPath string) error {
 		cfg:             cfg,
 		logger:          logger,
 		freeIPPoisonObs: metricsAdapter.IncFreeIPPoisoned,
-	})
+	}, journalOpts)
 	if err != nil {
 		return err
 	}

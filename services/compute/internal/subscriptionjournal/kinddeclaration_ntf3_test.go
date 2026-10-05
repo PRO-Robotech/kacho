@@ -32,7 +32,7 @@ func TestComputeJournal_NTF360_EveryModelTypedKindIsDeclaredWithNameFormAndScope
 		"PlacementGroup": authzfilter.ResourceTypePlacementGroup,
 		"GuestAccessKey": authzfilter.ResourceTypeGuestAccessKey,
 	}
-	kinds := subscriptionjournal.Journal().Mapping.Kinds
+	kinds := subscriptionjournal.Journal(false).Mapping.Kinds
 	if len(kinds) == 0 {
 		t.Fatal("словарь видов compute пуст — судить нечего, и «расхождений нет» было бы получено даром")
 	}
@@ -61,7 +61,7 @@ func TestComputeJournal_NTF360_EveryModelTypedKindIsDeclaredWithNameFormAndScope
 		}
 	}
 
-	dict := subscriptionjournal.Journal().KindDictionary()
+	dict := subscriptionjournal.Journal(false).KindDictionary()
 	got := map[string]bool{}
 	for _, d := range dict {
 		got[d] = true

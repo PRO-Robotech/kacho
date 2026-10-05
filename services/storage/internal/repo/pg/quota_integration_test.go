@@ -86,7 +86,7 @@ func readQuota(t *testing.T, pool *pgxpool.Pool, project, kind string) (used, li
 // прошло» перестала бы утверждаться вовсе.
 func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-charge"
 
 	seedQuota(t, pool, project, "storage.volumes", 2)
@@ -137,7 +137,7 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 // машин и измерена как механизм, не отказавший ни разу за всю свою жизнь.
 func TestQuota_NotProvisionedIsRefusalNotPermission(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-unprovisioned"
 
 	_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
@@ -168,7 +168,7 @@ func TestQuota_NotProvisionedIsRefusalNotPermission(t *testing.T) {
 // сравнением пропустило бы обе вставки, увидев одно и то же свободное место.
 func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-race"
 
 	seedQuota(t, pool, project, "storage.volumes", 1)
@@ -220,7 +220,7 @@ func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 // оно ограничивает.
 func TestQuota_LoweringTheLimitBelowUsageIsAllowed(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-lower"
 
@@ -279,8 +279,8 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 		seedQuota(t, pool, project, kind, 1)
 	}
 
-	volRepo := pg.NewVolumeRepo(pool)
-	snapRepo := pg.NewSnapshotRepo(pool)
+	volRepo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	snapRepo := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 
 	vol := mkVolume(t, pool, volRepo, project, "vol-kinds", 1<<30)
 	usedVol, _ := readQuota(t, pool, project, "storage.volumes")
@@ -306,7 +306,7 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 		"предел на снимки действует так же, как на тома: %v", err)
 
 	// Образ: тот же механизм, третий вид.
-	imgRepo := pg.NewImageRepo(pool)
+	imgRepo := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	mkImageFromSnapshot(t, pool, imgRepo, project, "img-kinds", "region-1", snap.ID)
 	usedImg, _ := readQuota(t, pool, project, "storage.images")
 	require.Equal(t, int64(1), usedImg, "образ списан")
@@ -325,7 +325,7 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 // тома.
 func TestQuota_AttachingAVolumeMovesNoCounter(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-attach"
 

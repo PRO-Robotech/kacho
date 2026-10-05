@@ -44,7 +44,7 @@ func TestIntegration_Address_ListByValue_CoversAllOwnershipForms(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-list-by-value"

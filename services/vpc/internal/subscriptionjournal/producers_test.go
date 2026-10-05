@@ -194,7 +194,7 @@ func TestChangeDictionaryIsDerivedFromBothProducers(t *testing.T) {
 		t.Fatalf("эмиссий %d, а слов ноль — разбор аргументов сломан", len(all))
 	}
 
-	declared := Journal().Mapping.Changes
+	declared := Journal(false).Mapping.Changes
 	for word := range produced {
 		if declared[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
 			// Координаты названы ВСЕ: находка, называющая только слово, посылает
@@ -237,7 +237,7 @@ func TestEveryDeliverableKindIsDeclaredAndEveryDeclaredKindIsProduced(t *testing
 		kindWhere[e.kind] = append(kindWhere[e.kind], e.pos)
 	}
 
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	for kind := range produced {
 		if _, ok := declared[kind]; !ok {
 			t.Errorf("производится вид %q, а словарь его НЕ называет: строка недоставляема, "+
@@ -274,7 +274,7 @@ func TestEveryDeliverableEmissionCarriesAProjectAnchor(t *testing.T) {
 	if len(emissions) == 0 {
 		t.Fatal("эмиссий не найдено — разбор сломан")
 	}
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 
 	anchored, absent0 := 0, 0
 	for _, e := range emissions {
@@ -333,7 +333,7 @@ func sortedKeys(m map[string]int) []string {
 // Нагрузка нарочно пустая: предмет здесь — наличие ветки, а не верность разбора,
 // и пустой объект законно разбирается в нулевую запись у любого из видов.
 func TestEveryDeclaredKindHasAStateBranch(t *testing.T) {
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	if len(declared) == 0 {
 		t.Fatal("словарь видов пуст — судить не о чем")
 	}

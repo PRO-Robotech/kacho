@@ -21,7 +21,7 @@ import (
 // объявления функция фундамента писать отказывается, а сервер потока не отдаёт
 // у него имени снятия. Все виды nlb — проектные.
 func TestNlbJournal_NTF360_EveryKindDeclaresNameFormAndScope(t *testing.T) {
-	kinds := subscriptionjournal.Journal().Mapping.Kinds
+	kinds := subscriptionjournal.Journal(false).Mapping.Kinds
 	if len(kinds) == 0 {
 		t.Fatal("словарь видов nlb пуст — судить нечего")
 	}
@@ -44,7 +44,7 @@ func TestNlbJournal_NTF360_EveryKindDeclaresNameFormAndScope(t *testing.T) {
 // пустым якорем по ИМЕНИ вида; близнец с якорем ложится. Отличие одно — якорь.
 func TestNlbJournal_UK313a_EmptyAnchorOfAProjectKindIsRefusedByName(t *testing.T) {
 	s := newStand(t)
-	j := subscriptionjournal.Journal()
+	j := subscriptionjournal.Journal(false)
 	if len(j.Mapping.Kinds) == 0 {
 		t.Fatal("словарь видов пуст — проба судила бы пустоту")
 	}

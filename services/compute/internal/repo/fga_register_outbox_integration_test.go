@@ -76,7 +76,7 @@ func TestInstance_SEC_D_04_RegisterIntentInWriterTx(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-aaaaaaaaaaaaaaaaa"
 	in := &domain.Instance{
@@ -121,7 +121,7 @@ func TestInstance_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-bbbbbbbbbbbbbbbbb"
 	in := &domain.Instance{

@@ -155,7 +155,7 @@ func TestVpcJournal_NTF361_AddressPoolIsWithheldFromASubscriberWithoutVGet(t *te
 // Близнецы: проектный вид с якорем ложится; пул с якорем отвергается.
 func TestVpcJournal_UK313a_AnchorFollowsTheKindsScope(t *testing.T) {
 	s := newStand(t)
-	j := subscriptionjournal.Journal()
+	j := subscriptionjournal.Journal(false)
 	want := map[string]bool{ // вид → проектный
 		subscriptionjournal.KindNetwork: true, subscriptionjournal.KindSubnet: true,
 		subscriptionjournal.KindSecurityGroup: true, subscriptionjournal.KindRouteTable: true,

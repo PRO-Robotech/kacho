@@ -48,6 +48,7 @@ const breakglassKnob = "KACHO_REGISTRY_AUTHZ_BREAKGLASS"
 // одно условие, чтобы отказ был предметным, а не суммой пропусков.
 func wiredConfig(mode string) config.Config {
 	return config.Config{
+		Notifications:      probeNotificationsOff(),
 		AuthMode:           mode,
 		DBSSLMode:          "require",
 		AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",

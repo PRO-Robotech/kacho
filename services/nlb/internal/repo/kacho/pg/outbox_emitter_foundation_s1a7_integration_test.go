@@ -19,7 +19,7 @@
 // словарь. У литеральной вставки словарь один — ограничение базы
 // `nlb_outbox_resource_type_check` (словарь целиком: `nlb_load_balancer`,
 // `nlb_listener`, `nlb_target_group`, `notification`); у функции фундамента —
-// объявление владельца (`subscriptionjournal.Journal().Mapping`), и запись вне
+// объявление владельца (`subscriptionjournal.Journal(false).Mapping`), и запись вне
 // него отвергается `subscription.ErrEntryRefused` ДО оператора. Последнее слово
 // ограничение базы принимает (миграция
 // `20261004170100_journal_kind_admits_notification.sql` — ключ строки сигнала
@@ -117,7 +117,7 @@ func TestLB_S1A7_EmitterRefusesAKindOutsideTheOwnersDictionary(t *testing.T) {
 		"ФИКСТУРА: ограничение базы не принимает слово %q — вход, на котором словарь владельца и словарь базы расходятся, не построен (определение: %s)",
 		s1a7SignalKind, def)
 
-	journal := subscriptionjournal.Journal()
+	journal := subscriptionjournal.Journal(false)
 	_, inOwner := journal.Mapping.Kinds[s1a7SignalKind]
 	require.False(t, inOwner,
 		"ФИКСТУРА: слово %q стоит в словаре видов владельца — расхождения словарей нет, проба беспредметна", s1a7SignalKind)
@@ -126,7 +126,7 @@ func TestLB_S1A7_EmitterRefusesAKindOutsideTheOwnersDictionary(t *testing.T) {
 
 	userID := ids.NewHyphenID(ids.PrefixUser)
 	ctx := operations.WithPrincipal(bg, operations.Principal{Type: "user", ID: userID})
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	projectID := "prj01ABC"
 
 	twinID := ids.NewID(ids.PrefixLoadBalancer)

@@ -112,14 +112,6 @@ const (
 	freeIPComponentRole    = "free-ip-runner"
 )
 
-// freeIPJournalOptions — Options помощника записи журнала для транзакции прохода.
-//
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_NLB_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
-// тем же изменением эта функция снимается.
-func freeIPJournalOptions() journaltx.Options { return journaltx.NewOptions(false) }
-
 // FreeIPRunner — фоновый reconciler застрявших LoadBalancer'ов (durable handle).
 type FreeIPRunner struct {
 	pool         *pgxpool.Pool
@@ -151,7 +143,14 @@ func WithPoisonObserver(fn func(lbID string)) FreeIPOption {
 // Невалидные (<=0) значения подменяются безопасными дефолтами. addrs допускается
 // nil (vpc не сконфигурирован) — тогда reconciler no-op (без release нельзя
 // безопасно удалять handle, иначе утечка).
-func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) *FreeIPRunner {
+//
+// journal — Options помощника записи журнала для транзакции прохода, построенные
+// корнем модуля из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые —
+// отказ сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewFreeIPRunner(pool *pgxpool.Pool, journal journaltx.Options, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) (*FreeIPRunner, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("nlb: NewFreeIPRunner: %w", err)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -163,7 +162,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	}
 	r := &FreeIPRunner{
 		pool:         pool,
-		journal:      freeIPJournalOptions(),
+		journal:      journal,
 		addrs:        addrs,
 		logger:       logger,
 		interval:     interval,
@@ -172,7 +171,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	for _, opt := range opts {
 		opt(r)
 	}
-	return r
+	return r, nil
 }
 
 // Run блокирует goroutine до отмены ctx. Каждые r.interval — tick reconcile;
@@ -408,7 +407,7 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 	// CREATING-сирота никогда не достиг терминального статуса и не анонсировался
 	// (CREATED/fga-register не эмитились) → ничего не эмитим.
 	if lb.status == string(domain.LBStatusDeleting) {
-		if err := emitReconcileFinalize(ctx, tx, lb.id, lb.projectID, name); err != nil {
+		if err := emitReconcileFinalize(ctx, tx, r.journal.FeedEnabled(), lb.id, lb.projectID, name); err != nil {
 			return outcomeIdle, err
 		}
 	}
@@ -514,13 +513,13 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 // шаг успешного Delete. Все записи — в той же TX, что и DELETE строки (атомарно).
 //
 // Строку журнала пишет функция фундамента с дескриптором nlb
-// (`subscriptionjournal.Journal().Emit`, замысел issue-2918, З5, З6), а не
+// (`subscriptionjournal.Journal(feedEnabled).Emit`, замысел issue-2918, З5, З6), а не
 // литеральная вставка: словарь видов и родов, форма имени и якорь — из одного
 // объявления владельца; инициатор строки — из транзакции помощника, открытой
 // под личностью компонента прохода. name — снимок имени из `RETURNING`
 // удаляющего оператора.
-func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, lbID, projectID, name string) error {
-	if err := subscriptionjournal.Journal().Emit(ctx, tx, subscription.Entry{
+func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, feedEnabled bool, lbID, projectID, name string) error {
+	if err := subscriptionjournal.Journal(feedEnabled).Emit(ctx, tx, subscription.Entry{
 		Kind:      kachorepo.OutboxResourceLoadBalancer,
 		ID:        lbID,
 		ProjectID: projectID,

@@ -19,6 +19,7 @@ import (
 // отправная точка, из которой каждый negative-кейс ослабляет ровно одно измерение.
 func secureProd() config.Config {
 	return config.Config{
+		Notifications:     probeNotificationsOff(),
 		AuthMode:          "production",
 		DBSSLMode:         "require",
 		AuthZIAMGRPCAddr:  "kaname-internal:9091",
@@ -85,8 +86,9 @@ func TestLoad_defaultAuthModeProduction(t *testing.T) {
 // дескриптором (cmd/storage/describe_test.go).
 func TestValidate_devTolerant(t *testing.T) {
 	c := config.Config{
-		AuthMode:  "dev",
-		DBSSLMode: "disable",
+		Notifications: probeNotificationsOff(),
+		AuthMode:      "dev",
+		DBSSLMode:     "disable",
 		// mTLS off, authz addr empty — всё insecure, но dev это допускает.
 		//
 		// Объявление домена величин при этом обязано быть: режимом оно не

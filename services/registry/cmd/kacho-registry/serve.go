@@ -25,6 +25,7 @@ import (
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
@@ -96,6 +97,12 @@ func runServe(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+
+	// ── флаг ленты модуля: одно чтение ручки, одно значение у потребителей ──
+	// Загрузчик разобрал ручку один раз (cfg.Notifications, страж выше её
+	// судил). Из того же значения — словарь видов журнала и Options писателей
+	// журнала: настройка транзакции `kacho_feed.enabled` равна ручке (З11, И6).
+	journalOpts := journaltx.NewOptions(cfg.Notifications.On())
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
@@ -290,7 +297,10 @@ func runServe(cfg config.Config) error {
 	if projectConn != nil {
 		projectIAMConn = projectConn
 	}
-	registryRepo := pg.NewRegistryRepo(pool)
+	registryRepo, err := pg.NewRegistryRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 	// pendingBlobRepo — durable per-repo учёт загруженных блобов (registry_pending_blob,
 	// REG-33 Defect A): blob PUT-finalize пишет строку, push-time blob HEAD/GET раскрывает
 	// только-что-загруженный слой ДО появления манифеста (REG-37 сохранён).
@@ -310,7 +320,10 @@ func runServe(cfg config.Config) error {
 	geoAdapter := geoclient.New(geoIAMConn)
 	// repoConfigRepo — config-overlay Repository (repository_configs, RG-1): durable
 	// overlay-строки (survives-empty) + ACTIVE-guard + transactional-outbox owner/public-grant.
-	repoConfigRepo := pg.NewRepositoryConfigRepo(pool)
+	repoConfigRepo, err := pg.NewRepositoryConfigRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 
 	// ── use-case (CQRS repo + config-overlay + zot + iam + geo + repo-registrar + LRO) ──
 	registryUC := registry.New(registryRepo, registryRepo, repoConfigRepo, zotAdapter, iamAdapter, geoAdapter, registryRepo, opsRepo, cfg.EndpointBase)

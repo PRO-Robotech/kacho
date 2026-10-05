@@ -42,7 +42,7 @@ func TestOutboxRowsCarryTheProjectAnchorOnEveryPath(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	const projectID = "proj-ccccccccccccccccc"
 	in := &domain.Instance{

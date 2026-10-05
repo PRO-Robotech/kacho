@@ -198,7 +198,7 @@ func dialedEdgeFields(t *testing.T, root string) []string {
 // они дали бы гейт, зелёный при неверном тексте отказа.
 func envKnob(t *testing.T, field string) string {
 	t.Helper()
-	sf, ok := reflect.TypeOf(config.Config{}).FieldByName(field)
+	sf, ok := reflect.TypeOf(config.Config{Notifications: probeNotificationsOff()}).FieldByName(field)
 	if !ok {
 		t.Fatalf("config.Config has no field %q — the census resolved a name that is not a config field", field)
 	}
@@ -216,6 +216,7 @@ func envKnob(t *testing.T, field string) string {
 func everyEdgeLive(t *testing.T) config.Config {
 	t.Helper()
 	cfg := config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "production-strict",
 		DBSSLMode:                 "verify-full",
 		FGARegisterDrainerEnabled: true,
@@ -318,7 +319,7 @@ func guardNamedEdgeFields(t *testing.T, root string) []string {
 			"if it was renamed, re-point the gate rather than leaving it vacuous")
 	}
 
-	cfgType := reflect.TypeOf(config.Config{})
+	cfgType := reflect.TypeOf(config.Config{Notifications: probeNotificationsOff()})
 	seen := map[string]struct{}{}
 	ast.Inspect(body, func(n ast.Node) bool {
 		outer, ok := n.(*ast.SelectorExpr)

@@ -54,22 +54,20 @@ type Repository struct {
 //     master (fallback, текущее dev/prod-поведение). Когда реальная реплика
 //     появляется — composition root передает второй pool, и Reader-TX уходят
 //     на нее без изменений в use-case-слое.
+//   - journal    — Options помощника записи журнала, построенные корнем модуля
+//     из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ
+//     сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
 //
 // Pools создаются в composition root (обычно из `pkg/db.NewPool`).
-func New(masterPool, slavePool *pgxpool.Pool) *Repository {
+func New(masterPool, slavePool *pgxpool.Pool, journal journaltx.Options) (*Repository, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("vpc: pg.New: %w", err)
+	}
 	if slavePool == nil {
 		slavePool = masterPool
 	}
-	return &Repository{master: masterPool, slave: slavePool, journal: journalOptions()}
+	return &Repository{master: masterPool, slave: slavePool, journal: journal}, nil
 }
-
-// journalOptions — Options помощника записи журнала для писателя модуля.
-//
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_VPC_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструктора вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а)); тем же
-// изменением эта функция снимается.
-func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
 
 // Reader открывает read-only TX (read-committed) на **slave-pool'е**, если он
 // настроен; иначе на master (fallback). Возвращенный reader обязан быть закрыт

@@ -28,8 +28,15 @@ type GuestAccessKeyRepo struct {
 }
 
 // NewGuestAccessKeyRepo создаёт репозиторий ключей.
-func NewGuestAccessKeyRepo(pool *pgxpool.Pool) *GuestAccessKeyRepo {
-	return &GuestAccessKeyRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewGuestAccessKeyRepo(pool *pgxpool.Pool, journal journaltx.Options) (*GuestAccessKeyRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("compute: NewGuestAccessKeyRepo: %w", err)
+	}
+	return &GuestAccessKeyRepo{pool: pool, journal: journal}, nil
 }
 
 const guestKeyCols = `id, project_id, name, public_key, fingerprint, labels, created_at`

@@ -48,7 +48,7 @@ func attachRowCount(t *testing.T, pool *pgxpool.Pool, volumeID string) int {
 // attachments[0] с device/instance (S2-01, §3.2).
 func TestAttachHappyDerivedInUse(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-attach-1", 10<<30)
 
@@ -66,7 +66,7 @@ func TestAttachHappyDerivedInUse(t *testing.T) {
 // TestAttachIdempotentReplay — повтор того же инстанса → OK, ровно одна строка (S2-02).
 func TestAttachIdempotentReplay(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-replay", 10<<30)
 
@@ -80,7 +80,7 @@ func TestAttachIdempotentReplay(t *testing.T) {
 // "Volume is not available for attachment" (S2-03, CAS WHERE state='READY' не сматчил).
 func TestAttachVolumeNotReady(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-creating", 10<<30)
 	_, err := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, v.ID)
@@ -98,7 +98,7 @@ func TestAttachVolumeNotReady(t *testing.T) {
 // после 0-row CAS различает, какой предикат не сматчил.
 func TestAttachZoneProjectMismatch(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-zone", 10<<30) // zone region-1-a, project prj-1
 
@@ -123,7 +123,7 @@ func TestAttachZoneProjectMismatch(t *testing.T) {
 // Детерминизм: старт-гейт освобождает все горутины разом (не time.Sleep). Под -race.
 func TestAttachDoubleRace(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	v := mkVolume(t, pool, r, "prj-1", "vol-race", 10<<30)
 
 	const n = 6
@@ -160,7 +160,7 @@ func TestAttachDoubleRace(t *testing.T) {
 // "device <name> is already in use on Instance <id>" (S2-06, UNIQUE(instance_id,device_name)).
 func TestAttachDeviceCollision(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-dev-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-dev-2", 10<<30)
@@ -176,7 +176,7 @@ func TestAttachDeviceCollision(t *testing.T) {
 // "Instance <id> already has a boot volume" (S2-07, EXCLUDE WHERE is_boot 23P01).
 func TestAttachSecondBoot(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-boot-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-boot-2", 10<<30)
@@ -192,7 +192,7 @@ func TestAttachSecondBoot(t *testing.T) {
 // TestDetachIdempotent — detach удаляет строку (derived AVAILABLE); повтор → no-op OK (S2-08).
 func TestDetachIdempotent(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-detach", 10<<30)
 	const ins = "epd00000000000000008"
@@ -210,7 +210,7 @@ func TestDetachIdempotent(t *testing.T) {
 // TestListAttachmentsBatched — батч по instance_ids[] (не N+1): группировка по инстансу (S2-09).
 func TestListAttachmentsBatched(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-la-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-la-2", 10<<30)
@@ -237,7 +237,7 @@ func TestListAttachmentsBatched(t *testing.T) {
 // НЕ вытекает. Старт-гейт освобождает горутины разом (не time.Sleep).
 func TestAttachAutoDeviceNameRace(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	// vol-A занимает sdb; N томов конкурентно гонятся за первыми свободными именами.
 	// N высок, чтобы (без retry) большинство горутин прочитали один committed-снимок
@@ -285,7 +285,7 @@ func TestAttachAutoDeviceNameRace(t *testing.T) {
 // возвращает FailedPrecondition "no free device name on Instance <id>" (не ErrInternal, не 23505).
 func TestAttachNoFreeDevice(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	const ins = "epd00000000000000220"
 	// занять все 25 имён sdb..sdz явными attach разных томов.
@@ -316,7 +316,7 @@ func uniqueStrings(in []string) []string {
 // без device → другое имя (S3-11, UNIQUE(instance_id,device_name) не нарушен).
 func TestAttachAutoDeviceName(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v1 := mkVolume(t, pool, r, "prj-1", "vol-auto-1", 10<<30)
 	v2 := mkVolume(t, pool, r, "prj-1", "vol-auto-2", 10<<30)
