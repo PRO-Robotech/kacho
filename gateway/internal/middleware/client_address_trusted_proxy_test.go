@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/metadata"
+
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -41,6 +43,9 @@ func httpFrom(peer, xff string) *http.Request {
 	if xff != "" {
 		r.Header.Set("X-Forwarded-For", xff)
 	}
+	// Пир предъявляет сертификат звена (C4): пробы этого файла судят сужение
+	// по адресу, и имя звена в них — неизменная половина пары.
+	r.TLS = linkState(frontSAN)
 	return r
 }
 
@@ -52,7 +57,7 @@ func TestClientAddress_NoDeclaredCircleTrustsNobody(t *testing.T) {
 		t.Fatalf("пир %s без круга доверия сдвинул источник заголовком на %q; ожидался сам пир", otherPod, got)
 	}
 	addr := &net.TCPAddr{IP: net.ParseIP(otherPod), Port: 40000}
-	ctx := e.BuildPeerAddr(nil, addr, forgedSource, middleware.ResolvedSubject{})
+	ctx := e.BuildPeerAddr(nil, addr, linkState(frontSAN), metadata.Pairs("x-forwarded-for", forgedSource), middleware.ResolvedSubject{})
 	if got := ctx["client_ip"]; got != otherPod {
 		t.Fatalf("gRPC: пир %s без круга доверия сдвинул источник на %v", otherPod, got)
 	}
@@ -77,7 +82,8 @@ func trustingTheFront() *middleware.ContextExtractor {
 	return middleware.NewContextExtractor(time.Now, true,
 		middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
-		middleware.WithTrustedPeers(links{frontPod}))
+		middleware.WithTrustedPeers(links{frontPod}),
+		middleware.WithTrustedLinkSANs(frontSAN))
 }
 
 // УЗКИЙ КРУГ (kacho#3028, круг 3). Сеть круга — «под кластера», а не «звено
@@ -89,7 +95,7 @@ func TestClientAddress_PodInTheCircleNetworkIsNotALinkUnlessTheFrontSelectsIt(t 
 		t.Errorf("под %s в сети круга, не звено фронта, сдвинул источник на %q", podInCircle, got)
 	}
 	addr := &net.TCPAddr{IP: net.ParseIP(podInCircle), Port: 40000}
-	if got := e.BuildPeerAddr(nil, addr, forgedSource, middleware.ResolvedSubject{})["client_ip"]; got != podInCircle {
+	if got := e.BuildPeerAddr(nil, addr, linkState(frontSAN), metadata.Pairs("x-forwarded-for", forgedSource), middleware.ResolvedSubject{})["client_ip"]; got != podInCircle {
 		t.Errorf("gRPC: под %s в сети круга, не звено фронта, сдвинул источник на %v", podInCircle, got)
 	}
 	if got := e.ClientIP(httpFrom(frontPod, clientA)); got != clientA {
@@ -116,7 +122,7 @@ func TestClientAddress_CircleWithoutNamedLinksTrustsNobody(t *testing.T) {
 func TestClientAddress_NamedLinkOutsideTheCircleNetworkIsNotALink(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
-		middleware.WithTrustedPeers(links{frontPod, otherPod}))
+		middleware.WithTrustedPeers(links{frontPod, otherPod}), middleware.WithTrustedLinkSANs(frontSAN))
 	if got := e.ClientIP(httpFrom(otherPod, forgedSource)); got != otherPod {
 		t.Fatalf("звено %s вне сети круга сдвинуло источник на %q", otherPod, got)
 	}
@@ -136,11 +142,11 @@ func TestClientAddress_ForwardedHeaderIsHonouredOnlyFromTheDeclaredCircle(t *tes
 		t.Errorf("заголовок раздачи из круга не принят: источник %q, ожидался %s", got, clientA)
 	}
 	outside := &net.TCPAddr{IP: net.ParseIP(otherPod), Port: 40000}
-	if got := e.BuildPeerAddr(nil, outside, forgedSource, middleware.ResolvedSubject{})["client_ip"]; got != otherPod {
+	if got := e.BuildPeerAddr(nil, outside, linkState(frontSAN), metadata.Pairs("x-forwarded-for", forgedSource), middleware.ResolvedSubject{})["client_ip"]; got != otherPod {
 		t.Errorf("gRPC: пир вне круга сдвинул источник на %v", got)
 	}
 	inside := &net.TCPAddr{IP: net.ParseIP(frontPod), Port: 40000}
-	if got := e.BuildPeerAddr(nil, inside, clientA, middleware.ResolvedSubject{})["client_ip"]; got != clientA {
+	if got := e.BuildPeerAddr(nil, inside, linkState(frontSAN), metadata.Pairs("x-forwarded-for", clientA), middleware.ResolvedSubject{})["client_ip"]; got != clientA {
 		t.Errorf("gRPC: заголовок звена из круга не принят: %v", got)
 	}
 }

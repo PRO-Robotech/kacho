@@ -24,23 +24,27 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// newClientAddressOperator — ОДИН оператор чтения цепочки пересылки на два
-// читателя: условие `client_ip` модели прав и `X-Forwarded-For` ретрансляции
-// полосы формы. Обе ручки те же: доверять ли заголовкам пересылки и сколько
-// доверенных прыжков стоит перед краем (адрес берётся СПРАВА). Второй
-// экземпляр с теми же ручками разошёлся бы с первым при следующей правке одной
-// из них.
+// startClientAddressOperator — ЕДИНСТВЕННАЯ сборка оператора адреса клиента
+// (kacho#3028, C6): её зовут корень и проба старта
+// (client_address_operator_start_test.go), и второй сборки нет.
 //
-// Круг доверенных звеньев (kacho#3028) — третья ручка того же оператора:
-// заголовок пересылки принимается только от пира, который и лежит в сети
-// круга, и назван поимённо перечнем звеньев фронта (адреса подов безголовых
-// служб фронта, круг 3). Разбор и отказ старта — config.TrustedProxyCircle и
-// config.TrustedProxyPeers; корень зовёт их до первой провязки.
+// Один оператор на три читателя: условие `client_ip` модели прав (HTTP и
+// нативный gRPC) и `X-Forwarded-For` ретрансляции полосы формы, по которому
+// служба доступа ведёт ограничение частоты «на источник». Ручки: доверять ли
+// заголовкам пересылки, сколько доверенных прыжков стоит перед краем (адрес
+// берётся СПРАВА), круг сетей, звенья фронта поимённо (адреса подов безголовых
+// служб фронта) и имена звеньев в сертификате (C4). Разбор и отказ старта по
+// каждой — config.TrustedProxyCircle, TrustedProxyPeers, TrustedProxyLinkSANs.
 //
-// Перечень звеньев возвращается вторым: его обновление корень запускает на
-// контексте процесса (frontpeers.Set.Run). nil — звеньев не объявлено, и
-// заголовок не принимается ни от кого.
-func newClientAddressOperator(cfg config.Config, resolve frontpeers.Resolver, logger *slog.Logger) (
+// БОЕВОЙ ПРОФИЛЬ НЕ ВПРАВЕ НЕ ДОВЕРЯТЬ НИКОМУ: край за звеном фронта, не
+// принимающий заголовок ни от кого, видит всех клиентов одним адресом звена, и
+// ограничение частоты «на источник» становится общим на всех. Это отказ в
+// старте, а не предупреждение: предупреждение такого края не останавливает.
+//
+// Обновление перечня звеньев запускается здесь же, на контексте процесса
+// (frontpeers.Set.Run): сборка, вернувшая перечень, который никто не
+// обновляет, через три периода перестала бы признавать звенья молча.
+func startClientAddressOperator(ctx context.Context, cfg config.Config, resolve frontpeers.Resolver, logger *slog.Logger) (
 	*middleware.ContextExtractor, *frontpeers.Set, error) {
 	circle, err := cfg.TrustedProxyCircle()
 	if err != nil {
@@ -50,9 +54,14 @@ func newClientAddressOperator(cfg config.Config, resolve frontpeers.Resolver, lo
 	if err != nil {
 		return nil, nil, err
 	}
+	sans, err := cfg.TrustedProxyLinkSANs()
+	if err != nil {
+		return nil, nil, err
+	}
 	opts := []middleware.ExtractorOption{
 		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount),
 		middleware.WithTrustedProxies(circle...),
+		middleware.WithTrustedLinkSANs(sans...),
 	}
 	var links *frontpeers.Set
 	if len(names) > 0 {
@@ -64,7 +73,19 @@ func newClientAddressOperator(cfg config.Config, resolve frontpeers.Resolver, lo
 		}
 		opts = append(opts, middleware.WithTrustedPeers(links))
 	}
-	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor, opts...), links, nil
+	op := middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor, opts...)
+	if cfg.ProductionPosture() && op.TrustsNobody() {
+		return nil, nil, fmt.Errorf("боевой профиль (KACHO_APP_ENV=%q): заголовок адреса клиента не принимается ни от "+
+			"одного звена — за звеном фронта все клиенты были бы одним адресом и делили бы одно ограничение частоты "+
+			"входа; объявите круг %s, звенья поимённо %s и имена звеньев в сертификате %s "+
+			"(доверие пересылке KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF=%v, прыжков %d)", cfg.AppEnv,
+			config.TrustedProxyCIDRsKnob, config.TrustedProxyPeersKnob, config.TrustedProxySANsKnob,
+			cfg.AuthZTrustedXForwardedFor, cfg.AuthZTrustedProxyCount)
+	}
+	if links != nil {
+		go links.Run(ctx)
+	}
+	return op, links, nil
 }
 
 // lookupFrontLinks — разрешение имени службы звена в адреса её подов

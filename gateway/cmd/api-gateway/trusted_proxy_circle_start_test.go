@@ -14,10 +14,13 @@ package main
 //	отказ   — сеть круга выходит за частные диапазоны (весь простор);
 //	отказ   — сеть круга без звеньев фронта поимённо (kacho#3028, круг 3):
 //	          доверие всей сети подов;
-//	близнец — тот же процесс с объявленной сетью и звеньями стартует и отвечает
-//	          /healthz (имя службы фронта не разрешается — звеньев пока нет,
-//	          старт этим не роняется);
-//	близнец — ни круга, ни звеньев: умолчание «никому», процесс стартует.
+//	отказ   — сеть и звенья без имён звеньев в сертификате (C4): доверие адресу;
+//	отказ   — боевой профиль, ни круга, ни звеньев, ни имён (C6): за звеном
+//	          фронта все клиенты были бы одним адресом;
+//	близнец — тот же процесс с объявленными сетью, звеньями и именами стартует и
+//	          отвечает /healthz (имя службы фронта не разрешается — звеньев пока
+//	          нет, старт этим не роняется);
+//	близнец — профиль разработки, ничего не объявлено: «никому», процесс стартует.
 
 import (
 	"net/http"
@@ -28,17 +31,22 @@ import (
 func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 	const knob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
 	const peersKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS"
+	const sansKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS"
 	const peers = "api-gateway-front-console"
-	for _, c := range []struct{ name, value, peers, mustSay, mustName string }{
-		{name: "неразборная запись", value: "10.0.0.0/8,10.0.0.300/8", peers: peers, mustSay: "10.0.0.300/8", mustName: knob},
-		{name: "весь адресный простор", value: "10.0.0.0/8,0.0.0.0/0", peers: peers, mustSay: "0.0.0.0/0", mustName: knob},
-		{name: "сеть без звеньев поимённо", value: "10.244.0.0/16", peers: "", mustSay: "10.244.0.0/16", mustName: peersKnob},
-		{name: "адрес вместо имени звена", value: "10.244.0.0/16", peers: "10.244.1.17", mustSay: "10.244.1.17", mustName: peersKnob},
+	const sans = "spiffe://kacho.test/ns/kacho/sa/console-front"
+	for _, c := range []struct{ name, value, peers, sans, mustSay, mustName string }{
+		{name: "неразборная запись", value: "10.0.0.0/8,10.0.0.300/8", peers: peers, sans: sans, mustSay: "10.0.0.300/8", mustName: knob},
+		{name: "весь адресный простор", value: "10.0.0.0/8,0.0.0.0/0", peers: peers, sans: sans, mustSay: "0.0.0.0/0", mustName: knob},
+		{name: "сеть без звеньев поимённо", value: "10.244.0.0/16", peers: "", sans: sans, mustSay: "10.244.0.0/16", mustName: peersKnob},
+		{name: "адрес вместо имени звена", value: "10.244.0.0/16", peers: "10.244.1.17", sans: sans, mustSay: "10.244.1.17", mustName: peersKnob},
+		{name: "сеть и звенья без имён в сертификате", value: "10.244.0.0/16", peers: peers, sans: "", mustSay: "10.244.0.0/16", mustName: sansKnob},
+		{name: "боевой профиль не доверяет никому", value: "", peers: "", sans: "", mustSay: knob, mustName: sansKnob},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			env, listen := ka1EdgeEnv(t, "production")
 			env[knob] = c.value
 			env[peersKnob] = c.peers
+			env[sansKnob] = c.sans
 			got := ka1RunEdge(t, env, listen)
 			if !got.exited || got.code == 0 {
 				t.Fatalf("процесс обязан отказать в старте; завершился=%v код=%d healthz=%d\n%s",
@@ -49,14 +57,15 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 			}
 		})
 	}
-	for name, v := range map[string][2]string{
-		"близнец: объявленная сеть и звенья — старт":      {"10.244.0.0/16", peers},
-		"близнец: ни круга, ни звеньев — «никому», старт": {"", ""},
+	for name, v := range map[string][4]string{
+		"близнец: объявленные сеть, звенья и имена — старт": {"production", "10.244.0.0/16", peers, sans},
+		"близнец: разработка, ничего не объявлено — старт":  {"dev", "", "", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, "production")
-			env[knob] = v[0]
-			env[peersKnob] = v[1]
+			env, listen := ka1EdgeEnv(t, v[0])
+			env[knob] = v[1]
+			env[peersKnob] = v[2]
+			env[sansKnob] = v[3]
 			got := ka1RunEdge(t, env, listen)
 			if got.exited || got.healthz != http.StatusOK {
 				t.Fatalf("процесс обязан стартовать; завершился=%v код=%d\n%s", got.exited, got.code, ka1Tail(got.journal))

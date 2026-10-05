@@ -43,6 +43,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -373,6 +374,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: req,
 			GRPCPeer: peerAddr(ctx),
+			GRPCLink: peerTLSState(ctx),
 			GRPCMeta: incomingMD(ctx),
 		})
 		switch decision.outcome {
@@ -429,6 +431,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: nil, // stream requests aren't materialised yet
 			GRPCPeer: peerAddr(ss.Context()),
+			GRPCLink: peerTLSState(ss.Context()),
 			GRPCMeta: incomingMD(ss.Context()),
 			Stream:   true,
 		})
@@ -555,6 +558,9 @@ type decisionRequest struct {
 	ProtoReq any
 	HTTPReq  *http.Request
 	GRPCPeer string
+	// GRPCLink — состояние TLS соединения с пиром (nil — не TLS); по нему
+	// оператор адреса узнаёт звено фронта (kacho#3028, C4).
+	GRPCLink *tls.ConnectionState
 	GRPCMeta metadata.MD
 	// Stream marks the stream-interceptor lane, where the client request message
 	// is not read before the RPC is gated (ProtoReq is therefore nil). Set ONLY
@@ -1195,7 +1201,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	if dr.HTTPReq != nil {
 		contextMap = m.cfg.Context.BuildHTTP(verified, dr.HTTPReq, subj)
 	} else if dr.GRPCMeta != nil || dr.GRPCPeer != "" {
-		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), grpcMetaForwardedFor(dr.GRPCMeta), subj)
+		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), dr.GRPCLink, dr.GRPCMeta, subj)
 	} else {
 		contextMap = m.cfg.Context.BuildHTTP(verified, nil, subj)
 	}

@@ -143,6 +143,13 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET":                 "30s",
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS":           "10.0.0.0/8",
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS":           "api-gateway-front-console",
+		// Имя звена в сертификате (kacho#3028, C4) проверяется внешним
+		// TLS-слушателем с необязательным клиентским сертификатом и якорем.
+		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS": "spiffe://kacho.test/ns/kacho/sa/console-front",
+		"KACHO_API_GATEWAY_TLS_LISTEN_ADDR":          ka1FreeAddr(t),
+		"KACHO_API_GATEWAY_TLS_CERT_FILE":            cert,
+		"KACHO_API_GATEWAY_TLS_KEY_FILE":             key,
+		"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL":     "true",
 	}, listen
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -23,6 +24,7 @@ func fixedNow(t time.Time) func() time.Time { return func() time.Time { return t
 var ingressCircle = func(e *middleware.ContextExtractor) {
 	middleware.WithTrustedProxies(netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("192.0.2.0/24"))(e)
 	middleware.WithTrustedPeers(links{"10.0.0.1", "192.0.2.10", "192.0.2.1"})(e)
+	middleware.WithTrustedLinkSANs(frontSAN)(e)
 }
 
 func TestContextExtractor_BuildHTTP_AlwaysHasCurrentTime(t *testing.T) {
@@ -77,6 +79,7 @@ func TestContextExtractor_HonoursXForwardedFor_WhenTrusted(t *testing.T) {
 	// client-forgeable leftmost.
 	e := middleware.NewContextExtractor(time.Now, true, ingressCircle)
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.TLS = linkState(frontSAN)
 	r.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.1")
 	r.RemoteAddr = "10.0.0.1:443"
 	ctx := e.BuildHTTP(nil, r, middleware.ResolvedSubject{})
@@ -97,6 +100,7 @@ func TestContextExtractor_PrefersXFFIndexOverXRealIP(t *testing.T) {
 	// robust source and wins over a bare X-Real-IP.
 	e := middleware.NewContextExtractor(time.Now, true, ingressCircle)
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.TLS = linkState(frontSAN)
 	r.Header.Set("X-Real-IP", "198.51.100.42")
 	r.Header.Set("X-Forwarded-For", "10.0.0.99")
 	ctx := e.BuildHTTP(nil, r, middleware.ResolvedSubject{})
@@ -109,6 +113,7 @@ func TestContextExtractor_XFF_SpoofedLeftmostIgnored(t *testing.T) {
 	// never selected — CWE-348 / source_ip spoofing is defeated.
 	e := middleware.NewContextExtractor(time.Now, true, ingressCircle)
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.TLS = linkState(frontSAN)
 	r.Header.Set("X-Forwarded-For", "10.0.0.5, 203.0.113.7")
 	r.RemoteAddr = "192.0.2.10:443"
 	ctx := e.BuildHTTP(nil, r, middleware.ResolvedSubject{})
@@ -120,6 +125,7 @@ func TestContextExtractor_XFF_MultiHop(t *testing.T) {
 	// ignored.
 	e := middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(2), ingressCircle)
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.TLS = linkState(frontSAN)
 	r.Header.Set("X-Forwarded-For", "9.9.9.9, 203.0.113.7, 10.0.0.2")
 	r.RemoteAddr = "192.0.2.10:443"
 	ctx := e.BuildHTTP(nil, r, middleware.ResolvedSubject{})
@@ -160,7 +166,7 @@ func TestContextExtractor_BuildPeerAddr(t *testing.T) {
 	e := middleware.NewContextExtractor(fixedNow(now), true)
 
 	addr := &net.TCPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51000}
-	ctx := e.BuildPeerAddr(nil, addr, "", middleware.ResolvedSubject{})
+	ctx := e.BuildPeerAddr(nil, addr, nil, nil, middleware.ResolvedSubject{})
 	assert.Equal(t, now.Unix(), ctx["current_time"])
 	assert.Equal(t, "203.0.113.7", ctx["client_ip"])
 }
@@ -168,7 +174,7 @@ func TestContextExtractor_BuildPeerAddr(t *testing.T) {
 func TestContextExtractor_BuildPeerAddr_WithXFFOverride(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, true, ingressCircle)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 443}
-	ctx := e.BuildPeerAddr(nil, addr, "203.0.113.10, 10.0.0.1", middleware.ResolvedSubject{})
+	ctx := e.BuildPeerAddr(nil, addr, linkState(frontSAN), metadata.Pairs("x-forwarded-for", "203.0.113.10, 10.0.0.1"), middleware.ResolvedSubject{})
 	assert.Equal(t, "10.0.0.1", ctx["client_ip"])
 }
 

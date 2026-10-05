@@ -39,6 +39,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
@@ -67,28 +68,24 @@ func main() {
 		log.Fatalf("посадка процесса: %v", postureErr)
 	}
 
-	// КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ АДРЕСА КЛИЕНТА (kacho#3028) — разбирается здесь,
-	// безусловно и до первой провязки: оператор адреса нужен и модели прав, и
-	// ретрансляции полосы входа, и отказ по негодному кругу не вправе зависеть
-	// от того, какая из них включена в этой посадке. Оператор один на процесс —
-	// его берут обе провязки ниже.
-	clientAddress, frontLinks, caErr := newClientAddressOperator(cfg, lookupFrontLinks, logger)
-	if caErr != nil {
-		log.Fatalf("client address startup-validation: %v", caErr)
-	}
-	logger.Info("client address: forwarded headers are honoured only from front links in the trusted circle",
-		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
-		"trusted_proxy_peers", cfg.AuthZTrustedProxyPeers,
-		"trusted_from_nobody", clientAddress.TrustsNobody())
-
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	// Перечень звеньев фронта живёт, пока жив процесс: обновление по периоду
-	// и по промаху, остановка — с контекстом процесса.
-	if frontLinks != nil {
-		go frontLinks.Run(ctx)
+	// ОПЕРАТОР АДРЕСА КЛИЕНТА (kacho#3028) — собирается здесь, безусловно и до
+	// первой провязки: он нужен и модели прав, и ретрансляции полосы входа, и
+	// отказ по негодной настройке не вправе зависеть от того, какая из них
+	// включена в этой посадке. Сборка одна (startClientAddressOperator): она же
+	// отказывает боевому профилю, не доверяющему никому, и запускает
+	// обновление перечня звеньев на контексте процесса.
+	clientAddress, _, caErr := startClientAddressOperator(ctx, cfg, lookupFrontLinks, logger)
+	if caErr != nil {
+		log.Fatalf("client address startup-validation: %v", caErr)
 	}
+	logger.Info("client address: forwarded headers are honoured only from named front links presenting their certificate",
+		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
+		"trusted_proxy_peers", cfg.AuthZTrustedProxyPeers,
+		"trusted_proxy_sans", cfg.AuthZTrustedProxySANs,
+		"trusted_from_nobody", clientAddress.TrustsNobody())
 
 	// SIGHUP — operator-driven reload signal for the permission catalog +
 	// authz overrides. The signal handler is wired up after the authz
@@ -1054,7 +1051,13 @@ func main() {
 	grpcStreamInterceptors = append([]grpc.StreamServerInterceptor{
 		edgeLatency.StreamServerInterceptor(grpcsrv.ListenerPublic),
 	}, grpcStreamInterceptors...)
+	// Учётные данные сервера — состояние TLS, уже завершённого слушателем
+	// (gateway/internal/linktls): за мультиплексором протоколов сервер gRPC
+	// иначе не знает о TLS вовсе, и звено фронта, предъявившее сертификат,
+	// было бы неотличимо от любого пира (kacho#3028, C4). Рукопожатий они не
+	// ведут: соединение без TLS остаётся таким, каким было.
 	grpcSrv := proxy.NewServer(resolver,
+		grpc.Creds(linktls.ServerCredentials()),
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
 	)
@@ -1237,7 +1240,11 @@ func main() {
 		// ceremony records (handler.MountLoginLaneRoutes) relay only on
 		// connections with the external mark. A listener that lost its wrapper
 		// serves neither. listener_origin_wiring_test.go holds the wrappers.
-		ConnContext: listenerorigin.ConnContext,
+		//
+		// Вторым ConnContext кладёт состояние TLS соединения (linktls): за
+		// мультиплексором r.TLS пуст всегда, а звено фронта узнаётся по
+		// имени в своём сертификате (kacho#3028, C4).
+		ConnContext: linktls.WithConnState(listenerorigin.ConnContext),
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей

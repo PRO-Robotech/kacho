@@ -701,6 +701,16 @@ type Config struct {
 	// действует не дольше трёх периодов (gateway/internal/frontpeers).
 	AuthZTrustedProxyPeersRefresh time.Duration `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS_REFRESH" default:"5s"`
 
+	// AuthZTrustedProxySANs — ИМЕНА ЗВЕНЬЕВ В СЕРТИФИКАТЕ (kacho#3028, C4):
+	// имена SPIFFE либо DNS через запятую, которые звено фронта несёт в
+	// клиентском сертификате, проверенном якорем установки на внешнем
+	// TLS-слушателе. Адрес пода — не личность: под с теми же метками попадает
+	// в службу фронта, а адрес ушедшего пода выдаётся другому; имя в
+	// сертификате выдаёт только тот, кто выпускает сертификаты звеньям.
+	// Объявляется вместе с кругом и звеньями поимённо и при слушателе, который
+	// сертификат проверяет. Разбор и отказ старта — TrustedProxyLinkSANs.
+	AuthZTrustedProxySANs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS" default:""`
+
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
@@ -822,6 +832,57 @@ func (c Config) TrustedProxyPeers() ([]string, error) {
 	}
 	return peers, nil
 }
+
+// TrustedProxySANsKnob — имя ручки имён звеньев в сертификате; его называют
+// отказы старта.
+const TrustedProxySANsKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS"
+
+// TrustedProxyLinkSANs — разобранные имена звеньев в сертификате (kacho#3028, C4).
+//
+// Отказ старта:
+//   - запись, которую отвергает pkg/proxycircle.ParseLinkSANs (подстановочный
+//     знак, адрес, чужая схема, SPIFFE без пути), — при любом флаге доверия;
+//   - при включённом доверии: круг без имён (доверие адресу — его не
+//     спасает ни сеть, ни перечень поимённо), имена без круга (тройка
+//     объявляется целиком), имена без механизма их предъявить — внешнего
+//     TLS-слушателя (TLSEnabled), необязательного клиентского сертификата на
+//     нём (HybridMTLSEnabled) и якоря (MTLSCAFile): без любого из трёх имя
+//     звена не дойдёт до края ни разу.
+//
+// Ни круга, ни имён — «никому», законно (боевой профиль это отвергает
+// отдельно, в сборке оператора адреса). При выключенном доверии тройка не
+// судится, и имён нет.
+func (c Config) TrustedProxyLinkSANs() ([]string, error) {
+	sans, err := proxycircle.ParseLinkSANs(c.AuthZTrustedProxySANs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxySANsKnob, err)
+	}
+	circle, err := c.TrustedProxyCircle()
+	if err != nil {
+		return nil, err
+	}
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
+		return nil, nil
+	}
+	switch {
+	case len(circle) > 0 && len(sans) == 0:
+		return nil, fmt.Errorf("%s пуст при объявленном круге %s=%q — звено узнавалось бы по адресу пода, а адрес "+
+			"получает и под с теми же метками, и под, которому выдали адрес ушедшего звена", TrustedProxySANsKnob,
+			TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCIDRs)
+	case len(circle) == 0 && len(sans) > 0:
+		return nil, fmt.Errorf("%s=%q объявлен без круга %s и звеньев поимённо — объявляются вместе",
+			TrustedProxySANsKnob, c.AuthZTrustedProxySANs, TrustedProxyCIDRsKnob)
+	case len(sans) > 0 && (!c.TLSEnabled() || !c.HybridMTLSEnabled() || c.MTLSCAFile == ""):
+		return nil, fmt.Errorf("%s объявлен, а сертификат звена проверять нечем: нужен внешний TLS-слушатель "+
+			"(KACHO_API_GATEWAY_TLS_LISTEN_ADDR/_CERT_FILE/_KEY_FILE), необязательный клиентский сертификат на нём "+
+			"(KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL) и якорь (KACHO_API_GATEWAY_MTLS_CA_FILE)", TrustedProxySANsKnob)
+	}
+	return sans, nil
+}
+
+// ProductionPosture — боевой ли профиль: послабление терпят только явные метки
+// разработки (dev, local, test), пустая и всякая иная метка — боевая.
+func (c Config) ProductionPosture() bool { return c.isProductionPosture() }
 
 // DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.
 //

@@ -40,11 +40,16 @@
 package middleware
 
 import (
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
 	"time"
+
+	"google.golang.org/grpc/metadata"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 )
 
 // ContextExtractor — stateless builder.
@@ -83,6 +88,13 @@ type ContextExtractor struct {
 	// Пир доверен, только если он и в сети круга, и в этом перечне; nil —
 	// «никому».
 	trustedPeers PeerSet
+
+	// trustedSANs — ИМЕНА ЗВЕНЬЕВ В СЕРТИФИКАТЕ (kacho#3028, C4): пир — звено,
+	// только если он предъявил клиентский сертификат, проверенный якорем
+	// установки, с одним из этих имён (URI либо DNS). Адрес пода — не
+	// личность: под с теми же метками попадает в службу фронта, адрес ушедшего
+	// пода выдаётся другому. Пусто — «никому».
+	trustedSANs map[string]struct{}
 }
 
 // ExtractorOption configures a ContextExtractor at construction.
@@ -121,6 +133,18 @@ func WithTrustedPeers(p PeerSet) ExtractorOption {
 	return func(e *ContextExtractor) { e.trustedPeers = p }
 }
 
+// WithTrustedLinkSANs объявляет имена звеньев в сертификате (см.
+// ContextExtractor.trustedSANs). Без этой опции заголовки пересылки не
+// принимаются ни от одного пира, каковы бы ни были круг и перечень поимённо.
+func WithTrustedLinkSANs(sans ...string) ExtractorOption {
+	return func(e *ContextExtractor) {
+		e.trustedSANs = make(map[string]struct{}, len(sans))
+		for _, s := range sans {
+			e.trustedSANs[s] = struct{}{}
+		}
+	}
+}
+
 // NewContextExtractor constructs an extractor. now=nil falls back to
 // time.Now; trustedXForwardedFor toggles X-Forwarded-For honour (see field
 // comment). The number of trusted proxy hops defaults to 1 and can be overridden
@@ -147,7 +171,7 @@ func (e *ContextExtractor) BuildHTTP(t *VerifiedToken, r *http.Request, subj Res
 		"current_time": e.now().UTC().Truncate(time.Second).Unix(),
 	}
 	if r != nil {
-		if ip := e.resolveClientIP(r); ip != "" {
+		if ip := e.clientIP(httpForwarded(r)); ip != "" {
 			out["client_ip"] = ip
 		}
 	}
@@ -159,13 +183,16 @@ func (e *ContextExtractor) BuildHTTP(t *VerifiedToken, r *http.Request, subj Res
 }
 
 // BuildPeerAddr is the gRPC counterpart of BuildHTTP — when there is no
-// http.Request, only a `net.Addr` from the peer.
-func (e *ContextExtractor) BuildPeerAddr(t *VerifiedToken, peerAddr net.Addr, headerFwd string, subj ResolvedSubject) map[string]any {
+// http.Request: the peer address, the TLS state of the peer connection (nil
+// when it is not TLS) and the incoming metadata.
+func (e *ContextExtractor) BuildPeerAddr(t *VerifiedToken, peerAddr net.Addr, link *tls.ConnectionState, md metadata.MD, subj ResolvedSubject) map[string]any {
 	out := map[string]any{
 		"current_time": e.now().UTC().Truncate(time.Second).Unix(),
 	}
-	if ip := e.resolveIPFromPeer(peerAddr, headerFwd); ip != "" {
-		out["client_ip"] = ip
+	if peerAddr != nil {
+		if ip := e.clientIP(grpcForwarded(peerAddr, link, md)); ip != "" {
+			out["client_ip"] = ip
+		}
 	}
 	e.fillFromToken(out, t)
 	if subj.FGA != "" {
@@ -233,98 +260,134 @@ func (e *ContextExtractor) fillFromToken(out map[string]any, t *VerifiedToken) {
 // и адрес этот выводит край — не цепочка, которую строит раздача консоли перед
 // ним. Второй оператор чтения цепочки разошёлся бы с первым молча.
 func (e *ContextExtractor) ClientIP(r *http.Request) string {
-	return e.resolveClientIP(r)
+	if r == nil {
+		return ""
+	}
+	return e.clientIP(httpForwarded(r))
 }
 
-// resolveClientIP returns the canonical client IP literal for an HTTP request.
-// Forwarded headers are consulted only via clientIPFromForwardHeaders (trusted,
-// hop-indexed); otherwise the authoritative TCP peer (RemoteAddr) is used.
-func (e *ContextExtractor) resolveClientIP(r *http.Request) string {
+// forwarded — что запрос говорит о своём источнике, как он пришёл: TCP-пир,
+// состояние TLS соединения с ним и заголовки пересылки. Собирают его ТОЛЬКО
+// два читателя ниже — по одному на транспорт; судит один clientIP. Других
+// чтений заголовков пересылки в крае нет (гейт
+// internal/repohygiene/clientaddressreader.go).
+type forwarded struct {
+	peer string
+	link *tls.ConnectionState
+	// xff — ВСЕ значения X-Forwarded-For, склеенные по порядку: клиент вправе
+	// прислать заголовок дважды, и взятое первое значение отдавало бы выбор ему.
+	xff string
+	// xRealIP — единственное значение X-Real-IP; при нескольких — пусто
+	// (неоднозначность не разрешается в пользу клиента).
+	xRealIP string
+}
+
+// httpForwarded — читатель HTTP. Состояние TLS — linktls-контекст соединения
+// либо r.TLS (gateway/internal/linktls.FromRequest).
+func httpForwarded(r *http.Request) forwarded {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if ip := e.clientIPFromForwardHeaders(host, r.Header.Get("X-Real-IP"), r.Header.Get("X-Forwarded-For")); ip != "" {
-		return ip
+	f := forwarded{peer: host, link: linktls.FromRequest(r), xff: strings.Join(r.Header.Values("X-Forwarded-For"), ",")}
+	if v := r.Header.Values("X-Real-IP"); len(v) == 1 {
+		f.xRealIP = v[0]
 	}
-	if validIP(host) {
-		return canonicaliseIP(host)
-	}
-	return ""
+	return f
 }
 
-// resolveIPFromPeer is the gRPC peer.Addr equivalent of resolveClientIP.
-func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string) string {
-	if peerAddr == nil {
-		return ""
-	}
+// grpcForwarded — читатель нативного gRPC. Читается ТОЛЬКО `x-forwarded-for`,
+// все значения по порядку. Метаданные `grpcgateway-*` не читаются НИКОГДА: их
+// пишет наш мост в процессе, а мост на нативный слушатель не ходит (REST
+// судится по самому http.Request, BuildHTTP), — на нативном пути их пишет
+// клиент. `x-real-ip` на gRPC не читается: звено фронта пишет адрес в
+// `x-forwarded-for`.
+func grpcForwarded(peerAddr net.Addr, link *tls.ConnectionState, md metadata.MD) forwarded {
 	host, _, err := net.SplitHostPort(peerAddr.String())
 	if err != nil {
 		host = peerAddr.String()
 	}
-	if ip := e.clientIPFromForwardHeaders(host, "", headerFwd); ip != "" {
-		return ip
-	}
-	if validIP(host) {
-		return canonicaliseIP(host)
-	}
-	return ""
+	return forwarded{peer: host, link: link, xff: strings.Join(md.Get("x-forwarded-for"), ",")}
 }
 
-// clientIPFromForwardHeaders returns the client IP asserted by trusted reverse
-// proxies, or "" when forwarded headers must not be trusted (so the caller falls
-// back to the TCP peer). Only honoured when trustedXForwardedFor is set, at
-// least one trusted proxy hop is configured AND the TCP peer itself lies in the
-// declared circle of trusted proxies (kacho#3028) — a header from any other
-// peer is the caller's claim about itself, not a proxy's record.
+// clientIP — ЕДИНСТВЕННЫЙ оператор адреса клиента края: заголовки пересылки
+// принимаются только от звена фронта (isLink), иначе источник — TCP-пир.
 //
-// X-Forwarded-For is parsed from the RIGHT: with N trusted hops the client IP is
-// parts[len-N] — the entry the outermost trusted proxy recorded. A client can
-// only prepend forged entries to the LEFT of that block (never selected), so a
-// spoofed leftmost XFF can no longer drive `client_ip` / `source_ip_in_range`.
-// X-Real-IP (a single value a trusted proxy computed) is honoured only as a
-// fallback and only when a trusted proxy is present.
-func (e *ContextExtractor) clientIPFromForwardHeaders(peer, xRealIP, xff string) string {
-	if !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || !e.peerIsTrustedProxy(peer) {
-		return ""
-	}
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		if idx := len(parts) - e.trustedProxyCount; idx >= 0 && idx < len(parts) {
-			if ip := strings.TrimSpace(parts[idx]); validIP(ip) {
-				return canonicaliseIP(ip)
+// X-Forwarded-For разбирается СПРАВА: при N доверенных прыжках адрес клиента —
+// parts[len-N], запись, которую сделало внешнее доверенное звено. Подделка
+// клиента ложится ЛЕВЕЕ этого блока и не выбирается. X-Real-IP (одно значение,
+// вычисленное звеном) — запасной путь и тоже только от звена.
+func (e *ContextExtractor) clientIP(f forwarded) string {
+	if e.isLink(f) {
+		if f.xff != "" {
+			parts := strings.Split(f.xff, ",")
+			if idx := len(parts) - e.trustedProxyCount; idx >= 0 && idx < len(parts) {
+				if ip := strings.TrimSpace(parts[idx]); validIP(ip) {
+					return canonicaliseIP(ip)
+				}
 			}
 		}
+		if v := strings.TrimSpace(f.xRealIP); v != "" && validIP(v) {
+			return canonicaliseIP(v)
+		}
 	}
-	if v := strings.TrimSpace(xRealIP); v != "" && validIP(v) {
-		return canonicaliseIP(v)
+	if validIP(f.peer) {
+		return canonicaliseIP(f.peer)
 	}
 	return ""
 }
 
 // TrustsNobody — не принимает ли оператор заголовки пересылки ни от одного
-// пира: доверие выключено флагом, нулём прыжков, круг пуст либо звеньев
-// поимённо нет.
+// пира: доверие выключено флагом, нулём прыжков, круг пуст, звеньев поимённо
+// нет либо имён звеньев в сертификате нет.
 func (e *ContextExtractor) TrustsNobody() bool {
-	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0 || e.trustedPeers == nil
+	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0 ||
+		e.trustedPeers == nil || len(e.trustedSANs) == 0
 }
 
-// peerIsTrustedProxy — звено ли TCP-пир: лежит в сети круга И назван
-// поимённо перечнем звеньев фронта. Сеть проверяется первой: промах перечня
-// будит его обновление, и будить его вправе только пир сети круга. Пустой
-// круг, отсутствующий перечень и неразборный пир — «нет».
-func (e *ContextExtractor) peerIsTrustedProxy(peer string) bool {
-	addr, err := netip.ParseAddr(strings.TrimSpace(peer))
+// isLink — ОДИН предикат доверия к пиру: звено ли он. Звено — пир, который
+// лежит в сети круга, предъявил проверенный якорем сертификат с именем звена и
+// назван поимённо перечнем звеньев фронта. Порядок несущий: промах перечня
+// будит его обновление, и будить его вправе только пир сети круга с
+// сертификатом звена. Любое «нет» — источник сам пир.
+func (e *ContextExtractor) isLink(f forwarded) bool {
+	if e.TrustsNobody() {
+		return false
+	}
+	addr, err := netip.ParseAddr(strings.TrimSpace(f.peer))
 	if err != nil {
 		return false
 	}
 	addr = addr.Unmap()
-	if e.trustedPeers == nil {
-		return false
-	}
+	inCircle := false
 	for _, p := range e.trustedProxies {
 		if p.Contains(addr) {
-			return e.trustedPeers.Trusts(addr)
+			inCircle = true
+			break
+		}
+	}
+	return inCircle && e.linkNamed(f.link) && e.trustedPeers.Trusts(addr)
+}
+
+// linkNamed — несёт ли ПРОВЕРЕННЫЙ лист соединения имя звена. Предъявленный,
+// но не проверенный якорем сертификат (PeerCertificates без VerifiedChains) —
+// не звено: имя в нём написал кто угодно.
+func (e *ContextExtractor) linkNamed(st *tls.ConnectionState) bool {
+	if st == nil || !st.HandshakeComplete {
+		return false
+	}
+	leaf := verifiedLeaf(st.VerifiedChains)
+	if leaf == nil {
+		return false
+	}
+	for _, u := range leaf.URIs {
+		if _, ok := e.trustedSANs[u.String()]; ok {
+			return true
+		}
+	}
+	for _, d := range leaf.DNSNames {
+		if _, ok := e.trustedSANs[d]; ok {
+			return true
 		}
 	}
 	return false

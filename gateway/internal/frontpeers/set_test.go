@@ -233,3 +233,28 @@ func TestNew_RefusesWhatCannotWork(t *testing.T) {
 		t.Errorf("близнец: законные настройки отвергнуты: %v", err)
 	}
 }
+
+// Ran закрывается первой попыткой разрешения в Run — и только ею: снимок,
+// которого никто не запросил, не появляется (проба старта, C6, судит запуск
+// Run по этому признаку). Близнец — Refresh вне Run признака не ставит.
+func TestSet_RanSignalsTheFirstAttemptOfRun(t *testing.T) {
+	d, c := &dns{}, &clock{t: time.Unix(1_800_000_000, 0)}
+	d.set("api-gateway-front-console", frontPod)
+	s := newSet(t, d, c, "api-gateway-front-console")
+	if err := s.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.Ran():
+		t.Fatal("Ran закрыт без запуска Run")
+	default:
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	select {
+	case <-s.Ran():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run запущен, а первая попытка не отмечена")
+	}
+}

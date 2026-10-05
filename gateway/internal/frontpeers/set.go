@@ -82,6 +82,8 @@ type Set struct {
 
 	current atomic.Pointer[snapshot]
 	nudge   chan struct{}
+	ran     chan struct{}
+	ranOnce sync.Once
 	mu      sync.Mutex // сериализует Refresh: ответы не перезаписывают друг друга вне порядка
 }
 
@@ -104,6 +106,7 @@ func New(o Options) (*Set, error) {
 		now:     o.Now,
 		log:     o.Logger,
 		nudge:   make(chan struct{}, 1),
+		ran:     make(chan struct{}),
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -131,6 +134,12 @@ func (s *Set) Trusts(a netip.Addr) bool {
 	}
 	return false
 }
+
+// Ran закрывается, когда Run сделал первую попытку разрешения, — признак того,
+// что перечень вообще обновляется. Refresh вне Run его не ставит: снимок,
+// который никто не обновляет, через три периода перестаёт признавать звенья, и
+// сборка, забывшая запустить Run, обязана быть видна сразу (проба старта края).
+func (s *Set) Ran() <-chan struct{} { return s.ran }
 
 // Refresh разрешает все имена и заменяет перечень. Сбой хотя бы одного имени
 // (кроме «нет такого имени») оставляет прежний перечень и возвращается.
@@ -176,6 +185,7 @@ func (s *Set) Run(ctx context.Context) {
 		}
 	}
 	attempt()
+	s.ranOnce.Do(func() { close(s.ran) })
 	// Промах раньше MinGap не теряется, а откладывается до MinGap: новый под
 	// фронта не ждёт полного периода, а частота разрешений остаётся под
 	// пределом. Отложенное обновление одно на все промахи до него.
