@@ -347,9 +347,6 @@ func (w *Worker) cellLeaseBudget(_ context.Context, j *job) Step {
 // базы — не исход строки: без Ack (З24, CX1-68).
 func (w *Worker) cellRecipientNet(ctx context.Context, j *job) Step {
 	module := j.rt.src.Module
-	if w.superseded.Load() {
-		return silent()
-	}
 	class, ok := feedClassOf(j.res.Template.Class)
 	if !ok {
 		w.log.Error("класс шаблона сборки вне перечня ленты: строка не начата",
@@ -368,9 +365,10 @@ func (w *Worker) cellRecipientNet(ctx context.Context, j *job) Step {
 		}
 		return deferred(feed.ReasonRecipientNet, clampDefer(w.clock.Until(exhausted.FreeAt)))
 	case errors.Is(err, limits.ErrRecipientKeySuperseded):
-		if !w.superseded.Swap(true) {
-			w.log.Error("ключ сетки заменён: новых строк реплика не берёт")
-		}
+		// Остановку приёма реплики по ограде ведёт её владелец (З24 (в), N7);
+		// строка здесь лишь не начата: MAIL FROM не было, письма нет.
+		w.log.Warn("ключ сетки заменён: строка не начата, без Ack",
+			"source", module, "id", j.row.GetId())
 		return silent()
 	case errors.Is(err, limits.ErrGlobalCeilingReached):
 		w.log.Info("суточный потолок потока достигнут: строка не начата, без Ack",

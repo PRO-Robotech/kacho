@@ -33,7 +33,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -144,8 +143,6 @@ type Worker struct {
 
 	slots chan struct{}
 	wg    sync.WaitGroup
-	// superseded — сторож «ключ сетки заменён» (З24 (в)): новых строк нет.
-	superseded atomic.Bool
 }
 
 var _ source.Deliverer = (*Worker)(nil)
@@ -244,14 +241,8 @@ func (c Config) validate() error {
 	return errors.Join(errs...)
 }
 
-// Free — сколько исполнителей свободно. После сторожа «ключ сетки заменён» —
-// ноль: реплика новых строк не берёт (З24 (в)).
-func (w *Worker) Free() int {
-	if w.superseded.Load() {
-		return 0
-	}
-	return cap(w.slots) - len(w.slots)
-}
+// Free — сколько исполнителей свободно.
+func (w *Worker) Free() int { return cap(w.slots) - len(w.slots) }
 
 // Deliver раздаёт строки пачки исполнителям и возвращается, не дожидаясь их.
 // Строка пачки, которой не хватило свободного исполнителя, ждёт его здесь:
