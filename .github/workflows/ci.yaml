@@ -2600,15 +2600,17 @@ jobs:
       # получают посадку own (#2929); каждая цепочка, которую конвейер поднимает на
       # kind, помещается в узел своего ранера по запросам процессора (#2937); политика
       # сети каждой цепочки пропускает тех, кто к службе звонит, и называет только
-      # поды рендера (#2941).
-      - name: пробы тега helmcharts — след поставщика, снятые ручки края, приёмник писем стенда, объекты поставщика, ёмкость узла ранера и политики сети (рендер умбреллы)
+      # поды рендера (#2941); флаг извещений каждого из пяти модулей kacho выводится
+      # из одного объявления и переопределения модуля, без объявления рендер
+      # отказывает (приёмка NTF-3, NTF3-66; #2918).
+      - name: пробы тега helmcharts — след поставщика, снятые ручки края, приёмник писем стенда, объекты поставщика, ёмкость узла ранера, политики сети и флаги извещений модулей (рендер умбреллы)
         # `id` обязателен: без него шаг не попадает в контекст `steps`, и перепись
         # исходов (последний шаг работы) не может отличить «исполнился» от «пропущен».
         id: umbrella-env-key
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         run: >-
           go test -tags helmcharts ./deploy/
-          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled'
+          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled|TestNTF366_ModuleFlagsAreDerivedFromOneDeclarationAndAnOverride|TestNTF366_RenderRefusesWithoutTheGlobalDeclaration'
           -count=1 -v
 
       - name: umbrella template — каждый стек таблицы
