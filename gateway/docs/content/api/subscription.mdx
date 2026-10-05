@@ -210,8 +210,13 @@ curl -sS -N --max-time 5 -D - -H "Authorization: Bearer $TOKEN" \
   <tbody>
     <tr>
       <td><code>compute</code></td><td>Compute</td>
-      <td><code>compute&#95;instance</code></td>
-      <td><code>state</code> типа <code>kacho.cloud.compute.v1.Instance</code> — у создания и правки; у снятия состояния нет</td>
+      <td><code>compute&#95;instance</code>, <code>compute&#95;placement&#95;group</code>,
+          <code>compute&#95;guest&#95;access&#95;key</code></td>
+      <td><code>state</code> типа контракта своего вида —
+          <code>kacho.cloud.compute.v1.Instance</code>,
+          <code>kacho.cloud.compute.v1.PlacementGroup</code>,
+          <code>kacho.cloud.compute.v1.GuestAccessKey</code> — у создания и правки; у снятия
+          состояния нет</td>
     </tr>
     <tr>
       <td><code>loadbalancer</code></td><td>Load Balancer</td>
@@ -230,8 +235,15 @@ curl -sS -N --max-time 5 -D - -H "Authorization: Bearer $TOKEN" \
     </tr>
     <tr>
       <td><code>registry</code></td><td>Registry</td>
-      <td><code>registry&#95;registry</code></td>
-      <td><code>state</code> типа <code>kacho.cloud.registry.v1.Registry</code> — у создания и правки; у снятия состояния нет</td>
+      <td><code>registry&#95;registry</code>, <code>registry&#95;repository</code></td>
+      <td><code>state</code> типа <code>kacho.cloud.registry.v1.Registry</code> у
+          <code>registry&#95;registry</code> — у создания и правки; у снятия состояния нет.
+          <code>registry&#95;repository</code> — вид <strong>без типа состояния</strong>: у
+          события любого рода приходит <code>stateUnavailable</code> с причиной
+          <code>NOT&#95;PRODUCED</code> (состояние репозитория живёт в хранилище образов, у
+          владельца — только признак его существования). Идентификатор — <code>&lt;registry_id&gt;/&lt;repo&gt;</code>;
+          имени на снятии у вида нет. Отбор по меткам на клиенте для этого вида
+          <strong>неисполним</strong> — отбирать не из чего</td>
     </tr>
     <tr>
       <td><code>storage</code></td><td>Storage</td>
@@ -249,14 +261,18 @@ curl -sS -N --max-time 5 -D - -H "Authorization: Bearer $TOKEN" \
       <td><code>vpc&#95;network</code>, <code>vpc&#95;subnet</code>, <code>vpc&#95;address</code>,
           <code>vpc&#95;gateway</code>, <code>vpc&#95;route&#95;table</code>,
           <code>vpc&#95;security&#95;group</code>, <code>vpc&#95;network&#95;interface</code>,
-          <code>vpc&#95;cidr&#95;group</code></td>
+          <code>vpc&#95;cidr&#95;group</code>, <code>vpc&#95;address&#95;pool</code></td>
       <td><code>state</code> типа контракта своего вида — <code>kacho.cloud.vpc.v1.Network</code>,
           <code>kacho.cloud.vpc.v1.Subnet</code>, <code>kacho.cloud.vpc.v1.Address</code>,
           <code>kacho.cloud.vpc.v1.Gateway</code>, <code>kacho.cloud.vpc.v1.RouteTable</code>,
           <code>kacho.cloud.vpc.v1.SecurityGroup</code>,
           <code>kacho.cloud.vpc.v1.NetworkInterface</code>,
-          <code>kacho.cloud.vpc.v1.CidrGroup</code> — у создания и правки, у всех восьми видов;
-          у снятия состояния нет</td>
+          <code>kacho.cloud.vpc.v1.CidrGroup</code>,
+          <code>kacho.cloud.vpc.v1.AddressPool</code> — у создания и правки, у всех девяти видов;
+          у снятия состояния нет. <code>vpc&#95;address&#95;pool</code> — вид уровня
+          кластера: <code>projectId</code> у его событий пуст, ось <code>project&#95;id</code> его
+          не отбирает, а событие доходит тому, кому модель прав даёт видеть этот пул.
+          Назначение и снятие пула по умолчанию сети приходят правкой самого пула</td>
     </tr>
   </tbody>
 </table>

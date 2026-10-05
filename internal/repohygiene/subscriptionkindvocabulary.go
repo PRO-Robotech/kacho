@@ -180,12 +180,21 @@ func AuditSubscriptionKindVocabulary(
 	var census SubscriptionKindCensus
 	census.Root = o.Root
 
-	declared, modelBytes, err := collectModelVisibleTypes(o.ModelFile)
+	declared, modelTypes, modelBytes, err := collectModelVisibleTypes(o.ModelFile)
 	if err != nil {
 		return nil, census, err
 	}
 	census.ModelBytes = modelBytes
 	census.DeclaredTypes = len(declared)
+	// Внутренний вид (ведомость InternalKinds) клиенту не служится: его читатель —
+	// служба по своему отношению модели (`reader` у ленты извещений), а не
+	// арендатор по `v_get`. Для него признак — тип объявлен моделью; `v_get` не
+	// требуется. Ключ ведомости — тип объекта, тем же словом.
+	for kind := range o.InternalKinds {
+		if _, ok := modelTypes[kind]; ok {
+			declared[kind] = struct{}{}
+		}
+	}
 
 	var findings []SubscriptionKindFinding
 	used := map[string]struct{}{}
@@ -276,22 +285,23 @@ func AuditSubscriptionKindVocabulary(
 }
 
 // collectModelVisibleTypes — типы канонической модели прав, объявляющие
-// отношение видимости `v_get`, и число прочитанных байт.
+// отношение видимости `v_get`; все объявленные типы; число прочитанных байт.
 //
 // Разбор построчный по форме модели: заголовок `type <имя>` с начала строки
 // открывает тип, `define v_get:` с отступом внутри него — признак. Текст после
 // `#` — комментарий и не читается: тип, названный в комментарии, объявлением не
 // является. Пустой путь — отказ, а не пустое множество.
-func collectModelVisibleTypes(modelFile string) (map[string]struct{}, int, error) {
+func collectModelVisibleTypes(modelFile string) (vget, all map[string]struct{}, size int, err error) {
 	if modelFile == "" {
-		return nil, 0, fmt.Errorf("путь канонической модели прав не задан — признак вида не измерить")
+		return nil, nil, 0, fmt.Errorf("путь канонической модели прав не задан — признак вида не измерить")
 	}
 	// #nosec G304 -- путь разрешён internal/contractsource либо стендом пробы
 	raw, err := os.ReadFile(modelFile)
 	if err != nil {
-		return nil, 0, fmt.Errorf("каноническая модель прав не прочитана: %w", err)
+		return nil, nil, 0, fmt.Errorf("каноническая модель прав не прочитана: %w", err)
 	}
 	out := map[string]struct{}{}
+	all = map[string]struct{}{}
 	current := ""
 	for _, line := range strings.Split(string(raw), "\n") {
 		if k := strings.Index(line, "#"); k >= 0 {
@@ -299,13 +309,14 @@ func collectModelVisibleTypes(modelFile string) (map[string]struct{}, int, error
 		}
 		if m := modelTypeLineRe.FindStringSubmatch(line); m != nil {
 			current = m[1]
+			all[current] = struct{}{}
 			continue
 		}
 		if current != "" && modelVGetLineRe.MatchString(line) {
 			out[current] = struct{}{}
 		}
 	}
-	return out, len(raw), nil
+	return out, all, len(raw), nil
 }
 
 // auditOneFileForKindVocabulary судит один файл прод-кода.

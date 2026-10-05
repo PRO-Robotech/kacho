@@ -595,3 +595,39 @@ func TestKindVocabularyGateCatchesAModelTypeWithoutVGet(t *testing.T) {
 		}
 	}
 }
+
+// TestKindVocabularyGateTakesAnInternalKindDeclaredWithoutVGet — внутренний вид
+// (ведомость InternalKinds) служится службе по своему отношению модели, а не
+// арендатору по `v_get`: для него признак — тип объявлен моделью. Близнец — тот
+// же журнал без записи ведомости: тип без `v_get` снова находка.
+func TestKindVocabularyGateTakesAnInternalKindDeclaredWithoutVGet(t *testing.T) {
+	t.Parallel()
+	s := newKindStand(t)
+	s.writeJournal(t, `
+			Kinds: map[string]subscription.Kind{
+				"Machine":       {ObjectType: authzfilter.ResourceTypeMachine, Action: authzfilter.ActionMachineRead},
+				"probe_balancr": {ObjectType: authzfilter.ResourceTypeBalancer, Action: authzfilter.ActionBalancerRead},
+				"mute":          {ObjectType: authzfilter.ResourceTypeMute, Action: authzfilter.ActionMachineRead},
+			},`)
+	audit := func(internal map[string]string) []SubscriptionKindFinding {
+		var log strings.Builder
+		fs, _, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
+			Root:          s.root,
+			ModelFile:     filepath.Join(s.root, kindStandModel),
+			GoRoots:       []string{"pkg", "services"},
+			ClientPage:    "gateway/docs/content/api/subscription.mdx",
+			InternalKinds: internal,
+		}, &log)
+		if err != nil {
+			t.Fatalf("анализатор не отработал: %v\n%s", err, log.String())
+		}
+		return fs
+	}
+	if fs := audit(map[string]string{"probe_mute": "внутренний"}); len(fs) != 0 {
+		t.Fatalf("внутренний вид, объявленный моделью, дал находки: %v", fs)
+	}
+	got := kindFindingsOf(audit(nil), KindVocabularyUndeclared)
+	if len(got) != 1 || !strings.Contains(got[0].What, "probe_mute") {
+		t.Fatalf("без записи ведомости тип без v_get обязан быть находкой, есть %v", got)
+	}
+}

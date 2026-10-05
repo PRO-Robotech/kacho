@@ -44,7 +44,21 @@ const (
 	journalDeclSuffix = "/internal/subscriptionjournal/journal.go"
 	// protoDomainRoot — дерево контрактов.
 	protoDomainRoot = "proto/kacho/cloud"
+	// labelFilterDecision — запись решения об отборе по меткам: исключение вида
+	// без состояния называется и здесь.
+	labelFilterDecision = "docs/architecture/subscription-label-filter.md"
 )
+
+// statelessKinds — виды без типа состояния (Д127 (в)). Сверка чисел вычитает их
+// только по записи; запись судит JudgeStatelessKinds.
+var statelessKinds = []StatelessKind{{
+	File: "services/registry/internal/subscriptionjournal/journal.go",
+	Key:  "JournalWordRepository",
+	Wire: "registry_repository",
+	Reason: "Д127 (в): состояние репозитория живёт в хранилище образов, в базе модуля — только " +
+		"признак существования; событие любого рода несёт NOT_PRODUCED. Предикат снятия — у вида " +
+		"появился тип состояния (stateWithEndpoint собирает его для Repository)",
+}}
 
 // TestSubscriptionStateCarriesLabelsForEveryKind — сам гейт.
 func TestSubscriptionStateCarriesLabelsForEveryKind(t *testing.T) {
@@ -105,14 +119,25 @@ func TestSubscriptionStateCarriesLabelsForEveryKind(t *testing.T) {
 			"переписана, либо разбор перестал их видеть", subscriptionPage)
 	}
 
+	// ── Виды без состояния: запись жива и исключение названо вслух.
+	decision, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(labelFilterDecision)))
+	if err != nil {
+		t.Fatalf("чтение %s: %v", labelFilterDecision, err)
+	}
+	if bad := JudgeStatelessKinds(owners, statelessKinds, string(pageSrc), string(decision)); len(bad) > 0 {
+		t.Errorf("ведомость видов без состояния (записей %d):\n  %s", len(statelessKinds), strings.Join(bad, "\n  "))
+	}
+	t.Logf("видов без состояния по ведомости %d; ожидается типов состояния на странице %d",
+		len(statelessKinds), kindsTotal-len(statelessKinds))
+
 	// ── Полнота обхода: числа двух источников обязаны сойтись.
-	if len(types) != kindsTotal {
-		t.Errorf("видов у владельцев %d, а типов состояния на странице %d — сойтись "+
+	if want := kindsTotal - len(statelessKinds); len(types) != want {
+		t.Errorf("видов с состоянием у владельцев %d (всего %d, без состояния %d), а типов состояния на странице %d — сойтись "+
 			"обязаны.\nРасхождение означает одно из двух, и оба требуют работы: у вида "+
 			"появилось состояние, о котором клиентская страница молчит (клиент не знает, "+
 			"что может отбирать по меткам сам), либо страница называет тип, которого "+
 			"больше не производит ни один владелец (мёртвая координата в обещании).\n"+
-			"Типы страницы: %s", kindsTotal, len(types), joinTypes(types))
+			"Типы страницы: %s", want, kindsTotal, len(statelessKinds), len(types), joinTypes(types))
 	}
 
 	// ── Требование: у каждого типа состояния есть метки.
