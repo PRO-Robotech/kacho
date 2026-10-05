@@ -38,6 +38,7 @@ const injGivesURL = `        env:
 `
 
 func TestProbeEnvGivenInjection_ControlIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := checkProbeEnvGiven("wf.yml", injWorkflow(injGivesURL+"        run: npx playwright test\n"), injSuite(nil))
 	if len(findings) != 0 {
 		t.Fatalf("контроль: ждали тишины, получили %v", findings)
@@ -48,6 +49,7 @@ func TestProbeEnvGivenInjection_ControlIsSilent(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_ConstantNotGivenIsFound(t *testing.T) {
+	t.Parallel()
 	suite := injSuite(map[string]string{
 		"ui-future/e2e/specs/admin.ts": `export const ADMIN_ENV = "KACHO_CLOUD_ADMIN_EMAIL";` + "\n",
 	})
@@ -59,6 +61,7 @@ func TestProbeEnvGivenInjection_ConstantNotGivenIsFound(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_BracketReadNotGivenIsFound(t *testing.T) {
+	t.Parallel()
 	suite := injSuite(map[string]string{
 		"ui-future/e2e/preconditions/x.precondition.ts": `const v = process.env["KACHO_X_Y"];` + "\n",
 	})
@@ -69,6 +72,7 @@ func TestProbeEnvGivenInjection_BracketReadNotGivenIsFound(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_CommentIsNotARead(t *testing.T) {
+	t.Parallel()
 	suite := injSuite(map[string]string{
 		"ui-future/e2e/specs/doc.ts": "// process.env.KACHO_ONLY_IN_PROSE\n/**\n * const A = \"KACHO_ALSO_PROSE\";\n */\n",
 	})
@@ -79,6 +83,7 @@ func TestProbeEnvGivenInjection_CommentIsNotARead(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_EveryLawfulGivingFormIsSilent(t *testing.T) {
+	t.Parallel()
 	suite := injSuite(map[string]string{
 		"ui-future/e2e/specs/admin.ts": `export const A = "KACHO_A";` + "\n" + `export const B: string = "KACHO_B";` + "\n" +
 			`const c = process.env.KACHO_C;` + "\n",
@@ -94,6 +99,7 @@ func TestProbeEnvGivenInjection_EveryLawfulGivingFormIsSilent(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_WorkflowAndJobEnvAreGiving(t *testing.T) {
+	t.Parallel()
 	wf := `
 env:
   KACHO_CONSOLE_URL: u
@@ -112,6 +118,7 @@ jobs:
 }
 
 func TestProbeEnvGivenInjection_GivingInACommentIsNotGiving(t *testing.T) {
+	t.Parallel()
 	suite := injSuite(map[string]string{"ui-future/e2e/specs/a.ts": `const A = "KACHO_A";` + "\n"})
 	tail := injGivesURL + "        run: |\n          # export KACHO_A=x\n          npx playwright test\n"
 	findings, _ := checkProbeEnvGiven("wf.yml", injWorkflow(tail), suite)
@@ -121,6 +128,7 @@ func TestProbeEnvGivenInjection_GivingInACommentIsNotGiving(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_OptionalKnobWithoutReaderExpires(t *testing.T) {
+	t.Parallel()
 	suite := map[string]string{"ui-future/e2e/playwright.config.ts": "const BASE = process.env.KACHO_CONSOLE_URL;\n"}
 	findings, _ := checkProbeEnvGiven("wf.yml", injWorkflow(injGivesURL+"        run: npx playwright test\n"), suite)
 	if len(findings) != 1 || !strings.Contains(findings[0], "`KACHO_CHROMIUM`") || !strings.Contains(findings[0], "нечего исключать") {
@@ -129,6 +137,7 @@ func TestProbeEnvGivenInjection_OptionalKnobWithoutReaderExpires(t *testing.T) {
 }
 
 func TestProbeEnvGivenInjection_NoProbeStepIsAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	_, census := checkProbeEnvGiven("wf.yml", injWorkflow("        run: echo нет проб\n"), injSuite(nil))
 	if census.ProbeJobs != 0 {
 		t.Fatalf("без шага проб перепись обязана показать ноль джоб: %+v", census)
