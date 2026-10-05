@@ -75,3 +75,37 @@ func TestDeclare_FoundationAcceptsTheDeclaredKind(t *testing.T) {
 		t.Fatalf("фундамент ленты принял журнал без вида ленты — близнец не различает флаг")
 	}
 }
+
+// TestRelations_AddsTheFeedTypeWithItsOwnRelationAndKeepsThePage — карта
+// сужателя модуля дополняется типом ленты с отношением модели `reader`;
+// записи модуля и умолчание остаются как есть, вход не меняется.
+func TestRelations_AddsTheFeedTypeWithItsOwnRelationAndKeepsThePage(t *testing.T) {
+	page := map[string][]string{"": {"v_get"}, "probe_object": {"v_get"}}
+	got := feedjournal.Relations(page)
+	if want := []string{"reader"}; len(got[string(feed.FeedObjectType)]) != 1 || got[string(feed.FeedObjectType)][0] != want[0] {
+		t.Fatalf("тип ленты: %v, ожидалось %v", got[string(feed.FeedObjectType)], want)
+	}
+	for k, v := range page {
+		if len(got[k]) != len(v) || got[k][0] != v[0] {
+			t.Fatalf("запись %q модуля изменена: %v, было %v", k, got[k], v)
+		}
+	}
+	if len(got) != len(page)+1 {
+		t.Fatalf("записей %d, ожидалось %d", len(got), len(page)+1)
+	}
+	if _, touched := page[string(feed.FeedObjectType)]; touched {
+		t.Fatalf("вход изменён: в карте модуля появилась запись типа ленты")
+	}
+}
+
+// TestRelations_RefusesASecondSpellingOfTheFeedRelation — карта модуля, уже
+// называющая тип ленты, — ошибка программы: второе написание отношения
+// разошлось бы с объявлением пакета.
+func TestRelations_RefusesASecondSpellingOfTheFeedRelation(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatalf("карта со своей записью типа ленты принята")
+		}
+	}()
+	feedjournal.Relations(map[string][]string{"": {"v_get"}, string(feed.FeedObjectType): {"v_get"}})
+}

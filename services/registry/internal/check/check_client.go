@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
@@ -52,7 +53,10 @@ func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 			// Предикат страницы registry задаётся ЯВНО на каждом вызове (см.
 			// CheckMany), поэтому карта здесь несёт лишь умолчание — но несёт, иначе
 			// сборка сужателя отвергла бы посадку без предиката.
-			Relations: map[string][]string{"": {"v_list"}},
+			// Тот же сужатель судит строки журнала в потоке подписки реестра: тип
+			// ленты (`notification_feed`) спрашивается своим отношением, а не
+			// умолчанием карты — у типа ленты `v_list` в модели нет (SA-3042-01).
+			Relations: feedjournal.Relations(map[string][]string{"": {"v_list"}}),
 			Timeout:   CheckTimeout,
 		}),
 	}
