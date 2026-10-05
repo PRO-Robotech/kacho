@@ -689,6 +689,18 @@ type Config struct {
 	// TrustedProxyCircle.
 	AuthZTrustedProxyCIDRs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS" default:""`
 
+	// AuthZTrustedProxyPeers — ЗВЕНЬЯ ФРОНТА ПОИМЁННО (kacho#3028, круг 3):
+	// имена безголовых служб через запятую, чьи поды край признаёт звеньями.
+	// Сеть круга выделяет «под кластера», а не «раздачу консоли» — сеть подов
+	// общая; звено — адрес пода, выбранного службой фронта метками. Объявляется
+	// ВМЕСТЕ с кругом: сеть без имён — доверие всей сети подов, имена без сети
+	// — доверие, которому нечем исполниться. Разбор и отказ старта —
+	// TrustedProxyPeers.
+	AuthZTrustedProxyPeers string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS" default:""`
+	// AuthZTrustedProxyPeersRefresh — период разрешения имён звеньев; ответ
+	// действует не дольше трёх периодов (gateway/internal/frontpeers).
+	AuthZTrustedProxyPeersRefresh time.Duration `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS_REFRESH" default:"5s"`
+
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
@@ -765,6 +777,50 @@ func (c Config) TrustedProxyCircle() ([]netip.Prefix, error) {
 		return nil, nil
 	}
 	return circle, nil
+}
+
+// TrustedProxyPeersKnob — имя ручки звеньев фронта поимённо; его называют
+// отказы старта.
+const TrustedProxyPeersKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS"
+
+// TrustedProxyPeersRefreshKnob — имя ручки периода разрешения звеньев.
+const TrustedProxyPeersRefreshKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS_REFRESH"
+
+// TrustedProxyPeers — разобранные звенья фронта поимённо (kacho#3028, круг 3).
+//
+// Отказ старта:
+//   - запись, которую отвергает pkg/proxycircle.ParsePeers (адрес вместо
+//     имени — сужение обходится; не имя службы) — при любом флаге доверия;
+//   - при включённом доверии: сеть круга без звеньев (доверие всей сети
+//     подов), звенья без сети (доверию нечем исполниться), неположительный
+//     период разрешения (перечень не обновлялся бы).
+//
+// Ни сети, ни звеньев — «никому», законно. При выключенном доверии пара не
+// судится, и звеньев нет.
+func (c Config) TrustedProxyPeers() ([]string, error) {
+	peers, err := proxycircle.ParsePeers(c.AuthZTrustedProxyPeers)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyPeersKnob, err)
+	}
+	circle, err := c.TrustedProxyCircle()
+	if err != nil {
+		return nil, err
+	}
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
+		return nil, nil
+	}
+	switch {
+	case len(circle) > 0 && len(peers) == 0:
+		return nil, fmt.Errorf("%s: сеть круга %s=%q объявлена без звеньев фронта поимённо — заголовку адреса "+
+			"доверяла бы вся сеть подов кластера", TrustedProxyPeersKnob, TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCIDRs)
+	case len(circle) == 0 && len(peers) > 0:
+		return nil, fmt.Errorf("%s пуст, а звенья фронта поимённо объявлены (%s=%q) — доверию нечем исполниться",
+			TrustedProxyCIDRsKnob, TrustedProxyPeersKnob, c.AuthZTrustedProxyPeers)
+	case len(peers) > 0 && c.AuthZTrustedProxyPeersRefresh <= 0:
+		return nil, fmt.Errorf("%s=%v не положителен — перечень звеньев не обновлялся бы",
+			TrustedProxyPeersRefreshKnob, c.AuthZTrustedProxyPeersRefresh)
+	}
+	return peers, nil
 }
 
 // DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.

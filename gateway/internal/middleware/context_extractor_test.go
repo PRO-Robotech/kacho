@@ -20,8 +20,10 @@ func fixedNow(t time.Time) func() time.Time { return func() time.Time { return t
 
 // ingressCircle — круг доверенных звеньев проб пересылки (kacho#3028): пиры
 // этих проб — 10.0.0.1, 192.0.2.10 и умолчание httptest 192.0.2.1.
-var ingressCircle = middleware.WithTrustedProxies(
-	netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("192.0.2.0/24"))
+var ingressCircle = func(e *middleware.ContextExtractor) {
+	middleware.WithTrustedProxies(netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("192.0.2.0/24"))(e)
+	middleware.WithTrustedPeers(links{"10.0.0.1", "192.0.2.10", "192.0.2.1"})(e)
+}
 
 func TestContextExtractor_BuildHTTP_AlwaysHasCurrentTime(t *testing.T) {
 	now := time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC)

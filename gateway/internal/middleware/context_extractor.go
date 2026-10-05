@@ -78,6 +78,11 @@ type ContextExtractor struct {
 	// службы доступа одной строкой заголовка. Пустой круг — «не доверяю
 	// никому»: источник — сам TCP-пир. Это НЕ «не сужаю».
 	trustedProxies []netip.Prefix
+
+	// trustedPeers — УЗКИЙ КРУГ (kacho#3028, круг 3): звено фронта поимённо.
+	// Пир доверен, только если он и в сети круга, и в этом перечне; nil —
+	// «никому».
+	trustedPeers PeerSet
 }
 
 // ExtractorOption configures a ContextExtractor at construction.
@@ -102,6 +107,18 @@ func WithTrustedProxies(prefixes ...netip.Prefix) ExtractorOption {
 	return func(e *ContextExtractor) {
 		e.trustedProxies = append([]netip.Prefix(nil), prefixes...)
 	}
+}
+
+// PeerSet — звенья фронта поимённо (kacho#3028, круг 3): адреса подов, которые
+// выбирают безголовые службы фронта (gateway/internal/frontpeers). Сеть круга
+// говорит «под кластера», перечень — «звено фронта».
+type PeerSet interface{ Trusts(netip.Addr) bool }
+
+// WithTrustedPeers объявляет звенья фронта поимённо. Без этой опции заголовки
+// пересылки не принимаются ни от одного пира, каков бы ни был круг сетей:
+// сеть подов общая, и доверие ей — доверие любому поду кластера.
+func WithTrustedPeers(p PeerSet) ExtractorOption {
+	return func(e *ContextExtractor) { e.trustedPeers = p }
 }
 
 // NewContextExtractor constructs an extractor. now=nil falls back to
@@ -286,22 +303,28 @@ func (e *ContextExtractor) clientIPFromForwardHeaders(peer, xRealIP, xff string)
 }
 
 // TrustsNobody — не принимает ли оператор заголовки пересылки ни от одного
-// пира: доверие выключено флагом, нулём прыжков либо круг пуст.
+// пира: доверие выключено флагом, нулём прыжков, круг пуст либо звеньев
+// поимённо нет.
 func (e *ContextExtractor) TrustsNobody() bool {
-	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0
+	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0 || e.trustedPeers == nil
 }
 
-// peerIsTrustedProxy — лежит ли TCP-пир в круге доверенных звеньев. Пустой
-// круг и неразборный пир — «нет».
+// peerIsTrustedProxy — звено ли TCP-пир: лежит в сети круга И назван
+// поимённо перечнем звеньев фронта. Сеть проверяется первой: промах перечня
+// будит его обновление, и будить его вправе только пир сети круга. Пустой
+// круг, отсутствующий перечень и неразборный пир — «нет».
 func (e *ContextExtractor) peerIsTrustedProxy(peer string) bool {
 	addr, err := netip.ParseAddr(strings.TrimSpace(peer))
 	if err != nil {
 		return false
 	}
 	addr = addr.Unmap()
+	if e.trustedPeers == nil {
+		return false
+	}
 	for _, p := range e.trustedProxies {
 		if p.Contains(addr) {
-			return true
+			return e.trustedPeers.Trusts(addr)
 		}
 	}
 	return false

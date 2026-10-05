@@ -7,15 +7,19 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/frontpeers"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -28,16 +32,45 @@ import (
 // из них.
 //
 // Круг доверенных звеньев (kacho#3028) — третья ручка того же оператора:
-// заголовок пересылки принимается только от пира из круга. Разбор и отказ
-// старта — config.TrustedProxyCircle; корень зовёт его до первой провязки.
-func newClientAddressOperator(cfg config.Config) (*middleware.ContextExtractor, error) {
+// заголовок пересылки принимается только от пира, который и лежит в сети
+// круга, и назван поимённо перечнем звеньев фронта (адреса подов безголовых
+// служб фронта, круг 3). Разбор и отказ старта — config.TrustedProxyCircle и
+// config.TrustedProxyPeers; корень зовёт их до первой провязки.
+//
+// Перечень звеньев возвращается вторым: его обновление корень запускает на
+// контексте процесса (frontpeers.Set.Run). nil — звеньев не объявлено, и
+// заголовок не принимается ни от кого.
+func newClientAddressOperator(cfg config.Config, resolve frontpeers.Resolver, logger *slog.Logger) (
+	*middleware.ContextExtractor, *frontpeers.Set, error) {
 	circle, err := cfg.TrustedProxyCircle()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor,
+	names, err := cfg.TrustedProxyPeers()
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := []middleware.ExtractorOption{
 		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount),
-		middleware.WithTrustedProxies(circle...)), nil
+		middleware.WithTrustedProxies(circle...),
+	}
+	var links *frontpeers.Set
+	if len(names) > 0 {
+		links, err = frontpeers.New(frontpeers.Options{
+			Names: names, Refresh: cfg.AuthZTrustedProxyPeersRefresh, Resolve: resolve, Logger: logger,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, middleware.WithTrustedPeers(links))
+	}
+	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor, opts...), links, nil
+}
+
+// lookupFrontLinks — разрешение имени службы звена в адреса её подов
+// разрешателем процесса (поиск по пространству имён пода — из его resolv.conf).
+func lookupFrontLinks(ctx context.Context, name string) ([]netip.Addr, error) {
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", name)
 }
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь

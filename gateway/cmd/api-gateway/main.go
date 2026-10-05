@@ -72,16 +72,23 @@ func main() {
 	// ретрансляции полосы входа, и отказ по негодному кругу не вправе зависеть
 	// от того, какая из них включена в этой посадке. Оператор один на процесс —
 	// его берут обе провязки ниже.
-	clientAddress, caErr := newClientAddressOperator(cfg)
+	clientAddress, frontLinks, caErr := newClientAddressOperator(cfg, lookupFrontLinks, logger)
 	if caErr != nil {
 		log.Fatalf("client address startup-validation: %v", caErr)
 	}
-	logger.Info("client address: forwarded headers are honoured only from peers in the trusted circle",
+	logger.Info("client address: forwarded headers are honoured only from front links in the trusted circle",
 		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
+		"trusted_proxy_peers", cfg.AuthZTrustedProxyPeers,
 		"trusted_from_nobody", clientAddress.TrustsNobody())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+
+	// Перечень звеньев фронта живёт, пока жив процесс: обновление по периоду
+	// и по промаху, остановка — с контекстом процесса.
+	if frontLinks != nil {
+		go frontLinks.Run(ctx)
+	}
 
 	// SIGHUP — operator-driven reload signal for the permission catalog +
 	// authz overrides. The signal handler is wired up after the authz

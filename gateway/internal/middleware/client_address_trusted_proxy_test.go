@@ -29,6 +29,7 @@ import (
 const (
 	frontPod     = "10.244.1.17" // раздача консоли — доверенное звено
 	otherPod     = "10.250.3.4"  // любой иной пир — НЕ доверенное звено
+	podInCircle  = "10.244.3.4"  // под в сети круга, службой фронта НЕ выбранный
 	clientA      = "198.51.100.23"
 	clientB      = "203.0.113.41"
 	forgedSource = "192.0.2.200"
@@ -57,12 +58,71 @@ func TestClientAddress_NoDeclaredCircleTrustsNobody(t *testing.T) {
 	}
 }
 
+// links — звенья фронта поимённо: адреса подов, выбранных службами фронта
+// (gateway/internal/frontpeers). Здесь — неподвижный перечень.
+type links []string
+
+func (l links) Trusts(a netip.Addr) bool {
+	for _, s := range l {
+		if netip.MustParseAddr(s) == a.Unmap() {
+			return true
+		}
+	}
+	return false
+}
+
 // trustingTheFront — край за раздачей консоли: один доверенный прыжок, круг —
-// сеть подов, где раздача живёт.
+// сеть подов, где раздача живёт, звено — под раздачи поимённо.
 func trustingTheFront() *middleware.ContextExtractor {
 	return middleware.NewContextExtractor(time.Now, true,
 		middleware.WithTrustedProxyHops(1),
+		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
+		middleware.WithTrustedPeers(links{frontPod}))
+}
+
+// УЗКИЙ КРУГ (kacho#3028, круг 3). Сеть круга — «под кластера», а не «звено
+// фронта»: под в той же сети, службой фронта не выбранный, источник заголовком
+// не сдвигает. Близнец — тот же заголовок от пода раздачи — принимается.
+func TestClientAddress_PodInTheCircleNetworkIsNotALinkUnlessTheFrontSelectsIt(t *testing.T) {
+	e := trustingTheFront()
+	if got := e.ClientIP(httpFrom(podInCircle, forgedSource)); got != podInCircle {
+		t.Errorf("под %s в сети круга, не звено фронта, сдвинул источник на %q", podInCircle, got)
+	}
+	addr := &net.TCPAddr{IP: net.ParseIP(podInCircle), Port: 40000}
+	if got := e.BuildPeerAddr(nil, addr, forgedSource, middleware.ResolvedSubject{})["client_ip"]; got != podInCircle {
+		t.Errorf("gRPC: под %s в сети круга, не звено фронта, сдвинул источник на %v", podInCircle, got)
+	}
+	if got := e.ClientIP(httpFrom(frontPod, clientA)); got != clientA {
+		t.Errorf("близнец: заголовок звена фронта не принят: %q", got)
+	}
+}
+
+// Сеть без звеньев поимённо — «никому»: доверие всей сети подов не выдаётся
+// ни при каком круге. Близнец — звено в той же сети, названное поимённо,
+// принимается (выше, trustingTheFront).
+func TestClientAddress_CircleWithoutNamedLinksTrustsNobody(t *testing.T) {
+	e := middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1),
 		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")))
+	if got := e.ClientIP(httpFrom(frontPod, forgedSource)); got != frontPod {
+		t.Fatalf("круг без звеньев поимённо: заголовок пира %s сдвинул источник на %q", frontPod, got)
+	}
+	if !e.TrustsNobody() {
+		t.Fatal("круг без звеньев поимённо: TrustsNobody() = false, а заголовок не принимается ни от кого")
+	}
+}
+
+// Звено поимённо, но вне сети круга (адрес публичный либо чужой сети), — не
+// звено: сеть круга остаётся внешней границей.
+func TestClientAddress_NamedLinkOutsideTheCircleNetworkIsNotALink(t *testing.T) {
+	e := middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1),
+		middleware.WithTrustedProxies(netip.MustParsePrefix("10.244.0.0/16")),
+		middleware.WithTrustedPeers(links{frontPod, otherPod}))
+	if got := e.ClientIP(httpFrom(otherPod, forgedSource)); got != otherPod {
+		t.Fatalf("звено %s вне сети круга сдвинуло источник на %q", otherPod, got)
+	}
+	if got := e.ClientIP(httpFrom(frontPod, clientA)); got != clientA {
+		t.Fatalf("близнец: звено в сети круга не принято: %q", got)
+	}
 }
 
 // Пир вне круга (под кластера, дошедший до края напрямую) не сдвигает
@@ -123,6 +183,8 @@ func TestClientAddress_TrustsNobodyAgreesWithBehaviour(t *testing.T) {
 		{"доверие выключено флагом", middleware.NewContextExtractor(time.Now, false, middleware.WithTrustedProxyHops(1),
 			middleware.WithTrustedProxies(front)), true},
 		{"ноль прыжков", middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(0),
+			middleware.WithTrustedProxies(front)), true},
+		{"круг без звеньев поимённо", middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1),
 			middleware.WithTrustedProxies(front)), true},
 		{"близнец: круг объявлен", trustingTheFront(), false},
 	} {
