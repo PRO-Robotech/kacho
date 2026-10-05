@@ -34,7 +34,6 @@ package deploy_test
 import (
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -233,6 +232,7 @@ func TestNTF1P12StandDNSProfiles(t *testing.T) {
 	stacks := deployStacks(t)
 	rows := readStacksMail(t)
 	facts := allProfileFacts(t, stacks, nil)
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
 	lines, findings := judgeStandDNSProfiles(stacks, rows, facts)
 	t.Logf("профилей %d (stacks.txt), строк признаков %d (%s)", len(stacks), len(rows), stacksMailTable)
 	for _, l := range lines {
@@ -250,7 +250,7 @@ func TestNTF1P12StandDNSProfiles(t *testing.T) {
 	sort.Strings(names)
 	rendered := 0
 	for _, n := range names {
-		out, err := renderStandProfile(t, stacks[n])
+		out, err := renderStandProfile(t, c, stacks[n])
 		if err != nil {
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: рендер профиля %s отказал: %v\n%s", n, err, lastLines(out, 5))
 		}
@@ -365,7 +365,7 @@ func TestNTF1P12StandDNSProfilesInjections(t *testing.T) {
 	}
 
 	// (г) инъекция: ключи пробы a8f60d сняты — notify в рендере a8f60d.
-	out, err := renderStandProfile(t, stacks["a8f60d"],
+	out, err := renderStandProfile(t, notifyUmbrellaCopy(t, umbrellaCopyOpts{}), stacks["a8f60d"],
 		"global.kacho.notifications.modules.notifyProbe.enabled=true", "notify.image.tag=fixture")
 	if err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: рендер a8f60d с пробой отказал: %v\n%s", err, lastLines(out, 5))
@@ -398,10 +398,11 @@ func TestNTF1P12StandDNSRenderLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	base := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
 
 	// Зона поверх узла оператора → отказ рендера с ключом и хостом узла.
 	prodOp := append(append([]string{}, stacks["prod"]...), operator, on)
-	out, rerr := renderStandProfile(t, prodOp)
+	out, rerr := renderStandProfile(t, base, prodOp)
 	if rerr == nil || !strings.Contains(out, "global.kacho.standDNS.enabled") || !strings.Contains(out, "relay.operator.example") {
 		t.Errorf("КРАСНЫЙ: зона DNS стенда поверх узла оператора: отказа рендера с ключом и хостом нет (err=%v):\n%s",
 			rerr, lastLines(out, 4))
@@ -410,7 +411,7 @@ func TestNTF1P12StandDNSRenderLayers(t *testing.T) {
 	}
 
 	// Близнец: тот же слой поверх dev — под с dnsConfig и ручкой зоны.
-	out, rerr = renderStandProfile(t, append(append([]string{}, stacks["dev"]...), on))
+	out, rerr = renderStandProfile(t, base, append(append([]string{}, stacks["dev"]...), on))
 	if rerr != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: близнец (зона поверх dev) отказал: %v\n%s", rerr, lastLines(out, 4))
 	}
@@ -419,7 +420,7 @@ func TestNTF1P12StandDNSRenderLayers(t *testing.T) {
 	}
 
 	// Зона при выключенном приёмнике → отказ блоком (6) с обоими ключами.
-	out, rerr = renderStandProfile(t, append(append([]string{}, stacks["prod"]...), off))
+	out, rerr = renderStandProfile(t, base, append(append([]string{}, stacks["prod"]...), off))
 	if rerr == nil || !strings.Contains(out, "mailpit.enabled") || !strings.Contains(out, "global.kacho.standDNS.enabled") {
 		t.Errorf("КРАСНЫЙ: зона при выключенном приёмнике: отказа с mailpit.enabled и global.kacho.standDNS.enabled нет (err=%v):\n%s",
 			rerr, lastLines(out, 4))
@@ -468,22 +469,23 @@ func TestNTF1P12StandDNSRenderLayers(t *testing.T) {
 	}
 }
 
-// renderStandProfile — `helm template` зонтика цепочкой слоёв (имена профилей —
-// от каталога зонтика, абсолютные пути — как есть) и наборами `--set`. helm не в
-// PATH — «НЕ ВЫПОЛНИЛОСЬ» (requireHelmForNotify), а не пропуск.
-func renderStandProfile(t *testing.T, chain []string, sets ...string) (string, error) {
+// renderStandProfile — `helm template` ФИКСТУРНОЙ КОПИИ зонтика c цепочкой
+// слоёв (имена профилей — от каталога зонтика копии, абсолютные пути — как
+// есть) и наборами `--set`. Копия, а не зонтик дерева: file://-зависимости
+// (vpc, compute, notify, …) git не ведёт, их материализует владелец
+// (notifyUmbrellaCopy → helm-umbrella-deps.sh). Рендер дерева в задании юнитов
+// отказывал условием («missing in charts/ directory»), а в рабочей копии
+// рендерил архивы, собранные когда-то прежде, — не исходник этой ревизии.
+// helm не в PATH — «НЕ ВЫПОЛНИЛОСЬ» при CI (requireHelmForNotify), а не пропуск.
+func renderStandProfile(t *testing.T, c umbrellaCopy, chain []string, sets ...string) (string, error) {
 	t.Helper()
 	requireHelmForNotify(t)
-	args := []string{"template", standDNSRelease, umbrellaDir, "-n", "kacho"}
+	var files []string
 	for _, p := range chain {
 		if !filepath.IsAbs(p) {
-			p = filepath.Join(umbrellaDir, p)
+			p = filepath.Join(c.umbrella, p)
 		}
-		args = append(args, "-f", p)
+		files = append(files, p)
 	}
-	for _, s := range sets {
-		args = append(args, "--set", s)
-	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы пробы
-	return string(out), err
+	return c.render(files, sets...)
 }
