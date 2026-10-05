@@ -177,6 +177,7 @@ helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set mailpit.enabled=false \
   --set notifyProbe.enabled=false \
   --set global.kacho.notifications.modules.notifyProbe.enabled=false \
+  --set global.kacho.standDNS.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName= \
