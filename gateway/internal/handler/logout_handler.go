@@ -7,9 +7,7 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -58,37 +56,43 @@ type CallerVerifier interface {
 	Verify(ctx context.Context, token string) (*VerifiedCaller, error)
 }
 
-// LogoutHandler — POST /oauth/logout
+// LogoutHandler — POST /oauth/logout: выход ПУТИ ТОКЕНОВ. Гасит на сервере
+// предъявленный токен доступа — пишет отзыв в НАШУ запись, ту, что полоса отзыва
+// края читает на каждом предъявлении. Браузерную сессию этот путь не гасит и не
+// делает вида, что гасит: её выход — `POST /iam/v1/auth/logout` полосы входа
+// (служба; край ретранслирует), и печенье сессии здесь не гасится никогда.
 //
-//  1. Parse access_token from `Authorization: Bearer|DPoP <token>` OR form-encoded
-//     `token` parameter (RFC 7009 section 2.1).
-//  2. Authenticate the caller by verifying that token (JWKS signature, issuer,
-//     audience, expiry). A presented-but-invalid token is a hard 401; the
-//     subject/jti are taken ONLY from the validated token.
-//  3. Fail closed: a request that asks to revoke sessions
-//     (subject/token_jti/revoke_all) but presents no valid token is refused
-//     with 401 — the endpoint never trusts a client-supplied subject, so it
-//     cannot be abused to revoke another user's sessions.
-//  4. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
-//     own identity — revoke_all_user_tokens=false (single jti) or true (full).
-//     This writes OUR revocation record, the one the edge's revocation lane
-//     reads on every presentation.
-//  5. Issue an ending for every browser session carrier name
-//     (`middleware.EndSessionCarriers`). The ending carries no `Domain`, so it
-//     matches only a cookie that was issued without one; the precondition this
-//     implies is stated in the header of `middleware/session_carrier_names.go`.
-//  6. Respond `200 {}`.
+// Исходы — ТЕ ЖЕ, что у выхода полосы входа (kaname `docs/content/api/auth-lane.mdx`,
+// «Выход»; приёмка Ф3, Р4), на каждом предъявлении, которое путь принимает
+// (`Authorization: Bearer|DPoP <token>`, форма `token` по RFC 7009 §2.1):
 //
-// There is no provider-side session to end any more (#2734): the previous
-// identity provider's session kill — the handler's only outbound call — was
-// retired together with the provider, so the handler talks to our identity
-// service and to nobody else.
+//   - выход выполнен — `200` `{}`; сюда же относится запрос без всякого
+//     носителя (Ф3-18: различимый ответ сказал бы держателю чужой копии, жива ли она);
+//   - выход не выполнен — `503` `{"code":14,"message":"logout not performed; try again later","details":[]}`:
+//     отзыв не ответил в бюджете, проверять предъявителя нечем либо писать отзыв
+//     некуда. Удостоверение цело и по-прежнему годно, повторить можно. «Вышли»
+//     при живом удостоверении — дефект, который Ф3 Р4 отвергла поимённо: прежде
+//     здесь при неответившем отзыве стоял `200`, и повторить выход клиенту было
+//     не с чего.
 //
-// The revocation call is best-effort relative to issuing the carrier ending —
-// the user MUST see a successful logout from their side even if the identity
-// service is momentarily unreachable. Failures are logged + included in the
-// response `warnings` array for debugging but do not surface as HTTP 5xx (that
-// would leave the client uncertain whether to retry).
+// Отказы — в форме `google.rpc.Status`:
+//
+//   - неверный метод — `405` `{"code":12,"message":"method not allowed","details":[]}`
+//     с `Allow: POST` (решение R36 п. 3);
+//   - предъявлено печенье НАШЕЙ сессии — `400` `{"code":9,"message":"this path ends access tokens; end the browser session with POST /iam/v1/auth/logout","details":[]}`.
+//     Ничего не отзывается: путь, получивший носитель, которого он не гасит,
+//     ответив «вышли», оставил бы сессию живой на сервере при погашенном у
+//     клиента печенье (kacho#2959);
+//   - предъявитель не принят проверяющим либо отзыв (`subject`, `token_jti`,
+//     `revoke_all`) запрошен без предъявителя — единый отказ края `401` (приёмка
+//     KA1, Р2; пакет `authnrefusal`).
+//
+// Субъект и jti берутся ТОЛЬКО из проверенного токена; поля `subject` и
+// `token_jti` формы не читаются как цель — путь нельзя обратить против чужой
+// сессии. `revoke_all=true` гасит все удостоверения вызывающего.
+//
+// Сессии у прежнего поставщика больше нет (#2734): обработчик говорит только с
+// нашей службой доступа.
 type LogoutHandler struct {
 	logger      *slog.Logger
 	verifier    CallerVerifier
@@ -99,13 +103,13 @@ type LogoutHandler struct {
 // LogoutHandlerConfig — DI bag.
 type LogoutHandlerConfig struct {
 	Logger      *slog.Logger
-	Verifier    CallerVerifier           // validates the caller's access token; nil ⇒ revocation fails closed (401)
-	Revocations SessionRevocationsClient // optional — nil disables revocation
+	Verifier    CallerVerifier           // проверяет токен вызывающего; nil ⇒ проверять нечем, выход «не выполнен» (503)
+	Revocations SessionRevocationsClient // пишет отзыв в нашу запись; nil ⇒ писать некуда, выход «не выполнен» (503)
 	// CallBudget — бюджет вызова отзыва при выходе: ручка
 	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4), та же, что у
-	// прочих вопросов края службе доступа. Обязателен: исход выхода от него не
-	// зависит (best-effort, `warnings`), зависит только срок, через который
-	// приходит ответ, — и этот срок выбирает профиль, а не константа.
+	// прочих вопросов края службе доступа. Обязателен: отзыв, не ответивший в
+	// бюджете, есть выход «не выполнен» (`503`, Ф3 Р4), и срок, через который
+	// клиент это узнаёт, выбирает профиль, а не константа.
 	CallBudget time.Duration
 }
 
@@ -126,100 +130,87 @@ func NewLogoutHandler(cfg LogoutHandlerConfig) (*LogoutHandler, error) {
 	}, nil
 }
 
+// Тела ответов — дословно те, что названы в шапке [LogoutHandler]; проба
+// `logout_outcome_test.go` сверяет шапку с ними.
+const (
+	logoutDoneBody          = `{}`
+	logoutNotPerformedBody  = `{"code":14,"message":"logout not performed; try again later","details":[]}`
+	logoutMethodBody        = `{"code":12,"message":"method not allowed","details":[]}`
+	logoutSessionOnPathBody = `{"code":9,"message":"this path ends access tokens; end the browser session with POST /iam/v1/auth/logout","details":[]}`
+)
+
 // ServeHTTP implements net/http.Handler.
 func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+		w.Header().Set("Allow", http.MethodPost)
+		writeBody(w, http.StatusMethodNotAllowed, logoutMethodBody)
 		return
 	}
 
-	// 1. Extract token (header OR form param `token`).
+	// Браузерная сессия — не носитель этого пути (шапка). Предикат присутствия —
+	// тот же, что у полос, читающих сессию.
+	if middleware.OurSessionCarrierPresented(r) {
+		writeBody(w, http.StatusBadRequest, logoutSessionOnPathBody)
+		return
+	}
+
 	rawToken := extractAccessToken(r)
-	// Form parse — RFC 7009 allows `token=...` body.
 	_ = r.ParseForm()
 	if rawToken == "" {
 		rawToken = strings.TrimSpace(r.Form.Get("token"))
 	}
-
-	// A "server-side revoke" is any request that asks the gateway to invalidate
-	// sessions/tokens in iam (as opposed to merely clearing the caller's
-	// own browser cookies). Historically the target subject/jti were read from
-	// the request body, which let an unauthenticated caller revoke ANY user.
-	// These client-supplied targets are no longer trusted — the identity is
-	// derived exclusively from a validated access token.
-	revokeRequested := strings.TrimSpace(r.Form.Get("subject")) != "" ||
-		strings.TrimSpace(r.Form.Get("token_jti")) != "" ||
-		r.Form.Get("revoke_all") == "true"
 	revokeAll := r.Form.Get("revoke_all") == "true"
+	// Цель отзыва из тела не читается никогда; поля названы лишь затем, чтобы
+	// запрос, ПРОСЯЩИЙ отзыв без предъявителя, получил отказ, а не «вышли».
+	revokeRequested := revokeAll || strings.TrimSpace(r.Form.Get("subject")) != "" ||
+		strings.TrimSpace(r.Form.Get("token_jti")) != ""
 
-	// 2. Authenticate the caller from the presented access token. A token that
-	//    is present but fails verification is a hard 401 — we never fall back
-	//    to trusting the request body.
-	var caller *VerifiedCaller
-	if rawToken != "" && h.verifier != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		vc, verr := h.verifier.Verify(ctx, rawToken)
-		cancel()
-		if verr != nil {
-			h.logger.Warn("logout: access-token verification failed", "err", verr)
-			// Единый отказ края (приёмка KA1, Р2): тот же, что у слоя
-			// аутентификации на любой причине.
+	if rawToken == "" {
+		if revokeRequested {
+			h.logger.Warn("logout: revocation requested without a presented access token — refused")
 			authnrefusal.WriteHTTP(w)
 			return
 		}
-		caller = vc
+		// Носителя нет — гасить нечего (Ф3-18).
+		writeBody(w, http.StatusOK, logoutDoneBody)
+		return
 	}
 
-	// 3. Fail closed: revoking sessions requires a proven identity. Without a
-	//    validated token we refuse the server-side revocation entirely and
-	//    never act on a client-supplied subject.
-	if revokeRequested && caller == nil {
-		h.logger.Warn("logout: revocation requested without a validated access token — refused")
+	if h.verifier == nil || h.revocations == nil {
+		h.logger.Error("logout: not performed — the handler is assembled without a verifier or a revocation writer",
+			"verifier", h.verifier != nil, "revocations", h.revocations != nil)
+		writeBody(w, http.StatusServiceUnavailable, logoutNotPerformedBody)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	caller, verr := h.verifier.Verify(ctx, rawToken)
+	cancel()
+	if verr != nil {
+		h.logger.Warn("logout: access-token verification failed", "err", verr)
+		// Единый отказ края (приёмка KA1, Р2): тот же, что у слоя
+		// аутентификации на любой причине.
 		authnrefusal.WriteHTTP(w)
 		return
 	}
 
-	// 4. Revoke ONLY the authenticated caller's own session(s). Errors are
-	//    collected, not fatal — the user must still see a successful logout.
-	var revocErrs []string
-	if caller != nil && h.revocations != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), h.callBudget)
-		req := &iamv1.RevokeRequest{
-			TokenJti:            caller.JTI,
-			UserId:              caller.Subject,
-			Reason:              "user-logout",
-			RevokeAllUserTokens: revokeAll,
-			TtlExpiresAt:        timestamppb.New(time.Now().Add(30 * 24 * time.Hour)),
-		}
-		if err := h.revocations.Revoke(ctx, req); err != nil {
-			h.logger.Warn("logout: revocations.Revoke failed", "err", err, "subject", caller.Subject)
-			revocErrs = append(revocErrs, fmt.Sprintf("revocations: %v", err))
-		}
-		cancel()
+	ctx, cancel = context.WithTimeout(r.Context(), h.callBudget)
+	defer cancel()
+	req := &iamv1.RevokeRequest{
+		TokenJti:            caller.JTI,
+		UserId:              caller.Subject,
+		Reason:              "user-logout",
+		RevokeAllUserTokens: revokeAll,
+		TtlExpiresAt:        timestamppb.New(time.Now().Add(30 * 24 * time.Hour)),
 	}
-
-	// 5. Issue the ending of every browser session carrier name. Always done,
-	//    even for a token-less request, so a user can drop their browser session.
-	//    The NAMES live in ONE declaration (`middleware.EndSessionCarriers`,
-	//    F4d-26): this handler and the refusal path of the identity lane issue the
-	//    same endings the same way, otherwise "logout" and "refusal" would leave
-	//    the same browser in different states. A second list here is what the
-	//    gate `session_carrier_names_gate_test.go` calls a finding. Issuing an
-	//    ending is not the same as removing the cookie: the ending carries no
-	//    `Domain`, and the precondition that follows is stated in the header of
-	//    `middleware/session_carrier_names.go`.
-	middleware.EndSessionCarriers(w)
-
-	out := map[string]any{"ok": true}
-	if len(revocErrs) > 0 {
-		// 207-style multi-status; we keep 200 to not block the user.
-		out["warnings"] = revocErrs
+	if err := h.revocations.Revoke(ctx, req); err != nil {
+		// Причина — в журнале оператора, не в ответе: текст ошибки вызова
+		// называет внутреннюю службу и её адрес (kacho#3029).
+		h.logger.Warn("logout: not performed — the revocation write did not succeed", "err", err, "subject", caller.Subject)
+		writeBody(w, http.StatusServiceUnavailable, logoutNotPerformedBody)
+		return
 	}
-	if rawToken == "" {
-		out["note"] = "no access_token presented; session carrier endings issued"
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeBody(w, http.StatusOK, logoutDoneBody)
 }
 
 // extractAccessToken pulls the bearer/DPoP token from the Authorization header.
@@ -237,8 +228,10 @@ func extractAccessToken(r *http.Request) string {
 	return ""
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+// writeBody пишет тело дословно — без перевода строки кодировщика, чтобы ответ
+// побайтово совпадал с названным в шапке.
+func writeBody(w http.ResponseWriter, status int, body string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	_, _ = w.Write([]byte(body))
 }

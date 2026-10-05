@@ -56,3 +56,12 @@ func ourSessionCarrierOf(r *http.Request) (string, bool) {
 	}
 	return c.Value, true
 }
+
+// OurSessionCarrierPresented — несёт ли запрос НАШ носитель сессии, тем же
+// предикатом, что у полос, читающих сессию. Значения не отдаёт: читатель вне
+// пакета полос (обработчик выхода пути токенов) спрашивает только о
+// присутствии — чтобы отказать, а не чтобы прочитать сессию.
+func OurSessionCarrierPresented(r *http.Request) bool {
+	_, ok := ourSessionCarrierOf(r)
+	return ok
+}

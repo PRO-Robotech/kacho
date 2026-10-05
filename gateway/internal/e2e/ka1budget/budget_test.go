@@ -368,29 +368,29 @@ func logout(t *testing.T, rev *revocations) (*httptest.ResponseRecorder, time.Du
 }
 
 func TestKA1_26_LogoutRevocationIsBoundedAndTheOutcomeStays(t *testing.T) {
-	endings := ka1stand.CarrierEndingLines()
+	// Исход выхода — тот, что у выхода полосы входа (приёмка Ф3, Р4; kacho#2996,
+	// kacho#2959): отзыв, не ответивший в бюджете, есть выход «не выполнен», а не
+	// `200` с `warnings` и гашением носителя — так этот сценарий читался прежде, и
+	// Ф3 Р4 отвергла такой исход поимённо. Бюджет (предмет KA1-26) судится тем же
+	// сроком: ответ приходит раньше 2s.
+	const notPerformed = `{"code":14,"message":"logout not performed; try again later","details":[]}`
 
 	// Столбец (2): Revoke молчит.
 	silent := &revocations{silent: true, release: make(chan struct{})}
 	t.Cleanup(func() { close(silent.release) })
 	rec, elapsed := logout(t, silent)
-	var out map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	warnings, _ := out["warnings"].([]any)
-	if rec.Code != http.StatusOK || out["ok"] != true || len(warnings) == 0 ||
-		!sameSet(rec.Result().Header.Values("Set-Cookie"), endings) || elapsed >= 2*time.Second {
-		t.Errorf("KA1-26 (2): ожидался 200, ok:true, непустой warnings, гашение носителя, раньше 2s; получено %d за %s: %s, Set-Cookie %v",
+	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != notPerformed ||
+		len(rec.Result().Header.Values("Set-Cookie")) != 0 || elapsed >= 2*time.Second {
+		t.Errorf("KA1-26 (2): ожидался 503 «не выполнен» без гашения носителя, раньше 2s; получено %d за %s: %s, Set-Cookie %v",
 			rec.Code, elapsed, rec.Body.String(), rec.Result().Header.Values("Set-Cookie"))
 	}
 
 	// Столбец (1): Revoke отвечает за 100ms.
 	answered := &revocations{delay: 100 * time.Millisecond}
 	rec, _ = logout(t, answered)
-	out = nil
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	_, hasWarnings := out["warnings"]
-	if rec.Code != http.StatusOK || out["ok"] != true || hasWarnings || !sameSet(rec.Result().Header.Values("Set-Cookie"), endings) {
-		t.Errorf("KA1-26 (1): ожидался 200, ok:true без warnings и гашение носителя; получено %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || rec.Body.String() != "{}" || len(rec.Result().Header.Values("Set-Cookie")) != 0 {
+		t.Errorf("KA1-26 (1): ожидался 200 {} без гашения носителя; получено %d: %s, Set-Cookie %v",
+			rec.Code, rec.Body.String(), rec.Result().Header.Values("Set-Cookie"))
 	}
 	answered.mu.Lock()
 	defer answered.mu.Unlock()
@@ -399,23 +399,4 @@ func TestKA1_26_LogoutRevocationIsBoundedAndTheOutcomeStays(t *testing.T) {
 		t.Errorf("KA1-26 (1): дублёр принял %d запросов Revoke, ожидался ровно один с token_jti, user_id и revoke_all_user_tokens: %v",
 			len(answered.got), answered.got)
 	}
-}
-
-func sameSet(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	seen := map[string]int{}
-	for _, x := range a {
-		seen[x]++
-	}
-	for _, x := range b {
-		seen[x]--
-	}
-	for _, v := range seen {
-		if v != 0 {
-			return false
-		}
-	}
-	return true
 }
