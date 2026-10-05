@@ -470,8 +470,6 @@ type beiTypeRef struct {
 	dir, name string
 }
 
-func (r beiTypeRef) known() bool { return r.external || r.name != "" }
-
 // resolveTypeExpr — тип по выражению типа в контексте файла.
 func (m *beiModule) resolveTypeExpr(e ast.Expr, bf *beiFile) beiTypeRef {
 	switch x := e.(type) {
