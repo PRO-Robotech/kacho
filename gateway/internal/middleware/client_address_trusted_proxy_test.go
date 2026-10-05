@@ -109,3 +109,31 @@ func TestClientAddress_MappedPeerIsJudgedByTheSameCircle(t *testing.T) {
 		t.Fatalf("пир ::ffff:%s не узнан как звено круга: %q", frontPod, got)
 	}
 }
+
+// TrustsNobody — то, что край печатает на старте: «заголовок не принимается ни
+// от кого» истинно ровно тогда, когда так и ведёт себя ClientIP.
+func TestClientAddress_TrustsNobodyAgreesWithBehaviour(t *testing.T) {
+	front := netip.MustParsePrefix("10.244.0.0/16")
+	for _, c := range []struct {
+		name string
+		e    *middleware.ContextExtractor
+		want bool
+	}{
+		{"круг пуст", middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)), true},
+		{"доверие выключено флагом", middleware.NewContextExtractor(time.Now, false, middleware.WithTrustedProxyHops(1),
+			middleware.WithTrustedProxies(front)), true},
+		{"ноль прыжков", middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(0),
+			middleware.WithTrustedProxies(front)), true},
+		{"близнец: круг объявлен", trustingTheFront(), false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.e.TrustsNobody(); got != c.want {
+				t.Fatalf("TrustsNobody() = %v, ожидалось %v", got, c.want)
+			}
+			moved := c.e.ClientIP(httpFrom(frontPod, clientA)) != frontPod
+			if moved == c.want {
+				t.Fatalf("TrustsNobody() = %v, а заголовок от пира в круге %s источник сдвинул: %v", c.want, frontPod, moved)
+			}
+		})
+	}
+}

@@ -10,9 +10,10 @@ package main
 // окружение полное во всём, кроме испытуемой ручки. Утверждается исход старта
 // и что отказ называет ручку.
 //
-//	отказ   — доверие заголовкам включено (умолчание), круг пуст;
 //	отказ   — запись круга не разбирается как сеть;
-//	близнец — тот же процесс с объявленной сетью стартует и отвечает /healthz.
+//	отказ   — сеть круга выходит за частные диапазоны (весь простор);
+//	близнец — тот же процесс с объявленной сетью стартует и отвечает /healthz;
+//	близнец — круг не объявлен: умолчание «никому», процесс стартует.
 
 import (
 	"net/http"
@@ -23,8 +24,8 @@ import (
 func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 	const knob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
 	for _, c := range []struct{ name, value, mustSay string }{
-		{name: "пустой круг при включённом доверии", value: "", mustSay: knob},
 		{name: "неразборная запись", value: "10.0.0.0/8,10.0.0.300/8", mustSay: "10.0.0.300/8"},
+		{name: "весь адресный простор", value: "10.0.0.0/8,0.0.0.0/0", mustSay: "0.0.0.0/0"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			env, listen := ka1EdgeEnv(t, "production")
@@ -39,12 +40,17 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 			}
 		})
 	}
-	t.Run("близнец: объявленная сеть — старт", func(t *testing.T) {
-		env, listen := ka1EdgeEnv(t, "production")
-		env[knob] = "10.244.0.0/16"
-		got := ka1RunEdge(t, env, listen)
-		if got.exited || got.healthz != http.StatusOK {
-			t.Fatalf("процесс обязан стартовать; завершился=%v код=%d\n%s", got.exited, got.code, ka1Tail(got.journal))
-		}
-	})
+	for name, value := range map[string]string{
+		"близнец: объявленная сеть — старт":          "10.244.0.0/16",
+		"близнец: круг не объявлен — «никому», старт": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, listen := ka1EdgeEnv(t, "production")
+			env[knob] = value
+			got := ka1RunEdge(t, env, listen)
+			if got.exited || got.healthz != http.StatusOK {
+				t.Fatalf("процесс обязан стартовать; завершился=%v код=%d\n%s", got.exited, got.code, ka1Tail(got.journal))
+			}
+		})
+	}
 }

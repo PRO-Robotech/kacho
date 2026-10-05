@@ -70,10 +70,15 @@ func main() {
 	// КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ АДРЕСА КЛИЕНТА (kacho#3028) — разбирается здесь,
 	// безусловно и до первой провязки: оператор адреса нужен и модели прав, и
 	// ретрансляции полосы входа, и отказ по негодному кругу не вправе зависеть
-	// от того, какая из них включена в этой посадке.
-	if _, caErr := newClientAddressOperator(cfg); caErr != nil {
+	// от того, какая из них включена в этой посадке. Оператор один на процесс —
+	// его берут обе провязки ниже.
+	clientAddress, caErr := newClientAddressOperator(cfg)
+	if caErr != nil {
 		log.Fatalf("client address startup-validation: %v", caErr)
 	}
+	logger.Info("client address: forwarded headers are honoured only from peers in the trusted circle",
+		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
+		"trusted_from_nobody", clientAddress.TrustsNobody())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -192,10 +197,6 @@ func main() {
 	if identityLane == identityposture.Own {
 		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
 		// прав: справа по числу доверенных прыжков (Ф3 Р2).
-		clientAddress, caErr := newClientAddressOperator(cfg)
-		if caErr != nil {
-			log.Fatalf("client address startup-validation: %v", caErr)
-		}
 		clientIP := clientAddress.ClientIP
 
 		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
@@ -743,7 +744,7 @@ func main() {
 			)
 		}
 
-		authz, err = buildAuthzMiddleware(cfg, logger)
+		authz, err = buildAuthzMiddleware(cfg, logger, clientAddress)
 		if err != nil {
 			log.Fatalf("authz middleware: %v", err)
 		}
@@ -1534,7 +1535,7 @@ type authzWiring struct {
 // buildAuthzMiddleware constructs the AuthZ middleware from
 // configuration. When AuthZEnabled=false this returns a no-op middleware
 // (the caller still wires it into the chain, but it pass-through everything).
-func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, error) {
+func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger, clientAddress *middleware.ContextExtractor) (authzWiring, error) {
 	if !cfg.AuthZEnabled {
 		// Накопитель собирается и на выключенной проверке: серии обязаны стоять
 		// нулями и здесь, иначе «проверка выключена» на поверхности выглядело бы
@@ -1591,10 +1592,6 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, 
 	// поверхности. Пока накопитель заводило само звено, снаружи к нему было не
 	// подобраться — и его четыре нуля не утверждали ничего.
 	authzMetrics := middleware.NewAuthzMetrics()
-	clientAddress, caErr := newClientAddressOperator(cfg)
-	if caErr != nil {
-		return authzWiring{}, caErr
-	}
 	mw, err := middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
 		Enabled:         true,
 		FailOpen:        cfg.AuthZFailOpen,

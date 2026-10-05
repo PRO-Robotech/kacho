@@ -10,12 +10,13 @@
 //	разбор     — список сетей (через запятую, пробелы допустимы) → префиксы;
 //	отказ      — неразборная запись называет ручку и запись, а не молча
 //	             выпадает из круга;
-//	противоречие — доверие заголовкам включено, а круг пуст: «доверяю
-//	             пересылке» без единого звена, которому доверено. Это отказ
-//	             старта, а не тихое «никому»: иначе стенд за раздачей снова
-//	             видит всех клиентов одним адресом, и никто об этом не узнаёт;
-//	близнец    — доверие выключено (флагом или нулём прыжков): пустой круг
-//	             законен.
+//	отказ      — сеть, выходящая за частные диапазоны (весь простор, публичная
+//	             сеть, частная, расширенная за свою границу): звено перед краем —
+//	             под кластера, и доверие заголовку от пира снаружи не законно;
+//	пусто      — круг не объявлен: заголовок не принимается НИ ОТ КОГО, источник
+//	             — сам TCP-пир. Это умолчание, а не противоречие, и старта оно
+//	             не роняет; что стенду за раздачей круг НУЖЕН, судит рендер его
+//	             цепочки (deploy/edge_client_address_circle_render_test.go).
 package config_test
 
 import (
@@ -51,10 +52,29 @@ func TestTrustedProxyCircle_RefusesAnUnparsableEntry(t *testing.T) {
 	}
 }
 
-func TestTrustedProxyCircle_RefusesTrustWithAnEmptyCircle(t *testing.T) {
+func TestTrustedProxyCircle_RefusesANetworkBeyondThePrivateRanges(t *testing.T) {
+	for _, entry := range []string{"0.0.0.0/0", "10.0.0.0/7", "198.51.100.0/24"} {
+		c := config.Config{AuthZTrustedXForwardedFor: true, AuthZTrustedProxyCount: 1,
+			AuthZTrustedProxyCIDRs: "10.244.0.0/16," + entry}
+		_, err := c.TrustedProxyCircle()
+		if err == nil {
+			t.Errorf("сеть %s принята в круг — заголовок адреса принимался бы от пира вне кластера", entry)
+			continue
+		}
+		for _, want := range []string{config.TrustedProxyCIDRsKnob, entry} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("отказ по %s не называет %q: %v", entry, want, err)
+			}
+		}
+	}
+}
+
+// Умолчание — «никому»: пустой круг при включённом доверии законен и пуст.
+func TestTrustedProxyCircle_EmptyCircleTrustsNobodyAndStarts(t *testing.T) {
 	c := config.Config{AuthZTrustedXForwardedFor: true, AuthZTrustedProxyCount: 1}
-	if _, err := c.TrustedProxyCircle(); err == nil || !strings.Contains(err.Error(), config.TrustedProxyCIDRsKnob) {
-		t.Fatalf("доверие заголовкам при пустом круге не отказано (или отказ без имени ручки): %v", err)
+	got, err := c.TrustedProxyCircle()
+	if err != nil || len(got) != 0 {
+		t.Fatalf("пустой круг: %v, %v; ожидался пустой круг без отказа — заголовок не принимается ни от кого", got, err)
 	}
 }
 

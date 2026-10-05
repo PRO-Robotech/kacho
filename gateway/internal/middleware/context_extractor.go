@@ -285,6 +285,12 @@ func (e *ContextExtractor) clientIPFromForwardHeaders(peer, xRealIP, xff string)
 	return ""
 }
 
+// TrustsNobody — не принимает ли оператор заголовки пересылки ни от одного
+// пира: доверие выключено флагом, нулём прыжков либо круг пуст.
+func (e *ContextExtractor) TrustsNobody() bool {
+	return !e.trustedXForwardedFor || e.trustedProxyCount <= 0 || len(e.trustedProxies) == 0
+}
+
 // peerIsTrustedProxy — лежит ли TCP-пир в круге доверенных звеньев. Пустой
 // круг и неразборный пир — «нет».
 func (e *ContextExtractor) peerIsTrustedProxy(peer string) bool {

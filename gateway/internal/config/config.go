@@ -21,6 +21,8 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 
 	"github.com/PRO-Robotech/corelib/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/pkg/proxycircle"
 )
 
 // Config хранит конфигурацию api-gateway.
@@ -737,49 +739,40 @@ type Config struct {
 	HybridMTLSExternal bool `envconfig:"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL" default:"false"`
 }
 
-// DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.
-//
-// Метод, а не выражение по месту: величину читают ДВОЕ — страж однократности
-// (сколько держать запись) и сборщик (с каким шагом её убирать), — и оба обязаны
-// брать её из одного места. Два одинаковых выражения по разным файлам разошлись
-// бы молча, и уборка стала бы либо реже жизни строки, либо чаще, чем нужно.
 // TrustedProxyCIDRsKnob — имя ручки круга доверенных звеньев; его называют
 // отказы старта.
 const TrustedProxyCIDRsKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
 
 // TrustedProxyCircle — разобранный круг доверенных звеньев адреса клиента.
 //
-// Отказ старта в двух случаях. Неразборная запись: молча выпав из круга, она
-// превратила бы своё звено в «чужого», и все клиенты за ним стали бы одним
-// источником. Доверие заголовкам включено (флаг и ненулевое число прыжков), а
-// круг пуст: это противоречие, а не «никому» — стенд, забывший объявить сеть
-// раздачи, иначе снова видит всех клиентов одним адресом, и никто об этом не
-// узнаёт. При выключенном доверии пустой круг законен.
+// Пустой круг — «никому»: заголовок пересылки не принимается ни от одного
+// пира, источник — сам TCP-пир. Это умолчание ручки, а не противоречие с
+// включённым доверием: стенду, которому круг НУЖЕН (консоль за раздачей),
+// его объявляет профиль развёртывания, и судит это рендер его цепочки
+// (deploy/edge_client_address_circle_render_test.go), а не старт края.
+//
+// Отказ старта — то, что отвергает pkg/proxycircle: неразборная запись (молча
+// выпав из круга, она превратила бы своё звено в «чужого») и сеть, задевающая
+// адрес вне частных диапазонов (доверие заголовку от пира снаружи кластера).
+// При выключенном доверии (флагом или нулём прыжков) круг не читается вовсе,
+// но разбирается всё равно: негодная запись — ошибка настройки при любом флаге.
 func (c Config) TrustedProxyCircle() ([]netip.Prefix, error) {
-	var out []netip.Prefix
-	for _, raw := range strings.Split(c.AuthZTrustedProxyCIDRs, ",") {
-		entry := strings.TrimSpace(raw)
-		if entry == "" {
-			continue
-		}
-		p, err := netip.ParsePrefix(entry)
-		if err != nil {
-			return nil, fmt.Errorf("%s: запись %q — не сеть в записи CIDR (%v)", TrustedProxyCIDRsKnob, entry, err)
-		}
-		out = append(out, p.Masked())
+	circle, err := proxycircle.Parse(c.AuthZTrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyCIDRsKnob, err)
 	}
-	trusting := c.AuthZTrustedXForwardedFor && c.AuthZTrustedProxyCount > 0
-	if trusting && len(out) == 0 {
-		return nil, fmt.Errorf("%s пуст, а доверие заголовкам пересылки включено "+
-			"(KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF=true, KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT=%d): "+
-			"объявите сеть звена перед краем либо выключите доверие", TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCount)
-	}
-	if !trusting {
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
 		return nil, nil
 	}
-	return out, nil
+	return circle, nil
 }
 
+// DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.
+//
+// Метод, а не выражение по месту: величину читают ДВОЕ — страж однократности
+// (сколько держать запись) и сборщик (с каким шагом её убирать), — и оба обязаны
+// брать её из одного места. Два одинаковых выражения по разным файлам разошлись
+// бы молча, и уборка стала бы либо реже жизни строки, либо чаще, чем нужно.
 func (c Config) DPoPReplayTTL() time.Duration {
 	return time.Duration(c.DPoPReplayCacheTTLSeconds) * time.Second
 }

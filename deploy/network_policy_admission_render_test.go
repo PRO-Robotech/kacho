@@ -304,7 +304,9 @@ func TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled(t *testing.T)
 	}
 	named := map[string]int{}
 	for _, f := range v.findings {
-		hit := false
+		// Политика самого края (kacho#3028) выбирает под края той же меткой:
+		// испорченная метка оставляет её без цели — это тот же внесённый дефект.
+		hit := strings.HasPrefix(f, "(А) политика api-gateway: селектор цели")
 		for _, p := range []string{"kacho-nlb", "vpc-internal-allowlist"} {
 			if strings.Contains(f, "политика "+p+",") || strings.Contains(f, "политик ["+p+"]") {
 				named[p]++

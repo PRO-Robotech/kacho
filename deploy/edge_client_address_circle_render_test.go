@@ -3,147 +3,242 @@
 
 //go:build helmcharts
 
-// edge_client_address_circle_render_test.go — КАЖДАЯ ЦЕПОЧКА ОБЪЯВЛЯЕТ КРАЮ
-// КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ АДРЕСА КЛИЕНТА, И КРУГ ЭТОТ НЕ ПУСКАЕТ ПУБЛИЧНЫЙ
-// АДРЕС (kacho#3028).
+// edge_client_address_circle_render_test.go — ЗАГОЛОВКУ АДРЕСА КЛИЕНТА КРАЙ
+// ДОВЕРЯЕТ ТОЛЬКО ОТ ЗВЕНА ФРОНТА (kacho#3028).
 //
-// Край принимает `X-Forwarded-For` только от пира из круга
-// (KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS). Судится рендер каждой цепочки
-// deploy/stacks.txt:
+// Край принимает `X-Forwarded-For` только от TCP-пира из круга
+// (KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS). Сеть — всё, что край о пире
+// знает, и сеть подов у каждого кластера своя: круг сам по себе выделяет «под
+// кластера», а не «раздачу консоли». Звено фронта выделяется вторым замком —
+// политикой сети на поде края: до порта, принимающего пересылку, доходят
+// только поды, названные МЕТКАМИ (раздача консоли, контроллер входа, явно
+// объявленные поды администрирования). Без политики любой под кластера,
+// дошедший до края напрямую, одной строкой заголовка подменял бы `client_ip` и
+// ключ ограничения частоты входа у службы доступа.
 //
-//  1. ручка есть у Deployment края и непуста — пустая при включённом доверии
-//     заголовкам роняет старт края, и стенд это узнаёт подом в CrashLoop, а не
-//     здесь;
-//  2. каждая запись разбирается как сеть;
-//  3. ни одна сеть не покрывает публичного адреса: звено перед краем — под
-//     кластера, а сеть вида 0.0.0.0/0 вернула бы доверие заголовку от любого.
+// Судится рендер каждой цепочки deploy/stacks.txt тем же вызовом helm, которым
+// стенд поднимается (npChainDocs):
 //
-// ЗНАМЕНАТЕЛЬ — число цепочек с Deployment края: ноль значил бы, что судить
-// было нечего.
+//  1. ручка у Deployment края есть, и её значение — законный круг
+//     (pkg/proxycircle: каждая запись — сеть внутри частных диапазонов);
+//  2. круг пуст — «никому»: заголовок не принимается ни от кого, политика не
+//     требуется;
+//  3. круг непуст — под края выбран политикой сети на вход, и КАЖДОЕ правило,
+//     открывающее порт пересылки (именованный порт контейнера края либо все
+//     порты разом), называет отправителей метками пода: правило без
+//     отправителей, селектор всех подов пространства, селектор пространства и
+//     блок адресов — находки. Порт, которого у контейнера края нет (сбор
+//     величин), не судится: адреса клиента он не принимает;
+//  4. цепочка a8f60d — стенд предмета: за раздачей консоли без круга все
+//     клиенты снова стали бы одним источником, поэтому её круг непуст.
+//
+// Что раздача консоли до порта края ДОХОДИТ, держит гейт политик сети
+// (network_policy_admission_render_test.go, половина «достижимость»): она
+// звонит краю по адресу из своих настроек.
+//
+// ЗНАМЕНАТЕЛЬ — цепочки с Deployment края и, отдельно, цепочки с непустым
+// кругом: ноль первых — судить было нечего, ноль вторых — замок «только
+// фронт» не осмотрен ни разу.
 package deploy_test
 
 import (
 	"fmt"
-	"net/netip"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/proxycircle"
 )
 
-const edgeCircleKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
+const (
+	edgeCircleKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
+	// circleSubjectStack — стенд, на котором дефект наблюдался: консоль за
+	// внешним входом, адрес клиента к краю несёт раздача.
+	circleSubjectStack = "a8f60d"
+)
 
-// nonPublicRanges — диапазоны, в которых живёт сеть подов: RFC 1918, RFC 6598,
-// уникальные локальные IPv6 (RFC 4193).
-var nonPublicRanges = []netip.Prefix{
-	netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("172.16.0.0/12"),
-	netip.MustParsePrefix("192.168.0.0/16"), netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("fc00::/7"),
+// edgeAdmission — что рендер одной цепочки говорит о доверии краю.
+type edgeAdmission struct {
+	Found, Declared bool
+	Circle          string
+	Trusting        bool // круг непуст
+	Policies        int  // политик на вход, выбирающих под края
+	RulesJudged     int  // правил, открывающих порт пересылки
 }
 
-// edgeEnvValue — значение переменной окружения контейнера края; found — есть ли
-// Deployment края в рендере.
-func edgeEnvValue(t *testing.T, rendered, name string) (value string, declared, found bool) {
-	t.Helper()
-	for _, d := range decodeRender(t, rendered) {
-		if str(d, "kind") != "Deployment" || str(submap(d, "metadata"), "name") != edgeDeploymentName {
+func edgeContainer(d map[string]any) (labels map[string]string, env map[string]string, ports map[string]bool) {
+	tpl, _ := podTemplateOf(d)
+	tm, _ := tpl["metadata"].(map[string]any)
+	labels = stringMap(tm["labels"])
+	env, ports = map[string]string{}, map[string]bool{}
+	spec, _ := tpl["spec"].(map[string]any)
+	for _, c := range slice(spec, "containers") {
+		cm, _ := c.(map[string]any)
+		for _, e := range slice(cm, "env") {
+			em, _ := e.(map[string]any)
+			if n := str(em, "name"); n != "" {
+				env[n] = str(em, "value")
+			}
+		}
+		for _, p := range slice(cm, "ports") {
+			pm, _ := p.(map[string]any)
+			if n := str(pm, "name"); n != "" {
+				ports[n] = true
+			}
+			ports[fmt.Sprint(toInt(pm["containerPort"]))] = true
+		}
+	}
+	return labels, env, ports
+}
+
+// judgeEdgeAdmission — находки по документам одной цепочки. Чистая функция.
+func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmission) {
+	var out []string
+	var a edgeAdmission
+	say := func(f string, args ...any) {
+		out = append(out, fmt.Sprintf("цепочка %s: ", stack)+fmt.Sprintf(f, args...))
+	}
+	var labels map[string]string
+	var ports map[string]bool
+	for _, d := range docs {
+		if docKind(d) != "Deployment" || docName(d) != edgeDeploymentName {
 			continue
 		}
-		found = true
-		spec := submap(submap(submap(d, "spec"), "template"), "spec")
-		for _, c := range slice(spec, "containers") {
-			cm, _ := c.(map[string]any)
-			for _, e := range slice(cm, "env") {
-				em, _ := e.(map[string]any)
-				if str(em, "name") == name {
-					return str(em, "value"), true, true
+		a.Found = true
+		var env map[string]string
+		labels, env, ports = edgeContainer(d)
+		a.Circle, a.Declared = env[edgeCircleKnob]
+	}
+	if !a.Found {
+		return nil, a
+	}
+	if !a.Declared {
+		say("у края нет %s", edgeCircleKnob)
+		return out, a
+	}
+	circle, err := proxycircle.Parse(a.Circle)
+	if err != nil {
+		say("круг края не законен: %v", err)
+		return out, a
+	}
+	a.Trusting = len(circle) > 0
+	if !a.Trusting {
+		return out, a
+	}
+	for _, d := range docs {
+		if docKind(d) != "NetworkPolicy" {
+			continue
+		}
+		spec, _ := d["spec"].(map[string]any)
+		sel, err := parseSelector(spec["podSelector"])
+		if err != nil || !sel.matches(labels) {
+			continue
+		}
+		ingress := false
+		for _, pt := range slice(spec, "policyTypes") {
+			ingress = ingress || pt == "Ingress"
+		}
+		if !ingress {
+			continue
+		}
+		a.Policies++
+		for i, r := range slice(spec, "ingress") {
+			rm, _ := r.(map[string]any)
+			opened := openedForwardingPorts(rm, ports)
+			if len(opened) == 0 {
+				continue
+			}
+			a.RulesJudged++
+			where := fmt.Sprintf("политика %s, правило %d (порты %s)", docName(d), i, strings.Join(opened, ","))
+			from := slice(rm, "from")
+			if len(from) == 0 {
+				say("%s открыто всем: правило без отправителей — заголовок адреса от любого пира в круге %s "+
+					"принимается краем", where, a.Circle)
+			}
+			for _, p := range from {
+				pm, _ := p.(map[string]any)
+				switch {
+				case pm["ipBlock"] != nil:
+					say("%s впускает блок адресов — звено называется метками пода, а не сетью", where)
+				case pm["namespaceSelector"] != nil:
+					say("%s впускает по селектору пространства — отправитель вне пространства рендером не назван", where)
+				default:
+					ps, err := parseSelector(pm["podSelector"])
+					if err != nil || len(ps.match)+len(ps.exprs) == 0 {
+						say("%s впускает все поды пространства — заголовок адреса принимается от любого из них", where)
+					}
 				}
 			}
 		}
 	}
-	return "", false, found
+	if a.Policies == 0 {
+		say("круг %s непуст, а под края не выбран ни одной политикой сети на вход — любой под кластера, "+
+			"дошедший до края, подменяет адрес клиента одной строкой заголовка", a.Circle)
+	}
+	return out, a
 }
 
-// judgeEdgeCircle — находки по значению ручки одной цепочки. Чистая функция.
-func judgeEdgeCircle(stack, value string, declared bool) []string {
-	if !declared {
-		return []string{fmt.Sprintf("цепочка %s: у края нет %s", stack, edgeCircleKnob)}
+// openedForwardingPorts — порты контейнера края, которые правило открывает.
+// Правило без перечня портов открывает все.
+func openedForwardingPorts(rule map[string]any, ports map[string]bool) []string {
+	rp := slice(rule, "ports")
+	if len(rp) == 0 {
+		return []string{"все"}
 	}
 	var out []string
-	entries := 0
-	for _, raw := range strings.Split(value, ",") {
-		e := strings.TrimSpace(raw)
-		if e == "" {
-			continue
+	for _, p := range rp {
+		pm, _ := p.(map[string]any)
+		key := fmt.Sprint(pm["port"])
+		if pm["port"] == nil {
+			return []string{"все"}
 		}
-		entries++
-		p, err := netip.ParsePrefix(e)
-		if err != nil {
-			out = append(out, fmt.Sprintf("цепочка %s: запись %q не разбирается как сеть", stack, e))
-			continue
+		if n := toInt(pm["port"]); n != 0 {
+			key = fmt.Sprint(n)
 		}
-		inside := false
-		for _, r := range nonPublicRanges {
-			if r.Bits() <= p.Bits() && r.Contains(p.Masked().Addr()) {
-				inside = true
-			}
-		}
-		if !inside {
-			out = append(out, fmt.Sprintf("цепочка %s: сеть %s покрывает публичные адреса — заголовок адреса "+
-				"принимался бы от пира вне кластера", stack, p))
+		if ports[key] {
+			out = append(out, key)
 		}
 	}
-	if entries == 0 {
-		out = append(out, fmt.Sprintf("цепочка %s: %s пуст — край откажет в старте", stack, edgeCircleKnob))
-	}
+	sort.Strings(out)
 	return out
 }
 
-func TestEveryStackDeclaresTheEdgeClientAddressCircle(t *testing.T) {
+func TestEveryStackTrustsTheClientAddressOnlyFromTheFront(t *testing.T) {
 	stacks := deployStacks(t)
-	edges := 0
+	var edges, trusting, rules int
+	subjectTrusting := false
 	for _, n := range sortedStackNames(stacks) {
-		value, declared, found := edgeEnvValue(t, renderChainCached(t, stacks[n]), edgeCircleKnob)
-		if !found {
+		findings, a := judgeEdgeAdmission(n, npChainDocs(t, n))
+		if !a.Found {
 			continue
 		}
 		edges++
-		t.Logf("цепочка %s: %s=%q", n, edgeCircleKnob, value)
-		for _, f := range judgeEdgeCircle(n, value, declared) {
+		if a.Trusting {
+			trusting++
+			rules += a.RulesJudged
+		}
+		if n == circleSubjectStack {
+			subjectTrusting = a.Trusting
+		}
+		t.Logf("цепочка %-11s: %s=%q · политик на край %d · правил с портом пересылки %d · находок %d",
+			n, edgeCircleKnob, a.Circle, a.Policies, a.RulesJudged, len(findings))
+		for _, f := range findings {
 			t.Error(f)
 		}
 	}
-	t.Logf("цепочек %d · с краем %d", len(stacks), edges)
+	t.Logf("перепись: цепочек %d · с краем %d · с непустым кругом %d · правил осмотрено %d",
+		len(stacks), edges, trusting, rules)
 	if edges == 0 {
 		t.Fatal("ни одна цепочка не рендерит края — судить нечего")
 	}
-}
-
-// Способность упасть: каждая инъекция меняет один факт, близнец молчит.
-func TestEdgeClientAddressCircleJudgement_CanFailAndStaysSilent(t *testing.T) {
-	for _, c := range []struct {
-		name, value string
-		declared    bool
-		mustSay     string
-	}{
-		{name: "законный близнец", value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7", declared: true},
-		{name: "суженный близнец", value: "10.244.0.0/16", declared: true},
-		{name: "ручки нет", declared: false, mustSay: "нет " + edgeCircleKnob},
-		{name: "пусто", value: " , ", declared: true, mustSay: "пуст"},
-		{name: "неразборная запись", value: "10.0.0.300/8", declared: true, mustSay: "не разбирается"},
-		{name: "весь адресный простор", value: "0.0.0.0/0", declared: true, mustSay: "покрывает публичные"},
-		{name: "частная сеть, расширенная за свою границу", value: "10.0.0.0/7", declared: true, mustSay: "покрывает публичные"},
-		{name: "публичная сеть", value: "198.51.100.0/24", declared: true, mustSay: "покрывает публичные"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			got := judgeEdgeCircle("инъекция", c.value, c.declared)
-			if c.mustSay == "" {
-				if len(got) != 0 {
-					t.Fatalf("близнец не молчит: %v", got)
-				}
-				return
-			}
-			if !strings.Contains(strings.Join(got, "\n"), c.mustSay) {
-				t.Fatalf("ни одна находка не называет %q: %v", c.mustSay, got)
-			}
-		})
+	if _, ok := stacks[circleSubjectStack]; !ok {
+		t.Fatalf("цепочки %s в таблице нет — предпосылка пробы исчезла", circleSubjectStack)
+	}
+	if !subjectTrusting {
+		t.Errorf("цепочка %s: круг края пуст — за раздачей консоли все клиенты один источник для ограничения "+
+			"частоты входа (kacho#3028)", circleSubjectStack)
+	}
+	if trusting == 0 {
+		t.Fatal("ни у одной цепочки круг не непуст — замок «только фронт» не осмотрен ни разу")
 	}
 }

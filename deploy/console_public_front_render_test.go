@@ -31,10 +31,12 @@
 //     источника адресом узла, раздача видит вместо клиентов один–четыре адреса
 //     узлов, и ограничение частоты «на источник» у службы доступа становится
 //     общим на всех: исчерпав его, один клиент отказывает во входе остальным;
-//  6. раздача сама пишет `X-Forwarded-For` к краю — адресом TCP-пира
-//     (`$remote_addr`), а не дописывает его к заголовку, пришедшему от клиента
-//     (`$proxy_add_x_forwarded_for`): заголовок, присланный клиентом, наружу
-//     от раздачи не уходит, и звену за ней нечего «выбирать справа».
+//  6. КАЖДАЯ полоса раздачи, проксирующая запрос (`proxy_pass`), сама пишет
+//     `X-Forwarded-For` — адресом TCP-пира (`$remote_addr`), а не дописывает
+//     его к заголовку клиента (`$proxy_add_x_forwarded_for`). Судится ПОЛОСА, а
+//     не найденная строка: полоса без своей строки отдаёт дальше заголовок
+//     клиента как есть (nginx пересылает заголовки запроса по умолчанию), и
+//     перебор одних найденных строк такую полосу не видит вовсе.
 //
 // ЗНАМЕНАТЕЛЬ. Цепочек с таким входом обязано быть не меньше одной: стенд,
 // ради которого вход заведён, раскатывается из этого дерева, и «на всех
@@ -95,7 +97,95 @@ var (
 	redirectReturn   = regexp.MustCompile(`(?m)^\s*return 308 (\S+)\$request_uri;\s*$`)
 	nginxDirective   = regexp.MustCompile(`(?m)^\s*(proxy_pass|try_files|root|alias|fastcgi_pass|grpc_pass)\b`)
 	forwardedForSet  = regexp.MustCompile(`(?mi)^\s*proxy_set_header\s+X-Forwarded-For\s+(\S+?)\s*;`)
+	locationHead     = regexp.MustCompile(`(?m)^[ \t]*location\s+([^{]*?)\s*\{`)
+	proxyPassLine    = regexp.MustCompile(`(?m)^\s*proxy_pass\s+(\S+?)\s*;`)
 )
+
+// nginxLocation — одна полоса раздачи: заголовок `location` (модификатор и
+// образец) и её тело без комментариев.
+type nginxLocation struct {
+	Head, Body, ProxyPass string
+}
+
+// stripNginxComment — строка без комментария: `#` в начале строки либо после
+// пробела. Без этого фигурная скобка в комментарии сбила бы подсчёт тела.
+func stripNginxComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		if line[i] == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			return line[:i]
+		}
+	}
+	return line
+}
+
+// nginxLocations — все полосы карты настройки с телами, найденными подсчётом
+// фигурных скобок (тело может нести вложенные блоки). Незакрытое тело —
+// отказ разбора, а не «полос меньше».
+func nginxLocations(conf string) ([]nginxLocation, error) {
+	var b strings.Builder
+	for _, l := range strings.Split(conf, "\n") {
+		b.WriteString(stripNginxComment(l))
+		b.WriteByte('\n')
+	}
+	text := b.String()
+	var out []nginxLocation
+	for _, m := range locationHead.FindAllStringSubmatchIndex(text, -1) {
+		depth, end := 1, -1
+		for i := m[1]; i < len(text) && end < 0; i++ {
+			switch text[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = i
+				}
+			}
+		}
+		head := strings.TrimSpace(text[m[2]:m[3]])
+		if end < 0 {
+			return nil, fmt.Errorf("тело полосы `location %s` не закрыто", head)
+		}
+		loc := nginxLocation{Head: head, Body: text[m[1]:end]}
+		if pp := proxyPassLine.FindStringSubmatch(loc.Body); pp != nil {
+			loc.ProxyPass = pp[1]
+		}
+		out = append(out, loc)
+	}
+	return out, nil
+}
+
+// judgeLaneForwardedFor — находки п. 6 по одной карте настройки: каждая
+// проксирующая полоса пишет `X-Forwarded-For $remote_addr` сама и ровно так.
+// proxied — число проксирующих полос (знаменатель).
+func judgeLaneForwardedFor(conf string) (findings []string, proxied int) {
+	locs, err := nginxLocations(conf)
+	if err != nil {
+		return []string{"карта настройки раздачи не разбирается на полосы: " + err.Error()}, 0
+	}
+	for _, l := range locs {
+		if l.ProxyPass == "" {
+			continue
+		}
+		proxied++
+		xff := forwardedForSet.FindAllStringSubmatch(l.Body, -1)
+		if len(xff) == 0 {
+			findings = append(findings, fmt.Sprintf("полоса `location %s` проксирует (%s) без своей строки "+
+				"X-Forwarded-For — раздача отдаёт дальше заголовок, присланный клиентом, как есть (kacho#3028)",
+				l.Head, l.ProxyPass))
+		}
+		for _, m := range xff {
+			if m[1] != "$remote_addr" {
+				findings = append(findings, fmt.Sprintf("полоса `location %s`: X-Forwarded-For = %s, ожидался "+
+					"$remote_addr — заголовок, присланный клиентом, уходит от раздачи дальше (kacho#3028)", l.Head, m[1]))
+			}
+		}
+	}
+	if proxied == 0 {
+		findings = append(findings, "в карте настройки раздачи нет ни одной проксирующей полосы — п. 6 судить нечего")
+	}
+	return findings, proxied
+}
 
 // judgePublicFronts — НАХОДКИ по рендерам. Чистая функция.
 func judgePublicFronts(renders []publicFrontRender) ([]string, publicFrontCensus) {
@@ -226,16 +316,10 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 		say("происхождение консоли %q не по https — Secure-печенье формы с него браузер не хранит", r.Origin)
 		return out
 	}
-	// 6. заголовок пересылки к краю пишет раздача, а не клиент
-	xff := forwardedForSet.FindAllStringSubmatch(conf, -1)
-	if len(xff) == 0 {
-		say("раздача не пишет X-Forwarded-For ни в одной полосе — край не узнает адреса клиента")
-	}
-	for _, m := range xff {
-		if m[1] != "$remote_addr" {
-			say("X-Forwarded-For к краю = %s, ожидался $remote_addr — заголовок, присланный клиентом, "+
-				"уходит от раздачи дальше (kacho#3028)", m[1])
-		}
+	// 6. заголовок пересылки пишет раздача в КАЖДОЙ проксирующей полосе
+	laneFindings, _ := judgeLaneForwardedFor(conf)
+	for _, f := range laneFindings {
+		say("%s", f)
 	}
 	tlsServed, redirectOnly := false, false
 	for _, m := range nginxServerBlock.FindAllStringSubmatch(conf, -1) {

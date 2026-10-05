@@ -1,0 +1,101 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+NetworkPolicy: вход к поду КРАЯ — только от тех, кто к нему звонит (kacho#3028).
+
+ЗАЧЕМ. Край выводит адрес клиента из `X-Forwarded-For`, если TCP-пир лежит в
+круге доверенных звеньев (`api-gateway.clientAddress.trustedProxyCIDRs`). Сеть —
+всё, что край о пире знает, а сеть подов общая для всего кластера: без этой
+политики любой под, дошедший до края напрямую, одной строкой заголовка
+подменял бы `client_ip` модели прав и ключ ограничения частоты входа у службы
+доступа. Политика выделяет звено фронта МЕТКАМИ пода: до портов, принимающих
+пересылку, доходят только названные ниже отправители.
+
+КТО ЗВОНИТ — по чартам, а не по памяти:
+  - раздача консоли (под `host` чарта `uif`) — порт `cmux`: адрес края ей дан в
+    настройках (`uif.host.upstreams.apiGateway`), три её полосы проксируют туда
+    запросы браузера. Метки — из определения чарта консоли
+    (`ui.hostSelectorLabels`), тем же источником, что ставит их поду;
+  - контроллер входа ingress-nginx этой же установки — порт `tls`: на него
+    смотрит внешний вход края (templates/api-gateway-ingress.yaml). Правило есть
+    только там, где есть и вход, и контроллер;
+  - поды администрирования (`api-gateway.networkPolicy.adminPodsSelector`) —
+    порты `cmux` и `internal-rest`; пустой селектор — «никого», а не «все».
+Иных отправителей в установке нет: ни одна служба адреса края в настройках не
+получает. Что каждый, кто звонит, впущен, держит
+deploy/network_policy_admission_render_test.go; что порты пересылки не открыты
+никому сверх названных меток — deploy/edge_client_address_circle_render_test.go.
+
+Проброс порта (`kubectl port-forward`, им ходят сквозные пробы) приходит в под с
+петли и политикой не судится.
+
+Порт сбора величин (`metricsScrape.port`) открыт всем, как был: адреса клиента
+он не принимает, а где живёт сборщик — свойство кластера.
+
+Ручка — `api-gateway.networkPolicy.enabled`; умолчание включено (values.yaml),
+отладочный профиль её выключает — и тогда же объявляет пустой круг: доверие
+заголовку без этой политики было бы доверием любому поду.
+*/ -}}
+{{- $agw := index .Values "api-gateway" | default dict }}
+{{- $np := $agw.networkPolicy | default dict }}
+{{- if $np.enabled }}
+{{- $uif := .Values.uif | default dict }}
+{{- $ing := index .Values "ingress-nginx" | default dict }}
+{{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
+{{- $tls := $agw.tls | default dict }}
+{{- $scrape := $agw.metricsScrape | default dict }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $agw.name | default "api-gateway" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "umbrella.edgeSelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/part-of: kacho
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "umbrella.edgeSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- if $uif.enabled }}
+    # Раздача консоли — полосы к краю.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "ui.hostSelectorLabels" (dict "Values" $uif) | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: cmux
+    {{- end }}
+    {{- if and .Values.apiGatewayIngress.enabled $tls.enabled $ingOn }}
+    # Контроллер входа этой установки — внешний вход края.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: controller
+      ports:
+        - protocol: TCP
+          port: tls
+    {{- end }}
+    {{- with $np.adminPodsSelector }}
+    # Поды администрирования, объявленные профилем.
+    - from:
+        - podSelector:
+            {{- toYaml . | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: cmux
+        - protocol: TCP
+          port: internal-rest
+    {{- end }}
+    {{- if $scrape.enabled }}
+    # Сбор величин — адреса клиента не принимает.
+    - ports:
+        - protocol: TCP
+          port: {{ required "api-gateway.metricsScrape.port обязателен при включённом сборе" $scrape.port }}
+    {{- end }}
+{{- end }}

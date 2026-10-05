@@ -17,8 +17,11 @@
 // дублёр края, который записывает, что раздача ему прислала.
 //
 // Два клиента с РАЗНЫХ адресов (хост через проброшенный порт и отдельный
-// контейнер в той же сети) идут на TLS-вход, и каждый прикладывает один и тот
-// же подделанный `X-Forwarded-For`. Утверждается:
+// контейнер в той же сети) идут на TLS-вход В КАЖДУЮ полосу раздачи к краю, и
+// каждый прикладывает один и тот же подделанный `X-Forwarded-For`. Полосы
+// выводятся из карты настройки рендера (всё, что проксирует на адрес края), а
+// не выписываются: полоса без своей строки заголовка отдаёт подделку краю как
+// есть, и проба, ходящая в одну полосу, остальных не видит. Утверждается:
 //
 //	предмет  — `X-Forwarded-For`, дошедший до края, равен ровно адресу TCP-пира
 //	           раздачи (его же раздача кладёт в `X-Real-IP`) и подделанного
@@ -41,6 +44,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -75,16 +79,64 @@ func (f *forwardRecorder) get(id string) (seenByEdge, bool) {
 	return s, ok
 }
 
+// edgeUpstreamVar — переменная окружения раздачи с адресом края; полоса к краю —
+// та, чей `proxy_pass` идёт на неё.
+const edgeUpstreamVar = "${KACHO_UI_API_GATEWAY_UPSTREAM}"
+
+var firstAlternation = regexp.MustCompile(`\(([^|()]+)(\|[^()]*)?\)`)
+
+// edgeLanePath — путь, который попадает в полосу `location <head>`. Образец
+// полосы проверяется на выведенном пути: промах — отказ, а не тихая проба
+// чужой полосы.
+func edgeLanePath(t *testing.T, head string) string {
+	t.Helper()
+	f := strings.Fields(head)
+	var path string
+	switch {
+	case len(f) == 2 && f[0] == "=":
+		return f[1]
+	case len(f) == 2 && (f[0] == "~" || f[0] == "~*"):
+		path = strings.TrimSuffix(strings.TrimPrefix(f[1], "^"), "$")
+		path = firstAlternation.ReplaceAllString(path, "$1")
+		if strings.HasSuffix(path, "/") {
+			path += "probe"
+		}
+		if ok, err := regexp.MatchString(f[1], path); err != nil || !ok {
+			t.Fatalf("путь %q не попадает в полосу `location %s` (%v) — проба пошла бы в чужую полосу", path, head, err)
+		}
+		return path
+	case len(f) == 2 && f[0] == "^~", len(f) == 1:
+		return strings.TrimSuffix(f[len(f)-1], "/") + "/probe"
+	}
+	t.Fatalf("полоса `location %s`: форма заголовка пробе неизвестна — путь не выведен", head)
+	return ""
+}
+
 func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Fatal("docker не в PATH — раздачу поднять нечем, условие пробы не создано")
 	}
 	front := frontFromRender(t)
+	locs, err := nginxLocations(front.Conf)
+	if err != nil {
+		t.Fatalf("карта настройки раздачи не разбирается на полосы: %v", err)
+	}
+	type lane struct{ head, path string }
+	var lanes []lane
+	for _, l := range locs {
+		if strings.Contains(l.Body, edgeUpstreamVar) && l.ProxyPass != "" {
+			lanes = append(lanes, lane{l.Head, edgeLanePath(t, l.Head)})
+		}
+	}
+	if len(lanes) == 0 {
+		t.Fatalf("в карте настройки раздачи нет ни одной полосы к краю (%s) — судить нечего", edgeUpstreamVar)
+	}
+	t.Logf("полос раздачи %d · из них к краю %d", len(locs), len(lanes))
+
 	rec := &forwardRecorder{seen: map[string]seenByEdge{}}
 	run := startFront(t, front, rec)
 	httpsAddr := run.Mapped(front.HTTPS)
 	frontIP := dockerOut(t, "inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", run.ID)
-	const path = "/iam/v1/auth/login"
 
 	// Клиент A — хост, через проброшенный порт TLS-входа.
 	hostClient := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
@@ -103,47 +155,54 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
-	req, _ := http.NewRequest(http.MethodPost, "https://"+httpsAddr+path, strings.NewReader(`{}`))
-	req.Header.Set("X-Forwarded-For", forgedForwardedFor)
-	req.Header.Set("X-Request-ID", "client-a")
-	resp, err := hostClient.Do(req)
-	if err != nil {
-		t.Fatalf("клиент A: %v", err)
-	}
-	resp.Body.Close()
-
 	// Клиент B — отдельный контейнер той же сети: другой адрес источника.
-	sidecar := dockerOut(t, "run", "-d", "--entrypoint", "sleep", front.Image, "120")
+	sidecar := dockerOut(t, "run", "-d", "--entrypoint", "sleep", front.Image, "300")
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", sidecar).Run() })
 	clientBIP := dockerOut(t, "inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", sidecar)
-	dockerOut(t, "exec", sidecar, "curl", "-sk", "--max-time", "10", "-o", "/dev/null",
-		"-X", "POST", "-H", "X-Forwarded-For: "+forgedForwardedFor, "-H", "X-Request-ID: client-b",
-		"-d", "{}", fmt.Sprintf("https://%s/%s", net.JoinHostPort(frontIP, fmt.Sprint(front.HTTPS)), strings.TrimPrefix(path, "/")))
 
-	a, okA := rec.get("client-a")
-	b, okB := rec.get("client-b")
-	if !okA || !okB {
-		t.Fatalf("до края дошли не оба запроса (A %v, B %v) — условие пробы не создано", okA, okB)
+	for i, ln := range lanes {
+		idA, idB := fmt.Sprintf("lane-%d-a", i), fmt.Sprintf("lane-%d-b", i)
+		req, _ := http.NewRequest(http.MethodGet, "https://"+httpsAddr+ln.path, nil)
+		req.Header.Set("X-Forwarded-For", forgedForwardedFor)
+		req.Header.Set("X-Request-ID", idA)
+		resp, err := hostClient.Do(req)
+		if err != nil {
+			t.Fatalf("полоса `location %s`, клиент A: %v", ln.head, err)
+		}
+		resp.Body.Close()
+		dockerOut(t, "exec", sidecar, "curl", "-sk", "--max-time", "10", "-o", "/dev/null",
+			"-H", "X-Forwarded-For: "+forgedForwardedFor, "-H", "X-Request-ID: "+idB,
+			fmt.Sprintf("https://%s%s", net.JoinHostPort(frontIP, fmt.Sprint(front.HTTPS)), ln.path))
+
+		a, okA := rec.get(idA)
+		b, okB := rec.get(idB)
+		if !okA || !okB {
+			t.Fatalf("полоса `location %s` (%s): до края дошли не оба запроса (A %v, B %v) — условие пробы не создано",
+				ln.head, ln.path, okA, okB)
+		}
+		t.Logf("полоса `location %s` (%s): A X-Forwarded-For=%q X-Real-IP=%q · B X-Forwarded-For=%q X-Real-IP=%q (адрес B %s)",
+			ln.head, ln.path, a.ForwardedFor, a.RealIP, b.ForwardedFor, b.RealIP, clientBIP)
+
+		t.Run(fmt.Sprintf("предмет %s: заголовок к краю — адрес пира раздачи", ln.path), func(t *testing.T) {
+			for name, s := range map[string]seenByEdge{"A": a, "B": b} {
+				if strings.Contains(s.ForwardedFor, forgedForwardedFor) {
+					t.Errorf("полоса `location %s`, клиент %s: подделанный адрес дошёл до края в X-Forwarded-For=%q",
+						ln.head, name, s.ForwardedFor)
+				}
+				if s.ForwardedFor != s.RealIP {
+					t.Errorf("полоса `location %s`, клиент %s: X-Forwarded-For=%q не равен адресу пира раздачи %q",
+						ln.head, name, s.ForwardedFor, s.RealIP)
+				}
+			}
+			if b.RealIP != clientBIP {
+				t.Errorf("клиент B: раздача видит пир %q, а клиент пришёл с %s — проба меряет не тот адрес", b.RealIP, clientBIP)
+			}
+		})
+		t.Run(fmt.Sprintf("близнец %s: два клиента — два источника", ln.path), func(t *testing.T) {
+			if a.ForwardedFor == b.ForwardedFor {
+				t.Errorf("полоса `location %s`: два клиента с разных адресов дали краю один источник %q",
+					ln.head, a.ForwardedFor)
+			}
+		})
 	}
-	t.Logf("край получил: A X-Forwarded-For=%q X-Real-IP=%q · B X-Forwarded-For=%q X-Real-IP=%q (адрес B %s)",
-		a.ForwardedFor, a.RealIP, b.ForwardedFor, b.RealIP, clientBIP)
-
-	t.Run("предмет: заголовок к краю — адрес пира раздачи, а не заявленный клиентом", func(t *testing.T) {
-		for name, s := range map[string]seenByEdge{"A": a, "B": b} {
-			if strings.Contains(s.ForwardedFor, forgedForwardedFor) {
-				t.Errorf("клиент %s: подделанный адрес дошёл до края в X-Forwarded-For=%q", name, s.ForwardedFor)
-			}
-			if s.ForwardedFor != s.RealIP {
-				t.Errorf("клиент %s: X-Forwarded-For=%q не равен адресу пира раздачи %q", name, s.ForwardedFor, s.RealIP)
-			}
-		}
-		if b.RealIP != clientBIP {
-			t.Errorf("клиент B: раздача видит пир %q, а клиент пришёл с %s — проба меряет не тот адрес", b.RealIP, clientBIP)
-		}
-	})
-	t.Run("близнец: два клиента — два источника", func(t *testing.T) {
-		if a.ForwardedFor == b.ForwardedFor {
-			t.Errorf("два клиента с разных адресов дали краю один источник %q", a.ForwardedFor)
-		}
-	})
 }
