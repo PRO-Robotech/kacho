@@ -33,6 +33,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,7 +241,15 @@ func TestReadPairRemovedGenerationIsReResolved(t *testing.T) {
 func TestReadPairExhaustedRetriesIsUnreadable(t *testing.T) {
 	a, b := keys(t)
 	v := newVolume(t)
-	gens := []string{genA, genB, genC, "..2026_10_05_00_03_00.000000004", "..2026_10_05_00_04_00.000000005"}
+	// Крючок срабатывает после КАЖДОГО ReadFile, а попытка читает два файла:
+	// на первую попытку и generationRetries = 2 повтора уходят шесть
+	// переключений. Поколений с запасом — иначе крючку нечем переключать, и
+	// третья попытка читает устоявшийся том: проба зеленела бы на нехватке
+	// фикстуры, а не краснела на неограниченном повторе.
+	gens := []string{genA, genB, genC}
+	for i := 3; i < 9; i++ {
+		gens = append(gens, fmt.Sprintf("..2026_10_05_00_%02d_00.%09d", i, i+1))
+	}
 	for i, g := range gens {
 		k := a
 		if i%2 == 1 {
