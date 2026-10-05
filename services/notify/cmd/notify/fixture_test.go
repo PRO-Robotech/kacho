@@ -53,6 +53,9 @@ func fixtureEnv(t *testing.T) map[string]string {
 	if len(env) == 0 {
 		t.Fatal("фикстура пуста")
 	}
+	// Пару DKIM фикстура не несёт: её выпускает проба в каталоге формы kubelet
+	// (§12а, полоса N14), как peerTLSFiles — сертификат пира.
+	dkimFiles(t, env)
 	return env
 }
 
