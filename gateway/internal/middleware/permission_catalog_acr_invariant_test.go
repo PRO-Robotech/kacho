@@ -233,10 +233,10 @@ func sensitiveACR2FQNs() []string {
 		// (`InternalNotificationRecipientService/{Resolve,ListProjectAudience}`)
 		// are deliberately NOT here: their caller is `service:notify` by
 		// certificate (NTF-3 acceptance, roster of the Д2 link), which has no
-		// second factor, and the contract declares NO floor on them — the
-		// generator stamped "2" for the unstated floor, the very accident the
-		// Module Plan/Get/List comment above names. Until the contract declares
-		// "1" explicitly, the over-inclusion assertion below names both rows.
+		// second factor. The 745640d6 contract declared no floor on them and the
+		// generator stamped "2" for the unstated floor — the very accident the
+		// Module Plan/Get/List comment above names; kaname c1b397b7 (Д121) declares
+		// "1" explicitly, and the over-inclusion assertion below is silent on them.
 		"kaname.cloud.iam.v1.InternalNotificationGrantService/Restore",
 		"kaname.cloud.iam.v1.InternalNotificationGrantService/Revoke",
 	}
@@ -879,11 +879,10 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// сервиса, в полосу «чувствительное» явным "2" контракта: 30→32. Две —
 	// чтения справочника адресов `InternalNotificationRecipientService/{Resolve,
 	// ListProjectAudience}` (X4D): их вызывает `service:notify` по сертификату,
-	// и место им в полосе «рутина» (292→294); контракт пина пола на них НЕ
-	// объявляет, и генератор поставил "2" по умолчанию — полоса
-	// «чувствительное» сейчас мерит 34, рутинная 292. Утверждения ниже
-	// называют то, что обязано быть, и краснеют, пока контракт службы не
-	// объявит "1" явно. Итог 351→356 замерен прогоном после регенерации.
+	// и место им в полосе «рутина» (292→294). Контракт 745640d6 пола на них не
+	// объявлял, и генератор ставил "2" по умолчанию (полосы мерили 34 и 292);
+	// пин kaname@c1b397b7 (Д121) объявляет "1" явно, и после регенерации
+	// каталога полосы ЗАМЕРЕНЫ прогоном: 32 · 294 · 30, итог 351→356.
 	assert.Equal(t, 294, n1, "routine count")
 	assert.Equal(t, 30, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
 	assert.Equal(t, 356, n2+n1+nEmpty, "catalog total")
