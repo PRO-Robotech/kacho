@@ -99,8 +99,11 @@ func qRune(r rune) string {
 // qSafe — октет, который кодировка Q в имени и в теме пишет как есть
 // (RFC 2047 §5 (3)).
 func qSafe(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
-		c == '!' || c == '*' || c == '+' || c == '-' || c == '/'
+	return isAlnum(c) || c == '!' || c == '*' || c == '+' || c == '-' || c == '/'
+}
+
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 func isPrintableASCII(s string) bool {
@@ -117,8 +120,7 @@ func isPlainPhrase(s string) bool {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !(c == ' ' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+		if c := s[i]; c != ' ' && !isAlnum(c) {
 			return false
 		}
 	}
@@ -133,8 +135,7 @@ func isDotAtom(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == '.' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
-			strings.IndexByte("!#$%&'*+-/=?^_`{|}~", c) >= 0 {
+		if c == '.' || isAlnum(c) || strings.IndexByte("!#$%&'*+-/=?^_`{|}~", c) >= 0 {
 			continue
 		}
 		return false
