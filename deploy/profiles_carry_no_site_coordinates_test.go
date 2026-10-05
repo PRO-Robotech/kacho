@@ -44,13 +44,13 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -304,7 +304,7 @@ func judgeStackPasswords(folded map[string]map[string]any) []string {
 // краснел бы там — на правильном дереве.
 func trackedProfiles(t *testing.T) []string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", "..", "ls-files", "-z").Output()
+	out, err := gitenv.Command("..", "ls-files", "-z").Output()
 	if err != nil {
 		t.Fatalf("git ls-files не исполнился (%v) — перечня профилей взять неоткуда; "+
 			"это отказ, а не чистое дерево", err)

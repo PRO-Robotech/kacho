@@ -82,7 +82,7 @@ global:
       # кроме одного (разбор — у того же блока в `values.dev.yaml`).
       smtp:
         connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
-        fromAddress: "noreply@kacho.cloud"
+        fromAddress: "noreply@mail.kacho.test"
         fromName: "Kacho Cloud"
         # Якорь листа приёмника у НАШЕГО отправителя — тем же узлом и по той же
         # причине, что у стенда разработки (values.dev.yaml, kacho#2901).

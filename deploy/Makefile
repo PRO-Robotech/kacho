@@ -1002,6 +1002,13 @@ own-up: preflight
 # старыми архивами молча применяла прежний шаблон подчарта. Порядок держит
 # deploy/umbrella_apply_runs_deps_first_test.go — для каждой цели файла.
 #
+# СЛОЙ ПЛОЩАДКИ — ПОСЛЕДНИМ, И ЗАГЛУШКИ ДО КЛАСТЕРА НЕ ДОЕЗЖАЮТ (kacho#3040).
+# Координаты площадки (узел почты с учёткой, отправитель, origin консоли) в
+# публичном профиле — заглушки; настоящие лежат в `helm/umbrella/values.<стенд>-
+# secrets.yaml` вне git. Цель кладёт его последним, если он на месте, и взводит
+# `global.kacho.siteLayer.enforced`: оставшаяся заглушка — отказ рендера уже в
+# предполёте секретов, до применения (templates/site-layer-guard.yaml).
+#
 #   make -C deploy stack-up STACK=a8f60d
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
@@ -1043,6 +1050,14 @@ stack-up:
 	  exit 1; }; \
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
+	site="./helm/umbrella/values.$(STACK)-secrets.yaml"; site_args=""; \
+	if [ -f "$$site" ]; then \
+	  site_args="-f $$site"; \
+	  echo "  слой площадки: $$site (вне git), последним"; \
+	else \
+	  echo "  слой площадки: $$site НЕТ — заглушки профиля, если они есть, откажут в рендере"; \
+	fi; \
+	site_args="$$site_args --set global.kacho.siteLayer.enforced=true"; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory helm-deps; \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
@@ -1052,11 +1067,11 @@ stack-up:
 	  EXPECT_CONTEXT="$$ctx"; \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
-	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
+	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) $$site_args; \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
-	  $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
+	  $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) $$site_args --wait --timeout $(STACK_TIMEOUT)
 
 
 # assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.

@@ -36,8 +36,9 @@
 #     кластера — потолки здесь ниже, чем на стенде разработчика. Это решение о
 #     РАЗМЕРЕ, а не о посадке: посадка остаётся production.
 #  5. Доменного имени у стенда НЕТ: консоль отвечает на голом IP-литерале
-#     `http://46.173.29.131`, внешнего TLS тоже нет. Отсюда блок службы
-#     личности ниже — см. «ВНЕШНИЙ ORIGIN КОНСОЛИ».
+#     площадки, внешнего TLS тоже нет. Отсюда блок службы личности ниже — см.
+#     «ВНЕШНИЙ ORIGIN КОНСОЛИ». Сам адрес — координата площадки и приходит
+#     слоем площадки (см. «СЛОЙ ПЛОЩАДКИ» ниже).
 #
 # ── ОБРАЗЫ ПРОДУКТА: ПИНЫ ПОРОЖДАЮТСЯ, ПРАВИТСЯ ПОРОЖДАЮЩИЙ ────────────────
 #
@@ -83,7 +84,7 @@ ingress-nginx:
   enabled: false
 # ─── ВНЕШНИЙ ORIGIN КОНСОЛИ: ГОЛЫЙ IP, БЕЗ ИМЕНИ И БЕЗ TLS СНАРУЖИ ──────────
 #
-# Консоль этого кластера доступна по `http://46.173.29.131` — Service типа
+# Консоль этого кластера доступна по голому IP-литералу — Service типа
 # LoadBalancer с адресом от площадки (см. п.2 шапки: IngressClass в кластере нет
 # ни одного, объекты Ingress инертны). Доменного имени у стенда НЕТ, внешнего
 # TLS тоже нет.
@@ -118,12 +119,32 @@ ingress-nginx:
 # ОЧИСТКА ДВУХ РУЧЕК — НЕ ФОРМАЛЬНОСТЬ. `cookieDomain`/`webauthnRpId` объявляет
 # слой под нами (values.dev.yaml, `kacho.local`). Оставить их значило бы принять
 # величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
+#
+# ─── СЛОЙ ПЛОЩАДКИ: КООРДИНАТЫ ЗДЕСЬ — ЗАГЛУШКИ (kacho#3040) ───────────────
+#
+# Узел почтовой полосы с учёткой отправителя, адрес отправителя и внешний
+# origin консоли — координаты ПЛОЩАДКИ, а репозиторий публичен. Здесь они
+# стояли значениями; теперь здесь заглушки зарезервированных имён (RFC 2606) и
+# адреса документации (RFC 5737), а настоящие лежат в слое площадки вне git —
+# `values.a8f60d-secrets.yaml` рядом с этим файлом (шаблон игнорирования
+# `**/values.*-secrets.yaml`). `make stack-up STACK=a8f60d` кладёт его
+# последним и взводит `global.kacho.siteLayer.enforced`: стенд, у которого
+# слоя нет, в рендере ОТКАЗЫВАЕТ (templates/site-layer-guard.yaml), а не
+# поднимается с неразрешимым узлом. Слой несёт ровно эти три величины:
+#
+#   global.kacho.identity.smtp.connectionURI  (схема smtps, учётка, узел, порт)
+#   global.kacho.identity.smtp.fromAddress
+#   global.kacho.identity.appBaseURL          (http://<адрес балансировщика>)
+#
+# Значения, стоявшие здесь прежде, остаются в истории публичного репозитория:
+# снятие из файла раскрытое не отзывает. Пароля в ней не было никогда — он
+# приходит секретом `kaname-mail-credential`.
 global:
   kacho:
     identity:
       smtp:
-        connectionURI: "smtps://info%40prorobotech.ru@smtp.yandex.ru:465/"
-        fromAddress: "info@prorobotech.ru"
+        connectionURI: "smtps://sender%40mail.a8f60d.invalid@relay.a8f60d.invalid:465/"
+        fromAddress: "sender@mail.a8f60d.invalid"
         fromName: "Kacho Cloud"
         credentialSecret:
           name: kaname-mail-credential
@@ -136,7 +157,9 @@ global:
         trustAnchorSecret:
           name: ""
           key: ""
-      appBaseURL: "http://46.173.29.131"
+      # Заглушка адресом документации (RFC 5737), а не именем: стенд
+      # `domainless`, и правила печенья и ключей доступа судят IP-литерал.
+      appBaseURL: "http://192.0.2.10"
       domainless: true
       cookieDomain: ""
       webauthnRpId: ""
@@ -163,6 +186,15 @@ global:
 # у pg-geo его нет и не должно быть — geo_outbox курсорный, без дренажа
 # (deploy/tests/helm/outbox-autovacuum-naptime-test.sh, NON_QUEUE_INSTANCES).
 pg-vpc:
+  # ПАРОЛЬ БАЗЫ НЕ НАСЛЕДУЕТСЯ ИЗ СЛОЯ РАЗРАБОТКИ (kacho#3040). Слой
+  # values.dev.yaml несёт заглушку разработки литералом — законно на машине
+  # разработчика и находка здесь: репозиторий публичен, а этот стенд доступен не
+  # только автору. Пустая величина отдаёт пароль чарту базы: на первом подъёме
+  # он порождается случайным, на последующих — читается из уже заведённого
+  # секрета (`lookup`), поэтому не меняется от выкатки к выкатке. Держит
+  # TestStacksOutsideTheDeveloperMachineCarryNoPasswordLiteral.
+  auth:
+    password: ""
   primary:
     persistence:
       enabled: false
@@ -197,6 +229,8 @@ pg-vpc:
     persistence:
       enabled: false
 pg-compute:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -215,6 +249,8 @@ pg-compute:
     persistence:
       enabled: false
 pg-iam:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -243,6 +279,8 @@ pg-iam:
     persistence:
       enabled: false
 pg-geo:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -261,6 +299,8 @@ pg-geo:
     persistence:
       enabled: false
 pg-nlb:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -279,6 +319,8 @@ pg-nlb:
     persistence:
       enabled: false
 pg-storage:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -289,6 +331,8 @@ pg-storage:
     persistence:
       enabled: false
 pg-registry:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -391,6 +435,18 @@ api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-275240ef
 kaname:
   resources: *id002
+  # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА — ССЫЛКОЙ НА СЕКРЕТ (kacho#2878, kacho#3040).
+  # Слой values.dev.yaml объявляет адрес величиной — человека фикстур проб
+  # стенда разработки. Здесь он стал бы учёткой входа управляемого стенда в
+  # публичном файле. Адрес лежит в секрете `stand-cloud-admin` (ключ `email`),
+  # его заводит оператор площадки; `email` очищается, иначе рендер отказывает
+  # (две формы одного предмета).
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        secretName: stand-cloud-admin
+        emailKey: email
+        email: ""
   # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — СУЖЕНА ПРЕДЕЛОМ ЭТОГО КЛАСТЕРА
   # (Ф3-42, ID-PW-1 PWV-15.7; предпосылка #2735).
   #

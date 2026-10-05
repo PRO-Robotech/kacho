@@ -1,0 +1,63 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+СТРАЖ СЛОЯ ПЛОЩАДКИ (kacho#3040): профиль с заглушками не применяется к кластеру.
+
+Публичный профиль несёт координаты площадки ЗАГЛУШКАМИ — зарезервированные
+имена (RFC 2606: `.invalid`, `.example`, `example.{com,net,org}`) и адреса
+документации (RFC 5737). Настоящие приходят слоем площадки вне git. Рендер для
+проверок слоя не имеет и обязан проходить; применение к кластеру — нет: стенд
+с заглушками поднимается, поды готовы, а письма уходят на неразрешимый узел и
+ссылки в них ведут в никуда — молча.
+
+Открывается ручкой `global.kacho.siteLayer.enforced`, которую взводят рецепты
+применения. Судятся три величины, доезжающие до процесса службы доступа:
+узел почтовой полосы, адрес отправителя, внешний origin консоли. Узел судится
+раскрытым тем же `tpl`, что у читателя величины (страж почтовой полосы).
+
+ЧЕГО СТРАЖ НЕ УТВЕРЖДАЕТ: что настоящая величина верна и узел отвечает — это
+рантайм и сквозная проба. Он утверждает только, что заглушка до кластера не
+доехала.
+
+Объект не производится: страж существует ради своего отказа.
+*/}}
+{{- if ((((.Values.global).kacho).siteLayer).enforced) }}
+{{- $id := (((.Values.global).kacho).identity) | default dict }}
+{{- $smtp := $id.smtp | default dict }}
+{{- $placeholderHost := "(?i)^(.*\\.)?(invalid|example|example\\.com|example\\.net|example\\.org)\\.?$" }}
+{{- $docAddress := "^(192\\.0\\.2|198\\.51\\.100|203\\.0\\.113)\\.[0-9]{1,3}$" }}
+{{- $hits := list }}
+
+{{- $uri := trim (tpl (toString ($smtp.connectionURI | default "")) .) }}
+{{- if ne $uri "" }}
+{{- $rest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $uri "" }}
+{{- $authority := (splitList "/" $rest) | first }}
+{{- $hostport := (splitList "@" $authority) | last }}
+{{- $host := (splitList ":" $hostport) | first }}
+{{- if or (regexMatch $placeholderHost $host) (regexMatch $docAddress $host) }}
+{{- $hits = append $hits (printf "global.kacho.identity.smtp.connectionURI (узел %q)" $host) }}
+{{- end }}
+{{- end }}
+
+{{- $from := trim (toString ($smtp.fromAddress | default "")) }}
+{{- if ne $from "" }}
+{{- $domain := (splitList "@" $from) | last }}
+{{- if regexMatch $placeholderHost $domain }}
+{{- $hits = append $hits (printf "global.kacho.identity.smtp.fromAddress (домен %q)" $domain) }}
+{{- end }}
+{{- end }}
+
+{{- $origin := trim (toString ($id.appBaseURL | default "")) }}
+{{- if ne $origin "" }}
+{{- $orest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $origin "" }}
+{{- $ohost := (splitList ":" ((splitList "/" $orest) | first)) | first }}
+{{- if or (regexMatch $placeholderHost $ohost) (regexMatch $docAddress $ohost) }}
+{{- $hits = append $hits (printf "global.kacho.identity.appBaseURL (узел %q)" $ohost) }}
+{{- end }}
+{{- end }}
+
+{{- if $hits }}
+{{- fail (printf "kacho-umbrella: стенд применяется к кластеру (global.kacho.siteLayer.enforced), а слой площадки не заменил заглушки публичного профиля: %s. Координаты площадки приходят слоем вне git (`values.<стенд>-secrets.yaml`, последним в цепочке; `make stack-up` кладёт его сам, если файл на месте) — положите в него эти величины. Заглушка до кластера не доезжает: стенд поднялся бы, а письма уходили бы на неразрешимый узел молча (kacho#3040)" (join "; " $hits)) }}
+{{- end }}
+{{- end }}
