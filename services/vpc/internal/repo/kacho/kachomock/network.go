@@ -165,16 +165,17 @@ func (nw *networkWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []st
 	return &cp, nil
 }
 
-func (nw *networkWriter) Delete(_ context.Context, id string) error {
-	if _, ok := nw.w.local[id]; !ok {
-		return repo.ErrNotFound
+func (nw *networkWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := nw.w.local[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if nw.w.deletedIDs == nil {
 		nw.w.deletedIDs = make(map[string]struct{})
 	}
 	nw.w.deletedIDs[id] = struct{}{}
 	delete(nw.w.local, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // Compile-time проверка соответствия интерфейсам.

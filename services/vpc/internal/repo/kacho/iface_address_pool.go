@@ -62,7 +62,12 @@ type AddressPoolWriterIface interface {
 	// и применяет свою маску поверх — lost-update (silent revert is_default /
 	// selector_priority) исключён (project-rule #10).
 	GetForUpdate(ctx context.Context, id string) (*AddressPoolRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// LockForUpdate берет row-lock (SELECT ... FOR UPDATE) на pool в writer-TX.
 	// AddressPool.Delete вызывает его перед count-проверкой, а external-allocate
 	// берет FOR SHARE на тот же pool → Delete сериализуется против in-flight

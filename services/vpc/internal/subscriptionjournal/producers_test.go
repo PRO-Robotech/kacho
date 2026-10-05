@@ -220,24 +220,11 @@ func TestChangeDictionaryIsDerivedFromBothProducers(t *testing.T) {
 // Вид, который производится, но не объявлен, недоставляем: авторизовать его
 // нечем. Вид, объявленный без производителя, — запись, пережившая свой предмет.
 //
-// Обе стороны, кроме НАЗВАННОГО исключения: `AddressPool` и
-// `AddressPoolNetworkDefault` производятся и в словарь не входят НАМЕРЕННО —
-// это админские предметы уровня кластера, у которых НЕТ ПРОЕКТНОГО ИЗМЕРЕНИЯ, а
-// подписка сужает именно по нему; вопрос о видимости строки задать нечем.
-// Исключение стоит здесь ПОИМЁННО, а не молчаливым пропуском: перечень, которому
-// нечего исключать, обязан краснеть.
-//
-// Про модель прав это основание не утверждает НИЧЕГО, и умолчание здесь
-// намеренное: тип `vpc_address_pool` в ней объявлен и несёт четыре глагола (он
-// помечен спящим — объектов пула никто не регистрирует). Разбор и сверка —
-// `exclusion_ground_test.go` (#1494).
+// Исключений нет. Прежде здесь поимённо стояли пул адресов и привязка пула по
+// умолчанию к сети; пул опубликован видом уровня кластера (NTF-3, Р2), а строк
+// привязки журнал больше не получает (NTF3-62) — перечню исключений стало
+// нечего исключать, и он снят вместе с предметом.
 func TestEveryDeliverableKindIsDeclaredAndEveryDeclaredKindIsProduced(t *testing.T) {
-	// Предметы БЕЗ ПРОЕКТНОГО ИЗМЕРЕНИЯ — оси, по которой сужает подписка.
-	infraOnly := map[string]bool{
-		"AddressPool":               true,
-		"AddressPoolNetworkDefault": true,
-	}
-
 	all := append(goEmissions(t), sqlEmissions(t)...)
 	produced := map[string]int{}
 	kindWhere := map[string][]string{}
@@ -252,13 +239,9 @@ func TestEveryDeliverableKindIsDeclaredAndEveryDeclaredKindIsProduced(t *testing
 
 	declared := Journal().Mapping.Kinds
 	for kind := range produced {
-		if infraOnly[kind] {
-			continue
-		}
 		if _, ok := declared[kind]; !ok {
 			t.Errorf("производится вид %q, а словарь его НЕ называет: строка недоставляема, "+
-				"потому что авторизовать её нечем. Если вид админский — назови его в перечне "+
-				"исключений этой пробы, а не оставляй молчаливым пропуском.\n"+
+				"потому что авторизовать её нечем.\n"+
 				"  места (%d): %s", kind, len(kindWhere[kind]),
 				strings.Join(kindWhere[kind], "\n           "))
 		}
@@ -269,34 +252,23 @@ func TestEveryDeliverableKindIsDeclaredAndEveryDeclaredKindIsProduced(t *testing
 				"подписка на него открывается и молчит вечно", kind)
 		}
 	}
-	for kind := range infraOnly {
-		if produced[kind] == 0 {
-			t.Errorf("исключению %q больше нечего исключать: вид не производится ни одним "+
-				"производителем. Снимите запись — иначе следующая слепая зона унаследует её", kind)
-		}
-		if _, ok := declared[kind]; ok {
-			t.Errorf("вид %q объявлен и словарём, и перечнем исключений: два решения об одном "+
-				"предмете, из которых верно одно", kind)
-		}
-	}
-	t.Logf("перепись: видов производится %d %v; объявлено словарём %d; исключено намеренно %d",
-		len(produced), sortedKeys(produced), len(declared), len(infraOnly))
+	t.Logf("перепись: видов производится %d %v; объявлено словарём %d",
+		len(produced), sortedKeys(produced), len(declared))
 }
 
-// TestEveryDeliverableEmissionCarriesAProjectAnchor — якорь проекта стоит на
-// КАЖДОМ месте эмиссии доставляемого вида.
+// TestEveryDeliverableEmissionCarriesAProjectAnchor — якорь на КАЖДОМ месте
+// эмиссии следует объявлению якоря вида (`Scope`).
 //
-// Это и есть защита от того, ради чего якорь заведён. Пропустить аргумент нельзя
-// — не соберётся; но можно передать пустую строку, и тогда событие тихо не
-// покажется подписчику с осью проекта. Проба требует, чтобы у доставляемого вида
-// якорь был ВЫРАЖЕНИЕМ, а не пустым литералом и не именованным «якоря нет».
+// Пропустить аргумент нельзя — не соберётся; но можно передать пустую строку, и
+// тогда событие проектного вида тихо не покажется подписчику с осью проекта.
+// Проба требует, чтобы у проектного вида якорь был ВЫРАЖЕНИЕМ, а не пустым
+// литералом и не именованным «якоря нет».
 //
-// Обратная сторона утверждается тут же: у админских видов якоря быть НЕ должно, и
-// стоять там обязано именно ИМЯ отсутствия, а не безымянный литерал — иначе
-// пропуск и решение неразличимы на чтение.
+// Обратная сторона утверждается тут же: у вида уровня кластера якоря быть НЕ
+// должно, и стоять там обязано именно ИМЯ отсутствия, а не безымянный литерал —
+// иначе пропуск и решение неразличимы на чтение.
 func TestEveryDeliverableEmissionCarriesAProjectAnchor(t *testing.T) {
 	const absent = "helpers.NoProjectAnchor"
-	infraOnly := map[string]bool{"AddressPool": true, "AddressPoolNetworkDefault": true}
 
 	emissions := goEmissions(t)
 	if len(emissions) == 0 {
@@ -306,18 +278,19 @@ func TestEveryDeliverableEmissionCarriesAProjectAnchor(t *testing.T) {
 
 	anchored, absent0 := 0, 0
 	for _, e := range emissions {
-		switch {
-		case infraOnly[e.kind]:
+		k, ok := declared[e.kind]
+		if !ok {
+			continue // вид вне словаря — предмет соседней пробы
+		}
+		switch k.Scope {
+		case subscription.ScopeCluster:
 			if e.anchor != absent {
-				t.Errorf("%s: вид %q проектного измерения не имеет, но якорь задан как %s. "+
+				t.Errorf("%s: вид %q уровня кластера, но якорь задан как %s. "+
 					"Отсутствие якоря обязано быть НАЗВАНО (%s), иначе решение неотличимо "+
 					"от пропуска", e.pos, e.kind, e.anchor, absent)
 			}
 			absent0++
-		default:
-			if _, ok := declared[e.kind]; !ok {
-				continue // вид вне словаря и вне исключений — предмет соседней пробы
-			}
+		case subscription.ScopeProject:
 			if e.anchor == absent || e.anchor == `""` {
 				t.Errorf("%s: вид %q доставляется подписчикам, а якорь проекта пуст (%s). "+
 					"Событие не покажется подписчику с осью проекта — тихо, без отказа и "+
@@ -325,7 +298,12 @@ func TestEveryDeliverableEmissionCarriesAProjectAnchor(t *testing.T) {
 				continue
 			}
 			anchored++
+		default:
+			t.Errorf("%s: вид %q не объявил якорь (Scope = %d)", e.pos, e.kind, k.Scope)
 		}
+	}
+	if absent0 == 0 {
+		t.Error("ни одной эмиссии вида уровня кластера — сторона «якоря нет» судила бы пустоту")
 	}
 	t.Logf("перепись: мест эмиссии %d; с якорем %d; отсутствие якоря названо %d",
 		len(emissions), anchored, absent0)

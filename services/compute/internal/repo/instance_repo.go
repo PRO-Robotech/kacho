@@ -585,8 +585,8 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 		return ports.ErrInternal
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var projectID string
-	err = tx.QueryRow(ctx, `DELETE FROM instances WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
+	var projectID, name string
+	err = tx.QueryRow(ctx, `DELETE FROM instances WHERE id = $1 RETURNING project_id, name`, id).Scan(&projectID, &name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
@@ -611,7 +611,7 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	}); err != nil {
 		return ports.ErrInternal
 	}
-	if err := emitCompute(ctx, tx, "Instance", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := emitCompute(ctx, tx, "Instance", id, projectID, "DELETED", deletedPayload(id, name)); err != nil {
 		return ports.ErrInternal
 	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "Instance", id, projectID, nil); err != nil {

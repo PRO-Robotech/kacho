@@ -17,8 +17,8 @@
 //
 // Общая форма допускает оба устройства, и выбор здесь сделан осознанно.
 //
-// Нагрузка события удаления у compute несёт ОДИН идентификатор
-// (`instance_repo.go`, ветка Delete), проекта в ней нет. Значит разбор нагрузки
+// Нагрузка события удаления у compute несёт идентификатор и снимок имени
+// (ветки Delete репозиториев), проекта в ней нет. Значит разбор нагрузки
 // дал бы у удалений пустой якорь — а пустой якорь по контракту означает «предмет
 // уровня аккаунта или кластера», то есть УТВЕРЖДЕНИЕ, ложное для машины. Дальше
 // подписка с осью `project_id` такие события не пропускала бы, и потребитель,
@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
@@ -69,6 +70,16 @@ const (
 	// Блочное хранение ушло из compute миграцией 0021, и `Disk` / `Image` /
 	// `Snapshot` среди видов больше не значатся — их владелец kacho-storage.
 	JournalWordInstance = "Instance"
+
+	// JournalWordPlacementGroup — слово журнала группы размещения
+	// (`emitCompute(..., "PlacementGroup", ...)`); клиенту едет
+	// `compute_placement_group`.
+	JournalWordPlacementGroup = "PlacementGroup"
+
+	// JournalWordGuestAccessKey — слово журнала гостевого ключа
+	// (`emitCompute(..., "GuestAccessKey", ...)`); клиенту едет
+	// `compute_guest_access_key`.
+	JournalWordGuestAccessKey = "GuestAccessKey"
 
 	// changeDeleted — слово владельца для снятия предмета.
 	changeDeleted = "DELETED"
@@ -107,6 +118,13 @@ func Journal() subscription.Journal {
 			// `0001_initial.sql`), то есть часами БАЗЫ — теми же, которыми судит
 			// уборщик, поэтому слагаемого на разницу источников у порога нет.
 			AgeColumn: "created_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `created_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "created_at",
 		},
 		Mapping: subscription.Mapping{
 			// Словарь видов ЗАКРЫТ в обе стороны: вид вне его отвергается на
@@ -121,12 +139,33 @@ func Journal() subscription.Journal {
 			// журнала — `Instance`, с заглавной и без домена, то есть ни на что
 			// в дереве не похоже.
 			//
-			// Действие — то же, которым сужается список машин, поэтому
+			// Действие у каждого вида — то, которым сужается его список, поэтому
 			// видимость в потоке равна видимости в списке.
+			//
+			// Форма имени и якорь объявлены у каждого вида (NTF-3, З2): все три
+			// вида compute живут в проекте, и имя у каждого — DNS-метка (форму
+			// держит ограничение `<таблица>_name_check` схемы). Значит строка
+			// снятия обязана нести снимок имени под ключом
+			// [subscription.NamePayloadKey] — его кладёт удаляющий оператор
+			// репозитория из `RETURNING`, а не чтение до удаления.
 			Kinds: map[string]subscription.Kind{
 				JournalWordInstance: {
 					ObjectType: authzfilter.ResourceTypeInstance,
 					Action:     authzfilter.ActionInstanceRead,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				JournalWordPlacementGroup: {
+					ObjectType: authzfilter.ResourceTypePlacementGroup,
+					Action:     authzfilter.ActionPlacementGroupRead,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				JournalWordGuestAccessKey: {
+					ObjectType: authzfilter.ResourceTypeGuestAccessKey,
+					Action:     authzfilter.ActionGuestAccessKeyRead,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 			},
 			// Словарь родов изменения — ровно те слова, которыми пишет
@@ -178,9 +217,9 @@ func ProjectGate() (subscription.ProjectGate, error) {
 //
 // # Почему снятие отдаётся БЕЗ состояния, и это не потеря
 //
-// Нагрузка удаления несёт один идентификатор — полного состояния в ней нет и
-// быть не может: предмета больше нет. Собрать из неё `computev1.Instance`
-// значило бы отдать подписчику почти пустую машину, а контракт формы разрешает
+// Нагрузка удаления несёт идентификатор и снимок имени — полного состояния в
+// ней нет и быть не может: предмета больше нет. Собрать из неё состояние вида
+// значило бы отдать подписчику почти пустой предмет, а контракт формы разрешает
 // читать НЕПУСТУЮ нагрузку как ПОЛНОЕ состояние предмета. Подписчик записал бы
 // пустые поля как факт: имя исчезло, зона исчезла, метки исчезли.
 //
@@ -201,19 +240,44 @@ func state(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 	// Нагрузка записана тем же кодированием, каким читается (`domainToMap` —
 	// обход `encoding/json` по доменной структуре), поэтому обратный ход
 	// симметричен by construction. Проба этого не предполагает, а проверяет.
-	var in domain.Instance
-	if err := json.Unmarshal(r.Payload, &in); err != nil {
-		// НАСТОЯЩИЙ отказ сборки: состояние есть, собрать не удалось. Причину ему
-		// даёт сервер (`NOT_SERIALIZABLE`), и она обязана остаться отличимой от
-		// «состояния не бывает» — действия у них противоположные.
-		return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
+	//
+	// Тип собираемого состояния выбирается ВИДОМ строки: нагрузка группы,
+	// разобранная в машину, дала бы машину с одним именем и пустыми полями, и
+	// подписчик записал бы их как факт. Вид вне перечня — отказ сборки, а не
+	// умолчание: словарь видов закрыт, и такую строку сервер не доставляет.
+	var msg proto.Message
+	switch r.Kind {
+	case JournalWordInstance:
+		var in domain.Instance
+		if err := json.Unmarshal(r.Payload, &in); err != nil {
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
+		}
+		msg = protoconv.Instance(&in)
+	case JournalWordPlacementGroup:
+		var g domain.PlacementGroup
+		if err := json.Unmarshal(r.Payload, &g); err != nil {
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
+		}
+		msg = protoconv.PlacementGroup(&g)
+	case JournalWordGuestAccessKey:
+		var k domain.GuestAccessKey
+		if err := json.Unmarshal(r.Payload, &k); err != nil {
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
+		}
+		msg = protoconv.GuestAccessKey(&k)
+	default:
+		return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("вид %q вне словаря журнала compute", r.Kind)
 	}
+	// НАСТОЯЩИЙ отказ сборки выше (состояние есть, собрать не удалось) получает
+	// причину от сервера (`NOT_SERIALIZABLE`), и она остаётся отличимой от
+	// «состояния не бывает» — действия у них противоположные.
+	//
 	// Тип НАЗВАН: `Any` несёт имя типа на проводе, и ключи нагрузки суть поля
 	// контракта владельца. Свободной структуры здесь нет намеренно — её ключи
 	// производились бы от имён идентификаторов Go, и обычный внутренний
 	// рефактор молча ломал бы публичную нагрузку, а `buf breaking` этого не
 	// увидел бы by construction.
-	packed, err := anypb.New(protoconv.Instance(&in))
+	packed, err := anypb.New(msg)
 	if err != nil {
 		return nil, subscription.StateAbsenceUnnamed, err
 	}

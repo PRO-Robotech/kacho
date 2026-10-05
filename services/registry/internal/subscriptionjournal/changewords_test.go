@@ -4,9 +4,15 @@
 package subscriptionjournal
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -143,9 +149,12 @@ func TestChangeDictionaryIsDerivedFromTheMigration(t *testing.T) {
 }
 
 // TestJournalWordIsDerivedFromTheTrigger — ключ словаря видов сверяется с тем,
-// что триггер РЕАЛЬНО кладёт в колонку `resource_kind`.
+// что ПРОИЗВОДИТЕЛИ РЕАЛЬНО кладут в колонку `resource_kind`.
 //
-// Слово выписано в двух местах — литералом в триггере и константой здесь, — и
+// Производителей два: триггер базы (строка реестра) и писатель признака
+// существования репозитория на Go (`emitRepositoryJournal` в
+// `internal/repo/kacho/pg`, слово — литералом в вызове `outbox.EmitAnchored`).
+// Слово выписано в двух местах — у производителя и константой здесь, — и
 // расхождение между ними ТИХОЕ: строка с неназванным словом перестаёт
 // доставляться без отказа и без пропуска в нумерации.
 func TestJournalWordIsDerivedFromTheTrigger(t *testing.T) {
@@ -159,19 +168,91 @@ func TestJournalWordIsDerivedFromTheTrigger(t *testing.T) {
 		t.Fatal("в миграции не найдено ни одной вставки со словом вида: разбор сломан, " +
 			"и «расхождений нет» получено даром")
 	}
+	goWords, goFiles := goJournalWords(t)
+	if len(goWords) == 0 {
+		t.Fatalf("в %d файлах писателя на Go не найдено ни одного вызова %s: разбор сломан либо "+
+			"писатель переехал", goFiles, goEmitFunc)
+	}
+	for w, n := range goWords {
+		produced[w] += n
+	}
 
 	declared := Journal(probeEndpointBase).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
-			t.Errorf("триггер пишет вид %q, а словарь его НЕ называет: строка недоставляема, "+
+			t.Errorf("производитель пишет вид %q, а словарь его НЕ называет: строка недоставляема, "+
 				"и вопрос о её видимости задать нечем", word)
 		}
 	}
 	for word := range declared {
 		if produced[word] == 0 {
-			t.Errorf("словарь называет вид %q, которого не пишет НИ ОДИН триггер: "+
+			t.Errorf("словарь называет вид %q, которого не пишет НИ ОДИН производитель: "+
 				"запись пережила свой предмет и читается как способность журнала", word)
 		}
 	}
-	t.Logf("видов пишет триггер %d %v; объявлено словарём %d", len(produced), produced, len(declared))
+	t.Logf("видов пишут производители %d %v (из них на Go %v, файлов осмотрено %d); объявлено словарём %d",
+		len(produced), produced, goWords, goFiles, len(declared))
+}
+
+// goEmitterDir — каталог писателя журнала на Go; goEmitFunc — вызов, которым он
+// пишет строку (`outbox.EmitAnchored(ctx, tx, table, kind, …)`), goKindArg —
+// позиция слова вида в его аргументах.
+const (
+	goEmitterDir = "../repo/kacho/pg"
+	goEmitFunc   = "EmitAnchored"
+	goKindArg    = 3
+)
+
+// goJournalWords — слова вида, которые пишут вызовы [goEmitFunc] в не-тестовых
+// файлах [goEmitterDir]; слово не литералом — отказ пробы.
+func goJournalWords(t *testing.T) (map[string]int, int) {
+	t.Helper()
+	entries, err := os.ReadDir(goEmitterDir)
+	if err != nil {
+		t.Fatalf("каталог писателя %s не прочитан: %v", goEmitterDir, err)
+	}
+	words := map[string]int{}
+	files := 0
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(goEmitterDir, name), nil, 0)
+		if perr != nil {
+			t.Fatalf("файл %s не разобрался: %v", name, perr)
+		}
+		files++
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != goEmitFunc {
+				return true
+			}
+			if len(call.Args) <= goKindArg {
+				t.Errorf("%s: вызов %s с %d аргументами", fset.Position(call.Pos()), goEmitFunc, len(call.Args))
+				return true
+			}
+			lit, ok := call.Args[goKindArg].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				t.Errorf("%s: вид задан не строковым литералом — перепись его не увидит", fset.Position(call.Pos()))
+				return true
+			}
+			w, uerr := strconv.Unquote(lit.Value)
+			if uerr != nil {
+				t.Errorf("%s: литерал вида не разобрался: %v", fset.Position(call.Pos()), uerr)
+				return true
+			}
+			words[w]++
+			return true
+		})
+	}
+	if files == 0 {
+		t.Fatalf("в %s не осмотрено ни одного файла", goEmitterDir)
+	}
+	return words, files
 }

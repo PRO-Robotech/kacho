@@ -99,7 +99,7 @@ func deleteSGTx(ctx context.Context, r *kachopg.Repository, sgID string) error {
 		return err
 	}
 	defer w.Abort()
-	if derr := w.SecurityGroups().Delete(ctx, sgID); derr != nil {
+	if derr := removalErr(w.SecurityGroups().Delete(ctx, sgID)); derr != nil {
 		return derr
 	}
 	return w.Commit()

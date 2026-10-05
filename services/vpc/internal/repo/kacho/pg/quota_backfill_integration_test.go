@@ -313,7 +313,7 @@ func TestQuotaRecount_DivergenceIsImpossibleAfterOrdinaryTraffic(t *testing.T) {
 	w4, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w4.Abort()
-	require.NoError(t, w4.Networks().Delete(ctx, doomed.ID))
+	require.NoError(t, removalErr(w4.Networks().Delete(ctx, doomed.ID)))
 	require.NoError(t, w4.Commit())
 
 	require.Equal(t, int64(2), quotaUsed(t, ctx, pool, project, "vpc.network"))

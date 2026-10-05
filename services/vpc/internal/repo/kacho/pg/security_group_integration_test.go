@@ -240,7 +240,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
-	require.NoError(t, w3.SecurityGroups().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w3.SecurityGroups().Delete(ctx, created.ID)))
 	require.NoError(t, w3.Outbox().Emit(ctx, "SecurityGroup", created.ID, created.ProjectID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w3.Commit())
 

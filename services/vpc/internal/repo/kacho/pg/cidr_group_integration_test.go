@@ -117,7 +117,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	err = w.CidrGroups().Delete(ctx, referenced.ID)
+	err = removalErr(w.CidrGroups().Delete(ctx, referenced.ID))
 	w.Abort()
 	require.Error(t, err, "набор с живой ссылкой удалён — внешний ключ не держит")
 	assert.ErrorIs(t, err, repo.ErrFailedPrecondition,
@@ -127,7 +127,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.CidrGroups().Delete(ctx, free.ID),
+	require.NoError(t, removalErr(w2.CidrGroups().Delete(ctx, free.ID)),
 		"набор без ссылок не удалился — отрицание выше ничего не доказывает")
 	require.NoError(t, w2.Commit())
 
@@ -172,7 +172,7 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.CidrGroups().Delete(ctx, group.ID),
+	require.NoError(t, removalErr(w2.CidrGroups().Delete(ctx, group.ID)),
 		"набор остался занят после снятия правила — проекция ссылок не убирается вместе с ним")
 	require.NoError(t, w2.Commit())
 }

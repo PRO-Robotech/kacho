@@ -12,6 +12,11 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 )
 
+// bindingDisplay — имя предмета привязки пула по умолчанию к сети в текстах
+// отказов хранилища. Видом журнала привязка не является: её строк журнал не
+// получает (NTF-3, NTF3-62), глаголы привязки пишут правку самого пула.
+const bindingDisplay = "Address pool network default"
+
 // addressPoolBindingReader — чтение explicit-биндингов
 // (`address_pool_network_default`) поверх произвольной pgx.Tx.
 type addressPoolBindingReader struct {
@@ -27,7 +32,7 @@ func (r *addressPoolBindingReader) GetNetworkDefault(ctx context.Context, networ
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", helpers.ErrNotFound
 		}
-		return "", helpers.WrapPgErr(err, "AddressPoolNetworkDefault", networkID)
+		return "", helpers.WrapPgErr(err, bindingDisplay, networkID)
 	}
 	return poolID, nil
 }
@@ -46,16 +51,20 @@ func (w *addressPoolBindingWriter) SetNetworkDefault(ctx context.Context, networ
 		ON CONFLICT (network_id) DO UPDATE SET pool_id = EXCLUDED.pool_id, bound_at = now()
 	`, networkID, poolID)
 	if err != nil {
-		return helpers.WrapPgErr(err, "AddressPoolNetworkDefault", networkID)
+		return helpers.WrapPgErr(err, bindingDisplay, networkID)
 	}
 	return nil
 }
 
-func (w *addressPoolBindingWriter) UnsetNetworkDefault(ctx context.Context, networkID string) error {
-	_, err := w.tx.Exec(ctx,
-		`DELETE FROM address_pool_network_default WHERE network_id = $1`, networkID)
-	if err != nil {
-		return helpers.WrapPgErr(err, "AddressPoolNetworkDefault", networkID)
+func (w *addressPoolBindingWriter) UnsetNetworkDefault(ctx context.Context, networkID string) (string, error) {
+	var poolID string
+	err := w.tx.QueryRow(ctx,
+		`DELETE FROM address_pool_network_default WHERE network_id = $1 RETURNING pool_id`, networkID).Scan(&poolID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
 	}
-	return nil
+	if err != nil {
+		return "", helpers.WrapPgErr(err, bindingDisplay, networkID)
+	}
+	return poolID, nil
 }
