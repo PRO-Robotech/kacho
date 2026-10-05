@@ -115,7 +115,8 @@ type LogoutHandlerConfig struct {
 	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4), та же, что у
 	// прочих вопросов края службе доступа. Обязателен: отзыв, не ответивший в
 	// бюджете, есть выход «не выполнен» (`503`, Ф3 Р4), и срок, через который
-	// клиент это узнаёт, выбирает профиль, а не константа.
+	// клиент это узнаёт, выбирает профиль, а не константа. Проверку предъявителя
+	// он не ограничивает (Р4, редакция 9; KA1-37) — её срок несёт проверяющий.
 	CallBudget time.Duration
 }
 
@@ -189,11 +190,14 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверка предъявителя — вопрос края к источнику ключей, и бюджет у него тот
-	// же, что у отзыва: ручка профиля, а не константа (приёмка KA1, Р4).
-	ctx, cancel := context.WithTimeout(r.Context(), h.callBudget)
-	caller, verr := h.verifier.Verify(ctx, rawToken)
-	cancel()
+	// Своего срока вокруг проверки предъявителя обработчик не ставит (приёмка
+	// KA1, Р4, редакция 9; KA1-37): её единственный внешний вызов — чтение набора
+	// ключей, и он ограничен тем же объявленным бюджетом, что на пути запроса
+	// (`KACHO_JWKS_FETCH_TIMEOUT_SECONDS`, клиент чтения проверяющего). Срок
+	// короче на одном пути дал бы два ответа на один вопрос: путь запроса
+	// принимает токен, а выход отвечает «не выполнен» на каждой попытке, и
+	// прерванное чтение набор не наполняет. Ручка Р4 ограничивает только отзыв.
+	caller, verr := h.verifier.Verify(r.Context(), rawToken)
 	if verr != nil && middleware.KeySourceUnanswerable(verr) {
 		// Набор ключей не добыт: проверяющий НЕ РЕШИЛ, годен ли токен (#1194).
 		// Ответ `401` велел бы выбросить годный токен, а на сервере он жив, —
@@ -211,7 +215,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel = context.WithTimeout(r.Context(), h.callBudget)
+	ctx, cancel := context.WithTimeout(r.Context(), h.callBudget)
 	defer cancel()
 	req := &iamv1.RevokeRequest{
 		TokenJti:            caller.JTI,

@@ -4,7 +4,6 @@
 package handler_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/e2e/ka1stand"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -68,59 +68,41 @@ func TestLogout_KeySourceUnanswered_IsNotPerformedOnEveryPresentation(t *testing
 				assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 				assert.Equal(t, `{"code":14,"message":"logout not performed; try again later","details":[]}`, rec.Body.String())
 				assert.Zero(t, rev.calls.Load(), "предъявитель не установлен — отзывать нечего")
+				assert.Empty(t, rec.Result().Header.Values("Set-Cookie"), "носитель не гасится")
 				assert.NotContains(t, rec.Body.String(), "connection refused", "причина — в журнал, не в ответ")
+				assert.NotContains(t, rec.Body.String(), "status=502", "причина — в журнал, не в ответ")
 			})
 		}
 	}
 }
 
-// Близнец: проверяющий решил — токен негоден (ключ, которого живой набор не
-// публикует, — тоже «негоден», а не «источник молчит»).
+// Близнец (KA1-36 строки (3), (4)): проверяющий решил — токен негоден (ключ,
+// которого живой набор не публикует, — тоже «негоден», а не «источник
+// молчит»). На каждом предъявлении отказ — единый отказ края `401` по Р2: тело
+// и `WWW-Authenticate` равны KA1-10 (литералы харнесса `ka1stand`, а не
+// производитель края), `Set-Cookie` нет, отзыв не зовётся.
 func TestLogout_TokenRefusedByAnsweringKeySource_IsTheEdgeRefusal(t *testing.T) {
 	refused := map[string]error{
 		"подпись":            errors.New("signature mismatch"),
 		"ключа нет в наборе": fmt.Errorf("%w: kid=x", middleware.ErrKeyNotFound),
 	}
 	for why, verr := range refused {
-		t.Run(why, func(t *testing.T) {
-			rev := &recordingRevocations{}
-			h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-				Logger: newLogger(), Verifier: &fakeVerifier{err: verr}, Revocations: rev, CallBudget: time.Second,
+		for name, req := range logoutPresentations("tok") {
+			t.Run(why+"/"+name, func(t *testing.T) {
+				rev := &recordingRevocations{}
+				h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+					Logger: newLogger(), Verifier: &fakeVerifier{err: verr}, Revocations: rev, CallBudget: time.Second,
+				})
+				require.NoError(t, err)
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, req())
+				assert.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
+				assert.Equal(t, ka1stand.RefusalBody, rec.Body.String())
+				assert.Equal(t, ka1stand.RefusalChallenge, rec.Result().Header.Get("WWW-Authenticate"))
+				assert.Empty(t, rec.Result().Header.Values("Set-Cookie"), "носитель не гасится")
+				assert.Zero(t, rev.calls.Load())
+				assert.NotContains(t, rec.Body.String(), verr.Error(), "причина — в журнал, не в ответ")
 			})
-			require.NoError(t, err)
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, logoutPresentations("tok")["Authorization: Bearer"]())
-			assert.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
-			assert.Zero(t, rev.calls.Load())
-		})
+		}
 	}
-}
-
-// deadlineVerifier запоминает срок, с которым его спросили.
-type deadlineVerifier struct{ left time.Duration }
-
-func (d *deadlineVerifier) Verify(ctx context.Context, _ string) (*handler.VerifiedCaller, error) {
-	dl, ok := ctx.Deadline()
-	if !ok {
-		return nil, errors.New("asked without a deadline")
-	}
-	d.left = time.Until(dl)
-	return &handler.VerifiedCaller{Subject: "usr", JTI: "jti"}, nil
-}
-
-// Проверка предъявителя ограничена той же ручкой бюджета, что и отзыв
-// (KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET, приёмка KA1, Р4), а не константой:
-// срок, через который клиент узнаёт «не выполнен», выбирает профиль.
-func TestLogout_VerificationIsBoundedByTheCallBudget(t *testing.T) {
-	const budget = 150 * time.Millisecond
-	v := &deadlineVerifier{}
-	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger: newLogger(), Verifier: v, Revocations: &recordingRevocations{}, CallBudget: budget,
-	})
-	require.NoError(t, err)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, logoutPresentations("tok")["Authorization: Bearer"]())
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Greater(t, v.left, time.Duration(0))
-	assert.LessOrEqual(t, v.left, budget, "проверке дан срок %s при бюджете %s", v.left, budget)
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package ka1budget_test — пробы стадии S2 приёмки KA1 (kacho#2713, kacho#2738,
-// Р4), чьё «Дано» передаёт сборке ВЕЛИЧИНУ бюджета: KA1-22, 23, 24, 26.
+// Р4), чьё «Дано» передаёт сборке ВЕЛИЧИНУ бюджета: KA1-22, 23, 24, 26, 37.
 //
 // # Почему отдельная единица сборки
 //
@@ -45,6 +45,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/e2e/ka1stand"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
@@ -398,5 +399,80 @@ func TestKA1_26_LogoutRevocationIsBoundedAndTheOutcomeStays(t *testing.T) {
 		answered.got[0].GetUserId() != ka1stand.User || !answered.got[0].GetRevokeAllUserTokens() {
 		t.Errorf("KA1-26 (1): дублёр принял %d запросов Revoke, ожидался ровно один с token_jti, user_id и revoke_all_user_tokens: %v",
 			len(answered.got), answered.got)
+	}
+}
+
+// ─── KA1-37: проверку предъявителя на выходе ручка Р4 не ограничивает ───────
+
+// slowCaller — проверяющий П14 в состоянии «отвечает „годен“ через delay»: как
+// настоящий проверяющий, чьё чтение набора прервано сроком, он возвращает
+// обёрнутую [middleware.ErrJWKSUnreachable], если срок его вопроса истекает
+// раньше ответа.
+type slowCaller struct{ delay time.Duration }
+
+func (c slowCaller) Verify(ctx context.Context, _ string) (*handler.VerifiedCaller, error) {
+	tm := time.NewTimer(c.delay)
+	defer tm.Stop()
+	select {
+	case <-tm.C:
+		return &handler.VerifiedCaller{Subject: ka1stand.User, JTI: ka1stand.JTILive}, nil
+	case <-ctx.Done():
+		return nil, errors.Join(middleware.ErrJWKSUnreachable, ctx.Err())
+	}
+}
+
+func logoutWith(t *testing.T, v handler.CallerVerifier, rev *revocations, budget time.Duration) *httptest.ResponseRecorder {
+	t.Helper()
+	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
+		Logger:      slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Verifier:    v,
+		Revocations: rev,
+		CallBudget:  budget,
+	})
+	require.NoError(t, err)
+	form := url.Values{"revoke_all": {"true"}}
+	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer ka1-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestKA1_37_LogoutVerificationIsBoundedByTheKeySetBudgetNotTheKnob — ручка Р4
+// (`150ms`) ограничивает отзыв при выходе и не ограничивает проверку
+// предъявителя: её срок — бюджет чтения набора, тот же, что на пути запроса
+// (`KACHO_JWKS_FETCH_TIMEOUT_SECONDS`), и своего срока вокруг проверки
+// обработчик не ставит. Близнец столбца (1) — столбец (2): та же задержка `400ms`
+// при том же бюджете, отличие — один факт, какой из двух вызовов её несёт.
+func TestKA1_37_LogoutVerificationIsBoundedByTheKeySetBudgetNotTheKnob(t *testing.T) {
+	const (
+		budget       = 150 * time.Millisecond
+		delay        = 400 * time.Millisecond
+		notPerformed = `{"code":14,"message":"logout not performed; try again later","details":[]}`
+	)
+
+	// Столбец (1): проверяющий отвечает «годен» через 400ms, Revoke — сразу.
+	slowVerify := &revocations{}
+	rec := logoutWith(t, slowCaller{delay: delay}, slowVerify, budget)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{}" || len(rec.Result().Header.Values("Set-Cookie")) != 0 {
+		t.Errorf("KA1-37 (1): ожидался 200 {} без Set-Cookie — проверку предъявителя ручка Р4 не ограничивает; получено %d: %s, Set-Cookie %v",
+			rec.Code, rec.Body.String(), rec.Result().Header.Values("Set-Cookie"))
+	}
+	slowVerify.mu.Lock()
+	if len(slowVerify.got) != 1 || slowVerify.got[0].GetTokenJti() != ka1stand.JTILive ||
+		slowVerify.got[0].GetUserId() != ka1stand.User || !slowVerify.got[0].GetRevokeAllUserTokens() {
+		t.Errorf("KA1-37 (1): дублёр принял %d запросов Revoke, ожидался ровно один с token_jti, user_id и revoke_all_user_tokens: %v",
+			len(slowVerify.got), slowVerify.got)
+	}
+	slowVerify.mu.Unlock()
+
+	// Столбец (2): проверяющий отвечает сразу, Revoke — через 400ms, соблюдая срок.
+	slowRevoke := &revocations{delay: delay}
+	rec = logoutWith(t, slowCaller{}, slowRevoke, budget)
+	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != notPerformed ||
+		len(rec.Result().Header.Values("Set-Cookie")) != 0 {
+		t.Errorf("KA1-37 (2): ожидался 503 «не выполнен» без Set-Cookie — отзыв ручкой Р4 ограничен; получено %d: %s, Set-Cookie %v",
+			rec.Code, rec.Body.String(), rec.Result().Header.Values("Set-Cookie"))
 	}
 }
