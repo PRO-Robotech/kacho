@@ -945,7 +945,7 @@ func (c Config) TrustedProxyLinkAnchor() ([]*x509.Certificate, error) {
 
 // readPEMCertificates — все сертификаты файла PEM; ни одного — ошибка.
 func readPEMCertificates(path string) ([]*x509.Certificate, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- путь — ручка посадки края (якорь звеньев либо установки), а не ввод запроса
 	if err != nil {
 		return nil, fmt.Errorf("файл %q не читается: %w", path, err)
 	}
