@@ -97,10 +97,14 @@ dnsPolicy: None
 dnsConfig:
   nameservers:
     - {{ $srv.serviceIP | quote }}
+  {{- /* Домены поиска — АБСОЛЮТНОЙ формой (с точкой): адрес соседа в дереве
+       пишется либо коротким `<служба>.<ns>.svc`, либо абсолютным
+       (deploy/tests/helm/neighbour-address-form-test.sh), а Kubernetes и
+       резолвер Go принимают домен поиска с точкой на конце как тот же домен. */}}
   searches:
-    - {{ printf "%s.svc.%s" .Release.Namespace $cd | quote }}
-    - {{ printf "svc.%s" $cd | quote }}
-    - {{ $cd | quote }}
+    - {{ printf "%s.svc.%s." .Release.Namespace $cd | quote }}
+    - {{ printf "svc.%s." $cd | quote }}
+    - {{ printf "%s." $cd | quote }}
   options:
     - name: ndots
       value: "5"
