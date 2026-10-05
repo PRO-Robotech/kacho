@@ -426,7 +426,7 @@ else
     echo "  ПРОВАЛ (E) архив чарта notify копии не пересобран — инъекция не внесена"; st=1
   else
     out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
-    if [ $ist -eq 1 ] && [[ "$out" == *"notify: Deployment/kacho-umbrella-notify исполняет образ сервиса"* ]]; then
+    if [ $ist -eq 1 ] && [[ "$out" == *"notify: Deployment/kacho-notify исполняет образ сервиса"* ]]; then
       echo "  ОК  (E) снята привязка шлюза notify (проба привязана) → КРАСНЫЙ с именем notify"
     else
       echo "  ПРОВАЛ (E) снятая привязка шлюза notify не поймана (exit=$ist)"

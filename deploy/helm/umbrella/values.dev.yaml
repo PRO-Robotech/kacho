@@ -576,8 +576,9 @@ notifyProbe:
     # пересылает чужую личность внутренним службам стенда).
     trustedForwarderSANs:
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
-  # SPIFFE-идентичность notify этого релиза: учётка `<релиз>-notify`.
-  notifySAN: spiffe://kacho.cloud/ns/kacho/sa/kacho-umbrella-notify
+  # SPIFFE-идентичность notify: учётка `kacho-notify` (notify.fullnameOverride
+  # в values.yaml; NTF1-J03).
+  notifySAN: spiffe://kacho.cloud/ns/kacho/sa/kacho-notify
   # Кольцо ключей ленты (З11) — объект стенда, заводит посев один раз.
   feedKeyringSecret:
     name: kacho-notify-probe-feed-keyring

@@ -784,6 +784,13 @@ pg-storage:
 # Посадку и шифрование канала базы объявляют профили цепочек (values.dev.yaml,
 # values.prod.yaml), а не этот слой и не умолчание подчарта.
 notify:
+  # Полное имя установки — ПОСТОЯННОЕ `kacho-notify`, а не `<релиз>-notify`: оно
+  # же имя учётки и сегмент `sa/` SPIFFE-идентичности notify, а литерал
+  # `kacho-notify` закреплён приёмкой (NTF1-J03 `notify.spiffe = {T, N,
+  # kacho-notify}`) и его читают политика выпуска (assert-cert-issuance-policy.sh,
+  # NOTIFY_SA) и гейт поверхностей величин (метка пода по имени продукта).
+  # Выпуск `kacho-umbrella` давал `kacho-umbrella-notify` — мимо всех троих.
+  fullnameOverride: kacho-notify
   image:
     repository: docker.io/prorobotech/kacho-notify
     tag: ""
