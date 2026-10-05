@@ -31,13 +31,19 @@ Ingress одного рендера решает, какое правило вы
   4. прежнее правило — gRPC к порту `tls` (его форму держит и
      `jobs-cronjobs-hardening-test.sh`; здесь оно нужно как эталон «прежнего»);
   5. второго внешнего входа нет: все объекты Ingress, ведущие к краю, стоят на
-     одном хосте, одном классе входа и одном секрете TLS, а правил сверх
-     прежнего и трёх координат у края нет.
+     одном классе входа; путь `/` к краю ведёт ровно один хост (вход края), и
+     его объекты края несут TLS одним секретом, а правил сверх прежнего и трёх
+     координат на нём нет. Хост другой поверхности (консоли), чей `/`
+     выигрывает её собственная служба, вправе вести к краю ПОЛОСЫ (звено фронта,
+     kacho#3028) — только на слушатель `tls` протоколом HTTPS и с тем же TLS,
+     что у `/` этого хоста. Хост, на котором `/` не выигрывает никто, — второй
+     вход, хотя бы и из одних координат.
 
 Печатает построчно:
     FINDING <текст>        — находка о дереве
-    SCOPE <n> <n> <n>      — координат сверено · соседей и близнецов сверено ·
-                             прочих путей сверено
+    SCOPE <n> <n> <n> <n>  — координат сверено · соседей и близнецов сверено ·
+                             прочих путей сверено · полос хостов других
+                             поверхностей сверено
     SKIP <причина>         — в рендере нет входа края: судить не о чем (не
                              находка и не успех — вызывающий считает такие стеки)
 
@@ -173,33 +179,82 @@ def audit(docs):
     if not edge:
         return findings, None, f"входа к службе {EDGE_SERVICE} в рендере нет"
 
-    # 5. Второго внешнего входа нет: хост, класс и секрет TLS — одни на всех.
-    hosts = sorted({h for i in edge for (h, _, _, svc, _) in rules_of(i) if svc == EDGE_SERVICE})
+    # 5. Второго внешнего входа нет. Класс — один на все объекты, ведущие к
+    # краю: объект другого класса обслуживает другой контроллер, то есть другой
+    # вход.
     classes = sorted({str((i.get("spec") or {}).get("ingressClassName")) for i in edge})
-    secrets = sorted({str(t.get("secretName")) for i in edge
-                      for t in ((i.get("spec") or {}).get("tls") or [])})
-    if len(hosts) != 1:
-        findings.append(f"к краю ведут хосты {hosts} — это второй внешний вход, а не правило первого")
     if len(classes) != 1:
         findings.append(f"объекты входа края стоят на классах {classes} — это второй внешний вход")
-    if len(secrets) != 1:
-        findings.append(f"объекты входа края несут секреты TLS {secrets} — это второй внешний вход")
-    for i in edge:
-        tls_hosts = {h for t in ((i.get("spec") or {}).get("tls") or []) for h in (t.get("hosts") or [])}
-        if not set(hosts) <= tls_hosts:
-            findings.append(f"объект {name_of(i)} не объявляет TLS на хосте края {hosts}")
-    if len(hosts) != 1 or len(classes) != 1:
-        return findings, (0, 0, 0), None
-    host = hosts[0]
+        return findings, (0, 0, 0, 0), None
     # Состязаются правила одного посредника: объект другого класса обслуживает
     # другой контроллер и маршрут этого не угоняет.
     ings = [i for i in ings if str((i.get("spec") or {}).get("ingressClassName")) == classes[0]]
+
+    # Хост, на котором к краю ведёт хоть одно правило, — одно из двух. Либо это
+    # ВХОД КРАЯ: путь `/` на нём выигрывает сам край. Либо это хост ДРУГОЙ
+    # поверхности (консоли), чей `/` выигрывает её собственная служба, а к краю
+    # ведут лишь полосы — звено фронта kacho#3028: контроллер ведёт полосы,
+    # которые раздача консоли и так проксировала к краю, прямо на внешний
+    # слушатель края. Полоса не заводит входа: она стоит на ТОМ ЖЕ хосте, классе
+    # и TLS, что и `/` этого хоста. Хост, на котором `/` не выигрывает никто, —
+    # отдельный вход края, хотя бы и из трёх координат.
+    entry_hosts, link_hosts = [], []
+    for h in sorted({h for i in edge for (h, _, _, svc, _) in rules_of(i) if svc == EDGE_SERVICE}):
+        r = route(ings, h, "/", findings)
+        if r is not None and r["service"] == EDGE_SERVICE:
+            entry_hosts.append(h)
+        elif r is not None:
+            link_hosts.append((h, r))
+        else:
+            findings.append(f"к краю ведёт хост {h}, путь / на котором не выигрывает ни одно правило — "
+                            "это второй внешний вход, а не полоса хоста другой поверхности")
+    if len(entry_hosts) != 1:
+        findings.append(f"путь / к краю ведут хосты {entry_hosts} — это второй внешний вход, а не правило первого")
+        return findings, (0, 0, 0, 0), None
+    host = entry_hosts[0]
+
+    def tls_secrets(i, h):
+        return sorted({str(t.get("secretName")) for t in ((i.get("spec") or {}).get("tls") or [])
+                       if h in (t.get("hosts") or [])})
+
+    def edge_on(h):
+        return [i for i in ings if any(rh == h and svc == EDGE_SERVICE for (rh, _, _, svc, _) in rules_of(i))]
+
+    # На входе края: TLS объявлен каждым объектом, секрет — один на всех.
+    secrets = sorted({s for i in edge_on(host) for s in tls_secrets(i, host)})
+    for i in edge_on(host):
+        if not tls_secrets(i, host):
+            findings.append(f"объект {name_of(i)} не объявляет TLS на хосте края {host}")
+    if len(secrets) > 1:
+        findings.append(f"объекты входа края несут секреты TLS {secrets} — это второй внешний вход")
+
+    # На хосте другой поверхности: полоса к краю — на внешний слушатель края
+    # (Internal* → 404) протоколом HTTPS и с тем же TLS, что у `/` этого хоста.
+    n_link = 0
+    for (h, root) in link_hosts:
+        root_ing = next(i for i in ings if name_of(i) == root["ingress"])
+        want = tls_secrets(root_ing, h)
+        for i in edge_on(h):
+            mine = tls_secrets(i, h)
+            if mine != want:
+                findings.append(f"объект {name_of(i)} на хосте {h} несёт TLS {mine}, а путь / этого хоста "
+                                f"({root['ingress']}) — {want}: это второй внешний вход, а не полоса хоста")
+            for (rh, p, t, svc, port) in rules_of(i):
+                if rh != h or svc != EDGE_SERVICE:
+                    continue
+                n_link += 1
+                if port != EDGE_PORT_NAME:
+                    findings.append(f"полоса {name_of(i)} {t} {p} на хосте {h}: ведёт на {svc}:{port}, "
+                                    f"а не на слушатель {EDGE_SERVICE}:{EDGE_PORT_NAME}, помеченный внешним")
+                if protocol_of(i) != CEREMONY_PROTOCOL:
+                    findings.append(f"полоса {name_of(i)} {t} {p} на хосте {h}: протокол бэкенда "
+                                    f"{protocol_of(i)}, а не {CEREMONY_PROTOCOL}")
 
     # 4. Прежнее правило — то, что выигрывает `/`.
     prior = route(ings, host, "/", findings)
     if prior is None:
         findings.append(f"путь / на {host} не выигрывает ни одно правило — прежнего правила нет")
-        return findings, (0, 0, 0), None
+        return findings, (0, 0, 0, 0), None
     if prior["service"] != EDGE_SERVICE or prior["port"] != EDGE_PORT_NAME or prior["protocol"] != PRIOR_PROTOCOL:
         findings.append(f"прежнее правило ({describe(prior)}) — не {PRIOR_PROTOCOL} к {EDGE_SERVICE}:{EDGE_PORT_NAME}")
 
@@ -244,7 +299,7 @@ def audit(docs):
                 continue
             findings.append(f"правило {name_of(i)} {t} {p} на хосте края — сверх прежнего и трёх координат")
 
-    return findings, (n_coord, n_near, n_other), None
+    return findings, (n_coord, n_near, n_other, n_link), None
 
 
 def emit(findings, scope, skip):
@@ -253,7 +308,7 @@ def emit(findings, scope, skip):
     if skip is not None:
         print(f"SKIP {skip}")
     else:
-        print(f"SCOPE {scope[0]} {scope[1]} {scope[2]}")
+        print(f"SCOPE {scope[0]} {scope[1]} {scope[2]} {scope[3]}")
 
 
 # ── Самопроверка ─────────────────────────────────────────────────────────────
@@ -287,6 +342,18 @@ def _console():
     return _ing("ui", [("/", "Prefix", "ui", 8080)], None, host="console.kacho.local", secret="ui-tls")
 
 
+# Полосы края на хосте консоли — та же форма, что у
+# templates/console-edge-lanes-ingress.yaml (kacho#3028).
+CONSOLE_LANES = ("/vpc/", "/iam/v1/")
+
+
+def _console_lanes(**kw):
+    paths = kw.pop("paths", [(p, "Prefix", EDGE_SERVICE, EDGE_PORT_NAME) for p in CONSOLE_LANES])
+    return _ing("console-edge-lanes", paths, kw.pop("protocol", CEREMONY_PROTOCOL),
+                host=kw.pop("host", "console.kacho.local"), secret=kw.pop("secret", "ui-tls"), **kw)
+
+
+
 def self_test():
     rc = 0
     legit = [_prior(), _ceremony(), _console()]
@@ -294,6 +361,19 @@ def self_test():
         # (имя, рендер, ожидается находка с подстрокой | None — молчание)
         ("законная форма: прежнее правило + три точных HTTPS", legit, None),
         ("законная форма без входа консоли", [_prior(), _ceremony()], None),
+        ("законная форма: полосы края на хосте консоли тем же TLS", legit + [_console_lanes()], None),
+        ("полосы консоли на внутренний слушатель", legit + [_console_lanes(paths=[
+            (p, "Prefix", EDGE_SERVICE, "cmux") for p in CONSOLE_LANES])],
+         "а не на слушатель api-gateway:tls"),
+        ("полосы консоли по GRPCS", legit + [_console_lanes(protocol="GRPCS")], "протокол бэкенда GRPCS"),
+        ("полосы консоли со своим секретом TLS", legit + [_console_lanes(secret="lanes-tls")],
+         "второй внешний вход"),
+        ("полосы к краю на хосте без своего /", legit + [_console_lanes(host="lanes.kacho.local")],
+         "второй внешний вход"),
+        ("хост консоли целиком отдан краю", [_prior(), _ceremony(),
+            _ing("console-edge", [("/", "Prefix", EDGE_SERVICE, EDGE_PORT_NAME)], PRIOR_PROTOCOL,
+                 host="console.kacho.local", secret="ui-tls")],
+         "второй внешний вход"),
         ("дерево до правки: только прежнее правило", [_prior(), _console()],
          "координата /iam/v1/authorize: выигрывает api-gateway Prefix /"),
         ("приставка вместо точного совпадения", [_prior(), _ceremony(paths=[
@@ -334,7 +414,8 @@ def self_test():
             if findings or skip is not None:
                 print(f"  ПРОВАЛ {name}: законная форма дала находки {findings} / пропуск {skip}")
                 rc = 1
-            elif scope != (3, 1 + 5 * len(CEREMONY_COORDINATES), len(OTHER_PATHS)):
+            elif scope[:3] != (3, 1 + 5 * len(CEREMONY_COORDINATES), len(OTHER_PATHS)) or \
+                    scope[3] != sum(len(rules_of(i)) for i in docs if name_of(i) == "console-edge-lanes"):
                 print(f"  ПРОВАЛ {name}: перепись {scope} — осмотрено не всё объявленное")
                 rc = 1
             else:
