@@ -20,7 +20,7 @@
  * `installHostMapping` и тем же флагом резолвера, что у конфигурации проб.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * ПРОГОНОВ ЧЕТЫРЕ
+ * ПРОГОНОВ ПЯТЬ
  *
  *   контроль  — без решения Secure-печенье не доходит: браузер его не принимает,
  *               путь запроса его не отправляет. Это воспроизведение предмета и
@@ -32,7 +32,11 @@
  *               его; стенд по https решения не получает вовсе;
  *   провязка  — решение ЗОВУТ: конфигурация проб, фикстура и посев (разбором
  *               исходника, по узлу вызова). Решение, которое никто не зовёт,
- *               доносит печенье безупречно и не мешает ничему.
+ *               доносит печенье безупречно и не мешает ничему;
+ *   браузер   — браузер тот же, что у конфигурации проб (`standBrowserLaunch`),
+ *               а ПРЕДПОСЫЛКА выбора — оболочка без окна по умолчанию флаг с
+ *               именем не исполняет. Не запустилась — «не выполнено» в итоге,
+ *               а не «ok».
  *
  * Гоняется после установки браузера и ДО стенда: секунды, стенд не нужен.
  */
@@ -50,6 +54,7 @@ import {
   carryStandCookies,
   carryStandCookiesInBrowser,
   plainHttpStandOrigin,
+  standBrowserLaunch,
   standCookieHeader,
   standSecureOriginArgs,
 } from "../stand-secure-origin.ts";
@@ -63,6 +68,7 @@ const SCOPED = "kacho_selftest_scoped";
 
 let checked = 0;
 let failed = 0;
+let notRun = 0;
 function check(condition: boolean, what: string): void {
   checked += 1;
   if (condition) {
@@ -105,11 +111,9 @@ async function echo(api: APIRequestContext, url: string, headers?: Record<string
   return arrived(await (await api.get(url, headers ? { headers } : undefined)).text());
 }
 
-function launchOptions(args: string[]): LaunchOptions {
-  return {
-    ...(process.env.KACHO_CHROMIUM ? { executablePath: process.env.KACHO_CHROMIUM } : {}),
-    args,
-  };
+/** Браузер тот же, что у конфигурации проб для этого стенда: `standBrowserLaunch`. */
+function launchOptions(stand: string, args: string[]): LaunchOptions {
+  return { ...standBrowserLaunch(stand, process.env.KACHO_CHROMIUM), args };
 }
 
 /** Вызовы функции `name` в исходнике — узлами разбора, а не поиском по тексту. */
@@ -148,7 +152,7 @@ async function main(): Promise<void> {
     );
     await api.dispose();
 
-    const browser = await chromium.launch(launchOptions([resolver]));
+    const browser = await chromium.launch(launchOptions(STAND, [resolver]));
     try {
       const context = await browser.newContext({ baseURL: STAND });
       const page = await context.newPage();
@@ -190,7 +194,7 @@ async function main(): Promise<void> {
     check(tls.fetch === own, "стенд по https: перенос не ставится");
     await tls.dispose();
 
-    const browser = await chromium.launch(launchOptions([resolver, ...standSecureOriginArgs(STAND)]));
+    const browser = await chromium.launch(launchOptions(STAND, [resolver, ...standSecureOriginArgs(STAND)]));
     try {
       const bare = await browser.newContext({ baseURL: STAND });
       const bp = await bare.newPage();
@@ -216,10 +220,46 @@ async function main(): Promise<void> {
     }
   }
 
+  console.log("ПРЕДПОСЫЛКА ВЫБОРА БРАУЗЕРА: оболочка без окна флаг с именем не исполняет");
+  {
+    // Браузер по умолчанию playwright — `chromium-headless-shell`: ни пути, ни
+    // варианта сборки. Флаг с решением стоит, и печенье всё равно не принято —
+    // ради этого `standBrowserLaunch` берёт полный Chromium. Позеленело —
+    // оболочка стала исполнять флаг, и выбор варианта снимается.
+    let shell: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+    try {
+      shell = await chromium.launch({ args: [resolver, ...standSecureOriginArgs(STAND)] });
+    } catch (e) {
+      notRun += 1;
+      console.log(`  НЕ ВЫПОЛНЕНО — оболочка без окна не запустилась: ${(e as Error).message.split("\n")[0]}`);
+    }
+    if (shell) {
+      try {
+        const context = await shell.newContext({ baseURL: STAND });
+        const page = await context.newPage();
+        await page.goto("/issue");
+        const secure = await page.evaluate(() => window.isSecureContext);
+        const seen = arrived((await (await page.goto("/echo"))!.text()));
+        check(
+          !secure && !seen.has(FORM),
+          `оболочка без окна с флагом: происхождение по имени НЕ защищённое, печенье формы НЕ принято (isSecureContext=${secure})`,
+        );
+      } finally {
+        await shell.close();
+      }
+    }
+  }
+
   console.log("СУЖЕНИЕ — решение по адресу стенда");
   check(plainHttpStandOrigin("https://console.kacho.local") === null, "https: происхождение не объявляется");
   check(standSecureOriginArgs("https://console.kacho.local").length === 0, "https: флага браузера нет");
   check(plainHttpStandOrigin(undefined) === null, "адреса нет — решения нет");
+  check(standBrowserLaunch("http://console.kacho.local:28080", undefined).channel === "chromium", "http без названного пути: полный Chromium");
+  check(Object.keys(standBrowserLaunch("https://console.kacho.local", undefined)).length === 0, "https: браузер по умолчанию");
+  check(
+    JSON.stringify(standBrowserLaunch("http://console.kacho.local:28080", "/opt/chrome")) === '{"executablePath":"/opt/chrome"}',
+    "названный путь остаётся названным и варианта сборки не получает",
+  );
   check(
     standSecureOriginArgs("http://console.kacho.local:28080/login").join() ===
       "--unsafely-treat-insecure-origin-as-secure=http://console.kacho.local:28080",
@@ -246,6 +286,7 @@ async function main(): Promise<void> {
   console.log("ПРОВЯЗКА — решение зовут те, кто обязан");
   const wiring: Array<[string, string]> = [
     ["playwright.config.ts", "standSecureOriginArgs"],
+    ["playwright.config.ts", "standBrowserLaunch"],
     ["specs/fixtures.ts", "carryStandCookiesInBrowser"],
     ["specs/ceremony-seed.ts", "carryStandCookies"],
   ];
@@ -256,7 +297,7 @@ async function main(): Promise<void> {
 
   await new Promise<void>((r) => stand.server.close(() => r()));
   await new Promise<void>((r) => other.server.close(() => r()));
-  console.log(`проверок ${checked} · провалено ${failed}`);
+  console.log(`проверок ${checked} · провалено ${failed} · не выполнено ${notRun}`);
   if (failed > 0) process.exit(1);
 }
 

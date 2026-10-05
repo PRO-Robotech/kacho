@@ -43,6 +43,18 @@ import type { APIRequestContext, Browser } from "@playwright/test";
  * (это доказывает самопроверка), то есть объявлено ровно то, что на боевой
  * посадке даёт TLS перед консолью.
  *
+ * БРАУЗЕРНАЯ ПОЛОВИНА ДЕРЖИТСЯ НЕ ВСЯКИМ СБОРОЧНЫМ ВАРИАНТОМ CHROMIUM. Флаг с
+ * ИМЕНЕМ в происхождении облегчённая оболочка без окна (`chromium-headless-shell`,
+ * которую playwright берёт для `chromium.launch` по умолчанию) не исполняет:
+ * `isSecureContext` остаётся `false`, Secure-печенье не принимается. Тот же флаг с
+ * адресом петли она исполняет, а полный Chromium той же ревизии в новом режиме без
+ * окна исполняет и с именем (замер 2026-10-06, playwright 1.56.1, сборка 1194,
+ * 141.0.7390.37). Конвейер этого не видел: все прогоны 2026-10-05 шли браузером
+ * образа (`/usr/bin/google-chrome`, пин откатывался на распаковке), а это полный
+ * браузер. Поэтому стенд по http получает полный Chromium явно
+ * (`standBrowserLaunch`), а браузер, названный `KACHO_CHROMIUM`, остаётся
+ * названным — его выбрал запускающий.
+ *
  * ЧЕГО ПЕРЕНОС НЕ ДЕЛАЕТ. Шаг переадресации playwright собирает заголовок
  * печенья заново СВОИМ хранилищем — там Secure к http снова не уходит. Пойдёт
  * обращение пути запроса к стенду через переадресацию — её шаг уйдёт без
@@ -50,8 +62,10 @@ import type { APIRequestContext, Browser } from "@playwright/test";
  *
  * СНЯТИЕ. Держит решение самопроверка `scripts/stand-secure-origin-selftest.ts`,
  * и её КОНТРОЛЬ — предпосылка: без флага браузер Secure не принимает, без
- * переноса путь запроса его не отправляет. Покраснел контроль — клиент стал
- * носить печенье сам, и соответствующая половина снимается вместе с ним. Стенд
+ * переноса путь запроса его не отправляет, оболочка без окна флаг с именем не
+ * исполняет. Покраснел контроль — клиент стал носить печенье сам, и
+ * соответствующая половина снимается вместе с ним (последняя — выбор полного
+ * Chromium в `standBrowserLaunch`). Стенд
  * конвейера переехал на https — решение гаснет само: `plainHttpStandOrigin`
  * вернёт `null`, и ни флаг, ни перенос не ставятся.
  */
@@ -77,6 +91,26 @@ export function plainHttpStandOrigin(base: string | undefined): string | null {
 export function standSecureOriginArgs(base: string | undefined): string[] {
   const origin = plainHttpStandOrigin(base);
   return origin ? [`--unsafely-treat-insecure-origin-as-secure=${origin}`] : [];
+}
+
+/** Чем запускать браузер: путь, названный запускающим, либо вариант сборки. */
+export interface StandBrowserLaunch {
+  executablePath?: string;
+  channel?: string;
+}
+
+/**
+ * Браузер проб для стенда по адресу `base`. Названный путь (у проб — `KACHO_CHROMIUM`)
+ * — как назван. Иначе стенд по http — полный Chromium (`channel: "chromium"`):
+ * оболочка без окна флаг с именем не исполняет (см. шапку). Стенд по https и
+ * отсутствие адреса — ничего: браузер по умолчанию справляется сам.
+ */
+export function standBrowserLaunch(
+  base: string | undefined,
+  executablePath: string | undefined,
+): StandBrowserLaunch {
+  if (executablePath) return { executablePath };
+  return plainHttpStandOrigin(base) ? { channel: "chromium" } : {};
 }
 
 /** Печенье в том виде, в каком его отдают хранилища playwright. */

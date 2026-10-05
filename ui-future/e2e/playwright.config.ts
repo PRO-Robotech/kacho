@@ -5,7 +5,7 @@ import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 
 import { installHostMapping } from "./host-mapping.ts";
 import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
-import { standSecureOriginArgs } from "./stand-secure-origin.ts";
+import { standBrowserLaunch, standSecureOriginArgs } from "./stand-secure-origin.ts";
 
 /**
  * Сквозные пробы консоли.
@@ -241,9 +241,10 @@ const config: PlaywrightTestConfig = {
     // секунду, а не укладывалась РАСПАКОВКА — шаг стоял после подъёма стенда и
     // делил ранер с ним. Разбор — в комментарии шага `.github/workflows/console-e2e.yml`.
     launchOptions: {
-      ...(process.env.KACHO_CHROMIUM
-        ? { executablePath: process.env.KACHO_CHROMIUM }
-        : {}),
+      // Путь `KACHO_CHROMIUM` — как назван; без него стенд по http идёт полным
+      // Chromium: оболочка без окна флаг происхождения с именем не исполняет
+      // (`stand-secure-origin.ts`, шапка).
+      ...standBrowserLaunch(BASE, process.env.KACHO_CHROMIUM),
       ...(browserArgs.length ? { args: browserArgs } : {}),
     },
     // Проверить ФАКТ применения args из этого файла нечем: playwright не
