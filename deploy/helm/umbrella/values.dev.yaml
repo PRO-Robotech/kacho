@@ -160,6 +160,7 @@ api-gateway:
     enabled: false
   clientAddress:
     trustedProxyCIDRs: []
+    trustedPeers: []
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) — ОБЪЯВЛЕНО ЯВНО ────────

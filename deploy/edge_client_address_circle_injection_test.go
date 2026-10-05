@@ -19,13 +19,24 @@ import (
 	"testing"
 )
 
+// synthEdge — край с кругом; при непустом круге звено поимённо — служба
+// раздачи консоли (законный близнец узкого круга).
 func synthEdge(circle string) map[string]any {
+	peers := ""
+	if circle != "" {
+		peers = "front-console"
+	}
+	return synthEdgeWith(circle, peers)
+}
+
+func synthEdgeWith(circle, peers string) map[string]any {
 	return map[string]any{
 		"kind": "Deployment", "metadata": map[string]any{"name": edgeDeploymentName},
 		"spec": map[string]any{"template": map[string]any{
 			"metadata": map[string]any{"labels": map[string]any{"app": "api-gateway"}},
 			"spec": map[string]any{"containers": []any{map[string]any{
-				"env": []any{map[string]any{"name": edgeCircleKnob, "value": circle}},
+				"env": []any{map[string]any{"name": edgeCircleKnob, "value": circle},
+					map[string]any{"name": edgePeersKnob, "value": peers}},
 				"ports": []any{
 					map[string]any{"name": "cmux", "containerPort": 8080},
 					map[string]any{"name": "internal-rest", "containerPort": 8081},
@@ -118,10 +129,39 @@ var (
 		"app.kubernetes.io/name": "ingress-nginx", "app.kubernetes.io/component": "controller"}}}
 )
 
-// withLinks — рендер с краем, его службой, раздачей и соседом: фон, на
-// котором судья отличает звено фронта от прочих подов.
+// synthPeerService — безголовая служба звена: имя, которое край разрешает в
+// адреса подов фронта.
+func synthPeerService(name string, selector map[string]any) map[string]any {
+	return map[string]any{
+		"kind": "Service", "metadata": map[string]any{"name": name},
+		"spec": map[string]any{"clusterIP": "None", "publishNotReadyAddresses": true, "selector": selector},
+	}
+}
+
+var (
+	consolePeerSvc = synthPeerService("front-console", map[string]any{"app": "uif", "app.kubernetes.io/component": "host"})
+	ingressPeerSvc = synthPeerService("front-ingress", map[string]any{
+		"app.kubernetes.io/name": "ingress-nginx", "app.kubernetes.io/component": "controller"})
+)
+
+// externalSvc — внешняя служба перед подами, выбранными селектором.
+func externalSvc(name, typ, policy string, selector map[string]any) map[string]any {
+	spec := map[string]any{"type": typ, "selector": selector,
+		"ports": []any{map[string]any{"port": 443, "targetPort": 8443}}}
+	if policy != "" {
+		spec["externalTrafficPolicy"] = policy
+	}
+	return map[string]any{"kind": "Service", "metadata": map[string]any{"name": name}, "spec": spec}
+}
+
+// withLinks — рендер с краем, его службой, раздачей, службой её звена и
+// соседом: фон, на котором судья отличает звено фронта от прочих подов.
 func withLinks(circle string, extra ...map[string]any) []map[string]any {
-	return append([]map[string]any{synthEdge(circle), synthEdgeService(), synthFront, synthNeighbour}, extra...)
+	return withEdge(synthEdge(circle), extra...)
+}
+
+func withEdge(edge map[string]any, extra ...map[string]any) []map[string]any {
+	return append([]map[string]any{edge, synthEdgeService(), synthFront, consolePeerSvc, synthNeighbour}, extra...)
 }
 
 func TestEdgeAdmissionJudgement_CanFailAndStaysSilent(t *testing.T) {
@@ -156,7 +196,62 @@ func TestEdgeAdmissionJudgement_CanFailAndStaysSilent(t *testing.T) {
 		{name: "близнец: порт числом, отправитель — раздача",
 			docs: withLinks(private, synthPolicy(rule(8443, frontPeer)))},
 		{name: "близнец: контроллер входа, ведущего на край, на tls",
-			docs: withLinks(private, synthController, synthEdgeIngress, synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer)))},
+			docs: withEdge(synthEdgeWith(private, "front-console,front-ingress"), synthController, ingressPeerSvc,
+				synthEdgeIngress, synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer)))},
+		// Узкий круг (kacho#3028, круг 3): звено узнаётся поимённо.
+		{name: "близнец: имя звена с пространством имён",
+			docs: withEdge(synthEdgeWith(private, "front-console.kacho.svc"), synthPolicy(rule("cmux", frontPeer)))},
+		{name: "близнец: внешняя служба перед раздачей с политикой Local",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer)),
+				externalSvc("console-lb", "LoadBalancer", "Local", map[string]any{"app": "uif"}))},
+		{name: "близнец: внешняя служба Cluster, но перед соседом, а не звеном",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer)),
+				externalSvc("vpc-lb", "LoadBalancer", "", map[string]any{"app": "uif-vpc"}))},
+		{name: "круг непуст, звеньев поимённо нет",
+			docs:    withEdge(synthEdgeWith(private, ""), synthPolicy(rule("cmux", frontPeer))),
+			mustSay: "звеньев поимённо нет"},
+		{name: "круг пуст, звенья поимённо объявлены",
+			docs:    []map[string]any{synthEdgeWith("", "front-console")},
+			mustSay: "край откажет в старте"},
+		{name: "адрес вместо имени звена",
+			docs:    withEdge(synthEdgeWith(private, "10.244.1.17"), synthPolicy(rule("cmux", frontPeer))),
+			mustSay: "не законны"},
+		{name: "имя звена не названо службой рендера",
+			docs:    withEdge(synthEdgeWith(private, "front-console,front-ghost"), synthPolicy(rule("cmux", frontPeer))),
+			mustSay: "звено \"front-ghost\""},
+		{name: "служба звена не безголовая",
+			docs: withEdge(synthEdgeWith(private, "front-console,front-vip"), synthPolicy(rule("cmux", frontPeer)),
+				func() map[string]any {
+					d := synthPeerService("front-vip", map[string]any{"app": "uif"})
+					d["spec"].(map[string]any)["clusterIP"] = "10.96.0.40"
+					return d
+				}()),
+			mustSay: "служба звена front-vip не безголовая"},
+		{name: "служба звена выбирает соседа",
+			docs: withEdge(synthEdgeWith(private, "front-console,front-wide"), synthPolicy(rule("cmux", frontPeer)),
+				synthPeerService("front-wide", map[string]any{"app.kubernetes.io/instance": "rel"})),
+			mustSay: "служба звена front-wide: селектор {app.kubernetes.io/instance=rel} выбирает Deployment/uif-vpc"},
+		{name: "служба звена не выбирает ни одного пода рендера",
+			docs: withEdge(synthEdgeWith(private, "front-console,front-admin"), synthPolicy(rule("cmux", frontPeer)),
+				synthPeerService("front-admin", map[string]any{"role": "admin"})),
+			mustSay: "служба звена front-admin: селектор {role=admin} не выбирает ни одного пода"},
+		{name: "служба звена без селектора",
+			docs: withEdge(synthEdgeWith(private, "front-console,front-manual"), synthPolicy(rule("cmux", frontPeer)),
+				synthPeerService("front-manual", nil)),
+			mustSay: "служба звена front-manual без селектора"},
+		{name: "звено фронта (контроллер входа) не названо поимённо",
+			docs: withEdge(synthEdgeWith(private, "front-console"), synthController, ingressPeerSvc, synthEdgeIngress,
+				synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer))),
+			mustSay: "звено фронта Deployment/ingress-nginx-controller не выбрано ни одной службой"},
+		{name: "внешняя служба перед раздачей без политики — Cluster по умолчанию",
+			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer)),
+				externalSvc("console-lb", "LoadBalancer", "", map[string]any{"app": "uif"})),
+			mustSay: "внешняя служба console-lb (LoadBalancer) перед звеном фронта Deployment/uif: externalTrafficPolicy \"—\""},
+		{name: "внешняя служба NodePort перед контроллером входа — Cluster",
+			docs: withEdge(synthEdgeWith(private, "front-console,front-ingress"), synthController, ingressPeerSvc,
+				synthEdgeIngress, synthPolicy(rule("cmux", frontPeer), rule("tls", controllerPeer)),
+				externalSvc("ingress-lb", "NodePort", "Cluster", map[string]any{"app.kubernetes.io/name": "ingress-nginx"})),
+			mustSay: "внешняя служба ingress-lb (NodePort) перед звеном фронта Deployment/ingress-nginx-controller: externalTrafficPolicy \"Cluster\""},
 		{name: "близнец: диапазон портов мимо портов края открыт всем",
 			docs: withLinks(private, synthPolicy(rule("cmux", frontPeer), rangeRule(9000, 9100, "TCP")))},
 		{name: "близнец: диапазон портов края открыт всем, но по UDP",
@@ -368,6 +463,38 @@ func TestEdgeAdmissionRenderInjection_SubjectStand(t *testing.T) {
 	t.Run("T7: правило одним портом 1024 без отправителей — близнец молчит", func(t *testing.T) {
 		judgeInjected(t, appendRule(t, map[string]any{"ports": []any{map[string]any{"protocol": "TCP", "port": 1024}}}), "")
 	})
+	// Узкий круг (kacho#3028, круг 3) — дефект в настоящем рендере.
+	t.Run("звенья поимённо сняты: доверие всей сети подов", func(t *testing.T) {
+		judgeInjected(t, setEdgeEnv(t, npCopyDocs(docs), edgePeersKnob, ""), "звеньев поимённо нет")
+	})
+	t.Run("служба звена расширена до всей установки", func(t *testing.T) {
+		injected := npCopyDocs(docs)
+		peerServiceSelector(t, injected, frontConsolePeerService)["app.kubernetes.io/instance"] = "kacho-umbrella"
+		for k := range peerServiceSelector(t, injected, frontConsolePeerService) {
+			if k != "app.kubernetes.io/instance" {
+				delete(peerServiceSelector(t, injected, frontConsolePeerService), k)
+			}
+		}
+		judgeInjected(t, injected, "не звено фронта: его заголовок адреса край примет")
+	})
+	t.Run("служба звена снята", func(t *testing.T) {
+		var kept []map[string]any
+		for _, d := range npCopyDocs(docs) {
+			if docKind(d) == "Service" && docName(d) == frontConsolePeerService {
+				continue
+			}
+			kept = append(kept, d)
+		}
+		judgeInjected(t, kept, "не названо ни одной службой рендера")
+	})
+	t.Run("внешняя служба раздачи без Local", func(t *testing.T) {
+		injected := npCopyDocs(docs)
+		n := dropExternalPolicy(injected)
+		if n == 0 {
+			t.Fatal("в рендере нет внешней службы с политикой Local — предпосылка инъекции")
+		}
+		judgeInjected(t, injected, "externalTrafficPolicy \"—\", ожидался Local")
+	})
 	t.Run("круг края — весь адресный простор", func(t *testing.T) {
 		injected := npCopyDocs(docs)
 		for _, d := range injected {
@@ -436,4 +563,98 @@ func npTwinGreenOn(t *testing.T, stack string, docs []map[string]any) {
 	if err != nil || len(v.findings) != 0 {
 		t.Fatalf("законный близнец (рендер %s без правки): ошибка %v, находки:\n%s", stack, err, strings.Join(v.findings, "\n"))
 	}
+}
+
+// frontConsolePeerService / frontIngressPeerService — безголовые службы
+// звеньев, которые рендерит умбрелла (templates/service-api-gateway-front-links.yaml).
+const (
+	frontConsolePeerService = "api-gateway-front-console"
+	frontIngressPeerService = "api-gateway-front-ingress"
+)
+
+// setEdgeEnv — значение ручки у контейнеров края в копии рендера.
+func setEdgeEnv(t *testing.T, docs []map[string]any, knob, value string) []map[string]any {
+	t.Helper()
+	set := 0
+	for _, d := range docs {
+		if docKind(d) != "Deployment" || docName(d) != edgeDeploymentName {
+			continue
+		}
+		tpl, _ := podTemplateOf(d)
+		for _, c := range slice(submap(tpl, "spec"), "containers") {
+			for _, e := range slice(c.(map[string]any), "env") {
+				if em := e.(map[string]any); em["name"] == knob {
+					em["value"] = value
+					set++
+				}
+			}
+		}
+	}
+	if set == 0 {
+		t.Fatalf("у края нет %s — предпосылка инъекции", knob)
+	}
+	return docs
+}
+
+// peerServiceSelector — селектор безголовой службы звена в копии рендера.
+func peerServiceSelector(t *testing.T, docs []map[string]any, name string) map[string]any {
+	t.Helper()
+	for _, d := range docs {
+		if docKind(d) == "Service" && docName(d) == name {
+			if sel, ok := submap(d, "spec")["selector"].(map[string]any); ok {
+				return sel
+			}
+		}
+	}
+	t.Fatalf("службы звена %s с селектором в рендере нет — предпосылка инъекции", name)
+	return nil
+}
+
+// dropExternalPolicy — снимает externalTrafficPolicy Local у внешних служб.
+func dropExternalPolicy(docs []map[string]any) int {
+	n := 0
+	for _, d := range docs {
+		spec := submap(d, "spec")
+		if docKind(d) == "Service" && spec["externalTrafficPolicy"] == "Local" {
+			delete(spec, "externalTrafficPolicy")
+			n++
+		}
+	}
+	return n
+}
+
+// Контроллер входа — звено фронта цепочки prod (kacho#3028, круг 3,
+// security-auditor r3): его внешняя служба обязана нести Local, а сам он —
+// быть названным поимённо. Близнец — рендер без правки — молчит.
+func TestEdgeAdmissionRenderInjection_IngressControllerFront(t *testing.T) {
+	const stack = "prod"
+	docs := npChainDocs(t, stack)
+	got, a := judgeEdgeAdmission(stack, docs)
+	if len(got) != 0 || !a.Trusting || a.ExternalJudged == 0 || a.PeersJudged == 0 {
+		t.Fatalf("законный близнец (рендер %s без правки): находок %d, круг непуст %v, внешних служб %d, служб звеньев %d:\n%s",
+			stack, len(got), a.Trusting, a.ExternalJudged, a.PeersJudged, strings.Join(got, "\n"))
+	}
+	judge := func(t *testing.T, injected []map[string]any, mustSay string) {
+		t.Helper()
+		got, _ := judgeEdgeAdmission(stack, injected)
+		if joined := strings.Join(got, "\n"); !strings.Contains(joined, mustSay) {
+			t.Fatalf("ни одна находка не называет %q:\n%s", mustSay, joined)
+		}
+	}
+	t.Run("внешняя служба контроллера без Local", func(t *testing.T) {
+		injected := npCopyDocs(docs)
+		if dropExternalPolicy(injected) == 0 {
+			t.Fatal("в рендере нет внешней службы с политикой Local — предпосылка инъекции")
+		}
+		judge(t, injected, "перед звеном фронта Deployment/kacho-umbrella-ingress-nginx-controller: externalTrafficPolicy")
+	})
+	t.Run("контроллер не назван поимённо", func(t *testing.T) {
+		judge(t, setEdgeEnv(t, npCopyDocs(docs), edgePeersKnob, frontConsolePeerService),
+			"звено \""+frontConsolePeerService+"\" ("+edgePeersKnob+") не названо ни одной службой рендера")
+	})
+	t.Run("служба звена контроллера выбирает и джобы допуска", func(t *testing.T) {
+		injected := npCopyDocs(docs)
+		delete(peerServiceSelector(t, injected, frontIngressPeerService), "app.kubernetes.io/component")
+		judge(t, injected, "не звено фронта: его заголовок адреса край примет")
+	})
 }

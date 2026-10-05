@@ -359,6 +359,10 @@ spec:
             # (config.TrustedProxyCircle → pkg/proxycircle).
             - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS
               value: {{ join "," .Values.clientAddress.trustedProxyCIDRs | quote }}
+            # Звенья фронта поимённо (kacho#3028, круг 3) — имена безголовых
+            # служб фронта; пусты вместе с кругом либо непусты вместе с ним.
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS
+              value: {{ join "," (.Values.clientAddress.trustedPeers | default list) | quote }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
               value: {{ .Values.authz.enabled | default false | quote }}

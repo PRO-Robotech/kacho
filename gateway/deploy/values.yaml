@@ -544,8 +544,17 @@ authz: {}
 # с политикой, пускающей к порту края только звено фронта (umbrella,
 # templates/networkpolicy-api-gateway.yaml). Каждая запись — сеть внутри
 # частных диапазонов; иная — отказ старта края (pkg/proxycircle).
+#
+# ЗВЕНЬЯ ПОИМЁННО (kacho#3028, круг 3). Сеть выделяет «под кластера», а не
+# «звено фронта»: сеть подов общая. Звено край узнаёт по имени безголовой
+# службы, выбирающей поды фронта метками, — имя разрешается в адреса этих
+# подов, и только они звенья (gateway/internal/frontpeers). Пир доверен, если
+# он И в сети круга, И среди адресов названных служб. Сеть без имён и имена без
+# сети — отказ старта края; умолчание — пусто, «никому». Службы звеньев
+# рендерит умбрелла (templates/service-api-gateway-front-links.yaml).
 clientAddress:
   trustedProxyCIDRs: []
+  trustedPeers: []
 
 # ─── Deployment-environment label (KACHO_APP_ENV) ────────────────────────────
 # Cross-cutting, domain-LESS label (config.go binds `envconfig:"KACHO_APP_ENV"`,

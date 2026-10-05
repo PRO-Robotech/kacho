@@ -6,11 +6,11 @@
 // edge_client_address_circle_render_test.go — ЗАГОЛОВКУ АДРЕСА КЛИЕНТА КРАЙ
 // ДОВЕРЯЕТ ТОЛЬКО ОТ ЗВЕНА ФРОНТА (kacho#3028).
 //
-// Край принимает `X-Forwarded-For` только от TCP-пира из круга
-// (KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS). Сеть — всё, что край о пире
-// знает, и сеть подов у каждого кластера своя: круг сам по себе выделяет «под
-// кластера», а не «раздачу консоли». Звено фронта выделяется вторым замком —
-// политикой сети на поде края: до порта, принимающего пересылку, доходят
+// Край принимает `X-Forwarded-For` только от TCP-пира, который лежит в сети
+// круга (KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS) и назван поимённо (п. 5).
+// Сеть сама по себе выделяет «под кластера», а не «раздачу консоли». Звено
+// фронта выделяют два замка — имя службы звена (п. 5) и политика сети на поде
+// края: до порта, принимающего пересылку, доходят
 // только поды, названные МЕТКАМИ (раздача консоли, контроллер входа, явно
 // объявленные поды администрирования). Без политики любой под кластера,
 // дошедший до края напрямую, одной строкой заголовка подменял бы `client_ip` и
@@ -37,15 +37,26 @@
 //     величин), не судится: адреса клиента он не принимает;
 //  4. цепочка a8f60d — стенд предмета: за раздачей консоли без круга все
 //     клиенты снова стали бы одним источником, поэтому её круг непуст, и
-//     звено фронта из её рендера выводится.
+//     звено фронта из её рендера выводится;
+//  5. УЗКИЙ КРУГ (круг 3): сеть подов общая, и сеть круга — «под кластера», а
+//     не «звено». Звено край узнаёт поимённо (KACHO_API_GATEWAY_AUTHZ_TRUSTED_
+//     PROXY_PEERS — имена безголовых служб, чьи поды и только они звенья).
+//     Круг непуст — имена непусты, и наоборот (pkg/proxycircle.ParsePeers —
+//     тот же разбор, что у края); каждое имя — безголовая служба рендера с
+//     селектором, выбирающим хоть один под и только звенья фронта; каждое
+//     звено выбрано хоть одной из них (judgeEdgePeers);
+//  6. адрес клиента ДОХОДИТ до звена: внешняя служба (LoadBalancer, NodePort)
+//     перед звеном фронта несёт externalTrafficPolicy Local — при Cluster
+//     адрес источника подменяется адресом узла (judgeFrontExternalPolicy).
 //
 // Что раздача консоли до порта края ДОХОДИТ, держит гейт политик сети
 // (network_policy_admission_render_test.go, половина «достижимость»): она
 // звонит краю по адресу из своих настроек.
 //
-// ЗНАМЕНАТЕЛЬ — цепочки с Deployment края, цепочки с непустым кругом и
-// сверенные селекторы отправителей: ноль любого — судить было нечего; ноль
-// вторых или третьих — замок «только фронт» не осмотрен ни разу.
+// ЗНАМЕНАТЕЛЬ — цепочки с Deployment края, цепочки с непустым кругом,
+// сверенные селекторы отправителей и службы звеньев: ноль любого — судить было
+// нечего; ноль вторых, третьих или четвёртых — замок «только фронт» не
+// осмотрен ни разу.
 package deploy_test
 
 import (
@@ -59,6 +70,9 @@ import (
 
 const (
 	edgeCircleKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
+	// edgePeersKnob — звенья фронта поимённо: безголовые службы, чьи поды край
+	// признаёт звеньями (kacho#3028, круг 3).
+	edgePeersKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS"
 	// circleSubjectStack — стенд, на котором дефект наблюдался: консоль за
 	// внешним входом, адрес клиента к краю несёт раздача.
 	circleSubjectStack = "a8f60d"
@@ -73,21 +87,130 @@ type edgeAdmission struct {
 	RulesJudged     int      // правил, открывающих порт пересылки
 	Links           []string // звенья фронта, выведенные из рендера
 	SendersJudged   int      // селекторов отправителей, сверенных со звеньями
+	Peers           string   // значение ручки звеньев поимённо
+	PeersJudged     int      // служб звеньев, сверенных со звеньями фронта
+	ExternalJudged  int      // внешних служб перед звеньями, сверенных по политике трафика
 }
 
 // edgeCircleOf — значение ручки круга у контейнеров края.
-func edgeCircleOf(edge npWorkload) (string, bool) {
+func edgeCircleOf(edge npWorkload) (string, bool) { return edgeEnvOf(edge, edgeCircleKnob) }
+
+// edgeEnvOf — значение ручки у контейнеров края.
+func edgeEnvOf(edge npWorkload, knob string) (string, bool) {
 	cs, _ := edge.spec["containers"].([]any)
 	for _, c := range cs {
 		cm, _ := c.(map[string]any)
 		for _, e := range slice(cm, "env") {
 			em, _ := e.(map[string]any)
-			if str(em, "name") == edgeCircleKnob {
+			if str(em, "name") == knob {
 				return str(em, "value"), true
 			}
 		}
 	}
 	return "", false
+}
+
+// judgeEdgePeers — УЗКИЙ КРУГ (kacho#3028, круг 3): сеть круга выделяет «под
+// кластера», звено фронта край узнаёт поимённо — по адресам подов, которые
+// выбирают названные безголовые службы. Находки:
+//
+//   - имени нет среди служб рендера (край разрешал бы имя, которого установка
+//     не заводит: звеньев нет, либо их заведёт кто угодно этим именем);
+//   - служба не безголовая (имя разрешалось бы в адрес службы, а не подов);
+//   - селектор службы пуст, не выбирает ни одного пода рендера либо выбирает
+//     под, не являющийся звеном фронта;
+//   - звено фронта не выбрано ни одной названной службой (его заголовок край
+//     не примет: все его клиенты — один источник).
+func judgeEdgePeers(peers []string, works []npWorkload, links map[string]bool, docs []map[string]any,
+	a *edgeAdmission, say func(string, ...any)) {
+	svcs := map[string]map[string]any{}
+	for _, d := range docs {
+		if docKind(d) == "Service" {
+			svcs[docName(d)] = d
+		}
+	}
+	covered := map[string]bool{}
+	for _, name := range peers {
+		short, _, _ := strings.Cut(name, ".")
+		d, ok := svcs[short]
+		if !ok {
+			say("звено %q (%s) не названо ни одной службой рендера — край разрешал бы имя, которого установка "+
+				"не заводит", name, edgePeersKnob)
+			continue
+		}
+		spec, _ := d["spec"].(map[string]any)
+		if str(spec, "clusterIP") != "None" {
+			say("служба звена %s не безголовая (clusterIP %q) — имя разрешается в адрес службы, а не подов фронта",
+				short, str(spec, "clusterIP"))
+			continue
+		}
+		raw, _ := spec["selector"].(map[string]any)
+		sel, err := parseSelector(map[string]any{"matchLabels": raw})
+		if err != nil || len(sel.match) == 0 {
+			say("служба звена %s без селектора — её адреса заводит кто угодно, а не поды фронта", short)
+			continue
+		}
+		a.PeersJudged++
+		var chosen []string
+		for _, w := range works {
+			if sel.matches(w.labels) {
+				chosen = append(chosen, w.id())
+			}
+		}
+		if len(chosen) == 0 {
+			say("служба звена %s: селектор %s не выбирает ни одного пода рендера — эти метки навесит любой под "+
+				"пространства, и край признает его звеном", short, sel)
+		}
+		for _, id := range chosen {
+			if !links[id] {
+				say("служба звена %s: селектор %s выбирает %s — не звено фронта: его заголовок адреса край примет",
+					short, sel, id)
+				continue
+			}
+			covered[id] = true
+		}
+	}
+	for l := range links {
+		if !covered[l] {
+			say("звено фронта %s не выбрано ни одной службой из %s — его заголовок адреса край не примет, и все "+
+				"его клиенты — один источник", l, edgePeersKnob)
+		}
+	}
+}
+
+// judgeFrontExternalPolicy — адрес клиента обязан ДОЙТИ до звена (kacho#3028):
+// внешняя служба (LoadBalancer, NodePort), выбирающая под звена фронта, с
+// политикой `Cluster` (умолчание) подменяет адрес источника адресом узла, и
+// звено пишет в заголовок адрес узла — все клиенты снова один источник.
+func judgeFrontExternalPolicy(works []npWorkload, links map[string]bool, docs []map[string]any,
+	a *edgeAdmission, say func(string, ...any)) {
+	for _, d := range docs {
+		if docKind(d) != "Service" {
+			continue
+		}
+		spec, _ := d["spec"].(map[string]any)
+		typ := str(spec, "type")
+		if typ != "LoadBalancer" && typ != "NodePort" {
+			continue
+		}
+		raw, _ := spec["selector"].(map[string]any)
+		sel, err := parseSelector(map[string]any{"matchLabels": raw})
+		if err != nil || len(sel.match) == 0 {
+			continue
+		}
+		for _, w := range works {
+			if !links[w.id()] || !sel.matches(w.labels) {
+				continue
+			}
+			a.ExternalJudged++
+			if p := str(spec, "externalTrafficPolicy"); p != "Local" {
+				say("внешняя служба %s (%s) перед звеном фронта %s: externalTrafficPolicy %q, ожидался Local — "+
+					"адрес клиента подменяется адресом узла, и все клиенты — один источник", docName(d), typ, w.id(),
+					orDash(p))
+			}
+			break
+		}
+	}
 }
 
 // edgePort — порт контейнера края: номер и имя.
@@ -224,7 +347,17 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 		return out, a
 	}
 	a.Trusting = len(circle) > 0
+	a.Peers, _ = edgeEnvOf(edge, edgePeersKnob)
+	peers, err := proxycircle.ParsePeers(a.Peers)
+	if err != nil {
+		say("звенья края поимённо не законны (%s): %v", edgePeersKnob, err)
+		return out, a
+	}
 	if !a.Trusting {
+		if len(peers) != 0 {
+			say("круг пуст, а звенья поимённо объявлены (%s=%q) — край откажет в старте: доверию нечем исполниться",
+				edgePeersKnob, a.Peers)
+		}
 		return out, a
 	}
 	links := edgeFrontLinks(npNamespace, edge, works, services, maps, docs)
@@ -232,6 +365,13 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 		a.Links = append(a.Links, l)
 	}
 	sort.Strings(a.Links)
+	if len(peers) == 0 {
+		say("круг %s непуст, а звеньев поимённо нет (%s) — заголовку адреса доверяла бы вся сеть подов", a.Circle,
+			edgePeersKnob)
+	} else {
+		judgeEdgePeers(peers, works, links, docs, &a, say)
+	}
+	judgeFrontExternalPolicy(works, links, docs, &a, say)
 	ports := edgePortsOf(edge)
 	raw := map[string]map[string]any{}
 	for _, d := range docs {
@@ -315,7 +455,7 @@ func judgeEdgeAdmission(stack string, docs []map[string]any) ([]string, edgeAdmi
 
 func TestEveryStackTrustsTheClientAddressOnlyFromTheFront(t *testing.T) {
 	stacks := deployStacks(t)
-	var edges, trusting, rules, senders int
+	var edges, trusting, rules, senders, peerSvcs int
 	subjectTrusting, subjectLinks := false, 0
 	for _, n := range sortedStackNames(stacks) {
 		findings, a := judgeEdgeAdmission(n, npChainDocs(t, n))
@@ -327,20 +467,22 @@ func TestEveryStackTrustsTheClientAddressOnlyFromTheFront(t *testing.T) {
 			trusting++
 			rules += a.RulesJudged
 			senders += a.SendersJudged
+			peerSvcs += a.PeersJudged
 		}
 		if n == circleSubjectStack {
 			subjectTrusting = a.Trusting
 			subjectLinks = len(a.Links)
 		}
-		t.Logf("цепочка %-11s: %s=%q · политик на край %d · правил с портом пересылки %d · "+
-			"отправителей сверено %d · звенья фронта %v · находок %d",
-			n, edgeCircleKnob, a.Circle, a.Policies, a.RulesJudged, a.SendersJudged, a.Links, len(findings))
+		t.Logf("цепочка %-11s: %s=%q · %s=%q · политик на край %d · правил с портом пересылки %d · "+
+			"отправителей сверено %d · служб звеньев сверено %d · внешних служб сверено %d · звенья фронта %v · находок %d",
+			n, edgeCircleKnob, a.Circle, edgePeersKnob, a.Peers, a.Policies, a.RulesJudged, a.SendersJudged,
+			a.PeersJudged, a.ExternalJudged, a.Links, len(findings))
 		for _, f := range findings {
 			t.Error(f)
 		}
 	}
-	t.Logf("перепись: цепочек %d · с краем %d · с непустым кругом %d · правил осмотрено %d · отправителей сверено %d",
-		len(stacks), edges, trusting, rules, senders)
+	t.Logf("перепись: цепочек %d · с краем %d · с непустым кругом %d · правил осмотрено %d · отправителей сверено %d · "+
+		"служб звеньев сверено %d", len(stacks), edges, trusting, rules, senders, peerSvcs)
 	if edges == 0 {
 		t.Fatal("ни одна цепочка не рендерит края — судить нечего")
 	}
@@ -360,5 +502,8 @@ func TestEveryStackTrustsTheClientAddressOnlyFromTheFront(t *testing.T) {
 	}
 	if senders == 0 {
 		t.Fatal("круг непуст, а ни один селектор отправителя не сверен со звеньями фронта — «только фронт» не осмотрен")
+	}
+	if peerSvcs == 0 {
+		t.Fatal("круг непуст, а ни одна служба звеньев поимённо не сверена — узкий круг не осмотрен ни разу")
 	}
 }

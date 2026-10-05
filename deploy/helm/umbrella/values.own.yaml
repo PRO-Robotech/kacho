@@ -45,3 +45,13 @@
 # же, где образы остальных служб.
 uif:
   enabled: true
+
+# АДРЕС КЛИЕНТА (kacho#3028): здесь к краю звонят ДВА звена фронта — контроллер
+# входа (внешний вход края, слой values.prod.yaml) и раздача консоли (её полосы
+# к краю). Оба названы поимённо безголовыми службами звеньев; сеть — из
+# values.prod.yaml.
+api-gateway:
+  clientAddress:
+    trustedPeers:
+      - api-gateway-front-ingress
+      - api-gateway-front-console
