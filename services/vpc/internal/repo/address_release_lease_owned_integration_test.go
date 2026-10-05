@@ -164,7 +164,7 @@ func TestIntegration_ReleaseOwnedAddress_TenantAddressIsDetachedAndSurvives(t *t
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newLeaseFixture(t, ctx, false)
 
 	outcome, err := f.release(ctx)
@@ -194,7 +194,7 @@ func TestIntegration_ReleaseOwnedAddress_ModuleAddressIsReleasedAndReturnedToPoo
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newLeaseFixture(t, ctx, true)
 
 	outcome, err := f.release(ctx)

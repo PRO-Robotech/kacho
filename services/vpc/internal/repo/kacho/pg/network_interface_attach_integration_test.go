@@ -44,7 +44,7 @@ func newNICAttachEnv(t *testing.T) *nicAttachEnv {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -363,7 +363,7 @@ func TestMigration0014_UsedByIndex_UpDownRoundtrip(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// EMPTY-база на контейнере пакета: тест сам идёт по цепочке миграций вверх и
 	// вниз, поэтому предмигрированный шаблон был бы неверной точкой старта.
 	dsn := pgtest.NewEmptyDB(t)

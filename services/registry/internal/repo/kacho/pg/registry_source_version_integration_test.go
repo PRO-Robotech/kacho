@@ -42,7 +42,7 @@ import (
 func decodeLastIntent(t *testing.T, pool *pgxpool.Pool, resourceID string) domain.RegisterIntent {
 	t.Helper()
 	var payload []byte
-	err := pool.QueryRow(context.Background(),
+	err := pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT payload
 		   FROM kacho_registry.registry_outbox
 		  WHERE resource_id=$1
@@ -60,7 +60,7 @@ func decodeLastIntent(t *testing.T, pool *pgxpool.Pool, resourceID string) domai
 func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	before := time.Now().UTC().Add(-time.Minute)
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -81,7 +81,7 @@ func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
@@ -108,7 +108,7 @@ func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 func TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
@@ -134,7 +134,7 @@ func TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister(t *testing.T
 func TestRepo_SourceVersion_MonotonicUnderConcurrentUpdates(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))

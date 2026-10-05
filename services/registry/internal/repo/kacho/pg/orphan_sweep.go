@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/singlepass"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -32,6 +33,14 @@ const orphanSweepBatch = 100
 // orphanSweepLock — имя замка прохода подметальщика. Домен в имени обязателен:
 // пространство ключей общее на всю базу.
 const orphanSweepLock = "kacho.registry.orphan-sweep"
+
+// Личность компонента подметальщика — пара таблицы фоновых путей (решение Д116):
+// инициатор транзакции снятия — `system:registry-orphan-sweep`. Пару читает гейт
+// УК3-27 (д) из этих констант (`internal/repohygiene/journaledwrites.go`).
+const (
+	orphanSweepComponentService = "registry"
+	orphanSweepComponentRole    = "orphan-sweep"
+)
 
 // TryClaimOrphanSweep берёт проход подметальщика на одну реплику.
 //
@@ -87,9 +96,21 @@ func (r *RegistryRepo) TryClaimOrphanSweep(ctx context.Context) (singlepass.Rele
 //
 // grace ≤ 0 → берётся orphanSweepDefaultGrace; ноль передаётся только пробами, которым
 // нужен детерминизм без ожидания.
+//
+// # Личность прохода
+//
+// Проход — фоновый путь, у него нет принципала запроса. Первым оператором
+// `journaltx.AsComponent` кладёт в контекст принципал компонента, и каждое снятие
+// открывается помощником журнала с инициатором `system:registry-orphan-sweep`.
+// Контекст с иным принципалом — ошибка программы: `ErrComponentOverPrincipal`
+// до чтения и до эмиссии.
 func (r *RegistryRepo) SweepOrphanedRepositories(ctx context.Context, grace time.Duration) ([]string, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
+	}
+	ctx, err := journaltx.AsComponent(ctx, orphanSweepComponentService, orphanSweepComponentRole)
+	if err != nil {
+		return nil, fmt.Errorf("orphan sweep component identity: %w", err)
 	}
 	if grace < 0 {
 		grace = orphanSweepDefaultGrace

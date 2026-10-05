@@ -58,6 +58,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/operations"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -103,9 +104,25 @@ SELECT id, status
  ORDER BY updated_at ASC
  LIMIT $1`
 
+// Личность компонента задания — пара §8 замысла issue-2918 (З4, З13): инициатор
+// строк журнала, которые пишет проход, — `system:nlb-free-ip-runner`.
+const (
+	freeIPComponentService = "nlb"
+	freeIPComponentRole    = "free-ip-runner"
+)
+
+// freeIPJournalOptions — Options помощника записи журнала для транзакции прохода.
+//
+// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
+// Ручку `KACHO_NLB_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
+// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
+// тем же изменением эта функция снимается.
+func freeIPJournalOptions() journaltx.Options { return journaltx.NewOptions(false) }
+
 // FreeIPRunner — фоновый reconciler застрявших LoadBalancer'ов (durable handle).
 type FreeIPRunner struct {
 	pool         *pgxpool.Pool
+	journal      journaltx.Options
 	addrs        vpcclient.InternalAddressClient // release VIP (FreeIP / ClearReference)
 	logger       *slog.Logger
 	interval     time.Duration
@@ -145,6 +162,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	}
 	r := &FreeIPRunner{
 		pool:         pool,
+		journal:      freeIPJournalOptions(),
 		addrs:        addrs,
 		logger:       logger,
 		interval:     interval,
@@ -326,8 +344,19 @@ type stuckLB struct {
 // тиком. Полный вынос release-вызовов за границы транзакции — отдельный (более
 // рискованный) рефактор, не предпринят без детерминированного теста на его
 // race-профиль.
+//
+// Личность прохода — первым оператором: `journaltx.AsComponent` кладёт в контекст
+// принципал компонента, и транзакцию открывает помощник записи журнала с этим
+// инициатором (строка `DELETED` из `emitReconcileFinalize` несёт
+// `system:nlb-free-ip-runner`). Контекст с иным принципалом — ошибка программы:
+// `ErrComponentOverPrincipal` возвращается до транзакции и до освобождения
+// адресов, тик прерывается (замысел issue-2918, З4 CX3B-25 (2), З13).
 func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, error) {
-	tx, err := r.pool.Begin(ctx)
+	ctx, err := journaltx.AsComponent(ctx, freeIPComponentService, freeIPComponentRole)
+	if err != nil {
+		return outcomeIdle, fmt.Errorf("free_ip_runner component identity: %w", err)
+	}
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return outcomeIdle, fmt.Errorf("begin reconcile tx: %w", err)
 	}
@@ -474,7 +503,7 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 // emitReconcileFinalize эмитит в текущей TX outbox DELETED (nlb_load_balancer) +
 // fga-unregister (project-hierarchy) — то же, что финальный шаг успешного Delete.
 // Все INSERT'ы — в той же TX, что и DELETE строки (атомарно).
-func emitReconcileFinalize(ctx context.Context, tx pgx.Tx, lbID, projectID string) error {
+func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, lbID, projectID string) error {
 	lbPayload, err := json.Marshal(map[string]any{
 		"id":         lbID,
 		"project_id": projectID,

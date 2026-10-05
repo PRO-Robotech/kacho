@@ -24,7 +24,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-seed", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "ubuntu-boot", "ru-central1", snapID)
@@ -53,7 +53,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 func TestVolumeSourceImageFKNotFound(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-badimg",
@@ -71,7 +71,7 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-prov", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "prov-img", "ru-central1", snapID)

@@ -41,7 +41,7 @@ func TestQuotaBands_RefuseInTheSameWords(t *testing.T) {
 	pool := newTestPool(t)
 	repo := pg.NewVolumeRepo(pool)
 	quotaRepo := pg.NewQuotaRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	t.Run("исчерпание", func(t *testing.T) {
 		const project = "prj-quota-bands-full"
@@ -112,7 +112,7 @@ func TestQuotaBands_RefuseInTheSameWords(t *testing.T) {
 func TestQuotaAdvisoryBand_TakesNoSlot(t *testing.T) {
 	pool := newTestPool(t)
 	quotaRepo := pg.NewQuotaRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-bands-read"
 
 	seedQuota(t, pool, project, "storage.volumes", 3)
@@ -137,7 +137,7 @@ func TestQuotaMaterialise_IsIdempotentAndKeepsUsage(t *testing.T) {
 	pool := newTestPool(t)
 	repo := pg.NewVolumeRepo(pool)
 	quotaRepo := pg.NewQuotaRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-materialise"
 
 	rows := quotaRowsFor(project, 4)
@@ -171,7 +171,7 @@ func TestQuotaMaterialise_IsIdempotentAndKeepsUsage(t *testing.T) {
 func TestQuotaMaterialise_RejectsARowWithoutTheAccountMirror(t *testing.T) {
 	pool := newTestPool(t)
 	quotaRepo := pg.NewQuotaRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	rows := quotaRowsFor("prj-quota-no-account", 4)
 	for i := range rows {

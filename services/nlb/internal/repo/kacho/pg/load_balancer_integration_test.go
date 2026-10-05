@@ -21,7 +21,7 @@ import (
 func TestLB_CRUD(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01TESTPRJ123456ll", "demo-lb-1")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -50,7 +50,7 @@ func TestLB_CRUD(t *testing.T) {
 func TestLB_NotFound(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	rd, err := repo.Reader(ctx)
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestLB_NotFound(t *testing.T) {
 func TestLB_DuplicateName_AlreadyExists(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	a := newLB("prj01DUPP1234567890ll", "dup-name")
 	b := newLB("prj01DUPP1234567890ll", "dup-name")
@@ -87,7 +87,7 @@ func TestLB_DuplicateName_AlreadyExists(t *testing.T) {
 func TestLB_CheckViolation_BadStatus(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CHKK1234567890ll", "chk-lb")
 	lb.Status = "INVALID_STATUS"
@@ -111,7 +111,7 @@ func TestLB_CheckViolation_BadStatus(t *testing.T) {
 func TestLB_CheckViolation_BadName(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CHKN1234567890ll", "Bad-Uppercase")
 
@@ -128,7 +128,7 @@ func TestLB_CheckViolation_BadName(t *testing.T) {
 func TestLB_LabelsTooMany_CheckViolation(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	bigLabels := map[string]string{}
 	for i := 0; i < 65; i++ {
@@ -160,7 +160,7 @@ func uniqueLabelKey(i int) string {
 func TestLB_Update_MutatesMutable(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01UPDP1234567890ll", "u-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -189,7 +189,7 @@ func TestLB_Update_MutatesMutable(t *testing.T) {
 func TestLB_SetStatusCAS(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CASS1234567890ll", "cas-lb")
 	lb.Status = domain.LBStatusInactive
@@ -221,7 +221,7 @@ func TestLB_SetStatusCAS(t *testing.T) {
 func TestLB_Delete_FK_RESTRICT_Listeners(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01DELP1234567890ll", "del-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -244,7 +244,7 @@ func TestLB_Delete_FK_RESTRICT_Listeners(t *testing.T) {
 func TestLB_HasListeners(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01HASS1234567890ll", "has-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -276,7 +276,7 @@ func TestLB_HasListeners(t *testing.T) {
 func TestLB_OutboxTransactional(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01OUTB1234567890ll", "outbox-lb")
 	w, err := repo.Writer(ctx)
@@ -299,7 +299,7 @@ func TestLB_OutboxTransactional(t *testing.T) {
 func TestLB_List_Pagination(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj01LIST1234567890ll"
 	for i := 0; i < 5; i++ {
@@ -339,7 +339,7 @@ func TestLB_List_Pagination(t *testing.T) {
 func TestLB_StatusRecomputeTrigger(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01TRGS1234567890ll", "trig-lb")
 	lb.Status = domain.LBStatusInactive
@@ -368,7 +368,7 @@ func TestLB_StatusRecomputeTrigger(t *testing.T) {
 func TestLB_ConcurrentInsertSameName(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj01RACE1234567890ll"
 	const name = "race-lb"
@@ -430,7 +430,7 @@ func newInternalHandle(projectID, name string, families ...domain.IPVersion) *do
 func TestLB_AttachVIP_SequencingNeedsIPFamilies(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Handle БЕЗ ip_families — INSERT с пустым address проходит (однонаправленный CHECK).
 	bad := newInternalHandle("prj01SEQTEST0000001", "seq-bad")
@@ -468,7 +468,7 @@ func TestLB_AttachVIP_SequencingNeedsIPFamilies(t *testing.T) {
 func TestLB_AttachVIP_CASIdempotentAndConflict(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newInternalHandle("prj01CASTEST0000001", "cas-lb", domain.IPVersionV4)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -499,7 +499,7 @@ func TestLB_AttachVIP_CASIdempotentAndConflict(t *testing.T) {
 func TestLB_AttachVIP_PerRegionUnique(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	a := newInternalHandle("prj01REGTEST0000001", "reg-a", domain.IPVersionV4)
 	b := newInternalHandle("prj01REGTEST0000001", "reg-b", domain.IPVersionV4)

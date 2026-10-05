@@ -31,7 +31,7 @@ import (
 func TestRegistry_REG04_ConcurrentCreate_UniqueNameRace(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const (
 		n       = 8

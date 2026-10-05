@@ -34,7 +34,7 @@ func TestCQRS_SlavePool_FallbackOnNil(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	master, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestCQRS_SlavePool_RouterUsesSlavePool(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	master, err := coredb.NewPool(ctx, dsn)
@@ -126,7 +126,7 @@ func TestCQRS_SlavePool_WriterAlwaysMaster(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	master, err := coredb.NewPool(ctx, dsn)

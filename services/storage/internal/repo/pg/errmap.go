@@ -13,6 +13,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/quota/quotadetail"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
@@ -174,6 +175,12 @@ func mapVolumeErr(err error, c volErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "kind", "volume", "id", c.volumeID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			switch f.Constraint {
@@ -251,6 +258,12 @@ func mapSnapshotErr(err error, c snapErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "kind", "snapshot", "id", c.snapshotID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			if f.Constraint == cnSnapshotNameUniq {
@@ -314,6 +327,12 @@ func mapImageErr(err error, c imgErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "kind", "image", "id", c.imageID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			if f.Constraint == cnImageNameUniq {
@@ -362,6 +381,12 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "kind", "disk_type", "id", c.diskTypeID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique: // дубликат PK-слага
 			return fmt.Errorf("%w: DiskType %s already exists", storageerr.ErrAlreadyExists, c.diskTypeID)

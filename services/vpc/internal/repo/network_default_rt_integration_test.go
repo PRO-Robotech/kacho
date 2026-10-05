@@ -72,7 +72,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRouteTableProvisioned(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault(t *testing.T) 
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDBUpToVPC(t, 16) // состояние ДО 0017
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -248,7 +248,7 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -326,7 +326,7 @@ func TestIntegration_Network_DefaultRT_FKOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

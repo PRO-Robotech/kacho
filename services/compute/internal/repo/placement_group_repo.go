@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
@@ -51,12 +52,13 @@ func (e *ErrPlacementGroupInUse) Unwrap() error {
 
 // PlacementGroupRepo — хранение групп размещения.
 type PlacementGroupRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewPlacementGroupRepo создаёт репозиторий групп.
 func NewPlacementGroupRepo(pool *pgxpool.Pool) *PlacementGroupRepo {
-	return &PlacementGroupRepo{pool: pool}
+	return &PlacementGroupRepo{pool: pool, journal: journalOptions()}
 }
 
 const placementGroupCols = `id, project_id, name, description, labels, created_at, ` +
@@ -160,7 +162,7 @@ func (r *PlacementGroupRepo) Insert(ctx context.Context, g *domain.PlacementGrou
 		return nil, nil, err
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -233,7 +235,7 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 		add("labels", labelsJSON)
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, ports.ErrInternal
 	}
@@ -274,7 +276,7 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 // Ссылочная целостность отвергла бы снятие и сама, но её отказ называет
 // ограничение, а не машины — по нему нельзя сделать следующего шага.
 func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return ports.ErrInternal
 	}

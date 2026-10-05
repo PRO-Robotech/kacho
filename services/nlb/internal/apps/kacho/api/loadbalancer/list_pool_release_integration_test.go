@@ -122,7 +122,7 @@ func TestListLoadBalancers_DoesNotHoldPooledConnectionAcrossAuthz(t *testing.T) 
 		Status:          domain.LBStatusInactive,
 		SessionAffinity: domain.SessionAffinity5Tuple,
 	}
-	w, err := repo.Writer(ctx)
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	_, err = w.LoadBalancers().Insert(ctx, lb)
 	require.NoError(t, err)

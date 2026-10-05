@@ -74,7 +74,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 	t.Run("serveBlob initial v_get Check error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{err: depErr}
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodGet, "/v2/reg-A/app/blobs/sha256:x", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "blob Check error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -84,7 +84,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/app": true}}
 		be := &fakeBackend{blobErr: depErr} // v_get прошёл, но blob-scope introspection падает
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodGet, "/v2/reg-A/app/blobs/sha256:x", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "blob-scope check error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -95,7 +95,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/app": true}}
 		be := &fakeBackend{} // BlobInRepo=false → идём в pending-проверку
 		up := &fakeUploadRecorder{getErr: depErr}
-		h := newTestHandlerU(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{}, up)
+		h := newTestHandlerU(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{}, up)
 		rec := doReq(h, http.MethodGet, "/v2/reg-A/app/blobs/sha256:x", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "pending-blob check error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -108,7 +108,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		// теги в движке: именно его недоступность обязана fail-closed'иться, потому что
 		// именно он выбирает глагол. backend.RepoExists на этой полосе больше не участвует.
 		pr := &fakePresence{err: depErr}
-		h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
+		h := newTestHandlerP(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "push existence-предикат недоступен → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -117,7 +117,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 	t.Run("serveMount src check error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{err: depErr} // первый Check в mount — src v_get — падает
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount src check error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -127,7 +127,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/src": true}} // src allow
 		pr := &fakePresence{err: depErr}                                                      // предикат dst падает
-		h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
+		h := newTestHandlerP(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst existence-предикат недоступен → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -137,7 +137,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &srcAllowDstErrAuthz{err: depErr} // src v_get allow, dst v_create → error
 		be := &fakeBackend{}                    // dst new → v_create-Check падает
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst check error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -150,7 +150,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 			"v_create registry_registry:reg-A":    true,
 		}}
 		be := &fakeBackend{blobErr: depErr} // оба Check allow, но mount-blob-scope introspection падает
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount blob-scope error → fail-closed 503")
 		require.Equal(t, 0, fw.count())
@@ -159,7 +159,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 	t.Run("serveCatalog CatalogRepoNames error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		be := &fakeBackend{catalogErr: depErr}
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, &fakeAuthz{}, be, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, &fakeAuthz{}, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodGet, "/v2/_catalog", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "catalog read error → fail-closed 503")
 	})
@@ -168,7 +168,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{err: depErr}                      // per-repo listauthz Check падает
 		be := &fakeBackend{catalog: []string{"reg-A/app"}} // ≥1 имя → errgroup запускает Check
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodGet, "/v2/_catalog", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "catalog filter Check error → fail-closed 503")
 	})
@@ -197,7 +197,7 @@ func TestDataplane_MethodGuard_ReadRoutes_NonReadVerb_404(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			fw := &fakeForwarder{status: 200}
-			h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, &fakeAuthz{}, &fakeBackend{}, fw, &fakeRepoReg{})
+			h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, &fakeAuthz{}, &fakeBackend{}, fw, &fakeRepoReg{})
 			rec := doReq(h, c.method, c.target, true)
 			require.Equal(t, http.StatusNotFound, rec.Code, "%s → 404 existence-hiding", c.name)
 			require.Equal(t, 0, fw.count(), "%s never forwarded to zot", c.name)
@@ -216,11 +216,11 @@ func TestDataplane_Referrers_VGet_AllowForward_DenyHide(t *testing.T) {
 	// allow → forward.
 	azAllow := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/app": true}}
 	fwAllow := &fakeForwarder{status: 200}
-	hAllow := newTestHandler(&fakeVerifier{subject: "sva-ci"}, azAllow, &fakeBackend{}, fwAllow, &fakeRepoReg{})
+	hAllow := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, azAllow, &fakeBackend{}, fwAllow, &fakeRepoReg{})
 	require.Equal(t, http.StatusOK, doReq(hAllow, http.MethodGet, "/v2/reg-A/app/referrers/sha256:x", true).Code,
 		"referrers pull с v_get allow → forward")
 	require.Equal(t, 1, fwAllow.count())
-	require.Equal(t, checkCall{"service_account:sva-ci", "v_get", "registry_repository:reg-A/app"},
+	require.Equal(t, checkCall{"service_account:sva-0000000000000000c", "v_get", "registry_repository:reg-A/app"},
 		azAllow.checkedObjects()[0], "referrers гейтится v_get на repo-объекте")
 
 	// deny → 404 existence-hiding, не forward.
@@ -245,7 +245,7 @@ func TestDataplane_Mount_FromWithoutRepoSegment_404(t *testing.T) {
 		"v_create registry_registry:reg-A":  true, // dst new repo
 	}}
 	fw := &fakeForwarder{}
-	h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
+	h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
 	rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=regonly", true)
 	require.Equal(t, http.StatusNotFound, rec.Code, "from без repo-сегмента → 404 existence-hiding")
 	require.Equal(t, 0, fw.count())
@@ -264,7 +264,7 @@ func TestDataplane_BlobUpload_ChunkPatch_StreamsNoRecord(t *testing.T) {
 	fw := &fakeForwarder{status: 202}
 	be := &fakeBackend{exists: map[string]bool{}} // новый repo
 	up := &fakeUploadRecorder{}
-	h := newTestHandlerU(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{}, up)
+	h := newTestHandlerU(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{}, up)
 
 	rec := doReq(h, http.MethodPatch, "/v2/reg-A/app/blobs/uploads/upl-chunk-1", true)
 	require.Equal(t, 202, rec.Code, "chunk-PATCH стримится в zot")
@@ -310,7 +310,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 	be := &fakeBackend{exists: map[string]bool{}}
 	rr := &fakeRepoReg{}
 	// uploads=nil, pushGrants=nil, regLookup=nil — все опциональные фичи выключены.
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, rr,
+	h := New(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, presenceFor(be), fw, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 
 	require.Equal(t, 201, doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true).Code)
@@ -326,7 +326,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 		blobs:  map[string]bool{"reg-A/app|sha256:own": true},
 	}
 	fwEst := &fakeForwarder{status: 200}
-	hEst := New(&fakeVerifier{subject: "sva-ci"}, az, beEst, presenceFor(beEst), fwEst, rr,
+	hEst := New(&fakeVerifier{subject: "sva-0000000000000000c"}, az, beEst, presenceFor(beEst), fwEst, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 	require.Equal(t, http.StatusOK, doReq(hEst, http.MethodGet, "/v2/reg-A/app/blobs/sha256:own", true).Code,
 		"established member-blob pull форвардится при nil pushGrants (dropPushGrant no-op)")
@@ -334,7 +334,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 	// established pull, v_get deny → pushOwnerRevealsRepo no-op (pushGrants nil) → 404.
 	azDeny := &fakeAuthz{allow: map[string]bool{}}
 	fwDeny := &fakeForwarder{}
-	hDeny := New(&fakeVerifier{subject: "sva-ci"}, azDeny, beEst, presenceFor(beEst), fwDeny, rr,
+	hDeny := New(&fakeVerifier{subject: "sva-0000000000000000c"}, azDeny, beEst, presenceFor(beEst), fwDeny, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 	require.Equal(t, http.StatusNotFound, doReq(hDeny, http.MethodGet, "/v2/reg-A/app/blobs/sha256:own", true).Code,
 		"v_get deny + nil pushGrants → push-owner мост выключен → 404")
@@ -350,7 +350,7 @@ func TestDataplane_NilUploads_BlobNotInManifest_404(t *testing.T) {
 	fw := &fakeForwarder{}
 	be := &fakeBackend{} // BlobInRepo=false
 	// uploads==nil → blobUploadedToRepo короткозамыкает в false.
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, &fakeRepoReg{},
+	h := New(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, presenceFor(be), fw, &fakeRepoReg{},
 		&fakeRegistryLookup{}, nil, &fakePushGrantRecorder{},
 		"https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 
@@ -363,7 +363,7 @@ func TestDataplane_NilUploads_BlobNotInManifest_404(t *testing.T) {
 // подставляет дефолтный IAM /token realm и service-audience; challenge их несёт. Локает
 // дефолт-ветки конструктора (наблюдаемо — через WWW-Authenticate).
 func TestDataplane_New_EmptyRealmService_AppliesDefaults(t *testing.T) {
-	h := New(&fakeVerifier{subject: "sva-ci"}, &fakeAuthz{}, &fakeBackend{}, &fakePresence{}, &fakeForwarder{}, &fakeRepoReg{},
+	h := New(&fakeVerifier{subject: "sva-0000000000000000c"}, &fakeAuthz{}, &fakeBackend{}, &fakePresence{}, &fakeForwarder{}, &fakeRepoReg{},
 		&fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{}, "", "", nil)
 	rec := doReq(h, http.MethodGet, "/v2/", false) // без токена → challenge
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -390,7 +390,7 @@ func TestDataplane_WriteCaptured_RelaysZotHeaders_DefaultsStatus(t *testing.T) {
 		hdr.Set("Docker-Content-Digest", "sha256:layerA")
 		fw := &captureForwarder{captured: CapturedResponse{Status: 201, Header: hdr, Body: nil}}
 		up := &fakeUploadRecorder{}
-		h := newTestHandlerU(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{}, up)
+		h := newTestHandlerU(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{}, up)
 
 		rec := doReq(h, http.MethodPut, "/v2/reg-A/app/blobs/uploads/upl-1?digest=sha256:layerA", true)
 		require.Equal(t, 201, rec.Code, "captured zot-статус релеится клиенту")
@@ -408,7 +408,7 @@ func TestDataplane_WriteCaptured_RelaysZotHeaders_DefaultsStatus(t *testing.T) {
 		// дефолтит статус до 200 и всё равно копирует заголовки.
 		fw := &captureForwarder{captured: CapturedResponse{Status: 0, Header: hdr, Body: nil}}
 		up := &fakeUploadRecorder{}
-		h := newTestHandlerU(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{}, up)
+		h := newTestHandlerU(&fakeVerifier{subject: "sva-0000000000000000c"}, az, be, fw, &fakeRepoReg{}, up)
 
 		rec := doReq(h, http.MethodPut, "/v2/reg-A/app/blobs/uploads/upl-2?digest=sha256:mono", true)
 		require.Equal(t, http.StatusOK, rec.Code, "captured статус 0 → дефолт 200")

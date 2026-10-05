@@ -50,7 +50,7 @@ import (
 func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-orphan")
 
 	const orphan = "team/app"
@@ -67,7 +67,7 @@ func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 	require.Equal(t, 0, countOutbox(t, pool, regID+"/"+orphan, domain.FGAEventUnregister),
 		"предпосылка: снятия не эмитировал никто — именно это и оставляло объект стоять")
 
-	named, err := repo.SweepOrphanedRepositories(ctx, 0)
+	named, err := repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{regID + "/" + orphan}, named,
 		"предикат обязан НАЗВАТЬ объект, о котором владелец не знает")
@@ -85,14 +85,14 @@ func TestOrphanSweep_WithdrawsObjectTheOwnerDoesNotKnow(t *testing.T) {
 func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-live")
 
 	const live = "team/live"
 	require.NoError(t, repo.RegisterRepository(ctx,
 		domain.RegisterIntentForRepoPush(regID, live, "prj-P", "service_account:sva-ci")))
 
-	named, err := repo.SweepOrphanedRepositories(ctx, 0)
+	named, err := repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Empty(t, named, "живой репозиторий предикат называть не вправе")
 	require.Equal(t, 0, countOutbox(t, pool, regID+"/"+live, domain.FGAEventUnregister),
@@ -106,7 +106,7 @@ func TestOrphanSweep_LeavesLiveObjectAlone(t *testing.T) {
 func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-fresh")
 
 	const fresh = "team/fresh"
@@ -117,7 +117,7 @@ func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 		 WHERE registry_id = $1 AND repo = $2`, regID, fresh)
 	require.NoError(t, err)
 
-	named, err := repo.SweepOrphanedRepositories(ctx, time.Hour)
+	named, err := repo.SweepOrphanedRepositories(context.Background(), time.Hour)
 	require.NoError(t, err)
 	require.Empty(t, named,
 		"объект моложе отсрочки предикат называть не вправе — иначе подметальщик "+
@@ -125,7 +125,7 @@ func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 
 	// Тот же объект вне отсрочки — называется. Пара доказывает, что отрицание выше
 	// про ВОЗРАСТ, а не про то, что предикат вообще ничего не находит.
-	named, err = repo.SweepOrphanedRepositories(ctx, 0)
+	named, err = repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{regID + "/" + fresh}, named)
 }
@@ -138,7 +138,7 @@ func TestOrphanSweep_LeavesFreshObjectAlone(t *testing.T) {
 func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-idem")
 
 	const orphan = "team/idem"
@@ -149,11 +149,11 @@ func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 		 WHERE registry_id = $1 AND repo = $2`, regID, orphan)
 	require.NoError(t, err)
 
-	first, err := repo.SweepOrphanedRepositories(ctx, 0)
+	first, err := repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 
-	second, err := repo.SweepOrphanedRepositories(ctx, 0)
+	second, err := repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Empty(t, second, "второй проход не вправе назвать уже снятый объект")
 	require.Equal(t, 1, countOutbox(t, pool, regID+"/"+orphan, domain.FGAEventUnregister),
@@ -169,7 +169,7 @@ func TestOrphanSweep_IsIdempotentAndConverges(t *testing.T) {
 func TestOrphanSweep_DeclaredThroughOverlayCountsAsLive(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-overlay")
 
 	const declared = "team/declared"
@@ -185,7 +185,7 @@ func TestOrphanSweep_DeclaredThroughOverlayCountsAsLive(t *testing.T) {
 		regID, declared)
 	require.NoError(t, err)
 
-	named, err := repo.SweepOrphanedRepositories(ctx, 0)
+	named, err := repo.SweepOrphanedRepositories(context.Background(), 0)
 	require.NoError(t, err)
 	require.Empty(t, named,
 		"репозиторий, заявленный наложением, существует как ресурс — снимать его нельзя")

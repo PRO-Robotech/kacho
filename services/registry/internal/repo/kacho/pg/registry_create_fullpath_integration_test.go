@@ -66,9 +66,13 @@ type stubGeoFP struct{}
 
 func (stubGeoFP) RegionExists(context.Context, string) error { return nil }
 
+// aliceIDFP — id пользователя формы каталога ids: инициатора строки журнала
+// помощник выводит только из id своего семейства (NTF-3, З3, З4).
+const aliceIDFP = "usr-42g1g4t68qg5xqwsr"
+
 func aliceCtxFP() context.Context {
 	return operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr-alice", DisplayName: "alice"})
+		operations.Principal{Type: "user", ID: aliceIDFP, DisplayName: "alice"})
 }
 
 // awaitOpDoneFP — детерминированное ожидание финализации LRO-worker'а (poll, не sleep).
@@ -109,7 +113,7 @@ func TestUseCase_REG01_FullCreatePath_OperationsInsert(t *testing.T) {
 	stored, gerr := ops.Get(context.Background(), op.ID)
 	require.NoError(t, gerr, "operations row inserted synchronously (CreateWithPrincipal)")
 	require.Equal(t, "user", stored.Principal.Type)
-	require.Equal(t, "usr-alice", stored.Principal.ID)
+	require.Equal(t, aliceIDFP, stored.Principal.ID)
 	require.NotNil(t, op.Metadata, "Create metadata (registry_id) заполнена")
 
 	// Async worker финализирует Operation ресурсом (MarkDone).

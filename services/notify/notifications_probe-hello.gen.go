@@ -24,6 +24,7 @@ var probeHelloDesc = feed.TemplateDesc{
 	Class:     feed.ClassNotice,
 	SchemaRev: 1,
 	TTL:       3600 * time.Second,
+	Recipient: feed.RecipientAddress,
 	Limits:    []feed.Limit{},
 	Attrs: []feed.AttrDesc{
 		{Name: "target", Kind: form.KindPath, Presence: feed.PresenceRequired, Subject: false},

@@ -35,7 +35,7 @@ import (
 func TestLB_Update_OCC_NoLostUpdate(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01OCCLB000000001l", "occ-lb")
 	lb.DeletionProtection = false
@@ -100,7 +100,7 @@ func TestLB_Update_OCC_NoLostUpdate(t *testing.T) {
 func TestLB_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01OCCLB000000002l", "occ-conc")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -162,7 +162,7 @@ func TestLB_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 func TestListener_Update_OCC_StaleXminConflict(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01OCCLST00000001l", "occ-lst-lb")
 	lst := newListener(lb.ID, "prj01OCCLST00000001l", "occ-lst", 443)
@@ -205,7 +205,7 @@ func TestListener_Update_OCC_StaleXminConflict(t *testing.T) {
 func TestTargetGroup_Update_OCC_StaleXminConflict(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01OCCTG000000001l", "occ-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -250,7 +250,7 @@ func TestTargetGroup_Update_OCC_StaleXminConflict(t *testing.T) {
 func TestListener_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01OCCLST00000002l", "occ-lst-conc-lb")
 	lst := newListener(lb.ID, "prj01OCCLST00000002l", "occ-lst-conc", 443)
@@ -319,7 +319,7 @@ func TestListener_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 func TestTargetGroup_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01OCCTG000000002l", "occ-tg-conc")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

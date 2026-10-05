@@ -115,7 +115,9 @@ func seedQuotaCeiling(t *testing.T, s *stand) {
 // seedRichLB кладёт строку НАСТОЯЩИМ репозиторием и возвращает её запись.
 func seedRichLB(t *testing.T, s *stand) *kachorepo.LoadBalancerRecord {
 	t.Helper()
-	ctx := context.Background()
+	// Посев — писателем модуля: транзакцию открывает помощник записи журнала,
+	// инициатор — принципал контекста (З4).
+	ctx := journalPrincipalCtx(context.Background())
 	seedQuotaCeiling(t, s)
 	repo := pgrepo.New(s.pool, nil)
 

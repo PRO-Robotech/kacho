@@ -54,7 +54,7 @@ type sgNetFixture struct {
 
 func newSGNetFixture(t *testing.T) *sgNetFixture {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)

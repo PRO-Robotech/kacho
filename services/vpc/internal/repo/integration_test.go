@@ -66,7 +66,7 @@ func TestIntegration_NetworkRepo_CRUD(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
@@ -139,7 +139,7 @@ func TestIntegration_SubnetRepo_CidrBlocks(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
@@ -191,7 +191,7 @@ func TestIntegration_AddressRepo_ExternalAndInternal(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
@@ -273,7 +273,7 @@ func TestIntegration_AddressRepo_References(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
@@ -422,7 +422,7 @@ func TestIntegration_RouteTableRepo_StaticRoutes(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)

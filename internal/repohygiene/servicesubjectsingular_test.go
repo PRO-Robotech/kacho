@@ -41,6 +41,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 const (
@@ -122,18 +123,18 @@ func judgeServiceSubjectSingular(c *pinnedCorpus) carrierReport {
 						return true
 					}
 					if v, ok := foldString(x, f.pkgPath, names, consts); ok {
-						if strings.HasPrefix(v, "service:") {
+						if subjectShaped(v, "service:") {
 							r.producers[owner] = append(r.producers[owner], c.pos(f, x.Pos()))
 						}
 						return false
 					}
 					if inPkg(x.X, authzPkg, "ServiceSubjectType") {
-						if v, ok := foldString(x.Y, f.pkgPath, names, consts); ok && strings.HasPrefix(v, ":") {
+						if v, ok := foldString(x.Y, f.pkgPath, names, consts); ok && subjectShaped(v, ":") {
 							r.producers[owner] = append(r.producers[owner], c.pos(f, x.Pos()))
 						}
 					}
 				case *ast.BasicLit:
-					if v, ok := foldString(x, f.pkgPath, names, consts); ok && strings.HasPrefix(v, "service:") {
+					if v, ok := foldString(x, f.pkgPath, names, consts); ok && subjectShaped(v, "service:") {
 						r.producers[owner] = append(r.producers[owner], c.pos(f, x.Pos()))
 					}
 				}
@@ -208,6 +209,19 @@ func TestNTF1M08_ServicePrincipalHasOneExtractor(t *testing.T) {
 	}
 }
 
+// subjectShaped — значение начинается с prefix и продолжается так, как
+// продолжается субъект `service:<имя>`: ничем (имя приклеивается дальше) либо
+// не пробелом. Текст «service: …» — префикс поля в сообщении об ошибке
+// (`fmt.Errorf("service: %w", err)` у corelib resourceevent.Inputs.Validate), а не
+// строка субъекта: в субъекте пробела после двоеточия нет (имя — DNS-метка).
+func subjectShaped(v, prefix string) bool {
+	rest, ok := strings.CutPrefix(v, prefix)
+	if !ok {
+		return false
+	}
+	return rest == "" || !unicode.IsSpace([]rune(rest)[0])
+}
+
 // TestNTF1M08Injection — вторая функция извлечения и второй производитель в
 // дереве kacho; близнецы — вызов единственных функций.
 func TestNTF1M08Injection(t *testing.T) {
@@ -247,6 +261,11 @@ func viaOne(ctx context.Context) string {
 		{"близнец: слово типа в сравнении, не в склейке", `package authzfilter
 import "github.com/PRO-Robotech/corelib/authz"
 func isSvc(t string) bool { return t == authz.ServiceSubjectType }`, ""},
+		{"близнец: префикс поля в тексте ошибки, не субъект", `package authzfilter
+import "fmt"
+func wrapSvc(err error) error { return fmt.Errorf("service: %w", err) }`, ""},
+		{"близнец: префикс поля склейкой, не субъект", `package authzfilter
+func msgSvc(s string) string { return "service: " + s }`, ""},
 	}
 	for _, tc := range cases {
 		r := judgeServiceSubjectSingular(injectedCorpus(t, base, rel, tc.src))

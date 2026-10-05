@@ -185,7 +185,7 @@ func newReg(projectID, name string, labels map[string]string) *domain.Registry {
 func (s *stand) create(t *testing.T, projectID, name string, labels map[string]string) *domain.Registry {
 	t.Helper()
 	reg := newReg(projectID, name, labels)
-	created, _, err := s.repo.Insert(context.Background(), reg,
+	created, _, err := s.repo.Insert(journalPrincipalCtx(context.Background()), reg,
 		domain.RegisterIntentForCreate(reg, "user", "usr-alice"))
 	if err != nil {
 		t.Fatalf("реестр не создался: %v", err)
