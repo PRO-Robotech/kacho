@@ -326,18 +326,9 @@ func main() {
 			"platform_issuer_accepted", platformAccepted)
 	}
 
-	// Hybrid external listener: when enabled, a client that presents a
-	// valid Kachō cert over the external listener (tls.VerifyClientCertIfGiven,
-	// wired on the TLS listener below) authenticates on its mTLS SPIFFE identity —
-	// the AuthInterceptor derives the principal from the verified cert and skips
-	// the JWT requirement. Default off ⇒ JWT-only authN, behaviour unchanged.
-	if cfg.HybridMTLSEnabled() {
-		// Лист звена фронта личностью не становится (kacho#3028, круг 5):
-		// якорь звеньев — тот же, которым оператор адреса узнаёт звено.
-		authInterceptor = authInterceptor.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain)).
-			WithLinkAnchor(clientAddressOp.Anchor)
-		logger.Info("hybrid mTLS external listener: cert-principal path enabled")
-	}
+	// Полоса личности по сертификату (посадка hybrid) и что она видит на
+	// внешнем gRPC края — withCertPrincipalLane (external_grpc_server.go).
+	authInterceptor = withCertPrincipalLane(authInterceptor, cfg, clientAddressOp.Anchor, logger)
 
 	// Machine principals are exempt from step-up (a machine has no second
 	// factor). That exemption is only defensible if the machine's token is
@@ -1060,7 +1051,10 @@ func main() {
 	// (gateway/internal/linktls): за мультиплексором протоколов сервер gRPC
 	// иначе не знает о TLS вовсе, и звено фронта, предъявившее сертификат,
 	// было бы неотличимо от любого пира (kacho#3028, C4). Рукопожатий они не
-	// ведут: соединение без TLS остаётся таким, каким было.
+	// ведут: соединение без TLS остаётся таким, каким было. Состояние они
+	// кладут своим типом linktls.AuthInfo, а не credentials.TLSInfo: его видит
+	// только оператор адреса клиента, и полоса личности по сертификату здесь
+	// не признаёт никого (перепись #3028, строка 33; withCertPrincipalLane).
 	grpcSrv := proxy.NewServer(resolver,
 		grpc.Creds(linktls.ServerCredentials()),
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
@@ -1350,11 +1344,14 @@ func main() {
 			MinVersion:   tls.VersionTLS12,
 		}
 		// Hybrid: when enabled, accept an OPTIONAL client cert
-		// (tls.VerifyClientCertIfGiven) with the internal CA as ClientCAs — a
-		// browser without a cert still handshakes (JWT path), a client presenting a
-		// valid Kachō cert gets it verified so the principal can be derived from its
-		// SPIFFE SAN. Default (disabled) leaves ClientAuth=NoClientCert. This is the
-		// EXTERNAL listener only; internal service listeners stay strict.
+		// (tls.VerifyClientCertIfGiven) with the internal CA and the front-link
+		// anchor as ClientCAs — a browser without a cert still handshakes (JWT
+		// path), a front link presenting its leaf gets it verified so the client
+		// address operator can recognise it (kacho#3028). A verified leaf does NOT
+		// become a principal on this listener: the gRPC server hands the TLS state
+		// only to the address operator (linktls.AuthInfo). Default (disabled)
+		// leaves ClientAuth=NoClientCert. This is the EXTERNAL listener only;
+		// internal service listeners stay strict.
 		if tlsCfg, certErr = cfg.ExternalListenerClientAuth(tlsCfg); certErr != nil {
 			log.Fatalf("hybrid mTLS external listener: %v", certErr)
 		}

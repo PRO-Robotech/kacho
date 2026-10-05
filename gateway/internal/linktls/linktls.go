@@ -19,8 +19,8 @@
 // Проверенная якорем цепочка клиентского сертификата есть, но не видна ни
 // одному читателю. Пакет достаёт её из-под обёрток и отдаёт обоим: HTTP — через
 // контекст соединения (ConnContext / FromRequest), gRPC — через учётные данные
-// сервера (ServerCredentials), которые кладут её в peer.AuthInfo как
-// credentials.TLSInfo.
+// сервера (ServerCredentials), которые кладут её в peer.AuthInfo своим типом
+// AuthInfo (PeerState) — НЕ credentials.TLSInfo, см. AuthInfo.
 //
 // # Чего пакет не делает
 //
@@ -40,6 +40,7 @@ import (
 
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 // unwrapDepth — предел разворачивания обёрток: обёрток у слушателя края
@@ -121,9 +122,50 @@ func FromRequest(r *http.Request) *tls.ConnectionState {
 
 // ServerCredentials — учётные данные сервера gRPC, принимающего соединения, на
 // которых TLS уже завершён слушателем (либо которых TLS нет вовсе). Рукопожатия
-// они не ведут: соединение с завершённым TLS получает credentials.TLSInfo с его
+// они не ведут: соединение с завершённым TLS получает AuthInfo с его
 // состоянием, прочее — сведения без защиты, как у сервера без учётных данных.
 func ServerCredentials() credentials.TransportCredentials { return terminated{} }
+
+// AuthInfo — сведения о соединении с завершённым TLS, которые кладут в
+// peer.AuthInfo учётные данные ServerCredentials. Читает их PeerState.
+//
+// # Почему не credentials.TLSInfo
+//
+// credentials.TLSInfo читают как ЛИЧНОСТЬ клиента: полоса личности по
+// сертификату (лист с SPIFFE-именем установки — служебная учётка без токена) и
+// проверка привязки токена к сертификату. До этого пакета сервер gRPC края
+// TLSInfo не выдавал вовсе, и обе на внешнем слушателе не видели ничего. Выдай
+// пакет TLSInfo — и полоса личности ожила бы на внешнем слушателе края
+// побочным действием: лист установки выпускает кластерный выпускающий всякому,
+// кто заводит запрос на сертификат в любом пространстве имён (kacho#3028,
+// перепись каналов, строки 27 и 33), то есть служебную учётку получал бы
+// снаружи всякий, кто такой лист завёл. Свой тип отдаёт состояние ровно тому,
+// кто читает его через PeerState, — оператору адреса клиента, который читает в
+// нём только лист якоря звеньев (Anchor.Issued). Держит это
+// TestExternalGRPC_NoClientCertificateBecomesAPrincipalWithoutAToken
+// (cmd/api-gateway) на настоящем рукопожатии.
+type AuthInfo struct {
+	credentials.CommonAuthInfo
+	// State — состояние завершённого рукопожатия.
+	State tls.ConnectionState
+}
+
+// AuthType — имя протокола соединения.
+func (AuthInfo) AuthType() string { return "tls" }
+
+// PeerState — состояние TLS соединения пира gRPC, положенное ServerCredentials,
+// либо nil (не TLS, иные учётные данные, пира нет).
+func PeerState(ctx context.Context) *tls.ConnectionState {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p == nil {
+		return nil
+	}
+	info, ok := p.AuthInfo.(AuthInfo)
+	if !ok {
+		return nil
+	}
+	return &info.State
+}
 
 type terminated struct{}
 
@@ -143,7 +185,7 @@ func (terminated) ServerHandshake(c net.Conn) (net.Conn, credentials.AuthInfo, e
 		}
 	}
 	if st := ConnState(c); st != nil {
-		return c, credentials.TLSInfo{
+		return c, AuthInfo{
 			State:          *st,
 			CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity},
 		}, nil

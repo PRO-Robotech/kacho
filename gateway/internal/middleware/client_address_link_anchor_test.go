@@ -167,8 +167,7 @@ func TestMTLSPrincipal_LinkLeafIsNeverAPrincipal(t *testing.T) {
 	instCA := newTestAuthority(t, "kacho-internal-ca")
 	const sa = "spiffe://kacho.cloud/ns/kacho/sa/console-front"
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeProductionStrict, "", &countingLookup{}, authTestLogger()).
-		WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud")).
-		WithLinkAnchor(linktls.NewAnchor(linkCA.cert))
+		WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"), linktls.NewAnchor(linkCA.cert))
 
 	call := func(chains [][]*x509.Certificate) (string, error) {
 		ctx := peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{

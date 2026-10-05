@@ -202,8 +202,10 @@ func TestConnState_NoStateWithoutACompletedHandshake(t *testing.T) {
 }
 
 // gRPC: сервер с учётными данными пакета за мультиплексором отдаёт обработчику
-// TLSInfo с проверенной цепочкой звена. Близнец — клиент без сертификата: TLS
-// есть, цепочки нет.
+// проверенную цепочку звена через PeerState — и НЕ как credentials.TLSInfo:
+// TLSInfo читают как личность клиента (полоса личности по сертификату), и
+// выдай его пакет, лист установки стал бы служебной учёткой снаружи
+// (linktls.AuthInfo). Близнец — клиент без сертификата: TLS есть, цепочки нет.
 func TestServerCredentials_GRPCHandlerSeesTheLinkChain(t *testing.T) {
 	p := newPKI(t)
 	ln, err := tls.Listen("tcp", "127.0.0.1:0", p.serverConfig())
@@ -216,11 +218,15 @@ func TestServerCredentials_GRPCHandlerSeesTheLinkChain(t *testing.T) {
 	srv := grpc.NewServer(grpc.Creds(linktls.ServerCredentials()),
 		grpc.UnaryInterceptor(func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
 			pr, _ := peer.FromContext(ctx)
-			info, ok := pr.AuthInfo.(credentials.TLSInfo)
-			if !ok {
-				seen <- []string{"<не TLSInfo>"}
-			} else {
-				seen <- leafURIs(&info.State)
+			switch st := linktls.PeerState(ctx); {
+			case pr == nil:
+				seen <- []string{"<нет пира>"}
+			case isTLSInfo(pr.AuthInfo):
+				seen <- []string{"<credentials.TLSInfo: состояние видно полосе личности>"}
+			case st == nil:
+				seen <- []string{"<состояния нет>"}
+			default:
+				seen <- leafURIs(st)
 			}
 			return h(ctx, req)
 		}))
@@ -266,9 +272,14 @@ func TestServerCredentials_PlaintextListenerIsNotTLS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("рукопожатие без TLS отвергнуто: %v", err)
 	}
-	if _, isTLS := info.(credentials.TLSInfo); isTLS {
+	if _, isTLS := info.(linktls.AuthInfo); isTLS || isTLSInfo(info) {
 		t.Fatal("соединение без TLS выдано за TLS")
 	}
+}
+
+func isTLSInfo(info credentials.AuthInfo) bool {
+	_, ok := info.(credentials.TLSInfo)
+	return ok
 }
 
 // HTTP: сервер с ConnContext пакета отдаёт обработчику состояние звена через

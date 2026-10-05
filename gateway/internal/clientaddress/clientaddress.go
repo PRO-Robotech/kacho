@@ -50,7 +50,7 @@ type Operator struct {
 	// Links — перечень звеньев поимённо; nil, если звенья не объявлены.
 	Links *frontpeers.Set
 	// Anchor — якорь звеньев. Его же получает полоса личности по сертификату
-	// (middleware.AuthInterceptor.WithLinkAnchor): лист звена личностью не
+	// (middleware.AuthInterceptor.WithMTLSPrincipal): лист звена личностью не
 	// становится. Одно значение на обоих читателей — разойтись им нечем.
 	Anchor linktls.Anchor
 }

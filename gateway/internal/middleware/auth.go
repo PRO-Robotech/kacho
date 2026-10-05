@@ -137,7 +137,7 @@ type AuthInterceptor struct {
 
 	// linkAnchor — якорь звеньев фронта (kacho#3028, круг 5): лист, чья
 	// цепочка кончается его корнем, — звено, и личностью он не становится
-	// никогда (WithLinkAnchor).
+	// никогда (WithMTLSPrincipal).
 	linkAnchor linktls.Anchor
 	// requireMachineBinding — when true, a token whose principal is a MACHINE
 	// (kaname_principal_type=service_account) must be sender-constrained (RFC
@@ -354,20 +354,20 @@ func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 // НИКОГО, — то есть включение, ничего не включающее. Тихого выключения это не
 // заводит: домен объявлен осью посадки (`describePosture`), и процесс с
 // необъявленным доменом не стартует вовсе.
-func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain) *AuthInterceptor {
-	a.mtlsDomain = d
-	return a
-}
-
-// WithLinkAnchor объявляет якорь звеньев фронта (kacho#3028, круг 5).
+//
+// # Почему якорь звеньев — аргумент той же опции (kacho#3028, круг 5)
 //
 // Звено ретранслирует запросы ВСЕХ своих клиентов. Лист звена, ставший
-// личностью на полосе личности по сертификату, сделал бы каждого клиента за
-// звеном — и анонимного тоже — этой личностью. Поэтому полоса личности по
-// сертификату читает только лист цепочки, кончающейся НЕ корнем якоря
-// звеньев (linktls.Anchor.Foreign); запрос звена идёт по полосе токена.
-func (a *AuthInterceptor) WithLinkAnchor(anchor linktls.Anchor) *AuthInterceptor {
-	a.linkAnchor = anchor
+// личностью на этой полосе, сделал бы каждого клиента за звеном — и анонимного
+// тоже — этой личностью. Поэтому полоса читает только лист цепочки,
+// кончающейся НЕ корнем якоря звеньев (linktls.Anchor.Foreign); запрос звена
+// идёт по полосе токена. Якорь был отдельной опцией, и корень, включивший
+// полосу без неё, возвращал дефект без единой красной пробы; аргументом
+// опции его не забыть — без него полоса не собирается. Нулевой якорь законен
+// там, где звеньев нет (посадка без круга доверия).
+func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain, links linktls.Anchor) *AuthInterceptor {
+	a.mtlsDomain = d
+	a.linkAnchor = links
 	return a
 }
 

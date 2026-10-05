@@ -62,6 +62,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
 
@@ -374,7 +375,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: req,
 			GRPCPeer: peerAddr(ctx),
-			GRPCLink: peerTLSState(ctx),
+			GRPCLink: linktls.PeerState(ctx),
 			GRPCMeta: incomingMD(ctx),
 		})
 		switch decision.outcome {
@@ -431,7 +432,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: nil, // stream requests aren't materialised yet
 			GRPCPeer: peerAddr(ss.Context()),
-			GRPCLink: peerTLSState(ss.Context()),
+			GRPCLink: linktls.PeerState(ss.Context()),
 			GRPCMeta: incomingMD(ss.Context()),
 			Stream:   true,
 		})
@@ -559,7 +560,9 @@ type decisionRequest struct {
 	HTTPReq  *http.Request
 	GRPCPeer string
 	// GRPCLink — состояние TLS соединения с пиром (nil — не TLS); по нему
-	// оператор адреса узнаёт звено фронта (kacho#3028, C4).
+	// оператор адреса узнаёт звено фронта (kacho#3028, C4). Берётся из
+	// linktls.PeerState: состояние, которое внешний сервер края кладёт своим
+	// типом, а не credentials.TLSInfo (linktls.AuthInfo).
 	GRPCLink *tls.ConnectionState
 	GRPCMeta metadata.MD
 	// Stream marks the stream-interceptor lane, where the client request message
