@@ -61,6 +61,12 @@ db:
     name: ""
     key: password
 
+# Ручки на источник (`KACHO_NOTIFY_SOURCE_LIMITS`; NTF1-N03, H08): «модуль →
+# {rate, burst, paused}», ключ — имя модуля записи перечня. Пусто: записи задаёт
+# установка (в зонтике — `notify.sourceLimits`), умолчания у модуля нет — источник
+# перечня без записи отказывает рендеру с именем модуля.
+sourceLimits: {}
+
 # Ручки предмета notify — границы в §8 замысла (config.go).
 claimInterval: 30s
 resolveSendTimeout: 5s

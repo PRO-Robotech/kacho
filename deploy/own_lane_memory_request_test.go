@@ -289,12 +289,12 @@ func renderKanameDeployment(t *testing.T, stack, valuesFile string, set []string
 		}
 		t.Skip("helm не в PATH — рендер-гейт пропущен")
 	}
-	args := []string{"template", "kacho-umbrella", iamSubchartDir, "-n", "kacho",
-		"-f", valuesFile, "--show-only", "templates/deployment.yaml"}
+	// Одиночный рендер подчарта — только обёрткой (renderKanameAlone, CX1-113).
+	args := []string{"-n", "kacho", "-f", valuesFile, "--show-only", "templates/deployment.yaml"}
 	for _, s := range set {
 		args = append(args, "--set", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := renderKanameAlone(t, "kacho-umbrella", iamSubchartDir, args...)
 	if err != nil {
 		t.Fatalf("стенд %s: подчарт kaname не рендерится с цепочкой стенда: %v\n%s", stack, err, out)
 	}

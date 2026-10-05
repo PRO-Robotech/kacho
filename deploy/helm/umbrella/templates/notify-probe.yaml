@@ -285,11 +285,14 @@ spec:
               value: {{ $trust | quote }}
             - name: KACHO_NOTIFYPROBE_AUTHZ_TRUSTED_FORWARDER_SANS
               value: {{ join "," ($p.authz.trustedForwarderSANs | default list) | quote }}
-            # Флаг доставки извещений пробы (Р9, NTF1-N07 (б)): ключ модуля
-            # таблицы флага. Ключа нет — пустое значение, и страж старта пробы
-            # отказывает с именем ручки: «незадано» не читается как «выключено».
+            # Флаг доставки извещений пробы (Р9, NTF1-N07 (б)): действующее
+            # значение модуля `notifyProbe` — ТОЛЬКО вывод помощника
+            # `kacho.notifications.enabledFor` над `.Values.global`
+            # (переопределение, иначе флаг установки): тот же вывод решает,
+            # входит ли проба в перечень источников notify. Незаданный флаг и
+            # не-булево — отказ рендера с именем ручки.
             - name: KACHO_NOTIFYPROBE_NOTIFICATIONS_ENABLED
-              value: {{ dig "kacho" "notifications" "modules" "notifyProbe" "enabled" "" (.Values.global | default dict) | toString | quote }}
+              value: {{ include "kacho.notifications.enabledFor" (dict "global" .Values.global "module" "notifyProbe") | quote }}
             - name: KACHO_NOTIFYPROBE_NOTIFY_SAN
               value: {{ $p.notifySAN | quote }}
             {{- if $ring.name }}

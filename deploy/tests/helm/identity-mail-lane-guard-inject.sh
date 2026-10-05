@@ -79,6 +79,13 @@ assert_rel() { # релиз · имя · ожидание(RED|GREEN) · фраз
 # Умолчание — имя релиза, которым стенд поднимают рецепты (`STACK_RELEASE ?=`).
 assert() { assert_rel kacho-umbrella "$@"; }
 
+# Стенд БЕЗ ПОЧТОВОЙ ПОЛОСЫ — это и стенд без источников почты: стендовая проба
+# notify (`notify-probe`, перечень `{notify-probe}` профиля стенда) пишет
+# почтовые запросы, и notify с непустым перечнем без узла отказывает рендеру
+# своим `required` раньше стража зонтика (NTF-1 D2). Оси «полосы нет» выключают
+# пробу переопределением модуля: судится страж полосы, а не отказ notify.
+NO_MAIL_SOURCES=(--set global.kacho.notifications.modules.notifyProbe.enabled=false)
+
 echo "=== контроль: неизменённое дерево рендерится ==="
 assert "контроль" GREEN ""
 
@@ -100,6 +107,7 @@ assert "образ приёмника не прибит"      RED "digest"      
 assert "дайджест — не дайджест"         RED "не дайджест"    --set mailpit.image.digest=v1.31.0
 assert "приёмник без внутреннего CA"    RED "mtls.enabled"   --set mtls.enabled=false
 assert "узел поднят, полосы нет"        RED "писать в него некому" \
+  "${NO_MAIL_SOURCES[@]}" \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName=
@@ -135,6 +143,7 @@ assert "источник объявлен, имени пользователя �
   --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
   --set global.kacho.identity.smtp.credentialSecret.key=password
 assert "источник объявлен, узла нет" RED "узел НЕ задан" \
+  "${NO_MAIL_SOURCES[@]}" \
   --set mailpit.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
@@ -160,6 +169,7 @@ echo "=== якорь отправителя: сходится с узлом по
 assert "внешний ретранслятор с якорем приёмника стенда" RED "замещает системные корни" \
   --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/'
 assert "якорь объявлен, полосы нет"                     RED "проверять нечего" \
+  "${NO_MAIL_SOURCES[@]}" \
   --set mailpit.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
@@ -181,6 +191,7 @@ assert "имя пользователя и объявленный источни
 assert "неявный TLS вместо STARTTLS"    GREEN "" \
   --set 'global.kacho.identity.smtp.connectionURI=smtps://kacho-umbrella-mailpit:465/'
 assert "приёмник выключен, полосы нет"  GREEN "" \
+  "${NO_MAIL_SOURCES[@]}" \
   --set mailpit.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
