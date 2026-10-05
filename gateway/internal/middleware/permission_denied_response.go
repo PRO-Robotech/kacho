@@ -65,7 +65,18 @@ type permissionDeniedDescriptor struct {
 // PreconditionFailure violations. The message argument is the headline shown
 // to clients; reasons populate violation.Subject for machine-readable triage.
 func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *status.Status {
-	st := status.New(codes.PermissionDenied, denyMessage(desc, reasons))
+	msg := "permission denied"
+	if desc.Action != "" {
+		msg = "permission denied: " + desc.Action
+	}
+	// Отказ по недостатку уровня (причина, на которую край выдаёт вызов
+	// RFC 9470) называет следующий шаг ТЕМ ЖЕ текстом, что пол слоя
+	// аутентификации (`stepUpDenyMessage`; сторона края kaname#511): недостаток
+	// уровня — один предмет, и два текста о нём были бы двумя решениями.
+	if shouldStepUpChallenge(reasons) {
+		msg = stepUpDenyMessage
+	}
+	st := status.New(codes.PermissionDenied, msg)
 
 	pf := &errdetails.PreconditionFailure{}
 	if len(reasons) == 0 {
@@ -300,27 +311,12 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 	})
 
 	body := map[string]any{
-		"code":    7, // gRPC code PermissionDenied
-		"message": denyMessage(desc, reasons),
+		"code": 7, // gRPC code PermissionDenied
+		// Заголовок — тот же, что у нативной поверхности: один производитель.
+		"message": buildGRPCDenyStatus(desc, reasons).Message(),
 		"details": details,
 	}
 	_ = json.NewEncoder(w).Encode(body)
-}
-
-// denyMessage — заголовок отказа `403` / `7` модели прав, один на обе
-// поверхности. Отказ по недостатку уровня (причина, на которую край выдаёт
-// вызов RFC 9470) называет следующий шаг ТЕМ ЖЕ текстом, что пол слоя
-// аутентификации (`stepUpDenyMessage`; сторона края kaname#511): недостаток
-// уровня — один предмет, и два текста о нём были бы двумя решениями. Прочие
-// отказы — «permission denied: <право>», как прежде.
-func denyMessage(desc permissionDeniedDescriptor, reasons []string) string {
-	if shouldStepUpChallenge(reasons) {
-		return stepUpDenyMessage
-	}
-	if desc.Action == "" {
-		return "permission denied"
-	}
-	return "permission denied: " + desc.Action
 }
 
 // classifyDenyReasonType inspects a deny reason string and assigns it a
