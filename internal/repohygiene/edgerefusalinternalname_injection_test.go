@@ -6,7 +6,7 @@ package repohygiene
 import "testing"
 
 // Инъекции гейта «текст отказа не называет внутреннюю службу» — в обе стороны,
-// по каждой из пяти форм записи: дефект краснеет с координатой и формой,
+// по каждой из шести форм записи: дефект краснеет с координатой и формой,
 // законный близнец той же формы молчит.
 
 var edgeRefusalTestComponents = append([]string{"vpc", "compute"}, EdgeComponentNames...)
@@ -34,6 +34,9 @@ func edgeRefusalCases() []edgeRefusalCase {
 		{"arg",
 			"func writeRefusal(w http.ResponseWriter, m string) {}\nfunc f(w http.ResponseWriter) { writeRefusal(w, \"openfga store unreachable\") }\n",
 			"func writeRefusal(w http.ResponseWriter, m string) {}\nfunc f(w http.ResponseWriter) { writeRefusal(w, \"end the browser session with POST /iam/v1/auth/logout\") }\n"},
+		{"httperror",
+			"func f(w http.ResponseWriter) { http.Error(w, \"postgres backend unavailable\", http.StatusServiceUnavailable) }\n",
+			"func f(w http.ResponseWriter) { http.Error(w, \"request body too large\", http.StatusRequestEntityTooLarge) }\n"},
 	}
 }
 
@@ -70,5 +73,21 @@ func TestEdgeRefusalInjection_ScopeIsTheEdgeNonTestTree(t *testing.T) {
 	}, edgeRefusalTestComponents)
 	if len(f) != 0 || census.Files != 0 {
 		t.Fatalf("область шире края либо судятся пробы: %+v, перепись %+v", f, census)
+	}
+}
+
+// Составная часть края, названная службой, — тоже внутреннее имя: «subscription
+// backend» говорит арендатору, какая часть края лежит (kacho#3029, M3). Близнец —
+// то же слово в публичном смысле: поток подписки — поверхность контракта.
+func TestEdgeRefusalInjection_SubscriptionPartNamedAsBackendIsFound(t *testing.T) {
+	t.Parallel()
+	leak := "type refusal struct{ msg string }\nvar r = refusal{msg: \"subscription backend unavailable\"}\n"
+	f, census := FindEdgeRefusalInternalNames(map[string]string{"gateway/internal/x/x.go": edgeRefusalPkg + leak}, edgeRefusalTestComponents)
+	if len(f) != 1 || f[0].Name != "subscription backend" {
+		t.Errorf("часть края «subscription», названная службой, не найдена: %+v (перепись %+v)", f, census)
+	}
+	twin := "type refusal struct{ msg string }\nvar r = refusal{msg: \"the subscription stream could not be opened; try again later\"}\n"
+	if f, _ := FindEdgeRefusalInternalNames(map[string]string{"gateway/internal/x/x.go": edgeRefusalPkg + twin}, edgeRefusalTestComponents); len(f) != 0 {
+		t.Errorf("публичное «subscription stream» краснеет: %+v", f)
 	}
 }

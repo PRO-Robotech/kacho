@@ -27,7 +27,7 @@ import (
 // сейчас лежит. Арендатору это знание ничего не даёт — действие на `503` одно,
 // «повторить», — а тому, кто изучает поверхность, даёт карту.
 //
-// # Что считается текстом отказа — пять форм записи, узлами разбора
+// # Что считается текстом отказа — шесть форм записи, узлами разбора
 //
 // Перечень выведен обходом дерева края (`gateway/`, непроверочные файлы), а не
 // по памяти; каждая форма в дереве есть, и гейт падает, если какая-то из них
@@ -43,7 +43,10 @@ import (
 //  5. `arg` — строковый константный аргумент вызова писателя отказа (имя
 //     вызываемого начинается с `write`/`Write`, кроме `Write`, `WriteHeader`,
 //     `WriteString`, либо равно `exhausted`): так текст доходит до тела через
-//     параметр.
+//     параметр;
+//  6. `httperror` — второй аргумент `http.Error(w, текст, код)`: стандартная
+//     библиотека пишет текст телом ответа дословно (форма добрана по находке
+//     проверки работы: до неё текст `http.Error` не судился вовсе).
 //
 // Значение константы разрешается по объявлениям пакета (и `пакет.Имя` — по
 // объявлениям всего дерева края), сцепление `+` — складывается. Значение, не
@@ -58,7 +61,10 @@ import (
 //     внешний слушатель by construction (ban #6), и в тексте ему делать нечего;
 //   - компонент, названный службой: `<компонент> service|server|backend|database|listener`,
 //     где компонент — каталог `services/` либо составная часть края
-//     (`authz`, `iam`, `identity`, `kaname`, `openfga`, `fga`, `postgres`);
+//     (`authz`, `iam`, `identity`, `kaname`, `openfga`, `fga`, `postgres`,
+//     `subscription`: «subscription backend» называет часть края, которая лежит,
+//     тогда как поток подписки `/subscription/v1/…` — поверхность контракта, и
+//     слово само по себе находкой не является);
 //   - имя хранилища или адрес внутреннего слушателя: `openfga`, `postgres`,
 //     `pgx`, `:9091`, `.svc`.
 //
@@ -66,7 +72,7 @@ import (
 // домен `kaname.cloud.iam.v1` в `ErrorInfo` — всё это поверхность контракта.
 
 // EdgeRefusalForms — формы записи текста отказа, в порядке шапки.
-var EdgeRefusalForms = []string{"status", "json", "map", "field", "arg"}
+var EdgeRefusalForms = []string{"status", "json", "map", "field", "arg", "httperror"}
 
 // EdgeRefusalFinding — текст отказа, называющий внутреннее имя.
 type EdgeRefusalFinding struct {
@@ -88,7 +94,7 @@ type EdgeRefusalCensus struct {
 
 // EdgeComponentNames — составные части края, которые не являются каталогом
 // `services/`, но службой названы быть могут.
-var EdgeComponentNames = []string{"authz", "iam", "identity", "kaname", "openfga", "fga", "postgres"}
+var EdgeComponentNames = []string{"authz", "iam", "identity", "kaname", "openfga", "fga", "postgres", "subscription"}
 
 func edgeInternalNamePatterns(components []string) []*regexp.Regexp {
 	quoted := make([]string, 0, len(components))
@@ -179,6 +185,12 @@ func FindEdgeRefusalInternalNames(sources map[string]string, components []string
 						judge(rel, v.Args[1].Pos(), "status", s)
 					} else {
 						unresolved("status")
+					}
+				case edgeSelOf(v.Fun, "http", "Error") && len(v.Args) >= 2:
+					if s, ok := eval(v.Args[1]); ok {
+						judge(rel, v.Args[1].Pos(), "httperror", s)
+					} else {
+						unresolved("httperror")
 					}
 				case edgeRefusalWriterCall(v):
 					for _, a := range v.Args {

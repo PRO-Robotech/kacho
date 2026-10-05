@@ -35,7 +35,7 @@ func edgeRefusalComponents(t *testing.T) []string {
 }
 
 // TestEdgeRefusalNamesNoInternalService — ни один текст отказа края наружу не
-// называет внутреннюю службу (kacho#3029). Судятся пять форм записи текста;
+// называет внутреннюю службу (kacho#3029). Судятся шесть форм записи текста;
 // каждая обязана встретиться в дереве.
 func TestEdgeRefusalNamesNoInternalService(t *testing.T) {
 	t.Parallel()
@@ -45,10 +45,10 @@ func TestEdgeRefusalNamesNoInternalService(t *testing.T) {
 	for _, f := range EdgeRefusalForms {
 		total += census.ByForm[f]
 	}
-	t.Logf("перепись: файлов края разобрано %d · не разобрано %d · текстов отказа судимо %d (status %d · json %d · map %d · field %d · arg %d) · не разрешено статически %d (status %d · map %d · field %d) · компонентов в словаре %d",
+	t.Logf("перепись: файлов края разобрано %d · не разобрано %d · текстов отказа судимо %d (status %d · json %d · map %d · field %d · arg %d · httperror %d) · не разрешено статически %d (status %d · map %d · field %d · httperror %d) · компонентов в словаре %d",
 		census.Files, census.Unparsed, total, census.ByForm["status"], census.ByForm["json"], census.ByForm["map"],
-		census.ByForm["field"], census.ByForm["arg"], census.Unresolved, census.UnresolvedByForm["status"],
-		census.UnresolvedByForm["map"], census.UnresolvedByForm["field"], len(components))
+		census.ByForm["field"], census.ByForm["arg"], census.ByForm["httperror"], census.Unresolved, census.UnresolvedByForm["status"],
+		census.UnresolvedByForm["map"], census.UnresolvedByForm["field"], census.UnresolvedByForm["httperror"], len(components))
 	if census.Files == 0 {
 		t.Fatal("разобрано ноль файлов края — «ноль находок» неотличимо от «ноль прочитанного»")
 	}
