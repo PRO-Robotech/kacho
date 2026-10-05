@@ -41,7 +41,7 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 		})
 	}
 	for name, value := range map[string]string{
-		"близнец: объявленная сеть — старт":          "10.244.0.0/16",
+		"близнец: объявленная сеть — старт":           "10.244.0.0/16",
 		"близнец: круг не объявлен — «никому», старт": "",
 	} {
 		t.Run(name, func(t *testing.T) {
