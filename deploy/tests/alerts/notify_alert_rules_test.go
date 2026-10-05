@@ -217,6 +217,10 @@ type promRuleObject struct {
 	} `yaml:"spec"`
 }
 
+// promParser — разборщик PromQL с умолчаниями движка: тот же экземпляр отдаётся
+// движку пробы, чтобы выражение тревоги и ряд пробы разбирались одними правилами.
+var promParser = parser.NewParser(parser.Options{})
+
 // alertRule — правило тревоги, готовое к вычислению.
 type alertRule struct {
 	name string
@@ -227,7 +231,7 @@ type alertRule struct {
 
 func compileAlert(t *testing.T, r promRule, where string) alertRule {
 	t.Helper()
-	expr, err := parser.ParseExpr(r.Expr)
+	expr, err := promParser.ParseExpr(r.Expr)
 	if err != nil {
 		t.Fatalf("КРАСНЫЙ: выражение тревоги %q (%s) не разбирается PromQL: %v\n%s", r.Alert, where, err, r.Expr)
 	}
@@ -316,13 +320,13 @@ type firing []map[string]string
 // активна с первого вычисления, где она есть; firing, когда активна не меньше
 // `for`; исчезла из ответа — сброшена. Метки тревоги — метки серии без
 // `__name__` плюс `labels` правила. Пакет `rules` не взят намеренно: он тянет
-// notifier → config → discovery (облачные SDK и client-go) в граф модуля ради
+// notifier → config → discovery (облачные SDK) в граф модуля ради
 // одного автомата из трёх ветвей; по той же причине не взят `promqltest`
 // (его хранилище — tsdb → config → discovery).
 func evalTimeline(t *testing.T, load string, rs []alertRule, ts []time.Duration) []firing {
 	t.Helper()
 	store := parseLoad(t, load)
-	engine := promql.NewEngine(promql.EngineOpts{MaxSamples: 1_000_000, Timeout: time.Minute, LookbackDelta: 5 * time.Minute})
+	engine := promql.NewEngine(promql.EngineOpts{MaxSamples: 1_000_000, Timeout: time.Minute, LookbackDelta: 5 * time.Minute, Parser: promParser})
 	t.Cleanup(func() { _ = engine.Close() })
 
 	activeAt := make([]map[string]time.Time, len(rs))
@@ -465,7 +469,7 @@ func parseLoad(t *testing.T, load string) *memStore {
 		if end < 0 {
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: строка ряда пробы без меток: %q", line)
 		}
-		ms, err := parser.ParseMetricSelector(line[:end+1])
+		ms, err := promParser.ParseMetricSelector(line[:end+1])
 		if err != nil {
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: метки ряда пробы %q не разобраны: %v", line[:end+1], err)
 		}
