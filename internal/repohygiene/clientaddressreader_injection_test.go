@@ -25,6 +25,7 @@ func judgeClientAddressOne(t *testing.T, rel, src string) ([]string, clientAddre
 }
 
 func TestClientAddressReaderInjection(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, rel, src string
 		red            bool
@@ -69,6 +70,7 @@ func TestClientAddressReaderInjection(t *testing.T) {
 // Предпосылка: читатель, переименованный в дереве, роняет гейт — перечень
 // читателей с именами, которых в файле нет, не находит ни одного чтения.
 func TestClientAddressReaderPremise_RenamedReaderReadsNothing(t *testing.T) {
+	t.Parallel()
 	_, census := judgeClientAddressOne(t, caReaderFile,
 		`package m; import "net/http"; func renamed(r *http.Request) []string { return r.Header.Values("X-Forwarded-For") }`)
 	if census.ReaderReads != 0 {
