@@ -55,13 +55,17 @@ const (
 	ntfProbeModule = "notify-probe"
 )
 
-// ntfExpectedRoster — выведенный перечень источников notify по цепочке на
-// голове D2: таблица З28 (CX1-83; Д102 — у `a8f60d` перечень пуст).
+// ntfExpectedRoster — выведенный перечень источников notify по цепочке: таблица
+// З28 (CX1-83; Д102 — у `a8f60d` перечень пуст). Отступление от таблицы З28 на
+// голове подъёма стенда (D6/D10): `prorobotech` и `fe3455` тянут образы из
+// реестра, а образа kacho-notify там нет (values.yaml, `notify.image`) — notify
+// без тега рендером отвергается, и оба профиля пробу выключают до публикации
+// образа (values.prorobotech.yaml, values.fe3455.yaml; вопрос владельцу).
 var ntfExpectedRoster = map[string][]string{
 	"dev":         {ntfProbeModule},
 	"dev-prod":    {ntfProbeModule},
-	"prorobotech": {ntfProbeModule},
-	"fe3455":      {ntfProbeModule},
+	"prorobotech": {},
+	"fe3455":      {},
 	"own":         {},
 	"prod":        {},
 	"a8f60d":      {},
@@ -516,8 +520,12 @@ func TestNTF1N04_AllSourcesOffRendersNoNotify(t *testing.T) {
 	// набором внутри того же узла helm не разбирает («interface conversion» в
 	// разборе --set) — это отказ фикстуры, а не предмета. Переопределения
 	// цепочки, кроме notifyProbe, остаются; судится вхождение notify-probe.
+	// Тег образа notify — фикстурный: у a8f60d он законно пуст (образ тянется из
+	// реестра, опубликованного нет), и без тега рендер близнеца отказывал бы
+	// стражем образа раньше, чем судится предмет N04 (условие не создано, а не
+	// находка).
 	on := ntfMustRender(t, c, chain+", глобальный false, notifyProbe true", files,
-		ntfFlagKey+"=false", ntfModulesKey+".notifyProbe.enabled=true")
+		ntfFlagKey+"=false", ntfModulesKey+".notifyProbe.enabled=true", "notify.image.tag=fixture")
 	onNotify := notifySourceCount(on)
 	onRefs := ntfSecretRefs(on, secret)["notify"]
 	onRoster := ntfRosterModules(t, on)
