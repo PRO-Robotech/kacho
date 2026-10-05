@@ -124,7 +124,7 @@ func TestIntegration_NetworkRepo_CRUD(t *testing.T) {
 
 	// Delete.
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-		return w.Networks().Delete(ctx, n.ID)
+		return removalErr(w.Networks().Delete(ctx, n.ID))
 	}))
 
 	rd3, err := r.Reader(ctx)

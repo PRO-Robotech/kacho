@@ -253,7 +253,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
-	require.NoError(t, w3.Networks().Delete(ctx, n.ID))
+	require.NoError(t, removalErr(w3.Networks().Delete(ctx, n.ID)))
 	require.NoError(t, w3.Outbox().Emit(ctx, "Network", n.ID, n.ProjectID, "DELETED", map[string]any{"id": n.ID}))
 	require.NoError(t, w3.Commit())
 

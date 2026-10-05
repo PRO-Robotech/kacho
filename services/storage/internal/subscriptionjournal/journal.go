@@ -177,6 +177,13 @@ func Journal() subscription.Journal {
 			// БАЗЫ — теми же, которыми судит уборщик, поэтому слагаемого на
 			// разницу источников у порога нет.
 			AgeColumn: "created_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `created_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "created_at",
 		},
 		Mapping: subscription.Mapping{
 			// Словарь видов ЗАКРЫТ в обе стороны: вид вне его отвергается на
@@ -202,18 +209,29 @@ func Journal() subscription.Journal {
 			// ответа на него не доставляется — поток по такому виду молчал бы,
 			// оставаясь зелёным. Это тот же разграничитель, каким vpc вывел из
 			// подписки административные предметы уровня кластера.
+			// Форма имени и якорь объявлены у каждого вида (NTF-3, З2): все три
+			// вида storage живут в проекте, и имя у каждого — DNS-метка (форму
+			// держит ограничение `<таблица>_name_check` схемы). Снимок имени на
+			// снятии кладёт функция базы `storage_outbox_emit`: нагрузка снятия —
+			// строка `OLD` целиком, ключ `name` в ней есть.
 			Kinds: map[string]subscription.Kind{
 				JournalWordVolume: {
 					ObjectType: authzfilter.ResourceTypeVolume,
 					Action:     authzfilter.ActionVolumeList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				JournalWordSnapshot: {
 					ObjectType: authzfilter.ResourceTypeSnapshot,
 					Action:     authzfilter.ActionSnapshotList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				JournalWordImage: {
 					ObjectType: authzfilter.ResourceTypeImage,
 					Action:     authzfilter.ActionImageList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 			},
 			// Словарь родов изменения — ровно те слова, которые пишет триггер, и

@@ -57,7 +57,12 @@ type SecurityGroupWriterIface interface {
 	SecurityGroupReaderIface
 	Insert(ctx context.Context, sg *domain.SecurityGroup) (*SecurityGroupRecord, error)
 	Update(ctx context.Context, sg *domain.SecurityGroup) (*SecurityGroupRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// UpdateRules атомарно заменяет набор правил SG (xmin-OCC).
 	// Concurrent-modification → ErrFailedPrecondition.
 	UpdateRules(ctx context.Context, sgID string, deleteIDs []string, add []domain.SecurityGroupRule) (*SecurityGroupRecord, error)

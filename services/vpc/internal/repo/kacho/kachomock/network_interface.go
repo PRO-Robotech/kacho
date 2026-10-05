@@ -237,16 +237,17 @@ func (nw *networkInterfaceWriter) UpdateMeta(_ context.Context, n *domain.Networ
 	return &cp, nil
 }
 
-func (nw *networkInterfaceWriter) Delete(_ context.Context, id string) error {
-	if _, ok := nw.w.localNIs[id]; !ok {
-		return repo.ErrNotFound
+func (nw *networkInterfaceWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := nw.w.localNIs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if nw.w.deletedNIIDs == nil {
 		nw.w.deletedNIIDs = make(map[string]struct{})
 	}
 	nw.w.deletedNIIDs[id] = struct{}{}
 	delete(nw.w.localNIs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // AttachToInstance — in-memory CAS (used_by_id=” OR =$instance). Placement-coherence

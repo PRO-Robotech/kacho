@@ -238,7 +238,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
-	require.NoError(t, w3.Gateways().Delete(ctx, g.ID))
+	require.NoError(t, removalErr(w3.Gateways().Delete(ctx, g.ID)))
 	require.NoError(t, w3.Outbox().Emit(ctx, "Gateway", g.ID, g.ProjectID, "DELETED", map[string]any{"id": g.ID}))
 	require.NoError(t, w3.Commit())
 

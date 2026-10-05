@@ -554,7 +554,7 @@ func TestIntegration_NIC_CreateWithSG_VsSecurityGroupDelete_Serialised(t *testin
 		defer wg.Done()
 		<-start
 		e := legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-			return w.SecurityGroups().Delete(ctx, sgID)
+			return removalErr(w.SecurityGroups().Delete(ctx, sgID))
 		})
 		mu.Lock()
 		defer mu.Unlock()

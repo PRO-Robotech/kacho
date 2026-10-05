@@ -37,36 +37,30 @@
 // изменения (проба выводит его разбором обоих), и якорем (триггер научен писать
 // колонку той же миграцией).
 //
-// # Каких видов здесь НЕТ, и почему это требование, а не пробел
+// # Пул адресов — вид уровня кластера (NTF-3, Р2, З2)
 //
-// Журнал несёт десять видов, словарь называет ВОСЕМЬ. Вне словаря намеренно
-// оставлены `AddressPool` и `AddressPoolNetworkDefault`: пул адресов —
-// АДМИНСКИЙ ресурс уровня кластера, живущий только на внутренней поверхности
-// (`InternalAddressPoolService`), и ПРОЕКТНОГО ИЗМЕРЕНИЯ у него нет по
-// определению — `AddressPoolRecord` встраивает `domain.AddressPool`, а поля
-// проекта нет ни там, ни там. Оси, по которой подписка сужает, у этих строк не
-// существует, и одного этого достаточно.
+// Журнал несёт девять видов, и словарь называет все девять. Пул адресов —
+// админский ресурс уровня кластера: проектного измерения у него нет
+// (`AddressPoolRecord` встраивает `domain.AddressPool`, поля проекта нет ни там,
+// ни там), поэтому его вид объявлен `ScopeCluster` — строка пула пишется без
+// якоря, а запись с якорем функция фундамента отвергает. Видимость события
+// пула решает модель прав поштучно (`v_get` на `vpc_address_pool`), как и у
+// проектных видов; подписка с осью проекта строк пула не отбирает — у них оси
+// нет.
 //
-// Отсюда следует не «мы забыли их добавить», а «их нельзя доставлять»: вопрос
-// «вправе ли вызывающий видеть эту строку» задать НЕЧЕМ, а строка, которую нечем
-// авторизовать, арендатору не отдаётся. Инфраструктурный предмет — адресные пулы
-// платформы — остаётся на внутренней поверхности, как того требует правило о
-// двух проекциях ресурса.
+// Привязка пула по умолчанию к сети собственного вида не имеет: у неё нет типа
+// в модели прав и нет читателя. Глаголы привязки и снятия привязки пишут
+// событие правки самого пула (`AddressPool` `UPDATED`), а строк прежнего
+// отдельного вида привязки журнал больше не получает (NTF3-62).
 //
-// # Чего это основание НЕ утверждает, и почему сказано вслух (#1494)
+// # Форма имени и якорь у каждого вида
 //
-// Здесь стояло ВТОРОЕ основание — про отсутствие у пула типа объекта в модели
-// прав, — и оно опровергнуто замером: `vpc_address_pool` объявлен в канонической
-// модели и несёт четыре глагола. Тип есть, но помечен спящим (`# kacho:latent`):
-// объектов пула у владельца прав не регистрирует никто, а его RPC гейтятся
-// прямо на `cluster:cluster_root#system_admin`. То есть даже будь ось
-// проекта, сужать было бы не по чему — но говорить об этом «типа нет» нельзя.
-//
-// Довод «типов такого домена в модели НОЛЬ» — рабочий признак
-// непровязываемости, и он применяется там, где верен: у geo типов `geo_*`
-// действительно ноль, и потому geo потоком не владеет
-// (`corelib/subscription/doc.go`). Ложное употребление признака здесь обесценивало
-// его там. Сверяется основание пробой `TestPoolExclusionGroundMatchesTheAuthzModel`.
+// Каждый вид объявляет, есть ли у него имя формы DNS-метки (`NameForm`), и где
+// он живёт (`Scope`). У всех девяти видов vpc имя — DNS-метка (форму держит
+// ограничение `<таблица>_name_check` схемы либо самопроверяющийся тип имени
+// домена), поэтому строка снятия обязана нести снимок имени под ключом
+// [subscription.NamePayloadKey] — его даёт `RETURNING` удаляющего оператора
+// репозитория, а не чтение до удаления.
 package subscriptionjournal
 
 import (
@@ -80,6 +74,7 @@ import (
 	"github.com/PRO-Robotech/corelib/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрация трансферов
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -111,6 +106,7 @@ const (
 	KindGateway          = "Gateway"
 	KindNetworkInterface = "NetworkInterface"
 	KindCidrGroup        = "CidrGroup"
+	KindAddressPool      = "AddressPool"
 )
 
 // changeDeleted — слово владельца для снятия предмета.
@@ -149,21 +145,74 @@ func Journal() subscription.Journal {
 			// `0001_initial.sql`), то есть часами БАЗЫ — теми же, которыми судит
 			// уборщик, поэтому слагаемого на разницу источников у порога нет.
 			AgeColumn: "created_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `created_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "created_at",
 		},
 		Mapping: subscription.Mapping{
 			// Тип объекта и действие берутся у ПРОИЗВОДИТЕЛЯ (`authzfilter`), а
 			// не выписываются: второе написание чужого словаря расходится молча.
-			// Действие — то же, которым сужается список этого вида, поэтому
+			// Действие — то же, которым гейтится список этого вида, поэтому
 			// видимость в потоке равна видимости в списке.
 			Kinds: map[string]subscription.Kind{
-				KindNetwork:          {ObjectType: authzfilter.ResourceTypeNetwork, Action: authzfilter.ActionNetworkList},
-				KindSubnet:           {ObjectType: authzfilter.ResourceTypeSubnet, Action: authzfilter.ActionSubnetList},
-				KindSecurityGroup:    {ObjectType: authzfilter.ResourceTypeSecurityGroup, Action: authzfilter.ActionSecurityGroupList},
-				KindRouteTable:       {ObjectType: authzfilter.ResourceTypeRouteTable, Action: authzfilter.ActionRouteTableList},
-				KindAddress:          {ObjectType: authzfilter.ResourceTypeAddress, Action: authzfilter.ActionAddressList},
-				KindGateway:          {ObjectType: authzfilter.ResourceTypeGateway, Action: authzfilter.ActionGatewayList},
-				KindNetworkInterface: {ObjectType: authzfilter.ResourceTypeNetworkInterface, Action: authzfilter.ActionNetworkInterfaceList},
-				KindCidrGroup:        {ObjectType: authzfilter.ResourceTypeCidrGroup, Action: authzfilter.ActionCidrGroupList},
+				KindNetwork: {
+					ObjectType: authzfilter.ResourceTypeNetwork,
+					Action:     authzfilter.ActionNetworkList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindSubnet: {
+					ObjectType: authzfilter.ResourceTypeSubnet,
+					Action:     authzfilter.ActionSubnetList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindSecurityGroup: {
+					ObjectType: authzfilter.ResourceTypeSecurityGroup,
+					Action:     authzfilter.ActionSecurityGroupList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindRouteTable: {
+					ObjectType: authzfilter.ResourceTypeRouteTable,
+					Action:     authzfilter.ActionRouteTableList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindAddress: {
+					ObjectType: authzfilter.ResourceTypeAddress,
+					Action:     authzfilter.ActionAddressList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindGateway: {
+					ObjectType: authzfilter.ResourceTypeGateway,
+					Action:     authzfilter.ActionGatewayList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindNetworkInterface: {
+					ObjectType: authzfilter.ResourceTypeNetworkInterface,
+					Action:     authzfilter.ActionNetworkInterfaceList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindCidrGroup: {
+					ObjectType: authzfilter.ResourceTypeCidrGroup,
+					Action:     authzfilter.ActionCidrGroupList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				KindAddressPool: {
+					ObjectType: authzfilter.ResourceTypeAddressPool,
+					Action:     authzfilter.ActionAddressPoolList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeCluster,
+				},
 			},
 			// Словарь родов изменения — ровно те слова, которыми пишут ОБА
 			// производителя: код и триггер базы. Слово вне словаря делает строку
@@ -214,8 +263,8 @@ func ProjectGate() (subscription.ProjectGate, error) {
 //
 // # Почему снятие отдаётся БЕЗ состояния, и это не потеря
 //
-// Нагрузка снятия несёт один идентификатор — полного состояния в ней нет и быть
-// не может: предмета больше нет. Собрать из неё ресурс значило бы отдать
+// Нагрузка снятия несёт идентификатор и снимок имени — полного состояния в ней
+// нет и быть не может: предмета больше нет. Собрать из неё ресурс значило бы отдать
 // подписчику почти пустую сеть, а контракт формы разрешает читать НЕПУСТУЮ
 // нагрузку как ПОЛНОЕ состояние предмета. Подписчик записал бы пустые поля как
 // факт: имя исчезло, метки исчезли, блоки исчезли.
@@ -229,7 +278,7 @@ func ProjectGate() (subscription.ProjectGate, error) {
 //
 // # Почему причина отсутствия у снятия — «НЕ ПРОИЗВОДИТСЯ», а не «не удерживается»
 //
-// Журнал vpc состояние НЕСЁТ — у семи видов из восьми оно собирается полностью, и
+// Журнал vpc состояние НЕСЁТ — у каждого вида оно собирается из нагрузки, и
 // именно поэтому причина обязана быть названа ПОСТРОЧНО, а не на весь журнал.
 // Снятие — единственный род, у которого предмета больше нет by construction:
 // попытки собрать не было, и повтор её не изменит. Это и есть [subscription.StateNotProduced].
@@ -337,6 +386,23 @@ func state(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
 			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
+		return packed(anypb.New(pb))
+	case KindAddressPool:
+		// Нагрузка пула — доменный снимок одной формы для пути записи и посева
+		// стенда (З8; сличение — `seedaddresspoolparity`): отметки создания в
+		// ней нет. Перенос идёт тем же трансфером, что ответ `Get`, но отметка
+		// на событии снята, а не подставлена нулём: нулевое время прочиталось
+		// бы фактом «пул создан в 1970-м», а отсутствие поля честно говорит, что
+		// журнал его не несёт.
+		var d domain.AddressPool
+		var pb *vpcv1.AddressPool
+		if err := decode(r, &d); err != nil {
+			return nil, subscription.StateAbsenceUnnamed, err
+		}
+		if err := dto.Transfer(dto.FromTo(kachorepo.AddressPoolRecord{AddressPool: d}, &pb)); err != nil {
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
+		}
+		pb.CreatedAt = nil
 		return packed(anypb.New(pb))
 	}
 	// Вид вне словаря сюда не доходит — сервер отсеивает такую строку раньше,

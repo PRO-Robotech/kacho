@@ -159,7 +159,7 @@ func TestIntegration_SecurityGroup_UpdateRules_ConcurrentOCC(t *testing.T) {
 		}
 
 		require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-			return w.SecurityGroups().Delete(ctx, sg.ID)
+			return removalErr(w.SecurityGroups().Delete(ctx, sg.ID))
 		}))
 	}
 

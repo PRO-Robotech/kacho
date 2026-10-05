@@ -101,7 +101,7 @@ func TestQuota_ChargeOnInsert_RefundOnDelete(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created.ID)))
 	require.NoError(t, w2.Commit())
 
 	assert.Equal(t, int64(0), quotaUsed(t, ctx, pool, project, "vpc.network"),
@@ -225,7 +225,7 @@ func TestQuota_LoweringBelowUsageIsExpressible(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created[0]))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created[0])))
 	require.NoError(t, w2.Commit())
 	assert.Equal(t, int64(2), quotaUsed(t, ctx, pool, project, "vpc.network"),
 		"удаление работает и при потреблении выше предела")

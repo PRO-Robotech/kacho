@@ -4,6 +4,7 @@
 package subscriptionjournal
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -54,17 +55,17 @@ func TestTheChannelIsNotTheOneOfTheRightsQueue(t *testing.T) {
 	}
 }
 
-// TestKindDictionaryNamesTheRegistryAndOnlyIt — словарь видов назван ОДНИМ
-// предметом, и это решение, а не недоделка.
-//
-// Строку в базе реестра имеет ТОЛЬКО реестр: репозиторий и тег живут в zot, и
-// транзакции, к которой можно пристегнуть эмиссию, у них нет. Вид, о видимости
-// которого нельзя спросить модель прав, не доставляется — поток по нему молчал
-// бы, оставаясь «зелёным».
-func TestKindDictionaryNamesTheRegistryAndOnlyIt(t *testing.T) {
-	got := Journal(probeEndpointBase).KindDictionary()
-	if len(got) != 1 || got[0] != domain.FGAObjectTypeRegistry {
-		t.Fatalf("словарь видов %v, ожидался ровно один — %q", got, domain.FGAObjectTypeRegistry)
+// TestKindDictionaryNamesTheRegistryAndTheRepository — словарь видов назван
+// двумя предметами: реестр (строку пишет триггер) и репозиторий (строку пишет
+// писатель признака его существования в той же транзакции). Тег видом не
+// является: у его самого частого пути появления транзакции с базой нет.
+func TestKindDictionaryNamesTheRegistryAndTheRepository(t *testing.T) {
+	got := append([]string(nil), Journal(probeEndpointBase).KindDictionary()...)
+	sort.Strings(got)
+	want := []string{domain.FGAObjectTypeRegistry, domain.FGAObjectTypeRepository}
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("словарь видов %v, ожидался %v", got, want)
 	}
 }
 

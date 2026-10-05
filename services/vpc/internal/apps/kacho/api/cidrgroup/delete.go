@@ -91,10 +91,11 @@ func (u *DeleteCidrGroupUseCase) doDelete(ctx context.Context, id string) (*anyp
 			fgaregister.ProjectHierarchy(rec.ProjectID, "vpc_cidr_group", id))
 	}
 
-	if err := w.CidrGroups().Delete(ctx, id); err != nil {
+	name, err := w.CidrGroups().Delete(ctx, id)
+	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "CidrGroup", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "CidrGroup", id, projectID, "DELETED", map[string]any{"id": id, "name": name}); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if len(unregTuples) > 0 {

@@ -348,7 +348,7 @@ func TestIntegration_SecondaryCidrOverlap_DeleteFreesRange(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	require.NoError(t, w.Subnets().Delete(ctx, sub8))
+	require.NoError(t, removalErr(w.Subnets().Delete(ctx, sub8)))
 	require.NoError(t, w.Commit())
 
 	// child-строки sub-8 сняты каскадом.

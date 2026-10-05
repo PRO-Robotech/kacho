@@ -194,6 +194,9 @@ func (r *PlacementGroupRepo) Insert(ctx context.Context, g *domain.PlacementGrou
 		return nil, nil, ports.ErrInternal
 	}
 
+	if err := emitCompute(ctx, tx, "PlacementGroup", created.ID, created.ProjectID, "CREATED", placementGroupPayload(created)); err != nil {
+		return nil, nil, ports.ErrInternal
+	}
 	reg, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "PlacementGroup",
 		created.ID, created.ProjectID, created.Labels)
 	if err != nil {
@@ -260,6 +263,9 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 	}); err != nil {
 		return nil, ports.ErrInternal
 	}
+	if err := emitCompute(ctx, tx, "PlacementGroup", updated.ID, updated.ProjectID, "UPDATED", placementGroupPayload(updated)); err != nil {
+		return nil, ports.ErrInternal
+	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "PlacementGroup",
 		updated.ID, updated.ProjectID, updated.Labels); err != nil {
 		return nil, ports.ErrInternal
@@ -290,8 +296,8 @@ func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
 		return &ErrPlacementGroupInUse{GroupID: id, InstanceIDs: holders, Truncated: truncated}
 	}
 
-	var projectID string
-	err = tx.QueryRow(ctx, `DELETE FROM placement_groups WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
+	var projectID, name string
+	err = tx.QueryRow(ctx, `DELETE FROM placement_groups WHERE id = $1 RETURNING project_id, name`, id).Scan(&projectID, &name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: PlacementGroup %s not found", ports.ErrNotFound, id)
@@ -308,6 +314,9 @@ func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
 		Actor:        actor,
 		OnBehalfOf:   onBehalf,
 	}); err != nil {
+		return ports.ErrInternal
+	}
+	if err := emitCompute(ctx, tx, "PlacementGroup", id, projectID, "DELETED", deletedPayload(id, name)); err != nil {
 		return ports.ErrInternal
 	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "PlacementGroup",

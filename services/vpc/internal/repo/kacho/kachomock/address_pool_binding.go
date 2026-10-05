@@ -5,6 +5,7 @@ package kachomock
 
 import (
 	"context"
+	"errors"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -51,13 +52,20 @@ func (bw *addressPoolBindingWriter) SetNetworkDefault(_ context.Context, network
 	return nil
 }
 
-func (bw *addressPoolBindingWriter) UnsetNetworkDefault(_ context.Context, networkID string) error {
+func (bw *addressPoolBindingWriter) UnsetNetworkDefault(ctx context.Context, networkID string) (string, error) {
+	poolID, err := bw.GetNetworkDefault(ctx, networkID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
 	if bw.w.deletedNDIDs == nil {
 		bw.w.deletedNDIDs = make(map[string]struct{})
 	}
 	bw.w.deletedNDIDs[networkID] = struct{}{}
 	delete(bw.w.localNDs, networkID)
-	return nil
+	return poolID, nil
 }
 
 // Compile-time проверка соответствия интерфейсам.

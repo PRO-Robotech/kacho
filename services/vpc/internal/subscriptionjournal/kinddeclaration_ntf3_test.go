@@ -11,10 +11,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
 )
 
-// addressPoolObjectType — тип модели прав пула адресов (приёмка NTF-3 §1.2:
-// `vpc_address_pool`, объявлен в канонической модели службы доступа). У vpc
-// производителя этого имени в дереве нет (`authzfilter` пул не знает), поэтому
-// оно взято из приёмки, а не из пакета.
+// addressPoolObjectType — тип модели прав пула адресов (приёмка NTF-3, раздел
+// 1.2: `vpc_address_pool`, объявлен в канонической модели службы доступа).
+// Написано литералом приёмки намеренно: проба сверяет производителя
+// (`authzfilter.ResourceTypeAddressPool`) с контрактом, а не с самим собой.
 const addressPoolObjectType = "vpc_address_pool"
 
 // TestVpcJournal_NTF360_AddressPoolIsPublishedAsAClusterKind — NTF3-60 (половина

@@ -12,8 +12,8 @@
 //
 //   - `internal/repohygiene/modelrelationproducer_test.go` — модуль платформы
 //     (`github.com/PRO-Robotech/kacho`), константа `latentMarker`;
-//   - `services/vpc/internal/subscriptionjournal/exclusion_ground_test.go` —
-//     модуль платформы, строковый литерал в вызове;
+//   - `services/vpc/internal/subscriptionjournal/kindmodel_test.go` —
+//     модуль платформы, константа `latentTypeMarker`;
 //   - `internal/authzmap/verb_type_materializable_test.go` РЕПОЗИТОРИЯ
 //     `PRO-Robotech/kaname` — модуль службы доступа
 //     (`github.com/PRO-Robotech/kaname`), константа `latentTypeMarker`.

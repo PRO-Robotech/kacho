@@ -7,19 +7,70 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
-// emitterFile — где живёт ПРОИЗВОДИТЕЛЬ слов журнала.
-const emitterFile = "../repo/instance_repo.go"
+// emitterDir — где живёт ПРОИЗВОДИТЕЛЬ слов журнала: каждый не-тестовый файл
+// репозитория. Перечень файлов выводится обходом, а не выписывается: вид,
+// заведённый новым файлом репозитория, иначе остался бы вне переписи.
+const emitterDir = "../repo"
 
 // emitFunc — обёртка, которой репозиторий пишет строку журнала.
 const emitFunc = "emitCompute"
+
+// emitterCalls — все вызовы [emitFunc] в не-тестовых файлах [emitterDir] и
+// число осмотренных файлов. Пустой обход — отказ пробы, а не пустой ответ.
+func emitterCalls(t *testing.T) (calls []*ast.CallExpr, fset *token.FileSet, files int) {
+	t.Helper()
+	root, err := filepath.Abs(emitterDir)
+	if err != nil {
+		t.Fatalf("путь производителя не разрешился: %v", err)
+	}
+	fset = token.NewFileSet()
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != root {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return perr
+		}
+		files++
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == emitFunc {
+				calls = append(calls, call)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("обход производителя (%s) не удался: %v", emitterDir, err)
+	}
+	if files == 0 {
+		t.Fatalf("в %s не осмотрено ни одного файла — разбор судил бы пустоту", emitterDir)
+	}
+	return calls, fset, files
+}
 
 // emitChangeArg — позиция рода изменения в её аргументах
 // (`ctx, tx, kind, id, projectID, eventType, payload`).
@@ -49,50 +100,29 @@ const emitChangeArg = 5
 // (переименовали обёртку, сменили позицию аргумента), и тогда «расхождений нет»
 // получено даром.
 func TestChangeDictionaryIsDerivedFromTheEmitter(t *testing.T) {
-	src, err := filepath.Abs(emitterFile)
-	if err != nil {
-		t.Fatalf("путь производителя не разрешился: %v", err)
-	}
-	if _, err := os.Stat(src); err != nil {
-		t.Fatalf("файла производителя нет (%s): разбор судил бы пустоту — %v", emitterFile, err)
-	}
-
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, src, nil, 0)
-	if err != nil {
-		t.Fatalf("производитель не разобрался: %v", err)
-	}
+	found, fset, files := emitterCalls(t)
 
 	produced := map[string]int{}
 	calls := 0
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		id, ok := call.Fun.(*ast.Ident)
-		if !ok || id.Name != emitFunc {
-			return true
-		}
+	for _, call := range found {
 		calls++
 		if len(call.Args) <= emitChangeArg {
 			t.Errorf("%s: вызов %s с %d аргументами — позиция рода изменения уехала, "+
 				"и разбор судит не то", fset.Position(call.Pos()), emitFunc, len(call.Args))
-			return true
+			continue
 		}
 		lit, ok := call.Args[emitChangeArg].(*ast.BasicLit)
 		if !ok || lit.Kind != token.STRING {
 			t.Errorf("%s: род изменения задан не строковым литералом — перепись его "+
 				"не увидит, и слово окажется вне наблюдения", fset.Position(call.Pos()))
-			return true
+			continue
 		}
 		produced[lit.Value[1:len(lit.Value)-1]]++
-		return true
-	})
+	}
 
 	if calls == 0 {
 		t.Fatalf("в %s не найдено ни одного вызова %s — разбор сломан, и «расхождений нет» "+
-			"получено даром", emitterFile, emitFunc)
+			"получено даром", emitterDir, emitFunc)
 	}
 	if len(produced) == 0 {
 		t.Fatalf("вызовов %d, а слов ноль — разбор аргументов сломан", calls)
@@ -119,6 +149,6 @@ func TestChangeDictionaryIsDerivedFromTheEmitter(t *testing.T) {
 		_ = n
 	}
 	sort.Strings(words)
-	t.Logf("осмотрено вызовов производителя %d; слов различных %d: %v; объявлено словарём %d",
-		calls, len(produced), words, len(declared))
+	t.Logf("осмотрено файлов %d, вызовов производителя %d; слов различных %d: %v; объявлено словарём %d",
+		files, calls, len(produced), words, len(declared))
 }

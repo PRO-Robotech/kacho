@@ -179,7 +179,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	require.NoError(t, w.Networks().Delete(ctx, a.ID))
+	require.NoError(t, removalErr(w.Networks().Delete(ctx, a.ID)))
 	require.NoError(t, w.Commit())
 
 	b := insertNetwork(t, r, "project-cil0-reuse", "net-b")

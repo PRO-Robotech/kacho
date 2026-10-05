@@ -167,7 +167,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	w2, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created.ID)))
 	require.NoError(t, w2.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w2.FGARegister().EmitUnregister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID))))
 	require.NoError(t, w2.Commit())
