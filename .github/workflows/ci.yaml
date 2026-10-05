@@ -2613,6 +2613,19 @@ jobs:
         working-directory: deploy
         run: make gate-self-test
 
+      # Ручка `global.kacho.*` профиля зонта без читателя (kacho#2997): каждая
+      # объявленная ручка обязана менять рендер хотя бы одной цепочки, её
+      # объявляющей, при подмене значения. Шаг отдельный от перечня выше: у
+      # пробы свой предмет (объявление профиля против шаблонов), а не след
+      # поставщика или снятая ручка края.
+      - name: проба тега helmcharts — каждая ручка global.kacho профиля зонта имеет читателя в рендере
+        id: umbrella-global-knob-reader
+        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
+        run: >-
+          go test -tags helmcharts ./deploy/
+          -run 'TestEveryGlobalKachoKnobOfTheUmbrellaHasAReader|TestGlobalKnobJudgement_CanFailAndStaysSilent'
+          -count=1 -v
+
       # Вторая форма того же доказательства: не ветка `--self-test` ВНУТРИ гейта,
       # а отдельный скрипт `<тема>-inject.sh` рядом с ним. Десять таких лежали в
       # дереве и не встречались ни в одной джобе — доказательство существовало

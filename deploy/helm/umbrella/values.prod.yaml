@@ -65,13 +65,15 @@
 #
 # ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
 # This file contains NO secret material. AuthN secrets the production binaries
-# require are consumed from Secrets the chart already wires via secretKeyRef:
-#   - kaname: KANAME_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
-#                KANAME_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
-#   - per-service DB password           ← <svc>.db.passwordSecretName
+# require are consumed from Secrets the chart already wires via secretKeyRef
+# (addresses are the keys the sub-chart templates READ — kacho#2997):
+#   - kaname: KANAME_JWKS_ENC_KEY          ← kaname.platform.iam.jwks.encKeySecretName / encKeySecretKey
+#             KANAME_SECOND_FACTOR_ENC_KEY ← kaname.platform.iam.secondFactor.encKeySecretName / encKeySecretKey
+#   - per-service DB password              ← <svc>.db.passwordSecretName
 # The operator MUST provision those Secrets out-of-band (or via external-secrets)
-# BEFORE rollout — kaname Config.Validate fails fast in production if the hook
-# secret / JWKS encryption key are missing (defense-in-depth, fail-closed).
+# BEFORE rollout — kaname Config.Validate fails fast in production if an
+# encryption key is missing (defense-in-depth, fail-closed). The hook token is
+# gone together with the callback listener (kaname#363).
 # Image tags + the kacho.domain root come from a layered per-cluster overlay.
 
 # ─── Root domain — override per environment via a per-cluster overlay ───────
@@ -109,8 +111,6 @@
 global:
   kacho:
     identity:
-      hooks:
-        scheme: https
       # ПОЧТОВЫЙ УЗЕЛ — УСЛОВИЕ БОЕВОГО СТАРТА СЛУЖБЫ ДОСТУПА (kaname#475,
       # kacho#3020). Коды подтверждения адреса и восстановления доступа уходят
       # только письмом: без узла процесс в боевом режиме в старте отказывает,
@@ -683,8 +683,9 @@ kaname:
         # production-strict (below) enforces ssl-mode ∈ {require,verify-ca,verify-full}.
         sslMode: require
     # production-strict → Bearer required; Config.Validate also requires the
-    # AuthN secrets (KANAME_HOOK_TOKEN + KANAME_JWKS_ENC_KEY) — wired via
-    # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
+    # encryption keys (KANAME_JWKS_ENC_KEY, KANAME_SECOND_FACTOR_ENC_KEY) — wired
+    # via secretKeyRef (kaname.platform.iam.jwks.* / .secondFactor.*); operator
+    # provisions them.
     authn:
       # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
       # Restated here even though the chart default already carries it: an EMPTY

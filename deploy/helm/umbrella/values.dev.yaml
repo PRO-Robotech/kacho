@@ -50,10 +50,9 @@ global:
     # 32599157014 — 66 из 66).
     identity:
       appBaseURL: "http://console.kacho.local:28080"
-      # Cookie сессии обязана быть принята браузером на `console.kacho.local`:
-      # родительский домен принимается, чужой (`api.kacho.cloud`) отвергается
-      # целиком, и сессия не держится вовсе.
-      cookieDomain: "kacho.local"
+      # `rp.id` ключей доступа обязан быть родительским для хоста консоли.
+      # Домен печенья сессии объявляется не здесь, а там, где его читают:
+      # `kaname.config.authn.login.cookieDomain` (kacho#2997).
       webauthnRpId: "kacho.local"
       # ─── ПОЧТОВАЯ ПОЛОСА СТЕНДА ─────────────────────────────────────────
       #

@@ -185,7 +185,7 @@ global:
 # наборе → подписывает», подписывающий ровно один), и внешнее задание не смогло бы
 # ни соблюсти этот порядок, ни увидеть его нарушение. Срок ключа задаётся
 # config.authn.tokenSigning.keyLifetime; ключ обёртки приватной половины — той же
-# ручкой kacho.iam.jwks.encKey* выше.
+# ручкой platform.iam.jwks.encKey* выше.
 
 name: kaname
 replicas: 1
