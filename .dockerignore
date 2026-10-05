@@ -119,8 +119,11 @@ services/*/kaname
 gateway/bin
 # кэш инкрементальной сборки TypeScript
 **/*.tsbuildinfo
-# идентификаторы, записанные посевом стенда
-deploy/.seeded-ids.env
+# идентификаторы, записанные посевом стенда. Посевы пишут их в КОРЕНЬ дерева
+# (`OUT_FILE` по умолчанию в deploy/scripts/seed-*.sh); прежняя координата
+# `deploy/.seeded-ids.env` не исключала ничего (kacho#3026). Держит
+# internal/repohygiene/standseedoutputs_test.go.
+.seeded-ids.env
 deploy/helm/*/Chart.lock
 # промежуточные артефакты генераторов и сборки края
 gateway/build
