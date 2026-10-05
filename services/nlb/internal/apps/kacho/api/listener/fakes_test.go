@@ -402,17 +402,18 @@ func (lw *fakeListenerWriter) MoveProject(_ context.Context, lbID, newProjectID 
 	}
 	return moved, nil
 }
-func (lw *fakeListenerWriter) Delete(_ context.Context, id string) error {
+func (lw *fakeListenerWriter) Delete(_ context.Context, id string) (string, error) {
 	lw.r.mu.Lock()
 	defer lw.r.mu.Unlock()
-	if _, ok := lw.r.listeners[id]; !ok {
-		return fmt.Errorf("%w: Listener %s not found", domain.ErrNotFound, id)
+	cur, ok := lw.r.listeners[id]
+	if !ok {
+		return "", fmt.Errorf("%w: Listener %s not found", domain.ErrNotFound, id)
 	}
 	delete(lw.r.listeners, id)
 	if lw.w != nil {
 		lw.w.deleted = append(lw.w.deleted, id)
 	}
-	return nil
+	return string(cur.Name), nil
 }
 
 // ---- TG (read-only stub for Update.same-region check) ----

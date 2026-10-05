@@ -618,8 +618,8 @@ func (fakeListenerStub) SetVIP(context.Context, string, string, string) (*kachor
 func (fakeListenerStub) MoveProject(context.Context, string, string) ([]*kachorepo.ListenerRecord, error) {
 	return nil, nil
 }
-func (fakeListenerStub) Delete(context.Context, string) error {
-	return errors.New("not used")
+func (fakeListenerStub) Delete(context.Context, string) (string, error) {
+	return "", errors.New("not used")
 }
 
 // ---- Helper: identity-key match (mirror pg writer ON CONFLICT) ----

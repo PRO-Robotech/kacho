@@ -496,8 +496,8 @@ func (q *fakeListenerWriter) SetVIP(ctx context.Context, id, addressID, allocate
 func (q *fakeListenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) ([]*kachorepo.ListenerRecord, error) {
 	return nil, nil
 }
-func (q *fakeListenerWriter) Delete(ctx context.Context, id string) error {
-	return errors.New("not implemented in fake")
+func (q *fakeListenerWriter) Delete(ctx context.Context, id string) (string, error) {
+	return "", errors.New("not implemented in fake")
 }
 
 // ---- TargetGroups (limited) ----
