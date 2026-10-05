@@ -104,3 +104,9 @@ func TestUK361_ComputeJournalWritersTakeOptionsAndRefuseZero(t *testing.T) {
 func TestNTF3_ComputeOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 	ntf3RequireOptionsBuiltOnce(t, ntf3ModuleDir)
 }
+
+// TestNTF367_ComputeRootRegistersTheGauge — NTF3-65 / NTF3-67: серию
+// kacho_notifications_enabled{module="compute"} ставит корень функцией фундамента.
+func TestNTF367_ComputeRootRegistersTheGauge(t *testing.T) {
+	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}

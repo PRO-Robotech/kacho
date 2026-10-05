@@ -107,3 +107,9 @@ func TestUK361_StorageJournalWritersTakeOptionsAndRefuseZero(t *testing.T) {
 func TestNTF3_StorageOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 	ntf3RequireOptionsBuiltOnce(t, ntf3ModuleDir)
 }
+
+// TestNTF367_StorageRootRegistersTheGauge — NTF3-65 / NTF3-67: серию
+// kacho_notifications_enabled{module="storage"} ставит корень функцией фундамента.
+func TestNTF367_StorageRootRegistersTheGauge(t *testing.T) {
+	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}

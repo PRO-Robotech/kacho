@@ -102,3 +102,9 @@ func TestUK361_NLBJournalWritersTakeOptionsAndRefuseZero(t *testing.T) {
 func TestNTF3_NLBOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 	ntf3RequireOptionsBuiltOnce(t, ntf3ModuleDir)
 }
+
+// TestNTF367_NLBRootRegistersTheGauge — NTF3-65 / NTF3-67: серию
+// kacho_notifications_enabled{module="nlb"} ставит корень функцией фундамента.
+func TestNTF367_NLBRootRegistersTheGauge(t *testing.T) {
+	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}

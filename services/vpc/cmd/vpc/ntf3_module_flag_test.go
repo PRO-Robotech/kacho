@@ -103,3 +103,9 @@ func TestUK361_VPCJournalWritersTakeOptionsAndRefuseZero(t *testing.T) {
 func TestNTF3_VPCOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 	ntf3RequireOptionsBuiltOnce(t, ntf3ModuleDir)
 }
+
+// TestNTF367_VPCRootRegistersTheGauge — NTF3-65 / NTF3-67: серию
+// kacho_notifications_enabled{module="vpc"} ставит корень функцией фундамента.
+func TestNTF367_VPCRootRegistersTheGauge(t *testing.T) {
+	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}

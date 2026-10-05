@@ -103,3 +103,9 @@ func TestUK361_RegistryJournalWritersTakeOptionsAndRefuseZero(t *testing.T) {
 func TestNTF3_RegistryOptionsAreBuiltOnceByTheRoot(t *testing.T) {
 	ntf3RequireOptionsBuiltOnce(t, ntf3ModuleDir)
 }
+
+// TestNTF367_RegistryRootRegistersTheGauge — NTF3-65 / NTF3-67: серию
+// kacho_notifications_enabled{module="registry"} ставит корень функцией фундамента.
+func TestNTF367_RegistryRootRegistersTheGauge(t *testing.T) {
+	ntf3RequireRootRegistersTheGauge(t, ntf3ModuleDir)
+}

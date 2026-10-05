@@ -28,8 +28,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/notify/feed"
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/subscription"
 )
 
@@ -204,12 +207,17 @@ func ntf3RequireKindsFollowTheFlag(t *testing.T, journalFn any) {
 
 // ntf3RequireBootPostureReportsTheFlag — NTF3-67: строка самоотчёта посадки
 // несёт ровно одно поле флага ленты со значением ручки (близнецы true, false).
+//
+// Значение — написание фундамента (`observability.NotificationsOn` /
+// `NotificationsOff`), строкой, а не bool: состояний у поля три, и «ленты нет»
+// (`n/a`, нулевое значение) обязано быть отличимо от «лента выключена» — у
+// модуля с лентой `n/a` есть отказ этой пробы, а не совпадение с false.
 func ntf3RequireBootPostureReportsTheFlag(t *testing.T, line func(*testing.T, string) map[string]any) {
 	t.Helper()
 	for _, c := range []struct {
 		value string
-		want  bool
-	}{{"true", true}, {"false", false}} {
+		want  string
+	}{{"true", observability.NotificationsOn}, {"false", observability.NotificationsOff}} {
 		got := line(t, c.value)
 		if len(got) == 0 {
 			t.Fatalf("ФИКСТУРА: %s: строка самоотчёта пуста", ntf3Module)
@@ -227,9 +235,154 @@ func ntf3RequireBootPostureReportsTheFlag(t *testing.T, line func(*testing.T, st
 			continue
 		}
 		if got[keys[0]] != c.want {
-			t.Errorf("NTF3-67: %s: самоотчёт посадки %s = %v (%T) при %s=%s, ожидалось %v",
+			t.Errorf("NTF3-67: %s: самоотчёт посадки %s = %v (%T) при %s=%s, ожидалось %q",
 				ntf3Module, keys[0], got[keys[0]], got[keys[0]], ntf3Knob, c.value, c.want)
 		}
+	}
+}
+
+// ntf3GaugeName — серия флага ленты модуля (NTF1-N09; NTF3-65, NTF3-67).
+const ntf3GaugeName = "kacho_notifications_enabled"
+
+// ntf3RequireGaugeFollowsTheFlag — NTF3-65 / NTF3-67: серия
+// kacho_notifications_enabled{module="<модуль>"} заводится при ОБОИХ значениях
+// флага — 1 при true, 0 при false («выключено» отличимо от «серии нет»).
+// register — путь корня, которым он ставит серию, на чистом реестре.
+func ntf3RequireGaugeFollowsTheFlag(t *testing.T, register func(*testing.T, string, prometheus.Registerer) error) {
+	t.Helper()
+	for _, c := range []struct {
+		value string
+		want  float64
+	}{{"true", 1}, {"false", 0}} {
+		reg := prometheus.NewRegistry()
+		if err := register(t, c.value, reg); err != nil {
+			t.Errorf("NTF3-67: %s: серия флага при %s=%s не заведена: %v", ntf3Module, ntf3Knob, c.value, err)
+			continue
+		}
+		mfs, err := reg.Gather()
+		if err != nil {
+			t.Fatalf("ФИКСТУРА: %s: сбор реестра: %v", ntf3Module, err)
+		}
+		var values []float64
+		for _, mf := range mfs {
+			if mf.GetName() != ntf3GaugeName {
+				continue
+			}
+			for _, m := range mf.GetMetric() {
+				for _, l := range m.GetLabel() {
+					if l.GetName() == "module" && l.GetValue() == ntf3Module {
+						values = append(values, m.GetGauge().GetValue())
+					}
+				}
+			}
+		}
+		if len(values) != 1 {
+			t.Errorf("NTF3-67: %s: серий %s{module=%q} при %s=%s %d, ожидалась одна — "+
+				"«выключено» обязано быть отличимо от «серии нет»", ntf3Module, ntf3GaugeName, ntf3Module, ntf3Knob, c.value, len(values))
+			continue
+		}
+		if values[0] != c.want {
+			t.Errorf("NTF3-67: %s: %s{module=%q} = %v при %s=%s, ожидалось %v",
+				ntf3Module, ntf3GaugeName, ntf3Module, values[0], ntf3Knob, c.value, c.want)
+		}
+	}
+}
+
+// ntf3FeedName — локальное имя импорта corelib/notify/feed в файле ("" — не импортирован).
+func ntf3FeedName(f *ast.File) string {
+	for _, im := range f.Imports {
+		p, _ := strconv.Unquote(im.Path.Value)
+		if p != "github.com/PRO-Robotech/corelib/notify/feed" {
+			continue
+		}
+		if im.Name != nil {
+			return im.Name.Name
+		}
+		return "feed"
+	}
+	return ""
+}
+
+// ntf3GaugeHelper — функция корня, которой он ставит серию флага.
+const ntf3GaugeHelper = "registerNotificationsGauge"
+
+// ntf3RequireRootRegistersTheGauge — серию флага ставит КОРЕНЬ, путём фундамента:
+// в не-тестовом дереве модуля ровно один вызов feed.RegisterEnabledGauge, он
+// лежит в cmd/ внутри функции registerNotificationsGauge и несёт имя модуля
+// литералом; сама функция зовётся из не-тестового кода корня. Проба поведения
+// (ntf3RequireGaugeFollowsTheFlag) судит эту функцию — эта судит, что старт её
+// зовёт.
+func ntf3RequireRootRegistersTheGauge(t *testing.T, dir string) {
+	t.Helper()
+	files, fset := ntf3NonTestFiles(t, dir)
+	var sites, misplaced, helperCalls []string
+	for rel, f := range files {
+		if !strings.HasPrefix(rel, "cmd/") {
+			continue
+		}
+		name := ntf3FeedName(f)
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				coord := fset.Position(call.Pos()).String()
+				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == ntf3GaugeHelper && fd.Name.Name != ntf3GaugeHelper {
+					helperCalls = append(helperCalls, coord)
+				}
+				if name == "" || !ntf3IsSel(call.Fun, name, "RegisterEnabledGauge") {
+					return true
+				}
+				sites = append(sites, coord)
+				lit, ok := (ast.Expr)(nil), false
+				if len(call.Args) == 3 {
+					lit, ok = call.Args[1], true
+				}
+				bl, isLit := lit.(*ast.BasicLit)
+				if fd.Name.Name != ntf3GaugeHelper || !ok || !isLit || bl.Value != strconv.Quote(ntf3Module) {
+					misplaced = append(misplaced, coord)
+				}
+				return true
+			})
+		}
+	}
+	// Вызовы вне cmd/ — тоже места установки серии, и их место — не там.
+	for rel, f := range files {
+		if strings.HasPrefix(rel, "cmd/") {
+			continue
+		}
+		name := ntf3FeedName(f)
+		if name == "" {
+			continue
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok && ntf3IsSel(call.Fun, name, "RegisterEnabledGauge") {
+				coord := fset.Position(call.Pos()).String()
+				sites = append(sites, coord)
+				misplaced = append(misplaced, coord)
+			}
+			return true
+		})
+	}
+	sort.Strings(sites)
+	sort.Strings(misplaced)
+	sort.Strings(helperCalls)
+	t.Logf("%s: не-тестовых файлов %d, вызовов feed.RegisterEnabledGauge %d, вызовов %s из корня %d",
+		ntf3Module, len(files), len(sites), ntf3GaugeHelper, len(helperCalls))
+	if len(sites) != 1 {
+		t.Errorf("NTF3-67: %s: вызовов feed.RegisterEnabledGauge %d, ожидался один (корень): %v", ntf3Module, len(sites), sites)
+	}
+	if len(misplaced) > 0 {
+		t.Errorf("NTF3-67: %s: серия флага ставится не функцией корня %s с именем модуля %q литералом:\n  %s",
+			ntf3Module, ntf3GaugeHelper, ntf3Module, strings.Join(misplaced, "\n  "))
+	}
+	if len(helperCalls) == 0 {
+		t.Errorf("NTF3-67: %s: %s не зовётся из не-тестового кода корня — серия на старте не ставится", ntf3Module, ntf3GaugeHelper)
 	}
 }
 
@@ -497,13 +650,22 @@ func ntf3LawfulJournal(_ string, on bool) subscription.Journal {
 // TestNTF3ProbeSelfCheck_LawfulSubjectsAreGreen — пробы полосы зелёны на
 // законной форме предмета: конструктор с позиционными Options и отказом
 // нулевых; журнал, чей словарь видов следует флагу; самоотчёт с полем флага;
+// серия флага фундамента при обоих значениях и её установка функцией корня;
 // загрузчик, отвергающий незаданную ручку; дерево с одним местом построения
 // Options в корне.
 func TestNTF3ProbeSelfCheck_LawfulSubjectsAreGreen(t *testing.T) {
 	ntf3RequireHolderRefusesZero(t, ntf3Holder{"ntf3NewLawfulHolder", ntf3NewLawfulHolder})
 	ntf3RequireKindsFollowTheFlag(t, ntf3LawfulJournal)
 	ntf3RequireBootPostureReportsTheFlag(t, func(_ *testing.T, v string) map[string]any {
-		return map[string]any{"service": ntf3Module, "notifications_enabled": v == "true"}
+		return map[string]any{"service": ntf3Module, "notifications_enabled": v}
+	})
+	ntf3RequireGaugeFollowsTheFlag(t, func(t *testing.T, v string, reg prometheus.Registerer) error {
+		en, err := feed.ParseEnabled(ntf3Knob, func(string) (string, bool) { return v, true })
+		if err != nil {
+			t.Fatalf("ФИКСТУРА: разбор %s=%s: %v", ntf3Knob, v, err)
+		}
+		_, err = feed.RegisterEnabledGauge(reg, ntf3Module, en)
+		return err
 	})
 	ntf3RequireKnobRefusal(t, func(t *testing.T, v *string) error {
 		ntf3SetKnob(t, v)
@@ -524,7 +686,13 @@ func TestNTF3ProbeSelfCheck_LawfulSubjectsAreGreen(t *testing.T) {
 	write("cmd/probe/main.go", "package main\n\nimport jt \"github.com/PRO-Robotech/corelib/journaltx\"\n\nvar opts = jt.NewOptions(true)\n")
 	write("internal/repo/repo.go", "package repo\n\nimport \"github.com/PRO-Robotech/corelib/journaltx\"\n\n"+
 		"type Repo struct{ journal journaltx.Options }\n")
+	write("cmd/probe/gauge.go", "package main\n\nimport (\n\t\"github.com/PRO-Robotech/corelib/notify/feed\"\n"+
+		"\t\"github.com/prometheus/client_golang/prometheus\"\n)\n\n"+
+		"func "+ntf3GaugeHelper+"(reg prometheus.Registerer, en feed.Enabled) error {\n"+
+		"\t_, err := feed.RegisterEnabledGauge(reg, "+strconv.Quote(ntf3Module)+", en)\n\treturn err\n}\n\n"+
+		"func boot(reg prometheus.Registerer, en feed.Enabled) error { return "+ntf3GaugeHelper+"(reg, en) }\n")
 	ntf3RequireOptionsBuiltOnce(t, dir)
+	ntf3RequireRootRegistersTheGauge(t, dir)
 	if got := ntf3HolderCensus(t, dir); len(got) != 1 || got["internal/repo.Repo"] == "" {
 		t.Fatalf("перепись держателей синтетического дерева: %v, ожидался internal/repo.Repo", got)
 	}
