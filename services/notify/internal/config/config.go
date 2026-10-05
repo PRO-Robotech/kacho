@@ -39,6 +39,8 @@ import (
 
 // Границы ручек — §8 замысла NTF-1.
 const (
+	DBMaxConnsMin         = 1
+	DBMaxConnsMax         = 100
 	ClaimIntervalMin      = time.Second
 	ClaimIntervalMax      = 5 * time.Minute
 	ResolveSendTimeoutMin = 100 * time.Millisecond
@@ -83,6 +85,13 @@ type Config struct {
 	DBPassword string `envconfig:"KACHO_NOTIFY_DB_PASSWORD" knob:"notify.db.password"`
 	DBName     string `envconfig:"KACHO_NOTIFY_DB_NAME" knob:"notify.db.name"`
 	DBSSLMode  string `envconfig:"KACHO_NOTIFY_DB_SSLMODE" knob:"notify.db.sslMode"`
+
+	// DBMaxConns — ширина пула базы, в [1..100] (полоса D6). Объявлена ручкой,
+	// а не умолчанием драйвера (max(4, число ядер узла)): произведение «пул ×
+	// реплики» против `max_connections` базы судит гейт развёртывания по
+	// объявленной величине. В пул уходит параметром `pool_max_conns` строки
+	// соединения ([Config.DSN]).
+	DBMaxConns int `envconfig:"KACHO_NOTIFY_DB_MAX_CONNS" knob:"notify.db.maxConns"`
 
 	// DiagAddr — адрес диагностической поверхности (`/healthz`, `/readyz`,
 	// `/metrics`), досягаемой только внутри кластера (З15).
@@ -372,11 +381,14 @@ func (c Config) Mode() (servicecontract.Mode, error) { return servicecontract.Pa
 // построителем адреса, а не склейкой строки.
 func (c Config) DSN() string {
 	u := url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(c.DBUser, c.DBPassword),
-		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
-		Path:     "/" + c.DBName,
-		RawQuery: url.Values{"sslmode": []string{c.DBSSLMode}}.Encode(),
+		Scheme: "postgres",
+		User:   url.UserPassword(c.DBUser, c.DBPassword),
+		Host:   net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:   "/" + c.DBName,
+		RawQuery: url.Values{
+			"sslmode":        []string{c.DBSSLMode},
+			"pool_max_conns": []string{strconv.Itoa(c.DBMaxConns)},
+		}.Encode(),
 	}
 	return u.String()
 }
@@ -412,6 +424,7 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	c.checkInt(&fs, "DBMaxConns", c.DBMaxConns, DBMaxConnsMin, DBMaxConnsMax)
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
 	c.validateGrid(&fs)
