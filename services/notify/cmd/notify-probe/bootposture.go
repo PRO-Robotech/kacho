@@ -12,10 +12,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-probe/internal/config"
 )
 
-// bootPosture — самоотчёт о посадке. Звено идентичности и форма хоста берутся
-// из ТЕХ значений, что уехали в принятый дескриптор: второго литерала нет.
+// bootPosture — самоотчёт о посадке. Звено идентичности, форма слушателя и
+// признак «сервисов нет» берутся из ТЕХ значений, что уехали в принятый
+// дескриптор (форма — одной функцией фундамента `servicehost.PostureOf`):
+// второго литерала нет. Флаг ленты — значение, разобранное загрузчиком
+// (`cfg.Notifications`), а не сырое окружение.
 func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.ServiceIdentity],
-	hostForm string) observability.BootPosture {
+	form observability.ListenerForm, noServedServices bool) observability.BootPosture {
 	return observability.BootPosture{
 		Service:           serviceName,
 		AuthMode:          cfg.AuthMode,
@@ -29,7 +32,9 @@ func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.Servic
 		IdentityProvider:   observability.IdentityProviderNotApplicable,
 		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
 		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,
-		HostForm:           hostForm,
+		ListenerForm:       form,
+		NoServedServices:   noServedServices,
 		ServiceIdentity:    serviceIdentityReport(identity),
+		Notifications:      observability.NotificationsFlagOf(cfg.Notifications.On()),
 	}
 }

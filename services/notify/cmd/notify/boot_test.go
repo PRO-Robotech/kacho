@@ -173,7 +173,7 @@ func TestNotifyProcessPassesTheGuardWithSoundPosture(t *testing.T) {
 		t.Fatalf("без базы процесс не остановился ненулевым кодом (err=%v):\n%s", runErr, log)
 	}
 	for _, w := range []string{
-		`"msg":"boot security posture"`, `"host_form":"no-grpc"`, `"db_sslmode":"require"`,
+		`"msg":"boot security posture"`, `"listener_form":"none"`, `"db_sslmode":"require"`,
 		`"auth_mode":"production"`, "пул базы kacho_notify",
 	} {
 		if !strings.Contains(log, w) {
