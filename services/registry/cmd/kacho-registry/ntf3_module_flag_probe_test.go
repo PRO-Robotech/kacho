@@ -67,7 +67,6 @@ func ntf3RequireKnobRefusal(t *testing.T, load func(*testing.T, *string) error) 
 	// Вопрос: обе законные величины принимаются. Без этого отказ ниже мог бы
 	// прийти от фикстуры, а не от ручки.
 	for _, v := range []string{"true", "false"} {
-		v := v
 		if err := load(t, &v); err != nil {
 			t.Fatalf("ФИКСТУРА (близнец NTF3-64): %s=%s отвергнута — конфигурация пробы не годна, вердикта нет: %v",
 				ntf3Knob, v, err)
@@ -338,7 +337,6 @@ func ntf3RequireHoldersRefuseZeroOptions(t *testing.T, holders []ntf3Holder) {
 	t.Helper()
 	ntf3RequireHoldersCoverTheTree(t, holders)
 	for _, h := range holders {
-		h := h
 		t.Run(h.name, func(t *testing.T) { ntf3RequireHolderRefusesZero(t, h) })
 	}
 }
