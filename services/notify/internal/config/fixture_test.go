@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,6 +82,15 @@ func useFixture(t *testing.T, edits map[string]*string) {
 		if !seen[k] && e != nil {
 			t.Setenv(k, *e)
 		}
+	}
+	// Пара DKIM фикстуры — каталог формы kubelet, выпущенный пробой (§12а):
+	// правка пробы, называющая ручку ключа или селектора, её заменяет.
+	_, keyEdited := edits[envDKIMKeyFile]
+	_, selEdited := edits[envDKIMSelectorFile]
+	if !keyEdited && !selEdited {
+		dir := kubeletDir(t, map[string][]byte{dkimKeyName: fixtureDKIMKeyPEM(t), dkimSelectorName: []byte("mail")})
+		t.Setenv(envDKIMKeyFile, filepath.Join(dir, dkimKeyName))
+		t.Setenv(envDKIMSelectorFile, filepath.Join(dir, dkimSelectorName))
 	}
 }
 

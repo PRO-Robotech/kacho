@@ -4,13 +4,14 @@
 // Command kacho-notify — шлюз уведомлений платформы (NTF-1).
 //
 // Композиционный корень: загрузка конфигурации, страж старта, дескриптор
-// посадки, диагностическая поверхность. gRPC-слушателей у notify нет вовсе
+// посадки, диагностическая поверхность, страж DNS установки. gRPC-слушателей у notify нет вовсе
 // (форма хоста `no-grpc`, З15, Д17): входящего глагола у шлюза нет, письма он
 // забирает сам из лент источников.
 package main
 
 import (
 	"log/slog"
+	"net"
 	"os"
 
 	"github.com/PRO-Robotech/corelib/observability"
@@ -39,7 +40,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := runServe(cfg, logger); err != nil {
+	// Резолвер — резолвер пода, переданный явно: внутри стража DNS подстановки
+	// net.DefaultResolver нет (CX1-131 (б)).
+	if err := runServe(cfg, logger, net.DefaultResolver); err != nil {
 		logger.Error("отказ старта", "err", err.Error())
 		os.Exit(1)
 	}
