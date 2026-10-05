@@ -61,6 +61,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/subscription"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/prototime"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -117,8 +118,13 @@ const (
 // Пустое значение здесь недопустимо, и судит его КОМПОЗИЦИОННЫЙ КОРЕНЬ
 // (`buildSubscriptionServer` отказывает в подъёме): отказ величины посадки не
 // должен обнаруживаться первым событием в бою.
-func Journal(endpointBase string) subscription.Journal {
-	return subscription.Journal{
+//
+// feedEnabled — флаг ленты модуля (`KACHO_REGISTRY_NOTIFICATIONS_ENABLED`), прочитанный
+// загрузчиком конфигурации один раз; то же значение корень отдаёт писателям
+// журнала (`journaltx.Options`). Вид ленты объявляется ровно при включённом
+// флаге, прочие виды от него не зависят (NTF3-65, NTF3-67; замысел З11).
+func Journal(endpointBase string, feedEnabled bool) subscription.Journal {
+	j := subscription.Journal{
 		Channel: Channel,
 		Storage: subscription.Storage{
 			Table:          Table,
@@ -198,6 +204,9 @@ func Journal(endpointBase string) subscription.Journal {
 			State: stateWithEndpoint(endpointBase),
 		},
 	}
+	// Вид ленты извещений — ровно при включённом флаге модуля (NTF3-65, NTF3-67).
+	feedjournal.Declare(j.Mapping.Kinds, feedEnabled)
+	return j
 }
 
 // ProjectGate — страж оси `project_id`.

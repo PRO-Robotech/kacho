@@ -6,6 +6,7 @@ package pg
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -43,22 +44,20 @@ type Repository struct {
 //   - masterPool — RW pgxpool на primary; используется Writer + Reader-fallback.
 //   - slavePool  — RO pgxpool на streaming-replica; если nil → Reader идёт на
 //     master (fallback).
+//   - journal    — Options помощника записи журнала, построенные корнем модуля
+//     из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ
+//     сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
 //
 // Pools создаются в composition root (pkg/db.NewPool).
-func New(masterPool, slavePool *pgxpool.Pool) *Repository {
+func New(masterPool, slavePool *pgxpool.Pool, journal journaltx.Options) (*Repository, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("nlb: pg.New: %w", err)
+	}
 	if slavePool == nil {
 		slavePool = masterPool
 	}
-	return &Repository{master: masterPool, slave: slavePool, journal: journalOptions()}
+	return &Repository{master: masterPool, slave: slavePool, journal: journal}, nil
 }
-
-// journalOptions — Options помощника записи журнала для Writer репозитория.
-//
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_NLB_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
-// тем же изменением эта функция снимается.
-func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
 
 // Reader открывает read-only TX (read-committed) на slave-pool'е (или master
 // fallback). Возвращённый reader обязан быть закрыт через Close — это

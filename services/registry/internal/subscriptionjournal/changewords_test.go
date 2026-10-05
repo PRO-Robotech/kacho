@@ -112,7 +112,7 @@ func TestChangeDictionaryIsDerivedFromTheMigration(t *testing.T) {
 		t.Fatal("триггер не пишет ни одного рода события: разбор сломан либо эмиссии нет вовсе")
 	}
 
-	declared := Journal(probeEndpointBase).Mapping.Changes
+	declared := Journal(probeEndpointBase, false).Mapping.Changes
 
 	for word := range allowed {
 		if declared[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
@@ -160,7 +160,7 @@ func TestJournalWordIsDerivedFromTheTrigger(t *testing.T) {
 			"и «расхождений нет» получено даром")
 	}
 
-	declared := Journal(probeEndpointBase).Mapping.Kinds
+	declared := Journal(probeEndpointBase, false).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
 			t.Errorf("триггер пишет вид %q, а словарь его НЕ называет: строка недоставляема, "+

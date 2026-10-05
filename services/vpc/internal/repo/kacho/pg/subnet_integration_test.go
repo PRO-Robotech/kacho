@@ -51,7 +51,7 @@ func TestCQRS_Subnet_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Сначала создаем parent network в одной writer-TX (FK constraint).
 	w1, err := r.Writer(ctx)
@@ -96,7 +96,7 @@ func TestCQRS_Subnet_OutboxAtomicityWithDML(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Seed parent network.
 	wn, err := r.Writer(ctx)
@@ -142,7 +142,7 @@ func TestCQRS_Subnet_CIDROverlap_ExclusionViolation(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Seed parent network.
 	wn, err := r.Writer(ctx)

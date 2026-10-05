@@ -57,8 +57,15 @@ type PlacementGroupRepo struct {
 }
 
 // NewPlacementGroupRepo создаёт репозиторий групп.
-func NewPlacementGroupRepo(pool *pgxpool.Pool) *PlacementGroupRepo {
-	return &PlacementGroupRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewPlacementGroupRepo(pool *pgxpool.Pool, journal journaltx.Options) (*PlacementGroupRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("compute: NewPlacementGroupRepo: %w", err)
+	}
+	return &PlacementGroupRepo{pool: pool, journal: journal}, nil
 }
 
 const placementGroupCols = `id, project_id, name, description, labels, created_at, ` +

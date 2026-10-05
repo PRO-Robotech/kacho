@@ -56,7 +56,7 @@ func newRunner(t testing.TB, pool *pgxpool.Pool, interval time.Duration) *Target
 	// Джоба берёт РЕПОЗИТОРИЙ, а не пул: снятие истёкших целей и строка журнала
 	// идут одной writer-транзакцией, а нагрузку строки собирает тот же строитель,
 	// что и остальные точки эмиссии вида (см. шапку рантаймера).
-	return NewTargetDrainRunner(kachopg.New(pool, nil), logger, interval)
+	return NewTargetDrainRunner(mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions)), logger, interval)
 }
 
 type discardWriter struct{}

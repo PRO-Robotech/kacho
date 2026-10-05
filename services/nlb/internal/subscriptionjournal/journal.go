@@ -183,6 +183,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb" // регистрация трансферов
@@ -204,8 +205,13 @@ const (
 )
 
 // Journal — объявление журнала nlb.
-func Journal() subscription.Journal {
-	return subscription.Journal{
+//
+// feedEnabled — флаг ленты модуля (`KACHO_NLB_NOTIFICATIONS_ENABLED`), прочитанный
+// загрузчиком конфигурации один раз; то же значение корень отдаёт писателям
+// журнала (`journaltx.Options`). Вид ленты объявляется ровно при включённом
+// флаге, прочие виды от него не зависят (NTF3-65, NTF3-67; замысел З11).
+func Journal(feedEnabled bool) subscription.Journal {
+	j := subscription.Journal{
 		Channel: Channel,
 		Storage: subscription.Storage{
 			Table:          Table,
@@ -326,6 +332,9 @@ func Journal() subscription.Journal {
 			State: state,
 		},
 	}
+	// Вид ленты извещений — ровно при включённом флаге модуля (NTF3-65, NTF3-67).
+	feedjournal.Declare(j.Mapping.Kinds, feedEnabled)
+	return j
 }
 
 // ProjectGate — страж оси `project_id`.

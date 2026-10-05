@@ -36,7 +36,7 @@ func TestCQRS_Address_Update_DoesNotClobberUsed(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// 1. Insert external address (used=false).
 	w1, err := r.Writer(ctx)

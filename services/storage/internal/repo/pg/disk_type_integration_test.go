@@ -340,7 +340,7 @@ func TestDiskTypeCapabilitiesReadWithoutPerRowQuery(t *testing.T) {
 func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{
@@ -509,7 +509,7 @@ func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
 func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-temp", Name: "temp"})
@@ -549,7 +549,7 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-race", Name: "race"})

@@ -58,7 +58,7 @@ func TestQuotaMaterialise_SecondPassDoesNotResetUsage(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-remat"
 	rows := quotaRowsFor(project, "acc-remat", map[string]int64{"vpc.network": 4})
@@ -107,7 +107,7 @@ func TestQuotaMaterialise_RowWithoutAccountMirrorIsRejected(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestQuotaMaterialise_MaterialisedProjectChargesAndRefuses(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-matcharge"
 	w, err := r.Writer(ctx)

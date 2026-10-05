@@ -123,7 +123,7 @@ func TestCQRS_SG_Delete_BlockedByNICReference(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-blocked", "blk", "0e:aa:00:00:00:01", true)
 
@@ -147,7 +147,7 @@ func TestCQRS_SG_Delete_NoNICReference_Succeeds(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// SG-keep — на него ссылается NIC; SG-free — свободен, его и удаляем.
 	_, _ = makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-free", "keep", "0e:bb:00:00:00:01", true)
@@ -170,7 +170,7 @@ func TestCQRS_SG_Delete_Concurrent_Referenced_AllBlocked(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-conc-ref", "cref", "0e:cc:00:00:00:01", true)
 
@@ -212,7 +212,7 @@ func TestCQRS_SG_Delete_Concurrent_Unreferenced_ExactlyOne(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-conc-free", "cfree", "0e:dd:00:00:00:01", false)
 

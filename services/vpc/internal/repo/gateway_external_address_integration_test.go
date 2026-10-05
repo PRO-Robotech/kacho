@@ -99,7 +99,7 @@ func newGatewayFixture(t *testing.T, ctx context.Context, zoneID, cidr string) g
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 	return seedGatewayFixture(t, ctx, pgPool, r, zoneID, cidr)
 }
@@ -262,7 +262,7 @@ func TestIntegration_Gateway_ZonalAnchorDoesNotFallBackToAnycastPool(t *testing.
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// Якорь зональный, а единственный пул — зоне-независимый.

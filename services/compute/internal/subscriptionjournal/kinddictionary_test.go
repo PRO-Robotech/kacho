@@ -82,7 +82,7 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 		t.Fatalf("вызовов %d, а слов ноль — разбор аргументов сломан", calls)
 	}
 
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
 			t.Errorf("репозиторий пишет вид %q, а словарь его НЕ называет: строка с ним "+
@@ -113,7 +113,7 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 // нигде. Клиент, взявший его (а взять его было неоткуда, кроме неисполняемой
 // пробы), получал бы отказ на всяком другом владельце.
 func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
-	got := Journal().KindDictionary()
+	got := Journal(false).KindDictionary()
 	want := []string{authzfilter.ResourceTypeInstance}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("словарь видов compute %q, ожидался %q", got, want)

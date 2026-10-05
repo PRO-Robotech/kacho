@@ -54,7 +54,7 @@ func newGwRefFixture(ctx context.Context, t *testing.T) *gwRefFixture {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 
 	f := &gwRefFixture{repo: r, projectID: "prj-gwref"}

@@ -75,7 +75,7 @@ func ntf357Repo(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	ntf357RequireInitiatorColumn(t, pool)
-	return pool, kachopg.New(pool, nil)
+	return pool, mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 }
 
 // TestNetwork_NTF357_CreatedByUserCarriesUserInitiator — NTF3-57 (vpc): CREATED

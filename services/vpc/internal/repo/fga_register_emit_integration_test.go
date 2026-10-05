@@ -33,7 +33,7 @@ func TestIntegration_FGARegisterEmit_PopulatesResourceColumns(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Эмитим register-intent для vpc_network через реальный writer-путь.
 	err = legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {

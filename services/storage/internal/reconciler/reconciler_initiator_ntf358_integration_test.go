@@ -104,7 +104,7 @@ func ntf358FailingPass(t *testing.T, pool *pgxpool.Pool) string {
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
 	be.FailVerb("CreateVolume", blockbackend.OutcomeCapacityExhausted)
 	var log bytes.Buffer
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{
 		Batch: 10, Logger: slog.New(slog.NewTextHandler(&log, nil)),
 	})
 	rec.Once(context.Background())

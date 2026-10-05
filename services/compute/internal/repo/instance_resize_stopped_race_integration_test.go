@@ -52,7 +52,7 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stale := stopInstance(ctx, t, instRepo, inID) // stale STOPPED snapshot (mt-std2)
@@ -90,7 +90,7 @@ func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stopped := stopInstance(ctx, t, instRepo, inID)
@@ -119,7 +119,7 @@ func TestIntegration_InstanceResize_MissingInstance_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	ghost := newRunningInstance(ids.NewID(ids.PrefixInstance)) // never inserted
 	ghost.Status = domain.InstanceStatusStopped
@@ -145,7 +145,7 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stale := stopInstance(ctx, t, instRepo, inID)

@@ -120,7 +120,7 @@ func TestEveryRenderedConfigKeyHasAFieldThatReadsIt(t *testing.T) {
 	renderedKeyPaths(tree, "", rendered)
 
 	readable, mapRoots := map[string]struct{}{}, map[string]struct{}{}
-	readableConfigPaths(reflect.TypeOf(Config{}), "", readable, mapRoots)
+	readableConfigPaths(reflect.TypeOf(Config{Notifications: probeNotificationsOff()}), "", readable, mapRoots)
 
 	var findings []string
 	for p := range rendered {

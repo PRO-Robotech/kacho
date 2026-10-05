@@ -38,7 +38,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentStopOnStopped(t *testing.T) 
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
@@ -110,7 +110,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentRestartOnRunning(t *testing.
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
@@ -186,7 +186,7 @@ func TestIntegration_InstanceSetStatusCAS_StopRestartRace(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
@@ -258,7 +258,7 @@ func TestIntegration_InstanceSetStatusCAS_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	_, err = instRepo.SetStatusCAS(ctx, "epdNONEXISTENT0000000",
 		domain.InstanceStatusRunning, domain.InstanceStatusStopped)
 	require.ErrorIs(t, err, serviceerr.ErrNotFound)

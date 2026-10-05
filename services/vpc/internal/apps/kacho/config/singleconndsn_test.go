@@ -17,7 +17,7 @@ import (
 // подключении. Со стороны это тихо: процесс поднят, глагол выставлен, а каждая
 // подписка отвечает «источник недоступен» и никогда ничем иным.
 func TestSingleConnDSNCarriesNoPoolParameter(t *testing.T) {
-	cfg := Config{}
+	cfg := Config{Notifications: probeNotificationsOff()}
 	cfg.Repository.Postgres.URL = "postgres://u:p@h:5432/kacho_vpc"
 	cfg.Repository.Postgres.SSLMode = "require"
 	cfg.Repository.Postgres.MaxConns = 10

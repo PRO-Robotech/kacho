@@ -46,7 +46,7 @@ var envDeclRe = regexp.MustCompile(`(?m)^[^#\n]*-\s*name:\s*(KACHO_COMPUTE_[A-Z0
 func configEnvNames(t *testing.T) map[string]struct{} {
 	t.Helper()
 	var buf bytes.Buffer
-	err := envconfig.Usagef(config.EnvPrefix, &config.Config{}, &buf, "{{range .}}{{.Key}}\n{{.Alt}}\n{{end}}")
+	err := envconfig.Usagef(config.EnvPrefix, &config.Config{Notifications: probeNotificationsOff()}, &buf, "{{range .}}{{.Key}}\n{{.Alt}}\n{{end}}")
 	require.NoError(t, err, "enumerating config env names")
 
 	out := map[string]struct{}{}

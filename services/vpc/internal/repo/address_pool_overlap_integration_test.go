@@ -42,7 +42,7 @@ func TestIntegration_AddressPoolOverlap_AcrossPools(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	createUC := addresspool.NewCreateAddressPoolUseCase(r, nil)
@@ -82,7 +82,7 @@ func TestIntegration_AddressPoolOverlap_AddCidrOverlapExisting(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	createUC := addresspool.NewCreateAddressPoolUseCase(r, nil)
@@ -117,7 +117,7 @@ func TestIntegration_AddressPoolOverlap_ConcurrentOverlap(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	createUC := addresspool.NewCreateAddressPoolUseCase(r, nil)
@@ -162,7 +162,7 @@ func TestIntegration_AddressPoolOverlap_RemoveFreesBlock(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	createUC := addresspool.NewCreateAddressPoolUseCase(r, nil)

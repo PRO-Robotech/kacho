@@ -70,7 +70,7 @@ func instanceIDsOf(v *domain.Volume) map[string]bool {
 // двух строках, включая две копии одной.
 func TestGetReturnsEveryAttachmentOfTheVolume(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-multi-get", 10<<30)
 
@@ -110,7 +110,7 @@ func TestGetReturnsEveryAttachmentOfTheVolume(t *testing.T) {
 // достаточно большой странице дубль виден, но курсор ещё нет.
 func TestListDoesNotDuplicateAMultiplyAttachedVolume(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// Первый том — многопривязочный, второй — без привязок. Порядок обхода задан
@@ -166,7 +166,7 @@ func TestListDoesNotDuplicateAMultiplyAttachedVolume(t *testing.T) {
 // способность вовсе.
 func TestSecondAttachmentIsReachableThroughTheProductPath(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// ── полюс «способность объявлена»: вторая привязка проходит ────────────────
@@ -206,8 +206,8 @@ func TestSecondAttachmentIsReachableThroughTheProductPath(t *testing.T) {
 // спросившая одно чтение, его бы не заметила.
 func TestReadPathAnswersStatusReasonAndUsedBytes(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	store := reconciler.NewStore(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	store := mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// ── потребление: пишется БОЕВЫМ путём подтверждения ───────────────────────

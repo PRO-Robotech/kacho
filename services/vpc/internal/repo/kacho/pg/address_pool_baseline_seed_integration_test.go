@@ -228,7 +228,7 @@ func TestStandVpcPoolBaselineMatchesTheWriterPath(t *testing.T) {
 	// Писатель модуля открывает транзакцию помощником записи журнала, и
 	// инициатора тот берёт из принципала контекста — путь записи сервиса несёт
 	// принципал так же, как его несёт запрос. Инициатор в сличение не входит.
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(journalPrincipalCtx(ctx))
 	require.NoError(t, err)
 	defer w.Abort()

@@ -69,7 +69,7 @@ func TestQuotaNested_SubnetsAreCountedInTheirNetwork(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-nested-subnet"
 	seedQuota(t, ctx, pool, project, "vpc.network", 8)
@@ -141,7 +141,7 @@ func TestQuotaNested_SubnetInAPreexistingNetworkStillPasses(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-nested-legacy"
 	seedQuota(t, ctx, pool, project, "vpc.network", 8)

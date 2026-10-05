@@ -79,7 +79,7 @@ func newInstanceHandlerOnRealRepo(t *testing.T, cli listnarrow.AuthorizeClient) 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 
-	instanceRepo := repo.NewInstanceRepo(pool)
+	instanceRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	svc := instance.NewInstanceService(
 		instanceRepo,
 		portmock.NewMachineTypeRepo(),

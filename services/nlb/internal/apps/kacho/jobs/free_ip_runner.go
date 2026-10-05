@@ -111,14 +111,6 @@ const (
 	freeIPComponentRole    = "free-ip-runner"
 )
 
-// freeIPJournalOptions — Options помощника записи журнала для транзакции прохода.
-//
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_NLB_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
-// тем же изменением эта функция снимается.
-func freeIPJournalOptions() journaltx.Options { return journaltx.NewOptions(false) }
-
 // FreeIPRunner — фоновый reconciler застрявших LoadBalancer'ов (durable handle).
 type FreeIPRunner struct {
 	pool         *pgxpool.Pool
@@ -150,7 +142,14 @@ func WithPoisonObserver(fn func(lbID string)) FreeIPOption {
 // Невалидные (<=0) значения подменяются безопасными дефолтами. addrs допускается
 // nil (vpc не сконфигурирован) — тогда reconciler no-op (без release нельзя
 // безопасно удалять handle, иначе утечка).
-func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) *FreeIPRunner {
+//
+// journal — Options помощника записи журнала для транзакции прохода, построенные
+// корнем модуля из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые —
+// отказ сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewFreeIPRunner(pool *pgxpool.Pool, journal journaltx.Options, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) (*FreeIPRunner, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("nlb: NewFreeIPRunner: %w", err)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -162,7 +161,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	}
 	r := &FreeIPRunner{
 		pool:         pool,
-		journal:      freeIPJournalOptions(),
+		journal:      journal,
 		addrs:        addrs,
 		logger:       logger,
 		interval:     interval,
@@ -171,7 +170,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	for _, opt := range opts {
 		opt(r)
 	}
-	return r
+	return r, nil
 }
 
 // Run блокирует goroutine до отмены ctx. Каждые r.interval — tick reconcile;

@@ -259,6 +259,10 @@ func (c Config) Validate() error {
 
 	errs = multierr.Append(errs, c.validateMode())
 
+	// Флаг ленты модуля судится на ЛЮБОЙ посадке: незаданный флаг — отсутствие
+	// решения оператора, а не свойство посадки (NTF3-64).
+	errs = multierr.Append(errs, c.validateNotifications())
+
 	if _, err := ParseLogLevel(c.Logger.Level); err != nil {
 		errs = multierr.Append(errs, err)
 	}

@@ -108,7 +108,7 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	assert.Contains(t, pgErr.ConstraintName, "name_check")
 
 	// (б) repo writer Insert (минуя use-case Validate) → ErrInternal, без leak'а SQL.
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

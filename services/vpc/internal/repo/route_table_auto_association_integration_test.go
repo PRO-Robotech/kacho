@@ -52,7 +52,7 @@ func setupAssocRepo(t *testing.T) (kacho.Repository, *pgxpool.Pool, func()) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	return r, pool, func() {
 		r.Close()
 		pool.Close()
@@ -336,7 +336,7 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {

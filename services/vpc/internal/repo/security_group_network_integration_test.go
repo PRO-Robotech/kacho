@@ -61,7 +61,7 @@ func newSGNetFixture(t *testing.T) *sgNetFixture {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 
 	opsRepo := operations.NewRepo(pool, "kacho_vpc")

@@ -30,7 +30,7 @@ func TestQuota_RefusalCarriesTheProducerAmounts(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-detail"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)
@@ -75,7 +75,7 @@ func TestQuota_NotProvisionedCarriesTheCarrierWithoutAmounts(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const bare = "prj-quota-detail-bare"
 	w, err := r.Writer(ctx)

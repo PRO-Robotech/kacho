@@ -108,7 +108,7 @@ func TestExplicitExternalIPv4_ClaimedFromPool_AutoAllocateSkipsIt(t *testing.T) 
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, []string{"198.51.100.0/28"}, nil)
@@ -146,7 +146,7 @@ func TestExplicitExternalIPv4_AlreadyTakenInPool_Rejected(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, []string{"198.51.100.0/28"}, nil)
@@ -186,7 +186,7 @@ func TestExplicitExternalIPv4_ConcurrentClaims_ExactlyOneWins(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, []string{"198.51.100.0/28"}, nil)
@@ -261,7 +261,7 @@ func TestExplicitExternalIPv4_PoolNotDegraded_AllocReleaseAlloc(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, []string{"198.51.100.0/28"}, nil)
@@ -323,7 +323,7 @@ func TestExplicitExternalIPv6_GloballyUnique(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const ip6 = "2001:db8:aaaa::1234"
@@ -359,7 +359,7 @@ func TestExplicitExternalIPv6_ClaimedInLedger_CursorSkipsIt(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, nil, []string{"2001:db8:bbbb::/64"})
@@ -423,7 +423,7 @@ func TestFreelistKey_HostFormOnly_NoTwinKeys(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, []string{"198.51.100.0/28"}, nil)
@@ -483,7 +483,7 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, nil,
@@ -554,7 +554,7 @@ func TestExplicitExternalIPv6_ReleaseOfSecondBlock_DoesNotWedgeAllocation(t *tes
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertPoolWithCidrs(t, ctx, pgPool, nil,

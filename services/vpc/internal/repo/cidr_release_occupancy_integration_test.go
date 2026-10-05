@@ -64,7 +64,7 @@ func TestIntegration_AddressPoolCIDR_RemoveV6InUse_FailedPrecondition(t *testing
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	p := mkPoolWithV6(t, ctx, r, "pool-v6-inuse", []string{"198.51.100.0/28"}, []string{"2001:db8:c1::/64"})
@@ -111,7 +111,7 @@ func TestIntegration_AddressPoolCIDR_RemoveV6Clean_Succeeds(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	p := mkPoolWithV6(t, ctx, r, "pool-v6-clean", []string{"198.51.100.0/28"}, []string{"2001:db8:c2::/64"})
@@ -169,7 +169,7 @@ func TestIntegration_SubnetCIDR_RemoveInUse_FailedPrecondition(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.0.0.0/24", "10.0.1.0/24"})
@@ -218,7 +218,7 @@ func TestIntegration_SubnetCIDR_RemoveClean_Succeeds(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.1.0.0/24", "10.1.1.0/24"})
@@ -253,7 +253,7 @@ func TestIntegration_Subnet_ReadPathCost_Bounded(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.5.0.0/16"})
@@ -317,7 +317,7 @@ func TestIntegration_Subnet_DeletePrecondition_MessageBounded(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.7.0.0/24"})
@@ -369,7 +369,7 @@ func TestIntegration_SubnetCIDR_InternalAllocate_WaitsForRangeMutation(t *testin
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.30.0.0/24", "10.30.1.0/24"})
@@ -450,7 +450,7 @@ func TestIntegration_CIDRRelease_MirrorFamilies(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// --- подсеть: занят ВНУТРЕННИЙ IPv6 ---

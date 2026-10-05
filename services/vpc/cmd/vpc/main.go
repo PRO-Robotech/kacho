@@ -23,6 +23,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/operations"
@@ -270,6 +271,13 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("config validate (peer transport): %w", err)
 	}
 
+	// ── флаг ленты модуля: одно чтение ручки, одно значение у потребителей ──
+	// Загрузчик разобрал ручку один раз (cfg.Notifications, страж в main её
+	// судил). Из того же значения — словарь видов журнала и Options писателя
+	// журнала: настройка транзакции `kacho_feed.enabled` равна ручке (З11, И6).
+	feedEnabled := cfg.Notifications.On()
+	journalOpts := journaltx.NewOptions(feedEnabled)
+
 	// Объявление домена величин: ровно два законных значения, и незаданное среди
 	// них не значится. Проверка стоит ЗДЕСЬ, до дозвонов, чтобы оператор получил
 	// названную ручку раньше, чем отказ соединения; сама проводка читает то же
@@ -357,7 +365,7 @@ func runServe(cfg config.Config) error {
 	// Пул, а не одиночное соединение подписки: уборка — обычный оператор, ей
 	// выделенная сессия не нужна, а сессия подписки занята `LISTEN`.
 	if _, err := subscription.StartJournalRetentionSweep(
-		ctx, pool, subscriptionjournal.Journal(),
+		ctx, pool, subscriptionjournal.Journal(feedEnabled),
 		retention.DefaultConfig(),
 		logger.With(slog.String("component", "journal_retention_sweep")),
 	); err != nil {
@@ -537,7 +545,10 @@ func runServe(cfg config.Config) error {
 	defer stopQuotaEdge()
 	quotaLimits := quotaEdge.Limits
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaEdge.ReadPosture, cfg, logger)
+	svcs, err := buildServices(pool, slavePool, journalOpts, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaEdge.ReadPosture, cfg, logger)
+	if err != nil {
+		return err
+	}
 
 	// Сервер потока изменений — ОБЩИЙ (`corelib/subscription`), а не свой. Форма
 	// подписки объявлена однажды на всю платформу, и владелец журнала приносит
@@ -666,7 +677,11 @@ func runServe(cfg config.Config) error {
 	// Durable LRO recovery: доменный resolver + corelib-reconciler поверх schema
 	// kacho_vpc. RecoverAll прогоняется ДО приема трафика; периодический Run —
 	// backstop до отмены ctx.
-	startLRORecovery(ctx, pool, kachopg.New(pool, slavePool), metricsAdapter, logger)
+	lroRepo, err := kachopg.New(pool, slavePool, journalOpts)
+	if err != nil {
+		return err
+	}
+	startLRORecovery(ctx, pool, lroRepo, metricsAdapter, logger)
 
 	// Явно поднимаем package-level default-registry LRO-worker'а ДО приема трафика:
 	// readiness lro-worker зеленый без единой мутации (нет boot-deadlock), а
@@ -1062,7 +1077,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, quotaPosture quotaread.Posture, cfg config.Config, logger *slog.Logger) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, journalOpts journaltx.Options, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, quotaPosture quotaread.Posture, cfg config.Config, logger *slog.Logger) (*services, error) {
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kaname
@@ -1074,7 +1089,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// pgxpool-impl — `internal/repo/kacho/pg`. Admin-сервисы и peer-port'ы
 	// use-case-пакетов получают тонкие adapter'ы поверх kachoRepo из пакета
 	// `internal/repo/cqrsadapter`.
-	kachoRepo := kachopg.New(pool, slavePool)
+	kachoRepo, err := kachopg.New(pool, slavePool, journalOpts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Adapter'ы под узкие port-интерфейсы admin/peer-сервисов. Каждый adapter
 	// открывает свежую Reader/Writer-TX на каждый вызов (read на slave-pool, если он
@@ -1356,7 +1374,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 			WithListFilter(listFilter),
 		cidrGroupHandler: cgHandler,
 		quotaHandler:     quotaHandlerOrNil(quotaGuard, quotaPosture),
-	}
+	}, nil
 }
 
 // quotaHandlerOrNil возвращает обработчик чтения квот ЛИБО настоящий nil.
@@ -1461,7 +1479,7 @@ func buildSubscriptionServer(
 			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(cfg.Notifications.On()),
 		DSN:          dsn,
 		Narrower:     listFilter,
 		ProjectGate:  gate,

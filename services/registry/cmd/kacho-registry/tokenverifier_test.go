@@ -101,9 +101,10 @@ func probeClientCreds(t *testing.T) grpcclient.TLSClient {
 func prodConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
-		AuthMode:     "production",
-		ServiceAud:   "registry.kacho.local",
-		TokenIssuers: strings.Join([]string{probePlatformIssuer, probeLegacyIssuer}, ","),
+		Notifications: probeNotificationsOff(),
+		AuthMode:      "production",
+		ServiceAud:    "registry.kacho.local",
+		TokenIssuers:  strings.Join([]string{probePlatformIssuer, probeLegacyIssuer}, ","),
 		TokenIssuerKeySets: strings.Join([]string{
 			probePlatformIssuer + "=" + probePlatformKeySet,
 			probeLegacyIssuer + "=" + probeLegacyKeySet,

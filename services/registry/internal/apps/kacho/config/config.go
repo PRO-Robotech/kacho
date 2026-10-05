@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"time"
 
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/notify/feed"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-registry (KACHO_<DOMAIN>).
@@ -456,6 +458,17 @@ type Config struct {
 
 	// InternalServerMTLS — server-creds для cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+
+	// Notifications — флаг ленты извещений модуля, разобранный загрузчиком ОДИН
+	// раз из ручки [NotificationsKnob] (`feed.ParseEnabled`: ровно true | false,
+	// умолчания нет). Это значение корень отдаёт словарю видов журнала
+	// (`subscriptionjournal.Journal`) и писателям журнала модуля — Options,
+	// построенными один раз (`journaltx.NewOptions`; замысел issue-2918 З11, И6).
+	// Своего чтения ручки у потребителей нет. Не разобран — отказ старта
+	// (validateNotifications).
+	Notifications feed.Enabled `ignored:"true"`
+	// notificationsErr — отказ разбора ручки; его называет страж старта.
+	notificationsErr error
 }
 
 // TrustDomain — домен доверия, который РЕАЛЬНО уезжает в пару звеньев извлечения
@@ -585,6 +598,9 @@ func (c Config) MigrateDSN() string {
 // Load загружает конфигурацию из переменных окружения.
 func Load() (Config, error) {
 	var c Config
-	err := corecfg.LoadPrefixed(envPrefix, &c)
-	return c, err
+	if err := corecfg.LoadPrefixed(envPrefix, &c); err != nil {
+		return c, err
+	}
+	c.parseNotifications(os.LookupEnv)
+	return c, nil
 }

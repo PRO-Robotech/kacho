@@ -9,15 +9,6 @@ import (
 	"github.com/PRO-Robotech/corelib/journaltx"
 )
 
-// journalOptions — Options помощника записи журнала (`journaltx.Begin`), с
-// которыми писатели модуля открывают пишущую транзакцию.
-//
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_STORAGE_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
-// тем же изменением эта функция снимается.
-func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
-
 // inJournalTx исполняет fn в транзакции помощника записи журнала: открытие —
 // `journaltx.Begin`, отказ fn — откат, иначе фиксация. Форма та же, что у
 // `pgx.BeginFunc`, и ошибка fn возвращается как есть.

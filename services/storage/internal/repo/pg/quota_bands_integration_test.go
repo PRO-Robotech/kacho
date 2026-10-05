@@ -39,7 +39,7 @@ import (
 // формулируются обеими полосами побайтово одинаково.
 func TestQuotaBands_RefuseInTheSameWords(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	quotaRepo := pg.NewQuotaRepo(pool)
 	ctx := journalPrincipalCtx(context.Background())
 
@@ -135,7 +135,7 @@ func TestQuotaAdvisoryBand_TakesNoSlot(t *testing.T) {
 // призванный ограничивать, сам бы возвращал место.
 func TestQuotaMaterialise_IsIdempotentAndKeepsUsage(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	quotaRepo := pg.NewQuotaRepo(pool)
 	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-materialise"

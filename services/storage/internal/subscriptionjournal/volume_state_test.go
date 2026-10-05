@@ -131,7 +131,7 @@ func decodeVolume(t *testing.T, packed *anypb.Any) *storagev1.Volume {
 // (`state` строки и наличие привязки), и ровно он был доводом против состояния;
 // проба закрепляет, что довод снят делом, а не объявлен снятым.
 func TestVolumeStateIsFullAndCarriesLabels(t *testing.T) {
-	state := subscriptionjournal.Journal().Mapping.State
+	state := subscriptionjournal.Journal(false).Mapping.State
 	got, absence, err := state(volumeStateRow("CREATED", attachedVolumeBody))
 	if err != nil {
 		t.Fatalf("сборка состояния отказала: %v", err)
@@ -170,7 +170,7 @@ func TestVolumeStateIsFullAndCarriesLabels(t *testing.T) {
 // Без этой половины «IN_USE» выполнялось бы и на выводе, который отвечает IN_USE
 // всегда, — то есть утверждение выше не отличало бы деривацию от константы.
 func TestVolumeWithoutAttachmentsIsAvailable(t *testing.T) {
-	state := subscriptionjournal.Journal().Mapping.State
+	state := subscriptionjournal.Journal(false).Mapping.State
 	got, _, err := state(volumeStateRow("UPDATED", `{
 		"id":"vol-0000000000000001","project_id":"prj-0000000000000001",
 		"created_at":"2026-08-30T04:04:05+00:00","updated_at":"2026-08-30T04:04:05+00:00",
@@ -200,7 +200,7 @@ func TestVolumeWithoutAttachmentsIsAvailable(t *testing.T) {
 // том без привязок и со статусом, выведенным из `state`, — то есть предмет,
 // который РАЗОБРАЛСЯ и ЛОЖЕН. Различает только отсутствие конверта.
 func TestOlderRowIsToldApartByConstruction(t *testing.T) {
-	state := subscriptionjournal.Journal().Mapping.State
+	state := subscriptionjournal.Journal(false).Mapping.State
 	got, absence, err := state(subscription.Row{
 		Kind:   subscriptionjournal.JournalWordVolume,
 		ID:     "vol-0000000000000001",
@@ -232,7 +232,7 @@ func TestOlderRowIsToldApartByConstruction(t *testing.T) {
 // значения не меняет и отказа не даёт. Свойство языка, а не наше, — и потому
 // утверждается вызовом, а не комментарием.
 func TestNullSourceIdsDecodeToEmpty(t *testing.T) {
-	state := subscriptionjournal.Journal().Mapping.State
+	state := subscriptionjournal.Journal(false).Mapping.State
 	got, _, err := state(volumeStateRow("CREATED", attachedVolumeBody))
 	if err != nil {
 		t.Fatalf("сборка отказала на `null` в колонках происхождения: %v", err)
@@ -281,7 +281,7 @@ func TestNullSourceIdsDecodeToEmpty(t *testing.T) {
 const changeDeletedWord = "DELETED"
 
 func TestStateIsProducedForEveryKindAndNamedAbsentOnRemoval(t *testing.T) {
-	journal := subscriptionjournal.Journal()
+	journal := subscriptionjournal.Journal(false)
 	kinds := journal.Mapping.Kinds
 	changes := journal.Mapping.Changes
 	if len(kinds) == 0 || len(changes) == 0 {

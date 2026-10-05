@@ -78,7 +78,7 @@ func probedInitiators(t *testing.T, pool *pgxpool.Pool, resourceID, eventType st
 func TestRepoIntent_D115_PushTransactionCarriesThePrincipalInitiator(t *testing.T) {
 	pool := setupTestDB(t)
 	installInitiatorProbe(t, pool)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	regID := seedRegistry(t, pool, "prj-P", "reg-d115")
 	sub := ids.NewHyphenID(ids.PrefixServiceAccount)
 	ctx := operations.WithPrincipal(context.Background(), operations.Principal{Type: "service_account", ID: sub})
@@ -95,7 +95,7 @@ func TestRepoIntent_D115_PushTransactionCarriesThePrincipalInitiator(t *testing.
 func TestRepoIntent_D115_NoPrincipalIsRefusedAndWritesNothing(t *testing.T) {
 	pool := setupTestDB(t)
 	installInitiatorProbe(t, pool)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	regID := seedRegistry(t, pool, "prj-P", "reg-d115-none")
 
 	err := repo.RegisterRepository(context.Background(),
@@ -114,7 +114,7 @@ func TestRepoIntent_D115_NoPrincipalIsRefusedAndWritesNothing(t *testing.T) {
 func TestRepoIntent_D116_OrphanSweepCarriesTheComponentInitiator(t *testing.T) {
 	pool := setupTestDB(t)
 	installInitiatorProbe(t, pool)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	regID := seedRegistry(t, pool, "prj-P", "reg-d116")
 	require.NoError(t, repo.RegisterRepository(journalPrincipalCtx(context.Background()),
 		domain.RegisterIntentForRepoPush(regID, "team/app", "prj-P", "service_account:sva-ci")))

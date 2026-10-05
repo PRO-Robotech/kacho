@@ -79,7 +79,7 @@ func mkImageFromSnapshot(t *testing.T, pool *pgxpool.Pool, r *pg.ImageRepo, proj
 // они от состояния не зависят.
 func TestImageCreateBornCreating(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewImageRepo(pool)
+	r := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "golden-snap", 21474836480)
@@ -120,7 +120,7 @@ func TestImageCreateBornCreating(t *testing.T) {
 // привязки и зоной) значило бы красить её отказами чужого пути.
 func TestImageCreateFromVolume(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "src-vol", "region-1-a", "", 32<<30)
@@ -136,7 +136,7 @@ func TestImageCreateFromVolume(t *testing.T) {
 
 // TestImageGetNotFound — STOR-1-21: well-formed-но-нет → ErrNotFound "Image <id> not found".
 func TestImageGetNotFound(t *testing.T) {
-	r := pg.NewImageRepo(newTestPool(t))
+	r := mustJournalWriter(pg.NewImageRepo(newTestPool(t), probeJournalOptions))
 	_, err := r.Get(journalPrincipalCtx(context.Background()), "img00000000000000000")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Image img00000000000000000 not found", err.Error()[len("not found: "):])
@@ -147,7 +147,7 @@ func TestImageGetNotFound(t *testing.T) {
 // already exists in project" (partial UNIQUE 23505, data-integrity §5). Под -race.
 func TestImageNameUniqueRace(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewImageRepo(pool)
+	r := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-for-race", 1<<30)
 
 	const n = 6
@@ -192,7 +192,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 // FK 23503 → FailedPrecondition "<Resource> <id> not found" (контрактный тон).
 func TestImageSourceFKNotFound(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewImageRepo(pool)
+	r := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := r.Insert(ctx, &domain.Image{
@@ -247,7 +247,7 @@ func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 // filter=name, garbage token → InvalidArg.
 func TestImageListCursorFilter(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewImageRepo(pool)
+	r := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-list", 1<<30)
 	for _, n := range []string{"img-a", "img-b", "img-c"} {
@@ -306,7 +306,7 @@ func TestImageListCursorFilter(t *testing.T) {
 // AlreadyExists; mutable description применяется.
 func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewImageRepo(pool)
+	r := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-upd", 1<<30)
 	_ = mkImageFromSnapshot(t, pool, r, "prj-1", "alpha", "ru-central1", snap)

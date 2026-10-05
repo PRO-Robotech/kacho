@@ -84,17 +84,16 @@ type Store struct {
 }
 
 // NewStore собирает хранилище сверщика.
-func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool, journal: journalOptions()}
-}
-
-// journalOptions — Options помощника записи журнала для записей перехода.
 //
-// Ручки флага ленты у модуля нет, и лента модуля выключена: флаг — `false`.
-// Ручку `KACHO_STORAGE_NOTIFICATIONS_ENABLED` и позиционный аргумент `Options`
-// конструкторов писателей вводит полоса S1-A4 issue-2918 (замысел З11, З4 (а));
-// тем же изменением эта функция снимается.
-func journalOptions() journaltx.Options { return journaltx.NewOptions(false) }
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewStore(pool *pgxpool.Pool, journal journaltx.Options) (*Store, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewStore: %w", err)
+	}
+	return &Store{pool: pool, journal: journal}, nil
+}
 
 // Личность компонента сверщика — пара §8 замысла issue-2918 (З4, З13):
 // инициатор строк журнала, которые порождают записи перехода, —

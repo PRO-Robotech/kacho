@@ -75,6 +75,7 @@ func Load(path string) (Config, error) {
 	if err := v.Unmarshal(&cfg, decoderOpts); err != nil {
 		return Config{}, fmt.Errorf("unmarshal config: %w", err)
 	}
+	cfg.parseNotifications(os.LookupEnv)
 
 	return cfg, nil
 }

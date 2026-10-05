@@ -53,7 +53,7 @@ func registerRowsFor(t *testing.T, rows []fgaOutboxRow, kind, id string) []fgaOu
 // labels, in the same writer transaction as the row update.
 func TestVolumeUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, r, "prj-relabel-v", "vol-relabel", 10<<30)
 
@@ -79,7 +79,7 @@ func TestVolumeUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.
 // with the selector match.
 func TestVolumeUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, r, "prj-relabel-c", "vol-clear", 10<<30)
 	_, _, err := r.Update(journalPrincipalCtx(t.Context()), v.ID, volume.VolumeUpdate{
@@ -109,7 +109,7 @@ func TestVolumeUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 // partition head has to clear before any real one.
 func TestVolumeUpdate_WithoutLabels_EmitsNothing(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, r, "prj-relabel-n", "vol-noop", 10<<30)
 	before := len(selectFGARows(t, pool))
@@ -126,8 +126,8 @@ func TestVolumeUpdate_WithoutLabels_EmitsNothing(t *testing.T) {
 // same way, so they were missed in exactly the same way.
 func TestSnapshotUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, vr, "prj-relabel-s", "vol-for-snap", 10<<30)
 	s := mkSnapshot(t, sr, "prj-relabel-s", "snap-relabel", v.ID)
@@ -147,7 +147,7 @@ func TestSnapshotUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testin
 
 func TestImageUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 
 	snapID := mkSnapshotRow(t, pool, "prj-relabel-i", "snap-for-img", 10<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-relabel-i", "img-relabel", "reg-1", snapID)
@@ -176,8 +176,8 @@ func TestImageUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T
 // one no test would have caught.
 func TestSnapshotUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 
 	v := mkVolume(t, pool, vr, "prj-relabel-sc", "vol-for-snap-clear", 10<<30)
 	s := mkSnapshot(t, sr, "prj-relabel-sc", "snap-clear", v.ID)
@@ -206,7 +206,7 @@ func TestSnapshotUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 
 func TestImageUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 
 	snapID := mkSnapshotRow(t, pool, "prj-relabel-ic", "snap-for-img-clear", 10<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-relabel-ic", "img-clear", "reg-1", snapID)

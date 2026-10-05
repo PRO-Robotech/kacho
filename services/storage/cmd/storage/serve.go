@@ -25,6 +25,7 @@ import (
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
@@ -117,6 +118,13 @@ func runServe(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("insecure configuration refused: %w", err)
 	}
+
+	// ── флаг ленты модуля: одно чтение ручки, одно значение у потребителей ──
+	// Загрузчик разобрал ручку один раз (cfg.Notifications, страж выше её
+	// судил). Из того же значения — словарь видов журнала и Options писателей
+	// журнала: настройка транзакции `kacho_feed.enabled` равна ручке (З11, И6).
+	feedEnabled := cfg.Notifications.On()
+	journalOpts := journaltx.NewOptions(feedEnabled)
 
 	// ── peer-клиенты (runtime cross-domain edges) ─────────────────────────
 	// Поднимаются ДО дескриптора: `grpc.NewClient` не блокирует до первого RPC,
@@ -283,7 +291,7 @@ func runServe(cfg config.Config) error {
 	// этом одно и берётся из одного места — разошлись бы два литерала, а не два
 	// вызова одной функции.
 	if _, err := subscription.StartJournalRetentionSweep(
-		ctx, pool, subscriptionjournal.Journal(),
+		ctx, pool, subscriptionjournal.Journal(feedEnabled),
 		retention.DefaultConfig(),
 		logger.With(slog.String("component", "journal_retention_sweep")),
 	); err != nil {
@@ -338,11 +346,23 @@ func runServe(cfg config.Config) error {
 
 	readyOnCommit := !dataPlane
 
-	volumeRepo := pg.NewVolumeRepo(pool).
+	volumeRepo, err := pg.NewVolumeRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
+	volumeRepo = volumeRepo.
 		WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit).
 		WithReadyOnCommit(readyOnCommit)
-	snapshotRepo := pg.NewSnapshotRepo(pool).WithReadyOnCommit(readyOnCommit)
-	imageRepo := pg.NewImageRepo(pool).WithReadyOnCommit(readyOnCommit)
+	snapshotRepo, err := pg.NewSnapshotRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
+	snapshotRepo = snapshotRepo.WithReadyOnCommit(readyOnCommit)
+	imageRepo, err := pg.NewImageRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
+	imageRepo = imageRepo.WithReadyOnCommit(readyOnCommit)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
 	geoClient := clients.NewGeoClient(geoConn)
 	iamClient := clients.NewIAMClient(iamConn)
@@ -361,7 +381,10 @@ func runServe(cfg config.Config) error {
 		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
 	diskTypeUC := disktype.New(diskTypeRepo)
 	storageBackendRepo := pg.NewStorageBackendRepo(pool)
-	diskTypeBindingRepo := pg.NewDiskTypeBindingRepo(pool)
+	diskTypeBindingRepo, err := pg.NewDiskTypeBindingRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 	storageBackendUC := storagebackend.New(storageBackendRepo)
 	diskTypeBindingUC := disktypebinding.New(diskTypeBindingRepo, storageBackendRepo)
 
@@ -481,7 +504,11 @@ func runServe(cfg config.Config) error {
 				"in CREATING forever while the service reported itself healthy",
 				cfg.BlockBackendKind, opener.Kinds())
 		}
-		dataPlane := reconciler.New(reconciler.NewStore(pool), opener, reconciler.Config{
+		store, err := reconciler.NewStore(pool, journalOpts)
+		if err != nil {
+			return err
+		}
+		dataPlane := reconciler.New(store, opener, reconciler.Config{
 			Interval:    cfg.BlockBackendReconcileInterval,
 			Batch:       cfg.BlockBackendReconcileBatch,
 			CallTimeout: cfg.BlockBackendCallTimeout,
@@ -907,7 +934,7 @@ func buildSubscriptionServer(
 			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal: subscriptionjournal.Journal(),
+		Journal: subscriptionjournal.Journal(cfg.Notifications.On()),
 		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
 		// из пула вернулась бы в него вместе с подпиской.
 		DSN:          dsn,

@@ -94,6 +94,13 @@ func (c Config) Validate() error {
 		return qerr
 	}
 
+	// Флаг ленты модуля судится на ЛЮБОЙ посадке и до аварийного освобождения:
+	// незаданный флаг — отсутствие решения оператора, а не свойство посадки
+	// (NTF3-64).
+	if err := c.validateNotifications(); err != nil {
+		return err
+	}
+
 	if !mode.IsProduction() {
 		// dev — insecure-дефолты допустимы (WARN в serve.go, не fatal): локальные
 		// фикстуры и dev-профиль стенда. Круг отправителей здесь больше не

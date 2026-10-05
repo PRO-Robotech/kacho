@@ -81,7 +81,7 @@ func ntf357Initiators(t *testing.T, pool *pgxpool.Pool, resourceID string) []str
 
 func ntf357Insert(ctx context.Context, pool *pgxpool.Pool, userID, name string) (*domain.Registry, error) {
 	reg := newReg("prj-P", name, nil)
-	_, _, err := kachopg.NewRegistryRepo(pool).Insert(ctx, reg, domain.RegisterIntentForCreate(reg, "user", userID))
+	_, _, err := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions)).Insert(ctx, reg, domain.RegisterIntentForCreate(reg, "user", userID))
 	return reg, err
 }
 

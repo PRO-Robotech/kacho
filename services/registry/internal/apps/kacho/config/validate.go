@@ -42,6 +42,13 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	// Флаг ленты модуля судится на ЛЮБОЙ посадке и до аварийного освобождения:
+	// незаданный флаг — отсутствие решения оператора, а не свойство посадки
+	// (NTF3-64).
+	if err := c.validateNotifications(); err != nil {
+		return err
+	}
+
 	if c.AuthZBreakglass {
 		return nil
 	}

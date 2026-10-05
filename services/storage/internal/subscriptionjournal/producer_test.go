@@ -85,7 +85,7 @@ func TestChangeDictionaryIsDerivedFromTheEmitter(t *testing.T) {
 		t.Fatalf("вставок %d, а слов рода изменения ноль — разбор аргументов сломан", len(calls))
 	}
 
-	declared := Journal().Mapping.Changes
+	declared := Journal(false).Mapping.Changes
 	for word := range produced {
 		if declared[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
 			t.Errorf("производитель пишет род %q, а словарь его НЕ называет: строка с ним "+
@@ -128,7 +128,7 @@ func TestChangeWordsCoverTheDatabaseConstraint(t *testing.T) {
 		t.Fatalf("ограничение найдено, а слов в нём ноль — разбор сломан")
 	}
 
-	declared := Journal().Mapping.Changes
+	declared := Journal(false).Mapping.Changes
 	for _, w := range allowed {
 		if declared[w[1]] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
 			t.Errorf("база разрешает род %q, а словарь его не называет: первый же писатель "+
@@ -169,7 +169,7 @@ func TestKindWordsAreDerivedFromTheEmitter(t *testing.T) {
 		produced[a[1]]++
 	}
 
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
 			t.Errorf("триггер пишет вид %q, а словарь его НЕ называет: строка с ним не имеет "+

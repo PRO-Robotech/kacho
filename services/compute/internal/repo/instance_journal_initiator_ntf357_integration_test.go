@@ -86,7 +86,7 @@ func TestInstance_NTF357_ControlSessionInitiatorAdmitsTheInsert(t *testing.T) {
 	pool := ntf357Pool(t, setupTestDB(t), want)
 
 	in := comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-acme", "ntf357-control")
-	_, _, err := repo.NewInstanceRepo(pool).Insert(ctx, in)
+	_, _, err := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions)).Insert(ctx, in)
 	require.NoError(t, err, "КОНТРОЛЬ: вставка машины при выставленном инициаторе")
 	require.Equal(t, []string{want}, ntf357Initiators(t, pool, in.ID))
 }
@@ -101,7 +101,7 @@ func TestInstance_NTF357_CreatedByUserCarriesUserInitiator(t *testing.T) {
 	pool := ntf357Pool(t, setupTestDB(t), "")
 
 	in := comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-acme", "ntf357")
-	_, _, err := repo.NewInstanceRepo(pool).Insert(ctx, in)
+	_, _, err := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions)).Insert(ctx, in)
 	require.NoError(t, err,
 		"NTF3-57: вставка машины под принципалом %s отвергнута (контроль с тем же вызовом и выставленным инициатором — зелёный)", want)
 	require.Equal(t, []string{want}, ntf357Initiators(t, pool, in.ID),

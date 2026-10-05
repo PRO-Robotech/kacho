@@ -61,8 +61,8 @@ func TestFreeIP_FamilyWithAddressButNoLeaseID_KeptAndReported(t *testing.T) {
 
 			var reported []string
 			rel := &fakeReleaser{}
-			r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
-				WithPoisonObserver(func(id string) { reported = append(reported, id) }))
+			r := mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
+				WithPoisonObserver(func(id string) { reported = append(reported, id) })))
 
 			n, err := r.reconcileOnce(ctx)
 			require.NoError(t, err, "тик не прерывается: одна испорченная строка не блокирует очередь")
@@ -113,8 +113,8 @@ func TestFreeIP_NoFamilyAtAll_StillDeletedWithoutRelease(t *testing.T) {
 
 	var reported []string
 	rel := &fakeReleaser{}
-	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
-		WithPoisonObserver(func(id string) { reported = append(reported, id) }))
+	r := mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
+		WithPoisonObserver(func(id string) { reported = append(reported, id) })))
 
 	n, err := r.reconcileOnce(ctx)
 	require.NoError(t, err)

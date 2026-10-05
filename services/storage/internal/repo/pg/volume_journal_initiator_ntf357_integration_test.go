@@ -113,7 +113,7 @@ func (s *ntf357Stand) journalInitiators(t *testing.T, volumeID, eventType string
 // инициатором та же вставка тома проходит и строка журнала его несёт.
 func TestVolume_NTF357_ControlFixturePoolAdmitsTheInsert(t *testing.T) {
 	s := newNTF357Stand(t)
-	v, _, err := pg.NewVolumeRepo(s.fixture).Insert(s.ctx, ntf357NewVolume("ntf357-control"), "")
+	v, _, err := mustJournalWriter(pg.NewVolumeRepo(s.fixture, probeJournalOptions)).Insert(s.ctx, ntf357NewVolume("ntf357-control"), "")
 	require.NoError(t, err, "КОНТРОЛЬ: вставка тома при выставленном инициаторе")
 	require.Equal(t, []string{s.want}, s.journalInitiators(t, v.ID, "CREATED"))
 }
@@ -122,7 +122,7 @@ func TestVolume_NTF357_ControlFixturePoolAdmitsTheInsert(t *testing.T) {
 func TestVolume_NTF357_CreatedByUserCarriesUserInitiator(t *testing.T) {
 	s := newNTF357Stand(t)
 	in := ntf357NewVolume("ntf357")
-	_, _, err := pg.NewVolumeRepo(s.subject).Insert(s.ctx, in, "")
+	_, _, err := mustJournalWriter(pg.NewVolumeRepo(s.subject, probeJournalOptions)).Insert(s.ctx, in, "")
 	require.NoError(t, err,
 		"NTF3-57: вставка тома под принципалом %s отвергнута (контроль с тем же вызовом и выставленным инициатором — зелёный)", s.want)
 	require.Equal(t, []string{s.want}, s.journalInitiators(t, in.ID, "CREATED"),
@@ -133,11 +133,11 @@ func TestVolume_NTF357_CreatedByUserCarriesUserInitiator(t *testing.T) {
 // изменение тома глаголом арендатора несёт `user:`.
 func TestVolume_NTF358Twin_UpdatedByUserCarriesUserInitiator(t *testing.T) {
 	s := newNTF357Stand(t)
-	v := mkVolumeCreating(t, pg.NewVolumeRepo(s.fixture), "prj-1", "ntf358-twin", 1<<30)
+	v := mkVolumeCreating(t, mustJournalWriter(pg.NewVolumeRepo(s.fixture, probeJournalOptions)), "prj-1", "ntf358-twin", 1<<30)
 	before := len(s.journalInitiators(t, v.ID, "UPDATED"))
 
 	desc := "ntf3-58 twin"
-	_, _, err := pg.NewVolumeRepo(s.subject).Update(s.ctx, v.ID, volume.VolumeUpdate{Description: &desc})
+	_, _, err := mustJournalWriter(pg.NewVolumeRepo(s.subject, probeJournalOptions)).Update(s.ctx, v.ID, volume.VolumeUpdate{Description: &desc})
 	require.NoError(t, err,
 		"NTF3-58 (близнец): правка тома под принципалом %s отвергнута", s.want)
 	got := s.journalInitiators(t, v.ID, "UPDATED")
@@ -150,12 +150,12 @@ func TestVolume_NTF358Twin_UpdatedByUserCarriesUserInitiator(t *testing.T) {
 // инициатора принципала контекста.
 func TestVolume_M4_DetachCarriesPrincipalInitiator(t *testing.T) {
 	s := newNTF357Stand(t)
-	v := mkVolume(t, s.fixture, pg.NewVolumeRepo(s.fixture), "prj-1", "m4-detach", 1<<30)
+	v := mkVolume(t, s.fixture, mustJournalWriter(pg.NewVolumeRepo(s.fixture, probeJournalOptions)), "prj-1", "m4-detach", 1<<30)
 	instanceID := ids.NewHyphenID("ins")
 	attach(t, s.fixture, v.ID, instanceID)
 	before := len(s.journalInitiators(t, v.ID, "UPDATED"))
 
-	err := pg.NewVolumeRepo(s.subject).Detach(s.ctx, v.ID, instanceID)
+	err := mustJournalWriter(pg.NewVolumeRepo(s.subject, probeJournalOptions)).Detach(s.ctx, v.ID, instanceID)
 	require.NoError(t, err, "М4: снятие привязки под принципалом %s отвергнуто", s.want)
 	got := s.journalInitiators(t, v.ID, "UPDATED")
 	require.Len(t, got, before+1, "М4: снятие привязки пишет ровно одну строку UPDATED тома")

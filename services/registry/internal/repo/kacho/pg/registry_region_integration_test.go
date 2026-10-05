@@ -22,7 +22,7 @@ import (
 // placement_type='REGIONAL', Get их читает (миграция 0006 применена).
 func TestRepo_REG_1_10_RegionPlacementRoundTrip(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	reg := newReg("prj-P", "payments", nil)
@@ -61,7 +61,7 @@ func TestRepo_REG_1_14_PlacementAnchorCheck_RejectsEmptyRegion(t *testing.T) {
 // NOT_FOUND с контракт-текстом "Registry <id> not found" (RESOURCE_NOT_FOUND-класс).
 func TestRepo_REG_1_26_GetAbsent_DirectReadNotFound(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	absent := ids.NewID(ids.PrefixRegistry)
 
 	_, err := repo.Get(journalPrincipalCtx(context.Background()), absent)

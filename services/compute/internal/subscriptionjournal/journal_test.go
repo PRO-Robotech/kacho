@@ -22,7 +22,7 @@ import (
 // Своей копии правил здесь нет намеренно: копия разошлась бы с общим сервером
 // молча, и объявление, которое он отвергнет в бою, оставалось бы зелёным.
 func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
-	if err := Journal().Validate(); err != nil {
+	if err := Journal(false).Validate(); err != nil {
 		t.Fatalf("общий сервер ОТВЕРГ объявление журнала compute — процесс не поднялся бы:\n%v", err)
 	}
 }
@@ -34,7 +34,7 @@ func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
 // «предмет уровня аккаунта», — и подписка с осью `project_id` такие события
 // молча не пропускала бы.
 func TestProjectAnchorIsAColumnNotAPayloadParse(t *testing.T) {
-	j := Journal()
+	j := Journal(false)
 	if j.Storage.Project != subscription.ProjectInColumn {
 		t.Fatalf("якорь проекта объявлен не колонкой (%v): у события снятия нагрузка "+
 			"несёт один идентификатор, и разбор дал бы пустой якорь — то есть "+
@@ -55,7 +55,7 @@ func TestProjectAnchorIsAColumnNotAPayloadParse(t *testing.T) {
 // Второе написание чужого словаря расходится молча и расходится там, где это не
 // видно: поток продолжает отвечать, но спрашивает модель о неверном действии.
 func TestKindsCarryTheProducersOwnAuthzWords(t *testing.T) {
-	kinds := Journal().Mapping.Kinds
+	kinds := Journal(false).Mapping.Kinds
 	if len(kinds) != 1 {
 		t.Fatalf("видов в словаре %d, ожидался один — блочное хранение ушло из compute "+
 			"миграцией 0021, и его виды больше не принадлежат этому журналу", len(kinds))
@@ -191,7 +191,7 @@ func TestAnUnreadablePayloadStaysAFailure(t *testing.T) {
 // Слово вне словаря делает строку НЕДОСТАВЛЯЕМОЙ, и потеря эта тихая: ни отказа,
 // ни пропуска в нумерации у клиента.
 func TestChangeWordsCoverExactlyWhatTheJournalWrites(t *testing.T) {
-	changes := Journal().Mapping.Changes
+	changes := Journal(false).Mapping.Changes
 	for _, word := range []string{"CREATED", "UPDATED", "DELETED"} {
 		if changes[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
 			t.Errorf("слово %q журнала не названо словарём — строки с ним не доставляются", word)
@@ -219,7 +219,7 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 			gate.NotFoundFormat, owner)
 	}
 	// Судится ТЕМ ЖЕ судьёй, что и на подъёме: своя копия правил разошлась бы молча.
-	cfgJournal := Journal()
+	cfgJournal := Journal(false)
 	cfgJournal.Storage.Project = subscription.ProjectInColumn
 	if err := cfgJournal.Validate(); err != nil {
 		t.Fatalf("объявление отвергнуто: %v", err)

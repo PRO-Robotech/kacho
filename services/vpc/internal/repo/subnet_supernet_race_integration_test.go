@@ -119,7 +119,7 @@ func TestIntegration_Subnet_Create_SupernetShrinkRace(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-supernet-race"
@@ -171,7 +171,7 @@ func TestIntegration_Subnet_AddCidrBlocks_SupernetShrinkRace(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-supernet-race-add"

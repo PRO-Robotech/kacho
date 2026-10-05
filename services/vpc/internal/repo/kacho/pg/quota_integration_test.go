@@ -82,7 +82,7 @@ func TestQuota_ChargeOnInsert_RefundOnDelete(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-charge"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -119,7 +119,7 @@ func TestQuota_ChargeIsRolledBackWithItsTransaction(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-rollback"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -145,7 +145,7 @@ func TestQuota_ExhaustedIsRefused_AndDistinctFromNotProvisioned(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-exhaust"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)
@@ -192,7 +192,7 @@ func TestQuota_LoweringBelowUsageIsExpressible(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-lower"
 	seedQuota(t, ctx, pool, project, "vpc.network", 3)
@@ -243,7 +243,7 @@ func TestQuota_ConcurrentChargeAtLastSlot(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-race"
 	const writers = 8
@@ -299,7 +299,7 @@ func TestQuota_SystemChildrenAreNotCharged(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-system"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -382,7 +382,7 @@ func TestQuota_ConcurrentChargeUnderLimit(t *testing.T) {
 	}
 	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-race-ok"
 	const writers = 8

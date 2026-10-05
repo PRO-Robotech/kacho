@@ -38,7 +38,7 @@ func TestIntegration_Address_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	addrID := ids.NewID(ids.PrefixAddress)
@@ -109,7 +109,7 @@ func TestIntegration_NetworkInterface_ConcurrentDisjointUpdate_NoLostUpdate(t *t
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID := ids.NewID(ids.PrefixNetwork)
@@ -190,7 +190,7 @@ func TestIntegration_AddressPool_ConcurrentDisjointUpdate_NoLostUpdate(t *testin
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := ids.NewID("apl")

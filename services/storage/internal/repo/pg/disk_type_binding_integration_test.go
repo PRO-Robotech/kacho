@@ -104,7 +104,7 @@ func bindRevisions(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string) 
 // производительности, включая единственное дробное.
 func TestDiskTypeBindingRoundTrip(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-round")
@@ -144,7 +144,7 @@ func TestDiskTypeBindingRoundTrip(t *testing.T) {
 // политики ровно потому, что цель неизменяема.
 func TestDiskTypeBindingRegisterSupersedesPrevious(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-sup")
@@ -240,7 +240,7 @@ func bindWaitBlocked(t *testing.T, pool *pgxpool.Pool, want int) {
 // во времени регистрации ЗАКОННО проходят обе, последовательно повышая номер.
 func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-race")
@@ -317,7 +317,7 @@ func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 // ALREADY_EXISTS. Под -race.
 func TestDiskTypeBindingRegisterRaceHoldsUnderAnyInterleaving(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-any")
@@ -392,7 +392,7 @@ func TestDiskTypeBindingRepoHasNoMutatingPath(t *testing.T) {
 // применён.
 func TestDiskTypeBindingNumberAndStatusAssignedByRegistry(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-assign")
@@ -433,8 +433,8 @@ func TestDiskTypeBindingNumberAndStatusAssignedByRegistry(t *testing.T) {
 // отказ выше про ССЫЛКУ, а не про запрет удаления вообще.
 func TestDiskTypeBindingReferencedRevisionIsNotDeletable(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-fk")
@@ -488,7 +488,7 @@ func requireFKRestrict(t *testing.T, err error, constraint string) {
 // — контрактный, чтобы администратор видел, ЧЕГО не хватает.
 func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-ref")
@@ -509,7 +509,7 @@ func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
 // (0015), а не разбором в репозитории. Пары обязательны.
 func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-inv")
@@ -547,7 +547,7 @@ func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
 // в паре с законным курсором.
 func TestDiskTypeBindingListCursor(t *testing.T) {
 	pool := newBareTestPool(t)
-	r := pg.NewDiskTypeBindingRepo(pool)
+	r := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	dt := bindSeedDiskType(t, pool, "block-page")

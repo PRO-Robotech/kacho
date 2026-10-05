@@ -84,7 +84,7 @@ func buildSubscriptionServer(cfg config.Config, narrower *listnarrow.Narrower,
 		return nil, err
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal: subscriptionjournal.Journal(cfg.EndpointBase),
+		Journal: subscriptionjournal.Journal(cfg.EndpointBase, cfg.Notifications.On()),
 		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
 		// из пула вернулась бы в него вместе с подпиской.
 		//
@@ -127,7 +127,7 @@ func buildSubscriptionServer(cfg config.Config, narrower *listnarrow.Narrower,
 func startJournalRetentionSweep(ctx context.Context, db subscription.Execer,
 	cfg config.Config, logger *slog.Logger) error {
 	if _, err := subscription.StartJournalRetentionSweep(
-		ctx, db, subscriptionjournal.Journal(cfg.EndpointBase),
+		ctx, db, subscriptionjournal.Journal(cfg.EndpointBase, cfg.Notifications.On()),
 		retention.DefaultConfig(),
 		logger.With(slog.String("component", "journal_retention_sweep")),
 	); err != nil {

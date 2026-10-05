@@ -37,8 +37,15 @@ type SnapshotRepo struct {
 }
 
 // NewSnapshotRepo создаёт SnapshotRepo поверх pgxpool.
-func NewSnapshotRepo(pool *pgxpool.Pool) *SnapshotRepo {
-	return &SnapshotRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewSnapshotRepo(pool *pgxpool.Pool, journal journaltx.Options) (*SnapshotRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewSnapshotRepo: %w", err)
+	}
+	return &SnapshotRepo{pool: pool, journal: journal}, nil
 }
 
 // WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit: плоскости данных нет,

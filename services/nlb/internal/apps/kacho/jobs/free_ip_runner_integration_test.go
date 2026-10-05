@@ -156,7 +156,7 @@ func (f *fakeReleaser) clears() []string {
 func newFreeIPRunner(t testing.TB, pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, age time.Duration) *FreeIPRunner {
 	t.Helper()
 	logger := observability.NewSlogger(discardWriter{})
-	return NewFreeIPRunner(pool, addrs, logger, time.Second, age)
+	return mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, addrs, logger, time.Second, age))
 }
 
 // vipFixtureSeq — счётчик синтетических адресов фикстуры.
@@ -573,8 +573,8 @@ func TestFreeIP_PoisonRowDoesNotBlockQueue(t *testing.T) {
 			poisonAddr: fmt.Errorf("%w: address %s not found", domain.ErrInvalidArg, poisonAddr),
 		},
 	}
-	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
-		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) }))
+	r := mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
+		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) })))
 
 	n, err := r.reconcileOnce(ctx)
 	require.NoError(t, err, "poison row must not surface as a tick error")
@@ -615,8 +615,8 @@ func TestFreeIP_TransientReleaseErrorLeavesRowForRetry(t *testing.T) {
 			addr: fmt.Errorf("%w: vpc clear address reference %s", domain.ErrUnavailable, addr),
 		},
 	}
-	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
-		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) }))
+	r := mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
+		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) })))
 
 	n, err := r.reconcileOnce(ctx)
 	require.Error(t, err, "transient release error aborts the tick (retry next tick)")
@@ -650,7 +650,7 @@ func TestFreeIP_RunTickAndCancel(t *testing.T) {
 	insertStuckLB(t, ctx, pool, domain.LBStatusDeleting, "auto", "adr00000RUNSTUCK0001", "", "", 10*time.Minute)
 
 	rel := &fakeReleaser{}
-	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), 100*time.Millisecond, time.Minute)
+	r := mustJournalWriter(NewFreeIPRunner(pool, probeJournalOptions, rel, observability.NewSlogger(discardWriter{}), 100*time.Millisecond, time.Minute))
 	runErr := make(chan error, 1)
 	go func() { runErr <- r.Run(ctx) }()
 

@@ -72,7 +72,7 @@ func TestNetworkVrfFrozen_UpdateOfVrfIdRejected(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	n := insertNetwork(t, r, "project-vrf-frozen", "net-frozen")
 
@@ -188,7 +188,7 @@ func TestNetworkVrfFrozen_ValueNotReissuedAfterDelete(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const proj = "project-vrf-reuse"
 	gone := insertNetwork(t, r, proj, "net-to-delete")

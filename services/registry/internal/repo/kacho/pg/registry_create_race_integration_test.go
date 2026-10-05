@@ -30,7 +30,7 @@ import (
 // registries, ни orphan register-intent в outbox.
 func TestRegistry_REG04_ConcurrentCreate_UniqueNameRace(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const (

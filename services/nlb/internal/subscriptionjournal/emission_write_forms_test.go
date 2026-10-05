@@ -167,7 +167,7 @@ func TestEveryJournalWriteFormIsAccountedFor(t *testing.T) {
 // раз, и второе его написание разошлось бы с первым молча — ровно тот класс,
 // который стережёт соседний гейт словаря.
 func deletedChangeWord() string {
-	for word, change := range Journal().Mapping.Changes {
+	for word, change := range Journal(false).Mapping.Changes {
 		if change.String() == "DELETED" {
 			return word
 		}
@@ -241,8 +241,8 @@ func inspectJournalStatements(t *testing.T) journalStatementCensus {
 			}
 			res.unresolvable += countUnresolvableInserts(text)
 			for _, ins := range insertsInto(text, Table) {
-				kind, change := ins.literalOf(Journal().Storage.KindColumn),
-					ins.literalOf(Journal().Storage.ChangeColumn)
+				kind, change := ins.literalOf(Journal(false).Storage.KindColumn),
+					ins.literalOf(Journal(false).Storage.ChangeColumn)
 				res.points = append(res.points, journalStatementPoint{
 					pos:    fset.Position(lit.Pos()).String(),
 					kind:   kind,
