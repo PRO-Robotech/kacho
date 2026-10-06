@@ -595,3 +595,65 @@ func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *t
 	}
 	t.Logf("перепись: глаголов Ф4/Ф5 %d · исходов проверено по каждому 3 (отсечка · «сессии нет» · недоступность)", len(verbs))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ф13-28 (kacho#3037) — вход ключом доступа на полосе сессии.
+
+// TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb — два глагола
+// входа ключом ведут себя на полосе сессии как вход паролем, и это утверждается
+// ПАРОЙ с `login` на том же дублёре и том же носителе (Ф13-28): отсечённый
+// носитель — отказ F4d-22 на крае, ретранслировано 0; «сессии нет» (носитель
+// снятой сессии) — ретрансляция без личности и без гашения носителя;
+// недоступность вопросов края — тот же исход, что у входа паролем.
+func TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb(t *testing.T) {
+	verbs := []string{loginLaneWant["access-key-begin"], loginLaneWant["access-key-login"]}
+	type outcome struct {
+		code    int
+		relayed int
+		ended   bool
+	}
+	// run — исход одного запроса на свежей полосе с дублёром службы, считающим
+	// ретрансляции.
+	run := func(reader *fakeHumanSession, cut *fakeCutoff, path, carrier string) outcome {
+		a := ownLane(t, reader, cut)
+		relay := &countingNext{}
+		mux := http.NewServeMux()
+		for _, rt := range LoginLaneRoutes() {
+			mux.Handle(rt.Path, relay)
+		}
+		rec := serve(a.HTTP(mux), withOurCarrier(httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)), carrier))
+		if relay.served > 0 && relay.lastReq.Header.Get(principalmeta.HeaderPrincipalID) != "" && !reader.found {
+			t.Errorf("%s: на «сессии нет» полоса выставила личность", path)
+		}
+		return outcome{code: rec.Code, relayed: relay.served, ended: ourCarrierEnded(rec.Result())}
+	}
+	cases := []struct {
+		name   string
+		reader func() *fakeHumanSession
+		cut    func() *fakeCutoff
+		want   outcome
+	}{
+		{"отсечка", func() *fakeHumanSession { return &fakeHumanSession{found: true, sess: liveOwnSession()} },
+			func() *fakeCutoff { return &fakeCutoff{found: true, cutoff: ownAuthAt} }, outcome{http.StatusUnauthorized, 0, true}},
+		{"сессии нет", func() *fakeHumanSession { return &fakeHumanSession{found: false} },
+			func() *fakeCutoff { return &fakeCutoff{} }, outcome{http.StatusOK, 1, false}},
+		{"Resolve недоступен", func() *fakeHumanSession { return &fakeHumanSession{err: errors.New("rpc error: code = Unavailable")} },
+			func() *fakeCutoff { return &fakeCutoff{} }, outcome{http.StatusOK, 1, false}},
+		{"отсечка недоступна", func() *fakeHumanSession { return &fakeHumanSession{found: true, sess: liveOwnSession()} },
+			func() *fakeCutoff { return &fakeCutoff{err: errors.New("unreachable")} }, outcome{http.StatusOK, 1, false}},
+	}
+	for _, c := range cases {
+		pair := run(c.reader(), c.cut(), LoginLanePathLogin, "s1")
+		// Положительный контроль: исход входа паролем — тот, что объявлен; иначе
+		// пара сходилась бы на полосе, поведение которой поменялось целиком.
+		if pair != c.want {
+			t.Fatalf("%s: вход паролем дал %+v, ожидалось %+v — пара сверяется с неизвестным", c.name, pair, c.want)
+		}
+		for _, p := range verbs {
+			if got := run(c.reader(), c.cut(), p, "s1"); got != pair {
+				t.Errorf("%s: %s дал %+v, вход паролем на том же дублёре и носителе — %+v (Ф13-28: полосы входа ведут себя одинаково)", c.name, p, got, pair)
+			}
+		}
+	}
+	t.Logf("перепись: глаголов входа ключом %d · исходов, сверенных парой с входом паролем, %d", len(verbs), len(cases))
+}
