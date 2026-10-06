@@ -173,6 +173,9 @@
 
 {{/* `ui.publicFrontGuard` — отказ рендера на неполном блоке; печатает пусто. */}}
 {{- define "ui.publicFrontGuard" -}}
+{{- if not (and (gt (int .Values.tlsReload.intervalSeconds) 0) (le (int .Values.tlsReload.intervalSeconds) 3600)) -}}
+{{- fail "uif.tlsReload.intervalSeconds вне (0, 3600] — продлённый сертификат раздача не перечитала бы вовремя" -}}
+{{- end -}}
 {{- $pf := .Values.publicFront -}}
 {{- if $pf.enabled -}}
 {{- if not $pf.tls.secretName -}}
@@ -185,9 +188,6 @@
 {{- if not (or $pf.tls.certificate.dnsNames $pf.tls.certificate.ipAddresses) -}}
 {{- fail "uif.publicFront.tls.certificate: ни dnsNames, ни ipAddresses не объявлены — сертификату нечего удостоверять" -}}
 {{- end -}}
-{{- end -}}
-{{- if not (and (gt (int $pf.tls.reloadIntervalSeconds) 0) (le (int $pf.tls.reloadIntervalSeconds) 3600)) -}}
-{{- fail "uif.publicFront.tls.reloadIntervalSeconds вне (0, 3600] — продлённый сертификат раздача не перечитала бы вовремя" -}}
 {{- end -}}
 {{- if eq (int $pf.httpsPort) (int $pf.redirectPort) -}}
 {{- fail "uif.publicFront: httpsPort и redirectPort совпадают" -}}
@@ -403,4 +403,34 @@ app.kubernetes.io/component: storage-remote
 {{- else }}
 {{- toYaml .Values.resources }}
 {{- end }}
+{{- end -}}
+
+{{- /*
+ЗВЕНО ФРОНТА К КРАЮ (kacho#3028). Раздача — звено фронта края: адрес клиента
+край принимает от неё, только если она предъявила лист якоря звеньев с именем
+звена (gateway/internal/linktls). Поэтому каждая полоса к краю идёт по TLS на
+внешний слушатель края и несёт клиентский лист; лист края проверяется его
+удостоверяющим центром и именем (имя — хост адреса края из
+`host.upstreams.apiGateway`, одна величина на адрес и на имя).
+*/ -}}
+{{- define "ui.edgeLinkDir" -}}/etc/console-edge-link{{- end -}}
+{{- define "ui.edgeCADir" -}}/etc/console-edge-ca{{- end -}}
+{{- define "ui.edgeServerName" -}}
+{{- $up := required "host.upstreams.apiGateway обязателен" .Values.host.upstreams.apiGateway -}}
+{{- $host := regexReplaceAll ":[0-9]+$" $up "" -}}
+{{- if eq $host $up -}}
+{{- fail (printf "host.upstreams.apiGateway=%q без порта: полоса к краю идёт на его TLS-слушатель, порт обязателен" $up) -}}
+{{- end -}}
+{{- $host -}}
+{{- end -}}
+{{- define "ui.edgeLinkTLS" -}}
+proxy_ssl_certificate {{ include "ui.edgeLinkDir" . }}/tls.crt;
+proxy_ssl_certificate_key {{ include "ui.edgeLinkDir" . }}/tls.key;
+proxy_ssl_trusted_certificate {{ include "ui.edgeCADir" . }}/ca.crt;
+proxy_ssl_verify on;
+proxy_ssl_verify_depth 2;
+proxy_ssl_name {{ include "ui.edgeServerName" . }};
+proxy_ssl_server_name on;
+proxy_ssl_protocols TLSv1.2 TLSv1.3;
+proxy_ssl_session_reuse on;
 {{- end -}}

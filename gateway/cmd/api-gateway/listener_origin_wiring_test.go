@@ -10,6 +10,11 @@
 // метки отказывают по умолчанию. Проба держит, что корень оборачивает каждый
 // слушатель `httpSrv.Serve`, внутренний — ровно один, и что `ConnContext`
 // общего сервера — тот, что читает обе обёртки.
+//
+// Второе звено ConnContext (kacho#3028, C4) — состояние TLS соединения
+// (linktls.WithConnState): за мультиплексором r.TLS пуст, и звено фронта,
+// предъявившее сертификат, иначе было бы неотличимо от любого пира. Тем же
+// доводом сервер gRPC несёт учётные данные linktls.ServerCredentials.
 package main
 
 import (
@@ -19,13 +24,18 @@ import (
 
 func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t *testing.T) {
 	fset, f := parseMain(t)
-	var served, internal, external, connContext int
+	var served, internal, external, connContext, linkState int
 	var bare []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.KeyValueExpr:
 			if key, ok := n.Key.(*ast.Ident); ok && key.Name == "ConnContext" {
-				if originFunc(n.Value) == "ConnContext" {
+				inner := n.Value
+				if call, ok := n.Value.(*ast.CallExpr); ok && pkgFunc(call.Fun, "linktls") == "WithConnState" && len(call.Args) == 1 {
+					linkState++
+					inner = call.Args[0]
+				}
+				if originFunc(inner) == "ConnContext" {
 					connContext++
 				} else {
 					bare = append(bare, fset.Position(n.Pos()).String()+" ConnContext не listenerorigin.ConnContext")
@@ -52,8 +62,8 @@ func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t
 		}
 		return true
 	})
-	t.Logf("перепись main.go: httpSrv.Serve %d · InternalListener %d · ExternalListener %d · ConnContext %d · без обёртки %d",
-		served, internal, external, connContext, len(bare))
+	t.Logf("перепись main.go: httpSrv.Serve %d · InternalListener %d · ExternalListener %d · ConnContext %d · состояние TLS %d · без обёртки %d",
+		served, internal, external, connContext, linkState, len(bare))
 	if served == 0 {
 		t.Fatal("в main.go не найдено ни одного httpSrv.Serve — проба судит пустоту")
 	}
@@ -64,6 +74,52 @@ func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t
 	if internal != 1 || external == 0 || connContext != 1 {
 		t.Fatalf("внутренних слушателей %d (ждали 1), внешних %d (ждали ≥1), ConnContext %d (ждали 1)", internal, external, connContext)
 	}
+	if linkState != 1 {
+		t.Fatalf("ConnContext без linktls.WithConnState (%d) — звено фронта за мультиплексором не узнать по сертификату", linkState)
+	}
+}
+
+// Сервер gRPC корня несёт учётные данные linktls: без них за мультиплексором
+// peer.AuthInfo пуст, и сертификат звена на нативном пути не виден (C4).
+func TestListenerOriginWiring_GRPCServerCarriesTheLinkCredentials(t *testing.T) {
+	_, f := parseMain(t)
+	var servers, withCreds int
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || pkgFunc(call.Fun, "proxy") != "NewServer" {
+			return true
+		}
+		servers++
+		for _, a := range call.Args {
+			opt, ok := a.(*ast.CallExpr)
+			if !ok || pkgFunc(opt.Fun, "grpc") != "Creds" || len(opt.Args) != 1 {
+				continue
+			}
+			if inner, ok := opt.Args[0].(*ast.CallExpr); ok && pkgFunc(inner.Fun, "linktls") == "ServerCredentials" {
+				withCreds++
+			}
+		}
+		return true
+	})
+	t.Logf("перепись main.go: proxy.NewServer %d · с linktls.ServerCredentials %d", servers, withCreds)
+	if servers == 0 {
+		t.Fatal("proxy.NewServer в main.go не найден — проба судит пустоту")
+	}
+	if withCreds != servers {
+		t.Fatalf("серверов gRPC %d, с учётными данными linktls %d", servers, withCreds)
+	}
+}
+
+// pkgFunc — имя функции пакета pkg, на которую указывает выражение, либо "".
+func pkgFunc(e ast.Expr, pkg string) string {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	if id, ok := sel.X.(*ast.Ident); !ok || id.Name != pkg {
+		return ""
+	}
+	return sel.Sel.Name
 }
 
 // originFunc — имя функции пакета `listenerorigin`, на которую указывает

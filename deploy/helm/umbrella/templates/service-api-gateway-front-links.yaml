@@ -1,0 +1,74 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+ЗВЕНЬЯ ФРОНТА КРАЯ ПОИМЁННО (kacho#3028, круг 3) — безголовые службы, чьи
+поды край признаёт доверенными звеньями адреса клиента.
+
+ЗАЧЕМ. Край принимает `X-Forwarded-For` только от TCP-пира, который И лежит в
+сети круга (`api-gateway.clientAddress.trustedProxyCIDRs`), И назван поимённо
+(`api-gateway.clientAddress.trustedPeers`). Сеть подов общая для кластера: сеть
+сама по себе — «под кластера», а не «звено фронта». Звено выделяет имя
+службы ниже: край разрешает его в адреса подов, которые служба выбирает
+МЕТКАМИ (gateway/internal/frontpeers), и только эти адреса — звенья.
+
+ПОЧЕМУ БЕЗГОЛОВАЯ. Имя обычной службы разрешается в её виртуальный адрес, а не
+в адреса подов. `publishNotReadyAddresses` — чтобы адрес нового пода звена
+был в перечне раньше, чем под получит первый запрос клиента: запрос от
+звена, ещё не попавшего в перечень, край судит как от чужого.
+
+КТО ЗВЕНО — те же, кого впускает политика сети края
+(templates/networkpolicy-api-gateway.yaml), тем же источником меток:
+  - раздача консоли (под `host` чарта `uif`) — `api-gateway-front-console`;
+  - контроллер входа этой установки, когда есть внешний вход края, —
+    `api-gateway-front-ingress`.
+Служба рендерится, только если её звено есть в установке И профиль объявил
+звенья поимённо: без объявления край их не разрешает. Что каждое имя ручки
+названо службой рендера, служба выбирает только звенья и каждое звено
+названо, держит deploy/edge_client_address_circle_render_test.go.
+
+Портов нет: служба ничего не принимает, её единственная работа — записи
+имени в адреса подов.
+*/ -}}
+{{- $agw := index .Values "api-gateway" | default dict }}
+{{- $ca := $agw.clientAddress | default dict }}
+{{- if $ca.trustedPeers }}
+{{- $base := $agw.name | default "api-gateway" }}
+{{- $uif := .Values.uif | default dict }}
+{{- $ing := index .Values "ingress-nginx" | default dict }}
+{{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
+{{- $tls := $agw.tls | default dict }}
+{{- if $uif.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $base }}-front-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "ui.hostSelectorLabels" (dict "Values" $uif) | nindent 4 }}
+{{- end }}
+{{- if and .Values.apiGatewayIngress.enabled $tls.enabled $ingOn }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $base }}-front-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: controller
+{{- end }}
+{{- end }}

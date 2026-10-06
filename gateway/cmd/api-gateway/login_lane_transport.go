@@ -13,23 +13,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
-
-// newClientAddressOperator — ОДИН оператор чтения цепочки пересылки на два
-// читателя: условие `client_ip` модели прав и `X-Forwarded-For` ретрансляции
-// полосы формы. Обе ручки те же: доверять ли заголовкам пересылки и сколько
-// доверенных прыжков стоит перед краем (адрес берётся СПРАВА). Второй
-// экземпляр с теми же ручками разошёлся бы с первым при следующей правке одной
-// из них.
-func newClientAddressOperator(cfg config.Config) *middleware.ContextExtractor {
-	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor,
-		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount))
-}
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь
 // внутреннего CA, имя сервера для SNI (ручка KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME,

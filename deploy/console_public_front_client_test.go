@@ -64,6 +64,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -223,60 +224,8 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 	front := frontFromRender(t)
 
 	var registers atomic.Int64
-	gw := dockerOut(t, "network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}")
-	ln, err := net.Listen("tcp", net.JoinHostPort(gw, "0"))
-	if err != nil {
-		t.Fatalf("дублёр края не слушает на шлюзе сети контейнеров %s: %v", gw, err)
-	}
-	stub := httptest.NewUnstartedServer(formLaneStandIn(&registers))
-	stub.Listener = ln
-	stub.Start()
-	defer stub.Close()
-	upstream := strings.TrimPrefix(stub.URL, "http://")
-
-	dir := t.TempDir()
-	pool := leafFor(t, dir)
-	for name, body := range map[string]string{
-		"default.conf.template": front.Conf, "05-resolver.envsh": front.Resolver, "06-tls-reload.sh": front.Reload,
-	} {
-		mode := os.FileMode(0o644)
-		if strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".envsh") {
-			mode = 0o755
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	_ = os.Chmod(dir, 0o755)
-
-	args := []string{"run", "-d", "--read-only", "--user", "101:101",
-		"--tmpfs", "/tmp:uid=101,gid=101", "--tmpfs", "/var/cache/nginx:uid=101,gid=101",
-		"--tmpfs", "/etc/nginx/conf.d:uid=101,gid=101",
-		"-v", filepath.Join(dir, "default.conf.template") + ":/etc/nginx/templates/default.conf.template:ro",
-		"-v", filepath.Join(dir, "05-resolver.envsh") + ":/docker-entrypoint.d/05-resolver-from-resolvconf.envsh:ro",
-		"-v", filepath.Join(dir, "06-tls-reload.sh") + ":/docker-entrypoint.d/06-tls-reload.sh:ro",
-		"-v", dir + ":/etc/console-tls:ro",
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.Internal),
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.HTTPS),
-		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
-		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
-	}
-	for _, m := range []string{"DASHBOARD", "VPC", "IAM", "NLB", "REGISTRY", "SYSTEM", "COMPUTE", "STORAGE"} {
-		args = append(args, "-e", "KACHO_UI_"+m+"_UPSTREAM=127.0.0.1:9")
-	}
-	args = append(args, front.Image)
-	id := dockerOut(t, args...)
-	defer func() {
-		if t.Failed() {
-			logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
-			t.Logf("журнал раздачи:\n%s", logs)
-		}
-		_ = exec.Command("docker", "rm", "-f", id).Run()
-	}()
-	mapped := func(p int) string {
-		out := dockerOut(t, "port", id, fmt.Sprintf("%d/tcp", p))
-		return strings.TrimSpace(strings.Split(out, "\n")[0])
-	}
+	run := startFront(t, front, formLaneStandIn(&registers))
+	id, pool, mapped := run.ID, run.Pool, run.Mapped
 	internalAddr, httpsAddr, redirectAddr := mapped(front.Internal), mapped(front.HTTPS), mapped(front.Redirect)
 	// Контроль идёт на адрес контейнера в сети моста, а НЕ на петлю: петлю
 	// cookiejar (как и браузер для localhost) считает защищённой и Secure по
@@ -412,4 +361,166 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 			t.Fatalf("с чужим Host переадресация увела на %q", loc)
 		}
 	})
+}
+
+// frontRun — поднятая раздача: контейнер, якорь её листа TLS и адрес порта.
+type frontRun struct {
+	ID     string
+	Pool   *x509.CertPool
+	Mapped func(port int) string
+}
+
+// startFront — поднимает НАСТОЯЩУЮ раздачу из рендера цепочки (образ, карта
+// настройки, порты пода), а за ней вместо края — edge. Дублёр края слушает на
+// шлюзе сети контейнеров, чтобы раздача дошла до него по адресу из окружения.
+// Контейнер снимается по окончании пробы; журнал раздачи — при её провале.
+func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun {
+	t.Helper()
+	// ЗВЕНО К КРАЮ (kacho#3028, круг 5): раздача ходит к краю по TLS и
+	// предъявляет лист звена. Дублёр края поэтому — TLS-сервер с листом на имя,
+	// которое раздача сверяет (`proxy_ssl_name` рендера), и он ТРЕБУЕТ
+	// клиентский лист якоря звеньев: раздача, не предъявившая лист, до дублёра
+	// не доходит вовсе. Каталоги листа звена и удостоверяющего центра края
+	// берутся из директив рендера, а не выписываются.
+	linkCrt := nginxDirectiveValue(t, front.Conf, "proxy_ssl_certificate")
+	edgeCA := nginxDirectiveValue(t, front.Conf, "proxy_ssl_trusted_certificate")
+	serverName := nginxDirectiveValue(t, front.Conf, "proxy_ssl_name")
+	linkDir, caDir := t.TempDir(), t.TempDir()
+	linkPool := writeProbePKI(t, linkDir, "probe-front-link-ca", probeLinkSAN, x509.ExtKeyUsageClientAuth, "tls.crt", "tls.key", "")
+	edgePair, edgeRoots := probeServerPair(t, caDir, serverName)
+	_ = edgeRoots
+
+	gw := dockerOut(t, "network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}")
+	ln, err := net.Listen("tcp", net.JoinHostPort(gw, "0"))
+	if err != nil {
+		t.Fatalf("дублёр края не слушает на шлюзе сети контейнеров %s: %v", gw, err)
+	}
+	stub := httptest.NewUnstartedServer(edge)
+	stub.Listener = ln
+	stub.TLS = &tls.Config{Certificates: []tls.Certificate{edgePair}, ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs: linkPool, MinVersion: tls.VersionTLS12}
+	stub.StartTLS()
+	t.Cleanup(stub.Close)
+	upstream := strings.TrimPrefix(stub.URL, "https://")
+
+	dir := t.TempDir()
+	pool := leafFor(t, dir)
+	for name, body := range map[string]string{
+		"default.conf.template": front.Conf, "05-resolver.envsh": front.Resolver, "06-tls-reload.sh": front.Reload,
+	} {
+		mode := os.FileMode(0o644)
+		if strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".envsh") {
+			mode = 0o755
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, d := range []string{dir, linkDir, caDir} {
+		_ = os.Chmod(d, 0o755)
+	}
+
+	args := []string{"run", "-d", "--read-only", "--user", "101:101",
+		"--tmpfs", "/tmp:uid=101,gid=101", "--tmpfs", "/var/cache/nginx:uid=101,gid=101",
+		"--tmpfs", "/etc/nginx/conf.d:uid=101,gid=101",
+		"-v", filepath.Join(dir, "default.conf.template") + ":/etc/nginx/templates/default.conf.template:ro",
+		"-v", filepath.Join(dir, "05-resolver.envsh") + ":/docker-entrypoint.d/05-resolver-from-resolvconf.envsh:ro",
+		"-v", filepath.Join(dir, "06-tls-reload.sh") + ":/docker-entrypoint.d/06-tls-reload.sh:ro",
+		"-v", dir + ":/etc/console-tls:ro",
+		"-v", linkDir + ":" + filepath.Dir(linkCrt) + ":ro",
+		"-v", caDir + ":" + filepath.Dir(edgeCA) + ":ro",
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.Internal),
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.HTTPS),
+		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
+		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
+	}
+	for _, m := range []string{"DASHBOARD", "VPC", "IAM", "NLB", "REGISTRY", "SYSTEM", "COMPUTE", "STORAGE"} {
+		args = append(args, "-e", "KACHO_UI_"+m+"_UPSTREAM=127.0.0.1:9")
+	}
+	args = append(args, front.Image)
+	id := dockerOut(t, args...)
+	t.Cleanup(func() {
+		if t.Failed() {
+			logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
+			t.Logf("журнал раздачи:\n%s", logs)
+		}
+		_ = exec.Command("docker", "rm", "-f", id).Run()
+	})
+	return frontRun{ID: id, Pool: pool, Mapped: func(p int) string {
+		out := dockerOut(t, "port", id, fmt.Sprintf("%d/tcp", p))
+		return strings.TrimSpace(strings.Split(out, "\n")[0])
+	}}
+}
+
+// probeLinkSAN — имя звена в листе пробы; дублёр края видит его в
+// проверенной цепочке, если раздача предъявила смонтированный лист.
+const probeLinkSAN = "api-gateway-front-console.front-link.kacho.internal"
+
+// nginxDirectiveValue — значение первой директивы name в настройке раздачи.
+func nginxDirectiveValue(t *testing.T, conf, name string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(name) + `\s+(\S+?)\s*;`).FindStringSubmatch(conf)
+	if m == nil {
+		t.Fatalf("в настройке раздачи нет директивы %s — полосы к краю не несут TLS звена", name)
+	}
+	return m[1]
+}
+
+// writeProbePKI — удостоверяющий центр и лист с именем dns в каталоге dir
+// (файлы crtName/keyName, ca.crt — caName, если задан). Отдаёт пул центра.
+func writeProbePKI(t *testing.T, dir, caCN, dns string, eku x509.ExtKeyUsage, crtName, keyName, caName string) *x509.CertPool {
+	t.Helper()
+	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	caTpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: pkix.Name{CommonName: caCN},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTpl, caTpl, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, _ := x509.ParseCertificate(caDER)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano() + 1), Subject: pkix.Name{CommonName: dns},
+		DNSNames: []string{dns}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		ExtKeyUsage: []x509.ExtKeyUsage{eku}, KeyUsage: x509.KeyUsageDigitalSignature}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, ca, &key.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kder, _ := x509.MarshalECPrivateKey(key)
+	write := func(name string, b []byte) {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if crtName != "" {
+		write(crtName, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+		write(keyName, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kder}))
+	}
+	if caName != "" {
+		write(caName, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}))
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	return pool
+}
+
+// probeServerPair — серверный лист дублёра края на имя serverName и ca.crt
+// его центра в каталоге caDir (им раздача проверяет край).
+func probeServerPair(t *testing.T, caDir, serverName string) (tls.Certificate, *x509.CertPool) {
+	t.Helper()
+	pairDir := t.TempDir()
+	pool := writeProbePKI(t, pairDir, "probe-edge-ca", serverName, x509.ExtKeyUsageServerAuth, "tls.crt", "tls.key", "ca.crt")
+	raw, err := os.ReadFile(filepath.Join(pairDir, "ca.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(caDir, "ca.crt"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.LoadX509KeyPair(filepath.Join(pairDir, "tls.crt"), filepath.Join(pairDir, "tls.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pair, pool
 }

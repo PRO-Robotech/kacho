@@ -57,3 +57,28 @@ deploy/network_policy_admission_render_test.go.
 {{- define "api-gateway.selectorLabels" -}}
 app: {{ required "api-gateway.name обязателен: из него выводится метка пода края" .Values.name }}
 {{- end -}}
+
+{{/*
+api-gateway.frontLinkSAN — ИМЯ ЗВЕНА ФРОНТА В ЕГО ЛИСТЕ (kacho#3028, круг 5).
+
+Одно правило на две стороны: имя, которое край принимает
+(`KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS`, выводится из `clientAddress.trustedPeers`),
+и имя, которое умбрелла пишет в лист звена (templates/api-gateway-front-link-pki.yaml).
+Аргумент — имя безголовой службы звена; результат — имя DNS в домене звеньев.
+Две копии правила разошлись бы на той, которую забыли поправить, и край перестал
+бы узнавать собственное звено — молча, адресом звена на всех клиентах.
+*/}}
+{{- define "api-gateway.frontLinkSAN" -}}
+{{- printf "%s.front-link.kacho.internal" . -}}
+{{- end -}}
+
+{{/*
+api-gateway.frontLinkSANs — имена звеньев через запятую по перечню служб звеньев.
+*/}}
+{{- define "api-gateway.frontLinkSANs" -}}
+{{- $out := list -}}
+{{- range $p := . -}}
+{{- $out = append $out (include "api-gateway.frontLinkSAN" $p) -}}
+{{- end -}}
+{{- join "," $out -}}
+{{- end -}}

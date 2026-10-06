@@ -263,6 +263,15 @@ kacho-geo:
   image: docker.io/prorobotech/kacho-geo:2798-87329e29
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:2798-87329e29
+  # АДРЕС КЛИЕНТА (kacho#3028): на этом стенде к краю звонят ДВА звена фронта —
+  # контроллер входа (внешний вход края, слой values.prod.yaml) и раздача
+  # консоли (включена слоем values.own.yaml). Оба названы поимённо безголовыми
+  # службами звеньев; сеть — из values.prod.yaml. Здесь, а не в values.own.yaml:
+  # тот слой края не называет (законный близнец гейта f1c).
+  clientAddress:
+    trustedPeers:
+      - api-gateway-front-ingress
+      - api-gateway-front-console
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb
