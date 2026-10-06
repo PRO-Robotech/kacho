@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/notify/feed"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
@@ -42,9 +43,10 @@ import (
 const NotifySubject = "service:notify"
 
 // notifySAN — SPIFFE-идентификатор, который звено опознания служб переводит в
-// имя `notify`. Значение синтетическое: оно живёт только в таблице звена этой
-// пробы.
-const notifySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-notify"
+// имя `notify`. Значение синтетическое и о домене доверия установки ничего не
+// утверждает: домен `.invalid` не резолвится by construction (RFC 2606), а
+// живёт идентификатор только в таблице звена этой пробы.
+var notifySAN = (&url.URL{Scheme: "spiffe", Host: "feedjournaltest.invalid", Path: "/sa/notify"}).String()
 
 // feedRelations — отношения типа ленты в модели службы доступа.
 var feedRelations = map[string]bool{"reader": true}
@@ -109,8 +111,8 @@ func NotifyCaller(t testing.TB) context.Context {
 		func(c context.Context, _ any) (any, error) { out = c; return nil, nil }); err != nil {
 		t.Fatalf("ФИКСТУРА: звено опознания служб отказало: %v", err)
 	}
-	if name, ok := grpcsrv.ServiceNameFromContext(out); !ok || name != "notify" {
-		t.Fatalf("ФИКСТУРА: звено не опознало службу notify (%q, %v)", name, ok)
+	if c, ok := authz.CallerSubject(out); !ok || c.Subject() != NotifySubject {
+		t.Fatalf("ФИКСТУРА: звено не опознало службу notify (%+v, %v)", c, ok)
 	}
 	return out
 }
