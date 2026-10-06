@@ -98,13 +98,15 @@ func parseRelayURI(s string) (RelayAddress, *relayFieldError) {
 	return RelayAddress{Host: host, Port: port, ImplicitTLS: implicit, Username: u.User.Username()}, nil
 }
 
-// relayHostForm — IP-литерал либо имя DNS по RFC 1123: метки
-// `[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?` через точку, всего ≤ 253.
+// relayHostForm — IP-литерал либо имя DNS по RFC 1123 ([dnsNameForm]).
 func relayHostForm(h string) bool {
-	if net.ParseIP(h) != nil {
-		return true
-	}
-	if len(h) > 253 {
+	return net.ParseIP(h) != nil || dnsNameForm(h)
+}
+
+// dnsNameForm — имя DNS по RFC 1123: метки
+// `[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?` через точку, всего ≤ 253.
+func dnsNameForm(h string) bool {
+	if h == "" || len(h) > 253 {
 		return false
 	}
 	for _, l := range strings.Split(h, ".") {

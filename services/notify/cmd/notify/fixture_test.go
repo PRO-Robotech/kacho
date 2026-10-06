@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
 )
 
 // bootFixture — та же единственная фикстура проб старта, что у пакета
@@ -56,7 +58,32 @@ func fixtureEnv(t *testing.T) map[string]string {
 	// Пару DKIM фикстура не несёт: её выпускает проба в каталоге формы kubelet
 	// (§12а, полоса N14), как peerTLSFiles — сертификат пира.
 	dkimFiles(t, env)
+	addressKeyFiles(t, env)
 	return env
+}
+
+// addressKeyFiles выпускает в каталоге пробы формы kubelet файл ключа
+// отпечатка адреса (Р15, Д23) и подставляет каталог в окружение: фикстура его
+// не несёт, как пару DKIM.
+func addressKeyFiles(t *testing.T, env map[string]string) {
+	t.Helper()
+	dir := t.TempDir()
+	gen := "..2026_10_07_00_00_00.000000001"
+	if err := os.Mkdir(filepath.Join(dir, gen), 0o755); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: поколение тома ключа отпечатка: %v", err)
+	}
+	name := config.AddressKeyFileName
+	key := []byte(strings.Repeat("0123456789abcdef", 2*config.AddressKeyMinBytes/16))
+	if err := os.WriteFile(filepath.Join(dir, gen, name), key, 0o600); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: файл %s: %v", name, err)
+	}
+	if err := os.Symlink(filepath.Join("..data", name), filepath.Join(dir, name)); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: ссылка %s: %v", name, err)
+	}
+	if err := os.Symlink(gen, filepath.Join(dir, "..data")); err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: ссылка ..data: %v", err)
+	}
+	env["KACHO_NOTIFY_ADDRESS_KEY_DIR"] = dir
 }
 
 // peerTLSFiles выпускает в каталоге пробы УЦ и сертификат службы notify с
