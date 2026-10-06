@@ -119,7 +119,7 @@ deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.
 | 30 | `identity_mail_lane_single_declaration_injection_test.go` | MAIL-54 падает только на своём предмете по трём осям | наша полоса | оставить | копия дерева с НАШИМ шаблоном `:65`; три оси с близнецами `:111-219` |
 | 31 | `identity_mail_lane_single_declaration_test.go` | почтовая полоса объявлена одним местом — разделом нашего отправителя, — и оснастка раскатки посылает оператора туда | наша полоса | оставить | координата питания `:60`; разделы наших настроек выводятся из шаблона `:120-148`; единственное объявление — `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:615` |
 | 39 | `identity_second_factor_reachable_injection_test.go` | гейт достижимости второго фактора падает и молчит по каждой стороне | наша полоса | оставить | стороны `own` — объявление консоли и корень пиненной службы `:215`, `:276`; посадка `external` — отказ `:354`. Чужой подчарт — синтетика нейтральных имён `:51-53`, `:115-127` (имя поставщика снято частью 5 kacho#1276); самопроверка предиката монтирования ушла вместе с ним (строка 40) |
-| 40 | `identity_second_factor_reachable_test.go` | пол уровня уверенности «2» достижим: служба, консоль и каталог прав сходятся | наша полоса | оставить | стороны посадки `own` `:26-41`, `:2282-2296`, `:2332`; путь настроек поставщика и предикат монтирования ушли вместе с пробами строк 14 и 35 (kacho#2818), половина службы — одна посадка, `own` (`kanameLanding`) — предмет файла от этого не меняется |
+| 40 | `identity_second_factor_reachable_test.go` | пол уровня уверенности «2» достижим: служба, консоль и каталог прав сходятся | наша полоса | оставить | стороны посадки `own` `:26-41`, `:2447-2461`, `:2497`; путь настроек поставщика и предикат монтирования ушли вместе с пробами строк 14 и 35 (kacho#2818), половина службы — одна посадка, `own` (`kanameLanding`) — предмет файла от этого не меняется |
 
 ## Разбивка по исходам
 
@@ -643,8 +643,8 @@ go test ./internal/repohygiene/ -run 'TestRetiredVendor(Mentions|Exceptions)' -c
 | `deploy/identity_second_factor_reachable_injection_test.go:51-53` | `"vendor-sessions:\n  enabled: true\n  deployment: {}\n",` | `"vendor-sessions:\n  enabled: false\n",` |
 | `deploy/identity_second_factor_reachable_injection_test.go:115-127` | `const foreignOn = "vendor-sessions:\n  enabled: true\nvendor-issuer:\n  enabled: true\n"` | `for _, chart := range []string{"vendor-sessions", "vendor-issuer"} {` |
 | `deploy/identity_second_factor_reachable_test.go:26-41` | `// # Стороны 1 и 2 — СВОИ У КАЖДОЙ ПОСАДКИ (#2691)` | `// ровно там, где пол «2» поднять было нечем. Теперь стороны берутся у посадки.` |
-| `deploy/identity_second_factor_reachable_test.go:2282-2296` | `func sidesOfLanding(t *testing.T, landing, console string) (secondFactorSides, error) {` | `return ownSecondFactorSides(pin, root, vocab, rule, console)` |
-| `deploy/identity_second_factor_reachable_test.go:2332` | `func TestIdentity_SecondFactorReachesTheBrowser(t *testing.T) {` | — |
+| `deploy/identity_second_factor_reachable_test.go:2447-2461` | `func sidesOfLanding(t *testing.T, landing, console string) (secondFactorSides, error) {` | `return ownSecondFactorSides(pin, root, vocab, rule, console)` |
+| `deploy/identity_second_factor_reachable_test.go:2497` | `func TestIdentity_SecondFactorReachesTheBrowser(t *testing.T) {` | — |
 | `deploy/kaname_subchart_retired_identity_wiring_test.go:95` | `var hooksLaneEnvPrefixes = []string{` | — |
 | `deploy/own_posture_foreign_identity_test.go:237` | `func judgeForeignIdentityInTree(components []foreignIdentityComponent) []identityPostureFinding {` | — |
 | `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:90` | `kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") .` | — |
