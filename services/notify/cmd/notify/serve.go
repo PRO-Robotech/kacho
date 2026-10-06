@@ -41,7 +41,11 @@ const sweepStopBound = limits.TxStatementTimeout + 5*time.Second
 //  5. страж DNS установки со сроком KACHO_NOTIFY_DNS_BOOT_DEADLINE: всё время
 //     ожидания `/healthz` отвечает «жив», `/readyz` — «не готов» (NTF1-P08).
 //     Нарушение или исчерпание срока — возврат ошибки с именем проверки;
-//  6. прошёл — `dns` готов; пул базы, ограда ключа сетки, уборка, перепроверка.
+//  6. прошёл — `dns` готов; пул базы, ограда ключа сетки, уборка, перепроверка;
+//  7. цикл доставки (полоса A2): сборка, право kaname, рендер, подпись DKIM
+//     парой стража, отправитель, исполнители строк и циклы источников. Он
+//     стоит последним: письмо подписывается парой, которую страж уже проверил
+//     по DNS, а резерв сетки идёт под записанной оградой ключа.
 //
 // Страж стоит после поверхности: liveness чарта (~50 с) короче срока стража
 // (поставляемый 2 мин, верхняя граница 10 мин), и страж до поверхности дал бы
@@ -151,8 +155,20 @@ func runServe(cfg config.Config, logger *slog.Logger, resolver *net.Resolver) er
 		guard.Run(ctx, cfg.DNSRecheckInterval)
 	}()
 
+	del, err := startDelivery(ctx, cfg, deliveryDeps{Pairs: guard, Limiter: lim, Registry: reg, Log: logger})
+	if err != nil {
+		cancel()
+		<-recheckDone
+		sweeper.Wait(sweepStopBound)
+		_ = wait()
+		return fmt.Errorf("цикл доставки: %w", err)
+	}
+
 	<-ctx.Done()
 	logger.Info("останов по сигналу")
+	// Строки в полёте доводятся до Ack под своим сроком (конец аренды, З21):
+	// пул базы (сетка) и поверхность живы, пока они не доведены.
+	del.Wait()
 	<-recheckDone
 	if !sweeper.Wait(sweepStopBound) {
 		logger.Warn("петля уборки лимитов не завершилась за предел останова", "bound", sweepStopBound)

@@ -23,15 +23,12 @@ import (
 	"github.com/PRO-Robotech/corelib/notify/feed"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/peertls"
 )
 
 // subscribeKind — вид ленты на проводе подписки: тип объекта модели прав, у
 // которого один производитель — сервер ленты corelib.
 var subscribeKind = string(feed.FeedObjectType)
-
-// errSANMismatch — сервер ленты предъявил удостоверение, отличное от
-// записи перечня: подключение отвергнуто (NTF1-G22).
-var errSANMismatch = errors.New("SAN сервера ленты не совпадает с записью перечня")
 
 // loop — цикл одного источника.
 type loop struct {
@@ -93,31 +90,14 @@ func newLoop(cfg Config, src config.Source, m *metrics) (*loop, error) {
 // exactSANCreds — транспорт к серверу ленты: цепочка и имя узла
 // проверяются штатно, и сверх того лист сервера обязан нести ровно один
 // URI-SAN, равный записи перечня (SPIFFE ID — один на лист). Иначе — отказ
-// рукопожатия: ни `Claim`, ни `Subscribe` до сервера не доходят.
+// рукопожатия: ни `Claim`, ни `Subscribe` до сервера не доходят. Проверка —
+// [peertls.ExactSAN], общая с ребром notify → kaname.
 func exactSANCreds(peer *tls.Config, src config.Source, log *slog.Logger) credentials.TransportCredentials {
-	cfg := peer.Clone()
-	if cfg.MinVersion < tls.VersionTLS12 {
-		cfg.MinVersion = tls.VersionTLS12
-	}
-	want := src.SAN
-	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
-		if len(cs.PeerCertificates) == 0 {
-			return fmt.Errorf("%w: сервер не предъявил сертификат", errSANMismatch)
-		}
-		uris := cs.PeerCertificates[0].URIs
-		if len(uris) == 1 && uris[0].String() == want {
-			return nil
-		}
-		got := make([]string, 0, len(uris))
-		for _, u := range uris {
-			got = append(got, u.String())
-		}
+	return peertls.ExactSAN(peer, src.SAN, func(got []string) {
 		log.Error("сервер ленты источника предъявил чужое удостоверение — подключение отвергнуто",
 			slog.String("alarm", "source_identity_mismatch"),
-			slog.String("want_san", want), slog.Any("got_san", got))
-		return fmt.Errorf("%w: ожидался %s, предъявлено %v", errSANMismatch, want, got)
-	}
-	return credentials.NewTLS(cfg)
+			slog.String("want_san", src.SAN), slog.Any("got_san", got))
+	})
 }
 
 // run — цикл источника до отмены ctx: поток подписки живёт отдельно и только
@@ -194,7 +174,7 @@ func (l *loop) claim(ctx context.Context) bool {
 	if len(rows) == 0 {
 		return false
 	}
-	l.deliverer.Deliver(ctx, Batch{Source: l.src, Rows: rows, SentAt: sentAt})
+	l.deliverer.Deliver(ctx, Batch{Source: l.src, Rows: rows, SentAt: sentAt, Feed: l.feed})
 	return len(rows) >= size
 }
 

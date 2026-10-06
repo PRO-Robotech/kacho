@@ -38,6 +38,10 @@ func (d *fakeDeliverer) Deliver(_ context.Context, b Batch) {
 	}
 }
 
+// Wait — строк в полёте у получателя фикстуры нет: исход строки он
+// записывает в самом Deliver.
+func (d *fakeDeliverer) Wait() {}
+
 // Получатель фикстуры — порт испытуемого, а не своя копия.
 var _ Deliverer = (*fakeDeliverer)(nil)
 

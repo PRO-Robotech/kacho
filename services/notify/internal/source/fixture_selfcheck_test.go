@@ -19,6 +19,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
@@ -50,6 +51,19 @@ func rawConn(t *testing.T, ca *testCA, addr, wantSAN string) *grpc.ClientConn {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
+}
+
+// readyConn устанавливает соединение и ждёт состояния READY (до 10 с).
+func readyConn(t *testing.T, conn *grpc.ClientConn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn.Connect()
+	for st := conn.GetState(); st != connectivity.Ready; st = conn.GetState() {
+		if !conn.WaitForStateChange(ctx, st) {
+			t.Fatalf("фикстура: соединение не установлено за 10 с (состояние %v)", st)
+		}
+	}
 }
 
 func rawClaim(ctx context.Context, conn *grpc.ClientConn, maxRows uint32) (*notifyv1.ClaimResponse, error) {
@@ -105,6 +119,11 @@ func TestFixtureSourceFreezeAndLateAnswer(t *testing.T) {
 	ca := newTestCA(t)
 	src := newFakeSource(t, ca, "probe", sourceOpts{leaseTTL: 2 * time.Second})
 	conn := rawConn(t, ca, src.addr, "")
+	// Соединение установлено ДО заморозки: срок вызова 300 мс судит ответ
+	// замороженного источника, а не рукопожатие mTLS (под -race и соседними
+	// параллельными пробами оно длится дольше срока, и вызов не доходит до
+	// сервера вовсе).
+	readyConn(t, conn)
 
 	src.put(1, false)
 	src.setFrozen(true)

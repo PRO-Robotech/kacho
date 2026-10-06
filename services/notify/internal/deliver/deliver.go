@@ -40,9 +40,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
 
-	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	"github.com/PRO-Robotech/corelib/notify/feed"
 	"github.com/PRO-Robotech/corelib/notify/spec"
 
@@ -55,7 +53,7 @@ import (
 
 // WorkersMax — верхняя граница числа исполнителей: размер `Claim` не больше
 // числа свободных исполнителей и меньше предела ленты 500 (З21).
-const WorkersMax = 256
+const WorkersMax = config.WorkersMax
 
 // Build — сборка шаблонов notify: проверенный шаблон по пространству и имени.
 type Build interface {
@@ -89,11 +87,6 @@ type Signer interface {
 	Sign(msg []byte) ([]byte, error)
 }
 
-// Feed — лента источника в части `Ack` (клиент gRPC ленты).
-type Feed interface {
-	Ack(ctx context.Context, req *notifyv1.AckRequest, opts ...grpc.CallOption) (*notifyv1.AckResponse, error)
-}
-
 // Config — то, из чего собираются исполнители строк.
 type Config struct {
 	// Build — сборка шаблонов.
@@ -110,8 +103,6 @@ type Config struct {
 	Sender Sender
 	// Signer — подпись DKIM письма перед отправкой.
 	Signer Signer
-	// Feeds — лента каждого источника перечня по модулю.
-	Feeds map[string]Feed
 	// From — адрес отправителя установки в конверте (`notify.smtp.fromAddress`).
 	From string
 	// Workers — число исполнителей (`notify.workers`), [1..WorkersMax].
@@ -134,7 +125,8 @@ type Config struct {
 type route struct {
 	src  config.Source
 	gate *grant.Gate
-	feed Feed
+	// feed — путь `Ack` пачки ([source.Batch.Feed]); ставится на пачку.
+	feed source.Feed
 }
 
 // Worker — исполнители строк: получатель пачек цикла источника
@@ -177,11 +169,7 @@ func New(cfg Config) (*Worker, error) {
 		if err != nil {
 			return nil, fmt.Errorf("deliver: %w", err)
 		}
-		f, ok := cfg.Feeds[s.Module]
-		if !ok || f == nil {
-			return nil, fmt.Errorf("deliver: у модуля %q нет клиента ленты", s.Module)
-		}
-		routes[s.Module] = route{src: s, gate: g, feed: f}
+		routes[s.Module] = route{src: s, gate: g}
 		modules = append(modules, s.Module)
 	}
 	m, err := newMetrics(cfg.Metrics, modules)
@@ -276,6 +264,15 @@ func (w *Worker) Deliver(ctx context.Context, b source.Batch) {
 			"source", b.Source.Module, "rows", len(b.Rows))
 		return
 	}
+	if b.Feed == nil {
+		// Пачка без пути Ack — ошибка сборки цикла источника: исход строки
+		// записать некуда, и строку не начинают вовсе (ни права, ни SMTP).
+		// Строки без Ack: их выдаст следующий Claim после конца аренды.
+		w.log.Error("пачка без пути Ack: строки не обработаны",
+			"source", b.Source.Module, "rows", len(b.Rows))
+		return
+	}
+	rt.feed = b.Feed
 	base := context.WithoutCancel(ctx)
 	for _, row := range b.Rows {
 		w.slots <- struct{}{}

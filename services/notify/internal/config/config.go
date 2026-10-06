@@ -32,6 +32,7 @@ import (
 
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/notify/feed"
+	"github.com/PRO-Robotech/corelib/notify/form"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
@@ -47,6 +48,10 @@ const (
 	ResolveSendTimeoutMax = 30 * time.Second
 	SMTPSessionTimeoutMin = time.Second
 	SMTPSessionTimeoutMax = 120 * time.Second
+	// WorkersMin, WorkersMax — граница `notify.workers` (З21): размер `Claim`
+	// не больше числа исполнителей и меньше предела ленты feed.MaxClaim.
+	WorkersMin = 1
+	WorkersMax = 256
 )
 
 // AckMargin — запас на `Ack` перед концом аренды строки. Константа, не ручка
@@ -108,6 +113,21 @@ type Config struct {
 	// SMTPSessionTimeout — срок одной SMTP-сессии, в [1s..120s].
 	SMTPSessionTimeout time.Duration `envconfig:"KACHO_NOTIFY_SMTP_SESSION_TIMEOUT" knob:"notify.smtp.sessionTimeout"`
 
+	// Workers — число исполнителей строк, в [WorkersMin..WorkersMax] (З21).
+	Workers int `envconfig:"KACHO_NOTIFY_WORKERS" knob:"notify.workers"`
+
+	// DeferFor — отсрочка DEFER по `grant_skew`, `platform_unavailable`,
+	// `template_skew`, в [feed.MinDefer..feed.MaxDefer] (З23).
+	DeferFor time.Duration `envconfig:"KACHO_NOTIFY_DEFER_FOR" knob:"notify.deferFor"`
+
+	// KanameAddr — внутренний слушатель kaname `узел:порт` для `ResolveSend`
+	// (ребро notify → kaname, §9 замысла).
+	KanameAddr string `envconfig:"KACHO_NOTIFY_KANAME_ADDR" knob:"notify.kaname.addr"`
+
+	// KanameSAN — точный URI SAN (SPIFFE ID) листа kaname: решение о письме
+	// принимается только от него, а не от любого листа внутреннего УЦ.
+	KanameSAN string `envconfig:"KACHO_NOTIFY_KANAME_SAN" knob:"notify.kaname.san"`
+
 	// Origin — origin установки: абсолютный `https://` без пути, база ссылок
 	// писем (NTF1-G06).
 	Origin string `envconfig:"KACHO_NOTIFY_ORIGIN" knob:"notify.origin"`
@@ -126,6 +146,10 @@ type Config struct {
 	// `notify/address` с непустым доменом. Его домен — домен `From` и домен
 	// проверок DNS установки (§12а, Д101); результат — [Config.FromDomain].
 	SMTPFromAddress string `envconfig:"KACHO_NOTIFY_SMTP_FROM_ADDRESS" knob:"notify.smtp.fromAddress"`
+
+	// SMTPFromName — имя отправителя установки (заголовок From, З25): форма
+	// `notify/form.HeaderText`; результат — [Config.FromName].
+	SMTPFromName string `envconfig:"KACHO_NOTIFY_SMTP_FROM_NAME" knob:"notify.smtp.fromName"`
 
 	// ── DNS установки (Р19, §12а) ───────────────────────────────────────────
 
@@ -175,6 +199,16 @@ type Config struct {
 	// строковый вид не попадает; ручка — [recipientKeyKnob].
 	recipientKey RecipientKey
 
+	// trustAnchor — путь якоря проверки листа ретранслятора; trustAnchorSet —
+	// переменная есть в окружении. Читается [os.LookupEnv]: отсутствие —
+	// законное значение (доверенный набор — корневое хранилище образа), поэтому
+	// тега `envconfig` у поля нет; ручка — [trustAnchorKnob].
+	trustAnchor    string
+	trustAnchorSet bool
+
+	// fromName — разобранное имя отправителя; заполняет [Config.Validate].
+	fromName form.HeaderText
+
 	// sources — разобранный перечень; заполняет [Config.Validate].
 	sources []Source
 
@@ -195,6 +229,15 @@ type Config struct {
 var credentialKnob = Knob{
 	Name: "notify.smtp.credential",
 	Env:  "KACHO_NOTIFY_SMTP_CREDENTIAL",
+	Kind: reflect.String,
+}
+
+// trustAnchorKnob — якорь проверки листа ретранслятора. Переменную чарт
+// рендерит только при объявленном якоре узла почты (`trustAnchorSecret`);
+// без неё доверенный набор — корневое хранилище образа.
+var trustAnchorKnob = Knob{
+	Name: "notify.smtp.trustAnchorFile",
+	Env:  "KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE",
 	Kind: reflect.String,
 }
 
@@ -274,7 +317,7 @@ func Knobs() []Knob {
 		}
 		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind()})
 	}
-	return append(out, credentialKnob, recipientKeyKnob)
+	return append(out, credentialKnob, recipientKeyKnob, trustAnchorKnob)
 }
 
 func knobByEnv(env string) Knob {
@@ -353,6 +396,7 @@ func Load() (Config, error) {
 	}
 	v, ok := os.LookupEnv(credentialKnob.Env)
 	c.credential = Credential{present: ok, value: v}
+	c.trustAnchor, c.trustAnchorSet = os.LookupEnv(trustAnchorKnob.Env)
 	if key, ok := os.LookupEnv(recipientKeyKnob.Env); ok {
 		c.recipientKey = RecipientKey{value: []byte(key)}
 	}
@@ -373,6 +417,14 @@ func (c Config) SourceRoster() []Source {
 	copy(out, c.sources)
 	return out
 }
+
+// FromName — имя отправителя установки; годно только после успешного
+// [Config.Validate].
+func (c Config) FromName() form.HeaderText { return c.fromName }
+
+// TrustAnchorFile — путь якоря проверки листа ретранслятора; ok=false —
+// якоря нет, доверенный набор — корневое хранилище образа.
+func (c Config) TrustAnchorFile() (string, bool) { return c.trustAnchor, c.trustAnchorSet }
 
 // Mode — режим посадки для общего дескриптора.
 func (c Config) Mode() (servicecontract.Mode, error) { return servicecontract.ParseMode(c.AuthMode) }
@@ -404,7 +456,8 @@ func (c *Config) Validate() error {
 	var fs findings
 
 	for _, k := range Knobs() {
-		if k == credentialKnob {
+		if k == credentialKnob || k == trustAnchorKnob {
+			// Отсутствие этих двух — законное значение; их судят свои стражи.
 			continue
 		}
 		if c.unset[k.Env] {
@@ -425,6 +478,7 @@ func (c *Config) Validate() error {
 	}
 
 	c.checkInt(&fs, "DBMaxConns", c.DBMaxConns, DBMaxConnsMin, DBMaxConnsMax)
+	c.validateDelivery(&fs)
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
 	c.validateGrid(&fs)
