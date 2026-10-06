@@ -4,15 +4,16 @@
 package middleware
 
 import (
+	"strings"
 	"testing"
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — пятнадцать путей одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — семнадцать путей одним объявлением):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
 // восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
-// kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
-// службы). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// kacho#1281), два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
+// службы) и два глагола входа ключом доступа (приёмка Ф13 Р1, kacho#3037). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -36,7 +37,16 @@ var loginLaneWant = map[string]string{
 	// кода, оба под сессией человека.
 	"verify-email":         "/iam/v1/auth/verify-email",
 	"verify-email-confirm": "/iam/v1/auth/verify-email/confirm",
+	// Вход ключом доступа (приёмка Ф13 Р1, Ф13-28; kacho#3037): форма запроса
+	// и форма подтверждения — два глагола одной полосы.
+	"access-key-begin": "/iam/v1/auth/access-key/begin",
+	"access-key-login": "/iam/v1/auth/access-key/login",
 }
+
+// accessKeyFamily — приставка семейства входа ключом. Читается ТОЛЬКО пробой
+// закрытости семейства ниже: объявление края совпадает с путём точно, и
+// приставка здесь — способ сосчитать записи семейства, а не правило совпадения.
+const accessKeyFamily = "/iam/v1/auth/access-key/"
 
 // openBeforeAddressConfirmationWant — записи, доступные до подтверждения адреса
 // почты (приёмка F6b, Р5): ровно девять — шесть глаголов формы и три координаты
@@ -66,7 +76,7 @@ var openBeforeAddressConfirmationWant = map[string]bool{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant)+len(ceremonyWant) {
-		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b) и координат церемонии %d (LINE-A-1 §5.1а)",
+		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b + Ф13) и координат церемонии %d (LINE-A-1 §5.1а)",
 			len(routes), len(loginLaneWant)+len(ceremonyWant), len(loginLaneWant), len(ceremonyWant))
 	}
 	for _, rt := range routes {
@@ -160,19 +170,22 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d записей объявления", len(added), len(LoginLaneRoutes()))
 }
 
-// TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation —
-// объявление несёт 18 записей: 15 глаголов формы с целью «слушатель формы» и 3
+// TestLoginLanePaths_F6b_11_TwentyRecordsAndNineOpenBeforeAddressConfirmation —
+// объявление несёт 20 записей: 17 глаголов формы с целью «слушатель формы» и 3
 // координаты церемонии с целью «слушатель выдачи»; у каждой — решение «доступна
 // до подтверждения адреса», и доступных ровно девять (приёмка F6b, Р5, F6b-11).
+// Два глагола входа ключом (Ф13, kacho#3037) решения F6b не получили: перечень
+// девяти закрыт приёмкой F6b, и запись, дописанная без решения, до
+// подтверждения недоступна — умолчание отказа, а не наследование от `login`.
 //
 // Нулевое значение решения — ОТКАЗ: запись, дописанная без решения, до
 // подтверждения недоступна. Оба глагола подтверждения носитель читают (Р6
 // службы: «под сессией человека»), поэтому при службе, не ответившей о сессии,
 // край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
-func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation(t *testing.T) {
+func TestLoginLanePaths_F6b_11_TwentyRecordsAndNineOpenBeforeAddressConfirmation(t *testing.T) {
 	routes := LoginLaneRoutes()
-	if len(routes) != 18 || len(loginLaneWant) != 15 || len(ceremonyWant) != 3 {
-		t.Fatalf("записей объявлено %d, по приёмке — 18: глаголов формы 15 (%d выписано), координат церемонии 3 (%d выписано)",
+	if len(routes) != 20 || len(loginLaneWant) != 17 || len(ceremonyWant) != 3 {
+		t.Fatalf("записей объявлено %d, по приёмке — 20: глаголов формы 17 (%d выписано), координат церемонии 3 (%d выписано)",
 			len(routes), len(loginLaneWant), len(ceremonyWant))
 	}
 	open, form, issuance := 0, 0, 0
@@ -191,8 +204,8 @@ func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmati
 			open++
 		}
 	}
-	if form != 15 || issuance != 3 {
-		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 15 и 3", form, issuance)
+	if form != 17 || issuance != 3 {
+		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 17 и 3", form, issuance)
 	}
 	if open != 9 {
 		t.Fatalf("доступных до подтверждения адреса записей %d, по приёмке — 9", open)
@@ -217,4 +230,77 @@ func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmati
 		}
 	}
 	t.Logf("перепись: записей %d (формы %d · выдачи %d) · доступных до подтверждения адреса %d", len(routes), form, issuance, open)
+}
+
+// TestLoginLanePaths_F13_28_TwoAccessKeyVerbsAndNoThird — вход ключом доступа
+// (приёмка Ф13 Р1, Ф13-28, §7 инв. 12; kacho#3037) несёт в объявлении края ровно
+// ДВЕ записи: форма запроса и форма подтверждения. Обе — глаголы формы на
+// слушателе формы, обе освобождены от каталога прав (Р8) и узнаются веткой
+// полосы сессии (Р7).
+//
+// Семейство ЗАКРЫТО: третья запись под `access-key/` — освобождение от каталога,
+// никем не решённое, и проба на ней краснеет, называя путь. Решение о
+// недоступности службы — ПАРОЙ с входом паролем (Ф13-28 «И»): полосы входа ведут
+// себя одинаково, и проба сверяет значение с `login`, а не с литералом.
+func TestLoginLanePaths_F13_28_TwoAccessKeyVerbsAndNoThird(t *testing.T) {
+	want := map[string]string{
+		"access-key-begin": loginLaneWant["access-key-begin"],
+		"access-key-login": loginLaneWant["access-key-login"],
+	}
+	seen := map[string]bool{}
+	family := 0
+	for _, rt := range LoginLaneRoutes() {
+		if !strings.HasPrefix(rt.Path, accessKeyFamily) {
+			continue
+		}
+		family++
+		if want[rt.Verb] != rt.Path {
+			t.Errorf("запись %q на пути %q семейства входа ключом приёмкой Ф13 не объявлена — освобождение от каталога никем не решено", rt.Verb, rt.Path)
+			continue
+		}
+		seen[rt.Verb] = true
+	}
+	for verb, path := range want {
+		if !seen[verb] {
+			t.Errorf("глагол входа ключом %q (%s) в объявлении края отсутствует — после посадки Ф13 путь отвечал бы 404 краем", verb, path)
+			continue
+		}
+		rt, _ := LoginLaneRouteFor(path)
+		if rt.Target != RelayTargetForm {
+			t.Errorf("%q ретранслируется на цель %q, по приёмке — слушатель формы", path, rt.Target)
+		}
+		if !isPublicHTTPPath(path) {
+			t.Errorf("%q не освобождён от решения по каталогу (Р8) — глагол формы отвергался бы каталогом до службы", path)
+		}
+		if LoginLaneVerb(path) != verb {
+			t.Errorf("метка ретрансляции для %q — %q, объявлено %q", path, LoginLaneVerb(path), verb)
+		}
+		if got, pair := loginLaneRelaysWhenUnanswered(path), loginLaneRelaysWhenUnanswered(LoginLanePathLogin); got != pair {
+			t.Errorf("%q: ретрансляция при неответе службы = %v, у входа паролем — %v; полосы входа обязаны вести себя одинаково (Ф13-28)", path, got, pair)
+		}
+		if loginLaneOpenBeforeAddressConfirmation(path) {
+			t.Errorf("%q доступен до подтверждения адреса — перечень девяти закрыт приёмкой F6b Р5, решения Ф13 об этом нет", path)
+		}
+		if carriesClientBasicFor(path) {
+			t.Errorf("%q несёт удостоверение клиента базовой схемой — исключение одно, у обмена кода", path)
+		}
+	}
+	if family != len(want) {
+		t.Errorf("записей семейства входа ключом %d, по приёмке Ф13 — %d", family, len(want))
+	}
+	// Отрицательный контроль: соседи по имени — не глаголы и не освобождены.
+	for _, p := range []string{"/iam/v1/auth/access-key", "/iam/v1/auth/access-key/", "/iam/v1/auth/access-key/begin/",
+		"/iam/v1/auth/access-key/loginx", "/iam/v1/auth/access-key/login/x", "/iam/v1/auth/access-keys"} {
+		if IsLoginLanePath(p) || isPublicHTTPPath(p) {
+			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
+		}
+	}
+	t.Logf("перепись: записей объявления %d · семейства входа ключом %d (по приёмке %d)", len(LoginLaneRoutes()), family, len(want))
+}
+
+// carriesClientBasicFor — решение ретранслятора об удостоверении клиента по пути
+// (вспомогательное чтение пробы; путь вне перечня — false).
+func carriesClientBasicFor(path string) bool {
+	rt, ok := LoginLaneRouteFor(path)
+	return ok && rt.CarriesClientBasic()
 }

@@ -227,11 +227,52 @@ data:
         # возврат такой полосы на цепочке посадки own — находка рендер-гейта
         # deploy/tests/helm/console-serves-identity-flows-test.sh.
 
+        # ТОЧКА ЖИВОСТИ — СЛУЖЕБНАЯ, А НЕ ЧАСТЬ КОНСОЛИ (kacho#3030). На неё
+        # смотрят пробы кластера, и только они: внутренний порт `http`. Внешний
+        # вход слушает ЭТИМ ЖЕ серверным блоком (второй копии маршрутов нет),
+        # поэтому на его порту точка отказывает — тем же `404`, что любой адрес,
+        # которого у раздачи нет. Отказ стоит ДО ответа: директивы `return`
+        # исполняются по порядку, и первая исполненная завершает обработку.
         location = /healthz {
+            {{- if .Values.publicFront.enabled }}
+            if ($server_port = {{ .Values.publicFront.httpsPort }}) { return 404; }
+            {{- end }}
             access_log off;
             add_header Content-Type text/plain;
             {{- include "ui.securityHeaders" . | nindent 12 }}
             return 200 "ok\n";
+        }
+
+        # Точки живости МОДУЛЕЙ полоса ассетов отдавала бы наружу: она срезает
+        # префикс `/<модуль>-remote/` и ведёт адрес к серверу модуля, у которого
+        # `/healthz` свой. Модуль проба кластера опрашивает напрямую, на его
+        # поде, — через оболочку этот адрес не нужен никому и закрыт на любом
+        # порту. Точное совпадение выигрывает у префикса `^~` по порядку
+        # разрешения; новая полоса модуля без своей строки здесь — находка
+        # ui-future/deploy/console_health_point_external_test.go.
+        location = /dashboard-remote/healthz {
+            return 404;
+        }
+        location = /vpc-remote/healthz {
+            return 404;
+        }
+        location = /iam-remote/healthz {
+            return 404;
+        }
+        location = /nlb-remote/healthz {
+            return 404;
+        }
+        location = /registry-remote/healthz {
+            return 404;
+        }
+        location = /system-remote/healthz {
+            return 404;
+        }
+        location = /compute-remote/healthz {
+            return 404;
+        }
+        location = /storage-remote/healthz {
+            return 404;
         }
 
         location = /index.html {
