@@ -353,6 +353,29 @@ spec:
             - name: KACHO_API_GATEWAY_JWKS_CA_FILE
               value: {{ printf "%s/%s" (trimSuffix "/" .Values.tokenAcceptance.issuerKeySetsCa.mountPath) .Values.tokenAcceptance.issuerKeySetsCa.key | quote }}
             {{- end }}
+            # Круг доверенных звеньев адреса клиента (kacho#3028) — всегда, вне
+            # блока authz: им кормится и ретрансляция полосы входа. Пустой —
+            # «никому»; сеть вне частных диапазонов — отказ старта края
+            # (config.TrustedProxyCircle → pkg/proxycircle).
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS
+              value: {{ join "," .Values.clientAddress.trustedProxyCIDRs | quote }}
+            # Звенья фронта поимённо (kacho#3028, круг 3) — имена безголовых
+            # служб фронта; пусты вместе с кругом либо непусты вместе с ним.
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS
+              value: {{ join "," (.Values.clientAddress.trustedPeers | default list) | quote }}
+            # Имена звеньев в листе (kacho#3028, C4) — выводятся из перечня служб
+            # звеньев тем же правилом, которым умбрелла пишет имя в лист звена
+            # (api-gateway.frontLinkSAN). Перечня нет — имён нет, «никому».
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS
+              value: {{ include "api-gateway.frontLinkSANs" (.Values.clientAddress.trustedPeers | default list) | quote }}
+            {{- if .Values.clientAddress.trustedPeers }}
+            # Якорь звеньев (kacho#3028, круг 5) — ОТДЕЛЬНЫЙ удостоверяющий центр,
+            # выпускающий только в пространстве края: имя звена в листе якоря
+            # установки выдаёт себе всякий, кто заводит запрос на сертификат в
+            # любом пространстве имён. Совпадение с якорем установки — отказ старта.
+            - name: KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE
+              value: {{ printf "%s/ca.crt" (trimSuffix "/" .Values.clientAddress.linkAnchor.mountPath) | quote }}
+            {{- end }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
               value: {{ .Values.authz.enabled | default false | quote }}
@@ -486,6 +509,12 @@ spec:
               mountPath: {{ .Values.mtls.mountPath | quote }}
               readOnly: true
             {{- end }}
+            {{- if .Values.clientAddress.trustedPeers }}
+            # Якорь звеньев фронта — только ca.crt (ключа центра в поде края нет).
+            - name: front-link-ca
+              mountPath: {{ .Values.clientAddress.linkAnchor.mountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- if ((.Values.tokenAcceptance | default dict).issuerKeySetsCa | default dict).secretName }}
             - name: issuer-keysets-ca
               mountPath: {{ .Values.tokenAcceptance.issuerKeySetsCa.mountPath | quote }}
@@ -543,6 +572,14 @@ spec:
         - name: mtls-client
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
+        {{- if .Values.clientAddress.trustedPeers }}
+        - name: front-link-ca
+          secret:
+            secretName: {{ required "api-gateway.clientAddress.linkAnchor.secretName обязателен при объявленных звеньях" .Values.clientAddress.linkAnchor.secretName | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- end }}
         {{- if ((.Values.tokenAcceptance | default dict).issuerKeySetsCa | default dict).secretName }}
         - name: issuer-keysets-ca

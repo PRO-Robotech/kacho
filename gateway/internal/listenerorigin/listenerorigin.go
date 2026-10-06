@@ -103,6 +103,10 @@ type internalConn struct {
 	net.Conn
 }
 
+// NetConn — обёрнутое соединение: метка происхождения не скрывает того, что
+// под ней (состояние TLS для звена фронта читает gateway/internal/linktls).
+func (c *internalConn) NetConn() net.Conn { return c.Conn }
+
 // InternalListener wraps lis so every connection it accepts is tagged as
 // cluster-internal origin (recognisable by ConnContext). Wrap ONLY the
 // dedicated cluster-internal admin REST listener; the plaintext cmux listener
@@ -146,6 +150,9 @@ func OnExternalListener(ctx context.Context) bool {
 type externalConn struct {
 	net.Conn
 }
+
+// NetConn — обёрнутое соединение (см. internalConn.NetConn).
+func (c *externalConn) NetConn() net.Conn { return c.Conn }
 
 // ExternalListener wraps lis so every connection it accepts is tagged as
 // accepted on an external listener (recognisable by ConnContext). Wrap the

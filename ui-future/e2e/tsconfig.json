@@ -79,6 +79,7 @@
     "playwright.config.ts",
     "remote-browser-policy.ts",
     "host-mapping.ts",
-    "stand-secure-origin.ts"
+    "stand-secure-origin.ts",
+    "stand-tls-trust.ts"
   ]
 }

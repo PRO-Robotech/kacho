@@ -1,0 +1,53 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+Лист TLS входа консоли через контроллер (kacho#3025): по одному Certificate на
+каждую запись `ingress.tls`, в её `secretName`, с её `hosts`. Без листа
+контроллер на объявленном https отдаёт свой поддельный сертификат, и консоль
+недостижима на том происхождении, которое служба доступа называет браузеру.
+
+Поставщик — `ingress.certificate.issuerRef` профиля; чарт его не заводит.
+*/}}
+{{- $ing := .Values.ingress }}
+{{- if and $ing.enabled $ing.certificate.create }}
+{{- if not $ing.tls }}
+{{- fail "uif.ingress.certificate.create: перечень ingress.tls пуст — листу некуда лечь, а хосту не по чему отвечать TLS" }}
+{{- end }}
+{{- if not $ing.certificate.issuerRef.name }}
+{{- fail "uif.ingress.certificate.create: issuerRef.name пуст — поставщик листа решается профилем площадки, умолчания нет" }}
+{{- end }}
+{{- range $i, $e := $ing.tls }}
+{{- if or (not $e.secretName) (not $e.hosts) }}
+{{- fail (printf "uif.ingress.tls[%d]: запись без secretName либо без hosts — лист выпустить не во что или не на что" $i) }}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $e.secretName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ui.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ $e.secretName | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - server auth
+  # Имя субъекта — первый хост записи. Самоподписанный лист несёт имя издателя,
+  # РАВНОЕ имени субъекта, и без commonName оба пусты; такой лист отвергает curl
+  # дистрибутива ранера конвейера («couldn't get X509-issuer name»), и шаг
+  # ожидания консоли не получает ответа ни при каком доверии. Судит
+  # deploy/console_ingress_origin_is_served_over_tls_render_test.go, (5).
+  commonName: {{ first $e.hosts | quote }}
+  dnsNames:
+    {{- toYaml $e.hosts | nindent 4 }}
+  issuerRef:
+    name: {{ $ing.certificate.issuerRef.name | quote }}
+    kind: {{ $ing.certificate.issuerRef.kind | quote }}
+    group: {{ $ing.certificate.issuerRef.group | quote }}
+{{- end }}
+{{- end }}

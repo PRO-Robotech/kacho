@@ -96,9 +96,11 @@ env:
   # прогонами.
   CLUSTER_NAME: kacho-console
   # Хост ingress консоли объявлен подчартом (`ui-future/deploy/values.yaml`),
-  # порт — отображением kind (`deploy/kind/kind-config.yaml`: 80 → 28080).
+  # порт — отображением kind порта TLS узла (`deploy/kind/kind-config.yaml`:
+  # 443 → 28443). Консоль стенда — по https (kacho#3025): то же происхождение
+  # объявляет профиль стенда (`values.dev.yaml`, `appBaseURL`).
   CONSOLE_HOST: console.kacho.local
-  CONSOLE_PORT: '28080'
+  CONSOLE_PORT: '28443'
 
 jobs:
   probes:
@@ -165,6 +167,15 @@ jobs:
       - name: гейт — самопроверка владельца подъёма стенда
         id: selftest-standup
         run: bash .github/scripts/stand-up.sh --self-test
+
+      # …И ДЛЯ РЕШЕНИЯ ОБ АДРЕСЕ АДМИНИСТРАТОРА ОБЛАКА. Шаг условия ниже спрашивает
+      # у поднятой службы, в какой форме она держит адрес первого администратора
+      # (ссылка на секрет либо величина), и от ответа зависит, чеканить ли секрет
+      # прогона. Решение — чистая функция, её семь случаев (обе формы, отсутствие,
+      # три нераспознанных) проверяются здесь, до стенда.
+      - name: гейт — самопроверка решения об адресе администратора облака
+        id: selftest-cloud-admin
+        run: bash .github/scripts/console-cloud-admin.sh --self-test
 
       # …И ДЛЯ РЕШЕНИЯ О БРАУЗЕРЕ (#1288). Оно объявляет, что пробы ходят только
       # МЕСТНЫМ браузером, и отказывает загрузке конфигурации, если удалённый
@@ -590,6 +601,17 @@ jobs:
         timeout-minutes: 5
         run: node scripts/stand-secure-origin-selftest.ts
 
+      # ДОВЕРИЕ ЛИСТУ КОНСОЛИ СТЕНДА (kacho#3025). Лист самоподписан, и пробы
+      # доверяют ровно его ключу (отпечаток SPKI), а не отказываются от проверки.
+      # Отпечаток, который Chromium не узнаёт, уронил бы каждую пробу на
+      # сертификате — самопроверка сверяет его с независимым производителем
+      # (openssl) за секунды и без стенда.
+      - name: гейт — самопроверка доверия листу консоли стенда
+        id: selftest-stand-tls-trust
+        working-directory: ui-future/e2e
+        timeout-minutes: 5
+        run: node scripts/stand-tls-trust-selftest.ts
+
       # ДИСК — УЗКОЕ МЕСТО: стенду нужны образы восьми сервисов, девяти модулей
       # консоли, kind-нода и слои buildkit. Предустановленные тулчейны, которых
       # здесь не касается ни один шаг, занимают десятки гигабайт — снимаем их ДО
@@ -757,8 +779,18 @@ jobs:
           if [ -n "$GIVEN_URL" ]; then
             url="$GIVEN_URL"
           else
-            url="http://${CONSOLE_HOST}:${CONSOLE_PORT}"
+            url="https://${CONSOLE_HOST}:${CONSOLE_PORT}"
             echo "127.0.0.1 ${CONSOLE_HOST}" | sudo tee -a /etc/hosts >/dev/null
+            # Лист консоли своего стенда самоподписан (kacho#3025): доверяется
+            # ровно он — из секрета, который выпустил cert-manager стенда, — и
+            # тем же файлом пользуются curl ниже, браузер и путь запроса Node.
+            ca="$RUNNER_TEMP/console-ca.pem"
+            kubectl -n kacho get secret uif-console-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > "$ca"
+            if ! grep -q 'BEGIN CERTIFICATE' "$ca"; then
+              echo "::error title=Условие не создано::секрет kacho/uif-console-tls не несёт листа консоли (ca.crt) — консоль по TLS не выпущена, пробы не выполнялись."
+              exit 1
+            fi
+            echo "ca=$ca" >> "$GITHUB_OUTPUT"
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
           if [ -z "$GIVEN_URL" ]; then
@@ -772,7 +804,7 @@ jobs:
           # Ждём ОТВЕТ, а не время: ожидание временем даёт красное на медленном
           # стенде и зелёное на быстром при одном и том же коде.
           for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url/healthz" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 ${ca:+--cacert "$ca"} "$url/healthz" || true)
             if [ "$code" = "200" ]; then
               echo "✓ консоль отвечает на $url/healthz (попытка $i)"
               exit 0
@@ -802,6 +834,8 @@ jobs:
         env:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
+          KACHO_CONSOLE_CA: ${{ steps.console.outputs.ca }}
+          NODE_EXTRA_CA_CERTS: ${{ steps.console.outputs.ca }}
         run: node scripts/browser-reach.mjs
 
       # ─── ПРИЁМНИК ПИСЕМ СТЕНДА ОТКРЫТ ПРОГОНУ (приёмка F6b, F6b-34; kacho#2901) ───
@@ -847,6 +881,26 @@ jobs:
           echo "::error title=Условие не создано::поверхность чтения приёмника писем (svc/$MAILBOX_SVC:8025 → $url) не ответила за 60 с. Это НЕ вердикт проб: фикстура регистрации без неё не подтвердит адрес ни одного арендатора, и пробы не начинались."
           exit 1
 
+      # ─── АДМИНИСТРАТОР ОБЛАКА СТЕНДА ЗАВЕДЁН (Ф3-24, Ф12-45; kacho#2878) ───
+      #
+      # Пробы распорядителя над записью человека (`specs/cloud-admin-lane.spec.ts`)
+      # читают удостоверение администратора облака из `KACHO_CLOUD_ADMIN_*`. Подъём
+      # `own-up` заводит человека шагом `bootstrap-cloud-admin`, а `dev-up` — нет, и
+      # без этого шага обе пробы уходили в «не выполнилось» на КАЖДОМ прогоне, а гейт
+      # отчёта — в код 3. Условие создаётся здесь тем же путём продукта: регистрация,
+      # код из письма приёмника стенда, подтверждение; право `system_admin` выдаёт
+      # посев бутстрапа службы по адресу, который шаг спрашивает у самой службы.
+      # Наружу шаг отдаёт только ИМЯ секрета; величины читает шаг проб.
+      #
+      # Только при СВОЁМ стенде — по тому же доводу, что у приёмника писем: у
+      # внешнего (`console_url`) кластера у ранера нет. Тогда имени секрета нет,
+      # удостоверение прогону не отдаётся, и две пробы — «не выполнилось».
+      - name: администратор облака стенда заведён
+        id: cloud_admin
+        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.console_url == '') && env.STAND_PRECONDITION_UNMET != '1' }}
+        timeout-minutes: 6
+        run: bash .github/scripts/console-cloud-admin.sh
+
       # ПРЕДЕЛ ВРЕМЕНИ РАЗМЕРЯЕТСЯ ПО ЧИСЛУ ПРОБ, А НЕ ПО ПРИВЫЧКЕ.
       #
       # Было 20 минут при 31 пробе. Набор вырос до 65 (канон консоли, #925), и
@@ -875,7 +929,23 @@ jobs:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
           KACHO_CONSOLE_MAILBOX_URL: ${{ steps.mailbox.outputs.url }}
-        run: npx playwright test
+          KACHO_CONSOLE_CA: ${{ steps.console.outputs.ca }}
+          NODE_EXTRA_CA_CERTS: ${{ steps.console.outputs.ca }}
+          CLOUD_ADMIN_SECRET: ${{ steps.cloud_admin.outputs.secret }}
+        run: |
+          # Удостоверение администратора облака — из секрета, который завёл шаг
+          # условия; величины маскируются в журнале до первого использования и
+          # идут пробам окружением. Имени секрета нет (внешний стенд) — пробам
+          # распорядителя удостоверение не отдаётся, и они «не выполнилось».
+          if [ -n "$CLOUD_ADMIN_SECRET" ]; then
+            admin_email="$(kubectl -n kacho get secret "$CLOUD_ADMIN_SECRET" -o jsonpath='{.data.email}' | base64 -d)"
+            admin_password="$(kubectl -n kacho get secret "$CLOUD_ADMIN_SECRET" -o jsonpath='{.data.password}' | base64 -d)"
+            echo "::add-mask::$admin_email"
+            echo "::add-mask::$admin_password"
+            export KACHO_CLOUD_ADMIN_EMAIL="$admin_email"
+            export KACHO_CLOUD_ADMIN_PASSWORD="$admin_password"
+          fi
+          npx playwright test
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли
       # то, что запускалось»; этот гейт говорит ещё две вещи, о которых код
@@ -927,12 +997,26 @@ jobs:
       # Условие — то же, что у гейта отчёта: без созданного условия прогона
       # вердикта о бюджете нет, и второй красный рядом с «не выполнилось» дал бы
       # два разных ответа на один вопрос.
+      #
+      # ВЕЛИЧИНА — СУММА РАСХОДА СЦЕНАРИЕВ НАБОРА, ТОЧНЫМ ЧИСЛОМ, А НЕ ПОТОЛКОМ.
+      # Ось источника одна на весь прогон, поэтому в бюджет входит каждый
+      # сценарий набора, тратящий её отказом в счёт, а не только сценарии F8:
+      #   F8 §11 (Р7 приёмки F8) ............................................ 11
+      #     F8-05 1 · F8-09 5 · F8-23 1 · F8-24 1 · F8-28 1 · F8-34 1 · F8-40 1
+      #   полоса нашей сессии и распорядителя (#1269, #1281) .................. 4
+      #     Ф3-19 1 (вход прежним паролем) · Ф3-24 2 (вход заблокированного и
+      #     неверный пароль близнеца) · Ф12-45 1 (снятие потреблённым кодом)
+      #   итого за прогон ................................................... 15
+      # Замер — прогон 37281480193 (190 проб, упавших 0): сторож насчитал ровно
+      # 15 по этим десяти сценариям. Сверку с потолком профиля (≤ 80 %
+      # `sourceAttempts` стенда) держит deploy/console_suite_budgets_fit_the_stand_test.go.
+      # Новый сценарий, тратящий ось, добавляет сюда свою строку и своё число.
       - name: гейт — бюджет оси источника не превышен прогоном
         id: source-axis-budget
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && steps.console.outcome == 'success' }}
         working-directory: ui-future/e2e
         env:
-          KACHO_CEREMONY_FAILURE_BUDGET: "11"
+          KACHO_CEREMONY_FAILURE_BUDGET: "15"
         run: node scripts/ceremony-budget.ts results.json
 
       # ВЕРДИКТ О РАСХОДЕ ОКНА РЕГИСТРАЦИЙ ИСТОЧНИКА (kacho#2909). С kaname#456

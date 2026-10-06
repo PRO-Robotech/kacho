@@ -90,6 +90,18 @@
 #      `<та же голова>_CAFILES`: набор CA, ПРОТИВ которого имя и сверяется. Без
 #      него сверять не с чем, и одинокий `_SERVERNAME` прощению не подлежит.
 #
+# ТРЕТИЙ ВИД ЗАПИСЫВАЕТСЯ И ДИРЕКТИВОЙ NGINX. Раздача консоли ходит к краю по
+# TLS (kacho#3028): адрес дозвона приезжает переменной окружения и резолвится
+# nginx (второй вид), а имя листа края стоит в `proxy_ssl_name` текстом
+# настройки — его nginx не резолвит, а сверяет. Признак для директивы — та же
+# конъюнкция: значение в позиции аргумента `proxy_ssl_name` И в том же блоке
+# `proxy_ssl_verify on` с `proxy_ssl_trusted_certificate`, и третье условие —
+# аргумент предъявляет Certificate того же рендера (запись `dnsNames`).
+# Прощается только аргумент директивы и только в разделе `data` ConfigMap;
+# полная форма в `proxy_pass` того же блока — находка.
+# Привести такое имя к короткой форме значило бы сверять лист края с именем,
+# которого нет в его SAN, либо развести адрес и имя на две величины.
+#
 # ЧЕГО ПРИЗНАК НЕ ПРЕДОТВРАЩАЕТ — СКАЗАНО ПРЯМО, ЧТОБЫ ЕГО НЕ ЧИТАЛИ ШИРЕ.
 #
 # Условие 1 гранит СУФФИКС, а не полное имя: годится ЛЮБАЯ голова, оканчивающаяся
@@ -262,6 +274,86 @@ def is_verification_name(envname, siblings):
     return (head + '_CAFILES') in siblings
 
 
+# ТРЕТИЙ ВИД В ТЕКСТЕ НАСТРОЙКИ NGINX — `proxy_ssl_name`.
+#
+# Значение директивы nginx не резолвит: он кладёт его в SNI и сверяет с SAN листа
+# апстрима (`proxy_ssl_verify`), а дозвон идёт по адресу из `proxy_pass`. Это то
+# же имя-для-сверки, что `_SERVERNAME` в env, только записанное директивой.
+#
+# ПРИЗНАК — КОНЪЮНКЦИЯ, как у env, и ни одно условие не даётся переименованием:
+#   1. КТО ЧИТАЕТ — значение стоит ровно в позиции аргумента `proxy_ssl_name`;
+#   2. КАК УПОТРЕБЛЕНО — в ТОМ ЖЕ блоке (не во вложенном и не в соседнем)
+#      объявлены `proxy_ssl_verify on` и `proxy_ssl_trusted_certificate`: набор
+#      CA, против которого имя сверяется. Без них сверять не с чем, и одинокое
+#      `proxy_ssl_name` прощению не подлежит;
+#   3. С ЧЕМ СВЕРЯЕТСЯ — аргумент целиком равен записи `dnsNames` какого-либо
+#      Certificate ТОГО ЖЕ рендера: имя, которого не предъявляет ни один лист
+#      чарта, сверять не с чем, и в позиции имени-для-сверки стоит просто адрес
+#      полной формы (kacho#3028, сужение до предмета: звено фронта сверяет лист
+#      края, а лист края выписывает Certificate этого же рендера).
+#      Равенство SAN здесь — ТРЕТЬЕ условие конъюнкции, а не самостоятельный
+#      признак: самостоятельным оно отвергнуто (см. шапку, `_DB_HOST`), потому
+#      что без позиции директивы простило бы адрес, совпавший с SAN.
+# Прощается ТОЛЬКО совпадение внутри аргумента этой директивы: полная форма в
+# `proxy_pass`, `set` или `resolver` того же блока остаётся находкой.
+# И только в значении раздела `data` ConfigMap: вне текста настройки директива
+# ничего не значит, и прощать в ней нечего.
+#
+# Блоки разбираются счётом скобок; `${VAR}` (подстановка окружения при старте)
+# и строки в кавычках скобками не считаются. Разбор, не сошедшийся (лишняя
+# закрывающая или незакрытая открывающая), не прощает НИЧЕГО — отказ в
+# прощении, а не догадка.
+NGINX_TOKEN = re.compile(r'#[^\n]*|"(?:\\.|[^"\\])*"|\$\{[A-Za-z0-9_]+\}|[{};]')
+
+
+def nginx_verify_spans(text, presented):
+    """Диапазоны аргументов `proxy_ssl_name`, прощённых как имя-для-сверки.
+
+    presented — имена, которые предъявляют листы рендера (`Certificate.spec.dnsNames`).
+    """
+    blocks = {0: []}          # блок -> [(начало, конец) операторов]
+    stack = [0]
+    nxt = 1
+    start = 0
+    for m in NGINX_TOKEN.finditer(text):
+        tok = m.group(0)
+        if tok[0] in '#"$':
+            continue
+        if tok == ';':
+            blocks[stack[-1]].append((start, m.start()))
+        elif tok == '{':
+            blocks[nxt] = []
+            stack.append(nxt)
+            nxt += 1
+        else:
+            if len(stack) == 1:
+                return []
+            stack.pop()
+        start = m.end()
+    if len(stack) != 1:
+        return []
+    spans = []
+    for stmts in blocks.values():
+        words = {}
+        for a, b in stmts:
+            body = text[a:b].strip()
+            parts = body.split(None, 1)
+            if not parts:
+                continue
+            arg = parts[1].strip() if len(parts) > 1 else ''
+            words.setdefault(parts[0], []).append((arg, a, b))
+        verify = any(arg == 'on' for arg, _, _ in words.get('proxy_ssl_verify', []))
+        trusted = any(arg for arg, _, _ in words.get('proxy_ssl_trusted_certificate', []))
+        if not (verify and trusted):
+            continue
+        for arg, a, b in words.get('proxy_ssl_name', []):
+            if arg not in presented:
+                continue
+            i = text.index(arg, a, b)
+            spans.append((i, i + len(arg)))
+    return spans
+
+
 def env_entry_names(node):
     """Имена соседей по списку env — по ФОРМЕ записи, а не по имени ключа.
 
@@ -311,6 +403,12 @@ def classify(path, stack):
     findings = 0
     strings = 0
     allow_hits = {}
+    # Имена, которые предъявляют листы ЭТОГО рендера: круг условия (3) прощения
+    # `proxy_ssl_name`. Собирается до обхода — Certificate вправе стоять в
+    # рендере и после ConfigMap.
+    presented = frozenset(
+        n for d in docs if isinstance(d, dict) and d.get('kind') == 'Certificate'
+        for n in ((d.get('spec') or {}).get('dnsNames') or []) if isinstance(n, str))
 
     def walk(node, kind, where, ctx='', siblings=frozenset()):
         nonlocal findings, strings
@@ -351,8 +449,19 @@ def classify(path, stack):
             if NGINX_RESOLVED.search(ctx or ''):
                 nginx_hits[ctx] = nginx_hits.get(ctx, 0) + 1
                 return
+            # Круг прощения — ТЕКСТ НАСТРОЙКИ nginx: значение раздела `data`
+            # ConfigMap, откуда раздача её и монтирует. Та же директива в
+            # аннотации, env или Secret nginx'ом не читается — её значение
+            # остаётся адресом под правилом формы (kacho#3028, сужение до
+            # предмета: звено фронта кладёт настройку только в ConfigMap).
+            in_nginx_conf = kind == 'ConfigMap' and where.startswith('.data.')
+            spans = nginx_verify_spans(node, presented) if in_nginx_conf and 'proxy_ssl_name' in node else []
             for m in ADDR.finditer(node):
                 name = m.group(0)
+                if any(a <= m.start() and m.end() <= b for a, b in spans):
+                    key = 'nginx:proxy_ssl_name@%s/%s' % (kind, cur_name[0])
+                    verify_hits[key] = verify_hits.get(key, 0) + 1
+                    continue
                 if name in ALLOWED:
                     allow_hits[name] = allow_hits.get(name, 0) + 1
                     continue
@@ -810,6 +919,168 @@ spec:
           env:
             - name: KACHO_SELFTEST_${ST_TAG}_SERVERNAME
               value: \"kaname.kacho.svc.cluster.local\"" 1 "kaname.kacho.svc.cluster.local"
+
+  # ── ТРЕТИЙ ВИД В НАСТРОЙКЕ NGINX: `proxy_ssl_name` (kacho#3028) ─────────
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "законно: proxy_ssl_name + в том же блоке verify on и trusted_certificate → молчит" \
+'apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx
+data:
+  default.conf.template: |
+    server {
+        resolver ${KUBE_DNS_SERVER} valid=10s;
+        location /api/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://$api_gw_upstream;
+            proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+            proxy_ssl_verify on;
+            proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+        }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 0
+
+  # ИНЪЕКЦИЯ сужения до предмета (kacho#3028): форма директивы законна во всём —
+  # ConfigMap, свой блок, verify on, набор CA, — но имени не предъявляет НИ ОДИН
+  # Certificate рендера. Сверять его не с чем: такое имя не лист края, а адрес
+  # полной формы, записанный в позицию имени-для-сверки.
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: proxy_ssl_name, которого не предъявляет ни один Certificate рендера → красный" \
+'apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx
+data:
+  default.conf.template: |
+    server {
+        resolver ${KUBE_DNS_SERVER} valid=10s;
+        location /api/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://$api_gw_upstream;
+            proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+            proxy_ssl_verify on;
+            proxy_ssl_name kacho-vpc.kacho.svc.cluster.local;
+        }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 1 "kacho-vpc.kacho.svc.cluster.local"
+
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: proxy_ssl_name без proxy_ssl_verify on → красный (сверять не с чем)" \
+'apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx
+data:
+  default.conf.template: |
+    server {
+        resolver ${KUBE_DNS_SERVER} valid=10s;
+        location /api/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://$api_gw_upstream;
+            proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+            proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+        }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 1 "api-gateway.kacho.svc.cluster.local"
+
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: verify и trusted_certificate в СОСЕДНЕМ блоке → красный (круг — свой блок)" \
+'apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx
+data:
+  default.conf.template: |
+    server {
+        resolver ${KUBE_DNS_SERVER} valid=10s;
+        location /a/ {
+            proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+            proxy_ssl_verify on;
+        }
+        location /b/ {
+            proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+        }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 1 "api-gateway.kacho.svc.cluster.local"
+
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: полная форма в proxy_pass рядом с прощённым proxy_ssl_name → красный" \
+'apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx
+data:
+  default.conf.template: |
+    server {
+        resolver ${KUBE_DNS_SERVER} valid=10s;
+        location /api/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://kacho-vpc.kacho.svc.cluster.local:8443;
+            proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+            proxy_ssl_verify on;
+            proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+        }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 1 "kacho-vpc.kacho.svc.cluster.local"
+
+  # shellcheck disable=SC2016  # `$`-имена nginx — литерал фикстуры, не подстановка
+  probe "дефект: та же законная директива вне ConfigMap (аннотация нагрузки) → красный (nginx её не читает)" \
+'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  annotations:
+    kacho.cloud/nginx-snippet: |
+      location /api/ {
+          proxy_ssl_trusted_certificate /etc/edge-ca/ca.crt;
+          proxy_ssl_verify on;
+          proxy_ssl_name api-gateway.kacho.svc.cluster.local;
+      }
+spec: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-gateway-tls
+spec:
+  dnsNames:
+    - api-gateway.kacho.svc.cluster.local' 1 "api-gateway.kacho.svc.cluster.local"
 
   # ДОКАЗАТЕЛЬСТВО, ЧТО ПРОПУСК SAN ИМЕННО СТРУКТУРНЫЙ, А НЕ ПО ИМЕНИ ПОЛЯ:
   # то же имя поля в НЕ-Certificate документе пропуску не подлежит.

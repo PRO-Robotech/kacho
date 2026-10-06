@@ -35,10 +35,12 @@ import (
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/clientaddress"
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
@@ -69,6 +71,23 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+
+	// ОПЕРАТОР АДРЕСА КЛИЕНТА (kacho#3028) — собирается здесь, безусловно и до
+	// первой провязки: он нужен и модели прав, и ретрансляции полосы входа, и
+	// отказ по негодной настройке не вправе зависеть от того, какая из них
+	// включена в этой посадке. Сборка одна (gateway/internal/clientaddress):
+	// она же отказывает боевому профилю, не доверяющему никому, и запускает
+	// обновление перечня звеньев на контексте процесса.
+	clientAddressOp, caErr := clientaddress.Start(ctx, cfg, clientaddress.LookupFrontLinks, logger)
+	if caErr != nil {
+		log.Fatalf("client address startup-validation: %v", caErr)
+	}
+	clientAddress := clientAddressOp.Extractor
+	logger.Info("client address: forwarded headers are honoured only from named front links presenting their certificate",
+		"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
+		"trusted_proxy_peers", cfg.AuthZTrustedProxyPeers,
+		"trusted_proxy_sans", cfg.AuthZTrustedProxySANs,
+		"trusted_from_nobody", clientAddress.TrustsNobody())
 
 	// SIGHUP — operator-driven reload signal for the permission catalog +
 	// authz overrides. The signal handler is wired up after the authz
@@ -184,7 +203,7 @@ func main() {
 	if identityLane == identityposture.Own {
 		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
 		// прав: справа по числу доверенных прыжков (Ф3 Р2).
-		clientIP := newClientAddressOperator(cfg).ClientIP
+		clientIP := clientAddress.ClientIP
 
 		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
 		if ftErr != nil {
@@ -307,14 +326,12 @@ func main() {
 			"platform_issuer_accepted", platformAccepted)
 	}
 
-	// Hybrid external listener: when enabled, a client that presents a
-	// valid Kachō cert over the external listener (tls.VerifyClientCertIfGiven,
-	// wired on the TLS listener below) authenticates on its mTLS SPIFFE identity —
-	// the AuthInterceptor derives the principal from the verified cert and skips
-	// the JWT requirement. Default off ⇒ JWT-only authN, behaviour unchanged.
-	if cfg.HybridMTLSEnabled() {
-		authInterceptor = authInterceptor.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain))
-		logger.Info("hybrid mTLS external listener: cert-principal path enabled")
+	// Полоса личности по сертификату (посадка hybrid) и что она видит на
+	// внешнем gRPC края — withCertPrincipalLane (external_grpc_server.go).
+	authInterceptor, err = withCertPrincipalLane(authInterceptor, cfg, clientAddressOp.Anchor, logger)
+	if err != nil {
+		logger.Error("api-gateway refusing to start: cert-principal lane", "err", err)
+		os.Exit(1)
 	}
 
 	// Machine principals are exempt from step-up (a machine has no second
@@ -642,14 +659,14 @@ func main() {
 
 	// --- logout handler ---
 	//
-	// The endpoint is intentionally exempt from the mandatory DPoP/authz
-	// middleware (a user must be able to drop their browser session even with an
-	// expired token). Because of that exemption the handler itself must
-	// authenticate the caller before any server-side revocation: it verifies the
-	// presented access token via the SAME JWKS verifier used on the principal
-	// path and revokes ONLY the caller's own subject. Without a wired verifier
-	// (the dev-class soft pass above: the token audience is not declared)
-	// revocation fails closed (401); only cookie clearing remains.
+	// Выход ПУТИ ТОКЕНОВ (`handler.LogoutHandler`, kacho#2996): путь входит в
+	// перечень прохода решения о правах (`isPublicHTTPPath`), поэтому
+	// предъявителя обработчик проверяет сам — ТЕМ ЖЕ проверяющим JWKS, что полоса
+	// принципала, — и отзывает только собственный субъект проверенного токена.
+	// Печенье браузерной сессии этот путь не гасит ни на одном исходе (kacho#2959):
+	// конец сессии — `POST /iam/v1/auth/logout` полосы входа. Без проверяющего
+	// (мягкий проход класса dev выше: аудитория токена не объявлена) выход «не
+	// выполнен» (`503`) — отзывать нечем, и «вышли» было бы неправдой.
 	var logoutVerifier handler.CallerVerifier
 	if jwtVerifier != nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
@@ -731,7 +748,7 @@ func main() {
 			)
 		}
 
-		authz, err = buildAuthzMiddleware(cfg, logger)
+		authz, err = buildAuthzMiddleware(cfg, logger, clientAddress)
 		if err != nil {
 			log.Fatalf("authz middleware: %v", err)
 		}
@@ -747,6 +764,8 @@ func main() {
 				"catalog_override_file", cfg.AuthZPermissionCatalogFile,
 				"overrides_file", cfg.AuthZOverridesFile,
 				"trusted_xff", cfg.AuthZTrustedXForwardedFor,
+				"trusted_proxy_hops", cfg.AuthZTrustedProxyCount,
+				"trusted_proxy_cidrs", cfg.AuthZTrustedProxyCIDRs,
 			)
 		} else {
 			logger.Info("authz-mw disabled (set KACHO_API_GATEWAY_AUTHZ_ENABLED=true to enable)")
@@ -1032,7 +1051,16 @@ func main() {
 	grpcStreamInterceptors = append([]grpc.StreamServerInterceptor{
 		edgeLatency.StreamServerInterceptor(grpcsrv.ListenerPublic),
 	}, grpcStreamInterceptors...)
+	// Учётные данные сервера — состояние TLS, уже завершённого слушателем
+	// (gateway/internal/linktls): за мультиплексором протоколов сервер gRPC
+	// иначе не знает о TLS вовсе, и звено фронта, предъявившее сертификат,
+	// было бы неотличимо от любого пира (kacho#3028, C4). Рукопожатий они не
+	// ведут: соединение без TLS остаётся таким, каким было. Состояние они
+	// кладут своим типом linktls.AuthInfo, а не credentials.TLSInfo: его видит
+	// только оператор адреса клиента, и полоса личности по сертификату здесь
+	// не признаёт никого (перепись #3028, строка 33; withCertPrincipalLane).
 	grpcSrv := proxy.NewServer(resolver,
+		grpc.Creds(linktls.ServerCredentials()),
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
 	)
@@ -1116,8 +1144,8 @@ func main() {
 		logger.Info("relayed records mounted", "records", mounted)
 	}
 
-	// POST /oauth/logout — revocation of the caller's own token(s) in our record
-	// and the ending of the browser session carrier.
+	// POST /oauth/logout — отзыв собственного токена (токенов) вызывающего в
+	// нашей записи. Браузерную сессию не гасит (kacho#2959).
 	httpMux.Handle("/oauth/logout", logoutHandler)
 
 	// GET /subscription/v1/events — ЕДИНСТВЕННАЯ проекция потока изменений в
@@ -1215,7 +1243,11 @@ func main() {
 		// ceremony records (handler.MountLoginLaneRoutes) relay only on
 		// connections with the external mark. A listener that lost its wrapper
 		// serves neither. listener_origin_wiring_test.go holds the wrappers.
-		ConnContext: listenerorigin.ConnContext,
+		//
+		// Вторым ConnContext кладёт состояние TLS соединения (linktls): за
+		// мультиплексором r.TLS пуст всегда, а звено фронта узнаётся по
+		// имени в своём сертификате (kacho#3028, C4).
+		ConnContext: linktls.WithConnState(listenerorigin.ConnContext),
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
@@ -1316,11 +1348,14 @@ func main() {
 			MinVersion:   tls.VersionTLS12,
 		}
 		// Hybrid: when enabled, accept an OPTIONAL client cert
-		// (tls.VerifyClientCertIfGiven) with the internal CA as ClientCAs — a
-		// browser without a cert still handshakes (JWT path), a client presenting a
-		// valid Kachō cert gets it verified so the principal can be derived from its
-		// SPIFFE SAN. Default (disabled) leaves ClientAuth=NoClientCert. This is the
-		// EXTERNAL listener only; internal service listeners stay strict.
+		// (tls.VerifyClientCertIfGiven) with the internal CA and the front-link
+		// anchor as ClientCAs — a browser without a cert still handshakes (JWT
+		// path), a front link presenting its leaf gets it verified so the client
+		// address operator can recognise it (kacho#3028). A verified leaf does NOT
+		// become a principal on this listener: the gRPC server hands the TLS state
+		// only to the address operator (linktls.AuthInfo). Default (disabled)
+		// leaves ClientAuth=NoClientCert. This is the EXTERNAL listener only;
+		// internal service listeners stay strict.
 		if tlsCfg, certErr = cfg.ExternalListenerClientAuth(tlsCfg); certErr != nil {
 			log.Fatalf("hybrid mTLS external listener: %v", certErr)
 		}
@@ -1470,12 +1505,12 @@ func installAuthzSIGHUP(hupCh <-chan os.Signal, authz authzReloader, logger *slo
 	}()
 }
 
-// stopGraceful runs GracefulStop bounded by timeout, then forces Stop() — so a
-// long-lived proxied stream cannot block process shutdown past the grace window.
 // logoutVerifierAdapter bridges the gateway's JWKS access-token verifier to the
 // narrow identity port the logout handler needs. It exposes ONLY the validated
 // subject/jti, so the handler revokes the caller's own session and never trusts
 // a client-supplied subject.
+// Ошибку проверяющего адаптер возвращает как есть: по ней обработчик различает
+// «источник ключей не ответил» (`503`) и «токен негоден» (`401`).
 type logoutVerifierAdapter struct{ v *middleware.JWTVerifier }
 
 func (a logoutVerifierAdapter) Verify(ctx context.Context, token string) (*handler.VerifiedCaller, error) {
@@ -1486,6 +1521,8 @@ func (a logoutVerifierAdapter) Verify(ctx context.Context, token string) (*handl
 	return &handler.VerifiedCaller{Subject: vt.Subject, JTI: vt.JTI}, nil
 }
 
+// stopGraceful runs GracefulStop bounded by timeout, then forces Stop() — so a
+// long-lived proxied stream cannot block process shutdown past the grace window.
 func stopGraceful(s *grpc.Server, timeout time.Duration) {
 	done := make(chan struct{})
 	go func() {
@@ -1520,7 +1557,7 @@ type authzWiring struct {
 // buildAuthzMiddleware constructs the AuthZ middleware from
 // configuration. When AuthZEnabled=false this returns a no-op middleware
 // (the caller still wires it into the chain, but it pass-through everything).
-func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, error) {
+func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger, clientAddress *middleware.ContextExtractor) (authzWiring, error) {
 	if !cfg.AuthZEnabled {
 		// Накопитель собирается и на выключенной проверке: серии обязаны стоять
 		// нулями и здесь, иначе «проверка выключена» на поверхности выглядело бы
@@ -1582,7 +1619,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, 
 		FailOpen:        cfg.AuthZFailOpen,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         newClientAddressOperator(cfg),
+		Context:         clientAddress,
 		Resources:       middleware.NewResourceExtractor(restRouter.PathTemplates()),
 		Checker:         clients.NewAuthzChecker(authzClient),
 		Overrides:       overrides,
