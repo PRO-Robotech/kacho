@@ -96,9 +96,11 @@ env:
   # прогонами.
   CLUSTER_NAME: kacho-console
   # Хост ingress консоли объявлен подчартом (`ui-future/deploy/values.yaml`),
-  # порт — отображением kind (`deploy/kind/kind-config.yaml`: 80 → 28080).
+  # порт — отображением kind порта TLS узла (`deploy/kind/kind-config.yaml`:
+  # 443 → 28443). Консоль стенда — по https (kacho#3025): то же происхождение
+  # объявляет профиль стенда (`values.dev.yaml`, `appBaseURL`).
   CONSOLE_HOST: console.kacho.local
-  CONSOLE_PORT: '28080'
+  CONSOLE_PORT: '28443'
 
 jobs:
   probes:
@@ -590,6 +592,17 @@ jobs:
         timeout-minutes: 5
         run: node scripts/stand-secure-origin-selftest.ts
 
+      # ДОВЕРИЕ ЛИСТУ КОНСОЛИ СТЕНДА (kacho#3025). Лист самоподписан, и пробы
+      # доверяют ровно его ключу (отпечаток SPKI), а не отказываются от проверки.
+      # Отпечаток, который Chromium не узнаёт, уронил бы каждую пробу на
+      # сертификате — самопроверка сверяет его с независимым производителем
+      # (openssl) за секунды и без стенда.
+      - name: гейт — самопроверка доверия листу консоли стенда
+        id: selftest-stand-tls-trust
+        working-directory: ui-future/e2e
+        timeout-minutes: 5
+        run: node scripts/stand-tls-trust-selftest.ts
+
       # ДИСК — УЗКОЕ МЕСТО: стенду нужны образы восьми сервисов, девяти модулей
       # консоли, kind-нода и слои buildkit. Предустановленные тулчейны, которых
       # здесь не касается ни один шаг, занимают десятки гигабайт — снимаем их ДО
@@ -757,8 +770,18 @@ jobs:
           if [ -n "$GIVEN_URL" ]; then
             url="$GIVEN_URL"
           else
-            url="http://${CONSOLE_HOST}:${CONSOLE_PORT}"
+            url="https://${CONSOLE_HOST}:${CONSOLE_PORT}"
             echo "127.0.0.1 ${CONSOLE_HOST}" | sudo tee -a /etc/hosts >/dev/null
+            # Лист консоли своего стенда самоподписан (kacho#3025): доверяется
+            # ровно он — из секрета, который выпустил cert-manager стенда, — и
+            # тем же файлом пользуются curl ниже, браузер и путь запроса Node.
+            ca="$RUNNER_TEMP/console-ca.pem"
+            kubectl -n kacho get secret uif-console-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > "$ca"
+            if ! grep -q 'BEGIN CERTIFICATE' "$ca"; then
+              echo "::error title=Условие не создано::секрет kacho/uif-console-tls не несёт листа консоли (ca.crt) — консоль по TLS не выпущена, пробы не выполнялись."
+              exit 1
+            fi
+            echo "ca=$ca" >> "$GITHUB_OUTPUT"
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
           if [ -z "$GIVEN_URL" ]; then
@@ -772,7 +795,7 @@ jobs:
           # Ждём ОТВЕТ, а не время: ожидание временем даёт красное на медленном
           # стенде и зелёное на быстром при одном и том же коде.
           for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url/healthz" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 ${ca:+--cacert "$ca"} "$url/healthz" || true)
             if [ "$code" = "200" ]; then
               echo "✓ консоль отвечает на $url/healthz (попытка $i)"
               exit 0
@@ -802,6 +825,8 @@ jobs:
         env:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
+          KACHO_CONSOLE_CA: ${{ steps.console.outputs.ca }}
+          NODE_EXTRA_CA_CERTS: ${{ steps.console.outputs.ca }}
         run: node scripts/browser-reach.mjs
 
       # ─── ПРИЁМНИК ПИСЕМ СТЕНДА ОТКРЫТ ПРОГОНУ (приёмка F6b, F6b-34; kacho#2901) ───
@@ -875,6 +900,8 @@ jobs:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
           KACHO_CONSOLE_MAILBOX_URL: ${{ steps.mailbox.outputs.url }}
+          KACHO_CONSOLE_CA: ${{ steps.console.outputs.ca }}
+          NODE_EXTRA_CA_CERTS: ${{ steps.console.outputs.ca }}
         run: npx playwright test
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли

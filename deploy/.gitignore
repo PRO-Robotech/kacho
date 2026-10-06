@@ -45,10 +45,9 @@ helm/umbrella/charts/vpc/
 # the same way we do for vpc/compute/api-gateway/ui above.
 helm/umbrella/charts/kacho-nlb/
 helm/umbrella/Chart.lock
-ci/.seeded-ids.env
-# KAC-NLB: seed-nlb-fixtures.sh writes generated ids here for downstream
-# newman / e2e harnesses; never check the values in.
-.seeded-ids.env
+# Идентификаторы посева стенда пишутся в КОРЕНЬ дерева, и игнорирует их
+# корневой .gitignore (kacho#3026): здешняя строка покрывала только `deploy/`,
+# где файла не производит никто.
 .claude/worktrees/
 
 # карта идентификаторов содержимого локальных образов — генерируется `make build-services`,

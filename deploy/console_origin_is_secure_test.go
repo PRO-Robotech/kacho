@@ -67,11 +67,6 @@ func (d plainHTTPOriginDebt) key() string {
 // plainHTTPOriginDebts — единственный перечень. Пополнять его — значит заводить
 // задачу на тот же дефект, а не объявлять http допустимым.
 var plainHTTPOriginDebts = []plainHTTPOriginDebt{{
-	Origin: "http://console.kacho.local:28080",
-	Issue:  "PRO-Robotech/kacho#3025",
-	Reason: "стенд kind отображает только 80 → 28080, слушателя TLS у него нет; " +
-		"сквозные пробы объявляют это происхождение защищённым своим клиентам (#1274), человеку такой обход недоступен",
-}, {
 	Stack: "a8f60d",
 	Issue: "PRO-Robotech/kacho#3024",
 	Reason: "управляемый стенд без доменного имени; выпуск сертификата на IP-литерал отвергнут решением владельца, " +
