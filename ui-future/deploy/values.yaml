@@ -106,6 +106,14 @@ subscriptionStream:
   # Сверяет ui-future/deploy/subscription_stream_serving_test.go — он читает срок
   # У КРАЯ, а не выписывает его копию здесь.
   proxyReadTimeout: "120"
+  # ingress.enabled — объявляет ли ЭТОТ чарт свой вход для пути потока
+  # (templates/ingress-subscription-stream.yaml). У пары host+path вход ровно
+  # один: контроллер отвергает второй объект на ту же пару при приёме. Зонт,
+  # который ведёт полосы края на хосте консоли сам (console-edge-lanes,
+  # kacho#3028), выключает здесь этот вход — путь потока у него идёт прямо к
+  # краю, а не через раздачу. Отдельно поставленный чарт оставляет `true`.
+  ingress:
+    enabled: true
 
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
