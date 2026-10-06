@@ -398,7 +398,13 @@ func TestIdentitySecondFactorInjection_ExternalLandingIsARefusal(t *testing.T) {
 // Места пина, в которые пробы вносят дефект. Сменилась форма — инъекция не
 // меняет вход, и проба отказывает, а не зеленеет на неукушенном входе.
 const (
-	pinnedSignInList      = "assurance.MethodPassword, assurance.MethodTOTP, assurance.MethodLookupSecret"
+	pinnedSignInList = "assurance.MethodPassword, assurance.MethodTOTP, assurance.MethodLookupSecret"
+	// Перечень производителя у пина заведён переменной и дописывается под
+	// условием (Ф13, kaname#613): объявление, дописывание и возврат — три места
+	// одной формы.
+	pinnedSignInDecl      = "methods := []assurance.Method{" + pinnedSignInList + "}"
+	pinnedSignInAppend    = "methods = append(methods, assurance.MethodWebAuthn)"
+	pinnedSignInReturn    = "return methods"
 	pinnedSecondFactorRow = "s.has(MethodPassword) && (s.has(MethodTOTP) || s.has(MethodLookupSecret))"
 )
 
@@ -805,7 +811,7 @@ func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
 	if err != nil || len(want) == 0 {
 		t.Fatalf("перечень корня у пина %s не прочитан (%v, %v) — утверждения ниже вакуумны", pin, want, err)
 	}
-	list := "return []assurance.Method{" + pinnedSignInList + "}"
+	decl, ret := pinnedSignInDecl, pinnedSignInReturn
 	// helper — помощник, отбирающий из перечня первый способ; ставится после
 	// производителя, замыкающую скобку даёт сам файл.
 	helper := "\n}\n\n// firstFactorOnly — только первый способ перечня.\n" +
@@ -827,17 +833,29 @@ func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
 		// другого типа — отказ, а не чтение соседнего аргумента.
 		{"наблюдатель не принимает способов входа", "signIn []assurance.Method,", "signIn []string,", "",
 			"параметров []assurance.Method 0", true},
-		{"производитель не называет ни одной постоянной словаря", list, "return nil", "",
+		{"производитель не называет ни одной постоянной словаря", ret, "return nil", "",
 			"возвращает перечней 0", true},
-		{"перечень обёрнут помощником", list,
-			"return firstFactorOnly([]assurance.Method{" + pinnedSignInList + "})" + helper, "return firstFactorOnly",
+		{"перечень обёрнут помощником", ret, "return firstFactorOnly(methods)" + helper, "return firstFactorOnly",
 			"не голый литерал", false},
-		{"перечень собран до возврата", list, "ms := []assurance.Method{" + pinnedSignInList + "}\n\treturn ms[:1]",
-			"return ms[:1]", "не голый литерал", false},
-		{"два перечня в двух ветвях", list,
-			"if l.freshness > 0 {\n\t\treturn []assurance.Method{assurance.MethodPassword}\n\t}\n\t" + list,
+		{"перечень урезан при возврате", ret, "return methods[:1]", "return methods[:1]", "не голый литерал", false},
+		{"два перечня в двух ветвях", decl,
+			"if l.freshness > 0 {\n\t\treturn []assurance.Method{assurance.MethodPassword}\n\t}\n\t" + decl,
 			"[]assurance.Method{assurance.MethodPassword}",
 			"возвращает перечней 2", false},
+		// Переменная перечня читается, только пока её пишут ровно три формы:
+		// `:=` голым литералом, `= append(<она же>, <постоянные словаря>…)` и
+		// `return`. Иная запись меняет значение мимо разбора.
+		{"переменная перечня переписана не дописыванием", ret, "methods = methods[1:]\n\t" + ret,
+			"methods = methods[1:]", "вне формы перечня", false},
+		{"перечень уходит псевдонимом", ret, "keep := methods\n\tkeep[0] = assurance.MethodTOTP\n\t" + ret,
+			"keep := methods", "вне формы перечня", false},
+		{"перечень дописывается в замыкании", ret,
+			"func() { " + pinnedSignInAppend + " }()\n\t" + ret, "func() {", "вне формы перечня", false},
+		{"дописан не способ словаря", pinnedSignInAppend, "methods = append(methods, assurance.Method(\"webauthn\"))",
+			"assurance.Method(\"webauthn\")",
+			"не постоянная словаря", false},
+		{"переменная заведена не литералом", decl, "methods := l.presentable()", "methods := l.presentable()",
+			"заведена не голым литералом", false},
 	} {
 		at := c.at
 		if at == "" {
@@ -858,15 +876,67 @@ func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
 	// но перечень возвращается голым литералом; ветвь «полосы нет» переписана
 	// иначе. Перечень — тот же, что у пина.
 	for _, c := range []struct{ name, twinOf, old, repl string }{
-		{"помощник объявлен, перечень не обёрнут", "перечень обёрнут помощником", list, list + helper},
+		{"помощник объявлен, перечень не обёрнут", "перечень обёрнут помощником", ret, ret + helper},
 		{"перечень возвращается из ветви «полоса есть»", "два перечня в двух ветвях",
-			"if !l.wired() {\n\t\treturn nil\n\t}\n\t" + list, "if l.wired() {\n\t\t" + list + "\n\t}\n\treturn nil"},
+			"if !l.wired() {\n\t\treturn nil\n\t}\n\t" + decl + "\n\tif l.loginChallenges != nil {\n\t\t" +
+				pinnedSignInAppend + "\n\t}\n\t" + ret,
+			"if l.wired() {\n\t\t" + decl + "\n\t\tif l.loginChallenges != nil {\n\t\t\t" + pinnedSignInAppend +
+				"\n\t\t}\n\t\t" + ret + "\n\t}\n\treturn nil"},
+		{"переменная дописана ещё раз без условия", "переменная перечня переписана не дописыванием", ret,
+			"methods = append(methods, assurance.MethodWebAuthn)\n\t" + ret},
 	} {
 		got, _, err := ownWiredMethods(injectedPackage(t, root, c.old, c.repl), vocab)
 		if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("%s (близнец «%s»): перечень %v, отказ %v — у пина %v", c.name, c.twinOf, got, err, want)
 		}
 	}
+}
+
+// TestIdentitySecondFactorInjection_AppendedMethodIsNotCountedAsWired — способ,
+// который производитель ДОПИСЫВАЕТ к перечню, провязанным достоверно не считается
+// (kacho#3032: пин kaname 2cf9c852 дописывает ключ доступа под условием «полоса
+// входа ключом собрана», Ф13).
+//
+// Разбор читает значение перечня, не исполняя ветвей: дописанное может быть в
+// нём, а может не быть. Нижняя граница — литерал объявления; дописанное
+// называется отдельно и уровня не поднимает. Так «неизвестно» может лишь отнять
+// достижимость, но не добавить её — тот же довод, что у трёхзначного правила.
+func TestIdentitySecondFactorInjection_AppendedMethodIsNotCountedAsWired(t *testing.T) {
+	byFloor := readCatalogFloors(t)
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
+	console := consoleWithoutOwnDeclaration(t) + ownDeclaration("totp")
+
+	// Контроль предпосылки: у пина перечень дописывается, и дописанное названо
+	// отдельно от провязанного достоверно.
+	certain, maybe, _, err := ownSignInMethods(root, vocab)
+	if err != nil || len(certain) == 0 || len(maybe) == 0 {
+		t.Fatalf("у пина %s перечень не прочитан либо не дописывается (достоверно %v, дописано %v, %v) — "+
+			"утверждения ниже вакуумны", pin, certain, maybe, err)
+	}
+	for _, m := range maybe {
+		if contains(certain, m) {
+			t.Fatalf("дописанный способ %s назван и провязанным достоверно (%v) — граница не нижняя", m, certain)
+		}
+	}
+
+	// ДЕФЕКТ: объявление несёт только пароль, код по времени дописывается под
+	// условием. Засчитай разбор дописанное — пол «2» вышел бы достижимым там, где
+	// служба его, может быть, не провязала.
+	onlyPassword := injectedPackage(t, root, pinnedSignInList, "assurance.MethodPassword")
+	appendsTOTP := injectedPackage(t, onlyPassword, pinnedSignInAppend, "methods = append(methods, assurance.MethodTOTP)")
+	if got, sides := ownFloorTwo(t, pin, appendsTOTP, vocab, rule, console, byFloor); len(got) != 1 {
+		t.Fatalf("код по времени только дописан, консоль ведёт [totp]: находок по полу «2» %d, ждали 1 — "+
+			"дописанный способ засчитан провязанным (вторым фактором %v)", len(got), sides.Second)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ (один факт — код по времени в объявлении, а не в дописывании).
+	declaresTOTP := injectedPackage(t, root, pinnedSignInList, "assurance.MethodPassword, assurance.MethodTOTP")
+	if got, _ := ownFloorTwo(t, pin, declaresTOTP, vocab, rule, console, byFloor); len(got) != 0 {
+		t.Fatalf("код по времени объявлен в перечне, консоль ведёт [totp]: пол «2» объявлен недостижимым: %v", got)
+	}
+	t.Logf("перепись: пин %s · провязаны достоверно %v · дописаны под условием %v", pin, certain, maybe)
 }
 
 // TestIdentitySecondFactorInjection_EmptyCatalogIsARefusal — каталог, в котором
