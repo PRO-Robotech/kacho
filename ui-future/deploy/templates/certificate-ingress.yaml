@@ -37,6 +37,12 @@ spec:
   usages:
     - digital signature
     - server auth
+  # Имя субъекта — первый хост записи. Самоподписанный лист несёт имя издателя,
+  # РАВНОЕ имени субъекта, и без commonName оба пусты; такой лист отвергает curl
+  # дистрибутива ранера конвейера («couldn't get X509-issuer name»), и шаг
+  # ожидания консоли не получает ответа ни при каком доверии. Судит
+  # deploy/console_ingress_origin_is_served_over_tls_render_test.go, (5).
+  commonName: {{ first $e.hosts | quote }}
   dnsNames:
     {{- toYaml $e.hosts | nindent 4 }}
   issuerRef:

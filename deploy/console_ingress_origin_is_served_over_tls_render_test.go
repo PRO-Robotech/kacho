@@ -26,6 +26,16 @@
 //	(4) порт происхождения — тот, на который кластер kind отображает порт TLS
 //	    контроллера на узле (deploy/kind/kind-config.yaml): иначе объявлен адрес,
 //	    на котором никто не слушает.
+//	(5) у этого Certificate непустое имя субъекта — commonName из его же
+//	    dnsNames. Лист консоли стенда самоподписан: имя издателя у него РАВНО имени
+//	    субъекта, и без commonName оба пусты. Такой лист curl ранера конвейера
+//	    (8.5.0, OpenSSL 3.0.13 — дистрибутив ubuntu-latest) отвергает при любом
+//	    доверии: «SSL: couldn't get X509-issuer name», код 60. Шаг ожидания
+//	    консоли (.github/workflows/console-e2e.yml, «адрес консоли разрешается и
+//	    консоль отвечает») ждёт ответа /healthz ровно этим curl с этим листом в
+//	    --cacert — и пять минут получал 000 при исправных входе и раздаче
+//	    (job 112120646792 @54bbf563). Проба судит лист, а не клиента: имя
+//	    субъекта — свойство листа, которое чинится профилем, а не ранером.
 //
 // Цепочки, у которых вход консоли — собственная раздача (`uif.publicFront`),
 // судит console_public_front_render_test.go; здесь они считаются и не судятся.
@@ -176,7 +186,8 @@ func judgeConsoleIngressTLS(t *testing.T, renders []ingressTLSRender, kindCfg st
 			continue
 		}
 
-		certs := map[string][]string{} // секрет → dnsNames
+		certs := map[string][]string{}    // секрет → dnsNames
+		commonName := map[string]string{} // секрет → commonName листа
 		for _, c := range docsOfKind(r.Docs, "Certificate") {
 			spec := submap(c, "spec")
 			var names []string
@@ -187,7 +198,9 @@ func judgeConsoleIngressTLS(t *testing.T, renders []ingressTLSRender, kindCfg st
 				}
 			}
 			certs[str(spec, "secretName")] = names
+			commonName[str(spec, "secretName")] = str(spec, "commonName")
 		}
+		subjectJudged := map[string]bool{} // лист судится один раз, а не по разу на Ingress
 		for _, ing := range consoleIngresses {
 			name := str(submap(ing, "metadata"), "name")
 			var secret string
@@ -221,6 +234,23 @@ func judgeConsoleIngressTLS(t *testing.T, renders []ingressTLSRender, kindCfg st
 			if !covered {
 				findings = append(findings, fmt.Sprintf("цепочка %s: Certificate секрета %s не называет хост консоли %s "+
 					"(dnsNames %v)", r.Stack, secret, host, names))
+			}
+			if subjectJudged[secret] {
+				continue
+			}
+			subjectJudged[secret] = true
+			cn := commonName[secret]
+			cnNamed := false
+			for _, n := range names {
+				if cn != "" && n == cn {
+					cnNamed = true
+				}
+			}
+			if !cnNamed {
+				findings = append(findings, fmt.Sprintf("цепочка %s: Certificate секрета %s — лист с пустым именем "+
+					"субъекта (commonName %q не из dnsNames %v). Самоподписанный лист несёт то же пустое имя издателя, "+
+					"и curl ранера (8.5.0, OpenSSL 3.0.13) отвергает его «couldn't get X509-issuer name»: шаг ожидания "+
+					"консоли не получает ответа на /healthz (kacho#3025)", r.Stack, secret, cn, names))
 			}
 		}
 
@@ -334,6 +364,15 @@ func TestConsoleIngressTLSJudgement_CanFailAndStaysSilent(t *testing.T) {
 		{"запись tls снята", render("uif.ingress.tls=null", "uif.ingress.certificate.create=false"), kindConfigPath, "без записи tls"},
 		{"сертификат не заводится", render("uif.ingress.certificate.create=false"), kindConfigPath, "не производит ни один"},
 		{"порт не отображён туда", render(), moved, "никто не слушает"},
+		// Имя субъекта снимается с листа рендера: ручки, которая убрала бы его из
+		// шаблона, у чарта нет — commonName производит шаблон из hosts записи.
+		{"лист без имени субъекта", func() ingressTLSRender {
+			r := render()
+			for _, c := range docsOfKind(r.Docs, "Certificate") {
+				delete(submap(c, "spec"), "commonName")
+			}
+			return r
+		}(), kindConfigPath, "пустым именем субъекта"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
