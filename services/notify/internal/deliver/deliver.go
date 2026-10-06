@@ -23,6 +23,10 @@
 //   - `Ack` — под `WithDeadline(WithoutCancel(<строка>), t_send +
 //     lease_remaining)` и повторяется на `UNAVAILABLE` и `DEADLINE_EXCEEDED`
 //     вызова до этого срока (SDR-Н1): повтор идемпотентен по З9.
+//   - Письмо уходит только подписанным DKIM: подпись — последний шаг над
+//     окончательными байтами сборщика до SMTP-сессии; пара подписи читается
+//     у источника на каждом письме. Без подписчика [New] не собирается, отказ
+//     подписи — строка отложена, неподписанного письма нет.
 //   - Резерв сетки освобождается однажды на любом исходе, кроме `SENT`
 //     (З24); ошибка базы резерва — не сторож: строка без `Ack` (CX1-68 (б)).
 package deliver
@@ -79,6 +83,12 @@ type Sender interface {
 	Send(ctx context.Context, env smtp.Envelope, msg []byte) smtp.Attempt
 }
 
+// Signer — подпись DKIM окончательного письма (`*dkim.Signer`): заголовок
+// DKIM-Signature в начало, байты письма не меняются.
+type Signer interface {
+	Sign(msg []byte) ([]byte, error)
+}
+
 // Feed — лента источника в части `Ack` (клиент gRPC ленты).
 type Feed interface {
 	Ack(ctx context.Context, req *notifyv1.AckRequest, opts ...grpc.CallOption) (*notifyv1.AckResponse, error)
@@ -98,6 +108,8 @@ type Config struct {
 	Render Renderer
 	// Sender — отправитель на ретранслятор.
 	Sender Sender
+	// Signer — подпись DKIM письма перед отправкой.
+	Signer Signer
 	// Feeds — лента каждого источника перечня по модулю.
 	Feeds map[string]Feed
 	// From — адрес отправителя установки в конверте (`notify.smtp.fromAddress`).
@@ -132,6 +144,7 @@ type Worker struct {
 	limiter  Limiter
 	render   Renderer
 	sender   Sender
+	signer   Signer
 	from     string
 	routes   map[string]route
 	resolve  time.Duration
@@ -180,6 +193,7 @@ func New(cfg Config) (*Worker, error) {
 		limiter:  cfg.Limiter,
 		render:   cfg.Render,
 		sender:   cfg.Sender,
+		signer:   cfg.Signer,
 		from:     cfg.From,
 		routes:   routes,
 		resolve:  cfg.ResolveSendTimeout,
@@ -211,6 +225,9 @@ func (c Config) validate() error {
 	}
 	if c.Sender == nil {
 		errs = append(errs, errors.New("отправитель не задан"))
+	}
+	if c.Signer == nil {
+		errs = append(errs, errors.New("подписчик DKIM не задан"))
 	}
 	if c.From == "" {
 		errs = append(errs, errors.New("адрес отправителя установки пуст"))

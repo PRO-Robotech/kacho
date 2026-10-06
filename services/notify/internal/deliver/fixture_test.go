@@ -513,17 +513,27 @@ func (l *fakeLimiter) Reserves() []limits.Row {
 // ── рендер ───────────────────────────────────────────────────────────────────
 
 // fakeRenderer — рендер (предмет N5): письмо постоянного вида, вызовы считаются.
+// letter — письмо, которое рендер отдаёт; nil — fixtureMessage.
 type fakeRenderer struct {
-	mu    sync.Mutex
-	calls int
+	mu     sync.Mutex
+	calls  int
+	letter []byte
 }
 
-const fixtureMessage = "From: <" + fixtureFrom + ">\r\nTo: <" + fixtureTo + ">\r\nSubject: n3\r\n\r\nn3 body\r\n"
+// fixtureMessage — письмо фикстуры: все заголовки, которые выпускает сборщик
+// notify и подписывает DKIM (Р19), — подпись получает письмо той формы, что в бою.
+const fixtureMessage = "From: <" + fixtureFrom + ">\r\nTo: <" + fixtureTo + ">\r\nSubject: n3\r\n" +
+	"Date: Tue, 06 Oct 2026 09:00:00 +0000\r\nMessage-ID: <n3@example.invalid>\r\nMIME-Version: 1.0\r\n" +
+	"Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nn3 body\r\n"
 
 func (r *fakeRenderer) render() ([]byte, error) {
 	r.mu.Lock()
 	r.calls++
+	letter := r.letter
 	r.mu.Unlock()
+	if letter != nil {
+		return append([]byte(nil), letter...), nil
+	}
 	return []byte(fixtureMessage), nil
 }
 

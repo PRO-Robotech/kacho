@@ -18,6 +18,17 @@ package deliver
 //     ([Feed] — клиент gRPC ленты), внедряемые часы ([Clock]: длительности,
 //     а не моменты для арифметики сроков, УК80).
 //   - [Resolved] — описание строки после клеток 1–2; рендер получает его.
+//   - Подпись DKIM (полоса N15, Р19 «Подпись», замысел §12а): порт [Signer]
+//     в [Config] — `Sign(msg []byte) ([]byte, error)`, им становится
+//     `*dkim.Signer` пакета `services/notify/internal/dkim`:
+//
+//	type PairSource interface{ Pair() dkimkey.Pair } // *dnscheck.Guard
+//	func NewSigner(domain string, pairs PairSource) (*Signer, error)
+//	func (s *Signer) Sign(msg []byte) ([]byte, error)
+//
+//     Подпись — последний шаг над окончательным письмом клетки 10, до `DATA`;
+//     пара читается у источника на каждом письме (переход подписи на новую
+//     пару, NTF1-P17). Без подписчика `New` не собирается: пути без подписи нет.
 
 import (
 	"context"
@@ -29,6 +40,7 @@ import (
 	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/dkim"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/grant"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/smtp/smtptest"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/source"
@@ -69,6 +81,10 @@ type rigOpts struct {
 	peerDelay   time.Duration
 	exhausted   bool
 	feed        func(module string, f *fakeFeed)
+	// pairs — источник пары DKIM подписчика; nil — постоянная пара фикстуры.
+	pairs dkim.PairSource
+	// letter — письмо рендера; nil — fixtureMessage.
+	letter []byte
 }
 
 func newRig(t *testing.T, o rigOpts) *rig {
@@ -93,7 +109,7 @@ func newRig(t *testing.T, o rigOpts) *rig {
 		build:   o.build,
 		peer:    &fakePeer{decision: o.decision, delay: o.peerDelay},
 		limiter: &fakeLimiter{exhausted: o.exhausted},
-		render:  &fakeRenderer{},
+		render:  &fakeRenderer{letter: o.letter},
 		feeds:   map[string]*fakeFeed{},
 		sources: map[string]config.Source{},
 		clock:   o.clock,
@@ -112,6 +128,13 @@ func newRig(t *testing.T, o rigOpts) *rig {
 	}
 	logger, lb := newLog()
 	r.log = lb
+	if o.pairs == nil {
+		o.pairs = fixedPairs{fixturePair(t)}
+	}
+	signer, err := dkim.NewSigner(signDomain, o.pairs)
+	if err != nil {
+		t.Fatalf("dkim.NewSigner: %v", err)
+	}
 	w, err := New(Config{
 		Build:              o.build,
 		Sources:            o.sources,
@@ -119,6 +142,7 @@ func newRig(t *testing.T, o rigOpts) *rig {
 		Limiter:            r.limiter,
 		Render:             fixtureRender{r.render},
 		Sender:             r.sender,
+		Signer:             signer,
 		Feeds:              feeds,
 		From:               fixtureFrom,
 		Workers:            8,
