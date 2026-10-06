@@ -211,6 +211,13 @@ type AuthInterceptor struct {
 	stepUpRoutes RestRouteResolver
 	logger       *slog.Logger
 
+	// publicMethods — методы, которым не нужно предъявлять удостоверение.
+	// Источник ОДИН с моделью прав: множество строится из
+	// DefaultPublicAllowlist в конструкторе, своей копии имён здесь нет
+	// (kacho#3033). Член множества снимает ровно отказ «удостоверение не
+	// предъявлено»; предъявленное удостоверение судится как на любом методе.
+	publicMethods map[string]struct{}
+
 	// Headers, которые auth-interceptor пропускает в backend metadata
 	// (после успешного auth). Backend через corelib `grpcsrv.PrincipalExtractInterceptor`
 	// прочитает их в ctx.
@@ -232,7 +239,18 @@ func NewAuthInterceptor(mode AuthMode, devSecret string, lookup SubjectLookuper,
 		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 		sessionLane:           &SessionLaneCounts{},
 		bearerLane:            &BearerLaneCounts{},
+		publicMethods:         publicMethodSet(DefaultPublicAllowlist()),
 	}
+}
+
+// publicMethodSet builds the lookup set for the tokenless admission from the
+// list's FQNs (no leading slash, the form DefaultPublicAllowlist carries).
+func publicMethodSet(fqns []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(fqns))
+	for _, fqn := range fqns {
+		set[fqn] = struct{}{}
+	}
+	return set
 }
 
 // WithHumanSession провязывает читателя НАШЕЙ сессии человека (посадка `own`,
@@ -447,6 +465,14 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		case AuthModeDev:
 			return a.injectAnonymous(ctx), nil
 		default: // production / production-strict
+			// Член списка публичных методов проходит без удостоверения — и без
+			// придуманной личности: вызывающий не назвался, и имени у него нет.
+			// Тот же список модель прав пропускает первым шагом, так что «снимает
+			// и аутентификацию, и проверку прав» исполняется обоими читателями
+			// одного источника (kacho#3033).
+			if _, public := a.publicMethods[normalizeFQN(fullMethod)]; public {
+				return ctx, nil
+			}
 			a.logger.Debug("auth: refused — no credential presented", "method", fullMethod)
 			return nil, authnrefusal.Err()
 		}
