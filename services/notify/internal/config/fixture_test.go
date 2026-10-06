@@ -66,6 +66,7 @@ func clearKnobs(t *testing.T) {
 func useFixture(t *testing.T, edits map[string]*string) {
 	t.Helper()
 	clearKnobs(t)
+	clearS1Knobs(t)
 	seen := map[string]bool{}
 	for _, p := range readFixture(t) {
 		k, v := p[0], p[1]
@@ -91,6 +92,11 @@ func useFixture(t *testing.T, edits map[string]*string) {
 		dir := kubeletDir(t, map[string][]byte{dkimKeyName: fixtureDKIMKeyPEM(t), dkimSelectorName: []byte("mail")})
 		t.Setenv(envDKIMKeyFile, filepath.Join(dir, dkimKeyName))
 		t.Setenv(envDKIMSelectorFile, filepath.Join(dir, dkimSelectorName))
+	}
+	// Каталог ключа отпечатка фикстуры (Р15, Д23) — тоже каталог формы kubelet,
+	// выпущенный пробой: правка пробы, называющая эту ручку, его заменяет.
+	if _, edited := edits[envAddressKeyDir]; !edited {
+		t.Setenv(envAddressKeyDir, addressKeyDir(t))
 	}
 }
 
