@@ -44,7 +44,12 @@ type NetworkWriterIface interface {
 	NetworkReaderIface
 	Insert(ctx context.Context, n *domain.Network) (*NetworkRecord, error)
 	Update(ctx context.Context, n *domain.Network) (*NetworkRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// SetDefaultSGID атомарно проставляет networks.default_security_group_id для
 	// конкретной сети — узкий update-помощник для inline-создания default-SG в
 	// Network.Create (Insert(Network) → Insert(SG) → SetDefaultSGID, все в одной

@@ -40,11 +40,15 @@ func renderIAM(t *testing.T, sets ...string) (string, error) {
 		}
 		t.Skip("helm не в PATH — рендер-гейт пропущен")
 	}
-	args := []string{"template", "iamlane", iamChartDir}
+	// Одиночный рендер подчарта — только обёрткой `render_kaname_alone`: флаг
+	// почты службы берётся помощником чарта notify, которого одиночный рендер
+	// без обёртки не видит (замысел З28, CX1-113). Второго тела обёртки в этом
+	// пакете нет — зовётся шелльная (deploy/tests/helm/lib/render-chain.sh).
+	args := []string{"-c", `. ../../tests/helm/lib/render-chain.sh && render_kaname_alone "$@"`, "render_kaname_alone", "iamlane", iamChartDir}
 	for _, s := range sets {
 		args = append(args, "--set", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из теста
+	out, err := exec.Command("bash", args...).CombinedOutput() // #nosec G204 -- фиксированная оболочка и обёртка дерева, аргументы из теста
 	return string(out), err
 }
 

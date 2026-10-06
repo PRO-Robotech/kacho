@@ -5,10 +5,7 @@ package subscriptionjournal
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -33,56 +30,35 @@ const emitKindArg = 2
 // Утверждаются обе стороны: каждое слово производителя названо словарём, и у
 // каждого слова словаря есть производитель. Пустой обход — отказ.
 func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
-	src, err := filepath.Abs(emitterFile)
-	if err != nil {
-		t.Fatalf("путь производителя не разрешился: %v", err)
-	}
-	if _, err := os.Stat(src); err != nil {
-		t.Fatalf("файла производителя нет (%s): разбор судил бы пустоту — %v", emitterFile, err)
-	}
-
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, src, nil, 0)
-	if err != nil {
-		t.Fatalf("производитель не разобрался: %v", err)
-	}
+	found, fset, files := emitterCalls(t)
 
 	produced := map[string]int{}
 	calls := 0
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		id, ok := call.Fun.(*ast.Ident)
-		if !ok || id.Name != emitFunc {
-			return true
-		}
+	for _, call := range found {
 		calls++
 		if len(call.Args) <= emitKindArg {
 			t.Errorf("%s: вызов %s с %d аргументами — позиция вида уехала, и разбор судит не то",
 				fset.Position(call.Pos()), emitFunc, len(call.Args))
-			return true
+			continue
 		}
 		lit, ok := call.Args[emitKindArg].(*ast.BasicLit)
 		if !ok || lit.Kind != token.STRING {
 			t.Errorf("%s: вид задан не строковым литералом — перепись его не увидит, "+
 				"и слово окажется вне наблюдения", fset.Position(call.Pos()))
-			return true
+			continue
 		}
 		produced[lit.Value[1:len(lit.Value)-1]]++
-		return true
-	})
+	}
 
 	if calls == 0 {
 		t.Fatalf("в %s не найдено ни одного вызова %s — разбор сломан, и «расхождений нет» получено даром",
-			emitterFile, emitFunc)
+			emitterDir, emitFunc)
 	}
 	if len(produced) == 0 {
 		t.Fatalf("вызовов %d, а слов ноль — разбор аргументов сломан", calls)
 	}
 
-	declared := Journal().Mapping.Kinds
+	declared := Journal(false).Mapping.Kinds
 	for word := range produced {
 		if _, ok := declared[word]; !ok {
 			t.Errorf("репозиторий пишет вид %q, а словарь его НЕ называет: строка с ним "+
@@ -101,8 +77,8 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 		words = append(words, w)
 	}
 	sort.Strings(words)
-	t.Logf("осмотрено вызовов производителя %d; слов различных %d: %v; объявлено словарём %d",
-		calls, len(produced), words, len(declared))
+	t.Logf("осмотрено файлов %d, вызовов производителя %d; слов различных %d: %v; объявлено словарём %d",
+		files, calls, len(produced), words, len(declared))
 }
 
 // TestKindDictionaryIsWhatTheClientCanName — то, что compute объявляет клиенту,
@@ -113,13 +89,23 @@ func TestJournalWordsAreDerivedFromTheEmitter(t *testing.T) {
 // нигде. Клиент, взявший его (а взять его было неоткуда, кроме неисполняемой
 // пробы), получал бы отказ на всяком другом владельце.
 func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
-	got := Journal().KindDictionary()
-	want := []string{authzfilter.ResourceTypeInstance}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("словарь видов compute %q, ожидался %q", got, want)
+	got := Journal(false).KindDictionary()
+	// Ожидаемое — перечень типов объекта, которые compute сужает поштучно
+	// (`authzfilter.PerObjectTypes`): у каждого из них есть публичное создание и
+	// тип модели, и каждый обязан быть опубликован (NTF3-60). Перечень взят у
+	// производителя, а не выписан третий раз.
+	want := append([]string(nil), authzfilter.PerObjectTypes...)
+	sort.Strings(want)
+	sorted := append([]string(nil), got...)
+	sort.Strings(sorted)
+	if !reflect.DeepEqual(sorted, want) {
+		t.Fatalf("словарь видов compute %q, ожидался %q", sorted, want)
 	}
-	if got[0] == JournalWordInstance {
-		t.Fatalf("клиенту едет слово ХРАНИЛИЩА %q — как строка записана, есть частное дело владельца",
-			JournalWordInstance)
+	for word := range Journal(false).Mapping.Kinds {
+		for _, d := range got {
+			if d == word {
+				t.Fatalf("клиенту едет слово ХРАНИЛИЩА %q — как строка записана, есть частное дело владельца", word)
+			}
+		}
 	}
 }

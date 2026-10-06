@@ -22,9 +22,12 @@ type AddressPoolBindingReaderIface interface {
 // гарантируется одной pgx.Tx writer'а.
 //
 // Set-метод — upsert (ON CONFLICT DO UPDATE). Unset-метод — idempotent
-// DELETE (no error если binding не задан).
+// DELETE (no error если binding не задан); возвращает идентификатор пула, чья
+// привязка снята, из `RETURNING` удаляющего оператора, либо пустую строку, если
+// привязки не было. Пул нужен вызывающему для события правки пула в журнале
+// (NTF-3, NTF3-62).
 type AddressPoolBindingWriterIface interface {
 	AddressPoolBindingReaderIface
 	SetNetworkDefault(ctx context.Context, networkID, poolID string) error
-	UnsetNetworkDefault(ctx context.Context, networkID string) error
+	UnsetNetworkDefault(ctx context.Context, networkID string) (string, error)
 }

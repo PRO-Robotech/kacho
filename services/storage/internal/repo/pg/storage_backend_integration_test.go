@@ -49,7 +49,7 @@ func iaText(t *testing.T, err error) string {
 // из двух чтений, — половина контракта, и расходится она молча.
 func TestStorageBackendRegisteredAndReadBackIdentically(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	want := sbSample("ceph-central-1")
 	created, err := r.Insert(ctx, want)
@@ -77,7 +77,7 @@ func TestStorageBackendRegisteredAndReadBackIdentically(t *testing.T) {
 // В паре с положительным контролем: существующий бэкенд читается.
 func TestStorageBackendGetNotFound(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	missing := ids.NewHyphenID(domain.PrefixStorageBackend)
 	_, err := r.Get(ctx, missing)
@@ -95,7 +95,7 @@ func TestStorageBackendGetNotFound(t *testing.T) {
 // не проверка в коде. Каждое отрицание — с законным близнецом той же формы.
 func TestStorageBackendIdentityHeldByDB(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	first := sbSample("ceph-uniq")
 	_, err := r.Insert(ctx, first)
@@ -123,7 +123,7 @@ func TestStorageBackendIdentityHeldByDB(t *testing.T) {
 // обязательны: иначе проба зеленела бы на реализации, отвергающей всё подряд.
 func TestStorageBackendDictionariesHeldByDB(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	badKind := sbSample("kind-bad")
 	badKind.Kind = "S3_COMPAT"
@@ -162,7 +162,7 @@ func TestStorageBackendDictionariesHeldByDB(t *testing.T) {
 // выглядеть изменённой.
 func TestStorageBackendUpdateAppliesOnlyNamedFields(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	before, err := r.Insert(ctx, sbSample("ceph-upd"))
 	require.NoError(t, err)
@@ -217,8 +217,8 @@ func TestStorageBackendUpdateAppliesOnlyNamedFields(t *testing.T) {
 func TestStorageBackendDeleteRestrictedByBinding(t *testing.T) {
 	pool := newBareTestPool(t)
 	r := pg.NewStorageBackendRepo(pool)
-	br := pg.NewDiskTypeBindingRepo(pool)
-	ctx := context.Background()
+	br := mustJournalWriter(pg.NewDiskTypeBindingRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	referenced, err := r.Insert(ctx, sbSample("ceph-referenced"))
 	require.NoError(t, err)
@@ -246,7 +246,7 @@ func TestStorageBackendDeleteRestrictedByBinding(t *testing.T) {
 // с законным курсором, иначе отрицание зеленело бы на списке, отвергающем любой ввод.
 func TestStorageBackendListCursor(t *testing.T) {
 	r := pg.NewStorageBackendRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const total = 5
 	for i := 0; i < total; i++ {

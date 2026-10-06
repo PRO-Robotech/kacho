@@ -274,7 +274,7 @@ CASES.append(Case(
 # ресурса по id нет «пустого успеха» — 200 здесь означает, что чужак прочитал чужой
 # реестр. Плюс главное: отказ на СУЩЕСТВУЮЩЕМ реестре обязан быть неотличим от отказа
 # на отсутствующем — иначе по ответу устанавливается существование чужого ресурса.
-_ABSENT_REG_ID = "reg-DOESNOTEXIST00000"  # well-formed, заведомо отсутствует (парити с REG-GET-NEG-NOTFOUND)
+_ABSENT_REG_ID = "reg00000000000000000"  # well-formed, заведомо отсутствует (парити с REG-GET-NEG-NOTFOUND)
 
 CASES.append(Case(
     id="REG-AZ-GET-STRANGER-HIDDEN",

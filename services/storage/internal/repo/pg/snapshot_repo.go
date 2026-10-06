@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -28,13 +29,24 @@ import (
 // (атомарно, ban #16).
 type SnapshotRepo struct {
 	pool *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля).
+	journal journaltx.Options
 	// readyOnCommit — см. VolumeRepo: без плоскости данных фиксация записи
 	// сама есть готовность.
 	readyOnCommit bool
 }
 
 // NewSnapshotRepo создаёт SnapshotRepo поверх pgxpool.
-func NewSnapshotRepo(pool *pgxpool.Pool) *SnapshotRepo { return &SnapshotRepo{pool: pool} }
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewSnapshotRepo(pool *pgxpool.Pool, journal journaltx.Options) (*SnapshotRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewSnapshotRepo: %w", err)
+	}
+	return &SnapshotRepo{pool: pool, journal: journal}, nil
+}
 
 // WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit: плоскости данных нет,
 // сверять не с чем, и фиксация записи сама есть готовность.
@@ -231,7 +243,7 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 		backendObject = &obj
 	}
 	created := *s
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		var (
 			createdAt, updatedAt time.Time
 			zoneID, bindingID    string
@@ -304,7 +316,7 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 		}
 		labelsArg = b
 	}
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		var (
 			rowID       string
 			projectID   string
@@ -348,7 +360,7 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 // Ссылки volumes.source_snapshot_id → SET NULL (не RESTRICT) — delete НЕ блокируется
 // (§1.2, S1-09). 0 rows → NotFound.
 func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		// RETURNING project_id — нужен для unregister owner-tuple; 0 rows → NotFound.
 		var projectID string
 		err := tx.QueryRow(ctx, `DELETE FROM snapshots WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
@@ -411,9 +423,11 @@ func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, t
 		return nil, storageerr.ErrInternal
 	}
 	created := *s
-	err = r.pool.QueryRow(ctx, fmt.Sprintf(copySnapshotSQL, bornState(r.readyOnCommit)),
-		s.ID, s.ProjectID, s.Name, s.Description, labels, sourceID, targetZone, s.Backend.BackendObject).
-		Scan(&created.CreatedAt, &created.SizeBytes)
+	err = inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
+		return tx.QueryRow(ctx, fmt.Sprintf(copySnapshotSQL, bornState(r.readyOnCommit)),
+			s.ID, s.ProjectID, s.Name, s.Description, labels, sourceID, targetZone, s.Backend.BackendObject).
+			Scan(&created.CreatedAt, &created.SizeBytes)
+	})
 	if err == nil {
 		created.ZoneID = targetZone
 		created.Status = domain.SnapshotStatusCreating

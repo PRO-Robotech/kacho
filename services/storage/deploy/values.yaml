@@ -242,7 +242,15 @@ mtls:
   serverHosts: ["kacho-storage"]   # server-cert DNS-SAN dial-host (Service = kacho-storage)
   spiffe:
     trustDomain: kacho.cloud
-    namespace: kacho-storage
+    # Пространство в SAN — то, в котором служба ЖИВЁТ (release namespace `kacho`,
+    # как у всех служб зонтика). Здесь стояло `kacho-storage` — пространство, в
+    # котором storage не развёрнут ни на одном стенде: идентичность называла
+    # чужое пространство. Политика выпуска сертификатов служб (зонтик,
+    # templates/cert-issuance-policy.yaml, З30) такой SAN не выпускает — запрос
+    # из `kacho` с `ns/kacho-storage` отклоняется, и клиентского сертификата у
+    # storage не было бы вовсе. Круги доверенных отправителей соседей названы тем
+    # же литералом (`ns/kacho/sa/kacho-storage`).
+    namespace: kacho
     saName: kacho-storage
   leafDuration: 2160h
   leafRenewBefore: 720h

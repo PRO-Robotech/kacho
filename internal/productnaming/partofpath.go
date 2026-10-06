@@ -44,11 +44,18 @@ const umbrellaChartsPrefix = "deploy/helm/umbrella/charts/"
 // servicesPrefix — приставка пути дерева службы.
 const servicesPrefix = "services/"
 
+// deliveryChartsPrefix — приставка чартов поставки вне зонта: чарт службы,
+// которая ставится и отдельно (notify, NTF-1 З28, NTF1-I06), лежит в
+// `deploy/helm/<каталог службы>/` и в зонт входит записью зависимости
+// `file://`. Сам зонт и вендоренные архивы частью продукта не являются.
+const deliveryChartsPrefix = "deploy/helm/"
+
 // PartOfPath — каталог исходников части, чей это ПУТЬ.
 //
-// Две раскладки, обе живые: `services/<svc>/…` и подчарт зонта
-// `deploy/helm/umbrella/charts/<имя чарта>/…`. Путь, не подошедший ни под одну,
-// даёт ложь — тогда часть называет ключ подчарта, см. [PartOfLine].
+// Три раскладки, все живые: `services/<svc>/…`, подчарт зонта
+// `deploy/helm/umbrella/charts/<имя чарта>/…` и чарт поставки вне зонта
+// `deploy/helm/<каталог службы>/…`. Путь, не подошедший ни под одну, даёт
+// ложь — тогда часть называет ключ подчарта, см. [PartOfLine].
 //
 // Приписать строку соседу хуже, чем остановиться: покрытой оказалась бы не та
 // часть продукта.
@@ -63,6 +70,13 @@ func PartOfPath(rel string) (string, bool) {
 	if s, ok := strings.CutPrefix(rel, umbrellaChartsPrefix); ok {
 		if i := strings.IndexByte(s, '/'); i > 0 {
 			return ServiceDir(s[:i])
+		}
+		return "", false
+	}
+	if s, ok := strings.CutPrefix(rel, deliveryChartsPrefix); ok {
+		i := strings.IndexByte(s, '/')
+		if i > 0 && s[:i] != "umbrella" && s[:i] != "vendor" {
+			return s[:i], true
 		}
 	}
 	return "", false
@@ -97,6 +111,30 @@ func PartOfLine(rel string, lines []string, at int) (string, bool) {
 			return "", false
 		}
 		return svc, true
+	}
+	return "", false
+}
+
+// umbrellaTemplatesPrefix — шаблоны самого зонта (не подчартов).
+const umbrellaTemplatesPrefix = "deploy/helm/umbrella/templates/"
+
+// UmbrellaTemplatePart — КАНДИДАТ в части продукта для шаблона самого зонта
+// `deploy/helm/umbrella/templates/<файл>`: первый сегмент имени файла до `-`
+// либо `.` (Д77 (а) NTF-1; проба notify-probe разворачивается шаблоном зонта,
+// полоса D3).
+//
+// Кандидат, а не ответ: шаблоны зонта называются и не по частям
+// (`mail-receiver.yaml`, `clusterissuer.yaml`), и приписать такой файл
+// несуществующей части хуже, чем остановиться. Поэтому [PartOfPath] эту
+// раскладку НЕ знает, а вызывающий подтверждает кандидата наличием каталога
+// `services/<кандидат>` в индексе — состава дерева этот пакет не читает.
+func UmbrellaTemplatePart(rel string) (string, bool) {
+	name, ok := strings.CutPrefix(filepath.ToSlash(rel), umbrellaTemplatesPrefix)
+	if !ok || strings.Contains(name, "/") {
+		return "", false
+	}
+	if i := strings.IndexAny(name, "-."); i > 0 {
+		return name[:i], true
 	}
 	return "", false
 }

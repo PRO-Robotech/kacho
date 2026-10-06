@@ -83,13 +83,13 @@ func TestCQRS_Gateway_WriterCommit_ReaderSees(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -121,13 +121,13 @@ func TestCQRS_Gateway_WriterAbort_RollbacksInsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -153,13 +153,13 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// 1) Insert + Emit + Commit → outbox-row есть.
 	w, err := r.Writer(ctx)
@@ -204,13 +204,13 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Insert.
 	w1, err := r.Writer(ctx)
@@ -238,7 +238,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
-	require.NoError(t, w3.Gateways().Delete(ctx, g.ID))
+	require.NoError(t, removalErr(w3.Gateways().Delete(ctx, g.ID)))
 	require.NoError(t, w3.Outbox().Emit(ctx, "Gateway", g.ID, g.ProjectID, "DELETED", map[string]any{"id": g.ID}))
 	require.NoError(t, w3.Commit())
 

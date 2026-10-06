@@ -76,8 +76,9 @@ option go_package = "github.com/PRO-Robotech/corelib/api/corelib/authz/v1;authzv
 //   }
 //
 // All options are emitted into the catalog. `permission`,
-// `required_relation`, `scope_extractor.object_type` and
-// `scope_extractor.from_request_field` are required. `required_acr_min` is
+// `required_relation`, `scope_extractor.object_type` and exactly one source of
+// the scope id — `scope_extractor.from_request_field` or
+// `scope_extractor.bound_to_server` — are required. `required_acr_min` is
 // optional and defaults to "2". `hide_existence` is optional and defaults to
 // false.
 //
@@ -271,4 +272,28 @@ message ScopeExtractor {
   // account/cluster-scoped reads check `project:<id>` → 403). Empty for the
   // overwhelming majority of RPCs, which have a fixed scope type.
   string object_type_from_request_field = 3;
+
+  // bound_to_server — объект проверки есть экземпляр типа `object_type`, к
+  // которому процесс ПРИВЯЗАЛ сервер при подъёме, а не значение из запроса.
+  //
+  // Зачем. Есть серверы, у которых предмет вопроса о правах назван не
+  // вызывающим, а самим процессом: сервер ленты уведомлений отдаёт строки ОДНОЙ
+  // ленты — той, которой владеет модуль, поднявший его. Взять идентификатор из
+  // запроса значило бы позволить вызывающему назвать чужую ленту и спросить о
+  // ней; взять его из имени процесса вне сервера — завести второе значение
+  // «имени модуля», способное разойтись с первым. Поэтому значение привязки
+  // (тип и идентификатор) приносит сам сервер при подъёме, а аннотация говорит
+  // только, что оно нужно.
+  //
+  // Сочетания. Поле невыразимо вместе с `from_request_field` и
+  // `object_type_from_request_field`: у проверки один источник идентификатора, и
+  // два источника — два ответа на один вопрос. Вывод каталога отвергает такую
+  // аннотацию с именем метода; метод этой формы, для типа которого процесс
+  // привязки не объявил, — отказ старта с именем метода; две привязки одного
+  // типа — тоже отказ старта. `object_type` при нём обязателен: он называет, к
+  // какому типу привязка относится.
+  //
+  // Значение по умолчанию `false` — прежнее поведение: идентификатор берётся из
+  // `from_request_field`.
+  bool bound_to_server = 4;
 }

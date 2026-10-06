@@ -46,7 +46,7 @@ MT = "/compute/v1/machineTypes"                   # public read (:8080)
 
 # well-formed mt- (родовой prefix валиден), НИКОГДА не резолвится каталогом — sync-негативы
 # падают в ValidateCreateInstanceReq ДО doCreate, поэтому реальный mt не нужен.
-_PLACEHOLDER_MT = "mt-placeholder0000000"
+_PLACEHOLDER_MT = "mt-00000000000000001"
 _BOOT_STORAGE = {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"}
 _BOOT_REGISTRY = {"type": "registry.image", "id": "ml/bert-trainer:cu121"}
 # sshPublicKeys больше НЕ приём (compute не доставляет ключи в гостя) — значение
@@ -698,10 +698,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-GET-NEG-ABSENT",
-    title="COMP-1-22: Get well-formed-но-нет 'ins-doesnotexist000' → oneOf([403,404]) (authz-first: scope_extractor "
+    title="COMP-1-22: Get well-formed-но-нет 'ins-00000000000000000' → oneOf([403,404]) (authz-first: scope_extractor "
           "не резолвит target→project → 403 ДО backend NOT_FOUND); НИКОГДА 200. [verifies COMP-1-22 · authz-first tolerance]",
     classes=["NEG"], priority="P1",
-    steps=[Step(name="get-absent", method="GET", path=f"{INSTANCES}/ins-doesnotexist000",
+    steps=[Step(name="get-absent", method="GET", path=f"{INSTANCES}/ins-00000000000000000",
                 test_script=["pm.test('403 or 404, never success', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));"])],
 ))
 
@@ -1054,10 +1054,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-DEL-NEG-ABSENT",
-    title="COMP-1-38: Delete well-formed-но-нет 'ins-doesnotexist000' → oneOf([403,404]) (authz-first tolerant); "
+    title="COMP-1-38: Delete well-formed-но-нет 'ins-00000000000000000' → oneOf([403,404]) (authz-first tolerant); "
           "НИКОГДА 200. [verifies COMP-1-38 · authz-first tolerance]",
     classes=["NEG"], priority="P1",
-    steps=[Step(name="del-absent", method="DELETE", path=f"{INSTANCES}/ins-doesnotexist000",
+    steps=[Step(name="del-absent", method="DELETE", path=f"{INSTANCES}/ins-00000000000000000",
                 test_script=["pm.test('403 or 404, never success', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));"])],
 ))
 

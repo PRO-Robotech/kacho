@@ -1,5 +1,27 @@
 [
   {
+    "fqn": "corelib.notify.InternalNotificationFeedService/Ack",
+    "permission": "platform.notification_feed.ack",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_feed",
+      "from_request_field": "",
+      "bound_to_server": true
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "corelib.notify.InternalNotificationFeedService/Claim",
+    "permission": "platform.notification_feed.claim",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_feed",
+      "from_request_field": "",
+      "bound_to_server": true
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "corelib.operation.OperationService/Cancel",
     "permission": "\u003cexempt\u003e",
     "required_relation": "",
@@ -780,6 +802,16 @@
     "scope_extractor": {
       "object_type": "nlb_target_group",
       "from_request_field": "target_group_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNotifyProbeService/Send",
+    "permission": "notify.probeNotifications.send",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
     },
     "required_acr_min": "1"
   },
@@ -3020,6 +3052,56 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kaname.cloud.iam.v1.InternalNotificationGrantService/ResolveSend",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "INTERNAL_LISTENER"
+  },
+  {
+    "fqn": "kaname.cloud.iam.v1.InternalNotificationGrantService/Restore",
+    "permission": "iam.notification_grants.restore",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kaname.cloud.iam.v1.InternalNotificationGrantService/Revoke",
+    "permission": "iam.notification_grants.revoke",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kaname.cloud.iam.v1.InternalNotificationRecipientService/ListProjectAudience",
+    "permission": "iam.notification_recipients.listProjectAudience",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_recipient_directory",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kaname.cloud.iam.v1.InternalNotificationRecipientService/Resolve",
+    "permission": "iam.notification_recipients.resolve",
+    "required_relation": "reader",
+    "scope_extractor": {
+      "object_type": "notification_recipient_directory",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "kaname.cloud.iam.v1.InternalOperationsService/ListIamOperations",
     "permission": "iam.internal_operationses.listIamOperations",
     "required_relation": "system_admin",
@@ -3072,16 +3154,6 @@
   },
   {
     "fqn": "kaname.cloud.iam.v1.InternalUserService/Get",
-    "permission": "\u003cexempt\u003e",
-    "required_relation": "",
-    "scope_extractor": {
-      "object_type": "",
-      "from_request_field": ""
-    },
-    "exempt_reason": "INTERNAL_LISTENER"
-  },
-  {
-    "fqn": "kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
     "permission": "\u003cexempt\u003e",
     "required_relation": "",
     "scope_extractor": {

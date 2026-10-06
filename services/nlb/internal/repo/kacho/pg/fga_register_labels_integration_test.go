@@ -27,7 +27,7 @@ import (
 // resource_mirror для γ-selector matchLabels.
 func TestFGARegisterOutbox_T3_CreateIntentCarriesLabelsParentSourceVersion(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj-t3aaaaaaaaaaaaaa"
 	tg := newTG(projectID, "tg-critical")
@@ -71,7 +71,7 @@ func TestFGARegisterOutbox_T3_CreateIntentCarriesLabelsParentSourceVersion(t *te
 // reconcile. A later mutation's source_version is strictly newer.
 func TestFGARegisterOutbox_T3_UpdateLabelsEmitsRegisterIntent(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj-t3bbbbbbbbbbbbbb"
 	tg := newTG(projectID, "tg-upd")

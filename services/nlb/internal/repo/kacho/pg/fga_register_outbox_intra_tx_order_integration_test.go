@@ -33,7 +33,7 @@ import (
 // register of the same object.
 func TestFGARegisterOutbox_IntraTxOrder_VersionsAreStrictlyIncreasing(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const srcProject = "prj-order-src-aaaaa"
 	const dstProject = "prj-order-dst-aaaaa"

@@ -253,8 +253,9 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.ProjectService/Update":         {},
 	"/kaname.cloud.iam.v1.ProjectService/Delete":         {},
 	"/kaname.cloud.iam.v1.ProjectService/ListOperations": {},
-	// iam.v1 — UserService (НЕТ публичного Create — Users создаются через
-	// InternalUserService.UpsertFromIdentity).
+	// iam.v1 — UserService (НЕТ публичного Create — людей заводят регистрация
+	// и приглашение службы доступа; служебный InternalUserService.UpsertFromIdentity
+	// живёт только на внутреннем слушателе).
 	// Update — публичная async-мутация: mutable только labels (identity-поля
 	// immutable), возвращает Operation; parity с RoleService/ServiceAccountService.
 	"/kaname.cloud.iam.v1.UserService/Get":            {},

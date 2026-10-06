@@ -192,3 +192,52 @@ message Gadget {
 		}
 	})
 }
+
+// TestStatelessKindsLedgerJudgesEveryWay — ведомость видов без состояния:
+// законный близнец молчит; запись без предмета, без причины, исключение, не
+// названное страницей либо записью решения, — каждое краснеет ОТДЕЛЬНО и
+// называет себя.
+func TestStatelessKindsLedgerJudgesEveryWay(t *testing.T) {
+	t.Parallel()
+	src := []byte(`package subscriptionjournal
+
+func build() interface{} {
+	return subscription.Journal{Mapping: subscription.Mapping{
+		Kinds: map[string]subscription.Kind{
+			JournalWordRegistry:   {ObjectType: t, Action: a},
+			JournalWordRepository: {ObjectType: t, Action: a},
+		},
+	}}
+}
+`)
+	owner, err := ScanJournalKinds("services/probe/internal/subscriptionjournal/journal.go", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.Count != 2 || len(owner.Keys) != 2 || owner.Keys[1] != "JournalWordRepository" {
+		t.Fatalf("ФИКСТУРА: разбор ключей словаря: %+v", owner)
+	}
+	lawful := StatelessKind{File: owner.File, Key: "JournalWordRepository", Wire: "probe_repository", Reason: "причина"}
+	page := "<td><code>probe&#95;repository</code></td><td>NOT_PRODUCED</td>"
+	decision := "исключение: probe_repository"
+	owners := []JournalKinds{owner}
+
+	if got := JudgeStatelessKinds(owners, []StatelessKind{lawful}, page, decision); len(got) != 0 {
+		t.Fatalf("законный близнец дал находки: %v", got)
+	}
+	for name, c := range map[string]struct {
+		entry          StatelessKind
+		page, decision string
+		want           string
+	}{
+		"запись без предмета":   {StatelessKind{File: owner.File, Key: "JournalWordGone", Wire: "probe_repository", Reason: "x"}, page, decision, "пережила предмет"},
+		"запись без причины":    {StatelessKind{File: owner.File, Key: "JournalWordRepository", Wire: "probe_repository"}, page, decision, "без причины"},
+		"страница молчит":       {lawful, "<td>прочее</td>", decision, "клиентская страница исключения не называет"},
+		"запись решения молчит": {lawful, page, "прочее", "запись решения"},
+	} {
+		got := JudgeStatelessKinds(owners, []StatelessKind{c.entry}, c.page, c.decision)
+		if len(got) != 1 || !strings.Contains(got[0], c.want) {
+			t.Errorf("%s: ожидалась одна находка %q, есть %v", name, c.want, got)
+		}
+	}
+}

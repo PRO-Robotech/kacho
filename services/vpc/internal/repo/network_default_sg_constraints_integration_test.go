@@ -27,11 +27,11 @@ func TestIntegration_DefaultSG_FKSetsNullOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID := ids.NewID(ids.PrefixNetwork)
@@ -62,11 +62,11 @@ func TestIntegration_DefaultSG_FKRejectsMissingSG(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID := ids.NewID(ids.PrefixNetwork)
@@ -84,11 +84,11 @@ func TestIntegration_OneDefaultSGPerNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID := ids.NewID(ids.PrefixNetwork)

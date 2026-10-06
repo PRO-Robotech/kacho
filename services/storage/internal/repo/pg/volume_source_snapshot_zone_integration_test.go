@@ -41,7 +41,7 @@ import (
 func volumeRows(t *testing.T, pool *pgxpool.Pool, id string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM volumes WHERE id = $1`, id).Scan(&n))
 	return n
 }
@@ -50,8 +50,8 @@ func volumeRows(t *testing.T, pool *pgxpool.Pool, id string) int {
 // lineage volume lives in another zone must not seed a volume in this one.
 func TestVolumeFromSnapshotForeignZoneRejected(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	srcVolID := mkVolumeRowInZone(t, pool, "prj-1", "vol-snap-src-zone-b", "region-1-b")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-zone-b", srcVolID)
@@ -72,8 +72,8 @@ func TestVolumeFromSnapshotForeignZoneRejected(t *testing.T) {
 // TestVolumeFromSnapshotSameZoneSeeded — the positive path stays open.
 func TestVolumeFromSnapshotSameZoneSeeded(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	srcVolID := mkVolumeRowInZone(t, pool, "prj-1", "vol-snap-src-same-zone", "region-1-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-same-zone", srcVolID)
@@ -95,8 +95,8 @@ func TestVolumeFromSnapshotSameZoneSeeded(t *testing.T) {
 // boundary the image capture path documents.
 func TestVolumeFromSnapshotWithoutLineageUnaffected(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-orphan-for-volume", 20<<30)
 
@@ -116,8 +116,8 @@ func TestVolumeFromSnapshotWithoutLineageUnaffected(t *testing.T) {
 // snapshot that does not exist, whatever zone it was taken in.
 func TestVolumeFromSnapshotForeignProjectStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	victimVolID := mkVolumeRowInZone(t, pool, "prj-victim-zone", "vol-victim-zone-b", "region-1-b")
 	foreignSnap := mkSnapshotOfVolume(t, pool, "prj-victim-zone", "snap-victim-zone-b", victimVolID)

@@ -6,7 +6,7 @@
 HISTORY, in the past tense on purpose. `setup.sh` USED TO seed a stand whose api-gateway
 ran `authn.mode=dev`: it forged HS256 Bearers from a signing literal shared with the tree
 and handed one to each matrix subject. Against PRODUCTION posture that was inert by
-design — the gateway accepts only Hydra-signed RS256, and iam's internal listener demands
+design — the gateway accepts only issuer-signed RS256, and iam's internal listener demands
 a verified client certificate — so it died on its third step (Account.Create → 401) and
 the whole regression suite proved nothing about the posture we actually ship.
 
@@ -40,7 +40,7 @@ verified in the tree rather than assumed:
      against a catalog two retirements ago — recheck it rather than quoting it, the
      command is in prodseed_matrix.py). `StepUpGate.Check` exempts principals whose
      `kaname_principal_type` is exactly `service_account` and NEVER a user.
-A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
+A human User principal with an `acr` requires the interactive login ceremony, which
 a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount
 carrying the exact bindings that slot assumes — the FGA relation resolved is identical,
 only the principal class differs.
@@ -204,7 +204,7 @@ def patch(fixtures: dict, paths: list[pathlib.Path]) -> None:
 #
 # So it is MEASURED instead: git is asked about each path we actually wrote. That cannot
 # drift, and it keeps the real hazard armed — if any of these ever becomes tracked, the
-# next production seed writes a live Hydra-signed bearer into a file `git add -A` would
+# next production seed writes a live platform-signed bearer into a file `git add -A` would
 # commit, and this says so by name instead of by assumption.
 def env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None = None) -> dict:
     """Ask git how it treats each path: 'tracked' | 'ignored' | 'untracked-not-ignored'.
@@ -240,7 +240,7 @@ def report_env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None 
     log(f"env files written: {len(disp)}  (ignored by git: {len(ignored)}, "
         f"committable: {len(committable)}, unknown: {len(unknown)})")
     if committable:
-        log("WARNING: these now hold LIVE Hydra-signed bearers AND git would commit them:")
+        log("WARNING: these now hold LIVE platform-signed bearers AND git would commit them:")
         for k in committable:
             log(f"           {k}  [{disp[k]}]")
         log("         commit by explicit path only — never `git add -A`.")

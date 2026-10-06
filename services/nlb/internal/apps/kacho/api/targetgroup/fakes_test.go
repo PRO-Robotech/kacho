@@ -513,21 +513,22 @@ func (q *fakeTGWriter) DeleteTargetsDraining(_ context.Context, tgID string) (in
 	return n, nil
 }
 
-func (q *fakeTGWriter) Delete(_ context.Context, id string) error {
+func (q *fakeTGWriter) Delete(_ context.Context, id string) (string, error) {
 	if q.r.failOnDelete != nil {
-		return q.r.failOnDelete
+		return "", q.r.failOnDelete
 	}
 	q.r.mu.Lock()
 	defer q.r.mu.Unlock()
-	if _, ok := q.r.tgs[id]; !ok {
-		return fmt.Errorf("%w: TargetGroup %s not found", kachorepo.ErrNotFound, id)
+	rec, ok := q.r.tgs[id]
+	if !ok {
+		return "", fmt.Errorf("%w: TargetGroup %s not found", kachorepo.ErrNotFound, id)
 	}
 	// emulate FK 23503 when targets still exist.
 	if m, ok := q.r.targets[id]; ok && len(m) > 0 {
-		return fmt.Errorf("%w: TargetGroup %s has child targets (FK 23503)", kachorepo.ErrFailedPrecondition, id)
+		return "", fmt.Errorf("%w: TargetGroup %s has child targets (FK 23503)", kachorepo.ErrFailedPrecondition, id)
 	}
 	q.w.pendingTGDel = append(q.w.pendingTGDel, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // ---- Outbox ----
@@ -581,8 +582,8 @@ func (fakeLBStub) MarkDeleting(context.Context, string) (*kachorepo.LoadBalancer
 func (fakeLBStub) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
 	return nil, nil, errors.New("not used")
 }
-func (fakeLBStub) Delete(context.Context, string) error {
-	return errors.New("not used")
+func (fakeLBStub) Delete(context.Context, string) (string, error) {
+	return "", errors.New("not used")
 }
 func (fakeLBStub) DeleteIfUnprotected(context.Context, string) error {
 	return errors.New("not used")
@@ -617,8 +618,8 @@ func (fakeListenerStub) SetVIP(context.Context, string, string, string) (*kachor
 func (fakeListenerStub) MoveProject(context.Context, string, string) ([]*kachorepo.ListenerRecord, error) {
 	return nil, nil
 }
-func (fakeListenerStub) Delete(context.Context, string) error {
-	return errors.New("not used")
+func (fakeListenerStub) Delete(context.Context, string) (string, error) {
+	return "", errors.New("not used")
 }
 
 // ---- Helper: identity-key match (mirror pg writer ON CONFLICT) ----

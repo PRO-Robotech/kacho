@@ -62,7 +62,7 @@ const snapInstallPrefix = "kctest"
 // регистрация класса не должна быть ошибкой пробы.
 func snapSeedPlacement(t *testing.T, pool *pgxpool.Pool, diskTypeID, zone string) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	_, err := pool.Exec(ctx,
 		`INSERT INTO disk_types (id, name, zone_ids, performance_tier, lifecycle)
 		 VALUES ($1, $1, '[]'::jsonb, 'BALANCED', 'ACTIVE')
@@ -97,7 +97,7 @@ func snapSeedPlacement(t *testing.T, pool *pgxpool.Pool, diskTypeID, zone string
 func snapVolume(t *testing.T, vr *pg.VolumeRepo, project, name, zone string, size int64) *domain.Volume {
 	t.Helper()
 	id := ids.NewID(domain.PrefixVolume)
-	v, _, err := vr.Insert(context.Background(), &domain.Volume{
+	v, _, err := vr.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         id,
 		ProjectID:  project,
 		Name:       name,
@@ -116,7 +116,7 @@ func snapVolume(t *testing.T, vr *pg.VolumeRepo, project, name, zone string, siz
 func snapVolumeFrom(t *testing.T, vr *pg.VolumeRepo, project, name, zone string, size int64, snapshotID string) (*domain.Volume, error) {
 	t.Helper()
 	id := ids.NewID(domain.PrefixVolume)
-	v, _, err := vr.Insert(context.Background(), &domain.Volume{
+	v, _, err := vr.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID: id, ProjectID: project, Name: name, ZoneID: zone, DiskTypeID: snapClass,
 		SizeBytes: size, SourceSnapshot: snapshotID,
 		Backend: domain.Placement{BackendObject: blockbackend.ObjectName(snapInstallPrefix, id)},
@@ -141,7 +141,7 @@ func snapReadyVolume(t *testing.T, pool *pgxpool.Pool, vr *pg.VolumeRepo, projec
 // снимок: объявляет том готовым.
 func snapMarkVolumeReady(t *testing.T, pool *pgxpool.Pool, volumeID string) {
 	t.Helper()
-	tag, err := pool.Exec(context.Background(), `UPDATE volumes SET state='READY' WHERE id=$1`, volumeID)
+	tag, err := pool.Exec(journalPrincipalCtx(context.Background()), `UPDATE volumes SET state='READY' WHERE id=$1`, volumeID)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, tag.RowsAffected(), "фикстура обязана менять ровно одну строку")
 }
@@ -149,7 +149,7 @@ func snapMarkVolumeReady(t *testing.T, pool *pgxpool.Pool, volumeID string) {
 // snapMarkSnapshotReady — то же для снимка.
 func snapMarkSnapshotReady(t *testing.T, pool *pgxpool.Pool, snapshotID string) {
 	t.Helper()
-	tag, err := pool.Exec(context.Background(),
+	tag, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`UPDATE snapshots SET state='READY', observed_state='READY', observed_at=now() WHERE id=$1`, snapshotID)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, tag.RowsAffected(), "фикстура обязана менять ровно одну строку")
@@ -175,7 +175,7 @@ func snapInsertReady(t *testing.T, pool *pgxpool.Pool, sr *pg.SnapshotRepo, proj
 func snapInsert(t *testing.T, sr *pg.SnapshotRepo, project, name, srcVolume string) *domain.Snapshot {
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)
-	s, _, err := sr.Insert(context.Background(), &domain.Snapshot{
+	s, _, err := sr.Insert(journalPrincipalCtx(context.Background()), &domain.Snapshot{
 		ID:             id,
 		ProjectID:      project,
 		Name:           name,
@@ -195,8 +195,8 @@ func snapInsert(t *testing.T, sr *pg.SnapshotRepo, project, name, srcVolume stri
 // константой».
 func TestSnapshotInheritsZoneOfSourceVolume(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	snapSeedPlacement(t, pool, snapClass, snapZoneB)
 
@@ -226,8 +226,8 @@ func TestSnapshotInheritsZoneOfSourceVolume(t *testing.T) {
 // восстановить куда угодно.
 func TestSnapshotKeepsOwnZoneAfterSourceVolumeDeleted(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	snapSeedPlacement(t, pool, snapClass, snapZoneB)
 
@@ -261,7 +261,7 @@ func TestSnapshotKeepsOwnZoneAfterSourceVolumeDeleted(t *testing.T) {
 // которого ещё нет, и получить том, чьё содержимое не определено ничем.
 func TestSnapshotSeedingRefusedUntilReady(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 3<<30)
@@ -289,8 +289,8 @@ func TestSnapshotSeedingRefusedUntilReady(t *testing.T) {
 // отказом — значит узнавать его последним.
 func TestSnapshotSeededVolumesAreListed(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 4<<30)
@@ -327,8 +327,8 @@ func TestSnapshotSeededVolumesAreListed(t *testing.T) {
 // доходит до тысячи.
 func TestSnapshotListSeedsWithoutPerRowQuery(t *testing.T) {
 	pool, counter := dtTracedPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 1<<30)
@@ -363,8 +363,8 @@ func TestSnapshotListSeedsWithoutPerRowQuery(t *testing.T) {
 // ним не может by construction.
 func TestSnapshotInheritsBindingAndTenantSpace(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	bindingA := snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	bindingB := snapSeedPlacement(t, pool, snapClass, snapZoneB)
 	require.NotEqual(t, bindingA, bindingB, "ревизии зон различимы — иначе наследование не проверяемо")
@@ -393,8 +393,8 @@ func TestSnapshotInheritsBindingAndTenantSpace(t *testing.T) {
 // читают, всегда пуста. Оба вырождения выглядят как работающая причина.
 func TestSnapshotStatusReasonRoundTrip(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 1<<30)
 

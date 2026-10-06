@@ -28,7 +28,7 @@
 // Три следствия, каждое наблюдалось в этом дереве:
 //
 //  1. РЕЛИЗ ВКОМПИЛИРОВАН В БИНАРЬ. Умолчание вида
-//     `<релиз>-kratos-public.<ns>.svc` держится совпадением имени релиза с тем,
+//     `<релиз>-<служба>.<ns>.svc` держится совпадением имени релиза с тем,
 //     что кто-то однажды набрал. Установка под другим именем релиза (или в
 //     другом пространстве имён) ломает адрес МОЛЧА — и ни один профиль при
 //     этом не меняется, потому что ни один профиль его и не называл.
@@ -422,7 +422,7 @@ func TestNeighbourProducerClassifiersCanRedden(t *testing.T) {
 			// дефект: сосед короткой и полной формой, в голом виде и в URL
 			{"kaname.kacho.svc:9090", "neighbour"},
 			{"kaname.kacho.svc.cluster.local:9090", "neighbour"},
-			{"http://kacho-umbrella-kratos-public.kacho.svc:80", "neighbour"},
+			{"http://kacho-umbrella-mailpit.kacho.svc:8025", "neighbour"},
 			{"https://kaname-internal.kacho.svc:9097/.well-known/jwks.json", "neighbour"},
 			// законные близнецы той же формы: их норма НЕ касается
 			{":9090", "listen"},

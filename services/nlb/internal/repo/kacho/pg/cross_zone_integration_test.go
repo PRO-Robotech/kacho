@@ -20,7 +20,7 @@ import (
 func TestLB_NLB_1_16_CrossZoneEnabled_RoundTrip(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CROSSZONE000001", "cz-regional")
 	lb.Type = domain.LBTypeInternal
@@ -48,7 +48,7 @@ func TestLB_NLB_1_16_CrossZoneEnabled_RoundTrip(t *testing.T) {
 func TestLB_NLB_1_16_CrossZoneEnabled_ZonalCheck(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CROSSZONE000002", "cz-zonal")
 	lb.Type = domain.LBTypeInternal

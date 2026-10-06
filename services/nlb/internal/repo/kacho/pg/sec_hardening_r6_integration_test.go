@@ -36,7 +36,7 @@ func TestListenerCreate_MoveFirst_ProjectConsistent(t *testing.T) {
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
 	observer := newObserverPool(t, dsn)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const srcPrj = "prj0LSMV1234567890lll"
 	const dstPrj = "prj0LSMV2234567890lll"
@@ -105,7 +105,7 @@ func TestListenerCreate_MoveFirst_ProjectConsistent(t *testing.T) {
 func TestListenerInsert_ConcurrentUniquePortProto_ExactlyOneWinner(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj0LSUC1234567890lll", "lsuc-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

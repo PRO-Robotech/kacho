@@ -234,6 +234,41 @@ func TestMigratorCLINameGateJudgesPerProduct(t *testing.T) {
 			t.Fatalf("законное имя под своим ключом подчарта объявлено находкой: %v", f)
 		}
 	})
+
+	// Шаблон самого зонта (проба notify-probe, NTF-1 D3): хозяина называет имя
+	// файла, и только когда каталог службы есть в индексе (Д77 (а)). Три случая,
+	// каждый — один факт против соседа: каталог есть — имя судится по нему;
+	// каталога нет — хозяин не выведен; каталог есть, имя чужое — находка с
+	// верным именем.
+	umbrellaSrc := "          command: [\"/usr/local/bin/kacho-migrator\", \"up\"]\n"
+	hasNotify := func(svc string) bool { return svc == "notify" }
+	t.Run("шаблон зонта, каталог службы есть — имя судится по нему", func(t *testing.T) {
+		mentions := migratorCLIResolveUmbrellaTemplates(
+			migratorCLIMentions("deploy/helm/umbrella/templates/notify-probe.yaml", umbrellaSrc), hasNotify)
+		if len(mentions) == 0 {
+			t.Fatal("форма не распознана вовсе")
+		}
+		if f := migratorCLINameFindings(mentions); len(f) != 0 {
+			t.Fatalf("законное имя в шаблоне зонта службы notify объявлено находкой: %v", f)
+		}
+	})
+	t.Run("шаблон зонта, каталога службы нет — хозяин не выведен", func(t *testing.T) {
+		mentions := migratorCLIResolveUmbrellaTemplates(
+			migratorCLIMentions("deploy/helm/umbrella/templates/zzz-probe.yaml", umbrellaSrc), hasNotify)
+		joined := strings.Join(migratorCLINameFindings(mentions), "\n")
+		if !strings.Contains(joined, "не выводится") {
+			t.Fatalf("шаблон зонта без каталога службы приписан кому-то молча: %q", joined)
+		}
+	})
+	t.Run("шаблон зонта, каталог службы есть, имя чужое — находка с верным именем", func(t *testing.T) {
+		mentions := migratorCLIResolveUmbrellaTemplates(migratorCLIMentions(
+			"deploy/helm/umbrella/templates/notify-probe.yaml",
+			"          command: [\"/usr/local/bin/migrator\", \"up\"]\n"), hasNotify)
+		joined := strings.Join(migratorCLINameFindings(mentions), "\n")
+		if !strings.Contains(joined, "kacho-migrator") {
+			t.Fatalf("чужое имя в шаблоне зонта не названо находкой с верным именем: %q", joined)
+		}
+	})
 }
 
 // ── разбор аргументов: гейт говорит ────────────────────────────────────────

@@ -1,0 +1,209 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+  ─── ПОЛИТИКА ВЫПУСКА СЕРТИФИКАТОВ СЛУЖБ (замысел З30, решение Р12, kacho#2916) ───
+
+  ПРЕДМЕТ. Идентичность службы — URI SAN `spiffe://<домен>/ns/<ns>/sa/<учётка>`
+  её клиентского сертификата. По нему notify решает, чья служба перед ним, а
+  kaname — может ли она слать письма от своего пространства. До этой политики
+  внутренний УЦ одобрял ЛЮБОЙ запрос: учётка любого пространства имён получала
+  сертификат с идентичностью любой службы (проба
+  deploy/tests/cluster/cert-issuance-policy-test.sh, J01, на кластере без
+  политики — красная с выпущенным SAN notify).
+
+  ПРАВИЛО. SAN запроса обязан совпасть с
+  `spiffe://<домен доверия>/ns/<ns запросившего>/sa/<учётка запросившего>`.
+  Запросивших у внутреннего УЦ два вида, и у каждого своя ветвь:
+
+  • `workload` — запрос подаёт учётка службы САМА (CertificateRequest от её
+    имени). Запросивший известен точно: имя пользователя в запросе ставит
+    вебхук cert-manager по аутентифицированной учётке. SAN обязан быть ровно её
+    идентичностью, в её же пространстве; иных имён (DNS, IP, CN, почта) у такого
+    запроса нет. Ветвь доступна любой учётке кластера (группа
+    `system:serviceaccounts`) — потому что каждая из них вправе получить СВОЮ
+    идентичность и только её.
+
+  • `certificates` — запрос подаёт контроллер cert-manager за объект
+    Certificate (так выпускаются листовые сертификаты всех служб зонтика).
+    Запросивший с точки зрения API — сам контроллер; за ним стоит тот, кто
+    вправе создать Certificate в пространстве запроса, то есть автор этого
+    пространства. Поэтому здесь привязка — к ПРОСТРАНСТВУ запроса: URI SAN
+    обязан нести `ns/<пространство запроса>`, DNS-имена — быть либо
+    короткими, либо именами того же пространства. Ветвь доступна ТОЛЬКО
+    учётке контроллера cert-manager. Чужое пространство (J01 через Certificate)
+    свою службу так не выдаст: SAN `ns/kacho/…`, запрошенный в `ns/A`, отклонён.
+
+  ЧЕГО ПОЛИТИКА НЕ РЕШАЕТ И ПОЧЕМУ. Внутри одного пространства тот, кто вправе
+  создать Certificate, получает любую учётку этого пространства в SAN. Это
+  граница прав Kubernetes, а не наша: тот же автор читает секреты пространства,
+  включая ключи уже выпущенных сертификатов. Короткие DNS-имена (без точки)
+  и `localhost` пространства не несут и потому им не привязаны.
+
+  ПОЧЕМУ ЭТО РАБОТАЕТ, А НЕ ТОЛЬКО ОБЪЯВЛЕНО. Запрос одобряет тот, кто успел
+  первым. Встроенный одобритель cert-manager поэтому ЛИШЁН права одобрять этот
+  УЦ (approveSignerNames релиза cert-manager, цель `cert-manager-up`), а
+  контроллеру политики дано право одобрять ТОЛЬКО его. Что так и есть на живом
+  кластере — секция E гейта посадки (deploy/scripts/assert-cert-issuance-policy.sh),
+  а не этот файл.
+
+  Рендерится при поднятом внутреннем УЦ и включённой политике. Выключают её
+  только профили площадок, где cert-manager — чужой (оператор площадки ставит
+  свой, и ни его одобритель, ни контроллер политики нам не подвластны); там
+  включение notify краснит гейт посадки, и это правильно.
+*/ -}}
+{{- $mtls := .Values.mtls | default dict -}}
+{{- $pol := $mtls.issuancePolicy | default dict -}}
+{{- if and $mtls.enabled $pol.enabled -}}
+{{- $ca := $mtls.internalCA | default dict -}}
+{{- $issuer := required "mtls.internalCA.clusterIssuerName: политике выпуска нужно имя УЦ, который она судит" $ca.clusterIssuerName -}}
+{{- $trust := include "umbrella.trustDomain" . -}}
+{{- $trustRe := regexReplaceAll "\\." $trust "\\\\." -}}
+{{- $cmSA := required "mtls.issuancePolicy.certificateControllerServiceAccount: учётка контроллера cert-manager, которой открыта ветвь certificates" $pol.certificateControllerServiceAccount -}}
+{{- $cmNs := $ca.caNamespace | default .Release.Namespace -}}
+{{- $maxDur := required "mtls.issuancePolicy.maxDuration: потолок срока листового сертификата" $pol.maxDuration -}}
+{{- $label := "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" -}}
+{{- $wlName := printf "%s-workload" $pol.name -}}
+{{- $ctName := printf "%s-certificates" $pol.name }}
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: {{ $wlName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    kacho.cloud/issuance-arm: workload
+    app.kubernetes.io/managed-by: helm
+spec:
+  allowed:
+    uris:
+      required: true
+      values: [{{ printf "spiffe://%s/ns/*/sa/*" $trust | quote }}]
+      validations:
+        - rule: >-
+            isServiceAccount(cr.username)
+            && serviceAccount(cr.username).getNamespace() == cr.namespace
+            && self == 'spiffe://{{ $trust }}/ns/' + serviceAccount(cr.username).getNamespace()
+               + '/sa/' + serviceAccount(cr.username).getName()
+          message: >-
+            SAN обязан быть идентичностью запросившей учётки:
+            spiffe://{{ $trust }}/ns/<её пространство>/sa/<её имя>
+    usages:
+      - client auth
+      - server auth
+      - digital signature
+      - key encipherment
+  constraints:
+    maxDuration: {{ $maxDur | quote }}
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+  selector:
+    issuerRef:
+      name: {{ $issuer | quote }}
+      kind: ClusterIssuer
+      group: cert-manager.io
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: {{ $ctName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    kacho.cloud/issuance-arm: certificates
+    app.kubernetes.io/managed-by: helm
+spec:
+  allowed:
+    uris:
+      values: [{{ printf "spiffe://%s/ns/*/sa/*" $trust | quote }}]
+      validations:
+        - rule: >-
+            self.matches('^spiffe://{{ $trustRe }}/ns/[a-z0-9]([-a-z0-9]*[a-z0-9])?/sa/[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+            && self.startsWith('spiffe://{{ $trust }}/ns/' + cr.namespace + '/sa/')
+          message: >-
+            SAN обязан называть пространство самого запроса:
+            spiffe://{{ $trust }}/ns/<пространство запроса>/sa/<учётка>
+    dnsNames:
+      values: ["*"]
+      validations:
+        - rule: >-
+            !self.contains('.')
+            || self.endsWith('.' + cr.namespace)
+            || self.endsWith('.' + cr.namespace + '.svc')
+            || self.endsWith('.' + cr.namespace + '.svc.cluster.local')
+          message: >-
+            DNS-имя с точкой обязано принадлежать пространству запроса
+            (<имя>.<пространство>[.svc[.cluster.local]])
+    usages:
+      - client auth
+      - server auth
+      - digital signature
+      - key encipherment
+  constraints:
+    maxDuration: {{ $maxDur | quote }}
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+  selector:
+    issuerRef:
+      name: {{ $issuer | quote }}
+      kind: ClusterIssuer
+      group: cert-manager.io
+---
+# Право «use» — то, по чему контроллер политики решает, ЧЬИ запросы ветвь судит.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s:use" $wlName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    app.kubernetes.io/managed-by: helm
+rules:
+  - apiGroups: ["policy.cert-manager.io"]
+    resources: ["certificaterequestpolicies"]
+    verbs: ["use"]
+    resourceNames: [{{ $wlName | quote }}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s:use" $wlName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    app.kubernetes.io/managed-by: helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s:use" $wlName | quote }}
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:serviceaccounts
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s:use" $ctName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    app.kubernetes.io/managed-by: helm
+rules:
+  - apiGroups: ["policy.cert-manager.io"]
+    resources: ["certificaterequestpolicies"]
+    verbs: ["use"]
+    resourceNames: [{{ $ctName | quote }}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s:use" $ctName | quote }}
+  labels:
+    kacho.cloud/component: cert-issuance-policy
+    app.kubernetes.io/managed-by: helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s:use" $ctName | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $cmSA | quote }}
+    namespace: {{ $cmNs | quote }}
+{{- end }}

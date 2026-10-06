@@ -90,7 +90,7 @@ func releaseGatewayAddress(ctx context.Context, w Writer, addressID string) erro
 		}
 	}
 	if oerr := w.Outbox().Emit(ctx, "Address", addressID, deleted.ProjectID, "DELETED",
-		map[string]any{"id": addressID}); oerr != nil {
+		map[string]any{"id": addressID, "name": string(deleted.Name)}); oerr != nil {
 		return serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	return nil
@@ -114,7 +114,8 @@ func (u *DeleteGatewayUseCase) runWorker(ctx context.Context, op operations.Oper
 			externalAddressID, gatewayProject = cur.ExternalAddressID, cur.ProjectID
 		}
 
-		if derr := w.Gateways().Delete(ctx, id); derr != nil {
+		name, derr := w.Gateways().Delete(ctx, id)
+		if derr != nil {
 			return nil, serviceerr.MapRepoErr(derr)
 		}
 
@@ -131,7 +132,7 @@ func (u *DeleteGatewayUseCase) runWorker(ctx context.Context, op operations.Oper
 			unreg = append(unreg, fgaregister.ProjectHierarchy(gatewayProject, "vpc_address", externalAddressID))
 		}
 		if oerr := w.Outbox().Emit(ctx, "Gateway", id, gatewayProject, "DELETED",
-			map[string]any{"id": id}); oerr != nil {
+			map[string]any{"id": id, "name": name}); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		if len(unreg) > 0 {

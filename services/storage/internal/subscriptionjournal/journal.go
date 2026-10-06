@@ -99,6 +99,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
@@ -134,8 +135,13 @@ const (
 )
 
 // Journal — объявление журнала storage.
-func Journal() subscription.Journal {
-	return subscription.Journal{
+//
+// feedEnabled — флаг ленты модуля (`KACHO_STORAGE_NOTIFICATIONS_ENABLED`), прочитанный
+// загрузчиком конфигурации один раз; то же значение корень отдаёт писателям
+// журнала (`journaltx.Options`). Вид ленты объявляется ровно при включённом
+// флаге, прочие виды от него не зависят (NTF3-65, NTF3-67; замысел З11).
+func Journal(feedEnabled bool) subscription.Journal {
+	j := subscription.Journal{
 		Channel: Channel,
 		Storage: subscription.Storage{
 			Table:          Table,
@@ -177,6 +183,13 @@ func Journal() subscription.Journal {
 			// БАЗЫ — теми же, которыми судит уборщик, поэтому слагаемого на
 			// разницу источников у порога нет.
 			AgeColumn: "created_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `created_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "created_at",
 		},
 		Mapping: subscription.Mapping{
 			// Словарь видов ЗАКРЫТ в обе стороны: вид вне его отвергается на
@@ -202,18 +215,29 @@ func Journal() subscription.Journal {
 			// ответа на него не доставляется — поток по такому виду молчал бы,
 			// оставаясь зелёным. Это тот же разграничитель, каким vpc вывел из
 			// подписки административные предметы уровня кластера.
+			// Форма имени и якорь объявлены у каждого вида (NTF-3, З2): все три
+			// вида storage живут в проекте, и имя у каждого — DNS-метка (форму
+			// держит ограничение `<таблица>_name_check` схемы). Снимок имени на
+			// снятии кладёт функция базы `storage_outbox_emit`: нагрузка снятия —
+			// строка `OLD` целиком, ключ `name` в ней есть.
 			Kinds: map[string]subscription.Kind{
 				JournalWordVolume: {
 					ObjectType: authzfilter.ResourceTypeVolume,
 					Action:     authzfilter.ActionVolumeList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				JournalWordSnapshot: {
 					ObjectType: authzfilter.ResourceTypeSnapshot,
 					Action:     authzfilter.ActionSnapshotList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				JournalWordImage: {
 					ObjectType: authzfilter.ResourceTypeImage,
 					Action:     authzfilter.ActionImageList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 			},
 			// Словарь родов изменения — ровно те слова, которые пишет триггер, и
@@ -229,6 +253,9 @@ func Journal() subscription.Journal {
 			State: state,
 		},
 	}
+	// Вид ленты извещений — ровно при включённом флаге модуля (NTF3-65, NTF3-67).
+	feedjournal.Declare(j.Mapping.Kinds, feedEnabled)
+	return j
 }
 
 // ProjectGate — страж оси `project_id`.

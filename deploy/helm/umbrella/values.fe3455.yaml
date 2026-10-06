@@ -26,6 +26,13 @@ mtls:
   enabled: true
   internalCA:
     caNamespace: beget-cert-manager   # cert-manager --cluster-resource-namespace
+  # Политики выпуска здесь нет и поставить её некому: cert-manager — оператора
+  # площадки (ns beget-cert-manager), его встроенный одобритель нам не подвластен,
+  # CRD политики выпуска в кластере нет. Включение notify на этой площадке краснит
+  # гейт посадки (секция E, NTF1-J04) — до тех пор, пока оператор не поставит
+  # контроллер политики и не снимет у своего одобрителя право на внутренний УЦ.
+  issuancePolicy:
+    enabled: false
 
 # ── images: prorobotech registry ──
 #
@@ -43,23 +50,15 @@ mtls:
 # этого дерева, после чего запись ниже станет находкой сама.
 # без-вывода: kacho-ui-future-host kacho-ui-future-dashboard kacho-ui-future-vpc kacho-ui-future-iam kacho-ui-future-nlb kacho-ui-future-registry kacho-ui-future-system kacho-ui-future-compute kacho-ui-future-storage — коммит master-ветки прежнего репозитория консоли, в этом дереве не разрешается
 #
-# ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
-# собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
-# этом дереве он не разрешается by construction — значит запись «порождено-от»
-# его не покрывает и покрывать не вправе. Прежде покрывала: пин назывался
-# коммитом ЭТОГО дерева, выглядел выведенным — и не тянулся, потому что образа с
-# таким тегом в реестре нет. Проверка вывода этого не видит: она сверяет тег с
-# записью, а не с реестром. Досягаемость держит
-# deploy/published_image_pin_is_reachable_test.go.
-#
-# Директива самоистекает по ВНЕШНЕМУ факту: как только в теге окажется коммит
-# этого дерева, запись упадёт сама.
-# без-вывода: kaname — образ собирает конвейер своего репозитория PRO-Robotech/kaname; коммит её ствола в этом дереве не разрешается
+# ОБРАЗ СЛУЖБЫ ДОСТУПА ЭТОТ ПРОФИЛЬ НЕ ПИНИТ (kacho#2915, Д64): тег объявлен
+# один раз, в values.yaml, и там же стоит его запись о невыводимости — образ
+# собирает конвейер PRO-Robotech/kaname. Копия пина и записи в каждой накладке
+# была отдельным местом одной смены.
 # Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
 # services (vpc/compute/kacho-geo/api-gateway/kaname/kacho-nlb) the EFFECTIVE image
 # override is carried by values.fe3455-prod.yaml, which layers AFTER this file
-# (-f values.prod -f values.fe3455 -f values.fe3455-prod -f values.fe3455-ory). The
+# (-f values.prod -f values.fe3455 -f values.fe3455-prod, deploy/stacks.txt). The
 # pins BELOW are kept in sync with the live tags too so this file is not a stale
 # landmine, but values.fe3455-prod.yaml is authoritative for the render. The `uif:`
 # block (below) is carried ONLY here — no later file overrides it.
@@ -182,9 +181,10 @@ kaname:
     #
     # Тег ведёт И основной контейнер, И init наката миграций — оба через помощник
     # `kaname.image`.
-    # Действующее переопределение — values.fe3455-prod.yaml (тот же тег, слой ПОСЛЕ
-    # этого файла).
-    tag: 366-4af7fd4f
+    # ТЕГ ЗДЕСЬ НЕ ПОВТОРЯЕТСЯ (kacho#2915, Д64): пин образа службы доступа объявлен
+    # ОДИН раз — `kaname.image.tag` в values.yaml, и этот профиль его наследует.
+    # Копия тега в каждой накладке была пятью местами одной смены: при подъёме
+    # пина каждую надо было найти, и пропущенная разводила стенды молча.
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true
@@ -272,41 +272,45 @@ pg-nlb:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
-pg-kratos:
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
-pg-hydra:
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
 
 # it to free a pod's worth of CPU/mem on the 4-vCPU cluster.
 # ── no ingress controller on this cluster ──
 ingress-nginx:
   enabled: false
 
-# ── identity: point the Ory self-service UI at the stand's EXTERNAL origin ──
-# Users reach this stand at http://kacho.in-cloud.io (external proxy → in-cluster
-# ui nginx → /.ory/kratos|hydra). The Node self-service UI hands the browser an
-# ABSOLUTE Kratos URL for the login/registration form actions; the dev default is
-# the local port-forward (localhost:28080), which on a remote stand points at the
-# USER's own machine → registration/login POSTs never reach Kratos (no identity
-# created, "invalid credentials"). Kratos' own server config is already origin-
-# relative (serve.public.base_url: /.ory/kratos/public/), so only this one browser
-# URL needs the external origin. Hydra issuer stays as-is (JWT `iss` identity only,
-# never navigated; password flow doesn't use the Hydra OAuth path).
-kratos-selfservice-ui:
-  kratosSelfServiceUI:
-    # Относительный, как и в остальных профилях: этот адрес исполняет браузер, а
-    # консоль проксирует Kratos через себя же (same-origin). Абсолютная форма
-    # здесь дополнительно фиксировала СХЕМУ `http://` — то есть при переводе
-    # площадки на https редиректы входа продолжали бы уводить на открытый канал,
-    # и заметить это можно было бы только по адресной строке.
-    kratosBrowserUrl: "/.ory/kratos/public"
+# ── УЗЕЛ ПОЧТЫ СТЕНДА И ПРОБА-ИСТОЧНИК NOTIFY (NTF-1, полоса D2; замысел З28, Д46) ──
+#
+# Узел — приёмник в кластере, в форме узла values.dev.yaml (адрес над именем
+# релиза на порт приёмника, поля отправителя, якорь — `ca.crt` секрета
+# приёмника): тем же изменением, что вводит notify в рендер цепочки, и с
+# приёмником (`mailpit.enabled`), который этот узел называет. Узел целиком, а не
+# один адрес: половину узла страж зонтика отвергает. Слой учётных данных
+# площадки адреса почты больше не несёт (cutover-creds-layer.sh, CX1-85).
+global:
+  kacho:
+    identity:
+      smtp:
+        connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
+        fromAddress: "noreply@kacho.cloud"
+        fromName: "Kacho Cloud"
+        trustAnchorSecret:
+          name: kacho-mailpit-tls
+          key: ca.crt
+    # ─── ПРОБА НЕ ПИШЕТ ПОЧТОВЫХ ЗАПРОСОВ — ПОКА (NTF-1 D10) ──────────────────
+    # Площадка тянет образы из реестра, а образа kacho-notify там нет (конвейер
+    # публикует его со ствола, службы там пока нет): notify и проба без тега
+    # рендером отвергаются, а тег, «выведенный» из коммита, назвал бы манифест,
+    # которого не существует (values.yaml, `notify.image`). Вместе с ним нужны
+    # объект ключа сетки площадки (Д123), объект ключа DKIM и зона DNS стенда
+    # значениями этого кластера. Перечень источников notify пуст; узел почты и
+    # приёмник остаются — их читает служба доступа. Возврат — одним изменением с
+    # опубликованным тегом.
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
+mailpit:
+  enabled: true
+# Проба на площадке не развёрнута (см. `global.kacho.notifications` выше).
+notifyProbe:
+  enabled: false

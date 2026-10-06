@@ -183,6 +183,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb" // регистрация трансферов
@@ -204,8 +205,13 @@ const (
 )
 
 // Journal — объявление журнала nlb.
-func Journal() subscription.Journal {
-	return subscription.Journal{
+//
+// feedEnabled — флаг ленты модуля (`KACHO_NLB_NOTIFICATIONS_ENABLED`), прочитанный
+// загрузчиком конфигурации один раз; то же значение корень отдаёт писателям
+// журнала (`journaltx.Options`). Вид ленты объявляется ровно при включённом
+// флаге, прочие виды от него не зависят (NTF3-65, NTF3-67; замысел З11).
+func Journal(feedEnabled bool) subscription.Journal {
+	j := subscription.Journal{
 		Channel: Channel,
 		Storage: subscription.Storage{
 			Table:          Table,
@@ -255,6 +261,13 @@ func Journal() subscription.Journal {
 			// то есть часами БАЗЫ — теми же, которыми судит уборщик, поэтому
 			// слагаемого на разницу источников у порога нет.
 			AgeColumn: "emitted_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `emitted_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "emitted_at",
 		},
 		Mapping: subscription.Mapping{
 			// Словарь видов закрыт в обе стороны.
@@ -271,18 +284,29 @@ func Journal() subscription.Journal {
 			// следствия: вид, унаследовавший чужой тип, спрашивал бы модель не о
 			// том объекте, оставаясь «зелёным», — и он же уехал бы клиенту вторым
 			// написанием предмета, которого нет больше нигде.
+			// Форма имени и якорь объявлены у каждого вида (NTF-3, З2): все три
+			// вида nlb живут в проекте, и имя у каждого — DNS-метка (форму держит
+			// ограничение `<таблица>_name_check` схемы). Строка снятия обязана
+			// нести снимок имени под ключом [subscription.NamePayloadKey]; функция
+			// фундамента ([subscription.Journal.Emit]) снятие без него отвергает.
 			Kinds: map[string]subscription.Kind{
 				kachorepo.OutboxResourceLoadBalancer: {
 					ObjectType: authzfilter.ResourceTypeLoadBalancer,
 					Action:     authzfilter.ActionLoadBalancerList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				kachorepo.OutboxResourceListener: {
 					ObjectType: authzfilter.ResourceTypeListener,
 					Action:     authzfilter.ActionListenerList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 				kachorepo.OutboxResourceTargetGroup: {
 					ObjectType: authzfilter.ResourceTypeTargetGroup,
 					Action:     authzfilter.ActionTargetGroupList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
 				},
 			},
 			// Словарь родов изменения — все слова, разрешённые ограничением базы
@@ -326,6 +350,9 @@ func Journal() subscription.Journal {
 			State: state,
 		},
 	}
+	// Вид ленты извещений — ровно при включённом флаге модуля (NTF3-65, NTF3-67).
+	feedjournal.Declare(j.Mapping.Kinds, feedEnabled)
+	return j
 }
 
 // ProjectGate — страж оси `project_id`.

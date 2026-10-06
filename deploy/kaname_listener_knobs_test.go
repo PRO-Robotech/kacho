@@ -450,3 +450,14 @@ func scanListenerKnobsFromTree(t *testing.T) treeKnobs {
 	}
 	return treeKnobs{knobs: knobs, dir: chartDir, key: key, template: path}
 }
+
+// contains — есть ли строка в перечне. Переехал сюда из снятой пробы
+// почтового процесса поставщика (kacho#2818): читатели остались живыми.
+func contains(hay []string, needle string) bool {
+	for _, h := range hay {
+		if h == needle {
+			return true
+		}
+	}
+	return false
+}

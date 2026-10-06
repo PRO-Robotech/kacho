@@ -53,7 +53,7 @@ const quotaFixtureAccount = "acc-quota-probe"
 // составе столбцов.
 func seedQuota(t *testing.T, pool *pgxpool.Pool, project, kind string, limit int64) {
 	t.Helper()
-	n, err := pg.MaterializeQuotas(context.Background(), pool, []quota.Row{{
+	n, err := pg.MaterializeQuotas(journalPrincipalCtx(context.Background()), pool, []quota.Row{{
 		CarrierType:   quota.CarrierProject,
 		CarrierID:     project,
 		Kind:          kind,
@@ -70,7 +70,7 @@ func seedQuota(t *testing.T, pool *pgxpool.Pool, project, kind string, limit int
 // readQuota читает пару «занято и предел» — то, что видит арендатор.
 func readQuota(t *testing.T, pool *pgxpool.Pool, project, kind string) (used, limit int64) {
 	t.Helper()
-	err := pool.QueryRow(context.Background(), `
+	err := pool.QueryRow(journalPrincipalCtx(context.Background()), `
 		SELECT used, limit_value FROM project_resource_quotas
 		 WHERE carrier_type = $1 AND carrier_id = $2 AND kind = $3`,
 		quota.CarrierProject, project, kind).Scan(&used, &limit)
@@ -86,7 +86,7 @@ func readQuota(t *testing.T, pool *pgxpool.Pool, project, kind string) (used, li
 // прошло» перестала бы утверждаться вовсе.
 func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-charge"
 
 	seedQuota(t, pool, project, "storage.volumes", 2)
@@ -100,7 +100,7 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 	require.Equal(t, int64(2), limit)
 
 	// Исчерпание: третья вставка отвергается, и отказ ОТЛИЧИМ от сбоя.
-	_, _, err := repo.Insert(context.Background(), &domain.Volume{
+	_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       "vol-3",
@@ -121,7 +121,7 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 		"отвергнутая вставка места НЕ занимает: списание и вставка — одна транзакция")
 
 	// Возврат: удаление освобождает место, и следующая вставка проходит.
-	require.NoError(t, repo.Delete(context.Background(), second.ID))
+	require.NoError(t, repo.Delete(journalPrincipalCtx(context.Background()), second.ID))
 	usedAfterDelete, _ := readQuota(t, pool, project, "storage.volumes")
 	require.Equal(t, int64(1), usedAfterDelete, "удаление вернуло место")
 
@@ -137,10 +137,10 @@ func TestQuota_ChargeRefundAndRefusal(t *testing.T) {
 // машин и измерена как механизм, не отказавший ни разу за всю свою жизнь.
 func TestQuota_NotProvisionedIsRefusalNotPermission(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-unprovisioned"
 
-	_, _, err := repo.Insert(context.Background(), &domain.Volume{
+	_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       "vol-1",
@@ -168,7 +168,7 @@ func TestQuota_NotProvisionedIsRefusalNotPermission(t *testing.T) {
 // сравнением пропустило бы обе вставки, увидев одно и то же свободное место.
 func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const project = "prj-quota-race"
 
 	seedQuota(t, pool, project, "storage.volumes", 1)
@@ -182,7 +182,7 @@ func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, _, err := repo.Insert(context.Background(), &domain.Volume{
+			_, _, err := repo.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 				ID:         ids.NewID(domain.PrefixVolume),
 				ProjectID:  project,
 				Name:       fmt.Sprintf("vol-race-%d", i),
@@ -220,8 +220,8 @@ func TestQuota_ConcurrentInsertsTakeExactlyTheLastSlot(t *testing.T) {
 // оно ограничивает.
 func TestQuota_LoweringTheLimitBelowUsageIsAllowed(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-lower"
 
 	seedQuota(t, pool, project, "storage.volumes", 5)
@@ -272,15 +272,15 @@ func TestQuota_LoweringTheLimitBelowUsageIsAllowed(t *testing.T) {
 // при заведённой строке — то есть тихо остался бы неограниченным.
 func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 	pool := newTestPool(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-kinds"
 
 	for _, kind := range []string{"storage.volumes", "storage.snapshots", "storage.images"} {
 		seedQuota(t, pool, project, kind, 1)
 	}
 
-	volRepo := pg.NewVolumeRepo(pool)
-	snapRepo := pg.NewSnapshotRepo(pool)
+	volRepo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	snapRepo := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 
 	vol := mkVolume(t, pool, volRepo, project, "vol-kinds", 1<<30)
 	usedVol, _ := readQuota(t, pool, project, "storage.volumes")
@@ -306,7 +306,7 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 		"предел на снимки действует так же, как на тома: %v", err)
 
 	// Образ: тот же механизм, третий вид.
-	imgRepo := pg.NewImageRepo(pool)
+	imgRepo := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	mkImageFromSnapshot(t, pool, imgRepo, project, "img-kinds", "region-1", snap.ID)
 	usedImg, _ := readQuota(t, pool, project, "storage.images")
 	require.Equal(t, int64(1), usedImg, "образ списан")
@@ -325,8 +325,8 @@ func TestQuota_EveryTenantKindOfTheDomainIsCharged(t *testing.T) {
 // тома.
 func TestQuota_AttachingAVolumeMovesNoCounter(t *testing.T) {
 	pool := newTestPool(t)
-	repo := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	const project = "prj-quota-attach"
 
 	seedQuota(t, pool, project, "storage.volumes", 2)

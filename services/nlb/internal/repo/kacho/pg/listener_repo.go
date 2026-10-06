@@ -303,13 +303,14 @@ func (w *listenerWriter) MoveProject(ctx context.Context, lbID, newProjectID str
 	return moved, nil
 }
 
-func (w *listenerWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM kacho_nlb.listeners WHERE id = $1`, id)
+func (w *listenerWriter) Delete(ctx context.Context, id string) (string, error) {
+	var name string
+	err := w.tx.QueryRow(ctx, `DELETE FROM kacho_nlb.listeners WHERE id = $1 RETURNING name`, id).Scan(&name)
 	if err != nil {
-		return mapPgErr(err, "Listener", id)
+		if pgxIsNoRows(err) {
+			return "", fmt.Errorf("%w: Listener %s not found", kacho.ErrNotFound, id)
+		}
+		return "", mapPgErr(err, "Listener", id)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: Listener %s not found", kacho.ErrNotFound, id)
-	}
-	return nil
+	return name, nil
 }

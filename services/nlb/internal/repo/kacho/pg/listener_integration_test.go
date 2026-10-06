@@ -19,7 +19,7 @@ import (
 func TestListener_CRUD(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01LSTC1234567890ll", "parent-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -47,7 +47,7 @@ func TestListener_CRUD(t *testing.T) {
 func TestListener_UniquePortProto(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01LSTU1234567890ll", "uni-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -81,7 +81,7 @@ func TestListener_UniquePortProto(t *testing.T) {
 func TestListener_PortOutOfRange(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01LSTP1234567890ll", "port-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -102,7 +102,7 @@ func TestListener_PortOutOfRange(t *testing.T) {
 func TestListener_SetStatusCAS(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01LSTS1234567890ll", "cas-lb")
 	l := newListener(lb.ID, string(lb.ProjectID), "cas-lst", 9090)
@@ -134,7 +134,7 @@ func TestListener_SetStatusCAS(t *testing.T) {
 func TestListener_Delete(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01LSTD1234567890ll", "del-lb")
 	l := newListener(lb.ID, string(lb.ProjectID), "del-lst", 9876)
@@ -147,8 +147,9 @@ func TestListener_Delete(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.Listeners().Delete(ctx, string(l.ID))
+		name, err := w.Listeners().Delete(ctx, string(l.ID))
 		require.NoError(t, err)
+		require.Equal(t, "del-lst", name, "снимок имени из RETURNING")
 	})
 
 	rd, _ := repo.Reader(ctx)
@@ -162,7 +163,7 @@ func TestListener_Delete(t *testing.T) {
 func TestListener_MoveProject_Cascade(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const srcProject = "prj01MVSS1234567890ll"
 	const dstProject = "prj01MVDD1234567890ll"

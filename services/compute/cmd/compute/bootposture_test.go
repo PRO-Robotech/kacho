@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 )
@@ -44,6 +45,7 @@ func requireFields(t *testing.T, line map[string]any, want map[string]any) {
 // TestBootPosture_Production — kacho-compute самоотчитывается о принятой posture.
 func TestBootPosture_Production(t *testing.T) {
 	cfg := config.Config{
+		Notifications:    probeNotificationsOff(),
 		AuthMode:         "production",
 		DBSSLMode:        "require",
 		AuthZIAMGRPCAddr: "kaname-internal:9091",
@@ -66,7 +68,8 @@ func TestBootPosture_Production(t *testing.T) {
 // mTLS + отсутствующий authz-адрес обязаны быть видны как есть. Пустой DBSSLMode
 // деривится в `disable` (то, что реально уходит в DSN).
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
-	cfg := config.Config{AuthMode: "dev", DBSSLMode: ""}
+	cfg := config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev", DBSSLMode: ""}
 	cfg.InternalServerMTLS.Enable = true // internal включён, public — нет
 
 	requireFields(t, captureBootPosture(t, bootPosture(cfg)), map[string]any{
@@ -120,4 +123,17 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if serve < 0 || call > serve {
 		t.Fatal("posture line must be emitted BEFORE the carrier raises the listeners")
 	}
+}
+
+// TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries — самоотчёт
+// называет звено идентичности служб, которое уехало в дескриптор, словом, а не
+// пустой строкой: пустое значение неотличимо от «самоотчёт не заполнили», и гейт
+// посадки судит его отказом (corelib observability.BootPosture.ServiceIdentity).
+//
+// Звена у процесса нет (изъятие в serviceIdentityAxis), поэтому ждём метку
+// неприменимости фундамента — литерала своего не заводим.
+func TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries(t *testing.T) {
+	requireFields(t, captureBootPosture(t, bootPosture(config.Config{Notifications: probeNotificationsOff()})), map[string]any{
+		"service_identity": grpcsrv.ServiceIdentityNotApplicable,
+	})
 }

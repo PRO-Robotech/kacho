@@ -48,6 +48,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/pgtest"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 const (
@@ -78,7 +80,7 @@ const (
 // выписывается, и его расхождение с этой пробой обязано быть отказом.
 func noticePointOf(points []string, service string) string {
 	for _, pkg := range points {
-		if svc, _ := migrationsDirOf(pkg); svc == service {
+		if pointService(pkg) == service {
 			return pkg
 		}
 	}
@@ -269,12 +271,21 @@ func TestEveryApplyPointOfThisModuleDeliversNotices(t *testing.T) {
 		t.Fatal("точек наката НЕ НАЙДЕНО — обход пуст, доказывать нечего")
 	}
 
+	// База — первой цепочки точки (CX1-115 (а)): точка, выбирающая цепочку по
+	// имени базы, базу pgtest с чужим именем отвергает.
+	firstChain := map[string]migrationchains.Chain{}
+	for _, c := range treeChains(t, root) {
+		if _, seen := firstChain[c.Point]; !seen {
+			firstChain[c.Point] = c
+		}
+	}
+
 	binDir := t.TempDir()
 	var proven int
 	var foreign []string
 
 	for _, pkg := range points {
-		service, _ := migrationsDirOf(pkg)
+		service := pointService(pkg)
 		moduleDir, _ := moduleOfPoint(t, root, pkg)
 		if moduleDir != root {
 			foreign = append(foreign, service+" (модуль "+filepath.ToSlash(strings.TrimPrefix(moduleDir, root+string(filepath.Separator)))+")")
@@ -283,7 +294,11 @@ func TestEveryApplyPointOfThisModuleDeliversNotices(t *testing.T) {
 
 		ok := t.Run(service, func(t *testing.T) {
 			bin := buildApplyPoint(t, root, binDir, pkg, service)
-			dsn := pgtest.NewEmptyDB(t)
+			c, ok := firstChain[pkg]
+			if !ok {
+				t.Fatalf("у точки %s нет ни одной цепочки в перечне дерева", pkg)
+			}
+			dsn := chainDSN(t, c)
 
 			out, err := runMigrator(t, bin, "up", "--dsn", dsn)
 			if err != nil {

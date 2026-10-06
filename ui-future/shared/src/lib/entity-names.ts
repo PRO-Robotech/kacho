@@ -30,7 +30,7 @@
  *  - `host` и `dashboard` собираются образом из СВОЕГО дерева (их Dockerfile не
  *    копирует `shared/`), поэтому импортировать отсюда не могут; их подписи
  *    сверяются с этими значениями собственными пробами
- *    (`HostBreadcrumb.names.test.tsx`, `navigation.names.test.ts`), и расхождение
+ *    (`HostBreadcrumb.names.test.ts`, `navigation.names.test.ts`), и расхождение
  *    не может приземлиться молча.
  */
 
@@ -57,6 +57,7 @@ export const SERVICES = {
   registry: { title: "Registry", menuTitle: "Registry" },
   geo: { title: "Geography", menuTitle: "Geography" },
   system: { title: "Администрирование", menuTitle: "Администрирование" },
+  notify: { title: "Уведомления", menuTitle: "Уведомления" },
 } as const satisfies Record<string, ServiceName>;
 
 export type ServiceKey = keyof typeof SERVICES;

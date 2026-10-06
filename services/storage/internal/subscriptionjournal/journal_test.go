@@ -23,7 +23,7 @@ import (
 // незаявленная ось, разошедшиеся половины одного решения и имя, которое нельзя
 // безопасно поставить в запрос.
 func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
-	if err := subscriptionjournal.Journal().Validate(); err != nil {
+	if err := subscriptionjournal.Journal(false).Validate(); err != nil {
 		t.Fatalf("общий сервер не принял объявление журнала storage: %v", err)
 	}
 }
@@ -36,7 +36,7 @@ func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
 // якорь — то есть утверждение «предмет уровня аккаунта», ложное для тома, — и
 // подписка с осью проекта такие события молча не пропускала бы.
 func TestProjectAxisIsAnsweredByTheColumn(t *testing.T) {
-	st := subscriptionjournal.Journal().Storage
+	st := subscriptionjournal.Journal(false).Storage
 	if st.Project != subscription.ProjectInColumn {
 		t.Fatalf("ось проекта объявлена как %d, ожидалась колонка: иначе якорь у снятия "+
 			"брать неоткуда, и потребитель держал бы удалённый том вечно", st.Project)
@@ -67,7 +67,7 @@ func TestKindWordsCarryTheProducersObjectTypes(t *testing.T) {
 		},
 	}
 
-	kinds := subscriptionjournal.Journal().Mapping.Kinds
+	kinds := subscriptionjournal.Journal(false).Mapping.Kinds
 	if len(kinds) != len(want) {
 		t.Fatalf("видов объявлено %d, ожидалось %d: три тенантных предмета storage, "+
 			"несущих проектное измерение", len(kinds), len(want))
@@ -106,7 +106,7 @@ func TestKindWordsCarryTheProducersObjectTypes(t *testing.T) {
 // пустом словаре, а пустой словарь общая форма и так отвергает — то есть проба
 // не различала бы ничего.
 func TestAdministrativeKindsAreExcludedByName(t *testing.T) {
-	kinds := subscriptionjournal.Journal().Mapping.Kinds
+	kinds := subscriptionjournal.Journal(false).Mapping.Kinds
 
 	tenantFacing := 0
 	for _, word := range []string{
@@ -138,7 +138,7 @@ func TestAdministrativeKindsAreExcludedByName(t *testing.T) {
 // TestKindDictionaryIsSortedAndUnique — перечень видов, который сервер называет
 // на открытии, упорядочен и без повторов.
 func TestKindDictionaryIsSortedAndUnique(t *testing.T) {
-	got := subscriptionjournal.Journal().KindDictionary()
+	got := subscriptionjournal.Journal(false).KindDictionary()
 	want := []string{
 		authzfilter.ResourceTypeImage,
 		authzfilter.ResourceTypeSnapshot,
@@ -191,7 +191,7 @@ func TestProjectGateBorrowsTheOwnersNotFoundForm(t *testing.T) {
 // входе, который собрался бы. Бедная нагрузка дала бы тот же зелёный и на
 // сборщике, забывшем спросить род изменения вовсе.
 func TestRemovalCarriesNoState(t *testing.T) {
-	state := subscriptionjournal.Journal().Mapping.State
+	state := subscriptionjournal.Journal(false).Mapping.State
 	if state == nil {
 		t.Fatal("отображение состояния не назначено — общая форма его требует")
 	}

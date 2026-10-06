@@ -77,10 +77,12 @@ type NetworkInterfaceWriterIface interface {
 	// row и применяет свою маску поверх — lost-update mutable-колонок NIC исключён
 	// (project-rule #10; address-ref side уже защищён SetReference-CAS).
 	GetForUpdate(ctx context.Context, id string) (*NetworkInterfaceRecord, error)
-	// Delete — DELETE network_interfaces WHERE id = $1; row не затронут →
-	// ErrNotFound. NIC не имеет children FK, но имеет parent FK на subnets
-	// (ON DELETE RESTRICT). outbox-write — в use-case'е.
-	Delete(ctx context.Context, id string) error
+	// Delete — DELETE network_interfaces WHERE id = $1 RETURNING name; row не
+	// затронут → ErrNotFound. Возвращает имя снятой строки — снимок для строки
+	// снятия журнала (NTF-3, З2), взятый удаляющим оператором, а не чтением до
+	// него. NIC не имеет children FK, но имеет parent FK на subnets (ON DELETE
+	// RESTRICT). outbox-write — в use-case'е.
+	Delete(ctx context.Context, id string) (string, error)
 	// AttachToInstance — атомарный CAS NIC↔Instance (self-describing; vpc валидирует
 	// СВОИ строки ni+subnet, НЕ зовёт compute). Single-statement UPDATE:
 	//   used_by_id='' OR =$instance (свободен ИЛИ уже наш — идемпотентно) AND

@@ -1,0 +1,26 @@
+{{- /* Текстовая часть письма notify (З25): те же блоки, что HTML-часть;
+значения — как есть. */ -}}
+{{.Brand}}
+{{- range .Blocks}}
+{{if eq .Kind "heading"}}
+{{.Text}}
+{{- else if eq .Kind "p"}}
+{{.Text}}
+{{- else if eq .Kind "warning"}}
+! {{.Text}}
+{{- else if eq .Kind "code"}}
+    {{.Text}}
+{{- else if eq .Kind "button"}}
+{{.Label}}: {{.Href}}
+{{- else if eq .Kind "list"}}
+{{- range .Items}}
+- {{.}}
+{{- end}}
+{{- else if eq .Kind "kv"}}
+{{- range .Pairs}}
+{{.Key}}: {{.Value}}
+{{- end}}
+{{- else if eq .Kind "divider"}}
+----
+{{- end}}
+{{- end}}

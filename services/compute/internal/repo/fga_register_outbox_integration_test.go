@@ -70,13 +70,13 @@ func TestInstance_SEC_D_04_RegisterIntentInWriterTx(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-aaaaaaaaaaaaaaaaa"
 	in := &domain.Instance{
@@ -115,13 +115,13 @@ func TestInstance_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-bbbbbbbbbbbbbbbbb"
 	in := &domain.Instance{

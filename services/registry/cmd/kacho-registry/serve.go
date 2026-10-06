@@ -25,6 +25,7 @@ import (
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
@@ -96,6 +97,12 @@ func runServe(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+
+	// ── флаг ленты модуля: одно чтение ручки, одно значение у потребителей ──
+	// Загрузчик разобрал ручку один раз (cfg.Notifications, страж выше её
+	// судил). Из того же значения — словарь видов журнала и Options писателей
+	// журнала: настройка транзакции `kacho_feed.enabled` равна ручке (З11, И6).
+	journalOpts := journaltx.NewOptions(cfg.Notifications.On())
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
@@ -136,6 +143,11 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", merr)
 	}
 	svcMetrics := metrics.New()
+	// Серия флага ленты модуля — на реестре, который отдаёт /metrics (NTF3-65,
+	// NTF3-67): из того же разобранного значения, что Options писателей журнала.
+	if err := registerNotificationsGauge(svcMetrics.Registerer(), cfg.Notifications); err != nil {
+		return err
+	}
 	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
 	// от живости; чарт пробирует именно её. Носитель канала к владельцу прав
 	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,
@@ -290,7 +302,10 @@ func runServe(cfg config.Config) error {
 	if projectConn != nil {
 		projectIAMConn = projectConn
 	}
-	registryRepo := pg.NewRegistryRepo(pool)
+	registryRepo, err := pg.NewRegistryRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 	// pendingBlobRepo — durable per-repo учёт загруженных блобов (registry_pending_blob,
 	// REG-33 Defect A): blob PUT-finalize пишет строку, push-time blob HEAD/GET раскрывает
 	// только-что-загруженный слой ДО появления манифеста (REG-37 сохранён).
@@ -310,7 +325,10 @@ func runServe(cfg config.Config) error {
 	geoAdapter := geoclient.New(geoIAMConn)
 	// repoConfigRepo — config-overlay Repository (repository_configs, RG-1): durable
 	// overlay-строки (survives-empty) + ACTIVE-guard + transactional-outbox owner/public-grant.
-	repoConfigRepo := pg.NewRepositoryConfigRepo(pool)
+	repoConfigRepo, err := pg.NewRepositoryConfigRepo(pool, journalOpts)
+	if err != nil {
+		return err
+	}
 
 	// ── use-case (CQRS repo + config-overlay + zot + iam + geo + repo-registrar + LRO) ──
 	registryUC := registry.New(registryRepo, registryRepo, repoConfigRepo, zotAdapter, iamAdapter, geoAdapter, registryRepo, opsRepo, cfg.EndpointBase)
@@ -1091,6 +1109,11 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: "KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN",
+
+		// Звено идентичности служб — изъятие с причиной: процесс ленты не служит.
+		// Причина и предикат снятия — у serviceIdentityAxis; та же функция кормит
+		// самоотчёт посадки, поэтому два места об одном звене разойтись не могут.
+		ServiceIdentity: serviceIdentityAxis(),
 
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),

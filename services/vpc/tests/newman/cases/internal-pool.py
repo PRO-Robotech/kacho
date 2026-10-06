@@ -276,7 +276,7 @@ CASES.append(Case(
     title="Get несуществующего pool → 404 NOT_FOUND",
     classes=["NEG"], priority="P1",
     steps=[
-        Step(name="get-garbage", method="GET", path=POOLS + "/aplnonexistent999999", internal=True,
+        Step(name="get-garbage", method="GET", path=POOLS + "/apl00000000000000009", internal=True,
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
@@ -286,7 +286,7 @@ CASES.append(Case(
     title="Delete несуществующего pool → 404 NOT_FOUND",
     classes=["NEG"], priority="P1",
     steps=[
-        Step(name="del-garbage", method="DELETE", path=POOLS + "/aplnonexistent999999", internal=True,
+        Step(name="del-garbage", method="DELETE", path=POOLS + "/apl00000000000000009", internal=True,
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
@@ -323,7 +323,7 @@ CASES.append(Case(
     title="GetUtilization несуществующего pool → 404 NOT_FOUND",
     classes=["NEG"], priority="P2",
     steps=[
-        Step(name="util-garbage", method="GET", path=POOLS + "/aplnonexistent999999/utilization", internal=True,
+        Step(name="util-garbage", method="GET", path=POOLS + "/apl00000000000000009/utilization", internal=True,
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
@@ -412,8 +412,8 @@ CASES.append(Case(
     title="addressPoolBinding на несуществующую Network → 404 NOT_FOUND",
     classes=["NEG"], priority="P1",
     steps=[
-        Step(name="bind-bad-net", method="POST", path="/vpc/v1/networks/enpnonexistent999999/addressPoolBinding", internal=True,
-             body={"poolId": "aplnonexistent999999"},
+        Step(name="bind-bad-net", method="POST", path="/vpc/v1/networks/enp00000000000000009/addressPoolBinding", internal=True,
+             body={"poolId": "apl00000000000000009"},
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
@@ -423,7 +423,7 @@ CASES.append(Case(
     title="UnbindNetworkDefault на Network без binding → idempotent",
     classes=["IDM"], priority="P2",
     steps=[
-        Step(name="unbind-noop", method="DELETE", path="/vpc/v1/networks/enpnonexistent999999/addressPoolBinding", internal=True,
+        Step(name="unbind-noop", method="DELETE", path="/vpc/v1/networks/enp00000000000000009/addressPoolBinding", internal=True,
              test_script=["pm.test('idempotent (200 / 404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
     ],
 ))

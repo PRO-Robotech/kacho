@@ -28,12 +28,12 @@ func TestIntegration_FGARegisterEmit_PopulatesResourceColumns(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Эмитим register-intent для vpc_network через реальный writer-путь.
 	err = legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {

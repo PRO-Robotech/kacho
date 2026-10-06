@@ -68,12 +68,12 @@ func TestIntegration_NetworkCreate_OneJournalRowPerResource(t *testing.T) {
 	if testing.Short() {
 		t.Skip("интеграционная проба: нужна настоящая база")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	uc := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, repomock.NewOpsRepo())

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/corelib/outbox"
@@ -59,7 +60,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 	}
 
 	dsn := pgtest.NewDB(t)
-	pool, err := pgxpool.New(context.Background(), dsn)
+	pool, err := pgxpool.New(journalPrincipalCtx(context.Background()), dsn)
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)
 	}
@@ -70,7 +71,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(false),
 		DSN:          dsn,
 		Narrower:     narrower,
 		ProjectGate:  gate,
@@ -129,8 +130,10 @@ func mergeCancel(values, cancel context.Context) context.Context {
 // молча — и разошёлся бы ровно в той колонке, ради которой проба написана.
 func (s *stand) emit(t *testing.T, kind, id, projectID, change string, payload map[string]any) {
 	t.Helper()
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	// Строку журнала пишет транзакция помощника — так же, как её пишет
+	// писатель модуля: инициатор — принципал контекста.
+	ctx := journalPrincipalCtx(context.Background())
+	tx, err := journaltx.Begin(ctx, s.pool, journaltx.NewOptions(false))
 	if err != nil {
 		t.Fatalf("транзакция не началась: %v", err)
 	}
@@ -195,7 +198,7 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 	n := network(probeNetwork, probeProject, "net-probe")
 	s.emit(t, subscriptionjournal.KindNetwork, n.ID, n.ProjectID, "CREATED", networkPayload(n))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 20*time.Second)
 	defer cancel()
 	// ДВА РАЗНЫХ СЛОВА ОБ ОДНОМ ПРЕДМЕТЕ, и подменять их местами нельзя.
 	//
@@ -236,7 +239,7 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	s.emit(t, subscriptionjournal.KindNetwork, probeNetwork, probeProject, "DELETED",
 		map[string]any{"id": probeNetwork})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
 		Kinds:     []string{authzfilter.ResourceTypeNetwork},
@@ -270,7 +273,7 @@ func TestTheProjectAxisNarrowsByTheColumn(t *testing.T) {
 	mine := network(mineNetwork, probeProject, "mine")
 	s.emit(t, subscriptionjournal.KindNetwork, mine.ID, mine.ProjectID, "CREATED", networkPayload(mine))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
 		Kinds:     []string{authzfilter.ResourceTypeNetwork},
@@ -312,7 +315,7 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	s.emit(t, subscriptionjournal.KindNetwork, probeNetwork, probeProject, "DELETED",
 		map[string]any{"id": probeNetwork})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
 		Kinds:     []string{authzfilter.ResourceTypeNetwork},
@@ -354,7 +357,7 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 	mine := network(mineNetwork, probeProject, "mine")
 	s.emit(t, subscriptionjournal.KindNetwork, mine.ID, mine.ProjectID, "CREATED", networkPayload(mine))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 30*time.Second)
 	defer cancel()
 	// Подписка БЕЗ оси проекта: с осью страж отверг бы открытие, и предмет пробы
 	// (суждение о СТРОКЕ) не наступил бы вовсе.
@@ -383,7 +386,7 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 // «изменений нет».
 func TestUndeclaredKindIsRefusedAtOpening(t *testing.T) {
 	s := newStand(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 20*time.Second)
 	defer cancel()
 
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{

@@ -20,7 +20,7 @@ import (
 // перечень утверждений и почему положительный контроль обязателен —
 // `corelib/nameformdb`.
 func TestIntegration_Storage_NameFormConstraintIsEnforced(t *testing.T) {
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := newTestPool(t) // сам пропускается под -short; сеет каталог классов и учёт
 
 	// Класс диска берётся из каталога, а не выписывается литералом: у тома это

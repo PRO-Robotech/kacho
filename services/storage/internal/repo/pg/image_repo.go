@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -28,13 +29,24 @@ import (
 // fga_register_outbox в той же writer-TX (атомарно, один commit).
 type ImageRepo struct {
 	pool *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля).
+	journal journaltx.Options
 	// readyOnCommit — см. VolumeRepo: без плоскости данных фиксация записи
 	// сама есть готовность.
 	readyOnCommit bool
 }
 
 // NewImageRepo создаёт ImageRepo поверх pgxpool.
-func NewImageRepo(pool *pgxpool.Pool) *ImageRepo { return &ImageRepo{pool: pool} }
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewImageRepo(pool *pgxpool.Pool, journal journaltx.Options) (*ImageRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewImageRepo: %w", err)
+	}
+	return &ImageRepo{pool: pool, journal: journal}, nil
+}
 
 // WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit.
 func (r *ImageRepo) WithReadyOnCommit(v bool) *ImageRepo { r.readyOnCommit = v; return r }
@@ -296,7 +308,7 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []s
 		regionZones = []string{}
 	}
 	created := *i
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, NULL, NULL, состояние
 		// СВОЕГО когерентного снимка, состояние СВОЕГО когерентного тома).
 		var createdAt, updatedAt *time.Time
@@ -402,7 +414,7 @@ func (r *ImageRepo) Register(ctx context.Context, i *domain.Image) (*domain.Imag
 		return nil, nil, storageerr.ErrInternal
 	}
 	registered := *i
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		serr := tx.QueryRow(ctx, imageRegisterSQL,
 			i.ID, i.ProjectID, i.Name, i.Description, labels, i.RegionID,
 			i.SizeBytes, i.MinDiskBytes, domain.FormatStandard, i.Backend.BackendObject).
@@ -472,7 +484,7 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 		}
 		labelsArg = b
 	}
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		var (
 			rowID       string
 			projectID   string
@@ -516,7 +528,7 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 // source_image_id FK ON DELETE SET NULL очищает lineage (STOR-1-28), не RESTRICT.
 // 0 rows → NotFound.
 func (r *ImageRepo) Delete(ctx context.Context, id string) error {
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		var projectID string
 		err := tx.QueryRow(ctx, `DELETE FROM images WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
 		if err != nil {
@@ -620,10 +632,12 @@ func (r *ImageRepo) Copy(ctx context.Context, i *domain.Image, sourceID string, 
 		return nil, storageerr.ErrInternal
 	}
 	created := *i
-	err = r.pool.QueryRow(ctx, fmt.Sprintf(copyImageSQL, bornState(r.readyOnCommit)),
-		i.ID, i.ProjectID, i.Name, i.Description, labels, sourceID, targetZones,
-		i.RegionID, i.Backend.BackendObject).
-		Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)
+	err = inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
+		return tx.QueryRow(ctx, fmt.Sprintf(copyImageSQL, bornState(r.readyOnCommit)),
+			i.ID, i.ProjectID, i.Name, i.Description, labels, sourceID, targetZones,
+			i.RegionID, i.Backend.BackendObject).
+			Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)
+	})
 	if err == nil {
 		created.SourceImageID = sourceID
 		created.Status = domain.ImageStatusCreating

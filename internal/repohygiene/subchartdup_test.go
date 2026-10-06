@@ -136,7 +136,7 @@ func TestSelfReferentialDepDetectorSeesTheForm(t *testing.T) {
 		},
 		{
 			name: "внешний репозиторий — законно, молчит",
-			yaml: "dependencies:\n  - name: hydra\n    repository: https://k8s.ory.sh/helm/charts\n",
+			yaml: "dependencies:\n  - name: issuer\n    repository: https://charts.example.org/helm\n",
 			want: nil,
 		},
 		{

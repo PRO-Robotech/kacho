@@ -90,7 +90,8 @@
 //     все RPC public под /iam/v1/*.
 //   - iam.v1 admin (kacho-only): InternalUserService.Get — для admin tooling; зарегистрирован
 //     в internal mux pro-forma (proto-аннотации `google.api.http` отсутствуют → real-трафик
-//     идет только через gRPC-direct до kaname:9091) + REST для UpsertFromIdentity.
+//     идет только через gRPC-direct до kaname:9091) + REST-маршрут UpsertFromIdentity
+//     (служебный глагол внутреннего слушателя; край его не вызывает).
 //     InternalIAMService: LookupSubject и Check ИМЕЮТ http-аннотации, поэтому
 //     RegisterInternalIAMServiceHandlerFromEndpoint (ниже, ветка internalMux) заводит им
 //     REST-маршруты `/iam/v1/internal/iam:lookupSubject` и `:check` — они есть в
@@ -714,9 +715,11 @@ func NewMux(
 
 		// --- iam.v1: Account + Project + User (read+delete only) + ServiceAccount + Group + Role + AccessBinding ---
 		// Public surface: все 7 сервисов под /iam/v1/*.
-		// User не имеет публичного Create — User'ы создаются через
-		// InternalUserService.UpsertFromIdentity (OIDC-callback в api-gateway);
-		// display_name/email берётся от поставщика личности при следующем UpsertFromIdentity.
+		// User не имеет публичного Create — людей заводят регистрация и
+		// приглашение службы доступа (display_name/email приносит регистрирующийся
+		// либо пригласивший). InternalUserService.UpsertFromIdentity — служебный
+		// глагол внутреннего слушателя; обратный вызов кода авторизации, который
+		// звал его из края, снят (middleware/session_identity_handler.go).
 		if iamAddr != "" {
 			// Квоты личности — сколько аккаунтов вызывающему позволено и сколько
 			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: назначавший
@@ -809,7 +812,7 @@ func NewMux(
 		// --- iam.v1 admin (InternalUserService + InternalIAMService) —
 		// kacho-only, internal-port (9091) ---
 		// REST HTTP annotations on internal IAM proto RPCs (UpsertFromIdentity,
-		// LookupSubject, ListPermissions, Check) make grpc-gateway create routes
+		// LookupSubject, Check) make grpc-gateway create routes
 		// for /iam/v1/internal/* paths.
 		// These handlers are dispatched to the internal mux (isInternalRoute
 		// returns true for any path containing /internal/); the authz middleware

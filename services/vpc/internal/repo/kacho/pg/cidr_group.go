@@ -445,19 +445,23 @@ func (w *cidrGroupWriter) recount(ctx context.Context, id string) (*kacho.CidrGr
 // состоянию. Текст здесь родовой: перечень мешающего по видам и числам собирает
 // use-case, у которого есть чем его посчитать. Синхронная проверка отвергает
 // раньше, а этот путь — атомарный backstop, отвечающий В МОМЕНТ удаления.
-func (w *cidrGroupWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM cidr_groups WHERE id = $1`, id)
+//
+// Возвращает имя снятой строки из `RETURNING` удаляющего оператора — снимок
+// для строки снятия журнала (NTF-3, З2), а не чтение до удаления.
+func (w *cidrGroupWriter) Delete(ctx context.Context, id string) (string, error) {
+	var name string
+	err := w.tx.QueryRow(ctx, `DELETE FROM cidr_groups WHERE id = $1 RETURNING name`, id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("%w: CidrGroup %s not found", helpers.ErrNotFound, id)
+	}
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
+			return "", refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
 				fmt.Errorf("%w: CidrGroup %s is in use", helpers.ErrFailedPrecondition, id))
 		}
-		return helpers.WrapPgErr(err, "CidrGroup", id)
+		return "", helpers.WrapPgErr(err, "CidrGroup", id)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: CidrGroup %s not found", helpers.ErrNotFound, id)
-	}
-	return nil
+	return name, nil
 }
 
 // capExceeded — отказ по потолку, называющий ТЕКУЩИЙ размер, ЗАПРОШЕННОЕ и сам

@@ -68,6 +68,7 @@ const (
 // список отправителей.
 func prodCfg(forwarders ...string) config.Config {
 	return config.Config{
+		Notifications:      probeNotificationsOff(),
 		AuthMode:           "production",
 		DBSSLMode:          "require",
 		AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",

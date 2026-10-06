@@ -166,11 +166,11 @@ func TestIntegration_AddressList_NarrowBySubnet_SelectsBothFamilies(t *testing.T
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	target, foreign, v4ID, v6ID, extID := seedNarrowFixture(t, ctx, r)
@@ -267,12 +267,12 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	target, _, _, _, _ := seedNarrowFixture(t, ctx, r)
@@ -305,7 +305,7 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, traced)
 
-	tr := kachopg.New(traced, nil)
+	tr := mustJournalWriter(kachopg.New(traced, nil, probeJournalOptions))
 	defer tr.Close()
 	rd, err := tr.Reader(ctx)
 	require.NoError(t, err)
@@ -472,11 +472,11 @@ func TestIntegration_AddressList_NarrowBySubnet_MatchesChildList(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	target, foreign, v4ID, v6ID, _ := seedNarrowFixture(t, ctx, r)

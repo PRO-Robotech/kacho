@@ -24,8 +24,13 @@ package deploy_test
 // сломанном: гейт, отвергающий любую полосу, «находит» и работающую.
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // receiverSuffixUnderTest — тот же суффикс, что гейт выводит из манифеста.
@@ -270,4 +275,114 @@ func TestInjection_LaneExpressionIsExpandedBeforeItIsJudged(t *testing.T) {
 				"«есть фигурные скобки», а не «выражение осталось нераскрытым»")
 		}
 	})
+}
+
+// ─── NTF1-I04: стендовый предмет, внесённый в values.prod.yaml ──────────────
+
+// prodProfileElem — элемент цепочки `prod`, в который вносится инъекция.
+const prodProfileElem = "values.prod.yaml"
+
+// injectedProdChain — цепочка `prod` обёртки D9, где values.prod.yaml зонтика
+// umbrella заменён копией с внесёнными ключами (путь → значение). Копия лежит
+// под тем же базовым именем: находка обязана назвать профиль values.prod.yaml.
+func injectedProdChain(t *testing.T, umbrella string, set map[string]any) []string {
+	t.Helper()
+	chain := append([]string(nil), deployStacksForRender(t, "operator.yaml")[prodChainName]...)
+	at := -1
+	for i, p := range chain {
+		if p == prodProfileElem {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: в цепочке %s нет элемента %s — инъекции некуда лечь: %v", prodChainName, prodProfileElem, chain)
+	}
+	doc := readYAML(t, filepath.Join(umbrella, prodProfileElem))
+	for path, v := range set {
+		keys := strings.Split(path, ".")
+		node := doc
+		for _, k := range keys[:len(keys)-1] {
+			next, ok := node[k].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				node[k] = next
+			}
+			node = next
+		}
+		node[keys[len(keys)-1]] = v
+	}
+	body, err := yaml.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), prodProfileElem)
+	if err := os.WriteFile(dst, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	chain[at] = dst
+	return chain
+}
+
+// TestInjection_StandSubjectInTheProdProfileIsFound — NTF1-I04, обе ноги.
+//
+// Объявление: каждый из трёх ключей сценария, внесённый в values.prod.yaml, —
+// находка с именем профиля и ключа. Рендер: включённые в values.prod.yaml
+// приёмник и проба рождают объекты, и суждение называет их по шаблону-источнику.
+// Близнец — копия values.prod.yaml без внесённого ключа: молчание в обеих ногах
+// (копия профиля сама находки не рождает).
+func TestInjection_StandSubjectInTheProdProfileIsFound(t *testing.T) {
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	twin, err := judgeStandChain(t, c.umbrella, injectedProdChain(t, c.umbrella, nil))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: близнец (копия values.prod.yaml без инъекции): %v", err)
+	}
+	if twin.raised() {
+		t.Fatalf("близнец: копия values.prod.yaml без инъекции дала находку — %s", twin)
+	}
+	t.Logf("близнец: %s", twin)
+
+	declared := []struct {
+		key string
+		val any
+	}{
+		{"mailpit.enabled", true},
+		{"notifyProbe.enabled", true},
+		{"notify.standProbeNamespace", "notify-probe"},
+	}
+	for _, d := range declared {
+		chain := injectedProdChain(t, c.umbrella, map[string]any{d.key: d.val})
+		got := declaredStandKnobs(t, c.umbrella, chain)
+		want := fmt.Sprintf("%s = %v (профиль %s)", d.key, d.val, prodProfileElem)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("инъекция %s=%v в %s: объявление дало %v, ждали ровно [%s]", d.key, d.val, prodProfileElem, got, want)
+			continue
+		}
+		t.Logf("инъекция %s=%v → объявление: %s", d.key, d.val, got[0])
+	}
+
+	rendered := []struct {
+		set  map[string]any
+		want string
+	}{
+		{map[string]any{"mailpit.enabled": true}, "приёмник писем: Deployment/kacho-umbrella-mailpit"},
+		// Проба рендерится лишь с тем, без чего её манифест невыразим: ссылкой на
+		// секрет пароля базы и тегом образа каталога (оба — отказы рендера).
+		{map[string]any{"notifyProbe.enabled": true, "notifyProbe.db.passwordSecret.name": "kacho-notifyprobe-db",
+			"notify.image.tag": "injected"}, "notify-probe: Deployment/kacho-notify-probe"},
+	}
+	for _, r := range rendered {
+		v, err := judgeStandChain(t, c.umbrella, injectedProdChain(t, c.umbrella, r.set))
+		if err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: инъекция %v: %v", r.set, err)
+		}
+		found := false
+		for _, o := range v.rendered {
+			found = found || o == r.want
+		}
+		if !found {
+			t.Errorf("инъекция %v: рендер `prod` дал стендовые объекты %v, среди них нет %q", r.set, v.rendered, r.want)
+			continue
+		}
+		t.Logf("инъекция %v → отрендерены %v", r.set, v.rendered)
+	}
 }

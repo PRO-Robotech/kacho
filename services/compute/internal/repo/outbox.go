@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
@@ -26,9 +27,11 @@ const fgaRegisterOutboxTable = "compute_fga_register_outbox"
 // emitCompute — обёртка над outbox.EmitAnchored с фиксированной таблицей compute_outbox.
 // Должна вызываться внутри той же tx, что и INSERT/UPDATE/DELETE на ресурсной
 // таблице (атомарность). Trigger compute_outbox_notify_trg на каждый INSERT
-// шлёт pg_notify('compute_outbox', sequence_no::text). kind ∈ {Instance} — блочное
-// хранение из compute снято (миграция 0021 дропнула disks/images/snapshots), и Disk /
-// Image / Snapshot в этом перечислении больше не значатся.
+// шлёт pg_notify('compute_outbox', sequence_no::text). kind ∈ {Instance,
+// PlacementGroup, GuestAccessKey} — ровно ключи словаря видов журнала
+// (`subscriptionjournal.Journal().Mapping.Kinds`); блочное хранение из compute
+// снято (миграция 0021 дропнула disks/images/snapshots), и Disk / Image /
+// Snapshot в этом перечислении больше не значатся.
 //
 // # projectID — ЯКОРЬ, а не украшение
 //
@@ -136,6 +139,23 @@ func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resource
 }
 
 func instancePayload(in *domain.Instance) map[string]any { return domainToMap(in) }
+
+// placementGroupPayload — нагрузка строки журнала группы размещения: то же
+// кодирование, каким её читает объявление журнала (`subscriptionjournal.state`).
+func placementGroupPayload(g *domain.PlacementGroup) map[string]any { return domainToMap(g) }
+
+// guestAccessKeyPayload — нагрузка строки журнала гостевого ключа. Закрытой
+// половины ключа в доменной сущности нет, поэтому и в журнале её нет by
+// construction.
+func guestAccessKeyPayload(k *domain.GuestAccessKey) map[string]any { return domainToMap(k) }
+
+// deletedPayload — нагрузка строки снятия: идентификатор и снимок имени под
+// ключом `subscription.NamePayloadKey`. Имя берётся из `RETURNING` удаляющего
+// оператора той же транзакции, а не чтением до удаления: переименование,
+// зафиксированное между чтением и удалением, дало бы снятию чужое имя.
+func deletedPayload(id, name string) map[string]any {
+	return map[string]any{"id": id, subscription.NamePayloadKey: name}
+}
 
 // registrationsOf — набор доставки из одной строки. Нулевая строка (kind не
 // отображается, метки не менялись) даёт ПУСТОЙ набор, а не набор с пустой

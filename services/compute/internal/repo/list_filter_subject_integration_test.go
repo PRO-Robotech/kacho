@@ -79,7 +79,7 @@ func newInstanceHandlerOnRealRepo(t *testing.T, cli listnarrow.AuthorizeClient) 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 
-	instanceRepo := repo.NewInstanceRepo(pool)
+	instanceRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	svc := instance.NewInstanceService(
 		instanceRepo,
 		portmock.NewMachineTypeRepo(),
@@ -99,7 +99,10 @@ func newInstanceHandlerOnRealRepo(t *testing.T, cli listnarrow.AuthorizeClient) 
 // seedInstances — insert N instances directly via the real repo for deterministic ids.
 func seedInstances(t *testing.T, r *repo.InstanceRepo, projectID string, names ...string) []string {
 	t.Helper()
-	ctx := context.Background()
+	// Посев идёт писателем модуля: транзакцию открывает помощник записи журнала,
+	// инициатор — принципал контекста (З4). Принципал посева не участвует в
+	// проверяемом сужении списка — у List свой контекст.
+	ctx := journalPrincipalCtx(context.Background())
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var out []string
 	for i, n := range names {

@@ -54,6 +54,7 @@ import (
 // фиксированный номер сделал бы их заложницами занятости машины прогона.
 func describeCfg() config.Config {
 	return config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "dev",
 		DBSSLMode:                 "require",
 		GrpcPort:                  "0",

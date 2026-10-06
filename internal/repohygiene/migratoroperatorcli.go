@@ -342,6 +342,26 @@ func migratorCLIWantedName(rel string, lines []string, at int) string {
 	return productnaming.MigratorBinary(svc)
 }
 
+// migratorCLIResolveUmbrellaTemplates — хозяин места в шаблоне САМОГО зонта.
+//
+// Путь шаблона зонта части не называет ([productnaming.PartOfPath] его не
+// знает), и ключа подчарта над строкой манифеста нет. Хозяина называет имя
+// файла ([productnaming.UmbrellaTemplatePart], Д77 (а)) — но лишь когда
+// каталог службы `services/<кандидат>` есть в индексе: `mail-receiver.yaml`
+// части «mail» не называет, и такое место остаётся невыведенным (находка), а
+// не приписывается соседу. Место, чей хозяин уже выведен, не трогается.
+func migratorCLIResolveUmbrellaTemplates(mentions []migratorCLIMention, hasServiceDir func(string) bool) []migratorCLIMention {
+	for i := range mentions {
+		if mentions[i].Want != "" {
+			continue
+		}
+		if svc, ok := productnaming.UmbrellaTemplatePart(mentions[i].Rel); ok && hasServiceDir(svc) {
+			mentions[i].Want = productnaming.MigratorBinary(svc)
+		}
+	}
+	return mentions
+}
+
 // migratorCLINameFindings — места, называющие бинарь не тем именем.
 func migratorCLINameFindings(mentions []migratorCLIMention) []string {
 	var out []string

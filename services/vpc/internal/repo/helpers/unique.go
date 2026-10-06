@@ -14,6 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/quota/quotadetail"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/pkg/refusal"
 )
 
@@ -171,6 +172,12 @@ func WrapPgErr(err error, kind, id string) error {
 			return fmt.Errorf("%w: %s %s not found", ErrNotFound, kind, id)
 		}
 		return ErrNotFound
+	}
+	// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+	// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+	// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+	if journalfault.Report(pgfault.Classify(err), "kind", kind, "id", id) {
+		return fmt.Errorf("%w: %v", ErrInternal, err)
 	}
 	if IsUniqueViolation(err) {
 		return ErrAlreadyExists

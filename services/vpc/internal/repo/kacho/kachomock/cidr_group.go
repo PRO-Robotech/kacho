@@ -202,17 +202,18 @@ func (gw *cidrGroupWriter) RemoveBlocks(ctx context.Context, id string, v4, v6 [
 }
 
 // Delete — отказ по живой ссылке, как внешний ключ RESTRICT в базе.
-func (gw *cidrGroupWriter) Delete(_ context.Context, id string) error {
-	if _, ok := gw.w.localCGs[id]; !ok {
-		return fmt.Errorf("%w: CidrGroup %s not found", repo.ErrNotFound, id)
+func (gw *cidrGroupWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := gw.w.localCGs[id]
+	if !ok {
+		return "", fmt.Errorf("%w: CidrGroup %s not found", repo.ErrNotFound, id)
 	}
 	if refs := referrersFromSGs(gw.w.localSGs, id); len(refs) > 0 {
-		return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
+		return "", refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
 			fmt.Errorf("%w: CidrGroup %s is in use", repo.ErrFailedPrecondition, id))
 	}
 	delete(gw.w.localCGs, id)
 	gw.w.deletedCGIDs[id] = struct{}{}
-	return nil
+	return string(rec.Name), nil
 }
 
 // ---- helpers ----

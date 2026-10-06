@@ -26,7 +26,7 @@ import (
 // markRegistryDeleting переводит реестр в DELETING (CAS forward-only) для A24-guard.
 func markRegistryDeleting(t *testing.T, pool *pgxpool.Pool, regID string) {
 	t.Helper()
-	_, err := kachopg.NewRegistryRepo(pool).MarkDeleting(context.Background(), regID)
+	_, err := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions)).MarkDeleting(journalPrincipalCtx(context.Background()), regID)
 	require.NoError(t, err)
 }
 
@@ -35,8 +35,8 @@ func markRegistryDeleting(t *testing.T, pool *pgxpool.Pool, regID string) {
 // Rekey/Delete — все отвергаются; overlay не создаётся/не меняется.
 func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a24")
 
 	// Pre-seed durable overlay (пока реестр ACTIVE) для Update/Rekey/Delete-проверок.
@@ -74,8 +74,8 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 // (adopt-owner + public-grant) пишет строки в registry_outbox АТОМАРНО с overlay-INSERT.
 func TestRepoConfig_RG1_OutboxEmissionInTx(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-outbox")
 
 	before := countAllOutbox(t, pool)
@@ -94,7 +94,7 @@ func TestRepoConfig_RG1_OutboxEmissionInTx(t *testing.T) {
 func countAllOutbox(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM kacho_registry.registry_outbox`).Scan(&n))
 	return n
 }
@@ -103,7 +103,7 @@ func countAllOutbox(t *testing.T, pool *pgxpool.Pool) int {
 func outboxHasWildcardVGet(t *testing.T, pool *pgxpool.Pool, regID, repo string) bool {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM kacho_registry.registry_outbox
 		 WHERE payload::text LIKE '%user:*%' AND payload::text LIKE '%v_get%'
 		   AND resource_id = $1`, regID+"/"+repo).Scan(&n))

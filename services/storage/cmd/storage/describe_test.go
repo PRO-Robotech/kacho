@@ -524,6 +524,7 @@ func registrarsOfBothListeners(t *testing.T) []func(grpc.ServiceRegistrar) {
 func probeSubscriptionServer(t *testing.T) subscriptionv1.InternalSubscriptionServiceServer {
 	t.Helper()
 	cfg := config.Config{
+		Notifications:            probeNotificationsOff(),
 		SubscriptionMaxStreams:   4,
 		SubscriptionStreamBudget: time.Hour,
 		SubscriptionIdlePoll:     2 * time.Second,

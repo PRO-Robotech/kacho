@@ -46,11 +46,13 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -93,6 +95,35 @@ var catalogProtoPackages = []string{
 	// как всякая другая. Пропусти его здесь, и строка каталога осталась бы без
 	// источника, а гейт назвал бы находкой сам каталог.
 	"corelib.subscription",
+	// Пакет ОБЩЕЙ ленты уведомлений модуля-источника (kacho#2915): в нём
+	// объявлена служба `InternalNotificationFeedService` — взять порцию и
+	// подтвердить исход, — и её аннотации обязаны сверяться так же, как всякие
+	// другие. Пропусти его здесь, и две строки каталога остались бы без
+	// источника, а гейт назвал бы находкой сам каталог.
+	"corelib.notify",
+	// Пакет глагола пробы-источника notify (kacho#2915, З29, Д75):
+	// `InternalNotifyProbeService/Send` — постановка письма стендовой пробой.
+	// Строку каталога он порождает, как всякий аннотированный RPC; пропусти его
+	// здесь, и строка осталась бы без источника.
+	"kacho.cloud.notify.v1",
+}
+
+// notifyFeedMethods — методы ленты уведомлений модуля-источника (NTF1-C07):
+// обход аннотаций обязан их видеть.
+var notifyFeedMethods = []string{
+	"/corelib.notify.InternalNotificationFeedService/Claim",
+	"/corelib.notify.InternalNotificationFeedService/Ack",
+}
+
+// laneMismatch — находка обхода по одному методу: метод без полосы края
+// называется полным именем и жалобой разбора. Одна функция для гейта и
+// инъекции (catalogparitynotify_injection_test.go).
+func laneMismatch(fullMethod string, a catalogderive.Annotations) (lane, finding string) {
+	lane, complaint := annotationLane(a)
+	if complaint != "" {
+		return "", fmt.Sprintf("%s: %s", fullMethod, complaint)
+	}
+	return lane, ""
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки
@@ -171,10 +202,10 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 		seen[fullMethod] = true
 		// Полоса судится ДО сверки со строкой: на методе без аннотации строка
 		// тоже пуста, и одна лишь сверка прошла бы его молча.
-		lane, complaint := annotationLane(a)
-		if complaint != "" {
+		lane, finding := laneMismatch(fullMethod, a)
+		if finding != "" {
 			unannotated++
-			mismatches = append(mismatches, fmt.Sprintf("%s: %s", fullMethod, complaint))
+			mismatches = append(mismatches, finding)
 		} else {
 			lanes[lane]++
 		}
@@ -217,6 +248,21 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	// этом дереве НИЧЕМ. Свойство «каталог порождён из аннотаций» держится
 	// по-прежнему — им и занят весь обход выше.
 
+	// NTF1-C07: методы ленты обязаны быть среди обойдённых. Без строки
+	// `corelib.notify` в перечне пакетов пакет не обходится вовсе, и о ленте
+	// гейт молчал бы «чисто».
+	feedWalked := 0
+	for _, m := range notifyFeedMethods {
+		if seen[m] {
+			feedWalked++
+			continue
+		}
+		t.Errorf("NTF1-C07: метод ленты %s не обойдён — пакет corelib.notify вне перечня "+
+			"catalogProtoPackages либо стабы не слинкованы; аннотация права на нём не сверяется", m)
+	}
+	t.Logf("NTF1-C07: методов ленты среди обойдённых %d из %d %v", feedWalked, len(notifyFeedMethods),
+		notifyFeedMethods)
+
 	t.Logf("перепись: строк каталога %d, обойдённых RPC %d в %d пакетах "+
 		"(exempt %d · scope_filtered %d · relation %d · без аннотации %d), расхождений %d; "+
 		"копий в дереве 1, байт %d",
@@ -247,6 +293,13 @@ func diffAnnotationAgainstRow(fqn string, a catalogderive.Annotations, row catal
 	if a.ScopeObjectTypeFromRequest != row.ScopeExtractor.ObjectTypeFromRequestField {
 		add("scope_extractor.object_type_from_request_field",
 			a.ScopeObjectTypeFromRequest, row.ScopeExtractor.ObjectTypeFromRequestField)
+	}
+	// Форма ScopeBound (kacho#2915): без этой оси строка без признака сходилась
+	// с аннотацией, несущей его, — а край читал её пустое from_request_field
+	// как подстановку `*`.
+	if a.ScopeBoundToServer != row.ScopeExtractor.BoundToServer {
+		add("scope_extractor.bound_to_server",
+			fmt.Sprint(a.ScopeBoundToServer), fmt.Sprint(row.ScopeExtractor.BoundToServer))
 	}
 	if a.HideExistence != row.HideExistence {
 		add("hide_existence", fmt.Sprint(a.HideExistence), fmt.Sprint(row.HideExistence))

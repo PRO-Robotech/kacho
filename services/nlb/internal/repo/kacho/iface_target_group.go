@@ -100,6 +100,7 @@ type TargetGroupWriterIface interface {
 
 	// Delete — DELETE target_groups WHERE id=$1. FK-violation от child targets
 	// или от ссылающегося listener (default_target_group_id FK RESTRICT) →
-	// ErrFailedPrecondition.
-	Delete(ctx context.Context, id string) error
+	// ErrFailedPrecondition. Возвращает снимок имени снятой строки
+	// (`RETURNING name`): его несёт строка `DELETED` журнала (NTF-3 З2).
+	Delete(ctx context.Context, id string) (string, error)
 }

@@ -53,10 +53,11 @@ func (u *DeleteAddressPoolUseCase) Execute(ctx context.Context, id string) error
 		return serviceerr.DeletionRefusal(refusal.HoldsChildren, "address_pool", id,
 			"AddressPool %s is not empty (%d allocated addresses); release IPs first", id, n)
 	}
-	if err := w.AddressPools().Delete(ctx, id); err != nil {
+	name, err := w.AddressPools().Delete(ctx, id)
+	if err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPool", id, helpers.NoProjectAnchor, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "AddressPool", id, helpers.NoProjectAnchor, "DELETED", map[string]any{"id": id, "name": name}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}
 	return w.Commit()

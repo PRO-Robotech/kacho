@@ -64,7 +64,11 @@ func (h *PublicHandler) Get(ctx context.Context, req *vpcv1.GetAddressPoolReques
 	if err != nil {
 		return nil, MapPublicErr(err, poolKind, poolDisplay, id)
 	}
-	return poolToProto(rec), nil
+	pb, err := poolToProto(rec)
+	if err != nil {
+		return nil, MapPublicErr(err, poolKind, poolDisplay, id)
+	}
+	return pb, nil
 }
 
 // List — межпроектный админский список, гейтится ОДНИМ вопросом `system_admin` @
@@ -88,7 +92,11 @@ func (h *PublicHandler) List(ctx context.Context, req *vpcv1.ListAddressPoolsReq
 	}
 	out := make([]*vpcv1.AddressPool, 0, len(pools))
 	for _, p := range pools {
-		out = append(out, poolToProto(p))
+		pb, err := poolToProto(p)
+		if err != nil {
+			return nil, MapPublicErr(err, poolKind, poolDisplay, "")
+		}
+		out = append(out, pb)
 	}
 	return &vpcv1.ListAddressPoolsResponse{Pools: out, NextPageToken: next}, nil
 }

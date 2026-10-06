@@ -39,7 +39,7 @@ const tgReferencedByListenerMsg = "target group is referenced by listeners"
 // TG with NO pivot attach. Returns the three domain objects.
 func seedLBTGWiredListener(t testing.TB, repo kacho.Repository, projectID string) (*domain.LoadBalancer, *domain.TargetGroup, *domain.Listener) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	lb := newLB(projectID, "")
 	tg := newTG(projectID, "")
 	lst := newListener(lb.ID, projectID, "", 443)
@@ -61,7 +61,7 @@ func seedLBTGWiredListener(t testing.TB, repo kacho.Repository, projectID string
 func TestListener_NLB_1_19_WireExistingTG_NoPivot_Happy(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, tg, lst := seedLBTGWiredListener(t, repo, "prj01WIRE0000000001")
 
@@ -83,7 +83,7 @@ func TestListener_NLB_1_19_WireExistingTG_NoPivot_Happy(t *testing.T) {
 func TestListener_NLB_1_23_WireNonexistentTG_FailedPrecondition(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01NOEXISTTG000001", "")
 	lst := newListener(lb.ID, "prj01NOEXISTTG000001", "", 443)
@@ -107,7 +107,7 @@ func TestListener_NLB_1_23_WireNonexistentTG_FailedPrecondition(t *testing.T) {
 func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, tg, lst := seedLBTGWiredListener(t, repo, "prj01TGDELRESTR00001")
 
@@ -116,7 +116,7 @@ func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) 
 		w, err := repo.Writer(ctx)
 		require.NoError(t, err)
 		defer w.Abort()
-		derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+		_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 		require.Error(t, derr, "TG.Delete must be blocked by FK RESTRICT while a listener references it")
 		assert.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "got %v", derr)
 		assert.Contains(t, derr.Error(), tgReferencedByListenerMsg, "verbatim contract text required")
@@ -137,7 +137,7 @@ func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) 
 		require.NoError(t, err)
 	})
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.TargetGroups().Delete(ctx, string(tg.ID)),
+		require.NoError(t, droppedName(w.TargetGroups().Delete(ctx, string(tg.ID))),
 			"TG.Delete must succeed after the listener reference is cleared")
 	})
 }
@@ -148,7 +148,7 @@ func TestTargetGroup_NLB_1_23_DeleteReferencedByListener_RESTRICT(t *testing.T) 
 func TestListener_NLB_1_22_RepointTargetGroup(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, lst := seedLBTGWiredListener(t, repo, "prj01REPOINT00000001")
 
@@ -222,7 +222,7 @@ func updateListenerOCC(ctx context.Context, w kacho.RepositoryWriter, l *domain.
 func TestTargetGroup_DeleteVsListenerWire_Race(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj0TGDELWIRERACE001"
 	lb := newLB(projectID, "tgdel-wire-race")
@@ -265,7 +265,7 @@ func TestTargetGroup_DeleteVsListenerWire_Race(t *testing.T) {
 		}()
 		ready.Done()
 		<-start
-		if err := w.TargetGroups().Delete(ctx, string(tg.ID)); err != nil {
+		if _, err := w.TargetGroups().Delete(ctx, string(tg.ID)); err != nil {
 			mu.Lock()
 			deleteErr = err
 			mu.Unlock()

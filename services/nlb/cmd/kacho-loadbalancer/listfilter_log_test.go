@@ -44,7 +44,7 @@ func TestBuildListFilter_LogNamesTheKnobThatGuardsTheConnection(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Notifications: probeNotificationsOff()}
 	cfg.Authz.ListFilter = config.AuthzListFilterConfig{
 		Enabled:         true,
 		Timeout:         500 * time.Millisecond,

@@ -24,9 +24,11 @@
 # ЧЕМ ЭТА ПРОВЕРКА ОТЛИЧАЕТСЯ ОТ «поискать аннотацию по имени» — она
 # ПОВЕДЕНЧЕСКАЯ: стенд рендерится ДВАЖДЫ с РАЗНЫМИ картами идентификаторов, и
 # каждое значение НЕСЁТ ИМЯ СВОЕГО СЕРВИСА. Требуется, чтобы идентификатор
-# каждого сервиса доехал до шаблона пода РОВНО ОДНОГО workload'а — и чтобы тот же
-# workload предъявил его во втором рендере. Привязка, прибитая константой,
-# читающая чужой ключ или не заведённая вовсе, такой проверки не проходит.
+# каждого сервиса доехал до шаблона пода КАЖДОГО workload'а, исполняющего его
+# образ, — обычно ровно одного; несколько — только процессы одного образа
+# (каталог notify: шлюз и стендовая проба, Д74), — и чтобы те же workload'ы
+# предъявили его во втором рендере. Привязка, прибитая константой, читающая
+# чужой ключ или не заведённая вовсе, такой проверки не проходит.
 #
 # СООТВЕТСТВИЕ «СЕРВИС ↔ WORKLOAD» ЧИТАЕТСЯ ИЗ ТОГО, ЧТО ШАБЛОН ПРОИЗВОДИТ.
 #
@@ -117,6 +119,10 @@ echo "=== $SCRIPT: рендер с двумя разными идентифик�
 render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" "values.dev.yaml + карта идентификаторов A"; ok
 render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" "values.dev.yaml + карта идентификаторов B"; ok
 
+# notify судится рендером умбреллы, как прочие сервисы (NTF-1 D2, CX1-120): в
+# цепочке стенда перечень источников notify непуст (`{notify-probe}`), и его
+# workload приходит из зонтика. Копия осмотра снята вместе с пустой таблицей.
+
 SERVICES="$SERVICES" IDS_SUFFIX_A="$IDS_SUFFIX_A" IDS_SUFFIX_B="$IDS_SUFFIX_B" \
   python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
 import os, sys, yaml
@@ -157,6 +163,16 @@ def binding_value(w):
     return (meta.get("annotations") or {}).get(ANNOTATION)
 
 
+def workload_images(w):
+    """Образы контейнеров шаблона пода (включая инициализирующие)."""
+    spec = pod_template(w).get("spec") or {}
+    out = set()
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        if isinstance(c, dict) and c.get("image"):
+            out.add(c["image"])
+    return out
+
+
 def claimants(idx, suffix):
     """сервис → workload'ы, предъявившие ЕГО идентификатор.
 
@@ -177,7 +193,7 @@ def claimants(idx, suffix):
 a, b = index(load(sys.argv[1])), index(load(sys.argv[2]))
 claims_a, claims_b = claimants(a, SUFFIX["a"]), claimants(b, SUFFIX["b"])
 
-bound, failures = [], []
+bound, bound_workloads, failures = [], [], []
 
 for service in services:
     wa, wb = sorted(claims_a.get(service, [])), sorted(claims_b.get(service, []))
@@ -191,12 +207,36 @@ for service in services:
         continue
 
     if len(wa) > 1:
-        named = ", ".join(f"{k}/{n}" for k, n in wa)
-        failures.append(
-            f"{service}: один и тот же идентификатор предъявили {len(wa)} workload'ов "
-            f"({named}) — значит какой-то из них привязан к ЧУЖОМУ ключу, а свой "
-            f"оставил без наблюдения."
-        )
+        # Один образ — несколько процессов (каталог notify: шлюз и стендовая проба
+        # `notify-probe`, решение Д74): каждый из них обязан перекатиться при
+        # пересборке ОБРАЗА, и все предъявляют идентификатор своего образа. Это
+        # законно ровно тогда, когда претенденты исполняют ОДИН И ТОТ ЖЕ образ:
+        # workload, привязанный к чужому ключу, исполняет другой образ, и общего
+        # у претендентов нет. Соответствие по-прежнему берётся из рендера, а не
+        # из имени образа.
+        common = None
+        for key in wa:
+            imgs = workload_images(a[key])
+            common = imgs if common is None else common & imgs
+        if not common:
+            named = ", ".join(f"{k}/{n}" for k, n in wa)
+            failures.append(
+                f"{service}: один и тот же идентификатор предъявили {len(wa)} workload'ов "
+                f"({named}), и общего образа у них нет — значит какой-то из них привязан "
+                f"к ЧУЖОМУ ключу, а свой оставил без наблюдения."
+            )
+            continue
+        if wa != wb:
+            failures.append(
+                f"{service}: состав workload'ов, предъявивших идентификатор, в двух "
+                f"рендерах различен ({wa} против {wb}) — значение не следует за картой."
+            )
+            continue
+        bound.append(service)
+        for kind, name in wa:
+            bound_workloads.append(f"{kind}/{name}")
+            print(f"  OK {kind}/{name}: привязан к содержимому образа сервиса «{service}» "
+                  f"(процессов одного образа {len(wa)}: {', '.join(sorted(common))})")
         continue
 
     if wa != wb:
@@ -209,13 +249,34 @@ for service in services:
         continue
 
     kind, name = wa[0]
-    bound.append(f"{kind}/{name}")
+    bound.append(service)
+    bound_workloads.append(f"{kind}/{name}")
     print(f"  OK {kind}/{name}: привязан к содержимому образа сервиса «{service}»")
+
+# Workload, исполняющий образ сервиса, но не предъявивший его идентификатор, —
+# находка: при двух процессах одного образа (Д74) правило «ровно один
+# претендент» снятую у одного из них привязку не видит — второй её предъявляет.
+for service, keys in sorted(claims_a.items()):
+    images = set()
+    for key in keys:
+        images |= workload_images(a[key])
+    for key in sorted(a):
+        if key in keys:
+            continue
+        shared = workload_images(a[key]) & images
+        if shared:
+            kind, name = key
+            failures.append(
+                f"{service}: {kind}/{name} исполняет образ сервиса ({', '.join(sorted(shared))}), "
+                f"а идентификатор его содержимого не предъявляет — под не перекатится при "
+                f"пересборке образа под тем же тегом."
+            )
 
 # «Ноль находок» обязано быть отличимо от «ноль осмотренного»: печатаются ОБА
 # числа — сколько workload'ов рендер вообще предъявил и сколько из них привязано.
 print(f"\nworkload'ов в рендере: {len(a)}; привязано к содержимому своих образов: "
-      f"{len(bound)} (сервисов в SERVICES: {len(services)})")
+      f"{len(bound)} (сервисов в SERVICES: {len(services)}; привязанных workload'ов "
+      f"{len(bound_workloads)} — у образа бывает несколько процессов, Д74)")
 
 if not a:
     print("\nFAIL: рендер не дал НИ ОДНОГО workload'а — предмета нет, и ноль находок "
@@ -346,6 +407,36 @@ else
     printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
   fi
 fi
+
+# (E) ИНЪЕКЦИЯ: в чарте notify копии дерева снята привязка шлюза. Образ каталога
+#     notify исполняют два процесса (шлюз и стендовая проба, Д74); проба
+#     идентификатор по-прежнему предъявляет, и правило «ровно один претендент»
+#     промолчало бы. Гейт обязан назвать workload, исполняющий образ сервиса без
+#     привязки → КРАСНЫЙ с именем notify. Архив чарта notify в копии зонтика
+#     пересобирается из правленого каталога — иначе рендер взял бы прежний.
+#     Близнец — (0): дерево как есть, оба процесса привязаны.
+NOTIFY_REL="helm/notify/templates/deployment.yaml"
+if [[ " $SERVICES " != *" notify "* ]]; then
+  echo "  ПРОВАЛ (E) notify нет в SERVICES — инъекции нечего судить"; st=1
+elif [ ! -f "$DEPLOY_ROOT/$NOTIFY_REL" ]; then
+  echo "  ПРОВАЛ (E) не найден шаблон notify для инъекции ($NOTIFY_REL)"; st=1
+else
+  grep -v 'kacho.cloud/image-id' "$DEPLOY_ROOT/$NOTIFY_REL" >"$WORK/$NOTIFY_REL"
+  if ! helm package "$WORK/helm/notify" -d "$WORK/helm/umbrella/charts" >/dev/null 2>&1; then
+    echo "  ПРОВАЛ (E) архив чарта notify копии не пересобран — инъекция не внесена"; st=1
+  else
+    out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
+    if [ $ist -eq 1 ] && [[ "$out" == *"notify: Deployment/kacho-notify исполняет образ сервиса"* ]]; then
+      echo "  ОК  (E) снята привязка шлюза notify (проба привязана) → КРАСНЫЙ с именем notify"
+    else
+      echo "  ПРОВАЛ (E) снятая привязка шлюза notify не поймана (exit=$ist)"
+      printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
+    fi
+  fi
+  cp "$DEPLOY_ROOT/$NOTIFY_REL" "$WORK/$NOTIFY_REL"
+fi
+[[ " $SERVICES " == *" notify "* ]] && [ $rc -eq 0 ] \
+  && echo "  ОК  (E-близнец) дерево как есть: оба процесса образа notify привязаны, состав полон"
 
 echo
 [ $st -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"

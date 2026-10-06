@@ -30,11 +30,11 @@ import (
 // иметь предмет: анализатор сам краснеет на записи, которой больше нечего
 // исключать (сервис смонтирован либо исчез из контракта).
 // СЕЙЧАС ПУСТ, и это исход, а не упущение. Здесь стояли четыре сервиса, ни один
-// из которых не был смонтирован ни в одном композиционном корне: хуки Hydra
-// (обслуживаются по HTTP СВОИМИ структурами тела запроса — типы этого proto не
-// читала ни одна строка неgenerated-кода), фид жизненного цикла в compute.v1 и
-// vpc.v1 (живой — только в loadbalancer.v1) и поток событий в vpc.v1 (живой —
-// только в compute.v1). Ни у одного не было ни сервера, ни клиента, ни
+// из которых не был смонтирован ни в одном композиционном корне: хуки прежнего
+// поставщика личности (обслуживались по HTTP СВОИМИ структурами тела запроса —
+// типы этого proto не читала ни одна строка неgenerated-кода), фид жизненного
+// цикла в compute.v1 и vpc.v1 (живой — только в loadbalancer.v1) и поток событий
+// в vpc.v1 (живой — только в compute.v1). Ни у одного не было ни сервера, ни клиента, ни
 // неgenerated-ссылки — включая типы сообщений. Это были объявления без единой
 // реализации, и они сняты с контракта целиком; надгробие — retiredRPCSurface в
 // retiredrpcsurface_test.go.
@@ -91,6 +91,18 @@ import (
 // его, как и остальные, только она. Запись заведена по тому же основанию;
 // перепись «исключений вне предмета» после этого печатает 23 (перемерено
 // прогоном).
+//
+// Лента уведомлений (kacho#2915) заводила здесь запись другого рода —
+// `corelib.notify.InternalNotificationFeedService`, пока ни один бинарь этого
+// дерева ленту не монтировал. Запись СНЯТА вместе со своим предметом: ленту
+// монтирует корень пробы-источника `services/notify/cmd/notify-probe` на
+// внутреннем слушателе (NTF1-C02, полоса D4), и исключать стало нечего.
+//
+// Подъём пина модуля на 745640d6 (kacho#2918) добавил службе ДВА сервиса —
+// `InternalNotificationGrantService` (K3, звено выдачи NTF-1) и
+// `InternalNotificationRecipientService` (X4D, справочник адресов NTF-3); их
+// монтирует, как и остальные, только она. Записи заведены по тому же
+// основанию; перепись печатается прогоном.
 var mountAllow = []string{
 	"kaname.cloud.iam.v1.AccessBindingService",
 	"kaname.cloud.iam.v1.AccessKeyService",
@@ -104,6 +116,8 @@ var mountAllow = []string{
 	"kaname.cloud.iam.v1.InternalIAMService",
 	"kaname.cloud.iam.v1.InternalInteractiveClientService",
 	"kaname.cloud.iam.v1.InternalModuleService",
+	"kaname.cloud.iam.v1.InternalNotificationGrantService",
+	"kaname.cloud.iam.v1.InternalNotificationRecipientService",
 	"kaname.cloud.iam.v1.InternalOperationsService",
 	"kaname.cloud.iam.v1.InternalSessionRevocationsService",
 	"kaname.cloud.iam.v1.InternalUserService",

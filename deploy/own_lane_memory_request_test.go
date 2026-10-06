@@ -255,9 +255,8 @@ func renderOwnLaneRequestFacts(t *testing.T, set []string) ([]laneRequestFacts, 
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
-		if declaredString(lookup(declared, "kaname", "config", "authn", "identityProvider")) != "own" {
-			continue
-		}
+		// Посадка службы одна на каждом стенде (kanameLanding, kaname#363):
+		// судится каждый.
 		census.Own++
 
 		sub, _ := declared["kaname"].(map[string]any)
@@ -290,12 +289,12 @@ func renderKanameDeployment(t *testing.T, stack, valuesFile string, set []string
 		}
 		t.Skip("helm не в PATH — рендер-гейт пропущен")
 	}
-	args := []string{"template", "kacho-umbrella", iamSubchartDir, "-n", "kacho",
-		"-f", valuesFile, "--show-only", "templates/deployment.yaml"}
+	// Одиночный рендер подчарта — только обёрткой (renderKanameAlone, CX1-113).
+	args := []string{"-n", "kacho", "-f", valuesFile, "--show-only", "templates/deployment.yaml"}
 	for _, s := range set {
 		args = append(args, "--set", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := renderKanameAlone(t, "kacho-umbrella", iamSubchartDir, args...)
 	if err != nil {
 		t.Fatalf("стенд %s: подчарт kaname не рендерится с цепочкой стенда: %v\n%s", stack, err, out)
 	}

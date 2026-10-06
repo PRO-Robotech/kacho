@@ -35,7 +35,7 @@ type journalRow struct {
 // его читает поток.
 func journalSince(t *testing.T, s *stand, from int64) []journalRow {
 	t.Helper()
-	rows, err := s.pool.Query(context.Background(), `
+	rows, err := s.pool.Query(journalPrincipalCtx(context.Background()), `
 		SELECT sequence_no, resource_kind, resource_id, project_id, event_type, payload
 		  FROM kacho_storage.storage_outbox
 		 WHERE sequence_no > $1
@@ -66,7 +66,7 @@ func journalSince(t *testing.T, s *stand, from int64) []journalRow {
 func mark(t *testing.T, s *stand) int64 {
 	t.Helper()
 	var seq int64
-	if err := s.pool.QueryRow(context.Background(),
+	if err := s.pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT COALESCE(MAX(sequence_no), 0) FROM kacho_storage.storage_outbox`).Scan(&seq); err != nil {
 		t.Fatalf("конец журнала не прочитался: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestReconcilerConfirmEmitsAnUpdate(t *testing.T) {
 	v := s.createVolume(t, probeProject, "confirmed")
 
 	from := mark(t, s)
-	ok, err := reconciler.NewStore(s.pool).Confirm(context.Background(), reconciler.KindVolume, v.ID,
+	ok, err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Confirm(componentCtx(), reconciler.KindVolume, v.ID,
 		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: 1 << 30})
 	if err != nil {
 		t.Fatalf("подтверждение сверщика отказало: %v", err)
@@ -129,12 +129,11 @@ func TestReconcilerConfirmEmitsAnUpdate(t *testing.T) {
 func TestReconcilerObserveEmitsNothing(t *testing.T) {
 	s := newStand(t)
 	v := s.createVolume(t, probeProject, "observed")
-	store := reconciler.NewStore(s.pool)
-	ctx := context.Background()
+	store := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions))
 
 	from := mark(t, s)
 	for i := 0; i < 3; i++ {
-		if err := store.Observe(ctx, reconciler.KindVolume, v.ID,
+		if err := store.Observe(componentCtx(), reconciler.KindVolume, v.ID,
 			blockbackend.Observed{State: blockbackend.ObservedReady}); err != nil {
 			t.Fatalf("наблюдение отказало: %v", err)
 		}
@@ -145,7 +144,7 @@ func TestReconcilerObserveEmitsNothing(t *testing.T) {
 	}
 
 	// Положительный контроль: правка ПО СУЩЕСТВУ в тот же журнал доезжает.
-	if ok, err := store.Confirm(ctx, reconciler.KindVolume, v.ID,
+	if ok, err := store.Confirm(componentCtx(), reconciler.KindVolume, v.ID,
 		blockbackend.Observed{State: blockbackend.ObservedReady}); err != nil || !ok {
 		t.Fatalf("подтверждение не применилось (ok=%v, err=%v) — положительный контроль не выполнен", ok, err)
 	}
@@ -163,13 +162,13 @@ func TestReconcilerObserveEmitsNothing(t *testing.T) {
 func TestReconcilerForgetEmitsARemovalWithItsAnchor(t *testing.T) {
 	s := newStand(t)
 	v := s.createVolume(t, probeProject, "forgotten")
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	if _, err := s.pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не переведён в снятие: %v", err)
 	}
 	from := mark(t, s)
-	if err := reconciler.NewStore(s.pool).Forget(ctx, reconciler.KindVolume, v.ID); err != nil {
+	if err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Forget(componentCtx(), reconciler.KindVolume, v.ID); err != nil {
 		t.Fatalf("сверщик не снял строку: %v", err)
 	}
 
@@ -192,10 +191,10 @@ func TestReconcilerForgetEmitsARemovalWithItsAnchor(t *testing.T) {
 // изменении тома за его жизнь.
 func TestAttachEmitsAVolumeUpdate(t *testing.T) {
 	s := newStand(t)
-	repo := pg.NewVolumeRepo(s.pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	v := s.createVolume(t, probeProject, "attachable")
-	if ok, err := reconciler.NewStore(s.pool).Confirm(ctx, reconciler.KindVolume, v.ID,
+	if ok, err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Confirm(componentCtx(), reconciler.KindVolume, v.ID,
 		blockbackend.Observed{State: blockbackend.ObservedReady}); err != nil || !ok {
 		t.Fatalf("том не доведён до готовности (ok=%v, err=%v): привязка к неготовому "+
 			"отвергается, и проба падала бы по причине, которой не закрепляет", ok, err)
@@ -324,8 +323,8 @@ func TestPayloadCarriesColumnNamesAndNoInfra(t *testing.T) {
 // оно невидимо, потому что обе стороны там берут одну константу.
 func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	repo := pg.NewVolumeRepo(s.pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	v := s.createVolume(t, probeProject, "state-equals-read")
 	// Потребление объявляется сообщённым НАМЕРЕННО.
 	//
@@ -339,7 +338,7 @@ func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	// (`TestReadPathAnswersStatusReasonAndUsedBytes`): «бэкенд не сказал» обязано
 	// остаться отличимым от нуля, и утверждать это здесь значило бы завести второе
 	// место об одном предмете.
-	if ok, err := reconciler.NewStore(s.pool).Confirm(ctx, reconciler.KindVolume, v.ID,
+	if ok, err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Confirm(componentCtx(), reconciler.KindVolume, v.ID,
 		blockbackend.Observed{
 			State: blockbackend.ObservedReady, UsedBytes: 3 << 30, HasUsedBytes: true,
 		}); err != nil || !ok {
@@ -376,7 +375,7 @@ func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	if last.change != "UPDATED" {
 		t.Fatalf("последняя строка по тому — %q, ожидалась правка от привязки", last.change)
 	}
-	packed, absence, serr := subscriptionjournal.Journal().Mapping.State(subscription.Row{
+	packed, absence, serr := subscriptionjournal.Journal(false).Mapping.State(subscription.Row{
 		Kind: last.kind, ID: last.id, Change: last.change, Payload: last.payload,
 	})
 	if serr != nil {
@@ -427,13 +426,13 @@ func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 // это от тома, отказавшего без причины.
 func TestJournalStateCarriesTheFailureReasonTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	repo := pg.NewVolumeRepo(s.pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	v := s.createVolume(t, probeProject, "state-equals-read-error")
 
 	// Отказ объявляется БОЕВЫМ путём сверщика — тем же, которым он объявляется на
 	// живом стенде, а не UPDATE'ом из пробы.
-	if err := reconciler.NewStore(s.pool).MarkError(ctx, reconciler.KindVolume, v.ID,
+	if err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).MarkError(componentCtx(), reconciler.KindVolume, v.ID,
 		domain.ReasonBackendCapacityExhausted,
 		blockbackend.Observed{State: blockbackend.ObservedError}); err != nil {
 		t.Fatalf("отказ не объявлен: %v", err)
@@ -450,7 +449,7 @@ func TestJournalStateCarriesTheFailureReasonTheReadPathAnswers(t *testing.T) {
 		t.Fatal("журнал не дал ни одной строки по тому — сравнивать не с чем")
 	}
 	last := rows[len(rows)-1]
-	packed, absence, serr := subscriptionjournal.Journal().Mapping.State(subscription.Row{
+	packed, absence, serr := subscriptionjournal.Journal(false).Mapping.State(subscription.Row{
 		Kind: last.kind, ID: last.id, Change: last.change, Payload: last.payload,
 	})
 	if serr != nil {
@@ -493,7 +492,7 @@ func TestJournalStateCarriesTheFailureReasonTheReadPathAnswers(t *testing.T) {
 func TestEnvelopeKeyIsNotAColumnOfTheSchema(t *testing.T) {
 	s := newStand(t)
 	var total, clashes int
-	if err := s.pool.QueryRow(context.Background(), `
+	if err := s.pool.QueryRow(journalPrincipalCtx(context.Background()), `
 		SELECT count(*), count(*) FILTER (WHERE column_name = $1)
 		  FROM information_schema.columns
 		 WHERE table_schema = 'kacho_storage'`, pg.JournalStateKey).Scan(&total, &clashes); err != nil {

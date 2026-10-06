@@ -45,7 +45,7 @@ const seededDiskType = "block-fixture"
 // инвариант, которым закрыт «создаваемый навсегда».
 func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// Перечень выведен из ЗОН, которыми пользуются фикстуры пакета, а не выписан
 	// на глаз: класс без действующей ревизии в зоне не обслуживает её вовсе, и
 	// недостающая зона читается как дефект продукта («нет действующей привязки»),
@@ -86,7 +86,7 @@ func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
 // привязки» и читается как дефект продукта, хотя это пробел подготовки.
 func offerDiskTypeInZone(t *testing.T, pool *pgxpool.Pool, diskTypeID string, zones ...string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	backendID := ids.NewHyphenID("sb")
 	_, err := pool.Exec(ctx, `
 		INSERT INTO storage_backends (id, name, kind, zone_ids, endpoint, credentials_ref)
@@ -143,14 +143,14 @@ func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	baseDSN := pgtest.NewDB(t)
 
 	// pool_max_conns=16 — даём race-тестам достаточно соединений, чтобы горутины
 	// реально исполнялись параллельно (contended CAS / auto-device-name), а не
 	// сериализовались на пуле (иначе гонка не воспроизводится).
-	poolDSN := baseDSN + "&pool_max_conns=16"
+	poolDSN := fixtureInitiatorDSN(t, baseDSN+"&pool_max_conns=16")
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -186,7 +186,7 @@ func mkVolume(t *testing.T, pool *pgxpool.Pool, r *pg.VolumeRepo, project, name 
 // предмет и есть неподтверждённое состояние.
 func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
 	t.Helper()
-	v, _, err := r.Insert(context.Background(), &domain.Volume{
+	v, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       name,
@@ -202,8 +202,8 @@ func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size
 // сверщик, увидев объект у бэкенда.
 func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id string, size int64) {
 	t.Helper()
-	applied, err := reconciler.NewStore(pool).Confirm(
-		context.Background(), kind, id,
+	applied, err := mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)).Confirm(
+		componentCtx(), kind, id,
 		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size})
 	require.NoError(t, err)
 	// Применение утверждается явно: подтверждение, не тронувшее ни одной строки,
@@ -215,7 +215,7 @@ func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id str
 // FK-инвариантов delete/derived-status независим от attach-пути).
 func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO volume_attachments (volume_id, instance_id, instance_name, project_id, zone_id, device_name)
 		 VALUES ($1,$2,'web-1','prj-1','region-1-a','sdb')`, volumeID, instanceID)
 	require.NoError(t, err)
@@ -229,8 +229,8 @@ func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
 // продукта. Колонка живёт в схеме со своим умолчанием и контрактом не адресуется.
 func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	v := mkVolume(t, pool, r, "prj-1", "vol-data-1", 10<<30)
 	require.Equal(t, domain.PrefixVolume, v.ID[:3])
@@ -253,8 +253,8 @@ func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 
 // TestVolumeGetNotFound — well-formed-но-нет → ErrNotFound "Volume <id> not found".
 func TestVolumeGetNotFound(t *testing.T) {
-	r := pg.NewVolumeRepo(newTestPool(t))
-	_, err := r.Get(context.Background(), "vol00000000000000000")
+	r := mustJournalWriter(pg.NewVolumeRepo(newTestPool(t), probeJournalOptions))
+	_, err := r.Get(journalPrincipalCtx(context.Background()), "vol00000000000000000")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("not found: "):])
 }
@@ -264,7 +264,7 @@ func TestVolumeGetNotFound(t *testing.T) {
 // (partial UNIQUE 23505, data-integrity.md чек-лист п.5). Под -race.
 func TestVolumeNameUniqueRace(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	const n = 6
 	var ok, dup atomic.Int32
 	var wg sync.WaitGroup
@@ -274,7 +274,7 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, _, err := r.Insert(context.Background(), &domain.Volume{
+			_, _, err := r.Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 				ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "dup-name",
 				ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 			}, "")
@@ -300,8 +300,8 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 // increase → ровно один OK (size-CAS race, под -race).
 func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-resize", 10<<30)
 
 	big := int64(20 << 30)
@@ -328,7 +328,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 			defer wg.Done()
 			<-start
 			s := int64(40 << 30)
-			_, _, err := r.Update(context.Background(), v2.ID, volume.VolumeUpdate{SizeBytes: &s})
+			_, _, err := r.Update(journalPrincipalCtx(context.Background()), v2.ID, volume.VolumeUpdate{SizeBytes: &s})
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -349,8 +349,8 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 // in use" (FK RESTRICT 23503, S1-07/A3); после detach delete проходит → NotFound.
 func TestVolumeDeleteFKRestrict(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	v := mkVolume(t, pool, r, "prj-1", "vol-attached", 10<<30)
 	attach(t, pool, v.ID, "epd00000000000000009")
 
@@ -372,8 +372,8 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 // (S1-12); из существующего снапшота → OK (same-DB FK).
 func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badtype",
@@ -407,8 +407,8 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 // garbage token → InvalidArg (S1-03).
 func TestVolumeListCursorFilter(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	for _, n := range []string{"vol-a", "vol-b", "vol-c"} {
 		mkVolume(t, pool, r, "prj-1", n, 1<<30)
 	}
@@ -468,8 +468,8 @@ func TestVolumeListCursorFilter(t *testing.T) {
 // легальны); mutable description применяется (S1-05/S1-06).
 func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	_ = mkVolume(t, pool, r, "prj-1", "alpha", 1<<30)
 	vb := mkVolume(t, pool, r, "prj-1", "beta", 1<<30)
 

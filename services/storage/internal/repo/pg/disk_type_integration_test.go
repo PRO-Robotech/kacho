@@ -39,7 +39,7 @@ func dtInsert(t *testing.T, r *pg.DiskTypeRepo, d *domain.DiskType) *domain.Disk
 	if d.Lifecycle == "" {
 		d.Lifecycle = domain.LifecycleActive
 	}
-	created, err := r.Insert(context.Background(), d)
+	created, err := r.Insert(journalPrincipalCtx(context.Background()), d)
 	require.NoError(t, err)
 	return created
 }
@@ -50,7 +50,7 @@ func dtInsert(t *testing.T, r *pg.DiskTypeRepo, d *domain.DiskType) *domain.Disk
 // без строки бэкенда ревизию не вставить вовсе.
 func dtBackend(t *testing.T, pool *pgxpool.Pool, id string) string {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO storage_backends (id, name, kind, endpoint, credentials_ref)
 		 VALUES ($1, $1, 'CEPH_RBD', 'cfg://ceph/' || $1, 'vault://kacho/storage/' || $1)`, id)
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func dtBinding(t *testing.T, pool *pgxpool.Pool, id, diskTypeID, zoneID, backend
 	revision int, status string, c domain.Capabilities,
 ) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	_, err := pool.Exec(journalPrincipalCtx(context.Background()),
 		`INSERT INTO disk_type_bindings
 		   (id, disk_type_id, zone_id, backend_id, revision, pool, status,
 		    cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image,
@@ -103,12 +103,12 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	dsn := pgtest.NewDB(t) + "&pool_max_conns=1"
+	dsn := fixtureInitiatorDSN(t, pgtest.NewDB(t)+"&pool_max_conns=1")
 	cfg, err := pgxpool.ParseConfig(dsn)
 	require.NoError(t, err)
 	counter := &dtQueryCounter{}
 	cfg.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := pgxpool.NewWithConfig(journalPrincipalCtx(context.Background()), cfg)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	// Третий конструктор пула в пакете — и он тоже обязан завести строки учёта:
@@ -122,7 +122,7 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 // TestDiskTypeGetNotFound — well-formed-но-нет → ErrNotFound "DiskType <id> not found".
 func TestDiskTypeGetNotFound(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	_, err := dr.Get(context.Background(), "dtp-nonexistent")
+	_, err := dr.Get(journalPrincipalCtx(context.Background()), "dtp-nonexistent")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("not found: "):])
 }
@@ -133,7 +133,7 @@ func TestDiskTypeGetNotFound(t *testing.T) {
 // ничего не читает.
 func TestDiskTypeCatalogEmptyAfterSeedRemoval(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	page, next, err := dr.List(ctx, disktype.Pagination{PageSize: 50})
 	require.NoError(t, err)
@@ -157,7 +157,7 @@ func TestDiskTypeCatalogEmptyAfterSeedRemoval(t *testing.T) {
 // одном из двух чтений, — половина контракта, и расходится это молча.
 func TestDiskTypePolicyRoundTrip(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	want := &domain.DiskType{
 		ID: "block-policy", Name: "policy", Description: "с политикой",
@@ -194,7 +194,7 @@ func TestDiskTypePolicyRoundTrip(t *testing.T) {
 // формы, иначе проба зеленела бы на реализации, отвергающей вообще всё.
 func TestDiskTypePolicyHeldByDBInvariants(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Ярус — закрытый словарь. Свободная строка проходит мимо гейта проекции,
 	// который читает ИМЕНА полей, поэтому канал закрыт по значениям.
@@ -236,7 +236,7 @@ func TestDiskTypePolicyHeldByDBInvariants(t *testing.T) {
 func TestDiskTypeCapabilitiesIntersectActiveBindings(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	be := dtBackend(t, pool, "sb-caps-1")
 
 	// Одна ревизия — способности класса суть её способности.
@@ -305,7 +305,7 @@ func TestDiskTypeCapabilitiesIntersectActiveBindings(t *testing.T) {
 func TestDiskTypeCapabilitiesReadWithoutPerRowQuery(t *testing.T) {
 	pool, counter := dtTracedPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	be := dtBackend(t, pool, "sb-n1-1")
 
 	const classes = 3
@@ -340,8 +340,8 @@ func TestDiskTypeCapabilitiesReadWithoutPerRowQuery(t *testing.T) {
 func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{
 		ID: "block-retro", Name: "retro", ZoneIDs: []string{"region-1-a", "region-1-b"},
@@ -384,7 +384,7 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 // PATCH при пустой маске), применяет всё названное.
 func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	created := dtInsert(t, dr, &domain.DiskType{
 		ID: "block-nvme", Name: "block-nvme", Description: "nvme",
@@ -421,7 +421,7 @@ func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 // побайтово тем же (иначе проба зеленела бы на правке, не делающей ничего).
 func TestDiskTypeUpdateAppliesOnlyNamedFields(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	before := dtInsert(t, dr, &domain.DiskType{
 		ID: "block-mask", Name: "исходное", Description: "исходное описание",
@@ -480,7 +480,7 @@ func TestDiskTypeUpdateAppliesOnlyNamedFields(t *testing.T) {
 // действительно замещает, иначе проба зеленела бы на правке, не делающей ничего.
 func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	before := dtInsert(t, dr, &domain.DiskType{
 		ID: "block-portform", Name: "исходное", ZoneIDs: []string{"ru-central1-a"},
@@ -509,8 +509,8 @@ func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
 func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-temp", Name: "temp"})
 	offerDiskTypeInZone(t, pool, "block-temp", "region-1-a")
@@ -549,8 +549,8 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-race", Name: "race"})
 	offerDiskTypeInZone(t, pool, "block-race", "region-1-a")
@@ -569,7 +569,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			derr := dr.Delete(context.Background(), "block-race")
+			derr := dr.Delete(journalPrincipalCtx(context.Background()), "block-race")
 			switch {
 			case stderrors.Is(derr, storageerr.ErrFailedPrecondition):
 				blocked.Add(1)
@@ -590,7 +590,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 // свежей базы пуст (посев снят 0016), поэтому проба сеет свои классы сама.
 func TestDiskTypeListCursor(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const total = 5
 	for i := 0; i < total; i++ {

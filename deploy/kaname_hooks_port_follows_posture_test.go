@@ -1,46 +1,30 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// kaname_hooks_port_follows_posture_test.go — ПОДЧАРТ СЛУЖБЫ ДОСТУПА В ЗОНТЕ
-// ОБЪЯВЛЯЕТ ПОРТ ХУКОВ ТОЛЬКО ТАМ, ГДЕ ПРОЦЕСС ЕГО ПОДНИМАЕТ, А ПРОБЫ ВЕДЁТ НА
-// ДИАГНОСТИКУ (kacho#2871, служба — PRO-Robotech/kaname#360).
+// kaname_hooks_port_follows_posture_test.go — ПОДЧАРТ СЛУЖБЫ ДОСТУПА В ЗОНТЕ НЕ
+// ОБЪЯВЛЯЕТ ПОРТА ХУКОВ НИ НА ОДНОМ СТЕНДЕ, А ПРОБЫ ВЕДЁТ НА ДИАГНОСТИКУ
+// (kacho#2871, служба — PRO-Robotech/kaname#360; kacho#2818).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// Служба с ревизии, несущей вливание kaname#360, под посадкой `own` слушатель
-// вебхуков поставщика не строит (`hooksListenAddress` в её композиционном
-// корне отдаёт пусто), а `/healthz` и `/readyz` живут на диагностическом
-// слушателе — том же, что отдаёт `/metrics`. Копия чарта службы в зонте вела
-// обе пробы на порт `http-hooks` при любой посадке и объявляла этот порт у
-// контейнера и у внутреннего Service без условия. Посадку `own` объявляют все
-// стенды `stacks.txt`, поэтому после подъёма образа службы до такой ревизии под
-// службы доступа ни на одном стенде готовым не стал бы: kubelet стучится в
-// порт, который никто не слушает, а проба живости перезапускает контейнер по
-// кругу. Рендер при этом исправен — ловит это только суд над отрендеренным.
+// `/healthz` и `/readyz` службы живут на диагностическом слушателе — том же,
+// что отдаёт `/metrics` (kaname#360). Копия чарта службы в зонте прежде вела обе
+// пробы на порт `http-hooks` и объявляла этот порт у контейнера и у внутреннего
+// Service; под посадкой, при которой процесс слушателя не строит, под не
+// становился готовым никогда, а проба живости перезапускала контейнер по кругу.
+// Рендер при этом исправен — ловит это только суд над отрендеренным.
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// ОЖИДАНИЕ ВЫВОДИТСЯ ИЗ ПРЕДИКАТА ПРОЦЕССА, А НЕ ВЫПИСЫВАЕТСЯ
-//
-// Процесс снимает слушатель ровно ОДНИМ объявленным значением — `own`
-// (`AuthNConfig.HasExternalIdentityProvider` службы: «не own», а не «==
-// external»). Сам предикат лежит во внутреннем пакете службы и из этого модуля
-// не импортируется; имя значения берётся у его источника — словаря посадок
-// фундамента `identityposture` (`identityposture.Own`), тем же, которым
-// процесс его разбирает. Второго написания имени здесь не заводится.
-//
-// Законный близнец — посадка, при которой процесс слушатель ПОДНИМАЕТ. Значение
-// `external` снято со словаря фундамента (corelib#30: разбор его отвергает),
-// поэтому из объявимых значений «не own» остаётся одно — поле не объявлено.
-// Близнец рендерит ту же цепочку стенда с пустой посадкой и требует обратного:
-// порт хуков у контейнера и у Service ЕСТЬ, пробы по-прежнему на диагностике.
-// Меняется ровно один факт — посадка.
+// Прежде порт судился по посадке: слушатель вебхуков процесс поднимал на всякой
+// посадке, кроме `own`. С kaname#363 слушателя у службы нет ВОВСЕ, посадка одна,
+// и ключа посадки у подчарта нет (kacho#2818): порт хуков запрещён безусловно.
+// Что подчарт не передаёт и остальной полосы хуков, которую пин не читает, —
+// предмет kaname_subchart_retired_identity_wiring_test.go.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО СУДИТСЯ
 //
-//   - порт `http-hooks` у контейнера и у Service `<релиз>-internal` — есть ровно
-//     тогда, когда процесс поднимает слушатель;
+//   - порта `http-hooks` нет ни у контейнера, ни у Service `<релиз>-internal`;
 //   - порт диагностики `metrics` у контейнера объявлен, и его номер — тот же,
 //     что у объявления сбора (`prometheus.io/port`): одна поверхность, один
 //     адрес;
@@ -70,7 +54,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -82,11 +65,9 @@ const (
 	kanameDiagPortName = "metrics"
 )
 
-// kanameHooksLaneRaised — поднимает ли процесс слушатель вебхуков при этой
-// объявленной посадке. Зеркало предиката процесса: «не own».
-func kanameHooksLaneRaised(posture string) bool {
-	return posture != identityposture.Own.String()
-}
+// kanameHooksLaneRaised — поднимает ли процесс слушатель вебхуков. С kaname#363
+// — нет, ни при какой посадке: слушателя у службы нет (kacho#2818).
+const kanameHooksLaneRaised = false
 
 // kanameProbe — одна проба контейнера в той мере, в какой её судит проверка.
 type kanameProbe struct {
@@ -231,12 +212,13 @@ func renderKanameHooksSurface(t *testing.T, chartDir, stack string, values map[s
 	if err := os.WriteFile(file, body, 0o600); err != nil {
 		t.Fatalf("стенд %s: %v", stack, err)
 	}
-	args := []string{"template", "kacho-umbrella", chartDir, "-n", "kacho", "-f", file,
+	// Одиночный рендер подчарта — только обёрткой (renderKanameAlone, CX1-113).
+	args := []string{"-n", "kacho", "-f", file,
 		"--show-only", "templates/deployment.yaml", "--show-only", "templates/service-internal.yaml"}
 	for _, s := range sets {
 		args = append(args, "--set-string", s)
 	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := renderKanameAlone(t, "kacho-umbrella", chartDir, args...)
 	if err != nil {
 		t.Fatalf("стенд %s: подчарт kaname не рендерится: %v\n%s", stack, err, out)
 	}
@@ -288,7 +270,7 @@ type kanameRenderedProbe struct {
 func kanameHooksFactsOf(t *testing.T, stack, posture, rendered string) kanameHooksFacts {
 	t.Helper()
 	f := kanameHooksFacts{
-		Stack: stack, Posture: posture, Raised: kanameHooksLaneRaised(posture),
+		Stack: stack, Posture: posture, Raised: kanameHooksLaneRaised,
 		ContainerPorts: map[string]int{}, ServicePorts: map[string]bool{}, Probes: map[string]kanameProbe{},
 	}
 	var sawDeployment, sawService bool
@@ -341,9 +323,8 @@ func kanameHooksFactsOf(t *testing.T, stack, posture, rendered string) kanameHoo
 }
 
 // auditKanameHooksPort — суд над каждым стендом `stacks.txt`, отрендеренным из
-// chartDir. postureOverride == nil — посадка стенда как объявлена; иначе —
-// рендер с этой посадкой поверх цепочки (близнец).
-func auditKanameHooksPort(t *testing.T, chartDir string, postureOverride *string) ([]string, kanameHooksCensus) {
+// chartDir.
+func auditKanameHooksPort(t *testing.T, chartDir string) ([]string, kanameHooksCensus) {
 	t.Helper()
 	stacks := deployStacks(t)
 	names := make([]string, 0, len(stacks))
@@ -357,13 +338,7 @@ func auditKanameHooksPort(t *testing.T, chartDir string, postureOverride *string
 	for _, name := range names {
 		census.Stacks++
 		values := kanameStackValues(t, stacks[name])
-		posture := declaredString(lookup(values, "config", "authn", "identityProvider"))
-		var sets []string
-		if postureOverride != nil {
-			posture = *postureOverride
-			sets = append(sets, "config.authn.identityProvider="+posture)
-		}
-		f := kanameHooksFactsOf(t, name, posture, renderKanameHooksSurface(t, chartDir, name, values, sets...))
+		f := kanameHooksFactsOf(t, name, kanameLanding, renderKanameHooksSurface(t, chartDir, name, values))
 		census.Rendered++
 		if !f.Raised {
 			census.Own++
@@ -393,32 +368,11 @@ func auditKanameHooksPort(t *testing.T, chartDir string, postureOverride *string
 	return findings, census
 }
 
-// TestKanameHooksPortFollowsThePosture — на каждом стенде порт хуков объявлен
-// ровно там, где процесс его поднимает, а пробы идут на диагностику.
+// TestKanameHooksPortFollowsThePosture — ни на одном стенде порта хуков нет, а
+// пробы идут на диагностику.
 func TestKanameHooksPortFollowsThePosture(t *testing.T) {
-	findings, census := auditKanameHooksPort(t, iamSubchartDir, nil)
+	findings, census := auditKanameHooksPort(t, iamSubchartDir)
 	t.Logf("перепись: %s", census)
-	if census.Own == 0 {
-		t.Fatalf("ни один стенд не объявляет посадку %s — предпосылка задачи (все стенды на own) "+
-			"изменилась, пересмотрите проверку, а не читайте ноль как исправность",
-			identityposture.Own)
-	}
-	for _, f := range findings {
-		t.Error(f)
-	}
-}
-
-// TestKanameHooksPortTwinKeepsTheHooksWhereTheProcessRaisesThem — законный
-// близнец: та же цепочка каждого стенда с НЕОБЪЯВЛЕННОЙ посадкой — процесс
-// слушатель поднимает, и порт хуков у контейнера и у Service обязан быть.
-func TestKanameHooksPortTwinKeepsTheHooksWhereTheProcessRaisesThem(t *testing.T) {
-	undeclared := ""
-	findings, census := auditKanameHooksPort(t, iamSubchartDir, &undeclared)
-	t.Logf("перепись близнеца (посадка не объявлена): %s", census)
-	if census.Own != 0 {
-		t.Fatalf("близнец рендерит посадку %s на %d стендах — подмена посадки не доехала до рендера",
-			identityposture.Own, census.Own)
-	}
 	for _, f := range findings {
 		t.Error(f)
 	}

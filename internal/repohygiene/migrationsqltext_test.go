@@ -52,6 +52,8 @@
 package repohygiene
 
 import (
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
+
 	"errors"
 	"os"
 	"path/filepath"
@@ -380,19 +382,18 @@ func syntheticMigrationSQL(dir string) ([]string, error) {
 }
 
 func migrationFiles(root string) ([]string, error) {
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
+	// Каталоги цепочек — у migrationchains.List, а не из имени службы
+	// (kacho#2915, CX1-114): цепочка пробы notify лежит в
+	// services/notify/internal/probemigrations.
+	chains, err := migrationchains.List(root)
 	if err != nil {
 		return nil, err
 	}
 	var out []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		sqls, globErr := treecorpus.Glob(filepath.Join(servicesDir, e.Name(), "internal", "migrations", "*.sql"))
-		// Служба без каталога миграций — законный ПУСТОЙ ответ; недоступный git —
-		// отказ, и он обязан дойти до вызывающего, а не стать пустым перечнем.
+	for _, c := range chains {
+		sqls, globErr := treecorpus.Glob(filepath.Join(root, filepath.FromSlash(c.Dir), "*.sql"))
+		// Цепочка без миграций — законный ПУСТОЙ ответ; недоступный git — отказ,
+		// и он обязан дойти до вызывающего, а не стать пустым перечнем.
 		if errors.Is(globErr, treecorpus.ErrEmptyCorpus) {
 			continue
 		}

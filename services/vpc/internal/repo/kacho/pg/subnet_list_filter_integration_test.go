@@ -29,13 +29,13 @@ func TestSubnetList_FilterByZoneAndNetwork_VPC_1_45(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers); skipped in -short")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

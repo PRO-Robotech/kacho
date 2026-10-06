@@ -59,7 +59,7 @@ func packedStateOf(t *testing.T, s *stand, kind, id string) interface {
 		t.Fatalf("журнал не дал ни одной строки по %s %s — сравнивать не с чем", kind, id)
 	}
 	last := rows[len(rows)-1]
-	packed, absence, err := subscriptionjournal.Journal().Mapping.State(subscription.Row{
+	packed, absence, err := subscriptionjournal.Journal(false).Mapping.State(subscription.Row{
 		Kind: last.kind, ID: last.id, Change: last.change, Payload: last.payload,
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ const probeRegion = "region-1"
 // Ровно один из двух идентификаторов непуст: домен требует одного источника.
 func seedVolumeFrom(t *testing.T, s *stand, name, snapshotID, imageID string) *domain.Volume {
 	t.Helper()
-	v, _, err := pg.NewVolumeRepo(s.pool).Insert(context.Background(), &domain.Volume{
+	v, _, err := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions)).Insert(journalPrincipalCtx(context.Background()), &domain.Volume{
 		ID:             ids.NewID(domain.PrefixVolume),
 		ProjectID:      probeProject,
 		Name:           name,
@@ -107,10 +107,10 @@ func seedVolumeFrom(t *testing.T, s *stand, name, snapshotID, imageID string) *d
 // утверждала бы про состояние, которого не создавала.
 func createSnapshot(t *testing.T, s *stand, name string) *domain.Snapshot {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	src := s.createVolume(t, probeProject, name+"-src")
 	confirmReady(t, s, reconciler.KindVolume, src.ID)
-	sn, _, err := pg.NewSnapshotRepo(s.pool).Insert(ctx, &domain.Snapshot{
+	sn, _, err := mustJournalWriter(pg.NewSnapshotRepo(s.pool, probeJournalOptions)).Insert(ctx, &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      probeProject,
 		Name:           name,
@@ -131,7 +131,7 @@ func createSnapshot(t *testing.T, s *stand, name string) *domain.Snapshot {
 // выглядела бы исполненной.
 func confirmReady(t *testing.T, s *stand, kind reconciler.Kind, id string) {
 	t.Helper()
-	ok, err := reconciler.NewStore(s.pool).Confirm(context.Background(), kind, id,
+	ok, err := mustJournalWriter(reconciler.NewStore(s.pool, probeJournalOptions)).Confirm(componentCtx(), kind, id,
 		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: 1 << 30})
 	if err != nil || !ok {
 		t.Fatalf("%s %s не доведён до готовности (ok=%v, err=%v)", kind, id, ok, err)
@@ -146,8 +146,8 @@ func confirmReady(t *testing.T, s *stand, kind reconciler.Kind, id string) {
 // поле, ради которого состояние этому виду и заводится.
 func TestSnapshotStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
-	repo := pg.NewSnapshotRepo(s.pool)
+	ctx := journalPrincipalCtx(context.Background())
+	repo := mustJournalWriter(pg.NewSnapshotRepo(s.pool, probeJournalOptions))
 	sn := createSnapshot(t, s, "snap-state-equals-read")
 
 	// Ребёнок заводится боевым путём: том, засеянный этим снимком.
@@ -203,7 +203,7 @@ func TestSnapshotStateStaysFreshWhenAVolumeIsSeededAndRemoved(t *testing.T) {
 	}
 
 	// ── снятие ребёнка обязано доехать так же ─────────────────────────────────
-	if _, err := s.pool.Exec(context.Background(),
+	if _, err := s.pool.Exec(journalPrincipalCtx(context.Background()),
 		`DELETE FROM volumes WHERE id = $1`, v.ID); err != nil {
 		t.Fatalf("том не снялся: %v", err)
 	}
@@ -222,12 +222,12 @@ func TestSnapshotStateStaysFreshWhenAVolumeIsSeededAndRemoved(t *testing.T) {
 // производителя — событие подписчикам снимка на переименовании чужого тома.
 func TestVolumeUpdateDoesNotWakeItsSourceSubscribers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	sn := createSnapshot(t, s, "snap-no-spurious")
 	v := seedVolumeFrom(t, s, "vol-no-spurious", sn.ID, "")
 
 	from := mark(t, s)
-	if _, _, err := pg.NewVolumeRepo(s.pool).Update(ctx, v.ID, volume.VolumeUpdate{
+	if _, _, err := mustJournalWriter(pg.NewVolumeRepo(s.pool, probeJournalOptions)).Update(ctx, v.ID, volume.VolumeUpdate{
 		LabelsSet: true, Labels: map[string]string{"env": "prod"},
 	}); err != nil {
 		t.Fatalf("метки не проставились: %v", err)
@@ -251,8 +251,8 @@ func TestVolumeUpdateDoesNotWakeItsSourceSubscribers(t *testing.T) {
 // нём не говорит ничего.
 func TestImageStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
-	ctx := context.Background()
-	repo := pg.NewImageRepo(s.pool)
+	ctx := journalPrincipalCtx(context.Background())
+	repo := mustJournalWriter(pg.NewImageRepo(s.pool, probeJournalOptions))
 	img, _, err := repo.Insert(ctx, &domain.Image{
 		ID:           ids.NewID(domain.PrefixImage),
 		ProjectID:    probeProject,

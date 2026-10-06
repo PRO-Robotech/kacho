@@ -33,7 +33,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -126,15 +125,10 @@ func TestEveryServiceThatDropsRowsCountsThemBeforeMigrating(t *testing.T) {
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 
-	services := make([]string, 0, len(dirs))
-	for svc := range dirs {
-		services = append(services, svc)
-	}
-	sort.Strings(services)
-
 	var withDrops, wired, goFilesRead int
-	for _, svc := range services {
-		inv, err := dropguard.Inventory(svc, os.DirFS(dirs[svc]))
+	for _, cd := range dirs {
+		svc := cd.Service
+		inv, err := dropguard.Inventory(svc, os.DirFS(cd.Dir))
 		if err != nil {
 			t.Errorf("%s: %v", svc, err)
 			continue
@@ -163,16 +157,16 @@ func TestEveryServiceThatDropsRowsCountsThemBeforeMigrating(t *testing.T) {
 	}
 
 	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
-	if len(services) == 0 {
+	if len(dirs) == 0 {
 		t.Fatal("обход пуст: ни одного каталога миграций — гейт не утверждает ничего")
 	}
 	if withDrops == 0 {
-		t.Fatalf("ни у одного из %d сервисов не нашлось сноса — либо дерево перестало ронять "+
-			"таблицы, либо разбор перестал их читать; и то и другое находка", len(services))
+		t.Fatalf("ни у одной из %d цепочек не нашлось сноса — либо дерево перестало ронять "+
+			"таблицы, либо разбор перестал их читать; и то и другое находка", len(dirs))
 	}
 	if goFilesRead == 0 {
 		t.Fatalf("прочитано ноль файлов Go при %d сервисе(ах) со сносами — гейт судил бы по пустоте", withDrops)
 	}
-	t.Logf("перепись: сервисов %d · со сносами %d · зовут dropguard.Gate %d · файлов Go прочитано %d",
-		len(services), withDrops, wired, goFilesRead)
+	t.Logf("перепись: цепочек %d · со сносами %d · зовут dropguard.Gate %d · файлов Go прочитано %d",
+		len(dirs), withDrops, wired, goFilesRead)
 }

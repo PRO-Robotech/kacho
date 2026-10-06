@@ -1,0 +1,2 @@
+{"path":"kacho/cloud/vpc/v1/network_service.proto","start_line":191,"start_column":3,"end_line":191,"end_column":24,"type":"FIELD_SAME_JSON_NAME","message":"Field \"2\" with name \"page_limit\" on message \"ListNetworksRequest\" changed option \"json_name\" from \"pageSize\" to \"pageLimit\"."}
+{"path":"kacho/cloud/vpc/v1/network_service.proto","start_line":191,"start_column":9,"end_line":191,"end_column":19,"type":"FIELD_SAME_NAME","message":"Field \"2\" on message \"ListNetworksRequest\" changed name from \"page_size\" to \"page_limit\"."}

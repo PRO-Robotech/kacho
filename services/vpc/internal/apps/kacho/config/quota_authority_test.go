@@ -38,7 +38,8 @@ func TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart(t *testing.T) {
 // Без него утверждения «процесс не поднимается» зеленели бы на объявлении,
 // которое не принимается никогда.
 func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
+	c := Config{
+		Notifications: probeNotificationsOff(), Quota: QuotaConfig{Authority: corequota.NotDeployed}}
 	c.AuthN.Mode = ModeProductionStrict
 
 	a, err := c.QuotaAuthority()
@@ -63,7 +64,8 @@ func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
 // (`security.md` §Hardening п. 9: адрес, от которого зависит решение, не
 // выводится из чужого адреса).
 func TestQuotaAuthority_KAN_Q1_04_AddressIsNotDerivedFromAuthz(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
+	c := Config{
+		Notifications: probeNotificationsOff(), Quota: QuotaConfig{Authority: corequota.NotDeployed}}
 	c.AuthN.Mode = ModeDev
 	c.AuthZ.IAMEndpoint = "kaname-internal.kacho.svc:9091"
 
@@ -140,7 +142,8 @@ func TestQuotaAuthority_KnobReachesTheField(t *testing.T) {
 // (`testing.md` §«Гейт на класс», п. 9: проба, чей предмет снят, ЗАМЕНЯЕТСЯ, а не
 // ослабляется).
 func TestQuotaAuthority_AddressRefusesStart_NoProducer(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
+	c := Config{
+		Notifications: probeNotificationsOff(), Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
 	c.AuthN.Mode = ModeProductionStrict
 	err := c.ValidateQuotaAuthority()
 	require.Error(t, err, "адрес принят молча — ручка объявляет возможность, которой нет")
@@ -160,7 +163,8 @@ func TestQuotaAuthority_AddressRefusesStart_NoProducer(t *testing.T) {
 // Смягчение оставило бы объявление, которое поднимается на стенде и отказывает в
 // бою, — ту самую неразличимость, ради устранения которой отказ и заведён.
 func TestQuotaAuthority_AddressRefusalIsNotSoftenedByPosture(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
+	c := Config{
+		Notifications: probeNotificationsOff(), Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
 	c.AuthN.Mode = ModeDev
 	require.Error(t, c.ValidateQuotaAuthority())
 }

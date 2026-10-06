@@ -54,14 +54,14 @@ type sgNetFixture struct {
 
 func newSGNetFixture(t *testing.T) *sgNetFixture {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 
 	opsRepo := operations.NewRepo(pool, "kacho_vpc")
@@ -471,7 +471,7 @@ func TestIntegration_SGNet_ConcurrentTargetDelete(t *testing.T) {
 			defer wg.Done()
 			<-start
 			_ = legacyWithTx(t, f.ctx, f.r, func(w kacho.RepositoryWriter) error {
-				return w.SecurityGroups().Delete(f.ctx, sgA)
+				return removalErr(w.SecurityGroups().Delete(f.ctx, sgA))
 			})
 		}()
 		close(start)
@@ -498,8 +498,8 @@ func TestIntegration_SGNet_ConcurrentTargetDelete(t *testing.T) {
 
 		// cleanup
 		_ = legacyWithTx(t, f.ctx, f.r, func(w kacho.RepositoryWriter) error {
-			_ = w.SecurityGroups().Delete(f.ctx, sg8)
-			_ = w.SecurityGroups().Delete(f.ctx, sgA)
+			_ = removalErr(w.SecurityGroups().Delete(f.ctx, sg8))
+			_ = removalErr(w.SecurityGroups().Delete(f.ctx, sgA))
 			return nil
 		})
 	}

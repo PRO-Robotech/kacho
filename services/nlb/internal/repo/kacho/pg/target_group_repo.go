@@ -798,9 +798,11 @@ func (w *targetGroupWriter) DeleteExpiredDrainingTargets(ctx context.Context) (i
 // слушателя (`listeners_target_group_fk`) и цели (`targets_target_group_id_fkey`)
 // держатся `ON DELETE RESTRICT`. Здесь остаётся только отображение 23503 в код
 // и КОНТРАКТНЫЙ ТЕКСТ, называющий блокирующие строки, — см. restrict_fk.go.
-func (w *targetGroupWriter) Delete(ctx context.Context, id string) error {
+//
+// Возвращает снимок имени снятой строки (`RETURNING name`, NTF-3 З2).
+func (w *targetGroupWriter) Delete(ctx context.Context, id string) (string, error) {
 	return deleteParentRow(ctx, w.tx, "TargetGroup", id,
-		`DELETE FROM kacho_nlb.target_groups WHERE id = $1`)
+		`DELETE FROM kacho_nlb.target_groups WHERE id = $1 RETURNING name`)
 }
 
 // splitTargetIdentity — раскладывает domain.Target в 6 nullable-полей колонок

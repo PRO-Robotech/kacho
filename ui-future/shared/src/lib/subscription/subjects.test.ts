@@ -1,4 +1,10 @@
-import { STREAM_SUBJECTS, streamSubject } from "./subjects";
+import {
+  NOTIFY_SOURCE_BY_OWNER,
+  STREAM_SUBJECTS,
+  notifyModuleOf,
+  specOfKind,
+  streamSubject,
+} from "./subjects";
 
 /**
  * Мост между спекой консоли и её предметом потока: `streamSubject(specId)`.
@@ -165,6 +171,25 @@ describe("подписка: спека консоли → владелец жу�
       owner: "registry",
       kind: "registry_registry",
     });
+    // Виды, которые журналы compute, реестра и vpc объявили позже первых (#2918,
+    // NTF-3 S1-A3): у каждого есть своя спека списка, поэтому вид назван картой,
+    // а не ведомостью непоказанных.
+    expect(streamSubject("placement-groups")).toEqual({
+      owner: "compute",
+      kind: "compute_placement_group",
+    });
+    expect(streamSubject("guest-access-keys")).toEqual({
+      owner: "compute",
+      kind: "compute_guest_access_key",
+    });
+    expect(streamSubject("repositories")).toEqual({
+      owner: "registry",
+      kind: "registry_repository",
+    });
+    expect(streamSubject("address-pools")).toEqual({
+      owner: "vpc",
+      kind: "vpc_address_pool",
+    });
     // Служба доступа: написание вида НЕОДНОРОДНО, и проба закрепляет именно это.
     // Аккаунт и проект зовутся без приставки домена, остальные пять — с ней;
     // выведи их «как у соседей» — получишь `iam_account`, и спека молча осталась
@@ -189,26 +214,23 @@ describe("подписка: спека консоли → владелец жу�
     // на карте, отвечающей `null` вообще всем.
     //
     // Каждое имя ниже — не выдумка, а живая спека дерева, чей ВЛАДЕЛЕЦ этого
-    // вида не объявляет. Оснований ДВА, и оба реальны: у блочного хранения и
-    // реестра журнал ЕСТЬ, но ведёт не всякий свой предмет (`disk-types`,
-    // `repositories`, `tags`); у compute журнал пишет один вид, машины
-    // (`placement-groups`, `machine-types`). Догадка «раз домен покрыт, значит
-    // покрыт и этот вид» дала бы снятый опрос при молчащем потоке — то есть
-    // список, замерший навсегда.
+    // вида не объявляет: журнал у домена ЕСТЬ, но ведёт не всякий свой предмет
+    // (`disk-types` и `zones` у блочного хранения, `tags` у реестра,
+    // `machine-types` у compute). Догадка «раз домен покрыт, значит покрыт и
+    // этот вид» дала бы снятый опрос при молчащем потоке — то есть список,
+    // замерший навсегда.
+    //
+    // ОТСЮДА ЖЕ СНЯТЫ `repositories` и `placement-groups` (#2918): журналы
+    // реестра и compute объявили их виды, и обе спеки переехали в положительную
+    // пробу выше. Оставить их здесь значило бы утверждать отсутствие, которого
+    // в дереве больше нет.
     //
     // ТРЕТЬЕ ОСНОВАНИЕ ОТСЮДА СНЯТО ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: здесь стояли
     // `users` и `projects` с доводом «у iam журнала нет вовсе». Журнал у службы
     // доступа появился, семь её видов названы картой, и обе спеки переехали в
     // положительную пробу выше — ослабить это отрицание, оставив их здесь,
     // значило бы закрепить пробой состояние, которого больше нет.
-    for (const specId of [
-      "disk-types",
-      "repositories",
-      "tags",
-      "placement-groups",
-      "machine-types",
-      "zones",
-    ]) {
+    for (const specId of ["disk-types", "tags", "machine-types", "zones"]) {
       // Сверяется ЗНАЧЕНИЕ, а не его строка. Прежняя запись приводила ответ
       // `String()`-ом, чтобы назвать в отказе виновную спеку, — но объект
       // приводится к «[object Object]», то есть ЛЮБОЙ непустой ответ выглядел
@@ -223,5 +245,130 @@ describe("подписка: спека консоли → владелец жу�
 
   it("выдуманная спека отвечает null, а не падает", () => {
     expect(streamSubject("нет-такой-спеки")).toBeNull();
+  });
+
+  it("имя свойства прототипа спекой не является", () => {
+    // Карта — литерал объекта, и чтение по ключу без проверки собственности
+    // отдало бы на `toString` функцию прототипа вместо `null`: вызывающий принял
+    // бы её за предмет потока, а `notifyModuleOf` — за владельца без записи.
+    for (const specId of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+      expect({ specId, subject: streamSubject(specId) }).toEqual({ specId, subject: null });
+    }
+  });
+});
+
+/**
+ * Переход «спека → ключ модуля каталога `notify`» (NTF-6 Р10а, З11, CX6-01) и
+ * обратный поиск «тип объекта → спека» (Р7, Р10).
+ *
+ * Ключ модуля каталога — ДРУГОЙ словарь, чем владелец журнала: у балансировщика
+ * владелец `loadbalancer`, а модуль каталога `nlb`; у службы доступа — `iam` и
+ * `kaname`. Поиск модуля каталога по `owner` промахивался бы ровно на этих
+ * десяти спеках из двадцати семи, и действие подписки на их карточках молча
+ * исчезало бы.
+ *
+ * Каталог ниже — форма `GET /notify/v1/catalog` (NTF-3 Р29, NTF3-149): ключи
+ * модулей в порядке таблицы сборки. Ячейка `(RESOURCE_CHANGE, EMAIL: SWITCHABLE)`
+ * дана КАЖДОМУ модулю намеренно — предмет пробы переход, а не состав каталога,
+ * и отсутствие ячейки у настоящего `kaname` не должно прятать промах ключа.
+ * Согласие отображения с журналами дерева держит гейт
+ * `ui-future/deploy/console_notify_source_key_test.go`, а не эта проба.
+ */
+describe("уведомления: спека консоли → ключ модуля каталога notify", () => {
+  interface CatalogCell {
+    kind: string;
+    channel: string;
+    policy: string;
+  }
+  interface CatalogModule {
+    key: string;
+    cells: CatalogCell[];
+  }
+
+  const subscribable: CatalogCell = {
+    kind: "RESOURCE_CHANGE",
+    channel: "EMAIL",
+    policy: "SWITCHABLE",
+  };
+  const catalogKeys = ["compute", "vpc", "nlb", "registry", "storage", "notify", "kaname"];
+  const catalog: CatalogModule[] = catalogKeys.map((key) => ({ key, cells: [subscribable] }));
+
+  // Спеки, для которых ячейка подписки в каталоге НЕ нашлась, — пустой ответ и
+  // есть цель. Функция одна для положительной ветки и её близнеца.
+  function specsWithoutSubscribableCell(modules: readonly CatalogModule[]): string[] {
+    return Object.keys(STREAM_SUBJECTS).filter((specId) => {
+      const key = notifyModuleOf(specId);
+      const module = modules.find((m) => m.key === key);
+      return !module?.cells.some(
+        (c) => c.kind === "RESOURCE_CHANGE" && c.channel === "EMAIL" && c.policy === "SWITCHABLE",
+      );
+    });
+  }
+
+  // verifies #2925
+  it(`каждая запись STREAM_SUBJECTS (осмотрено ${Object.keys(STREAM_SUBJECTS).length}) находит в каталоге ячейку подписки своего модуля`, () => {
+    const specIds = Object.keys(STREAM_SUBJECTS);
+    // Объём осмотренного назван в имени пробы и утверждён: «нарушений нет» на пустом
+    // обходе не значит ничего.
+    expect(specIds.length).toBeGreaterThan(0);
+
+    expect(specsWithoutSubscribableCell(catalog)).toEqual([]);
+  });
+
+  // verifies #2925
+  it("близнец: каталог без модуля nlb — ячейки не находят ровно спеки балансировщика", () => {
+    const withoutNlb = catalog.filter((m) => m.key !== "nlb");
+    expect(specsWithoutSubscribableCell(withoutNlb).sort()).toEqual(
+      ["listeners", "load-balancers", "target-groups"].sort(),
+    );
+  });
+
+  // verifies #2925
+  it("ключ модуля берётся переходом, а не написанием владельца", () => {
+    // Два владельца, у которых написания расходятся, — ради них переход и заведён.
+    expect(notifyModuleOf("target-groups")).toBe("nlb");
+    expect(notifyModuleOf("load-balancers")).toBe("nlb");
+    expect(notifyModuleOf("accounts")).toBe("kaname");
+    expect(notifyModuleOf("access-bindings")).toBe("kaname");
+    // Совпадающее написание — положительный контроль того же пути.
+    expect(notifyModuleOf("networks")).toBe("vpc");
+    expect(notifyModuleOf("compute-instances")).toBe("compute");
+    expect(notifyModuleOf("volumes")).toBe("storage");
+    expect(notifyModuleOf("registries")).toBe("registry");
+
+    // Отображение исчерпывающее: у каждого владельца, встреченного картой, — запись.
+    // Владельцы без записи названы поимённо; пустой перечень — цель.
+    const owners = Object.values(STREAM_SUBJECTS).map(({ owner }) => owner);
+    expect(owners.length).toBeGreaterThan(0);
+    const ownersWithoutKey = owners.filter(
+      (owner) => !/^[a-z]+$/.test(NOTIFY_SOURCE_BY_OWNER[owner] ?? ""),
+    );
+    expect(ownersWithoutKey).toEqual([]);
+  });
+
+  // verifies #2925
+  it("спека вне STREAM_SUBJECTS отвечает null, а не догадкой по домену", () => {
+    for (const specId of ["disk-types", "machine-types", "нет-такой-спеки", "toString", ""]) {
+      expect({ specId, key: notifyModuleOf(specId) }).toEqual({ specId, key: null });
+    }
+  });
+
+  // verifies #2925
+  it(`specOfKind — обратный поиск по STREAM_SUBJECTS (осмотрено ${Object.keys(STREAM_SUBJECTS).length}), по каждой записи туда и обратно`, () => {
+    const entries = Object.entries(STREAM_SUBJECTS);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [specId, { kind }] of entries) {
+      expect({ kind, specId: specOfKind(kind) }).toEqual({ kind, specId });
+    }
+  });
+
+  // verifies #2925
+  it("specOfKind: вид вне словаря консоли — null", () => {
+    // Строка ленты несёт тип объекта от сервера; неизвестный тип — текст без
+    // ссылки, а не угаданная спека. Написание с чужой приставкой (`iam_account`)
+    // и владелец вместо вида — два реальных промаха, а не выдумка.
+    for (const kind of ["iam_account", "vpc", "nlb_target_groups", "VPC_NETWORK", "toString", ""]) {
+      expect({ kind, specId: specOfKind(kind) }).toEqual({ kind, specId: null });
+    }
   });
 });
