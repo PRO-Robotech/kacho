@@ -38,7 +38,7 @@ func TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	id := ids.NewID(ids.PrefixInstance)
 	_, _, err = instRepo.Insert(ctx, &domain.Instance{

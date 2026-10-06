@@ -28,8 +28,15 @@ type GuestAccessKeyRepo struct {
 }
 
 // NewGuestAccessKeyRepo создаёт репозиторий ключей.
-func NewGuestAccessKeyRepo(pool *pgxpool.Pool) *GuestAccessKeyRepo {
-	return &GuestAccessKeyRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewGuestAccessKeyRepo(pool *pgxpool.Pool, journal journaltx.Options) (*GuestAccessKeyRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("compute: NewGuestAccessKeyRepo: %w", err)
+	}
+	return &GuestAccessKeyRepo{pool: pool, journal: journal}, nil
 }
 
 const guestKeyCols = `id, project_id, name, public_key, fingerprint, labels, created_at`
@@ -160,6 +167,9 @@ func (r *GuestAccessKeyRepo) Insert(ctx context.Context, k *domain.GuestAccessKe
 		return nil, nil, ports.ErrInternal
 	}
 
+	if err := emitCompute(ctx, tx, "GuestAccessKey", created.ID, created.ProjectID, "CREATED", guestAccessKeyPayload(created)); err != nil {
+		return nil, nil, ports.ErrInternal
+	}
 	reg, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "GuestAccessKey", created.ID, created.ProjectID, created.Labels)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
@@ -231,6 +241,9 @@ func (r *GuestAccessKeyRepo) Update(ctx context.Context, id string, u ports.Gues
 	// Метки участвуют в выдаче прав по меткам, поэтому их правка обязана доехать
 	// до владельца прав тем же путём, что и заведение ключа. Иначе выдача,
 	// опирающаяся на метку, перестала бы совпадать с тем, что видит арендатор.
+	if err := emitCompute(ctx, tx, "GuestAccessKey", updated.ID, updated.ProjectID, "UPDATED", guestAccessKeyPayload(updated)); err != nil {
+		return nil, ports.ErrInternal
+	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "GuestAccessKey",
 		updated.ID, updated.ProjectID, updated.Labels); err != nil {
 		return nil, ports.ErrInternal
@@ -266,8 +279,8 @@ func (r *GuestAccessKeyRepo) Delete(ctx context.Context, id string) error {
 		return &ErrGuestKeyInUse{KeyID: id, InstanceIDs: holders, Truncated: truncated}
 	}
 
-	var projectID string
-	err = tx.QueryRow(ctx, `DELETE FROM guest_access_keys WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
+	var projectID, name string
+	err = tx.QueryRow(ctx, `DELETE FROM guest_access_keys WHERE id = $1 RETURNING project_id, name`, id).Scan(&projectID, &name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: GuestAccessKey %s not found", ports.ErrNotFound, id)
@@ -295,6 +308,9 @@ func (r *GuestAccessKeyRepo) Delete(ctx context.Context, id string) error {
 	// объект, которого больше нет, и следующий ключ с тем же идентификатором
 	// (его не будет — идентификаторы не переиспользуются) не понадобился бы,
 	// чтобы это стало неверным — неверно оно уже сейчас.
+	if err := emitCompute(ctx, tx, "GuestAccessKey", id, projectID, "DELETED", deletedPayload(id, name)); err != nil {
+		return ports.ErrInternal
+	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "GuestAccessKey",
 		id, projectID, nil); err != nil {
 		return ports.ErrInternal

@@ -59,7 +59,7 @@ func decodeLastIntent(t *testing.T, pool *pgxpool.Pool, resourceID string) domai
 // открывается в сторону работы.
 func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	before := time.Now().UTC().Add(-time.Minute)
@@ -80,7 +80,7 @@ func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 // («выдать → отозвать → выдать») не может схлопнуться с предыдущей.
 func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -107,7 +107,7 @@ func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 // пережившими удаление реестра. Снятие регистрации обязано удалять строку целиком.
 func TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)
@@ -133,7 +133,7 @@ func TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister(t *testing.T
 // читается на INSERT'е, то есть уже под захваченным row-lock'ом.
 func TestRepo_SourceVersion_MonotonicUnderConcurrentUpdates(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})

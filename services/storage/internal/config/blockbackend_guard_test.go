@@ -26,6 +26,7 @@ func baseProduction() Config {
 	// законных значения, и незаданное среди них не значится. Отправная точка,
 	// его не несущая, отличалась бы от законной ДВУМЯ фактами сразу.
 	return Config{
+		Notifications:     probeNotificationsOff(),
 		AuthMode:          "production",
 		ListFilterEnabled: true,
 		QuotaAuthority:    corequota.NotDeployed,
@@ -179,7 +180,8 @@ func TestBootGuard_DevModeDoesNotRequireBackendKnobs(t *testing.T) {
 	t.Parallel()
 	// dev-посадка — только локальные фикстуры. Требования боевого режима на неё
 	// не распространяются, и это записанное решение, а не послабление на ходу.
-	c := Config{AuthMode: "dev", BlockBackendKind: "CEPH_RBD",
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev", BlockBackendKind: "CEPH_RBD",
 		QuotaAuthority: corequota.NotDeployed}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("dev-режим не обязан нести боевые требования: %v", err)

@@ -15,7 +15,8 @@ import (
 
 // bootPosture — самоотчёт о посадке. Звено идентичности уехало в принятый
 // дескриптор, форма слушателя выводится из него же `servicehost.PostureOf`:
-// второго литерала нет.
+// второго литерала нет. Флаг ленты — значение, разобранное загрузчиком
+// (`cfg.Notifications`), а не сырое окружение.
 func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.ServiceIdentity],
 	d *servicecontract.Descriptor) (observability.BootPosture, error) {
 	form, noServed := servicehost.PostureOf(d)
@@ -35,5 +36,6 @@ func bootPosture(cfg config.Config, identity servicecontract.Axis[grpcsrv.Servic
 		ListenerForm:       form,
 		NoServedServices:   noServed,
 		ServiceIdentity:    serviceIdentityReport(identity),
+		Notifications:      observability.NotificationsFlagOf(cfg.Notifications.On()),
 	})
 }

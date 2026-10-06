@@ -43,7 +43,7 @@ func TestFreelist_ConcurrentAllocateSameAddress(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// /28 = 14 usable IP — exhaustion не мешает (все гоняют один address → 1 pop).

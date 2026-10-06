@@ -52,7 +52,7 @@ func TestCQRS_NIC_InsertCommit_ReaderSees(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestCQRS_NIC_SecurityGroupIDs_DanglingRefSilentlyAccepted(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// SG id, которого НЕТ в security_groups (well-formed, но не вставлен).
 	danglingSG := ids.NewID(ids.PrefixSecurityGroup)

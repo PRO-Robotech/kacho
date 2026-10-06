@@ -52,7 +52,12 @@ type SubnetWriterIface interface {
 	SubnetReaderIface
 	Insert(ctx context.Context, s *domain.Subnet) (*SubnetRecord, error)
 	Update(ctx context.Context, s *domain.Subnet) (*SubnetRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// SetCidrBlocks атомарно обновляет v4_cidr_blocks и v6_cidr_blocks
 	// (для AddCidrBlocks/RemoveCidrBlocks). EXCLUDE constraints
 	// subnets_no_overlap_v4 / subnets_no_overlap_v6 проверяют primary CIDR

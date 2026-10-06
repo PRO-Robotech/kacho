@@ -30,6 +30,14 @@ const (
 	ResourceTypeGateway          = "vpc_gateway"
 	ResourceTypeNetworkInterface = "vpc_network_interface"
 	ResourceTypeCidrGroup        = "vpc_cidr_group"
+
+	// ResourceTypeAddressPool — пул адресов: тип уровня кластера (родитель —
+	// `cluster`, манифест `services/vpc/manifest.yaml`). Поштучного сужения
+	// страницы у пула нет — его список гейтится одним вопросом `system_admin` @
+	// `cluster`, — поэтому в перечни сужаемых списком типов он не входит; тип
+	// назван здесь ради потока изменений, где событие пула сужается поштучно
+	// тем же отношением `v_get`, что и прочие виды (NTF-3 NTF3-61).
+	ResourceTypeAddressPool = "vpc_address_pool"
 )
 
 // Action-строки VPC-домена. Формат `<domain>.<resource>.<verb>` из IAM permission
@@ -55,4 +63,8 @@ const (
 	ActionGatewayList          = "vpc.gateways.list"
 	ActionNetworkInterfaceList = "vpc.networkInterfaces.list"
 	ActionCidrGroupList        = "vpc.cidrGroups.list"
+
+	// ActionAddressPoolList — действие списка пулов, как его пишет каталог прав
+	// (опция метода `InternalAddressPoolService/List`: `vpc.address_pools.list`).
+	ActionAddressPoolList = "vpc.address_pools.list"
 )

@@ -66,7 +66,7 @@ func TestObservedState_ThreeOutcomesAreDistinct(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := repo.NewInstanceRepo(pool)
+	r := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID, maxSeq := seedInstanceForObserved(t, ctx, r, pool)
 	observedAt := time.Now().UTC().Truncate(time.Second)
 
@@ -124,7 +124,7 @@ func TestObservedState_ConcurrentReportsLeaveTheFreshest(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := repo.NewInstanceRepo(pool)
+	r := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID, maxSeq := seedInstanceForObserved(t, ctx, r, pool)
 	observedAt := time.Now().UTC().Truncate(time.Second)
 

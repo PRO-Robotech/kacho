@@ -147,8 +147,9 @@ func TestListener_Delete(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.Listeners().Delete(ctx, string(l.ID))
+		name, err := w.Listeners().Delete(ctx, string(l.ID))
 		require.NoError(t, err)
+		require.Equal(t, "del-lst", name, "снимок имени из RETURNING")
 	})
 
 	rd, _ := repo.Reader(ctx)

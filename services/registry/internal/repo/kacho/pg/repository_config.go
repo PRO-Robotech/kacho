@@ -45,8 +45,15 @@ type RepositoryConfigRepo struct {
 }
 
 // NewRepositoryConfigRepo создаёт RepositoryConfigRepo поверх pgxpool.
-func NewRepositoryConfigRepo(pool *pgxpool.Pool) *RepositoryConfigRepo {
-	return &RepositoryConfigRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewRepositoryConfigRepo(pool *pgxpool.Pool, journal journaltx.Options) (*RepositoryConfigRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("registry: NewRepositoryConfigRepo: %w", err)
+	}
+	return &RepositoryConfigRepo{pool: pool, journal: journal}, nil
 }
 
 // ready — pool обязан быть подан composition root'ом (иначе Unavailable, не паника).

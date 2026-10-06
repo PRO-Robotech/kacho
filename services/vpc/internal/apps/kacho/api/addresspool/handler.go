@@ -5,6 +5,7 @@ package addresspool
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
+	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрация трансферов
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
@@ -88,7 +91,7 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateAddressPoolReques
 	if err != nil {
 		return nil, mapPoolErr(err)
 	}
-	return poolToProto(p), nil
+	return mappedPool(p)
 }
 
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetAddressPoolRequest) (*vpcv1.AddressPool, error) {
@@ -96,7 +99,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetAddressPoolRequest) (*v
 	if err != nil {
 		return nil, mapPoolErr(err)
 	}
-	return poolToProto(p), nil
+	return mappedPool(p)
 }
 
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListAddressPoolsRequest) (*vpcv1.ListAddressPoolsResponse, error) {
@@ -112,7 +115,11 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListAddressPoolsRequest) 
 	}
 	out := make([]*vpcv1.AddressPool, 0, len(pools))
 	for _, p := range pools {
-		out = append(out, poolToProto(p))
+		pb, err := poolToProto(p)
+		if err != nil {
+			return nil, mapPoolErr(err)
+		}
+		out = append(out, pb)
 	}
 	return &vpcv1.ListAddressPoolsResponse{Pools: out, NextPageToken: next}, nil
 }
@@ -137,7 +144,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateAddressPoolReques
 	if err != nil {
 		return nil, mapPoolErr(err)
 	}
-	return poolToProto(rec), nil
+	return mappedPool(rec)
 }
 
 // normalizeMaskPaths приводит каждый путь update_mask к snake_case (canonical
@@ -192,7 +199,7 @@ func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddAddressPoolCi
 	if err != nil {
 		return nil, mapPoolErr(err)
 	}
-	return poolToProto(p), nil
+	return mappedPool(p)
 }
 
 // RemoveCidrBlocks удаляет CIDR-блоки из пула (sync). Отвергает удаление CIDR с
@@ -204,7 +211,7 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveAddress
 	if err != nil {
 		return nil, mapPoolErr(err)
 	}
-	return poolToProto(p), nil
+	return mappedPool(p)
 }
 
 // -- Bindings --
@@ -276,31 +283,31 @@ func (h *Handler) GetUtilization(ctx context.Context, req *vpcv1.GetAddressPoolU
 
 // -- helpers --
 
-// poolToProto — AddressPoolRecord → *vpcv1.AddressPool. Локальный inline-помощник
-// (а не через `dto.Transfer`): AddressPool — admin-only ресурс, единственный
-// consumer этой проекции — handler ниже, поэтому в DTO-реестре он пока не нужен.
-// CreatedAt берется из record (DB-managed timestamp); name/labels из
-// self-validating newtypes конвертируются в proto-представление.
-func poolToProto(rec *kachorepo.AddressPoolRecord) *vpcv1.AddressPool {
+// poolToProto — AddressPoolRecord → *vpcv1.AddressPool тем же трансфером
+// DTO-реестра, которым собирается состояние события пула в потоке изменений
+// (`subscriptionjournal`): одна проекция на оба пути, иначе ответ `Get` и
+// событие разошлись бы по составу полей молча. Отказ трансфера — отказ ответа
+// (реестр без пары отвергает и старт процесса, `dto.MustBeRegistered`).
+// Nil-запись даёт nil-проекцию без отказа.
+func poolToProto(rec *kachorepo.AddressPoolRecord) (*vpcv1.AddressPool, error) {
 	if rec == nil {
-		return nil
+		return nil, nil
 	}
-	return &vpcv1.AddressPool{
-		Id: rec.ID,
-		// Timestamp-convention: truncate до секунд (БД хранит микросекунды, proto
-		// отдает секунды) — паритет с dto/toproto.timeObj и всеми VPC-ресурсами.
-		CreatedAt:        timestamppb.New(rec.CreatedAt.Truncate(time.Second)),
-		Name:             string(rec.Name),
-		Description:      string(rec.Description),
-		Labels:           domain.LabelsToMap(rec.Labels),
-		V4CidrBlocks:     rec.V4CIDRBlocks,
-		V6CidrBlocks:     rec.V6CIDRBlocks,
-		Kind:             vpcv1.AddressPoolKind(rec.Kind),
-		ZoneId:           rec.ZoneID,
-		IsDefault:        rec.IsDefault,
-		SelectorLabels:   domain.LabelsToMap(rec.SelectorLabels),
-		SelectorPriority: rec.SelectorPriority,
+	var pb *vpcv1.AddressPool
+	if err := dto.Transfer(dto.FromTo(*rec, &pb)); err != nil {
+		return nil, fmt.Errorf("перенос пула %s в контракт: %w", rec.ID, err)
 	}
+	return pb, nil
+}
+
+// mappedPool — проекция ответа админского обработчика с отображением отказа
+// трансфера тем же классификатором, что и отказы use-case'ов.
+func mappedPool(rec *kachorepo.AddressPoolRecord) (*vpcv1.AddressPool, error) {
+	pb, err := poolToProto(rec)
+	if err != nil {
+		return nil, mapPoolErr(err)
+	}
+	return pb, nil
 }
 
 // mapPoolErr — error mapping admin-handler'а.

@@ -102,7 +102,7 @@ func insertRepoRegistration(ctx context.Context, pool *pgxpool.Pool, registryID,
 // TestQuota_REG_NotProvisionedIsRefusal — «не сказано» = ОТКАЗ, а не «без предела».
 func TestQuota_REG_NotProvisionedIsRefusal(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-noceiling"
@@ -114,7 +114,7 @@ func TestQuota_REG_NotProvisionedIsRefusal(t *testing.T) {
 
 	// Положительный контроль: тот же путь при заведённой строке проходит.
 	pool2 := setupTestDB(t)
-	repo2 := kachopg.NewRegistryRepo(pool2)
+	repo2 := mustJournalWriter(kachopg.NewRegistryRepo(pool2, probeJournalOptions))
 	const okProject = "prj-regq-ceiling"
 	seedRegQuota(t, pool2, "project", okProject, "registry.registries", 4)
 
@@ -130,7 +130,7 @@ func TestQuota_REG_NotProvisionedIsRefusal(t *testing.T) {
 // TestQuota_REG_ExceededAndRefund — исчерпание отвергает, удаление возвращает.
 func TestQuota_REG_ExceededAndRefund(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-exhaust"
@@ -165,7 +165,7 @@ func TestQuota_REG_ExceededAndRefund(t *testing.T) {
 // РОДИТЕЛЮ, а не проекту (QV2-30).
 func TestQuota_REG_NestedCarrierIsTheParent(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-nested"
@@ -224,7 +224,7 @@ func TestQuota_REG_NestedCarrierIsTheParent(t *testing.T) {
 // завышенным навсегда, и снаружи это неотличимо от исправной работы.
 func TestQuota_REG_CascadeRefundsWithoutItsParent(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-regq-cascade"

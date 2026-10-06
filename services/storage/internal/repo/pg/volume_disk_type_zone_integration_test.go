@@ -36,7 +36,7 @@ import (
 func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 	pool := newTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
@@ -65,7 +65,7 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 	pool := newTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
@@ -94,7 +94,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 // привязка и заведена.
 func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	// Половина первая: зона, где класс привязан, — принимается.
@@ -120,7 +120,7 @@ func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 // wrong zone are different facts and keep different wordings.
 func TestVolumeOnMissingDiskTypeStillReportsMissing(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{

@@ -64,7 +64,7 @@ func TestAddressPool_ListAddressesByPool_CursorWalk(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := ids.NewID(ids.PrefixAddressPool)
@@ -123,7 +123,7 @@ func TestAddressPool_ListAddressesByPool_EmptyPool(t *testing.T) {
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := ids.NewID(ids.PrefixAddressPool)

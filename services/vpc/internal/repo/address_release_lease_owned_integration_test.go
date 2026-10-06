@@ -79,7 +79,7 @@ func newLeaseFixture(t *testing.T, ctx context.Context, owned bool) *leaseFixtur
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 
 	// Имя пула — короткий литерал, а не `t.Name()`: имя ресурса ограничено 63

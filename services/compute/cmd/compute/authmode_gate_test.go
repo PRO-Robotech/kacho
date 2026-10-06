@@ -34,6 +34,7 @@ func captureLogger(buf *bytes.Buffer) *slog.Logger {
 // которую production-strict-гейт обязан пропускать.
 func allEdgesSecured() config.Config {
 	return config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "production-strict",
 		DBSSLMode:                 "verify-full",
 		FGARegisterDrainerEnabled: true,
@@ -58,6 +59,7 @@ func allEdgesSecured() config.Config {
 // строится исключительно на реально дозваниваемых transport-рёбрах.
 func TestValidateAuthMode_ProductionStrict_AllPerEdgeMTLSDisabledFails(t *testing.T) {
 	cfg := config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "production-strict",
 		DBSSLMode:                 "verify-full",
 		FGARegisterDrainerEnabled: true, // register-drainer edge active
@@ -294,7 +296,8 @@ func TestValidateAuthMode_ProductionStrict_RequiresListFilter(t *testing.T) {
 
 // dev не требует ни mTLS, ни SSL (insecure dev-defaults только логируются).
 func TestValidateAuthMode_DevNoGate(t *testing.T) {
-	prod, err := validateAuthMode(config.Config{AuthMode: "dev",
+	prod, err := validateAuthMode(config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev",
 		QuotaAuthority: corequota.NotDeployed}, discardLogger())
 	if err != nil {
 		t.Fatalf("dev must not enforce any transport gate; got err: %v", err)
@@ -309,6 +312,7 @@ func TestValidateAuthMode_DevNoGate(t *testing.T) {
 // plain production относительно production-strict: они mesh-encrypted).
 func securedProduction() config.Config {
 	return config.Config{
+		Notifications:             probeNotificationsOff(),
 		AuthMode:                  "production",
 		DBSSLMode:                 "require",
 		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
@@ -339,7 +343,8 @@ func securedProduction() config.Config {
 // production AuthMode leaves listeners plaintext … subject spoofing».
 func TestValidateAuthMode_Production_RequiresListenerMTLS(t *testing.T) {
 	// оба листенера plaintext (+ валидный DBSSL, чтобы изолировать listener-гейт).
-	cfg := config.Config{AuthMode: "production", DBSSLMode: "require",
+	cfg := config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "production", DBSSLMode: "require",
 		QuotaAuthority: corequota.NotDeployed}
 	_, err := validateAuthMode(cfg, discardLogger())
 	if err == nil {
@@ -561,7 +566,8 @@ func TestValidateAuthMode_Production_AcceptsFailClosedListFilter(t *testing.T) {
 // В dev аварийный degraded-режим остаётся доступен — там он и задуман
 // (паритет с AUTHZ_BREAKGLASS, который production отвергает, а dev допускает).
 func TestValidateAuthMode_Dev_AllowsListFilterFailOpen(t *testing.T) {
-	cfg := config.Config{AuthMode: "dev", ListFilterFailOpen: true,
+	cfg := config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev", ListFilterFailOpen: true,
 		QuotaAuthority: corequota.NotDeployed}
 	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
 		t.Fatalf("dev must keep the emergency degraded mode available; got: %v", err)
@@ -602,7 +608,8 @@ func TestValidateAuthMode_ProductionStrict_SkipPeerValidationRefusesBoot(t *test
 
 // dev — единственный режим, где выключатель задуман; там он остаётся доступен.
 func TestValidateAuthMode_Dev_SkipPeerValidationAllowed(t *testing.T) {
-	if _, err := validateAuthMode(config.Config{AuthMode: "dev", SkipPeerValidation: true,
+	if _, err := validateAuthMode(config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev", SkipPeerValidation: true,
 		QuotaAuthority: corequota.NotDeployed}, discardLogger()); err != nil {
 		t.Fatalf("dev must keep the skip-peer-validation escape available; got: %v", err)
 	}

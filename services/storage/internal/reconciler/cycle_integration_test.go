@@ -168,7 +168,7 @@ func TestCycle_CreatingBecomesReadyOnlyAfterTheObjectExists(t *testing.T) {
 	be := fake.New(blockbackend.Capabilities{
 		Snapshots: true, CloneFromSnapshot: true, OnlineGrow: true,
 	})
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{
 		Interval: 0, Batch: 10, CallTimeout: 0,
 	})
 
@@ -204,7 +204,7 @@ func TestCycle_BackendRefusalMarksTheResourceWithANamedReason(t *testing.T) {
 
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
 	be.FailVerb("CreateVolume", blockbackend.OutcomeCapacityExhausted)
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{Batch: 10})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{Batch: 10})
 
 	rec.Once(ctx)
 
@@ -222,7 +222,7 @@ func TestCycle_UnavailableBackendDoesNotCondemnTheResource(t *testing.T) {
 
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
 	be.FailVerb("Observe", blockbackend.OutcomeUnavailable)
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{Batch: 10})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{Batch: 10})
 
 	c := rec.Once(ctx)
 	require.Equal(t, 1, c.Waited, "недоступность обязана давать ожидание, а не действие")
@@ -247,7 +247,7 @@ func TestCycle_DeletionRemovesTheObjectBeforeTheRow(t *testing.T) {
 	id, object := insertVolume(t, pool, bindingID, loc, 1<<30)
 
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{Batch: 10})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{Batch: 10})
 	rec.Once(ctx) // довели до готовности
 
 	_, err := pool.Exec(ctx, `UPDATE volumes SET state = 'DELETING' WHERE id = $1`, id)
@@ -279,7 +279,7 @@ func TestCycle_VanishedObjectIsReportedNotRecreated(t *testing.T) {
 	id, object := insertVolume(t, pool, bindingID, loc, 1<<30)
 
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{Batch: 10})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{Batch: 10})
 	rec.Once(ctx)
 
 	// Объект снят мимо нас.
@@ -305,7 +305,7 @@ func TestCycle_LeakScanCountsButNeverDeletes(t *testing.T) {
 	_, mine := insertVolume(t, pool, bindingID, loc, 1<<30)
 
 	be := fake.New(blockbackend.Capabilities{Snapshots: true, OnlineGrow: true})
-	rec := reconciler.New(reconciler.NewStore(pool), openerFor{be}, reconciler.Config{Batch: 10})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pool, probeJournalOptions)), openerFor{be}, reconciler.Config{Batch: 10})
 	rec.Once(ctx)
 
 	// Чужой объект в том же локаторе: строки под ним нет.

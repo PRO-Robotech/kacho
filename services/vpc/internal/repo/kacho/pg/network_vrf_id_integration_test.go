@@ -79,7 +79,7 @@ func TestNetwork_CIL0_06_GetInternalReturnsVrfId(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	n := insertNetwork(t, r, "project-cil0", "net-vrf-06")
 
@@ -102,7 +102,7 @@ func TestNetwork_CIL0_02_VrfIdUniqueUnderConcurrency(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const N = 20
 	ids := make([]string, N)
@@ -166,7 +166,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	a := insertNetwork(t, r, "project-cil0-reuse", "net-a")
 	rd, err := r.Reader(ctx)
@@ -179,7 +179,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	require.NoError(t, w.Networks().Delete(ctx, a.ID))
+	require.NoError(t, removalErr(w.Networks().Delete(ctx, a.ID)))
 	require.NoError(t, w.Commit())
 
 	b := insertNetwork(t, r, "project-cil0-reuse", "net-b")
@@ -203,7 +203,7 @@ func TestNetwork_CIL0_03_VrfIdStableAcrossUpdate(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	n := insertNetwork(t, r, "project-cil0-upd", "net-before")
 	rd, err := r.Reader(ctx)

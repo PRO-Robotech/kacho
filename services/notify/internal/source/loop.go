@@ -13,7 +13,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 
 	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
@@ -173,10 +175,11 @@ func (l *loop) claim(ctx context.Context) bool {
 		Classes: l.classes,
 	})
 	if err != nil {
+		deadline, _ := callCtx.Deadline()
 		switch {
 		case ctx.Err() != nil:
 			// Цикл останавливается — не отказ источника.
-		case errors.Is(callCtx.Err(), context.DeadlineExceeded):
+		case claimTimedOut(err, callCtx.Err(), deadline, time.Now()):
 			// Аренда строк могла быть закоммичена: строки ждут её конца и
 			// выдаются следующим `Claim` (CX1-72).
 			l.claimCallTimeouts.Inc()
@@ -193,6 +196,20 @@ func (l *loop) claim(ctx context.Context) bool {
 	}
 	l.deliverer.Deliver(ctx, Batch{Source: l.src, Rows: rows, SentAt: sentAt})
 	return len(rows) >= size
+}
+
+// claimTimedOut — отменён ли вызов `Claim` ПО СВОЕМУ СРОКУ (CX1-72).
+//
+// Срок уходит серверу заголовком `grpc-timeout`, и сервер отвечает
+// `DeadlineExceeded` по своей копии того же срока — она истекает не раньше
+// клиентской. Этот ответ может дойти раньше, чем таймер `callCtx` проставит
+// `Err()`; тогда о сроке говорит сам срок: он уже прошёл. `DeadlineExceeded`
+// ДО срока вызова — собственный срок сервера, то есть отказ источника.
+func claimTimedOut(err, callErr error, deadline, now time.Time) bool {
+	if errors.Is(callErr, context.DeadlineExceeded) {
+		return true
+	}
+	return status.Code(err) == codes.DeadlineExceeded && !deadline.IsZero() && !now.Before(deadline)
 }
 
 // subscribe держит поток подписки на ленту: открывает, будит `Claim` при

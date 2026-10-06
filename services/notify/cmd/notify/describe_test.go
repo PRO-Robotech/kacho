@@ -58,6 +58,10 @@ func TestDescriptorIsHostNoGRPC(t *testing.T) {
 		t.Fatalf("самоотчёт: NoServedServices=%v, форма %s; дескриптор — %s без сервисов (listener_form=none)",
 			p.NoServedServices, p.ListenerForm, d.HostForm())
 	}
+	if got := p.Notifications.String(); got != observability.NotificationsNotApplicable {
+		t.Fatalf("самоотчёт notify называет флаг ленты %q; у notify ленты источника нет — %q",
+			got, observability.NotificationsNotApplicable)
+	}
 	if p.DBSSLMode != "require" {
 		t.Fatalf("самоотчёт называет sslmode %q, фикстура — require", p.DBSSLMode)
 	}

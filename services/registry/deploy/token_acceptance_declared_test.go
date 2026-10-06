@@ -165,6 +165,7 @@ func scalar(v any, ok bool) string {
 // читает страж старта.
 func declaredAcceptance(reg map[string]any) config.Config {
 	return config.Config{
+		Notifications:       probeNotificationsOff(),
 		AuthMode:            scalar(digOpt(reg, "authMode")),
 		TokenIssuers:        scalar(digOpt(reg, "tokenAcceptance", "issuers")),
 		TokenIssuerKeySets:  scalar(digOpt(reg, "tokenAcceptance", "issuerKeySets")),

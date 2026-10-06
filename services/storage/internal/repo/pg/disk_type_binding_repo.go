@@ -49,8 +49,15 @@ type DiskTypeBindingRepo struct {
 }
 
 // NewDiskTypeBindingRepo создаёт DiskTypeBindingRepo поверх pgxpool.
-func NewDiskTypeBindingRepo(pool *pgxpool.Pool) *DiskTypeBindingRepo {
-	return &DiskTypeBindingRepo{pool: pool, journal: journalOptions()}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewDiskTypeBindingRepo(pool *pgxpool.Pool, journal journaltx.Options) (*DiskTypeBindingRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewDiskTypeBindingRepo: %w", err)
+	}
+	return &DiskTypeBindingRepo{pool: pool, journal: journal}, nil
 }
 
 // diskTypeBindingCols — ЕДИНСТВЕННЫЙ список колонок ревизии: один и тот же на

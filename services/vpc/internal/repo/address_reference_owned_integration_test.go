@@ -58,7 +58,7 @@ func TestIntegration_AddressReference_OwnedRoundTrip(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	ownedAddr := newExtVIPAddr("prj-A", "addr-owned", "203.0.113.71")
@@ -122,7 +122,7 @@ func TestIntegration_AddressReference_OwnedUpdatedByReattach(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	addr := newExtVIPAddr("prj-A", "addr-reattach", "203.0.113.74")
@@ -177,7 +177,7 @@ func TestIntegration_Address_Delete_InUseByLoadBalancer_GeneralizedMessage(t *te
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 	or := repomock.NewOpsRepo()
 
@@ -217,7 +217,7 @@ func TestIntegration_Address_Get_UsedByReferrerNameAndOwned(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	addr := newExtVIPAddr("prj-A", "addr-getref", "203.0.113.75")

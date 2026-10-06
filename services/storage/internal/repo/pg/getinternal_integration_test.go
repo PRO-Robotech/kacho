@@ -23,7 +23,7 @@ import (
 // возвращает ErrUnimplemented и serviceerr маппит его в codes.Unimplemented.
 func TestVolumeGetInternalUnimplemented(t *testing.T) {
 	pool := newTestPool(t)
-	r := pg.NewVolumeRepo(pool)
+	r := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 
 	_, err := r.GetInternal(context.Background(), "vol00000000000000000")
 	require.Error(t, err)

@@ -377,34 +377,38 @@ func (w *securityGroupWriter) GetForUpdate(ctx context.Context, id string) (*kac
 // из Network.Delete): dangling ref не остаётся ни на одном из них.
 //
 // outbox-write (DELETED tombstone) — в use-case'е.
-func (w *securityGroupWriter) Delete(ctx context.Context, id string) error {
+//
+// Возвращает имя снятой строки из `RETURNING` удаляющего оператора — снимок
+// для строки снятия журнала (NTF-3, З2), а не чтение до удаления.
+func (w *securityGroupWriter) Delete(ctx context.Context, id string) (string, error) {
 	var lockedID string
 	if err := w.tx.QueryRow(ctx, `SELECT id FROM security_groups WHERE id = $1 FOR UPDATE`, id).Scan(&lockedID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", helpers.ErrNotFound, id)
+			return "", fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", helpers.ErrNotFound, id)
 		}
-		return helpers.WrapSGErr(err, id)
+		return "", helpers.WrapSGErr(err, id)
 	}
 
 	var inUse bool
 	if err := w.tx.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM network_interfaces WHERE security_group_ids @> jsonb_build_array($1::text))`,
 		id).Scan(&inUse); err != nil {
-		return helpers.WrapSGErr(err, id)
+		return "", helpers.WrapSGErr(err, id)
 	}
 	if inUse {
-		return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "security_group", ResourceID: id},
+		return "", refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "security_group", ResourceID: id},
 			fmt.Errorf("%w: security group is in use by network interface(s)", helpers.ErrFailedPrecondition))
 	}
 
-	tag, err := w.tx.Exec(ctx, `DELETE FROM security_groups WHERE id = $1`, id)
+	var name string
+	err := w.tx.QueryRow(ctx, `DELETE FROM security_groups WHERE id = $1 RETURNING name`, id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", helpers.ErrNotFound, id)
+	}
 	if err != nil {
-		return helpers.WrapSGErr(err, id)
+		return "", helpers.WrapSGErr(err, id)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", helpers.ErrNotFound, id)
-	}
-	return nil
+	return name, nil
 }
 
 // UpdateRules атомарно меняет набор правил SG в текущей writer-TX. Optimistic

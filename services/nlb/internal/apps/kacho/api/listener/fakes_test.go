@@ -268,8 +268,8 @@ func (w *fakeLBWriter) MarkDeleting(context.Context, string) (*kachorepo.LoadBal
 func (w *fakeLBWriter) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
 	return nil, nil, errors.New("fakeLBWriter.MoveProject not implemented")
 }
-func (w *fakeLBWriter) Delete(context.Context, string) error {
-	return errors.New("fakeLBWriter.Delete not implemented")
+func (w *fakeLBWriter) Delete(context.Context, string) (string, error) {
+	return "", errors.New("fakeLBWriter.Delete not implemented")
 }
 func (w *fakeLBWriter) DeleteIfUnprotected(context.Context, string) error {
 	return errors.New("fakeLBWriter.DeleteIfUnprotected not implemented")
@@ -402,17 +402,18 @@ func (lw *fakeListenerWriter) MoveProject(_ context.Context, lbID, newProjectID 
 	}
 	return moved, nil
 }
-func (lw *fakeListenerWriter) Delete(_ context.Context, id string) error {
+func (lw *fakeListenerWriter) Delete(_ context.Context, id string) (string, error) {
 	lw.r.mu.Lock()
 	defer lw.r.mu.Unlock()
-	if _, ok := lw.r.listeners[id]; !ok {
-		return fmt.Errorf("%w: Listener %s not found", domain.ErrNotFound, id)
+	cur, ok := lw.r.listeners[id]
+	if !ok {
+		return "", fmt.Errorf("%w: Listener %s not found", domain.ErrNotFound, id)
 	}
 	delete(lw.r.listeners, id)
 	if lw.w != nil {
 		lw.w.deleted = append(lw.w.deleted, id)
 	}
-	return nil
+	return string(cur.Name), nil
 }
 
 // ---- TG (read-only stub for Update.same-region check) ----
@@ -491,8 +492,8 @@ func (w *fakeTGWriter) RemoveTargetsMarkDraining(context.Context, string, []stri
 func (w *fakeTGWriter) DeleteTargetsDraining(context.Context, string) (int, error) {
 	return 0, errors.New("not implemented")
 }
-func (w *fakeTGWriter) Delete(context.Context, string) error {
-	return errors.New("not implemented")
+func (w *fakeTGWriter) Delete(context.Context, string) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 // ---- Outbox ----

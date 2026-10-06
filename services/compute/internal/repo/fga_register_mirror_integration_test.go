@@ -57,7 +57,7 @@ func Test_Beta01_CreateInstance_IntentCarriesLabelsAndParent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-aaaaaaaaaaaaaaaaa"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev", "team": "core"})
@@ -88,7 +88,7 @@ func Test_Beta02_CreateInstance_NoLabels_IntentEmptyLabels(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-bbbbbbbbbbbbbbbbb"
 	in := newMirrorInstance(inID, projectID, nil)
@@ -115,7 +115,7 @@ func Test_Beta04_UpdateLabels_EmitsNewIntent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-ccccccccccccccccc"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
@@ -159,7 +159,7 @@ func Test_BetaHardening_RegisterIntentStampsMonotonicSourceVersion(t *testing.T)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-eeeeeeeeeeeeeeeee"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
@@ -200,7 +200,7 @@ func Test_BetaHardening_UnregisterIntentStampsTombstoneVersion(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-fffffffffffffffff"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
@@ -238,7 +238,7 @@ func Test_Beta04b_UpdateNonLabels_NoNewIntent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-ddddddddddddddddd"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
@@ -272,7 +272,7 @@ func Test_Beta07_DeleteInstance_UnregisterIntent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-eeeeeeeeeeeeeeeee"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
@@ -308,7 +308,7 @@ func Test_Beta05_ConcurrentUpdateLabels_OutboxConsistent(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-fffffffffffffffff"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})

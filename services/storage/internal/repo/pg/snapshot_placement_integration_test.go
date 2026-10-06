@@ -195,7 +195,7 @@ func snapInsert(t *testing.T, sr *pg.SnapshotRepo, project, name, srcVolume stri
 // константой».
 func TestSnapshotInheritsZoneOfSourceVolume(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	snapSeedPlacement(t, pool, snapClass, snapZoneB)
@@ -226,7 +226,7 @@ func TestSnapshotInheritsZoneOfSourceVolume(t *testing.T) {
 // восстановить куда угодно.
 func TestSnapshotKeepsOwnZoneAfterSourceVolumeDeleted(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	snapSeedPlacement(t, pool, snapClass, snapZoneB)
@@ -261,7 +261,7 @@ func TestSnapshotKeepsOwnZoneAfterSourceVolumeDeleted(t *testing.T) {
 // которого ещё нет, и получить том, чьё содержимое не определено ничем.
 func TestSnapshotSeedingRefusedUntilReady(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 3<<30)
@@ -289,7 +289,7 @@ func TestSnapshotSeedingRefusedUntilReady(t *testing.T) {
 // отказом — значит узнавать его последним.
 func TestSnapshotSeededVolumesAreListed(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
@@ -327,7 +327,7 @@ func TestSnapshotSeededVolumesAreListed(t *testing.T) {
 // доходит до тысячи.
 func TestSnapshotListSeedsWithoutPerRowQuery(t *testing.T) {
 	pool, counter := dtTracedPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
@@ -363,7 +363,7 @@ func TestSnapshotListSeedsWithoutPerRowQuery(t *testing.T) {
 // ним не может by construction.
 func TestSnapshotInheritsBindingAndTenantSpace(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	bindingA := snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	bindingB := snapSeedPlacement(t, pool, snapClass, snapZoneB)
@@ -393,7 +393,7 @@ func TestSnapshotInheritsBindingAndTenantSpace(t *testing.T) {
 // читают, всегда пуста. Оба вырождения выглядят как работающая причина.
 func TestSnapshotStatusReasonRoundTrip(t *testing.T) {
 	pool := newTestPool(t)
-	vr, sr := pg.NewVolumeRepo(pool), pg.NewSnapshotRepo(pool)
+	vr, sr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions)), mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 1<<30)

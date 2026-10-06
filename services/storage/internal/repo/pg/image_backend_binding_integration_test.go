@@ -124,7 +124,7 @@ func imgFixtureSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name, volu
 // эти байты находятся.
 func TestImageBornCreatingInheritsBinding(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
@@ -166,7 +166,7 @@ func TestImageBornCreatingInheritsBinding(t *testing.T) {
 // ревизию своего тома, образ — ревизию снимка.
 func TestImageInheritsBindingFromSnapshot(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
@@ -194,7 +194,7 @@ func TestImageInheritsBindingFromSnapshot(t *testing.T) {
 // Без неё отказ зеленел бы на реализации, отвергающей любой захват.
 func TestImageSourceNotReadyRejected(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
@@ -241,7 +241,7 @@ func TestImageSourceNotReadyRejected(t *testing.T) {
 // несуществующий, иначе по тексту отличают «чужое есть, но не готово» от «нет».
 func TestImageForeignProjectSourceStateStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
@@ -265,7 +265,7 @@ func TestImageForeignProjectSourceStateStaysHidden(t *testing.T) {
 // названная причина возвращается, неназванная остаётся пустой.
 func TestImageStatusReasonPersisted(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-reason", 1<<30)
@@ -299,7 +299,7 @@ func TestImageStatusReasonPersisted(t *testing.T) {
 // чужой образ в списке не отражается.
 func TestImageSeededVolumesListed(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	bindingID := imgFixtureClass(t, pool, "region-1-a")
@@ -348,7 +348,7 @@ func TestImageSeededVolumesListed(t *testing.T) {
 // формы рождения различаются, и это видно.
 func TestImageRegisterBornReady(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	imgID := ids.NewID(domain.PrefixImage)
@@ -386,7 +386,7 @@ func TestImageRegisterBornReady(t *testing.T) {
 // «второй раз вообще нельзя».
 func TestImageRegisterDuplicateBackendObjectRejected(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const object = "kc7f-img-ubuntu-2404-20260812"
@@ -432,8 +432,8 @@ func TestImageRegisterDuplicateBackendObjectRejected(t *testing.T) {
 // доведённый сверщиком до готовности, засевает том.
 func TestVolumeSeedFromNotReadyImageRejected(t *testing.T) {
 	pool := newTestPool(t)
-	ir := pg.NewImageRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	imgFixtureClass(t, pool, "region-1-a")

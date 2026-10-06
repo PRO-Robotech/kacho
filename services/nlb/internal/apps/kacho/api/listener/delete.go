@@ -16,6 +16,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -33,7 +34,8 @@ import (
 //  1. Listener.SetStatusCAS(<current> → DELETING) — атомарный transient marker;
 //     parallel UPDATE/DELETE losses race fast.
 //  2. repo.Writer.Listeners.Delete + 2× outbox emit (`nlb_listener:<id> DELETED`
-//     + `nlb_load_balancer:<lb_id> UPDATED`).
+//     со снимком имени из `RETURNING` + `nlb_load_balancer:<lb_id> UPDATED`);
+//     строка уже снята — `DELETED` не повторяется, его записал выигравший.
 //  3. ops.MarkDone(response=Empty).
 //
 // VIP листенер НЕ освобождает: адрес принадлежит родительскому LoadBalancer'у
@@ -149,9 +151,10 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 				return nil, mapDomainErr(err)
 			}
 		}
-		// Строки уже нет — параллельный воркер снял её целиком. Правку не о чем
-		// объявлять; снятие объявит шаг 2, и повторный Delete остаётся
-		// идемпотентным.
+		// Строки уже нет — параллельный воркер снял её целиком и объявил снятие
+		// своей строкой `DELETED`. Правку не о чем объявлять; шаг 2 застанет
+		// строку снятой, второй строки снятия не напишет, и повторный Delete
+		// остаётся идемпотентным.
 		if moved != nil {
 			if err := w.Outbox().Emit(ctx,
 				kachorepo.OutboxResourceListener, listenerID, projectID,
@@ -177,18 +180,29 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 			w.Abort()
 		}
 	}()
-	if err := w.Listeners().Delete(ctx, listenerID); err != nil {
-		// ErrNotFound — idempotent (двойной Delete): продолжаем, emit DELETED
-		// для consumers (idempotency).
-		if !errors.Is(err, domain.ErrNotFound) {
-			return nil, mapDomainErr(err)
+	// Снимок имени — из `RETURNING` удаляющего оператора (NTF-3 З2): вид
+	// `nlb_listener` объявлен с формой имени, и строку `DELETED` без имени на
+	// момент снятия функция фундамента отвергает — транзакция откатилась бы, и
+	// Delete слушателя не доходил бы до конца никогда. Снимок `cur` для имени не
+	// годится: он прочитан ДО снятия, и переименование между ними уехало бы
+	// подписчику прежним именем как факт.
+	name, err := w.Listeners().Delete(ctx, listenerID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		// Повторное снятие (двойной Delete) идемпотентно. Строку снимает только
+		// этот путь, и снятие он объявляет строкой `DELETED` в ТОЙ ЖЕ
+		// транзакции, — значит, выигравший уже объявил его своим именем. Второй
+		// строки не пишем: имени на момент снятия у проигравшего нет.
+	case err != nil:
+		return nil, mapDomainErr(err)
+	default:
+		if err := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceListener, listenerID, projectID,
+			kachorepo.OutboxActionDeleted,
+			map[string]any{"id": listenerID, "project_id": projectID, subscription.NamePayloadKey: name},
+		); err != nil {
+			return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener DELETED: %v", domain.ErrInternal, err))
 		}
-	}
-	if err := w.Outbox().Emit(ctx,
-		kachorepo.OutboxResourceListener, listenerID, projectID,
-		kachorepo.OutboxActionDeleted, kachorepo.ListenerStatePayload(cur),
-	); err != nil {
-		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener DELETED: %v", domain.ErrInternal, err))
 	}
 	// Запись родителя читается ЗАНОВО, после снятия слушателя: триггер пересчёта
 	// статуса срабатывает внутри самого оператора, и снимок «до» объявлял бы

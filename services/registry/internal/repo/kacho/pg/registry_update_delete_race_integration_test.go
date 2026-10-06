@@ -36,7 +36,7 @@ import (
 //   - финально строки нет (Update не может её воскресить — UPDATE не INSERT).
 func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", nil)

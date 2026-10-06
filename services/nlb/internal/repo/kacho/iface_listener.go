@@ -49,6 +49,9 @@ type ListenerWriterIface interface {
 	// на момент чтения, и без второго запроса.
 	MoveProject(ctx context.Context, lbID, newProjectID string) ([]*ListenerRecord, error)
 
-	// Delete — DELETE listeners WHERE id=$1.
-	Delete(ctx context.Context, id string) error
+	// Delete — DELETE listeners WHERE id=$1. Возвращает снимок имени снятой
+	// строки (`RETURNING name`, NTF-3 З2): вид `nlb_listener` объявлен с формой
+	// имени, и строка `DELETED` без имени на момент снятия функцией фундамента
+	// отвергается. Строки нет — ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 }

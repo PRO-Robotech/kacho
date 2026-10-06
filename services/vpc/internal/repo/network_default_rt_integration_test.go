@@ -77,7 +77,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRouteTableProvisioned(t *testing.T)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	or := repomock.NewOpsRepo()
@@ -121,7 +121,7 @@ func TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault(t *testing.T) 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-auto-rt"
@@ -253,7 +253,7 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-del-default-rt"
@@ -331,7 +331,7 @@ func TestIntegration_Network_DefaultRT_FKOnDelete(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const proj = "prj-default-rt-fk"

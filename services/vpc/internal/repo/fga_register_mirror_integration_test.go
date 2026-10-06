@@ -52,7 +52,7 @@ func Test_T3_01_FGARegisterEmit_PayloadCarriesLabelsParentAndSourceVersion(t *te
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	labels := map[string]string{"env": "prod", "team": "core"}
 	err = legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
@@ -83,7 +83,7 @@ func Test_T3_01_FGARegisterEmit_SourceVersionMonotonic(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	emit := func(labels map[string]string) {
 		require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
@@ -191,12 +192,16 @@ func (u *DeleteLoadBalancerUseCase) doDelete(ctx context.Context, id, projectID 
 	}
 	defer w.Abort()
 
-	if err := w.LoadBalancers().Delete(ctx, id); err != nil {
+	// Снимок имени — из `RETURNING` удаляющего оператора (NTF-3 З2): строка
+	// `DELETED` именованного вида несёт имя, которое было у предмета в момент
+	// снятия; без него функция фундамента снятие отвергает.
+	name, err := w.LoadBalancers().Delete(ctx, id)
+	if err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, id, projectID,
-		kachorepo.OutboxActionDeleted, map[string]any{"id": id, "project_id": projectID},
+		kachorepo.OutboxActionDeleted, map[string]any{"id": id, "project_id": projectID, subscription.NamePayloadKey: name},
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}

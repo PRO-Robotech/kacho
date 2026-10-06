@@ -49,7 +49,7 @@ func newNICAttachEnv(t *testing.T) *nicAttachEnv {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	return &nicAttachEnv{ctx: ctx, dsn: dsn, pool: pool, repo: kachopg.New(pool, nil)}
+	return &nicAttachEnv{ctx: ctx, dsn: dsn, pool: pool, repo: mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))}
 }
 
 // makeProjectNetwork — создаёт project + network, возвращает их id.

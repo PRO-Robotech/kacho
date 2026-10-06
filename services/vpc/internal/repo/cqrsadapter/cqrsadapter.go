@@ -345,10 +345,11 @@ func (a *SecurityGroupAdapter) Delete(ctx context.Context, id string) error {
 	if rec, gerr := w.SecurityGroups().Get(ctx, id); gerr == nil {
 		projectID = rec.ProjectID
 	}
-	if err := w.SecurityGroups().Delete(ctx, id); err != nil {
+	name, err := w.SecurityGroups().Delete(ctx, id)
+	if err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "SecurityGroup", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "SecurityGroup", id, projectID, "DELETED", map[string]any{"id": id, "name": name}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err)
 	}
 	return w.Commit()

@@ -33,6 +33,7 @@ func TestValidateRefusesUnnarrowedForwarderCircle(t *testing.T) {
 // отрицание выше зеленело бы и на страже, отвергающем всё подряд.
 func TestValidateAcceptsNarrowedForwarderCircle(t *testing.T) {
 	var c Config
+	c.Notifications = probeNotificationsOff()
 	c.AuthMode = "production"
 	// Объявление домена величин — часть законной посадки: без него конфигурация
 	// отличалась бы от законной ДВУМЯ фактами, и красное выше означало бы не то,

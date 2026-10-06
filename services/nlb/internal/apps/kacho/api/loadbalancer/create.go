@@ -835,7 +835,7 @@ func (u *CreateLoadBalancerUseCase) deleteHandle(ctx context.Context, id string)
 			w.Abort()
 		}
 	}()
-	if err := w.LoadBalancers().Delete(ctx, id); err != nil {
+	if _, err := w.LoadBalancers().Delete(ctx, id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil
 		}

@@ -63,7 +63,7 @@ func TestFreelist_BackfillPopulatesIPs(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertTestPoolForFreelist(t, ctx, pgPool, "198.51.100.0/28")
@@ -89,7 +89,7 @@ func TestFreelist_ConcurrentAllocateUnique(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertTestPoolForFreelist(t, ctx, pgPool, "198.51.100.0/28")
@@ -158,7 +158,7 @@ func TestFreelist_DeleteReturnsIP(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	poolID := insertTestPoolForFreelist(t, ctx, pgPool, "198.51.100.0/28")

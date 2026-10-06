@@ -65,7 +65,7 @@ func newStand(t *testing.T) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(false),
 		DSN:          dsn,
 		Narrower:     narrowtest.New(peer),
 		ProjectGate:  gate,

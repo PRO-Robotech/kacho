@@ -52,7 +52,7 @@ func setupAssocRepo(t *testing.T) (kacho.Repository, *pgxpool.Pool, func()) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	return r, pool, func() {
 		r.Close()
 		pool.Close()
@@ -309,7 +309,7 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 
 	// Удаляем RT — FK ON DELETE SET NULL обнулит subnet.route_table_id.
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-		return w.RouteTables().Delete(ctx, rt.ID)
+		return removalErr(w.RouteTables().Delete(ctx, rt.ID))
 	}))
 
 	rd2, err := r.Reader(ctx)
@@ -336,7 +336,7 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {
@@ -381,7 +381,7 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 		`SELECT COALESCE(MAX(sequence_no), 0) FROM vpc_outbox`).Scan(&seqBefore))
 
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-		return w.RouteTables().Delete(ctx, rt.ID)
+		return removalErr(w.RouteTables().Delete(ctx, rt.ID))
 	}))
 
 	// Проверяем что в outbox есть Subnet.UPDATED с auto_association=true.

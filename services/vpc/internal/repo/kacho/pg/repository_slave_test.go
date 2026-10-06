@@ -41,7 +41,7 @@ func TestCQRS_SlavePool_FallbackOnNil(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, master)
 
 	// Явно nil — Repository.Reader должен fallback'нуть на master.
-	r := kachopg.New(master, nil)
+	r := mustJournalWriter(kachopg.New(master, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestCQRS_SlavePool_RouterUsesSlavePool(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, slave)
 
-	r := kachopg.New(master, slave)
+	r := mustJournalWriter(kachopg.New(master, slave, probeJournalOptions))
 
 	// Открываем Writer и сразу Commit'ним INSERT — чтобы Reader потом мог
 	// прочитать committed запись из slave-pool'а (через тот же физический PG).
@@ -137,7 +137,7 @@ func TestCQRS_SlavePool_WriterAlwaysMaster(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, slave)
 
-	r := kachopg.New(master, slave)
+	r := mustJournalWriter(kachopg.New(master, slave, probeJournalOptions))
 
 	slaveBefore := slave.Stat().AcquiredConns()
 	masterBefore := master.Stat().AcquiredConns()

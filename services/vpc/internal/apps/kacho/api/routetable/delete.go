@@ -74,10 +74,11 @@ func (u *DeleteRouteTableUseCase) Execute(ctx context.Context, id string) (*oper
 			unreg = append(unreg, fgaregister.ProjectHierarchy(cur.ProjectID, "vpc_route_table", id))
 		}
 
-		if err := w.RouteTables().Delete(ctx, id); err != nil {
+		name, err := w.RouteTables().Delete(ctx, id)
+		if err != nil {
 			return nil, serviceerr.MapRepoErr(err)
 		}
-		if err := w.Outbox().Emit(ctx, "RouteTable", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
+		if err := w.Outbox().Emit(ctx, "RouteTable", id, projectID, "DELETED", map[string]any{"id": id, "name": name}); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 		}
 		if len(unreg) > 0 {

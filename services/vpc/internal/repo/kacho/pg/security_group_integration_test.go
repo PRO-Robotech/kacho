@@ -49,7 +49,7 @@ func TestCQRS_SG_InsertCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Network + SG в одной writer-TX.
 	w, err := r.Writer(ctx)
@@ -88,7 +88,7 @@ func TestCQRS_SG_AbortRollback(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestCQRS_Network_AtomicDefaultSGCreate(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestCQRS_Network_AtomicDefaultSGCreate_AbortOnSG(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Insert Network + SG.
 	w1, err := r.Writer(ctx)
@@ -240,7 +240,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
-	require.NoError(t, w3.SecurityGroups().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w3.SecurityGroups().Delete(ctx, created.ID)))
 	require.NoError(t, w3.Outbox().Emit(ctx, "SecurityGroup", created.ID, created.ProjectID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w3.Commit())
 

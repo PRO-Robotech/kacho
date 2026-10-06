@@ -75,8 +75,8 @@ func TestPlacementCoherence_ZoneMustMatchAndRegionalIsTheControl(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
-	grpRepo := repo.NewPlacementGroupRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
+	grpRepo := mustJournalWriter(repo.NewPlacementGroupRepo(pool, probeJournalOptions))
 
 	zonalA := seedGroup(t, ctx, grpRepo, "proj-plg", "plg-zonal-a", domain.PlacementTypeZonal, zoneA, "")
 	regional := seedGroup(t, ctx, grpRepo, "proj-plg", "plg-regional", domain.PlacementTypeRegional, "", regionA)
@@ -150,8 +150,8 @@ func TestPlacementGroupDelete_RefusesWhileItHoldsInstances(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
-	grpRepo := repo.NewPlacementGroupRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
+	grpRepo := mustJournalWriter(repo.NewPlacementGroupRepo(pool, probeJournalOptions))
 
 	held := seedGroup(t, ctx, grpRepo, "proj-del-plg", "plg-held", domain.PlacementTypeZonal, zoneA, "")
 	free := seedGroup(t, ctx, grpRepo, "proj-del-plg", "plg-free", domain.PlacementTypeZonal, zoneA, "")
@@ -189,8 +189,8 @@ func TestPlacementCoherence_ConcurrentClaimsAreDecidedByTheStatement(t *testing.
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
-	grpRepo := repo.NewPlacementGroupRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
+	grpRepo := mustJournalWriter(repo.NewPlacementGroupRepo(pool, probeJournalOptions))
 	group := seedGroup(t, ctx, grpRepo, "proj-race", "plg-zonal", domain.PlacementTypeZonal, zoneA, "")
 
 	const pairs = 8

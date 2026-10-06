@@ -20,24 +20,29 @@
 // словарём; разделённость держится ограничениями ОБЕИХ таблиц — слово одной не
 // проходит CHECK другой, — а не соглашением.
 //
-// # ВИД ОДИН — РЕЕСТР, и это решение, а не недоделка
+// # ВИДОВ ДВА — РЕЕСТР И РЕПОЗИТОРИЙ (NTF-3, Р2, NTF3-60, NTF3-61)
 //
-// Строку в базе имеет только реестр. Репозиторий и тег — проекции zot: у
-// репозитория в базе два вспомогательных следа, у тега нет ничего, а самый
-// частый путь появления тега (потоковый проброс манифеста) к базе не обращается
-// вовсе — пристегнуть эмиссию не к чему.
+// Строку реестра пишет триггер базы (ниже). Репозиторий — проекция хранилища
+// образов, и его состояния в базе нет; но у него есть транзакционный след —
+// признак существования `registry_repository_registration`, который заводит и
+// снимает тот же писатель, что намерение прав репозитория. Строку журнала
+// репозитория (`Repository`, идентификатор `<registry_id>/<repo>`) пишет этот
+// писатель в той же транзакции и только тогда, когда признак действительно
+// изменился; якорь проекта — со строки признака.
 //
-// Объявить их видами было бы ХУЖЕ, чем не объявить: тип объекта репозитория в
-// модели прав существует, но в аннотациях контрактов не объявлен ни разу
-// (репозиторные глаголы гейтятся сужением страницы, а не пообъектной записью
-// каталога), и вопрос «вправе ли вызывающий видеть эту строку» задать было бы
-// нечем. Поток по такому виду молчал бы, оставаясь «зелёным». Предмет назван и
-// вынесен: репозитории и теги попадут в поток, когда у них появится
-// транзакционный писатель состояния и объявленный тип в каталоге, — не раньше.
+// Тип объекта репозитория — `registry_repository`, действие — право списка
+// репозиториев (`RegistryService/ListRepositories`). Имени формы DNS-метки у
+// репозитория нет (грамматика имени OCI допускает `/`): вид объявлен
+// `NameFormNone`, и событие его снятия несёт пустое `name` по объявлению.
+// Состояния строка репозитория не несёт — оно живёт в хранилище образов, и
+// причина отсутствия названа: [subscription.StateNotProduced].
 //
-// # ЭМИССИЯ — ТРИГГЕРОМ БАЗЫ
+// Тег видом журнала не является: самый частый путь его появления (потоковый
+// проброс манифеста) к базе не обращается вовсе — пристегнуть эмиссию не к чему.
 //
-// У репозитория реестра четыре пути мутации, и `MarkDeleting` идёт БЕЗ
+// # ЭМИССИЯ РЕЕСТРА — ТРИГГЕРОМ БАЗЫ
+//
+// У реестра четыре пути мутации, и `MarkDeleting` идёт БЕЗ
 // транзакции: это единственный переход ACTIVE→DELETING, и он наблюдаем
 // арендатором. Понятия транзакционного порта у реестра нет вовсе, поэтому
 // «позвать эмиттер в той же транзакции» здесь не выражается. Триггер снимает
@@ -61,6 +66,7 @@ import (
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/subscription"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/prototime"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -96,6 +102,11 @@ const (
 	// бы прочитано следующим как то, что клиент пишет в ось `kinds`.
 	JournalWordRegistry = "Registry"
 
+	// JournalWordRepository — слово, которым писатель признака существования
+	// репозитория (`internal/repo/kacho/pg`, `emitRepositoryJournal`) записывает
+	// вид строки; клиенту едет `registry_repository`.
+	JournalWordRepository = "Repository"
+
 	// Слова владельца для родов изменения. Ровно те три, что разрешает
 	// ограничение базы (`registry_resource_journal_event_type_check`); согласие
 	// объявления с ограничением и с тем, что пишет триггер, держит проба
@@ -117,8 +128,13 @@ const (
 // Пустое значение здесь недопустимо, и судит его КОМПОЗИЦИОННЫЙ КОРЕНЬ
 // (`buildSubscriptionServer` отказывает в подъёме): отказ величины посадки не
 // должен обнаруживаться первым событием в бою.
-func Journal(endpointBase string) subscription.Journal {
-	return subscription.Journal{
+//
+// feedEnabled — флаг ленты модуля (`KACHO_REGISTRY_NOTIFICATIONS_ENABLED`), прочитанный
+// загрузчиком конфигурации один раз; то же значение корень отдаёт писателям
+// журнала (`journaltx.Options`). Вид ленты объявляется ровно при включённом
+// флаге, прочие виды от него не зависят (NTF3-65, NTF3-67; замысел З11).
+func Journal(endpointBase string, feedEnabled bool) subscription.Journal {
+	j := subscription.Journal{
 		Channel: Channel,
 		Storage: subscription.Storage{
 			Table:          Table,
@@ -161,6 +177,13 @@ func Journal(endpointBase string) subscription.Journal {
 			// БАЗЫ — теми же, которыми судит уборщик, поэтому слагаемого на
 			// разницу источников у порога нет.
 			AgeColumn: "created_at",
+			// Инициатор и время строки — колонки журнала (NTF-3, Р2, З2):
+			// инициатора кладёт умолчание колонки из настройки транзакции
+			// помощника `journaltx` (миграция `..._journal_initiator.sql`), время —
+			// умолчание `now()` колонки `created_at`, то есть время транзакции
+			// изменения, а не часы процесса. Событие несёт оба значения.
+			InitiatorColumn:  "initiator",
+			OccurredAtColumn: "created_at",
 		},
 		Mapping: subscription.Mapping{
 			// Словарь видов ЗАКРЫТ в обе стороны: вид вне его отвергается на
@@ -180,10 +203,23 @@ func Journal(endpointBase string) subscription.Journal {
 			// того же сужателя, что сужает страницу списка (`v_list` на
 			// `registry_registry`). Значит вопрос, который задаёт поток, есть тот
 			// же вопрос, что задаёт список, — а не похожий.
+			//
+			// Форма имени и якорь объявлены у каждого вида (NTF-3, З2): оба вида
+			// живут в проекте; имя реестра — DNS-метка, и снятие реестра несёт её
+			// снимок (функция базы кладёт `OLD.name` под ключ `name`); у
+			// репозитория имени формы DNS-метки нет.
 			Kinds: map[string]subscription.Kind{
 				JournalWordRegistry: {
 					ObjectType: domain.FGAObjectTypeRegistry,
 					Action:     domain.ActionRegistryList,
+					NameForm:   subscription.NameFormDNS,
+					Scope:      subscription.ScopeProject,
+				},
+				JournalWordRepository: {
+					ObjectType: domain.FGAObjectTypeRepository,
+					Action:     domain.ActionRepositoryList,
+					NameForm:   subscription.NameFormNone,
+					Scope:      subscription.ScopeProject,
 				},
 			},
 			// Словарь родов изменения — ровно три слова, разрешённые ограничением
@@ -198,6 +234,9 @@ func Journal(endpointBase string) subscription.Journal {
 			State: stateWithEndpoint(endpointBase),
 		},
 	}
+	// Вид ленты извещений — ровно при включённом флаге модуля (NTF3-65, NTF3-67).
+	feedjournal.Declare(j.Mapping.Kinds, feedEnabled)
+	return j
 }
 
 // ProjectGate — страж оси `project_id`.
@@ -285,6 +324,15 @@ func stateWithEndpoint(endpointBase string) func(subscription.Row) (*anypb.Any, 
 	return func(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 		if r.Change == changeDeleted {
 			return nil, subscription.StateNotProduced, nil
+		}
+		switch r.Kind {
+		case JournalWordRegistry:
+		case JournalWordRepository:
+			// Состояние репозитория живёт в хранилище образов; журнал его не
+			// несёт ни у одного рода изменения — свойство журнала, а не сбой.
+			return nil, subscription.StateNotProduced, nil
+		default:
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("вид %q вне словаря журнала реестра", r.Kind)
 		}
 		var row journalRow
 		if err := json.Unmarshal(r.Payload, &row); err != nil {

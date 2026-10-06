@@ -33,7 +33,7 @@ func mirrorUpdate(rr *domain.Registry) domain.RegisterIntent {
 // того же project'а) даёт ErrAlreadyExists; B остаётся неизменным (rollback UPDATE).
 func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	a := newReg("prj-P", "alpha", nil)
@@ -63,7 +63,7 @@ func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 // ErrAlreadyExists (partial UNIQUE race на UPDATE-пути, не ловится unit-тестом).
 func TestRepo_ConcurrentRenameToSameName_ExactlyOne(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const n = 8

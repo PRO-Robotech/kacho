@@ -54,7 +54,7 @@ func newGwRefFixture(ctx context.Context, t *testing.T) *gwRefFixture {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 
 	f := &gwRefFixture{repo: r, projectID: "prj-gwref"}
@@ -334,13 +334,13 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	// Положительный контроль: пока маршрут его не называет — шлюз удаляем.
 	spare := f.gateway(ctx, t, "gw-spare", anchor, domain.GatewayTypeNat)
 	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, spare)
+		return removalErr(w.Gateways().Delete(ctx, spare))
 	}))
 
 	require.NoError(t, f.writeRoutes(ctx, t, f.rtID, viaGatewayRoute("0.0.0.0/0", gwID)))
 
 	err := legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, gwID)
+		return removalErr(w.Gateways().Delete(ctx, gwID))
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, helpers.ErrFailedPrecondition)
@@ -349,7 +349,7 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	// Снятие маршрута снимает и ссылку — шлюз снова удаляем.
 	require.NoError(t, f.writeRoutes(ctx, t, f.rtID, nil))
 	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, gwID)
+		return removalErr(w.Gateways().Delete(ctx, gwID))
 	}))
 }
 

@@ -34,7 +34,7 @@ func TestIntegration_InstanceCPUGuarantee_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	inID := ids.NewID(ids.PrefixInstance)
 
 	in := newRunningInstance(inID)
@@ -68,7 +68,7 @@ func TestIntegration_InstanceCPUGuarantee_CheckConstraint(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 	in := newRunningInstance(ids.NewID(ids.PrefixInstance))
 	in.CPUGuaranteePercent = 101 // violates CHECK (cpu_guarantee_percent BETWEEN 0 AND 100)
 	_, _, err = instRepo.Insert(ctx, in)

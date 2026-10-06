@@ -67,7 +67,7 @@ func TestNlbServesTheSubscriptionStreamOnTheInternalListenerOnly(t *testing.T) {
 		cfg:     bootConfig(t, nil),
 		logger:  quietLogger(),
 		peers:   &peerClients{},
-		repo:    kachopg.New(nil, nil),
+		repo:    mustJournalWriter(kachopg.New(nil, nil, probeJournalOptions)),
 		opsRepo: operations.NewRepo(nil, "kacho_nlb"),
 		// Сервер подписки — ЗАГЛУШКА: предмет пробы состав служимого набора, а
 		// настоящий потребовал бы базы, сужателя и объявления посадки. Что

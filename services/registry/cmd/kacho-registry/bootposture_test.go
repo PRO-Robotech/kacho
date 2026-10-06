@@ -47,6 +47,7 @@ func requireFields(t *testing.T, line map[string]any, want map[string]any) {
 // data-plane docker-листенер в эти два поля не подмешивается.
 func TestBootPosture_Production(t *testing.T) {
 	cfg := config.Config{
+		Notifications:    probeNotificationsOff(),
 		AuthMode:         "production-strict",
 		DBSSLMode:        "require",
 		AuthZIAMGRPCAddr: "kaname-internal:9091",
@@ -68,7 +69,8 @@ func TestBootPosture_Production(t *testing.T) {
 // TestBootPosture_InsecureIsReportedHonestly — dev + plaintext-DB (пустой
 // DBSSLMode деривится в `disable`) + отсутствие mTLS/authz обязаны быть видны.
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
-	cfg := config.Config{AuthMode: "dev", DBSSLMode: ""}
+	cfg := config.Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev", DBSSLMode: ""}
 
 	requireFields(t, captureBootPosture(t, bootPosture(cfg)), map[string]any{
 		"service":       "registry",
@@ -119,7 +121,7 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 // Звена у процесса нет (изъятие в serviceIdentityAxis), поэтому ждём метку
 // неприменимости фундамента — литерала своего не заводим.
 func TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries(t *testing.T) {
-	requireFields(t, captureBootPosture(t, bootPosture(config.Config{})), map[string]any{
+	requireFields(t, captureBootPosture(t, bootPosture(config.Config{Notifications: probeNotificationsOff()})), map[string]any{
 		"service_identity": grpcsrv.ServiceIdentityNotApplicable,
 	})
 }

@@ -36,7 +36,12 @@ type GatewayWriterIface interface {
 	GatewayReaderIface
 	Insert(ctx context.Context, g *domain.Gateway) (*GatewayRecord, error)
 	Update(ctx context.Context, g *domain.Gateway) (*GatewayRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// GetForUpdate — Get с `SELECT ... FOR UPDATE` (row-lock) внутри writer-TX.
 	// Сериализует конкурентный read-modify-write в Update (Get → applyMask →
 	// UPDATE всех mutable-колонок): без него две Update с disjoint update_mask

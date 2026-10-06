@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	"github.com/PRO-Robotech/corelib/outbox/bootgate"
@@ -283,7 +284,10 @@ type backgroundDeps struct {
 // Перечень в этом комментарии обязан совпадать с именами bgWorker ниже: он
 // читается как ответ на вопрос «что вообще крутится в процессе», и разошедшийся
 // с кодом ответ хуже отсутствующего.
-func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorker, error) {
+//
+// journal — Options писателей журнала модуля, построенные корнем из флага ленты
+// (тот же объект, что у CQRS-Repository): их получает проход free-ip-runner.
+func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps, journal journaltx.Options) ([]bgWorker, error) {
 	var background []bgWorker
 
 	// Durable LRO recovery: RecoverAll до трафика (в runServe), периодический Run —
@@ -306,8 +310,11 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 			// Каждая изолированная ядовитая строка бампит free_ip_poisoned_total.
 			freeIPOpts = append(freeIPOpts, jobs.WithPoisonObserver(func(string) { d.freeIPPoisonObs() }))
 		}
-		freeIPRunner := jobs.NewFreeIPRunner(d.pool, d.peers.InternalAddress, d.logger,
+		freeIPRunner, err := jobs.NewFreeIPRunner(d.pool, journal, d.peers.InternalAddress, d.logger,
 			d.cfg.Jobs.FreeIP.Interval, d.cfg.Jobs.FreeIP.AgeThreshold, freeIPOpts...)
+		if err != nil {
+			return nil, err
+		}
 		background = append(background, bgWorker{"free-ip-runner", freeIPRunner.Run})
 	} else {
 		d.logger.Warn("free_ip_runner_disabled — no vpc internal-address client; stuck load-balancer VIP reconcile inactive")
@@ -427,7 +434,7 @@ func buildSubscriptionServer(
 			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal: subscriptionjournal.Journal(),
+		Journal: subscriptionjournal.Journal(cfg.Notifications.On()),
 		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
 		// из пула вернулась бы в него вместе с подпиской.
 		DSN:          cfg.Repository.Postgres.URL,

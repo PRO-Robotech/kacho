@@ -111,7 +111,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentInsert_OnlyOwnerProject
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const ownerProject = "prj-pair-owner"
@@ -195,7 +195,7 @@ func TestIntegration_Address_SubnetProjectPair_SettersRefuseForeignSubnet(t *tes
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const ownerProject = "prj-pair-set"
@@ -258,7 +258,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	const ownerProject = "prj-pair-del"
@@ -281,7 +281,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 			return
 		}
 		defer wb.Abort()
-		if derr := wb.Subnets().Delete(ctx, subID); derr != nil {
+		if derr := removalErr(wb.Subnets().Delete(ctx, subID)); derr != nil {
 			bDone <- derr
 			return
 		}
@@ -300,6 +300,6 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 		return w.Addresses().Delete(ctx, addr.ID)
 	}))
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-		return w.Subnets().Delete(ctx, subID)
+		return removalErr(w.Subnets().Delete(ctx, subID))
 	}))
 }

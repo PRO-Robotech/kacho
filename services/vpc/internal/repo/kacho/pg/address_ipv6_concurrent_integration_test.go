@@ -85,7 +85,7 @@ func TestExternalIPv6_ConcurrentAllocateUnique(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 
 	// /124 = 16 адресов; offset 0 зарезервирован (cursor стартует с next_offset=1),
 	// поэтому емкость = 16 - 1 = 15 (offset'ы 1..15).
@@ -173,7 +173,7 @@ func TestExternalIPv6_ConcurrentAllocateSameAddress(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 
 	// Большой пул — exhaustion не мешает (тестируем idempotency, не границу).
 	poolID := insertV6Pool(t, ctx, pgPool, "fd00:1de:b0a7::/112")
@@ -244,7 +244,7 @@ func TestExternalIPv6_ConcurrentReleasedOffsetReuse(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 
 	// /116 = 4096 адресов — exhaustion не мешает (тестируем released-path, не границу).
 	poolID := insertV6Pool(t, ctx, pgPool, "fd00:beef:cafe::/116")

@@ -94,8 +94,10 @@ type LoadBalancerWriterIface interface {
 	// Delete — DELETE load_balancers WHERE id=$1. FK-violation (есть дети —
 	// listeners) → ErrFailedPrecondition. row absent
 	// → ErrNotFound. Безусловный — используется для compensation-rollback в
-	// Create (там deletion_protection не может помешать откату).
-	Delete(ctx context.Context, id string) error
+	// Create (там deletion_protection не может помешать откату). Возвращает
+	// снимок имени снятой строки (`RETURNING name`): его несёт строка `DELETED`
+	// журнала (NTF-3 З2).
+	Delete(ctx context.Context, id string) (string, error)
 
 	// DeleteIfUnprotected — atomic guarded delete-примитив: DELETE ... WHERE id=$1
 	// AND deletion_protection=false (single-statement, инвариант «защищённый LB не

@@ -163,7 +163,7 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 // Звена у процесса нет (изъятие в serviceIdentityAxis), поэтому ждём метку
 // неприменимости фундамента — литерала своего не заводим.
 func TestBootPosture_ServiceIdentityIsTheLinkTheDescriptorCarries(t *testing.T) {
-	requireFields(t, captureBootPosture(t, bootPosture(config.Config{}, config.MTLSConfig{})), map[string]any{
+	requireFields(t, captureBootPosture(t, bootPosture(config.Config{Notifications: probeNotificationsOff()}, config.MTLSConfig{})), map[string]any{
 		"service_identity": grpcsrv.ServiceIdentityNotApplicable,
 	})
 }

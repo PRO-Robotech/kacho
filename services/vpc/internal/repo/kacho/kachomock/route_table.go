@@ -119,16 +119,17 @@ func (rw *routeTableWriter) Update(_ context.Context, rt *domain.RouteTable) (*k
 	return &cp, nil
 }
 
-func (rw *routeTableWriter) Delete(_ context.Context, id string) error {
-	if _, ok := rw.w.localRTs[id]; !ok {
-		return repo.ErrNotFound
+func (rw *routeTableWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := rw.w.localRTs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if rw.w.deletedRTIDs == nil {
 		rw.w.deletedRTIDs = make(map[string]struct{})
 	}
 	rw.w.deletedRTIDs[id] = struct{}{}
 	delete(rw.w.localRTs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // Assertion: routeTableReader/Writer implements iface.

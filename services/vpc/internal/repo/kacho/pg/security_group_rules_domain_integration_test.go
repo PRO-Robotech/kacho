@@ -229,7 +229,7 @@ func TestSGRulesDomain_RepoInsertMapsAndDoesNotLeak(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

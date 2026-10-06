@@ -38,7 +38,7 @@ func countRegistration(t *testing.T, pool *pgxpool.Pool, registryID, repo string
 // очереди; unregister снимает признак И пишет строку очереди. Оба — одной транзакцией.
 func TestRepoRegistration_EmitAndDropAreAtomicWithIntent(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-registration")
 
@@ -80,7 +80,7 @@ func TestRepoRegistration_EmitAndDropAreAtomicWithIntent(t *testing.T) {
 // строка очереди уехала бы, а признака бы не было.
 func TestRepoRegistration_FailureInsideTx_LeavesNeitherRowNorIntent(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 
 	const ghostReg = "regGHOST000000000000" // такого реестра нет
@@ -99,7 +99,7 @@ func TestRepoRegistration_FailureInsideTx_LeavesNeitherRowNorIntent(t *testing.T
 // (он опирается на структурную привязку, а не на тип объекта).
 func TestRepoRegistration_PublicGrantIntent_DoesNotTouchRegistration(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-public-grant")
 
@@ -123,8 +123,8 @@ func TestRepoRegistration_PublicGrantIntent_DoesNotTouchRegistration(t *testing.
 // поэтому поддержка признака сидит в общем для обоих писателей emitFGAIntent.
 func TestRepoRegistration_ControlPlaneDeleteDropsRegistration(t *testing.T) {
 	pool := setupTestDB(t)
-	regRepo := kachopg.NewRegistryRepo(pool)
-	cfgRepo := kachopg.NewRepositoryConfigRepo(pool)
+	regRepo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	cfgRepo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cp-delete")
 
@@ -158,8 +158,8 @@ func TestRepoRegistration_ControlPlaneDeleteDropsRegistration(t *testing.T) {
 // «нет» и отдавал чужой репозиторий соседу по реестру.
 func TestRepoRegistration_OverlayAloneMakesResourceExist(t *testing.T) {
 	pool := setupTestDB(t)
-	regRepo := kachopg.NewRegistryRepo(pool)
-	cfgRepo := kachopg.NewRepositoryConfigRepo(pool)
+	regRepo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	cfgRepo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-overlay-only")
 
@@ -178,7 +178,7 @@ func TestRepoRegistration_OverlayAloneMakesResourceExist(t *testing.T) {
 // том же реестре предикатом не задеваются.
 func TestRepoRegistration_ScopedPerRegistryAndRepo(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regA := seedRegistry(t, pool, "prj-P", "reg-scope-a")
 	regB := seedRegistry(t, pool, "prj-P", "reg-scope-b")
@@ -206,7 +206,7 @@ func TestRepoRegistration_ScopedPerRegistryAndRepo(t *testing.T) {
 // переживших своего владельца, не остаётся.
 func TestRepoRegistration_RegistryDeleteCascadesRegistrations(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 

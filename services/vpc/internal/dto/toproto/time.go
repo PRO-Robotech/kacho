@@ -4,7 +4,7 @@
 // Package toproto — реализации DTO-трансферов domain/repo → proto. Каждый
 // трансфер регистрируется в реестре через init(); зарегистрированы все
 // VPC-ресурсы (Network/Subnet/Address/RouteTable/SecurityGroup/Gateway/
-// NetworkInterface) + time.Time → *timestamppb.Timestamp.
+// NetworkInterface/CidrGroup/AddressPool) + time.Time → *timestamppb.Timestamp.
 package toproto
 
 import (

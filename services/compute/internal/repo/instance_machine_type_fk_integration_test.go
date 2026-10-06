@@ -46,7 +46,7 @@ func TestIntegration_MachineType_Delete_InUse_Restricted(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, pool)
 
 	mtRepo := repo.NewMachineTypeRepo(pool)
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inUse := newMachineType("std-v3-2", domain.MachineTypeFamilyStandard, 0)
 	_, err = mtRepo.Insert(ctx, inUse)
@@ -96,7 +96,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, pool)
 
 	mtRepo := repo.NewMachineTypeRepo(pool)
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	const N = 8
 	for i := 0; i < N; i++ {

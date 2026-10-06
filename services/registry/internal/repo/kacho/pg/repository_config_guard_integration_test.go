@@ -26,7 +26,7 @@ import (
 // markRegistryDeleting переводит реестр в DELETING (CAS forward-only) для A24-guard.
 func markRegistryDeleting(t *testing.T, pool *pgxpool.Pool, regID string) {
 	t.Helper()
-	_, err := kachopg.NewRegistryRepo(pool).MarkDeleting(journalPrincipalCtx(context.Background()), regID)
+	_, err := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions)).MarkDeleting(journalPrincipalCtx(context.Background()), regID)
 	require.NoError(t, err)
 }
 
@@ -35,7 +35,7 @@ func markRegistryDeleting(t *testing.T, pool *pgxpool.Pool, regID string) {
 // Rekey/Delete — все отвергаются; overlay не создаётся/не меняется.
 func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a24")
 
@@ -74,7 +74,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 // (adopt-owner + public-grant) пишет строки в registry_outbox АТОМАРНО с overlay-INSERT.
 func TestRepoConfig_RG1_OutboxEmissionInTx(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
 	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-outbox")
 

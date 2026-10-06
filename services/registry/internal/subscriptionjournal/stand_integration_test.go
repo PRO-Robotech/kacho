@@ -87,7 +87,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(probeEndpointBase),
+		Journal:      subscriptionjournal.Journal(probeEndpointBase, false),
 		DSN:          dsn,
 		Narrower:     narrower,
 		ProjectGate:  gate,
@@ -123,7 +123,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 
 	return &stand{
 		pool:   pool,
-		repo:   kachopg.NewRegistryRepo(pool),
+		repo:   mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions)),
 		client: subscriptionv1.NewInternalSubscriptionServiceClient(conn),
 	}
 }
