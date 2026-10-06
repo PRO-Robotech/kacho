@@ -51,7 +51,10 @@ Ingress одного рендера решает, какое правило вы
 обязана молчать, каждая форма с ОДНИМ внесённым дефектом — назвать его.
 """
 
+import glob
+import os
 import sys
+import tarfile
 
 import yaml
 
@@ -171,8 +174,13 @@ def describe(r):
     return f"{r['ingress']} {r['type']} {r['path']} → {r['service']}:{r['port']} {r['protocol']}"
 
 
-def audit(docs):
-    """(находки, перепись | None, причина пропуска | None)."""
+def audit(docs, console_host):
+    """(находки, перепись | None, причина пропуска | None).
+
+    console_host — хост консоли, объявленный ПРОФИЛЕМ стека (`uif.ingress.host`
+    действующих значений, см. console_host_of_profile), либо None, когда профиль
+    консоли за контроллером входа не объявляет.
+    """
     findings = []
     ings = ingresses(docs)
     edge = [i for i in ings if any(svc == EDGE_SERVICE for (_, _, _, svc, _) in rules_of(i))]
@@ -211,14 +219,17 @@ def audit(docs):
     if len(entry_hosts) != 1:
         findings.append(f"путь / к краю ведут хосты {entry_hosts} — это второй внешний вход, а не правило первого")
         return findings, (0, 0, 0, 0), None
-    # Хост другой поверхности с полосами к краю — не больше одного: звено фронта
-    # (kacho#3028) ведёт полосы ровно с хоста консоли. Каждый следующий такой
-    # хост — ещё одно публичное имя, по которому снаружи доходят до края, то есть
-    # второй внешний вход, сколь бы законной ни была форма его полос.
-    if len(link_hosts) > 1:
-        findings.append(f"хостов другой поверхности с полосами к краю {len(link_hosts)} "
-                        f"({[h for h, _ in link_hosts]}) — полосы ведёт только хост консоли, "
-                        "остальные — второй внешний вход")
+    # Хост другой поверхности с полосами к краю — ТОЛЬКО хост консоли, который
+    # объявил профиль стека (`uif.ingress.host`): звено фронта (kacho#3028) ведёт
+    # полосы ровно с него. Любой другой хост — ещё одно публичное имя, по которому
+    # снаружи доходят до края, то есть второй внешний вход, сколь бы законной ни
+    # была форма его полос и сколько бы таких хостов ни было. Счёт хостов этого
+    # не видит: единственный хост с полосами может быть и не консолью.
+    for (h, _) in link_hosts:
+        if h != console_host:
+            findings.append(f"полосы к краю ведёт хост {h}, а хост консоли профиля — "
+                            f"{console_host if console_host else 'не объявлен'} (uif.ingress.host): "
+                            "это второй внешний вход, а не полоса хоста консоли")
     host = entry_hosts[0]
 
     def tls_secrets(i, h):
@@ -310,6 +321,97 @@ def audit(docs):
     return findings, (n_coord, n_near, n_other, n_link), None
 
 
+# ── Хост консоли из профиля ──────────────────────────────────────────────────
+#
+# Источник — ЗНАЧЕНИЕ ЧАРТА, а не литерал: тот же `uif.ingress.host`, который
+# читают шаблон полос (templates/console-edge-lanes-ingress.yaml) и вход самой
+# консоли (подчарт `uif`). Действующее значение складывается так же, как у helm:
+# умолчания подчарта под ключом `uif`, поверх — умолчания умбреллы, поверх —
+# профили цепочки стека слева направо; карты сливаются по ключам, прочее
+# замещается целиком, `null` ключ удаляет. Та же сборка, что у Go-гейтов
+# каталога deploy (mergedValuesOfStack + coalesceSubchartDefaults).
+
+CONSOLE_CHART = "uif"
+
+
+class ProfileError(Exception):
+    """Профиль не прочитан — это «не выполнилось», а не находка о дереве."""
+
+
+def merge_values(dst, src, drop_null=False):
+    """Слой src поверх dst. `null` между слоями значений замещает, как любое
+    значение; удаляет ключ он при наложении на УМОЛЧАНИЯ подчарта (drop_null)."""
+    for k, v in (src or {}).items():
+        if v is None and drop_null:
+            dst.pop(k, None)
+        elif v is None:
+            dst[k] = None
+        elif isinstance(v, dict):
+            cur = dst.get(k)
+            dst[k] = merge_values(cur if isinstance(cur, dict) else {}, v, drop_null)
+        else:
+            dst[k] = v
+    return dst
+
+
+def _yaml_map(text, where):
+    try:
+        tree = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ProfileError(f"{where} не разбирается как YAML: {exc}") from exc
+    if tree is None:
+        return {}
+    if not isinstance(tree, dict):
+        raise ProfileError(f"{where}: корень не карта")
+    return tree
+
+
+def subchart_defaults(umbrella, chart):
+    """Умолчания подчарта — архивом ЛИБО каталогом, ровно одним источником."""
+    srcs = sorted(glob.glob(os.path.join(umbrella, "charts", f"{chart}-*.tgz")))
+    folder = os.path.join(umbrella, "charts", chart, "values.yaml")
+    if os.path.isfile(folder):
+        srcs.append(folder)
+    if len(srcs) != 1:
+        raise ProfileError(f"умолчания подчарта {chart}: источников {len(srcs)} ({srcs}) — "
+                           "нужен ровно один (архив либо каталог)")
+    src = srcs[0]
+    if src.endswith(".tgz"):
+        try:
+            with tarfile.open(src) as tf:
+                raw = tf.extractfile(f"{chart}/values.yaml").read().decode("utf-8")
+        except (OSError, KeyError, tarfile.TarError, AttributeError) as exc:
+            raise ProfileError(f"умолчания подчарта {chart} в {src} не читаются: {exc}") from exc
+    else:
+        with open(src, encoding="utf-8") as fh:
+            raw = fh.read()
+    tree = _yaml_map(raw, src)
+    if not tree:
+        raise ProfileError(f"умолчания подчарта {chart} ({src}) пусты — унаследованный хост судить не с чем")
+    return tree
+
+
+def console_host_of_profile(umbrella, chain):
+    """Хост консоли, объявленный профилем, либо None (консоль за входом не объявлена)."""
+    layers = [os.path.join(umbrella, "values.yaml")] + [os.path.join(umbrella, p) for p in chain]
+    merged = {}
+    for path in layers:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                merge_values(merged, _yaml_map(fh.read(), path))
+        except OSError as exc:
+            raise ProfileError(f"профиль {path} не читается: {exc}") from exc
+    declared = merged.get(CONSOLE_CHART)
+    uif = merge_values(merge_values({}, subchart_defaults(umbrella, CONSOLE_CHART)),
+                       declared if isinstance(declared, dict) else {}, drop_null=True)
+    ing = uif.get("ingress") if isinstance(uif.get("ingress"), dict) else {}
+    host = ing.get("host")
+    # Переключатели судятся истинностью — так их читает helm (`condition:` и `if`).
+    if uif.get("enabled") and ing.get("enabled") and isinstance(host, str) and host:
+        return host
+    return None
+
+
 def emit(findings, scope, skip):
     for f in findings:
         print(f"FINDING {f}")
@@ -344,6 +446,10 @@ def _prior():
 def _ceremony(**kw):
     paths = kw.pop("paths", [(c, "Exact", EDGE_SERVICE, EDGE_PORT_NAME) for c in CEREMONY_COORDINATES])
     return _ing("api-gateway-ceremony", paths, kw.pop("protocol", CEREMONY_PROTOCOL), **kw)
+
+
+# Хост консоли, который профиль синтетического стека объявляет (uif.ingress.host).
+CONSOLE_HOST = "console.kacho.local"
 
 
 def _console():
@@ -381,7 +487,16 @@ def self_test():
         ("полосы к краю на втором хосте другой поверхности", legit + [_console_lanes(),
             _ing("ui-second", [("/", "Prefix", "ui", 8080)], None, host="console2.kacho.local", secret="ui-tls"),
             _console_lanes(host="console2.kacho.local")],
-         "хостов другой поверхности с полосами к краю 2"),
+         "полосы к краю ведёт хост console2.kacho.local"),
+        # ИНЪЕКЦИЯ, ради которой прощение сужено (kacho#3028, check-verifier
+        # стека a8f60d): хост с полосами ОДИН, форма полос законна, свой `/` у
+        # хоста есть — но это не хост консоли профиля. Счёт хостов её не видит.
+        ("полосы к краю на единственном хосте, который не хост консоли профиля", [_prior(), _ceremony(),
+            _ing("docs", [("/", "Prefix", "docs", 8080)], None, host="docs.kacho.local", secret="ui-tls"),
+            _console_lanes(host="docs.kacho.local")],
+         "полосы к краю ведёт хост docs.kacho.local"),
+        ("полосы к краю на хосте консоли, когда профиль консоли не объявляет", legit + [_console_lanes()],
+         "хост консоли профиля — не объявлен", None),
         ("хост консоли целиком отдан краю", [_prior(), _ceremony(),
             _ing("console-edge", [("/", "Prefix", EDGE_SERVICE, EDGE_PORT_NAME)], PRIOR_PROTOCOL,
                  host="console.kacho.local", secret="ui-tls")],
@@ -420,8 +535,9 @@ def self_test():
             _ceremony(), _console()],
          "прежнее правило"),
     ]
-    for name, docs, want in cases:
-        findings, scope, skip = audit(docs)
+    for case in cases:
+        name, docs, want = case[:3]
+        findings, scope, skip = audit(docs, case[3] if len(case) > 3 else CONSOLE_HOST)
         if want is None:
             if findings or skip is not None:
                 print(f"  ПРОВАЛ {name}: законная форма дала находки {findings} / пропуск {skip}")
@@ -438,25 +554,94 @@ def self_test():
                 rc = 1
             else:
                 print(f"  ОК    {name}: краснеет ({len(findings)} находок)")
-    findings, scope, skip = audit([_console()])
+    findings, scope, skip = audit([_console()], CONSOLE_HOST)
     if skip is None or findings:
         print(f"  ПРОВАЛ рендер без входа края: ждали пропуск, получили {findings} / {scope}")
         rc = 1
     else:
         print("  ОК    рендер без входа края: пропуск, а не зелёное")
-    print(f"=== {'PASS' if rc == 0 else 'FAIL'}: ceremony-ingress-audit.py --self-test ({len(cases) + 1} случаев)")
+    n_profile, rc_profile = self_test_profile()
+    rc |= rc_profile
+    print(f"=== {'PASS' if rc == 0 else 'FAIL'}: ceremony-ingress-audit.py --self-test "
+          f"({len(cases) + 1 + n_profile} случаев)")
     return rc
+
+
+def self_test_profile():
+    """Хост консоли берётся из ДЕЙСТВУЮЩИХ значений, а не из одного слоя."""
+    import io
+    import tempfile
+
+    def chart(root, form, sub):
+        os.makedirs(os.path.join(root, "charts"), exist_ok=True)
+        raw = yaml.safe_dump(sub).encode("utf-8")
+        if form in ("tgz", "both"):
+            with tarfile.open(os.path.join(root, "charts", f"{CONSOLE_CHART}-9.9.9.tgz"), "w:gz") as tf:
+                info = tarfile.TarInfo(f"{CONSOLE_CHART}/values.yaml")
+                info.size = len(raw)
+                tf.addfile(info, io.BytesIO(raw))
+        if form in ("dir", "both"):
+            os.makedirs(os.path.join(root, "charts", CONSOLE_CHART), exist_ok=True)
+            with open(os.path.join(root, "charts", CONSOLE_CHART, "values.yaml"), "wb") as fh:
+                fh.write(raw)
+
+    sub = {"ingress": {"enabled": True, "className": "nginx", "host": "console.default.local"}}
+    base = {CONSOLE_CHART: {"enabled": False}}
+    on = {CONSOLE_CHART: {"enabled": True}}
+    cases = [
+        # (имя, форма подчарта, слои цепочки, ожидаемый хост | ProfileError)
+        ("умолчание подчарта, консоль включена цепочкой", "tgz", [on], "console.default.local"),
+        ("то же, подчарт каталогом", "dir", [on], "console.default.local"),
+        ("хост переопределён последним слоем цепочки", "tgz",
+         [on, {CONSOLE_CHART: {"ingress": {"host": "console.stand.example"}}}], "console.stand.example"),
+        ("консоль выключена умбреллой и не включена цепочкой", "tgz", [], None),
+        ("вход консоли выключен профилем", "tgz", [on, {CONSOLE_CHART: {"ingress": {"enabled": False}}}], None),
+        ("хост снят null — умолчание подчарта удалено, как у helm", "tgz",
+         [on, {CONSOLE_CHART: {"ingress": {"host": None}}}], None),
+        ("подчарт и архивом, и каталогом — источник неоднозначен", "both", [on], ProfileError),
+        ("подчарта нет — умолчания взять неоткуда", "none", [on], ProfileError),
+    ]
+    rc = 0
+    for name, form, chain, want in cases:
+        with tempfile.TemporaryDirectory() as root:
+            with open(os.path.join(root, "values.yaml"), "w", encoding="utf-8") as fh:
+                yaml.safe_dump(base, fh)
+            if form != "none":
+                chart(root, form, sub)
+            names = []
+            for i, layer in enumerate(chain):
+                names.append(f"values.l{i}.yaml")
+                with open(os.path.join(root, names[-1]), "w", encoding="utf-8") as fh:
+                    yaml.safe_dump(layer, fh)
+            try:
+                got = console_host_of_profile(root, names)
+            except ProfileError as exc:
+                got = ProfileError
+                why = str(exc)
+        if got != want:
+            print(f"  ПРОВАЛ профиль: {name}: ждали {want}, получили {got}")
+            rc = 1
+        else:
+            print(f"  ОК    профиль: {name}: {got.__name__ + ' (' + why + ')' if got is ProfileError else got}")
+    return len(cases), rc
 
 
 def main(argv):
     if "--self-test" in sys.argv:
         return self_test()
-    if len(argv) != 2:
-        print("usage: ceremony-ingress-audit.py <render.yaml> | --self-test", file=sys.stderr)
+    if len(argv) < 3:
+        print("usage: ceremony-ingress-audit.py <render.yaml> <каталог умбреллы> [профиль …] | --self-test",
+              file=sys.stderr)
+        return 2
+    try:
+        console_host = console_host_of_profile(argv[2], argv[3:])
+    except ProfileError as exc:
+        print(f"хост консоли из профиля не получен: {exc}", file=sys.stderr)
         return 2
     with open(argv[1], encoding="utf-8") as fh:
         docs = list(yaml.safe_load_all(fh))
-    emit(*audit(docs))
+    print(f"CONSOLE {console_host if console_host else '-'}")
+    emit(*audit(docs, console_host))
     return 0
 
 

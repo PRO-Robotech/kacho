@@ -21,8 +21,9 @@
 #      один; путь `/` к краю ведёт ровно один хост, его объекты края несут один
 #      секрет TLS, правил сверх прежнего и трёх координат на нём нет; хост
 #      другой поверхности (консоли) ведёт к краю лишь полосы — на слушатель
-#      `tls` протоколом HTTPS и тем же TLS, что у `/` этого хоста; такой хост
-#      не больше одного (kacho#3028).
+#      `tls` протоколом HTTPS и тем же TLS, что у `/` этого хоста; такой хост —
+#      только хост консоли, объявленный профилем стека (`uif.ingress.host`
+#      действующих значений цепочки), любой другой — второй вход (kacho#3028).
 #
 # Стек, в рендере которого входа края нет, — не находка и не успех: он
 # печатается счётчиком. Ни одного осмотренного стека — провал, а не чистота.
@@ -65,12 +66,18 @@ for stack in $STACKS; do
   render_nonempty_or_fatal "стек $stack → умбрелла целиком"
   printf '%s\n' "$HELM_OUT" >"$TMP/$stack.yaml"
 
-  out="$(python3 "$AUDIT" "$TMP/$stack.yaml")" \
+  # Хост консоли разборщик берёт из ТЕХ ЖЕ профилей, что легли в рендер: цепочка
+  # стека и умолчания чарта, а не литерал.
+  chain="$(stacks_chain "$stack" ' ')" \
+    || fatal "стек $stack: цепочка профилей не прочитана — хост консоли брать неоткуда"
+  # shellcheck disable=SC2086  # цепочка дробится на имена профилей намеренно
+  out="$(python3 "$AUDIT" "$TMP/$stack.yaml" "$UMBRELLA" $chain)" \
     || fatal "разбор рендера «$stack» отказал — это НЕ находка о дереве"
 
-  seen=0
+  seen=0; console="?"
   while IFS= read -r line; do
     case "$line" in
+      CONSOLE\ *) console="${line#CONSOLE }" ;;
       FINDING\ *) violation "[$stack] ${line#FINDING }" ;;
       SKIP\ *)
         SKIPPED=$((SKIPPED + 1)); seen=1
@@ -83,7 +90,7 @@ for stack in $STACKS; do
         TOT_COORD=$((TOT_COORD + c)); TOT_NEAR=$((TOT_NEAR + nb)); TOT_OTHER=$((TOT_OTHER + o)); TOT_LINK=$((TOT_LINK + l))
         JUDGED=$((JUDGED + 1)); seen=1
         ok
-        echo "  [$stack] координат сверено: $c · соседей и близнецов: $nb · прочих путей: $o · полос хоста консоли: $l"
+        echo "  [$stack] координат сверено: $c · соседей и близнецов: $nb · прочих путей: $o · полос хоста консоли ($console): $l"
         ;;
     esac
   done <<<"$out"
