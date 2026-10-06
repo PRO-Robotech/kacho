@@ -146,10 +146,13 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 		TLSClientConfig: &tls.Config{RootCAs: run.Pool, MinVersion: tls.VersionTLS12}}}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
+		// На внешнем входе точка живости служебная и отказывает (kacho#3030):
+		// готовность — любой ответ HTTP, его даёт уже поднятая раздача. Код
+		// судит assertHealthPointInsideOnly в пробе формы.
 		resp, err := hostClient.Get("https://" + httpsAddr + "/healthz")
 		if err == nil {
 			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
+			if resp.StatusCode != 0 {
 				break
 			}
 		}

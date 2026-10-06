@@ -239,14 +239,18 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 		return &http.Client{Jar: jar, Transport: tlsTransport, Timeout: 10 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
-	waitUp := func(base string) {
+	// Готовность читается по точке живости, и ответ её зависит от порта: на
+	// внутреннем — `200`, на внешнем входе точка служебная и отказывает
+	// (kacho#3030). Поэтому на внешнем входе ждётся ЛЮБОЙ ответ HTTP (want 0) —
+	// его даёт уже поднятая раздача, — а код судит assertHealthPointInsideOnly.
+	waitUp := func(base string, want int) {
 		c := newClient()
 		deadline := time.Now().Add(30 * time.Second)
 		for {
 			resp, err := c.Get(base + "/healthz")
 			if err == nil {
 				resp.Body.Close()
-				if resp.StatusCode == 200 {
+				if want == 0 || resp.StatusCode == want {
 					return
 				}
 			}
@@ -256,9 +260,10 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 			time.Sleep(300 * time.Millisecond)
 		}
 	}
-	waitUp("http://" + internalAddr)
-	waitUp("http://" + plainAddr)
-	waitUp("https://" + httpsAddr)
+	waitUp("http://"+internalAddr, http.StatusOK)
+	waitUp("http://"+plainAddr, http.StatusOK)
+	waitUp("https://"+httpsAddr, 0)
+	assertHealthPointInsideOnly(t, newClient(), "http://"+internalAddr, "https://"+httpsAddr)
 
 	// legitimate — законный клиент консоли: сначала признак, затем форма с ним.
 	legitimate := func(c *http.Client, base, token string) (int, string) {
