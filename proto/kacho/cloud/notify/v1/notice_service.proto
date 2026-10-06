@@ -1,0 +1,126 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package kacho.cloud.notify.v1;
+
+import "google/api/annotations.proto";
+import "corelib/authz/v1/authz_options.proto";
+import "kacho/cloud/notify/v1/notice.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1";
+
+// NoticeService — чтение извещений оператора арендатором. Только чтение:
+// извещение создаёт и ведёт оператор через `InternalNoticeService`.
+//
+// # Что видно из области запроса
+//
+// По проекту `P` (`List`, `Get`) — извещения, в аудитории которых `P`, либо
+// «все аккаунты». По аккаунту `A` (`ListByAccount`, `GetByAccount`) — извещения,
+// в аудитории которых `A`, либо проект, чей аккаунт — `A`, либо «все аккаунты».
+// Извещение, адресованное аккаунту, из области проекта не видно — его читают по
+// аккаунту.
+//
+// # Право
+//
+// У края методы освобождены (`<exempt>`): право судит use-case службы вопросом
+// `v_get` вызывающего на область запроса (`project:<P>` либо `account:<A>`),
+// ПОСЛЕ проверки формы, чтобы неверная форма не становилась объектом вопроса о
+// правах. Порядок проверок: обязательность области → форма id области → форма
+// id извещения (`Get`, `GetByAccount`) → `page_token`/`page_size` (списки) →
+// право → выборка. Отказ права — `PERMISSION_DENIED`; служба доступа не
+// ответила вердиктом — `UNAVAILABLE` с причиной `PEER_UNAVAILABLE`, пустой
+// страницы вместо отказа нет.
+service NoticeService {
+  // List — извещения, видимые из проекта, курсором `(created_at, id)` по
+  // возрастанию. `affected_resources` элементов не заполняется.
+  rpc List(ListNoticesRequest) returns (ListNoticesResponse) {
+    option (google.api.http) = {get: "/notify/v1/notices"};
+    option (corelib.authz.v1.permission)    = "<exempt>";
+    option (corelib.authz.v1.exempt_reason) = "HANDLER_DECIDES";
+  }
+
+  // ListByAccount — извещения, видимые из аккаунта (его собственные, его
+  // проектов и «всем аккаунтам»), курсором `(created_at, id)` по возрастанию.
+  // `affected_resources` элементов не заполняется.
+  rpc ListByAccount(ListNoticesByAccountRequest) returns (ListNoticesResponse) {
+    option (google.api.http) = {get: "/notify/v1/notices:listByAccount"};
+    option (corelib.authz.v1.permission)    = "<exempt>";
+    option (corelib.authz.v1.exempt_reason) = "HANDLER_DECIDES";
+  }
+
+  // Get — извещение, видимое из проекта. Невидимое из области запроса —
+  // `NOT_FOUND` `Notice <id> not found`, побайтно как несуществующее.
+  // `affected_resources` сужены по `v_get` вызывающего.
+  rpc Get(GetNoticeRequest) returns (Notice) {
+    option (google.api.http) = {get: "/notify/v1/notices/{notice_id}"};
+    option (corelib.authz.v1.permission)    = "<exempt>";
+    option (corelib.authz.v1.exempt_reason) = "HANDLER_DECIDES";
+  }
+
+  // GetByAccount — извещение, видимое из аккаунта. Невидимое из области
+  // запроса — `NOT_FOUND` `Notice <id> not found`, побайтно как
+  // несуществующее. `affected_resources` сужены по `v_get` вызывающего.
+  rpc GetByAccount(GetNoticeByAccountRequest) returns (Notice) {
+    option (google.api.http) = {get: "/notify/v1/notices/{notice_id}:getByAccount"};
+    option (corelib.authz.v1.permission)    = "<exempt>";
+    option (corelib.authz.v1.exempt_reason) = "HANDLER_DECIDES";
+  }
+}
+
+message ListNoticesRequest {
+  // project_id — проект, из которого читаются извещения. Обязателен:
+  // пустой — `project_id: required`; неверная форма — `invalid project id '<X>'`.
+  string project_id = 1;
+
+  // page_size — размер страницы: `0` — 50, наибольшее 1000; вне `[0..1000]` —
+  // `INVALID_ARGUMENT` с именем поля, без подрезки.
+  int64 page_size = 2;
+
+  // page_token — непрозрачный курсор из `next_page_token` предыдущего ответа;
+  // мусорный — `INVALID_ARGUMENT` с именем поля, а не первая страница.
+  string page_token = 3;
+}
+
+message ListNoticesByAccountRequest {
+  // account_id — аккаунт, из которого читаются извещения. Обязателен:
+  // пустой — `account_id: required`; неверная форма — `invalid account id '<X>'`.
+  string account_id = 1;
+
+  // page_size — как у `ListNoticesRequest.page_size`.
+  int64 page_size = 2;
+
+  // page_token — как у `ListNoticesRequest.page_token`.
+  string page_token = 3;
+}
+
+message ListNoticesResponse {
+  // notices — страница извещений в порядке `(created_at, id)` по возрастанию
+  // (порядок значим). `affected_resources` элементов не заполняется.
+  repeated Notice notices = 1;
+
+  // next_page_token — курсор следующей страницы; пустой на странице с
+  // последним извещением.
+  string next_page_token = 2;
+}
+
+message GetNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`). Неверная форма —
+  // `invalid notice id '<X>'`.
+  string notice_id = 1;
+
+  // project_id — проект, из которого читается извещение. Обязателен:
+  // пустой — `project_id: required`; неверная форма — `invalid project id '<X>'`.
+  string project_id = 2;
+}
+
+message GetNoticeByAccountRequest {
+  // notice_id — идентификатор извещения (`ntc-…`). Неверная форма —
+  // `invalid notice id '<X>'`.
+  string notice_id = 1;
+
+  // account_id — аккаунт, из которого читается извещение. Обязателен:
+  // пустой — `account_id: required`; неверная форма — `invalid account id '<X>'`.
+  string account_id = 2;
+}
