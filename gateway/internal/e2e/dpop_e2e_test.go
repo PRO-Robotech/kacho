@@ -469,6 +469,10 @@ func TestE2E_StepUpRequired_Challenge(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "insufficient_user_authentication")
 	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), `acr_values="3"`)
+	// Тело — то же указание, что у слоя аутентификации, дословно (сторона края
+	// kaname#511): шаг назван, `code` — gRPC-код, а не номер HTTP-статуса.
+	assert.Equal(t, `{"code":16,"message":"authentication level is insufficient: step up with a second factor, or present a credential of another kind","details":[]}`,
+		rec.Body.String())
 }
 
 // _ = ed25519 keeps the import used should we add EdDSA tests later.

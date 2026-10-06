@@ -357,7 +357,7 @@ const forcedRefreshMinInterval = 3 * time.Second
 // журнал.
 const keySourceUnavailableReason = "token key source unavailable"
 
-// keySourceUnanswerable отвечает на вопрос, который до задачи #1194 не задавался
+// KeySourceUnanswerable отвечает на вопрос, который до задачи #1194 не задавался
 // вовсе: ЧЬЯ это ошибка — предъявителя или наша.
 //
 // Проверка подписи возвращает один тип ошибки на два разных исхода, и склеивать
@@ -383,7 +383,11 @@ const keySourceUnavailableReason = "token key source unavailable"
 // набор). Для ВЫЗЫВАЮЩЕГО это тот же исход — «не твоя вина», — а различать
 // сбой и неверную настройку обязан журнал (`security.md` §Hardening инв. 8),
 // поэтому вызывающие пишут эту ветвь громко.
-func keySourceUnanswerable(err error) bool {
+//
+// Предикат экспортирован, потому что тот же вопрос задаёт обработчик выхода
+// (`handler.LogoutHandler`, kacho#2996): путь выхода проверяет предъявителя сам,
+// и второй, свой предикат разошёлся бы с этим молча.
+func KeySourceUnanswerable(err error) bool {
 	return errors.Is(err, ErrJWKSUnreachable) || errors.Is(err, ErrJWKSFetchFailed)
 }
 

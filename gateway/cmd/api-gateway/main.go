@@ -659,14 +659,14 @@ func main() {
 
 	// --- logout handler ---
 	//
-	// The endpoint is intentionally exempt from the mandatory DPoP/authz
-	// middleware (a user must be able to drop their browser session even with an
-	// expired token). Because of that exemption the handler itself must
-	// authenticate the caller before any server-side revocation: it verifies the
-	// presented access token via the SAME JWKS verifier used on the principal
-	// path and revokes ONLY the caller's own subject. Without a wired verifier
-	// (the dev-class soft pass above: the token audience is not declared)
-	// revocation fails closed (401); only cookie clearing remains.
+	// Выход ПУТИ ТОКЕНОВ (`handler.LogoutHandler`, kacho#2996): путь входит в
+	// перечень прохода решения о правах (`isPublicHTTPPath`), поэтому
+	// предъявителя обработчик проверяет сам — ТЕМ ЖЕ проверяющим JWKS, что полоса
+	// принципала, — и отзывает только собственный субъект проверенного токена.
+	// Печенье браузерной сессии этот путь не гасит ни на одном исходе (kacho#2959):
+	// конец сессии — `POST /iam/v1/auth/logout` полосы входа. Без проверяющего
+	// (мягкий проход класса dev выше: аудитория токена не объявлена) выход «не
+	// выполнен» (`503`) — отзывать нечем, и «вышли» было бы неправдой.
 	var logoutVerifier handler.CallerVerifier
 	if jwtVerifier != nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
@@ -1144,8 +1144,8 @@ func main() {
 		logger.Info("relayed records mounted", "records", mounted)
 	}
 
-	// POST /oauth/logout — revocation of the caller's own token(s) in our record
-	// and the ending of the browser session carrier.
+	// POST /oauth/logout — отзыв собственного токена (токенов) вызывающего в
+	// нашей записи. Браузерную сессию не гасит (kacho#2959).
 	httpMux.Handle("/oauth/logout", logoutHandler)
 
 	// GET /subscription/v1/events — ЕДИНСТВЕННАЯ проекция потока изменений в
@@ -1505,12 +1505,12 @@ func installAuthzSIGHUP(hupCh <-chan os.Signal, authz authzReloader, logger *slo
 	}()
 }
 
-// stopGraceful runs GracefulStop bounded by timeout, then forces Stop() — so a
-// long-lived proxied stream cannot block process shutdown past the grace window.
 // logoutVerifierAdapter bridges the gateway's JWKS access-token verifier to the
 // narrow identity port the logout handler needs. It exposes ONLY the validated
 // subject/jti, so the handler revokes the caller's own session and never trusts
 // a client-supplied subject.
+// Ошибку проверяющего адаптер возвращает как есть: по ней обработчик различает
+// «источник ключей не ответил» (`503`) и «токен негоден» (`401`).
 type logoutVerifierAdapter struct{ v *middleware.JWTVerifier }
 
 func (a logoutVerifierAdapter) Verify(ctx context.Context, token string) (*handler.VerifiedCaller, error) {
@@ -1521,6 +1521,8 @@ func (a logoutVerifierAdapter) Verify(ctx context.Context, token string) (*handl
 	return &handler.VerifiedCaller{Subject: vt.Subject, JTI: vt.JTI}, nil
 }
 
+// stopGraceful runs GracefulStop bounded by timeout, then forces Stop() — so a
+// long-lived proxied stream cannot block process shutdown past the grace window.
 func stopGraceful(s *grpc.Server, timeout time.Duration) {
 	done := make(chan struct{})
 	go func() {

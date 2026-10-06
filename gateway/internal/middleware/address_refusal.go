@@ -37,10 +37,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Значение отказа адреса (приёмка F6b, Р3) — побайтово то, что служба пишет
-// на своей полосе формы (`writeRefusal`) и на своих слушателях (`RefusalStatus`).
+// Значение отказа адреса (приёмка F6b, Р3) — одно у службы и края. Текст
+// называет следующий шаг — подтверждение кодом из письма (решение R36 п. 2;
+// тикет текста — kaname#526, `api-conventions.md` §«Error-format»): прежний
+// текст называл состояние, и клиент API искал шаг по документации. Сторона края
+// введена первой (R36: «край без ожидания службы»); служба переходит на тот же
+// текст дословно своей стороной kaname#526 — до её посадки служба на своих
+// глаголах пишет прежний текст, а `reason` (по нему решает консоль) у обеих один.
 const (
-	addressRefusalText   = "email address is not verified"
+	addressRefusalText   = "email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)"
 	addressRefusalReason = "EMAIL_NOT_VERIFIED"
 	addressRefusalDomain = "iam.kaname.cloud"
 	// addressRefusalDenyReason — причина в ответе решения службы

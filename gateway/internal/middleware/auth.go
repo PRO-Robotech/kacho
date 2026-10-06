@@ -511,7 +511,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		if verr != nil {
 			// Тот же разбор, что и на полосе REST, и по той же причине: пробел на
 			// одной поверхности обессмысливает другую.
-			if keySourceUnanswerable(verr) {
+			if KeySourceUnanswerable(verr) {
 				a.logger.Error("auth: token key source unanswerable; refusing Unavailable",
 					"method", fullMethod, "err", verr)
 				return nil, status.Error(codes.Unavailable, keySourceUnavailableReason)
@@ -1156,7 +1156,7 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 // derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
 // present-but-bad token → 401 fail-closed, never anonymous; a key set that could
-// not be fetched → 503 (see keySourceUnanswerable — #1194), also fail-closed.
+// not be fetched → 503 (see KeySourceUnanswerable — #1194), also fail-closed.
 // Returns true when this path was terminal (401 written, or principal resolved
 // and `next` served) — i.e. the caller must return. Returns false when the path
 // does not apply (no verifier / not an asymmetric Bearer) so the next strategy
@@ -1175,7 +1175,7 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 		// Набор проверочных ключей не добыт ⇒ сбой зависимости: «повтори позже»
 		// (503 / 14), и удостоверение предъявителя тут ни при чём. Всё
 		// остальное — негодный токен: «войди заново» (401 / 16).
-		if keySourceUnanswerable(verr) {
+		if KeySourceUnanswerable(verr) {
 			// Громко: сюда попадает и ответ не по адресу, то есть неверная
 			// настройка, которая иначе живёт вечно тихим предупреждением
 			// (`security.md` §Hardening инв. 8).

@@ -39,7 +39,6 @@ package middleware
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -278,8 +277,8 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 			m.logger.Info("dpop-mw: step-up required",
 				"path", path, "presented_acr", verified.ACR, "required", req.RequiredACRMin)
 			// Указание повысить уровень, а не отказ (приёмка KA1, Р3): токен
-			// признан годным. Перепись производителей 401 знает место поимённо.
-			m.challenge(w, r, http.StatusUnauthorized, challenge, nil)
+			// признан годным. Писатель один на край (`writeHTTPStepUpFloor`).
+			writeHTTPStepUpFloor(w, challenge)
 			return
 		}
 
@@ -393,21 +392,6 @@ func grpcMethodForPath(path string) string {
 		return path
 	}
 	return "/" + path
-}
-
-// challenge writes a 401 with a single WWW-Authenticate header + JSON body.
-func (m *DPoPMiddleware) challenge(w http.ResponseWriter, _ *http.Request, status int, wwwAuth string, extra map[string]any) {
-	w.Header().Set("WWW-Authenticate", wwwAuth)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	body := map[string]any{
-		"code":    status,
-		"message": "authentication failed",
-	}
-	for k, v := range extra {
-		body[k] = v
-	}
-	_ = json.NewEncoder(w).Encode(body)
 }
 
 // injectVerifiedTokenHeaders adds X-Kacho-Principal-* headers from a verified

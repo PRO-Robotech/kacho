@@ -55,9 +55,10 @@ const edgeUnauthScope = "gateway/"
 // edgeStepUpProducers — производители указания повысить уровень (Р3): файл#функция
 // → ожидаемое число мест.
 var edgeStepUpProducers = map[string]int{
-	"gateway/internal/middleware/auth_stepup.go#enforceStepUpHTTP":          1,
+	// Писатель указания на REST — один на край: слой аутентификации и слой
+	// связанных токенов зовут его (сторона края kaname#511).
+	"gateway/internal/middleware/auth_stepup.go#writeHTTPStepUpFloor":       1,
 	"gateway/internal/middleware/auth_stepup.go#enforceStepUpGRPCAssurance": 1,
-	"gateway/internal/middleware/dpop_http_middleware.go#Wrap":              1,
 }
 
 // EdgeUnauthFinding — координата лишнего производителя либо исключения без
