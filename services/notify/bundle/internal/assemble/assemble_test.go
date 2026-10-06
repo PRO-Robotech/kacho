@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 const treeTemplates = "services/notify/notifications"
@@ -30,30 +32,33 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-// syntheticTree — временное дерево с копией каталога шаблонов notify.
+// syntheticTree — временное дерево с копией каталога шаблонов notify. Состав
+// копии — состав индекса (treecorpus), а не диска: проба судит коммит, а не
+// рабочий каталог прогоняющего.
 func syntheticTree(t *testing.T) string {
 	t.Helper()
 	src := filepath.Join(repoRoot(t), treeTemplates)
+	files, err := treecorpus.Under(src)
+	if err != nil {
+		t.Fatalf("ФИКСТУРА: состав %s по индексу: %v", treeTemplates, err)
+	}
 	dst := t.TempDir()
-	n := 0
-	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
+	for _, p := range files {
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			t.Fatalf("ФИКСТУРА: %v", err)
 		}
-		rel, _ := filepath.Rel(src, p)
 		to := filepath.Join(dst, treeTemplates, rel)
 		if err := os.MkdirAll(filepath.Dir(to), 0o750); err != nil {
-			return err
+			t.Fatalf("ФИКСТУРА: %v", err)
 		}
-		data, err := os.ReadFile(p) // #nosec G304 -- обход каталога шаблонов дерева
+		data, err := os.ReadFile(p) // #nosec G304 -- путь из индекса дерева
 		if err != nil {
-			return err
+			t.Fatalf("ФИКСТУРА: %v", err)
 		}
-		n++
-		return os.WriteFile(to, data, 0o600)
-	})
-	if err != nil || n == 0 {
-		t.Fatalf("ФИКСТУРА: копия %s: файлов %d, %v", treeTemplates, n, err)
+		if err := os.WriteFile(to, data, 0o600); err != nil {
+			t.Fatalf("ФИКСТУРА: %v", err)
+		}
 	}
 	return dst
 }
@@ -104,7 +109,8 @@ func TestAssemble_WorkingTreeBuildIsFresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("сборка рабочего дерева: %v", err)
 	}
-	findings, inspected, err := Check(filepath.Join(root, "services/notify/bundle"), out)
+	bundleDir := filepath.Join(root, "services/notify/bundle")
+	findings, inspected, err := Check(bundleDir, out)
 	if err != nil {
 		t.Fatalf("сверка: %v", err)
 	}
@@ -115,6 +121,31 @@ func TestAssemble_WorkingTreeBuildIsFresh(t *testing.T) {
 	}
 	for _, f := range findings {
 		t.Errorf("сборка устарела — make -C services/notify bundle: %s", f)
+	}
+	// Встраивается то, что лежит в КОММИТЕ: файл сборки вне индекса есть у
+	// прогоняющего и нет в образе.
+	tracked := map[string]bool{}
+	for _, d := range outputDirs {
+		files, err := treecorpus.Under(filepath.Join(bundleDir, d))
+		if err != nil {
+			t.Fatalf("состав %s по индексу: %v", d, err)
+		}
+		for _, p := range files {
+			rel, err := filepath.Rel(bundleDir, p)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			tracked[filepath.ToSlash(rel)] = true
+		}
+	}
+	for _, f := range out.Files {
+		if !tracked[f.Path] {
+			t.Errorf("файл сборки %s не в индексе — git add services/notify/bundle", f.Path)
+		}
+		delete(tracked, f.Path)
+	}
+	for p := range tracked {
+		t.Errorf("в индексе файл сборки %s, которого пересборка не выводит", p)
 	}
 }
 
@@ -128,11 +159,6 @@ func TestAssemble_RefusesWhatItCannotBuild(t *testing.T) {
 		sources []Source
 		reason  string
 	}{
-		{"каталог шаблонов службы вне таблицы", func(t *testing.T, root string) {
-			if err := os.MkdirAll(filepath.Join(root, "services/vpc/notifications"), 0o750); err != nil {
-				t.Fatal(err)
-			}
-		}, treeSources(), "services/vpc/notifications"},
 		{"источник без шаблонов", func(t *testing.T, root string) {
 			if err := os.RemoveAll(filepath.Join(root, treeTemplates)); err != nil {
 				t.Fatal(err)
@@ -159,6 +185,30 @@ func TestAssemble_RefusesWhatItCannotBuild(t *testing.T) {
 				t.Errorf("отказ %q не называет %q", err, tc.reason)
 			}
 		})
+	}
+}
+
+// TestAssemble_CopiesWhatTheValidatorReads — файл на «.» в каталоге шаблона
+// валидатор пропускает, и в сборку он не идёт; близнец — дерево без него.
+func TestAssemble_CopiesWhatTheValidatorReads(t *testing.T) {
+	root := syntheticTree(t)
+	twin, err := Assemble(root, treeSources())
+	if err != nil {
+		t.Fatalf("ФИКСТУРА: %v", err)
+	}
+	dirs, err := os.ReadDir(filepath.Join(root, treeTemplates))
+	if err != nil || len(dirs) == 0 {
+		t.Fatalf("ФИКСТУРА: каталогов шаблонов %d, %v", len(dirs), err)
+	}
+	if err := os.WriteFile(filepath.Join(root, treeTemplates, dirs[0].Name(), ".editor.swp"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Assemble(root, treeSources())
+	if err != nil {
+		t.Fatalf("сборка с файлом на «.»: %v", err)
+	}
+	if len(got.Files) != len(twin.Files) {
+		t.Errorf("файлов сборки %d, у близнеца %d — файл на «.» попал в сборку", len(got.Files), len(twin.Files))
 	}
 }
 

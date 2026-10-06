@@ -10,18 +10,20 @@
 //
 //   - Шаблоны попадают в notify только сборкой: регистрации в рантайме нет
 //     (Р7). Источник шаблона — строка закрытой таблицы [Sources]:
-//     пространство ленты (модуль источника) и каталог шаблонов в дереве.
-//     Каталог шаблонов службы (`services/<служба>/notifications`) вне таблицы —
-//     отказ шага с его путём: шаблон, не попавший в сборку молча, был бы
-//     письмом, которое notify откладывает как `template_skew` до истечения.
+//     пространство ленты (модуль источника) и каталог шаблонов в дереве. Шаг
+//     дерево не перечисляет — он читает названные каталоги. Что каждый каталог
+//     шаблонов службы в ИНДЕКСЕ (`services/<служба>/notifications`) назван
+//     таблицей, держит проба пакета по индексу (sources_test.go): шаблон, не
+//     попавший в сборку молча, был бы письмом, которое notify откладывает как
+//     `template_skew` до истечения.
 //   - Каталог источника проверяется единственным валидатором формата
 //     (`notify/spec`, NTF1-A09) — тем же, что notify зовёт на старте над
 //     встроенной копией. Шаблон без ревизии в сборку не входит: ревизию
 //     сборки строка ленты сравнивает с `schema_rev` (клетка 1 З22).
 //   - Файлы шаблона копируются побайтово: валидатор на старте notify читает
 //     ровно то, что проверил шаг. Имена файлов формата здесь не упоминаются —
-//     копируется каждый обычный файл каталога шаблона, а посторонний файл
-//     валидатор уже отверг.
+//     копируется каждый файл каталога шаблона, который читает и валидатор
+//     (имена на «.» оба пропускают), а посторонний файл валидатор уже отверг.
 //   - Тем же шагом порождаются эталон `.eml` и превью (HTML-часть письма)
 //     каждой локали каждого шаблона (З25, NTF1-G17 And) — рендером notify
 //     (internal/render) с постоянными значениями атрибутов и установки:
@@ -84,10 +86,6 @@ const (
 // outputDirs — каталоги вывода в порядке сверки.
 var outputDirs = []string{CatalogDir, GoldenDir, PreviewDir}
 
-// serviceTemplatesGlob — где в дереве лежат каталоги шаблонов служб; каждый
-// найденный обязан быть строкой [Sources].
-const serviceTemplatesGlob = "services/*/notifications"
-
 // Постоянные значения эталона: установка, адресат, строка ленты, момент.
 // Домен example.invalid не разрешается никогда (RFC 2606).
 const (
@@ -122,9 +120,6 @@ func Assemble(root string, sources []Source) (Output, error) {
 	if len(sources) == 0 {
 		return Output{}, errors.New("bundle: таблица источников пуста — собирать нечего")
 	}
-	if err := checkCoverage(root, sources); err != nil {
-		return Output{}, err
-	}
 	r, err := previewRenderer()
 	if err != nil {
 		return Output{}, err
@@ -146,41 +141,6 @@ func Assemble(root string, sources []Source) (Output, error) {
 	}
 	sort.Slice(out.Files, func(i, j int) bool { return out.Files[i].Path < out.Files[j].Path })
 	return out, nil
-}
-
-// checkCoverage — каждый каталог шаблонов службы в дереве назван таблицей.
-func checkCoverage(root string, sources []Source) error {
-	listed := map[string]bool{}
-	for _, s := range sources {
-		listed[path.Clean(s.Dir)] = true
-	}
-	found, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(serviceTemplatesGlob)))
-	if err != nil {
-		return fmt.Errorf("bundle: обход %s: %w", serviceTemplatesGlob, err)
-	}
-	var unlisted []string
-	for _, p := range found {
-		info, err := os.Stat(p)
-		if err != nil {
-			return fmt.Errorf("bundle: %w", err)
-		}
-		if !info.IsDir() {
-			continue
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return fmt.Errorf("bundle: %w", err)
-		}
-		if rel = filepath.ToSlash(rel); !listed[rel] {
-			unlisted = append(unlisted, rel)
-		}
-	}
-	if len(unlisted) > 0 {
-		sort.Strings(unlisted)
-		return fmt.Errorf("bundle: каталоги шаблонов вне таблицы источников сборки (services/notify/bundle/internal/assemble): %s",
-			strings.Join(unlisted, ", "))
-	}
-	return nil
 }
 
 // assembleSource — файлы сборки одного источника и число его шаблонов.
@@ -213,26 +173,25 @@ func assembleSource(root string, src Source, r *render.Renderer) ([]File, int, e
 	return files, len(cat.Templates), nil
 }
 
-// copyTemplate — каждый обычный файл каталога шаблона в CatalogDir.
+// copyTemplate — файлы каталога шаблона в CatalogDir. Отбор тот же, что у
+// валидатора: имена на «.» пропускаются; вложенный каталог валидатор уже
+// отверг (шаблон плоский).
 func copyTemplate(dir, namespace, name, owner string) ([]File, error) {
-	tplFS := os.DirFS(filepath.Join(dir, name))
-	var files []File
-	err := fs.WalkDir(tplFS, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		data, err := fs.ReadFile(tplFS, p)
-		if err != nil {
-			return err
-		}
-		files = append(files, File{Path: path.Join(CatalogDir, namespace, name, p), Data: data, Owner: owner})
-		return nil
-	})
+	tplDir := filepath.Join(dir, name)
+	entries, err := os.ReadDir(tplDir)
 	if err != nil {
-		return nil, fmt.Errorf("bundle: %s: копия каталога шаблона: %w", owner, err)
+		return nil, fmt.Errorf("bundle: %s: каталог шаблона: %w", owner, err)
+	}
+	var files []File
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(tplDir, e.Name())) // #nosec G304 -- файл каталога шаблона, принятого валидатором
+		if err != nil {
+			return nil, fmt.Errorf("bundle: %s: %w", owner, err)
+		}
+		files = append(files, File{Path: path.Join(CatalogDir, namespace, name, e.Name()), Data: data, Owner: owner})
 	}
 	return files, nil
 }

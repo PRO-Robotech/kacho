@@ -534,7 +534,9 @@ test-unit: $(HOOKS_NOTICE)
 ##
 ## Вторая альтернатива отбора — пакеты каталога notify с настоящей базой
 ## (процесс пробы-источника, его глагол Send, точка наката; Д90, Д92; сетка
-## лимитов шлюза internal/limits — полоса N7, З24): их пробы
+## лимитов шлюза internal/limits — полоса N7, З24) и сборка шаблонов bundle
+## (полоса N9: пробы G17 копируют дерево и зовут цели bundle и bundle-check —
+## базы им не нужно, но кратким режимом они гейтятся): их пробы
 ## гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит. Шире
 ## (`cmd/` всех служб) отбор не берётся — радиус не измерен.
 ##
@@ -581,7 +583,7 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; fi; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/(cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'); \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)|/services/notify/(bundle|cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l)) — ОТКАЗ: исполнено проб 0" >&2; exit 1; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); \
