@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.6
+# Build stage — Docusaurus static build
+FROM node:26-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# .dockerignore excludes node_modules/build/.docusaurus/.git
+COPY . .
+RUN npm run build
+
+# Runtime — nginx раздаёт статику Docusaurus (без proxy_pass).
+# nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные
+# файлы уводит в /tmp — поэтому уживается с runAsNonRoot + readOnlyRootFilesystem
+# (см. deploy/templates/deployment.yaml).
+FROM nginxinc/nginx-unprivileged:1.31-alpine
+COPY --from=build /app/build /usr/share/nginx/html
+COPY deploy/default.conf /etc/nginx/conf.d/default.conf
+
+# Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
+USER 101
+
+EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]
