@@ -469,6 +469,12 @@ kacho-nlb:
     pullPolicy: IfNotPresent
 uif:
   enabled: true
+  # Контроллер входа здесь вне зонта (`ingress-nginx.enabled: false`): полос края
+  # на хосте консоли зонт не рендерит, и вход пути потока объявляет сам чарт
+  # консоли (values.yaml зонта, `uif.subscriptionStream.ingress`).
+  subscriptionStream:
+    ingress:
+      enabled: true
   # Внешний вход консоли под TLS (kacho#3024) в этом профиле ВЫКЛЮЧЕН: вход по
   # доменному имени с поставщиком сертификата и приём во владение Service
   # площадки — отдельный шаг той же задачи (см. «ВНЕШНИЙ ORIGIN КОНСОЛИ» выше).

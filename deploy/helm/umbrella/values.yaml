@@ -689,6 +689,17 @@ ingress-nginx:
 # set `uif.enabled: true` and reproduce the host/remote images below.
 uif:
   enabled: false
+  # Вход пути потока изменений объявляет ЗОНТ (console-edge-lanes, kacho#3028):
+  # там, где контроллер входа чарта ведёт хост консоли, путь потока идёт прямо
+  # к краю, и собственный вход чарта консоли на ту же пару host+path был бы
+  # вторым — контроллер отверг бы его при приёме. Профиль, где контроллер входа
+  # вне зонта (`ingress-nginx.enabled: false`), полос края не рендерит и
+  # возвращает вход чарту консоли: `true`. Несогласованную пару зонт не
+  # рендерит (fail в console-edge-lanes-ingress.yaml); один вход на пару в
+  # каждой цепочке судит deploy/ingress_route_single_owner_render_test.go.
+  subscriptionStream:
+    ingress:
+      enabled: false
 
 # ─── ЧУЖОГО СТЕКА ЛИЧНОСТИ В ЗОНТЕ НЕТ (#2735, #2777, #1276) ───────────────
 #

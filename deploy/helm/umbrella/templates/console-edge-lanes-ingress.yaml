@@ -26,6 +26,15 @@
 
 Поток изменений — отдельным объектом: буферизацию и срок чтения контроллер
 ставит на объект, а не на путь (те же величины, что у объекта потока консоли).
+
+ОДИН ВХОД НА ПАРУ host+path. Чарт консоли объявляет свой вход того же пути
+потока (ui-future/deploy/templates/ingress-subscription-stream.yaml);
+контроллер отвергает второй объект на ту же пару при приёме, и установка
+падает целиком. Здесь, где путь потока ведут полосы края, вход чарта консоли
+обязан быть выключен (`uif.subscriptionStream.ingress.enabled: false`); где
+полос края нет, а вход консоли есть, — включён. Несогласованная пара не
+рендерится: иначе путь объявлен дважды либо не объявлен ни разу (и поток шёл
+бы общим входом с накоплением ответа).
 */ -}}
 {{- $uif := .Values.uif | default dict }}
 {{- $uing := $uif.ingress | default dict }}
@@ -33,7 +42,15 @@
 {{- $tls := $agw.tls | default dict }}
 {{- $ing := index .Values "ingress-nginx" | default dict }}
 {{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
-{{- if and $uif.enabled $uing.enabled $tls.enabled $ingOn }}
+{{- $lanesOn := and $uif.enabled $uing.enabled $tls.enabled $ingOn }}
+{{- $uifStreamEntry := dig "subscriptionStream" "ingress" "enabled" true $uif }}
+{{- if and $lanesOn $uifStreamEntry }}
+{{- fail "путь потока изменений на хосте консоли ведут полосы края (console-edge-lanes-subscription-stream): uif.subscriptionStream.ingress.enabled обязан быть false — второй вход на ту же пару host+path контроллер отвергнет" }}
+{{- end }}
+{{- if and $uif.enabled $uing.enabled (not $lanesOn) (not $uifStreamEntry) }}
+{{- fail "полос края на хосте консоли нет, а вход чарта консоли для пути потока выключен: uif.subscriptionStream.ingress.enabled обязан быть true — иначе путь потока не объявлен ни одним входом" }}
+{{- end }}
+{{- if $lanesOn }}
 {{- $edge := $agw.name | default "api-gateway" }}
 {{- $host := required "uif.ingress.host обязателен" $uing.host }}
 {{- $class := $uing.className | default "nginx" }}
