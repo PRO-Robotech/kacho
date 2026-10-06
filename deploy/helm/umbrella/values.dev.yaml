@@ -1016,9 +1016,9 @@ kaname:
     configMapName: kacho-module-manifests
     required: true
   # ── ЗВЕНО ИДЕНТИЧНОСТИ СЛУЖБ Р2 (NTF1-M09): notify спрашивает ResolveSend
-  # своим листом (`notify.fullnameOverride: kacho-notify` → SAN учётки
-  # kacho-notify), и служба доступа узнаёт в нём субъект `service:notify`. Без
-  # звена решение о письме — отказ (fail-closed), и цикл доставки стоит.
+  # своим клиентским листом (SAN учётки из `notify.fullnameOverride`), и служба
+  # доступа узнаёт в нём субъект `service:notify`. Без звена решение о письме —
+  # отказ (fail-closed), и цикл доставки стоит.
   serviceIdentity:
     methods:
       - kaname.cloud.iam.v1.InternalNotificationGrantService/ResolveSend
