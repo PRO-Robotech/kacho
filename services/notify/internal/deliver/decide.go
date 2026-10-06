@@ -385,12 +385,18 @@ func clampDefer(d time.Duration) time.Duration {
 	return min(max(d, feed.MinDefer), feed.MaxDefer)
 }
 
-// cellSend — клетка 10: рендер и одна SMTP-сессия под крайним моментом
-// строки; исход — клетка Р11 таблицы smtp.Classify.
+// cellSend — клетка 10: рендер, подпись DKIM и одна SMTP-сессия под крайним
+// моментом строки; исход — клетка Р11 таблицы smtp.Classify.
 func (w *Worker) cellSend(ctx context.Context, j *job) Step {
-	msg, err := w.render.Render(j.res)
+	letter, err := w.render.Render(j.res)
 	if err != nil {
 		w.log.Error("письмо не собрано: строка отложена",
+			"source", j.rt.src.Module, "id", j.row.GetId(), "template", j.res.Template.Name, "err", err.Error())
+		return deferred(feed.ReasonPlatformUnavailable, w.deferFor)
+	}
+	msg, err := w.signer.Sign(letter)
+	if err != nil {
+		w.log.Error("письмо не подписано DKIM: строка отложена",
 			"source", j.rt.src.Module, "id", j.row.GetId(), "template", j.res.Template.Name, "err", err.Error())
 		return deferred(feed.ReasonPlatformUnavailable, w.deferFor)
 	}
