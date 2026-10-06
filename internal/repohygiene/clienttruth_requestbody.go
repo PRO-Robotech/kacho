@@ -216,10 +216,11 @@ import (
 	// Регистрация дескрипторов ВСЕХ доменов: источник путей, методов и сообщений.
 	// Пакет контракта и имя каталога сервиса — РАЗНЫЕ словари: балансировщик
 	// живёт в `services/nlb`, а его контракт — в `kacho.cloud.loadbalancer.v1`.
-	// Совпадение имён у остальных шести — совпадение, а не свойство дерева.
+	// Совпадение имён у остальных — совпадение, а не свойство дерева.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -239,6 +240,11 @@ type ClientTruthRequestBodyDomain struct {
 	// UseCaseDirs — каталоги прод-кода use-case'ов (от корня дерева), откуда
 	// выводится набор полей, отвергаемых на входе ЭТИМ доменом.
 	UseCaseDirs []string
+	// NoBodyMethods — у пакета контракта нет ни одного метода с телом
+	// HTTP-привязки (служба без внешнего API). Объявление судится по
+	// дескрипторам: пакет обязан быть зарегистрирован и не нести методов с
+	// телом, иначе отметка — находка.
+	NoBodyMethods bool
 }
 
 // ClientTruthRequestBodyOptions — вход анализатора.
@@ -315,9 +321,12 @@ type ClientTruthRequestBodyCensus struct {
 
 // ClientTruthRequestBodyDomainCensus — перепись одного домена.
 type ClientTruthRequestBodyDomainCensus struct {
-	Name               string
-	ProtoPackage       string
-	Methods            int
+	Name         string
+	ProtoPackage string
+	Methods      int
+	// NoBodyMethods — домен отмечен как не несущий методов с телом: ноль в
+	// Methods у него — проверенный факт о дескрипторах, а не «не прочитано».
+	NoBodyMethods      bool
 	DocFiles           int
 	CurlBlocks         int
 	BodiesParsed       int
@@ -478,7 +487,16 @@ func AuditClientTruthRequestBody(
 		if err != nil {
 			return nil, census, err
 		}
-		if len(bindings) == 0 {
+		switch {
+		case d.NoBodyMethods && !packageRegistered(d.ProtoPackage):
+			return nil, census, fmt.Errorf(
+				"домен %s: пакет %s не зарегистрирован — отметка «методов с телом нет» "+
+					"о непрочитанных дескрипторах ничего не утверждает", d.Name, d.ProtoPackage)
+		case d.NoBodyMethods && len(bindings) > 0:
+			return nil, census, fmt.Errorf(
+				"домен %s: у пакета %s методов с телом %d — отметка «методов с телом нет» "+
+					"пережила свой предмет, снимите её", d.Name, d.ProtoPackage, len(bindings))
+		case !d.NoBodyMethods && len(bindings) == 0:
 			return nil, census, fmt.Errorf(
 				"домен %s: из дескрипторов пакета %s не выведено ни одного метода с телом — "+
 					"судить примеры не по чему", d.Name, d.ProtoPackage)
@@ -493,7 +511,7 @@ func AuditClientTruthRequestBody(
 
 		census.Domains = append(census.Domains, ClientTruthRequestBodyDomainCensus{
 			Name: d.Name, ProtoPackage: d.ProtoPackage,
-			Methods: len(bindings), RejectedFields: len(rejected),
+			Methods: len(bindings), NoBodyMethods: d.NoBodyMethods, RejectedFields: len(rejected),
 			RejectedFreeForm: freeForm,
 		})
 		census.Methods += len(bindings)
@@ -845,6 +863,17 @@ func collectHTTPBindings(pkg string) ([]httpMethodBinding, error) {
 	// перепись и вердикт не зависели от прогона.
 	sort.Slice(out, func(i, j int) bool { return out[i].path() < out[j].path() })
 	return out, nil
+}
+
+// packageRegistered — у пакета pkg есть хотя бы один зарегистрированный файл
+// дескрипторов.
+func packageRegistered(pkg string) bool {
+	found := false
+	protoregistry.GlobalFiles.RangeFilesByPackage(protoreflect.FullName(pkg), func(protoreflect.FileDescriptor) bool {
+		found = true
+		return false
+	})
+	return found
 }
 
 func httpRule(m protoreflect.MethodDescriptor) (*annotations.HttpRule, bool) {

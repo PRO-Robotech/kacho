@@ -1,0 +1,5 @@
+apiVersion: v2
+name: notify-docs
+version: 0.1.0
+appVersion: 0.1.0
+description: Kachō Notify docs — Docusaurus (AntD-flavored) static site, nginx-served
