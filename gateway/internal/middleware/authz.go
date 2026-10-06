@@ -43,6 +43,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -61,6 +62,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
 
@@ -373,6 +375,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: req,
 			GRPCPeer: peerAddr(ctx),
+			GRPCLink: linktls.PeerState(ctx),
 			GRPCMeta: incomingMD(ctx),
 		})
 		switch decision.outcome {
@@ -409,7 +412,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return nil, status.Error(codes.Unavailable, "authz service unavailable")
+			return nil, status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(ctx, req)
 		}
@@ -429,6 +432,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: nil, // stream requests aren't materialised yet
 			GRPCPeer: peerAddr(ss.Context()),
+			GRPCLink: linktls.PeerState(ss.Context()),
 			GRPCMeta: incomingMD(ss.Context()),
 			Stream:   true,
 		})
@@ -461,7 +465,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return status.Error(codes.Unavailable, "authz service unavailable")
+			return status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(srv, ss)
 		}
@@ -541,7 +545,7 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			m.metrics.RecordErrorRefused()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"code":14,"message":"authz service unavailable"}`))
+			_, _ = w.Write([]byte(authzUndecidedBody))
 		default:
 			next.ServeHTTP(w, r)
 		}
@@ -555,6 +559,11 @@ type decisionRequest struct {
 	ProtoReq any
 	HTTPReq  *http.Request
 	GRPCPeer string
+	// GRPCLink — состояние TLS соединения с пиром (nil — не TLS); по нему
+	// оператор адреса узнаёт звено фронта (kacho#3028, C4). Берётся из
+	// linktls.PeerState: состояние, которое внешний сервер края кладёт своим
+	// типом, а не credentials.TLSInfo (linktls.AuthInfo).
+	GRPCLink *tls.ConnectionState
 	GRPCMeta metadata.MD
 	// Stream marks the stream-interceptor lane, where the client request message
 	// is not read before the RPC is gated (ProtoReq is therefore nil). Set ONLY
@@ -1195,7 +1204,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	if dr.HTTPReq != nil {
 		contextMap = m.cfg.Context.BuildHTTP(verified, dr.HTTPReq, subj)
 	} else if dr.GRPCMeta != nil || dr.GRPCPeer != "" {
-		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), grpcMetaForwardedFor(dr.GRPCMeta), subj)
+		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), dr.GRPCLink, dr.GRPCMeta, subj)
 	} else {
 		contextMap = m.cfg.Context.BuildHTTP(verified, nil, subj)
 	}
@@ -1316,3 +1325,13 @@ func denyDecision(fqn string, entry CatalogEntry, descriptor permissionDeniedDes
 		entry:      entry,
 	}
 }
+
+// authzUndecidedText — отказ, когда решение о правах не получено (источник
+// вердикта не ответил): `UNAVAILABLE` / `503`, повторить. Текст называет
+// исход, а не часть края, которая лежит: имя внутренней службы наружу — карта
+// топологии для того, кто изучает поверхность, и ничего не даёт арендатору
+// (kacho#3029; гейт `TestEdgeRefusalNamesNoInternalService`).
+const authzUndecidedText = "authorization could not be decided; try again later"
+
+// authzUndecidedBody — тот же отказ на REST в форме `google.rpc.Status`.
+const authzUndecidedBody = `{"code":14,"message":"` + authzUndecidedText + `","details":[]}`

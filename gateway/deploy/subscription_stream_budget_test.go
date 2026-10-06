@@ -414,6 +414,13 @@ var proxyTimeoutConsumers = map[string]proxyConsumerRecord{
 		Why: "собственный вход подчарта; в умбрелле ВЫКЛЮЧЕН намеренно (он смотрел бы " +
 			"в незашифрованный слушатель), но при отдельной установке чарта он и есть вход",
 	},
+	"deploy/helm/umbrella/templates/console-edge-lanes-ingress.yaml": {
+		Toggle: "uif.enabled",
+		Why: "полосы края на хосте консоли, которые контроллер входа ведёт прямо к краю (kacho#3028): " +
+			"поток изменений — отдельным объектом; предел чтения — величина консоли " +
+			"`uif.subscriptionStream.proxyReadTimeout`, её сверяет со сроком потока края " +
+			"ui-future/deploy/subscription_stream_serving_test.go",
+	},
 	"deploy/helm/umbrella/templates/api-gateway-ingress.yaml": {
 		Toggle: "apiGatewayIngress.enabled",
 		Why: "вход, принадлежащий умбрелле; величину предела наследует из значений подчарта — " +

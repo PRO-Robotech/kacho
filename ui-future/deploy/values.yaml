@@ -12,7 +12,21 @@ ingress:
   className: nginx
   host: console.kacho.local
   annotations: {}
+  # Записи TLS Ingress: `[{hosts: [<хост>], secretName: <секрет>}]`. Пусто ⇒
+  # контроллер раздаёт хост по открытому http, и Secure-печенье формы браузер
+  # с него не хранит (kacho#3025): пустой перечень годится только стенду, где
+  # консоль впереди закрывает собственная раздача (`publicFront`).
   tls: []
+  # Лист для каждой записи `tls`. true ⇒ чарт заводит cert-manager Certificate
+  # в `secretName` записи с её `hosts` у поставщика `issuerRef`; false ⇒ секрет
+  # заводит оператор. Поставщик — решение площадки, а не продукта: умолчания у
+  # него нет, и включённый блок без поставщика рендер отказывает.
+  certificate:
+    create: false
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
 
 # ─── ВНЕШНИЙ ВХОД КОНСОЛИ БЕЗ INGRESS-КОНТРОЛЛЕРА: TLS НА САМОЙ РАЗДАЧЕ ──────
 #
@@ -38,8 +52,16 @@ ingress:
 # (или не покрытым сертификатом) рендер ОТКАЗЫВАЕТ и называет ручку.
 #
 # ПРОДЛЕНИЕ. Сертификат меняется в секрете на месте; раздача перечитывает его
-# сама (`tls.reloadIntervalSeconds`), без перезапуска пода: иначе после продления
-# под отдавал бы прежний, истекающий лист до случайного перезапуска.
+# сама (`tlsReload.intervalSeconds` ниже — один сторож на все листы раздачи), без
+# перезапуска пода: иначе после продления под отдавал бы прежний, истекающий
+# лист до случайного перезапуска.
+# ─── СТОРОЖ ЛИСТОВ РАЗДАЧИ ───────────────────────────────────────────────────
+# Один на все листы раздачи: лист звена к краю (`host.edgeLink`, всегда) и лист
+# пользовательского края (`publicFront.tls`, когда включён). Период в секундах,
+# (0, 3600]: продлённый лист nginx перечитывает сам, без перезапуска пода.
+tlsReload:
+  intervalSeconds: 300
+
 publicFront:
   enabled: false
   service:
@@ -53,7 +75,6 @@ publicFront:
   tls:
     # Секрет `kubernetes.io/tls` (ключи tls.crt / tls.key).
     secretName: ""
-    reloadIntervalSeconds: 300
     certificate:
       # true ⇒ чарт заводит cert-manager Certificate в этот секрет у поставщика
       # `issuerRef`. false ⇒ секрет заводит оператор; чарт его только монтирует.
@@ -85,6 +106,14 @@ subscriptionStream:
   # Сверяет ui-future/deploy/subscription_stream_serving_test.go — он читает срок
   # У КРАЯ, а не выписывает его копию здесь.
   proxyReadTimeout: "120"
+  # ingress.enabled — объявляет ли ЭТОТ чарт свой вход для пути потока
+  # (templates/ingress-subscription-stream.yaml). У пары host+path вход ровно
+  # один: контроллер отвергает второй объект на ту же пару при приёме. Зонт,
+  # который ведёт полосы края на хосте консоли сам (console-edge-lanes,
+  # kacho#3028), выключает здесь этот вход — путь потока у него идёт прямо к
+  # краю, а не через раздачу. Отдельно поставленный чарт оставляет `true`.
+  ingress:
+    enabled: true
 
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
@@ -165,8 +194,26 @@ host:
   # краю поставщика — находка, и таких цепочек с консолью обязана быть хотя бы
   # одна (приёмка F8, §4). Отсутствие адресов поставщика у наших нагрузок держит
   # deploy/stack_render_carries_no_vendor_residue_test.go.
+  # ─── ЗВЕНО ФРОНТА К КРАЮ (kacho#3028) ───────────────────────────────────────
+  # Полосы раздачи к краю идут по TLS на его ВНЕШНИЙ слушатель (порт `tls`
+  # края, 8443) и предъявляют лист звена: край принимает адрес клиента из
+  # `X-Forwarded-For` только от пира, предъявившего лист якоря звеньев с именем
+  # звена. Открытый порт края (`cmux`, 8080) раздача больше не зовёт: на нём
+  # рукопожатия нет, и звено там не опознаётся — все клиенты раздачи были бы
+  # для края одним адресом её пода.
+  #
+  #   secretName   — лист звена (tls.crt/tls.key); выпускает его умбрелла
+  #                  выпускающим якоря звеньев (templates/api-gateway-front-link-pki.yaml);
+  #   caSecretName — секрет, из которого берётся ТОЛЬКО ca.crt: удостоверяющий
+  #                  центр серверного листа края (им раздача проверяет край);
+  #   продление листа — сторож `tlsReload` (ниже).
+  edgeLink:
+    secretName: api-gateway-front-console-link
+    caSecretName: api-gateway-tls
   upstreams:
-    apiGateway: api-gateway.kacho.svc.cluster.local:8080
+    # Адрес ВНЕШНЕГО TLS-слушателя края; его хост — имя сервера, которое
+    # раздача сверяет с листом края (ui.edgeServerName).
+    apiGateway: api-gateway.kacho.svc.cluster.local:8443
     dashboard: ""
     vpc: ""
     iam: ""

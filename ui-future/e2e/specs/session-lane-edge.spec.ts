@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type APIResponse, type TestInfo } from "@playwright/test";
+import { expect, type TestInfo } from "@playwright/test";
 import {
   LANE,
   SEED_PASSWORD,
@@ -18,6 +18,7 @@ import {
 } from "./ceremony-seed";
 import { runTag, test } from "./fixtures";
 import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver";
+import { answerOf, bareSeed, carrierOf, expectSessionLaneRefusal, signedIn } from "./session-lane";
 
 /**
  * Полоса нашей сессии ЧЕРЕЗ КРАЙ на живом стенде — позиции приёмок Ф3 и Ф5,
@@ -79,62 +80,6 @@ const SESSION_KEYS = ["assuranceLevel", "emailVerified", "expiresAt"];
 
 /** Новый пароль восстановления — отличим от пароля посева, иначе вход под `L` не различал бы два пароля. */
 const RECOVERED_PASSWORD = `${SEED_PASSWORD}-recovered`;
-
-interface Answer {
-  status: number;
-  text: string;
-  setCookie: string[];
-  /** Вызов повышения края (`WWW-Authenticate`) — пусто, если его нет. */
-  challenge: string;
-}
-
-async function answerOf(res: APIResponse): Promise<Answer> {
-  return {
-    status: res.status(),
-    text: await res.text(),
-    setCookie: res
-      .headersArray()
-      .filter((h) => h.name.toLowerCase() === "set-cookie")
-      .map((h) => h.value),
-    challenge: res.headers()["www-authenticate"] ?? "",
-  };
-}
-
-/** Печенье носителя у посева — как выдано службой; нет — шаг отказывает с причиной. */
-async function carrierOf(seed: Seed, who: string): Promise<Cookie> {
-  const cookie = (await seed.api.storageState()).cookies.find((c) => c.name === SESSION_COOKIE);
-  expect(cookie, `${who}: носителя ${SESSION_COOKIE} у контекста нет — шаг «Дано» не собран`).toBeTruthy();
-  return cookie!;
-}
-
-/** Отказ полосы личности F4d-22: 401, текст отсечки, носитель гасится (`Max-Age=0`). */
-function expectSessionLaneRefusal(a: Answer, who: string) {
-  expect(a.status, `${who}: отвергнутая сессия обязана получать 401 полосы личности — ${a.text}`).toBe(401);
-  expect(a.text, `${who}: текст отказа — текст отсечки, один на пять причин (Ф1-17)`).toContain(
-    "authentication failed",
-  );
-  expect(
-    a.setCookie.some((v) => new RegExp(`^${SESSION_COOKIE}=;`).test(v) && /max-age=0/i.test(v)),
-    `${who}: носитель обязан гаситься (F4d-24), Set-Cookie: ${JSON.stringify(a.setCookie)}`,
-  ).toBe(true);
-}
-
-/** Контекст без носителя либо с названными печеньями — и только с ними. */
-async function bareSeed(testInfo: TestInfo, carrying: readonly Cookie[] = []): Promise<Seed> {
-  return newSeed(testInfo, carrying);
-}
-
-/** Вход паролем своим контекстом: `200`, носитель у контекста — шаг утверждает свой исход. */
-async function signedIn(testInfo: TestInfo, email: string, password: string, who: string): Promise<Seed> {
-  const seed = await bareSeed(testInfo);
-  const res = await seed.submit(LANE.login, "login", { email, password });
-  expect(
-    res.status(),
-    `${who}: вход ${email} отвергнут — ${res.status()} ${JSON.stringify(lastIssued(seed, LANE.login).body)}`,
-  ).toBe(200);
-  await carrierOf(seed, who);
-  return seed;
-}
 
 test("Ф3-14 · «кто я» отвечает из нашей сессии, а чужое имя печенья личностью не становится", async ({ browserName: _browserName }, testInfo) => {
   // verifies #1269 — Ф3-14 (Ф3 20ccad56…), сквозная половина: маршрут «кто я» — край.
@@ -365,5 +310,88 @@ test("Ф12-20 · через край пол «2» отвергает сесси�
     expect(passed.status, `пол «2» после повышения обязан проходить: ${passed.text}`).toBe(200);
   } finally {
     await Promise.all([owner.dispose(), lane.dispose()]);
+  }
+});
+
+test("Ф3-15 · выход через край гасит СВОЮ сессию на стороне сервера, вторая жива, повтор — тот же 200", async ({ browserName: _browserName }, testInfo) => {
+  // verifies #1269 — п.2 предиката: Ф3-15 (Ф3 20ccad56…) сквозной пробой через край на посадке own.
+  test.setTimeout(240_000);
+  const first = await newSeed(testInfo);
+  const human = await seedConfirmedHuman(first, seedAddress("f3-15"));
+  const second = await signedIn(testInfo, human.email, human.password, "S2");
+  const s1 = await carrierOf(first, "S1");
+  // Копия носителя S1 сохранена ВНЕ контекста, который выйдет.
+  const savedCopy = await bareSeed(testInfo, [s1]);
+  const repeat = await bareSeed(testInfo, [s1]);
+  try {
+    expect((await savedCopy.read(SESSION_IDENTITY)).status(), "копия S1 до выхода — живая сессия").toBe(200);
+
+    // Когда: выход носителем S1 через край — 200, тело {}, носитель гасится.
+    const out = await answerOf(await first.submit(LANE.logout, "logout", {}));
+    expect({ status: out.status, text: out.text }, "выход — 200 и тело {}").toEqual({ status: 200, text: "{}" });
+    expect(
+      out.setCookie.some((v) => new RegExp(`^${SESSION_COOKIE}=;`).test(v) && /max-age=0/i.test(v)),
+      `выход обязан гасить носитель, Set-Cookie: ${JSON.stringify(out.setCookie)}`,
+    ).toBe(true);
+
+    // Тогда: сохранённая копия S1 — отказ F4d-22 на стороне сервера; S2 — проходит.
+    expectSessionLaneRefusal(await answerOf(await savedCopy.read(SESSION_IDENTITY)), "копия S1 после выхода");
+    const alive = await answerOf(await second.read(SESSION_IDENTITY));
+    expect(alive.status, `S2 после выхода из S1 обязана проходить — ${alive.text}`).toBe(200);
+    expect((JSON.parse(alive.text) as { user?: { email?: unknown } }).user?.email).toBe(human.email);
+
+    // Повтор выхода носителем снятой S1 через край — тот же 200 и то же гашение (Ф1-18, ретрансляция Р7).
+    const again = await answerOf(await repeat.submit(LANE.logout, "logout", {}));
+    expect({ status: again.status, text: again.text }, "повтор выхода снятым носителем — тот же 200 {}").toEqual({
+      status: 200,
+      text: "{}",
+    });
+    expect(
+      again.setCookie.some((v) => new RegExp(`^${SESSION_COOKIE}=;`).test(v) && /max-age=0/i.test(v)),
+      `повтор выхода обязан гасить носитель тем же образом, Set-Cookie: ${JSON.stringify(again.setCookie)}`,
+    ).toBe(true);
+    expect((await second.read(SESSION_IDENTITY)).status(), "повтор выхода из S1 не трогает S2").toBe(200);
+  } finally {
+    await Promise.all([first, second, savedCopy, repeat].map((s) => s.dispose()));
+  }
+});
+
+test("Ф3-19 · смена пароля через край перевыпускает носитель, гасит прежний и прочие сессии, прежний пароль негоден", async ({ browserName: _browserName }, testInfo) => {
+  // verifies #1269 — п.3 предиката: Ф3-19 и Ф1-15 (Ф3 20ccad56…) сквозной пробой через край на посадке own.
+  test.setTimeout(240_000);
+  const changer = await newSeed(testInfo);
+  const human = await seedConfirmedHuman(changer, seedAddress("f3-19"));
+  const other = await signedIn(testInfo, human.email, human.password, "прочая сессия");
+  const before = await carrierOf(changer, "S");
+  const oldCopy = await bareSeed(testInfo, [before]);
+  const newPassword = `${SEED_PASSWORD}-changed`;
+  try {
+    const changed = await changer.submit(LANE.password, "password", {
+      currentPassword: human.password,
+      newPassword,
+    });
+    expect(changed.status(), `смена пароля — ${JSON.stringify(lastIssued(changer, LANE.password).body)}`).toBe(200);
+    const after = await carrierOf(changer, "S после смены");
+    expect(after.value, "смена пароля обязана перевыпустить носитель (F4d-19)").not.toBe(before.value);
+
+    // Новый носитель — тот же человек; прежний носитель S и прочая сессия — отказ F4d-22.
+    const current = await answerOf(await changer.read(SESSION_IDENTITY));
+    expect(current.status, `новый носитель — ${current.text}`).toBe(200);
+    expect((JSON.parse(current.text) as { user?: { email?: unknown } }).user?.email).toBe(human.email);
+    const refusedOld = await answerOf(await oldCopy.read(SESSION_IDENTITY));
+    const refusedOther = await answerOf(await other.read(SESSION_IDENTITY));
+    expectSessionLaneRefusal(refusedOld, "прежний носитель S");
+    expectSessionLaneRefusal(refusedOther, "прочая сессия после смены пароля");
+    expect(refusedOther.text, "отказы прежнему и прочему носителю — один ответ").toBe(refusedOld.text);
+
+    // Вход прежним паролем — 401; новым — 200 (обе стороны F4d-19).
+    const oldLogin = await newSeed(testInfo);
+    const oldPassword = await oldLogin.submit(LANE.login, "login", { email: human.email, password: human.password });
+    await oldLogin.dispose();
+    expect(oldPassword.status(), "вход прежним паролем после смены обязан отвергаться").toBe(401);
+    const fresh = await signedIn(testInfo, human.email, newPassword, "вход новым паролем");
+    await fresh.dispose();
+  } finally {
+    await Promise.all([changer, other, oldCopy].map((s) => s.dispose()));
   }
 });

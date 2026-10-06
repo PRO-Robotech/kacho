@@ -22,6 +22,9 @@ spec:
         {{- include "ui.nlbSelectorLabels" . | nindent 8 }}
       annotations:
         checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+        # Привязка к содержимому образа (kacho#3026): тег `:dev` неизменен, и без
+        # идентификатора содержимого пересобранный модуль не перекатился бы.
+        kacho.cloud/image-id: {{ dig "kachoImageIds" "ui-future/nlb" "unset" (.Values.global | default dict) | quote }}
     spec:
       # Ужесточение пода (trivy KSV-0118): non-root + seccomp RuntimeDefault.
       # uid 101 — пользователь образа nginx-unprivileged.

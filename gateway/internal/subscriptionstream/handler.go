@@ -552,7 +552,9 @@ func (h *Handler) ownerRefusal(err error, owner string) refusal {
 		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "internal error"}
 	case codes.Unavailable:
 		h.log.Warn("subscription owner is unavailable", "owner", owner)
-		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "subscription backend unavailable"}
+		// Текст не называет ни владельца, ни часть края (kacho#3029): действие
+		// арендатора на `503` одно — повторить; владелец — в журнале.
+		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "the subscription stream could not be opened; try again later"}
 	case codes.Unimplemented:
 		// Владелец объявлен посадкой, но глагола не служит. Это состояние
 		// посадки, а не вина вызывающего, — и оно обязано быть громким, иначе

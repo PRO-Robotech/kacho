@@ -32,6 +32,7 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcclient"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 )
 
@@ -65,6 +66,12 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 
 	kp := grpc.WithKeepaliveParams(backendKeepalive())
 	rr := grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`)
+	// Адрес источника к службе не уезжает (kacho#3028, круг 5): нативный
+	// переход копирует входящие метаданные клиента целиком.
+	strip := principalmeta.ForwardedAddressStripDialOptions()
+	dialOpts := func(transport grpc.DialOption) []grpc.DialOption {
+		return append([]grpc.DialOption{transport, kp, rr}, strip...)
+	}
 
 	backends := make(proxy.Backends, len(creds)+1)
 	opened := make([]*grpc.ClientConn, 0, len(creds)+1)
@@ -75,7 +82,7 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 	}
 
 	for key, addr := range cfg.BackendAddrs() {
-		conn, dialErr := grpc.NewClient(addr, creds[key], kp, rr)
+		conn, dialErr := grpc.NewClient(addr, dialOpts(creds[key])...)
 		if dialErr != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("dial %s (%s): %w", key, addr, dialErr)
@@ -89,7 +96,7 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 	if len(loopbackAddr) > 0 && loopbackAddr[0] == ':' {
 		loopbackAddr = "127.0.0.1" + loopbackAddr
 	}
-	opsLoopback, dialErr := grpc.NewClient(loopbackAddr, loopbackDialCreds(), kp, rr)
+	opsLoopback, dialErr := grpc.NewClient(loopbackAddr, dialOpts(loopbackDialCreds())...)
 	if dialErr != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("dial operation self-loopback (%s): %w", loopbackAddr, dialErr)

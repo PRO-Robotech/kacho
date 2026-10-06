@@ -16,11 +16,18 @@ package repohygiene
 //
 // Форма — потолок, и он УБЫВАЮЩИЙ, но числа в дереве НЕТ. Потолок — число этого
 // же гейта на БАЗЕ изменения: дерево изменения и дерево базы считаются одним
-// прибором, и гейт краснеет, когда первое БОЛЬШЕ второго, по каждому дереву
-// отдельно. Число НИЖЕ базы — законное состояние снимающей ветки, а не находка:
-// база сдвигается сама, когда снятие вливается, и следующее изменение
-// сравнивается уже с ней. Возврат снятого поэтому краснеет так же, как любой
-// рост, — прощать его нечем, записи нет.
+// прибором, по каждому дереву отдельно. Число НИЖЕ базы — законное состояние
+// снимающей ветки, а не находка: база сдвигается сама, когда снятие вливается,
+// и следующее изменение сравнивается уже с ней.
+//
+// СУДИТСЯ ДОБАВЛЕННОЕ, А НЕ ИТОГ (#3002). Гейт краснеет на всякой привязке
+// изменения, которой на базе нет ни на прежнем, ни на новом месте
+// (`vendorTreeDelta.Added`), сколько бы привязок ни сняла та же правка. Суд по
+// итогу прощал прирост убылью: правка «+1 −6» давала «прирост 1 · убыль 6» и
+// проходила, хотя добавляла новую привязку. Возврат снятого поэтому краснеет
+// так же, как любой прирост, — прощать его нечем, записи нет. Перенос
+// существующей привязки (строка в другом файле, файл в другом каталоге) —
+// та же привязка на новом месте, а не прирост: см. `vendorDeltaOf`.
 //
 // ПОЧЕМУ НЕ ЗАПИСЬ ЧИСЛА (#2864). Прежняя форма хранила число записью и краснела
 // в обе стороны: при росте и при убыли, требуя переписать запись тем же
@@ -474,11 +481,31 @@ type vendorCeilingFinding struct {
 	Delta *vendorTreeDelta
 }
 
-// vendorFindingGrown — привязок стало БОЛЬШЕ, чем на базе. Вид один: число ниже
-// базы — законное состояние снимающей ветки, и находкой оно не является.
+// vendorFindingGrown — привязок стало БОЛЬШЕ, чем потолок, поданный числом
+// (`judgeRetiredVendorCeiling`, путь инъекций по осям). Число ниже потолка —
+// законное состояние снимающей ветки. Производственный путь против базы судит
+// не число, а добавленное — вид [vendorFindingAdded].
 const vendorFindingGrown = "число выросло над числом базы"
 
+// vendorFindingAdded — изменение несёт привязку, которой на базе нет ни на
+// прежнем, ни на новом месте. Вид производственного пути: судится добавленное,
+// и убыль той же правки его не прощает (#3002).
+const vendorFindingAdded = "добавлена привязка, которой на базе нет"
+
 func (f vendorCeilingFinding) String() string {
+	if f.Kind == vendorFindingAdded && f.Delta != nil {
+		d := f.Delta
+		lines := make([]string, 0, len(d.Added))
+		for _, b := range d.Added {
+			lines = append(lines, vendorBindingCoord(b))
+		}
+		return fmt.Sprintf("дерево %s: %s — добавлено %d. Судится добавленное, а не итог: "+
+			"убыль той же правки прирост не прощает (на базе %d · в изменении %d · прирост %d · "+
+			"убыль %d · перенесено %d). Снимите добавленную привязку; записи, которую ветка могла "+
+			"бы поднять, у гейта нет. Строки прироста, все %d, по пути:\n  ",
+			f.Tree, f.Kind, len(d.Added), d.Base, d.Head, len(d.Added), len(d.Removed), d.Moved,
+			len(d.Added)) + strings.Join(lines, "\n  ")
+	}
 	head := fmt.Sprintf("дерево %s: привязок к снятому издателю %d строк при потолке (число "+
 		"базы) %d (+%d) — %s. Снятие идёт в одну сторону: снимите привязку. Записи, которую "+
 		"ветка могла бы поднять, у гейта нет: принять рост — значит изменить сам гейт "+
@@ -1436,7 +1463,14 @@ type vendorTreeDelta struct {
 	// которых в изменении нет. Мультимножеством по ключу «файл · ось · текст»:
 	// номер строки в ключ НЕ входит — строка, сдвинутая правкой выше, не
 	// прирост и не убыль. Замена строки — одна убыль и один прирост.
+	//
+	// ПЕРЕНОС в Added и Removed не входит: привязка, которой нет в своём файле,
+	// но которая с той же осью и тем же текстом снята в другом, — та же
+	// привязка на новом месте ([vendorMoveKey]).
 	Added, Removed []vendorBinding
+	// Moved — привязок, перенесённых на новое место: пар «снята там · стоит
+	// здесь», погашенных ключом переноса.
+	Moved int
 }
 
 // vendorBindingKey — ключ мультимножества: всё, кроме номера строки.
@@ -1444,10 +1478,29 @@ func vendorBindingKey(b vendorBinding) string {
 	return b.File + "\x00" + b.Axis + "\x00" + b.Text
 }
 
+// vendorMoveKey — ключ ПЕРЕНОСА: ось и текст без файла. У привязки строки
+// текст — сама строка, и он переносится с ней. У привязки файла целиком (путь,
+// байты, архив: её текст — путь файла) переносится имя файла, а каталог
+// меняется: ключ берёт последний сегмент пути. Переписанный текст — уже другой
+// ключ, и такая привязка — прирост.
+func vendorMoveKey(b vendorBinding) string {
+	text := b.Text
+	if b.Line == 0 && text == b.File {
+		text = text[strings.LastIndexByte(text, '/')+1:]
+	}
+	return b.Axis + "\x00" + text
+}
+
 // vendorDeltaOf — разность двух мультимножеств привязок одного дерева. Порядок
 // Added — порядок head (по пути, затем по строке), Removed — порядок base.
+//
+// Два прохода. Первый гасит привязки на своём месте (ключ с файлом). Второй
+// гасит ПЕРЕНОС: остаток прироста против остатка убыли по ключу без файла —
+// снятое там и стоящее здесь одной и той же привязкой. Что осталось после
+// обоих — добавленное и снятое.
 func vendorDeltaOf(head, base []vendorBinding) vendorTreeDelta {
 	d := vendorTreeDelta{Head: len(head), Base: len(base)}
+	var added, removed []vendorBinding
 	left := map[string]int{}
 	for _, b := range base {
 		left[vendorBindingKey(b)]++
@@ -1460,12 +1513,36 @@ func vendorDeltaOf(head, base []vendorBinding) vendorTreeDelta {
 			matched[k]++
 			continue
 		}
-		d.Added = append(d.Added, b)
+		added = append(added, b)
 	}
 	for _, b := range base {
 		k := vendorBindingKey(b)
 		if matched[k] > 0 {
 			matched[k]--
+			continue
+		}
+		removed = append(removed, b)
+	}
+
+	gone := map[string]int{}
+	for _, b := range removed {
+		gone[vendorMoveKey(b)]++
+	}
+	moved := map[string]int{}
+	for _, b := range added {
+		k := vendorMoveKey(b)
+		if gone[k] > 0 {
+			gone[k]--
+			moved[k]++
+			d.Moved++
+			continue
+		}
+		d.Added = append(d.Added, b)
+	}
+	for _, b := range removed {
+		k := vendorMoveKey(b)
+		if moved[k] > 0 {
+			moved[k]--
 			continue
 		}
 		d.Removed = append(d.Removed, b)
@@ -1578,10 +1655,18 @@ func judgeRetiredVendorAgainstBase(
 		ceilings[tree] = len(baseBindings)
 	}
 
-	findings := vendorCompare(census, bindings, ceilings)
-	for i := range findings {
-		d := deltas[findings[i].Tree]
-		findings[i].Delta = &d
+	// Потолок записывается в перепись, а находка берётся у ДОБАВЛЕННОГО: суд
+	// по итогу простил бы прирост убылью той же правки.
+	_ = vendorCompare(census, bindings, ceilings)
+	var findings []vendorCeilingFinding
+	for _, tree := range retiredVendorTrees {
+		d := deltas[tree]
+		if len(d.Added) == 0 {
+			continue
+		}
+		findings = append(findings, vendorCeilingFinding{
+			Tree: tree, Ceiling: ceilings[tree], Actual: census[tree].Bindings,
+			Kind: vendorFindingAdded, Delta: &d})
 	}
 	return findings, census, bindings, deltas, nil
 }

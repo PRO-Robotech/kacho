@@ -345,9 +345,26 @@ cert-manager:
 global:
   labels: {}
   kacho:
-    domain: ""                             # umbrella-level kacho.domain overrides
-    region: ""
-    cluster: ""
+    # ─── СЛОЙ ПЛОЩАДКИ: ЗАГЛУШКИ НЕ ПРИМЕНЯЮТСЯ К КЛАСТЕРУ (kacho#3040) ──────
+    #
+    # Координаты площадки — узел почтовой полосы с учёткой отправителя, адрес
+    # отправителя, внешний origin консоли — в публичном профиле стоят
+    # ЗАГЛУШКАМИ зарезервированных имён (RFC 2606) и адресов документации
+    # (RFC 5737). Настоящие приходят слоем площадки вне git
+    # (`values.<стенд>-secrets.yaml`, под шаблоном игнорирования), последним в
+    # цепочке. Рендер для проверок в CI слоя не имеет и проходит на заглушках.
+    #
+    # `enforced` взводят рецепты ПРИМЕНЕНИЯ (`make stack-up`,
+    # cutover-fe3455.sh) и только они: тогда любая оставшаяся заглушка — отказ
+    # рендера (templates/site-layer-guard.yaml), называющий каждую величину.
+    # Профиль эту ручку не взводит: рецепт задаёт её `--set`, и `--set` побеждает.
+    siteLayer:
+      enforced: false
+    # Здесь стояли `domain`, `region` и `cluster` — пустые и без единого
+    # читателя в шаблонах зонта и сабчартов (kacho#2997). Корневой домен
+    # платформы объявляется `kacho.domain` (ниже), домен службы личности —
+    # `global.kacho.identity.domain`. Повтор держит
+    # deploy/global_knob_has_a_reader_render_test.go.
     # ─── докерная полоса выдачи: ЕДИНСТВЕННОЕ объявление имени службы реестра ──
     #
     # У полосы ДВЕ стороны. Реестр называет это имя докер-клиенту в вызове на
@@ -399,46 +416,28 @@ global:
       # ─── браузерный адрес консоли: ПУСТО ⇒ вывести из `domain` ───────────
       # Объявлен затем, чтобы посадка, где консоль стоит не на
       # `https://<app>.<domain>`, была ВЫРАЗИМА: стенд разработки раздаёт её по
-      # `http://console.kacho.local:28080` (kind отображает 80 → 28080, слушателя
-      # на 443 нет). Читает его помощник `kaname.identity.consoleOrigin` подчарта
-      # службы доступа (charts/kaname/templates/_helpers.tpl).
+      # `https://console.kacho.local:28443` (kind отображает порт TLS узла
+      # 443 → 28443, kacho#3025). Читает его помощник `kaname.identity.consoleOrigin`
+      # подчарта службы доступа (charts/kaname/templates/_helpers.tpl).
       appBaseURL: ""
-      # Домен cookie сессии и `rp.id` ключей доступа. Пусто ⇒ `domain`.
-      # Cookie с чужим доменом браузер отвергает целиком, поэтому величина
-      # обязана быть родительской для хоста консоли.
-      cookieDomain: ""
+      # `rp.id` ключей доступа. Пусто ⇒ `domain`. Имя обязано быть
+      # родительским для хоста консоли: ключ, привязанный к чужому имени,
+      # браузер не предъявит.
+      #
+      # ДОМЕНА ПЕЧЕНЬЯ СЕССИИ ЗДЕСЬ НЕТ (kacho#2997). Узел нёс `cookieDomain`,
+      # который не читал ни один шаблон: печенье выписывается по
+      # `kaname.config.authn.login.cookieDomain` (`none` — только на хост), и
+      # объявление здесь меняло лишь текст профиля.
       webauthnRpId: ""
-      # ─── ПОСАДКА БЕЗ ДОМЕННОГО ИМЕНИ ────────────────────────────────────
-      # `true` объявляет ФАКТ о посадке: у её внешнего origin доменного имени
-      # НЕТ — браузер приходит на голый IP-литерал (так стоит консоль на
-      # управляемом кластере a8f60d: ни имени, ни TLS снаружи).
-      #
-      # Следствий два, и оба ВЫНУЖДЕНЫ стандартами, а не выбраны:
-      #   · печенье сессии становится host-only — ключ `domain` не печатается
-      #     вовсе (RFC 6265 §5.1.3: domain-match с IP-литералом ложен всегда,
-      #     значит ЛЮБОЕ значение заставляет браузер отбросить печенье целиком,
-      #     и вход не состоится молча);
-      #   · ключи доступа выключаются — RP ID по WebAuthn L3 §5.1.3 обязан быть
-      #     валидным доменным именем, у IP-литерала его нет by construction.
-      #
-      # Отдельная ручка, а не «пусто ⇒ не печатать»: пустое у `cookieDomain`
-      # уже занято смыслом «не объявлено ⇒ вывести из `domain`», на нём стоит
-      # боевой профиль. Второй смысл у пустого снял бы `domain` печенья в бою.
-      # Одна ручка на два следствия: факт о посадке ОДИН, а две ручки о нём
-      # разошлись бы молча.
-      #
-      # Объявив `true`, профиль ОБЯЗАН очистить `cookieDomain`/`webauthnRpId`,
-      # если их объявил слой под ним, — иначе рендер отказывает и называет обе
-      # величины. Молча выбросить принятое нельзя.
-      domainless: false
-      hooks:
-        # Транспорт обратных вызовов — решение ПРОФИЛЯ, не константа шаблона.
-        # Боевой профиль объявляет `https`; пустое значение роняет рендер.
-        scheme: http
-        # Пусто ⇒ `kaname-internal.<namespace>.svc`.
-        host: ""
-        # Пусто ⇒ 9092 (порт слушателя хуков на внутреннем Service).
-        port: ""
+      # ─── ПОСАДКА БЕЗ ДОМЕННОГО ИМЕНИ И ОБРАТНЫЕ ВЫЗОВЫ — НЕ ЗДЕСЬ ───────
+      # Узел нёс `domainless` и `hooks.{scheme,host,port}` без единого
+      # читателя в шаблонах (kacho#2997): правка принималась рендером и не
+      # меняла ничего. Посадка без доменного имени выражается тем, что её
+      # следствия объявлены там, где их читают: печенье только на хост —
+      # `kaname.config.authn.login.cookieDomain: none`, ключи доступа выключены
+      # — `kaname.config.authn.accessKeys.origins: []`; её судит
+      # deploy/identity_domainless_landing_is_expressible_test.go. Слушателя
+      # обратных вызовов у службы нет (kaname#363).
       # ─── ПОЧТОВАЯ ПОЛОСА: УМОЛЧАНИЯ НЕТ, И ЭТО РЕШЕНИЕ (Р3 приёмки ID-MAIL-1) ──
       #
       # Здесь стояло `smtp://mailhog.kacho.svc:1025/?disable_starttls=true`, и в
@@ -476,7 +475,7 @@ global:
         # рендер чарта. Пароль, записанный внутрь адреса, оказался бы там же.
         #
         # ЧТО ПИШЕТ ПРОФИЛЬ. Адрес несёт ИМЯ пользователя и НЕ несёт пароля:
-        #     connectionURI: "smtp://noreply%40kacho.cloud@relay.example:587/"
+        #     connectionURI: "smtp://noreply%40mail.example.invalid@relay.example.invalid:587/"
         #     credentialSecret: { name: kacho-identity-smtp, key: password }
         # Ссылку на величину в адрес вставляет ШАБЛОН, а не профиль: имя
         # переменной принадлежит нам, и профиль, выписавший его руками, разошёлся
@@ -597,6 +596,27 @@ kacho-geo:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
+  # КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ АДРЕСА КЛИЕНТА (kacho#3028). Край принимает
+  # `X-Forwarded-For` только от TCP-пира, который И лежит в сети круга, И
+  # назван поимённо — адрес пода, выбранного безголовой службой звена фронта
+  # (templates/service-api-gateway-front-links.yaml). Сеть подов общая для
+  # кластера, и сеть сама по себе — «под кластера», а не «звено фронта»;
+  # звено выделяет имя службы, выбирающей поды фронта МЕТКАМИ.
+  #
+  # Умолчание — «НИКОМУ»: ни сети, ни имён, источник — сам TCP-пир. Профиль,
+  # у которого перед краем стоит звено фронта, объявляет ОБЕ половины вместе
+  # (values.prod.yaml, values.own.yaml, values.fe3455.yaml, values.a8f60d.yaml):
+  # сеть без имён и имена без сети — отказ старта края (config.TrustedProxyPeers).
+  # Вторым замком стоит политика сети ниже: до портов края доходят только звенья
+  # фронта. Гейт deploy/edge_client_address_circle_render_test.go судит обе
+  # половины по рендеру каждой цепочки.
+  clientAddress:
+    trustedProxyCIDRs: []
+    trustedPeers: []
+  # Политика входа к поду края (templates/networkpolicy-api-gateway.yaml):
+  # впускает только звенья фронта; иных отправителей ручкой не добавить.
+  networkPolicy:
+    enabled: true
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella
@@ -615,12 +635,70 @@ api-gateway:
 apiGatewayIngress:
   enabled: true
 
+# ─── КОНТРОЛЛЕР ВХОДА — ЗВЕНО ФРОНТА КРАЯ (kacho#3028, круг 5) ─────────────────
+# Внешний вход края (templates/api-gateway-ingress.yaml) ведёт контроллер входа,
+# и адрес клиента краю пишет он (`X-Forwarded-For $remote_addr`). Край примет
+# этот адрес, только если контроллер предъявит лист звена: лист якоря звеньев с
+# именем службы звена контроллера (templates/api-gateway-front-link-pki.yaml,
+# секрет `<край>-front-ingress-link`). Без листа край видит всех клиентов одним
+# адресом пода контроллера, и ограничение частоты входа «на источник» — общее.
+#
+# КАК. Аннотация `proxy-ssl-secret` контроллера ставит клиентский лист только
+# для HTTPS-бэкенда (`proxy_ssl_*`); основной вход края — GRPCS (`grpc_pass`),
+# и директив `grpc_ssl_*` шаблон контроллера не пишет вовсе (измерено по
+# шаблону контроллера v1.15.1). Поэтому лист ставится уровнем `http` карты
+# настройки контроллера — для ОБОИХ видов бэкенда, — а файлы листа приходят
+# томом секрета.
+#
+# ПУТЬ С ПЕРЕМЕННОЙ, а не литералом: nginx с литеральным путём читает лист один
+# раз при сборке настройки, и продлённый cert-manager'ом лист контроллер не
+# увидел бы до своей перезагрузки — истёкший лист край отверг бы в рукопожатии.
+# С переменной лист читается на каждом рукопожатии к бэкенду (соединения к
+# бэкендам долгоживущие, рукопожатия редки).
+#
+# Шаблон контроллера проверку серверного листа края не пишет; лист края
+# выпускает якорь установки, и проверка его контроллером — отдельная правка.
+ingress-nginx:
+  controller:
+    extraVolumes:
+      - name: edge-front-link
+        secret:
+          secretName: api-gateway-front-ingress-link
+          items:
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key
+    extraVolumeMounts:
+      - name: edge-front-link
+        mountPath: /etc/ingress-controller/edge-front-link
+        readOnly: true
+    config:
+      http-snippet: |
+        map "" $kacho_edge_front_link_crt { default /etc/ingress-controller/edge-front-link/tls.crt; }
+        map "" $kacho_edge_front_link_key { default /etc/ingress-controller/edge-front-link/tls.key; }
+        proxy_ssl_certificate $kacho_edge_front_link_crt;
+        proxy_ssl_certificate_key $kacho_edge_front_link_key;
+        grpc_ssl_certificate $kacho_edge_front_link_crt;
+        grpc_ssl_certificate_key $kacho_edge_front_link_key;
+
 # Federated ui-future console (aliased `uif` sub-chart). Default OFF — a bare
 # `helm upgrade` must NOT deploy it (the condition path must exist or helm treats
 # an absent value as enabled). Per-cluster overlays that run the federated console
 # set `uif.enabled: true` and reproduce the host/remote images below.
 uif:
   enabled: false
+  # Вход пути потока изменений объявляет ЗОНТ (console-edge-lanes, kacho#3028):
+  # там, где контроллер входа чарта ведёт хост консоли, путь потока идёт прямо
+  # к краю, и собственный вход чарта консоли на ту же пару host+path был бы
+  # вторым — контроллер отверг бы его при приёме. Профиль, где контроллер входа
+  # вне зонта (`ingress-nginx.enabled: false`), полос края не рендерит и
+  # возвращает вход чарту консоли: `true`. Несогласованную пару зонт не
+  # рендерит (fail в console-edge-lanes-ingress.yaml); один вход на пару в
+  # каждой цепочке судит deploy/ingress_route_single_owner_render_test.go.
+  subscriptionStream:
+    ingress:
+      enabled: false
 
 # ─── ЧУЖОГО СТЕКА ЛИЧНОСТИ В ЗОНТЕ НЕТ (#2735, #2777, #1276) ───────────────
 #

@@ -1,0 +1,125 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+ПОЛОСЫ КРАЯ НА ХОСТЕ КОНСОЛИ — КОНТРОЛЛЕРОМ ВХОДА ПРЯМО К КРАЮ (kacho#3028, круг 5).
+
+ЗАЧЕМ. Где хост консоли ведёт контроллер входа (Ingress чарта `uif`), цепочка
+до края была «клиент → контроллер → раздача → край». Раздача пишет краю
+`X-Forwarded-For $remote_addr` — адрес СВОЕГО TCP-пира, а пир раздачи здесь —
+под контроллера. Адрес клиента терялся ещё до края: для края все клиенты
+консоли были одним адресом контроллера, и ограничение частоты входа «на
+источник» — общим на всех. Доверить раздаче заголовок, пришедший от
+контроллера, значило бы опознавать контроллер по адресу пода — тот же род
+«доверие шире фронта».
+
+ЧТО ЗДЕСЬ. Полосы, которые раздача проксирует к краю, на хосте консоли ведёт
+сам контроллер — прямо на внешний TLS-слушатель края (HTTPS, тот же порт `tls`,
+что у внешнего входа края). Звено перед краем — контроллер: он видел TCP-пира
+клиента, пишет его адрес и предъявляет краю лист звена (values.yaml,
+`ingress-nginx.controller`). Раздача на этом хосте отдаёт только саму консоль.
+
+Пути — те же, что у полос раздачи к краю (ui-future/deploy/templates/configmap-nginx.yaml).
+Что КАЖДАЯ полоса раздачи к краю на хосте консоли достаётся краю, а не раздаче,
+судит deploy/edge_front_link_identity_render_test.go по ИСХОДУ маршрутизации
+(самое длинное совпадение среди объектов входа хоста), а не по наличию этого
+файла.
+
+Поток изменений — отдельным объектом: буферизацию и срок чтения контроллер
+ставит на объект, а не на путь (те же величины, что у объекта потока консоли).
+
+ОДИН ВХОД НА ПАРУ host+path. Чарт консоли объявляет свой вход того же пути
+потока (ui-future/deploy/templates/ingress-subscription-stream.yaml);
+контроллер отвергает второй объект на ту же пару при приёме, и установка
+падает целиком. Здесь, где путь потока ведут полосы края, вход чарта консоли
+обязан быть выключен (`uif.subscriptionStream.ingress.enabled: false`); где
+полос края нет, а вход консоли есть, — включён. Несогласованная пара не
+рендерится: иначе путь объявлен дважды либо не объявлен ни разу (и поток шёл
+бы общим входом с накоплением ответа).
+*/ -}}
+{{- $uif := .Values.uif | default dict }}
+{{- $uing := $uif.ingress | default dict }}
+{{- $agw := index .Values "api-gateway" | default dict }}
+{{- $tls := $agw.tls | default dict }}
+{{- $ing := index .Values "ingress-nginx" | default dict }}
+{{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
+{{- $lanesOn := and $uif.enabled $uing.enabled $tls.enabled $ingOn }}
+{{- $uifStreamEntry := dig "subscriptionStream" "ingress" "enabled" true $uif }}
+{{- if and $lanesOn $uifStreamEntry }}
+{{- fail "путь потока изменений на хосте консоли ведут полосы края (console-edge-lanes-subscription-stream): uif.subscriptionStream.ingress.enabled обязан быть false — второй вход на ту же пару host+path контроллер отвергнет" }}
+{{- end }}
+{{- if and $uif.enabled $uing.enabled (not $lanesOn) (not $uifStreamEntry) }}
+{{- fail "полос края на хосте консоли нет, а вход чарта консоли для пути потока выключен: uif.subscriptionStream.ingress.enabled обязан быть true — иначе путь потока не объявлен ни одним входом" }}
+{{- end }}
+{{- if $lanesOn }}
+{{- $edge := $agw.name | default "api-gateway" }}
+{{- $host := required "uif.ingress.host обязателен" $uing.host }}
+{{- $class := $uing.className | default "nginx" }}
+{{- $stream := $uif.subscriptionStream | default dict }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: console-edge-lanes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+  annotations:
+    {{- with $uing.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    # HTTPS — HTTP/1.1 поверх TLS к внешнему слушателю края (Internal* → 404).
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: {{ $class | quote }}
+  {{- with $uing.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          {{- range $p := list "/vpc/" "/compute/" "/storage/" "/geo/" "/nlb/" "/registry/" "/operations/" "/iam/v1/" }}
+          - path: {{ $p }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $edge }}
+                port:
+                  name: tls
+          {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: console-edge-lanes-subscription-stream
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: edge-front-link
+  annotations:
+    {{- with $uing.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ required "uif.subscriptionStream.proxyReadTimeout обязателен" $stream.proxyReadTimeout | quote }}
+spec:
+  ingressClassName: {{ $class | quote }}
+  {{- with $uing.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /subscription/v1/events
+            pathType: Exact
+            backend:
+              service:
+                name: {{ $edge }}
+                port:
+                  name: tls
+{{- end }}

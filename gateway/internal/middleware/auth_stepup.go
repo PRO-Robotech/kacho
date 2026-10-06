@@ -141,11 +141,23 @@ func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Reque
 	// ответ называет его держателю следующий шаг — единственный различимый
 	// исход пути 401, как и на пути 403. Перепись производителей 401
 	// (TestEdgeUnauthenticatedHasOneProducer) знает это место поимённо.
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("WWW-Authenticate", BuildStepUpChallenge(req, as.ACR))
-	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`{"code":16,"message":"` + stepUpDenyMessage + `"}`))
+	writeHTTPStepUpFloor(w, BuildStepUpChallenge(req, as.ACR))
 	return true
+}
+
+// writeHTTPStepUpFloor — ЕДИНСТВЕННЫЙ писатель указания повысить уровень на
+// REST: слой аутентификации (обе полосы, которым вызов адресуем) и слой
+// связанных токенов (`dpop_http_middleware.go`) пишут его здесь. Прежде у
+// второго было своё тело — `{"code":401,"message":"authentication failed"}`:
+// номер HTTP-статуса в поле gRPC-кода и текст отказа удостоверению на ответе,
+// который отказом не является (Р3). Пара — `401` / `16` с вызовом RFC 9470
+// (приёмка KA1, Р3, KA1-15); тело — `google.rpc.Status` с текстом, называющим
+// шаг (сторона края kaname#511).
+func writeHTTPStepUpFloor(w http.ResponseWriter, challenge string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", challenge)
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"code":16,"message":"` + stepUpDenyMessage + `","details":[]}`))
 }
 
 // errStepUpNotMet — ВЕРДИКТ «пол не пройден», отделённый от его РЕНДЕРИНГА.
@@ -228,11 +240,16 @@ func (a *AuthInterceptor) stepUpVerdictGRPC(fullMethod string, as StepUpAssuranc
 	return nil
 }
 
-// stepUpDenyMessage — the refusal a caller sees. It names the outcome (a stronger
-// authentication is required) and nothing about the object: WHICH ceremony to run
-// travels in the RFC 9470 challenge, which carries no information about the
-// resource either.
-const stepUpDenyMessage = "insufficient_user_authentication"
+// stepUpDenyMessage — текст указания повысить уровень, один на все места края,
+// где недостаток уровня называется: пол слоя аутентификации (REST и gRPC), слой
+// связанных токенов и отказ модели прав по свежести второго фактора. Он
+// называет СЛЕДУЮЩИЙ ШАГ (сторона края kaname#511, решение R36 п. 1; тексты
+// отказов меняются тикетом — этот тикет kaname#511): прежде здесь стоял
+// машинный признак `insufficient_user_authentication`, шага не называвший, и
+// клиент, получив его, шёл «войти заново» — и получал тот же ответ. Об объекте
+// текст не говорит ничего: КАКОЙ уровень нужен, несёт вызов RFC 9470
+// (`acr_values`), тоже без сведений о ресурсе.
+const stepUpDenyMessage = "authentication level is insufficient: step up with a second factor, or present a credential of another kind"
 
 // setTokenContextHeaders writes the credential's own context — acr, jti, scope,
 // exp — and the two arguments the rights model's freshness condition asks of the

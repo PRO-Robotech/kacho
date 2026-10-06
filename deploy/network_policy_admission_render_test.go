@@ -27,6 +27,14 @@ const npNamespace = "kacho"
 // ровно тем вызовом helm, которым стенд поднимается.
 func npChainDocs(t *testing.T, name string) []map[string]any {
 	t.Helper()
+	return npChainDocsWith(t, name)
+}
+
+// npChainDocsWith — то же, с ручками поверх профилей цепочки (фикстура, у
+// которой то, что профиль стенда сегодня выключает, включено ручками чарта).
+func npChainDocsWith(t *testing.T, name string, extra ...string) []map[string]any {
+	t.Helper()
+	requireUmbrellaPackagedFromTree(t)
 	chain, ok := deployStacks(t)[name]
 	if !ok {
 		t.Fatalf("стека %q в таблице %s нет — предпосылка пробы исчезла, а не рендер стал чистым", name, stacksTable)
@@ -39,7 +47,7 @@ func npChainDocs(t *testing.T, name string) []map[string]any {
 	if err != nil {
 		t.Fatalf("ручки применения умбреллы не прочитаны: %v — рендер был бы не тем стендом", err)
 	}
-	return renderDocBodies(t, "цепочки "+name, renderChainCached(t, chain, sets...))
+	return renderDocBodies(t, "цепочки "+name, renderChainCached(t, chain, append(sets, extra...)...))
 }
 
 // TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods — сам гейт.
@@ -304,7 +312,9 @@ func TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled(t *testing.T)
 	}
 	named := map[string]int{}
 	for _, f := range v.findings {
-		hit := false
+		// Политика самого края (kacho#3028) выбирает под края той же меткой:
+		// испорченная метка оставляет её без цели — это тот же внесённый дефект.
+		hit := strings.HasPrefix(f, "(А) политика api-gateway: селектор цели")
 		for _, p := range []string{"kacho-nlb", "vpc-internal-allowlist"} {
 			if strings.Contains(f, "политика "+p+",") || strings.Contains(f, "политик ["+p+"]") {
 				named[p]++

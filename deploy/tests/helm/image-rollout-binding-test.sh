@@ -79,6 +79,33 @@ SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | head -1)"
 [ -n "$SERVICES" ] || fatal "в deploy/Makefile не найден SERVICES — предпосылка проверки не выполняется"
 SERVICES_N="$(wc -w <<<"$SERVICES" | tr -d '[:space:]')"
 
+# МОДУЛИ КОНСОЛИ — ТОЖЕ ЛОКАЛЬНО СОБИРАЕМЫЕ ОБРАЗЫ (kacho#3026).
+#
+# Их собирает `build-ui`, а не `build-services`, и прежняя редакция проверки их
+# не видела вовсе: предметом был только SERVICES. Итог — поды консоли не
+# перекатывались на пересобранный образ под тем же тегом `:dev`, а проверка
+# оставалась зелёной о семи workload'ах из шестнадцати.
+#
+# Перечень берётся из САМОГО объявления Makefile (`UI_PROJECTS := …`), и
+# вычисляет его make в каталоге развёртывания — тем же выводом из дерева, что и
+# рецепт сборки. Вторая копия признака «модуль = каталог с Dockerfile» здесь
+# разошлась бы с рецептом молча.
+#
+# Ключ карты — каталог исходников модуля (`ui-future/<модуль>`), как у служб —
+# каталог службы; голое имя модуля совпало бы с ключом одноимённой службы
+# (`vpc`, `iam`, …), и два образа делили бы один идентификатор.
+UI_DECL="$(grep -m1 '^UI_PROJECTS *:=' "$MAKEFILE")"
+[ -n "$UI_DECL" ] || fatal "в deploy/Makefile не найдено объявление UI_PROJECTS — предпосылка проверки не выполняется"
+# shellcheck disable=SC2016  # `$(UI_PROJECTS)` раскрывает make, а не оболочка
+UI_PROJECTS="$(printf '%s\n__ui_projects:\n\t@echo $(UI_PROJECTS)\n' "$UI_DECL" \
+  | make --no-print-directory -s -C "$DEPLOY_ROOT" -f - __ui_projects)" \
+  || fatal "объявление UI_PROJECTS не вычислилось make"
+[ -n "$UI_PROJECTS" ] || fatal "UI_PROJECTS вычислился пустым — модулей консоли с Dockerfile рядом с $DEPLOY_ROOT нет; пустой предмет — условие, а не «всё привязано»"
+UI_KEYS=""; for p in $UI_PROJECTS; do UI_KEYS="$UI_KEYS ui-future/$p"; done
+SUBJECTS="$SERVICES$UI_KEYS"
+SUBJECTS_N="$(wc -w <<<"$SUBJECTS" | tr -d '[:space:]')"
+UI_N="$(wc -w <<<"$UI_PROJECTS" | tr -d '[:space:]')"
+
 # Две карты идентификаторов, отличающиеся ВСЕМИ значениями.
 #
 # Значение НЕСЁТ ИМЯ СВОЕГО СЕРВИСА (`sha256:<суффикс><каталог>`), и это не
@@ -92,7 +119,7 @@ IDS_SUFFIX_B=bbbb
 mk_ids() { # $1 — суффикс
   echo "global:"
   echo "  kachoImageIds:"
-  for s in $SERVICES; do echo "    $s: \"sha256:$1$s\""; done
+  for s in $SUBJECTS; do echo "    $s: \"sha256:$1$s\""; done
 }
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
@@ -117,11 +144,11 @@ echo "=== $SCRIPT: рендер с двумя разными идентифик�
 render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" "values.dev.yaml + карта идентификаторов A"; ok
 render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" "values.dev.yaml + карта идентификаторов B"; ok
 
-SERVICES="$SERVICES" IDS_SUFFIX_A="$IDS_SUFFIX_A" IDS_SUFFIX_B="$IDS_SUFFIX_B" \
+SUBJECTS="$SUBJECTS" IDS_SUFFIX_A="$IDS_SUFFIX_A" IDS_SUFFIX_B="$IDS_SUFFIX_B" \
   python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
 import os, sys, yaml
 
-services = os.environ["SERVICES"].split()
+services = os.environ["SUBJECTS"].split()
 SUFFIX = {"a": os.environ["IDS_SUFFIX_A"], "b": os.environ["IDS_SUFFIX_B"]}
 
 # Ключ привязки. Объявлен ОДИН раз: им же разбор ищет привязку в рендере и им же
@@ -215,7 +242,7 @@ for service in services:
 # «Ноль находок» обязано быть отличимо от «ноль осмотренного»: печатаются ОБА
 # числа — сколько workload'ов рендер вообще предъявил и сколько из них привязано.
 print(f"\nworkload'ов в рендере: {len(a)}; привязано к содержимому своих образов: "
-      f"{len(bound)} (сервисов в SERVICES: {len(services)})")
+      f"{len(bound)} (образов в предмете — SERVICES и UI_PROJECTS: {len(services)})")
 
 if not a:
     print("\nFAIL: рендер не дал НИ ОДНОГО workload'а — предмета нет, и ноль находок "
@@ -244,7 +271,7 @@ if [ "${1:-}" != "--self-test" ]; then
   # код 1 приезжал и от сорванного рендера, то есть от условия прогона.
   [ "$rc" -eq 0 ] || fail "$SCRIPT — привязка workload'ов к содержимому их образов нарушена (перечень выше)"
   ok
-  outcome_verdict "сервисов в SERVICES: $SERVICES_N"
+  outcome_verdict "сервисов в SERVICES: $SERVICES_N; модулей консоли: $UI_N"
   # `outcome_verdict` печатает PASS и ВОЗВРАЩАЕТ 0 (выходит он только на находке),
   # тогда как прежний вердикт здесь ВЫХОДИЛ. Без этой строки обычный прогон
   # проваливался бы в ветку самопроверки ниже — и отчитывался бы её вердиктом.
@@ -275,9 +302,18 @@ st=0
 # копии гейта из $WORK судит $WORK. Отдельной ручки «какое дерево судить» не
 # заводится — уводить гейт с настоящего дерева нечем.
 # ─────────────────────────────────────────────────────────────────────────────
-WORK="$(mktemp -d)"
-trap 'rm -rf "$TMPD" "$WORK"' EXIT
+# Копия раскладывается так же, как дерево: каталог развёртывания и РЯДОМ с ним
+# признаки модулей консоли (`ui-future/<модуль>/Dockerfile`) — перечень модулей
+# make выводит из соседнего каталога, и без него копия судила бы пустой предмет.
+WORKROOT="$(mktemp -d)"
+trap 'rm -rf "$TMPD" "$WORKROOT"' EXIT
+WORK="$WORKROOT/deploy"; mkdir -p "$WORK"
 cp -r "$DEPLOY_ROOT/." "$WORK/" || fatal "копия дерева развёртывания не собрана — инъекции некуда идти"
+for p in $UI_PROJECTS; do
+  mkdir -p "$WORKROOT/ui-future/$p"
+  cp "$DEPLOY_ROOT/../ui-future/$p/Dockerfile" "$WORKROOT/ui-future/$p/" \
+    || fatal "признак модуля консоли $p не скопирован — копия судила бы неполный предмет"
+done
 [ -x "$WORK/tests/helm/$SCRIPT" ] || fatal "в копии нет самого гейта ($WORK/tests/helm/$SCRIPT)"
 
 # (A) ИНЪЕКЦИЯ: снять привязку у одного чарта → гейт обязан покраснеть с координатой.
@@ -304,7 +340,7 @@ fi
 #     (имя перестало начинаться с приставки платформы) и молча вывел бы сервис
 #     из-под проверки, отчитавшись зелёным о неполном составе.
 foreign="$(EXTRA_SET='--set kacho-geo.image=docker.io/prorobotech/kacho-geo:main-abc' bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; fst=$?
-if [ $fst -eq 0 ] && [[ "$foreign" == *"привязано к содержимому своих образов: $SERVICES_N"* ]]; then
+if [ $fst -eq 0 ] && [[ "$foreign" == *"привязано к содержимому своих образов: $SUBJECTS_N"* ]]; then
   echo "  ОК  (B) смена координаты образа вердикта не меняет → МОЛЧИТ, состав полон"
 else
   echo "  ПРОВАЛ (B) вердикт зависит от имени образа (exit=$fst)"
@@ -343,6 +379,29 @@ else
     echo "  ОК  (D) привязка константой → КРАСНЫЙ, названа причина"
   else
     echo "  ПРОВАЛ (D) прибитая константой привязка принята за живую (exit=$ist)"
+    printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
+  fi
+fi
+
+# (E) ИНЪЕКЦИЯ: снять привязку у модуля консоли → гейт обязан покраснеть,
+#     назвав модуль. Без этого случая предмет «модули консоли» мог бы выпасть из
+#     разбора так же молча, как выпадал до kacho#3026.
+UI_VICTIM_REL="helm/umbrella/charts/uif/templates/deployment-dashboard.yaml"
+UI_VICTIM_SRC="$DEPLOY_ROOT/../ui-future/deploy/templates/deployment-dashboard.yaml"
+UI_TGZ=""; for t in "$WORK"/helm/umbrella/charts/uif-*.tgz; do [ -f "$t" ] && { UI_TGZ="$t"; break; }; done
+if [ -z "$UI_TGZ" ] || [ ! -f "$UI_VICTIM_SRC" ]; then
+  echo "  ПРОВАЛ (E) не найден подчарт консоли для инъекции"; st=1
+else
+  # Подчарт консоли лежит в умбрелле архивом; инъекция — в распакованную копию
+  # архива вместо него.
+  rm -f "$UI_TGZ"
+  tar -xzf "$DEPLOY_ROOT/helm/umbrella/charts/$(basename "$UI_TGZ")" -C "$WORK/helm/umbrella/charts/"
+  grep -v 'kacho.cloud/image-id' "$UI_VICTIM_SRC" >"$WORK/$UI_VICTIM_REL"
+  out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
+  if [ $ist -ne 0 ] && [[ "$out" == *"ui-future/dashboard: идентификатор"* ]]; then
+    echo "  ОК  (E) снятая привязка модуля консоли → КРАСНЫЙ с координатой"
+  else
+    echo "  ПРОВАЛ (E) без привязки модуль консоли не пойман (exit=$ist)"
     printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
   fi
 fi

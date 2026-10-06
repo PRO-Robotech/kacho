@@ -166,7 +166,7 @@ func TestStepUpAlwaysOn_GRPC_SensitiveRPC_BelowFloor_Refused(t *testing.T) {
 	err := callUnary(t, auth, "/kaname.cloud.iam.v1.UserTokenService/Issue",
 		fix.sign(t, alwaysOnClaims("1")))
 	require.Error(t, err, "the native surface must apply the same floor")
-	assert.Contains(t, err.Error(), "insufficient_user_authentication")
+	assert.Contains(t, err.Error(), "authentication level is insufficient")
 }
 
 // And the same token reaches a routine method on that surface.

@@ -227,8 +227,8 @@ func TestRetiredVendorCeiling_GrowthBranchIsRedWithTheAddedLine(t *testing.T) {
 	vendorCommitFile(t, root, "deploy/a.yaml", vendorProbeFile("a", 2)+vendorProbeLine+"\n", "прирост")
 
 	v := vendorProbeVerdict(t, root)
-	if len(v.Findings) != 1 || v.Findings[0].Tree != vendorTreePlatform || v.Findings[0].Kind != vendorFindingGrown {
-		t.Fatalf("рост над базой обязан быть одной находкой платформы: %v", v.Findings)
+	if len(v.Findings) != 1 || v.Findings[0].Tree != vendorTreePlatform || v.Findings[0].Kind != vendorFindingAdded {
+		t.Fatalf("добавленная строка обязана быть одной находкой платформы: %v", v.Findings)
 	}
 	d := v.Findings[0].Delta
 	if d == nil || len(d.Added) != 1 || d.Added[0].File != "deploy/a.yaml" || d.Added[0].Line != 4 {

@@ -133,3 +133,10 @@ gosec-merge-err.txt
 # вниманием.
 tmp/*
 !tmp/README.md
+
+# Идентификаторы, записанные посевом стенда (`OUT_FILE` по умолчанию в
+# deploy/scripts/seed-*.sh) для следующих прогонов. Неигнорируемый файл пачкал
+# дерево после первого подъёма, и следующий собирал образы с ревизией «-dirty» —
+# перекат всех подов при неизменном исходнике (kacho#3026). Держит
+# internal/repohygiene/standseedoutputs_test.go.
+/.seeded-ids.env
