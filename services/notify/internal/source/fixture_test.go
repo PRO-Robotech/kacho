@@ -234,6 +234,14 @@ type fakeSource struct {
 	mode    subMode
 	streams []*streamSeen
 	live    map[*streamSeen]chan struct{}
+	acks    []ackSeen
+}
+
+// ackSeen — один принятый `Ack`, как его увидел сервер.
+type ackSeen struct {
+	id    string
+	token string
+	kind  string
 }
 
 type feedSide struct {
@@ -460,6 +468,40 @@ func (f feedSide) Claim(ctx context.Context, req *notifyv1.ClaimRequest) (*notif
 	}
 	s.endCall(call, nil)
 	return out, nil
+}
+
+// Ack — запись исхода строки: токен аренды обязан быть токеном, выданным
+// `Claim` этой строке (форма фикстуры — `lease-<id>`); строка с записанным
+// исходом больше не выдаётся. Неизвестная строка либо чужой токен —
+// FAILED_PRECONDITION, как у оператора `Ack` corelib (З9).
+func (f feedSide) Ack(_ context.Context, req *notifyv1.AckRequest) (*notifyv1.AckResponse, error) {
+	s := f.s
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.rows {
+		if r.id != req.GetId() {
+			continue
+		}
+		if req.GetLeaseToken() != "lease-"+r.id {
+			return nil, status.Error(codes.FailedPrecondition, "LEASE_LOST")
+		}
+		r.done = true
+		s.acks = append(s.acks, ackSeen{id: r.id, token: req.GetLeaseToken(), kind: outcomeKind(req.GetOutcome())})
+		return &notifyv1.AckResponse{}, nil
+	}
+	return nil, status.Error(codes.FailedPrecondition, "LEASE_LOST")
+}
+
+// outcomeKind — вид исхода `Ack` именем значения провода.
+func outcomeKind(o *notifyv1.Outcome) string {
+	return o.GetKind().String()
+}
+
+// acksSeen — принятые `Ack`.
+func (s *fakeSource) acksSeen() []ackSeen {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.acks)
 }
 
 // Subscribe — поток ленты по режиму источника.
