@@ -16,7 +16,7 @@
 // неисполнима»: страж требует того, чего чарт не умеет выразить.
 //
 // Признак на день заведения (kacho `origin/main` @ `ac33f733`, после посадки
-// PR #2710, поднявшего пин службы до `16b5cade`, где обе ручки уже есть):
+// PR #2710, поднявшего пин службы до ревизии, где обе ручки уже есть):
 //
 //	git grep -c 'SECOND_FACTOR\|self-service-freshness\|selfServiceFreshness' \
 //	  origin/main -- deploy/helm/umbrella/charts/kaname   → 0 (код 1)
