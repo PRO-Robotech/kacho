@@ -28,6 +28,13 @@ data:
   KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT: {{ .Values.resolveSendTimeout | quote }}
   KACHO_NOTIFY_SMTP_SESSION_TIMEOUT: {{ .Values.smtpSessionTimeout | quote }}
   KACHO_NOTIFY_ORIGIN: {{ .Values.origin | quote }}
+  # ── ЦИКЛ ДОСТАВКИ (§8 замысла, З21, З23, З25; полоса A2) ───────────────────
+  # Умолчания нет: незаданный ключ — отказ рендера с его именем (в зонтике ключ
+  # лежит под `notify.`). Границы — у стража старта.
+  KACHO_NOTIFY_WORKERS: {{ required "workers (в зонтике notify.workers): число исполнителей цикла доставки не задано — умолчания нет, задайте его в профиле установки (ручка процесса notify.workers, [1..256])" .Values.workers | toString | quote }}
+  KACHO_NOTIFY_DEFER_FOR: {{ required "deferFor (в зонтике notify.deferFor): отсрочка DEFER не задана — умолчания нет, задайте её в профиле установки (ручка процесса notify.deferFor, [1s..15m])" .Values.deferFor | quote }}
+  KACHO_NOTIFY_KANAME_ADDR: {{ required "kaname.addr (в зонтике notify.kaname.addr): внутренний слушатель kaname для ResolveSend не задан — адрес называет профиль, из адреса соседа он не выводится (ручка процесса notify.kaname.addr, узел:порт)" .Values.kaname.addr | quote }}
+  KACHO_NOTIFY_KANAME_SAN: {{ required "kaname.san (в зонтике notify.kaname.san): точный URI SAN листа kaname не задан — решение о письме принимается только от него (ручка процесса notify.kaname.san, spiffe://…)" .Values.kaname.san | quote }}
   # ── DNS УСТАНОВКИ И ПОДПИСЬ DKIM (Р19, §12а; D10) ──────────────────────────
   # Срок стража и интервал перепроверки — значения чарта; пути пары DKIM —
   # файлы тома объекта ключа, смонтированного без `subPath` (оба в одном

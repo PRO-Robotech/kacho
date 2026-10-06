@@ -35,6 +35,12 @@ recipientKey: "fixture-recipient-key-not-a-secret-0123456789"
 # Ключ значением, а не объектом стенда (Д123): слой ложится и поверх цепочки
 # стенда, где профиль называет объект, — у ключа одно место, и фикстура его
 # называет явно.
+# Ручки цикла доставки (§8, полоса A2): умолчаний у чарта нет, нога их называет.
+workers: 8
+deferFor: 30s
+kaname:
+  addr: kaname-internal.kacho.svc:9091
+  san: spiffe://kacho.cloud/ns/kacho/sa/kaname
 recipientKeySecret:
   name: ""
 db:

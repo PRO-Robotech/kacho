@@ -548,6 +548,15 @@ notify:
   # Имя — то же, под которым стенд называет консоль; ссылки писем стенда никто
   # не открывает — сквозная проба читает письмо у приёмника.
   origin: "https://console.kacho.local"
+  # Цикл доставки (§8 замысла, З21, З23, З25; полоса A2): значения стенда, у
+  # чарта и процесса умолчаний нет. Адрес и SAN kaname — его внутренний слушатель
+  # (Service `kaname-internal`) и URI SAN серверного листа (`kaname.mtls.spiffe`
+  # выше: учётка `kaname` в пространстве `kacho`) — названы, а не выведены.
+  workers: 8
+  deferFor: 30s
+  kaname:
+    addr: kaname-internal.kacho.svc:9091
+    san: spiffe://kacho.cloud/ns/kacho/sa/kaname
   # Суточный потолок потока — доля квоты ретранслятора установки (Р10); у
   # приёмника стенда квоты нет, значение — потолок стенда.
   limits:
@@ -1006,6 +1015,16 @@ kaname:
   manifests:
     configMapName: kacho-module-manifests
     required: true
+  # ── ЗВЕНО ИДЕНТИЧНОСТИ СЛУЖБ Р2 (NTF1-M09): notify спрашивает ResolveSend
+  # своим листом (`notify.fullnameOverride: kacho-notify` → SAN учётки
+  # kacho-notify), и служба доступа узнаёт в нём субъект `service:notify`. Без
+  # звена решение о письме — отказ (fail-closed), и цикл доставки стоит.
+  serviceIdentity:
+    methods:
+      - kaname.cloud.iam.v1.InternalNotificationGrantService/ResolveSend
+    services:
+      - san: spiffe://kacho.cloud/ns/kacho/sa/kacho-notify
+        name: notify
   name: kaname
   replicas: 1
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam over mTLS).
