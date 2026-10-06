@@ -3,7 +3,7 @@
 
 package check_test
 
-// feed_signal_visibility_test.go — SA-3042-01 (kacho#2918, NTF-3): сужатель,
+// feed_signal_visibility_test.go — SA-3042-01 (NTF-3): сужатель,
 // которым сервер потока подписки реестра судит видимость строк журнала
 // (`IAMCheckClient.Narrower`, buildSubscriptionServer), спрашивает о строке
 // сигнала ленты (`notification_feed:registry`) отношение, объявленное моделью у

@@ -3,7 +3,7 @@
 
 package authzfilter_test
 
-// feed_signal_visibility_test.go — SA-3042-01 (kacho#2918, NTF-3): сужатель,
+// feed_signal_visibility_test.go — SA-3042-01 (NTF-3): сужатель,
 // которым сервер потока подписки compute судит видимость строк журнала, спрашивает
 // о строке сигнала ленты (`notification_feed:compute`) отношение, объявленное
 // моделью у типа ленты, — `reader`. Иное отношение служба доступа отказом не
