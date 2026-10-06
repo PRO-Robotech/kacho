@@ -76,8 +76,10 @@ service InternalNotificationFeedService {
   // Исход записывается только действующей арендой. Повтор того же вызова
   // (тот же токен, тот же исход) после записанного исхода — успех без изменения
   // строки: ответ мог потеряться в сети после коммита. Тот же токен с другим
-  // исходом — `FAILED_PRECONDITION` (`OUTCOME_ALREADY_RECORDED`); прочие случаи
-  // утраченной аренды — `FAILED_PRECONDITION` (`LEASE_LOST`).
+  // исходом — `FAILED_PRECONDITION` (`OUTCOME_ALREADY_RECORDED`); исход — пара
+  // вида и причины, поэтому другая причина при том же виде — тоже другой исход.
+  // Прочие случаи утраченной аренды — `FAILED_PRECONDITION` (`LEASE_LOST`).
+  // Правило одно для всех видов словаря, исключений нет.
   rpc Ack(AckRequest) returns (AckResponse) {
     option (corelib.authz.v1.permission)        = "platform.notification_feed.ack";
     option (corelib.authz.v1.required_relation) = "reader";
@@ -187,13 +189,20 @@ enum OutcomeKind {
   // EXPIRED — срок строки истёк. Ставит только уборщик источника; в `Ack` —
   // `INVALID_ARGUMENT`.
   EXPIRED = 7;
+  // SUPPRESSED — письмо не отправлено: адресат подавлен действующей записью
+  // подавления службы отправки. Терминален: секрет строки стирается, лимит
+  // источника не возвращается (это не `EXPIRED`). Причина обязательна и
+  // входит в исход: повтор `Ack` тем же токеном с другой причиной —
+  // `OUTCOME_ALREADY_RECORDED`, как при всяком другом исходе.
+  SUPPRESSED = 8;
 }
 
 // OutcomeReason — причина исхода. Словарь закрыт, корзины «прочее» нет.
 //
 // Какие причины допустимы при каком виде, решает одна таблица сочетаний на
 // стороне сервера ленты; сочетание вне неё — `INVALID_ARGUMENT`. `SENT` и
-// `RECIPIENT_REJECTED` причины не несут.
+// `RECIPIENT_REJECTED` причины не несут. Причин отсрочки сверх перечисленных
+// здесь нет: отсрочка по ограничению на адресата — `DEFER` с `RECIPIENT_NET`.
 enum OutcomeReason {
   OUTCOME_REASON_UNSPECIFIED = 0;
   // PLATFORM_UNAVAILABLE — платформа не смогла отправить (ретранслятор, служба
@@ -231,6 +240,16 @@ enum OutcomeReason {
   UNCLAIMED = 13;
   // NO_ACK — строка выдана, исход не записан. Только у `EXPIRED`.
   NO_ACK = 14;
+  // HARD_BOUNCE — адресат подавлен после постоянного отказа доставки. Вид
+  // `SUPPRESSED`; единственная причина, подавляющая класс `SECURITY`.
+  HARD_BOUNCE = 15;
+  // SOFT_BOUNCE — адресат подавлен после серии временных отказов доставки.
+  // Вид `SUPPRESSED`.
+  SOFT_BOUNCE = 16;
+  // COMPLAINT — адресат пожаловался на письмо. Вид `SUPPRESSED`.
+  COMPLAINT = 17;
+  // UNSUBSCRIBE — адресат отписался. Вид `SUPPRESSED`.
+  UNSUBSCRIBE = 18;
 }
 
 // Outcome — исход строки: вид и причина. Равенство исходов — равенство пары.
