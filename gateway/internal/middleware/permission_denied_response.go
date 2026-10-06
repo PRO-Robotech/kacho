@@ -69,6 +69,13 @@ func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *sta
 	if desc.Action != "" {
 		msg = "permission denied: " + desc.Action
 	}
+	// Отказ по недостатку уровня (причина, на которую край выдаёт вызов
+	// RFC 9470) называет следующий шаг ТЕМ ЖЕ текстом, что пол слоя
+	// аутентификации (`stepUpDenyMessage`; сторона края kaname#511): недостаток
+	// уровня — один предмет, и два текста о нём были бы двумя решениями.
+	if shouldStepUpChallenge(reasons) {
+		msg = stepUpDenyMessage
+	}
 	st := status.New(codes.PermissionDenied, msg)
 
 	pf := &errdetails.PreconditionFailure{}
@@ -304,8 +311,9 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 	})
 
 	body := map[string]any{
-		"code":    7, // gRPC code PermissionDenied
-		"message": "permission denied: " + desc.Action,
+		"code": 7, // gRPC code PermissionDenied
+		// Заголовок — тот же, что у нативной поверхности: один производитель.
+		"message": buildGRPCDenyStatus(desc, reasons).Message(),
 		"details": details,
 	}
 	_ = json.NewEncoder(w).Encode(body)

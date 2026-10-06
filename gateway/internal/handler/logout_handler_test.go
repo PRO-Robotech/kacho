@@ -65,39 +65,34 @@ func TestLogout_POSTOnly(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-func TestLogout_ClearsCookies(t *testing.T) {
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second, Logger: newLogger()})
-	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	cookies := rec.Result().Cookies()
-	var saw_retired, saw_ours bool
-	var ended []string
-	for _, c := range cookies {
-		if c.Name == "kacho_session" {
-			saw_retired = true
-		}
-		if c.MaxAge < 0 {
-			ended = append(ended, c.Name)
-		}
-		if c.Name == middleware.OurSessionCarrierName {
-			saw_ours = true
-			assert.True(t, c.MaxAge < 0)
+// TestLogout_NeverEndsTheBrowserSessionCarrier — путь токенов печенье сессии не
+// гасит ни на одном исходе (kacho#2959): гашение у клиента без конца сессии на
+// сервере — «вышли» при живой сессии. Гашение остаётся у отказа полосы личности
+// и у выхода службы (`POST /iam/v1/auth/logout`).
+func TestLogout_NeverEndsTheBrowserSessionCarrier(t *testing.T) {
+	ok := &recordingRevocations{}
+	down := &recordingRevocations{err: errors.New("unreachable")}
+	live := &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr", JTI: "jti"}}
+	cases := map[string]handler.LogoutHandlerConfig{
+		"выход выполнен":     {Verifier: live, Revocations: ok},
+		"выход не выполнен":  {Verifier: live, Revocations: down},
+		"отказ предъявителю": {Verifier: &fakeVerifier{err: errors.New("refused")}, Revocations: ok},
+	}
+	for name, cfg := range cases {
+		cfg.Logger, cfg.CallBudget = newLogger(), time.Second
+		h, err := handler.NewLogoutHandler(cfg)
+		require.NoError(t, err)
+		for _, withCookie := range []bool{false, true} {
+			req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
+			req.Header.Set("Authorization", "Bearer valid.access.token")
+			if withCookie {
+				req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "opaque"})
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			assert.Emptyf(t, rec.Result().Header.Values("Set-Cookie"), "%s, печенье %v: путь токенов выдал гашение", name, withCookie)
 		}
 	}
-	// Положительная половина: НАША сессия действительно гасится. Без неё
-	// отрицание ниже зеленело бы и на мёртвом обработчике.
-	assert.True(t, saw_ours, "logout must expire our session carrier")
-	// Гасится ровно перечень носителей края — наш и только наш (#2792): имя без
-	// читателя, погашенное у клиента, есть печенье, стёртое без основания.
-	assert.ElementsMatch(t, middleware.SessionCarrierNames(), ended,
-		"logout ends exactly the edge's session carriers")
-	// Отрицательная половина: cookie снятой церемонии больше не упоминается.
-	// Её единственный производитель снят вместе с обработчиком, а читателя на пути
-	// аутентификации у неё нет — чистить стало нечего, и возврат этой строки
-	// означал бы возврат носителя, которого никто не может произвести.
-	assert.False(t, saw_retired, "logout must not emit a cookie no producer can set")
 }
 
 // TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject — with a validated
@@ -152,8 +147,10 @@ func TestLogout_InvalidToken_401(t *testing.T) {
 	assert.Equal(t, int32(0), rev.calls.Load())
 }
 
-func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
-	rev := &recordingRevocations{err: errors.New("iam unreachable")}
+// TestLogout_RevocationFailure_IsNotPerformed — отзыв не ответил: выход «не
+// выполнен» (`503`, Ф3 Р4), причина ошибки вызова наружу не уходит (kacho#3029).
+func TestLogout_RevocationFailure_IsNotPerformed(t *testing.T) {
+	rev := &recordingRevocations{err: errors.New("rpc error: code = Unavailable desc = iam unreachable")}
 	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
 		Logger:      newLogger(),
 		Revocations: rev,
@@ -163,10 +160,10 @@ func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer valid.access.token")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	// Still 200 — best-effort revocation; user must see successful logout.
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	body, _ := io.ReadAll(rec.Result().Body)
-	assert.Contains(t, string(body), "warnings")
+	assert.NotContains(t, string(body), "iam unreachable")
+	assert.NotContains(t, string(body), "warnings")
 }
 
 // TestLogout_MakesNoOutboundCallBeyondOurRecord — выход говорит с нашей службой
@@ -176,7 +173,7 @@ func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 // поставщика по его административному адресу. Поставщик снят, и у обработчика
 // нет ни адреса, ни клиента, ни секрета для такого вызова: конфигурация
 // обработчика их не несёт. Здесь это наблюдается исходом: запрос отзыва ушёл в
-// нашу запись ровно один раз, ответ — успех без предупреждений.
+// нашу запись ровно один раз, ответ — `200 {}`.
 func TestLogout_MakesNoOutboundCallBeyondOurRecord(t *testing.T) {
 	rev := &recordingRevocations{}
 	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
@@ -192,7 +189,7 @@ func TestLogout_MakesNoOutboundCallBeyondOurRecord(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, int32(1), rev.calls.Load(), "отзыв обязан уйти в нашу запись ровно один раз")
 	body, _ := io.ReadAll(rec.Result().Body)
-	assert.NotContains(t, string(body), "warnings", "успешный выход не несёт предупреждений")
+	assert.Equal(t, "{}", string(body), "успешный выход — `200 {}`, как у полосы входа")
 }
 
 func TestLogout_NoSubject_NoRevocationCall(t *testing.T) {

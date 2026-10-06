@@ -12,7 +12,21 @@ ingress:
   className: nginx
   host: console.kacho.local
   annotations: {}
+  # Записи TLS Ingress: `[{hosts: [<хост>], secretName: <секрет>}]`. Пусто ⇒
+  # контроллер раздаёт хост по открытому http, и Secure-печенье формы браузер
+  # с него не хранит (kacho#3025): пустой перечень годится только стенду, где
+  # консоль впереди закрывает собственная раздача (`publicFront`).
   tls: []
+  # Лист для каждой записи `tls`. true ⇒ чарт заводит cert-manager Certificate
+  # в `secretName` записи с её `hosts` у поставщика `issuerRef`; false ⇒ секрет
+  # заводит оператор. Поставщик — решение площадки, а не продукта: умолчания у
+  # него нет, и включённый блок без поставщика рендер отказывает.
+  certificate:
+    create: false
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
 
 # ─── ВНЕШНИЙ ВХОД КОНСОЛИ БЕЗ INGRESS-КОНТРОЛЛЕРА: TLS НА САМОЙ РАЗДАЧЕ ──────
 #

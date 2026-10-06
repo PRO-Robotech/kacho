@@ -6,6 +6,7 @@ import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 import { installHostMapping } from "./host-mapping.ts";
 import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
 import { standSecureOriginArgs } from "./stand-secure-origin.ts";
+import { standTlsTrustArgs } from "./stand-tls-trust.ts";
 
 /**
  * Сквозные пробы консоли.
@@ -129,6 +130,14 @@ const hostResolverArgs = (() => {
  * `specs/ceremony-seed.ts`. Решение, его границы и снятие — `stand-secure-origin.ts`;
  * здесь они не пересказываются.
  */
+/**
+ * ЛИСТ КОНСОЛИ СВОЕГО СТЕНДА (kacho#3025): доверие ровно его ключу, а не отказ
+ * от проверки. Решение и его границы — `stand-tls-trust.ts`.
+ */
+const tlsTrustArgs = standTlsTrustArgs(process.env.KACHO_CONSOLE_CA);
+if (tlsTrustArgs.length) {
+  console.log(`[конфиг проб] браузер доверяет листу стенда из KACHO_CONSOLE_CA: ${tlsTrustArgs[0]}`);
+}
 const browserArgs = [...hostResolverArgs, ...standSecureOriginArgs(BASE)];
 if (browserArgs.length > hostResolverArgs.length) {
   // ФАКТ ПЕЧАТАЕТСЯ: стенд по http без этой строки неотличим в логе от стенда, где
@@ -244,7 +253,7 @@ const config: PlaywrightTestConfig = {
       ...(process.env.KACHO_CHROMIUM
         ? { executablePath: process.env.KACHO_CHROMIUM }
         : {}),
-      ...(browserArgs.length ? { args: browserArgs } : {}),
+      ...(browserArgs.length || tlsTrustArgs.length ? { args: [...browserArgs, ...tlsTrustArgs] } : {}),
     },
     // Проверить ФАКТ применения args из этого файла нечем: playwright не
     // отдаёт командную строку запущенного браузера. Поэтому печатается то,

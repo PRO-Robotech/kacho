@@ -104,6 +104,7 @@ DECLARED="
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
+.github/scripts/console-cloud-admin.sh
 .github/scripts/console-run-category.py
 .github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh

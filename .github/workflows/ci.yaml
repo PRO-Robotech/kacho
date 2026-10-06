@@ -2566,7 +2566,7 @@ jobs:
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         run: >-
           go test -tags helmcharts ./deploy/ ./gateway/deploy/
-          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled|TestKA1_25_EveryStandDeclaresBothCallBudgets|TestKA1_25_Twin_RemovedKnobIsNamed|TestKA1_25_Twin_BrokenChainIsARedNamingTheStand|TestKA1_34_EdgeAndServiceAgreeOnTheIssuer|TestKA1_34_Twin_PathChangeIsFoundAndCanonicalFormIsSilent|TestKA1_34_Twin_FullPathNotKeyName|TestEveryProductionStackHandsTheAccessServiceItsMailRelay|TestMailLaneGuardRefusesAProductionStackWithoutTheRelay|TestBootstrapRootEmailReachesTheServiceAsASecretReference|TestBootstrapRootEmailDeclaredTwiceIsRefusedByRender|TestConsolePublicFrontTerminatesTLSAndServesNoPlainHTTP|TestConsolePublicFrontJudgement_CanFailAndStaysSilent|TestEveryStackTrustsTheClientAddressOnlyFromTheFront|TestEdgeAdmissionJudgement_CanFailAndStaysSilent|TestEdgeAdmissionRenderInjection_SubjectStand|TestEdgeAdmissionRenderInjection_IngressControllerFront|TestEdgeAdmissionRenderInjection_FrontRuleDroppedIsAnUnreachableDial|TestEdgeAdmissionRenderInjection_PolicyShape|TestUmbrellaRendersTheTreeNotAStaleArchive|TestPackagedAgainstTreeJudgement_CanFailAndStaysSilent|TestEveryStackFrontLinkPresentsTheLinkAnchorLeafToTheEdge|TestFrontLinkIdentityJudgeCatchesEachChannel|TestEveryStackDeclaresEachIngressHostPathOnce|TestIngressRouteOwnerJudgeCatchesASecondEntry|TestEveryStackEdgeStartsOnItsRenderedEnvironment|TestEdgeStartJudgeCatchesAWrongRenderedValue'
+          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled|TestKA1_25_EveryStandDeclaresBothCallBudgets|TestKA1_25_Twin_RemovedKnobIsNamed|TestKA1_25_Twin_BrokenChainIsARedNamingTheStand|TestKA1_34_EdgeAndServiceAgreeOnTheIssuer|TestKA1_34_Twin_PathChangeIsFoundAndCanonicalFormIsSilent|TestKA1_34_Twin_FullPathNotKeyName|TestEveryProductionStackHandsTheAccessServiceItsMailRelay|TestMailLaneGuardRefusesAProductionStackWithoutTheRelay|TestBootstrapRootEmailReachesTheServiceAsASecretReference|TestBootstrapRootEmailDeclaredTwiceIsRefusedByRender|TestConsolePublicFrontTerminatesTLSAndServesNoPlainHTTP|TestConsolePublicFrontJudgement_CanFailAndStaysSilent|TestEveryStackTrustsTheClientAddressOnlyFromTheFront|TestEdgeAdmissionJudgement_CanFailAndStaysSilent|TestEdgeAdmissionRenderInjection_SubjectStand|TestEdgeAdmissionRenderInjection_IngressControllerFront|TestEdgeAdmissionRenderInjection_FrontRuleDroppedIsAnUnreachableDial|TestEdgeAdmissionRenderInjection_PolicyShape|TestUmbrellaRendersTheTreeNotAStaleArchive|TestPackagedAgainstTreeJudgement_CanFailAndStaysSilent|TestEveryStackFrontLinkPresentsTheLinkAnchorLeafToTheEdge|TestFrontLinkIdentityJudgeCatchesEachChannel|TestEveryStackDeclaresEachIngressHostPathOnce|TestIngressRouteOwnerJudgeCatchesASecondEntry|TestEveryStackEdgeStartsOnItsRenderedEnvironment|TestEdgeStartJudgeCatchesAWrongRenderedValue|TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders'
           -count=1 -v
 
       # Внешний вход консоли под TLS (kacho#3024): НАСТОЯЩАЯ раздача консоли —
@@ -2617,6 +2617,31 @@ jobs:
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         working-directory: deploy
         run: make gate-self-test
+
+      # Ручка `global.kacho.*` профиля зонта без читателя (kacho#2997): каждая
+      # объявленная ручка обязана менять рендер хотя бы одной цепочки, её
+      # объявляющей, при подмене значения. Шаг отдельный от перечня выше: у
+      # пробы свой предмет (объявление профиля против шаблонов), а не след
+      # поставщика или снятая ручка края.
+      - name: проба тега helmcharts — каждая ручка global.kacho профиля зонта имеет читателя в рендере
+        id: umbrella-global-knob-reader
+        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
+        run: >-
+          go test -tags helmcharts ./deploy/
+          -run 'TestEveryGlobalKachoKnobOfTheUmbrellaHasAReader|TestGlobalKnobJudgement_CanFailAndStaysSilent'
+          -count=1 -v
+
+      # Консоль, которую раздаёт контроллер входа на узле (стенд kind), отвечает
+      # по TLS на объявленном происхождении (kacho#3025): запись tls у каждого
+      # Ingress хоста консоли, лист от Certificate того же рендера, порт
+      # происхождения — тот, на который kind отображает порт TLS узла.
+      - name: проба тега helmcharts — консоль стенда kind отвечает по TLS на объявленном происхождении
+        id: console-ingress-tls
+        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
+        run: >-
+          go test -tags helmcharts ./deploy/
+          -run 'TestConsoleServedByTheNodeIngressAnswersTLSOnTheDeclaredOrigin|TestConsoleIngressTLSJudgement_CanFailAndStaysSilent'
+          -count=1 -v
 
       # Вторая форма того же доказательства: не ветка `--self-test` ВНУТРИ гейта,
       # а отдельный скрипт `<тема>-inject.sh` рядом с ним. Десять таких лежали в

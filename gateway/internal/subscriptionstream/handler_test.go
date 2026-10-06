@@ -324,6 +324,36 @@ func TestInternalRefusalDoesNotEchoTheOwnerText(t *testing.T) {
 	}
 }
 
+// TestUnavailableOwnerRefusalNamesNoPartOfTheEdge — недоступный владелец
+// отвечает фиксированным текстом, который не называет ни часть края, ни службу
+// владельца (kacho#3029): арендатору действие на `503` одно — повторить, — а
+// «subscription backend unavailable» сообщал бы, какая часть края лежит. Текст
+// владельца не эхается: он несёт имя службы и адрес.
+func TestUnavailableOwnerRefusalNamesNoPartOfTheEdge(t *testing.T) {
+	const leak = "vpc-internal:9091 connection refused"
+	owner := &ownerStub{failFirst: true, failWith: status.Error(codes.Unavailable, leak)}
+	rec := serve(t, newHandler(t, owner), request("owner=probe"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("недоступный владелец получил %d (тело %q)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("тело отказа не google.rpc.Status: %v (%q)", err, rec.Body.String())
+	}
+	if body.Code != 14 || body.Message != "the subscription stream could not be opened; try again later" {
+		t.Errorf("отказ недоступного владельца: %+v", body)
+	}
+	for _, name := range []string{"backend", "9091", "vpc-internal"} {
+		if strings.Contains(rec.Body.String(), name) {
+			t.Errorf("тело называет %q: %q", name, rec.Body.String())
+		}
+	}
+}
+
 // TestPositionLostDetailsReachTheClient — машинные подробности отказа доезжают.
 //
 // Клиент ключуется на ПРИЗНАК, а не разбирает прозу: узнав, что позиция

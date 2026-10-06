@@ -5,7 +5,6 @@ package handler_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +36,7 @@ func ka1LogoutRequest() *http.Request {
 // решает проверяющий (П12), а не проверка подписи.
 //
 // Близнец (строка выхода KA1-14): годный предъявитель, `Revoke` отвечает — `200`
-// с `ok:true`.
+// `{}` (тело выхода полосы входа, kacho#2996).
 func TestKA1_13a_LogoutRefusalIsTheOneRefusal(t *testing.T) {
 	rev := &recordingRevocations{}
 	h, err := handler.NewLogoutHandler(handler.LogoutHandlerConfig{CallBudget: time.Second,
@@ -69,9 +68,9 @@ func TestKA1_13a_LogoutRefusalIsTheOneRefusal(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	twin.ServeHTTP(rec, ka1LogoutRequest())
-	var out map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if rec.Code != http.StatusOK || out["ok"] != true {
-		t.Errorf("KA1-14 строка выхода: ожидался 200 с ok:true, получено %d %s", rec.Code, rec.Body.String())
+	// Тело успеха — `{}`, как у выхода полосы входа (kacho#2996; Ф3 Р4): прежнее
+	// `ok:true` этой строки было телом, которого полоса входа не знает.
+	if rec.Code != http.StatusOK || rec.Body.String() != "{}" {
+		t.Errorf("KA1-14 строка выхода: ожидался 200 {}, получено %d %s", rec.Code, rec.Body.String())
 	}
 }
