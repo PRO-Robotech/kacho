@@ -102,13 +102,17 @@ func validDomain(d string) bool {
 			return false
 		}
 		for i := 0; i < len(l); i++ {
-			c := l[i]
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			if !labelByte(l[i]) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// labelByte — октет метки имени DNS: латиница, цифра, дефис.
+func labelByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-'
 }
 
 // Sign подписывает письмо msg текущей парой источника и возвращает письмо с
