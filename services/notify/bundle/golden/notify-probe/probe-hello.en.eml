@@ -1,0 +1,78 @@
+From: Kacho
+ <noreply@example.invalid>
+To: recipient@example.invalid
+Subject: Mail delivery probe
+Date: Thu, 01 Jan 2026 00:00:00 +0000
+Message-ID: <9cbb16baa6fcad25896dc7379445579d@example.invalid>
+Auto-Submitted: auto-generated
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="=_alt_9cbb16baa6fcad25896dc7379445579d"
+
+--=_alt_9cbb16baa6fcad25896dc7379445579d
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Kacho
+
+Delivery probe
+
+This message was queued by notify-probe: the installation's delivery chain =
+works.
+
+Open the console: https://console.example.invalid/target
+
+--=_alt_9cbb16baa6fcad25896dc7379445579d
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8">
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1"=
+>
+<title>Mail delivery probe</title>
+</head>
+<body style=3D"margin:0;padding:0;background-color:#f4f5f7;">
+<table role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=
+=3D"0" border=3D"0" style=3D"width:100%;background-color:#f4f5f7;">
+<tr>
+<td align=3D"center" style=3D"padding:24px 12px;">
+<table role=3D"presentation" width=3D"600" cellpadding=3D"0" cellspacing=3D=
+"0" border=3D"0" style=3D"width:100%;max-width:600px;background-color:#ffff=
+ff;border:1px solid #e1e4e8;border-radius:6px;">
+<tr>
+<td style=3D"padding:20px 32px;border-bottom:1px solid #e1e4e8;font-family:=
+Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#24292f;">=
+Kacho</td>
+</tr>
+<tr>
+<td style=3D"padding:24px 32px;font-family:Arial,Helvetica,sans-serif;font-=
+size:15px;line-height:22px;color:#24292f;">
+<h1 style=3D"margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-=
+size:20px;line-height:28px;font-weight:bold;color:#24292f;">Delivery probe<=
+/h1>
+<p style=3D"margin:0 0 16px 0;">This message was queued by notify-probe: th=
+e installation&#39;s delivery chain works.</p>
+<table role=3D"presentation" cellpadding=3D"0" cellspacing=3D"0" border=3D"=
+0" style=3D"margin:8px 0 24px 0;">
+<tr>
+<td style=3D"border-radius:6px;background-color:#0969da;">
+<a href=3D"https://console.example.invalid/target" style=3D"display:inline-=
+block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15=
+px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:6px;">=
+Open the console</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+
+--=_alt_9cbb16baa6fcad25896dc7379445579d--
