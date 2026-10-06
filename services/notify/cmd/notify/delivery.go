@@ -184,7 +184,7 @@ func relayRoots(cfg config.Config) (*x509.CertPool, error) {
 		}
 		return roots, nil
 	}
-	pemBytes, err := os.ReadFile(path)
+	pemBytes, err := os.ReadFile(path) // #nosec G304 -- путь из ручки оператора KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE (том якоря), а не из ввода запроса
 	if err != nil {
 		return nil, fmt.Errorf("%s: якорь ретранслятора не читается: %w", config.TrustAnchorKnob(), err)
 	}
