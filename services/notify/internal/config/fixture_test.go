@@ -66,7 +66,6 @@ func clearKnobs(t *testing.T) {
 func useFixture(t *testing.T, edits map[string]*string) {
 	t.Helper()
 	clearKnobs(t)
-	clearS1Knobs(t)
 	seen := map[string]bool{}
 	for _, p := range readFixture(t) {
 		k, v := p[0], p[1]

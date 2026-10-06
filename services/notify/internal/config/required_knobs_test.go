@@ -131,19 +131,6 @@ func addressKeyDir(t *testing.T) string {
 	return kubeletDir(t, map[string][]byte{addressKeyFileName: validAddressKey()})
 }
 
-// clearS1Knobs снимает ручки S1 из окружения пробы: пока они не в перечне
-// [config.Knobs], clearKnobs их не снимает, а унаследованная переменная
-// подменила бы фикстуру.
-func clearS1Knobs(t *testing.T) {
-	t.Helper()
-	for _, env := range s1Envs {
-		t.Setenv(env, "")
-		if err := os.Unsetenv(env); err != nil {
-			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: снять %s: %v", env, err)
-		}
-	}
-}
-
 // ── таблица границ ─────────────────────────────────────────────────────────
 
 // probeValue — одно значение ручки с подобранными зависимыми ручками.
