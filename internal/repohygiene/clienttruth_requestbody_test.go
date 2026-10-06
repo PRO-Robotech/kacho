@@ -15,7 +15,7 @@ import (
 //
 // Пара «каталог сервиса → пакет контракта» из дерева не выводится: у
 // балансировщика каталог `services/nlb`, а контракт — `kacho.cloud.loadbalancer.v1`.
-// Совпадение имён у остальных шести — совпадение, а не свойство дерева, и
+// Совпадение имён у остальных — совпадение, а не свойство дерева, и
 // вывести пару по нему значило бы завести правило, которое ломается ровно на
 // исключении.
 //
@@ -51,6 +51,14 @@ var clientTruthRequestBodyDomains = []ClientTruthRequestBodyDomain{
 	{Name: "geo", ProtoPackage: "kacho.cloud.geo.v1",
 		DocsDirs:    []string{"services/geo/docs/content", "services/geo/docs/engineering"},
 		UseCaseDirs: []string{"services/geo/internal/apps/kacho/api"}},
+	// Служба без внешнего API: у её контракта нет ни одного метода с телом
+	// HTTP-привязки, страницы — установка и эксплуатация. Страницы судятся так
+	// же (адрес примера — по вселенной маршрутов, grpcurl — по дескрипторам);
+	// каталога use-case'ов, отвергающих поля тела, у неё нет, потому что тела
+	// нет. Отметка судится анализатором: метод с телом у пакета — находка.
+	{Name: "notify", ProtoPackage: "kacho.cloud.notify.v1",
+		DocsDirs:      []string{"services/notify/docs/content"},
+		NoBodyMethods: true},
 }
 
 func clientTruthRequestBodyOptions(t *testing.T) ClientTruthRequestBodyOptions {
@@ -154,7 +162,7 @@ func TestClientTruthRequestBodyKeysExistInTheRequestMessage(t *testing.T) {
 			"судить не по чему")
 	}
 	for _, d := range census.Domains {
-		if d.Methods == 0 {
+		if d.Methods == 0 && !d.NoBodyMethods {
 			t.Errorf("домен %s: методов с телом выведено 0 — его дескрипторы не "+
 				"прочитаны, и «находок нет» о нём сказать нельзя", d.Name)
 		}
