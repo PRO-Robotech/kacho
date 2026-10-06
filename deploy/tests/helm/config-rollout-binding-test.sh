@@ -231,7 +231,7 @@ if gaps:
     print("Аннотация, хэширующая СЕКРЕТ, покрытием настроек НЕ является.")
     print("Если аннотацию добавить нечем (чужой чарт не пропускает свои значения")
     print("через шаблонизацию), отпечаток кладётся в спецификацию контейнера —")
-    print("см. templates/_hydra-admin-tls.tpl.")
+    print("переменной окружения со значением sha256 отрендеренной конфигурации.")
     sys.exit(1)
 
 # «Ноль находок» обязано быть отличимо от «ноль прочитанного».
@@ -289,9 +289,9 @@ env = []
 cms = ["cm-1"]
 mode = opt.get("mode", "ok")
 if mode == "secret-covers":                 # 2 объекта настроек, второй «покрыт» секретом
-    cms = ["cm-1", "cm-2"]; ann["checksum/hydra-secrets"] = "b" * 64
+    cms = ["cm-1", "cm-2"]; ann["checksum/issuer-secrets"] = "b" * 64
 elif mode == "secret-plus-digest":          # то же + настоящий отпечаток в контейнере
-    cms = ["cm-1", "cm-2"]; ann["checksum/hydra-secrets"] = "b" * 64
+    cms = ["cm-1", "cm-2"]; ann["checksum/issuer-secrets"] = "b" * 64
     env = [{"name": "X_CONF_SHA256", "value": "c" * 64}]
 elif mode == "no-binding":
     ann = {}

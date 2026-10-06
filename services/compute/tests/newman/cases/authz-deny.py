@@ -274,7 +274,7 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
     ))
 
 
-GARBAGE_ID = "epdnonexistent000001"   # compute resource id prefix
+GARBAGE_ID = "epd00000000000000001"   # compute resource id prefix
 
 
 def define_resource_cases(resource_name, plural, create_body_extra=None, supports_update=True):
@@ -322,7 +322,7 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
 define_resource_cases("instance", "instances", create_body_extra={
     "zoneId": "ru-central1-a",
     "instanceKind": "VM",
-    "machineTypeId": "mt-placeholder0000000",
+    "machineTypeId": "mt-00000000000000001",
     "bootSource": {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"},
     "vmSpec": {"userData": "#cloud-config\n{}"},
     "useDefaultNetwork": True,

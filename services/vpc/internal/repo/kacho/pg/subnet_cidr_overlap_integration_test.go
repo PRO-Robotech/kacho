@@ -84,11 +84,11 @@ func TestIntegration_SecondaryCidrOverlap_CrossSubnet_PrimaryHit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-02", "net-sec-02", "sub-1", []string{"10.0.0.0/24"})
@@ -122,11 +122,11 @@ func TestIntegration_SecondaryCidrOverlap_CrossSubnet_SecondaryHit(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-03", "net-sec-03", "sub-1", []string{"10.0.0.0/24"})
@@ -153,11 +153,11 @@ func TestIntegration_SecondaryCidrOverlap_Disjoint_OK(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-01", "net-sec-01", "sub-1", []string{"10.0.0.0/24"})
@@ -179,11 +179,11 @@ func TestIntegration_SecondaryCidrOverlap_V6_Rejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	// sub-6a с v6 primary 2001:db8:1::/48.
@@ -221,11 +221,11 @@ func TestIntegration_SecondaryCidrOverlap_CrossNetwork_OK(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, _ = seedNetworkSubnet(t, ctx, r, "proj-sec-12", "net-a-12", "sub-1", []string{"10.0.0.0/24"})
@@ -245,11 +245,11 @@ func TestIntegration_SecondaryCidrOverlap_ConcurrentTwoSubnets_OneWins(t *testin
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-09", "net-sec-09", "sub-1", []string{"10.0.0.0/24"})
@@ -299,11 +299,11 @@ func TestIntegration_SecondaryCidrOverlap_RemoveFreesRange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-14", "net-sec-14", "sub-1", []string{"10.0.0.0/24"})
@@ -334,11 +334,11 @@ func TestIntegration_SecondaryCidrOverlap_DeleteFreesRange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	netID, sub8 := seedNetworkSubnet(t, ctx, r, "proj-sec-16", "net-sec-16", "sub-8", []string{"10.0.0.0/24"})
@@ -348,7 +348,7 @@ func TestIntegration_SecondaryCidrOverlap_DeleteFreesRange(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	require.NoError(t, w.Subnets().Delete(ctx, sub8))
+	require.NoError(t, removalErr(w.Subnets().Delete(ctx, sub8)))
 	require.NoError(t, w.Commit())
 
 	// child-строки sub-8 сняты каскадом.
@@ -389,11 +389,11 @@ func TestIntegration_SecondaryCidrOverlap_SameSubnet_Rejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, sub := seedNetworkSubnet(t, ctx, r, "proj-sec-self", "net-sec-self", "sub-1", []string{"10.180.0.0/24"})
@@ -430,11 +430,11 @@ func TestIntegration_SecondaryCidrOverlap_SameSubnet_DisjointAccepted(t *testing
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	defer r.Close()
 
 	_, sub := seedNetworkSubnet(t, ctx, r, "proj-sec-selfok", "net-sec-selfok", "sub-1", []string{"10.180.0.0/24"})

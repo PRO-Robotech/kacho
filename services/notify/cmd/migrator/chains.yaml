@@ -1,0 +1,17 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# chains.yaml — таблица «имя базы → каталог цепочки» точки наката каталога
+# services/notify (kacho#2915, замысел З32, CX1-114 (а)). Объявлена ОДИН раз:
+# точка читает её `//go:embed` и выбирает цепочку по имени базы в DSN; гейты
+# дерева читают её по пути через internal/migrationchains.List.
+#
+# Баз у каталога две (database per service): kacho_notifyprobe — проба-источник
+# cmd/notify-probe; kacho_notify — шлюз cmd/notify (сетка, потолок потока и
+# ограда ключа сетки, замысел З24). Имя базы вне таблицы — отказ точки с именем базы и перечнем
+# допустимых, без наката. Пустая таблица — отказ, а не «накатывать нечего».
+chains:
+  - database: kacho_notifyprobe
+    dir: services/notify/internal/probemigrations
+  - database: kacho_notify
+    dir: services/notify/internal/migrations

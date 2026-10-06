@@ -1,0 +1,7 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+blocks:
+  - heading: "Delivery probe"
+  - p: "This message was queued by notify-probe: the installation's delivery chain works."
+  - button: {text: "Open the console", path: target}

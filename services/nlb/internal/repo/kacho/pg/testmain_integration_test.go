@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgdsn"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -137,16 +137,16 @@ func prepareTemplate() error {
 }
 
 // dsnForDB rewrites the shared DSN to point at another database on the same
-// container.
+// container. The DSN is read by the driver's own parser (pgdsn.WithDatabase →
+// pgconn.ParseConfig, Д93), not by net/url.
 func dsnForDB(name string) string {
-	u, err := url.Parse(sharedBaseDSN)
+	dsn, err := pgdsn.WithDatabase(sharedBaseDSN, name)
 	if err != nil {
 		// sharedBaseDSN comes from the container driver; if it does not parse the
 		// harness itself is broken, and returning something plausible would hide it.
-		panic(fmt.Sprintf("unparseable container DSN %q: %v", sharedBaseDSN, err))
+		panic(fmt.Sprintf("container DSN: %v", err))
 	}
-	u.Path = "/" + name
-	return u.String()
+	return dsn
 }
 
 // newSharedDatabase creates an empty database on the package container and drops

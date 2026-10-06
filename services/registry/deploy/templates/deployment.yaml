@@ -54,6 +54,14 @@ spec:
         # этот файл не накладывает (offline-рендер, чужой реестр), получает "unset" —
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "registry" "unset" (.Values.global | default dict) | quote }}
+        # ПРИВЯЗКА ПОДА К ОБЪЯВЛЕНИЮ ФЛАГА ЛЕНТЫ (NTF3-64, NTF3-66). Переменная
+        # KACHO_REGISTRY_NOTIFICATIONS_ENABLED приходит из карты зонтика и читается
+        # процессом один раз, на старте: смена объявления
+        # `global.kacho.notifications` без этой аннотации не перекатила бы под, и
+        # модуль продолжал бы работать с прежним флагом, расходясь с перечнем
+        # источников notify. Значение — отпечаток узла объявления; одиночный
+        # рендер чарта, где узла нет, получает отпечаток пустого узла.
+        kacho.cloud/notifications-flag-checksum: {{ dig "kacho" "notifications" (dict) (.Values.global | default dict) | toJson | sha256sum | quote }}
       labels:
         app: {{ .Values.name }}
     spec:
@@ -107,6 +115,18 @@ spec:
             - name: metrics
               containerPort: {{ .Values.service.metricsPort }}
           env:
+            # Флаг ленты модуля (NTF3-64): умолчания нет — без переменной процесс
+            # не стартует. Значение выводит зонтик помощником
+            # `kacho.notifications.enabledFor` в карту
+            # `kacho-notifications-module-flags`
+            # (deploy/helm/umbrella/templates/notifications-module-flags.yaml): тот
+            # же вывод решает, входит ли модуль в перечень источников notify.
+            # Карты нет — под не стартует, а не работает «выключенным».
+            - name: KACHO_REGISTRY_NOTIFICATIONS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: kacho-notifications-module-flags
+                  key: KACHO_REGISTRY_NOTIFICATIONS_ENABLED
             # ─── Postgres (schema kacho_registry) ───
             - name: KACHO_REGISTRY_DB_HOST
               value: "{{ .Values.db.host }}"

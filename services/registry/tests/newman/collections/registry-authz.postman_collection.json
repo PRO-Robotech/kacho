@@ -329,7 +329,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/reg-DOESNOTEXIST00000",
+              "raw": "{{baseUrl}}/registry/v1/registries/reg00000000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -337,7 +337,7 @@
                 "registry",
                 "v1",
                 "registries",
-                "reg-DOESNOTEXIST00000"
+                "reg00000000000000000"
               ]
             }
           },
@@ -366,7 +366,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
-                  "pm.environment.set('_azHideMissBody', pm.response.text().split('reg-DOESNOTEXIST00000').join('<ID>'));",
+                  "pm.environment.set('_azHideMissBody', pm.response.text().split('reg00000000000000000').join('<ID>'));",
                   "pm.environment.set('_azHideMissCode', String(pm.response.code));"
                 ]
               }

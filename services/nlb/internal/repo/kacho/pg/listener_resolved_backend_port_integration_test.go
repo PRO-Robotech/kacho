@@ -23,7 +23,7 @@ import (
 func TestListener_NLB_1_19_ResolvedBackendPort(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj01RBP000000000001"
 	lb := newLB(projectID, "rbp-lb")

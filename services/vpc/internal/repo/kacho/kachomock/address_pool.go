@@ -165,16 +165,17 @@ func (aw *addressPoolWriter) Update(_ context.Context, p *domain.AddressPool) (*
 	return &out, nil
 }
 
-func (aw *addressPoolWriter) Delete(_ context.Context, id string) error {
-	if _, ok := aw.w.localAPs[id]; !ok {
-		return repo.ErrNotFound
+func (aw *addressPoolWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := aw.w.localAPs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if aw.w.deletedAPIDs == nil {
 		aw.w.deletedAPIDs = make(map[string]struct{})
 	}
 	aw.w.deletedAPIDs[id] = struct{}{}
 	delete(aw.w.localAPs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // LockForUpdate — mock не моделирует row-lock; проверяет лишь существование pool.

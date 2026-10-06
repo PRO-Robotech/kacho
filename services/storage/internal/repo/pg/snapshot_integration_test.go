@@ -40,9 +40,9 @@ func mkSnapshot(t *testing.T, r *pg.SnapshotRepo, project, name, srcVolume strin
 // проверял.
 func TestSnapshotCreateFromReadyVolume(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
 	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 7<<30)
@@ -70,8 +70,8 @@ func TestSnapshotCreateFromReadyVolume(t *testing.T) {
 // TestSnapshotCreateSourceMissing — source volume не существует → FailedPrecondition
 // "Volume <id> not found" (existence same-DB; Operation error).
 func TestSnapshotCreateSourceMissing(t *testing.T) {
-	sr := pg.NewSnapshotRepo(newTestPool(t))
-	_, _, err := sr.Insert(context.Background(), &domain.Snapshot{
+	sr := mustJournalWriter(pg.NewSnapshotRepo(newTestPool(t), probeJournalOptions))
+	_, _, err := sr.Insert(journalPrincipalCtx(context.Background()), &domain.Snapshot{
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-x",
 		SourceVolumeID: "vol00000000000000000",
 	})
@@ -83,9 +83,9 @@ func TestSnapshotCreateSourceMissing(t *testing.T) {
 // FailedPrecondition "Volume <id> is not ready" (CAS WHERE state='READY' не сматчил).
 func TestSnapshotCreateSourceNotReady(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	// Том рождается создаваемым — готовность объявляет сверщик; здесь она нарочно
@@ -101,8 +101,8 @@ func TestSnapshotCreateSourceNotReady(t *testing.T) {
 
 // TestSnapshotGetNotFound — well-formed-но-нет → ErrNotFound "Snapshot <id> not found".
 func TestSnapshotGetNotFound(t *testing.T) {
-	sr := pg.NewSnapshotRepo(newTestPool(t))
-	_, err := sr.Get(context.Background(), "snp00000000000000000")
+	sr := mustJournalWriter(pg.NewSnapshotRepo(newTestPool(t), probeJournalOptions))
+	_, err := sr.Get(journalPrincipalCtx(context.Background()), "snp00000000000000000")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("not found: "):])
 }
@@ -111,8 +111,8 @@ func TestSnapshotGetNotFound(t *testing.T) {
 // остальные AlreadyExists (partial UNIQUE 23505). Под -race.
 func TestSnapshotNameUniqueRace(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-forsnap", snapZoneA, 2<<30)
 
@@ -125,7 +125,7 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, _, err := sr.Insert(context.Background(), &domain.Snapshot{
+			_, _, err := sr.Insert(journalPrincipalCtx(context.Background()), &domain.Snapshot{
 				ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "dup-snap", SourceVolumeID: vol.ID,
 			})
 			switch {
@@ -151,9 +151,9 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 // пустым ВСЕГДА, и «снимок не менялся» было неотличимо от «мы не смотрим».
 func TestSnapshotUpdateMutable(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-upd", snapZoneA, 1<<30)
 	snap := mkSnapshot(t, sr, "prj-1", "snap-old", vol.ID)
@@ -177,9 +177,9 @@ func TestSnapshotUpdateMutable(t *testing.T) {
 //   - Delete тома-источника (source_volume_id) → OK; снапшот цел, source_volume_id → пусто.
 func TestSnapshotDeleteFKSetNull(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	// snp-1 создан из vol-src; vol-2 создан из snp-1.
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
@@ -211,9 +211,9 @@ func TestSnapshotDeleteFKSetNull(t *testing.T) {
 // TestSnapshotListCursorFilter — cursor (created_at,id) ASC, project-scope, filter=name.
 func TestSnapshotListCursorFilter(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-list", snapZoneA, 1<<30)
 	volOther := snapReadyVolume(t, pool, vr, "prj-2", "vol-list-other", snapZoneA, 1<<30)

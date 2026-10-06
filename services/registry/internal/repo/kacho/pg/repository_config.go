@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -38,12 +40,20 @@ const configColumns = `registry_id, name, description, labels, visibility, creat
 
 // RepositoryConfigRepo — реализация registry.RepositoryConfigRepo поверх pgxpool.
 type RepositoryConfigRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewRepositoryConfigRepo создаёт RepositoryConfigRepo поверх pgxpool.
-func NewRepositoryConfigRepo(pool *pgxpool.Pool) *RepositoryConfigRepo {
-	return &RepositoryConfigRepo{pool: pool}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewRepositoryConfigRepo(pool *pgxpool.Pool, journal journaltx.Options) (*RepositoryConfigRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("registry: NewRepositoryConfigRepo: %w", err)
+	}
+	return &RepositoryConfigRepo{pool: pool, journal: journal}, nil
 }
 
 // ready — pool обязан быть подан composition root'ом (иначе Unavailable, не паника).
@@ -185,7 +195,7 @@ func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.Rep
 	if err != nil {
 		return nil, nil, regerrors.ErrInternal
 	}
-	return runConfigTx(ctx, r.pool, cfg.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	return runConfigTx(ctx, r.pool, r.journal, cfg.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
 			INSERT INTO %s.repository_configs (registry_id, name, description, labels, visibility, lifecycle)
 			VALUES ($1, $2, $3, $4::jsonb, $5, $6)
@@ -232,7 +242,7 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 	}
 
 	// Синхронной доставки на этом пути нет — проштампованные намерения не нужны.
-	out, _, uerr := runConfigTx(ctx, r.pool, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	out, _, uerr := runConfigTx(ctx, r.pool, r.journal, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET %s
 			WHERE registry_id = $1 AND name = $2
@@ -251,7 +261,7 @@ func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, registryID, oldN
 	if err := r.ready(); err != nil {
 		return nil, nil, err
 	}
-	return runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	return runConfigTx(ctx, r.pool, r.journal, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		// Rename = overlay-set → auto-promote lifecycle='DURABLE' (REG-1-23 parity).
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET name = $3, lifecycle = 'DURABLE'
@@ -268,7 +278,7 @@ func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, nam
 	if err := r.ready(); err != nil {
 		return err
 	}
-	_, _, err := runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	_, _, err := runConfigTx(ctx, r.pool, r.journal, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		var deleted string
 		q := fmt.Sprintf(`DELETE FROM %s.repository_configs
 			WHERE registry_id = $1 AND name = $2 RETURNING name`, schema)
@@ -286,8 +296,12 @@ func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, nam
 // (single-statement INSERT/UPDATE/DELETE ... RETURNING), эмитит FGA intent'ы в
 // registry_outbox В ТОЙ ЖЕ tx и коммитит. DML/guard/scan-ошибка маппится mapConfigErr;
 // осиротевший rollback — defer. Пустой набор intent'ов → чистый guard+DML.
-func runConfigTx(ctx context.Context, pool *pgxpool.Pool, registryID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
-	tx, err := pool.Begin(ctx)
+//
+// Транзакцию открывает помощник записи журнала `journaltx.Begin`: инициатор
+// изменения — принципал контекста; контекст без принципала — отказ до обращения к
+// базе (NTF-3, З4).
+func runConfigTx(ctx context.Context, pool *pgxpool.Pool, journal journaltx.Options, registryID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	tx, err := journaltx.Begin(ctx, pool, journal)
 	if err != nil {
 		return nil, nil, mapConfigErr(err)
 	}
@@ -383,6 +397,12 @@ func mapConfigErr(err error) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "resource", "repository_config") {
+			return regerrors.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique: // PRIMARY KEY(registry_id, name)
 			return fmt.Errorf("%w: repository already exists", regerrors.ErrAlreadyExists)

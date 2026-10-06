@@ -52,13 +52,13 @@ func TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.77.0.0/24"}, nil)
 
 	// Address A занимает 10.77.0.5 (committed).
@@ -111,13 +111,13 @@ func TestCQRS_Address_SetInternalIPv6_ConflictKeepsTXAlive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.78.0.0/24"}, []string{"fd00:78::/64"})
 
 	wA, err := r.Writer(ctx)

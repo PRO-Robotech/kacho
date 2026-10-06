@@ -19,32 +19,31 @@
 // стража старта и сверяется с ней гейтом службы (`tools/operatordocs`). Здесь
 // этот блок читается у ПИНЕННОГО модуля (`go.mod` даёт версию, `go env
 // GOMODCACHE` — каталог), и по каждому стеку `deploy/stacks.txt` рендер подчарта
-// службы обязан доставить каждую строку, обязательную на посадке стека: ключом
-// в файле настроек либо переменной окружения контейнера.
+// службы обязан доставить каждую обязательную строку: ключом в файле настроек
+// либо переменной окружения контейнера.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ЧТО ЗНАЧИТ «ОБЯЗАТЕЛЬНА НА ПОСАДКЕ СТЕКА»
+// ЧТО ЗНАЧИТ «ОБЯЗАТЕЛЬНА»
 //
-// Колонка «Когда обязателен» блока знает три формы, и каждая судится так:
+// Колонка «Когда обязателен» блока пиненной службы знает две формы, и каждая
+// судится так:
 //
-//	на любой посадке                    — на каждом стеке;
-//	посадка `own` …                     — на стеке, чья посадка `own`;
-//	посадка `own`, при выполненном условии
-//	                                    — там же, если включена секция ключа
-//	                                      (`<секция>.enabled`, у токен-эндпоинта
-//	                                      это единственное условие).
+//	всегда                    — на каждом стеке;
+//	при выполненном условии   — на стеке, где включена секция ключа
+//	                            (`<секция>.enabled`).
 //
-// Форма, которой разбор не знает, — отказ разбора с цитатой строки, а не
-// пропуск: строка ушла бы из-под наблюдения молча.
+// Прежде форм было три и они ветвились по посадке личности (`на любой
+// посадке`, `посадка own …`). С kaname#363 посадка у службы одна, и блок пина
+// посадки не называет вовсе (kacho#2818): разбор знает ровно формы пина. Форма,
+// которой разбор не знает, — отказ разбора с цитатой строки, а не пропуск:
+// строка ушла бы из-под наблюдения молча.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧЕГО ПРОВЕРКА НЕ УТВЕРЖДАЕТ
 //
 // Она не судит ВЕЛИЧИНЫ — годность судит страж старта службы. Она не судит две
 // другие стадии отказа старта (посадку и сборку): блок службы о них не говорит,
-// и эта проверка тоже. Половина «И ВСЮДУ, где поднят собственный публичный
-// REST-фронт» у строк чеканки и приёма предъявленного вне `own` не судится —
-// перепись называет число таких строк на каждом стеке, а не молчит о них.
+// и эта проверка тоже.
 package deploy_test
 
 import (
@@ -67,7 +66,6 @@ const (
 // requiredRow — одна строка блока: ключ настройки, переменная и условие.
 type requiredRow struct {
 	key, env string
-	anyLane  bool // «на любой посадке»
 	onEnable bool // «при выполненном условии»: секция ключа включена
 }
 
@@ -100,12 +98,10 @@ func parseRequiredBlock(md string) ([]requiredRow, error) {
 		}
 		when := strings.TrimSpace(m[3])
 		row := requiredRow{key: m[1], env: m[2]}
-		switch {
-		case when == "на любой посадке":
-			row.anyLane = true
-		case strings.HasPrefix(when, "посадка `own`, при выполненном условии"):
+		switch when {
+		case "всегда":
+		case "при выполненном условии":
 			row.onEnable = true
-		case strings.HasPrefix(when, "посадка `own`"):
 		default:
 			return nil, fmt.Errorf("условие %q у `%s` неизвестно разбору — допиши форму", when, m[1])
 		}
@@ -132,9 +128,8 @@ func pinnedRequiredRows(t *testing.T) []requiredRow {
 	return rows
 }
 
-// requiredStackPosture — что о стеке нужно суду: посадка и включённые секции.
+// requiredStackPosture — что о стеке нужно суду: включённые секции.
 type requiredStackPosture struct {
-	own     bool
 	enabled func(section string) bool
 }
 
@@ -146,16 +141,12 @@ func (f requiredFinding) String() string {
 		"окружения — служба откажет в старте", f.stack, f.key, f.env)
 }
 
-// judgeRequiredDelivery — ядро суда: какие строки, обязательные на посадке
-// стека, не доставлены. Возвращает находки и число судимых строк.
+// judgeRequiredDelivery — ядро суда: какие строки, обязательные на стеке, не
+// доставлены. Возвращает находки и число судимых строк.
 func judgeRequiredDelivery(stack string, rows []requiredRow, p requiredStackPosture,
 	cfg map[string]any, env map[string]bool) (findings []requiredFinding, judged int) {
 	for _, r := range rows {
-		switch {
-		case r.anyLane:
-		case !p.own:
-			continue
-		case r.onEnable && !p.enabled(r.key[:strings.LastIndex(r.key, ".")]):
+		if r.onEnable && !p.enabled(r.key[:strings.LastIndex(r.key, ".")]) {
 			continue
 		}
 		judged++
@@ -230,9 +221,7 @@ func TestPinnedRequiredSettingsReachTheServiceOnEveryStack(t *testing.T) {
 	var census []string
 	for _, name := range names {
 		values := stackIdentityValues(t, stacks[name])
-		idp, _ := lookup(values, "config", "authn", "identityProvider")
 		posture := requiredStackPosture{
-			own: idp == "own",
 			enabled: func(section string) bool {
 				path := []string{"config"}
 				for _, seg := range strings.Split(section, ".") {
@@ -268,8 +257,8 @@ func TestPinnedRequiredSettingsReachTheServiceOnEveryStack(t *testing.T) {
 		for _, f := range findings {
 			t.Errorf("%s", f)
 		}
-		census = append(census, fmt.Sprintf("%s(own=%v): судимо %d, доставлено %d",
-			name, posture.own, judged, judged-len(findings)))
+		census = append(census, fmt.Sprintf("%s: судимо %d, доставлено %d",
+			name, judged, judged-len(findings)))
 	}
 	if len(census) == 0 {
 		t.Fatal("ни одного стека не осмотрено — вердикта нет")
@@ -282,51 +271,49 @@ func TestPinnedRequiredSettingsReachTheServiceOnEveryStack(t *testing.T) {
 // синтетике: разбор и суд.
 func TestRequiredSettingsJudgeSeesTheGapAndIsSilentOnDelivery(t *testing.T) {
 	md := "intro\n" + requiredBlockBegin + "\n\n| Ключ | Как | Когда | Почему |\n|---|---|---|---|\n" +
-		"| `a.any` | переменная `K_A_ANY` | на любой посадке | x |\n" +
-		"| `a.own` | переменная `K_A_OWN` | посадка `own` | x |\n" +
-		"| `s.pace` | переменная `K_S_PACE` | посадка `own`, при выполненном условии | x |\n" +
+		"| `a.any` | переменная `K_A_ANY` | всегда | x |\n" +
+		"| `a.also` | переменная `K_A_ALSO` | всегда | x |\n" +
+		"| `s.pace` | переменная `K_S_PACE` | при выполненном условии | x |\n" +
 		requiredBlockEnd + "\n"
 	rows, err := parseRequiredBlock(md)
 	if err != nil || len(rows) != 3 {
 		t.Fatalf("законный блок обязан разбираться в 3 строки: %v, %v", rows, err)
 	}
 
-	on := func(string) bool { return true }
-	off := func(string) bool { return false }
-	full := map[string]any{"a": map[string]any{"any": 1, "own": 1}, "s": map[string]any{"pace": 1}}
+	on := requiredStackPosture{enabled: func(string) bool { return true }}
+	off := requiredStackPosture{enabled: func(string) bool { return false }}
+	full := map[string]any{"a": map[string]any{"any": 1, "also": 1}, "s": map[string]any{"pace": 1}}
 
 	// (а) всё доставлено ключами — молчание, судимо 3.
-	if got, judged := judgeRequiredDelivery("x", rows, requiredStackPosture{own: true, enabled: on}, full, nil); len(got) != 0 || judged != 3 {
+	if got, judged := judgeRequiredDelivery("x", rows, on, full, nil); len(got) != 0 || judged != 3 {
 		t.Errorf("полная доставка: находок %v, судимо %d", got, judged)
 	}
 	// (б) недоставленная строка — находка с ключом.
 	gap := map[string]any{"a": map[string]any{"any": 1}, "s": map[string]any{"pace": 1}}
-	if got, _ := judgeRequiredDelivery("x", rows, requiredStackPosture{own: true, enabled: on}, gap, nil); len(got) != 1 || got[0].key != "a.own" {
-		t.Errorf("недоставленная `a.own` обязана быть находкой, получено %v", got)
+	if got, _ := judgeRequiredDelivery("x", rows, on, gap, nil); len(got) != 1 || got[0].key != "a.also" {
+		t.Errorf("недоставленная `a.also` обязана быть находкой, получено %v", got)
 	}
 	// (в) та же строка переменной окружения — молчание.
-	if got, _ := judgeRequiredDelivery("x", rows, requiredStackPosture{own: true, enabled: on}, gap, map[string]bool{"K_A_OWN": true}); len(got) != 0 {
+	if got, _ := judgeRequiredDelivery("x", rows, on, gap, map[string]bool{"K_A_ALSO": true}); len(got) != 0 {
 		t.Errorf("доставка переменной обязана молчать, получено %v", got)
 	}
 	// (г) пустое значение ключа — не доставка.
-	null := map[string]any{"a": map[string]any{"any": 1, "own": nil}, "s": map[string]any{"pace": 1}}
-	if got, _ := judgeRequiredDelivery("x", rows, requiredStackPosture{own: true, enabled: on}, null, nil); len(got) != 1 {
+	null := map[string]any{"a": map[string]any{"any": 1, "also": nil}, "s": map[string]any{"pace": 1}}
+	if got, _ := judgeRequiredDelivery("x", rows, on, null, nil); len(got) != 1 {
 		t.Errorf("пустое значение обязано быть находкой, получено %v", got)
 	}
-	// (д) вне own судится только «на любой посадке»; условная строка — только при включённой секции.
-	if got, judged := judgeRequiredDelivery("x", rows, requiredStackPosture{own: false, enabled: on}, map[string]any{}, nil); len(got) != 1 || judged != 1 || got[0].key != "a.any" {
-		t.Errorf("вне own: находок %v, судимо %d", got, judged)
-	}
-	if got, judged := judgeRequiredDelivery("x", rows, requiredStackPosture{own: true, enabled: off}, gap, nil); judged != 2 || len(got) != 1 {
+	// (д) условная строка судится только при включённой секции.
+	if got, judged := judgeRequiredDelivery("x", rows, off, map[string]any{}, nil); judged != 2 || len(got) != 2 {
 		t.Errorf("выключенная секция: находок %v, судимо %d", got, judged)
 	}
 
 	// Отказы разбора называются.
 	for name, tc := range map[string]struct{ md, reason string }{
-		"маркеров нет":        {"| `a` | переменная `A` | на любой посадке | x |", "маркер начала"},
-		"строк ноль":          {requiredBlockBegin + "\n" + requiredBlockEnd, "ни одной строки"},
-		"форма условия":       {requiredBlockBegin + "\n| `a.b` | переменная `A_B` | по праздникам | x |\n" + requiredBlockEnd, "неизвестно разбору"},
-		"строка не разобрана": {requiredBlockBegin + "\n| `a.b` | файлом | на любой посадке | x |\n" + requiredBlockEnd, "не разобрана"},
+		"маркеров нет":          {"| `a` | переменная `A` | всегда | x |", "маркер начала"},
+		"строк ноль":            {requiredBlockBegin + "\n" + requiredBlockEnd, "ни одной строки"},
+		"форма условия":         {requiredBlockBegin + "\n| `a.b` | переменная `A_B` | по праздникам | x |\n" + requiredBlockEnd, "неизвестно разбору"},
+		"строка не разобрана":   {requiredBlockBegin + "\n| `a.b` | файлом | всегда | x |\n" + requiredBlockEnd, "не разобрана"},
+		"прежняя форма посадки": {requiredBlockBegin + "\n| `a.b` | переменная `A_B` | посадка `own` | x |\n" + requiredBlockEnd, "неизвестно разбору"},
 	} {
 		if _, err := parseRequiredBlock(tc.md); err == nil || !strings.Contains(err.Error(), tc.reason) {
 			t.Errorf("%s: разбор обязан отказать с %q, получено %v", name, tc.reason, err)

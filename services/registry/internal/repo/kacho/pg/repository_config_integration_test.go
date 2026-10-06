@@ -30,9 +30,9 @@ import (
 // возвращает его id.
 func seedRegistry(t *testing.T, pool *pgxpool.Pool, project, name string) string {
 	t.Helper()
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	reg := newReg(project, name, nil)
-	created, _, err := repo.Insert(context.Background(), reg,
+	created, _, err := repo.Insert(journalPrincipalCtx(context.Background()), reg,
 		domain.RegisterIntentForCreate(reg, "user", "usr-seed"))
 	require.NoError(t, err)
 	return created.ID
@@ -52,8 +52,8 @@ func newCfg(regID, name string, vis domain.Visibility, labels map[string]string)
 // labels/visibility/createdAt сохранены; PRIVATE-дефолт; created_at заполнен.
 func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	regID := seedRegistry(t, pool, "prj-P", "reg-a01")
 	cfg := &domain.RepositoryConfig{
@@ -87,8 +87,8 @@ func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 // ErrAlreadyExists; behaviour-level: код AlreadyExists + текст "repository already exists".
 func TestRepoConfig_RG1A02_DuplicateInsert_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a02")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
@@ -110,8 +110,8 @@ func TestRepoConfig_RG1A02_DuplicateInsert_AlreadyExists(t *testing.T) {
 // (реестр отсутствует). NotFound-семантика существования реестра обеспечена FK.
 func TestRepoConfig_InsertMissingRegistry_FK_FailedPrecondition(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, _, err := repo.InsertConfig(ctx, newCfg("regNONEXISTENT", "backend/api", domain.VisibilityPrivate, nil))
 	require.Error(t, err)
@@ -127,8 +127,8 @@ func TestRepoConfig_InsertMissingRegistry_FK_FailedPrecondition(t *testing.T) {
 // миграцией (raw-INSERT недопустимого значения → 23514).
 func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-vis")
 
 	pub, _, err := repo.InsertConfig(ctx, newCfg(regID, "public/img", domain.VisibilityPublic, nil))
@@ -150,8 +150,8 @@ func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 // Get(new) OK, Get(old) → NotFound "repository not found".
 func TestRepoConfig_RG1A16_RenameRekey(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a16")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "old/name", domain.VisibilityPrivate,
@@ -176,8 +176,8 @@ func TestRepoConfig_RG1A16_RenameRekey(t *testing.T) {
 // RG-1-A17 — rename в занятое overlay-имя → PK 23505 → ErrAlreadyExists; исходник цел.
 func TestRepoConfig_RG1A17_RenameCollision_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-a17")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
@@ -200,8 +200,8 @@ func TestRepoConfig_RG1A17_RenameCollision_AlreadyExists(t *testing.T) {
 // RG-1 — RekeyConfig несуществующего исходника → NotFound.
 func TestRepoConfig_RenameMissingSource_NotFound(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-rns")
 
 	_, _, err := repo.RekeyConfig(ctx, regID, "ghost/x", "new/y")
@@ -212,8 +212,8 @@ func TestRepoConfig_RenameMissingSource_NotFound(t *testing.T) {
 // раздельно по Apply-флагам (single-statement UPDATE); нетронутые поля сохранены.
 func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-upd")
 
 	_, _, err := repo.InsertConfig(ctx, &domain.RepositoryConfig{
@@ -253,8 +253,8 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 // Delete → NotFound (0 rows).
 func TestRepoConfig_RG1A13_DeleteConfig(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-del")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
@@ -272,8 +272,8 @@ func TestRepoConfig_RG1A13_DeleteConfig(t *testing.T) {
 // (SAME-DB cascade, ban #4 — обе таблицы в схеме kacho_registry).
 func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 
 	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "a/b", domain.VisibilityPrivate, nil))
@@ -282,7 +282,7 @@ func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Физически удаляем реестр (registry Delete) — overlay-строки должны cascade-исчезнуть.
-	regRepo := kachopg.NewRegistryRepo(pool)
+	regRepo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
 	require.NoError(t, regRepo.Delete(ctx, regID, domain.RegisterIntent{}))
 
 	require.Equal(t, 0, countConfigs(t, pool, regID, "a/b"), "overlay cascade-снят с реестром")
@@ -293,8 +293,8 @@ func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 // (created_at, name) ASC; durable-empty присутствуют (пережили пустоту).
 func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRepositoryConfigRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRepositoryConfigRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-list")
 
 	for _, n := range []string{"cfg/only", "hidden/svc", "zzz/last"} {
@@ -321,7 +321,7 @@ func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 func countConfigs(t *testing.T, pool *pgxpool.Pool, regID, name string) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
+	require.NoError(t, pool.QueryRow(journalPrincipalCtx(context.Background()),
 		`SELECT count(*) FROM kacho_registry.repository_configs WHERE registry_id=$1 AND name=$2`,
 		regID, name).Scan(&n))
 	return n

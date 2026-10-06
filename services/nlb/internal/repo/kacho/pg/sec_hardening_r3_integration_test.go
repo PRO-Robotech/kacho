@@ -50,7 +50,7 @@ func waitForLockWaiter(t *testing.T, ctx context.Context, observer *pgxpool.Pool
 // for pg_stat_activity introspection in the deterministic lock-wait helper.
 func newObserverPool(t *testing.T, dsn string) *pgxpool.Pool {
 	t.Helper()
-	p, err := coredb.NewPool(context.Background(), dsn)
+	p, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	t.Cleanup(p.Close)
 	return p
@@ -70,7 +70,7 @@ func newObserverPool(t *testing.T, dsn string) *pgxpool.Pool {
 func TestTGMoveProject_Allowed_NoAttach(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj0TGMVOK234567890ll", "tgmvok-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -88,7 +88,7 @@ func TestTGMoveProject_Allowed_NoAttach(t *testing.T) {
 func TestTGMoveProject_NotFound(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)

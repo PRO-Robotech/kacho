@@ -109,10 +109,11 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 	// даст удалить. Tenant-RT не трогаем: их наличие уже отвергнуто
 	// checkNetworkEmpty (а если проскочит — FK RESTRICT остаётся backstop'ом).
 	if n, gerr := w.Networks().Get(ctx, id); gerr == nil && n.DefaultRouteTableID != "" {
-		if derr := w.RouteTables().Delete(ctx, n.DefaultRouteTableID); derr != nil && !errors.Is(derr, repo.ErrNotFound) {
+		rtName, derr := w.RouteTables().Delete(ctx, n.DefaultRouteTableID)
+		if derr != nil && !errors.Is(derr, repo.ErrNotFound) {
 			return nil, serviceerr.MapRepoErr(derr)
 		}
-		if oerr := w.Outbox().Emit(ctx, "RouteTable", n.DefaultRouteTableID, n.ProjectID, "DELETED", map[string]any{"id": n.DefaultRouteTableID}); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "RouteTable", n.DefaultRouteTableID, n.ProjectID, "DELETED", map[string]any{"id": n.DefaultRouteTableID, "name": rtName}); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		unregTuples = append(unregTuples,
@@ -127,10 +128,11 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 		n, gerr := w.Networks().Get(ctx, id)
 		switch {
 		case gerr == nil && n.DefaultSecurityGroupID != "":
-			if derr := w.SecurityGroups().Delete(ctx, n.DefaultSecurityGroupID); derr != nil && !errors.Is(derr, repo.ErrNotFound) {
+			sgName, derr := w.SecurityGroups().Delete(ctx, n.DefaultSecurityGroupID)
+			if derr != nil && !errors.Is(derr, repo.ErrNotFound) {
 				return nil, serviceerr.MapRepoErr(derr)
 			}
-			if oerr := w.Outbox().Emit(ctx, "SecurityGroup", n.DefaultSecurityGroupID, n.ProjectID, "DELETED", map[string]any{"id": n.DefaultSecurityGroupID}); oerr != nil {
+			if oerr := w.Outbox().Emit(ctx, "SecurityGroup", n.DefaultSecurityGroupID, n.ProjectID, "DELETED", map[string]any{"id": n.DefaultSecurityGroupID, "name": sgName}); oerr != nil {
 				return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 			}
 			unregTuples = append(unregTuples,
@@ -151,10 +153,11 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 			fgaregister.ProjectHierarchy(n.ProjectID, "vpc_network", id))
 	}
 
-	if err := w.Networks().Delete(ctx, id); err != nil {
+	name, err := w.Networks().Delete(ctx, id)
+	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Network", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "Network", id, projectID, "DELETED", map[string]any{"id": id, "name": name}); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if len(unregTuples) > 0 {

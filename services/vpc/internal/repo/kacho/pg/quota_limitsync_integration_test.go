@@ -64,9 +64,9 @@ func TestLimitSync_ProjectChangeReachesTheLivingRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	proj := quotaProjection(t, pool)
 
 	const project = "prj-limitsync-project"
@@ -121,9 +121,9 @@ func TestLimitSync_AccountChangeReachesEveryProjectOfThatAccount(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	proj := quotaProjection(t, pool)
 
 	const ours, theirs = "acc-ls-ours", "acc-ls-theirs"
@@ -171,9 +171,9 @@ func TestLimitSync_LessSpecificScopeNeverOverridesAMoreSpecificOne(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	proj := quotaProjection(t, pool)
 
 	const account = "acc-ls-prec"
@@ -238,9 +238,9 @@ func TestLimitSync_StaleRevisionIsNotApplied(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	proj := quotaProjection(t, pool)
 
 	const project = "prj-ls-stale"
@@ -281,9 +281,9 @@ func TestLimitSync_WithdrawalRemovesTheRowAndUsageComesBackCounted(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	proj := quotaProjection(t, pool)
 
 	const project = "prj-ls-withdraw"
@@ -334,7 +334,7 @@ func TestLimitSync_CursorAndCountersAreObservable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
 	proj := quotaProjection(t, pool)
 

@@ -56,11 +56,9 @@
 #   (б) секреты, которые заводит ПОСЕВ: ссылки на них НЕОБЯЗАТЕЛЬНЫ, под
 #       поднимется и откажет позже уже стражем старта службы — рендер про них
 #       молчит by construction. Требуется из них ровно то, на что рендер
-#       ССЫЛАЕТСЯ и что служба ЧИТАЕТ под посадкой этого рендера: ключ обёртки
-#       секретов второго фактора читается только под `own` (страж старта службы,
-#       `Lanes: own`), и под `external` его отсутствие стенду не мешает — так и
-#       обещает шапка посева. Прежде перечень брал ВСЕ имена посева безусловно и
-#       отказывал стенду, который поднимался (задача #2803);
+#       ССЫЛАЕТСЯ. Прежде перечень брал ВСЕ имена посева безусловно и отказывал
+#       стенду, который поднимался (задача #2803); ветвь по посадке службы снята
+#       вместе с её второй посадкой (kaname#363, kacho#2818);
 #   (в) ведомость производителей ниже — те, у кого на локальном стенде есть
 #       рецепт.
 #
@@ -187,10 +185,10 @@ for d in docs:
     tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
     if tpl: scan(tpl.get("spec") or {})
 # (б) ПОСЕВ: имя требуется, только если рендер на него ССЫЛАЕТСЯ (любой
-# ссылкой, обязательной или нет) и служба читает его под посадкой ЭТОГО рендера.
-# Полосность — одна строка на секрет, читаемый не всеми посадками; перенос
-# требования стража старта службы (`Lanes: own` у второго фактора), а не выбор.
-LANES = {"kaname-second-factor-enc-key": {"own"}}
+# ссылкой, обязательной или нет). Прежде требование ветвилось ещё и по посадке
+# службы (второй фактор читался только под `own`); посадка у службы одна
+# (kaname#363), и ключа посадки в её настройках нет (kacho#2818) — ветвиться
+# больше не по чему.
 referenced=set()
 def scan_any(pod):
     for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
@@ -209,20 +207,9 @@ for d in docs:
         scan_any(spec); continue
     tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
     if tpl: scan_any(tpl.get("spec") or {})
-posture=None
-for d in docs:
-    if d.get("kind")=="ConfigMap" and d["metadata"]["name"]=="kaname-config":
-        cfg=yaml.safe_load((d.get("data") or {}).get("config.yaml") or "") or {}
-        posture=(cfg.get("authn") or {}).get("identity-provider")
 seed=[n for n in sys.argv[1].split() if n]
 for n in seed:
     if n not in referenced or n in made: continue
-    lanes=LANES.get(n)
-    if lanes is not None:
-        if posture is None:
-            sys.stderr.write(f"посадка не прочитана из рендера (kaname-config, authn.identity-provider): требуемость {n}, читаемого только под {sorted(lanes)}, судить нечем\n")
-            sys.exit(3)
-        if posture not in lanes: continue
     need.add(n)
 print("\n".join(sorted(n for n in need if n not in made)))
 ' "$SEED_NAMES" | sort -u | grep -v '^$'
@@ -277,13 +264,15 @@ is_local_stand() {
 # «наверное, появится»: отказ назовёт его отдельно.
 producer_of() {
   case "$1" in
-    kaname-hook-token)        echo "посев dev-prod-secrets.sh · на площадке — оператор: общий секрет обратных вызовов, ключ token" ;;
     kaname-jwks-enc-key)      echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки подписного ключа, ключ enc_key" ;;
     kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
     kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
+    kaname-mail-keys)         echo "посев dev-prod-secrets.sh · на площадке — оператор: ключи почтовой полосы, ключи mail-window.key и device-label.key (случайные байты, не короче 32 каждый)" ;;
+    kacho-notify-db|kacho-notifyprobe-db) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: пароли базы notify/пробы, ключи password + postgres-password (их же берёт экземпляр базы existingSecret)" ;;
+    kacho-notify-recipient-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ сетки на адресата notify, ключ recipientKey (не короче 32 байт; смена — ротация сетки)" ;;
+    kacho-notify-probe-feed-keyring) echo "посев seed-notify-stand-secrets.sh · стендовый объект пробы-источника: кольцо ключей ленты, ключ keyring" ;;
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
-    kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
     *)                        echo "" ;;
   esac
 }
@@ -350,9 +339,19 @@ PY
 }
 
 seed_ran=0
+notify_seed_ran=0
 produce() {
   local name="$1"
   case "$name" in
+    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-probe-feed-keyring)
+      # Объекты стенда notify — свой посев (не dev-prod-secrets.sh: тот читает
+      # предполёт боевой раскатки площадки, где notify нет).
+      if [ "$notify_seed_ran" -eq 0 ]; then
+        KACHO_NAMESPACE="$NS" bash "$HERE/seed-notify-stand-secrets.sh" || return 1
+        notify_seed_ran=1
+      fi
+      kubectl -n "$NS" get secret "$name" >/dev/null 2>&1
+      ;;
     kaname-*)
       # Ключевой материал службы доступа заводит ОДИН производитель — посев.
       # Второго места о том же предмете не заводится: они разошлись бы ровно
@@ -380,9 +379,6 @@ produce() {
         return 1
       }
       create_generic "$name" "username=$user" "password=$pass" "htpasswd=$line"
-      ;;
-    kratos-selfservice-ui-cookie-secret)
-      create_generic "$name" "cookieSecret=$(openssl rand -hex 16)"
       ;;
     *) return 1 ;;
   esac

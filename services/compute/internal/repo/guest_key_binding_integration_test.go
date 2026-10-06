@@ -58,13 +58,13 @@ func TestGuestKeyBinding_ForeignKeyNeverAttaches(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
-	keyRepo := repo.NewGuestAccessKeyRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
+	keyRepo := mustJournalWriter(repo.NewGuestAccessKeyRepo(pool, probeJournalOptions))
 
 	own := seedGuestKey(t, ctx, keyRepo, "proj-own", "key-own")
 	foreign := seedGuestKey(t, ctx, keyRepo, "proj-other", "key-foreign")
@@ -114,13 +114,13 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
-	keyRepo := repo.NewGuestAccessKeyRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
+	keyRepo := mustJournalWriter(repo.NewGuestAccessKeyRepo(pool, probeJournalOptions))
 
 	held := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-held")
 	free := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-free")

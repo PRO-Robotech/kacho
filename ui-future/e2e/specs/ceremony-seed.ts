@@ -46,8 +46,15 @@ import { carryStandCookies } from "../stand-secure-origin.ts";
  * держит статическая перепись набора, а не эта запись.
  */
 
-/** Пароль посева — тот же, что у фикстуры набора: одно значение, одно объявление. */
-export const SEED_PASSWORD = E2E_PASSWORD;
+/**
+ * Пароль посева — тот же, что у фикстуры набора: одно значение, одно объявление.
+ *
+ * ПЕРЕЭКСПОРТ, А НЕ СВОЯ КОНСТАНТА. `fixtures` импортирует `./assurance`, а тот —
+ * этот модуль, поэтому пробе, загружающей `fixtures` первой, он достаётся
+ * недогруженным. Константа, скопированная при загрузке, стала бы `undefined`;
+ * переэкспорт — живая связь, читаемая при обращении.
+ */
+export { E2E_PASSWORD as SEED_PASSWORD };
 
 export { SESSION_COOKIE };
 
@@ -209,7 +216,7 @@ export interface SeededHuman {
  * Завести человека глаголом регистрации. Шаг утверждает исход: `200`, сессия в
  * теле и носитель у посева. Отказ называется ТЕКСТОМ службы, а не симптомом.
  */
-export async function seedHuman(seed: Seed, email: string, password = SEED_PASSWORD): Promise<SeededHuman> {
+export async function seedHuman(seed: Seed, email: string, password = E2E_PASSWORD): Promise<SeededHuman> {
   const res = await seed.submit(LANE.register, "register", { email, password });
   const call = lastIssued(seed, LANE.register);
   expect(
@@ -245,7 +252,7 @@ export async function seedHuman(seed: Seed, email: string, password = SEED_PASSW
 export async function seedConfirmedHuman(
   seed: Seed,
   email: string,
-  password = SEED_PASSWORD,
+  password = E2E_PASSWORD,
 ): Promise<SeededHuman> {
   const mailbox = stationMailbox();
   const before = new Set((await mailbox.letters(email)).map((l) => l.id));

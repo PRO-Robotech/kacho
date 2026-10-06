@@ -6,7 +6,7 @@
  * оттуда сломал бы сборку образа. Поэтому у хоста своя копия, и она обязана
  * совпадать с каноном ЗНАЧЕНИЕ В ЗНАЧЕНИЕ.
  *
- * Чем это держится: `HostBreadcrumb.names.test.tsx` читает канон по
+ * Чем это держится: `HostBreadcrumb.names.test.ts` читает канон по
  * относительному пути (пробы исполняются из дерева исходников, где `shared/`
  * есть) и сравнивает обе карты. Расхождение не может приземлиться молча.
  *
@@ -24,6 +24,7 @@ export const SERVICES: Record<string, { title: string; menuTitle: string }> = {
   registry: { title: "Registry", menuTitle: "Registry" },
   geo: { title: "Geography", menuTitle: "Geography" },
   system: { title: "Администрирование", menuTitle: "Администрирование" },
+  notify: { title: "Уведомления", menuTitle: "Уведомления" },
 };
 
 /** Сущности по сегменту адреса. */

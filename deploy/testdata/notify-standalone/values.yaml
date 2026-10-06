@@ -1,0 +1,43 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Собственные значения НОГИ БЕЗ ЗОНТИКА — рендера чарта deploy/helm/notify/
+# отдельно (NTF-1, полоса D1; замысел З28, CX1-97, CX1-98 (в); форма NTF1-I06).
+#
+# НЕ ПРОФИЛЬ И НЕ ПОСТАВКА: файл читают только пробы рендера
+# (deploy/notify_secret_layout_test.go). Значения — фикстурные.
+#
+# УЗЛА ПОЧТЫ ЗДЕСЬ НЕТ НАМЕРЕННО. Узел `global.kacho.identity.smtp` приходит
+# только слоем образца из каталога deploy/testdata/mail-node/; проба печатает
+# его отсутствие в этом файле и без него не проводится — иначе снятый
+# `--set …connectionURI=null` адрес мог бы вернуться отсюда.
+#
+# Ключей формы зонтика (`api-gateway`, подчарты) здесь нет (N24): чарт notify
+# отдельно их не читает.
+#
+# Узел флага `global.kacho.notifications` — здесь, слоем пробы (замысел З28,
+# CX1-112): чарт notify `global` не объявляет, а без узла рендер отказывает с
+# именем ручки. Флаг установки включён, единственный источник таблицы дерева —
+# стендовая проба — выключен переопределением: нога без зонтика дерева
+# рендерит ноль объектов (перечень пуст), а фикстурные копии таблицы (строка
+# `probe-b`, deploy/notify_secret_layout_test.go) — объекты своего источника.
+global:
+  kacho:
+    notifications:
+      enabled: true
+      modules:
+        notifyProbe:
+          enabled: false
+image:
+  tag: fixture
+origin: "https://console.example.invalid"
+recipientKey: "fixture-recipient-key-not-a-secret-0123456789"
+# Ключ значением, а не объектом стенда (Д123): слой ложится и поверх цепочки
+# стенда, где профиль называет объект, — у ключа одно место, и фикстура его
+# называет явно.
+recipientKeySecret:
+  name: ""
+db:
+  host: notify-postgres
+  passwordSecret:
+    name: notify-db-password

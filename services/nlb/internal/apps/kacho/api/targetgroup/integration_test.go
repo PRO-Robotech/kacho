@@ -49,7 +49,7 @@ func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	// не с чего, пока у проекта нет строки учёта. Разбор и перечень идентичностей
 	// — `quota_fixture_test.go`.
 	seedQuotaFixture(t, pool)
-	return pool, kachopg.New(pool, nil)
+	return pool, mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 }
 
 func newOpsRepo(t *testing.T, pool *pgxpool.Pool) operations.Repo {
@@ -93,9 +93,13 @@ func (stubCheckClient) Check(_ context.Context, _, _, _ string) (bool, error) { 
 // отвергают вызывающего, которого нельзя назвать субъектом модели прав
 // (`shared.AuthorizeObject`), поэтому сценарий, доходящий до такого решения,
 // обязан кого-то назвать — иначе он проверяет отказ, а не свой предмет.
+//
+// Id — формы, которую `auth.InitiatorOf` переводит в инициатора: пишущие
+// транзакции модуля открывает помощник записи журнала, и вызывающий без формы
+// инициатора получил бы отказ записи (NTF-3, замысел issue-2918 З4).
 func ctxNamedCaller() context.Context {
 	return operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr_integration"})
+		operations.Principal{Type: "user", ID: ids.NewHyphenID(ids.PrefixUser)})
 }
 
 // ---- Integration tests -----------------------------------------------------
@@ -106,7 +110,7 @@ func TestIntegration_CreateTargetGroup_EndToEnd(t *testing.T) {
 	opsRepo := newOpsRepo(t, pool)
 	h := mkHandler(t, repo, opsRepo)
 
-	op, err := h.Create(context.Background(), &lbv1.CreateTargetGroupRequest{
+	op, err := h.Create(ctxNamedCaller(), &lbv1.CreateTargetGroupRequest{
 		ProjectId: "prj-integ-create",
 		RegionId:  "ru-central1",
 		Name:      "tg-int-1",
@@ -157,7 +161,7 @@ func TestIntegration_DeleteTG_BlocksOnReferencingListener(t *testing.T) {
 	lbID := ids.NewID(ids.PrefixLoadBalancer)
 	tgID := ids.NewID(ids.PrefixTargetGroup)
 	lstID := ids.NewID(ids.PrefixListener)
-	ctx := context.Background()
+	ctx := ctxNamedCaller()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers (id, project_id, region_id, name, description, labels,
 			type, status, session_affinity, deletion_protection)
@@ -200,7 +204,7 @@ func TestIntegration_AddRemoveTargets_Lifecycle(t *testing.T) {
 	// назвал; реальный вызов всегда несёт личность. Этот файл — внешний
 	// тест-пакет (targetgroup_test), поэтому принципал ставится напрямую.
 	ctx := operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr_lister"})
+		operations.Principal{Type: "user", ID: ids.NewHyphenID(ids.PrefixUser)})
 
 	// 1. Create TG.
 	createOp, err := h.Create(ctx, &lbv1.CreateTargetGroupRequest{

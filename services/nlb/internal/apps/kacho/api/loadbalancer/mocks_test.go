@@ -417,17 +417,18 @@ func (q *fakeLBWriter) MoveProject(ctx context.Context, id, newProjectID string)
 	return &c, moved, nil
 }
 
-func (q *fakeLBWriter) Delete(ctx context.Context, id string) error {
+func (q *fakeLBWriter) Delete(ctx context.Context, id string) (string, error) {
 	if q.w.r.failOnDelete != nil {
-		return q.w.r.failOnDelete
+		return "", q.w.r.failOnDelete
 	}
 	q.w.r.mu.Lock()
 	defer q.w.r.mu.Unlock()
-	if _, ok := q.w.r.lbs[id]; !ok {
-		return fmt.Errorf("%w: NetworkLoadBalancer %s not found", kachorepo.ErrNotFound, id)
+	rec, ok := q.w.r.lbs[id]
+	if !ok {
+		return "", fmt.Errorf("%w: NetworkLoadBalancer %s not found", kachorepo.ErrNotFound, id)
 	}
 	q.w.pendingDeletes = append(q.w.pendingDeletes, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 func (q *fakeLBWriter) DeleteIfUnprotected(ctx context.Context, id string) error {
@@ -495,8 +496,8 @@ func (q *fakeListenerWriter) SetVIP(ctx context.Context, id, addressID, allocate
 func (q *fakeListenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) ([]*kachorepo.ListenerRecord, error) {
 	return nil, nil
 }
-func (q *fakeListenerWriter) Delete(ctx context.Context, id string) error {
-	return errors.New("not implemented in fake")
+func (q *fakeListenerWriter) Delete(ctx context.Context, id string) (string, error) {
+	return "", errors.New("not implemented in fake")
 }
 
 // ---- TargetGroups (limited) ----
@@ -577,8 +578,8 @@ func (q *fakeTGWriter) RemoveTargetsMarkDraining(ctx context.Context, tgID strin
 func (q *fakeTGWriter) DeleteTargetsDraining(ctx context.Context, tgID string) (int, error) {
 	return 0, nil
 }
-func (q *fakeTGWriter) Delete(ctx context.Context, id string) error {
-	return errors.New("not implemented in fake")
+func (q *fakeTGWriter) Delete(ctx context.Context, id string) (string, error) {
+	return "", errors.New("not implemented in fake")
 }
 
 // ---- Outbox ----

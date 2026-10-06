@@ -32,7 +32,7 @@ import (
 
 const (
 	probePlatformIssuer = "https://kaname.kacho.local"
-	probeLegacyIssuer   = "https://hydra.api.kacho.cloud"
+	probeLegacyIssuer   = "https://legacy.api.kacho.cloud"
 	probePlatformKeySet = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
 	probeLegacyKeySet   = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	probeRevocationURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
@@ -101,9 +101,10 @@ func probeClientCreds(t *testing.T) grpcclient.TLSClient {
 func prodConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
-		AuthMode:     "production",
-		ServiceAud:   "registry.kacho.local",
-		TokenIssuers: strings.Join([]string{probePlatformIssuer, probeLegacyIssuer}, ","),
+		Notifications: probeNotificationsOff(),
+		AuthMode:      "production",
+		ServiceAud:    "registry.kacho.local",
+		TokenIssuers:  strings.Join([]string{probePlatformIssuer, probeLegacyIssuer}, ","),
 		TokenIssuerKeySets: strings.Join([]string{
 			probePlatformIssuer + "=" + probePlatformKeySet,
 			probeLegacyIssuer + "=" + probeLegacyKeySet,

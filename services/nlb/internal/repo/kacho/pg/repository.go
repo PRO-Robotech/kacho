@@ -6,10 +6,13 @@ package pg
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PRO-Robotech/corelib/journaltx"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -31,6 +34,9 @@ const finalizeTimeout = 10 * time.Second
 type Repository struct {
 	master *pgxpool.Pool
 	slave  *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля), с
+	// которыми Writer открывает каждую пишущую транзакцию.
+	journal journaltx.Options
 }
 
 // New собирает Repository поверх master- и опц. slave-pool'ов.
@@ -38,13 +44,19 @@ type Repository struct {
 //   - masterPool — RW pgxpool на primary; используется Writer + Reader-fallback.
 //   - slavePool  — RO pgxpool на streaming-replica; если nil → Reader идёт на
 //     master (fallback).
+//   - journal    — Options помощника записи журнала, построенные корнем модуля
+//     из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ
+//     сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
 //
 // Pools создаются в composition root (pkg/db.NewPool).
-func New(masterPool, slavePool *pgxpool.Pool) *Repository {
+func New(masterPool, slavePool *pgxpool.Pool, journal journaltx.Options) (*Repository, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("nlb: pg.New: %w", err)
+	}
 	if slavePool == nil {
 		slavePool = masterPool
 	}
-	return &Repository{master: masterPool, slave: slavePool}
+	return &Repository{master: masterPool, slave: slavePool, journal: journal}, nil
 }
 
 // Reader открывает read-only TX (read-committed) на slave-pool'е (или master
@@ -60,12 +72,18 @@ func (r *Repository) Reader(ctx context.Context) (kacho.RepositoryReader, error)
 
 // Writer открывает RW TX на master-pool'е. Caller обязан вызвать либо Commit,
 // либо Abort (Abort идемпотентен — безопасно через defer сразу после открытия).
+//
+// Транзакцию открывает помощник записи журнала `journaltx.Begin`: первым
+// оператором он выставляет инициатора изменения локально к транзакции, а
+// инициатора берёт только из принципала контекста. Контекст без принципала —
+// отказ до обращения к базе (`auth.ErrNoInitiator`), транзакция не открывается:
+// строку журнала без инициатора база всё равно не приняла бы (NTF-3, З4).
 func (r *Repository) Writer(ctx context.Context) (kacho.RepositoryWriter, error) {
-	tx, err := r.master.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := journaltx.Begin(ctx, r.master, r.journal)
 	if err != nil {
 		return nil, err
 	}
-	return &writerImpl{tx: tx}, nil
+	return &writerImpl{tx: tx, feedEnabled: r.journal.FeedEnabled()}, nil
 }
 
 // Close — no-op (pool'ы управляются composition root, не репозиторием).
@@ -113,8 +131,12 @@ func (r *readerImpl) Close() error {
 
 // writerImpl — RW TX state.
 type writerImpl struct {
-	tx        pgx.Tx
+	tx        *journaltx.Tx
 	finalised bool // true после Commit или Abort — защита от double-finalize
+	// feedEnabled — флаг ленты модуля из тех же Options, которыми открыта tx:
+	// объявление журнала, которым эмиттер пишет строку, строится из того же
+	// значения, что настройка транзакции (замысел З11) — второго источника нет.
+	feedEnabled bool
 	// fgaEmitSeq — порядковый номер следующего FGA-register-intent'а этой tx.
 	// Живёт на writer'е, а не на эмиттере: FGARegisterOutbox() возвращает новый
 	// эмиттер на каждый вызов, а нумерация обязана быть сквозной по всей tx.
@@ -152,7 +174,7 @@ func (w *writerImpl) Quotas() kacho.QuotaWriterIface {
 // Outbox — emit события в `nlb_outbox` в той же tx-области writer'а.
 // DML + outbox-emit атомарны.
 func (w *writerImpl) Outbox() kacho.OutboxEmitter {
-	return &outboxEmitter{tx: w.tx}
+	return &outboxEmitter{tx: w.tx, feedEnabled: w.feedEnabled}
 }
 
 // FGARegisterOutbox — emit FGA-register-intent в `fga_register_outbox` в той же

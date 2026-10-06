@@ -5,6 +5,7 @@ package pg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -425,17 +426,21 @@ func (w *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Subn
 // not affected → ErrNotFound "Subnet <id> not found".
 //
 // outbox-write (DELETED tombstone) — в use-case'е.
-func (w *subnetWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM subnets WHERE id = $1`, id)
+//
+// Возвращает имя снятой строки из `RETURNING` удаляющего оператора — снимок
+// для строки снятия журнала (NTF-3, З2), а не чтение до удаления.
+func (w *subnetWriter) Delete(ctx context.Context, id string) (string, error) {
+	var name string
+	err := w.tx.QueryRow(ctx, `DELETE FROM subnets WHERE id = $1 RETURNING name`, id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("%w: Subnet %s not found", helpers.ErrNotFound, id)
+	}
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return refusal.Wrap(refusal.ReferredUnnamed, refusal.Ref{ResourceType: "subnet", ResourceID: id},
+			return "", refusal.Wrap(refusal.ReferredUnnamed, refusal.Ref{ResourceType: "subnet", ResourceID: id},
 				fmt.Errorf("%w: subnet has dependent resources", helpers.ErrFailedPrecondition))
 		}
-		return helpers.WrapPgErr(err, "Subnet", id)
+		return "", helpers.WrapPgErr(err, "Subnet", id)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: Subnet %s not found", helpers.ErrNotFound, id)
-	}
-	return nil
+	return name, nil
 }

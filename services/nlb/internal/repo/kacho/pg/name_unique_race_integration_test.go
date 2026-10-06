@@ -28,7 +28,7 @@ import (
 func TestTargetGroup_NLB_1_49_ConcurrentInsertSameName(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj01TGNAMERACE00001"
 	const name = "race-tg"
@@ -65,7 +65,7 @@ func TestTargetGroup_NLB_1_49_ConcurrentInsertSameName(t *testing.T) {
 func TestListener_NLB_1_49_ConcurrentInsertSameName(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj01LSTNAMERACE0001"
 	lb := newLB(project, "")

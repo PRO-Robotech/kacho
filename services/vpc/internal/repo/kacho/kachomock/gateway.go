@@ -116,16 +116,17 @@ func (gw *gatewayWriter) Update(_ context.Context, g *domain.Gateway) (*kacho.Ga
 	return &cp, nil
 }
 
-func (gw *gatewayWriter) Delete(_ context.Context, id string) error {
-	if _, ok := gw.w.localGWs[id]; !ok {
-		return repo.ErrNotFound
+func (gw *gatewayWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := gw.w.localGWs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if gw.w.deletedGWIDs == nil {
 		gw.w.deletedGWIDs = make(map[string]struct{})
 	}
 	gw.w.deletedGWIDs[id] = struct{}{}
 	delete(gw.w.localGWs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // Compile-time проверка соответствия интерфейсам.

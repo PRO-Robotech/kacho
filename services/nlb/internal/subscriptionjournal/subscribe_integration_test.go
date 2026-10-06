@@ -53,7 +53,7 @@ func newStand(t *testing.T) *stand {
 	}
 
 	dsn := pgtest.NewDB(t)
-	pool, err := pgxpool.New(context.Background(), dsn)
+	pool, err := pgxpool.New(context.Background(), fixtureInitiatorDSN(t, dsn))
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)
 	}
@@ -65,7 +65,7 @@ func newStand(t *testing.T) *stand {
 		t.Fatalf("страж не собрался: %v", err)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
-		Journal:      subscriptionjournal.Journal(),
+		Journal:      subscriptionjournal.Journal(false),
 		DSN:          dsn,
 		Narrower:     narrowtest.New(peer),
 		ProjectGate:  gate,

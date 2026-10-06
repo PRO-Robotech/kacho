@@ -10,7 +10,7 @@
 # другой:
 # боевой слой НАМЕРЕННО неполон. Он сам говорит об этом вслух («Per-cluster
 # URLs/issuers come from a per-cluster overlay layered on top»), и у боевой
-# площадки такой слой есть — `values.fe3455-ory.yaml`, вне git и вне машины CI.
+# площадки такой слой есть — `values.fe3455-secrets.yaml`, вне git и вне машины CI.
 # У стенда `own` его не было ни одного, и цепочка `values.prod.yaml +
 # values.own.yaml` не поднималась ВООБЩЕ — не из-за посадки личности, а из-за
 # пропусков, перечисленных ниже. Сложить два предмета в один файл значило бы
@@ -19,7 +19,8 @@
 # ── ЧТО ЭТОТ СЛОЙ ЗАКРЫВАЕТ И ЧЕГО НЕ ДЕЛАЕТ ───────────────────────────────
 #
 # Закрывает ровно то, что у боевой площадки приходит слоем площадки: зеркало и
-# адреса образов, почтовая полосу и чеканку первичного удостоверения стенда.
+# адреса образов, почтовая полосу, чеканку первичного удостоверения стенда и
+# запрос процессора баз под ёмкость узла стенда.
 # НЕ трогает ни режима, ни mTLS, ни `sslmode` наших служб, ни посадки личности —
 # в файле нет ни одного ключа, который судит
 # `deploy/scripts/assert-production-posture.sh`. Одна величина здесь ВКЛЮЧАЕТ
@@ -150,27 +151,62 @@ mailpit:
 # который объявил подчарт, — иначе правка адреса протащила бы заодно смену
 # версии СУБД, которую никто не решал. Баз поставщиков в перечне нет: на этой
 # цепочке их не поднимается (kacho#2816).
+#
+# ── ЗАПРОС ПРОЦЕССОРА БАЗ: ПОД УЗЕЛ СТЕНДА, А НЕ ПОД БОЕВОЙ КЛАСТЕР ─────────
+#
+# Тем же ключом верхнего уровня, что образ (второй `pg-vpc:` унёс бы первый).
+#
+# Боевой слой задаёт базам запрос 500m (vpc, iam) и 250m (прочие пять) — это
+# размер боевого кластера. Цепочка own поднимается на узле kind ранера, и там
+# эти числа не помещаются: замер на голове d4fed1ee (рендер цепочки, единица —
+# запрос процессора пода) — 3520m у цепочки, 950m у плоскости управления kind,
+# итого 4470m на узле в 4000m. Нога «stack own boots» краснела четыре прогона из
+# четырёх: семь подов Pending, подъём падал по сроку «Progress deadline
+# exceeded». Держит арифметику deploy/stand_chain_fits_its_runner_render_test.go.
+#
+# 100m — НЕ ПОДОБРАНО, А ВЗЯТО У ИЗМЕРЕННОГО: ровно этот запрос у каждой из семи
+# баз несёт цепочка dev-prod (values.dev.yaml), которую конвейер поднимает на
+# том же ранере и том же kind зелёной, и тот же запрос назначает своим базам
+# слой боевой площадки на 4 vCPU (values.fe3455.yaml). С ним цепочка own просит
+# 1970m, вместе с плоскостью kind — 2920m из 4000m.
+#
+# Меняется ТОЛЬКО запрос процессора. Предел процессора, запрос и предел памяти
+# и настройки СУБД остаются боевыми: от них зависят арифметика соединений и
+# бюджет памяти (deploy/db_footprint_declaration_test.go), и база по-прежнему
+# вправе занять предел боевого слоя, когда процессор свободен. Посадку этот
+# раздел не трогает: assert-production-posture.sh запросов не судит.
+#
+# Предикат снятия: ранер ноги с ёмкостью узла, вмещающей боевой запрос (сумма
+# в гейте выше с боевыми 500m и 250m помещается), — тогда раздел снимается
+# целиком и цепочка own стоит на запросах боевого слоя.
 pg-vpc:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-compute:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-iam:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-geo:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-nlb:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-storage:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 pg-registry:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+  primary: { resources: { requests: { cpu: 100m } } }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ОБРАЗЫ ПРОДУКТА: ОДНА РЕВИЗИЯ НА СЛУЖБЫ И КРАЙ
@@ -190,58 +226,73 @@ pg-registry:
 #
 # ПИН НЕ СТАВИТСЯ РУКОЙ, А ВЫВОДИТСЯ ИЗ ЗАПИСИ: тег, собранный мимо неё, был бы
 # неотличим от выведенного и лгал бы молча. Запись одна на профиль, обе формы
-# тега выводятся из неё.
+# тега выводятся из неё. Пины блока переписывает порождающий
+# deploy/scripts/gen-managed-image-pins.sh — вместе с записью и одним вызовом:
 #
-# порождено-от: main 4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+#   bash deploy/scripts/gen-managed-image-pins.sh --profile helm/umbrella/values.own-stand.yaml \
+#     --ref <коммит> --branch <ветка, чья сборка публикует тег>
 #
-# Это ствол, на котором стоит ветка волны-1 (kacho#2816): дерево ветки волны
-# совпадает с деревом `main` этой ревизии во всех исходниках продукта, поэтому
-# провенанс стенда сверяется с ней по коммиту. Прежняя запись (`bec320cf`)
-# предшествовала волне-0 (`b32ca653`, носитель сессии края: множество носителей
-# выводится из посадки) — стенд исполнял бы край старше профиля, который его
-# описывает. Образ этой ревизии опубликован у ВСЕХ семи — замер 2026-09-22:
-# реестр отвечает 200 на тег `main-4382f05c` у каждого из семи.
+# Вызов выше — из корня дерева; путь профиля в нём от каталога deploy/, потому
+# что скрипт переходит туда сам. Он отказывает, если коммит не входит в
+# названную ветку: образа с таким тегом тогда нет, и пин назвал бы то, чего
+# kubelet не вытянет.
+#
+# порождено-от: 2798 87329e2935c54a3e1ddb3f2099afcedd1607894e
+#
+# Это голова ветки волны-4 (kacho#2798) в момент, когда она догнала ветку эпика
+# после волны-3; её дерево совпадает с деревом ветки эпика `6edea09c`. Предок
+# ревизии — коммит слияния волны-1 в ветку эпика `5a3766e1cb4`, поэтому край
+# волны-1 (kacho#2815) в этих образах есть и стенд исполняет его живьём.
+# Прежняя запись (`main 4382f05c`) была собрана ДО волны-1: стенд, поднятый на
+# ней, исполнял край старше профиля, который его описывает (kacho#2846).
+#
+# Ветка линии образов сама не публикует: их выкладывает ручной запуск сборок на
+# ней — службы и край собирает docker-build.yml, консоль собирает ui.yml (путь
+# ручного запуска у консоли завёл kacho#2881). Замер 2026-09-30: реестр отвечает
+# 200 на тег `2798-87329e29` у каждой из семи служб и на полную форму тега у
+# каждого из девяти модулей консоли.
 # Служба доступа сюда не входит: её исходники вынесены отдельным продуктом, её
 # пин объявлен базовым слоем и из записи выше не выводится by construction.
 vpc:
-  image: docker.io/prorobotech/kacho-vpc:main-4382f05c
+  image: docker.io/prorobotech/kacho-vpc:2798-87329e29
 compute:
-  image: docker.io/prorobotech/kacho-compute:main-4382f05c
+  image: docker.io/prorobotech/kacho-compute:2798-87329e29
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:main-4382f05c
+  image: docker.io/prorobotech/kacho-geo:2798-87329e29
 api-gateway:
-  image: docker.io/prorobotech/kacho-api-gateway:main-4382f05c
+  image: docker.io/prorobotech/kacho-api-gateway:2798-87329e29
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-4382f05c
+    tag: 2798-87329e29
 storage:
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-4382f05c
-# КОНСОЛЬ — та же ревизия, ПОЛНОЙ формой тега: у образов консоли реестр несёт
-# теги только полной формы (замер 2026-09-24: 200 на `main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49` у хозяина и у
-# каждого из восьми модулей). Включает консоль накладка стенда
+    tag: 2798-87329e29
+# КОНСОЛЬ — та же ревизия, ПОЛНОЙ формой тега: сборка консоли коммит не режет, и
+# реестр несёт у её образов теги только полной формы (замер 2026-09-30: 200 на
+# полную форму у хозяина и у каждого из восьми модулей, 404 на сокращённую
+# `2798-87329e29` у хозяина и у модуля обзора). Включает консоль накладка стенда
 # (values.own.yaml), а не этот слой: здесь — только то, ЧЕМ она поднимается.
 uif:
-  image: docker.io/prorobotech/kacho-ui-future-host:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  image: docker.io/prorobotech/kacho-ui-future-host:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   imagePullPolicy: IfNotPresent
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-vpc:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-compute:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-storage:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-nlb:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-registry:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-iam:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+    image: docker.io/prorobotech/kacho-ui-future-system:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
 # ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЯЕТСЯ, И ЭТО СКАЗАНО, А НЕ УМОЛЧАНО.
 #
 # Этот файл — слой площадки: он называет образы и адреса, а посадку безопасности
@@ -260,4 +311,4 @@ uif:
 registry:
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-4382f05c
+    tag: 2798-87329e29

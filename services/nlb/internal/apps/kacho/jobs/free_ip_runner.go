@@ -49,7 +49,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -58,9 +57,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/corelib/subscription"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 )
 
 // freeIPMaxPerTick — верхняя граница строк, реконсилируемых за один тик (защита
@@ -103,9 +105,17 @@ SELECT id, status
  ORDER BY updated_at ASC
  LIMIT $1`
 
+// Личность компонента задания — пара §8 замысла issue-2918 (З4, З13): инициатор
+// строк журнала, которые пишет проход, — `system:nlb-free-ip-runner`.
+const (
+	freeIPComponentService = "nlb"
+	freeIPComponentRole    = "free-ip-runner"
+)
+
 // FreeIPRunner — фоновый reconciler застрявших LoadBalancer'ов (durable handle).
 type FreeIPRunner struct {
 	pool         *pgxpool.Pool
+	journal      journaltx.Options
 	addrs        vpcclient.InternalAddressClient // release VIP (FreeIP / ClearReference)
 	logger       *slog.Logger
 	interval     time.Duration
@@ -133,7 +143,14 @@ func WithPoisonObserver(fn func(lbID string)) FreeIPOption {
 // Невалидные (<=0) значения подменяются безопасными дефолтами. addrs допускается
 // nil (vpc не сконфигурирован) — тогда reconciler no-op (без release нельзя
 // безопасно удалять handle, иначе утечка).
-func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) *FreeIPRunner {
+//
+// journal — Options помощника записи журнала для транзакции прохода, построенные
+// корнем модуля из флага ленты (`journaltx.NewOptions`, замысел З11); нулевые —
+// отказ сборки корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewFreeIPRunner(pool *pgxpool.Pool, journal journaltx.Options, addrs vpcclient.InternalAddressClient, logger *slog.Logger, interval, ageThreshold time.Duration, opts ...FreeIPOption) (*FreeIPRunner, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("nlb: NewFreeIPRunner: %w", err)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -145,6 +162,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	}
 	r := &FreeIPRunner{
 		pool:         pool,
+		journal:      journal,
 		addrs:        addrs,
 		logger:       logger,
 		interval:     interval,
@@ -153,7 +171,7 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 	for _, opt := range opts {
 		opt(r)
 	}
-	return r
+	return r, nil
 }
 
 // Run блокирует goroutine до отмены ctx. Каждые r.interval — tick reconcile;
@@ -326,8 +344,19 @@ type stuckLB struct {
 // тиком. Полный вынос release-вызовов за границы транзакции — отдельный (более
 // рискованный) рефактор, не предпринят без детерминированного теста на его
 // race-профиль.
+//
+// Личность прохода — первым оператором: `journaltx.AsComponent` кладёт в контекст
+// принципал компонента, и транзакцию открывает помощник записи журнала с этим
+// инициатором (строка `DELETED` из `emitReconcileFinalize` несёт
+// `system:nlb-free-ip-runner`). Контекст с иным принципалом — ошибка программы:
+// `ErrComponentOverPrincipal` возвращается до транзакции и до освобождения
+// адресов, тик прерывается (замысел issue-2918, З4 CX3B-25 (2), З13).
 func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, error) {
-	tx, err := r.pool.Begin(ctx)
+	ctx, err := journaltx.AsComponent(ctx, freeIPComponentService, freeIPComponentRole)
+	if err != nil {
+		return outcomeIdle, fmt.Errorf("free_ip_runner component identity: %w", err)
+	}
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return outcomeIdle, fmt.Errorf("begin reconcile tx: %w", err)
 	}
@@ -365,7 +394,12 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 			"load_balancer_id", lb.id, "status", lb.status)
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM kacho_nlb.load_balancers WHERE id = $1`, lb.id); err != nil {
+	// Снимок имени — из `RETURNING` удаляющего оператора, а не чтением до
+	// удаления (замысел issue-2918, З2 «Имя на снятии»): строка `DELETED`
+	// именованного вида несёт имя, которое было у предмета в момент снятия.
+	var name string
+	if err := tx.QueryRow(ctx,
+		`DELETE FROM kacho_nlb.load_balancers WHERE id = $1 RETURNING name`, lb.id).Scan(&name); err != nil {
 		return outcomeIdle, fmt.Errorf("delete stuck load balancer %s: %w", lb.id, err)
 	}
 
@@ -373,7 +407,7 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 	// CREATING-сирота никогда не достиг терминального статуса и не анонсировался
 	// (CREATED/fga-register не эмитились) → ничего не эмитим.
 	if lb.status == string(domain.LBStatusDeleting) {
-		if err := emitReconcileFinalize(ctx, tx, lb.id, lb.projectID); err != nil {
+		if err := emitReconcileFinalize(ctx, tx, r.journal.FeedEnabled(), lb.id, lb.projectID, name); err != nil {
 			return outcomeIdle, err
 		}
 	}
@@ -460,9 +494,12 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 	if addressID == "" {
 		return nil
 	}
-	// System-reconcile детачнут от tenant-request — идём под system-principal,
-	// чтобы вызов к vpc нёс identity (иначе authz_no_principal).
-	ctx = operations.WithPrincipal(ctx, operations.SystemPrincipal())
+	// Личность вызова — та, что `reconcileOne` поставил первым оператором
+	// (`journaltx.AsComponent`, принципал компонента `(nlb, free-ip-runner)`):
+	// владелец адреса получает тот же принципал, что стоит инициатором строки
+	// журнала прохода. Своей установки здесь нет — безымянная системная
+	// личность `{system, bootstrap}` на этом пути снята (замысел issue-2918,
+	// З13, CX3D-01 (б); гейт дерева — УК3-31).
 	_, err := r.addrs.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
 		ProjectID: projectID,
 		AddressID: addressID,
@@ -471,22 +508,29 @@ func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addre
 	return err
 }
 
-// emitReconcileFinalize эмитит в текущей TX outbox DELETED (nlb_load_balancer) +
-// fga-unregister (project-hierarchy) — то же, что финальный шаг успешного Delete.
-// Все INSERT'ы — в той же TX, что и DELETE строки (атомарно).
-func emitReconcileFinalize(ctx context.Context, tx pgx.Tx, lbID, projectID string) error {
-	lbPayload, err := json.Marshal(map[string]any{
-		"id":         lbID,
-		"project_id": projectID,
-		"reason":     "free_ip_runner_reconcile",
-	})
-	if err != nil {
-		return fmt.Errorf("marshal lb DELETED payload: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_nlb.nlb_outbox (resource_type, resource_id, project_id, action, payload)
-		VALUES ('nlb_load_balancer', $1, $2, 'DELETED', $3::jsonb)
-	`, lbID, projectID, lbPayload); err != nil {
+// emitReconcileFinalize эмитит в текущей TX строку журнала DELETED
+// (nlb_load_balancer) + fga-unregister (project-hierarchy) — то же, что финальный
+// шаг успешного Delete. Все записи — в той же TX, что и DELETE строки (атомарно).
+//
+// Строку журнала пишет функция фундамента с дескриптором nlb
+// (`subscriptionjournal.Journal(feedEnabled).Emit`, замысел issue-2918, З5, З6), а не
+// литеральная вставка: словарь видов и родов, форма имени и якорь — из одного
+// объявления владельца; инициатор строки — из транзакции помощника, открытой
+// под личностью компонента прохода. name — снимок имени из `RETURNING`
+// удаляющего оператора.
+func emitReconcileFinalize(ctx context.Context, tx *journaltx.Tx, feedEnabled bool, lbID, projectID, name string) error {
+	if err := subscriptionjournal.Journal(feedEnabled).Emit(ctx, tx, subscription.Entry{
+		Kind:      kachorepo.OutboxResourceLoadBalancer,
+		ID:        lbID,
+		ProjectID: projectID,
+		Change:    kachorepo.OutboxActionDeleted,
+		Payload: map[string]any{
+			"id":                        lbID,
+			"project_id":                projectID,
+			subscription.NamePayloadKey: name,
+			"reason":                    "free_ip_runner_reconcile",
+		},
+	}); err != nil {
 		return fmt.Errorf("emit lb DELETED: %w", err)
 	}
 

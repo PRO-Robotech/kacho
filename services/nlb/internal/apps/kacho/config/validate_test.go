@@ -74,8 +74,9 @@ func TestParseMode(t *testing.T) {
 // стражу невидимой.
 func minimalValidConfig() Config {
 	return Config{
-		ModeRaw: "dev",
-		Authz:   AuthzConfig{TrustAnyForwarder: true, DenyBudgetPerSec: 100},
+		Notifications: probeNotificationsOff(),
+		ModeRaw:       "dev",
+		Authz:         AuthzConfig{TrustAnyForwarder: true, DenyBudgetPerSec: 100},
 		// Объявление домена величин — часть законной посадки: у ручки ровно два
 		// законных значения, и незаданное среди них не значится. Отправная
 		// точка, его не несущая, отличалась бы от законной ДВУМЯ фактами сразу,

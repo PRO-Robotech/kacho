@@ -181,7 +181,15 @@ var frozenLegacyMigrations = map[string]string{
 	// миграций в дереве нет. Запись, которой нечего замораживать, объявляет
 	// надзор над несуществующим — ровно то, что этот гейт называет находкой у
 	// других.
-	"services/nlb/internal/migrations":      "1-35",
+	"services/nlb/internal/migrations": "1-35",
+	// Цепочка пробы-источника notify (база kacho_notifyprobe, kacho#2915, З32).
+	// Порядковой эры у неё НЕТ: каталог заведён после её закрытия, номера —
+	// метки времени заведения. Пустая запись — «под надзором, legacy-номеров
+	// ноль», а не пропуск.
+	"services/notify/internal/probemigrations": "",
+	// Цепочка шлюза notify (база kacho_notify, полоса N7, З24): заведена после
+	// закрытия порядковой эры, legacy-номеров ноль.
+	"services/notify/internal/migrations":   "",
 	"services/registry/internal/migrations": "1-17",
 	"services/storage/internal/migrations":  "1-25",
 	"services/vpc/internal/migrations":      "1-45",

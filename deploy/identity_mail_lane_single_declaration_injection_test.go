@@ -62,10 +62,15 @@ func newMailLaneFixture(t *testing.T) mailLaneFixture {
 	copyTree(t, umbrellaDir, root)
 	return mailLaneFixture{
 		root:   root,
-		tpl:    filepath.Join(root, "charts", "kaname", "templates", "_kratos-identity.tpl"),
-		script: filepath.Join(root, filepath.Base(cutoverScript)),
+		tpl:    filepath.Join(root, "charts", "kaname", "templates", "configmap.yaml"),
+		script: filepath.Join(root, filepath.Base(credsLayerScript)),
 	}
 }
+
+// mailLaneNodeAnchor — вход инъекций оси 1: узел нашей почтовой полосы в
+// профиле разработки (`global.kacho.identity.smtp`). Встроенный блок другой
+// формы вносится рядом с ним, на том же уровне значений службы личности.
+const mailLaneNodeAnchor = "      smtp:\n        connectionURI: 'smtp://"
 
 // run — находки гейта по копии. Утверждения возвращают находки СПИСКОМ, а не
 // роняют прогон: предмет инъекции — сам факт находки, поэтому её появление не
@@ -91,7 +96,8 @@ func (f mailLaneFixture) edit(t *testing.T, path, old, new string) {
 		// Неоднозначный якорь — та же беда, только тише: правка сядет в ПЕРВОЕ
 		// вхождение, условия инъекции не создаст, и зелёное будет означать
 		// «дефект не воспроизведён», а не «гейт его не нашёл». Именно так и
-		// вышло при первом заходе: якорь `kratos:` совпал внутри `pg-kratos:`.
+		// вышло при первом заходе: якорь верхнего ключа совпал внутри ключа
+		// базы с тем же окончанием.
 		t.Fatalf("якорь инъекции %q встречается в %s %d раз — правка сядет в первое "+
 			"вхождение и условия может не создать. Зелёный прогон тогда означал бы "+
 			"«дефект не воспроизведён», а не «гейт исправен»", old, path, n)
@@ -115,19 +121,30 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		}
 	})
 
-	// ── ОСЬ 1: второе объявление раздела `courier` ────────────────────────
+	// ── ОСЬ 1: второе объявление раздела полосы ───────────────────────────
 	t.Run("ось1 инъекция: возвращён встроенный блок courier", func(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ",
+			mailLaneNodeAnchor,
 			"      courier:\n"+
 				"        smtp:\n"+
 				"          connection_uri: \"smtp://elsewhere.invalid:1025/\"\n"+
-				"      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ")
+				mailLaneNodeAnchor)
 		if found := f.run(t); len(found) == 0 {
 			t.Errorf("возвращённый встроенный блок `courier` в values.dev.yaml гейт НЕ " +
 				"нашёл — он не способен упасть на своём предмете, то есть удостоверяет " +
 				"единственность объявления, ничего о ней не зная")
+		}
+	})
+	t.Run("ось1 инъекция: второй шаблон рендерит раздел нашего отправителя", func(t *testing.T) {
+		f := newMailLaneFixture(t)
+		p := filepath.Join(f.root, "templates", "second-mail-lane.yaml")
+		if err := os.WriteFile(p, []byte("data:\n  config.yaml: |\n    invite-mail:\n      relay: elsewhere.invalid\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if found := f.run(t); len(found) == 0 {
+			t.Errorf("второй шаблон, рендерящий `invite-mail`, гейт НЕ нашёл — единственность " +
+				"объявления нашей полосы он не судит")
 		}
 	})
 	t.Run("ось1 близнец: раздел, который мы НЕ объявляем, — молчание", func(t *testing.T) {
@@ -137,10 +154,10 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		// «блок в значениях», а не «второе объявление ПОЧТОВОЙ полосы».
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ",
+			mailLaneNodeAnchor,
 			"      oauth2:\n"+
 				"        expose_internal_errors: false\n"+
-				"      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ")
+				mailLaneNodeAnchor)
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на разделе, которого наша конфигурация НЕ "+
 				"объявляет, — значит он ловит форму («блок в значениях»), а не "+
@@ -148,24 +165,39 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		}
 	})
 
-	// ── ОСЬ 2: координата оснастки ────────────────────────────────────────
-	t.Run("ось2 инъекция: координата раскатки переставлена на чужую", func(t *testing.T) {
-		f := newMailLaneFixture(t)
-		f.edit(t, f.script,
-			"global.kacho.identity.smtp.connectionURI",
-			"kratos.kratos.config.courier.smtp.connection_uri")
-		if found := f.run(t); len(found) == 0 {
-			t.Errorf("координата, переставленная на координату ПОСТАВЩИКА, гейтом не " +
-				"найдена — то есть #1679 воспроизводится, а гейт остаётся зелёным: " +
-				"оператор кладёт узел не туда, и сигнала снова нет ни одного")
-		}
-	})
-	t.Run("ось2 близнец: НЕпочтовая координата раскатки — молчание", func(t *testing.T) {
-		// Перечень разрешённых координат несёт и непочтовые (DSN, секреты).
-		// Гейт обязан судить ТОЛЬКО почтовую: покраснев на соседней, он стал бы
+	// ── ОСЬ 2: почтовая координата в перечне слоя учётных данных ──────────
+	//
+	// Якорь — ограничитель блока `CRED_PATHS=(`, ровно одно вхождение (помощник
+	// правки отказывает на нуле и на двух). Два подслучая инъекции — наша
+	// почтовая координата и координата почты поставщика; близнец — непочтовая
+	// координата в том же блоке.
+	for _, c := range []struct{ name, coord string }{
+		{"почтовая координата узла", mailLaneFeedURI},
+		{"координата почты поставщика", "vendor.config.courier.smtp.connection_uri"},
+	} {
+		t.Run("ось2 инъекция: "+c.name+" в перечне слоя", func(t *testing.T) {
+			f := newMailLaneFixture(t)
+			f.edit(t, f.script, "CRED_PATHS=(\n", "CRED_PATHS=(\n  "+c.coord+"\n")
+			found := f.run(t)
+			hit := false
+			for _, x := range found {
+				if strings.Contains(x, c.coord) {
+					hit = true
+				}
+			}
+			if !hit {
+				t.Errorf("почтовая координата %q, вписанная в перечень слоя, гейтом не "+
+					"найдена с её именем (находки: %v) — адрес узла снова получил бы второй "+
+					"источник, а гейт остался бы зелёным", c.coord, found)
+			}
+		})
+	}
+	t.Run("ось2 близнец: НЕпочтовая координата перечня — молчание", func(t *testing.T) {
+		// Перечень вправе нести непочтовые координаты (учётные данные): гейт
+		// обязан судить ТОЛЬКО почтовые — покраснев на соседней, он стал бы
 		// красным на исправном дереве, и его сняли бы первым.
 		f := newMailLaneFixture(t)
-		f.edit(t, f.script, "kratos.kratos.config.dsn", "kratos.kratos.config.dsn_replica")
+		f.edit(t, f.script, "CRED_PATHS=(\n", "CRED_PATHS=(\n  kaname.config.db.password\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на НЕпочтовой координате перечня — он судит не свой "+
 				"предмет и на исправном дереве будет красным:\n%s", strings.Join(found, "\n"))
@@ -176,8 +208,8 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 	t.Run("ось3 инъекция: второй перечень разделов в прозе", func(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"\nkratos:\n",
-			"\n# За подчартом поставщика остаются `courier` и `serve`.\nkratos:\n")
+			"\nkaname:\n",
+			"\n# Наши настройки несут разделы `authn` и `invite-mail`.\nkaname:\n")
 		if found := f.run(t); len(found) == 0 {
 			t.Errorf("рукописный перечень разделов гейтом не найден — второе место об " +
 				"одном предмете переживает правку шаблона молча, а гейт это удостоверяет")
@@ -189,8 +221,8 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		// в том числе там, где это единственный способ объяснить решение.
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"\nkratos:\n",
-			"\n# Раздел `courier` объявлен нашей конфигурацией личности.\nkratos:\n")
+			"\nkaname:\n",
+			"\n# Раздел `invite-mail` объявлен настройками нашей службы.\nkaname:\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на блоке, называющем ОДИН раздел, — он запрещает "+
 				"называть раздел вовсе, тогда как его предмет — рукописный ПЕРЕЧЕНЬ:\n%s", strings.Join(found, "\n"))

@@ -54,7 +54,7 @@ func sweepReplicas(t *testing.T, n int) []*repo.InstanceRepo {
 		pool, err := coredb.NewPool(context.Background(), dsn)
 		require.NoError(t, err)
 		pgtest.ClosePoolAtEnd(t, pool)
-		out = append(out, repo.NewInstanceRepo(pool))
+		out = append(out, mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions)))
 	}
 	return out
 }

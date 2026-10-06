@@ -148,11 +148,11 @@ func TestChartValuesKeysInjectionRaisesOnlyItsOwnCase(t *testing.T) {
 			name: "Б/близнец: имя платформы подстрокой внутри слова — не находка",
 			build: func() ([]chartValuesDecl, int) {
 				moved, a := valuesKeyMutate(real,
-					func(d chartValuesDecl) bool { return d.kind == "declared" && d.name == "kratos" },
+					func(d chartValuesDecl) bool { return d.kind == "declared" && d.name == "ports" },
 					func(d chartValuesDecl) chartValuesDecl { d.name = platformValuesName + "stan"; return d })
 				out := make([]chartValuesDecl, 0, len(moved))
 				for _, d := range moved {
-					if d.kind == "read" && d.name == "kratos" {
+					if d.kind == "read" && d.name == "ports" {
 						d.name = platformValuesName + "stan"
 					}
 					out = append(out, d)
@@ -167,14 +167,14 @@ func TestChartValuesKeysInjectionRaisesOnlyItsOwnCase(t *testing.T) {
 			build: func() ([]chartValuesDecl, int) {
 				return valuesKeyMutate(real,
 					func(d chartValuesDecl) bool {
-						return d.kind == "mount" && strings.Contains(d.name, "kaname-identity-src")
+						return d.kind == "mount" && d.name == "/etc/kaname"
 					},
 					func(d chartValuesDecl) chartValuesDecl {
-						d.name = "/etc/" + platformValuesName + "-identity-src"
+						d.name = "/etc/" + platformValuesName + "-settings"
 						return d
 					})
 			},
-			wantRed: true, says: "монтирует путь", only: "-identity-src", mute: "НЕ ОБЪЯВЛЯЕТ",
+			wantRed: true, says: "монтирует путь", only: "-settings", mute: "НЕ ОБЪЯВЛЯЕТ",
 		},
 		{
 			// ЗАКОННЫЙ БЛИЗНЕЦ правила В: путь без имени платформы молчит, даже
@@ -184,9 +184,9 @@ func TestChartValuesKeysInjectionRaisesOnlyItsOwnCase(t *testing.T) {
 			build: func() ([]chartValuesDecl, int) {
 				return valuesKeyMutate(real,
 					func(d chartValuesDecl) bool {
-						return d.kind == "mount" && strings.Contains(d.name, "kaname-identity-src")
+						return d.kind == "mount" && d.name == "/etc/kaname"
 					},
-					func(d chartValuesDecl) chartValuesDecl { d.name = "/etc/kaname-identity-source"; return d })
+					func(d chartValuesDecl) chartValuesDecl { d.name = "/etc/kaname-settings"; return d })
 			},
 			wantRed: false,
 		},

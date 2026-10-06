@@ -38,7 +38,7 @@ func seedInstanceForBinding(t *testing.T, r *InstanceRepo, id string) {
 // дефекте, который она должна ловить.
 func TestNodeBinding_TwoNodesOneWins(t *testing.T) {
 	pool := auditTestPool(t)
-	r := NewInstanceRepo(pool)
+	r := mustJournalWriter(NewInstanceRepo(pool, probeJournalOptions))
 	ctx := context.Background()
 
 	const instanceID = "ins-bind-race"
@@ -106,7 +106,7 @@ func TestNodeBinding_TwoNodesOneWins(t *testing.T) {
 // отказ, вызванный лечением.
 func TestNodeBinding_SameNodeReclaimIsIdempotent(t *testing.T) {
 	pool := auditTestPool(t)
-	r := NewInstanceRepo(pool)
+	r := mustJournalWriter(NewInstanceRepo(pool, probeJournalOptions))
 	ctx := context.Background()
 
 	const instanceID = "ins-bind-idem"
@@ -138,7 +138,7 @@ func TestNodeBinding_SameNodeReclaimIsIdempotent(t *testing.T) {
 // на коде, где перехват не работает вовсе.
 func TestNodeBinding_ExpiryAloneIsNotEnough(t *testing.T) {
 	pool := auditTestPool(t)
-	r := NewInstanceRepo(pool)
+	r := mustJournalWriter(NewInstanceRepo(pool, probeJournalOptions))
 	ctx := context.Background()
 
 	const instanceID = "ins-bind-expiry"

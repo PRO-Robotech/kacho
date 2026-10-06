@@ -33,7 +33,7 @@ func TestAddressPoolChecks_vpc8G_C1_ConstraintsPresent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -95,7 +95,7 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -108,7 +108,7 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	assert.Contains(t, pgErr.ConstraintName, "name_check")
 
 	// (б) repo writer Insert (минуя use-case Validate) → ErrInternal, без leak'а SQL.
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
@@ -138,7 +138,7 @@ func TestAddressPoolChecks_vpc8G_C3_DescriptionTooLong(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -156,7 +156,7 @@ func TestAddressPoolChecks_vpc8G_C4_BadKind(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
@@ -177,7 +177,7 @@ func TestAddressPoolChecks_vpc8G_C5_NegativeSelectorPriority(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

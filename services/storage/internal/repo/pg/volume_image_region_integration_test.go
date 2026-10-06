@@ -53,9 +53,9 @@ func bootFromImage(ctx context.Context, vr *pg.VolumeRepo, project, name, zone, 
 // that same caller can Get. Nothing was hidden and the diagnosis was false.
 func TestVolumeSourceImageOwnProjectForeignRegionNamed(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-foreign-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-region-1", "region-1", snapID)
@@ -84,9 +84,9 @@ func TestVolumeSourceImageOwnProjectForeignRegionNamed(t *testing.T) {
 // thereby confirm that a foreign image exists.
 func TestVolumeSourceImageForeignProjectStaysHidden(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	victimSnap := mkSnapshotRow(t, pool, projVictim, "snap-hidden-region", 20<<30)
 	// Two victim images: one whose region matches the attacker's zone region, one
@@ -120,9 +120,9 @@ func TestVolumeSourceImageForeignProjectStaysHidden(t *testing.T) {
 // Same region → seeded.
 func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-same-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-same-region", "region-1", snapID)
@@ -140,8 +140,8 @@ func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 // unresolved region must not block it.
 func TestVolumeWithoutSourceUnaffectedByRegion(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "plain-vol-region",
@@ -157,9 +157,9 @@ func TestVolumeWithoutSourceUnaffectedByRegion(t *testing.T) {
 // (a source image forces a geo resolve), so this pins the port contract.
 func TestVolumeSourceImageUnresolvedRegionStaysFailClosed(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-unresolved-region", 20<<30)
 	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-unresolved-region", "region-1", snapID)

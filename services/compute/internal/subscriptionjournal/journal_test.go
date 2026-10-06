@@ -22,7 +22,7 @@ import (
 // Своей копии правил здесь нет намеренно: копия разошлась бы с общим сервером
 // молча, и объявление, которое он отвергнет в бою, оставалось бы зелёным.
 func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
-	if err := Journal().Validate(); err != nil {
+	if err := Journal(false).Validate(); err != nil {
 		t.Fatalf("общий сервер ОТВЕРГ объявление журнала compute — процесс не поднялся бы:\n%v", err)
 	}
 }
@@ -34,7 +34,7 @@ func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
 // «предмет уровня аккаунта», — и подписка с осью `project_id` такие события
 // молча не пропускала бы.
 func TestProjectAnchorIsAColumnNotAPayloadParse(t *testing.T) {
-	j := Journal()
+	j := Journal(false)
 	if j.Storage.Project != subscription.ProjectInColumn {
 		t.Fatalf("якорь проекта объявлен не колонкой (%v): у события снятия нагрузка "+
 			"несёт один идентификатор, и разбор дал бы пустой якорь — то есть "+
@@ -55,23 +55,92 @@ func TestProjectAnchorIsAColumnNotAPayloadParse(t *testing.T) {
 // Второе написание чужого словаря расходится молча и расходится там, где это не
 // видно: поток продолжает отвечать, но спрашивает модель о неверном действии.
 func TestKindsCarryTheProducersOwnAuthzWords(t *testing.T) {
-	kinds := Journal().Mapping.Kinds
-	if len(kinds) != 1 {
-		t.Fatalf("видов в словаре %d, ожидался один — блочное хранение ушло из compute "+
-			"миграцией 0021, и его виды больше не принадлежат этому журналу", len(kinds))
+	kinds := Journal(false).Mapping.Kinds
+	// Три вида с публичным созданием и типом модели (NTF-3 NTF3-60); блочное
+	// хранение ушло из compute миграцией 0021, и его виды этому журналу не
+	// принадлежат.
+	want := map[string]subscription.Kind{
+		JournalWordInstance:       {ObjectType: authzfilter.ResourceTypeInstance, Action: authzfilter.ActionInstanceRead},
+		JournalWordPlacementGroup: {ObjectType: authzfilter.ResourceTypePlacementGroup, Action: authzfilter.ActionPlacementGroupRead},
+		JournalWordGuestAccessKey: {ObjectType: authzfilter.ResourceTypeGuestAccessKey, Action: authzfilter.ActionGuestAccessKeyRead},
 	}
-	got, ok := kinds[JournalWordInstance]
-	if !ok {
-		t.Fatalf("вида %q в словаре нет", JournalWordInstance)
+	if len(kinds) != len(want) {
+		t.Fatalf("видов в словаре %d, ожидалось %d", len(kinds), len(want))
 	}
-	if got.ObjectType != authzfilter.ResourceTypeInstance {
-		t.Fatalf("тип объекта %q расходится с производителем %q",
-			got.ObjectType, authzfilter.ResourceTypeInstance)
+	for word, w := range want {
+		got, ok := kinds[word]
+		if !ok {
+			t.Errorf("вида %q в словаре нет", word)
+			continue
+		}
+		if got.ObjectType != w.ObjectType {
+			t.Errorf("вид %s: тип объекта %q расходится с производителем %q", word, got.ObjectType, w.ObjectType)
+		}
+		if got.Action != w.Action {
+			t.Errorf("вид %s: действие %q расходится с тем, которым сужается его список (%q): "+
+				"видимость в потоке обязана равняться видимости в списке", word, got.Action, w.Action)
+		}
 	}
-	if got.Action != authzfilter.ActionInstanceRead {
-		t.Fatalf("действие %q расходится с тем, которым сужается список машин (%q): "+
-			"видимость в потоке обязана равняться видимости в списке",
-			got.Action, authzfilter.ActionInstanceRead)
+}
+
+// domainPayload — то же кодирование, которым пишет репозиторий: сперва в набор,
+// затем в байты. Подать структуру напрямую значило бы проверить другой путь.
+func domainPayload(t *testing.T, v any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("подготовка нагрузки: %v", err)
+	}
+	var asMap map[string]any
+	if err := json.Unmarshal(raw, &asMap); err != nil {
+		t.Fatalf("подготовка нагрузки: %v", err)
+	}
+	payload, err := json.Marshal(asMap)
+	if err != nil {
+		t.Fatalf("подготовка нагрузки: %v", err)
+	}
+	return payload
+}
+
+// TestStateRoundTripsTheNewKinds — нагрузка группы размещения и гостевого ключа
+// собирается в состояние СВОЕГО типа: разбор по виду строки, а не одним типом
+// на журнал.
+func TestStateRoundTripsTheNewKinds(t *testing.T) {
+	g := &domain.PlacementGroup{
+		ID: "plg-1234567890abcdefg", ProjectID: "prj-1234567890abcdefg", Name: "plg-1",
+		Strategy: domain.PlacementStrategySpread, PlacementType: domain.PlacementTypeZonal, ZoneID: "ru-central1-a",
+	}
+	got, _, err := state(subscription.Row{Kind: JournalWordPlacementGroup, Change: "CREATED", Payload: domainPayload(t, g)})
+	if err != nil {
+		t.Fatalf("состояние группы не собралось: %v", err)
+	}
+	var pg computev1.PlacementGroup
+	if err := got.UnmarshalTo(&pg); err != nil {
+		t.Fatalf("состояние группы не того типа: %v", err)
+	}
+	if pg.Id != g.ID || pg.Name != g.Name || pg.ZoneId != g.ZoneID {
+		t.Fatalf("несущие поля группы не пережили круг: %+v", &pg)
+	}
+
+	k := &domain.GuestAccessKey{
+		ID: "gak-1234567890abcdefg", ProjectID: "prj-1234567890abcdefg", Name: "gak-1",
+		PublicKey: "ssh-ed25519 AAAA", Fingerprint: "SHA256:x",
+	}
+	got, _, err = state(subscription.Row{Kind: JournalWordGuestAccessKey, Change: "UPDATED", Payload: domainPayload(t, k)})
+	if err != nil {
+		t.Fatalf("состояние ключа не собралось: %v", err)
+	}
+	var gk computev1.GuestAccessKey
+	if err := got.UnmarshalTo(&gk); err != nil {
+		t.Fatalf("состояние ключа не того типа: %v", err)
+	}
+	if gk.Id != k.ID || gk.Name != k.Name || gk.Fingerprint != k.Fingerprint {
+		t.Fatalf("несущие поля ключа не пережили круг: %+v", &gk)
+	}
+
+	// Близнец: вид вне словаря — отказ сборки, а не состояние машины.
+	if _, _, err := state(subscription.Row{Kind: "Disk", Change: "UPDATED", Payload: domainPayload(t, g)}); err == nil {
+		t.Fatal("строка вида вне словаря собрана в состояние")
 	}
 }
 
@@ -108,7 +177,7 @@ func TestStateRoundTripsAFullInstance(t *testing.T) {
 		t.Fatalf("подготовка нагрузки: %v", err)
 	}
 
-	got, absence, err := state(subscription.Row{Change: "UPDATED", Payload: payload})
+	got, absence, err := state(subscription.Row{Kind: JournalWordInstance, Change: "UPDATED", Payload: payload})
 	if err != nil {
 		t.Fatalf("состояние не собралось: %v", err)
 	}
@@ -141,6 +210,7 @@ func TestStateRoundTripsAFullInstance(t *testing.T) {
 // отображении, которое не отдаёт состояния НИКОГДА.
 func TestStateIsAbsentForRemoval(t *testing.T) {
 	got, absence, err := state(subscription.Row{
+		Kind:    JournalWordInstance,
 		Change:  changeDeleted,
 		Payload: []byte(`{"id":"epd-1234567890abcdefg"}`),
 	})
@@ -169,6 +239,7 @@ func TestStateIsAbsentForRemoval(t *testing.T) {
 // журнала.
 func TestAnUnreadablePayloadStaysAFailure(t *testing.T) {
 	got, absence, err := state(subscription.Row{
+		Kind:    JournalWordInstance,
 		Change:  "UPDATED",
 		Payload: []byte(`"не объект"`),
 	})
@@ -191,7 +262,7 @@ func TestAnUnreadablePayloadStaysAFailure(t *testing.T) {
 // Слово вне словаря делает строку НЕДОСТАВЛЯЕМОЙ, и потеря эта тихая: ни отказа,
 // ни пропуска в нумерации у клиента.
 func TestChangeWordsCoverExactlyWhatTheJournalWrites(t *testing.T) {
-	changes := Journal().Mapping.Changes
+	changes := Journal(false).Mapping.Changes
 	for _, word := range []string{"CREATED", "UPDATED", "DELETED"} {
 		if changes[word] == subscriptionv1.SubscriptionEvent_CHANGE_UNSPECIFIED {
 			t.Errorf("слово %q журнала не названо словарём — строки с ним не доставляются", word)
@@ -219,7 +290,7 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 			gate.NotFoundFormat, owner)
 	}
 	// Судится ТЕМ ЖЕ судьёй, что и на подъёме: своя копия правил разошлась бы молча.
-	cfgJournal := Journal()
+	cfgJournal := Journal(false)
 	cfgJournal.Storage.Project = subscription.ProjectInColumn
 	if err := cfgJournal.Validate(); err != nil {
 		t.Fatalf("объявление отвергнуто: %v", err)

@@ -33,8 +33,9 @@ func TestPoolToProto_TruncatesCreatedAtToSeconds(t *testing.T) {
 		CreatedAt: created,
 	}
 
-	pb := poolToProto(rec)
+	pb, err := poolToProto(rec)
 
+	require.NoError(t, err)
 	require.NotNil(t, pb)
 	require.NotNil(t, pb.GetCreatedAt())
 	got := pb.GetCreatedAt().AsTime()
@@ -44,5 +45,7 @@ func TestPoolToProto_TruncatesCreatedAtToSeconds(t *testing.T) {
 
 // TestPoolToProto_NilRecord — defensive nil-record passthrough (no panic).
 func TestPoolToProto_NilRecord(t *testing.T) {
-	assert.Nil(t, poolToProto(nil))
+	pb, err := poolToProto(nil)
+	assert.NoError(t, err)
+	assert.Nil(t, pb)
 }

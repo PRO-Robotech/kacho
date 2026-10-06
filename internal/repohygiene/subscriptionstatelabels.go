@@ -43,6 +43,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -98,6 +99,11 @@ type JournalKinds struct {
 	File string
 	// Count — видов в закрытом словаре владельца.
 	Count int
+	// Keys — ключи словаря видов так, как они написаны в объявлении: имя
+	// (`JournalWordRepository`), квалифицированное имя (`pkg.Name`) либо литерал
+	// в кавычках. По ним ведомость видов без состояния доказывает, что её запись
+	// ещё имеет предмет.
+	Keys []string
 }
 
 // ScanJournalKinds считает виды в объявлении журнала владельца.
@@ -114,6 +120,7 @@ func ScanJournalKinds(rel string, src []byte) (JournalKinds, error) {
 		return JournalKinds{File: rel}, err
 	}
 	count := 0
+	var keys []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		kv, ok := n.(*ast.KeyValueExpr)
 		if !ok {
@@ -128,9 +135,84 @@ func ScanJournalKinds(rel string, src []byte) (JournalKinds, error) {
 			return true
 		}
 		count += len(lit.Elts)
+		for _, e := range lit.Elts {
+			if ekv, ok := e.(*ast.KeyValueExpr); ok {
+				keys = append(keys, journalKindKeyText(ekv.Key))
+			}
+		}
 		return true
 	})
-	return JournalKinds{File: rel, Count: count}, nil
+	return JournalKinds{File: rel, Count: count, Keys: keys}, nil
+}
+
+// journalKindKeyText — написание ключа словаря видов.
+func journalKindKeyText(e ast.Expr) string {
+	switch k := e.(type) {
+	case *ast.Ident:
+		return k.Name
+	case *ast.SelectorExpr:
+		if x, ok := k.X.(*ast.Ident); ok {
+			return x.Name + "." + k.Sel.Name
+		}
+	case *ast.BasicLit:
+		return k.Value
+	}
+	return fmt.Sprintf("%T", e)
+}
+
+// StatelessKind — запись ведомости видов, у которых типа состояния нет ни у
+// одного рода изменения (Д127 (в)): событие несёт `state_unavailable.reason =
+// NOT_PRODUCED`, и клиентский отбор по меткам для вида неисполним. Такой вид не
+// называет тип состояния на клиентской странице, поэтому сверка чисел гейта меток
+// вычитает его — но только по записи, и запись обязана доказать, что она жива и
+// что исключение названо вслух.
+type StatelessKind struct {
+	// File — объявление журнала владельца от корня дерева.
+	File string
+	// Key — ключ словаря видов в этом объявлении, как он написан.
+	Key string
+	// Wire — вид на проводе (тип объекта модели), которым его называют страница и
+	// запись решения.
+	Wire string
+	// Reason — причина и предикат снятия. Пустая причина записью не является.
+	Reason string
+}
+
+// JudgeStatelessKinds судит ведомость видов без состояния: у записи есть
+// причина; её вид ещё объявлен владельцем (иначе запись пережила предмет); и
+// исключение названо на клиентской странице (`page`) и в записи решения об
+// отборе по меткам (`decision`) — словом провода, а не оставлено молчанием.
+func JudgeStatelessKinds(owners []JournalKinds, ledger []StatelessKind, page, decision string) []string {
+	byFile := make(map[string]map[string]bool, len(owners))
+	for _, o := range owners {
+		keys := make(map[string]bool, len(o.Keys))
+		for _, k := range o.Keys {
+			keys[k] = true
+		}
+		byFile[o.File] = keys
+	}
+	var out []string
+	for _, e := range ledger {
+		where := e.File + " " + e.Key
+		if strings.TrimSpace(e.Reason) == "" {
+			out = append(out, where+" — запись без причины: она прощает молча")
+		}
+		keys, ok := byFile[e.File]
+		if !ok || !keys[e.Key] {
+			out = append(out, where+" — запись пережила предмет: владелец такого вида не объявляет, снимите запись")
+			continue
+		}
+		escaped := strings.ReplaceAll(e.Wire, "_", "&#95;")
+		if !strings.Contains(page, e.Wire) && !strings.Contains(page, escaped) {
+			out = append(out, fmt.Sprintf("%s — вид %q без состояния, а клиентская страница исключения не называет: "+
+				"клиент не узнает, что отбор по меткам для него неисполним", where, e.Wire))
+		}
+		if !strings.Contains(decision, e.Wire) {
+			out = append(out, fmt.Sprintf("%s — вид %q без состояния, а запись решения об отборе по меткам "+
+				"исключения не называет", where, e.Wire))
+		}
+	}
+	return out
 }
 
 // MessageCarriesLabels отвечает, несёт ли сообщение message файла контракта поле

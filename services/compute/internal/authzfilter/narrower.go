@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/feedjournal"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 
@@ -48,7 +49,10 @@ func New(conn grpc.ClientConnInterface, cfg Config) *Narrower {
 		cli = narrowiam.New(conn)
 	}
 	return listnarrow.New(cli, listnarrow.Config{
-		Relations:             PageRelations,
+		// Тот же сужатель судит строки журнала в потоке подписки, и тип ленты
+		// (`notification_feed`) спрашивается своим отношением, а не умолчанием
+		// карты: у типа ленты умолчания в модели нет (SA-3042-01).
+		Relations:             feedjournal.Relations(PageRelations),
 		Timeout:               cfg.Timeout,
 		CacheTTL:              cfg.CacheTTL,
 		CacheMaxEntries:       cfg.CacheMaxEntries,

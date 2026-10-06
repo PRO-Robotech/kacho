@@ -1,0 +1,23 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Признак почтовой полосы каждого профиля deploy/stacks.txt (NTF-1 Р19 «Профиль
+# стенда», замысел §12а «Профили»; полоса D10). Строка:
+#
+#   <профиль>:stand:<файл кластера>   — почта уходит в приёмник стенда этого
+#                                       релиза; третье поле — файл values, из
+#                                       которого приходят `serviceIP` и
+#                                       `clusterDomain` зоны DNS стенда (CX1-136)
+#   <профиль>:operator                — узла почты в дереве нет, его задаёт оператор
+#   <профиль>:relay                   — внешний ретранслятор
+#
+# Множество профилей этого файла равно множеству deploy/stacks.txt, и признак
+# сверяется с узлом почты слитых значений профиля — держатель NTF1-P12
+# (deploy/notify_dns_profiles_test.go).
+dev:stand:values.dev.yaml
+dev-prod:stand:values.dev.yaml
+prorobotech:stand:values.prorobotech.yaml
+own:stand:values.own-stand.yaml
+fe3455:stand:values.fe3455.yaml
+prod:operator
+a8f60d:relay

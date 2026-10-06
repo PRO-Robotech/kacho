@@ -1023,3 +1023,55 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 | `GW-CR-CONF-EGRESS-ONLY-NEEDS-V6` | GW-ANCHOR-03 | CONF,NEG | P1 | Шлюз «только исход» (IPv6) в подсети без IPv6-блока → отказ по состоянию якоря. Вид сверяется с якорем ВНУТРИ вставки, а не проверкой до неё. |
 | `GW-CR-NAT-EXTERNAL-ADDRESS-OK` | GW-EXTADDR-01 | CRUD,CONF | P0 | Шлюз трансляции несёт внешний адрес, и адрес называет шлюз в ответ. `natGateway.addressId` непуст и адресуем; сам адрес читаем владельцем шлюза (EXTERNAL/IPV4, выдан IP, `used`), а его `usedBy` называет ИМЕННО этот шлюз (`referrer.type=vpc_gateway`) — то есть привязка видна ВЛАДЕЛЬЦУ адреса, а не только шлюзу. После снятия шлюза адрес уходит вместе с ним (аренда возвращена в пул). Предусловие — пул по умолчанию для зоны якоря, его заводит посев `_SETUP-POOL`. |
 | `GW-NEG-EXTERNAL-ADDRESS-NOT-DELETABLE-WHILE-BOUND` | GW-EXTADDR-02 | NEG,CONF | P1 | Адрес, занятый шлюзом, не удаляется: DELETE → FAILED_PRECONDITION «… in use …». Положительный контроль в том же кейсе — сняв шлюз, тот же путь проходит, значит отказ был про привязку, а не про неработающее удаление адреса. |
+
+## Доступ не-человеческого субъекта через край (`cases/authz-sa-apitoken.py`, коллекция `authz-sa-apitoken`)
+
+Перенесён из набора службы доступа задачей #2912 (сторона службы — PRO-Robotech/kaname#415). Модели 5–6 default-deny матрицы: служебная учётка с выдачей и без, api-токен действующий / вне области / отозванный / истёкший / битый. Истёкший предъявитель — настоящий, переждавший свой срок: его создаёт посев `tests/authz-fixtures/expired_bearer.py` (зовёт `prodseed_vpc_ext.py`).
+
+| id | что утверждает |
+|---|---|
+| `AUTHZ-SA-NET-GT-A1` | [ALLOW] Get seed-network in project-A1 (granted resource) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-LS-A1` | [ALLOW] List networks ?projectId=A1 (own project) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-CR-A1` | [ALLOW] Create network in project-A1 (own project) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-LS-A2-DENY` | [DENY] List networks ?projectId=A2 (cross-project, no project-viewer) → 403 gated List as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-GT-B1` | [DENY] Get seed-network in project-B1 (cross-account, no grant) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-CR-B1` | [DENY] Create network in project-B1 (cross-account, no grant) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-NET-LS-B1-DENY` | [DENY] List networks ?projectId=B1 (cross-account, no project-viewer) → 403 gated List as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ACCT-GT-A` | [DENY] Get account-A (project-scoped grant ≠ account-level) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ACCT-UP-A` | [DENY] Update account-A (no account-level grant) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ESC-SELF-ADMIN` | [DENY] Self-grant iam.admin on account-A (escalation) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ESC-SELF-VPC-B1` | [DENY] Self-grant vpc-admin on project-B1 (cross-account escalation) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ESC-SELF-MODIFY` | [DENY] Self-modify own ServiceAccount row (escalation prep) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ESC-ISSUE-KEY` | [DENY] Issue new SA-key for self (escalation prep) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SA-ESC-CUSTOM-ROLE` | [DENY] Create custom Role with broad iam/vpc rules (escalation prep) as service-account-A (vpc-editor on project-A1) |
+| `AUTHZ-SANG-NET-GT-A1` | [DENY] Get seed-network in project-A1 (no grants at all) as service-account-no-grant |
+| `AUTHZ-SANG-NET-LS-A1-DENY` | [DENY] List networks ?projectId=A1 (no grants, no project-viewer) → 403 gated List as service-account-no-grant |
+| `AUTHZ-SANG-NET-CR-A1` | [DENY] Create network in project-A1 (no grants) as service-account-no-grant |
+| `AUTHZ-SANG-SA-LS-A-EMPTY` | [EMPTY] List serviceAccounts ?accountId=A (no grants) → scope-filter empty as service-account-no-grant |
+| `AUTHZ-APITOK-NET-GT-A1` | [ALLOW] Get seed-network in project-A1 (valid, in-scope token) as api-token-valid (in-scope vpc.* on project-A1) |
+| `AUTHZ-APITOK-NET-LS-A1` | [ALLOW] List networks ?projectId=A1 (valid, in-scope token) as api-token-valid (in-scope vpc.* on project-A1) |
+| `AUTHZ-APITOK-NET-GT-B1` | [DENY] Get seed-network in project-B1 (valid token, out-of-scope) as api-token-valid (in-scope vpc.* on project-A1) |
+| `AUTHZ-APITOK-ACCT-GT-A` | [DENY] Get account-A (valid token, scope=vpc.* only) as api-token-valid (in-scope vpc.* on project-A1) |
+| `AUTHZ-APITOK-NET-LS-B1-DENY` | [DENY] List networks ?projectId=B1 (out-of-scope, no project-viewer) → 403 gated List as api-token-valid (in-scope vpc.* on project-A1) |
+| `AUTHZ-APITOK-REVOKED-GT-A1` | [UNAUTH] Get seed-network in project-A1 (revoked token) as api-token-revoked |
+| `AUTHZ-APITOK-REVOKED-LS-A1` | [UNAUTH] List networks ?projectId=A1 (revoked token) as api-token-revoked |
+| `AUTHZ-APITOK-MALFORMED-GT-A1` | [UNAUTH] Get seed-network in project-A1 (malformed token) as api-token-malformed |
+| `AUTHZ-APITOK-EXPIRED-GT-A1` | [UNAUTH] Get seed-network in project-A1 (expired token) as api-token-expired |
+| `AUTHZ-APITOK-REVOKED-CR` | [UNAUTH] Create network with revoked token as api-token-revoked |
+| `AUTHZ-APITOK-MALFORMED-CR` | [UNAUTH] Create network with malformed token as api-token-malformed |
+| `AUTHZ-APITOK-ESC-SELF-ADMIN` | [DENY] Self-grant iam.admin via valid API token (escalation) as api-token-valid (in-scope vpc.* on project-A1) |
+
+## Отзыв выдачи ARM_LABELS при смене меток на ресурсах vpc (`cases/label-revoke-vpc.py`, коллекция `label-revoke-vpc`)
+
+Перенесён из набора службы доступа задачей #2912 (сторона службы — PRO-Robotech/kaname#415). Проба видимости — `InternalIAMService.Check` (`v_list`) на внутреннем слушателе края.
+
+| id | что утверждает |
+|---|---|
+| `T31-LBLREVOKE-VPC-NETWORK-01` | revoke01_network: vpc.network label-remove on Update revokes ARM_LABELS grant (Check v_list True→False) |
+| `T31-LBLREVOKE-VPC-SECGROUP-02` | revoke02_securitygroup: vpc.securityGroup Create emits labels + Update label-change revokes (double-bug) |
+| `T31-LBLREVOKE-VPC-NETWORK-ADD-01` | add01_network: vpc.network label-add on Update materializes ARM_LABELS grant (Check v_list False→True) |
+| `T31-LBLREVOKE-VPC-NETWORK-CHANGE-01` | change01_network: vpc.network label swap treska→okun migrates ARM_LABELS grant (decision-table) |
+| `T31-LBLREVOKE-VPC-NETWORK-IDM-01` | idm01_no_emit: vpc.network non-label Update (description only) leaves ARM_LABELS visibility unchanged |
+| `T31-LBLREVOKE-VPC-NETWORK-FULLPATCH-01` | fullpatch01_empty_mask: vpc.network empty-mask full-PATCH zeroing labels revokes (+ symmetry add) |
+| `T31-LBLREVOKE-VPC-NETWORK-UNAVAIL-01` | unavail01_intent_durable: vpc.network label Update Operation completes (mirror-emit is async outbox, not sync IAM precondition) |
+| `T31-LBLREVOKE-VPC-INVITE-GRANT-REVOKE` | invite_grant_label_revoke: invite user + account-scope ARM_LABELS grant by matchLabels → sees network → label removed → does not see (regression) |

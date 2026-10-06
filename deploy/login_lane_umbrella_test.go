@@ -78,6 +78,24 @@ var loginLaneConfigKeys = []struct{ configKey, valueKey string }{
 // registrationConfigKeys — ключи блока `authn.registration` (Ф4, kacho#2699):
 // потолок темпа заведения аккаунтов одной личностью и окно счёта. Оба — условие
 // старта под `own` (Ф4-18/19), у обоих нет умолчания.
+// loginMailConfigKeys — почтовые ручки таблицы Р8 службы (приёмка NTF-2, решение
+// Д11; kacho#2915) в ТОМ ЖЕ блоке `authn.login`. В отличие от ключей выше это
+// условие старта на ЛЮБОЙ посадке, поэтому в ведомость они идут со своей
+// причиной, а не с причиной «читается только под own». Узлы `mailWindow`,
+// `attempts` и `trustedDevice` — карты: их листья судит доставкой
+// pinned_required_settings_reach_the_service_test.go по блоку пиненной службы.
+var loginMailConfigKeys = []struct{ configKey, valueKey string }{
+	{"registration-code-ttl", "registrationCodeTtl"},
+	{"mail-window", "mailWindow"},
+	{"attempts", "attempts"},
+	{"mail-throttled-interval", "mailThrottledInterval"},
+	{"trusted-device", "trustedDevice"},
+}
+
+const loginMailProdReason = "почтовая ручка таблицы Р8 службы (приёмка NTF-2, решение Д11; kacho#2915): " +
+	"условие старта на ЛЮБОЙ посадке — страж таблицы границ судит её в любом режиме, умолчания нет ни у " +
+	"процесса, ни у чарта. Снятие из профиля роняет СТАРТ на этом стенде; запись не истекает с переводом на `own`"
+
 var registrationConfigKeys = []struct{ configKey, valueKey string }{
 	{"admissions-per-window", "admissionsPerWindow"},
 	{"admission-window", "admissionWindow"},
@@ -139,6 +157,15 @@ func init() {
 	}
 	for _, k := range registrationConfigKeys {
 		loginLaneProdLedger["config.authn.registration."+k.valueKey] = registrationProdReason
+	}
+	for _, k := range loginMailConfigKeys {
+		loginLaneProdLedger["config.authn.login."+k.valueKey] = loginMailProdReason
+	}
+	// Сроки кодов восстановления и подтверждения служба с пина a16d2da0 судит
+	// на ЛЮБОЙ посадке (блок «Обязательные величины» её INSTALL.md): причина
+	// «читается только под own» у них пережила предмет.
+	for _, v := range []string{"recoveryCodeTtl", "verificationCodeTtl"} {
+		loginLaneProdLedger["config.authn.login."+v] = loginMailProdReason
 	}
 }
 
@@ -211,13 +238,20 @@ func TestLoginLane_F3_45_UmbrellaSubchartExpressesTheLane(t *testing.T) {
 			t.Errorf("configmap.yaml: ключ `authn.login.%s` не рендерится", k.configKey)
 		}
 	}
+	for _, k := range loginMailConfigKeys {
+		if !strings.Contains(block, k.configKey+":") {
+			missing++
+			t.Errorf("configmap.yaml: почтовый ключ `authn.login.%s` не рендерится — служба откажет в старте на любой посадке", k.configKey)
+		}
+	}
 	for _, ik := range loginLaneIntegerKeys {
 		if !regexp.MustCompile(`int64\s+\.` + ik + `\b`).MatchString(block) {
 			t.Errorf("configmap.yaml: целое `%s` рендерится без `int64` — большое число уедет как 2.68e+08", ik)
 		}
 	}
-	t.Logf("перепись: ключей блока login объявлено %d · рендерится %d · целых через int64 %d",
-		len(loginLaneConfigKeys), len(loginLaneConfigKeys)-missing, len(loginLaneIntegerKeys))
+	t.Logf("перепись: ключей блока login объявлено %d (из них почтовых %d) · рендерится %d · целых через int64 %d",
+		len(loginLaneConfigKeys)+len(loginMailConfigKeys), len(loginMailConfigKeys),
+		len(loginLaneConfigKeys)+len(loginMailConfigKeys)-missing, len(loginLaneIntegerKeys))
 
 	// Транспорт — под СВОЕЙ полистенной ручкой, пять переменных; режим клиента
 	// объявляется профилем (умолчание — единственный годный под `own` `mutual`).
@@ -289,24 +323,25 @@ func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.
 		if mode != "mutual" {
 			t.Errorf("стенд %s: режим проверки клиента слушателя формы обязан быть объявлен `mutual` явно, получено %v", name, mode)
 		}
-		if ip, _ := lookup(declared, "kaname", "config", "authn", "identityProvider"); ip == "own" {
-			ownPosture++
-			// Под `own` строки — условие старта: адрес и весь блок величин.
-			if _, ok := lookup(declared, "kaname", "ports", "loginLane"); !ok {
-				t.Errorf("стенд %s на посадке own: `kaname.ports.loginLane` не объявлен — отказ старта службы", name)
+		// Посадка службы одна на каждом стенде — своя (kanameLanding, kaname#363):
+		// строки полосы — условие старта везде. Прежде блок стоял под чтением
+		// ключа посадки; ключ снят (kacho#2818), и условие стало безусловным.
+		ownPosture++
+		// Под `own` строки — условие старта: адрес и весь блок величин.
+		if _, ok := lookup(declared, "kaname", "ports", "loginLane"); !ok {
+			t.Errorf("стенд %s на посадке own: `kaname.ports.loginLane` не объявлен — отказ старта службы", name)
+		}
+		for _, k := range loginLaneConfigKeys {
+			if k.valueKey == "breachCheckUrl" {
+				continue
 			}
-			for _, k := range loginLaneConfigKeys {
-				if k.valueKey == "breachCheckUrl" {
-					continue
-				}
-				if _, ok := lookup(declared, "kaname", "config", "authn", "login", k.valueKey); !ok {
-					t.Errorf("стенд %s на посадке own: `kaname.config.authn.login.%s` не объявлен — отказ старта службы", name, k.valueKey)
-				}
+			if _, ok := lookup(declared, "kaname", "config", "authn", "login", k.valueKey); !ok {
+				t.Errorf("стенд %s на посадке own: `kaname.config.authn.login.%s` не объявлен — отказ старта службы", name, k.valueKey)
 			}
-			for _, k := range registrationConfigKeys {
-				if _, ok := lookup(declared, "kaname", "config", "authn", "registration", k.valueKey); !ok {
-					t.Errorf("стенд %s на посадке own: `kaname.config.authn.registration.%s` не объявлен — отказ старта службы (Ф4-18)", name, k.valueKey)
-				}
+		}
+		for _, k := range registrationConfigKeys {
+			if _, ok := lookup(declared, "kaname", "config", "authn", "registration", k.valueKey); !ok {
+				t.Errorf("стенд %s на посадке own: `kaname.config.authn.registration.%s` не объявлен — отказ старта службы (Ф4-18)", name, k.valueKey)
 			}
 		}
 	}

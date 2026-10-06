@@ -34,6 +34,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -46,6 +47,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/notify/feed"
 	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
@@ -149,6 +151,18 @@ func TestEveryDrainedOutboxIsObserved(t *testing.T) {
 		"  дренаж:  %s\n  сканер:  %s",
 		inv.filesRead, len(drained), len(observed),
 		strings.Join(drained, "\n           "), strings.Join(observed, "\n           "))
+
+	feedMoved, feedObserved := sortedKeys(inv.feedMoved), sortedKeys(inv.feedObserved)
+	t.Logf("лента извещений (четвёртый вход, NTF1-B20): движимых сервером ленты %d, со сборщиком "+
+		"состояния %d\n  движет:  %s\n  сборщик: %s", len(feedMoved), len(feedObserved),
+		strings.Join(feedMoved, "\n           "), strings.Join(feedObserved, "\n           "))
+	for _, u := range inv.feedUnresolved {
+		t.Errorf("%s: префикс таблиц ленты задан выражением, которое не резолвится разбором исходника — "+
+			"гейт не видит эту ленту. Назови префикс строковой константой пакета.", u)
+	}
+	for _, f := range unobservedFeeds(inv) {
+		t.Errorf("%s", f)
+	}
 
 	for _, table := range drained {
 		if _, ok := inv.observed[table]; ok {
@@ -301,6 +315,20 @@ type outboxInventory struct {
 	retryPermanent map[string][]string
 	// unresolved — координаты проводок, чьё поле Table не резолвится разбором.
 	unresolved []string
+	// feedMoved — ЧЕТВЁРТЫЙ ВХОД (NTF1-B20): таблица ленты → координаты, где
+	// поднят сервер ленты (`feed.ServerConfig{Service: X}`). Ленту двигает
+	// `Claim`/`Ack` фундамента, а не `drainer` и не оператор службы, поэтому
+	// без этого входа гейт её не видел бы вовсе (в схеме ленты нет колонок
+	// доставки). Подъём сервера засчитывается за движущего таблицу ленты и
+	// вносит её в обязанные быть наблюдаемыми.
+	feedMoved map[string][]string
+	// feedUnresolved — координаты проводок ленты, чьё поле Service не
+	// резолвится разбором.
+	feedUnresolved []string
+	// feedObserved — таблица ленты → координаты, где поднят её сборщик
+	// состояния: уборщик ленты (`feed.SweeperConfig{Service: X}`) — он и
+	// производит возраст старейшей строки `pending` по классу (NTF1-B20).
+	feedObserved map[string][]string
 	// notes — таблица → комментарии, стоящие ВНУТРИ литерала настроек её дренажа.
 	// Именно там живёт обоснование ОТСУТСТВУЮЩЕГО поля: отсутствие само по себе
 	// ничего не объясняет, поэтому объяснение пишут рядом — и оно оказывается
@@ -416,17 +444,7 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	if ok {
 		return cached
 	}
-	inv := outboxInventory{
-		drained:          map[string][]string{},
-		observed:         map[string][]string{},
-		shipped:          map[string]bool{},
-		split:            map[string]bool{},
-		partition:        map[string]string{},
-		redrive:          map[string][]string{},
-		redrivePartition: map[string]string{},
-		retryPermanent:   map[string][]string{},
-		notes:            map[string][]wiringNote{},
-	}
+	inv := newOutboxInventory()
 
 	servicesDir := filepath.Join(root, "services")
 	entries, err := os.ReadDir(servicesDir)
@@ -460,6 +478,23 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	outboxInventoryCache[root] = inv
 	outboxInventoryMu.Unlock()
 	return inv
+}
+
+// newOutboxInventory — пустой инвентарь проводок.
+func newOutboxInventory() outboxInventory {
+	return outboxInventory{
+		drained:          map[string][]string{},
+		observed:         map[string][]string{},
+		shipped:          map[string]bool{},
+		split:            map[string]bool{},
+		partition:        map[string]string{},
+		redrive:          map[string][]string{},
+		redrivePartition: map[string]string{},
+		retryPermanent:   map[string][]string{},
+		notes:            map[string][]wiringNote{},
+		feedMoved:        map[string][]string{},
+		feedObserved:     map[string][]string{},
+	}
 }
 
 // serviceConstStrings собирает все строковые константы сервиса: имя → значение.
@@ -533,11 +568,23 @@ func goFilesUnder(t *testing.T, dir string) []string {
 // CollectorConfig и записывает таблицу, которую они называют.
 func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]string, inv *outboxInventory) {
 	t.Helper()
+	scanOutboxWiringSrc(t, path, nil, svc, root, consts, inv)
+}
+
+// scanOutboxWiringSrc — то же по содержимому src (nil — читать path с диска).
+// Инъекция гоняет ЭТУ ЖЕ функцию на изменённом содержимом настоящего файла.
+func scanOutboxWiringSrc(t *testing.T, path string, src []byte, svc, root string, consts map[string]string,
+	inv *outboxInventory) {
+	t.Helper()
 	fset := token.NewFileSet()
 	// ParseComments — не роскошь: обоснование ОТСУТСТВУЮЩЕГО поля живёт только в
 	// комментарии, а без этого флага разбор его не видит вовсе и гейт молчал бы
 	// «чисто» на любом обосновании, включая ложное.
-	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+	var body any
+	if src != nil {
+		body = src
+	}
+	f, err := parser.ParseFile(fset, path, body, parser.ParseComments)
 	if err != nil {
 		return
 	}
@@ -591,6 +638,12 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 			}
 		case "CollectorConfig":
 			kind = "сканер"
+		case "ServerConfig", "SweeperConfig":
+			// Четвёртый вход (NTF1-B20): лента извещений модуля-источника.
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "feed" {
+				scanFeedWiring(cl, sel.Sel.Name, coord, fset, consts, inv)
+			}
+			return true
 		}
 		if kind == "" {
 			return true
@@ -1264,6 +1317,13 @@ func wiringByServiceAndTable(inv outboxInventory) (drained, observed map[string]
 			drained[coordService(c)+"/"+bareTableName(table)] = true
 		}
 	}
+	// Ленту двигает сервер ленты фундамента (четвёртый вход, NTF1-B20): её
+	// колонки, буде объявлены, судятся как двигаемые, а не как «двигать некому».
+	for table, coords := range inv.feedMoved {
+		for _, c := range coords {
+			drained[coordService(c)+"/"+bareTableName(table)] = true
+		}
+	}
 	for table, coords := range inv.observed {
 		for _, c := range coords {
 			key := coordService(c) + "/" + bareTableName(table)
@@ -1297,16 +1357,25 @@ func deliveryColumnInventory(t *testing.T, root string) (decls []deliveryColumnD
 	if err != nil {
 		t.Fatalf("читаю %s: %v", servicesDir, err)
 	}
+	// Цепочки службы — у migrationchains (gateChainDirs), а не из имени службы:
+	// у services/notify их несколько (kacho#2915, CX1-114).
+	chainDirsOf := map[string][]string{}
+	for _, cd := range gateChainDirs(t, root) {
+		chainDirsOf[cd.Service] = append(chainDirsOf[cd.Service], cd.Dir)
+	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		svc := e.Name()
-		migDir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, serr := treecorpus.UnderWithSuffix(migDir, ".sql")
-		if serr != nil {
-			// Служба без каталога миграций — законный случай, а не отказ.
-			sqls = nil
+		var sqls []string
+		for _, migDir := range chainDirsOf[svc] {
+			chainSQL, serr := treecorpus.UnderWithSuffix(migDir, ".sql")
+			if serr != nil {
+				// Цепочка без миграций — законный случай, а не отказ.
+				continue
+			}
+			sqls = append(sqls, chainSQL...)
 		}
 		sort.Strings(sqls) // имя миграции начинается с версии ⇒ лексикографический порядок = порядок применения
 		sources := make([]rawMigration, 0, len(sqls))
@@ -1336,4 +1405,74 @@ func deliveryColumnInventory(t *testing.T, root string) (decls []deliveryColumnD
 		}
 	}
 	return decls, advancers, filesRead
+}
+
+// scanFeedWiring — четвёртый вход гейта (NTF1-B20): литерал настроек сервера
+// ленты (`feed.ServerConfig`) — движущий таблицу ленты; литерал настроек
+// уборщика ленты (`feed.SweeperConfig`) — её сборщик состояния. Таблица —
+// по префиксу Service тем же производителем имени, что у фундамента.
+func scanFeedWiring(cl *ast.CompositeLit, typ, coord string, fset *token.FileSet, consts map[string]string,
+	inv *outboxInventory) {
+	var svc string
+	var hasService bool
+	for _, elt := range cl.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Service" {
+			hasService = true
+			svc = resolveStringExpr(kv.Value, consts)
+		}
+	}
+	table := feedOutboxTable(svc)
+	if table == "" {
+		if hasService {
+			inv.feedUnresolved = append(inv.feedUnresolved,
+				coord+" (feed."+typ+", строка "+strconv.Itoa(fset.Position(cl.Pos()).Line)+")")
+		}
+		return
+	}
+	if typ == "ServerConfig" {
+		inv.feedMoved[table] = append(inv.feedMoved[table], coord)
+		return
+	}
+	inv.feedObserved[table] = append(inv.feedObserved[table], coord)
+}
+
+// feedOutboxTable — таблица ленты службы svc по договору фундамента: имя
+// предмета уборки закрытых строк (`feed.RetentionSubjects`, поле Name — имя
+// таблицы). Суффикс таблицы здесь литералом не пишется: его производит только
+// фундамент (УК89), и копия разошлась бы с ним молча.
+func feedOutboxTable(svc string) string {
+	if svc == "" {
+		return ""
+	}
+	var out string
+	for _, s := range feed.RetentionSubjects(nil, svc) {
+		if s.Grace == feed.ClosedRetention {
+			if out != "" {
+				return "" // два предмета с одним сроком — договор поля сменился, гейт не угадывает
+			}
+			out = s.Name
+		}
+	}
+	return out
+}
+
+// unobservedFeeds — находки четвёртого входа: лента, которую движет сервер
+// ленты, без сборщика состояния. Одна функция для гейта и инъекции.
+func unobservedFeeds(inv outboxInventory) []string {
+	var out []string
+	for _, table := range sortedKeys(inv.feedMoved) {
+		if _, ok := inv.feedObserved[table]; ok {
+			continue
+		}
+		out = append(out, fmt.Sprintf("лента %s движется сервером ленты (%s), но её сборщика состояния нет: "+
+			"возраста старейшей строки pending по классу и числа отсроченных не производит ни одна серия, "+
+			"и «ноль доставленных за всю жизнь» неотличим от пустой ленты. Подними уборщик ленты "+
+			"(feed.StartSweeper) с тем же Service рядом с сервером ленты (NTF1-B20).",
+			table, strings.Join(inv.feedMoved[table], ", ")))
+	}
+	return out
 }

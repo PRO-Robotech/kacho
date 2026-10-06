@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -41,6 +42,8 @@ type VolumeRepo struct {
 	// прошли бы обе, каждая увидев доквотное состояние.
 	projectBytesLimit int64
 	pool              *pgxpool.Pool
+	// journal — Options помощника записи журнала (флаг ленты модуля).
+	journal journaltx.Options
 	// readyOnCommit — состояние, в котором рождается ресурс.
 	//
 	// Плоскость данных ОБЪЯВЛЕНА → ресурс рождается в намерении, пригодным его
@@ -65,7 +68,16 @@ func bornState(readyOnCommit bool) string {
 }
 
 // NewVolumeRepo создаёт VolumeRepo поверх pgxpool.
-func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo { return &VolumeRepo{pool: pool} }
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewVolumeRepo(pool *pgxpool.Pool, journal journaltx.Options) (*VolumeRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("storage: NewVolumeRepo: %w", err)
+	}
+	return &VolumeRepo{pool: pool, journal: journal}, nil
+}
 
 // WithProjectBytesLimit задаёт предел провизионированного объёма на проект.
 // Ноль — предела нет. Опция, а не параметр конструктора: тридцать вызовов
@@ -457,7 +469,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		srcImg = &v.SourceImage
 	}
 	created := *v
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
 		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта,
 		// зона происхождения снапшота СВОЕГО проекта).
@@ -616,7 +628,7 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 		}
 		labelsArg = b
 	}
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		// size-CAS: $5 IS NULL → размер не меняется; иначе применяется ТОЛЬКО если
 		// строго больше текущего (increase-only, не software-compare).
 		var (
@@ -671,7 +683,7 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 // той же tx. Привязанный том → FK volume_attachments.volume_id RESTRICT (23503) →
 // FailedPrecondition "Volume <id> is in use" (§3.6). 0 rows → NotFound.
 func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
-	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	txErr := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		// RETURNING project_id — нужен для unregister owner-tuple (subject project:<id>);
 		// 0 rows → pgx.ErrNoRows → NotFound. FK RESTRICT (attached) → 23503 из DELETE.
 		var projectID string
@@ -773,7 +785,7 @@ func (r *VolumeRepo) Attach(ctx context.Context, a *domain.VolumeAttachment) err
 // disambiguateAttach возвращает уже-замапленные sentinel'ы (mapVolumeErr
 // пробрасывает их идемпотентно).
 func (r *VolumeRepo) attachOnce(ctx context.Context, a *domain.VolumeAttachment, device string) error {
-	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+	return inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
 		var got string
 		serr := tx.QueryRow(ctx, attachCASSQL,
 			a.VolumeID, a.InstanceID, a.InstanceName, a.ProjectID, a.ZoneID,
@@ -893,9 +905,16 @@ func nextFreeDevice(ctx context.Context, q rowsQuerier, instanceID string) (stri
 // Detach реализует volume.Writer: идемпотентное удаление строки volume_attachments
 // (§3.3). 0 rows → уже отвязан → OK. Derived status тома возвращается к AVAILABLE
 // автоматически (наличие строки — единственный источник, §1.3).
+//
+// `volume_attachments` — журналируемая таблица (функция базы пишет строку журнала
+// тома на её изменении), поэтому одиночный оператор идёт транзакцией помощника
+// записи журнала с инициатором из принципала контекста (NTF-3, З4, М4).
 func (r *VolumeRepo) Detach(ctx context.Context, volumeID, instanceID string) error {
-	_, err := r.pool.Exec(ctx,
-		`DELETE FROM volume_attachments WHERE volume_id = $1 AND instance_id = $2`, volumeID, instanceID)
+	err := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`DELETE FROM volume_attachments WHERE volume_id = $1 AND instance_id = $2`, volumeID, instanceID)
+		return err
+	})
 	if err != nil {
 		return mapVolumeErr(err, volErrCtx{volumeID: volumeID, instanceID: instanceID})
 	}
@@ -1026,7 +1045,9 @@ const changeDiskTypeSQL = `
 // Данные переносит сверщик — здесь фиксируется НАМЕРЕНИЕ.
 func (r *VolumeRepo) ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error) {
 	var got string
-	err := r.pool.QueryRow(ctx, changeDiskTypeSQL, id, diskTypeID).Scan(&got)
+	err := inJournalTx(ctx, r.pool, r.journal, func(tx *journaltx.Tx) error {
+		return tx.QueryRow(ctx, changeDiskTypeSQL, id, diskTypeID).Scan(&got)
+	})
 	if err == nil {
 		return r.Get(ctx, id)
 	}

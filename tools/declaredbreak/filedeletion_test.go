@@ -210,8 +210,8 @@ func TestFileDeletionDeclarationExpires(t *testing.T) {
 func TestFileDeletionAlongsideOtherBreaks(t *testing.T) {
 	findings := append(loadReal(t), loadFileDeleted(t)...)
 	decls := []Declaration{
-		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "AddRoutes"),
-		decl("FIELD_NO_DELETE", "kacho/cloud/vpc/v1/security_group.proto", "predefined_target"),
+		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RouteTableService.AddRoutes"),
+		decl("FIELD_NO_DELETE", "kacho/cloud/vpc/v1/security_group.proto", "SecurityGroupRule.10"),
 		decl("FILE_NO_DELETE", deletedFilePath, deletedFilePath),
 	}
 

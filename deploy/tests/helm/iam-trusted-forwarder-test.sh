@@ -49,6 +49,10 @@ GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
 # отправителей, — и вызывающий не мог их различить машинно (задача #1214).
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
+# Одиночный рендер подчарта kaname — только обёрткой (помощник флага почты живёт
+# в чарте notify; замысел З28, CX1-113).
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$HERE/lib/render-chain.sh"
 EXPECTED_ASSERTIONS=9
 require_helm
 command -v jq >/dev/null 2>&1 \
@@ -111,7 +115,7 @@ peer_san() { # peer_san <chart-path> → $PEER_SAN
 # ── 1. Дефолт чарта непуст и совпадает с сертификатами, которые выдают соседи ─
 # Круг установлен по рёбрам (кто зовёт ProjectService.Get / Check под личностью
 # конечного пользователя), а сами строки — по чартам этих соседей.
-helm_try iam "$CHART" --show-only templates/configmap.yaml
+render_kaname_alone_try iam "$CHART" --show-only templates/configmap.yaml
 render_or_fatal "чарт iam, дефолт"
 DEFAULT_RENDER="$HELM_OUT"
 def_list="$(rendered_list "$DEFAULT_RENDER")"
@@ -153,7 +157,7 @@ ok
 # Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
 # (Config.Validate → validateProductionTrustedForwarders). Так «пусто» остаётся
 # наблюдаемым, а не подменяется чартом на дефолт втихую.
-helm_try iam "$CHART" --set 'config.authn.trustedForwarderSANs=[]' \
+render_kaname_alone_try iam "$CHART" --set 'config.authn.trustedForwarderSANs=[]' \
   --show-only templates/configmap.yaml
 render_or_fatal "чарт iam, явно пустая ручка"
 EMPTY_RENDER="$HELM_OUT"
@@ -181,11 +185,11 @@ first_matching() {
   done <<<"$1"
   return 0
 }
-helm_try iam "$CHART" --show-only templates/deployment.yaml
+render_kaname_alone_try iam "$CHART" --show-only templates/deployment.yaml
 render_or_fatal "чарт iam, шаблон пода"
 RENDER_A="$HELM_OUT"
 POD_ANNOT_A="$(first_matching "$RENDER_A" 'kacho.cloud/config-checksum:')"
-helm_try iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
+render_kaname_alone_try iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
   --show-only templates/deployment.yaml
 render_or_fatal "чарт iam, шаблон пода со сменённым списком"
 RENDER_B="$HELM_OUT"
@@ -203,7 +207,7 @@ ok
 IAM_BLOCK="$(mktemp)"; trap 'rm -f "$IAM_BLOCK"' EXIT
 awk '/^kaname:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^  /,"");print}' "$PROD" > "$IAM_BLOCK"
 [ -s "$IAM_BLOCK" ] || fail "в $PROD нет блока kaname — тест разошёлся с профилем"
-helm_try iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml
+render_kaname_alone_try iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml
 render_or_fatal "чарт iam с боевым профилем"
 PROD_RENDER="$HELM_OUT"
 prod_list="$(rendered_list "$PROD_RENDER")"

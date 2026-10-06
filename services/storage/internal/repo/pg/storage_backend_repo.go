@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/journalfault"
 	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -263,6 +264,12 @@ func mapStorageBackendErr(err error, c sbErrCtx) error {
 	}
 	f := pgfault.Classify(err)
 	if f.FromDatabase() {
+		// Отказ журнала по инициатору — дефект записи сервиса (значение производит
+		// помощник транзакции, вызывающему исправлять нечего): решается ДО класса
+		// 23514, который иначе ушёл бы отказом по вводу (pkg/journalfault).
+		if journalfault.Report(f, "kind", "storage_backend", "id", c.backendID) {
+			return storageerr.ErrInternal
+		}
 		switch f.Class {
 		case pgfault.Unique:
 			switch f.Constraint {

@@ -63,6 +63,8 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // quotaSyncStarter — имя глагола, включающего обе полосы ребра.
@@ -84,24 +86,28 @@ type quotaStartSite struct {
 
 // quotaConsumers отдаёт службы, несущие таблицу курсора дельты, — то есть тех,
 // у кого тянущий обязан быть заведён.
+//
+// Каталоги цепочек — у migrationchains.List, а не из имени службы: у
+// services/notify цепочек несколько, и цепочку пробы вывод из имени не видел
+// бы (kacho#2915, CX1-114).
 func quotaConsumers(root string) ([]string, error) {
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
+	chains, err := migrationchains.List(root)
 	if err != nil {
-		return nil, fmt.Errorf("каталог служб: %w", err)
+		return nil, fmt.Errorf("перечень цепочек: %w", err)
 	}
+	seen := map[string]bool{}
 	var out []string
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, c := range chains {
+		if seen[c.Service] {
 			continue
 		}
-		migrations := filepath.Join(servicesDir, e.Name(), "internal", "migrations")
-		carries, cerr := dirMentions(migrations, quotaCursorTable)
+		carries, cerr := dirMentions(filepath.Join(root, filepath.FromSlash(c.Dir)), quotaCursorTable)
 		if cerr != nil {
 			return nil, cerr
 		}
 		if carries {
-			out = append(out, e.Name())
+			seen[c.Service] = true
+			out = append(out, c.Service)
 		}
 	}
 	sort.Strings(out)

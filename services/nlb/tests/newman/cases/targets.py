@@ -356,7 +356,7 @@ CASES.append(Case(
     steps=[
         *_setup_tg("inst-nx"),
         Step(name="add-inst-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
-             body={"targets": [{"instanceId": "epdinstdoesnotexist0", "weight": 100}]},
+             body={"targets": [{"instanceId": "epd00000000000000000", "weight": 100}]},
              test_script=assert_refused_sync_or_async("unknown instance_id")),
         poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
@@ -373,7 +373,7 @@ CASES.append(Case(
         # legitimate NotFound (unknown nic) 404 is the EXPECTED outcome and must NOT be
         # retried away, so retry_on is narrowed to (403,).
         retry_until_authorized(Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
-             body={"targets": [{"nicId": "e9bnicdoesnotexist00", "weight": 100}]},
+             body={"targets": [{"nicId": "e9b00000000000000000", "weight": 100}]},
              test_script=assert_refused_sync_or_async("unknown nic_id")), retry_on=(403,)),
         poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
@@ -387,7 +387,7 @@ CASES.append(Case(
     steps=[
         *_setup_tg("sub-nx"),
         Step(name="add-sub-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
-             body={"targets": [{"ipRef": {"subnetId": "e9bsubdoesnotexist00",
+             body={"targets": [{"ipRef": {"subnetId": "e9b00000000000000001",
                                           "address": "10.0.0.5"}, "weight": 100}]},
              test_script=assert_refused_sync_or_async("unknown ip_ref.subnet_id")),
         poll_operation_until_done(must_fail=True),

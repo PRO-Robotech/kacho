@@ -145,7 +145,7 @@ func waitOutboxDrained(t *testing.T, pool *pgxpool.Pool) {
 // in one transaction must be ORDERED, or the second one undoes the first.
 func TestIntegration_MoveProjection_TargetGroupLandsOnDestination(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := ctxNamedCaller()
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
 	h := mkHandler(t, repo, opsRepo)

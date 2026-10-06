@@ -57,7 +57,6 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
-	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
@@ -583,13 +582,20 @@ const (
 	//   authenticated subject, access denied → 7 PERMISSION_DENIED → HTTP 403
 	outcomeUnauthenticated
 	// outcomeInvalidArgument — the extracted per-resource scope id is
-	// syntactically malformed (unknown 3-char prefix / wrong length). Maps to
-	// gRPC InvalidArgument(3) / HTTP 400. The FGA Check
-	// must NOT run for a malformed id — a no-FGA-path deny would surface as 403,
-	// masking the Kachō-convention 400 the handler itself returns first. The
-	// gateway cannot tell malformed from well-formed-but-nonexistent, so ONLY the
-	// malformed (wrong-prefix / wrong-length) case is short-circuited here;
-	// well-formed-nonexistent stays a 403 deny (existence-leak protection).
+	// syntactically malformed. Maps to gRPC InvalidArgument(3) / HTTP 400. The FGA
+	// Check must NOT run for a malformed id — a no-FGA-path deny would surface as
+	// 403, masking the Kachō-convention 400 the handler itself returns first.
+	// "Malformed" depends on who mints the type (resourceIDFormAccepted):
+	//   - a type minted by a kacho service — anything but the exact mint shape
+	//     (known prefix, then 17 Crockford chars, fused or after a hyphen), so a
+	//     wrong length or a non-Crockford char is refused here;
+	//   - any other type (kaname's) — an unknown prefix only: corelib
+	//     validate.ResourceID checks neither length nor alphabet, and kaname has
+	//     lawful ids outside the mint shape (its system roles), so the owner
+	//     judges the rest.
+	// The gateway cannot tell malformed from well-formed-but-nonexistent, so ONLY
+	// the malformed case is short-circuited here; well-formed-nonexistent stays a
+	// 403 deny (existence-leak protection).
 	outcomeInvalidArgument
 	// outcomeNotFound — an authz deny on a hide-existence read RPC (catalog
 	// HideExistence / IAM verb-bearing `v_get` read). Maps to gRPC NotFound(5) /
@@ -702,6 +708,10 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 	}
 	// 4b. Scope-filtered short-circuit — AFTER subject extraction, on purpose.
 	if dec, handled := m.phaseScopeFiltered(dr, entry); handled {
+		return dec
+	}
+	// 4c. ScopeBound — closed refusal: the edge holds no server binding.
+	if dec, handled := m.phaseScopeBound(dr, entry, subj); handled {
 		return dec
 	}
 	// 5. Resource-scope resolution (+ 5b malformed-id short-circuit).
@@ -942,6 +952,48 @@ func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEn
 	}, true
 }
 
+// phaseScopeBound refuses, closed, a row of the ScopeBound form
+// (`scope_extractor.bound_to_server`, kacho#2915, замысел NTF-1 §З14).
+//
+// The object of such a check is the instance the PROCESS THAT HOSTS THE SERVER
+// bound it to at boot (`servicecontract.Bound`, e.g. `notification_feed:<module>`);
+// the request does not name it, so `from_request_field` is empty by design. The
+// edge hosts no such server and holds no binding — by design there is no second
+// value of "the module name" anywhere but in the root that raised the server.
+// So the edge has exactly two options: ask the model about the wildcard
+// (`<type>:*`, "any feed" — the very question the form exists to forbid), or
+// refuse. It refuses. The methods of this form are `Internal*` and carry no
+// `google.api.http`, so the edge routes them to nobody: the refusal costs no
+// lawful caller anything, and the owning server enforces the binding itself
+// (corelib `catalogderive.Bind` + the server-side interceptor).
+//
+// It runs after subject extraction so an unauthenticated caller still reads 401,
+// like every other row.
+func (m *AuthzMiddleware) phaseScopeBound(dr decisionRequest, entry CatalogEntry, subj ResolvedSubject) (decision, bool) {
+	if !entry.ScopeExtractor.BoundToServer {
+		return decision{}, false
+	}
+	descriptor := permissionDeniedDescriptor{
+		FQN:          dr.FQN,
+		Subject:      subj.FGA,
+		Action:       entry.Permission,
+		ResourceType: entry.ScopeExtractor.ObjectType,
+	}
+	m.metrics.RecordDeny()
+	m.cfg.Logger.Warn("authz scope bound to a server the edge does not host — failing closed",
+		"fqn", dr.FQN,
+		"subject", subj.FGA,
+		"action", entry.Permission,
+		"resource_type", entry.ScopeExtractor.ObjectType,
+	)
+	return decision{
+		outcome:    outcomeDeny,
+		reasons:    []string{"scope bound to the serving process: the edge holds no binding for this method"},
+		descriptor: descriptor,
+		entry:      entry,
+	}, true
+}
+
 // phaseResource resolves the FGA resource scope (type + id) and applies the
 // malformed-id short-circuit (5b). It returns handled=true only for the
 // malformed-id case (InvalidArgument/400); otherwise it returns the resolved
@@ -1144,7 +1196,8 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// For an entry whose scope is a CONCRETE per-resource id (the
 	// `from_request_field` names a real resource-id field, not the wildcard /
 	// subject-as-scope / scope-polymorphic forms), a syntactically-invalid id
-	// (unknown 3-char prefix / wrong length) must surface as InvalidArgument(3)
+	// (what "invalid" means per type — resourceIDFormAccepted, see
+	// outcomeInvalidArgument) must surface as InvalidArgument(3)
 	// /400 — the Kachō convention — instead of reaching the FGA Check, where a
 	// no-path deny would mask it as PermissionDenied(7)/403. We deliberately do
 	// NOT validate the scope-polymorphic path (`object_type_from_request_field`),
@@ -1154,7 +1207,7 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// cached: it is a property of the request input, not of subject↔resource
 	// authz state.
 	if isConcreteResourceScope(entry) && !resourceID.IsWildcard() && resourceID.String() != "" {
-		if err := corevalidate.ResourceID("resource", "", resourceID.String()); err != nil {
+		if !resourceIDFormAccepted(entry, resourceID.String()) {
 			m.metrics.RecordDeny()
 			m.cfg.Logger.Info("authz invalid resource id",
 				"fqn", dr.FQN,

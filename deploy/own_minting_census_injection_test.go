@@ -62,7 +62,6 @@ func agreeingStack() map[string]any {
 					},
 					"presentedCredential": map[string]any{"enabled": true},
 					"clientToken":         map[string]any{"enabled": true},
-					"identityProvider":    "own",
 				},
 			},
 			// Слушатель набора ключей сверяет вызывающего: форма боевого слоя.
@@ -79,13 +78,11 @@ func agreeingStack() map[string]any {
 }
 
 // silentStack — стенд, чеканки НЕ объявляющий: ни ручек чеканки, ни издателя
-// платформы у потребителей. Законен ТОЛЬКО на внешнем поставщике: там у
-// публикатора остаётся запись зеркала чужого набора.
+// платформы у потребителей. Законен он был ТОЛЬКО на внешнем поставщике; второй
+// посадки у службы нет (kaname#363), и такой стенд не поднимается.
 func silentStack() map[string]any {
 	return map[string]any{
-		"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{
-			"identityProvider": "external",
-		}}},
+		"kaname":      map[string]any{"config": map[string]any{"authn": map[string]any{}}},
 		"api-gateway": map[string]any{},
 		"registry":    map[string]any{},
 	}
@@ -142,20 +139,6 @@ func TestMintingCensusInjection_ControlIsSilent(t *testing.T) {
 			len(got.findings), got.findings)
 	}
 	t.Log("контроль: согласованный стенд — 0 находок; красное ниже приходит от инъекции")
-}
-
-// Законный близнец: стенд БЕЗ чеканки, названный в ведомости, и потребители
-// издателя платформы не объявляют. Тело обязано молчать.
-func TestMintingCensusInjection_SilentStackNamedInRegisterIsLegal(t *testing.T) {
-	got := judgeStackMinting("dev-like", silentStack(),
-		map[string]string{"dev-like": "первая фаза двухфазного подъёма"})
-	if got.on {
-		t.Fatal("законный близнец: стенд без ручек чеканки не вправе читаться как чеканящий")
-	}
-	if len(got.findings) != 0 {
-		t.Fatalf("законный близнец: названный в ведомости стенд без чеканки находкой не "+
-			"является, а тело назвало %d: %v", len(got.findings), got.findings)
-	}
 }
 
 // ── (B) НОВОЕ свойство, по одной оси на прогон ───────────────────────────────
@@ -215,7 +198,8 @@ func TestMintingCensusInjection_ConsumerWithoutAcceptanceAtAllIsAFinding(t *test
 
 func TestMintingCensusInjection_UnnamedSilentStackIsAFinding(t *testing.T) {
 	got := judgeStackMinting("nameless", silentStack(), emptyRegister())
-	assertNamed(t, got.findings, "НЕ НАЗВАН в ведомости")
+	assertNamed(t, got.findings, refusesToStart)
+	assertNamed(t, got.findings, "и в ведомости его нет")
 }
 
 func TestMintingCensusInjection_AcceptedIssuerNobodyMintsIsAFinding(t *testing.T) {
@@ -266,75 +250,23 @@ func TestMintingCensusInjection_ExcusedStackThatMintsIsAFinding(t *testing.T) {
 // выключена, стенд назван в ведомости. Запись ведомости стенда не поднимает.
 func TestMintingCensusInjection_OwnPostureWithoutMintingIsAFindingEvenWhenNamed(t *testing.T) {
 	tree := silentStack()
-	at(tree, "kaname", "config", "authn")["identityProvider"] = "own"
 
 	got := judgeStackMinting("dev-like", tree,
 		map[string]string{"dev-like": "первая фаза двухфазного подъёма"})
 	if !got.own {
-		t.Fatal("посадка `own`, объявленная цепочкой, обязана читаться как own")
+		t.Fatal("посадка службы одна — `own`, и тело обязано читать её так")
 	}
 	assertNamed(t, got.findings, refusesToStart)
 	assertNamed(t, got.findings, "запись ведомости этого НЕ прощает")
 }
 
-// Законный близнец: тот же стенд на внешнем поставщике — у публикатора остаётся
-// запись зеркала, и о старте находки нет.
-func TestMintingCensusInjection_ExternalPostureWithoutMintingDoesNotRefuse(t *testing.T) {
-	got := judgeStackMinting("dev-like", silentStack(),
-		map[string]string{"dev-like": "первая фаза двухфазного подъёма"})
-	if got.own || hasFinding(got.findings, refusesToStart) {
-		t.Fatalf("законный близнец: внешний поставщик без чеканки старт не роняет, а тело "+
-			"назвало: %v", got.findings)
-	}
-}
-
-// Посадка в каждой законной форме записи — и в обе стороны. Цепочка может
-// объявить её сама, унаследовать у подчарта или удалить унаследованное `null`.
-func TestMintingCensusInjection_PostureIsReadInEveryLegalForm(t *testing.T) {
-	const external = "config:\n  authn:\n    identityProvider: external\n"
-	const own = "config:\n  authn:\n    identityProvider: own\n"
-	cases := []struct {
-		name       string
-		chain      string // объявления цепочки под `kaname:`
-		subchart   string // умолчания подчарта
-		wantOwn    bool
-		wantRefuse bool
-	}{
-		{"объявлено цепочкой", own, external, true, true},
-		{"объявлено в кавычках", "config:\n  authn:\n    identityProvider: \"own\"\n", external, true, true},
-		{"унаследовано у подчарта", "config:\n  authn: {}\n", own, true, true},
-		{"унаследованное внешнее", "config:\n  authn: {}\n", external, false, false},
-		// null УДАЛЯЕТ ключ умолчания: служба посадки не видит и публикует
-		// зеркало — записи у публикатора есть. Незаявленная посадка — предмет
-		// гейтов посадки, а не этого.
-		{"удалено null", "config:\n  authn:\n    identityProvider: null\n", own, false, false},
-		// Разборщик службы дословен: это не own, и служба отказывает на разборе —
-		// раньше публикатора и по предмету гейтов посадки.
-		{"иной регистр", "config:\n  authn:\n    identityProvider: Own\n", external, false, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			chain := map[string]any{"kaname": parseYAML(t, c.chain)}
-			tree := coalesceSubchartDefaults(chain, "kaname", parseYAML(t, c.subchart))
-			got := judgeStackMinting("synthetic", tree, map[string]string{"synthetic": "причина"})
-			if got.own != c.wantOwn {
-				t.Fatalf("посадка own прочитана как %v, ожидалось %v", got.own, c.wantOwn)
-			}
-			if r := hasFinding(got.findings, refusesToStart); r != c.wantRefuse {
-				t.Fatalf("находка об отказе старта: есть=%v, ожидалось %v: %v",
-					r, c.wantRefuse, got.findings)
-			}
-		})
-	}
-}
-
 // Умолчания подчарта не меняются слиянием: они одни на все стенды, и стенд,
 // объявивший своё, не вправе перекрасить соседа.
 func TestMintingCensusInjection_CoalescingLeavesTheDefaultsUntouched(t *testing.T) {
-	defaults := parseYAML(t, "config:\n  authn:\n    identityProvider: external\n")
-	chain := map[string]any{"kaname": parseYAML(t, "config:\n  authn:\n    identityProvider: own\n")}
+	defaults := parseYAML(t, "config:\n  authn:\n    tokenSigning:\n      issuer: https://a.example.test\n")
+	chain := map[string]any{"kaname": parseYAML(t, "config:\n  authn:\n    tokenSigning:\n      issuer: https://b.example.test\n")}
 	_ = coalesceSubchartDefaults(chain, "kaname", defaults)
-	if got := asString(lookupAny(defaults, "config", "authn", "identityProvider")); got != "external" {
+	if got := asString(lookupAny(defaults, "config", "authn", "tokenSigning", "issuer")); got != "https://a.example.test" {
 		t.Fatalf("слияние изменило умолчания подчарта: %q", got)
 	}
 }

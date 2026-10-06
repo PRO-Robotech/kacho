@@ -1,0 +1,42 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+ФЛАГ ЛЕНТЫ МОДУЛЕЙ KACHO — ОДНО ОБЪЯВЛЕНИЕ, ОДИН ПОМОЩНИК (NTF-3 NTF3-64,
+NTF3-66; NTF-1 Р9, CX1-106, CX1-113).
+
+Каждый из модулей compute, nlb, registry, storage, vpc не стартует без
+переменной `KACHO_<MODULE>_NOTIFICATIONS_ENABLED` (умолчания нет, NTF3-64).
+Её значение — ТОЛЬКО вывод `kacho.notifications.enabledFor` над
+`.Values.global` для ключа модуля: переопределение
+`global.kacho.notifications.modules.<ключ>.enabled`, иначе флаг установки
+`global.kacho.notifications.enabled`. Тот же вывод решает, входит ли модуль в
+перечень источников notify, — второго чтения флага нет.
+
+Почему карта зонтика, а не `include` в шаблоне модуля. Тело помощника одно на
+релиз и лежит в чарте notify; чарт модуля рендерится и ОДИН — шагом конвейера
+(.github/scripts/lint-service-charts.sh), пробами чарта
+(пробы в каталоге deploy каждого модуля) и стражами рендера, — и там помощника нет:
+`include` дал бы отказ «no template» любому одиночному рендеру. Поэтому
+значение выводит зонтик (он видит и `global`, и помощник), а под модуля берёт
+его ссылкой `configMapKeyRef` на ключ своей переменной; ссылка без карты — не
+старт пода (CreateContainerConfigError), то есть отказ, а не «выключено».
+
+Перечень модулей — строки таблицы `kacho.notifications.moduleTable` с полем
+`knob`; ручного перечня здесь нет. Незаданный флаг установки и не-булево
+значение — отказ рендера с именем ручки (помощник).
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kacho-notifications-module-flags
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: notifications-module-flags
+data:
+{{- range (include "kacho.notifications.moduleTable" . | fromJsonArray) }}
+{{- if hasKey . "knob" }}
+  {{ .knob }}: {{ include "kacho.notifications.enabledFor" (dict "global" $.Values.global "module" .key) | quote }}
+{{- end }}
+{{- end }}

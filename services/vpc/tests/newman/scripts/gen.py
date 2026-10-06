@@ -91,6 +91,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _js_code_and_literals,
     js_comment,
     js_regex_literal_text,
+    js_regex_src,
     js_str,
     load_cases_module,
     _MUTATION_METHODS,
@@ -1135,10 +1136,10 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             title=f"Get garbage → точный текст контракта not-found",
             classes=["CONF", "NEG"], priority="P1",
             steps=[Step(name="get", method="GET",
-                        path=f"{resource_path}/enpsnapshotnonexist01",
+                        path=f"{resource_path}/enp00000000000000001",
                         test_script=[
                             *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                            _eql_test("enpsnapshotnonexist01"),
+                            _eql_test("enp00000000000000001"),
                         ])],
         ),
         Case(
@@ -1146,7 +1147,7 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             title=f"Update garbage → точный текст контракта not-found",
             classes=["CONF", "NEG"], priority="P1",
             steps=[Step(name="upd", method="PATCH",
-                        path=f"{resource_path}/enpsnapshotnonexist02",
+                        path=f"{resource_path}/enp00000000000000002",
                         body={"updateMask": "description", "description": "x"},
                         # PATCH-мутация по несуществующему id: scope_extractor 403
                         # (authz-first) ДО backend 404 → not-found текст здесь
@@ -1158,7 +1159,7 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             title=f"Delete garbage → точный текст контракта not-found",
             classes=["CONF", "NEG"], priority="P1",
             steps=[Step(name="del", method="DELETE",
-                        path=f"{resource_path}/enpsnapshotnonexist03",
+                        path=f"{resource_path}/enp00000000000000003",
                         # DELETE-мутация по несуществующему id: scope_extractor 403
                         # (authz-first) ДО backend 404 → verbatim держит GET-CONF-FULLTEXT.
                         test_script=[*assert_absent_id_rejected()])],
@@ -2977,6 +2978,10 @@ _INJECTED = {
     "conformance_lifecycle_pack": conformance_lifecycle_pack,
     "js_str": js_str,
     "js_regex_literal_text": js_regex_literal_text,
+    # Образец регулярного выражения ЦЕЛИКОМ, с проверкой, что литерал `/…/` его
+    # переживёт (#1209): модуль `authz-sa-apitoken` собирает образец
+    # идентификатора операции из приставки и отдаёт его сюда, а не вклеивает.
+    "js_regex_src": js_regex_src,
 }
 
 

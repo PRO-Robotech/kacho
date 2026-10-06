@@ -8,7 +8,7 @@ metadata:
   namespace: kacho
 spec:
   selector:
-    app: {{ .Values.name }}
+    {{- include "api-gateway.selectorLabels" . | nindent 4 }}
   ports:
     - name: cmux
       port: {{ .Values.port }}

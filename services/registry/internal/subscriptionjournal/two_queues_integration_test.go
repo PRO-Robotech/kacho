@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/journaltx"
+
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/subscriptionjournal"
 )
@@ -90,7 +92,16 @@ func TestTheRightsQueueAndTheResourceJournalAreTwoTables(t *testing.T) {
 // ОГРАНИЧЕНИЕМ базы, а не отсутствием желающих её написать.
 func assertInsertRefused(t *testing.T, s *stand, table, eventType, why string) {
 	t.Helper()
-	_, err := s.pool.Exec(context.Background(),
+	// Транзакцией помощника записи журнала: у строки есть инициатор, и отказ,
+	// если он будет, — отказ ограничения рода события, а не пустой колонки
+	// инициатора (NTF-3, З2, З4).
+	ctx := journalPrincipalCtx(context.Background())
+	tx, err := journaltx.Begin(ctx, s.pool, journaltx.NewOptions(false))
+	if err != nil {
+		t.Fatalf("%s: транзакция не началась: %v", why, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	_, err = tx.Exec(ctx,
 		"INSERT INTO "+table+" (resource_kind, resource_id, event_type, payload) "+
 			"VALUES ($1, $2, $3, '{}'::jsonb)",
 		"Registry", "reg-two-queues-probe", eventType)

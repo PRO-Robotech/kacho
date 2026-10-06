@@ -21,6 +21,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/pgtest"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -52,7 +53,7 @@ func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	// не с чего, пока у проекта нет строки учёта. Разбор и перечень идентичностей
 	// — `quota_fixture_test.go`.
 	seedQuotaFixture(t, pool)
-	return pool, kachopg.New(pool, nil)
+	return pool, mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 }
 
 // newOpsRepo создаёт реальную operations-таблицу repo на тестовом пуле.
@@ -100,9 +101,31 @@ func (stubCheckClient) Check(_ context.Context, _, _, _ string) (bool, error) { 
 // отвергают вызывающего, которого нельзя назвать субъектом модели прав
 // (`shared.AuthorizeObject`), поэтому сценарий, доходящий до такого решения,
 // обязан кого-то назвать — иначе он проверяет отказ, а не свой предмет.
+//
+// Id — формы, которую `auth.InitiatorOf` переводит в инициатора: пишущие
+// транзакции модуля открывает помощник записи журнала, и вызывающий без формы
+// инициатора получил бы отказ записи (NTF-3, замысел issue-2918 З4).
 func ctxNamedCaller() context.Context {
 	return operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr_integration"})
+		operations.Principal{Type: "user", ID: ids.NewHyphenID(ids.PrefixUser)})
+}
+
+// execJournaledFixture — оператор фикстуры, пишущий журналируемую таблицу
+// (`listeners`) мимо писателей модуля. Строку журнала без инициатора база не
+// принимает, поэтому оператор идёт транзакцией помощника записи журнала от
+// названного вызывающего — инициатор выставлен локально к транзакции, а не
+// сессии пула, которым пользуется и проверяемый путь.
+func execJournaledFixture(pool *pgxpool.Pool, sql string, args ...any) error {
+	ctx := ctxNamedCaller()
+	tx, err := journaltx.Begin(ctx, pool, journaltx.NewOptions(false))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // stubSubnetClient — заглушка vpc SubnetClient для integration-стенда: REGIONAL
@@ -179,7 +202,7 @@ func TestIntegration_CreateLoadBalancer_EndToEnd(t *testing.T) {
 	opsRepo := newOpsRepo(t, pool)
 	h := makeHandler(t, repo, opsRepo)
 
-	op, err := h.Create(context.Background(), internalAutoReq("prj-acme-test", "edge-public"))
+	op, err := h.Create(ctxNamedCaller(), internalAutoReq("prj-acme-test", "edge-public"))
 	require.NoError(t, err)
 	require.False(t, op.GetDone())
 	require.NotEmpty(t, op.GetId())
@@ -208,7 +231,7 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	opsRepo := newOpsRepo(t, pool)
 
 	// Insert LB via repo directly.
-	w, err := repo.Writer(context.Background())
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	lb := &domain.LoadBalancer{
 		ID:        domain.ResourceID(ids.NewID(ids.PrefixLoadBalancer)),
@@ -221,7 +244,7 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	require.NoError(t, w.Commit())
 	// Insert listener (via raw SQL — no listener handler yet). Must run after LB
 	// TX is committed because the pool sees a different snapshot.
-	_, err = pool.Exec(context.Background(), `
+	err = execJournaledFixture(pool, `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
 			description, labels, protocol, port,
 			default_target_group_id, status)
@@ -231,7 +254,7 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	require.NoError(t, err)
 
 	h := makeHandler(t, repo, opsRepo)
-	_, err = h.Delete(context.Background(), &lbv1.DeleteNetworkLoadBalancerRequest{
+	_, err = h.Delete(ctxNamedCaller(), &lbv1.DeleteNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: string(lb.ID),
 	})
 	require.Error(t, err)
@@ -248,7 +271,7 @@ func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	opsRepo := newOpsRepo(t, pool)
 	h := makeHandler(t, repo, opsRepo)
 
-	w, err := repo.Writer(context.Background())
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	lbID := ids.NewID(ids.PrefixLoadBalancer)
 	tgID := ids.NewID(ids.PrefixTargetGroup)
@@ -273,7 +296,7 @@ func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	// replacement for the removed attach pivot. Raw SQL after the LB+TG TX is
 	// committed (pool sees a different snapshot); the direct FK RESTRICT to
 	// target_groups(id) is satisfied because the TG exists.
-	_, err = pool.Exec(context.Background(), `
+	err = execJournaledFixture(pool, `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
 			description, labels, protocol, port,
 			default_target_group_id, status)
@@ -298,7 +321,7 @@ func TestIntegration_GetTargetStates_HappyPath(t *testing.T) {
 	h := makeHandler(t, repo, opsRepo)
 	_ = pool
 
-	w, err := repo.Writer(context.Background())
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	lbID := ids.NewID(ids.PrefixLoadBalancer)
 	tgID := ids.NewID(ids.PrefixTargetGroup)
@@ -341,7 +364,7 @@ func TestIntegration_ListOperations_FilterByResourceID(t *testing.T) {
 	// anonymous read rather than its own subject. Both calls now run as one named
 	// caller, which is what the case means: the creator lists its own operations.
 	ctx := operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr-ops-filter"})
+		operations.Principal{Type: "user", ID: ids.NewHyphenID(ids.PrefixUser)})
 
 	op, err := h.Create(ctx, internalAutoReq("prj-ops", "edge"))
 	require.NoError(t, err)
@@ -369,7 +392,7 @@ func TestIntegration_Update_PathUpdatesPersisted(t *testing.T) {
 	h := makeHandler(t, repo, opsRepo)
 	_ = pool
 
-	w, err := repo.Writer(context.Background())
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	lbID := ids.NewID(ids.PrefixLoadBalancer)
 	_, err = w.LoadBalancers().Insert(context.Background(), &domain.LoadBalancer{
@@ -380,7 +403,7 @@ func TestIntegration_Update_PathUpdatesPersisted(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
 
-	op, err := h.Update(context.Background(), &lbv1.UpdateNetworkLoadBalancerRequest{
+	op, err := h.Update(ctxNamedCaller(), &lbv1.UpdateNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
 		Name:                  "edge-new",
 		UpdateMask:            &fieldmaskpb.FieldMask{Paths: []string{"name"}},
@@ -405,7 +428,7 @@ func TestIntegration_SessionAffinity_RoundTrip(t *testing.T) {
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
 	h := makeHandler(t, repo, opsRepo)
-	ctx := context.Background()
+	ctx := ctxNamedCaller()
 
 	saReq := internalAutoReq("prj-sa", "edge-sa")
 	saReq.SessionAffinity = lbv1.NetworkLoadBalancer_CLIENT_IP_ONLY

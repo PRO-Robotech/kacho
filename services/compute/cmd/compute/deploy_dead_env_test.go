@@ -26,7 +26,7 @@ import (
 // Гейт сверяет ДЕКЛАРАЦИИ, а не отрендеренный шаблон: читает исходник
 // deployment.yaml и множество имён, которые реально консультирует загрузчик
 // конфига. Поэтому он не может «не сработать» из-за отсутствия helm и не зависит
-// от того, какой профиль values взят (эталон — deploy/helm/umbrella/token_shape_test.go).
+// от того, какой профиль values взят (эталон — deploy/posture_parity_test.go).
 
 // envDeclRe — ОБЪЯВЛЕНИЕ переменной в шаблоне: элемент списка `env:` вида
 // `- name: KACHO_COMPUTE_…`. Намеренно НЕ «любое вхождение имени в файле»:
@@ -46,7 +46,7 @@ var envDeclRe = regexp.MustCompile(`(?m)^[^#\n]*-\s*name:\s*(KACHO_COMPUTE_[A-Z0
 func configEnvNames(t *testing.T) map[string]struct{} {
 	t.Helper()
 	var buf bytes.Buffer
-	err := envconfig.Usagef(config.EnvPrefix, &config.Config{}, &buf, "{{range .}}{{.Key}}\n{{.Alt}}\n{{end}}")
+	err := envconfig.Usagef(config.EnvPrefix, &config.Config{Notifications: probeNotificationsOff()}, &buf, "{{range .}}{{.Key}}\n{{.Alt}}\n{{end}}")
 	require.NoError(t, err, "enumerating config env names")
 
 	out := map[string]struct{}{}
@@ -58,6 +58,11 @@ func configEnvNames(t *testing.T) map[string]struct{} {
 	}
 	require.NotEmpty(t, out,
 		"config exposes no KACHO_COMPUTE_* env name — the enumeration read nothing, so it would have asserted nothing")
+	// Флаг ленты модуля читается не тегом envconfig, а единственным чтением
+	// загрузчика (`Config.parseNotifications`, os.LookupEnv): у ручки нет
+	// умолчания, и envconfig его выразить не может (NTF3-64). Читатель есть —
+	// он назван здесь его же константой, а не выписан литералом.
+	out[config.NotificationsKnob] = struct{}{}
 	return out
 }
 

@@ -67,7 +67,7 @@ func setupCappedPoolDB(t *testing.T, maxConns int) *kachopg.Repository {
 	// не с чего, пока у проекта нет строки учёта. Разбор и перечень
 	// идентичностей — `quota_fixture_test.go`.
 	seedQuotaFixture(t, pool)
-	return kachopg.New(pool, nil)
+	return mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 }
 
 // secondReaderProbe stands where iam stands: it is called with the page in hand and
@@ -122,7 +122,7 @@ func TestListLoadBalancers_DoesNotHoldPooledConnectionAcrossAuthz(t *testing.T) 
 		Status:          domain.LBStatusInactive,
 		SessionAffinity: domain.SessionAffinity5Tuple,
 	}
-	w, err := repo.Writer(ctx)
+	w, err := repo.Writer(ctxNamedCaller())
 	require.NoError(t, err)
 	_, err = w.LoadBalancers().Insert(ctx, lb)
 	require.NoError(t, err)

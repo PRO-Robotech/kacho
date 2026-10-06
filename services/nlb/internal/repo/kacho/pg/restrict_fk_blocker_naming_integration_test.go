@@ -66,7 +66,7 @@ var (
 // seedTGWithLiveTarget — группа целей с одной ЖИВОЙ (не дренирующейся) целью.
 func seedTGWithLiveTarget(t testing.TB, repo kacho.Repository, projectID string) *domain.TargetGroup {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	tg := newTG(projectID, "")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		_, err := w.TargetGroups().Insert(ctx, tg)
@@ -89,7 +89,7 @@ func seedTGWithLiveTarget(t testing.TB, repo kacho.Repository, projectID string)
 func TestRestrictFK_TGDeleteBlockedByListener_NamesBlockingListeners(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, tg, lst := seedLBTGWiredListener(t, repo, "prj01FKNAME000000001")
 
@@ -97,7 +97,7 @@ func TestRestrictFK_TGDeleteBlockedByListener_NamesBlockingListeners(t *testing.
 	require.NoError(t, err)
 	defer w.Abort()
 
-	derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, derr, "удаление обязано быть отвергнуто FK RESTRICT")
 	require.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "получено %v", derr)
 	assert.NotContains(t, derr.Error(), "SQLSTATE", "сырой текст драйвера наружу не течёт")
@@ -115,7 +115,7 @@ func TestRestrictFK_TGDeleteBlockedByListener_NamesBlockingListeners(t *testing.
 func TestRestrictFK_TGDeleteBlockedByTargets_UsesTargetContractTone(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := seedTGWithLiveTarget(t, repo, "prj01FKTGT0000000001")
 
@@ -123,7 +123,7 @@ func TestRestrictFK_TGDeleteBlockedByTargets_UsesTargetContractTone(t *testing.T
 	require.NoError(t, err)
 	defer w.Abort()
 
-	derr := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, derr := w.TargetGroups().Delete(ctx, string(tg.ID))
 	require.Error(t, derr, "удаление обязано быть отвергнуто FK RESTRICT цели")
 	require.True(t, errors.Is(derr, kacho.ErrFailedPrecondition), "получено %v", derr)
 	assert.NotContains(t, derr.Error(), "SQLSTATE")
@@ -138,7 +138,7 @@ func TestRestrictFK_TGDeleteBlockedByTargets_UsesTargetContractTone(t *testing.T
 func TestRestrictFK_TGMoveBlockedByListener_UsesMoveContractTone(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, tg, _ := seedLBTGWiredListener(t, repo, "prj01MOVEFK0000000001")
 
@@ -164,11 +164,11 @@ func TestRestrictFK_TGMoveBlockedByListener_UsesMoveContractTone(t *testing.T) {
 // удаление сломано и не проходит никогда.
 func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	repo := kachopg.New(pool, nil)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	const rounds = 12
 	deleteWon, wireWon := 0, 0
@@ -211,7 +211,7 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 				return
 			}
 			defer w.Abort()
-			if e := w.TargetGroups().Delete(ctx, string(tg.ID)); e != nil {
+			if _, e := w.TargetGroups().Delete(ctx, string(tg.ID)); e != nil {
 				delErr = e
 				return
 			}
@@ -283,10 +283,10 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 // «ноль прочитанного».
 func TestGate_EveryRestrictFKHasBlockerNamingContract(t *testing.T) {
 	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(context.Background(), dsn)
+	pool, err := coredb.NewPool(journalPrincipalCtx(context.Background()), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	rows, err := pool.Query(ctx, `
 		SELECT c.conname,

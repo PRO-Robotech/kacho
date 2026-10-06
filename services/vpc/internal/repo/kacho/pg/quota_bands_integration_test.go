@@ -88,9 +88,9 @@ func TestQuota_BothBandsAreByteIdentical_NotProvisioned(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-bands-unprovisioned"
 
@@ -112,9 +112,9 @@ func TestQuota_BothBandsAreByteIdentical_Exceeded(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-bands-exhausted"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)

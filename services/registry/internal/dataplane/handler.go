@@ -17,6 +17,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/PRO-Robotech/corelib/operations"
+
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
@@ -34,10 +36,11 @@ type Handler struct {
 	pushGrants PushGrantRecorder
 	realm      string // IAM /token realm для WWW-Authenticate
 	service    string // service-audience для WWW-Authenticate
-	// anonSubjectID — the anonymous principal id (the iam-issued anon Hydra client id)
-	// this data-plane resolves to the FGA wildcard `user:*` (RG-1 D-7). Empty → anon
-	// pull DISABLED (secure-by-default): a token, if any, resolves as an ordinary
-	// principal. Set via WithAnonymousSubject from the composition root.
+	// anonSubjectID — the anonymous principal id (kaname AnonymousClientID, the `sub`
+	// of the anonymous token the /iam/token shim mints) this data-plane resolves to the
+	// FGA wildcard `user:*` (RG-1 D-7). Empty → anon pull DISABLED
+	// (secure-by-default): a token, if any, resolves as an ordinary principal. Set via
+	// WithAnonymousSubject from the composition root.
 	anonSubjectID string
 	logger        *slog.Logger
 }
@@ -80,9 +83,10 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 	}
 }
 
-// WithAnonymousSubject configures the anonymous principal id (the iam-issued anon
-// Hydra client id) this data-plane resolves to the FGA wildcard `user:*` — a VALID
-// anon Bearer thus reads only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
+// WithAnonymousSubject configures the anonymous principal id (kaname
+// AnonymousClientID, the `sub` of the anonymous token the /iam/token shim mints) this
+// data-plane resolves to the FGA wildcard `user:*` — a VALID anon Bearer thus reads
+// only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
 // Empty (the default) leaves anonymous pull DISABLED (secure-by-default: an anon token,
 // if any, resolves as an ordinary principal and is denied on PUBLIC-only grants).
 // Returns h for chaining from the composition root. Mirrors the WithClock-style
@@ -106,6 +110,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		h.challenge(w, invalidToken)
 		return
+	}
+	// Д115: принципал записи — только из `sub` проверенного токена. Он едет
+	// контекстом до писателя намерения, где `journaltx.Begin` делает его
+	// инициатором транзакции; нет его — путь записи нового репозитория
+	// отказывает (forwardManifestPut).
+	if principal, verified := h.verifiedPrincipal(subject); verified {
+		r = r.WithContext(operations.WithPrincipal(r.Context(), principal))
 	}
 
 	// REG-35: data-plane HTTP-метод DELETE не проксируется — единственный путь
@@ -534,6 +545,17 @@ func (h *Handler) forwardManifestPut(w http.ResponseWriter, r *http.Request, p p
 		if status >= 200 && status < 300 {
 			h.recordPushGrant(r.Context(), p, subject)
 		}
+		return
+	}
+
+	// Д115: регистрация нового репозитория пишется от имени проверенного `sub`,
+	// и без него закрепить её нечем — отказ ДО движка: манифест, принятый
+	// движком без регистрации, повтор клиента не сошёл бы (принципала не
+	// появится), а подстановки «system» нет.
+	if _, verified := operations.PrincipalFromContextOK(r.Context()); !verified {
+		h.logger.Warn("data-plane push refused: no verified principal to register the repository",
+			"repo", p.registryID+"/"+p.repo)
+		writeDenied(w)
 		return
 	}
 

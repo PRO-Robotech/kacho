@@ -54,7 +54,7 @@ func newGwRefFixture(ctx context.Context, t *testing.T) *gwRefFixture {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(r.Close)
 
 	f := &gwRefFixture{repo: r, projectID: "prj-gwref"}
@@ -174,7 +174,7 @@ func TestRouteTableGatewayRef_Resolves(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	// Якорь шлюза — та же сеть, ТА ЖЕ зона, что у подсети таблицы, IPv4-блок.
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-ok", "zone-a", []string{"10.80.1.0/24"}, nil)
@@ -200,7 +200,7 @@ func TestRouteTableGatewayRef_AbsentGatewayIsNotFound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	absent := ids.NewID(ids.PrefixGateway)
 
@@ -215,7 +215,7 @@ func TestRouteTableGatewayRef_ForeignNetworkRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 
 	otherNet := ids.NewID(ids.PrefixNetwork)
@@ -241,7 +241,7 @@ func TestRouteTableGatewayRef_ZoneMismatchRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-zb", "zone-b", []string{"10.82.0.0/24"}, nil)
 	gwID := f.gateway(ctx, t, "gw-zone-b", anchor, domain.GatewayTypeNat)
@@ -262,7 +262,7 @@ func TestRouteTableGatewayRef_RegionalTableSubnetOutOfZonalCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 
 	// Отдельная таблица, к которой привязана ТОЛЬКО региональная подсеть.
@@ -296,7 +296,7 @@ func TestRouteTableGatewayRef_FamilyMismatchRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-v6", "zone-a",
 		[]string{"10.85.0.0/24"}, []string{"2001:db8:85::/64"})
@@ -326,7 +326,7 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	anchor := f.anchorSubnet(ctx, t, f.networkID, "sub-anchor-del", "zone-a", []string{"10.86.0.0/24"}, nil)
 	gwID := f.gateway(ctx, t, "gw-del", anchor, domain.GatewayTypeNat)
@@ -334,13 +334,13 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	// Положительный контроль: пока маршрут его не называет — шлюз удаляем.
 	spare := f.gateway(ctx, t, "gw-spare", anchor, domain.GatewayTypeNat)
 	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, spare)
+		return removalErr(w.Gateways().Delete(ctx, spare))
 	}))
 
 	require.NoError(t, f.writeRoutes(ctx, t, f.rtID, viaGatewayRoute("0.0.0.0/0", gwID)))
 
 	err := legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, gwID)
+		return removalErr(w.Gateways().Delete(ctx, gwID))
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, helpers.ErrFailedPrecondition)
@@ -349,7 +349,7 @@ func TestRouteTableGatewayRef_NamedGatewayIsNotDeletable(t *testing.T) {
 	// Снятие маршрута снимает и ссылку — шлюз снова удаляем.
 	require.NoError(t, f.writeRoutes(ctx, t, f.rtID, nil))
 	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
-		return w.Gateways().Delete(ctx, gwID)
+		return removalErr(w.Gateways().Delete(ctx, gwID))
 	}))
 }
 
@@ -359,7 +359,7 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	f := newGwRefFixture(ctx, t)
 	v4only := f.anchorSubnet(ctx, t, f.networkID, "sub-v4", "zone-a", []string{"10.87.0.0/24"}, nil)
 

@@ -1,0 +1,18 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# operator-on.yaml — фикстурный слой держателя NTF1-P12 (д) (CX1-135, Д104;
+# deploy/notify_dns_profiles_test.go). НЕ ПРОФИЛЬ И НЕ ПОСТАВКА.
+#
+# Зона DNS стенда включена поверх цепочки, узел почты которой задаёт слой под
+# ним. Поверх `prod` с образцом узла оператора (deploy/testdata/mail-node/) узел
+# — внешний ретранслятор, и рендер обязан отказать: notify сверял бы записи
+# домена отправителя с подсаженной зоной стенда, а письма уходили бы наружу.
+# Близнец — тот же слой поверх `dev`, где узел — приёмник стенда этого релиза:
+# рендер с `dnsConfig` пода notify и `KACHO_NOTIFY_STAND_DNS=<релиз>-mailpit`.
+global:
+  kacho:
+    standDNS:
+      enabled: true
+      serviceIP: 10.96.0.53
+      clusterDomain: cluster.local

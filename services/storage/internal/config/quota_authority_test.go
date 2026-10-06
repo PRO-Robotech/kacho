@@ -19,7 +19,8 @@ import (
 // TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart — незаданное объявление
 // отвергается, и текст отказа называет ручку. Без имени ручки стенд не поднять.
 func TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart(t *testing.T) {
-	c := Config{AuthMode: "production-strict"}
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "production-strict"}
 	err := c.ValidateQuotaAuthority()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "KACHO_STORAGE_QUOTA_AUTHORITY")
@@ -31,7 +32,8 @@ func TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart(t *testing.T) {
 // близнец к отказам старта: без него «процесс не поднимается» зеленело бы на
 // объявлении, которое не принимается никогда.
 func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
-	c := Config{AuthMode: "production-strict"}
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "production-strict"}
 	c.QuotaAuthority = corequota.NotDeployed
 
 	a, err := c.QuotaAuthorityDeclaration()
@@ -56,7 +58,8 @@ func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
 // «полная проверка старта», и переведённый на него композиционный корень тихо
 // остаётся без неё.
 func TestQuotaAuthority_ValidateCarriesTheGuard(t *testing.T) {
-	c := Config{AuthMode: "production-strict"}
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "production-strict"}
 	err := c.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "KACHO_STORAGE_QUOTA_AUTHORITY",
@@ -82,7 +85,8 @@ func TestQuotaAuthority_ValidateCarriesTheGuard(t *testing.T) {
 // (`testing.md` §«Гейт на класс», п. 9: проба, чей предмет снят, ЗАМЕНЯЕТСЯ, а не
 // ослабляется).
 func TestQuotaAuthority_AddressRefusesStart_NoProducer(t *testing.T) {
-	c := Config{AuthMode: "production-strict"}
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "production-strict"}
 	c.QuotaAuthority = "kaname-internal.kacho.svc:9091"
 	err := c.ValidateQuotaAuthority()
 	require.Error(t, err, "адрес принят молча — ручка объявляет возможность, которой нет")
@@ -102,7 +106,8 @@ func TestQuotaAuthority_AddressRefusesStart_NoProducer(t *testing.T) {
 // Смягчение оставило бы объявление, которое поднимается на стенде и отказывает в
 // бою, — ту самую неразличимость, ради устранения которой отказ и заведён.
 func TestQuotaAuthority_AddressRefusalIsNotSoftenedByPosture(t *testing.T) {
-	c := Config{AuthMode: "dev"}
+	c := Config{
+		Notifications: probeNotificationsOff(), AuthMode: "dev"}
 	c.QuotaAuthority = "kaname-internal.kacho.svc:9091"
 	require.Error(t, c.ValidateQuotaAuthority())
 }

@@ -95,15 +95,13 @@ The host app uses relative browser URLs. `host/vite.config.ts` proxies them to t
 ```
 
 The ceremony addresses (`/login`, `/registration`, `/recovery`, `/settings`,
-`/verification`, `/error`, `/consent`, `/logout`) stay with the console: Vite
-serves them the console shell, exactly as the serving chart does on a landing
-that declares no external sign-in screen (`host.upstreams.kratosUi` empty —
-every chain today). They are proxied away only when `KACHO_KRATOS_UI_BASE` is
-set, and then to that address; there is no default port, because nothing
-listens on one — the external identity provider and its sign-in screen are not
-deployed on any stand, and `proxies.sh` does not forward to them (#2733). The
-rule is held by `ui-future/deploy/identity_dev_ceremony_band_test.go`. There is
-no `/.ory/…` band any more — neither here nor in the serving chart.
+`/verification`, `/error`, `/logout`) stay with the console: Vite serves them
+the console shell, exactly as the serving chart does on every chain. There is no
+band that hands them to an external sign-in screen — neither here nor in the
+serving chart: the external identity provider is removed (#1276), and so is
+the probe that judged how such a band was mounted. A band returned under the
+provider's name is a finding of the decreasing ceiling of provider bindings
+(`internal/repohygiene/retiredidentityvendorceiling.go`).
 
 Frontend code should keep using relative paths:
 

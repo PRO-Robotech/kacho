@@ -12,7 +12,10 @@ import "context"
 //
 // resourceType ∈ {`nlb_load_balancer`,`nlb_listener`,`nlb_target_group`}.
 // action ∈ {`CREATED`,`UPDATED`,`DELETED`,`MOVED`,`FAILED`}.
-// CHECK constraints в `nlb_outbox` (миграция 0001) защищают от typo.
+// Реализация пишет строку функцией фундамента с дескриптором nlb: слово вне
+// словаря владельца (`subscriptionjournal.Journal().Mapping`) отвергается
+// `subscription.ErrEntryRefused` до оператора; CHECK-ограничения `nlb_outbox`
+// остаются последним словом базы.
 //
 // payload — произвольная map (snapshot resource'а после DML). nil → пустой
 // JSON-объект. JSON-encoding делается helper'ом, caller передаёт map.

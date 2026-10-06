@@ -7,16 +7,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ ОБЪЯВЛЕНИЙ ДВА
 //
-// Авторитетное — в умбрелле (`global.kacho.identity`). Только оттуда значения
-// доходят до подчарта ПРОВАЙДЕРА, где по ним считается отпечаток содержимого
-// настроек: значения `global`, объявленные подчартом, соседям не раздаются —
-// это свойство Helm, а не наше решение.
-//
-// Второе — в самом подчарте kaname, и нужно оно ровно для того, чтобы
-// `helm template charts/kaname` рендерился САМ ПО СЕБЕ. На таком рендере
-// стоит самопроверка гейта сетевых политик: без умолчаний страж рендера
-// отказывает, вывод пуст, и гейт «пропускает» внесённый дефект — перестаёт
-// краснеть там, где обязан. Поймано на себе: случай «метка сайдкара
+// Авторитетное — в умбрелле (`global.kacho.identity`): его читают подчарт службы
+// доступа и стражи рендера зонта. Второе — в самом подчарте kaname, и нужно оно
+// ровно для того, чтобы `helm template charts/kaname` рендерился САМ ПО СЕБЕ. На
+// таком рендере стоит самопроверка гейта сетевых политик: без умолчаний страж
+// рендера отказывает, вывод пуст, и гейт «пропускает» внесённый дефект —
+// перестаёт краснеть там, где обязан. Поймано на себе: случай «метка сайдкара
 // безусловна» стал ПРОПУСКАТЬ ровно после переноса значений в `global`.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,24 +26,18 @@
 // Обратное включение НЕ требуется: умбрелла вправе объявить больше — лишнее
 // подчарту для одиночного рендера не нужно.
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// ВТОРАЯ ПРОВЕРКА ФАЙЛА: умолчания адреса обратных вызовов
-//
-// Адрес слушателя хуков прежде выводился ПРЯМО из значений подчарта — из имени
-// подчарта и из порта его внутреннего слушателя. В контексте подчарта
-// провайдера этих значений нет, поэтому умолчания стали константами, и связь
-// «порт полосы = порт слушателя» разорвалась: сменив порт слушателя, полосу
-// увели бы в никуда, и это не заметил бы никто — обратные вызовы просто
-// перестали бы доходить.
-//
-// Здесь эта связь восстановлена утверждением: константы обязаны совпадать с
-// тем, что подчарт объявляет о себе.
+// Вторая проверка файла — умолчания адреса обратных вызовов поставщика
+// личности — снята вместе с их читателем (kacho#2818): слушателя обратных
+// вызовов у службы нет (kaname#363), и копия подчарта этого узла больше не
+// несёт.
 package deploy_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -83,8 +73,8 @@ func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {
 			cur, ok = m[p]
 			if !ok {
 				t.Fatalf("%s: не объявлен узел %s — умолчания службы личности "+
-					"обязаны быть в ОБОИХ местах: в умбрелле, чтобы дойти до подчарта "+
-					"провайдера, и в подчарте, чтобы он рендерился сам по себе",
+					"обязаны быть в ОБОИХ местах: в умбрелле, авторитетно, и в подчарте, "+
+					"чтобы он рендерился сам по себе",
 					where, filepath.Join(identityGlobalsPath...))
 			}
 		}
@@ -127,42 +117,84 @@ func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {
 		len(u), len(s), len(keys))
 }
 
-// Умолчания адреса обратных вызовов — те же константы, что стоят в
-// `kacho.identity.hooksAuthority`. Выписаны здесь намеренно: проверка сверяет
-// ДВЕ независимые записи, и вычислять одну из другой значило бы сверять запись
-// с самой собой.
-const (
-	hooksAuthorityDefaultChartName = "kaname"
-	hooksAuthorityDefaultPort      = 9092
-)
+// ─── узлы `global`, которые объявляет ТОЛЬКО зонтик (NTF-1 D2; замысел З28, CX1-112)
+//
+// Перечень узлов, а не одна константа: `identity` — согласие объявления подчарта
+// kaname с зонтиком по значению (выше); `notifications` и `spiffe` — объявлений в
+// `values.yaml` подчартов НОЛЬ. Умолчание `global`, объявленное подчартом, видно
+// лишь этому подчарту: сосед и зонтик видят «нет ключа», и
+// `global.kacho.notifications.modules.kaname.enabled: false` в
+// `charts/kaname/values.yaml` при молчащем зонтике выключило бы kaname, сохранив
+// его в перечне источников notify. Одиночные рендеры подчартов получают эти узлы
+// слоем своей пробы (нога notify без зонтика) либо обёрткой (одиночный рендер
+// kaname).
 
-func TestCallbackAuthorityDefaultsMatchWhatTheSubchartSaysAboutItself(t *testing.T) {
-	subchart := readYAML(t, filepath.Join(umbrellaDir, "charts", "kaname", "values.yaml"))
+// umbrellaOnlyGlobalNodes — узлы `global.kacho`, которых подчарт не объявляет.
+var umbrellaOnlyGlobalNodes = []string{"notifications", "spiffe"}
 
-	name, _ := subchart["name"].(string)
-	if name == "" {
-		t.Fatalf("подчарт не объявляет `name` — узел адреса обратных вызовов " +
-			"сверять не с чем; «ноль находок» здесь неотличимо от «ноль прочитанного»")
-	}
-	if name != hooksAuthorityDefaultChartName {
-		t.Errorf("узел адреса обратных вызовов собран из %q, а подчарт называет себя %q — "+
-			"обратные вызовы уедут на несуществующий Service и перестанут доходить",
-			hooksAuthorityDefaultChartName, name)
-	}
+// subchartValuesFiles — значения подчартов: `charts/*/values.yaml` зонтика и
+// `values.yaml` чарта notify.
+func subchartValuesFiles(t *testing.T) []string {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join(umbrellaDir, "charts", "*", "values.yaml"))
+	files = append(files, filepath.Join(notifyChartDir, "values.yaml"))
+	sort.Strings(files)
+	return files
+}
 
-	svc, _ := subchart["service"].(map[string]any)
-	internal, _ := svc["internal"].(map[string]any)
-	port, ok := internal["hooksHttpPort"].(int)
-	if !ok {
-		t.Fatalf("подчарт не объявляет service.internal.hooksHttpPort числом — " +
-			"порт полосы сверять не с чем")
+// umbrellaOnlyGlobalFindings — объявления узлов umbrellaOnlyGlobalNodes в файлах.
+func umbrellaOnlyGlobalFindings(t *testing.T, files []string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range files {
+		vals := readYAML(t, f)
+		for _, node := range umbrellaOnlyGlobalNodes {
+			if _, ok := lookup(vals, "global", "kacho", node); ok {
+				out = append(out, fmt.Sprintf("%s объявляет global.kacho.%s — узел объявляет только зонтик (CX1-112)", f, node))
+			}
+		}
 	}
-	if port != hooksAuthorityDefaultPort {
-		t.Errorf("полоса обратных вызовов идёт на порт %d, а слушатель подчарта объявлен "+
-			"на %d. Прежде порт полосы ВЫВОДИЛСЯ из этого значения; после переноса "+
-			"содержимого в global он стал константой, поэтому связь держит эта проверка",
-			hooksAuthorityDefaultPort, port)
-	}
+	return out
+}
 
-	t.Logf("осмотрено: имя подчарта %q, порт слушателя хуков %d", name, port)
+func TestUmbrellaOnlyGlobalNodesAreNotDeclaredBySubcharts(t *testing.T) {
+	files := subchartValuesFiles(t)
+	if len(files) < 2 {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: файлов значений подчартов %d — обход пуст либо сломан", len(files))
+	}
+	findings := umbrellaOnlyGlobalFindings(t, files)
+	for _, f := range findings {
+		t.Error(f)
+	}
+	t.Logf("узлы: identity (согласие по значению), %v (объявлений в подчартах 0); осмотрено файлов значений подчартов %d; находок %d",
+		umbrellaOnlyGlobalNodes, len(files), len(findings))
+}
+
+// TestUmbrellaOnlyGlobalNodesGateFindsASubchartDeclaration — инъекция: ключ
+// переопределения kaname в значениях подчарта → находка с путём файла; близнец —
+// тот же ключ в values.yaml зонтика (файл не подчарта) → молчание.
+func TestUmbrellaOnlyGlobalNodesGateFindsASubchartDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("global:\n  kacho:\n    notifications:\n      modules:\n        kaname:\n          enabled: false\n")
+	inj := filepath.Join(dir, "charts", "kaname", "values.yaml")
+	if err := os.MkdirAll(filepath.Dir(inj), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inj, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if f := umbrellaOnlyGlobalFindings(t, []string{inj}); len(f) != 1 || !strings.Contains(f[0], inj) {
+		t.Errorf("инъекция «переопределение kaname в значениях подчарта»: находки %v — ждали одну с путём %s", f, inj)
+	}
+	twin := filepath.Join(umbrellaDir, "values.yaml")
+	if _, ok := lookup(readYAML(t, twin), "global", "kacho", "notifications", "enabled"); !ok {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: близнецу нечего судить — в %s нет global.kacho.notifications.enabled", twin)
+	}
+	files := subchartValuesFiles(t)
+	for _, f := range files {
+		if f == twin {
+			t.Errorf("перечень файлов подчартов несёт values.yaml зонтика — близнец судил бы зонтик как подчарт")
+		}
+	}
+	t.Logf("инъекция → находка с путём; близнец — узел в values.yaml зонтика, файл вне перечня подчартов (%d файлов)", len(files))
 }

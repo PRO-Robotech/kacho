@@ -35,7 +35,7 @@ Unable to get an update from the "https://charts.bitnami.com/bitnami" chart repo
 # ── (б) ЧУЖОЕ, форма ВТОРАЯ: хост оборвал соединение на СКАЧИВАНИИ.
 #        Ровно та форма, что 2026-08-21 падала красным на PR #887.
 check "обрыв соединения при скачивании" external \
-'Save error occurred:  could not find : chart hydra not found in https://k8s.ory.sh/helm/charts: looks like "https://k8s.ory.sh/helm/charts" is not a valid chart repository or cannot be reached: Get "https://k8s.ory.sh/helm/charts/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer'
+'Save error occurred:  could not find : chart cert-manager not found in https://charts.jetstack.io: looks like "https://charts.jetstack.io" is not a valid chart repository or cannot be reached: Get "https://charts.jetstack.io/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer'
 
 # ── (в) ЧУЖОЕ, форма ВТОРАЯ, другая сетевая причина.
 check "таймаут рукопожатия при скачивании" external \
@@ -102,8 +102,8 @@ hint_case() { # имя, ожидание (текст либо ПУСТО), вы�
 hint_case "форма первая называет репозиторий" https://charts.bitnami.com/bitnami \
 '...Unable to get an update from the "https://charts.bitnami.com/bitnami" chart repository:
 	failed to fetch https://charts.bitnami.com/bitnami/index.yaml : 502 Bad Gateway'
-hint_case "форма вторая называет репозиторий" https://k8s.ory.sh/helm/charts \
-'Save error occurred:  could not find : chart hydra not found in https://k8s.ory.sh/helm/charts: looks like "https://k8s.ory.sh/helm/charts" is not a valid chart repository or cannot be reached: Get "https://k8s.ory.sh/helm/charts/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer'
+hint_case "форма вторая называет репозиторий" https://charts.jetstack.io \
+'Save error occurred:  could not find : chart cert-manager not found in https://charts.jetstack.io: looks like "https://charts.jetstack.io" is not a valid chart repository or cannot be reached: Get "https://charts.jetstack.io/index.yaml": read tcp 10.1.0.27:33630->185.199.111.153:443: read: connection reset by peer'
 hint_case "форма третья называет АРХИВ, а не репозиторий" \
   https://charts.bitnami.com/bitnami/postgresql-13.4.4.tgz \
 'Error: could not download https://charts.bitnami.com/bitnami/postgresql-13.4.4.tgz: Get "https://charts.bitnami.com/bitnami/postgresql-13.4.4.tgz": read tcp 10.1.0.186:38644->13.225.47.67:443: read: connection reset by peer'

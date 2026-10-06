@@ -76,10 +76,11 @@ func (u *DeleteSecurityGroupUseCase) Execute(ctx context.Context, id string) (*o
 			return nil, serviceerr.MapRepoErr(werr)
 		}
 		defer w.Abort()
-		if derr := w.SecurityGroups().Delete(ctx, id); derr != nil {
+		name, derr := w.SecurityGroups().Delete(ctx, id)
+		if derr != nil {
 			return nil, serviceerr.MapRepoErr(derr)
 		}
-		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", id, existing.ProjectID, "DELETED", map[string]any{"id": id}); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", id, existing.ProjectID, "DELETED", map[string]any{"id": id, "name": name}); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		// Снимаем vpc_security_group→project hierarchy-tuple в той же writer-TX

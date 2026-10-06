@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -45,6 +46,54 @@ func TestDeleteListener_LBUpdatedOutbox(t *testing.T) {
 		}
 	}
 	require.True(t, hasLBUpd, "nlb_load_balancer:<id> UPDATED must be emitted on Listener.Delete")
+}
+
+// TestDeleteListener_RowAlreadyGone_NoSecondDeletion — повторный воркер снятия
+// застаёт строку уже снятой: её снял единственный удаляющий путь (этот же
+// use-case), и снятие объявлено строкой DELETED в ТОЙ ЖЕ транзакции, что
+// удаление. Второй строки DELETED не пишется — имени предмета на момент снятия
+// у проигравшего нет (RETURNING ничего не вернул), а выдуманное из снимка
+// чтения уехало бы подписчику как факт; вид именованный, и функция фундамента
+// снятие без имени отвергла бы, уронив повторный Delete кодом Internal.
+func TestDeleteListener_RowAlreadyGone_NoSecondDeletion(t *testing.T) {
+	t.Parallel()
+	suite := newDeleteSuite(t)
+	snap := *suite.listener
+	snap.Status = domain.ListenerStatusDeleting
+	suite.repo.mu.Lock()
+	delete(suite.repo.listeners, string(snap.ID))
+	suite.repo.mu.Unlock()
+
+	_, err := suite.uc.doDelete(context.Background(), &snap)
+	require.NoError(t, err, "повторное снятие идемпотентно")
+
+	for _, e := range suite.repo.pendingOutbox() {
+		require.Falsef(t, e.ResourceType == kachorepo.OutboxResourceListener && e.Action == kachorepo.OutboxActionDeleted,
+			"строка DELETED слушателя на повторном снятии: %+v", e)
+	}
+}
+
+// TestDeleteListener_DeletedRowCarriesTheNameFromTheDelete — строка DELETED
+// несёт имя под ключом фундамента, взятое из удаляющего оператора, а не из
+// снимка чтения до него.
+func TestDeleteListener_DeletedRowCarriesTheNameFromTheDelete(t *testing.T) {
+	t.Parallel()
+	suite := newDeleteSuite(t)
+	snap := *suite.listener
+	suite.repo.mu.Lock()
+	suite.repo.listeners[string(snap.ID)].Name = domain.LbName("renamed")
+	suite.repo.mu.Unlock()
+
+	_, err := suite.uc.doDelete(context.Background(), &snap)
+	require.NoError(t, err)
+
+	var got []any
+	for _, e := range suite.repo.pendingOutbox() {
+		if e.ResourceType == kachorepo.OutboxResourceListener && e.Action == kachorepo.OutboxActionDeleted {
+			got = append(got, e.Payload[subscription.NamePayloadKey])
+		}
+	}
+	require.Equal(t, []any{"renamed"}, got, "имя в строке DELETED")
 }
 
 // TestDeleteListener_NotFound — listener_id doesn't exist → sync NotFound.

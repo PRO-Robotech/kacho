@@ -21,7 +21,7 @@ import (
 func TestCoverage_ListByProject(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj01CVR11234567890ll"
 	lb := newLB(project, "cov-lb")
@@ -54,7 +54,7 @@ func TestCoverage_ListByProject(t *testing.T) {
 func TestCoverage_HasWiredTargetGroup(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CVR21234567890ll", "cov2-lb")
 	tg := newTG(string(lb.ProjectID), "cov2-tg")
@@ -91,7 +91,7 @@ func TestCoverage_HasWiredTargetGroup(t *testing.T) {
 func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CVR31234567890ll", "cov3-lb")
 	tg := newTG(string(lb.ProjectID), "cov3-tg")
@@ -167,7 +167,7 @@ func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 func TestCoverage_TGUpdate_MoveProject_SetStatusCAS(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01CVR41234567890ll", "cov4-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -212,7 +212,7 @@ func TestCoverage_TGUpdate_MoveProject_SetStatusCAS(t *testing.T) {
 func TestCoverage_LB_Delete_Success(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01CVR71234567890ll", "cov7-lb")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -221,13 +221,13 @@ func TestCoverage_LB_Delete_Success(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.LoadBalancers().Delete(ctx, string(lb.ID))
+		_, err := w.LoadBalancers().Delete(ctx, string(lb.ID))
 		require.NoError(t, err)
 	})
 
 	w, _ := repo.Writer(ctx)
 	defer w.Abort()
-	err := w.LoadBalancers().Delete(ctx, string(lb.ID))
+	_, err := w.LoadBalancers().Delete(ctx, string(lb.ID))
 	assert.True(t, errors.Is(err, kacho.ErrNotFound))
 }
 
@@ -235,7 +235,7 @@ func TestCoverage_LB_Delete_Success(t *testing.T) {
 func TestCoverage_TG_Delete_Success(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01CVR81234567890ll", "cov8-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -244,13 +244,13 @@ func TestCoverage_TG_Delete_Success(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.TargetGroups().Delete(ctx, string(tg.ID))
+		_, err := w.TargetGroups().Delete(ctx, string(tg.ID))
 		require.NoError(t, err)
 	})
 
 	w, _ := repo.Writer(ctx)
 	defer w.Abort()
-	err := w.TargetGroups().Delete(ctx, string(tg.ID))
+	_, err := w.TargetGroups().Delete(ctx, string(tg.ID))
 	assert.True(t, errors.Is(err, kacho.ErrNotFound))
 }
 
@@ -259,7 +259,7 @@ func TestCoverage_TG_Delete_Success(t *testing.T) {
 func TestCoverage_PageSize_Range(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	rd, _ := repo.Reader(ctx)
 	defer func() { _ = rd.Close() }()
@@ -275,7 +275,7 @@ func TestCoverage_PageSize_Range(t *testing.T) {
 func TestCoverage_PageToken_Malformed(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	rd, _ := repo.Reader(ctx)
 	defer func() { _ = rd.Close() }()
@@ -288,7 +288,7 @@ func TestCoverage_PageToken_Malformed(t *testing.T) {
 func TestCoverage_OutboxEmit_NilPayload(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		err := w.Outbox().Emit(ctx, "nlb_load_balancer", "nlb01ABC", "prj01ABC", "CREATED", nil)
@@ -300,7 +300,7 @@ func TestCoverage_OutboxEmit_NilPayload(t *testing.T) {
 func TestCoverage_ListDrainingExpired_NoRows(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	tg := newTG("prj01CVR91234567890ll", "cov9-tg")
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {

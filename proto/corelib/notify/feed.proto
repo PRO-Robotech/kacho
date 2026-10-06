@@ -1,0 +1,262 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package corelib.notify;
+
+import "corelib/authz/v1/authz_options.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/notify;notifyv1";
+
+// Контракт ленты уведомлений: служба отправки забирает у модуля-источника
+// строки писем, поставленные в его транзакциях, и записывает исход каждой.
+//
+// # Кто кого вызывает
+//
+// Ленту держит модуль-источник; служба отправки — потребитель. Соединение
+// открывает ПОТРЕБИТЕЛЬ: о новых строках он узнаёт сигналом существующей
+// подписки (вид `notification_feed`), а тело забирает этим контрактом. Источник
+// о потребителе не знает и никому не звонит.
+//
+// # Почему пакет без сегмента версии
+//
+// Форма общая для всех модулей-источников и ничьей доменной версии не
+// наследует — так же, как форма подписки (`corelib.subscription`).
+//
+// # Почему здесь нет потока
+//
+// Потоковый контракт на платформе один — глагол подписки. Сигнал «появились
+// строки» уже едет по нему; второй поток повторил бы его доставку, позицию и
+// возобновление. Поэтому оба метода унарны.
+//
+// # Почему методы не возвращают `Operation`
+//
+// `Claim` — аренда из очереди работ, `Ack` — отметка исхода аренды. Ни один из
+// них не мутирует ресурс, исход которого клиент узнаёт поллом: ответ равен
+// закоммиченному.
+
+// InternalNotificationFeedService — сервер ленты модуля-источника.
+//
+// # Только внутренний слушатель
+//
+// Префикс `Internal` выводит службу из внешнего маршрутизатора механически, и
+// `google.api.http` у методов не объявлен: ленту забирает служба по
+// проверенному сертификату, а не клиент.
+//
+// # Объект проверки прав — лента, к которой привязан сервер
+//
+// Идентификатора ленты в запросах нет намеренно. Сервер поднимает модуль, и
+// отдаёт он строки только своей ленты; объект проверки —
+// `notification_feed:<модуль>`, значение которого сервер объявляет при подъёме
+// (`bound_to_server`). Вызывающий назвать чужую ленту не может: ему нечем.
+service InternalNotificationFeedService {
+  // Claim — арендовать пачку строк, готовых к отправке.
+  //
+  // Выдаёт строки, чей срок не истёк, чья отсрочка прошла и у которых нет
+  // действующей аренды, в порядке постановки. Каждая выданная строка получает
+  // новый токен аренды; до конца аренды другой `Claim` её не выдаёт.
+  //
+  // Границы входа проверяются до первого обращения к базе и не усекаются:
+  // `max` вне `[1..500]` и пустой `classes` — `INVALID_ARGUMENT` с именем поля.
+  rpc Claim(ClaimRequest) returns (ClaimResponse) {
+    option (corelib.authz.v1.permission)        = "platform.notification_feed.claim";
+    option (corelib.authz.v1.required_relation) = "reader";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:     "notification_feed"
+      bound_to_server: true
+    };
+    option (corelib.authz.v1.required_acr_min)  = "1";
+  }
+
+  // Ack — записать исход арендованной строки.
+  //
+  // Исход записывается только действующей арендой. Повтор того же вызова
+  // (тот же токен, тот же исход) после записанного исхода — успех без изменения
+  // строки: ответ мог потеряться в сети после коммита. Тот же токен с другим
+  // исходом — `FAILED_PRECONDITION` (`OUTCOME_ALREADY_RECORDED`); прочие случаи
+  // утраченной аренды — `FAILED_PRECONDITION` (`LEASE_LOST`).
+  rpc Ack(AckRequest) returns (AckResponse) {
+    option (corelib.authz.v1.permission)        = "platform.notification_feed.ack";
+    option (corelib.authz.v1.required_relation) = "reader";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:     "notification_feed"
+      bound_to_server: true
+    };
+    option (corelib.authz.v1.required_acr_min)  = "1";
+  }
+}
+
+// NotificationClass — класс письма. Отбирает строки в `Claim`; исход строки по
+// классу решает сборка службы отправки, а не эта колонка.
+enum NotificationClass {
+  NOTIFICATION_CLASS_UNSPECIFIED = 0;
+  // SECURITY — извещения безопасности учётной записи.
+  SECURITY = 1;
+  // NOTICE — прочие служебные извещения.
+  NOTICE = 2;
+}
+
+message ClaimRequest {
+  // max — сколько строк выдать не больше чем; `[1..500]`. `0` — `max: required`,
+  // больше 500 — `max: must be ≤ 500`; значение не усекается.
+  uint32 max = 1;
+
+  // classes — какие классы выдавать; набор, порядок не значим, повтор
+  // значения ничего не меняет. Пустой — `classes: required`;
+  // `NOTIFICATION_CLASS_UNSPECIFIED` в наборе — `INVALID_ARGUMENT` с именем поля.
+  repeated NotificationClass classes = 2;
+}
+
+message ClaimResponse {
+  // notifications — арендованные строки в порядке постановки (момент
+  // постановки, затем `id`). Пустой список — строк, готовых к отправке, нет.
+  repeated ClaimedNotification notifications = 1;
+}
+
+// ClaimedNotification — строка ленты под арендой вызывающего.
+//
+// Моментов по часам источника, которые получатель сравнивал бы со своими
+// часами, здесь нет, кроме `enqueued_at`, который получатель ни с чем своим не
+// сравнивает: остатки аренды и срока приходят длительностями, посчитанными
+// часами источника.
+message ClaimedNotification {
+  // id — идентификатор строки ленты (`ntf-…`).
+  string id = 1;
+
+  // lease_token — токен этой аренды (UUID). Предъявляется в `Ack`.
+  string lease_token = 2;
+
+  // lease_remaining — остаток аренды на момент ответа: разность, посчитанная
+  // часами базы источника, минус время, прошедшее в процессе источника до
+  // ответа. После него строка может быть выдана снова.
+  google.protobuf.Duration lease_remaining = 3;
+
+  // template — имя шаблона письма в пространстве модуля-источника.
+  string template = 4;
+
+  // schema_rev — ревизия шаблона, по которой строка поставлена.
+  uint32 schema_rev = 5;
+
+  // class — класс строки.
+  NotificationClass class = 6;
+
+  // recipient — адресат. Форма «адрес» — единственная в этой редакции;
+  // ветвление объявлено, чтобы следующая форма адресата не меняла смысл
+  // существующего поля.
+  oneof recipient {
+    // address — адрес почты, как его поставил источник.
+    string address = 7;
+  }
+
+  // attrs — значения атрибутов шаблона. Ключа нет — атрибут не задан; пустое
+  // значение при присутствующем ключе — значение, а не отсутствие. Значения
+  // секретных атрибутов приходят открытым текстом: источник расшифровывает их
+  // перед ответом, а в покое хранит шифротекстом. Порядок ключей не значим.
+  map<string, string> attrs = 8;
+
+  // enqueued_at — момент постановки строки с ПОЛНОЙ точностью базы источника.
+  // Не усекается до секунды: это внутренний контракт работы, а не ресурс, и
+  // правило усечения моментов ресурса к нему не применяется. Получатель
+  // передаёт его в решение о правах на отправку и ни с чем своим не сравнивает.
+  google.protobuf.Timestamp enqueued_at = 9;
+
+  // expires_in — остаток срока строки на момент ответа, той же формы, что
+  // `lease_remaining`. Строка, срок которой истёк, в ответ не попадает.
+  google.protobuf.Duration expires_in = 10;
+}
+
+// OutcomeKind — вид исхода строки. Словарь закрыт.
+enum OutcomeKind {
+  // OUTCOME_UNSPECIFIED — исход не назван; `Ack` отвечает `outcome: required`.
+  OUTCOME_UNSPECIFIED = 0;
+  // SENT — ретранслятор принял письмо. Терминален.
+  SENT = 1;
+  // RECIPIENT_REJECTED — ретранслятор отверг адресата. Терминален.
+  RECIPIENT_REJECTED = 2;
+  // DEFER — отложить; строка остаётся в ленте до `defer_for` и срока строки.
+  DEFER = 3;
+  // DENIED — права на отправку отозваны. Терминален.
+  DENIED = 4;
+  // INVALID — строка не может быть отправлена никогда. Терминален.
+  INVALID = 5;
+  // DROPPED — письмо сброшено ограничением на адресата. Терминален.
+  DROPPED = 6;
+  // EXPIRED — срок строки истёк. Ставит только уборщик источника; в `Ack` —
+  // `INVALID_ARGUMENT`.
+  EXPIRED = 7;
+}
+
+// OutcomeReason — причина исхода. Словарь закрыт, корзины «прочее» нет.
+//
+// Какие причины допустимы при каком виде, решает одна таблица сочетаний на
+// стороне сервера ленты; сочетание вне неё — `INVALID_ARGUMENT`. `SENT` и
+// `RECIPIENT_REJECTED` причины не несут.
+enum OutcomeReason {
+  OUTCOME_REASON_UNSPECIFIED = 0;
+  // PLATFORM_UNAVAILABLE — платформа не смогла отправить (ретранслятор, служба
+  // доступа, настройка). Вид `DEFER`; у `EXPIRED` — причина последней отсрочки.
+  PLATFORM_UNAVAILABLE = 1;
+  // GRANT_SKEW — права на отправку ещё нет. Вид `DEFER`; у `EXPIRED` — как выше.
+  GRANT_SKEW = 2;
+  // TEMPLATE_SKEW — шаблона нет в сборке службы отправки либо ревизия строки не
+  // равна ревизии сборки. Вид `DEFER`; у `EXPIRED` — как выше.
+  TEMPLATE_SKEW = 3;
+  // RECIPIENT_NET — исчерпано ограничение на адресата. Вид `DEFER` или
+  // `DROPPED`; у `EXPIRED` — как выше.
+  RECIPIENT_NET = 4;
+  // REVOKED — права на отправку отозваны. Вид `DENIED`.
+  REVOKED = 5;
+  // ATTRS_INVALID — атрибуты не по схеме шаблона. Вид `INVALID`.
+  ATTRS_INVALID = 6;
+  // CLASS_MISMATCH — класс строки не равен классу шаблона той же ревизии в
+  // сборке. Вид `INVALID`.
+  CLASS_MISMATCH = 7;
+  // RECIPIENT_INVALID — адрес не разбирается. Вид `INVALID`.
+  RECIPIENT_INVALID = 8;
+  // CLASS_NOT_ALLOWED — класс не разрешён пространству. Вид `INVALID`.
+  CLASS_NOT_ALLOWED = 9;
+  // RECIPIENT_FORM_NOT_ALLOWED — форма адресата не разрешена пространству.
+  // Вид `INVALID`.
+  RECIPIENT_FORM_NOT_ALLOWED = 10;
+  // SEALED_MISMATCH — шифротекст секрета не открывается ключом. Вид `INVALID`;
+  // ставит сервер ленты.
+  SEALED_MISMATCH = 11;
+  // KEY_UNAVAILABLE — ключа секрета нет в кольце. Вид `INVALID`; ставит сервер
+  // ленты.
+  KEY_UNAVAILABLE = 12;
+  // UNCLAIMED — строку не выдал ни один `Claim`. Только у `EXPIRED`.
+  UNCLAIMED = 13;
+  // NO_ACK — строка выдана, исход не записан. Только у `EXPIRED`.
+  NO_ACK = 14;
+}
+
+// Outcome — исход строки: вид и причина. Равенство исходов — равенство пары.
+message Outcome {
+  OutcomeKind kind = 1;
+  OutcomeReason reason = 2;
+}
+
+message AckRequest {
+  // id — идентификатор строки (`ntf-…`). Не по форме —
+  // `invalid notification id '<X>'`; неизвестный — `NOT_FOUND`.
+  string id = 1;
+
+  // lease_token — токен аренды из `Claim`. Пустой или не UUID —
+  // `INVALID_ARGUMENT` с именем поля до обращения к базе.
+  string lease_token = 2;
+
+  // outcome — исход. Не задан или `OUTCOME_UNSPECIFIED` — `outcome: required`.
+  Outcome outcome = 3;
+
+  // defer_for — через сколько строку можно выдать снова. Обязателен при виде
+  // `DEFER` и лежит в границах, объявленных сервером ленты; при ином виде
+  // заданное поле — `INVALID_ARGUMENT` с именем `defer_for`, а не молча
+  // проигнорированное. В равенство исходов не входит.
+  google.protobuf.Duration defer_for = 4;
+}
+
+// AckResponse — исход записан (либо был записан тем же вызовом раньше).
+message AckResponse {}

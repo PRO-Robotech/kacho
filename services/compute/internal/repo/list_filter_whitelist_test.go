@@ -100,7 +100,7 @@ func assertUnknownFilterField(t *testing.T, err error, wantMsg string) {
 }
 
 func TestInstanceRepoList_RejectsNonWhitelistedFilterField(t *testing.T) {
-	r := NewInstanceRepo(nil)
+	r := mustJournalWriter(NewInstanceRepo(nil, probeJournalOptions))
 	for _, tc := range listFilterRejectCases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, err := r.List(context.Background(),

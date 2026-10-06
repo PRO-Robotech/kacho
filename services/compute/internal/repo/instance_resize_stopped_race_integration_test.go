@@ -46,13 +46,13 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stale := stopInstance(ctx, t, instRepo, inID) // stale STOPPED snapshot (mt-std2)
@@ -84,13 +84,13 @@ func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stopped := stopInstance(ctx, t, instRepo, inID)
@@ -113,13 +113,13 @@ func TestIntegration_InstanceResize_MissingInstance_NotFound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	ghost := newRunningInstance(ids.NewID(ids.PrefixInstance)) // never inserted
 	ghost.Status = domain.InstanceStatusStopped
@@ -139,13 +139,13 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	stale := stopInstance(ctx, t, instRepo, inID)

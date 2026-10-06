@@ -36,7 +36,7 @@ import (
 // глазом при чтении диффа.
 func seedQuota(t testing.TB, dsn, carrierType, carrierID, kind string, limit int64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func seedQuota(t testing.TB, dsn, carrierType, carrierID, kind string, limit int
 // `used`, который бы его выдумывал, тоже.
 func seedNestedDefault(t testing.TB, dsn, projectID, kind string, limit int64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func seedNestedDefault(t testing.TB, dsn, projectID, kind string, limit int64) {
 // 23514, и понижение предела стало бы невыразимым (§1.4 приёмки).
 func setQuotaLimit(t testing.TB, dsn, carrierType, carrierID, kind string, limit int64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func setQuotaLimit(t testing.TB, dsn, carrierType, carrierID, kind string, limit
 // исход, а не ноль: ноль означает «строка есть и пуста».
 func quotaUsed(t testing.TB, dsn, carrierType, carrierID, kind string) (int64, bool) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestQuota_NLB_NotProvisionedIsRefusal(t *testing.T) {
 	dsn := setupTestDB(t)
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-nlbq-noceiling"
 
@@ -165,7 +165,7 @@ func TestQuota_NLB_ExceededAndRefund(t *testing.T) {
 	dsn := setupTestDB(t)
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-nlbq-exhaust"
 	const kind = "loadbalancer.networkLoadBalancers"
@@ -190,7 +190,7 @@ func TestQuota_NLB_ExceededAndRefund(t *testing.T) {
 
 	// Возврат на удалении — в той же транзакции, что снятие строки ресурса.
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(first.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(first.ID))))
 	})
 	used, ok = quotaUsed(t, dsn, "project", project, kind)
 	require.True(t, ok)
@@ -212,7 +212,7 @@ func TestQuota_NLB_NestedCarrierIsTheParent(t *testing.T) {
 	dsn := setupTestDB(t)
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-nlbq-nested"
 	const nested = "loadbalancer.networkLoadBalancers.listeners"
@@ -272,7 +272,7 @@ func TestQuota_NLB_ParentRowsGoWithTheParent(t *testing.T) {
 	dsn := setupTestDB(t)
 	repo, cleanup := newRepo(t, dsn)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const project = "prj-nlbq-teardown"
 	const nested = "loadbalancer.networkLoadBalancers.listeners"
@@ -288,7 +288,7 @@ func TestQuota_NLB_ParentRowsGoWithTheParent(t *testing.T) {
 	require.True(t, ok, "предусловие: строка учёта родителя существует")
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(lb.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(lb.ID))))
 	})
 
 	_, ok = quotaUsed(t, dsn, nested, string(lb.ID), nested)

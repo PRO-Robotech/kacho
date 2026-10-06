@@ -169,9 +169,15 @@ EMPTY_ALLOWED="$(allowlist_of "$EMPTY_CM")"
 # kacho#2901): профиль стенда объявляет его секретом приёмника, а якорь без
 # полосы страж отвергает своей ветвью («проверять нечего») — оставленный, он
 # вернул бы ту же третью категорию чужим предметом.
+# Источник почты стенда (стендовая проба notify) снимается вместе с полосой:
+# notify с непустым перечнем без узла почты отказал бы своим `required`, а проба
+# без внутреннего УЦ — своим стражем (NTF-1 D2); предмет здесь — сертификат.
 helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set mtls.enabled=false --set cert-manager.enabled=false \
   --set mailpit.enabled=false \
+  --set notifyProbe.enabled=false \
+  --set global.kacho.notifications.modules.notifyProbe.enabled=false \
+  --set global.kacho.standDNS.enabled=false \
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName= \

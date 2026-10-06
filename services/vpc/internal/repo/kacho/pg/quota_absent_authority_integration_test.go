@@ -82,9 +82,9 @@ func TestQuota_KAN_Q4_03_AbsentAuthorityLetsTheMutationThrough(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-absent-pass"
 	declareAuthority(t, ctx, pool, quota.AuthorityAbsent)
@@ -107,9 +107,9 @@ func TestQuota_KAN_Q4_05_DeployedAuthorityStillRefuses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-absent-twin"
 	declareAuthority(t, ctx, pool, quota.AuthorityPresent)
@@ -131,9 +131,9 @@ func TestQuota_AbsentAuthorityStillChargesTheExistingRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-absent-charge"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)
@@ -155,9 +155,9 @@ func TestQuota_DeployedAuthorityRefusesTheFullRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-deployed-full"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)
@@ -180,9 +180,9 @@ func TestQuota_UnknownAuthorityBehavesAsDeployed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-unknown"
 	// Ни одного объявления: строка курсора стоит со значением по умолчанию.

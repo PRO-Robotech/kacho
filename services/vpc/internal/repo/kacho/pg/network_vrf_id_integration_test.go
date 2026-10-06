@@ -51,7 +51,7 @@ func setupTestDBUpTo(t testing.TB, version int64) string {
 
 func insertNetwork(t *testing.T, r *kachopg.Repository, projectID, name string) *domain.Network {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
@@ -74,12 +74,12 @@ func TestNetwork_CIL0_06_GetInternalReturnsVrfId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	n := insertNetwork(t, r, "project-cil0", "net-vrf-06")
 
@@ -97,12 +97,12 @@ func TestNetwork_CIL0_02_VrfIdUniqueUnderConcurrency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const N = 20
 	ids := make([]string, N)
@@ -161,12 +161,12 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	a := insertNetwork(t, r, "project-cil0-reuse", "net-a")
 	rd, err := r.Reader(ctx)
@@ -179,7 +179,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	require.NoError(t, w.Networks().Delete(ctx, a.ID))
+	require.NoError(t, removalErr(w.Networks().Delete(ctx, a.ID)))
 	require.NoError(t, w.Commit())
 
 	b := insertNetwork(t, r, "project-cil0-reuse", "net-b")
@@ -198,12 +198,12 @@ func TestNetwork_CIL0_03_VrfIdStableAcrossUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	n := insertNetwork(t, r, "project-cil0-upd", "net-before")
 	rd, err := r.Reader(ctx)
@@ -233,7 +233,7 @@ func TestNetwork_CIL0_13_BackfillUniqueVrfId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	// Спец-харнес: миграции до 0006, insert raw networks, затем 0007.
 	dsn := setupTestDBUpTo(t, 6)
 	db, err := sql.Open("pgx", dsn)

@@ -88,6 +88,7 @@ func parse(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	expandPasswordFromEnv(&cfg)
+	cfg.parseNotifications(os.LookupEnv)
 	return &cfg, nil
 }
 

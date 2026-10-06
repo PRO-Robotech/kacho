@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up wait-edge-ready generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
-	assert-metrics-surfaces-answer \
+	assert-metrics-surfaces-answer print-stand-stack \
         assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
@@ -12,7 +12,7 @@
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
-        managed-image-pins managed-image-pins-check stack-up cert-manager-up
+        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up
 
 SHELL := bash
 
@@ -101,7 +101,7 @@ POSTURE_SKIP ?=
 # `deploy/product_names_shell_reader_test.go`). Что сюда не вернётся вывод по
 # приставке, держит гейт `internal/repohygiene`
 # `TestStandRecipesNeverDeriveAnImageNameByPrefix`.
-SERVICES := vpc compute api-gateway nlb geo storage registry
+SERVICES := vpc compute api-gateway nlb geo storage registry notify
 
 # IMAGES — какие образы РЕАЛЬНО собирать. Умолчание — все восемь (локальный стенд
 # поднимает всё). Шард e2e поднимает подмножество компонентов, и сборка образа,
@@ -239,6 +239,13 @@ IMAGE_IDS_VALUES := helm/umbrella/values.image-ids.yaml
 # хранится в git: значение — отпечаток дерева на момент выкатки, а не состояние
 # дерева.
 MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
+
+# LOCAL_IMAGES_VALUES — накладка, переводящая цепочку стенда на образы СБОРКИ
+# ЭТОГО ДЕРЕВА (kacho#2931). Пишется целью `own-up` ответом
+# `product_local_overlay` (scripts/lib/product-names.sh) и НЕ хранится в git:
+# значение — функция цепочки и того, что сборка положила в узлы, а не состояние
+# дерева. Объявлена ОДИН раз и здесь по тому же доводу, что соседние.
+LOCAL_IMAGES_VALUES := helm/umbrella/values.local-images.yaml
 
 # КОНТЕКСТ СБОРКИ ОДИН НА ВСЕХ — И ЭТО СОСТОЯНИЕ, А НЕ ВЕЧНАЯ НОРМА.
 #
@@ -542,6 +549,37 @@ guard-destructive:
 CERT_MANAGER_RELEASE := kacho-cert-manager
 CERT_MANAGER_CHART   := ./helm/umbrella/charts/cert-manager-v1.16.5.tgz
 
+# APPROVER_POLICY_RELEASE / APPROVER_POLICY_CHART — контроллер ПОЛИТИКИ ВЫПУСКА
+# сертификатов служб (замысел З30, templates/cert-issuance-policy.yaml). Ставится
+# той же целью `cert-manager-up`, сразу после cert-manager и только там, где
+# cert-manager наш: CRD политики обязан существовать раньше первого объекта
+# продукта, который его называет, а на площадке с чужим cert-manager ни его
+# встроенный одобритель, ни право одобрения нам не подвластны.
+#
+# ПРАВО ОДОБРЕНИЯ ДЕЛИТСЯ, А НЕ ДУБЛИРУЕТСЯ. Запрос одобряет тот, кто успел
+# первым, поэтому политика, рядом с которой встроенный одобритель cert-manager
+# одобряет всё подряд, ничего не решает. Встроенному оставлен ровно корневой
+# самоподписанный выпускающий (`clusterissuers.cert-manager.io/<rootIssuerName>`),
+# контроллеру политики — ровно внутренний УЦ (`…/<clusterIssuerName>`). Оба имени
+# читаются из values.yaml зонтика — того же узла, что рендерит цепочку УЦ;
+# второго написания у них нет. Что так и есть на живом кластере, судит секция E
+# гейта посадки (scripts/assert-cert-issuance-policy.sh).
+#
+# АРХИВ — НЕ В helm/umbrella/charts/. Всё, что лежит там, helm грузит сабчартом
+# зонтика, а имя этого архива начинается с `cert-manager-`: helm, ища архив
+# зависимости `cert-manager` по образцу `cert-manager-*.tgz`, находит два, и
+# статус зависимости cert-manager перестаёт быть `ok` (замер 2026-10-01, helm
+# v4.2.4: `helm dependency list` → `unpacked`, материализация зонтика — FATAL
+# «не на месте 1 из 21»). Поэтому архив вендорен отдельно, а его ПРОВЕНАНС
+# держит сам рецепт: сумма ниже — ДОСЛОВНО поле `digest` записи v0.28.0 в
+# https://charts.jetstack.io/index.yaml (сверено 2026-10-01), и установка
+# отказывает, если архив на диске с ней расходится. Бамп — тем же порядком,
+# что у внешних чартов зонтика (helm/umbrella/external-charts.yaml): новая
+# версия, новая сумма издателя, прежний архив снят тем же изменением.
+APPROVER_POLICY_RELEASE := kacho-approver-policy
+APPROVER_POLICY_CHART   := ./helm/vendor/cert-manager-approver-policy-v0.28.0.tgz
+APPROVER_POLICY_SHA256  := df30d97da8fa1dcce3f0c32ea69f28985440a6e7886da622a44296ab01f5a0d4
+
 # UMBRELLA_OPTS — то, что обязан нести КАЖДЫЙ вызов helm по умбрелле.
 #
 # Вынесено в переменную, а не дописано к вызовам, по цене одной ошибки: правя
@@ -579,9 +617,11 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 # `cert-manager.enabled=false` (UMBRELLA_OPTS) и релиза не ставил вовсе. На чистом
 # кластере первое же применение цепочки упиралось в отсутствие CRD Certificate/
 # Issuer. Копия порядка во втором рецепте разъехалась бы с первой так же, как
-# разъехалось его отсутствие, поэтому порядок записан здесь ОДИН раз, и оба пути
-# его зовут. Что второй копии нет и что оба пути зовут цель РАНЬШЕ продукта,
-# держит tests/helm/cert-manager-release-before-product-test.sh.
+# разъехалось его отсутствие, поэтому порядок записан здесь ОДИН раз, и каждый
+# путь подъёма его зовёт. Что второй копии нет и что каждый путь зовёт цель
+# РАНЬШЕ продукта, держит tests/helm/cert-manager-release-before-product-test.sh;
+# перечень путей, которые она судит, — там же (с kacho#2931 к `dev-up` и
+# `stack-up` прибавилась `own-up`).
 #
 # ИСХОДОВ ЧЕТЫРЕ, и различаются они по владельцу CRD `certificates.cert-manager.io`,
 # а не по его наличию:
@@ -597,6 +637,17 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 #   • наличие НЕ ПРОЧИТАНО (API не ответил, ответ не разобран) — отказ. «Не
 #     прочитано» не значит «нет»: поставить второй cert-manager туда, где первый
 #     уже стоит, нельзя оттого, что спросить не удалось.
+#
+# «ТОТ ЖЕ РЕЛИЗ» — ЭТО И ТА ЖЕ ВЕРСИЯ, И ТО ЖЕ ПРАВО ОДОБРЕНИЯ. Наш релиз той же
+# версии, чей встроенный одобритель вправе одобрять больше корневого
+# самоподписанного выпускающего (так стоят все кластеры, поднятые до политики
+# выпуска), — не «уже стоит», а дрейф: политика рядом с ним декоративна. Такой
+# релиз доводится `helm upgrade --install` до объявленного; значения релиза, не
+# прочитанные или не разобранные, — отказ, а не «наверное, то же».
+#
+# За cert-manager тем же заходом ставится контроллер политики выпуска
+# (APPROVER_POLICY_RELEASE) — на всех путях, где cert-manager наш, и ни на одном,
+# где он чужой.
 #
 # СТРАЖ — guard-declared-context: цель пишет в кластер активного контекста и
 # зовётся из путей, которые свою цель уже подтвердили (`dev-up` — guard-kind-
@@ -619,6 +670,13 @@ cert-manager-up: guard-declared-context
 	  exit 1; }; \
 	chart="$$(helm show chart $(CERT_MANAGER_CHART))"; \
 	want="$$(sed -n 's/^name: *//p' <<<"$$chart")-$$(sed -n 's/^version: *//p' <<<"$$chart")"; \
+	root="$$(yq -r '.mtls.internalCA.rootIssuerName // ""' ./helm/umbrella/values.yaml)"; \
+	issuer="$$(yq -r '.mtls.internalCA.clusterIssuerName // ""' ./helm/umbrella/values.yaml)"; \
+	[ -n "$$root" ] && [ -n "$$issuer" ] || { \
+	  echo "ABORT: имена выпускающих (mtls.internalCA.rootIssuerName / clusterIssuerName) не прочитаны из values.yaml зонтика."; \
+	  echo "       Без них право одобрения не разделить: встроенный одобритель cert-manager одобрял бы и внутренний УЦ."; \
+	  exit 1; }; \
+	approve="clusterissuers.cert-manager.io/$$root"; \
 	case "$$owner" in \
 	  absent) why="CRD cert-manager в кластере нет" ;; \
 	  "$$rel|$$ns") \
@@ -629,8 +687,18 @@ cert-manager-up: guard-declared-context
 	      echo "ABORT: ответ helm о релизе $$rel НЕ ПРОЧИТАН как JSON."; \
 	      exit 1; }; \
 	    if [ "$$have" = "deployed|$$want" ]; then \
-	      echo "=== cert-manager: релиз $$rel ($$want) уже стоит в ns $$ns — НЕ переставляется ==="; \
-	      why=""; \
+	      scope="$$(timeout 60 helm get values "$$rel" -n "$$ns" -o json)" || { \
+	        echo "ABORT: значения релиза $$rel НЕ ПРОЧИТАНЫ — право одобрения встроенного одобрителя не установить."; \
+	        exit 1; }; \
+	      scope="$$(printf '%s' "$$scope" | python3 -c 'import json,sys; s=sys.stdin.read().strip(); v=(json.loads(s) if s else {}) or {}; print(",".join(v.get("approveSignerNames") or []))')" || { \
+	        echo "ABORT: значения релиза $$rel НЕ ПРОЧИТАНЫ как JSON."; \
+	        exit 1; }; \
+	      if [ "$$scope" = "$$approve" ]; then \
+	        echo "=== cert-manager: релиз $$rel ($$want) уже стоит в ns $$ns — НЕ переставляется ==="; \
+	        why=""; \
+	      else \
+	        why="релиз $$rel в ns $$ns: встроенный одобритель вправе одобрять «$${scope:-умолчание чарта: все выпускающие}», объявлено «$$approve»"; \
+	      fi; \
 	    else \
 	      why="релиз $$rel в ns $$ns: $${have:-записи нет}, объявлен $$want"; \
 	    fi ;; \
@@ -648,10 +716,22 @@ cert-manager-up: guard-declared-context
 	  echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ($$why) ==="; \
 	  helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n "$$ns" --create-namespace \
 	    --set crds.enabled=true \
+	    --set-json "approveSignerNames=[\"$$approve\"]" \
 	    --wait --timeout 5m; \
 	fi; \
 	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
-	kubectl -n "$$ns" rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s
+	kubectl -n "$$ns" rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	echo "=== контроллер политики выпуска: ОТДЕЛЬНЫЙ релиз, до продукта; одобряет ТОЛЬКО clusterissuers.cert-manager.io/$$issuer ==="; \
+	got="$$(sha256sum $(APPROVER_POLICY_CHART) | cut -d' ' -f1)"; \
+	[ "$$got" = "$(APPROVER_POLICY_SHA256)" ] || { \
+	  echo "ABORT: архив $(APPROVER_POLICY_CHART) расходится с суммой издателя ($${got:-не прочитан} ≠ $(APPROVER_POLICY_SHA256))."; \
+	  echo "       Ставить контроллер, который решает, кому выпускать идентичность служб, из непроверенного архива нельзя."; \
+	  exit 1; }; \
+	helm upgrade --install $(APPROVER_POLICY_RELEASE) $(APPROVER_POLICY_CHART) -n "$$ns" \
+	  --set crds.enabled=true \
+	  --set-json "app.approveSignerNames=[\"clusterissuers.cert-manager.io/$$issuer\"]" \
+	  --wait --timeout 5m; \
+	kubectl -n "$$ns" rollout status deploy/cert-manager-approver-policy --timeout=180s
 
 # `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
 # команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
@@ -706,6 +786,14 @@ dev-up: preflight
 	echo "    пустую величину, полосу отвергли бы на первом обращении, а стенд выглядел"; \
 	echo "    бы поднятым (задача #948). Значит секрет — предусловие, а не следствие."; \
 	./scripts/dev-prod-secrets.sh; \
+	echo "=== объекты стенда notify (базы, ключ сетки, кольцо ленты пробы; D6, Д123) ==="; \
+	./scripts/seed-notify-stand-secrets.sh; \
+	echo "=== зона DNS стенда и объект ключа DKIM: ПРЕДУСЛОВИЕ notify (NTF-1 Р19, D10) ==="; \
+	echo "    Страж DNS установки не выпускает notify в готовность без записей DKIM,"; \
+	echo "    SPF и DMARC домена отправителя; на стенде их отвечает сервер зоны, а пару"; \
+	echo "    ключа выпускает посев. Оба объекта монтируются томами — значит заводятся"; \
+	echo "    ДО первого прогона helm, а адрес службы зоны сверяется сервером API."; \
+	STACK_NAMESPACE=kacho STACK_RELEASE=kacho-umbrella bash scripts/seed-stand-dkim.sh dev; \
 	echo "=== манифесты модулей: ПРЕДУСЛОВИЕ, а не следствие (задача #1901) ==="; \
 	echo "    Под монтирует именованный ConfigMap с манифестами модулей, а процесс"; \
 	echo "    читает смонтированный каталог на старте и ОТКАЗЫВАЕТСЯ подниматься на"; \
@@ -759,7 +847,7 @@ dev-up: preflight
 	echo "=== посадка безопасности: ЖИВОЙ процесс, а не объявление ==="; \
 	echo "    Гейт градуирует ЧЕТЫРЕ измерения: самоотчёт живого процесса, свидетельство"; \
 	echo "    самой базы о шифровании соединений, сохранённые настройки по всем путям"; \
-	echo "    доставки и административный переход к провайдеру личности."; \
+	echo "    доставки и отсутствие поставщика личности на живом стенде."; \
 	echo "    ЗДЕСЬ ОН СТОИТ ПОСЛЕ ПОСЕВОВ НАМЕРЕННО. Измерение по базе спрашивает"; \
 	echo "    pg_stat_ssl о ЖИВЫХ клиентских соединениях, а пул сервиса открывает их"; \
 	echo "    лениво: сразу после переката служба Ready и к базе ещё не ходила, и гейт"; \
@@ -834,16 +922,13 @@ wait-edge-ready:
 # ЛЮБОЙ поднятый стенд несёт боевую посадку. Порядок шагов при этом не менялся —
 # он ровно тот, который эта цель исполняла и раньше, просто на шаг раньше по файлу.
 #
-# ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. На
-# `kaname-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой (secretKeyRef без optional) из пода
-# провайдера и его automigrate-контейнера ссылается уже БАЗОВЫЙ профиль
-# values.dev.yaml — с задачи #948, потому что необязательная ссылка дала бы пустую
-# величину обратного вызова и полосу отвергли бы на первом обращении; профиль
-# боевой посадки её лишь подтверждает. Он же приносит подписной ключ
-# бутстрап-выдачи, без которого харнесс не получит НИ ОДНОГО токена (форжить ему
-# больше нечем). Ни один шаблон чарта эти секреты не создаёт — их заводит только
-# scripts/dev-prod-secrets.sh, и вызов стоит в рецепте `dev-up` ПЕРЕД первым
-# прогоном helm.
+# ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. Ключевой материал
+# службы доступа — ключи обёртки и подписной ключ бутстрап-выдачи, без которого
+# харнесс не получит НИ ОДНОГО токена (форжить ему больше нечем), — не создаёт ни
+# один шаблон чарта: его заводит только scripts/dev-prod-secrets.sh, и вызов стоит
+# в рецепте `dev-up` ПЕРЕД первым прогоном helm. Общий секрет обратных вызовов,
+# который посев заводил прежде (#948), снят вместе с обоими читателями — слушателем
+# хуков службы (#2818) и издателем поставщика личности (#1276).
 # ГДЕ СТОИТ СТРАЖ КОНТЕКСТА, И ПОЧЕМУ НЕ В ЗАВИСИМОСТЯХ. Страж обязан стоять
 # МЕЖДУ созданием кластера и действиями на нём. Записанный зависимостью рядом с
 # `dev-up`, он исполнялся РАНЬШЕ создания (make проходит зависимости до рецепта, а
@@ -860,6 +945,90 @@ dev-prod-up: dev-up
 	$(MAKE) --no-print-directory assert-metrics-surfaces-answer; \
 	$(MAKE) --no-print-directory assert-outbox-autovacuum; \
 	echo "production-posture stand is UP and READY"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# own-up — цепочка стенда `own` на kind из СБОРКИ ДЕРЕВА, и суд поднятого
+# (kacho#2931).
+#
+# ПРЕДМЕТ. Предикат «values.prod реально поднимается, а не только рендерится»
+# читается на цепочке, корнем которой стоит боевой слой: сам `values.prod.yaml`
+# по шапке stacks.txt намеренно неполон, и поднимаемая на kind его форма — цепочка
+# `own` (боевой слой + накладка посадки + слой площадки стенда). Её не поднимала
+# ни одна работа конвейера: подъём держался одним рендером, а страж старта
+# отказывает в РАНТАЙМЕ. Держатель — deploy/stand_chain_is_raised_by_the_conveyor_test.go.
+#
+# ПОЧЕМУ НЕ `stack-up STACK=own`. Две причины, и обе по построению:
+#   • `stack-up` стережётся `guard-destructive` — он требует человека у
+#     терминала, потому что цель по замыслу идёт и на настоящий кластер. Здесь
+#     кластер kind, которым цель владеет сама (создаёт его, как `dev-up`), и страж
+#     у неё тот же, что у `dev-up`, — `guard-kind-context`;
+#   • слой площадки пинит образы продукта на опубликованной ревизии. Конвейер
+#     судит ЗАПРОС: стенд обязан исполнять его дерево, иначе вердикт о посадке
+#     относится к чужой ревизии, а провенанс краснеет на каждом прогоне. Поэтому
+#     образы частей этого дерева собираются здесь же (`build-services`,
+#     `build-ui`), а цепочку на них переводит накладка $(LOCAL_IMAGES_VALUES),
+#     наложенная ПРАВЕЕ цепочки. Её перечень ссылок ВЫВОДИТСЯ из сложенной
+#     цепочки (internal/localimages), а не выписан рядом: выписанный разошёлся бы
+#     с профилем площадки молча. Пин вынесенной части (служба доступа) остаётся
+#     пином — её образ эта сборка не производит.
+#
+# Цепочка при этом — строка `own` таблицы целиком: посадку, ручки и адреса
+# накладка не трогает. Предусловия те же, что у `stack-up` (cert-manager,
+# манифесты модулей, секреты стенда), порядок после применения — тот же, что у
+# `dev-up` (готовность края, посевы, затем гейт посадки: измерение по базе
+# спрашивает ЖИВЫЕ соединения). Суд поднятого — `assert-rollout-ready` и
+# `assert-production-posture` без POSTURE_SKIP: стенд полный.
+#
+# Страж контекста — в рецепте, после создания кластера, по тому же доводу, что у
+# `dev-up` (§«ГДЕ СТОИТ СТРАЖ КОНТЕКСТА»).
+own-up: preflight
+	@set -e; start=$$(date +%s); \
+	grep -qx "$(CLUSTER_NAME)" <<<"$$(kind get clusters)" || CLUSTER_NAME=$(CLUSTER_NAME) ./kind/create-cluster.sh; \
+	kubectl config use-context kind-$(CLUSTER_NAME) || { \
+	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \
+	  echo "       Восстанови:  kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	}; \
+	$(MAKE) --no-print-directory guard-kind-context; \
+	kubectl create namespace kacho --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl label namespace kacho \
+	  pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
+	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
+	  --overwrite >/dev/null; \
+	$(MAKE) build-services; \
+	$(MAKE) build-ui; \
+	echo "=== стенд own: образы частей этого дерева — из сборки выше, а не пины площадки ==="; \
+	. ./scripts/lib/product-names.sh; \
+	product_names_load $(IMAGES); \
+	built=""; for s in $(IMAGES); do built="$$built $$(product_image_name "$$s")"; done; \
+	for p in $(UI_PROJECTS); do built="$$built kacho-ui-future-$$p"; done; \
+	chain="$$(bash tests/helm/stacks.sh --chain own ' ')"; \
+	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда own прочиталась пустой — накладку выводить не из чего"; exit 1; }; \
+	layers="./helm/umbrella/values.yaml"; for f in $$chain; do layers="$$layers ./helm/umbrella/$$f"; done; \
+	product_local_overlay dev "$$built" $$layers > ./$(LOCAL_IMAGES_VALUES); \
+	echo "=== накладка сборки: ./$(LOCAL_IMAGES_VALUES) ==="; \
+	bash scripts/helm-umbrella-deps.sh; \
+	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
+	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=own \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
+	STACK_NAMESPACE=kacho STACK_RELEASE=kacho-umbrella \
+	  bash scripts/stack-secrets.sh own \
+	    -f ./$(LOCAL_IMAGES_VALUES) -f ./$(IMAGE_IDS_VALUES) -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS); \
+	echo "=== стенд own: цепочка из stacks.txt, накладка сборки правее неё ==="; \
+	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
+	  $(call STACK_ARGS,own) \
+	  -f ./$(LOCAL_IMAGES_VALUES) \
+	  -f ./$(IMAGE_IDS_VALUES) \
+	  -f ./$(MODULE_MANIFESTS_VALUES) \
+	  $(UMBRELLA_OPTS) --wait --timeout 15m; \
+	$(MAKE) --no-print-directory wait-edge-ready; \
+	$(MAKE) --no-print-directory seed-geo; \
+	$(MAKE) --no-print-directory seed-storage; \
+	$(MAKE) --no-print-directory seed-vpc-pools; \
+	$(MAKE) --no-print-directory assert-rollout-ready; \
+	$(MAKE) --no-print-directory assert-production-posture; \
+	echo "own stand is UP and READY in $$(( $$(date +%s) - start ))s (цепочка own, образы сборки дерева)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # stack-up — раскатать ОБЪЯВЛЕННЫЙ стенд, а не набранную рукой команду.
@@ -952,6 +1121,9 @@ stack-up:
 	  EXPECT_CONTEXT="$$ctx"; \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
+	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
+	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
+	  bash scripts/seed-stand-dkim.sh $(STACK) \
 	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
@@ -1095,8 +1267,21 @@ assert-production-posture: guard-kind-context
 #
 # Перечень опрашиваемых процессов ВЫВОДИТСЯ из дерева, а не выписан в скрипте:
 # девятый сервис попадёт под опрос в момент появления обработчика экспозиции.
+#
+# STAND_STACK — профиль (имя стека deploy/stacks.txt), которым поднят стенд:
+# знаменатель гейта — носители, ОТРЕНДЕРЕННЫЕ этим профилем (kacho#2915, Д91), и
+# факт «не отрендерен» гейт проверяет рендером профиля. Умолчание — `dev-prod`,
+# последний профиль, который применяет `dev-up`; стенд, поднятый иной цепочкой,
+# называет её здесь.
+STAND_STACK ?= dev-prod
 assert-metrics-surfaces-answer: guard-kind-context
-	@bash scripts/assert-metrics-surfaces-answer.sh
+	@KACHO_STAND_STACK="$(STAND_STACK)" bash scripts/assert-metrics-surfaces-answer.sh
+
+# print-stand-stack — печатает STAND_STACK: профиль стенда, поднятого `dev-up`.
+# Его спрашивает конвейер (шаг гейта ban #6 шарда, .github/workflows/e2e-newman.yml,
+# Д112 (б)), чтобы имя профиля не выписывалось вторым литералом рядом с этим.
+print-stand-stack:
+	@echo "$(STAND_STACK)"
 
 # ЗДЕСЬ БЫЛА ЦЕЛЬ assert-forwarder-narrowing — СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ (#2390).
 #
@@ -1128,25 +1313,6 @@ assert-metrics-surfaces-answer: guard-kind-context
 # недопустим.
 assert-outbox-autovacuum: guard-kind-context
 	@bash scripts/assert-outbox-autovacuum.sh
-
-# admin-hop-injection — ЖИВАЯ инъекция дефектов в административный переход.
-#
-# НЕ входит в dev-prod-up и НЕ входит в гейт посадки: шаг МУТИРУЕТ стенд и требует
-# монопольного доступа. Он доказывает то, чего офлайновая самопроверка доказать не
-# может — что предикаты вердикта подключены к живому стенду теми проводами, о
-# которых думает автор.
-#
-# Главное, что он проверяет: с неработающим терминатором ВСЕ отрицательные
-# наблюдения выглядят как «всё запрещено правильно». Гейт обязан на этом
-# ПОКРАСНЕТЬ, а не позеленеть. Если бы правило пар было комментарием, а не кодом,
-# именно этот прогон был бы зелёным над мёртвым переходом.
-#
-# Шаг сам заявляет себя единственным писателем (замок в namespace) и отказывается
-# стартовать, если стенд занят ИЛИ уже нездоров до инъекции: чужой прогон делает
-# результат НЕДЕЙСТВИТЕЛЬНЫМ, а не красным. Восстановление ПОДТВЕРЖДАЕТСЯ
-# повторным полным гейтом посадки, а не заявляется.
-admin-hop-injection: guard-kind-context
-	@bash scripts/inject-admin-hop-defects.sh
 
 # helm-deps — материализация зависимостей умбреллы ЧЕРЕЗ MAKE.
 #
@@ -1512,20 +1678,20 @@ endif
 # рецептом из $(SVC).
 PSQL_DB_compute   := kacho_compute
 PSQL_DB_geo       := kacho_geo
-PSQL_DB_hydra     := hydra
 PSQL_DB_iam       := kaname
-PSQL_DB_kratos    := kratos
 PSQL_DB_nlb       := kacho_nlb
+PSQL_DB_notify    := kacho_notify
+PSQL_DB_notifyprobe := kacho_notifyprobe
 PSQL_DB_registry  := kacho_registry
 PSQL_DB_storage   := kacho_storage
 PSQL_DB_vpc       := kacho_vpc
 
 PSQL_USER_compute  := compute
 PSQL_USER_geo      := geo
-PSQL_USER_hydra    := hydra
 PSQL_USER_iam      := iam
-PSQL_USER_kratos   := kratos
 PSQL_USER_nlb      := kacho_nlb
+PSQL_USER_notify   := notify
+PSQL_USER_notifyprobe := notifyprobe
 PSQL_USER_registry := registry
 PSQL_USER_storage  := storage
 PSQL_USER_vpc      := vpc
@@ -1582,7 +1748,7 @@ loadtest-address-allocate-clean: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho delete cm k6-address-allocate --ignore-not-found
 
-# ─── KAC-105: IAM stack (kaname; KAC-127: Zitadel → Ory) ──────────────────────
+# ─── KAC-105: IAM stack (kaname; своя полоса личности с #2735) ────────────────
 
 # Здесь стоял alias `reload-svc-iam` — пересборка образа службы доступа из
 # дерева. Каталога службы в дереве нет, её образ производит конвейер её
@@ -1723,7 +1889,7 @@ module-manifests-configmap: guard-declared-context
 logs-iam:
 	kubectl logs -n kacho -f deploy/kaname
 
-# KAC-127: zitadel-admin target удалён — Zitadel заменён на Ory Kratos + Hydra.
+# KAC-127: цель zitadel-admin снята; внешнего поставщика личности стенд не поднимает.
 
 # Здесь стояла цель, копировавшая каноническую МОДЕЛЬ прав в каталог службы
 # доступа — туда, откуда её двоичный файл вшивал копию. Приёмник уехал вместе с
@@ -1856,7 +2022,7 @@ seed-nlb:
 # применённую миграцию не правят. ПОЧЕМУ НЕ ХУКОМ ЧАРТА: единственный Job-хук
 # geo — ОДНОРАЗОВЫЙ перенос из legacy-compute, у него другой предмет и он
 # выключен во всех профилях. ПОЧЕМУ НЕ ЧЕРЕЗ ADMIN-RPC: этой дорогой каталог
-# сеет приёмочная фикстура (нужен бутстрап-токен + Hydra + проброс портов);
+# сеет приёмочная фикстура (нужен бутстрап-токен + издатель + проброс портов);
 # вторая копия той машинерии в Makefile разъехалась бы молча. Обоснование
 # равнозначности SQL-посева — в шапке `scripts/geo-baseline.sql`.
 #
@@ -1876,7 +2042,7 @@ seed-geo: guard-kind-context
 # стоит в `dev-up` строго после него, а сам скрипт спрашивает зоны у владельца
 # и падает, если открытых нет, — а не пишет ноль привязок молча.
 #
-# ПОЧЕМУ НЕ АДМИН-RPC: та же причина, что у geo (бутстрап-токен + Hydra +
+# ПОЧЕМУ НЕ АДМИН-RPC: та же причина, что у geo (бутстрап-токен + издатель +
 # проброс портов; вторая копия этой машинерии разъехалась бы с первой молча).
 #
 # guard-kind-context: цель ПИШЕТ в базу активного контекста.

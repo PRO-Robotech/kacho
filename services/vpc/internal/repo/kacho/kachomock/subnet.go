@@ -234,16 +234,17 @@ func (sw *subnetWriter) Update(_ context.Context, s *domain.Subnet) (*kacho.Subn
 	return &cp, nil
 }
 
-func (sw *subnetWriter) Delete(_ context.Context, id string) error {
-	if _, ok := sw.w.localSubs[id]; !ok {
-		return repo.ErrNotFound
+func (sw *subnetWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := sw.w.localSubs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if sw.w.deletedSubIDs == nil {
 		sw.w.deletedSubIDs = make(map[string]struct{})
 	}
 	sw.w.deletedSubIDs[id] = struct{}{}
 	delete(sw.w.localSubs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 func (sw *subnetWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []string) (*kacho.SubnetRecord, error) {
