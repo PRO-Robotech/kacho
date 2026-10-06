@@ -9,15 +9,26 @@ package deploy_test
 // Н3-Ф2), часть в чарте: ручка KACHO_<MODULE>_NOTIFICATIONS_ENABLED каждого из
 // пяти модулей kacho выводится из одного объявления
 // `global.kacho.notifications.enabled` и переопределения модуля
-// `<модуль>.notifications.enabled` (замысел З11; помощник `enabledFor` — полоса D2).
+// `global.kacho.notifications.modules.<модуль>.enabled` (замысел З11; помощник
+// `enabledFor` — полоса D2).
+//
+// Форма переопределения — та, что объявил механизм флага NTF-1 (Р9, CX1-106):
+// под `global`, потому что тот же вывод читает чарт notify (перечень
+// источников), а ключ под подчартом модуля ему не виден. Приёмка NTF-3
+// (редакция 7) пишет переопределение `storage.notifications.enabled` — этот
+// путь механизм NTF-1 отвергает как второй путь к значению (CX1-111 (а)), и
+// проба держит ОБА факта: переопределение под `global` выключает модуль,
+// ключ под подчартом — отказ рендера с полным путём.
 //
 // Сценарий приёмки NTF-3 (отпечаток ac1f9fc9…) NTF3-66 — в части флагов модулей:
-//   - Given: global true, `storage.notifications.enabled: false` → у storage
-//     KACHO_STORAGE_NOTIFICATIONS_ENABLED=false, у compute, nlb, registry, vpc — true;
+//   - Given: global true, `global.kacho.notifications.modules.storage.enabled:
+//     false` → у storage KACHO_STORAGE_NOTIFICATIONS_ENABLED=false, у compute,
+//     nlb, registry, vpc — true;
 //   - близнец: без переопределения — true у всех пяти;
 //   - близнец: global false без переопределения — false у всех пяти;
 //   - values без `global.kacho.notifications.enabled` — рендер отказывает с
-//     сообщением, называющим ключ (умолчания нет).
+//     сообщением, называющим ключ (умолчания нет);
+//   - собственный ключ флага под подчартом модуля — отказ рендера с полным путём.
 // Перечень источников notify, записи sourceLimits и допуск notify-sender в
 // политике vpc (остаток NTF3-66) — предмет полосы чарта notify, не этой пробы.
 //
@@ -27,19 +38,22 @@ package deploy_test
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"testing"
 )
 
 const ntf366GlobalKey = "global.kacho.notifications.enabled"
 
-// ntf366Modules — модуль → (рабочий объект рендера, ручка флага).
-var ntf366Modules = []struct{ module, workload, knob string }{
-	{"compute", "compute", "KACHO_COMPUTE_NOTIFICATIONS_ENABLED"},
-	{"nlb", "kacho-nlb", "KACHO_NLB_NOTIFICATIONS_ENABLED"},
-	{"registry", "registry", "KACHO_REGISTRY_NOTIFICATIONS_ENABLED"},
-	{"storage", "kacho-storage", "KACHO_STORAGE_NOTIFICATIONS_ENABLED"},
-	{"vpc", "vpc", "KACHO_VPC_NOTIFICATIONS_ENABLED"},
+// ntf366ModulesKey — узел переопределений модулей.
+const ntf366ModulesKey = "global.kacho.notifications.modules"
+
+// ntf366Modules — модуль → (рабочий объект рендера, ручка флага, собственный
+// ключ флага под подчартом модуля).
+var ntf366Modules = []struct{ module, workload, knob, ownKey string }{
+	{"compute", "compute", "KACHO_COMPUTE_NOTIFICATIONS_ENABLED", "compute.notifications.enabled"},
+	{"nlb", "kacho-nlb", "KACHO_NLB_NOTIFICATIONS_ENABLED", "kacho-nlb.notifications.enabled"},
+	{"registry", "registry", "KACHO_REGISTRY_NOTIFICATIONS_ENABLED", "registry.notifications.enabled"},
+	{"storage", "kacho-storage", "KACHO_STORAGE_NOTIFICATIONS_ENABLED", "storage.notifications.enabled"},
+	{"vpc", "vpc", "KACHO_VPC_NOTIFICATIONS_ENABLED", "vpc.notifications.enabled"},
 }
 
 func ntf366Map(v any) map[string]any { m, _ := v.(map[string]any); return m }
@@ -120,7 +134,7 @@ func TestNTF366_ModuleFlagsAreDerivedFromOneDeclarationAndAnOverride(t *testing.
 				sets  []string
 				want  map[string]string
 			}{
-				{"Given: global true, storage false", []string{ntf366GlobalKey + "=true", "storage.notifications.enabled=false"},
+				{"Given: global true, storage false", []string{ntf366GlobalKey + "=true", ntf366ModulesKey + ".storage.enabled=false"},
 					map[string]string{"compute": "true", "nlb": "true", "registry": "true", "storage": "false", "vpc": "true"}},
 				{"близнец: global true без переопределения", []string{ntf366GlobalKey + "=true"},
 					map[string]string{"compute": "true", "nlb": "true", "registry": "true", "storage": "true", "vpc": "true"}},
@@ -149,22 +163,53 @@ func TestNTF366_ModuleFlagsAreDerivedFromOneDeclarationAndAnOverride(t *testing.
 
 // TestNTF366_RenderRefusesWithoutTheGlobalDeclaration — NTF3-66: values без
 // `global.kacho.notifications.enabled` — отказ рендера, называющий ключ.
-// Близнец (фикстура) — тот же стек с объявлением рендерится.
+// Близнец (фикстура) — та же цепочка той же копии с объявлением рендерится.
+//
+// Ключ снимается в КОПИИ values.yaml зонтика, а не набором `--set …=null`:
+// под `global` helm v4.2.4 нулевое значение слоя не удаляет умолчание зонтика
+// (замер полосы D2, deploy/notifications_flag_test.go TestNTF1N01_…), и рендер
+// с `=null` проходит с `enabled: true` — такое отрицание проверяло бы
+// фикстуру, а не продукт.
 func TestNTF366_RenderRefusesWithoutTheGlobalDeclaration(t *testing.T) {
-	stacks := deployStacks(t)
-	for _, name := range ntf366Stacks(t) {
-		chain := stacks[name]
+	requireHelmNTF(t)
+	declared := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	unset := notifyUmbrellaCopy(t, umbrellaCopyOpts{umbrellaEdits: map[string]func(string) string{
+		"values.yaml": replaceOnce("    notifications:\n      enabled: true\n", "    notifications:\n"),
+	}})
+	refused := 0
+	names := ntf366Stacks(t)
+	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
-			if out, err := renderStack(t, chain, ntf366GlobalKey+"=true"); err != nil {
-				t.Fatalf("ФИКСТУРА (близнец NTF3-66): стек %s с %s=true не рендерится: %v\n%s", name, ntf366GlobalKey, err, out)
+			if out, err := declared.render(declared.chainFiles(t, name)); err != nil {
+				t.Fatalf("ФИКСТУРА (близнец NTF3-66): стек %s с объявленным %s не рендерится: %v\n%s", name, ntf366GlobalKey, err, lastLines(out, 6))
 			}
-			out, err := renderStack(t, chain, ntf366GlobalKey+"=null")
-			if err == nil {
-				t.Fatalf("NTF3-66: стек %s: рендер без %s прошёл — у флага модулей есть умолчание", name, ntf366GlobalKey)
+			out, err := unset.render(unset.chainFiles(t, name))
+			if rerr := ntfRefusalNames(out, err, ntf366GlobalKey); rerr != nil {
+				t.Fatalf("NTF3-66: стек %s без %s: %v — у флага модулей есть умолчание", name, ntf366GlobalKey, rerr)
 			}
-			if !strings.Contains(out, ntf366GlobalKey) {
-				t.Fatalf("NTF3-66: стек %s: рендер без %s отказал, но сообщение ключа не называет:\n%s", name, ntf366GlobalKey, out)
-			}
+			refused++
 		})
+	}
+	t.Logf("перепись NTF3-66 (без ключа): стеков %d; отказ с именем ключа у %d", len(names), refused)
+}
+
+// TestNTF366_ModuleOwnFlagKeyIsRefused — собственный ключ флага под подчартом
+// модуля (`storage.notifications.enabled` и т. п.) — второй путь к значению:
+// отказ рендера с полным путём (CX1-111 (а)). Близнец — тот же стек без
+// ключа рендерится (TestNTF366_ModuleFlagsAreDerived…).
+func TestNTF366_ModuleOwnFlagKeyIsRefused(t *testing.T) {
+	stacks := deployStacks(t)
+	chain, ok := stacks["dev"]
+	if !ok {
+		t.Fatalf("ФИКСТУРА: стека dev в таблице стеков нет")
+	}
+	if out, err := renderStack(t, chain, ntf366GlobalKey+"=true"); err != nil {
+		t.Fatalf("ФИКСТУРА (близнец): стек dev не рендерится: %v\n%s", err, out)
+	}
+	for _, m := range ntf366Modules {
+		out, err := renderStack(t, chain, ntf366GlobalKey+"=true", m.ownKey+"=false")
+		if rerr := ntfRefusalNames(out, err, m.ownKey); rerr != nil {
+			t.Errorf("NTF3-66: собственный ключ флага %s модуля %s: %v — второй путь к значению принят", m.ownKey, m.module, rerr)
+		}
 	}
 }

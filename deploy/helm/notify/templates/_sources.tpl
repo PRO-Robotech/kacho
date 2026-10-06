@@ -16,6 +16,9 @@ kacho.notifications.moduleTable — ЗАКРЫТАЯ таблица модуле
                любом слое, — отказ рендера с полным путём (страж зонтика
                templates/notifications-flag-guard.yaml): второго пути к значению
                флага нет, значение читается только из `global`;
+  knob       — у модуля kacho: имя переменной процесса, несущей флаг ленты
+               модуля (`KACHO_<MODULE>_NOTIFICATIONS_ENABLED`); значение выводит
+               зонтик (карта `kacho-notifications-module-flags`);
   source     — у модуля-источника: запись перечня
                `{module, feedAddr, san, classes, recipientForms, authorization}`
                (форма KACHO_NOTIFY_SOURCES, З20). Поле `authorization` — литерал:
@@ -29,7 +32,13 @@ kacho.notifications.moduleTable — ЗАКРЫТАЯ таблица модуле
     `global.kacho.spiffe.<служба>` и общий помощник URI заводит полоса J2 — тогда
     SAN строки берётся из декларации;
   · `kaname` — флаг почты службы доступа; полей источника нет — их вносит NTF-2,
-    и только тогда kaname входит в перечень.
+    и только тогда kaname входит в перечень;
+  · `compute`, `nlb`, `registry`, `storage`, `vpc` — флаг ленты модуля kacho
+    (NTF-3, NTF3-64, NTF3-66). Поле `knob` — имя переменной процесса модуля:
+    зонтик выводит её значение тем же помощником в карту
+    `kacho-notifications-module-flags` (templates/notifications-module-flags.yaml
+    зонтика), и под модуля читает его оттуда. Полей источника нет — их вносит
+    полоса чарта notify, и только тогда модуль входит в перечень.
 
 kacho.notifications.sources — выведенный перечень (JSON-массив записей `source`):
 модули с полем `source` и действующим флагом `true`
@@ -54,6 +63,11 @@ notify.sourceLimits — ручки на источник (`sourceLimits` чар�
 {{- list
   (dict "key" "notifyProbe" "ownFlagKey" "notifyProbe.notifications.enabled" "source" (dict "module" "notify-probe" "feedAddr" "kacho-notify-probe.kacho.svc:9091" "san" "spiffe://kacho.cloud/ns/kacho/sa/kacho-notify-probe" "classes" (list "notice") "recipientForms" (list "address") "authorization" "resolveSend"))
   (dict "key" "kaname" "ownFlagKey" "kaname.config.notifications.enabled")
+  (dict "key" "compute" "ownFlagKey" "compute.notifications.enabled" "knob" "KACHO_COMPUTE_NOTIFICATIONS_ENABLED")
+  (dict "key" "nlb" "ownFlagKey" "kacho-nlb.notifications.enabled" "knob" "KACHO_NLB_NOTIFICATIONS_ENABLED")
+  (dict "key" "registry" "ownFlagKey" "registry.notifications.enabled" "knob" "KACHO_REGISTRY_NOTIFICATIONS_ENABLED")
+  (dict "key" "storage" "ownFlagKey" "storage.notifications.enabled" "knob" "KACHO_STORAGE_NOTIFICATIONS_ENABLED")
+  (dict "key" "vpc" "ownFlagKey" "vpc.notifications.enabled" "knob" "KACHO_VPC_NOTIFICATIONS_ENABLED")
 | toJson -}}
 {{- end -}}
 

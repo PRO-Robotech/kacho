@@ -58,6 +58,11 @@ func configEnvNames(t *testing.T) map[string]struct{} {
 	}
 	require.NotEmpty(t, out,
 		"config exposes no KACHO_COMPUTE_* env name — the enumeration read nothing, so it would have asserted nothing")
+	// Флаг ленты модуля читается не тегом envconfig, а единственным чтением
+	// загрузчика (`Config.parseNotifications`, os.LookupEnv): у ручки нет
+	// умолчания, и envconfig его выразить не может (NTF3-64). Читатель есть —
+	// он назван здесь его же константой, а не выписан литералом.
+	out[config.NotificationsKnob] = struct{}{}
 	return out
 }
 

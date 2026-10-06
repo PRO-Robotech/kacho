@@ -57,6 +57,14 @@ spec:
         # этот файл не накладывает (offline-рендер, чужой реестр), получает "unset" —
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "storage" "unset" (.Values.global | default dict) | quote }}
+        # ПРИВЯЗКА ПОДА К ОБЪЯВЛЕНИЮ ФЛАГА ЛЕНТЫ (NTF3-64, NTF3-66). Переменная
+        # KACHO_STORAGE_NOTIFICATIONS_ENABLED приходит из карты зонтика и читается
+        # процессом один раз, на старте: смена объявления
+        # `global.kacho.notifications` без этой аннотации не перекатила бы под, и
+        # модуль продолжал бы работать с прежним флагом, расходясь с перечнем
+        # источников notify. Значение — отпечаток узла объявления; одиночный
+        # рендер чарта, где узла нет, получает отпечаток пустого узла.
+        kacho.cloud/notifications-flag-checksum: {{ dig "kacho" "notifications" (dict) (.Values.global | default dict) | toJson | sha256sum | quote }}
         # Roll pods when ConfigMap content changes (same pattern as kacho-nlb).
         #
         # WHY THIS IS SECURITY-CRITICAL, not cosmetic: every storage security knob
@@ -147,6 +155,18 @@ spec:
             - configMapRef:
                 name: {{ include "storage.fullname" . }}-config
           env:
+            # Флаг ленты модуля (NTF3-64): умолчания нет — без переменной процесс
+            # не стартует. Значение выводит зонтик помощником
+            # `kacho.notifications.enabledFor` в карту
+            # `kacho-notifications-module-flags`
+            # (deploy/helm/umbrella/templates/notifications-module-flags.yaml): тот
+            # же вывод решает, входит ли модуль в перечень источников notify.
+            # Карты нет — под не стартует, а не работает «выключенным».
+            - name: KACHO_STORAGE_NOTIFICATIONS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: kacho-notifications-module-flags
+                  key: KACHO_STORAGE_NOTIFICATIONS_ENABLED
             # SEC: DB password из existingSecret (никогда не в values).
             - name: KACHO_STORAGE_DB_PASSWORD
               valueFrom:
