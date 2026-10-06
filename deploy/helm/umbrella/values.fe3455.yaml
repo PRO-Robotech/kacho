@@ -122,8 +122,9 @@ api-gateway:
 # console on fe3455 (adopted in place via `helm upgrade … --take-ownership` on
 # 2026-07-12, umbrella rev 16). Keep this `true` so a routine `helm upgrade
 # kacho-umbrella` does NOT delete the live console. The hand-applied uif-lb
-# LoadBalancer is out-of-band (not in the chart) → untouched by upgrades → Beget IP
-# 45.153.188.119 preserved.
+# LoadBalancer is out-of-band (not in the chart) → untouched by upgrades → its
+# public address is preserved (the address is a site coordinate and is not
+# written here, kacho#3040).
 #
 # IMAGES reconciled to LIVE 2026-07-15 (kubectl-verified): every host+remote runs
 # docker.io/prorobotech/kacho-ui-future-<remote>:master-e6001c77 (the current merged

@@ -475,13 +475,13 @@ m.assert_bootstrap_accepted_by_the_edge(PUBLIC, boot)
 
 def _seed_bootstrap_root_cluster():
     """Deterministic system_admin + system_viewer @cluster for the bootstrap ROOT
-    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
+    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@example.test), mirroring
     dev-mode setup.sh 5a/5c. The bootstrap SA principal already holds system_admin
     @cluster via migration 0058 (deterministic), but the root USER's grant is
     seeded by the ≤180s RunBootstrapAdmin reconciler (racy on a fresh stand) and it
     never gets system_viewer. Best-effort: skip silently if the user is not yet
     provisioned (never fails the seed run)."""
-    email = "admin@prorobotech.ru"
+    email = "admin@example.test"
     sql = f"SELECT id FROM kaname.users WHERE external_id='{email}' LIMIT 1;"
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
             "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']

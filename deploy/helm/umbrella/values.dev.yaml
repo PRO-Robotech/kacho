@@ -111,7 +111,7 @@ global:
       # (mail_receiver_core_test.go), — то есть не построение, а проверка.
       smtp:
         connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
-        fromAddress: "noreply@kacho.cloud"
+        fromAddress: "noreply@mail.kacho.test"
         fromName: "Kacho Cloud"
         # Якорь листа приёмника у НАШЕГО отправителя (служба доступа): `ca.crt`
         # секрета, который выпускает шаблон приёмника (`mailpit.tlsSecretName`).
@@ -1320,11 +1320,13 @@ kaname:
   # Первый администратор облака стенда разработки — человек фикстур проб
   # (tests/authz-fixtures, prodseed_matrix.py: адрес задан там же). Посев
   # бутстрапа службы выдаёт ему `system_admin` на кластере, как только
-  # фикстура его заводит; повторяется до выдачи.
+  # фикстура его заводит; повторяется до выдачи. Домен зарезервирован для проб
+  # (RFC 6761): адрес не учётка ни на одном узле, а слой доезжает и до
+  # управляемых стендов — там его замещает ссылка на секрет (kacho#3040).
   platform:
     iam:
       bootstrapRootAdmin:
-        email: "admin@prorobotech.ru"
+        email: "admin@example.test"
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
 #
