@@ -430,14 +430,17 @@ func NewMux(
 		if !ok {
 			transport = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		return []grpc.DialOption{
+		return append([]grpc.DialOption{
 			transport,
 			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
 			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
 			// Каждый УНАРНЫЙ вызов моста ограничен бюджетом; потоковые — нет:
 			// поток живёт по своему сроку (приёмка KA1, KA1-24).
 			grpc.WithChainUnaryInterceptor(backendBudgetInterceptor(backendBudget)),
-		}
+		},
+			// Адрес источника к службе не уезжает (kacho#3028, круг 5): мост
+			// кладёт `x-forwarded-for` = заголовок клиента + адрес пира.
+			principalmeta.ForwardedAddressStripDialOptions()...)
 	}
 
 	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса

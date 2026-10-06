@@ -22,6 +22,9 @@ spec:
         {{- include "ui.hostSelectorLabels" . | nindent 8 }}
       annotations:
         checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+        # Привязка к содержимому образа (kacho#3026): тег `:dev` неизменен, и без
+        # идентификатора содержимого пересобранный модуль не перекатился бы.
+        kacho.cloud/image-id: {{ dig "kachoImageIds" "ui-future/host" "unset" (.Values.global | default dict) | quote }}
     spec:
       # Ужесточение пода (trivy KSV-0118): non-root + seccomp RuntimeDefault.
       # uid 101 — пользователь образа nginx-unprivileged.
@@ -53,10 +56,31 @@ spec:
             items:
               - key: resolver-from-resolvconf.envsh
                 path: 05-resolver-from-resolvconf.envsh
-              {{- if .Values.publicFront.enabled }}
               - key: tls-reload.sh
                 path: 06-tls-reload.sh
-              {{- end }}
+        # ЛИСТ ЗВЕНА К КРАЮ (kacho#3028): раздача предъявляет его краю на каждой
+        # полосе к нему — край узнаёт звено фронта по имени в листе якоря
+        # звеньев и только тогда принимает от неё адрес клиента. Том — НЕ
+        # subPath: при продлении kubelet меняет файлы на месте, и сторож их видит.
+        - name: edge-link
+          secret:
+            secretName: {{ required "host.edgeLink.secretName обязателен: без листа звена край не примет адрес клиента от раздачи" .Values.host.edgeLink.secretName | quote }}
+            defaultMode: 0440
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        # Удостоверяющий центр СЕРВЕРНОГО листа края — им раздача проверяет, что
+        # говорит с краем. Из секрета берётся только ca.crt: ключа края в поде
+        # раздачи нет.
+        - name: edge-ca
+          secret:
+            secretName: {{ required "host.edgeLink.caSecretName обязателен: раздаче нечем проверить лист края" .Values.host.edgeLink.caSecretName | quote }}
+            defaultMode: 0440
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- if .Values.publicFront.enabled }}
         # Лист TLS пользовательского края (kacho#3024). Том — НЕ subPath: только
         # так kubelet меняет файлы на месте при продлении, и сторож их видит.
@@ -126,11 +150,17 @@ spec:
               mountPath: /docker-entrypoint.d/05-resolver-from-resolvconf.envsh
               subPath: 05-resolver-from-resolvconf.envsh
               readOnly: true
-            {{- if .Values.publicFront.enabled }}
             - name: nginx-entrypoint
               mountPath: /docker-entrypoint.d/06-tls-reload.sh
               subPath: 06-tls-reload.sh
               readOnly: true
+            - name: edge-link
+              mountPath: {{ include "ui.edgeLinkDir" . }}
+              readOnly: true
+            - name: edge-ca
+              mountPath: {{ include "ui.edgeCADir" . }}
+              readOnly: true
+            {{- if .Values.publicFront.enabled }}
             - name: console-tls
               mountPath: /etc/console-tls
               readOnly: true

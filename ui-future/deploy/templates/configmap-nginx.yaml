@@ -32,6 +32,13 @@ data:
         index index.html;
         {{- include "ui.securityHeaders" . | nindent 8 }}
 
+        # АДРЕС КЛИЕНТА К КРАЮ (kacho#3028). Раздача — доверенное звено края:
+        # край берёт адрес клиента из `X-Forwarded-For`, только если пир — она.
+        # Поэтому заголовок она ПИШЕТ сама адресом своего TCP-пира, а не
+        # дописывает его к пришедшему от клиента (`$proxy_add_x_forwarded_for`):
+        # заявление клиента о себе дальше раздачи не уходит, и ни одному звену
+        # за ней не нужно угадывать, какая запись цепочки настоящая.
+        #
         # Путь ассетов модуля обязан лежать ВНЕ пространства маршрутов консоли:
         # суффикс `-remote` — то, что его оттуда выводит. Здесь стоял
         # `/dashboard/`, и он заслонял маршрут, на который оболочка уводит с
@@ -44,7 +51,7 @@ data:
             proxy_pass http://$dashboard_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -57,7 +64,7 @@ data:
             proxy_pass http://$vpc_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -70,7 +77,7 @@ data:
             proxy_pass http://$iam_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -83,7 +90,7 @@ data:
             proxy_pass http://$nlb_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -96,7 +103,7 @@ data:
             proxy_pass http://$registry_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -109,7 +116,7 @@ data:
             proxy_pass http://$system_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -122,7 +129,7 @@ data:
             proxy_pass http://$compute_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -135,7 +142,7 @@ data:
             proxy_pass http://$storage_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -144,10 +151,11 @@ data:
 
         location ~ ^/(vpc|compute|storage|geo|nlb|registry|operations)/ {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
             proxy_read_timeout 30s;
@@ -156,10 +164,11 @@ data:
 
         location ~ ^/iam/v1/ {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
             proxy_read_timeout 30s;
@@ -179,10 +188,11 @@ data:
         # один адрес и не может открыть второго (запрет #6).
         location = /subscription/v1/events {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
 
@@ -280,40 +290,47 @@ data:
     fi
     export KUBE_DNS_SERVER="$ns"
     echo "[05-resolver] KUBE_DNS_SERVER=$ns exported for envsubst"
-  {{- if .Values.publicFront.enabled }}
   tls-reload.sh: |
     # Исполняется до nginx (docker-entrypoint.d) и оставляет в фоне сторожа:
     # cert-manager продлевает сертификат В СЕКРЕТЕ, kubelet меняет файлы тома на
     # месте, а nginx держит в памяти лист, прочитанный при старте. Без сторожа
-    # под отдавал бы прежний лист до истечения. Сторож сверяет отпечаток пары
-    # файлов и на расхождении просит nginx перечитать настройку (`-s reload`:
+    # под отдавал бы прежний лист до истечения. Сторож сверяет отпечаток файлов
+    # и на расхождении просит nginx перечитать настройку (`-s reload`:
     # соединения не рвутся). Проверка конфигурации — ДО перечтения: битая пара в
     # секрете не должна гасить раздачу, она остаётся на прежнем листе и говорит
     # об этом в журнал.
+    #
+    # Сторожит ВСЕ листы раздачи: лист звена к краю (kacho#3028, всегда) — с
+    # истёкшим листом край отказал бы в рукопожатии каждой полосе к нему, — и
+    # лист пользовательского края (kacho#3024), когда раздача завершает TLS сама.
     set -eu
-    dir=/etc/console-tls
-    every={{ int .Values.publicFront.tls.reloadIntervalSeconds }}
-    for f in "$dir/tls.crt" "$dir/tls.key"; do
+    files="{{ include "ui.edgeLinkDir" . }}/tls.crt {{ include "ui.edgeLinkDir" . }}/tls.key {{ include "ui.edgeCADir" . }}/ca.crt"
+    {{- if .Values.publicFront.enabled }}
+    files="$files /etc/console-tls/tls.crt /etc/console-tls/tls.key"
+    {{- end }}
+    every={{ int .Values.tlsReload.intervalSeconds }}
+    for f in $files; do
       if [ ! -s "$f" ]; then
-        echo "[06-tls-reload] FATAL: $f пуст или отсутствует — TLS пользовательского края не завершается" >&2
+        echo "[06-tls-reload] FATAL: $f пуст или отсутствует — TLS раздачи не собирается" >&2
         exit 1
       fi
     done
     (
-      seen="$(cat "$dir/tls.crt" "$dir/tls.key" | cksum)"
+      # shellcheck disable=SC2086 # перечень файлов — слова по построению
+      seen="$(cat $files | cksum)"
       while sleep "$every"; do
-        now="$(cat "$dir/tls.crt" "$dir/tls.key" 2>/dev/null | cksum)" || continue
+        # shellcheck disable=SC2086
+        now="$(cat $files 2>/dev/null | cksum)" || continue
         [ "$now" = "$seen" ] && continue
         if nginx -t -q 2>/dev/null && nginx -s reload; then
           seen="$now"
-          echo "[06-tls-reload] сертификат пользовательского края сменился — nginx перечитал настройку"
+          echo "[06-tls-reload] сертификат раздачи сменился — nginx перечитал настройку"
         else
           echo "[06-tls-reload] сертификат сменился, но конфигурация не прошла проверку — остаёмся на прежнем листе" >&2
         fi
       done
     ) &
-    echo "[06-tls-reload] сторож сертификата запущен, период ${every}s"
-  {{- end }}
+    echo "[06-tls-reload] сторож сертификатов запущен, период ${every}s: $files"
 ---
 apiVersion: v1
 kind: ConfigMap

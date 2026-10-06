@@ -65,13 +65,15 @@
 #
 # ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
 # This file contains NO secret material. AuthN secrets the production binaries
-# require are consumed from Secrets the chart already wires via secretKeyRef:
-#   - kaname: KANAME_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
-#                KANAME_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
-#   - per-service DB password           ← <svc>.db.passwordSecretName
+# require are consumed from Secrets the chart already wires via secretKeyRef
+# (addresses are the keys the sub-chart templates READ — kacho#2997):
+#   - kaname: KANAME_JWKS_ENC_KEY          ← kaname.platform.iam.jwks.encKeySecretName / encKeySecretKey
+#             KANAME_SECOND_FACTOR_ENC_KEY ← kaname.platform.iam.secondFactor.encKeySecretName / encKeySecretKey
+#   - per-service DB password              ← <svc>.db.passwordSecretName
 # The operator MUST provision those Secrets out-of-band (or via external-secrets)
-# BEFORE rollout — kaname Config.Validate fails fast in production if the hook
-# secret / JWKS encryption key are missing (defense-in-depth, fail-closed).
+# BEFORE rollout — kaname Config.Validate fails fast in production if an
+# encryption key is missing (defense-in-depth, fail-closed). The hook token is
+# gone together with the callback listener (kaname#363).
 # Image tags + the kacho.domain root come from a layered per-cluster overlay.
 
 # ─── Root domain — override per environment via a per-cluster overlay ───────
@@ -109,8 +111,6 @@
 global:
   kacho:
     identity:
-      hooks:
-        scheme: https
       # ПОЧТОВЫЙ УЗЕЛ — УСЛОВИЕ БОЕВОГО СТАРТА СЛУЖБЫ ДОСТУПА (kaname#475,
       # kacho#3020). Коды подтверждения адреса и восстановления доступа уходят
       # только письмом: без узла процесс в боевом режиме в старте отказывает,
@@ -159,6 +159,21 @@ cert-manager:
 api-gateway:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
+  # АДРЕС КЛИЕНТА ЗА КОНТРОЛЛЕРОМ ВХОДА (kacho#3028). Внешний вход края ведёт
+  # контроллер входа этой установки — он звено фронта: пишет адрес клиента в
+  # `X-Forwarded-For`. Сеть — частные диапазоны (сеть подов этого кластера не
+  # измерена; сужение до звена делает имя), звено поимённо — безголовая служба
+  # подов контроллера. Накладки, у которых звенья другие, объявляют свои имена
+  # (values.own.yaml, values.fe3455.yaml).
+  clientAddress:
+    trustedProxyCIDRs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - fc00::/7
+    trustedPeers:
+      - api-gateway-front-ingress
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
   # Издатель на крае — МНОЖЕСТВО по устройству (Ф1б, #926): у КАЖДОГО
@@ -683,8 +698,9 @@ kaname:
         # production-strict (below) enforces ssl-mode ∈ {require,verify-ca,verify-full}.
         sslMode: require
     # production-strict → Bearer required; Config.Validate also requires the
-    # AuthN secrets (KANAME_HOOK_TOKEN + KANAME_JWKS_ENC_KEY) — wired via
-    # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
+    # encryption keys (KANAME_JWKS_ENC_KEY, KANAME_SECOND_FACTOR_ENC_KEY) — wired
+    # via secretKeyRef (kaname.platform.iam.jwks.* / .secondFactor.*); operator
+    # provisions them.
     authn:
       # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
       # Restated here even though the chart default already carries it: an EMPTY
@@ -1605,3 +1621,16 @@ networkPolicy:
   datastore:
     enabled: true
 
+# АДРЕС КЛИЕНТА ДОХОДИТ ДО КОНТРОЛЛЕРА ВХОДА (kacho#3028, security-auditor r3).
+# Контроллер — звено фронта края: адрес клиента он пишет в `X-Forwarded-For`.
+# При `Cluster` (умолчание чарта) kube-proxy подменяет адрес источника адресом
+# узла, и все внешние клиенты становятся несколькими адресами узлов — ключ
+# ограничения частоты входа у службы доступа общий на всех. `Local` доставляет
+# пакет только на узел с подом контроллера и адреса не трогает. Слой
+# values.dev.yaml ставит службе тип ClusterIP (вход через hostPort узла kind) и
+# здесь не участвует; гейт deploy/edge_client_address_circle_render_test.go
+# требует Local у каждой внешней службы перед звеном фронта.
+ingress-nginx:
+  controller:
+    service:
+      externalTrafficPolicy: Local

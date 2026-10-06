@@ -57,6 +57,27 @@ api-gateway:
   # to blank, and a value naming a setting that does not exist reads as a decision
   # while doing nothing.
   authMode: production-strict
+  # АДРЕС КЛИЕНТА В БОЕВОЙ ПОСАДКЕ НА KIND (kacho#3028, круг 5). Боевой профиль
+  # края не вправе не доверять никому: без звеньев край отказывает в старте,
+  # потому что за звеном фронта все клиенты — один источник. Слой
+  # values.dev.yaml объявляет «никому» и выключает политику входа края (стенд
+  # разработчика, KACHO_APP_ENV=dev); здесь обе вещи возвращаются ВМЕСТЕ, как в
+  # values.prod.yaml: звенья — контроллер входа (вход края и полосы края на хосте
+  # консоли, templates/console-edge-lanes-ingress.yaml) и раздача консоли; оба
+  # предъявляют лист якоря звеньев (templates/api-gateway-front-link-pki.yaml).
+  # Сеть подов kind не измерена — частные диапазоны, сужение до звена делает имя.
+  networkPolicy:
+    enabled: true
+  clientAddress:
+    trustedProxyCIDRs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - fc00::/7
+    trustedPeers:
+      - api-gateway-front-ingress
+      - api-gateway-front-console
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
   # Издатель на крае — МНОЖЕСТВО по устройству (Ф1б, #926): у КАЖДОГО

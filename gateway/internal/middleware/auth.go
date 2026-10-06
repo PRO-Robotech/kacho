@@ -44,7 +44,6 @@ package middleware
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -65,6 +64,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 
 	"github.com/PRO-Robotech/corelib/servicecontract"
@@ -134,6 +134,11 @@ type AuthInterceptor struct {
 	// согласовываться, расходятся молча, и разошлись бы они в сторону «полоса
 	// включена, но своим никто не признаётся».
 	mtlsDomain grpcsrv.TrustDomain
+
+	// linkAnchor — якорь звеньев фронта (kacho#3028, круг 5): лист, чья
+	// цепочка кончается его корнем, — звено, и личностью он не становится
+	// никогда (WithMTLSPrincipal).
+	linkAnchor linktls.Anchor
 	// requireMachineBinding — when true, a token whose principal is a MACHINE
 	// (kaname_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
@@ -349,8 +354,20 @@ func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 // НИКОГО, — то есть включение, ничего не включающее. Тихого выключения это не
 // заводит: домен объявлен осью посадки (`describePosture`), и процесс с
 // необъявленным доменом не стартует вовсе.
-func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain) *AuthInterceptor {
+//
+// # Почему якорь звеньев — аргумент той же опции (kacho#3028, круг 5)
+//
+// Звено ретранслирует запросы ВСЕХ своих клиентов. Лист звена, ставший
+// личностью на этой полосе, сделал бы каждого клиента за звеном — и анонимного
+// тоже — этой личностью. Поэтому полоса читает только лист цепочки,
+// кончающейся НЕ корнем якоря звеньев (linktls.Anchor.Foreign); запрос звена
+// идёт по полосе токена. Якорь был отдельной опцией, и корень, включивший
+// полосу без неё, возвращал дефект без единой красной пробы; аргументом
+// опции его не забыть — без него полоса не собирается. Нулевой якорь законен
+// там, где звеньев нет (посадка без круга доверия).
+func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain, links linktls.Anchor) *AuthInterceptor {
 	a.mtlsDomain = d
+	a.linkAnchor = links
 	return a
 }
 
@@ -406,7 +423,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// only because the listener already verified it; client-supplied
 	// x-kacho-principal-* metadata was stripped above (no spoofing).
 	if a.mtlsDomain.IsDeclared() {
-		if pType, pID, ok := principalFromVerifiedPeer(a.mtlsDomain, ctx); ok {
+		if pType, pID, ok := principalFromVerifiedPeer(a.mtlsDomain, a.linkAnchor, ctx); ok {
 			a.logger.Debug("auth: principal derived from verified client cert (mTLS)",
 				"method", fullMethod, "type", pType, "id", pID)
 			return a.injectPrincipal(ctx, pType, pID, pID), nil
@@ -775,7 +792,12 @@ func verifiedClaim(vt *VerifiedToken, key string) string {
 // `service_account` whose id is the `<sa>` segment. Display name defaults to the
 // id at the call site. The trust domain is the one the installation declared —
 // a SAN of any other domain is not ours and yields ok=false.
-func principalFromVerifiedPeer(d grpcsrv.TrustDomain, ctx context.Context) (pType, pID string, ok bool) {
+//
+// Лист ЗВЕНА ФРОНТА (цепочка до корня якоря звеньев) личностью не становится
+// никогда (kacho#3028, круг 5): звено ретранслирует запросы всех своих
+// клиентов, и его личность на них была бы чужой. Такой лист пропускается
+// (linktls.Anchor.Foreign), и запрос идёт по полосе токена.
+func principalFromVerifiedPeer(d grpcsrv.TrustDomain, links linktls.Anchor, ctx context.Context) (pType, pID string, ok bool) {
 	p, present := peer.FromContext(ctx)
 	if !present || p == nil {
 		return "", "", false
@@ -784,7 +806,7 @@ func principalFromVerifiedPeer(d grpcsrv.TrustDomain, ctx context.Context) (pTyp
 	if !isTLS {
 		return "", "", false
 	}
-	leaf := verifiedLeaf(tlsInfo.State.VerifiedChains)
+	leaf := links.Foreign(tlsInfo.State.VerifiedChains)
 	if leaf == nil {
 		return "", "", false
 	}
@@ -794,18 +816,6 @@ func principalFromVerifiedPeer(d grpcsrv.TrustDomain, ctx context.Context) (pTyp
 		}
 	}
 	return "", "", false
-}
-
-// verifiedLeaf returns the leaf (chain[0]) of the first non-empty verified chain,
-// or nil when no chain was verified (the cert was absent or did not chain to a
-// trusted CA).
-func verifiedLeaf(chains [][]*x509.Certificate) *x509.Certificate {
-	for _, chain := range chains {
-		if len(chain) > 0 && chain[0] != nil {
-			return chain[0]
-		}
-	}
-	return nil
 }
 
 // saFromSPIFFE parses a SPIFFE id of the form

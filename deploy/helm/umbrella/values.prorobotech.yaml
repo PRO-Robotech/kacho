@@ -80,6 +80,18 @@ api-gateway:
   imagePullPolicy: IfNotPresent
 
 kaname:
+  # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА — ССЫЛКОЙ НА СЕКРЕТ (kacho#2878, kacho#3040).
+  # Слой values.dev.yaml объявляет адрес величиной — человека фикстур проб
+  # стенда разработки. Здесь он стал бы учёткой входа управляемого стенда в
+  # публичном файле. Адрес лежит в секрете `stand-cloud-admin` (ключ `email`),
+  # его заводит оператор площадки; `email` очищается, иначе рендер отказывает
+  # (две формы одного предмета).
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        secretName: stand-cloud-admin
+        emailKey: email
+        email: ""
   image:
     repository: docker.io/prorobotech/kaname
     # Здесь стоял `main-a1b28f4c` — коммит, которого НЕТ ни в одном из двух
@@ -157,3 +169,33 @@ registry:
       username: ""
       password: ""
       htpasswd: ""
+
+# ─── ПАРОЛИ БАЗ НЕ НАСЛЕДУЮТСЯ ИЗ СЛОЯ РАЗРАБОТКИ (kacho#3040) ──────────────
+#
+# Слой values.dev.yaml несёт заглушки паролей баз литералом — законно на машине
+# разработчика и находка здесь: репозиторий публичен, а этот стенд доступен не
+# только автору. Пустая величина отдаёт пароль чарту базы: на первом подъёме он
+# порождается случайным, на последующих — читается из уже заведённого секрета
+# (`lookup`), поэтому не меняется от выкатки к выкатке. Держит
+# TestStacksOutsideTheDeveloperMachineCarryNoPasswordLiteral.
+pg-vpc:
+  auth:
+    password: ""
+pg-compute:
+  auth:
+    password: ""
+pg-iam:
+  auth:
+    password: ""
+pg-geo:
+  auth:
+    password: ""
+pg-nlb:
+  auth:
+    password: ""
+pg-storage:
+  auth:
+    password: ""
+pg-registry:
+  auth:
+    password: ""
