@@ -4,9 +4,11 @@
 package config_test
 
 // required_knobs_injection_test.go — способность держателя Р16 упасть
-// (DoD S1 п.5): пять инъекций — умолчание у одной ручки, ручка вне перечня
+// (DoD S1 п.5): семь инъекций — умолчание у одной ручки, ручка вне перечня
 // Р16, чтение окружения в обход загрузчика, снятая граница у одной ручки,
-// снятая зависимая граница `…_REPUTATION_WINDOW ≤ …_SENT_LOG_RETENTION`.
+// снятая зависимая граница `…_REPUTATION_WINDOW ≤ …_SENT_LOG_RETENTION`,
+// снятая нижняя граница длины ключа отпечатка, материал ключа отпечатка в
+// тексте отказа.
 //
 // Испытуемый инъекций — синтетика: эталон границ s1Model, синтетическая
 // перепись групп, синтетические исходники. Контроль — та же синтетика без
@@ -162,4 +164,27 @@ func TestRequiredKnobsInjection_RemovedBoundIsFound(t *testing.T) {
 func TestRequiredKnobsInjection_RemovedWindowRetentionBoundIsFound(t *testing.T) {
 	found := judgeWindowWithinRetention(t, s1Model(defectNoWindowRetention))
 	requireFindingNames(t, found, "окно 30 сут при сроке журнала 7 сут", "старт принят")
+}
+
+// Инъекция 6: нижняя граница длины ключа отпечатка снята до 1 октета — ключ на
+// октет короче границы принят. Находку даёт строка «на один октет короче», а не
+// соседняя «не разбирается».
+func TestRequiredKnobsInjection_RemovedAddressKeyLowerBoundIsFound(t *testing.T) {
+	found := judgeKnob(t, rowOf(t, envAddressKeyDir), s1Model(defectNoAddressKeyLowerBound))
+	requireFindingNames(t, found, envAddressKeyDir+" за границей: ключ на один октет короче", "старт принят")
+	for _, f := range found {
+		if strings.Contains(f, "не разбирается") {
+			t.Fatalf("инъекция роняет не только свой предмет: %s", f)
+		}
+	}
+}
+
+// Инъекция 7: текст отказа ключа отпечатка несёт содержимое файла — обе
+// строки отказа, где проба подала материал, называют утечку.
+func TestRequiredKnobsInjection_AddressKeyMaterialInRefusalIsFound(t *testing.T) {
+	found := judgeKnob(t, rowOf(t, envAddressKeyDir), s1Model(defectAddressKeyLeaked))
+	requireFindingNames(t, found,
+		envAddressKeyDir+" за границей: ключ на один октет короче",
+		envAddressKeyDir+" за границей: ключ не разбирается",
+		"несёт материал секрета")
 }

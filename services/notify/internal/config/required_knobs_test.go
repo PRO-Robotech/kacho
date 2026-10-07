@@ -122,13 +122,33 @@ const (
 const addressKeyFileName = "addressKey"
 
 func validAddressKey() []byte {
-	return []byte(strings.Repeat("0123456789abcdef", 4))
+	return []byte(addressKeyOfOctets(config.AddressKeyMinBytes))
+}
+
+// addressKeyOfOctets — материал ключа отпечатка ровно n октетов в
+// шестнадцатеричной записи. Октеты различимы (0x00, 0x01, …): запись ключа не
+// совпадает ни с одной подстрокой текста отказа, кроме самой себя, — проба
+// «текст отказа не несёт материала» судит именно материал.
+func addressKeyOfOctets(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i)
+	}
+	return hex.EncodeToString(b)
 }
 
 // addressKeyDir — каталог формы kubelet с годным файлом ключа отпечатка.
 func addressKeyDir(t *testing.T) string {
 	t.Helper()
 	return kubeletDir(t, map[string][]byte{addressKeyFileName: validAddressKey()})
+}
+
+// addressKeyDirOf — выпуск каталога формы kubelet с файлом ключа body.
+func addressKeyDirOf(body string) func(t *testing.T) string {
+	return func(t *testing.T) string {
+		t.Helper()
+		return kubeletDir(t, map[string][]byte{addressKeyFileName: []byte(body)})
+	}
 }
 
 // ── таблица границ ─────────────────────────────────────────────────────────
@@ -140,14 +160,17 @@ func addressKeyDir(t *testing.T) string {
 // form — нарушена форма значения, а не числовая граница: текст обязан назвать
 // ручку, слова границы не требуются. Значение «за границей» без bound и без
 // form — ошибка таблицы, её ловит предпосылка.
+// secret — материал секрета, поданный пробой: текст отказа его не несёт
+// (Р16: «значение секрета не печатает»).
 type probeValue struct {
-	what  string
-	v     string
-	gen   func(t *testing.T) string
-	deps  map[string]string
-	want  string
-	bound []string
-	form  bool
+	what   string
+	v      string
+	gen    func(t *testing.T) string
+	deps   map[string]string
+	want   string
+	bound  []string
+	form   bool
+	secret []string
 }
 
 // knobRow — строка таблицы Р16 для одной ручки: значения на каждой границе
@@ -332,10 +355,16 @@ func s1Rows() []knobRow {
 		{
 			env: envAddressKeyDir,
 			edges: []probeValue{{
-				what: "на границе: каталог формы kubelet с годным ключом",
-				gen:  addressKeyDir,
+				what: fmt.Sprintf("на границе: ключ ровно %d октетов", config.AddressKeyMinBytes),
+				gen:  addressKeyDirOf(addressKeyOfOctets(config.AddressKeyMinBytes)),
 			}},
 			beyond: []probeValue{
+				{
+					what:   fmt.Sprintf("за границей: ключ на один октет короче (%d)", config.AddressKeyMinBytes-1),
+					gen:    addressKeyDirOf(addressKeyOfOctets(config.AddressKeyMinBytes - 1)),
+					bound:  []string{strconv.Itoa(config.AddressKeyMinBytes)},
+					secret: []string{addressKeyOfOctets(config.AddressKeyMinBytes - 1)},
+				},
 				{what: "за границей: относительный путь", v: "keys/address", form: true},
 				{form: true, what: "за границей: каталога нет", gen: func(t *testing.T) string {
 					return filepath.Join(t.TempDir(), "absent")
@@ -343,9 +372,12 @@ func s1Rows() []knobRow {
 				{form: true, what: "за границей: в каталоге нет файла ключа", gen: func(t *testing.T) string {
 					return kubeletDir(t, map[string][]byte{"other": validAddressKey()})
 				}},
-				{form: true, what: "за границей: ключ не разбирается", gen: func(t *testing.T) string {
-					return kubeletDir(t, map[string][]byte{addressKeyFileName: []byte("not-a-key")})
-				}},
+				{
+					form:   true,
+					what:   "за границей: ключ не разбирается",
+					gen:    addressKeyDirOf("not-a-key"),
+					secret: []string{"not-a-key"},
+				},
 			},
 		},
 		floatRow(envHardBounceRateMax, "0.001", "0.0009", "0.2", "0.2001"),
@@ -550,9 +582,21 @@ func judgeKnob(t *testing.T, row knobRow, run starter) []string {
 		for k, dv := range pv.deps {
 			edits[k] = str(dv)
 		}
-		add(pv.what, judgeRefusal(run(t, edits), row.env, pv.bound, pv.form))
+		res := run(t, edits)
+		add(pv.what, judgeRefusal(res, row.env, pv.bound, pv.form))
+		add(pv.what, judgeNoSecret(res, pv.secret))
 	}
 	return out
+}
+
+// judgeNoSecret — текст отказа не несёт поданного материала секрета.
+func judgeNoSecret(res bootResult, secret []string) string {
+	for _, s := range secret {
+		if s != "" && strings.Contains(res.text(), s) {
+			return "текст отказа несёт материал секрета: " + res.text()
+		}
+	}
+	return ""
 }
 
 // judgeWindowWithinRetention — зависимая граница окна долей (Р12, Д26·6).
@@ -751,10 +795,12 @@ func notifySources(t *testing.T) map[string]string {
 type modelDefect int
 
 const (
-	defectNone              modelDefect = iota
-	defectDefaultHardTTL                // у ручки срока HARD_BOUNCE умолчание 72h
-	defectNoUpperHardTTL                // верхняя граница срока HARD_BOUNCE снята
-	defectNoWindowRetention             // снята граница окно ≤ срок журнала
+	defectNone                   modelDefect = iota
+	defectDefaultHardTTL                     // у ручки срока HARD_BOUNCE умолчание 72h
+	defectNoUpperHardTTL                     // верхняя граница срока HARD_BOUNCE снята
+	defectNoWindowRetention                  // снята граница окно ≤ срок журнала
+	defectNoAddressKeyLowerBound             // нижняя граница длины ключа отпечатка снята до 1 октета
+	defectAddressKeyLeaked                   // текст отказа ключа отпечатка несёт содержимое файла
 )
 
 var (
@@ -871,8 +917,16 @@ func s1Model(defect modelDefect) starter {
 					refuse(e, "файл ключа не читается")
 					continue
 				}
-				if k, err := hex.DecodeString(strings.TrimSpace(string(b))); err != nil || len(k) < config.RecipientKeyMinBytes {
-					refuse(e, "ключ не разбирается")
+				minBytes := config.AddressKeyMinBytes
+				if defect == defectNoAddressKeyLowerBound {
+					minBytes = 1
+				}
+				if k, err := hex.DecodeString(strings.TrimSpace(string(b))); err != nil || len(k) < minBytes {
+					why := fmt.Sprintf("ключ не разбирается: не короче %d октетов", config.AddressKeyMinBytes)
+					if defect == defectAddressKeyLeaked {
+						why += fmt.Sprintf(" (прочитано %q)", b)
+					}
+					refuse(e, why)
 				}
 			case envPollInterval:
 				durOf(e, 5*time.Second, 10*time.Minute)
