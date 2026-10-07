@@ -34,7 +34,12 @@
 set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
@@ -224,7 +229,10 @@ if [ "${1:-}" = "--self-test" ]; then
   }
 
   # (0) ДЕРЕВО КАК ЕСТЬ — положительный контроль на настоящем рендере.
-  render "контроль 0 (боевой профиль как есть)" -f "$UMBRELLA/values.prod.yaml"
+  prod_args="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
+    || fatal "цепочка prod гейта не прочитана — положительного контроля нет"
+  # shellcheck disable=SC2086
+  render "контроль 0 (боевой профиль как есть)" $prod_args
   r="$RENDER_FILE"
   out="$(check "$r")"
   [ -z "$out" ] && echo "  ✓ (0) боевой профиль как есть                         → МОЛЧИТ" \
@@ -282,7 +290,7 @@ for stack in $STACKS; do
   # ПРОИЗВОДНЫМ»; здесь он не пересказывается.
   prof="$(stacks_chain "$stack" ' ')" \
     || fatal "стек $stack: цепочка профилей не прочитана — судить не о чем"
-  args="$(stacks_args "$stack" "$UMBRELLA")" \
+  args="$(render_chain_args "$stack" "$UMBRELLA" operator.yaml)" \
     || fatal "стек $stack: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
   # shellcheck disable=SC2086
   render "стек $stack" $args

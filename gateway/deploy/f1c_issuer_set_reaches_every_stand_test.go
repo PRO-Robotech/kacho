@@ -37,11 +37,12 @@
 //
 // # Законный близнец
 //
-// Профиль, края НЕ называющий (сегодня — values.own.yaml: накладка стенда
-// посадки own), отличается от судимого ровно ОДНИМ
-// фактом и обязан молчать. Что он в дереве есть — утверждается, а не
-// предполагается: близнец, исчезнувший из дерева, превратил бы «молчит на
-// близнеце» в утверждение ни о чём.
+// Профиль, края НЕ называющий, отличается от судимого ровно ОДНИМ фактом и
+// обязан молчать. Близнец и находка судятся ТЕМ ЖЕ судьёй (f1cJudgeProfile) на
+// входе, построенном в пробе: профиля, края не называющего, в дереве может не
+// остаться (последний — values.own.yaml — назвал край числом доверенных
+// прыжков, приёмка NTF-2 Р8), а «молчит на близнеце» обязано оставаться
+// утверждением о живом судье.
 package deploy_test
 
 import (
@@ -242,6 +243,75 @@ func f1cRecords(bindings []config.TokenIssuerBinding) []string {
 // ─────────────────────────────────────────────────────────────────────────────
 // (2) ПРОФИЛЬ: объявляет сам или наследует от слоя НИЖЕ.
 
+// f1cVerdict — класс профиля в переписи (2).
+type f1cVerdict int
+
+const (
+	f1cTwin f1cVerdict = iota
+	f1cDeclaresOwn
+	f1cInherits
+	f1cExcluded
+	f1cFinding
+)
+
+// f1cJudgeProfile — вердикт (2) по ОДНОМУ профилю: класс, строки журнала и
+// находки. Вынесено функцией, чтобы законного близнеца и находку судил ТОТ ЖЕ
+// код, что исполняется на дереве: своя копия предиката в близнеце разошлась бы с
+// настоящей проверкой молча.
+func f1cJudgeProfile(t *testing.T, stacks map[string][]string, profile string,
+	gw map[string]any) (verdict f1cVerdict, logs, findings []string) {
+	t.Helper()
+	if gw == nil {
+		// ЗАКОННЫЙ БЛИЗНЕЦ: отличается от судимого ровно одним фактом —
+		// края не называет, — и обязан молчать.
+		return f1cTwin, []string{fmt.Sprintf("%-32s края не называет — законный близнец, предмета нет", profile)}, nil
+	}
+	if f1cDeclares(gw) {
+		return f1cDeclaresOwn, []string{fmt.Sprintf("%-32s объявляет перечень САМ", profile)}, nil
+	}
+
+	// Не объявил сам. Тогда КАЖДАЯ цепочка, его называющая, обязана
+	// объявлять перечень слоем НИЖЕ него — и это читается из таблицы, а не
+	// принимается на слово.
+	if naming := f1cChainsNaming(stacks, profile); len(naming) > 0 {
+		for _, stack := range naming {
+			below, found := f1cDeclaringLayerBelow(t, stacks[stack], profile)
+			if !found {
+				findings = append(findings, fmt.Sprintf("профиль %s называет край, перечень издателей не объявляет, и в "+
+					"цепочке %q (%v) НИ ОДИН слой под ним его не объявляет.\n\n"+
+					"Тогда край этого стенда не поднимется: перечень издателей не "+
+					"объявлен, и страж старта отказывает, называя ручку.",
+					profile, stack, stacks[stack]))
+				continue
+			}
+			logs = append(logs, fmt.Sprintf("%-32s наследует в цепочке %q от слоя %s", profile, stack, below))
+		}
+		if len(findings) > 0 {
+			return f1cFinding, logs, findings
+		}
+		return f1cInherits, logs, nil
+	}
+
+	// Ни одна цепочка его не называет: применяется как есть или не
+	// применяется вовсе. Второе — записанное исключение с живым предметом.
+	if ex, recorded := f1cRecordedExclusions[profile]; recorded {
+		alive, why := ex.subject(t)
+		if !alive {
+			return f1cFinding, nil, []string{fmt.Sprintf("исключение для %s потеряло основание: %s. Основание было: %s.\n"+
+				"Либо профиль объявляет перечень, либо исключение переписывается под "+
+				"новое основание — исключение, пережившее свой предмет, разрешает то, "+
+				"чего нет", profile, why, ex.why)}
+		}
+		return f1cExcluded, []string{fmt.Sprintf("%-32s записанное исключение: предмет есть (%s)", profile, why)}, nil
+	}
+	return f1cFinding, nil, []string{fmt.Sprintf("профиль %s называет край, перечень издателей не объявляет и НИ ОДНОЙ "+
+		"цепочкой не назван — значит, применяется как есть, и край на нём не поднимется: "+
+		"перечень издателей не объявлен.\n\n"+
+		"Либо объяви перечень в самом профиле, либо внеси его в deploy/stacks.txt слоем "+
+		"поверх объявляющего, либо запиши исключение с причиной и предикатом, по "+
+		"которому оно истекает само (f1cRecordedExclusions).", profile)}
+}
+
 // TestF1c_EveryProfileNamingTheEdgeDeclaresTheIssuerSetOrInheritsItFromBelow —
 // профиль, называющий край, обязан объявить перечень издателей или доказуемо
 // получить его от слоя, лежащего под ним в КАЖДОЙ называющей его цепочке.
@@ -253,79 +323,36 @@ func TestF1c_EveryProfileNamingTheEdgeDeclaresTheIssuerSetOrInheritsItFromBelow(
 			"«ноль прочитанного», и молчание этой проверки сказано ни о чём")
 	}
 
-	namesEdge, declaresOwn, inherits, excluded, silentTwins := 0, 0, 0, 0, 0
+	count := map[f1cVerdict]int{}
 	for _, profile := range profiles {
-		gw := f1cEdgeBlock(t, profile)
-		if gw == nil {
-			// ЗАКОННЫЙ БЛИЗНЕЦ: отличается от судимого ровно одним фактом —
-			// края не называет, — и обязан молчать.
-			silentTwins++
-			t.Logf("%-32s края не называет — законный близнец, предмета нет", profile)
-			continue
+		verdict, logs, findings := f1cJudgeProfile(t, stacks, profile, f1cEdgeBlock(t, profile))
+		count[verdict]++
+		for _, l := range logs {
+			t.Log(l)
 		}
-		namesEdge++
-		if f1cDeclares(gw) {
-			declaresOwn++
-			t.Logf("%-32s объявляет перечень САМ", profile)
-			continue
+		for _, f := range findings {
+			t.Error(f)
 		}
-
-		// Не объявил сам. Тогда КАЖДАЯ цепочка, его называющая, обязана
-		// объявлять перечень слоем НИЖЕ него — и это читается из таблицы, а не
-		// принимается на слово.
-		naming := f1cChainsNaming(stacks, profile)
-		if len(naming) > 0 {
-			ok := true
-			for _, stack := range naming {
-				below, found := f1cDeclaringLayerBelow(t, stacks[stack], profile)
-				if !found {
-					ok = false
-					t.Errorf("профиль %s называет край, перечень издателей не объявляет, и в "+
-						"цепочке %q (%v) НИ ОДИН слой под ним его не объявляет.\n\n"+
-						"Тогда край этого стенда не поднимется: перечень издателей не "+
-						"объявлен, и страж старта отказывает, называя ручку.",
-						profile, stack, stacks[stack])
-					continue
-				}
-				t.Logf("%-32s наследует в цепочке %q от слоя %s", profile, stack, below)
-			}
-			if ok {
-				inherits++
-			}
-			continue
-		}
-
-		// Ни одна цепочка его не называет: применяется как есть или не
-		// применяется вовсе. Второе — записанное исключение с живым предметом.
-		if ex, recorded := f1cRecordedExclusions[profile]; recorded {
-			alive, why := ex.subject(t)
-			if !alive {
-				t.Errorf("исключение для %s потеряло основание: %s. Основание было: %s.\n"+
-					"Либо профиль объявляет перечень, либо исключение переписывается под "+
-					"новое основание — исключение, пережившее свой предмет, разрешает то, "+
-					"чего нет", profile, why, ex.why)
-				continue
-			}
-			excluded++
-			t.Logf("%-32s записанное исключение: предмет есть (%s)", profile, why)
-			continue
-		}
-		t.Errorf("профиль %s называет край, перечень издателей не объявляет и НИ ОДНОЙ "+
-			"цепочкой не назван — значит, применяется как есть, и край на нём не поднимется: "+
-			"перечень издателей не объявлен.\n\n"+
-			"Либо объяви перечень в самом профиле, либо внеси его в deploy/stacks.txt слоем "+
-			"поверх объявляющего, либо запиши исключение с причиной и предикатом, по "+
-			"которому оно истекает само (f1cRecordedExclusions).", profile)
 	}
 
-	if silentTwins == 0 {
-		t.Errorf("в дереве не осталось НИ ОДНОГО профиля, края не называющего — законного " +
-			"близнеца у этой проверки больше нет, и «молчит на близнеце» стало утверждением " +
-			"ни о чём. Заведи близнеца или перепиши проверку под новое устройство дерева")
+	// ЗАКОННЫЙ БЛИЗНЕЦ и НАХОДКА — тем же судьёй. Профиль, края не называющий,
+	// молчит; профиль, называющий край без перечня, без цепочки и без
+	// исключения, — находка. Близнец берётся из дерева, пока он там есть; профиль
+	// стенда, начавший называть край (values.own.yaml — число доверенных прыжков,
+	// приёмка NTF-2 Р8), близнеца из дерева не убирает: молчание судьи на нём
+	// утверждается на входе, отличающемся от судимого ровно одним фактом.
+	const synthetic = "values.f1c-synthetic.yaml"
+	if v, _, f := f1cJudgeProfile(t, stacks, synthetic, nil); v != f1cTwin || len(f) != 0 {
+		t.Errorf("близнец: профиль, края не называющий, обязан молчать — класс %d, находки %q", v, f)
+	}
+	if v, _, f := f1cJudgeProfile(t, stacks, synthetic, map[string]any{"image": "x"}); v != f1cFinding || len(f) != 1 {
+		t.Errorf("находка: профиль, называющий край без перечня, цепочки и исключения, обязан "+
+			"краснеть — класс %d, находки %q", v, f)
 	}
 	t.Logf("перепись: профилей %d · называют край %d (объявляют сами %d · наследуют %d · "+
-		"записанных исключений %d) · законных близнецов %d",
-		len(profiles), namesEdge, declaresOwn, inherits, excluded, silentTwins)
+		"записанных исключений %d · находок %d) · законных близнецов в дереве %d",
+		len(profiles), len(profiles)-count[f1cTwin], count[f1cDeclaresOwn], count[f1cInherits],
+		count[f1cExcluded], count[f1cFinding], count[f1cTwin])
 }
 
 // f1cChainsNaming — имена цепочек, называющих этот профиль, в устойчивом порядке.

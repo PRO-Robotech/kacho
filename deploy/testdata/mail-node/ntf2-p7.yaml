@@ -20,3 +20,10 @@ global:
         connectionURI: "smtp://relay.ntf2-p7.example:587/"
         fromAddress: "p7-sender@ntf2-p7.example"
         fromName: "NTF2 P7 sample"
+
+# Число доверенных прыжков края (приёмка NTF-2 Р8, Д51): поставляемый `prod` его
+# не несёт, и рендер `prod` без него отказывает с именем
+# KACHO_API_GATEWAY_TRUSTED_HOPS. Образец оператора задаёт его так же, как узел
+# почты, — ключом формы зонтика, только под `api-gateway`.
+api-gateway:
+  trustedHops: 1

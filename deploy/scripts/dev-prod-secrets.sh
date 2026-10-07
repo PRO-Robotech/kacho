@@ -11,6 +11,9 @@
 #   - kaname-mail-keys    keys=mail-window.key,device-label.key — ключи почтовой
 #                                       полосы, 32 случайных байта каждый (читаются на любой посадке)
 #   - kaname-bootstrap-sa-key key=private_key_pem — ES256-ключ учётки первичной чеканки
+#   - kacho-api-gateway-anon-mail-pow-key key=pow.key — ключ подписи вызовов
+#                                       proof-of-work края, 32 случайных байта
+#                                       (требуется стражем старта края на любой посадке)
 #
 # ЗАПУСКАЕТСЯ ДО ПЕРВОГО ПРОГОНА helm, А НЕ МЕЖДУ ПРОГОНАМИ (задача #948): под,
 # которому не хватает секрета, ждёт молча, и `helm --wait` истекает по сроку, а не
@@ -186,6 +189,29 @@ elif [[ "$out" == *"(NotFound)"* ]]; then
     --dry-run=client -o yaml | create_once kaname-mail-keys "mail-window.key + device-label.key, 32B random each"
 else
   refuse_unknown kaname-mail-keys "$out"
+fi
+
+# ─── КЛЮЧ ПОДПИСИ ВЫЗОВОВ PROOF-OF-WORK КРАЯ: ОДИН РАЗ, НЕ РОТИРУЕТСЯ ─────────
+#
+# (kacho#2917, приёмка NTF-2 Р5; замысел З9). Край читает файл
+# KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE — случайные байты, не короче 32, ОДИН
+# ключ на весь флот края. Страж старта края требует его на ЛЮБОЙ посадке, поэтому
+# объект нужен каждому стенду. Том у пода обязательный: недостающий объект держит
+# под до старта с именем секрета.
+#
+# Порождаем ОДИН раз, дальше переиспользуем: ключом подписаны вызовы, уже
+# выданные клиентам. Смена ключа делает каждый выданный и ещё не решённый вызов
+# недействительным — клиент получает отказ на доказательстве, которое честно
+# посчитал. Величина проходит процессной подстановкой прямо в манифест и НЕ
+# печатается.
+if out="$(kubectl -n "$NS" get secret kacho-api-gateway-anon-mail-pow-key -o name 2>&1)"; then
+  echo "kacho-api-gateway-anon-mail-pow-key already present — reusing (смена ключа гасит выданные вызовы)"
+elif [[ "$out" == *"(NotFound)"* ]]; then
+  kubectl -n "$NS" create secret generic kacho-api-gateway-anon-mail-pow-key \
+    --from-file=pow.key=<(openssl rand 32) \
+    --dry-run=client -o yaml | create_once kacho-api-gateway-anon-mail-pow-key "pow.key, 32B random"
+else
+  refuse_unknown kacho-api-gateway-anon-mail-pow-key "$out"
 fi
 
 echo "prerequisite secrets ready in ns/$NS"

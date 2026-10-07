@@ -133,10 +133,14 @@ command -v openssl >/dev/null 2>&1 || fatal "нет openssl — посев че�
 # Требуемое множество посев выводит из рендера. Без этого контроля отказ рендера
 # внутри посева (дерево без собранных зависимостей) читался бы как отказ посева —
 # то есть как находка о дереве, которого здесь не было.
-# shellcheck source=deploy/tests/helm/stacks.sh
-. "$HERE/stacks.sh"
-OWN_ARGS="$(stacks_args own "$UMBRELLA")" || fatal "стек own: цепочка профилей не прочитана из stacks.txt"
-PROD_ARGS="$(stacks_args prod "$UMBRELLA")" || fatal "стек prod: цепочка профилей не прочитана из stacks.txt"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$HERE/lib/render-chain.sh"
+OWN_ARGS="$(render_chain_args own "$UMBRELLA" operator.yaml)" || fatal "стек own: цепочка профилей не прочитана из stacks.txt"
+PROD_ARGS="$(render_chain_args prod "$UMBRELLA" operator.yaml)" || fatal "стек prod: цепочка профилей не прочитана из stacks.txt"
 # shellcheck disable=SC2086  # цепочка `-f a -f b` обязана разбиться на слова
 helm_try kacho-umbrella "$UMBRELLA" $OWN_ARGS
 render_or_fatal "стек own (предпосылка: из его рендера посев выводит требуемое)"
