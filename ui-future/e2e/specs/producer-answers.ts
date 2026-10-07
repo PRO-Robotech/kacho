@@ -132,6 +132,50 @@ export const ACCESS_KEY_SESSION_NOT_FRESH: ProducerAnswer = {
   }),
 };
 
+/**
+ * Условие пробы, а не подставленный ответ: КТО производит «Дано» сквозного
+ * пути ключа доступа (`access-key-lifecycle.spec.ts`, #3059) и что прогон
+ * говорит, когда условия нет. Ни одно из них проба не подставляет — каждое
+ * создаётся настоящим производителем, и запись называет его координатой, чтобы
+ * сверяющий нашёл того, кто условие держит, не читая пробу.
+ *
+ *   • `authenticator` — виртуальный аутентификатор браузера страницы (домен CDP
+ *     `WebAuthn`), шаг 1 посева К приёмки F8-S4 дословно. Удостоверение в нём
+ *     заводит ЭКРАН `/settings` настоящей церемонией `navigator.credentials.create`:
+ *     посева К у пути нет, иначе заведение ключа экраном не было бы предметом;
+ *   • `human` — человек П-п со своей сессией у браузера; ключ ему заводит экран;
+ *   • `origins` — П4 приёмки F8-S4: служба принимает происхождение браузера
+ *     набора для ключей доступа. Производит его СЛОЙ ПЛОЩАДКИ — профиль стенда,
+ *     а не проба и не консоль; на профиле, где перечень пуст («никого»), исход
+ *     пути — «не выполнилось: условие не создано», а не красное о продукте.
+ */
+export interface ProducedCondition {
+  /** Что должно быть верно до первого шага пути. */
+  condition: string;
+  /** Кто это производит и где — координата для того, кто сверяет. */
+  producer: string;
+}
+
+export const ACCESS_KEY_LIFECYCLE_CONDITIONS = {
+  authenticator: {
+    condition:
+      "у страницы есть виртуальный аутентификатор: ctap2, internal, резидентный ключ, проверка пользователя по сценарию, флаги резервного копирования false",
+    producer:
+      "CDP WebAuthn.addVirtualAuthenticator — ui-future/e2e/specs/access-key-seed.ts pageAuthenticator (приёмка F8-S4, §6.0 шаг 1)",
+  },
+  human: {
+    condition: "человек П-п с подтверждённым адресом и паролем держит сессию у браузера; ключей у него нет",
+    producer:
+      "посев П-п своим контекстом запросов — ui-future/e2e/specs/ceremony-seed.ts seedConfirmedHuman, носитель — transferSession",
+  },
+  origins: {
+    condition:
+      "служба принимает происхождение браузера набора для ключей доступа, а имя доверяющей стороны — суффикс хоста консоли (П4 приёмки F8-S4)",
+    producer:
+      "слой площадки: kaname.config.authn.accessKeys.origins либо originFromConsole (deploy/helm/umbrella, профиль стенда); имя — global.identity.webauthnRpId",
+  },
+} as const satisfies Record<string, ProducedCondition>;
+
 /** Край: служба не ответила о предъявленном на глаголе с носителем (KA1, Р1) — носитель цел. */
 export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE);
 
