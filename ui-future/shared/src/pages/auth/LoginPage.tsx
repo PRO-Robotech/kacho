@@ -17,6 +17,7 @@ import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/mo
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
+import { AccessKeySignInButton, useAccessKeySignIn } from "./access-key";
 import { CeremonyScreen } from "./CeremonyScreen";
 import { registrationAddress } from "./ceremony-addresses";
 import { useReturnTo } from "./use-return-to";
@@ -40,7 +41,12 @@ import { useReturnTo } from "./use-return-to";
 //     происхождения (F8-13): перезагрузка документа нужна, чтобы каждый модуль
 //     прочёл новую личность, а не держал прежнюю;
 //   • пути на восстановление доступа НЕ предлагает: его на посадке нет до S3, и
-//     обещание пути, которого нет, хуже его отсутствия (Р4, F8-39).
+//     обещание пути, которого нет, хуже его отсутствия (Р4, F8-39);
+//   • рядом с формой пароля — кнопка входа ключом доступа (приёмка F8-S4, Р1),
+//     если у браузера есть интерфейс ключей (Р7). Испытание она просит только
+//     нажатием (Р2); пока идёт одна попытка входа, вторая — другим способом —
+//     закрыта: две выдачи сессии подряд человеку не нужны. Попытку ведёт
+//     `access-key/use-access-key-sign-in.ts`.
 //
 // Своего правила пароля, формы кода или адреса здесь нет (Р2): незаполненное
 // поле называет служба.
@@ -71,6 +77,8 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
   const [lockedFor, setLockedFor] = useState<number | null>(null);
+  const signedIn = useCallback(() => leave(returnTo), [leave, returnTo]);
+  const keySignIn = useAccessKeySignIn({ onSignedIn: signedIn, onStart: () => setRefusal(null), blocked: busy });
 
   const askSession = useCallback(
     (isCancelled: () => boolean = () => false) =>
@@ -103,9 +111,10 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   }, [lockedFor]);
 
   const onSubmit = async () => {
-    if (busy || lockedFor !== null) return;
+    if (busy || lockedFor !== null || keySignIn.busy) return;
     setBusy(true);
     setRefusal(null);
+    keySignIn.clear();
     try {
       await loginLane.login(holder, { email, password, secondFactor: withFactor ? factor : undefined });
       leave(returnTo);
@@ -197,10 +206,11 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
             <LaneRefusalAlert refusal={refusal} />
           </div>
         )}
-        <Button type="primary" htmlType="submit" block loading={busy} disabled={lockedFor !== null}>
+        <Button type="primary" htmlType="submit" block loading={busy} disabled={lockedFor !== null || keySignIn.busy}>
           Войти
         </Button>
       </FormGrid>
+      <AccessKeySignInButton signIn={keySignIn} blocked={busy} />
     </CeremonyScreen>
   );
 }
