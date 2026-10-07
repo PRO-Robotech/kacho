@@ -759,11 +759,21 @@ pg-storage:
     extendedConfiguration: |
       autovacuum_naptime = 5s
 
-# ─── security.txt (RFC 9116) — served at /.well-known/security.txt via api-gateway
-# ingress; runtime-configurable per cluster.
+# ─── security.txt (RFC 9116) — text of the file, runtime-configurable per cluster.
+# The ConfigMap carries the text only: no object of this chart serves it at
+# /.well-known/security.txt yet.
 security:
   txt:
     enabled: true
+    # DECLARED publication date and expiry (kacho#2876), never the moment of
+    # rendering: an expired file is stale per RFC 9116 §2.5.5, and a
+    # clock-dependent render diffs on every upgrade. UTC, RFC 3339, QUOTED (an
+    # unquoted date is a YAML timestamp, not the string the template reads).
+    # Expires is no further than one year from publication;
+    # deploy/security_txt_expires_test.go turns red 30 days BEFORE expiry — renew
+    # both values then.
+    published: "2026-10-07T00:00:00Z"
+    expires: "2027-10-06T00:00:00Z"
   # Primary security contact — REQUIRED override per environment.
   contactEmail: security@kacho.cloud
   altContacts:
