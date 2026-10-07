@@ -460,7 +460,7 @@ test("F8-25 · служба молчит на глаголе с носителе
 
 // ═══ S2 — группа M. Первый пароль из живой сессии (Р13) ══════════════════════
 
-const PASSWORD_ENROLL = "/iam/v1/auth/password/enroll";
+const PASSWORD_ENROLL = LANE.passwordEnroll;
 
 test("F8-63 · человек с паролем выбрал заведение: отказ службы назван, путь к смене дан", async ({
   page,
