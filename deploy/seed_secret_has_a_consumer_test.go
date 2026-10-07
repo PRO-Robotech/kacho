@@ -24,8 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЧИТАЕТСЯ И ЧЕГО ПРОБА НЕ УТВЕРЖДАЕТ
 //
-// Читаются ОБЪЯВЛЕНИЯ — отслеживаемые файлы зонта и его подчартов (в том числе
-// локальных `file://`, лежащих вне каталога зонта, — край, службы) формы
+// Читаются ОБЪЯВЛЕНИЯ — отслеживаемые файлы зонта и его подчартов формы
 // `.yaml`/`.yml`/`.tpl` (профили, умолчания, шаблоны) по индексу git, со
 // снятыми комментариями: имя, названное прозой, потребителем не является.
 // Потребитель — имя секрета отдельным словом в исполняемой части объявления
@@ -95,7 +94,6 @@ type seedConsumerFacts struct {
 	seeded    []string            // секреты, которые заводит посев
 	consumers map[string][]string // секрет → объявления, называющие его
 	read      int                 // объявлений прочитано
-	roots     int                 // корней обхода: зонт и локальные подчарты вне него
 }
 
 // judgeSeedConsumers — ядро: чистая функция над фактами.
@@ -130,27 +128,10 @@ func seedConsumerFactsFromTree(t *testing.T) seedConsumerFacts {
 	}
 	sort.Strings(f.seeded)
 
-	// Корни объявлений — каталог зонта и каждый ЛОКАЛЬНЫЙ подчарт (`file://`),
-	// лежащий вне него: подчарт края (`gateway/deploy`) и подчарты служб читают
-	// свои секреты сами, и посев, заведённый для них, иначе выглядел бы
-	// пережившим потребителя (ключ подписи вызовов края, kacho#2917).
-	roots := []string{umbrellaDir}
-	for _, dir := range subchartDirs(t) {
-		if rel, rerr := filepath.Rel(umbrellaDir, dir); rerr == nil && !strings.HasPrefix(rel, "..") {
-			continue // уже внутри зонта
-		}
-		roots = append(roots, dir)
+	files, err := treecorpus.UnderWithSuffix(umbrellaDir, seedConsumerSuffixes...)
+	if err != nil {
+		t.Fatalf("объявления зонта %s не перечислены: %v", umbrellaDir, err)
 	}
-	sort.Strings(roots[1:])
-	var files []string
-	for _, root := range roots {
-		got, err := treecorpus.UnderWithSuffix(root, seedConsumerSuffixes...)
-		if err != nil {
-			t.Fatalf("объявления %s не перечислены: %v", root, err)
-		}
-		files = append(files, got...)
-	}
-	f.roots = len(roots)
 	abs, err := filepath.Abs(".")
 	if err != nil {
 		t.Fatalf("абсолютный путь каталога deploy: %v", err)
@@ -182,9 +163,8 @@ func TestEverySeededSecretHasAConsumer(t *testing.T) {
 	for _, n := range f.seeded {
 		parts = append(parts, fmt.Sprintf("%s: %d", n, len(f.consumers[n])))
 	}
-	t.Logf("осмотрено: корней (зонт и локальные подчарты вне него) %d; объявлений %d; посев заводит "+
-		"секретов %d; потребителей по секрету — %s",
-		f.roots, f.read, len(f.seeded), strings.Join(parts, ", "))
+	t.Logf("осмотрено: объявлений зонта %d; посев заводит секретов %d; потребителей по секрету — %s",
+		f.read, len(f.seeded), strings.Join(parts, ", "))
 
 	if f.read == 0 {
 		t.Fatalf("объявлений зонта не прочитано ни одного — «ноль находок» здесь " +

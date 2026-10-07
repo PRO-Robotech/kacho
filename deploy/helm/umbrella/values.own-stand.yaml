@@ -261,6 +261,12 @@ kacho-geo:
   image: docker.io/prorobotech/kacho-geo:2798-87329e29
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:2798-87329e29
+  # ЧИСЛО ДОВЕРЕННЫХ ПРЫЖКОВ ПЕРЕД КРАЕМ (KACHO_API_GATEWAY_TRUSTED_HOPS; приёмка
+  # NTF-2 Р8, решение Д51). Боевой слой (values.prod.yaml) его не несёт: топологию
+  # задаёт оператор. Число — свойство площадки, поэтому его объявляет слой
+  # площадки этого стенда, а не накладка `own`: `1` (один вход перед краем),
+  # с которым стенд работает сегодня.
+  trustedHops: 1
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb
