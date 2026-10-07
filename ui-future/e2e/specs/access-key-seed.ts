@@ -6,6 +6,7 @@ import { expect, type CDPSession, type Page } from "@playwright/test";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import { SESSION_IDENTITY, lastIssued, type Seed } from "./ceremony-seed";
 import { conditionNotCreated } from "./mail-receiver";
+import { FIXTURE_UNMET_PREFIX } from "./producer-answers";
 
 /**
  * Посев К — ключ доступа человека П-п в аутентификаторе браузера сценария
@@ -198,7 +199,7 @@ export async function seedAccessKey(
     const text = await finished.text();
     if (text.includes("ORIGIN_NOT_ALLOWED")) {
       conditionNotCreated(
-        `условие не создано (приёмка F8-S4, §4 П4): происхождение браузера набора ${origin} ` +
+        `${FIXTURE_UNMET_PREFIX} (приёмка F8-S4, §4 П4) происхождение браузера набора ${origin} ` +
           "не входит в перечень происхождений ключа доступа на стенде — церемония ключа на нём не выполнима",
       );
     }

@@ -21,7 +21,13 @@ import {
 import { CANCELLED_BY_PAGE, ceremonyCensus, formatCall, test, type CeremonyCall, type CeremonyCensus } from "./fixtures";
 import { challengeError } from "../../shared/src/api/step-up";
 import { conditionNotCreated } from "./mail-receiver";
-import { EDGE_CREDENTIAL_STATE_UNKNOWN, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
+import {
+  EDGE_CREDENTIAL_STATE_UNKNOWN,
+  FIXTURE_UNMET_PREFIX,
+  SESSION_NOT_FRESH,
+  bodyOf,
+  fulfillWith,
+} from "./producer-answers";
 
 /**
  * Параметры учётной записи на `/settings` — смена пароля и второй фактор
@@ -482,7 +488,7 @@ test("F8-63 · человек с паролем выбрал заведение:
       const text = await token.text();
       if (/Illegal argument form:/.test(text)) {
         conditionNotCreated(
-          `условие не создано (приёмка F8, §4 П5): служба стенда не знает вид признака формы password-enroll — ` +
+          `${FIXTURE_UNMET_PREFIX} (приёмка F8, §4 П5) служба стенда не знает вид признака формы password-enroll — ` +
             `${token.status()} ${text.slice(0, 200)}`,
         );
       }
@@ -503,7 +509,7 @@ test("F8-63 · человек с паролем выбрал заведение:
       const laneRefusal = /"domain"\s*:\s*"iam\.kaname\.cloud"/.test(text);
       if (!laneRefusal) {
         conditionNotCreated(
-          `условие не создано (приёмка F8, §4 П5): глагол ${PASSWORD_ENROLL} на стенде не достигнут сквозь край — ` +
+          `${FIXTURE_UNMET_PREFIX} (приёмка F8, §4 П5) глагол ${PASSWORD_ENROLL} на стенде не достигнут сквозь край — ` +
             `${res.status()} ${text.slice(0, 200)}`,
         );
       }

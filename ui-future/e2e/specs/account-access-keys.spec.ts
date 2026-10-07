@@ -22,7 +22,7 @@ import {
 } from "./ceremony-seed";
 import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
 import { conditionNotCreated } from "./mail-receiver";
-import { ACCESS_KEY_SESSION_NOT_FRESH, fulfillWith } from "./producer-answers";
+import { ACCESS_KEY_SESSION_NOT_FRESH, FIXTURE_UNMET_PREFIX, fulfillWith } from "./producer-answers";
 
 /**
  * Ключи доступа на `/settings` (приёмка F8, ред. 12, S4, группа L; Р11, Р12).
@@ -207,7 +207,7 @@ async function originCondition(res: Awaited<ReturnType<typeof answerTo>>, testIn
   const text = await res.text();
   if (text.includes("ORIGIN_NOT_ALLOWED")) {
     conditionNotCreated(
-      `условие не создано (приёмка F8, §4 П4): происхождение браузера набора ${originOf(testInfo)} не входит в перечень ` +
+      `${FIXTURE_UNMET_PREFIX} (приёмка F8, §4 П4) происхождение браузера набора ${originOf(testInfo)} не входит в перечень ` +
         "происхождений ключа доступа на стенде — церемония ключа на нём не выполнима",
     );
   }
@@ -225,7 +225,7 @@ async function rpCondition(challenge: Awaited<ReturnType<typeof answerTo>>, test
   const host = new URL(originOf(testInfo)).hostname;
   if (rpId !== "" && host !== rpId && !host.endsWith(`.${rpId}`)) {
     conditionNotCreated(
-      `условие не создано (приёмка F8, §4 П4): служба стенда выдаёт испытание для доверяющей стороны «${rpId}», ` +
+      `${FIXTURE_UNMET_PREFIX} (приёмка F8, §4 П4) служба стенда выдаёт испытание для доверяющей стороны «${rpId}», ` +
         `а браузер набора открыт на ${host} — церемония ключа браузером на этом адресе не выполнима`,
     );
   }
