@@ -16,7 +16,7 @@ import {
 } from "./ceremony-seed";
 import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
 import { conditionNotCreated } from "./mail-receiver";
-import { ACCESS_KEY_LIFECYCLE_CONDITIONS } from "./producer-answers";
+import { ACCESS_KEY_LIFECYCLE_CONDITIONS, FIXTURE_UNMET_PREFIX } from "./producer-answers";
 
 /**
  * Сквозной путь ключа доступа сквозь консоль и край (#3059): завести ключ на
@@ -181,14 +181,6 @@ async function keysShown(page: Page) {
 // ─── условие П4 — два признака ────────────────────────────────────────────────
 
 /**
- * Начало текста несозданного условия: гейт вердикта узнаёт «не выполнилось» по
- * пометке И по этому началу в тексте отказа (`assert-console-probes-verdict.py`,
- * `FIXTURE_UNMET_PREFIX`). Текст без двоеточия сразу за словами гейт прочёл бы
- * красным о продукте.
- */
-const UNMET = "условие не создано:";
-
-/**
  * Имя доверяющей стороны испытания против хоста консоли: браузер ведёт церемонию
  * только для имени, которому принадлежит адрес страницы. Чужое имя — профиль
  * стенда (П4), а не исход экрана; печатаются оба признака.
@@ -198,7 +190,7 @@ async function rpCondition(challenge: Awaited<ReturnType<typeof answerTo>>, test
   const host = new URL(originOf(testInfo)).hostname;
   if (rpId !== "" && host !== rpId && !host.endsWith(`.${rpId}`)) {
     conditionNotCreated(
-      `${UNMET} ${ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.condition} — нет: служба стенда выдаёт испытание ` +
+      `${FIXTURE_UNMET_PREFIX} ${ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.condition} — нет: служба стенда выдаёт испытание ` +
         `для доверяющей стороны «${rpId}», а браузер набора открыт на ${host}. Производит условие ` +
         ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.producer,
     );
@@ -229,7 +221,7 @@ async function enrolmentAccepted(accepted: Awaited<ReturnType<typeof answerTo>>,
   const text = await accepted.text();
   if (text.includes("ORIGIN_NOT_ALLOWED")) {
     conditionNotCreated(
-      `${UNMET} ${ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.condition} — нет: служба стенда отвергла ` +
+      `${FIXTURE_UNMET_PREFIX} ${ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.condition} — нет: служба стенда отвергла ` +
         `происхождение консоли ${own} (ORIGIN_NOT_ALLOWED). Производит условие ` +
         ACCESS_KEY_LIFECYCLE_CONDITIONS.origins.producer,
     );

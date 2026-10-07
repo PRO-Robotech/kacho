@@ -7,6 +7,7 @@ import {
   EDGE_CREDENTIAL_STATE_UNKNOWN as EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE,
   type EdgeAnswer,
 } from "../../shared/src/test/edge-answers";
+import { CONDITION_NOT_CREATED } from "./mail-receiver";
 
 /**
  * Ответы, которые проба ПОДСТАВЛЯЕТ, — в той форме, в какой их отдаёт
@@ -175,6 +176,16 @@ export const ACCESS_KEY_LIFECYCLE_CONDITIONS = {
       "слой площадки: kaname.config.authn.accessKeys.origins либо originFromConsole (deploy/helm/umbrella, профиль стенда); имя — global.identity.webauthnRpId",
   },
 } as const satisfies Record<string, ProducedCondition>;
+
+/**
+ * Начало текста несозданного условия — ЕДИНСТВЕННОЕ место, где его набирают.
+ * Гейт вердикта узнаёт «не выполнилось» по пометке `CONDITION_NOT_CREATED` И по
+ * этому началу в тексте отказа (`.github/scripts/assert-console-probes-verdict.py`,
+ * `FIXTURE_UNMET_PREFIX`); текст без двоеточия сразу за словами — «условие не
+ * создано (приёмка …): …» — гейт читает КРАСНЫМ о продукте. Ссылка на приёмку
+ * идёт ПОСЛЕ этого начала: `${FIXTURE_UNMET_PREFIX} (приёмка F8, §4 П4) …`.
+ */
+export const FIXTURE_UNMET_PREFIX = `${CONDITION_NOT_CREATED}:`;
 
 /** Край: служба не ответила о предъявленном на глаголе с носителем (KA1, Р1) — носитель цел. */
 export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE);
