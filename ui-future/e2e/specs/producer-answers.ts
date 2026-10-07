@@ -82,6 +82,24 @@ export const LOGOUT_UNAVAILABLE = laneRefusal(
   "logout not performed; try again later",
 );
 
+/**
+ * Отказ по частоте — `writeError`, ветвь `TooManyAttemptsError` (приёмка F8-S3,
+ * средство П-О, F8S3-11): `429`, тело `{code: 8, message: TextTooManyAttempts,
+ * details: [ErrorInfo TOO_MANY_ATTEMPTS]}` и заголовок `Retry-After` целыми
+ * секундами (`retryAfterSeconds`, не меньше одной). Срок — вход подстановки:
+ * служба называет его своим счётом, и проба называет тот, который утверждает.
+ */
+export function laneTooManyAttempts(retryAfterSeconds: number): ProducerAnswer {
+  const answer = laneRefusal(
+    "kaname loginlanehttp.writeError → Retry-After + writeRefusal(429, RESOURCE_EXHAUSTED, TextTooManyAttempts, TOO_MANY_ATTEMPTS)",
+    429,
+    8,
+    "too many attempts; try again later",
+    "TOO_MANY_ATTEMPTS",
+  );
+  return { ...answer, headers: { ...answer.headers, "Retry-After": String(retryAfterSeconds) } };
+}
+
 /** Сессия не свежа — `ErrSessionNotFresh`. */
 export const SESSION_NOT_FRESH = laneRefusal(
   "kaname loginlanehttp.writeError → writeRefusal(403, PERMISSION_DENIED, TextSessionNotFresh, SESSION_NOT_FRESH)",

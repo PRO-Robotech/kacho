@@ -16,9 +16,9 @@ import { setStepUpRequester } from "./step-up";
 // велит проба, и пишет ленту событий — выпуск, отмену и исход каждого
 // обращения, открытие и закрытие потока. Лента и судится.
 //
-// По каждому из восьми глаголов, которые консоль зовёт в S1+S2 и S4 (вход,
+// По каждому из девяти глаголов, которые консоль зовёт в S1+S2, S3 и S4 (вход,
 // регистрация, смена пароля, подтверждение, снятие, перечеканка, повышение,
-// вход ключом), и
+// вход ключом, завершение восстановления), и
 // по каждому из трёх исходов глагола — ответ, отказ края `503`, «ответа нет»:
 // чтение в полёте отменено до выпуска глагола и выпущено снова после исхода;
 // мутация в полёте дождалась исхода; поток закрыт до глагола и открыт после;
@@ -305,6 +305,18 @@ const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Prom
     verb: "POST /iam/v1/auth/access-key/login",
     run: () => loginLane.accessKeyLogin(holder("access-key-login"), ASSERTION_BODY),
   },
+  // Завершение восстановления доступа (приёмка F8-S3, Р7; F8S3-18): выдаёт сессию
+  // той же операцией, что вход, — ставит носитель и меняет контекст формы.
+  {
+    name: "завершение восстановления",
+    verb: "POST /iam/v1/auth/recovery/complete",
+    run: () =>
+      loginLane.completeRecovery(holder("recovery-complete"), {
+        email: "a@kacho.local",
+        code: "ABCDE-FGHJK",
+        newPassword: "q",
+      }),
+  },
 ];
 
 describe("F8-46 · упорядочение вокруг глагола, ставящего носитель (Р10)", () => {
@@ -434,7 +446,14 @@ describe("F8S4-11 · вход ключом стоит в перечнях упо
     expect({
       login: [SETS_CARRIER.has(LOGIN_LANE.accessKeyLogin), CHANGES_FORM_CONTEXT.has(LOGIN_LANE.accessKeyLogin)],
       begin: [SETS_CARRIER.has(LOGIN_LANE.accessKeyBegin), CHANGES_FORM_CONTEXT.has(LOGIN_LANE.accessKeyBegin)],
-      sizes: [SETS_CARRIER.size, CHANGES_FORM_CONTEXT.size, CARRIER_VERBS.length],
+      // Завершение восстановления (F8-S3) в перечнях было до S4 (SETS_CARRIER,
+      // CHANGES_FORM_CONTEXT), а в прогон упорядочения вошло после — своей
+      // записью, которую держит F8S3-18; здесь счёт прогона ведётся без неё.
+      sizes: [
+        SETS_CARRIER.size,
+        CHANGES_FORM_CONTEXT.size,
+        CARRIER_VERBS.filter((v) => !v.verb.includes("/recovery/")).length,
+      ],
       inLoop: CARRIER_VERBS.filter((v) => v.verb.includes("/access-key/")).map((v) => v.verb),
     }).toEqual({
       login: [true, true],
@@ -450,6 +469,45 @@ describe("F8S4-11 · вход ключом стоит в перечнях упо
     it(`F8S4-11 · испытание входа ключом, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
       const verb = "POST /iam/v1/auth/access-key/begin";
       const tape = await scenario(verb, () => loginLane.accessKeyBegin(holder("access-key-begin")), outcome);
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+  }
+});
+
+describe("F8S3-18 · завершение восстановления упорядочено как глагол, ставящий носитель; запрос кода — нет", () => {
+  // Перемер базы на голове сборки: в прогоне упорядочения 8 глаголов (7 на
+  // 9b14ae7f01c из N12 приёмки и вход ключом F8-S4); S3 добавляет ровно один.
+  const CARRIER_VERBS_BEFORE_S3 = 8;
+
+  it("F8S3-18 · запись завершения в прогоне одна, в SETS_CARRIER и CHANGES_FORM_CONTEXT — есть; запроса кода нет нигде", () => {
+    const complete = "POST /iam/v1/auth/recovery/complete";
+    expect({
+      inLoop: CARRIER_VERBS.filter((v) => v.verb === complete).length,
+      loopSize: CARRIER_VERBS.length,
+      complete: [SETS_CARRIER.has(LOGIN_LANE.recoveryComplete), CHANGES_FORM_CONTEXT.has(LOGIN_LANE.recoveryComplete)],
+      request: [
+        SETS_CARRIER.has(LOGIN_LANE.recovery),
+        CHANGES_FORM_CONTEXT.has(LOGIN_LANE.recovery),
+        CARRIER_VERBS.some((v) => v.verb === "POST /iam/v1/auth/recovery"),
+      ],
+    }).toEqual({
+      inLoop: 1,
+      loopSize: CARRIER_VERBS_BEFORE_S3 + 1,
+      complete: [true, true],
+      request: [false, false, false],
+    });
+  });
+
+  // Положительный близнец: запрос кода носителя не ставит — чтения в полёте он
+  // не отменяет, и отпущенное после него проходит (F8-47).
+  for (const outcome of OUTCOMES) {
+    it(`F8S3-18 · запрос кода восстановления, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
+      const verb = "POST /iam/v1/auth/recovery";
+      const tape = await scenario(
+        verb,
+        () => loginLane.requestRecovery(holder("recovery"), { email: "a@kacho.local" }),
+        outcome,
+      );
       expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
     });
   }

@@ -11,7 +11,7 @@ import { SIGNED_IN, installLane, refusal } from "@shared/test/lane-fake";
 // предмета — `ui-future/e2e/specs/identity-ceremony.spec.ts`; здесь закреплены
 // свойства, которые браузерная проба видит только исходом.
 
-const { LoginPage } = await import("./LoginPage");
+const { LoginPage, SECOND_FACTOR_TOGGLE_HINT } = await import("./LoginPage");
 
 function renderAt(url: string, leave = jest.fn<(to: string) => void>()) {
   render(
@@ -235,14 +235,49 @@ describe("экран входа", () => {
     }
   });
 
-  it("F8-39 · пути на восстановление и подтверждение адреса нет, на регистрацию — есть", async () => {
+  it("F8-39 · пути на подтверждение адреса нет, на регистрацию — есть", async () => {
+    // Половина о `/recovery` обращена приёмкой F8-S3 (§3.1): её держит F8S3-03.
     lane = installLane({});
     renderAt("/login");
     await formShown();
     const destinations = screen.getAllByRole("link").map((a) => new URL((a as HTMLAnchorElement).href).pathname);
-    expect(destinations).not.toContain("/recovery");
     expect(destinations).not.toContain("/verification");
     expect(destinations).toContain("/registration");
+  });
+
+  it("F8S3-03 · путь «Не получается войти?» ведёт на /recovery с адресом возврата и без адреса почты", async () => {
+    lane = installLane({});
+    renderAt("/login?returnTo=/dashboard");
+    await formShown();
+    fireEvent.change(email(), { target: { value: "a@kacho.local" } });
+    const link = screen.getByRole<HTMLAnchorElement>("link", { name: "Не получается войти?" });
+    const url = new URL(link.href);
+    expect([url.pathname, url.search]).toEqual(["/recovery", "?returnTo=%2Fdashboard"]);
+    expect(decodeURIComponent(link.href)).not.toContain("a@kacho.local");
+    // Положительная сторона распознавателя: ссылка регистрации тем же предикатом найдена.
+    const registration = screen.getByRole<HTMLAnchorElement>("link", { name: "Завести учётную запись" });
+    expect(new URL(registration.href).pathname).toBe("/registration");
+  });
+
+  it("#2953 · отказ входа: текст службы дословно, рядом — следующий шаг без раскрытия причины", async () => {
+    lane = installLane({ "POST /iam/v1/auth/login": refusal(401, 16, "authentication failed") });
+    renderAt("/login");
+    await formShown();
+    fireEvent.change(email(), { target: { value: "a@kacho.local" } });
+    fireEvent.click(submit());
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("authentication failed");
+    const step = screen.getByTestId("refusal-next-step");
+    expect(step.textContent).toContain("«Не получается войти?»");
+    expect(step.textContent).not.toMatch(/неверн|не найден|не заведён|заблокир/i);
+  });
+
+  it("#2953 · флажок второго фактора объясняет, когда его отмечать", async () => {
+    lane = installLane({});
+    renderAt("/login");
+    await formShown();
+    expect(screen.getByText(SECOND_FACTOR_TOGGLE_HINT)).toBeInTheDocument();
+    expect(SECOND_FACTOR_TOGGLE_HINT).toMatch(/заводили второй фактор/);
   });
 
   it("F8-40 · экран отказа — функция ТОЛЬКО тела ответа: заведён адрес или нет, экран один", async () => {
