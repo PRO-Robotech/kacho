@@ -218,15 +218,24 @@ var AllowedMethods = map[string]struct{}{
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.
 
-	// geo.v1 — RegionService (read-only справочник).
+	// geo.v1 — RegionService: справочник (Get/List) и административные глаголы
+	// каталога (Create/Update/Delete — ADM-1, право system_admin @ cluster, тот же
+	// порог подтверждения, что у внутреннего близнеца; вход без infra°).
 	// Geography живет в leaf-сервисе kacho-geo; теперь единственный owner.
-	"/kacho.cloud.geo.v1.RegionService/Get":  {},
-	"/kacho.cloud.geo.v1.RegionService/List": {},
-	// geo.v1 — ZoneService (read-only справочник)
-	"/kacho.cloud.geo.v1.ZoneService/Get":  {},
-	"/kacho.cloud.geo.v1.ZoneService/List": {},
+	"/kacho.cloud.geo.v1.RegionService/Get":    {},
+	"/kacho.cloud.geo.v1.RegionService/List":   {},
+	"/kacho.cloud.geo.v1.RegionService/Create": {},
+	"/kacho.cloud.geo.v1.RegionService/Update": {},
+	"/kacho.cloud.geo.v1.RegionService/Delete": {},
+	// geo.v1 — ZoneService: то же для зон.
+	"/kacho.cloud.geo.v1.ZoneService/Get":    {},
+	"/kacho.cloud.geo.v1.ZoneService/List":   {},
+	"/kacho.cloud.geo.v1.ZoneService/Create": {},
+	"/kacho.cloud.geo.v1.ZoneService/Update": {},
+	"/kacho.cloud.geo.v1.ZoneService/Delete": {},
 	// geo.v1 — InternalRegionService / InternalZoneService.* — НЕ в allowlist
-	// (admin-CRUD на :9091; HasInternalSuffix блокирует автоматически, запрет #6).
+	// (полная плоскость с infra° и GetInternal на :9091; HasInternalSuffix
+	// блокирует автоматически, запрет #6).
 
 	// iam.v1 — AccountService
 	"/kaname.cloud.iam.v1.AccountService/Get":  {},

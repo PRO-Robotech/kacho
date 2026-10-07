@@ -12,7 +12,7 @@ import dedent from 'ts-dedent'
 
 **Zone** — зона доступности внутри региона ([Region](/api/region)): часть топологии, в которой
 размещаются нагрузки. Несёт `status` (UP / DOWN), отражающий доступность зоны. Как и регион,
-Zone — глобальный cluster-scoped read-only справочник (не принадлежит проекту). Consumer-сервисы
+Zone — глобальный cluster-scoped справочник (не принадлежит проекту). Consumer-сервисы
 (Compute, VPC) ссылаются на зону по `zoneId` и валидируют её через `ZoneService.Get`.
 
 Идентификатор зоны **назначается администратором** (`ru-central1-a`) и **неизменяем** (immutable
@@ -32,7 +32,7 @@ PK). Зона привязана к региону полем `regionId` — в�
   <tbody>
     <tr><td><code>id</code></td><td>string</td><td>immutable (admin-assigned PK)</td><td>Идентификатор зоны (например, <code>ru-central1-a</code>)</td></tr>
     <tr><td><code>regionId</code></td><td>string</td><td>immutable (FK → Region.id)</td><td>Регион, которому принадлежит зона. FK <code>ON DELETE RESTRICT</code></td></tr>
-    <tr><td><code>status</code></td><td>enum</td><td>mutable, <b>только админская поверхность</b></td><td>Сырая административная доступность зоны: <code>UP</code> / <code>DOWN</code> / <code>STATUS_UNSPECIFIED</code>. <b>Публичное чтение это поле не отдаёт</b> — его номер и имя в публичной проекции зарезервированы, и разбор ответа на него полагаться не может. Оно принимается в теле админского <code>Create</code>/<code>Update</code> и читается через <code>InternalZoneService</code>; арендатору тот же факт адресован производным <code>openForPlacement</code></td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td>mutable, <b>только админская поверхность</b></td><td>Сырая административная доступность зоны: <code>UP</code> / <code>DOWN</code> / <code>STATUS_UNSPECIFIED</code>. <b>Публичное чтение это поле не отдаёт</b> — его номер и имя в публичной проекции зарезервированы, и разбор ответа на него полагаться не может. Оно принимается в теле административного <code>Create</code>/<code>Update</code> (публичного и внутреннего) и читается через <code>InternalZoneService</code>; арендатору тот же факт адресован производным <code>openForPlacement</code></td></tr>
     <tr><td><code>openForPlacement</code></td><td>bool</td><td>output-only</td><td><b>Единственный признак, по которому решают, размещать ли здесь.</b> Производен: равен <code>zone.status == UP &amp;&amp; region.status == UP</code>, то есть выключённый регион закрывает свои зоны. Доступность <b>административная</b>, а не обещание ёмкости: создание всё ещё вправе отказать по ёмкости в момент планирования</td></tr>
     <tr><td><code>placementBlockedReason</code></td><td>enum</td><td>output-only</td><td>Почему <code>openForPlacement</code> ложно — <b>одним чтением, без второго запроса к региону</b>. Старшинство: выключена сама зона ⇒ <code>ZONE_DOWN</code>; иначе выключен регион ⇒ <code>REGION_DOWN</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
@@ -52,9 +52,11 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 ## Методы
 
-Чтение (`Get` / `List`) — публичное, на listener `:9090`. Администрирование
-(`Create` / `Update` / `Delete`) — `InternalZoneService` на cluster-internal listener `:9091`,
-синхронное (catalog-паттерн).
+Чтение (`Get` / `List`) и администрирование (`Create` / `Update` / `Delete`) — публичный
+`ZoneService` на listener `:9090`. Мутации возвращают `Operation`, уже завершённую в самом ответе
+(`done = true`; `response` — публичная Zone, у удаления — `Empty`; отказ хранилища — в `error`).
+Публичный вход инфраструктурного блока `infra` не несёт, и публичная маска правки до него не
+достаёт: подполя `infra` правятся только через `InternalZoneService` на cluster-internal `:9091`.
 
 ### Get — получить зону
 
@@ -111,19 +113,19 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 </ApiOperation>
 
-### Create — создать зону (admin, internal)
+### Create — создать зону (admin)
 
-<ApiOperation method="POST" endpoint="/geo/v1/internal/zones">
+<ApiOperation method="POST" endpoint="/geo/v1/zones">
 
 Создаёт зону с **явно заданным** id, привязанную к существующему региону (`regionId`).
-Требует `system_admin`. Мутация асинхронная (запрет 9): ответ — `Operation`, а нагрузка,
-которая приедет в её `response`, — **публичная** проекция `Zone`. Присланный `status`
-принимается и применяется, но в нагрузке его нет: обратно его читают через
-`InternalZoneService`.
+Требует `system_admin` на кластере. Ответ — `Operation`, завершённая в самом ответе; её
+`response` — **публичная** проекция `Zone`. Присланный `status` применяется, но в нагрузке его
+нет: арендатору тот же факт адресован `openForPlacement`. Регион, которого нет, отвергается
+хранилищем: `error.code = 9`, `"Zone <id> violates a reference constraint"`.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X POST 'http://localhost:19091/geo/v1/internal/zones' \\
+    curl -X POST 'http://localhost:18080/geo/v1/zones' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
@@ -134,12 +136,13 @@ PK). Зона привязана к региону полем `regionId` — в�
   `}
 </CodeBlock>
 
-<CodeBlock language="json" title="Ответ операции">
+<CodeBlock language="json" title="response операции">
   {dedent`
     {
       "id": "ru-central1-c",
       "regionId": "ru-central1",
       "openForPlacement": true,
+      "placementBlockedReason": "NONE",
       "createdAt": "2026-06-24T10:10:00Z"
     }
   `}
@@ -147,42 +150,42 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 </ApiOperation>
 
-### Update — изменить зону (admin, internal)
+### Update — изменить зону (admin)
 
-<ApiOperation method="PATCH" endpoint="/geo/v1/internal/zones/{id}">
+<ApiOperation method="PATCH" endpoint="/geo/v1/zones/{id}">
 
-Меняет изменяемые поля зоны — `status` и блок `infra` (последний живёт только на админской
-проекции). Привязку к региону (`regionId`) изменить нельзя — она immutable, и **переименовать
-зону нечем**: имени у неё нет. Синхронная internal-операция.
+Меняет `status` зоны — единственное поле, изменяемое публичной маской. Привязку к региону
+(`regionId`) изменить нельзя — она immutable (`"regionId is immutable after Zone.Create"`), и
+**переименовать зону нечем**: имени у неё нет. Путь маски `infra.*` отвергается синхронно как
+неизвестное поле маски (`unknown field in update_mask: <путь>`).
 
 <CodeBlock language="bash">
   {dedent`
     # перевести зону в DOWN
-    curl -X PATCH 'http://localhost:19091/geo/v1/internal/zones/ru-central1-c' \\
+    curl -X PATCH 'http://localhost:18080/geo/v1/zones/ru-central1-c' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "status": "DOWN" }'
+      -d '{ "status": "DOWN", "updateMask": "status" }'
   `}
 </CodeBlock>
 
 :::note Частичное обновление status
-Если в запросе `Update` поле `status` не передано (или передано как `STATUS_UNSPECIFIED`),
-текущий статус зоны **не меняется** — обновляются только явно заданные поля. Это позволяет
-править блок `infra`, не трогая доступность зоны.
+Если маска пуста и `status` не передан (или передан как `STATUS_UNSPECIFIED`), текущий статус
+зоны **не меняется** — применяется только то, что вызывающий принёс.
 :::
 
 </ApiOperation>
 
-### Delete — удалить зону (admin, internal)
+### Delete — удалить зону (admin)
 
-<ApiOperation method="DELETE" endpoint="/geo/v1/internal/zones/{id}">
+<ApiOperation method="DELETE" endpoint="/geo/v1/zones/{id}">
 
-Удаляет зону. Синхронная internal-операция. Удаление зоны разблокирует удаление её региона
-(если она была последней привязанной зоной).
+Удаляет зону. Удаление зоны разблокирует удаление её региона (если она была последней
+привязанной зоной).
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X DELETE 'http://localhost:19091/geo/v1/internal/zones/ru-central1-c' \\
+    curl -X DELETE 'http://localhost:18080/geo/v1/zones/ru-central1-c' \\
       -H 'Authorization: Bearer <admin-JWT>'
   `}
 </CodeBlock>
@@ -194,17 +197,21 @@ PK). Зона привязана к региону полем `regionId` — в�
 <table>
   <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
   <tbody>
-    <tr><td>Get/Delete несуществующей зоны</td><td><code>NOT_FOUND</code></td><td><code>"Zone &lt;id&gt; not found"</code></td></tr>
-    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td><code>"Zone &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
-    <tr><td>Create с <code>regionId</code> несуществующего региона</td><td><code>FAILED_PRECONDITION</code></td><td>Нарушение FK <code>regionId → Region.id</code></td></tr>
-    <tr><td>Попытка изменить <code>regionId</code></td><td>—</td><td><code>regionId</code> immutable (FK-привязка задаётся при Create)</td></tr>
+    <tr><td>Get несуществующей зоны</td><td><code>NOT_FOUND</code> (HTTP 404)</td><td><code>"Zone &lt;id&gt; not found"</code></td></tr>
+    <tr><td>Update/Delete несуществующей зоны</td><td><code>NOT_FOUND</code> в <code>Operation.error</code></td><td><code>"Zone &lt;id&gt; not found"</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code> в <code>Operation.error</code></td><td><code>"Zone &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create с <code>regionId</code> несуществующего региона</td><td><code>FAILED_PRECONDITION</code> в <code>Operation.error</code></td><td><code>"Zone &lt;id&gt; violates a reference constraint"</code> — FK <code>regionId → Region.id</code></td></tr>
+    <tr><td>id зоны не начинается с <code>regionId-</code></td><td><code>INVALID_ARGUMENT</code> (HTTP 400, синхронно)</td><td><code>"zone id '&lt;Z&gt;' must be prefixed by its regionId '&lt;R&gt;'"</code></td></tr>
+    <tr><td>Попытка изменить <code>regionId</code></td><td><code>INVALID_ARGUMENT</code> (синхронно)</td><td><code>"regionId is immutable after Zone.Create"</code></td></tr>
     <tr><td>Update без <code>status</code></td><td>—</td><td>Статус не меняется — частичное обновление (см. выше)</td></tr>
     <tr><td>Read без аутентификации</td><td><code>UNAUTHENTICATED</code></td><td>Чтение каталога грант не требует, но требует валидного принципала</td></tr>
-    <tr><td>admin CRUD без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+    <tr><td>Create/Update/Delete без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code> (HTTP 403)</td><td>Authz-Check не прошёл; зона не тронута</td></tr>
   </tbody>
 </table>
 
 :::warning Internal-поверхность
-`Create` / `Update` / `Delete` обслуживаются `InternalZoneService` на cluster-internal listener
-(`:9091`) и **не публикуются** на external endpoint.
+Полная плоскость администрирования — мутации с блоком `infra` и проекция `GetInternal` —
+обслуживается `InternalZoneService` на cluster-internal listener (`:9091`) по путям
+`/geo/v1/internal/zones…` и **не публикуется** на external endpoint (там эти пути отвечают
+`404`). Право и порог подтверждения личности у внутренних и публичных мутаций одни и те же.
 :::
