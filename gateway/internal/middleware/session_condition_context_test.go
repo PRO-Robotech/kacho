@@ -72,6 +72,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
@@ -134,7 +135,7 @@ func driveSessionLane(t *testing.T, f sessionFixture, forged map[string]string) 
 		vt, ok := verifiedTokenFromCtxOrHTTP(r.Context(), r)
 		require.True(t, ok, "полоса сессии не донесла личности — привод пробы сломан, "+
 			"и всякое утверждение о доводах ниже было бы про пустоту")
-		ex := NewContextExtractor(func() time.Time { return conditionProbeNow }, true)
+		ex := mustConditionExtractor(t, func() time.Time { return conditionProbeNow }, "1")
 		out = ex.BuildHTTP(vt, r, ResolvedSubject{FGA: "user:usr_alice_acc_a1b2"})
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -418,7 +419,7 @@ func bearerLaneArguments(t *testing.T, at time.Time) map[string]any {
 	}))
 	vt, ok := verifiedTokenFromCtxOrHTTP(context.Background(), r)
 	require.True(t, ok, "полоса предъявителя не донесла удостоверения — привод пробы сломан")
-	ex := NewContextExtractor(func() time.Time { return conditionProbeNow }, true)
+	ex := mustConditionExtractor(t, func() time.Time { return conditionProbeNow }, "1")
 	return ex.BuildHTTP(vt, r, ResolvedSubject{FGA: "user:usr_alice_acc_a1b2"})
 }
 
@@ -476,7 +477,7 @@ func TestConditionArguments_LanesAgree(t *testing.T) {
 		},
 	}
 
-	ex := NewContextExtractor(func() time.Time { return conditionProbeNow }, true)
+	ex := mustConditionExtractor(t, func() time.Time { return conditionProbeNow }, "1")
 	carrying := 0
 	names := make([]string, 0, len(lanes))
 	for n := range lanes {
@@ -498,4 +499,19 @@ func TestConditionArguments_LanesAgree(t *testing.T) {
 			name, hasMethod, hasInstant, ctxMap)
 	}
 	t.Logf("перепись: полос с источником доводов — %d · доносят доводы — %d", len(lanes), carrying)
+}
+
+// mustConditionExtractor — оператор клиентского адреса с числом прыжков, построенным
+// разбором значения ручки, как у корня края.
+func mustConditionExtractor(t testing.TB, now func() time.Time, hops string) *ContextExtractor {
+	t.Helper()
+	parsed, err := config.ParseTrustedHops(hops)
+	if err != nil {
+		t.Fatalf("число прыжков %q: %v", hops, err)
+	}
+	e, err := NewContextExtractor(now, parsed)
+	if err != nil {
+		t.Fatalf("оператор клиентского адреса: %v", err)
+	}
+	return e
 }

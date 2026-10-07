@@ -59,12 +59,17 @@ case "$REL" in
   *) CM_SA="$REL-cert-manager" ;;
 esac
 
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51).
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$HERE/lib/render-chain.sh"
 NAMES="$(bash "$HERE/stacks.sh" --names)" || fatal "состав цепочек не прочитан (stacks.sh)"
 [ -n "$NAMES" ] || fatal "цепочек ноль — судить не о чем"
 
 stacks=0 enabled=0 disabled=0 certs=0 notify_wl=0 notify_decl=0
 for stack in $NAMES; do
-  args="$(bash "$HERE/stacks.sh" --args "$stack" "$UMBRELLA")" || fatal "цепочка $stack не прочитана"
+  args="$(render_chain_args "$stack" "$UMBRELLA" operator.yaml)" || fatal "цепочка $stack не прочитана"
   chain="$(bash "$HERE/stacks.sh" --chain "$stack")" || fatal "файлы цепочки $stack не прочитаны"
   files=("$UMBRELLA/values.yaml")
   for f in $chain; do files+=("$UMBRELLA/$f"); done

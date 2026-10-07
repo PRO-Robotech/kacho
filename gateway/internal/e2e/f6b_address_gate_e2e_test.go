@@ -176,7 +176,7 @@ func newF6bStand(t *testing.T) *f6bStand {
 		Enabled:         true,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, true),
+		Context:         mustExtractor(t, time.Now, "1"),
 		Resources:       middleware.NewResourceExtractor(router.PathTemplates()),
 		Checker:         clients.NewAuthzChecker(rawClient),
 		Logger:          silentLogger(),

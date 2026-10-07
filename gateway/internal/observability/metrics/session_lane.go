@@ -46,6 +46,9 @@ const (
 	loginLaneVerbRegister         = "register"
 	loginLaneVerbRecovery         = "recovery"
 	loginLaneVerbRecoveryComplete = "recovery-complete"
+	// loginLaneVerbRegisterConfirm — предъявление кода регистрации (приёмка
+	// NTF-2, Р9).
+	loginLaneVerbRegisterConfirm = "register-confirm"
 	// Второй фактор (Ф12 Р4): шесть глаголов той же полосы.
 	loginLaneVerbSecondFactorStatus      = "second-factor-status"
 	loginLaneVerbSecondFactorEnroll      = "second-factor-enroll"
@@ -77,7 +80,7 @@ const (
 func LoginLaneVerbLabels() []string {
 	return []string{
 		loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF,
-		loginLaneVerbRegister, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
+		loginLaneVerbRegister, loginLaneVerbRegisterConfirm, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
 		loginLaneVerbSecondFactorStatus, loginLaneVerbSecondFactorEnroll, loginLaneVerbSecondFactorConfirm,
 		loginLaneVerbSecondFactorRemove, loginLaneVerbSecondFactorBackupCodes, loginLaneVerbStepUp,
 		loginLaneVerbVerifyEmail, loginLaneVerbVerifyEmailConfirm,
@@ -193,6 +196,7 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		loginLaneVerbCSRF:                    relayed[loginLaneVerbCSRF],
 		loginLaneVerbRegister:                relayed[loginLaneVerbRegister],
 		loginLaneVerbRecovery:                relayed[loginLaneVerbRecovery],
+		loginLaneVerbRegisterConfirm:         relayed[loginLaneVerbRegisterConfirm],
 		loginLaneVerbRecoveryComplete:        relayed[loginLaneVerbRecoveryComplete],
 		loginLaneVerbSecondFactorStatus:      relayed[loginLaneVerbSecondFactorStatus],
 		loginLaneVerbSecondFactorEnroll:      relayed[loginLaneVerbSecondFactorEnroll],

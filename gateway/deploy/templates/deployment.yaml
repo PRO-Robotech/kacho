@@ -426,6 +426,58 @@ spec:
             - name: KACHO_APP_ENV
               value: {{ .Values.appEnv | quote }}
             {{- end }}
+            {{- /* РУЧКИ КРАЯ ПРИЁМКИ NTF-2 (Р8): 19 ключей и файл ключа подписи
+                 вызовов proof-of-work. Умолчаний нет ни у процесса (страж старта
+                 ResolveEdgeLimits и ReadAnonMailPoWKey отказывают в пуске), ни
+                 здесь: каждая строка — `required` без `with`, `if`, `default`,
+                 и незаданное значение — отказ рендера с именем ручки, а не под,
+                 который не стартует. Число доверенных прыжков — `0` законен
+                 («пересланным адресам не верить»), и `required` его не теряет:
+                 пустым он считает только отсутствие и пустую строку. Значения
+                 ограничителя — база поставки в values.yaml чарта; числа прыжков в
+                 базе нет (Д51), его задаёт профиль стенда либо оператор. */}}
+            {{- $am := .Values.anonMail | default dict }}
+            - name: KACHO_API_GATEWAY_TRUSTED_HOPS
+              value: {{ required "KACHO_API_GATEWAY_TRUSTED_HOPS не задана: умолчания нет, число доверенных прыжков перед краем задаёт профиль установки (ключ api-gateway.trustedHops цепочки, trustedHops чарта края без зонтика); 0 — законное значение" .Values.trustedHops | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_LIMIT не задана: умолчания нет (ключ anonMail.ipFreeLimit, приёмка NTF-2 Р8)" $am.ipFreeLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_POW_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_POW_LIMIT не задана: умолчания нет (ключ anonMail.ipPowLimit, приёмка NTF-2 Р8)" $am.ipPowLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_LIMIT не задана: умолчания нет (ключ anonMail.ipHardLimit, приёмка NTF-2 Р8)" $am.ipHardLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_WINDOW
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_WINDOW не задана: умолчания нет (ключ anonMail.ipFreeWindow, приёмка NTF-2 Р8)" $am.ipFreeWindow | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_POW_WINDOW
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_POW_WINDOW не задана: умолчания нет (ключ anonMail.ipPowWindow, приёмка NTF-2 Р8)" $am.ipPowWindow | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_WINDOW
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_WINDOW не задана: умолчания нет (ключ anonMail.ipHardWindow, приёмка NTF-2 Р8)" $am.ipHardWindow | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_BASE
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_BASE не задана: умолчания нет (ключ anonMail.powBitsBase, приёмка NTF-2 Р8)" $am.powBitsBase | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_HIGH
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_HIGH не задана: умолчания нет (ключ anonMail.powBitsHigh, приёмка NTF-2 Р8)" $am.powBitsHigh | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_POW_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_POW_LIMIT не задана: умолчания нет (ключ anonMail.subnetV4Len24PowLimit, приёмка NTF-2 Р8)" $am.subnetV4Len24PowLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_HARD_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_HARD_LIMIT не задана: умолчания нет (ключ anonMail.subnetV4Len24HardLimit, приёмка NTF-2 Р8)" $am.subnetV4Len24HardLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_POW_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_POW_LIMIT не задана: умолчания нет (ключ anonMail.subnetV6Len56PowLimit, приёмка NTF-2 Р8)" $am.subnetV6Len56PowLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_HARD_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_HARD_LIMIT не задана: умолчания нет (ключ anonMail.subnetV6Len56HardLimit, приёмка NTF-2 Р8)" $am.subnetV6Len56HardLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_POW_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_POW_LIMIT не задана: умолчания нет (ключ anonMail.subnetV6Len48PowLimit, приёмка NTF-2 Р8)" $am.subnetV6Len48PowLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_HARD_LIMIT
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_HARD_LIMIT не задана: умолчания нет (ключ anonMail.subnetV6Len48HardLimit, приёмка NTF-2 Р8)" $am.subnetV6Len48HardLimit | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_POW_WINDOW
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_POW_WINDOW не задана: умолчания нет (ключ anonMail.subnetPowWindow, приёмка NTF-2 Р8)" $am.subnetPowWindow | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_SUBNET_HARD_WINDOW
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_SUBNET_HARD_WINDOW не задана: умолчания нет (ключ anonMail.subnetHardWindow, приёмка NTF-2 Р8)" $am.subnetHardWindow | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_RATE_PER_SECOND
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_RATE_PER_SECOND не задана: умолчания нет (ключ anonMail.globalRatePerSecond, приёмка NTF-2 Р8)" $am.globalRatePerSecond | quote }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_BURST
+              value: {{ required "KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_BURST не задана: умолчания нет (ключ anonMail.globalBurst, приёмка NTF-2 Р8)" $am.globalBurst | quote }}
+            {{- $powKey := $am.powKey | default dict }}
+            - name: KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE
+              value: {{ printf "%s/%s" (required "KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE не задана: каталог тома ключа подписи вызовов не объявлен (ключ anonMail.powKey.mountPath)" $powKey.mountPath) (required "KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE не задана: ключ файла в объекте Secret не объявлен (ключ anonMail.powKey.secretKey)" $powKey.secretKey) | quote }}
             # ── ОДНОКРАТНОСТЬ Idempotency-Key: ХРАНИЛИЩЕ И ФЛОТ — ОДНО ОБЪЯВЛЕНИЕ (#694) ──
             #
             # Размер флота НЕ выписывается второй раз: он ВЫВОДИТСЯ из тех же
@@ -468,6 +520,11 @@ spec:
             # Writable scratch для read-only-rootfs.
             - name: tmp
               mountPath: /tmp
+            # Ключ подписи вызовов proof-of-work (приёмка NTF-2, З9): безусловно —
+            # страж старта требует его на любой посадке.
+            - name: anon-mail-pow-key
+              mountPath: {{ required "anonMail.powKey.mountPath не задан: каталог тома ключа подписи вызовов" ((.Values.anonMail | default dict).powKey | default dict).mountPath | quote }}
+              readOnly: true
             {{- if .Values.tls.enabled }}
             - name: tls
               mountPath: /etc/api-gateway/tls
@@ -526,6 +583,18 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        # Ключ подписи вызовов proof-of-work. Том ОБЯЗАТЕЛЬНЫЙ (без `optional`):
+        # недостающий объект держит под до старта с именем секрета, а не даёт
+        # пустой каталог, о котором страж узнал бы позже. Объект в чарте не
+        # рендерится — материал в дерево не попадает (стенд — посев
+        # dev-prod-secrets.sh, площадка — оператор).
+        {{- $powKeyVol := (.Values.anonMail | default dict).powKey | default dict }}
+        - name: anon-mail-pow-key
+          secret:
+            secretName: {{ required "anonMail.powKey.secretName не задан: объект Secret ключа подписи вызовов proof-of-work" $powKeyVol.secretName | quote }}
+            items:
+              - key: {{ required "anonMail.powKey.secretKey не задан: ключ файла в объекте Secret" $powKeyVol.secretKey | quote }}
+                path: {{ $powKeyVol.secretKey | quote }}
         {{- if .Values.tls.enabled }}
         - name: tls
           secret:

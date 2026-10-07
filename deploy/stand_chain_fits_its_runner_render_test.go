@@ -69,7 +69,7 @@ func TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests(t *testing.T) {
 	}
 	makefile := string(raw)
 	targets := parseRecipeTargets(makefile)
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	legs := conveyorLegs(t)
 
 	sets, err := umbrellaSets(makefile)
@@ -200,7 +200,7 @@ func TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ручки применения умбреллы не прочитаны: %v", err)
 	}
-	chain, ok := deployStacks(t)["dev-prod"]
+	chain, ok := deployStacksForRender(t, renderGateOperatorSample)["dev-prod"]
 	if !ok {
 		t.Fatal("цепочки dev-prod в таблице стендов нет — близнецу не из чего рендериться")
 	}

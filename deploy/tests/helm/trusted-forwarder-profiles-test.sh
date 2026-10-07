@@ -35,7 +35,12 @@
 set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 SCRIPT="$(basename "$0")"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -94,6 +99,11 @@ kaname|iam|cm:kaname-config:authn.trusted-forwarder-sans
 # умолчание нижнего, поэтому цепочка, знающая на слой меньше, отвечает на вопрос
 # про другой стенд и остаётся зелёной.
 PROFILES="$(stacks_table | tr ':' '|')"
+# Слой оператора к `prod` — ПОСЛЕДНИЙ элемент цепочки обёртки, абсолютным путём.
+PROD_SAMPLE="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
+  || { echo "FATAL: цепочка prod гейта не прочитана — слой оператора дописать нечем" >&2; exit 2; }
+PROD_SAMPLE="${PROD_SAMPLE##* }"
+PROFILES="$(printf '%s\n' "$PROFILES" | sed "s#^prod|\(.*\)\$#prod|\1,$PROD_SAMPLE#")"
 
 # Слой учётных данных боевой площадки — НЕ в репозитории (см. его шапку).
 # Посадки он не несёт, поэтому его отсутствие в CI ничего не скрывает;
@@ -105,6 +115,16 @@ if [ -f "$UMBRELLA/$OPTIONAL_CREDS" ]; then
 fe3455+creds|$(stacks_chain fe3455 ','),$OPTIONAL_CREDS"
 fi
 
+# layer_path <элемент цепочки> — путь слоя для `-f`: профиль — от каталога
+# зонтика, слой оператора обёртки — абсолютным путём как есть. Один разборщик на
+# проход и самопроверку: два разошлись бы молча.
+layer_path() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *)  printf '%s' "$UMBRELLA/$1" ;;
+  esac
+}
+
 # render <файлы-через-запятую> <имя профиля> — манифест профиля в $HELM_OUT.
 # Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm), а
 # не свойство круга отправителей: код 2 и текст, который сказал сам helm. Прежде он
@@ -112,7 +132,7 @@ fi
 render() {
   local args=() f
   local IFS=,
-  for f in $1; do args+=(-f "$UMBRELLA/$f"); done
+  for f in $1; do args+=(-f "$(layer_path "$f")"); done
   unset IFS
   helm_try kacho-umbrella "$UMBRELLA" "${args[@]}"
   render_or_fatal "профиль $2"
@@ -288,7 +308,7 @@ EOF
   for profile in $PROFILES; do
     name="${profile%%|*}"; files="${profile#*|}"
     args=(); IFS=,
-    for f in $files; do args+=(-f "$UMBRELLA/$f"); done
+    for f in $files; do args+=(-f "$(layer_path "$f")"); done
     unset IFS
     helm_try kacho-umbrella "$UMBRELLA" "${args[@]}" -f "$inj"
     render_or_fatal "профиль $name с инъекцией (самопроверка)"

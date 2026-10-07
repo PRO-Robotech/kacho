@@ -32,8 +32,12 @@ UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
-# shellcheck source=deploy/tests/helm/stacks.sh
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 require_helm
 require_python_yaml
@@ -53,7 +57,7 @@ JUDGED=0; SKIPPED=0; TOT_COORD=0; TOT_NEAR=0; TOT_OTHER=0
 STACKS="$(stacks_names)" \
   || fatal "перечень стеков не прочитан — обходить нечего, и это не чистое дерево"
 for stack in $STACKS; do
-  args="$(stacks_args "$stack" "$UMBRELLA")" \
+  args="$(render_chain_args "$stack" "$UMBRELLA" operator.yaml)" \
     || fatal "стек $stack: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
   # shellcheck disable=SC2086
   helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
