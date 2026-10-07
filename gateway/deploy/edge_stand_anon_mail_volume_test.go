@@ -110,6 +110,39 @@ func judgeStandVolume(label string, v int, l config.AnonMailLimits) []string {
 	return out
 }
 
+// chainAnonMailLimits — пределы ограничителя, которые страж старта края
+// разбирает из окружения пода, отрендеренного цепочкой c (chain == nil — чарт
+// края как есть, его база).
+func chainAnonMailLimits(t *testing.T, c edgeAlertChain) config.AnonMailLimits {
+	t.Helper()
+	out, err := renderEdgeChain(t, c)
+	if err != nil {
+		t.Fatalf("цепочка %s: рендер не выполнен (%v) — условие не создано, вердикта нет:\n%s", c.name, err, out)
+	}
+	got, found := readEdgeContainer(t, out)
+	if !found {
+		t.Fatalf("цепочка %s: в рендере нет пода края — смотреть было не на что", c.name)
+	}
+	limits, err := config.ResolveEdgeLimits(configFromEnv(got.env))
+	if err != nil {
+		t.Fatalf("цепочка %s: страж старта края отверг окружение пода: %v", c.name, err)
+	}
+	return limits.AnonMail
+}
+
+// judgeOffStand — находка: цепочка, которой поднимается не стенд прогона,
+// несёт пределы ограничителя, отличные от базы чарта края. Послабление
+// приёмка разрешает только стенду П1; на площадке, доступной снаружи, оно
+// ослабило бы рубеж против рассылки с одного источника молча.
+func judgeOffStand(label string, base, got config.AnonMailLimits) []string {
+	if got == base {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s: пределы ограничителя анонимной почты %+v, а база чарта края %+v — "+
+		"послабление стенда прогона протекло на цепочку, которой стенд прогона не поднимается",
+		label, got, base)}
+}
+
 func TestEdgeStandChain_AnonMailThresholdsAdmitTheSeedVolume(t *testing.T) {
 	name := standStackName(t)
 	chain, ok := deployableStacks(t)[name]
@@ -118,19 +151,7 @@ func TestEdgeStandChain_AnonMailThresholdsAdmitTheSeedVolume(t *testing.T) {
 	}
 	v := seedVolume(t)
 
-	out, err := renderEdgeChain(t, edgeAlertChain{name: name, chain: chain})
-	if err != nil {
-		t.Fatalf("цепочка %s: рендер не выполнен (%v) — условие не создано, вердикта нет:\n%s", name, err, out)
-	}
-	got, found := readEdgeContainer(t, out)
-	if !found {
-		t.Fatalf("цепочка %s: в рендере нет пода края — смотреть было не на что", name)
-	}
-	limits, err := config.ResolveEdgeLimits(configFromEnv(got.env))
-	if err != nil {
-		t.Fatalf("цепочка %s: страж старта края отверг окружение пода: %v", name, err)
-	}
-	a := limits.AnonMail
+	a := chainAnonMailLimits(t, edgeAlertChain{name: name, chain: chain})
 	t.Logf("цепочка стенда %s (%s): V посева=%d (%s); FREE=%d/%s · POW=%d/%s · HARD=%d/%s; "+
 		"PoW подсети /24=%d /56=%d /48=%d за %s",
 		name, strings.Join(chain, ","), v, standSeedFile,
@@ -163,5 +184,59 @@ func TestEdgeStandChain_VolumeJudgeFiresAndStaysSilent(t *testing.T) {
 	atSubnet.SubnetV6Len48.PoW = v + admit.Source.Free
 	if f := judgeStandVolume("подсеть", v, atSubnet); len(f) != 1 || !strings.Contains(f[0], "/48") {
 		t.Fatalf("V+FREE на пороге PoW подсети /48 — ровно одна находка о /48, получено: %v", f)
+	}
+}
+
+// TestEdgeStandChain_AnonMailRelaxationStaysOnTheStand — близнец пробы объёма:
+// каждая цепочка таблицы, кроме цепочки стенда прогона (`STAND_STACK`), несёт
+// пределы базы чарта края. Цепочки площадок с внешним ретранслятором
+// (`a8f60d`, `prorobotech`) наследуют средний слой стенда разработки, и
+// послабление, объявленное в нём, дошло бы до них — это и судится.
+func TestEdgeStandChain_AnonMailRelaxationStaysOnTheStand(t *testing.T) {
+	stand := standStackName(t)
+	stacks := deployableStacks(t)
+	if _, ok := stacks[stand]; !ok {
+		t.Fatalf("цепочки стенда %q нет в deploy/stacks.txt — STAND_STACK называет несуществующее", stand)
+	}
+	base := chainAnonMailLimits(t, edgeAlertChain{name: "chart"})
+	judged, inheriting := 0, 0
+	for _, name := range sortedStackNames(stacks) {
+		if name == stand {
+			continue
+		}
+		chain := stacks[name]
+		for _, p := range chain {
+			if p == "values.dev-prod.yaml" {
+				inheriting++
+				break
+			}
+		}
+		judged++
+		got := chainAnonMailLimits(t, edgeAlertChain{name: name, chain: chain})
+		for _, f := range judgeOffStand("цепочка "+name+" ("+strings.Join(chain, ",")+")", base, got) {
+			t.Error(f)
+		}
+	}
+	if judged == 0 {
+		t.Fatalf("вне цепочки стенда %s в таблице ни одной цепочки — судить нечего, и это не «послабление не протекло»", stand)
+	}
+	t.Logf("перепись: цепочка стенда %s вне суда; судимо цепочек %d, из них наследуют средний слой стенда "+
+		"разработки (values.dev-prod.yaml) — %d", stand, judged, inheriting)
+}
+
+// TestEdgeStandChain_OffStandJudgeFiresAndStaysSilent — судья близнеца
+// различает исходы: близнецы отличаются одним фактом — FREE источника.
+func TestEdgeStandChain_OffStandJudgeFiresAndStaysSilent(t *testing.T) {
+	base := config.AnonMailLimits{
+		Source:        config.AnonMailSourceLimits{Free: 3, PoW: 10, Hard: 100},
+		SubnetV4Len24: config.AnonMailSubnetLimits{PoW: 50, Hard: 500},
+	}
+	if f := judgeOffStand("близнец", base, base); len(f) != 0 {
+		t.Fatalf("пределы равны базе — судья обязан молчать, а сказал: %v", f)
+	}
+	relaxed := base
+	relaxed.Source.Free = 400
+	if f := judgeOffStand("положительный", base, relaxed); len(f) != 1 || !strings.Contains(f[0], "Free:400") {
+		t.Fatalf("FREE источника отличен от базы — ровно одна находка с величиной, получено: %v", f)
 	}
 }
