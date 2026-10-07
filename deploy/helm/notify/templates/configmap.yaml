@@ -39,6 +39,31 @@ data:
   KACHO_NOTIFY_DKIM_KEY_FILE: {{ printf "%s/%s" (include "notify.dkimDir" .) $dkim.privateKeyKey | quote }}
   KACHO_NOTIFY_DKIM_SELECTOR_FILE: {{ printf "%s/%s" (include "notify.dkimDir" .) $dkim.selectorKey | quote }}
   KACHO_NOTIFY_STAND_DNS: {{ include "notify.standDNS" . | quote }}
+  # ── РУЧКИ NTF-4 СТАДИИ S1 (Р16; страж — validateNTF4) ──────────────────────
+  # Значения — профиля установки, умолчаний в чарте нет: пустое доезжает до
+  # процесса и отвергается стражем с именем ручки. Каталог ключа отпечатка —
+  # путь монтирования тома объекта ключа (тот же помощник, что у тома).
+  KACHO_NOTIFY_FEEDBACK_MAILBOX_ADDR: {{ tpl (.Values.feedback.mailboxAddr | toString) $ | quote }}
+  KACHO_NOTIFY_FEEDBACK_MAILBOX_LOCAL_PART: {{ .Values.feedback.mailboxLocalPart | toString | quote }}
+  KACHO_NOTIFY_RETURN_DOMAIN: {{ .Values.returnDomain | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_POLL_INTERVAL: {{ .Values.feedback.pollInterval | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_POLL_STALE_MAX: {{ .Values.feedback.pollStaleMax | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_MAX_MESSAGE_BYTES: {{ .Values.feedback.maxMessageBytes | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_MAX_EXPANSION_RATIO: {{ .Values.feedback.maxExpansionRatio | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_CANARY_INTERVAL: {{ .Values.feedback.canaryInterval | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_CANARY_DEADLINE: {{ .Values.feedback.canaryDeadline | toString | quote }}
+  KACHO_NOTIFY_FEEDBACK_LEASE_TTL: {{ .Values.feedback.leaseTTL | toString | quote }}
+  KACHO_NOTIFY_SENT_LOG_RETENTION: {{ .Values.sentLog.retention | toString | quote }}
+  KACHO_NOTIFY_SUPPRESSION_HARD_TTL: {{ .Values.suppression.hardTTL | toString | quote }}
+  KACHO_NOTIFY_SUPPRESSION_SOFT_THRESHOLD: {{ .Values.suppression.softThreshold | toString | quote }}
+  KACHO_NOTIFY_SUPPRESSION_SOFT_WINDOW: {{ .Values.suppression.softWindow | toString | quote }}
+  KACHO_NOTIFY_SUPPRESSION_SOFT_TTL: {{ .Values.suppression.softTTL | toString | quote }}
+  KACHO_NOTIFY_SUPPRESSION_SWEEP_INTERVAL: {{ .Values.suppression.sweepInterval | toString | quote }}
+  KACHO_NOTIFY_SECRET_RELOAD_INTERVAL: {{ .Values.secretReloadInterval | toString | quote }}
+  KACHO_NOTIFY_ADDRESS_KEY_DIR: {{ include "notify.addressKeyDir" . | quote }}
+  KACHO_NOTIFY_REPUTATION_HARD_BOUNCE_RATE_MAX: {{ .Values.reputation.hardBounceRateMax | toString | quote }}
+  KACHO_NOTIFY_REPUTATION_COMPLAINT_RATE_MAX: {{ .Values.reputation.complaintRateMax | toString | quote }}
+  KACHO_NOTIFY_REPUTATION_WINDOW: {{ .Values.reputation.window | toString | quote }}
   # ── ЛИМИТЫ Р10 (З24, NTF1-H07, H08) ───────────────────────────────────────
   KACHO_NOTIFY_LIMITS_RECIPIENT_SECURITY_PER_DAY: {{ .Values.limits.recipient.security.perDay | toString | quote }}
   KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_HOUR: {{ .Values.limits.recipient.notice.perHour | toString | quote }}

@@ -399,7 +399,10 @@ type secretRef struct{ name, key string }
 
 // notifyLayoutFindings — РЕШЕНИЕ гейта раскладки по разобранному рендеру.
 //
-//	ключ сетки   единственный Secret чарта, `<полное имя>-recipient-key`;
+//	ключи        Secret чарта ровно два — объекты ключей: ключ сетки
+//	             `<полное имя>-recipient-key` и ключ отпечатка адреса
+//	             `<полное имя>-address-key` (NTF-4 Д23); иной Secret — находка;
+//	ключ сетки   `<полное имя>-recipient-key`;
 //	             ссылается ровно одна рабочая нагрузка и только переменной
 //	             `secretKeyRef`; в ConfigMap его нет; объект ключа и объект
 //	             удостоверения — разные;
@@ -408,13 +411,19 @@ type secretRef struct{ name, key string }
 //	             адреса или URI из секрета нет.
 func notifyLayoutFindings(objs []renderedObj, keySecret string, cred *secretRef) []string {
 	var out []string
+	addressKeySecret := strings.TrimSuffix(keySecret, "-recipient-key") + "-address-key"
 	for _, s := range objsOfKind(objs, "Secret") {
-		if s.name != keySecret {
-			out = append(out, "Secret "+s.name+" в рендере notify — единственный Secret чарта обязан быть "+
-				"объектом ключа сетки "+keySecret+"; секрет почты чарт не рендерит (CX1-82 (а))")
+		if s.name != keySecret && s.name != addressKeySecret {
+			out = append(out, "Secret "+s.name+" в рендере notify — Secret чарта обязан быть объектом ключа "+
+				"сетки "+keySecret+" либо ключа отпечатка "+addressKeySecret+" (NTF-4 Д23); секрет почты чарт "+
+				"не рендерит (CX1-82 (а))")
 		}
 	}
-	if len(objsOfKind(objs, "Secret")) == 0 {
+	hasKey := false
+	for _, s := range objsOfKind(objs, "Secret") {
+		hasKey = hasKey || s.name == keySecret
+	}
+	if !hasKey {
 		out = append(out, "объекта ключа сетки "+keySecret+" в рендере нет")
 	}
 	for _, cm := range objsOfKind(objs, "ConfigMap") {
@@ -533,6 +542,10 @@ func TestNotifySecretLayout(t *testing.T) {
 			second.name = d.name + "-api"
 			return append(o, second)
 		}},
+		{"секрет почты третьим Secret чарта", func(o []renderedObj) []renderedObj {
+			return append(o, renderedObj{kind: "Secret", name: notifyRelease + "-smtp",
+				doc: map[string]any{"kind": "Secret", "metadata": map[string]any{"name": notifyRelease + "-smtp"}}})
+		}},
 		{"ключ томом", func(o []renderedObj) []renderedObj {
 			spec := nPodSpec(objsOfKind(o, "Deployment")[0])
 			spec["volumes"] = append(nlist(spec["volumes"]), map[string]any{
@@ -565,11 +578,25 @@ func mustRenderOut(t *testing.T, chart string, sets ...string) string {
 
 // recipientKeyNames — имя объекта ключа и `secretKeyRef.name` переменной.
 func recipientKeyNames(objs []renderedObj) (secret, ref string) {
-	if s := objsOfKind(objs, "Secret"); len(s) == 1 {
+	if s := recipientKeyObjects(objs); len(s) == 1 {
 		secret = s[0].name
 	}
 	ref = nstr(ndig(notifyEnv(objs, notifyRecipientEnv), "valueFrom", "secretKeyRef", "name"))
 	return secret, ref
+}
+
+// recipientKeyObjects — объекты Secret рендера, несущие ключ данных
+// `recipientKey`. Secret чарта не один (ключ отпечатка адреса — свой объект,
+// NTF-4 Д23), поэтому объект ключа сетки выбирается по ключу данных, а не по
+// виду.
+func recipientKeyObjects(objs []renderedObj) []renderedObj {
+	var out []renderedObj
+	for _, s := range objsOfKind(objs, "Secret") {
+		if _, ok := ndig(s.doc, "data", "recipientKey").(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // TestNotifyRecipientKeyObjectNameIsConstant — два рендера с разными ключами:
@@ -666,7 +693,7 @@ func TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender(t *testing.T) {
 			t.Errorf("%s: рендер отказал на ключе, равном границе:\n%s", c.name, out)
 		case !c.refused:
 			var got string
-			if sec := objsOfKind(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key), "Secret"); len(sec) == 1 {
+			if sec := recipientKeyObjects(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key)); len(sec) == 1 {
 				raw, decErr := base64.StdEncoding.DecodeString(nstr(ndig(sec[0].doc, "data", "recipientKey")))
 				if decErr == nil {
 					got = string(raw)

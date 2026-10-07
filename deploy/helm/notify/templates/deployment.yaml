@@ -52,6 +52,9 @@ spec:
         # Смена ключа сетки перекатывает все реплики (CX1-66 (б)); хеш берётся от
         # отрендеренного объекта целиком и прообраза ключа не раскрывает.
         checksum/recipient-key: {{ include (print $.Template.BasePath "/recipient-key-secret.yaml") . | sha256sum }}
+        # Смена объекта ключа отпечатка (значения либо имени объекта стенда)
+        # перекатывает все реплики; хеш — от рендера объекта и имени ссылки.
+        checksum/address-key: {{ print (include (print $.Template.BasePath "/address-key-secret.yaml") .) (include "notify.addressKeySecretName" .) | sha256sum }}
     spec:
       serviceAccountName: {{ include "notify.fullname" . }}
       automountServiceAccountToken: false
@@ -73,6 +76,11 @@ spec:
         - name: dkim
           secret:
             secretName: {{ $dkim.secretName | quote }}
+        # Объект ключа отпечатка адреса — ТОМОМ ЦЕЛИКОМ, без `items` и
+        # `subPath` (NTF-4 Р11): новое поколение объекта приходит в каталог.
+        - name: address-key
+          secret:
+            secretName: {{ include "notify.addressKeySecretName" . | quote }}
         {{- if and $anchor $anchor.name }}
         - name: smtp-trust-anchor
           secret:
@@ -121,6 +129,9 @@ spec:
               readOnly: true
             - name: dkim
               mountPath: {{ include "notify.dkimDir" . | quote }}
+              readOnly: true
+            - name: address-key
+              mountPath: {{ include "notify.addressKeyDir" . | quote }}
               readOnly: true
             {{- if and $anchor $anchor.name }}
             - name: smtp-trust-anchor

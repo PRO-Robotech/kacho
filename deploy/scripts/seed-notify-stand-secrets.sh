@@ -45,7 +45,7 @@ refuse_unknown() {
 
 # ─── ОБЪЕКТЫ СТЕНДА NOTIFY (NTF-1, полоса D6; Д123) ───────────────────────────
 #
-# Четыре объекта, каждый ОДИН раз и не перечеканивается — довод тот же, что у
+# Пять объектов, каждый ОДИН раз и не перечеканивается — довод тот же, что у
 # ключей выше, и у каждого он свой:
 #   · kacho-notify-db, kacho-notifyprobe-db — пароли баз kacho_notify и
 #     kacho_notifyprobe. Их берут и экземпляр базы (`existingSecret`: ключи
@@ -55,6 +55,10 @@ refuse_unknown() {
 #   · kacho-notify-recipient-key — ключ сетки на адресата (З24), ключ
 #     `recipientKey`, 64 hex-символа (страж старта требует ≥ 32 байт, Д89).
 #     Новый ключ — ротация сетки (З24): окна адресатов начинаются заново;
+#   · kacho-notify-address-key — ключ отпечатка адреса (NTF-4 Р15, Д23), ключ
+#     `addressKey`, 64 hex-символа (страж старта разбирает hex и требует
+#     ≥ 32 октетов). Ключ отпечатка не ротируется: новый сделал бы чужими все
+#     отпечатки журнала отправленного и подавлений;
 #   · kacho-notify-probe-feed-keyring — кольцо ключей ленты пробы-источника
 #     (З11), ключ `keyring` в форме corelib `feed.ParseKeyring`
 #     `{"active":{"id":1,"key":"<base64 32 байт>"}}`. Новое кольцо сделало бы
@@ -90,6 +94,16 @@ elif [[ "$out" == *"(NotFound)"* ]]; then
     --dry-run=client -o yaml | create_once kacho-notify-recipient-key "ключ сетки на адресата, ключ recipientKey, 64 hex"
 else
   refuse_unknown kacho-notify-recipient-key "$out"
+fi
+
+if out="$(kubectl -n "$NS" get secret kacho-notify-address-key -o name 2>&1)"; then
+  echo "kacho-notify-address-key already present — reusing (ключ отпечатка адреса, ключ addressKey, 64 hex)"
+elif [[ "$out" == *"(NotFound)"* ]]; then
+  kubectl -n "$NS" create secret generic kacho-notify-address-key \
+    --from-file=addressKey=<(openssl rand -hex 32 | tr -d '\n') \
+    --dry-run=client -o yaml | create_once kacho-notify-address-key "ключ отпечатка адреса, ключ addressKey, 64 hex"
+else
+  refuse_unknown kacho-notify-address-key "$out"
 fi
 
 if out="$(kubectl -n "$NS" get secret kacho-notify-probe-feed-keyring -o name 2>&1)"; then
