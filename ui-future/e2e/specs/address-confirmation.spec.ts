@@ -663,19 +663,20 @@ test("F6b-16 · подтверждённая сессия на тех же ад�
     const from = census.calls.length;
     const seen = visited.length;
     await page.goto(address, { waitUntil: "domcontentloaded" });
+    // Каркас рисуется только после ответа стража «подтверждён».
+    await expectShell(page, `адрес ${address} у подтверждённой сессии не отрисован в каркасе`);
+    if (address === "/такого-адреса-нет") {
+      await expectAddress(page, "/dashboard", "неведомый адрес у подтверждённой сессии не увёл на /dashboard");
+    }
     if (address === "/recovery") {
-      // Страница неведомого адреса стоит за стражем: она отрисована — страж пропустил.
+      // Приёмка F8-S3, §3.1 (F8S3-02): экран восстановления стоит за стражем, и
+      // подтверждённой сессии формы не показывает — уводит документом на адрес
+      // возврата, а без него на корень, то есть на панель.
+      await expectAddress(page, "/dashboard", "адрес /recovery у подтверждённой сессии не увёл на /dashboard");
       await expect(
-        page.getByRole("heading", { name: "Такого адреса здесь нет" }),
-        "адрес /recovery у подтверждённой сессии не ответил названной страницей",
-      ).toBeVisible({ timeout: 30_000 });
-      expect(addressOf(page), "названная страница увела со своего адреса").toBe("/recovery");
-    } else {
-      // Каркас рисуется только после ответа стража «подтверждён».
-      await expectShell(page, `адрес ${address} у подтверждённой сессии не отрисован в каркасе`);
-      if (address === "/такого-адреса-нет") {
-        await expectAddress(page, "/dashboard", "неведомый адрес у подтверждённой сессии не увёл на /dashboard");
-      }
+        page.getByRole("textbox", { name: "Адрес почты" }),
+        "подтверждённой сессии показана форма восстановления доступа",
+      ).toHaveCount(0);
     }
     const detour = [
       ...visited.slice(seen).filter((a) => a.startsWith("/verification")),

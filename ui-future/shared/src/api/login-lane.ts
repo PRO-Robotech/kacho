@@ -7,10 +7,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ И ПОЧЕМУ ОДНИМ МЕСТОМ
 //
-// Служба объявляет пятнадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
+// Служба объявляет глаголы `/iam/v1/auth/*` одним перечнем, край их
 // ретранслирует, раздача уводит `^/iam/v1/` на край безусловно. Консоль зовёт
 // их отсюда и ни откуда больше: экраны входа, регистрации, выхода, параметров
-// учётной записи, подтверждения адреса почты и окно повышения уровня. Второй клиент тех же глаголов
+// учётной записи, подтверждения адреса почты, восстановления доступа и окно
+// повышения уровня. Второй клиент тех же глаголов
 // разошёлся бы с первым молча — ровно так расходились две копии окна повышения.
 //
 // ЧЕГО КОНСОЛЬ НЕ ДЕЛАЕТ (Р2). Правило пароля, занятость адреса, годность кода
@@ -45,6 +46,9 @@ export const LOGIN_LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  // Первый пароль из живой сессии (служба — приёмка FP; экран — приёмка F8,
+  // ред. 12, Р13): у человека без пароля; носителя не ставит (её Р5).
+  passwordEnroll: "/iam/v1/auth/password/enroll",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
   confirm: "/iam/v1/auth/second-factor/confirm",
@@ -55,6 +59,16 @@ export const LOGIN_LANE = {
   // предъявление кода — оба под сессией человека, адреса в теле нет.
   verifyEmail: "/iam/v1/auth/verify-email",
   verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа без пароля (приёмка Ф13, Р1; экран — приёмка F8-S4):
+  // выдача испытания и предъявление утверждения — оба без сессии, у каждого
+  // свой вид признака формы.
+  accessKeyBegin: "/iam/v1/auth/access-key/begin",
+  accessKeyLogin: "/iam/v1/auth/access-key/login",
+  // Восстановление доступа (приёмка Ф5 службы; экран — приёмка F8-S3): запрос
+  // кода на адрес почты и предъявление кода с новым паролем — оба без сессии, у
+  // каждого свой вид признака формы.
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
@@ -65,11 +79,16 @@ export type FormKind =
   | "login"
   | "logout"
   | "password"
+  | "password-enroll"
   | "register"
   | "second-factor"
   | "step-up"
   | "verify-email"
-  | "verify-email-confirm";
+  | "verify-email-confirm"
+  | "access-key-begin"
+  | "access-key-login"
+  | "recovery"
+  | "recovery-complete";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -232,6 +251,13 @@ function wwwAuthenticateOf(res: Response): string | null {
   return res.headers?.get?.("WWW-Authenticate") ?? null;
 }
 
+/**
+ * Текст, которым консоль называет ответ, не несущий ни отказа службы, ни того,
+ * что глагол обещал: тело отказа не пришло, либо ответ успеха не той формы.
+ * Причины консоль не знает и не выдумывает.
+ */
+export const NOT_BY_SUBSTANCE_TEXT = "Служба не ответила по существу";
+
 /** Отказ из ответа. Разбор один — на все глаголы и на окно повышения. */
 export function refusalOf(res: Response, text: string): LaneRefusal {
   const status = parseRpcStatus(text);
@@ -250,7 +276,7 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
   // Тела отказа служба не прислала — ответила раздача либо промежуточный узел.
   // Причины консоль не знает и не выдумывает; код ответа остаётся в `status`
   // для того, кто чинит, а не в тексте для того, кто читает экран.
-  return new LaneRefusal(res.status, null, "Служба не ответила по существу", null, null, retryAfterOf(res), www);
+  return new LaneRefusal(res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, retryAfterOf(res), www);
 }
 
 /** Ответ глагола: статус, заголовки и тело — как их прислали. */
@@ -404,10 +430,10 @@ export class FormTokenHolder {
 
 /**
  * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
- * закрыт, девять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
- * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель). Пять переписывают
- * дайджест той же записи — прежний носитель с этого момента негоден; четыре
- * заводят новую запись.
+ * закрыт, десять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
+ * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель; вход ключом доступа —
+ * приёмка F8-S4, Р6). Пять переписывают дайджест той же записи — прежний
+ * носитель с этого момента негоден; пять заводят новую запись.
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
  * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
@@ -424,13 +450,17 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/second-factor/backup-codes",
   "/iam/v1/auth/step-up",
   "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа выдаёт сессию той же операцией, что вход паролем (Ф13
+  // Р4; приёмка F8-S4, Р6). Испытание входа носителя не ставит — его здесь нет.
+  "/iam/v1/auth/access-key/login",
 ]);
 
 /** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
-const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
+export const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
   "/iam/v1/auth/register",
   "/iam/v1/auth/recovery/complete",
+  "/iam/v1/auth/access-key/login",
 ]);
 
 function noteAnswered(path: string) {
@@ -505,6 +535,18 @@ export const loginLane = {
       true,
     );
   },
+  /**
+   * Первый пароль человеку без пароля (приёмка F8, ред. 12, Р13). Тело — РОВНО
+   * `{newPassword, csrfToken}`: текущего пароля у такого человека нет. Правило
+   * пароля и «пароль уже есть» судит служба, консоль — нет. Глагол требует
+   * свежего предъявления, поэтому отказ свежести ведёт к повышению и одному
+   * повтору тем же паролем. Носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-67): членство в них — равенство пути
+   * целиком, а `/iam/v1/auth/password` — лишь начало этой строки.
+   */
+  enrollPassword(holder: FormTokenHolder, form: { newPassword: string }) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.passwordEnroll, { newPassword: form.newPassword }, true);
+  },
   secondFactorState() {
     return exchange<SecondFactorState>("GET", LOGIN_LANE.secondFactor);
   },
@@ -541,6 +583,48 @@ export const loginLane = {
    */
   confirmAddress(holder: FormTokenHolder, code: string) {
     return submit<{ session: LaneSession }>(holder, LOGIN_LANE.verifyEmailConfirm, { code }, false);
+  },
+  /**
+   * Выдача испытания входа ключом (Ф13 Р1, Р9). Тело — только признак формы
+   * вида `access-key-begin`. Ответ отдаётся КАК ПРИСЛАН: его разбор в параметры
+   * церемонии браузера — дело кодека (`access-key.ts`), который ничего не
+   * подставляет. Глагол носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-S4, Р6).
+   */
+  accessKeyBegin(holder: FormTokenHolder) {
+    return submit<unknown>(holder, LOGIN_LANE.accessKeyBegin, {}, false);
+  },
+  /**
+   * Предъявление утверждения браузера (Ф13 Р1, Р4). `credential` — закрытая
+   * проекция ответа браузера (`assertionBodyOf`), признак — вида
+   * `access-key-login`. Успех выдаёт сессию той же операцией, что вход паролем.
+   */
+  accessKeyLogin(holder: FormTokenHolder, credential: Record<string, unknown>) {
+    return submit<SignedIn>(holder, LOGIN_LANE.accessKeyLogin, { credential }, false);
+  },
+  /**
+   * Запрос кода восстановления на адрес почты (Ф5; приёмка F8-S3, Р3). Тело —
+   * РОВНО `{email, csrfToken}`: разбор службы строгий. Ответ `200 {}` на любой
+   * исход — заведён адрес или нет, — и экран его не различает (Р2). Носителя не
+   * ставит и контекста формы не меняет — в перечнях упорядочения его нет (Р7).
+   */
+  requestRecovery(holder: FormTokenHolder, form: { email: string }) {
+    return submit<Record<string, never>>(holder, LOGIN_LANE.recovery, { email: form.email }, false);
+  },
+  /**
+   * Предъявление кода с новым паролем (Ф5; приёмка F8-S3, Р3, Р5). Тело — РОВНО
+   * `{email, code, newPassword, csrfToken}`, поля `secondFactor` нет: лишнее поле
+   * служба отвергла бы `400`. Код и пароль уходят как введены — своего суждения о
+   * содержимом консоль не выносит. Успех отвечает как вход: сессия и новый
+   * контекст формы.
+   */
+  completeRecovery(holder: FormTokenHolder, form: { email: string; code: string; newPassword: string }) {
+    return submit<SignedIn>(
+      holder,
+      LOGIN_LANE.recoveryComplete,
+      { email: form.email, code: form.code, newPassword: form.newPassword },
+      false,
+    );
   },
 };
 
