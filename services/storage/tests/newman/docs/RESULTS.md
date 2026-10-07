@@ -141,7 +141,9 @@ concurrent `-race`), т.к. недостижимы через external public AP
 **Провокабельная (и включённая) часть S4/S2:** INV-7a — Internal-only RPC **отсутствуют**
 на external endpoint → `cases/internal-volume.py` (`IVOL-*-EXTERNAL-ABSENT`, CS1-S4-11) и
 `cases/disk-type.py` (`DT-{CR,UPD,DEL}-NEG-EXTERNAL-ABSENT`, CS1-S2-04). Обе — runnable
-black-box против external baseUrl (route absent → 404/405/501).
+black-box против external baseUrl: промах маршрута края целиком — путь без публичного
+шаблона → 404 / code 5 `Not Found` (IVOL), путь есть под другим методом → 501 / code 12
+`Method Not Allowed` (DT); оба до аутентификации и прав, сторож маршрута kacho#3053.
 
 ## Fixture-gated (требуют authz-профиль стенда)
 
