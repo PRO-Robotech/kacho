@@ -91,8 +91,12 @@ func buildFeed(cfg config.Config, pool *pgxpool.Pool, narrower *listnarrow.Narro
 		Enabled: cfg.Notifications,
 		DB:      pool,
 		Keyring: cfg.Keyring,
-		Metrics: reg,
-		Log:     logger.With(slog.String("component", "notification_feed")),
+		// Исход доставки пробе не нужен: у модуля-пробы нет состояния, которое
+		// Ack двигал бы в той же транзакции. Отсутствие наблюдателя пишется
+		// явным значением фундамента, а не пустым полем.
+		Observer: feed.NopObserver,
+		Metrics:  reg,
+		Log:      logger.With(slog.String("component", "notification_feed")),
 	})
 	if err != nil {
 		return feedParts{}, fmt.Errorf("сервер ленты: %w", err)
