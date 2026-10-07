@@ -135,6 +135,12 @@ spec:
               value: {{ include "ui.computeUpstream" . | quote }}
             - name: KACHO_UI_STORAGE_UPSTREAM
               value: {{ include "ui.storageUpstream" . | quote }}
+            {{- if and .Values.publicFront.enabled (.Values.publicFront.acme).enabled }}
+            # Решатель ACME этого релиза (kacho#3024): к нему уходит ТОЛЬКО вызов
+            # подтверждения владения на порту переадресации.
+            - name: KACHO_UI_ACME_SOLVER_UPSTREAM
+              value: {{ printf "%s.%s.svc.cluster.local:%s" (include "ui.publicFrontAcmeSolverName" .) .Release.Namespace (include "ui.acmeSolverPort" .) | quote }}
+            {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp

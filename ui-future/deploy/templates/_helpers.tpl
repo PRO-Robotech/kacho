@@ -140,9 +140,12 @@
 консоли. Любое несоответствие — отказ рендера с именем ручки: вход, чьё
 происхождение браузер не примет защищённым, вернул бы ровно тот отказ формы,
 ради которого вход заведён.
+
+`ui.publicFrontOriginHost` — хост того же происхождения после проверок схемы,
+пути и порта, без проверки покрытия сертификатом: из него выводятся имена
+сертификата (`namesFromOrigin`), и проверка покрытия сама на нём стоит.
 */}}
-{{- define "ui.publicFrontOrigin" -}}
-{{- $pf := .Values.publicFront -}}
+{{- define "ui.publicFrontOriginHost" -}}
 {{- $id := ((.Values.global).kacho).identity | default dict -}}
 {{- $origin := trimSuffix "/" ($id.appBaseURL | default "") -}}
 {{- if not $origin -}}
@@ -162,14 +165,53 @@
 {{- end -}}
 {{- $host = trimSuffix ":443" $host -}}
 {{- end -}}
+{{- $host -}}
+{{- end -}}
+
+{{/*
+`ui.publicFrontCertNames` — имена сертификата входа: объявленные плюс, при
+`namesFromOrigin`, хост происхождения консоли (IP-литерал — в ipAddresses,
+имя — в dnsNames). Печатает YAML-словарь `{dns: [...], ip: [...]}`.
+*/}}
+{{- define "ui.publicFrontCertNames" -}}
+{{- $c := .Values.publicFront.tls.certificate -}}
+{{- $dns := $c.dnsNames | default list -}}
+{{- $ip := $c.ipAddresses | default list -}}
+{{- if $c.namesFromOrigin -}}
+{{- $host := include "ui.publicFrontOriginHost" . -}}
+{{- if or (regexMatch "^[0-9.]+$" $host) (hasPrefix "[" $host) -}}
+{{- $ip = append $ip (trimSuffix "]" (trimPrefix "[" $host)) | uniq -}}
+{{- else -}}
+{{- $dns = append $dns $host | uniq -}}
+{{- end -}}
+{{- end -}}
+{{- dict "dns" $dns "ip" $ip | toYaml -}}
+{{- end -}}
+
+{{- define "ui.publicFrontOrigin" -}}
+{{- $pf := .Values.publicFront -}}
+{{- $host := include "ui.publicFrontOriginHost" . -}}
 {{- if $pf.tls.certificate.create -}}
-{{- $names := concat ($pf.tls.certificate.dnsNames | default list) ($pf.tls.certificate.ipAddresses | default list) -}}
-{{- if not (has $host $names) -}}
+{{- $n := include "ui.publicFrontCertNames" . | fromYaml -}}
+{{- $names := concat ($n.dns | default list) ($n.ip | default list) -}}
+{{- if not (has (trimSuffix "]" (trimPrefix "[" $host)) $names) -}}
 {{- fail (printf "uif.publicFront.tls.certificate: хост происхождения консоли %q не назван ни в dnsNames, ни в ipAddresses — браузер отвергнет сертификат" $host) -}}
 {{- end -}}
 {{- end -}}
 {{- printf "https://%s" $host -}}
 {{- end -}}
+
+{{/* Имена объектов поставщика входа (publicFront.acme). */}}
+{{- define "ui.publicFrontIssuerName" -}}
+{{- printf "%s-public-acme" (include "ui.hostName" .) -}}
+{{- end -}}
+
+{{- define "ui.publicFrontAcmeSolverName" -}}
+{{- printf "%s-acme-solver" (include "ui.hostName" .) -}}
+{{- end -}}
+
+{{/* Порт пода решателя http01 — задан cert-manager, ручкой не является. */}}
+{{- define "ui.acmeSolverPort" -}}8089{{- end -}}
 
 {{/* `ui.publicFrontGuard` — отказ рендера на неполном блоке; печатает пусто. */}}
 {{- define "ui.publicFrontGuard" -}}
@@ -182,12 +224,23 @@
 {{- fail "uif.publicFront.tls.secretName пуст — вход без сертификата TLS не завершает" -}}
 {{- end -}}
 {{- if $pf.tls.certificate.create -}}
-{{- if not $pf.tls.certificate.issuerRef.name -}}
-{{- fail "uif.publicFront.tls.certificate.issuerRef.name пуст — сертификат некому выписать (либо certificate.create: false и секрет заводит оператор)" -}}
+{{- if not (or $pf.tls.certificate.dnsNames $pf.tls.certificate.ipAddresses $pf.tls.certificate.namesFromOrigin) -}}
+{{- fail "uif.publicFront.tls.certificate: ни dnsNames, ни ipAddresses, ни namesFromOrigin не объявлены — сертификату нечего удостоверять" -}}
 {{- end -}}
-{{- if not (or $pf.tls.certificate.dnsNames $pf.tls.certificate.ipAddresses) -}}
-{{- fail "uif.publicFront.tls.certificate: ни dnsNames, ни ipAddresses не объявлены — сертификату нечего удостоверять" -}}
 {{- end -}}
+{{- $acme := $pf.acme | default dict -}}
+{{- if $acme.enabled -}}
+{{- if not $pf.tls.certificate.create -}}
+{{- fail "uif.publicFront.acme.enabled: поставщик из релиза выписывает лист, который заводит чарт, — tls.certificate.create обязан быть true" -}}
+{{- end -}}
+{{- if $pf.tls.certificate.issuerRef.name -}}
+{{- fail "uif.publicFront.acme.enabled вместе с tls.certificate.issuerRef.name — у листа входа два поставщика; поставщик из релиза исключает внешний" -}}
+{{- end -}}
+{{- if not (hasPrefix "https://" ($acme.server | default "")) -}}
+{{- fail "uif.publicFront.acme.server: каталог ACME обязан быть объявлен адресом по https" -}}
+{{- end -}}
+{{- else if and $pf.tls.certificate.create (not $pf.tls.certificate.issuerRef.name) -}}
+{{- fail "uif.publicFront.tls.certificate.issuerRef.name пуст — сертификат некому выписать (либо acme.enabled: true — поставщик из релиза, либо certificate.create: false и секрет заводит оператор)" -}}
 {{- end -}}
 {{- if eq (int $pf.httpsPort) (int $pf.redirectPort) -}}
 {{- fail "uif.publicFront: httpsPort и redirectPort совпадают" -}}

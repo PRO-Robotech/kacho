@@ -1,10 +1,17 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 {{- /*
-Сертификат внешнего входа консоли (kacho#3024). Поставщик — `issuerRef`
-профиля: этот чарт поставщика не заводит, потому что поставщик публичного
-сертификата — решение площадки (имя, способ подтверждения владения), а не
-продукта.
+Сертификат внешнего входа консоли (kacho#3024). Поставщик — либо Issuer ACME
+этого же релиза (`publicFront.acme.enabled`, issuer-public.yaml), либо
+`issuerRef` профиля, когда поставщика держит площадка.
+
+ВРЕМЕННЫЙ ЛИСТ НА ПЕРВЫЙ ВЫПУСК. Под раздачи монтирует секрет листа без
+`optional`: на чистой установке секрета ещё нет, под не стартует — а решатель
+ACME достижим только через этот под (порт переадресации). Аннотация велит
+cert-manager положить в секрет временный лист сразу; настоящий заменяет его
+по выпуску, и раздача перечитывает его сама (`tlsReload`). Молчаливого
+запасного пути по открытому http при этом нет: временный лист браузер не
+примет, и вход ждёт выпуска, а не обслуживает форму без защиты.
 */}}
 {{- if and .Values.publicFront.enabled .Values.publicFront.tls.certificate.create }}
 {{- include "ui.publicFrontGuard" . }}
@@ -16,6 +23,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ui.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/issue-temporary-certificate: "true"
 spec:
   secretName: {{ .Values.publicFront.tls.secretName | quote }}
   {{- with $c.duration }}
@@ -31,16 +40,23 @@ spec:
   usages:
     - digital signature
     - server auth
-  {{- with $c.dnsNames }}
+  {{- $names := include "ui.publicFrontCertNames" . | fromYaml }}
+  {{- with $names.dns }}
   dnsNames:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with $c.ipAddresses }}
+  {{- with $names.ip }}
   ipAddresses:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   issuerRef:
+    {{- if (.Values.publicFront.acme).enabled }}
+    name: {{ include "ui.publicFrontIssuerName" . | quote }}
+    kind: "Issuer"
+    group: "cert-manager.io"
+    {{- else }}
     name: {{ $c.issuerRef.name | quote }}
     kind: {{ $c.issuerRef.kind | quote }}
     group: {{ $c.issuerRef.group | quote }}
+    {{- end }}
 {{- end }}

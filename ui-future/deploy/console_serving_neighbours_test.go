@@ -26,7 +26,7 @@
 //
 // Адрес соседа раздача получает только подстановкой окружения
 // `${KACHO_UI_<ИМЯ>_UPSTREAM}` в `set`, а обращается к нему только
-// `proxy_pass http://$<переменная>`. Роль соседа — одна из трёх:
+// `proxy_pass http://$<переменная>`. Роль соседа — одна из четырёх:
 //
 //   - КРАЙ ПЛАТФОРМЫ — `KACHO_UI_API_GATEWAY_UPSTREAM`. Единственная выписанная
 //     величина: всё, что консоль спрашивает у платформы, она спрашивает у края;
@@ -41,7 +41,11 @@
 //     Имени этого соседа проба не знает и не должна: роль выводится из формы
 //     блока. Полосу держит посадка `external` (её объявляют чарт края и чарт
 //     службы доступа); когда посадка снимется вместе с полосой (#1276), роль
-//     опустеет, и проба останется зелёной без правки.
+//     опустеет, и проба останется зелёной без правки;
+//   - РЕШАТЕЛЬ ACME — `KACHO_UI_ACME_SOLVER_UPSTREAM`, и только в блоке
+//     `location ^~ /.well-known/acme-challenge/` (kacho#3024): подтверждение
+//     владения именем для листа внешнего входа. Тот же сосед в любом другом
+//     блоке — сосед без роли.
 //
 // Всё прочее — находка с координатой: сосед без роли; обращение по буквальному
 // адресу мимо подстановки; переменная, не связанная с адресом соседа;
@@ -85,6 +89,14 @@ const (
 	neighbourEdge   = "край платформы"
 	neighbourModule = "модуль консоли"
 	neighbourSignIn = "внешний экран входа"
+	neighbourAcme   = "решатель ACME"
+)
+
+// acmeSolverUpstream / acmeChallengePrefix — решатель ACME и единственный блок,
+// в котором он законен.
+const (
+	acmeSolverUpstream  = "ACME_SOLVER"
+	acmeChallengePrefix = "/.well-known/acme-challenge/"
 )
 
 // edgeUpstream — адрес края платформы: единственный выписанный сосед.
@@ -167,7 +179,7 @@ type neighbourCensus struct {
 func judgeConsoleNeighbours(t *testing.T, serving, deployment string, modules map[string]bool) neighbourCensus {
 	t.Helper()
 	c := neighbourCensus{
-		byRole:   map[string]map[string]bool{neighbourEdge: {}, neighbourModule: {}, neighbourSignIn: {}},
+		byRole:   map[string]map[string]bool{neighbourEdge: {}, neighbourModule: {}, neighbourSignIn: {}, neighbourAcme: {}},
 		served:   map[string]bool{},
 		declared: map[string]bool{},
 	}
@@ -255,6 +267,8 @@ func judgeConsoleNeighbours(t *testing.T, serving, deployment string, modules ma
 					use.role = neighbourEdge
 				case module != "" && modules[module] && upstream == strings.ToUpper(module):
 					use.role = neighbourModule
+				case upstream == acmeSolverUpstream && l.mod == "^~" && l.spec == acmeChallengePrefix:
+					use.role = neighbourAcme
 				case isBand:
 					use.role = neighbourSignIn
 					signIn[upstream] = true
@@ -263,7 +277,7 @@ func judgeConsoleNeighbours(t *testing.T, serving, deployment string, modules ma
 					continue
 				default:
 					finding(line, "%s отдаёт запросы соседу %s, у которого нет роли: это не край "+
-						"платформы, не модуль консоли и не экран входа полосы церемоний. Проводка к "+
+						"платформы, не модуль консоли, не экран входа полосы церемоний и не решатель ACME на своём пути. Проводка к "+
 						"соседу без роли объявляет консоль зависящей от чужой службы", l.name(), upstream)
 					continue
 				}
@@ -336,7 +350,7 @@ func readTreeFile(t *testing.T, root, rel string) string {
 
 // roleText — роль и её соседи для переписи.
 func roleText(c neighbourCensus) string {
-	roles := []string{neighbourEdge, neighbourModule, neighbourSignIn}
+	roles := []string{neighbourEdge, neighbourModule, neighbourSignIn, neighbourAcme}
 	parts := make([]string, 0, len(roles))
 	for _, r := range roles {
 		parts = append(parts, fmt.Sprintf("%s %d %v", r, len(c.byRole[r]), sortedKeys(c.byRole[r])))

@@ -323,7 +323,7 @@
       ]
     },
     {
-      "name": "DT-CR-NEG-EXTERNAL-ABSENT — POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
+      "name": "DT-CR-NEG-EXTERNAL-ABSENT — POST /storage/v1/diskTypes empty-id на external → 501/12 промах маршрута края «метода нет» (admin Create Internal-only, ban #6) — НИКОГДА 200-mutation",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -363,7 +363,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -372,7 +380,7 @@
       ]
     },
     {
-      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 401/403/404/405/501 — НИКОГДА 200/мутация каталога",
+      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → 501/12 промах маршрута края «метода нет» (admin Update Internal-only) — НИКОГДА 200/мутация каталога",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -413,7 +421,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -422,7 +438,7 @@
       ]
     },
     {
-      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 401/403/404/405/501 — НИКОГДА 200/удаление класса",
+      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → 501/12 промах маршрута края «метода нет» (admin Delete Internal-only) — НИКОГДА 200/удаление класса",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -454,7 +470,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }

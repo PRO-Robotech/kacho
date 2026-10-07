@@ -855,7 +855,7 @@
       ]
     },
     {
-      "name": "OP-LST-NEG-UNROUTED-FAIL-CLOSED — Коллекция /operations (RPC в контракте нет) → 403 fail-closed по отсутствию записи в каталоге прав",
+      "name": "OP-LST-NEG-UNROUTED-FAIL-CLOSED — Коллекция /operations (RPC в контракте нет) → 404 NOT_FOUND «маршрута нет», ровно промах края",
       "description": "class:NEG | class:SEC | priority:P1",
       "item": [
         {
@@ -884,10 +884,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
                   "});",
                   "pm.test('отказ не упоминает проект из запроса', () =>   pm.expect(pm.response.text()).to.not.contain(pm.environment.get('_suiteProjectId')));"
                 ]

@@ -87,6 +87,8 @@ Go-тесты use-case-слоя (`internal/apps/kacho/api/*/list_filter_test.go`
 internal-volume external-absence 403 fail-closed vs [404,405,501]; FieldMask snake→camel)
 были **test-staleness** — приведены к фактическому gateway-контракту (family-agnostic
 edge-message; fail-closed uncatalogued 403; camelCase FieldMask paths), см. диффы кейсов.
+(Запись историческая: «uncatalogued 403» для внешнего отсутствия снят сторожем маршрута
+kacho#3053 — нынешний исход IVOL-* — промах края 404 / code 5, см. «Провокабельная часть» ниже.)
 
 ## STOR-1 redesign — Image (`cases/image.py`, 43 кейса)
 
@@ -141,7 +143,9 @@ concurrent `-race`), т.к. недостижимы через external public AP
 **Провокабельная (и включённая) часть S4/S2:** INV-7a — Internal-only RPC **отсутствуют**
 на external endpoint → `cases/internal-volume.py` (`IVOL-*-EXTERNAL-ABSENT`, CS1-S4-11) и
 `cases/disk-type.py` (`DT-{CR,UPD,DEL}-NEG-EXTERNAL-ABSENT`, CS1-S2-04). Обе — runnable
-black-box против external baseUrl (route absent → 404/405/501).
+black-box против external baseUrl: промах маршрута края целиком — путь без публичного
+шаблона → 404 / code 5 `Not Found` (IVOL), путь есть под другим методом → 501 / code 12
+`Method Not Allowed` (DT); оба до аутентификации и прав, сторож маршрута kacho#3053.
 
 ## Fixture-gated (требуют authz-профиль стенда)
 

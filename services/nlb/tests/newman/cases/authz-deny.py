@@ -1171,10 +1171,11 @@ CASES.append(Case(
         Step(name="probe-internal-public", method="GET",
              path="/nlb/v1/internal/resourceLifecycle:subscribe",
              auth="jwtProjectEditorA",
-             test_script=[
-                 "pm.test('internal route NOT exposed on public mux (404/403/501)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([401, 403, 404, 405, 501]));",
-             ]),
+             # Сторож маршрута внешнего слушателя (kacho#3053) отвечает на внутренний путь
+             # раньше аутентификации и прав — побайтно тем же промахом, что на путь,
+             # которого нет нигде. 401/403 здесь значили бы, что слой входа или прав снова
+             # отвечает раньше маршрута и называет внутреннее снаружи.
+             test_script=[*assert_edge_route_miss("path")]),
     ],
 ))
 
@@ -1260,29 +1261,30 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="AZD-OP-LIST-STRANGER-FILTERS-SCOPE",
-    title="OP.List by stranger → only ops in subject's accessible scope returned",
+    id="AZD-OP-LIST-STRANGER-UNROUTED",
+    title="OP коллекция /operations постороннему и анониму → тот же «маршрута нет» 404/5, что владельцу",
     classes=["AZD"], priority="P1",
     steps=[
+        # Списка операций в контракте нет (см. operation.py, OP-LST-NEG-UNROUTED-FAIL-CLOSED:
+        # там этот путь спрашивает владелец). Прежде этот кейс ждал «посторонний получает
+        # 403 либо пустой список» — предмета «фильтр списка по области» не существовало
+        # никогда, и кейс заменён тем свойством, которое у пути есть: сторож маршрута
+        # внешнего слушателя (kacho#3053) отвечает «маршрута нет» РАНЬШЕ аутентификации и
+        # прав, поэтому ответ не зависит от вызывающего. Посторонний с сессией и аноним
+        # получают побайтно тот же промах края, что владелец: 404, code 5, `Not Found`,
+        # пустые details. 403 здесь значил бы, что слой прав снова отвечает раньше
+        # маршрута; 401 у анонима — что аутентификация снова стоит перед сторожем.
         Step(name="lst-stranger-ops", method="GET",
              path=f"/operations?projectId={{{{_suiteProjectId}}}}&pageSize=10",
              auth="jwtStranger",
-             # Two lawful answers here and BOTH carry a statement, which is what keeps this
-             # out of the "accepts success and refusal" class: either the list runs and the
-             # stranger sees nothing (asserted), or the gateway refuses outright — and that
-             # refusal must be a genuine permission denial, not any 403 that happens by.
-             # The else-arm previously said nothing, so half the outcomes went unchecked.
              test_script=[
-                 "pm.test('stranger is refused, or listed and shown nothing', () => "
-                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                 "if (pm.response.code === 200) {",
-                 "  const ops = (pm.response.json().operations || pm.response.json().items || []);",
-                 "  pm.test('scope-filtered (empty for stranger)', () => "
-                 "    pm.expect(ops.length).to.eql(0));",
-                 "} else {",
-                 "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () => "
-                 "    pm.expect(pm.response.json().code).to.eql(7));",
-                 "}",
+                 *assert_edge_route_miss("path"),
+             ]),
+        Step(name="lst-anon-ops", method="GET",
+             path=f"/operations?projectId={{{{_suiteProjectId}}}}&pageSize=10",
+             auth="anonymous",
+             test_script=[
+                 *assert_edge_route_miss("path"),
              ]),
     ],
 ))
