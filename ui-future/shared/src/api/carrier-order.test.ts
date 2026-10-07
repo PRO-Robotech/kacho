@@ -703,7 +703,7 @@ describe("F8-67 · новые глаголы S2 и S4 носителя не ст
       ).enrollPassword;
       const tape = await scenario(
         verb,
-        () => enroll(holder("password-enroll" as never), { newPassword: "p" }),
+        () => enroll(holder("password-enroll"), { newPassword: "p" }),
         outcome,
       );
       expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });

@@ -124,6 +124,17 @@ function refusalOf(e: unknown, step: string): KeysRefusal {
   return { step, text: NO_CONNECTION, field: null };
 }
 
+/** Исход чтения перечня: ключи либо отказ — третьего не бывает. */
+type KeysRead = { keys: AccessKeyRecord[] } | { refusal: KeysRefusal };
+
+async function readKeys(userId: string): Promise<KeysRead> {
+  try {
+    return { keys: await accessKeysClient.list(userId) };
+  } catch (e) {
+    return { refusal: refusalOf(e, "Перечень ключей не прочитан.") };
+  }
+}
+
 /** Шаг — словом консоли; под ним текст отказа ДОСЛОВНО и ни словом больше. */
 function RefusalNotice({ refusal }: { refusal: KeysRefusal }) {
   return (
@@ -181,20 +192,33 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     };
   }, []);
 
-  const reload = useCallback(async () => {
-    try {
-      const listed = await accessKeysClient.list(userId);
-      if (alive.current?.signal.aborted) return;
-      setKeys(listed);
+  // Исход чтения перечня ложится в состояние только у живого раздела.
+  const applyRead = useCallback((read: KeysRead) => {
+    if (alive.current?.signal.aborted) return;
+    if ("keys" in read) {
+      setKeys(read.keys);
       setListRefusal(null);
-    } catch (e) {
-      if (!alive.current?.signal.aborted) setListRefusal(refusalOf(e, "Перечень ключей не прочитан."));
+    } else {
+      setListRefusal(read.refusal);
     }
-  }, [userId]);
+  }, []);
 
+  const reload = useCallback(async () => {
+    applyRead(await readKeys(userId));
+  }, [userId, applyRead]);
+
+  // Первое чтение — подпиской на ответ, а не вызовом, пишущим состояние из
+  // эффекта: исход ложится, когда ответ пришёл, и не ложится вовсе, если
+  // раздел за это время сменил пользователя либо ушёл с экрана.
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    let cancelled = false;
+    void readKeys(userId).then((read) => {
+      if (!cancelled) applyRead(read);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, applyRead]);
 
   const add = async () => {
     const controller = alive.current;

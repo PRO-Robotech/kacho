@@ -380,7 +380,7 @@ async function keysRegion() {
   return screen.findByRole("region", { name: "Ключи доступа" });
 }
 
-async function addKey(region: HTMLElement, name: string, description = "") {
+function addKey(region: HTMLElement, name: string, description = "") {
   fireEvent.change(within(region).getByLabelText("Имя"), { target: { value: name } });
   fireEvent.change(within(region).getByLabelText("Описание"), { target: { value: description } });
   fireEvent.click(within(region).getByRole("button", { name: "Добавить ключ доступа" }));
@@ -411,7 +411,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     expect(await within(region).findByText("Ключей доступа нет")).toBeInTheDocument();
-    await addKey(region, "key-1", "Ноутбук");
+    addKey(region, "key-1", "Ноутбук");
     await waitFor(() => expect(keyItem(region, "key-1")).toBeDefined());
 
     const options = keys.create.mock.calls[0][0] as CredentialCreationOptions;
@@ -474,7 +474,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
       );
       const region = await keysRegion();
       await within(region).findByText("Ключей доступа нет");
-      await addKey(region, "key-x");
+      addKey(region, "key-x");
       await waitFor(() => expect(lane!.of("POST", KEYS)).toHaveLength(1));
       expect(lane.of("POST", KEYS)[0].body).toEqual({
         name: "key-x",
@@ -506,7 +506,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await within(region).findByText("Ключей доступа нет");
-    await addKey(region, "key-52");
+    addKey(region, "key-52");
     expect(await within(region).findByText("Добавление ключа прервано в браузере — повторите")).toBeInTheDocument();
     expect(lane.of("POST", KEYS)).toHaveLength(0);
     expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
@@ -545,7 +545,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await waitFor(() => expect(keyItem(region, "key-old")).toBeDefined());
-    await addKey(region, "key-54");
+    addKey(region, "key-54");
     expect(await within(region).findByText(ceiling)).toBeInTheDocument();
     expect(within(region).getAllByRole("listitem")).toHaveLength(1);
     expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
@@ -563,7 +563,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await within(region).findByText("Ключей доступа нет");
-    await addKey(region, "Laptop", "Ноутбук");
+    addKey(region, "Laptop", "Ноутбук");
     const name = within(region).getByLabelText("Имя");
     await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
     expect(document.getElementById(name.getAttribute("aria-describedby")!)).toHaveTextContent(rule);
@@ -571,7 +571,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     expect(region).not.toHaveTextContent("invalid argument");
     expect(lane.of("POST", KEYS)[0].body).toMatchObject({ name: "Laptop" });
     expect((name as HTMLInputElement).value).toBe("Laptop");
-    expect((within(region).getByLabelText("Описание") as HTMLInputElement).value).toBe("Ноутбук");
+    expect(within(region).getByLabelText("Описание")).toHaveValue("Ноутбук");
     expect(lane.calls.filter((c) => c.path.startsWith("/operations/"))).toHaveLength(0);
     expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
   });
@@ -588,7 +588,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await within(region).findByText("Ключей доступа нет");
-    await addKey(region, "key-71");
+    addKey(region, "key-71");
     expect(await within(region).findByText(expired)).toBeInTheDocument();
     expect(within(region).getByLabelText("Имя")).not.toHaveAttribute("aria-invalid");
     expect(lane.calls.filter((c) => c.path.startsWith("/operations/"))).toHaveLength(0);
@@ -872,7 +872,7 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
     const alert = await within(password).findByRole("alert");
     expect(alert).toHaveTextContent("request not performed; try again later");
     expect(alert).toHaveTextContent("Отправьте форму ещё раз.");
-    expect((within(password).getByLabelText("Новый пароль") as HTMLInputElement).value).toBe("first-password-66");
+    expect(within(password).getByLabelText("Новый пароль")).toHaveValue("first-password-66");
     expect(within(password).getByRole("button", { name: "Завести пароль" })).toBeInTheDocument();
   });
 
