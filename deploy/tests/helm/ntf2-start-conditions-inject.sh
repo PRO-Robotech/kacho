@@ -43,6 +43,9 @@
 #      а не выписанная здесь) с одним Deployment — п.2 и п.4 «не выполнено»,
 #      подчарт назван. Близнец — контроль C: тот же зонтик без подчарта, где
 #      поставщика после kacho#1276 нет и ноль — исход, а не «не прочитано».
+#   I6. в Chart.yaml зонтика объявлена зависимость с нашим именем, чей
+#      репозиторий называет бренд поставщика (бренд — из того же словаря) —
+#      п.4 «не выполнено», зависимость названа. Близнец — контроль C.
 #
 # Исходы — по контракту `outcome.sh`: 0 зелёный, 1 находка, 2 условие не создано.
 set -uo pipefail
@@ -211,9 +214,14 @@ refusal_case I4-umbrella "каталог обязателен" rm -rf deploy/hel
 # ── I5. необъявленный подчарт поставщика вернулся в charts/ ─────────────────
 # Имя подчарта собирается из отметки словаря во время прогона: литерал имени
 # в развёртывании — единица потолка привязок к снятому поставщику.
-MARK="$(cd "$REPO" && go doc -u ./internal/identityvendor marks 2>"$WORK/mark.err" \
-  | awk '/^var marks = /{d=1} d{while (match($0, /"[^"]*"/)) {print substr($0, RSTART+1, RLENGTH-2); $0=substr($0, RSTART+RLENGTH)}} d&&/}/{exit}' \
-  | grep -v / | head -n 1)"
+# dict_word <объявление> — строки объявления словаря `internal/identityvendor`.
+dict_word() {
+  (cd "$REPO" && go doc -u ./internal/identityvendor "$1" 2>>"$WORK/mark.err") \
+    | awk -v sym="$1" '$1 ~ /^(var|const)$/ && $2 == sym && $3 == "=" {d=1}
+        d {while (match($0, /"[^"]*"/)) {print substr($0, RSTART+1, RLENGTH-2); $0=substr($0, RSTART+RLENGTH)}}
+        d && ($0 ~ /}/ || $1 == "const") {exit}'
+}
+MARK="$(dict_word marks | grep -v / | head -n 1)"
 [ -n "$MARK" ] || fatal "I5: отметка поставщика из internal/identityvendor не прочитана: $(cat "$WORK/mark.err")"
 I5_CHART="$MARK-ntf2-inject"
 I5="$(make_copy i5)" || fatal "копия I5 не собрана"
@@ -236,5 +244,20 @@ grep -qE "^  цепочка [^:]+: .*рабочих объектов поста�
 echo "I5: $(grep '^п.4:' "$WORK/i5.out" | cut -c1-200)"
 ok
 
-findings_verdict "копий дерева: контроль и инъекций 5 (I1–I5)"
+# ── I6. зависимость с нашим именем из репозитория бренда поставщика ─────────
+BRAND="$(dict_word brand | head -n 1)"
+[ -n "$BRAND" ] || fatal "I6: бренд поставщика из internal/identityvendor не прочитан: $(cat "$WORK/mark.err")"
+I6="$(make_copy i6)" || fatal "копия I6 не собрана"
+yq -i ".dependencies += [{\"name\": \"ntf2-inject-widget\", \"version\": \"0.1.0\", \"repository\": \"https://charts.$BRAND.example/c\", \"condition\": \"ntf2-inject-widget.enabled\"}]" \
+  "$I6/deploy/helm/umbrella/Chart.yaml" || fatal "I6: зависимость не объявлена"
+commit_copy "$I6" "I6: зависимость из репозитория бренда поставщика" || fatal "I6: копия не закоммичена"
+run_probe "$I6" "$WORK/i6.out"
+o="$(outcome_of "$WORK/i6.out" п.4)"
+[ "$o" = "не выполнено" ] || fail "I6: п.4 дал «${o:-нет строки}», ожидалось «не выполнено»: $(grep '^п.4:' "$WORK/i6.out")"
+grep -q '^п.4: не выполнено — .*зависимость ntf2-inject-widget' "$WORK/i6.out" \
+  || fail "I6: п.4 не назвал зависимость ntf2-inject-widget: $(grep '^п.4:' "$WORK/i6.out")"
+echo "I6: $(grep '^п.4:' "$WORK/i6.out" | cut -c1-200)"
+ok
+
+findings_verdict "копий дерева: контроль и инъекций 6 (I1–I6)"
 exit 0
