@@ -4,6 +4,7 @@
 package subscriptionjournal
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -36,15 +37,21 @@ import (
 // красного, ни зелёного — он МОЛЧИТ, а записанное неизвестной ему формой не
 // «разрешено», а НЕ ОСМОТРЕНО (#1568).
 //
-// # Почему это заведено ДО того, как класс стал дефектом
+// # Форма 2 у nlb — ноль, и это цель
 //
-// Сегодня обе невидимые точки законны: у сборщика свободных адресов род
-// `DELETED`, у которого состояния не бывает by construction, а согласие триггера
-// с формой Go держит сквозная проба
-// `TestLoadBalancerStateIsTheSameFromTheTriggerAndFromGo`. Законность эта,
-// однако, ничем не удержана: следующий оператор на Go либо следующий триггер,
-// пишущий род, отличный от снятия, не покраснил бы ни один гейт и не попал бы ни
-// в одну перепись.
+// Строку журнала на Go пишет только функция фундамента с дескриптором nlb
+// (`Journal(false).Emit`, замысел issue-2918, З5, З6): порт `Outbox().Emit` —
+// обёрткой над ней, сборщик свободных адресов (`emitReconcileFinalize`, род
+// `DELETED`) — прямым вызовом. Оператор вставки в журнал на Go поэтому —
+// находка любого рода; живость распознавателя доказана на синтетике
+// (`journalStatementRecognizerFailures`), а не на дереве, где предмета больше
+// нет. Прямой вызов функции фундамента у сборщика разбором формы 1 не
+// считается (у него три аргумента, а не шесть): нагрузки состояния у снятия
+// нет by construction, а сам вызов переписывает гейт форм записи журнала
+// дерева (`internal/repohygiene/journalwriteforms.go`).
+//
+// Согласие триггера (форма 3) с формой Go держит сквозная проба
+// `TestLoadBalancerStateIsTheSameFromTheTriggerAndFromGo`.
 //
 // # Граница разбора названа, а не умолчана
 //
@@ -136,43 +143,66 @@ func TestEveryJournalWriteFormIsAccountedFor(t *testing.T) {
 		t.Fatal("форма 1 не найдена ни разу — предмета у переписи нет. Если эмиссия переехала, " +
 			"проверка обязана покраснеть, а не молча одобрить любое дерево")
 	}
-	// Форма 2 существует в дереве: реализация порта `Emit` сама есть оператор SQL.
-	// Ноль здесь означал бы, что распознаватель формы перестал её узнавать, — и
-	// тогда молчание по ней ничего не стоит.
-	if len(stmts.points) == 0 {
-		t.Fatal("форма 2 не найдена ни разу, а она в дереве есть заведомо: реализация порта " +
-			"`Emit` сама пишет строку оператором. Значит распознаватель формы её больше не " +
-			"узнаёт, и его молчание ничего не утверждает")
+	// Распознаватель формы 2 жив — доказано на СИНТЕТИКЕ, а не на дереве.
+	//
+	// Прежде предпосылкой стояло «форма 2 в дереве есть заведомо: реализация
+	// порта `Emit` сама пишет строку оператором». Предмет этой предпосылки снят
+	// полосой S1-A7 (замысел issue-2918, З5, З6): порт пишет строку функцией
+	// фундамента с дескриптором (`Journal(false).Emit`), и операторов вставки в
+	// журнал на Go у nlb НОЛЬ — это цель, а не отказ распознавателя. Поэтому
+	// живость распознавателя доказывается входом, который живёт независимо от
+	// дерева: оператор обеих разновидностей (точка и перенос), собранный из
+	// объявления журнала.
+	for _, why := range journalStatementRecognizerFailures() {
+		t.Fatal(why)
 	}
 
-	for _, p := range points {
-		if p.change == deletedChangeWord() {
-			continue
-		}
-		t.Errorf("%s: строка журнала пишется ОПЕРАТОРОМ SQL на Go, вид %q, род %q.\n"+
-			"Такая точка идёт мимо порта `Emit`, а значит мимо словаря констант и мимо общего "+
-			"строителя нагрузки: ни один из соседних гейтов её не судит, и их перепись её не "+
-			"видит. Род, отличный от снятия (%q), здесь запрещён — у снятия состояния не "+
-			"бывает by construction, а у прочих родов вид объявлен несущим ПОЛНОЕ состояние, и "+
-			"одна частичная точка делает ложным ВЕСЬ вид.\n"+
-			"Исходов два: эмитить через порт `Emit` — либо, если оператор нужен именно здесь, "+
-			"завести ему сквозную пробу согласия с формой Go, как у триггера, и назвать её "+
-			"здесь", p.pos, p.kind, p.change, deletedChangeWord())
+	// Любой оператор вставки в журнал на Go — находка, включая род снятия и
+	// перенос. Прежнее послабление для снятия держалось предметом (сборщик
+	// свободных адресов писал `DELETED` литералом); предмет снят тем же
+	// изменением, и послабление истекает вместе с ним. Единственный писатель
+	// строки журнала на Go — функция фундамента: мимо неё строка идёт мимо
+	// словаря владельца, формы имени и якоря вида (`subscription.ErrEntryRefused`
+	// не наступает).
+	for _, p := range stmts.points {
+		t.Errorf("%s: строка журнала пишется ОПЕРАТОРОМ SQL на Go (вид %q, род %q; пустое — "+
+			"значение параметризовано).\n"+
+			"Такая точка идёт мимо функции фундамента с дескриптором nlb "+
+			"(`subscriptionjournal.Journal(false).Emit`): мимо словаря видов и родов владельца, "+
+			"объявленных формы имени и якоря вида — отказ объявления до оператора у неё не "+
+			"наступает, и запись, которую владелец не объявлял, ложится молча. Писать строку "+
+			"через порт `Outbox().Emit` либо функцией фундамента (замысел issue-2918, З5, З6)",
+			p.pos, p.kind, p.change)
 	}
 }
 
-// deletedChangeWord — слово рода «снятие» так, как оно лежит в колонке журнала.
-//
-// Берётся у СЛОВАРЯ журнала, а не выписывается: слово хранилища объявлено один
-// раз, и второе его написание разошлось бы с первым молча — ровно тот класс,
-// который стережёт соседний гейт словаря.
-func deletedChangeWord() string {
-	for word, change := range Journal().Mapping.Changes {
-		if change.String() == "DELETED" {
-			return word
-		}
+// journalStatementRecognizerFailures — самопроверка распознавателя формы 2 на
+// синтетическом операторе: точка (вид и род литералами) и перенос (оба
+// параметризованы) узнаются, и литералы читаются против своих колонок.
+// Имена таблицы и колонок берутся из объявления журнала, а не выписываются.
+func journalStatementRecognizerFailures() []string {
+	st := Journal(false).Storage
+	cols := "(" + st.KindColumn + ", " + st.IDColumn + ", " + st.ChangeColumn + ", " + st.PayloadColumn + ")"
+	point := "INSERT INTO " + Table + " " + cols + " VALUES ('kind-x', $1, 'CHANGE-X', $2::jsonb)"
+	transport := "INSERT INTO " + Table + " " + cols + " VALUES ($1, $2, $3, $4::jsonb)"
+
+	var out []string
+	pi := insertsInto(point, Table)
+	switch {
+	case len(pi) != 1:
+		out = append(out, fmt.Sprintf("распознаватель формы 2 не узнал синтетическую точку (вставок %d, ожидалась 1) — "+
+			"его молчание по дереву ничего не утверждает", len(pi)))
+	case pi[0].literalOf(st.KindColumn) != "kind-x" || pi[0].literalOf(st.ChangeColumn) != "CHANGE-X":
+		out = append(out, fmt.Sprintf("распознаватель формы 2 прочёл литералы синтетической точки неверно: вид %q, род %q",
+			pi[0].literalOf(st.KindColumn), pi[0].literalOf(st.ChangeColumn)))
 	}
-	return ""
+	ti := insertsInto(transport, Table)
+	if len(ti) != 1 {
+		out = append(out, fmt.Sprintf("распознаватель формы 2 не узнал синтетический перенос (вставок %d, ожидалась 1)", len(ti)))
+	} else if p := (journalStatementPoint{kind: ti[0].literalOf(st.KindColumn), change: ti[0].literalOf(st.ChangeColumn)}); !p.isTransport() {
+		out = append(out, fmt.Sprintf("распознаватель формы 2 принял перенос за точку: вид %q, род %q", p.kind, p.change))
+	}
+	return out
 }
 
 type journalStatementCensus struct {
@@ -241,8 +271,8 @@ func inspectJournalStatements(t *testing.T) journalStatementCensus {
 			}
 			res.unresolvable += countUnresolvableInserts(text)
 			for _, ins := range insertsInto(text, Table) {
-				kind, change := ins.literalOf(Journal().Storage.KindColumn),
-					ins.literalOf(Journal().Storage.ChangeColumn)
+				kind, change := ins.literalOf(Journal(false).Storage.KindColumn),
+					ins.literalOf(Journal(false).Storage.ChangeColumn)
 				res.points = append(res.points, journalStatementPoint{
 					pos:    fset.Position(lit.Pos()).String(),
 					kind:   kind,

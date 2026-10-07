@@ -35,13 +35,24 @@
 //
 // # Проверка СВОЕЙ предпосылки
 //
-// Сопоставление опирается на факт о ЧУЖОМ выводе: сообщения buf называют символ В
-// КАВЫЧКАХ (`Previously present RPC "AddRoutes" on service "RouteTableService" was
-// deleted.`). Факт снят с реального вывода buf 1.72.0 и закреплён фикстурами в testdata;
-// если он перестанет быть верным, объявление не сможет сопоставиться НИКОГДА — и тогда
-// оно попадёт не в «истекло», а в отдельный исход `SymbolMismatch`, который называет
-// координату находки и объявленный символ. То есть отказ предпосылки виден как отказ, а
-// не как ложное «послабление истекло».
+// Сопоставление опирается на факт о ЧУЖОМ выводе: сообщения buf называют В КАВЫЧКАХ и
+// предмет разрыва, и объемлющий символ (`Previously present RPC "AddRoutes" on service
+// "RouteTableService" was deleted.`), и из них собирается символ находки
+// ([Finding.Symbol]). Факт снят с реального вывода buf 1.72.0 и закреплён фикстурами в
+// testdata; если он перестанет быть верным, объявление не сможет сопоставиться НИКОГДА —
+// и тогда оно попадёт не в «истекло», а в отдельный исход `SymbolMismatch`, который
+// называет координату находки, её символ и объявленный символ. То есть отказ предпосылки
+// виден как отказ, а не как ложное «послабление истекло».
+//
+// # Запись прощает РОВНО ОДИН разрыв (kacho#2911)
+//
+// Прежде запись сопоставлялась по вхождению `"<symbol>"` в текст сообщения и прощала
+// все находки, на которые подходила. У снятия значения перечисления buf печатает только
+// номер значения и имя перечисления, и запись `symbol: Status` прощала снятие любого
+// значения этого словаря; запись с именем поля — одноимённое поле любого сообщения
+// файла; запись с прежним именем типа ответа — смену типа у любого RPC файла. Теперь
+// символ сравнивается строгим равенством, а простившая запись расходуется
+// ([Adjudicate]).
 //
 // # Находка, у которой поля пути НЕТ (выведено 2026-08-15)
 //
@@ -101,6 +112,63 @@ func (f Finding) Coordinate() string {
 	return fmt.Sprintf("%s:%d", f.Path, f.StartLine)
 }
 
+// Symbol — символ находки: то, по чему запись перечня называет РОВНО ЭТОТ разрыв.
+// Отчёт печатает его у каждого разрыва вне перечня, и запись берёт его оттуда дословно.
+//
+// ГДЕ СООБЩЕНИЕ НАЗЫВАЕТ ОБЪЕМЛЮЩИЙ СИМВОЛ, символ — `<контейнер>.<предмет>`:
+//
+//	Previously present field "10" with name "x" on message "SecurityGroupRule" …  → SecurityGroupRule.10
+//	Previously present enum value "4" on enum "Status" was deleted.             → Status.4
+//	RPC "Create" on service "NetworkService" changed response type from …       → NetworkService.Create
+//	Message "RequiredProbe" had required field "2" deleted. …                   → RequiredProbe.2
+//
+// Предмет — ПЕРВОЕ кавычечное вхождение до контейнера: у поля и значения перечисления
+// это НОМЕР, у RPC и зарезервированного имени — имя, у зарезервированного диапазона —
+// его запись. Номер, а не имя поля, потому что номер buf печатает у поля в каждой форме
+// сообщения, а имя — не в каждой (у переименования его нет), и одно поле получило бы два
+// написания. У обязательного поля buf пишет контейнер ПЕРВЫМ, и символ — тот же `M.N`.
+//
+// ГДЕ КОНТЕЙНЕРА В СООБЩЕНИИ НЕТ, символ — первое кавычечное вхождение вида имени
+// (снятое сообщение, перечисление, служба; параметр сообщения). Номер именем не является
+// и отсеивается. Различить два таких разрыва одного файла символ не может, и держит их
+// не символ, а расходование записи ([Adjudicate]).
+//
+// У снятия ФАЙЛА символ совпадает с путём: предмет такой находки — сам файл.
+//
+// Пустой символ — «предмет не назван»: контейнер есть, а кавычечного предмета до него
+// нет, либо имени в кавычках нет вовсе. Такую находку [ParseFindings] отвергает, а не
+// делает символом контейнер: символ-контейнер прощал бы любой разрыв внутри него.
+//
+// ЧЕГО СИМВОЛ НЕ РАЗЛИЧАЕТ. Контейнер buf называет простым именем, без объемлющих
+// сообщений (`Instance.Status` печатается как `Status`). Два одноимённых вложенных
+// контейнера одного файла символ не различает; запись прощает один разрыв из двух, но
+// не выбирает, какой.
+func (f Finding) Symbol() string {
+	if f.Type == fileDeletionRule {
+		return f.Path
+	}
+	if m := requiredFieldRe.FindStringSubmatch(f.Message); m != nil {
+		return m[1] + "." + m[2]
+	}
+	if loc := containerRe.FindStringSubmatchIndex(f.Message); loc != nil {
+		subject := quotedRe.FindStringSubmatch(f.Message[:loc[0]])
+		if subject == nil {
+			return ""
+		}
+		return f.Message[loc[2]:loc[3]] + "." + subject[1]
+	}
+	for _, m := range quotedRe.FindAllStringSubmatch(f.Message, -1) {
+		if nameRe.MatchString(m[1]) {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+// fileDeletionRule — правило снятия файла целиком: у его находки поля пути нет, и путь
+// восстанавливается из сообщения (subjectPathFromMessage).
+const fileDeletionRule = "FILE_NO_DELETE"
+
 // Declaration — объявленный разрыв. Каждое поле обязательно, и у каждого есть причина
 // быть обязательным (см. Validate).
 type Declaration struct {
@@ -127,6 +195,16 @@ var (
 	// TestPremiseSymbolIsQuoted (символ внутри файла) и TestFileDeletionFindingHasNoPathKey
 	// вместе с TestParseRestoresPathOfDeletedFile (путь снятого файла).
 	quotedProtoRe = regexp.MustCompile(`"([^"]+\.proto)"`)
+	// Имя в кавычках — материал символа находки (Finding.Symbol).
+	quotedRe = regexp.MustCompile(`"([^"]+)"`)
+	// Вид имени: номер поля либо значения перечисления («"4"») именем не является.
+	nameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*$`)
+	// Объемлющий символ предмета: так buf пишет его во всех формах сообщения, где он
+	// есть (описание поля, значение перечисления, RPC, oneof, зарезервированные имя и
+	// диапазон).
+	containerRe = regexp.MustCompile(` on (?:message|enum|service) "([^"]+)"`)
+	// Единственная форма, где контейнер стоит ПЕРВЫМ, — обязательное поле.
+	requiredFieldRe = regexp.MustCompile(`^Message "([^"]+)" had required field "([^"]+)" `)
 )
 
 // minReasonLen — причина короче этого не является причиной. Число не выведено из
@@ -168,14 +246,16 @@ func (d Declaration) Validate() []string {
 	return out
 }
 
-// matches — сопоставление находки и объявления. Символ ищется В КАВЫЧКАХ: это
-// предпосылка, снятая с реального вывода buf, а не догадка о его прозе.
-func (d Declaration) matches(f Finding) bool {
-	return d.Rule == f.Type && d.Path == f.Path && strings.Contains(f.Message, `"`+d.Symbol+`"`)
+// matches — сопоставление находки и объявления: правило, путь и символ находки
+// СТРОГИМ равенством. Вхождение символа в текст сообщения здесь стояло до kacho#2911 и
+// прощало соседей: `"Status"` входит в сообщение о снятии любого значения перечисления.
+func (d Declaration) matches(f Finding, symbol string) bool {
+	return d.Rule == f.Type && d.Path == f.Path && d.Symbol == symbol
 }
 
 // sameCoordinate — правило и путь совпали, а символ нет. Отдельный исход: он означает
-// либо опечатку в символе, либо отказ предпосылки о кавычках.
+// опечатку в символе, запись в прежней форме символа (перечисление без номера значения,
+// поле без сообщения) либо отказ предпосылки о кавычках.
 func (d Declaration) sameCoordinate(f Finding) bool {
 	return d.Rule == f.Type && d.Path == f.Path
 }
@@ -190,6 +270,14 @@ type Result struct {
 	Expired        []Declaration
 	SymbolMismatch []Mismatch
 	Invalid        []InvalidDeclaration
+
+	// spent — индексы Undeclared, чей символ совпал с записью, уже простившей другой
+	// разрыв. Без пометки читатель увидел бы «необъявленный» у символа, который в
+	// перечне стоит, и искал бы опечатку.
+	spent map[int]bool
+	// repeated — индексы Expired, чей разрыв есть, но его уже простила другая запись.
+	// «Разрыва больше нет» о такой записи было бы неправдой.
+	repeated map[int]bool
 }
 
 // Mismatch — объявление, у которого нашлась находка того же правила в том же файле, но
@@ -275,6 +363,10 @@ func ParseFindings(r io.Reader) ([]Finding, error) {
 			}
 			f.Path = p
 		}
+		if f.Symbol() == "" {
+			return nil, fmt.Errorf("строка %d вывода buf: предмет разрыва не назван в кавычках (%q) — "+
+				"символа, которым запись перечня назвала бы ровно этот разрыв, нет", line, truncate(f.Message, 200))
+		}
 		out = append(out, f)
 	}
 	if err := sc.Err(); err != nil {
@@ -341,6 +433,17 @@ func LoadDeclarations(path string) ([]Declaration, error) {
 }
 
 // Adjudicate сводит находки с объявлениями.
+//
+// ЗАПИСЬ ПРОЩАЕТ РОВНО ОДИН РАЗРЫВ: простившая запись расходуется, и следующая находка с
+// тем же символом ищет СВОЮ запись. Без этого одна запись прощала бы сколько угодно
+// находок, которые её символ не различает (kacho#2911): у параметра сообщения buf имени
+// сообщения не печатает, одноимённые вложенные контейнеры одного файла он называет одним
+// и тем же простым именем. Два неразличимых разрыва объявляются двумя записями — тогда
+// число записей и есть утверждение объявившего, сколько таких разрывов он допускает.
+//
+// Нерасходованная запись — один из трёх исходов, и они не сливаются: её разрыв есть, но
+// его простила другая запись (повтор); в том же файле тем же правилом назван другой
+// символ (символ не совпал); разрыва нет вовсе (истекло).
 func Adjudicate(findings []Finding, decls []Declaration) Result {
 	res := Result{FindingsRead: len(findings), DeclarationsRead: len(decls)}
 
@@ -350,41 +453,81 @@ func Adjudicate(findings []Finding, decls []Declaration) Result {
 		}
 	}
 
-	usedFinding := make([]bool, len(findings))
-	for _, d := range decls {
-		var hit bool
+	symbols := make([]string, len(findings))
+	for i, f := range findings {
+		symbols[i] = f.Symbol()
+	}
+
+	usedDecl := make([]bool, len(decls))
+	var undeclared []int
+	spentFinding := map[int]bool{}
+	for i, f := range findings {
+		hit, spent := -1, false
+		for j, d := range decls {
+			if !d.matches(f, symbols[i]) {
+				continue
+			}
+			if usedDecl[j] {
+				spent = true
+				continue
+			}
+			hit = j
+			break
+		}
+		if hit >= 0 {
+			usedDecl[hit] = true
+			res.Matched++
+			continue
+		}
+		if spent {
+			spentFinding[i] = true
+		}
+		undeclared = append(undeclared, i)
+	}
+	sort.SliceStable(undeclared, func(a, b int) bool {
+		fa, fb := findings[undeclared[a]], findings[undeclared[b]]
+		if fa.Path != fb.Path {
+			return fa.Path < fb.Path
+		}
+		return fa.StartLine < fb.StartLine
+	})
+	for _, i := range undeclared {
+		if spentFinding[i] {
+			if res.spent == nil {
+				res.spent = map[int]bool{}
+			}
+			res.spent[len(res.Undeclared)] = true
+		}
+		res.Undeclared = append(res.Undeclared, findings[i])
+	}
+
+	for j, d := range decls {
+		if usedDecl[j] {
+			continue
+		}
+		var repeat bool
 		var sameCoord []Finding
 		for i, f := range findings {
 			switch {
-			case d.matches(f):
-				usedFinding[i] = true
-				hit = true
-				res.Matched++
+			case d.matches(f, symbols[i]):
+				repeat = true
 			case d.sameCoordinate(f):
 				sameCoord = append(sameCoord, f)
 			}
 		}
-		if hit {
-			continue
-		}
-		if len(sameCoord) > 0 {
+		switch {
+		case repeat:
+			if res.repeated == nil {
+				res.repeated = map[int]bool{}
+			}
+			res.repeated[len(res.Expired)] = true
+			res.Expired = append(res.Expired, d)
+		case len(sameCoord) > 0:
 			res.SymbolMismatch = append(res.SymbolMismatch, Mismatch{Declaration: d, Findings: sameCoord})
-			continue
-		}
-		res.Expired = append(res.Expired, d)
-	}
-	for i, f := range findings {
-		if !usedFinding[i] {
-			res.Undeclared = append(res.Undeclared, f)
+		default:
+			res.Expired = append(res.Expired, d)
 		}
 	}
-
-	sort.SliceStable(res.Undeclared, func(i, j int) bool {
-		if res.Undeclared[i].Path != res.Undeclared[j].Path {
-			return res.Undeclared[i].Path < res.Undeclared[j].Path
-		}
-		return res.Undeclared[i].StartLine < res.Undeclared[j].StartLine
-	})
 	return res
 }
 
@@ -444,17 +587,26 @@ func (r Result) Report() string {
 			fmt.Fprintf(&b, "        %s\n", p)
 		}
 	}
-	for _, f := range r.Undeclared {
-		fmt.Fprintf(&b, "[НЕОБЪЯВЛЕННЫЙ РАЗРЫВ] %s %s: %s\n", f.Coordinate(), f.Type, f.Message)
+	for i, f := range r.Undeclared {
+		fmt.Fprintf(&b, "[НЕОБЪЯВЛЕННЫЙ РАЗРЫВ] %s %s symbol=%q: %s\n", f.Coordinate(), f.Type, f.Symbol(), f.Message)
+		if r.spent[i] {
+			b.WriteString("        запись с этим символом уже простила другой разрыв — запись прощает ровно один " +
+				"разрыв, и каждый разрыв с неразличимым символом объявляется своей записью\n")
+		}
 	}
 	for _, m := range r.SymbolMismatch {
 		fmt.Fprintf(&b, "[СИМВОЛ НЕ СОВПАЛ] объявлено %s %s symbol=%q, но находки того же правила в этом файле называют другое:\n",
 			m.Declaration.Rule, m.Declaration.Path, m.Declaration.Symbol)
 		for _, f := range m.Findings {
-			fmt.Fprintf(&b, "        %s: %s\n", f.Coordinate(), f.Message)
+			fmt.Fprintf(&b, "        %s symbol=%q: %s\n", f.Coordinate(), f.Symbol(), f.Message)
 		}
 	}
-	for _, d := range r.Expired {
+	for i, d := range r.Expired {
+		if r.repeated[i] {
+			fmt.Fprintf(&b, "[ПОСЛАБЛЕНИЕ ИСТЕКЛО] %s %s symbol=%q (%s) — этот разрыв уже простила другая запись: "+
+				"запись прощает ровно один разрыв, и повтор обязан быть удалён\n", d.Rule, d.Path, d.Symbol, d.Issue)
+			continue
+		}
 		fmt.Fprintf(&b, "[ПОСЛАБЛЕНИЕ ИСТЕКЛО] %s %s symbol=%q (%s) — разрыва больше нет, запись обязана быть удалена\n",
 			d.Rule, d.Path, d.Symbol, d.Issue)
 	}

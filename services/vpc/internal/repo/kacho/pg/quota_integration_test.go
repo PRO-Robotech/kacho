@@ -80,9 +80,9 @@ func TestQuota_ChargeOnInsert_RefundOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-charge"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -101,7 +101,7 @@ func TestQuota_ChargeOnInsert_RefundOnDelete(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created.ID)))
 	require.NoError(t, w2.Commit())
 
 	assert.Equal(t, int64(0), quotaUsed(t, ctx, pool, project, "vpc.network"),
@@ -117,9 +117,9 @@ func TestQuota_ChargeIsRolledBackWithItsTransaction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-rollback"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -143,9 +143,9 @@ func TestQuota_ExhaustedIsRefused_AndDistinctFromNotProvisioned(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-exhaust"
 	seedQuota(t, ctx, pool, project, "vpc.network", 1)
@@ -190,9 +190,9 @@ func TestQuota_LoweringBelowUsageIsExpressible(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-lower"
 	seedQuota(t, ctx, pool, project, "vpc.network", 3)
@@ -225,7 +225,7 @@ func TestQuota_LoweringBelowUsageIsExpressible(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created[0]))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created[0])))
 	require.NoError(t, w2.Commit())
 	assert.Equal(t, int64(2), quotaUsed(t, ctx, pool, project, "vpc.network"),
 		"удаление работает и при потреблении выше предела")
@@ -241,9 +241,9 @@ func TestQuota_ConcurrentChargeAtLastSlot(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-race"
 	const writers = 8
@@ -297,9 +297,9 @@ func TestQuota_SystemChildrenAreNotCharged(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-system"
 	seedQuota(t, ctx, pool, project, "vpc.network", 4)
@@ -380,9 +380,9 @@ func TestQuota_ConcurrentChargeUnderLimit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-race-ok"
 	const writers = 8

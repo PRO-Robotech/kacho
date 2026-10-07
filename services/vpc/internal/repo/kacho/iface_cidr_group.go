@@ -40,7 +40,12 @@ type CidrGroupWriterIface interface {
 	// «победил последний» между двумя редакторами, каждый из которых прислал свой
 	// полный список.
 	Update(ctx context.Context, g *domain.CidrGroup) (*CidrGroupRecord, error)
-	Delete(ctx context.Context, id string) error
+	// Delete снимает строку и возвращает ИМЯ снятой строки из `RETURNING`
+	// удаляющего оператора — снимок имени для строки снятия журнала (NTF-3, З2,
+	// NTF3-59). Чтение до удаления не годится: переименование, зафиксированное
+	// между чтением и удалением, дало бы снятию чужое имя. Строки нет →
+	// ErrNotFound.
+	Delete(ctx context.Context, id string) (string, error)
 	// GetForUpdate — Get с `SELECT … FOR UPDATE` внутри writer-TX.
 	//
 	// `FOR UPDATE`, а не `FOR NO KEY UPDATE` (который взял бы обычный UPDATE), —

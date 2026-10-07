@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/notify/feed"
 )
 
 // Config — корневая структура конфигурации kacho-vpc.
@@ -40,6 +41,17 @@ type Config struct {
 	IAM         IAMConfig         `mapstructure:"iam"`
 	Dataplane   DataplaneConfig   `mapstructure:"dataplane"`
 	Quota       QuotaConfig       `mapstructure:"quota"`
+
+	// Notifications — флаг ленты извещений модуля, разобранный загрузчиком ОДИН
+	// раз из ручки [NotificationsKnob] (`feed.ParseEnabled`: ровно true | false,
+	// умолчания нет). Это значение корень отдаёт словарю видов журнала
+	// (`subscriptionjournal.Journal`) и писателям журнала модуля — Options,
+	// построенными один раз (`journaltx.NewOptions`; замысел issue-2918 З11, И6).
+	// Своего чтения ручки у потребителей нет. Не разобран — отказ старта
+	// (validateNotifications).
+	Notifications feed.Enabled `mapstructure:"-"`
+	// notificationsErr — отказ разбора ручки; его называет страж старта.
+	notificationsErr error
 }
 
 // QuotaConfig — секция quota: ОБЪЯВЛЕНИЕ домена величин.

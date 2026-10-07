@@ -64,7 +64,7 @@ func quotaDisableCharging(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 	}
 	t.Cleanup(func() {
 		for _, tbl := range tables {
-			_, _ = pool.Exec(context.Background(), fmt.Sprintf(
+			_, _ = pool.Exec(journalPrincipalCtx(context.Background()), fmt.Sprintf(
 				"ALTER TABLE kacho_vpc.%s ENABLE TRIGGER %s_quota_count", tbl, tbl))
 		}
 	})
@@ -89,9 +89,9 @@ func TestQuotaMaterialise_SeedsUsageFromRowsThatAlreadyExist(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill"
 
@@ -135,9 +135,9 @@ func TestQuotaMaterialise_SeededUsageStillRefusesAtTheCeiling(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill-ceil"
 
@@ -205,9 +205,9 @@ func TestQuotaMaterialise_SystemChildrenAreNotSeeded(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-backfill-sys"
 
@@ -276,9 +276,9 @@ func TestQuotaRecount_DivergenceIsImpossibleAfterOrdinaryTraffic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-recount"
 
@@ -313,7 +313,7 @@ func TestQuotaRecount_DivergenceIsImpossibleAfterOrdinaryTraffic(t *testing.T) {
 	w4, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w4.Abort()
-	require.NoError(t, w4.Networks().Delete(ctx, doomed.ID))
+	require.NoError(t, removalErr(w4.Networks().Delete(ctx, doomed.ID)))
 	require.NoError(t, w4.Commit())
 
 	require.Equal(t, int64(2), quotaUsed(t, ctx, pool, project, "vpc.network"))
@@ -332,9 +332,9 @@ func TestQuotaRecount_VerifierNamesADivergenceItIsShown(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool := quotaTestPool(t, ctx)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	const project = "prj-quota-recount-inj"
 

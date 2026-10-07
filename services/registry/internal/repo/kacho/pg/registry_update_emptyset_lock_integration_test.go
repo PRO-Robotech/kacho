@@ -24,8 +24,8 @@ import (
 // пока строка реестра залочена конкурентной tx (FOR UPDATE), и завершается после release.
 func TestRepo_UpdateEmptySet_LocksMirroredRow(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))

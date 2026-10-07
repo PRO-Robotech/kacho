@@ -53,6 +53,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -61,6 +62,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 // mailReceiverKey — ключ значений, которым приёмник включается. Он же служит
@@ -637,4 +640,493 @@ func TestDeclaredLaneNamesTheReceiverThisReleaseRaises(t *testing.T) {
 			"одним именем, полоса ведёт к другому, рендер проходит, посадка зелёная, писем нет.",
 			stray, suffix, mailReceiverTemplate)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТЕНДОВЫЕ ОБЪЕКТЫ ВНЕ ЦЕПОЧКИ `prod` (приёмка NTF-1, сценарий NTF1-I04;
+// замысел З28 «Стенд», Р16) И НАКАТ СХЕМЫ ПРОБЫ ДО ЕЁ СТАРТА (Д74, Д77)
+//
+// Стендовых предметов три: приёмник писем (читатель писем), проба-источник
+// `notify-probe` (генератор писем) и ручка `notify.standProbeNamespace` (форма
+// адреса пробы у notify). Ни одному из них в боевой посадке не место: приёмник
+// подменил бы ретранслятор оператора, проба слала бы письма на произвольный
+// адрес, ручка открыла бы эту форму адреса notify.
+//
+// Суждение двуногое, и ноги не дублируют друг друга:
+//
+//   - ОБЪЯВЛЕНИЕ — слитые значения цепочки: ключ, поднимающий стендовый
+//     предмет, и ФАЙЛ цепочки, который его поставил (последний, назвавший ключ).
+//     Ручку `standProbeNamespace` читает чарт notify, и рендер её не обнаружит,
+//     пока notify в цепочке не рендерится, — поэтому она судится здесь;
+//   - РЕНДЕР — объекты, рождённые шаблонами стендовых предметов (строка
+//     `# Source:`), а не метка: метку шаблон может забыть, источник — нет.
+//     Цепочка `prod` рендерится со слоем образца узла оператора через обёртку
+//     D9 (Д48, CX1-86): поставляемый профиль `prod` узла почты не несёт.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// standTemplates — шаблоны зонтика, чьи объекты стендовые, → имя предмета.
+var standTemplates = map[string]string{
+	"kacho-umbrella/templates/mail-receiver.yaml": "приёмник писем",
+	"kacho-umbrella/templates/notify-probe.yaml":  "notify-probe",
+}
+
+// standKnob — ключ значений, поднимающий стендовый предмет.
+type standKnob struct {
+	path []string
+	// raises — поднимает ли значение предмет: `true` у включателей; любое
+	// не-null значение у ручки пространства (пустая строка в `prod` — тоже
+	// написанная там стендовая ручка).
+	raises func(v any) bool
+}
+
+func isTrue(v any) bool { b, ok := v.(bool); return ok && b }
+func isSet(v any) bool  { return v != nil }
+
+// standKnobs — три ключа сценария NTF1-I04.
+var standKnobs = []standKnob{
+	{path: []string{"mailpit", "enabled"}, raises: isTrue},
+	{path: []string{"notifyProbe", "enabled"}, raises: isTrue},
+	{path: []string{"notify", "standProbeNamespace"}, raises: isSet},
+}
+
+// chainElemPath — элемент цепочки на диске: относительный — от каталога
+// зонтика umbrella (та же операция соединения, что у helm-вызова), абсолютный —
+// как есть (подменённый пробой файл).
+func chainElemPath(umbrella, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(umbrella, p)
+}
+
+// chainElemName — имя профиля для текста находки: базовое имя файла.
+func chainElemName(p string) string { return filepath.Base(p) }
+
+// declaredStandKnobs — ключи цепочки, поднимающие стендовые предметы, с файлом,
+// который поставил итоговое значение. Порядок наложения — values.yaml зонтика,
+// затем элементы цепочки слева направо (как у helm).
+func declaredStandKnobs(t *testing.T, umbrella string, chain []string) []string {
+	t.Helper()
+	layers := append([]string{filepath.Join(umbrella, "values.yaml")}, func() []string {
+		out := make([]string, 0, len(chain))
+		for _, p := range chain {
+			out = append(out, chainElemPath(umbrella, p))
+		}
+		return out
+	}()...)
+	docs := make([]map[string]any, 0, len(layers))
+	merged := map[string]any{}
+	for _, p := range layers {
+		d := readYAML(t, p)
+		docs = append(docs, d)
+		merged = mergeValues(merged, d)
+	}
+	var out []string
+	for _, k := range standKnobs {
+		v, ok := lookup(merged, k.path...)
+		if !ok || !k.raises(v) {
+			continue
+		}
+		setter := ""
+		for i := len(docs) - 1; i >= 0; i-- {
+			if _, has := lookup(docs[i], k.path...); has {
+				setter = chainElemName(layers[i])
+				break
+			}
+		}
+		out = append(out, fmt.Sprintf("%s = %v (профиль %s)", strings.Join(k.path, "."), v, setter))
+	}
+	return out
+}
+
+// renderChainFiles — `helm template` зонтика umbrella цепочкой файлов и
+// наборами. Зонтик — фикстурная копия с материализованными зависимостями
+// (notifyUmbrellaCopy): в дереве задания юнитов их нет, и рендер дерева
+// отказал бы условием, а не продуктом.
+func renderChainFiles(umbrella string, chain []string, sets ...string) (string, error) {
+	args := []string{"template", "kacho-umbrella", umbrella, "-n", "kacho"}
+	for _, p := range chain {
+		args = append(args, "-f", chainElemPath(umbrella, p))
+	}
+	for _, s := range sets {
+		args = append(args, "--set", s)
+	}
+	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева и пробы
+	return string(out), err
+}
+
+// renderedStandObjects — объекты рендера, рождённые стендовыми шаблонами:
+// «<предмет>: <вид>/<имя>», по алфавиту.
+func renderedStandObjects(objs []renderedObj) []string {
+	var out []string
+	for _, o := range objs {
+		if what, ok := standTemplates[o.source]; ok {
+			out = append(out, fmt.Sprintf("%s: %s/%s", what, o.kind, o.name))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// standVerdict — суждение по одной цепочке: что поднято объявлением и что
+// рендером. Пусто в обеих ногах — стендовых предметов в цепочке нет.
+type standVerdict struct {
+	declared, rendered []string
+}
+
+func (v standVerdict) raised() bool { return len(v.declared)+len(v.rendered) > 0 }
+
+func (v standVerdict) String() string {
+	if !v.raised() {
+		return "стендовых предметов нет"
+	}
+	return fmt.Sprintf("объявлены %v; отрендерены %v", v.declared, v.rendered)
+}
+
+// judgeStandChain — суждение по цепочке; отказ рендера — ошибка (отказ не
+// «объектов ноль»).
+func judgeStandChain(t *testing.T, umbrella string, chain []string) (standVerdict, error) {
+	t.Helper()
+	v := standVerdict{declared: declaredStandKnobs(t, umbrella, chain)}
+	out, err := renderChainFiles(umbrella, chain)
+	if err != nil {
+		return v, fmt.Errorf("рендер отказал: %v\n%s", err, lastLines(out, 5))
+	}
+	v.rendered = renderedStandObjects(parseRendered(t, out))
+	return v, nil
+}
+
+// TestStandObjectsStayOutOfTheProdChain — NTF1-I04: в цепочке `prod` ни
+// приёмника, ни пробы, ни ручки пространства пробы; печать — цепочки, где
+// стендовые предметы подняты.
+func TestStandObjectsStayOutOfTheProdChain(t *testing.T) {
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	chains := deployStacksForRender(t, "operator.yaml")
+	names := make([]string, 0, len(chains))
+	for n := range chains {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("цепочек в таблице 0 — обход пуст, судить нечего")
+	}
+	if _, ok := chains[prodChainName]; !ok {
+		t.Fatalf("цепочки %q в таблице нет — предмет сценария NTF1-I04 исчез, а не стал чистым", prodChainName)
+	}
+	var raisedIn []string
+	for _, n := range names {
+		v, err := judgeStandChain(t, c.umbrella, chains[n])
+		if err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s (%s): %v", n, strings.Join(chains[n], " + "), err)
+		}
+		t.Logf("цепочка %-12s %s", n, v)
+		if v.raised() {
+			raisedIn = append(raisedIn, n)
+		}
+		if n == prodChainName && v.raised() {
+			t.Errorf("NTF1-I04: цепочка %s несёт стендовые предметы — %s. Приёмник, проба и ручка "+
+				"пространства пробы — объекты стенда (Р16), в боевой посадке их нет",
+				n, v)
+		}
+	}
+	t.Logf("NTF1-I04: цепочек осмотрено %d; стендовые предметы подняты в %d: %v", len(names), len(raisedIn), raisedIn)
+}
+
+// ─── НАКАТ СХЕМЫ ПРОБЫ ДО ЕЁ СТАРТА (Д74, Д77) ──────────────────────────────
+
+// Форма вызова точки наката и база пробы — величины замысла (З32 «Накат схемы»).
+// Имя бинаря точки наката берётся у владельца имён частей, а не выписывается
+// литералом: литерал в deploy/ гейт имени накатчика судит по хозяину места, а у
+// пробы рендера хозяина нет (TestMigratorBinaryIsNamedTheSameEverywhere).
+var probeMigrateCommand = []string{"/usr/local/bin/" + productnaming.MigratorBinary("notify"), "up"}
+
+const (
+	probeDatabase       = "kacho_notifyprobe"
+	probeProcessCommand = "/usr/local/bin/kacho-notify-probe"
+	probeTemplateSource = "kacho-umbrella/templates/notify-probe.yaml"
+	migratorDSNEnvName  = "KACHO_MIGRATOR_DSN"
+)
+
+// containerByName — контейнер списка `containers`/`initContainers` по имени.
+func containerByName(list []any, name string) map[string]any {
+	for _, c := range list {
+		m, _ := c.(map[string]any)
+		if nstr(m["name"]) == name {
+			return m
+		}
+	}
+	return nil
+}
+
+// stringList — список строк из YAML-списка; иной элемент — nil.
+func stringList(v any) []string {
+	var out []string
+	for _, e := range nlist(v) {
+		s, ok := e.(string)
+		if !ok {
+			return nil
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// envValue — значение `value` переменной name контейнера; есть ли она.
+func envValue(c map[string]any, name string) (string, bool) {
+	for _, e := range nlist(c["env"]) {
+		m, _ := e.(map[string]any)
+		if nstr(m["name"]) == name {
+			return nstr(m["value"]), true
+		}
+	}
+	return "", false
+}
+
+// dsnKeyword — значение ключа key в DSN формы `k=v k=v`.
+func dsnKeyword(dsn, key string) string {
+	for _, f := range strings.Fields(dsn) {
+		if v, ok := strings.CutPrefix(f, key+"="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// probeDeploymentFindings — находки по рабочему объекту пробы: контейнер
+// `migrate` в `initContainers` с формой `kacho-migrator up` тем же образом, что
+// процесс; DSN — `KACHO_MIGRATOR_DSN` с базой пробы; процесс — команда
+// `kacho-notify-probe`. Каждая находка называет объект.
+func probeDeploymentFindings(o renderedObj) []string {
+	obj := fmt.Sprintf("%s/%s", o.kind, o.name)
+	spec, _ := ndig(o.doc, "spec", "template", "spec").(map[string]any)
+	proc := containerByName(nlist(spec["containers"]), "notify-probe")
+	if proc == nil {
+		return []string{obj + ": контейнера процесса notify-probe нет"}
+	}
+	var out []string
+	if got := stringList(proc["command"]); len(got) == 0 || got[0] != probeProcessCommand {
+		out = append(out, fmt.Sprintf("%s: процесс запускается командой %v, а не %s", obj, got, probeProcessCommand))
+	}
+	mig := containerByName(nlist(spec["initContainers"]), "migrate")
+	if mig == nil {
+		return append(out, obj+": инициализирующего контейнера migrate нет — процесс стартует на "+
+			"ненакатанной схеме "+probeDatabase)
+	}
+	if got := stringList(mig["command"]); strings.Join(got, " ") != strings.Join(probeMigrateCommand, " ") {
+		out = append(out, fmt.Sprintf("%s: migrate вызывает %v, а не %v", obj, got, probeMigrateCommand))
+	}
+	if nstr(mig["image"]) == "" || nstr(mig["image"]) != nstr(proc["image"]) {
+		out = append(out, fmt.Sprintf("%s: образ migrate %q не равен образу процесса %q — точка наката "+
+			"живёт в образе каталога", obj, nstr(mig["image"]), nstr(proc["image"])))
+	}
+	dsn, ok := envValue(mig, migratorDSNEnvName)
+	switch {
+	case !ok:
+		out = append(out, fmt.Sprintf("%s: migrate не получает %s — DSN точки наката не подан", obj, migratorDSNEnvName))
+	case dsnKeyword(dsn, "dbname") != probeDatabase:
+		out = append(out, fmt.Sprintf("%s: %s называет базу %q, а не %s", obj, migratorDSNEnvName,
+			dsnKeyword(dsn, "dbname"), probeDatabase))
+	}
+	return out
+}
+
+// probeDeployments — рабочие объекты пробы в рендере.
+func probeDeployments(objs []renderedObj) []renderedObj {
+	var out []renderedObj
+	for _, o := range objs {
+		if o.source == probeTemplateSource && o.kind == "Deployment" {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// probeStandSets — наборы ноги «стенд с пробой»: включатель пробы и ссылка на
+// секрет пароля её базы (единственный отказ рендера пробы по значению).
+// Ключи пробы по цепочкам объявляет полоса D2 (З28); до неё ни одна цепочка
+// пробу не поднимает, и нога подаёт включатель сама — печатью, а не молча.
+var probeStandSets = []string{
+	"notifyProbe.enabled=true",
+	"notifyProbe.db.passwordSecret.name=kacho-notifyprobe-db",
+}
+
+// TestNotifyProbeMigratesItsDatabaseBeforeItStarts — Д74: рабочий объект
+// пробы несёт контейнер migrate с формой `kacho-migrator up` и DSN базы
+// kacho_notifyprobe; в `prod` рабочего объекта пробы нет. Инъекция — у
+// рабочего объекта пробы настоящего рендера снят контейнер migrate → находка с
+// именем объекта; близнец — тот же объект как есть → молчание.
+func TestNotifyProbeMigratesItsDatabaseBeforeItStarts(t *testing.T) {
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	chains := deployStacksForRender(t, "operator.yaml")
+	names := make([]string, 0, len(chains))
+	for n := range chains {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("цепочек в таблице 0 — обход пуст, судить нечего")
+	}
+
+	judged := 0
+	for _, n := range names {
+		out, err := renderChainFiles(c.umbrella, chains[n])
+		if err != nil {
+			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s: рендер отказал: %v\n%s", n, err, lastLines(out, 5))
+		}
+		deps := probeDeployments(parseRendered(t, out))
+		if n == prodChainName && len(deps) > 0 {
+			t.Errorf("Д74: цепочка %s несёт рабочий объект пробы %s — проба стендовая (NTF1-I04)", n, deps[0].name)
+		}
+		for _, d := range deps {
+			judged++
+			for _, f := range probeDeploymentFindings(d) {
+				t.Errorf("Д74: цепочка %s: %s", n, f)
+			}
+		}
+		t.Logf("цепочка %-12s рабочих объектов пробы %d", n, len(deps))
+	}
+
+	// Нога «стенд с пробой»: цепочка стенда с включённой пробой.
+	const standChain = "dev-prod"
+	chain, ok := chains[standChain]
+	if !ok {
+		t.Fatalf("цепочки %q в таблице нет — ноге «стенд с пробой» нечего рендерить", standChain)
+	}
+	out, err := renderChainFiles(c.umbrella, chain, probeStandSets...)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s с пробой (%v): рендер отказал: %v\n%s",
+			standChain, probeStandSets, err, lastLines(out, 5))
+	}
+	standObjs := parseRendered(t, out)
+	deps := probeDeployments(standObjs)
+	if len(deps) != 1 {
+		t.Fatalf("Д74: цепочка %s с пробой (%v): рабочих объектов пробы %d, ждали ровно 1", standChain, probeStandSets, len(deps))
+	}
+	judged++
+	twin := probeDeploymentFindings(deps[0])
+	for _, f := range twin {
+		t.Errorf("Д74: цепочка %s с пробой: %s", standChain, f)
+	}
+	t.Logf("Д74: рабочих объектов пробы осуждено %d (цепочек %d по таблице и нога %s с наборами %v)",
+		judged, len(names), standChain, probeStandSets)
+
+	// Инъекция: снят контейнер migrate настоящего объекта.
+	spec, _ := ndig(deps[0].doc, "spec", "template", "spec").(map[string]any)
+	before := len(nlist(spec["initContainers"]))
+	var kept []any
+	for _, ic := range nlist(spec["initContainers"]) {
+		if m, _ := ic.(map[string]any); nstr(m["name"]) != "migrate" {
+			kept = append(kept, ic)
+		}
+	}
+	if len(kept) == before {
+		t.Fatal("НЕ ВЫПОЛНИЛОСЬ: инъекции снимать нечего — контейнера migrate в объекте нет")
+	}
+	spec["initContainers"] = kept
+	f := probeDeploymentFindings(deps[0])
+	want := "Deployment/" + deps[0].name + ": инициализирующего контейнера migrate нет"
+	if len(f) != 1 || !strings.HasPrefix(f[0], want) {
+		t.Errorf("инъекция «migrate снят»: находки %v, ждали одну, начинающуюся с %q", f, want)
+	}
+	t.Logf("инъекция «migrate снят» → %v; близнец (объект как есть) → находок %d", f, len(twin))
+}
+
+// ─── ИМЯ НОСИТЕЛЯ: служба пробы — та, которую спрашивает ban #6 ─────────────
+
+// ban6CarrierRe — строка носителя notify в карте встречного контроля гейта
+// ban #6 (`INTERNAL_ENDPOINTS["notify"]`). Производитель ожидаемого имени —
+// гейт, который будет звонить пробе, а не этот файл: имя, выписанное здесь
+// второй копией, разошлось бы с гейтом молча.
+var ban6CarrierRe = regexp.MustCompile(`(?m)^\s*"notify":\s*\("svc/([a-z0-9-]+)",\s*(\d+),`)
+
+// ban6NotifyCarrier — (имя службы, порт) носителя notify из карты гейта ban #6.
+func ban6NotifyCarrier(t *testing.T) (string, int) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("scripts", "assert-ban6-external-isolation.py"))
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: карта носителей ban #6 не прочитана: %v", err)
+	}
+	m := ban6CarrierRe.FindAllStringSubmatch(string(raw), -1)
+	if len(m) != 1 {
+		t.Fatalf("строк носителя notify в карте ban #6 %d, ждали ровно 1 — разборщик ослеп либо карта задвоена", len(m))
+	}
+	port, err := strconv.Atoi(m[0][2])
+	if err != nil {
+		t.Fatalf("порт носителя notify %q не число: %v", m[0][2], err)
+	}
+	return m[0][1], port
+}
+
+// probeServiceFindings — служба пробы в рендере названа и слушает так, как её
+// спрашивает гейт ban #6: ровно одна Service шаблона пробы, имя want, порт port.
+// Имя, выведенное из имени выпуска, на стенде (`kacho-umbrella`) дало бы
+// `kacho-umbrella-notify-probe`, и встречный контроль звонил бы в пустоту.
+func probeServiceFindings(objs []renderedObj, want string, port int) []string {
+	var svcs []renderedObj
+	for _, o := range objs {
+		if o.source == probeTemplateSource && o.kind == "Service" {
+			svcs = append(svcs, o)
+		}
+	}
+	if len(svcs) != 1 {
+		return []string{fmt.Sprintf("служб пробы в рендере %d, ждали ровно 1", len(svcs))}
+	}
+	var out []string
+	if svcs[0].name != want {
+		out = append(out, fmt.Sprintf("Service/%s: служба пробы названа не так, как её спрашивает гейт ban #6 (svc/%s)",
+			svcs[0].name, want))
+	}
+	found := false
+	for _, pt := range nlist(ndig(svcs[0].doc, "spec", "ports")) {
+		m, _ := pt.(map[string]any)
+		if fmt.Sprint(m["port"]) == strconv.Itoa(port) {
+			found = true
+		}
+	}
+	if !found {
+		out = append(out, fmt.Sprintf("Service/%s: порта %d, на котором гейт ban #6 спрашивает носителя, нет",
+			svcs[0].name, port))
+	}
+	return out
+}
+
+// TestNotifyProbeServiceIsTheBan6Carrier — служба пробы в цепочке стенда с
+// пробой носит имя и порт носителя notify из карты гейта ban #6 (Д94).
+// Близнец — рендер как есть → молчание; инъекция — служба переименована по
+// имени выпуска → находка с именем объекта.
+func TestNotifyProbeServiceIsTheBan6Carrier(t *testing.T) {
+	want, port := ban6NotifyCarrier(t)
+	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
+	chains := deployStacksForRender(t, "operator.yaml")
+	const standChain = "dev-prod"
+	chain, ok := chains[standChain]
+	if !ok {
+		t.Fatalf("цепочки %q в таблице нет — рендерить нечего", standChain)
+	}
+	out, err := renderChainFiles(c.umbrella, chain, probeStandSets...)
+	if err != nil {
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s с пробой (%v): рендер отказал: %v\n%s",
+			standChain, probeStandSets, err, lastLines(out, 5))
+	}
+	objs := parseRendered(t, out)
+	twin := probeServiceFindings(objs, want, port)
+	for _, f := range twin {
+		t.Errorf("Д94: цепочка %s с пробой: %s", standChain, f)
+	}
+
+	// Инъекция: имя службы выведено из имени выпуска.
+	injected := "kacho-umbrella-" + want
+	var mutated []renderedObj
+	for _, o := range objs {
+		if o.source == probeTemplateSource && o.kind == "Service" {
+			o.name = injected
+		}
+		mutated = append(mutated, o)
+	}
+	f := probeServiceFindings(mutated, want, port)
+	wantPrefix := "Service/" + injected + ": служба пробы названа не так"
+	if len(f) != 1 || !strings.HasPrefix(f[0], wantPrefix) {
+		t.Errorf("инъекция «имя по выпуску»: находки %v, ждали одну, начинающуюся с %q", f, wantPrefix)
+	}
+	t.Logf("носитель ban #6: svc/%s :%d; инъекция «имя по выпуску» → %v; близнец → находок %d", want, port, f, len(twin))
 }

@@ -204,7 +204,7 @@ func TestInjectionScript_ShellNamedDomainInRegexIsSilent(t *testing.T) {
 func TestInjectionScript_ShellTrustDomainIsSilent(t *testing.T) {
 	t.Parallel()
 	body := "#!/usr/bin/env bash\nSAN=\"spiffe://" + root0() + ".cloud/ns/x/sa/y\"\n" +
-		"ISS=\"https://hydra.api." + root0() + ".cloud\"\n"
+		"ISS=\"https://issuer.api." + root0() + ".cloud\"\n"
 	f, c := scriptFindings(t, "probe.sh", body)
 	if c.ByLang[langShell].Lexemes == 0 {
 		t.Fatalf("слов не выделено вовсе: %s", c)

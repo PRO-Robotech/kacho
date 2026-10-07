@@ -2,8 +2,16 @@
 # SPDX-License-Identifier: BUSL-1.1
 {{- /*
 NetworkPolicy: ограничивает доступ к kacho-vpc internal-port (:9091) только
-allowlist'ом pod'ов (api-gateway, admin-tooling). Public :9090 — открытый
-ingress для всего namespace.
+allowlist'ом pod'ов — край, соседи, которые туда звонят, и admin-tooling. Public
+:9090 — открытый ingress для всего namespace.
+
+Соседи названы по тому, КТО ЗВОНИТ, а не по памяти: адрес внутреннего слушателя
+получают в настройках край, compute (подключение интерфейса машины) и kacho-nlb
+(отметка ссылки на адрес). Пока правило называло один край, оба соседа не
+доставали до слушателя (kacho#2941). Метки выводятся из чартов компонентов
+(`_network-identity.tpl`); сосед с выключенным чартом не называется — его
+селектор не выбрал бы ни одного пода. Что каждый, кто звонит, впущен, держит
+deploy/network_policy_admission_render_test.go.
 
 Закрывает security P0 #2 (lateral movement через :9091): без NetworkPolicy
 любой pod в namespace `kacho` может вызвать
@@ -35,11 +43,11 @@ metadata:
   name: vpc-internal-allowlist
   namespace: {{ .Release.Namespace }}
   labels:
-    app: vpc
+    {{- include "umbrella.appSelectorLabels" (dict "root" $ "chart" "vpc") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app: vpc
+      {{- include "umbrella.appSelectorLabels" (dict "root" $ "chart" "vpc") | nindent 6 }}
   policyTypes:
     - Ingress
   ingress:
@@ -49,11 +57,20 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
-    # Internal :9091 — только api-gateway + admin pods.
+    # Internal :9091 — край, соседи compute и kacho-nlb, admin pods.
     - from:
         - podSelector:
             matchLabels:
-              app: api-gateway
+              {{- include "umbrella.edgeSelectorLabels" . | nindent 14 }}
+        {{- range $peer := list "compute" "kacho-nlb" }}
+        {{- $peerVals := index $.Values $peer | default dict }}
+        {{- /* Условие подчарта без ключа `enabled` helm считает включённым — так же и здесь. */}}
+        {{- if or (not (hasKey $peerVals "enabled")) $peerVals.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "umbrella.appSelectorLabels" (dict "root" $ "chart" $peer) | nindent 14 }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.vpc.networkPolicy.adminPodsSelector }}
         - podSelector:
             {{- toYaml . | nindent 12 }}

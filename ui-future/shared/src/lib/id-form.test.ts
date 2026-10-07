@@ -31,7 +31,11 @@ const LEGAL_ID_BY_SPEC: Readonly<Record<string, string>> = {
   "security-groups": `sgr-${BODY}`,
   "network-interfaces": `nic-${BODY}`,
   "cidr-groups": `cdg-${BODY}`,
+  // Пул адресов чеканится слитной формой (`ids.NewID(ids.PrefixAddressPool)`).
+  "address-pools": `apl${BODY}`,
   "compute-instances": `ins-${BODY}`,
+  "placement-groups": `plg-${BODY}`,
+  "guest-access-keys": `gak-${BODY}`,
   "load-balancers": `nlb-${BODY}`,
   listeners: `lst-${BODY}`,
   "target-groups": `tgr-${BODY}`,
@@ -48,13 +52,44 @@ const LEGAL_ID_BY_SPEC: Readonly<Record<string, string>> = {
   "access-bindings": `acb-${BODY}`,
 };
 
+/**
+ * Виды ленты, чей идентификатор в журнале — НЕ id платформы, и форма, которой
+ * владелец его пишет.
+ *
+ * У репозитория поля `id` нет вовсе (`registry.proto`, message Repository): он
+ * адресуется парой «реестр + имя», и журнал реестра пишет идентификатор строки
+ * `<registry_id>/<repo>` (`services/registry/internal/subscriptionjournal`,
+ * шапка). Коса в нём законна — грамматика имени OCI её допускает, — поэтому
+ * одним сегментом адреса карточки он не является, и строка ленты обязана
+ * показать его текстом без ссылки. Выписать репозиторию «законный id» в
+ * перечень выше значило бы утверждать форму, которой владелец не чеканит.
+ *
+ * Ведомость сверяется с `STREAM_SUBJECTS` вместе с перечнем выше: вид обязан
+ * стоять ровно в одном из двух.
+ */
+const NON_SEGMENT_ID_BY_SPEC: Readonly<Record<string, string>> = {
+  repositories: `reg${BODY}/library/app`,
+};
+
 describe("isPlatformId — законный id каждого вида ленты принимается", () => {
   test("перечень законных id покрывает ровно виды STREAM_SUBJECTS", () => {
     const specs = Object.keys(STREAM_SUBJECTS).sort();
     // Пустой словарь сделал бы пробу ниже пустой и зелёной.
     expect(specs.length).toBeGreaterThan(0);
-    expect(Object.keys(LEGAL_ID_BY_SPEC).sort()).toEqual(specs);
+    const legal = Object.keys(LEGAL_ID_BY_SPEC);
+    const nonSegment = Object.keys(NON_SEGMENT_ID_BY_SPEC);
+    // Вид — ровно в одном из двух перечней: в обоих сразу он утверждал бы
+    // противоположное о себе же.
+    expect(legal.filter((spec) => nonSegment.includes(spec))).toEqual([]);
+    expect([...legal, ...nonSegment].sort()).toEqual(specs);
   });
+
+  test.each(Object.entries(NON_SEGMENT_ID_BY_SPEC))(
+    "%s: идентификатор журнала %s ссылкой не становится",
+    (_spec, id) => {
+      expect(isPlatformId(id)).toBe(false);
+    },
+  );
 
   test.each(Object.entries(LEGAL_ID_BY_SPEC))("%s: %s принимается", (_spec, id) => {
     expect(isPlatformId(id)).toBe(true);

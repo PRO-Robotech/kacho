@@ -69,13 +69,13 @@ func TestAllocateInternalIP_ConcurrentIdempotent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.90.0.0/24"}, nil)
 
 	a := newAddress("project-alloc", "addr-idem-v4", false)
@@ -116,13 +116,13 @@ func TestAllocateInternalIPv6_ConcurrentIdempotent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.91.0.0/24"}, []string{"fd00:91::/64"})
 
 	a := newAddress("project-alloc", "addr-idem-v6", false)

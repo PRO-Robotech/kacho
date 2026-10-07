@@ -73,13 +73,13 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
@@ -158,7 +158,7 @@ func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testi
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 
 	cfg, err := pgxpool.ParseConfig(dsn)
@@ -169,7 +169,7 @@ func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testi
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	instRepo := repo.NewInstanceRepo(pool)
+	instRepo := mustJournalWriter(repo.NewInstanceRepo(pool, probeJournalOptions))
 
 	// Полоса «нет инстанса» — та, на которой прежняя форма делала второй запрос.
 	tr.n = 0

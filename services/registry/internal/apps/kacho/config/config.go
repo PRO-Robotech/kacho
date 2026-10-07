@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"time"
 
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/notify/feed"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-registry (KACHO_<DOMAIN>).
@@ -400,9 +402,10 @@ type Config struct {
 	TokenRevocationMTLS grpcclient.TLSClient `envconfig:"TOKEN_REVOCATION_MTLS"`
 
 	// TokenRealm — realm для WWW-Authenticate; docker сам идёт туда за Bearer-токеном.
-	// Остаётся token-шимом (kaname /iam/token): docker предъявляет SA-key шиму,
-	// шим брокерит токен у Hydra. Для data-plane realm — непрозрачный указатель на
-	// auth-сервер клиента, поэтому Hydra-переключение его не меняет.
+	// Остаётся token-шимом (kaname /iam/token): docker предъявляет шиму базовый токен
+	// доступа, шим чеканит токен реестра своим подписантом службы доступа. Для
+	// data-plane realm — непрозрачный указатель на auth-сервер клиента, поэтому смена
+	// того, кто чеканит токен за шимом, его не меняет.
 	TokenRealm string `envconfig:"KACHO_REGISTRY_TOKEN_REALM" default:"https://api.kacho.local/iam/token"`
 	// ServiceAud — expected audience identity-JWT (наш service) + значение service=
 	// в WWW-Authenticate. Токен обязан нести aud ⊇ ServiceAud (federation-out на
@@ -416,11 +419,11 @@ type Config struct {
 	// (CWE-319). Параллель Config.TokenAcceptance. В dev игнорируется.
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
 
-	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon Hydra client
-	// id, kaname AnonymousClientID) the data-plane resolves to the FGA wildcard
-	// `user:*` for anonymous public pull (RG-1 D-7). A VALID anon Bearer whose sub
-	// equals this id reads only PUBLIC repos (repo `user:* v_get` tuple) and can never
-	// write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
+	// AnonymousSubjectID — the anonymous principal id (kaname AnonymousClientID: the
+	// `sub` the /iam/token shim puts into the anonymous token it mints) the data-plane
+	// resolves to the FGA wildcard `user:*` for anonymous public pull (RG-1 D-7). A
+	// VALID anon Bearer whose sub equals this id reads only PUBLIC repos (repo
+	// `user:* v_get` tuple) and can never write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
 	// анонимный /token не сконфигурирован ⇒ никакой токен не резолвится в user:*).
 	// MUST match kaname's configured AnonymousClientID and be a RESERVED id (no real
 	// principal shares it).
@@ -455,6 +458,17 @@ type Config struct {
 
 	// InternalServerMTLS — server-creds для cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+
+	// Notifications — флаг ленты извещений модуля, разобранный загрузчиком ОДИН
+	// раз из ручки [NotificationsKnob] (`feed.ParseEnabled`: ровно true | false,
+	// умолчания нет). Это значение корень отдаёт словарю видов журнала
+	// (`subscriptionjournal.Journal`) и писателям журнала модуля — Options,
+	// построенными один раз (`journaltx.NewOptions`; замысел issue-2918 З11, И6).
+	// Своего чтения ручки у потребителей нет. Не разобран — отказ старта
+	// (validateNotifications).
+	Notifications feed.Enabled `ignored:"true"`
+	// notificationsErr — отказ разбора ручки; его называет страж старта.
+	notificationsErr error
 }
 
 // TrustDomain — домен доверия, который РЕАЛЬНО уезжает в пару звеньев извлечения
@@ -584,6 +598,9 @@ func (c Config) MigrateDSN() string {
 // Load загружает конфигурацию из переменных окружения.
 func Load() (Config, error) {
 	var c Config
-	err := corecfg.LoadPrefixed(envPrefix, &c)
-	return c, err
+	if err := corecfg.LoadPrefixed(envPrefix, &c); err != nil {
+		return c, err
+	}
+	c.parseNotifications(os.LookupEnv)
+	return c, nil
 }

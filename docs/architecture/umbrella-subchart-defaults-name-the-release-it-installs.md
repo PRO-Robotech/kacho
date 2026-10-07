@@ -25,7 +25,7 @@
 
 ```
 prod:values.prod.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
 ```
 
 То есть посылка задачи в этой части **верна**: боевой профиль не наследует

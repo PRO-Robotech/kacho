@@ -158,7 +158,11 @@ func isNotFound(err error) bool { return errors.Is(err, ErrNotFound) }
 // состояние из ответа мутации, увидел бы не тот ресурс, что при следующем
 // чтении.
 func marshalPoolRecord(rec *kachorepo.AddressPoolRecord) (*anypb.Any, error) {
-	out, err := anypb.New(poolToProto(rec))
+	pb, err := poolToProto(rec)
+	if err != nil {
+		return nil, err
+	}
+	out, err := anypb.New(pb)
 	if err != nil {
 		return nil, fmt.Errorf("marshal AddressPool: %w", err)
 	}

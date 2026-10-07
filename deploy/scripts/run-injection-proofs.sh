@@ -112,19 +112,15 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 # ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
-deploy/scripts/admin-hop-cluster-half-inject.sh
 deploy/scripts/cert-issuance-policy-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/scripts/identity-provider-absent-cluster-half-inject.sh
+deploy/scripts/sarif-archive-uris-inject.sh
 deploy/tests/helm/cert-issuance-policy-render-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
-deploy/tests/helm/identity-hook-credential-provenance-inject.sh
-deploy/tests/helm/identity-hook-credential-source-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
-deploy/tests/helm/identity-mail-lane-runtime-inject.sh
-deploy/tests/helm/identity-session-secret-source-inject.sh
-deploy/tests/helm/identity-substitution-output-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/ntf2-start-conditions-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
@@ -165,6 +161,7 @@ tools/unreadfieldaudit/unread-field-audit-inject.sh
 #   gosec-subject-inject.sh                   код 0, но 166 с и правка рабочей копии
 # Остальные четыре из той же волны дали код 0 за 0–4 с и потому стоят в DECLARED.
 ELSEWHERE="
+deploy/scripts/assert-iac-scan-covers-every-chart-inject.sh|.github/workflows/security-scan.yml|нужен trivy, которого в задании обхода нет; там он уже в PATH от trivy-action. Решение записано над самим шагом
 deploy/scripts/assert-scan-stubs-hide-nothing-inject.sh|.github/workflows/security-scan.yml|нужен trivy, которого в задании обхода нет; там он уже в PATH от trivy-action. Решение записано над самим шагом
 scripts/gosec-subject-inject.sh|.github/workflows/security-scan.yml|предмет доказательства — последний шаг задания gosec, и тот же пиннутый сканер ставится там шагом выше, поэтому свой экземпляр проба берёт из прогретого кэша модуля. Здесь она тянула бы его по сети вхолодную, шла 166 с и ПРАВИЛА БЫ рабочую копию, отказываясь стартовать после любого соседа, оставившего дерево грязным
 scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|нужен buf, которого в задании обхода нет; в задании proto он ставится buf-setup-action
@@ -176,7 +173,6 @@ scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|ну�
 # исключать (файла нет либо он переименован в форму доказательства), объявляется
 # находкой. Пустая ведомость — законное состояние и НЕ поломка.
 NOT_A_PROOF="
-deploy/scripts/inject-admin-hop-defects.sh|вносит дефекты в ЖИВОЙ стенд, а не доказывает гейт; запускается целью admin-hop-injection под стражем контекста
 deploy/scripts/run-injection-proofs.sh|это ОБХОДЧИК доказательств, а не доказательство; слово в имени от предмета обхода. Запускать его собой значило бы рекурсию
 gateway/scripts/inject-catalog-splice-defects.sh|доказательство гейта склейки, но НЕ этого обхода: вносит пропажу домена в РЕАЛЬНОЕ дерево контрактов и требует buf+go+python3, поэтому зовётся отдельной целью catalog-splice-inject (gateway/Makefile) руками при правке гейта
 gateway/scripts/inject-domain-generation-defects.sh|доказательство гейта разреза, но НЕ этого обхода: правит рабочее дерево и требует buf+go, поэтому зовётся отдельной целью domain-generation-inject (gateway/Makefile) руками при правке гейта или генераторов

@@ -961,6 +961,17 @@ func serviceSourceDir(root, alias string) (string, bool) {
 	if dir, ok := productnaming.ServiceDir(alias); ok {
 		candidates = append(candidates, dir)
 	}
+	// Служба, развёрнутая ШАБЛОНОМ ЗОНТА, а не подчартом (проба notify-probe:
+	// ключ значений `notifyProbe`, шаблон templates/notify-probe.yaml, исходники
+	// services/notify/cmd/notify-probe). Ключ связывается с шаблоном своим
+	// написанием через дефис, а шаблон с частью — владельцем раскладки
+	// (productnaming.UmbrellaTemplatePart); кандидат подтверждается наличием
+	// самого шаблона и каталога части ниже, а не именем.
+	if tpl := umbrellaTemplateOfKey(root, alias); tpl != "" {
+		if part, ok := productnaming.UmbrellaTemplatePart(tpl); ok {
+			candidates = append(candidates, part)
+		}
+	}
 	for _, name := range candidates {
 		dir := filepath.Join("services", name)
 		if st, err := os.Stat(filepath.Join(root, dir)); err == nil && st.IsDir() {
@@ -1091,4 +1102,25 @@ func unattributedCaptures(t *testing.T, tree, library *outOfPoolTree) []poolFind
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].key() < out[j].key() })
 	return out
+}
+
+// umbrellaTemplateOfKey — шаблон зонта, названный ключом значений через дефис
+// (`notifyProbe` → deploy/helm/umbrella/templates/notify-probe.yaml), если он
+// есть в дереве; иначе пусто.
+func umbrellaTemplateOfKey(root, key string) string {
+	var b strings.Builder
+	for i, r := range key {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	rel := "deploy/helm/umbrella/templates/" + b.String() + ".yaml"
+	if st, err := os.Stat(filepath.Join(root, rel)); err != nil || st.IsDir() {
+		return ""
+	}
+	return rel
 }

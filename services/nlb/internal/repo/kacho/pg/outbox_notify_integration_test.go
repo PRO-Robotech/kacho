@@ -30,13 +30,13 @@ func TestOutboxNotify_FiresOnInsert(t *testing.T) {
 	dsn := setupTestDB(t)
 	tc := newTestCtxFromDSN(t, dsn)
 	repo := tc.Repo
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(journalPrincipalCtx(context.Background()), 30*time.Second)
 	defer cancel()
 
 	// Открыть dedicated conn для LISTEN.
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close(context.Background()) })
+	t.Cleanup(func() { _ = conn.Close(journalPrincipalCtx(context.Background())) })
 
 	_, err = conn.Exec(ctx, "LISTEN nlb_outbox")
 	require.NoError(t, err)

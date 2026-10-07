@@ -35,6 +35,7 @@ package deploy_test
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -42,6 +43,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/retiredknobs"
+	"gopkg.in/yaml.v3"
 )
 
 // edgeChartDir — чарт края относительно пакета проб развёртывания.
@@ -175,4 +177,75 @@ func TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent(t *testing.T) {
 	if _, found = edgeEnvNames(t, other); found {
 		t.Fatal("под чужого имени принят за под края — перепись судила бы не тот объект")
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОМОЩНИКИ РЕНДЕРА ЗОНТА под тегом helmcharts. Переехали сюда из снятой пробы
+// ключа файла службы личности (kacho#2818): она поднимала подчарт поставщика,
+// которого подчарт службы больше не провязывает, а помощники читают живые
+// пробы тега — эта и address_gate_stand_render_test.go.
+
+// renderStack рендерит умбреллу цепочкой профилей стека.
+//
+// Отсутствие helm — жёсткий провал при CI, а не пропуск: гейт, молча ставший
+// инертным на задании, гейтящем мёрж, гейтом не является. Та же дисциплина, что
+// у renderIdentitySubchart.
+func renderStack(t *testing.T, chain []string, sets ...string) (string, error) {
+	t.Helper()
+	if _, err := exec.LookPath("helm"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("helm не в PATH при CI — рендер-гейт обязан исполняться, а не пропускаться")
+		}
+		t.Skip("helm не в PATH — рендер-гейт пропущен")
+	}
+	args := []string{"template", "kacho-umbrella", umbrellaDir, "-n", "kacho"}
+	for _, p := range chain {
+		args = append(args, "-f", filepath.Join(umbrellaDir, p))
+	}
+	for _, s := range sets {
+		args = append(args, "--set", s)
+	}
+	out, err := exec.Command("helm", args...).CombinedOutput()
+	return string(out), err
+}
+
+// renderedDoc — один документ рендера, разобранный настолько, насколько нужен
+// этой переписи.
+//
+// ИМЕННО ПСЕВДОНИМ, а не новый тип: yaml.v3 разбирает вложенные отображения В
+// ТОТ ЖЕ тип, что у цели, поэтому у именованного типа `metadata` приезжает как
+// `renderedDoc`, а приведение к `map[string]any` не проходит — и перепись молча
+// не находит НИЧЕГО. Ровно это и случилось при заведении: гейт объявил обход
+// пустым на дереве, где карт настроек шесть из шести.
+type renderedDoc = map[string]any
+
+func decodeRender(t *testing.T, rendered string) []renderedDoc {
+	t.Helper()
+	var docs []renderedDoc
+	dec := yaml.NewDecoder(strings.NewReader(rendered))
+	for {
+		var d renderedDoc
+		if err := dec.Decode(&d); err != nil {
+			break
+		}
+		if d != nil {
+			docs = append(docs, d)
+		}
+	}
+	return docs
+}
+
+func str(m map[string]any, k string) string {
+	s, _ := m[k].(string)
+	return s
+}
+
+func submap(m map[string]any, k string) map[string]any {
+	s, _ := m[k].(map[string]any)
+	return s
+}
+
+func slice(m map[string]any, k string) []any {
+	s, _ := m[k].([]any)
+	return s
 }

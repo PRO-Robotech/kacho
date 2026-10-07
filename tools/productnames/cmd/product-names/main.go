@@ -12,6 +12,9 @@
 //	                                        часть, чьи исходники вынесены в другой
 //	                                        репозиторий. ЦЕПОЧКА — «<имя>=<файл>[,<файл>…]»,
 //	                                        слои складываются слева направо, как в helm
+//	product-names --local-overlay -tag Т -built "…" СЛОЙ…
+//	                                        печатает накладку, переводящую цепочку на
+//	                                        образы СБОРКИ этого дерева (local_overlay.go)
 //
 // # Зачем режим перечисления
 //
@@ -84,6 +87,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/kacho/internal/localimages"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
@@ -96,6 +100,10 @@ func main() {
 	// никто не задавал.
 	if len(dirs) > 0 && dirs[0] == "--external-pins" {
 		os.Exit(externalPinsMode(os.Stdout, os.Stderr, dirs[1:]))
+	}
+	// Режим накладки отсекается тем же местом и по тому же доводу.
+	if len(dirs) > 0 && dirs[0] == "--local-overlay" {
+		os.Exit(localOverlayMode(os.Stdout, os.Stderr, dirs[1:]))
 	}
 
 	// Режим перечисления отсекается ДО общего пути: без него `--parts` уезжал
@@ -283,7 +291,7 @@ func externalPinsMode(stdout, stderr io.Writer, chains []string) int {
 					f, name, err)
 				return 2
 			}
-			folded = mergeLayers(folded, layer)
+			folded = localimages.Merge(folded, layer)
 			filesRead++
 			seenFile[f] = true
 		}
@@ -343,28 +351,6 @@ func splitChain(arg string) (string, []string) {
 		}
 	}
 	return name, files
-}
-
-// mergeLayers — сложение слоёв ТАК ЖЕ, как их складывает helm: карты сливаются по
-// ключам, всё остальное замещается целиком. Второй реализации этого правила в
-// дереве нет: Go-проверки каталога deploy складывают слои так же (mergeValues), и
-// разойдись эти два сложения — расхождение было бы молчаливым.
-func mergeLayers(dst, src map[string]any) map[string]any {
-	if dst == nil {
-		dst = map[string]any{}
-	}
-	for k, v := range src {
-		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeLayers(cur, sub)
-				continue
-			}
-			dst[k] = mergeLayers(map[string]any{}, sub)
-			continue
-		}
-		dst[k] = v
-	}
-	return dst
 }
 
 // imageRef — ссылка на образ, объявленная значениями. Digest сильнее тега: так

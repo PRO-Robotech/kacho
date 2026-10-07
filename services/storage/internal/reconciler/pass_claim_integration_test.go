@@ -86,7 +86,7 @@ func TestIntegration_ReconcilePass_TakenByExactlyOneReplica(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			store := reconciler.NewStore(pools[i])
+			store := mustJournalWriter(reconciler.NewStore(pools[i], probeJournalOptions))
 			start.Wait()
 			release, ok, err := store.TryClaimKindPass(ctx, reconciler.KindVolume)
 			// Отказ базы не роняется здесь: require.FailNow из чужой горутины
@@ -122,7 +122,7 @@ func TestIntegration_ReconcilePass_TakenByExactlyOneReplica(t *testing.T) {
 func TestIntegration_ReconcilePass_KindsAreIndependent(t *testing.T) {
 	ctx := context.Background()
 	pools := replicaPools(t, 2)
-	a, b := reconciler.NewStore(pools[0]), reconciler.NewStore(pools[1])
+	a, b := mustJournalWriter(reconciler.NewStore(pools[0], probeJournalOptions)), mustJournalWriter(reconciler.NewStore(pools[1], probeJournalOptions))
 
 	relVolume, ok, err := a.TryClaimKindPass(ctx, reconciler.KindVolume)
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestIntegration_ReconcilePass_KindsAreIndependent(t *testing.T) {
 func TestIntegration_ReconcilePass_ReleasedClaimIsTakenAgain(t *testing.T) {
 	ctx := context.Background()
 	pools := replicaPools(t, 2)
-	a, b := reconciler.NewStore(pools[0]), reconciler.NewStore(pools[1])
+	a, b := mustJournalWriter(reconciler.NewStore(pools[0], probeJournalOptions)), mustJournalWriter(reconciler.NewStore(pools[1], probeJournalOptions))
 
 	release, ok, err := a.TryClaimKindPass(ctx, reconciler.KindVolume)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestIntegration_ReconcileOnce_SkipsTheKindAnotherReplicaHolds(t *testing.T)
 	pools := replicaPools(t, 2)
 
 	// Реплика-«сосед» держит проход по всем трём видам.
-	held := reconciler.NewStore(pools[0])
+	held := mustJournalWriter(reconciler.NewStore(pools[0], probeJournalOptions))
 	for _, kind := range reconciler.AllKinds() {
 		release, ok, err := held.TryClaimKindPass(ctx, kind)
 		require.NoError(t, err)
@@ -189,7 +189,7 @@ func TestIntegration_ReconcileOnce_SkipsTheKindAnotherReplicaHolds(t *testing.T)
 		defer release(ctx)
 	}
 
-	rec := reconciler.New(reconciler.NewStore(pools[1]), refusingOpener{}, reconciler.Config{})
+	rec := reconciler.New(mustJournalWriter(reconciler.NewStore(pools[1], probeJournalOptions)), refusingOpener{}, reconciler.Config{})
 	counts := rec.Once(ctx)
 
 	require.Equal(t, len(reconciler.AllKinds()), counts.Skipped,

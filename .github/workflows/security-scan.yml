@@ -29,6 +29,7 @@ on:
     branches:
       - main
       - '[0-9]+'
+      - '[0-9]+-*'
 
   # `push` — только ствол: там выносится вердикт посаженного состояния, а
   # вердикт ветки задачи, волны или эпика даёт её запрос. Очередь это не растит:
@@ -274,10 +275,44 @@ jobs:
           scan-type: 'config'
           scan-ref: '.'
           trivy-config: 'trivy.yaml'
+          # Каталог вендоренных внешних чартов — вне этого прохода: чарт с закрытой
+          # схемой значений отвергает ЛЮБУЮ заглушку `trivy.yaml` и выпал бы из осмотра
+          # молча. Его осматривает следующий шаг, без заглушек. Срезы обоих проходов
+          # объявлены в `deploy/scripts/iac_scan_passes.py`, и шаги здесь сверяет с
+          # ними гейт покрытия (шаг «IaC-скан покрывает каждый чарт»).
+          skip-dirs: 'deploy/helm/vendor'
           format: 'sarif'
           output: 'trivy-config.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
+
+      - name: trivy config, вендоренные чарты (SARIF → Security)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
+          scan-type: 'config'
+          scan-ref: 'deploy/helm/vendor'
+          # Файл объявляет список заглушек ПУСТЫМ явно: без него trivy подхватил бы
+          # корневой trivy.yaml сам.
+          trivy-config: 'trivy-vendored-charts.yaml'
+          format: 'sarif'
+          output: 'trivy-config-vendored.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      # КООРДИНАТЫ АРХИВА-ЧАРТА — В ПУТИ CHECKOUT'А, ДО ВЫГРУЗКИ. Находку внутри архива
+      # trivy адресует `<архив>:<шаблон>`, и Code Scanning читает это как URI со схемой
+      # `<архив>`: волна #2977 (run 36867890066) получила восемь отказов «SARIF URI
+      # scheme … did not match the checkout URI scheme "file"». Перевод — в путь самого
+      # архива от корня (`deploy/helm/vendor/<архив>`), шаблон и строки уходят в
+      # сообщение координаты; постусловие (каждая координата — существующий файл
+      # checkout'а, без схемы) проверяется тем же скриптом, и отказ называет строку.
+      # Выгрузку оставили, а не сняли: без неё LOW/MEDIUM внешнего чарта не видны нигде.
+      - name: координаты SARIF IaC — в пути checkout'а
+        if: '!cancelled()'
+        run: python3 deploy/scripts/sarif-archive-uris.py trivy-config.sarif trivy-config-vendored.sarif
 
       - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
@@ -291,7 +326,18 @@ jobs:
           sarif_file: trivy-config.sarif
           category: trivy-config
 
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+        if: always()
+        with:
+          sarif_file: trivy-config-vendored.sarif
+          category: trivy-config-vendored
+
+      # `!cancelled()` ОБЯЗАТЕЛЕН и здесь, хотя шаг — первый из гейтов: без `if` он
+      # исполняется только при успехе ВСЕХ предыдущих, и отказ выгрузки SARIF выше снял
+      # его на волне #2977 (run 36867890066) — гейт fs на той ревизии не судил ничего.
+      # Немой гейтовый шаг ловит гейт покрытия (`falls_with_predecessor`).
       - name: trivy fs (гейт CRITICAL/HIGH)
+        if: '!cancelled()'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
@@ -318,6 +364,26 @@ jobs:
           scan-type: 'config'
           scan-ref: '.'
           trivy-config: 'trivy.yaml'
+          skip-dirs: 'deploy/helm/vendor'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      # Второй проход того же гейта: вендоренные внешние чарты без заглушек (почему —
+      # над шагом SARIF). Отдельным шагом, а не флагом первого: файл настроек у trivy
+      # один на запуск, а заглушки действуют на весь срез запуска. Пути в выводе — от
+      # `deploy/helm/vendor`, и запись `.trivyignore.yaml` под этот каталог обязана
+      # быть в этой форме (шапка `iac_scan_passes.py`).
+      - name: trivy config, вендоренные чарты (гейт CRITICAL/HIGH)
+        if: '!cancelled()'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
+          scan-type: 'config'
+          scan-ref: 'deploy/helm/vendor'
+          trivy-config: 'trivy-vendored-charts.yaml'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
@@ -486,3 +552,10 @@ jobs:
       - name: гейт заглушек умеет краснеть (инъекция в обе стороны)
         if: '!cancelled()'
         run: bash deploy/scripts/assert-scan-stubs-hide-nothing-inject.sh
+
+      # То же решение о доме, что у соседа выше: нужен trivy. Рабочую копию проба не
+      # трогает вовсе — исполняется в копии дерева вне checkout'а, — поэтому порядок
+      # относительно соседей для неё не несущий.
+      - name: гейт покрытия умеет краснеть (архивная форма чарта и сверка проходов с CI)
+        if: '!cancelled()'
+        run: bash deploy/scripts/assert-iac-scan-covers-every-chart-inject.sh

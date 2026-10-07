@@ -115,9 +115,11 @@ func seedQuotaCeiling(t *testing.T, s *stand) {
 // seedRichLB кладёт строку НАСТОЯЩИМ репозиторием и возвращает её запись.
 func seedRichLB(t *testing.T, s *stand) *kachorepo.LoadBalancerRecord {
 	t.Helper()
-	ctx := context.Background()
+	// Посев — писателем модуля: транзакцию открывает помощник записи журнала,
+	// инициатор — принципал контекста (З4).
+	ctx := journalPrincipalCtx(context.Background())
 	seedQuotaCeiling(t, s)
-	repo := pgrepo.New(s.pool, nil)
+	repo := mustJournalWriter(pgrepo.New(s.pool, nil, probeJournalOptions))
 
 	w, err := repo.Writer(ctx)
 	if err != nil {
@@ -198,7 +200,7 @@ func TestLoadBalancerStateIsTheSameFromTheTriggerAndFromGo(t *testing.T) {
 	fireStatusRecompute(t, s)
 
 	ctx := context.Background()
-	repo := pgrepo.New(s.pool, nil)
+	repo := mustJournalWriter(pgrepo.New(s.pool, nil, probeJournalOptions))
 	r, err := repo.Reader(ctx)
 	if err != nil {
 		t.Fatalf("reader не открылся: %v", err)

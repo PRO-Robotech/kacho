@@ -100,7 +100,7 @@ func TestDataplane_EndToEnd_PullThroughRealForwarder(t *testing.T) {
 	require.NoError(t, err)
 
 	az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/app": true}}
-	h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
+	h := newTestHandler(&fakeVerifier{subject: "sva-0000000000000000c"}, az, &fakeBackend{}, fw, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodGet, "/v2/reg-A/app/manifests/v1", true)
 	require.Equal(t, http.StatusOK, rec.Code)

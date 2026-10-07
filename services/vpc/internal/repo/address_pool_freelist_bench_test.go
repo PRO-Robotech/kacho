@@ -35,7 +35,7 @@ func BenchmarkAllocateExternalIP_Freelist(b *testing.B) {
 	require.NoError(b, err)
 	pgtest.ClosePoolAtEnd(b, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(fn func(kacho.RepositoryWriter) error) error {
@@ -86,7 +86,7 @@ func BenchmarkAllocateExternalIP_Freelist_Parallel(b *testing.B) {
 	require.NoError(b, err)
 	pgtest.ClosePoolAtEnd(b, pgPool)
 
-	r := kachopg.New(pgPool, nil)
+	r := mustJournalWriter(kachopg.New(pgPool, nil, probeJournalOptions))
 	defer r.Close()
 
 	withTx := func(fn func(kacho.RepositoryWriter) error) error {

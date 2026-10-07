@@ -62,7 +62,7 @@ func targetComposition(states []kacho.TargetRecord) []string {
 func TestTG_ListProjectionMatchesGet(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj01TGLP1234567890ll"
 
@@ -137,7 +137,7 @@ func TestTG_ListProjectionMatchesGet(t *testing.T) {
 func TestTG_ListTargetsPerGroupCapped(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj01TGCP1234567890ll"
 

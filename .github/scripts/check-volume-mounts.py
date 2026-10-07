@@ -52,6 +52,7 @@ fail-closed отказ рендера без учётных данных хра�
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -67,8 +68,9 @@ WORKLOADS = ("Deployment", "StatefulSet", "Job", "DaemonSet", "CronJob")
 # нужно. Это ИСКЛЮЧЕНИЕ, и оно живёт, пока у него есть предмет: пропажа чарта из
 # зависимостей умбреллы — находка (см. coverage_findings). Запись подчарта
 # начальной настройки движка прав снята вместе с ним (S6 эпика #747) — ровно по
-# этому правилу: исключать стало нечего.
-NO_WORKLOAD_CHARTS = {"kratos-selfservice-ui"}
+# этому правилу: исключать стало нечего. Запись экрана входа поставщика личности
+# снята вместе с его подчартом (#1276) по тому же правилу; сегодня исключений нет.
+NO_WORKLOAD_CHARTS: set = set()
 
 
 class Chart:
@@ -83,11 +85,16 @@ class Chart:
     """
 
     def __init__(self, name: str, path: str, required: list[str],
-                 toggles: list[tuple[str, str, str]]):
+                 toggles: list[tuple[str, str, str]], alone: bool = False):
         self.name = name
         self.path = path
         self.required = required
         self.toggles = toggles
+        # alone — подчарт, чей одиночный рендер идёт только обёрткой
+        # `render_kaname_alone` (deploy/tests/helm/lib/render-chain.sh): его шаблон
+        # зовёт помощник флага почты, тело которого живёт в чарте notify (NTF-1
+        # D2, замысел З28, CX1-113). См. `render`.
+        self.alone = alone
 
     def renders(self):
         """Все комбинации тумблеров: (подпись, список аргументов --set)."""
@@ -152,11 +159,32 @@ CHARTS = [
           [("mtls.enable", "false", "true"), ("mtls.httpListeners", "false", "true"),
            ("opaSidecar.enabled", "false", "true"),
            ("initContainer.migrator.enabled", "false", "true"),
-           ("initContainer.waitForExtAuth.enabled", "false", "true")]),
+           ("initContainer.waitForExtAuth.enabled", "false", "true")],
+          alone=True),
     Chart("kacho-geo", "deploy/helm/umbrella/charts/kacho-geo", [],
           [("mtls.enable", "false", "true"), ("dataMigration.enabled", "false", "true")]),
     Chart("uif", "ui-future/deploy", [], []),
+    # notify (NTF-1, замысел З28): ноги рендера — собственные значения ноги без
+    # зонтика и образец узла почты оператора, пути от корня репозитория (гейт
+    # зовут и из временного каталога вне дерева). Объекты notify рендерятся только
+    # при непустом выведенном перечне источников; в ноге без зонтика единственный
+    # источник таблицы (`notify-probe`) выключен переопределением, поэтому гейт
+    # включает его сам и подаёт его ручки на источник (без записи — отказ рендера
+    # с именем модуля). Тумблер — единственное условие вокруг томов чарта: якорь
+    # доверия узла почты (`trustAnchorSecret.name`) добавляет том
+    # `smtp-trust-anchor` и его монт; `peer-tls` и `tmp` безусловны.
+    Chart("notify", "deploy/helm/notify",
+          ["-f", str(REPO / "deploy/testdata/notify-standalone/values.yaml"),
+           "-f", str(REPO / "deploy/testdata/mail-node/operator.yaml"),
+           "--set", "global.kacho.notifications.modules.notifyProbe.enabled=true",
+           "--set", "sourceLimits.notify-probe.rate=5",
+           "--set", "sourceLimits.notify-probe.burst=5",
+           "--set", "sourceLimits.notify-probe.paused=false"],
+          [("global.kacho.identity.smtp.trustAnchorSecret.name", "", "smtp-anchor")]),
 ]
+
+# Обёртка одиночного рендера подчарта kaname (одно тело на шелле).
+RENDER_CHAIN = REPO / "deploy/tests/helm/lib/render-chain.sh"
 
 
 def pod_spec(doc):
@@ -247,7 +275,7 @@ def stdin_mode() -> int:
     return 1 if bad else 0
 
 
-def coverage_findings() -> list:
+def coverage_findings(charts=None) -> list:
     """Ни один сервисный чарт умбреллы не может оказаться вне гейта молча.
 
     Прежняя обёртка несла РУЧНОЙ список из четырёх чартов при восьми сервисных.
@@ -284,10 +312,26 @@ def coverage_findings() -> list:
                {d.get("name") for d in (dep_doc.get("dependencies") or [])}
     charts_dir = UMBRELLA_CHART.parent / "charts"
     vendored = set()
+    # Чарт называется `name` СВОЕГО Chart.yaml, а не каталогом: по имени helm
+    # строит ключ значений и строку `# Source:`, по имени же ведётся таблица этого
+    # гейта. Каталог — наш путь и переименовывается независимо от имени (#2759);
+    # читать каталог как имя значило бы потерять чарт при первом таком
+    # переименовании — с находкой «запись без предмета» вместо покрытия.
     if charts_dir.is_dir():
-        vendored = {p.name for p in charts_dir.iterdir()
-                    if p.is_dir() and (p / "Chart.yaml").is_file()
-                    and p.name not in declared}
+        for p in charts_dir.iterdir():
+            meta = p / "Chart.yaml"
+            if not (p.is_dir() and meta.is_file()):
+                continue
+            try:
+                name = (yaml.safe_load(meta.read_text(encoding="utf-8")) or {}).get("name")
+            except (OSError, yaml.YAMLError) as e:
+                out.append("не прочитан {}: {} — покрытие этого чарта НЕ проверено".format(meta, e))
+                continue
+            if not name:
+                out.append("{} не называет имя чарта — сверять покрытие не с чем".format(meta))
+                continue
+            if name not in declared and p.name not in declared:
+                vendored.add(name)
     first_party |= vendored
 
     if not first_party:
@@ -295,7 +339,7 @@ def coverage_findings() -> list:
                 "вендоренного сабчарта — покрытие сверять не с чем, а это не "
                 "«покрыто всё»".format(UMBRELLA_CHART)]
 
-    covered = {c.name for c in CHARTS}
+    covered = {c.name for c in (CHARTS if charts is None else charts)}
     for name in sorted(first_party - covered - NO_WORKLOAD_CHARTS):
         out.append("чарт '{}' — first-party зависимость умбреллы, но его нет в таблице этого "
                    "гейта: его монты не проверяются, и об этом ничто не сообщает".format(name))
@@ -310,8 +354,15 @@ def coverage_findings() -> list:
 
 def render(chart: Chart, sets: list):
     """Рендер чарта. Возвращает (манифесты | None, первая строка диагностики)."""
-    p = subprocess.run(["helm", "template", "t", str(REPO / chart.path)] + sets,
-                       capture_output=True, text=True)
+    where = REPO / chart.path
+    if chart.alone:
+        cmd = ["bash", "-c", '. "$RENDER_CHAIN_LIB" && render_kaname_alone "$@"',
+               "render_kaname_alone", "t", str(where)] + sets
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           env={**os.environ, "RENDER_CHAIN_LIB": str(RENDER_CHAIN)})
+    else:
+        p = subprocess.run(["helm", "template", "t", str(where)] + sets,
+                           capture_output=True, text=True)
     if p.returncode != 0:
         return None, (p.stderr or p.stdout).strip().split("\n")[0]
     return p.stdout, ""
@@ -508,6 +559,17 @@ spec:
         rc = 1
     else:
         print("  ОК     покрытие: все first-party чарты умбреллы в таблице ({})".format(len(CHARTS)))
+
+    # Инъекция покрытия: запись notify снята из таблицы → красный, и это ровно та
+    # строка, что стояла до появления записи. Близнец — таблица как есть (выше).
+    without = [c for c in CHARTS if c.name != "notify"]
+    cov = coverage_findings(without)
+    if len(without) == len(CHARTS) - 1 and any(
+            "'notify'" in line and "first-party зависимость умбреллы" in line for line in cov):
+        print("  ОК     запись notify снята → покрытие красное: «first-party зависимость умбреллы»")
+    else:
+        print("  ПРОВАЛ запись notify снята, а покрытие не покраснело: {}".format(cov))
+        rc = 1
 
     print()
     print("PASS: check-volume-mounts --self-test" if rc == 0

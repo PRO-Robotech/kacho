@@ -238,16 +238,17 @@ func (sw *securityGroupWriter) Update(_ context.Context, sg *domain.SecurityGrou
 	return &cp, nil
 }
 
-func (sw *securityGroupWriter) Delete(_ context.Context, id string) error {
-	if _, ok := sw.w.localSGs[id]; !ok {
-		return repo.ErrNotFound
+func (sw *securityGroupWriter) Delete(_ context.Context, id string) (string, error) {
+	rec, ok := sw.w.localSGs[id]
+	if !ok {
+		return "", repo.ErrNotFound
 	}
 	if sw.w.deletedSGIDs == nil {
 		sw.w.deletedSGIDs = make(map[string]struct{})
 	}
 	sw.w.deletedSGIDs[id] = struct{}{}
 	delete(sw.w.localSGs, id)
-	return nil
+	return string(rec.Name), nil
 }
 
 // UpdateRules / UpdateRule — упрощенная семантика (без xmin-OCC; mock не

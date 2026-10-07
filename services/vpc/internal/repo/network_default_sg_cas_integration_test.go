@@ -29,12 +29,12 @@ import (
 
 func newDefaultSGFixture(t *testing.T) (context.Context, kacho.Repository, *networkinternal.Service) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	t.Cleanup(func() { r.Close() })
 	svc := networkinternal.NewService(cqrsadapter.NewNetwork(r), cqrsadapter.NewSecurityGroup(r))
 	return ctx, r, svc

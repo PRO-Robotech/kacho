@@ -98,10 +98,11 @@ func (u *DeleteNetworkInterfaceUseCase) doDelete(ctx context.Context, id string)
 			return nil, serviceerr.MapRepoErr(cerr)
 		}
 	}
-	if err := w.NetworkInterfaces().Delete(ctx, id); err != nil {
+	name, err := w.NetworkInterfaces().Delete(ctx, id)
+	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if oerr := w.Outbox().Emit(ctx, "NetworkInterface", id, cur.ProjectID, "DELETED", map[string]any{"id": id}); oerr != nil {
+	if oerr := w.Outbox().Emit(ctx, "NetworkInterface", id, cur.ProjectID, "DELETED", map[string]any{"id": id, "name": name}); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	// Снимаем owner-hierarchy-tuple vpc_network_interface→project в той же

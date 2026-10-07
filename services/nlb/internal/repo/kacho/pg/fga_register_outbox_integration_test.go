@@ -60,7 +60,7 @@ func queryRegisterRows(t testing.TB, ctx context.Context, tc *testContext) []reg
 // одного Commit.
 func TestFGARegisterOutbox_SECD01_CreateIntentInWriterTx(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj-aaaaaaaaaaaaaaaaa"
 	const subject = "user:usr-xxxxxxxxxxxxxxxxx"
@@ -118,7 +118,7 @@ func TestFGARegisterOutbox_SECD01_CreateIntentInWriterTx(t *testing.T) {
 // абортится → ни Insert ресурса, ни register-intent НЕ остаются (атомарность).
 func TestFGARegisterOutbox_SECD02_AbortNoIntent(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj-bbbbbbbbbbbbbbbbb"
 	lb := newLB(projectID, "lb-abort")
@@ -152,7 +152,7 @@ func TestFGARegisterOutbox_SECD02_AbortNoIntent(t *testing.T) {
 // строка ресурса удалена в той же tx.
 func TestFGARegisterOutbox_SECD03_UnregisterIntentOnDelete(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	const projectID = "prj-ccccccccccccccccc"
 	lb := newLB(projectID, "lb-del")
@@ -167,7 +167,7 @@ func TestFGARegisterOutbox_SECD03_UnregisterIntentOnDelete(t *testing.T) {
 		Tuples:     []domain.FGATuple{domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, string(lb.ID), projectID)},
 	}
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.LoadBalancers().Delete(ctx, string(lb.ID)))
+		require.NoError(t, droppedName(w.LoadBalancers().Delete(ctx, string(lb.ID))))
 		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unregIntent)
 		require.NoError(t, emitErrctx)
 	})
@@ -188,7 +188,7 @@ func TestFGARegisterOutbox_SECD03_UnregisterIntentOnDelete(t *testing.T) {
 // ни одной валидной tuple) → строка не пишется.
 func TestFGARegisterOutbox_SECD06_EmptyTupleSetNoRow(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
 		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
@@ -203,7 +203,7 @@ func TestFGARegisterOutbox_SECD06_EmptyTupleSetNoRow(t *testing.T) {
 // event_type → SQLSTATE 23514.
 func TestFGARegisterOutbox_EventTypeCheck(t *testing.T) {
 	tc := newTestCtx(t)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	_, err := tc.Pool.Exec(ctx, `
         INSERT INTO kacho_nlb.fga_register_outbox (event_type, payload)

@@ -1,0 +1,7 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+blocks:
+  - heading: "Проба доставки"
+  - p: "Это письмо поставила проба notify-probe: цепочка доставки установки исправна."
+  - button: {text: "Открыть консоль", path: target}

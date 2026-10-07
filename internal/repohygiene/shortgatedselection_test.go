@@ -143,7 +143,14 @@ import (
 // корневого Makefile (цель test-integration). Тест ниже сверяет, что копия не
 // разошлась с оригиналом: гейт, судящий по устаревшему представлению об отборе,
 // врёт тем увереннее, чем дольше живёт.
-var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)`)
+//
+// Вторая альтернатива — пакеты каталога notify с настоящей базой (kacho#2915,
+// Д90, Д92): процесс пробы-источника, его глагол Send, точка наката и сетка
+// лимитов шлюза (internal/limits, полоса N7). Их
+// пробы гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит;
+// шире (`cmd/` всех служб) отбор не берётся — радиус не измерен.
+var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)` +
+	`|^services/notify/(cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$`)
 
 // shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
 // режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
@@ -311,7 +318,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	"services/compute/internal/migrations": "make test-pg-outside-selection",
 	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
-	"services/vpc/internal/migrations":     "make test-pg-outside-selection",
+	// Пробы журнала registry (задача #2918, NTF3-62 и УК3-28): колонка инициатора,
+	// её умолчание и функция базы registries_journal_emit судятся вставкой в
+	// настоящий Postgres, а у пакета миграций registry стража сносов нет — без
+	// этой цели его пробы не исполнялись бы нигде.
+	"services/registry/internal/migrations": "make test-pg-outside-selection",
+	"services/vpc/internal/migrations":      "make test-pg-outside-selection",
 
 	// Фоновые проходы nlb (реклейм VIP застрявших балансировщиков и слив
 	// таргетов). Двадцать проб, все с настоящим Postgres, все гейтятся кратким
@@ -403,6 +415,15 @@ func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
 		f := judgeShortGateSelection([]string{outside}, nil, nil, "")
 		if len(f) != 1 || !strings.Contains(f[0], outside) {
 			t.Fatalf("гейт не назвал незаявленный пакет: %v", f)
+		}
+	})
+
+	t.Run("краснеет: запись своего шага у пакета в отборе", func(t *testing.T) {
+		const notifyProbe = "services/notify/cmd/notify-probe"
+		f := judgeShortGateSelection([]string{notifyProbe}, nil,
+			map[string]string{notifyProbe: "make test-pg-outside-selection"}, "make test-pg-outside-selection")
+		if len(f) != 1 || !strings.Contains(f[0], notifyProbe) || !strings.Contains(f[0], "ВХОДИТ в отбор") {
+			t.Fatalf("запись своего шага у отобранного пакета не названа вторым исполнителем: %v", f)
 		}
 	})
 
@@ -540,6 +561,12 @@ func judgeShortGateSelection(gated, declared []string, ownStep map[string]string
 	}
 	sort.Strings(stepRest)
 	for _, p := range stepRest {
+		if integrationSelectionRe.MatchString(p) {
+			findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
+				"ВХОДИТ в отбор интеграционной джобы — свой шаг был бы вторым исполнителем тех же "+
+				"проб, двумя местами об одном предмете; запись снимается")
+			continue
+		}
 		findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
 			"больше не пропускает тестов под кратким режимом (или исчез) — освобождать "+
 			"нечего, и запись достанется следующему как слепая зона")
@@ -575,9 +602,10 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)`
+	const want = `grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)` +
+		`|/services/notify/(cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'`
 	if !strings.Contains(string(raw), want) {
-		t.Fatalf("в корневом Makefile больше нет отбора %q — копия в этом файле "+
+		t.Fatalf("в корневом Makefile нет отбора %q — копия в этом файле "+
 			"(integrationSelectionRe) описывает отбор, которого не существует", want)
 	}
 }

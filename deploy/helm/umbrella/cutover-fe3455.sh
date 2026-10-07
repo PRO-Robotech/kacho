@@ -31,7 +31,7 @@
 #       catalog together → the new RG-1 Repository RPCs authorize (no "catalog: no entry").
 #     • unchanged & live: vpc main-6fe9c386, compute main-1678f62c, geo main-fc2d945c,
 #       nlb main-2c87cac9, zot v2.1.18, every uif remote master-e6001c77, every Postgres
-#       (16.1.0-debian-11-r25 / pg-hydra 16.4.0-debian-12-r0) — emptyDir, tags NOT bumped.
+#       (16.1.0-debian-11-r25 / 16.4.0-debian-12-r0) — emptyDir, tags NOT bumped.
 #
 #   REGISTRY data-plane TLS: the overlay now sets registry.service.dataplaneLB.tlsSidecar
 #   (enabled + LE cert), so the chart — not a hand-applied kubectl patch — owns the public
@@ -138,15 +138,24 @@ log "target cluster confirmed by apiserver address (not by context name)."
 #    main-b3d23769 reverts kaname c300053 (issued_at RFC3339 string) → `docker login`
 #    breaks. The current pin (main-c744f956, kacho-iam#326) carries the fix, so this guard
 #    is a denylist against a silent repin BACK to the broken image.
-if grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/values.fe3455-prod.yaml" 2>/dev/null; then
+#    The tag lives ONCE, in the chart's base values.yaml (kacho#2915): the overlays
+#    no longer restate it, so the denylist reads the base file AND every layer of
+#    the fe3455 chain — a repin in any of them is a repin of this stand. The chain
+#    is read from the stack table, not restated (deploy/stack_table_test.go).
+DENY_FILES="values.yaml $(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
+deny_hit=0
+for f in $DENY_FILES; do
+  grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/$f" 2>/dev/null && deny_hit=1
+done
+if [ "$deny_hit" = 1 ]; then
   if [ "${ACK_IAM_ISSUED_AT_REVERT:-0}" != "1" ]; then
     die "BLOCKER: kaname pinned to main-b3d23769, which REVERTS the docker-login
        issued_at RFC3339 fix (kaname commit c300053). Rolling iam to this image breaks
        'docker login' (Time.UnmarshalJSON: input is not a JSON string) → the registry
        data-plane cannot mint a bearer token → all docker pull/push 401.
        RESOLUTION: pin kaname.image.tag to main-c744f956 or later (main c744f95 carries
-       c300053 re-applied via kacho-iam#326) in BOTH values.fe3455.yaml and
-       values.fe3455-prod.yaml → re-run.
+       c300053 re-applied via kacho-iam#326) in values.yaml, where the tag is declared
+       once → re-run.
        To knowingly ship the docker-login break anyway: ACK_IAM_ISSUED_AT_REVERT=1 $0"
   fi
   warn "ACK_IAM_ISSUED_AT_REVERT=1 set — proceeding with main-b3d23769; 'docker login' WILL break until c300053 is on the iam image."
@@ -159,77 +168,39 @@ fi
 # was being checked while this script deployed another. deploy/stacks.txt is the
 # one declaration; the credentials layer is appended here because it is outside
 # the tree by design and cannot live in a tracked table.
-ORY_CREDS_LAYER="values.fe3455-ory.yaml"
+#
+# The layer is named for what it carries — site secrets — and is covered by the
+# ignore pattern `**/values.*-secrets.yaml` (#2998). Its previous file name, from
+# the time it also carried the retired identity provider's credentials, stays
+# covered by its own ignore pattern in .gitignore and .dockerignore: an operator
+# clone may still hold a copy under that name, and dropping the pattern would turn
+# the next `git add -A` there into a published secret. Such a copy is not read
+# here; rename it to the name below.
+CREDS_LAYER="values.fe3455-secrets.yaml"
 FE_LAYERS="$(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
 [ -n "$FE_LAYERS" ] || die "stack table declares no fe3455 chain — nothing to deploy, and that is a refusal, not an empty success"
-FE_LAYERS="$FE_LAYERS $ORY_CREDS_LAYER"
+FE_LAYERS="$FE_LAYERS $CREDS_LAYER"
 FE_ARGS=()
 for f in $FE_LAYERS; do
-  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  ($ORY_CREDS_LAYER is gitignored — restore it locally before cutover)"
+  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  ($CREDS_LAYER is gitignored — restore it locally before cutover)"
   FE_ARGS+=(-f "$f")
 done
 log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 
 # ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
 #
-# Why this gate exists. Until 2026-08-11 the whole Ory overlay lived in the one
-# gitignored file, so the PRODUCTION POSTURE of the identity providers (kratos
-# development mode, hydra issuer/PKCE/TTL) was invisible to git, to review and to
-# every gate — their "no findings" over that layer meant "nothing read". Posture
-# now lives in the tracked values.fe3455-ory-posture.yaml.
-#
-# A convention alone would not hold that split: the easiest way to change the
-# live cluster is still to edit the file nobody sees. So the split is CHECKED
-# here — the credentials layer may declare only the coordinates below, and a
-# posture key reappearing in it refuses the cutover instead of shipping quietly.
-#
-# The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
-# `hydra.hydra.config` wholesale would re-admit every posture key under it.
-#
-# THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
-# round here. This list named `kratos.kratos.config.courier.smtp.connection_uri`,
-# a coordinate that feeds the VENDOR subchart's own config file. The identity
-# process reads SEVERAL config files and merges them in order; ours is second,
-# so the `courier` section we render REPLACES the vendor's wholesale rather than
-# extending it. An operator who put the real relay where this script sent them
-# got a green cutover, running pods and mail going nowhere — with no signal at
-# all. The single declaration is `global.kacho.identity.smtp.*`
-# (_kratos-identity.tpl); the credentials layer is applied LAST in the chain, so
-# a value set there wins over every profile. Held by MAIL-54
-# (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
-# list and that declaration name different coordinates.
-ORY_CRED_PATHS='
-hydra.hydra.config.dsn
-hydra.hydra.config.secrets.system
-hydra.hydra.config.secrets.cookie
-kratos.kratos.config.dsn
-kratos.kratos.config.secrets.cookie
-kratos.kratos.config.secrets.cipher
-global.kacho.identity.smtp.connectionURI
-'
-stray="$(ORY_CRED_PATHS="$ORY_CRED_PATHS" python3 - "$CHART_DIR/values.fe3455-ory.yaml" <<'PY'
-import os, sys, yaml
-allowed = set(os.environ["ORY_CRED_PATHS"].split())
-tree = yaml.safe_load(open(sys.argv[1])) or {}
-def leaves(node, path=()):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            yield from leaves(v, path + (str(k),))
-    else:
-        yield ".".join(path)
-print("\n".join(sorted(p for p in leaves(tree) if p not in allowed)))
-PY
-)" || die "could not read values.fe3455-ory.yaml (need python3 with PyYAML)"
+# The allow-list (CRED_PATHS), the reason the split is checked at all and the
+# check itself live in ONE place — cutover-creds-layer.sh next to this script —
+# so that the D2 cutover probe runs the very same check (NTF-1 D2, CX1-85).
+# shellcheck source=deploy/helm/umbrella/cutover-creds-layer.sh
+. "$CHART_DIR/cutover-creds-layer.sh"
+stray="$(creds_layer_stray "$CHART_DIR/$CREDS_LAYER")" || die "could not read $CREDS_LAYER (need python3 with PyYAML)"
 
 if [ -n "$stray" ]; then
-  warn "values.fe3455-ory.yaml declares coordinates that are NOT credentials:"
-  printf '  %s\n' $stray >&2
-  die "posture must live in the TRACKED values.fe3455-ory-posture.yaml, where review and the
-       gates can see it. Move the coordinates above there (or, if they really are credentials,
-       add them to ORY_CRED_PATHS in this script with a reason). Refusing to deploy a posture
-       that no gate has read."
+  creds_layer_refusal "$CREDS_LAYER" "$stray"
+  die "the credentials layer carries coordinates outside CRED_PATHS (deploy/helm/umbrella/cutover-creds-layer.sh)"
 fi
-log "credentials layer carries credentials only (posture is in the tracked layer)."
+log "credentials layer carries credentials only (posture is in the tracked profiles)."
 
 # ── 2. re-vendor sub-charts from committed Chart.lock (pins pg -> no data loss) ─
 log "helm dependency build (respects Chart.lock; re-vendors ../kacho-registry@main S3/compat chart)…"
@@ -263,10 +234,10 @@ helm dependency build . >/dev/null \
 # требуемый секрет без строки и строка без требования одинаково роняют прогон.
 REQUIRED_SECRET_PRODUCERS='
 zot-s3-creds|оператор: ключи объектного хранилища (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), заводятся до раскатки
-kaname-hook-token|оператор: общий секрет обратных вызовов, ключ token, 24 байта hex; заводится ОДИН раз и не ротируется — перевыпуск разводит отправителя и проверяющую сторону
 kaname-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
 kaname-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
-kaname-second-factor-enc-key|оператор: ключ обёртки секретов второго фактора, ключ enc_key, 32 байта hex; читается стражем старта под identityProvider: own, перевыпуск делает уже обёрнутые секреты нечитаемыми НАВСЕГДА
+kaname-second-factor-enc-key|оператор: ключ обёртки секретов второго фактора, ключ enc_key, 32 байта hex; читается стражем старта службы на каждом старте, перевыпуск делает уже обёрнутые секреты нечитаемыми НАВСЕГДА
+kaname-mail-keys|оператор: ключи почтовой полосы, ключи mail-window.key и device-label.key (случайные байты, не короче 32 каждый); читаются стражем старта на любой посадке, смена сбрасывает окна адресатов и метки доверенных устройств
 '
 
 log "предполёт: вывожу перечень требуемых секретов (рендер + посев + таблица производителей)…"
@@ -406,7 +377,7 @@ MANIFEST_DIGEST_VALUES="values.module-manifests.yaml"
 #    from the Secret; these --set values are a defensive belt for the bitnami
 #    passwords-on-upgrade guard. Correct value paths: auth.password (secret key
 #    'password') + auth.postgresPassword (secret key 'postgres-password').
-PG_SVCS=(vpc compute iam geo nlb storage registry kratos hydra)
+PG_SVCS=(vpc compute iam geo nlb storage registry)
 PGARGS=()
 for svc in "${PG_SVCS[@]}"; do
   sec="kacho-umbrella-pg-$svc"
@@ -464,14 +435,14 @@ fi
 
 # ── smoke: iam :9097 cluster-internal JWKS proxy (the JWKS-flip source of truth) ──
 #    The registry Bearer verifier now trusts iam's :9097 mirror (registry.iam.jwksUrl).
-#    Confirm iam-on-main actually serves it with Hydra kids BEFORE trusting docker auth.
+#    Confirm iam-on-main actually serves it with the issuer kids BEFORE trusting docker auth.
 #    Server-TLS (internal-CA leaf), no client cert → curl -k. Port-forward to reach the
 #    ClusterIP service from the operator host.
 log "smoke: iam :9097 JWKS proxy (GET /.well-known/jwks.json — expect 200 with keys)…"
 # THIS upgrade rolls the iam pod, so probe only once it is actually Ready. A port-forward
 # established against a terminating pod stays broken for the rest of the probe → false
 # negative. That is exactly what the 2026-07-15 run hit: the smoke warned "did NOT return
-# a keys set" while the endpoint served 200 with Hydra kids moments later. Hence: wait for
+# a keys set" while the endpoint served 200 with the issuer kids moments later. Hence: wait for
 # the rollout, then re-establish a FRESH forward per attempt (one dead tunnel must not
 # doom the whole check).
 kubectl -n "$NS" rollout status deploy/kaname --timeout=120s >/dev/null 2>&1 \

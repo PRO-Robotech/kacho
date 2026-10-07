@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
 	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
@@ -51,12 +52,20 @@ func (e *ErrPlacementGroupInUse) Unwrap() error {
 
 // PlacementGroupRepo — хранение групп размещения.
 type PlacementGroupRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewPlacementGroupRepo создаёт репозиторий групп.
-func NewPlacementGroupRepo(pool *pgxpool.Pool) *PlacementGroupRepo {
-	return &PlacementGroupRepo{pool: pool}
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewPlacementGroupRepo(pool *pgxpool.Pool, journal journaltx.Options) (*PlacementGroupRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("compute: NewPlacementGroupRepo: %w", err)
+	}
+	return &PlacementGroupRepo{pool: pool, journal: journal}, nil
 }
 
 const placementGroupCols = `id, project_id, name, description, labels, created_at, ` +
@@ -160,7 +169,7 @@ func (r *PlacementGroupRepo) Insert(ctx context.Context, g *domain.PlacementGrou
 		return nil, nil, err
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -192,6 +201,9 @@ func (r *PlacementGroupRepo) Insert(ctx context.Context, g *domain.PlacementGrou
 		return nil, nil, ports.ErrInternal
 	}
 
+	if err := emitCompute(ctx, tx, "PlacementGroup", created.ID, created.ProjectID, "CREATED", placementGroupPayload(created)); err != nil {
+		return nil, nil, ports.ErrInternal
+	}
 	reg, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "PlacementGroup",
 		created.ID, created.ProjectID, created.Labels)
 	if err != nil {
@@ -233,7 +245,7 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 		add("labels", labelsJSON)
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, ports.ErrInternal
 	}
@@ -258,6 +270,9 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 	}); err != nil {
 		return nil, ports.ErrInternal
 	}
+	if err := emitCompute(ctx, tx, "PlacementGroup", updated.ID, updated.ProjectID, "UPDATED", placementGroupPayload(updated)); err != nil {
+		return nil, ports.ErrInternal
+	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "PlacementGroup",
 		updated.ID, updated.ProjectID, updated.Labels); err != nil {
 		return nil, ports.ErrInternal
@@ -274,7 +289,7 @@ func (r *PlacementGroupRepo) Update(ctx context.Context, id string, u ports.Plac
 // Ссылочная целостность отвергла бы снятие и сама, но её отказ называет
 // ограничение, а не машины — по нему нельзя сделать следующего шага.
 func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return ports.ErrInternal
 	}
@@ -288,8 +303,8 @@ func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
 		return &ErrPlacementGroupInUse{GroupID: id, InstanceIDs: holders, Truncated: truncated}
 	}
 
-	var projectID string
-	err = tx.QueryRow(ctx, `DELETE FROM placement_groups WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
+	var projectID, name string
+	err = tx.QueryRow(ctx, `DELETE FROM placement_groups WHERE id = $1 RETURNING project_id, name`, id).Scan(&projectID, &name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: PlacementGroup %s not found", ports.ErrNotFound, id)
@@ -306,6 +321,9 @@ func (r *PlacementGroupRepo) Delete(ctx context.Context, id string) error {
 		Actor:        actor,
 		OnBehalfOf:   onBehalf,
 	}); err != nil {
+		return ports.ErrInternal
+	}
+	if err := emitCompute(ctx, tx, "PlacementGroup", id, projectID, "DELETED", deletedPayload(id, name)); err != nil {
 		return ports.ErrInternal
 	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "PlacementGroup",

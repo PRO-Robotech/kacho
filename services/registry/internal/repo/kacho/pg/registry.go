@@ -13,6 +13,7 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/journaltx"
+	"github.com/PRO-Robotech/corelib/outbox"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -35,11 +38,21 @@ const registryColumns = `id, project_id, name, description, labels, status, crea
 
 // RegistryRepo — реализация registry.RegistryRepo поверх pgxpool.
 type RegistryRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	journal journaltx.Options
 }
 
 // NewRegistryRepo создаёт RegistryRepo поверх pgxpool.
-func NewRegistryRepo(pool *pgxpool.Pool) *RegistryRepo { return &RegistryRepo{pool: pool} }
+//
+// journal — Options помощника записи журнала, построенные корнем модуля из
+// флага ленты (`journaltx.NewOptions`, замысел З11); нулевые — отказ сборки
+// корня [journaltx.ErrOptionsUnset] (УК3-61, CX3M-02 (а)).
+func NewRegistryRepo(pool *pgxpool.Pool, journal journaltx.Options) (*RegistryRepo, error) {
+	if err := journal.Validate(); err != nil {
+		return nil, fmt.Errorf("registry: NewRegistryRepo: %w", err)
+	}
+	return &RegistryRepo{pool: pool, journal: journal}, nil
+}
 
 // ready — pool обязан быть подан composition root'ом (иначе Unavailable, не паника).
 func (r *RegistryRepo) ready() error {
@@ -194,7 +207,7 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 		return nil, domain.RegisterIntent{}, regerrors.ErrInternal
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, domain.RegisterIntent{}, wrapPgErr(err, "Registry", reg.ID)
 	}
@@ -259,7 +272,7 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 		// default_visibility — последнее применяемое поле; idx дальше не читается.
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
 	}
@@ -303,16 +316,28 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 // идемпотентно DELETING→DELETING, чтобы retry/крэш-рекавери довели удаление до
 // конца). 0 rows только когда строки нет (уже удалена) → ErrNotFound. revert в
 // ACTIVE невозможен (нет пути DELETING→ACTIVE).
+//
+// Запись идёт транзакцией помощника записи журнала: `registries` — журналируемая
+// таблица (функция базы пишет строку журнала на её изменении), и строку журнала
+// без инициатора база не принимает (NTF-3, З4). Оператор в транзакции один.
 func (r *RegistryRepo) MarkDeleting(ctx context.Context, id string) (*domain.Registry, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
+	if err != nil {
+		return nil, wrapPgErr(err, "Registry", id)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	q := fmt.Sprintf(`
 		UPDATE %s.registries SET status = 'DELETING'
 		WHERE id = $1 AND status IN ('ACTIVE', 'DELETING')
 		RETURNING %s`, schema, registryColumns)
-	reg, err := scanRegistry(r.pool.QueryRow(ctx, q, id))
+	reg, err := scanRegistry(tx.QueryRow(ctx, q, id))
 	if err != nil {
+		return nil, wrapPgErr(err, "Registry", id)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, wrapPgErr(err, "Registry", id)
 	}
 	return reg, nil
@@ -338,7 +363,7 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 	if err := r.ready(); err != nil {
 		return err
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return wrapPgErr(err, "Registry", id)
 	}
@@ -347,6 +372,16 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 	children, err := childRepoRegistrations(ctx, tx, id)
 	if err != nil {
 		return err
+	}
+	// Признаки детей снимаются ДО строки реестра и ТЕМ ЖЕ писателем, что и
+	// снятие по намерению: каскад FK снял бы их молча, и подписчик не узнал бы о
+	// снятии репозиториев (NTF3-61). Снятие признака пишет строку журнала
+	// `Repository` `DELETED`; намерения прав детей ниже признака уже не находят и
+	// второй строки не пишут.
+	for _, child := range children {
+		if err := changeRepoRegistration(ctx, tx, domain.FGAEventUnregister, id, child); err != nil {
+			return err
+		}
 	}
 
 	var deletedID string
@@ -430,6 +465,14 @@ func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.R
 // intent'ы одного repo-объекта сериализуются (второй ждёт commit первого → получает
 // больший маркер), а разные repo-объекты друг друга не блокируют. Lock — xact-scoped,
 // снимается на commit/rollback.
+//
+// Транзакцию открывает помощник записи журнала `journaltx.Begin` (решение Д115):
+// инициатор — принципал контекста. На push им служит `sub` проверенного токена
+// реестра (data-plane кладёт его в контекст только после проверки подписи), на
+// DeleteTag — принципал запроса, у подметальщика — личность компонента
+// `(registry, orphan-sweep)`. Контекст без принципала — отказ до обращения к
+// базе: ни строки очереди, ни признака, никакой подстановки системного
+// инициатора.
 func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
 		return err
@@ -437,7 +480,7 @@ func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, int
 	if len(intent.Tuples) == 0 {
 		return nil
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := journaltx.Begin(ctx, r.pool, r.journal)
 	if err != nil {
 		return wrapPgErr(err, "registry_outbox", intent.ResourceID)
 	}
@@ -571,19 +614,66 @@ func applyRepoRegistration(ctx context.Context, tx pgx.Tx, eventType string, int
 	if !ok {
 		return nil
 	}
-	var q string
+	return changeRepoRegistration(ctx, tx, eventType, registryID, repo)
+}
+
+// changeRepoRegistration заводит или снимает признак существования репозитория
+// и пишет строку журнала `Repository` той же транзакцией — ровно тогда, когда
+// оператор признак изменил.
+func changeRepoRegistration(ctx context.Context, tx pgx.Tx, eventType, registryID, repo string) error {
+	var q, change string
 	switch eventType {
 	case domain.FGAEventRegister:
 		q = fmt.Sprintf(`INSERT INTO %s.registry_repository_registration (registry_id, repo)
-			VALUES ($1, $2) ON CONFLICT (registry_id, repo) DO NOTHING`, schema)
+			VALUES ($1, $2) ON CONFLICT (registry_id, repo) DO NOTHING
+			RETURNING project_id`, schema)
+		change = journalChangeCreated
 	case domain.FGAEventUnregister:
 		q = fmt.Sprintf(`DELETE FROM %s.registry_repository_registration
-			WHERE registry_id = $1 AND repo = $2`, schema)
+			WHERE registry_id = $1 AND repo = $2
+			RETURNING project_id`, schema)
+		change = journalChangeDeleted
 	default:
 		return nil
 	}
-	if _, err := tx.Exec(ctx, q, registryID, repo); err != nil {
-		return wrapPgErr(err, "Repository", intent.ResourceID)
+	// Строка журнала пишется ТОЛЬКО когда оператор изменил признак: повторная
+	// регистрация существующего репозитория (re-push) и повторное снятие — no-op
+	// и события не рождают. Якорь проекта — со СТРОКИ признака (`RETURNING`),
+	// куда его кладёт триггер `kacho_repo_registration_project` при вставке: в
+	// момент снятия реестр-родитель может быть уже снят.
+	var projectID string
+	err := tx.QueryRow(ctx, q, registryID, repo).Scan(&projectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return wrapPgErr(err, "Repository", registryID+"/"+repo)
+	}
+	return emitRepositoryJournal(ctx, tx, change, registryID+"/"+repo, projectID)
+}
+
+// Слова рода изменения журнала реестра — те же, что разрешает ограничение
+// `registry_resource_journal_event_type_check`.
+const (
+	journalChangeCreated = "CREATED"
+	journalChangeDeleted = "DELETED"
+)
+
+// resourceJournalTable — ресурсный журнал реестра (журнал подписки).
+const resourceJournalTable = schema + ".registry_resource_journal"
+
+// emitRepositoryJournal пишет строку журнала репозитория в ТОЙ ЖЕ транзакции,
+// что и признак его существования (NTF-3, NTF3-61).
+//
+// Идентификатор — `<registry_id>/<repo>`, тот же, которым репозиторий назван
+// объектом модели прав. Имени формы DNS-метки у репозитория нет (грамматика
+// имени OCI допускает `/`), вид объявлен `NameFormNone`, и нагрузка снятия
+// снимка имени не несёт. Состояния репозиторий в журнале не несёт: оно живёт в
+// хранилище образов, транзакции которого здесь нет.
+func emitRepositoryJournal(ctx context.Context, tx pgx.Tx, change, id, projectID string) error {
+	if err := outbox.EmitAnchored(ctx, tx, resourceJournalTable, "Repository", id, projectID, change,
+		map[string]any{"id": id}); err != nil {
+		return wrapPgErr(err, "Repository", id)
 	}
 	return nil
 }

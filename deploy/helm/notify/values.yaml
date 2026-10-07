@@ -1,0 +1,154 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Значения чарта notify (NTF-1, замысел З20, З28; полоса D1).
+#
+# ЧТО СЮДА НЕ КЛАДЁТСЯ И ПОЧЕМУ.
+#   · узел почты — путь один, `global.kacho.identity.smtp` (Д44, Д47): у
+#     зонтика и у самостоятельной поставки он приходит слоем установки, своих
+#     ключей почты чарт не объявляет;
+#   · `global.kacho.*` — ни одного ключа: умолчание `global` подчарта не видно
+#     ни соседу, ни зонтику (CX1-112), и объявленное здесь было бы вторым
+#     местом одного значения;
+#   · перечень источников — выводится шаблоном `_sources.tpl` (З28, NTF1-N03),
+#     ручного перечня нет.
+#
+# Ручки процесса без умолчания в коде (`sec-no-silent-default-for-guarded-knob`):
+# пустое значение здесь доезжает до процесса, и отказывает его страж старта с
+# именем ручки. Отказы рендера по значению чарта — ключ сетки (`recipientKey`,
+# УК91; либо объект стенда `recipientKeySecret`, Д123), узел почты
+# (`required`, Д46) и объект ключа DKIM узла (`global.kacho.identity.smtp.dkim`,
+# §8): без них манифест пода невыразим.
+
+# Полное имя установки; пусто — `<релиз>-notify` (имя релиза, уже несущее
+# `notify`, берётся как есть).
+fullnameOverride: ""
+
+# Реплики ≥ 2 и PDB — NTF1-I05.
+replicaCount: 2
+pdb:
+  minAvailable: 1
+
+image:
+  repository: docker.io/prorobotech/kacho-notify
+  # Тег задаёт профиль установки: образ без тега — отказ рендера, а не `latest`.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Посадка: только боевая (NTF1-G15) — `production` либо `production-strict`.
+authMode: production
+
+# Диагностическая поверхность (`/healthz`, `/readyz`, `/metrics`) — только
+# внутри кластера (З15). Порт задаёт ручку KACHO_NOTIFY_DIAG_ADDR; умолчания у
+# ручки в коде нет, порт сбора берёт гейт `TestEveryRenderedChartDeclaresItsScrape`
+# отсюда же.
+ports:
+  diag: 9095
+
+# metricsScrape — объявление СБОРА величин диагностической поверхности.
+# Выключение требует причины (`disabledBecause`), иначе гейт сбора краснеет.
+metricsScrape:
+  enabled: true
+  disabledBecause: ""
+
+# Собственная база `kacho_notify` (database-per-service). Пароль — только
+# ссылкой на секрет, значения в values нет.
+db:
+  host: ""
+  port: 5432
+  user: notify
+  name: kacho_notify
+  sslMode: require
+  # Ширина пула на реплику, [1..100] (ручка notify.db.maxConns, умолчания у неё
+  # в коде нет). Пул держит резерв сетки, ограду ключа и уборку окон; 2 реплики
+  # × 10 — против `max_connections` своей базы (deploy/pool_fits_database_test.go).
+  maxConns: 10
+  passwordSecret:
+    name: ""
+    key: password
+
+# Ручки на источник (`KACHO_NOTIFY_SOURCE_LIMITS`; NTF1-N03, H08): «модуль →
+# {rate, burst, paused}», ключ — имя модуля записи перечня. Пусто: записи задаёт
+# установка (в зонтике — `notify.sourceLimits`), умолчания у модуля нет — источник
+# перечня без записи отказывает рендеру с именем модуля.
+sourceLimits: {}
+
+# Ручки предмета notify — границы в §8 замысла (config.go).
+claimInterval: 30s
+resolveSendTimeout: 5s
+smtpSessionTimeout: 60s
+
+# Origin установки: абсолютный https:// без пути — база ссылок писем (NTF1-G06).
+origin: ""
+
+# Ключ сетки на адресата (З24) — СВОЙ объект Secret, не поле секрета почты (Д23).
+# Шаблон его не порождает (УК91): пусто — отказ рендера с именем ручки.
+recipientKey: ""
+
+# Ключ сетки объектом СТЕНДА (Д123). Стенд не несёт ключа литералом в профиле
+# (дерево публично): объект с постоянным именем заводит посев стенда
+# (`deploy/scripts/dev-prod-secrets.sh`) один раз и не перечеканивает, а чарт
+# только ссылается на него переменной `secretKeyRef` (ключ объекта —
+# `recipientKey`). Задано имя — чарт объекта ключа не рендерит; заданы и имя, и
+# `recipientKey` — отказ рендера: у ключа одно место. Длину ключа судит страж
+# старта (Д89) — рендер объекта стенда не видит.
+recipientKeySecret:
+  name: ""
+
+# DNS установки (Р19, §12а): срок стража на старте и интервал перепроверки.
+# Поставляемые значения — §8 замысла; границы судит страж старта
+# (`[10s..10m]`, `[1m..24h]`).
+dns:
+  bootDeadline: 2m
+  recheckInterval: 1h
+
+# Лимиты Р10 (З24, NTF1-H07, H08): сетка на адресата и суточный потолок потока.
+# Значения — ориентиры Р10; потолок потока — доля квоты ретранслятора
+# установки, поэтому его задаёт профиль (пустое доезжает до процесса и
+# отказывает его страж с именем ручки).
+limits:
+  recipient:
+    security:
+      perDay: 40
+    notice:
+      perHour: 100
+      perDay: 500
+  global:
+    perDay: ""
+
+# Удостоверение notify для mTLS к источникам и kaname — лист внутреннего УЦ,
+# выпущенный политикой З30. SAN — идентичность учётки notify:
+# spiffe://<trustDomain>/ns/<пространство релиза>/sa/<полное имя установки>.
+mtls:
+  trustDomain: kacho.cloud
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer
+  leafDuration: "2160h"
+  leafRenewBefore: "720h"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault

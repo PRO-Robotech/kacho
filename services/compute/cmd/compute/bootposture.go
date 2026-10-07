@@ -44,5 +44,11 @@ func bootPosture(cfg config.Config) observability.BootPosture {
 		// заполнено» — пустую величину гейт посадки судит отказом.
 		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
 		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,
+		// Звено идентичности служб — ТО, что уехало в дескриптор (serviceIdentityAxis),
+		// словом: у процесса без звена это метка неприменимости, а не пустая строка.
+		ServiceIdentity: serviceIdentityReport(),
+		// Флаг ленты, который процесс РЕАЛЬНО принял: значение, разобранное
+		// загрузчиком (cfg.Notifications), словом фундамента (NTF3-67).
+		Notifications: observability.NotificationsFlagOf(cfg.Notifications.On()),
 	}
 }

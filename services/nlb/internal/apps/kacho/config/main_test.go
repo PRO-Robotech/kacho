@@ -26,5 +26,10 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "true"); err != nil {
 		panic(err)
 	}
+	// Ручка флага ленты задана, как у процесса в посадке (умолчания нет,
+	// NTF3-64); пробы самого флага снимают и портят её сами.
+	if err := os.Setenv("KACHO_NLB_NOTIFICATIONS_ENABLED", "false"); err != nil {
+		panic(err)
+	}
 	os.Exit(m.Run())
 }

@@ -123,7 +123,7 @@ func TestIntegration_CreateLoadBalancer_FanoutCompensationOnV6Fail(t *testing.T)
 		V6Source:  &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-6"}},
 	}
 
-	op, err := h.Create(context.Background(), req)
+	op, err := h.Create(ctxNamedCaller(), req)
 	require.NoError(t, err)
 	require.False(t, op.GetDone())
 

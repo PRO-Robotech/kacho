@@ -56,6 +56,13 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	// Флаг ленты модуля судится на ЛЮБОЙ посадке и до аварийного освобождения:
+	// незаданный флаг — отсутствие решения оператора, а не свойство посадки
+	// (NTF3-64).
+	if err := c.validateNotifications(); err != nil {
+		return err
+	}
+
 	// Стража общая на все семь сервисов: grpcsrv.TrustedForwarders.Require — один
 	// исход, один текст отказа, различаются только имена ручек.
 	if c.AuthZBreakglass {

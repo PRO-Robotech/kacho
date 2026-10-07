@@ -249,21 +249,27 @@ advertisedEndpoint: api.kacho.local:443
 #     enableDpop: true                  # mount the DPoP / mTLS-bound proof validators
 #     requireMachineTokenBinding: true  # machine (service-account) tokens MUST be bound
 #
-# Both default off. ROLLOUT ORDER matters — flipping
-# requireMachineTokenBinding first rejects every service-account token, because
-# nothing mints bound tokens until the identity provider registers the OAuth2
-# clients accordingly (kaname `kacho.iam.saKey.bindDpop`):
+# Both default off, and no profile in the tree sets either.
 #
-#   1. kaname: saKey.bindDpop=true      → newly issued keys mint bound tokens
-#      (reader caveat, #1137: that knob is registration metadata for the client
-#      MIRROR at the previous issuer. On a stand whose SA-key contour is
-#      TRANSLATED to iam's own token endpoint no mirror is created, so the knob
-#      has no reader — iam refuses to start with both set. Step 1 is available
-#      only while the contour is not translated.)
-#   2. gateway:   authn.enableDpop=true    → the proof of possession is verified
-#   3. confirm machine tokens carry `cnf`, and rotate any pre-existing SA keys
-#      (a key registered before step 1 keeps minting unbound tokens)
-#   4. gateway:   authn.requireMachineTokenBinding=true → unbound machine ⇒ 401
+# enableDpop mounts the proof validators on both surfaces, REST and native
+# gRPC: a token that CARRIES `cnf` is accepted only with the matching proof — a
+# DPoP proof for `jkt`, the client certificate for `x5t#S256`. A token without
+# `cnf` passes them unchanged. The process refuses to start with it on while the
+# token audience is undeclared.
+#
+# requireMachineTokenBinding makes the authN layer every request passes through
+# reject with 401 a token whose principal is a service account and which carries
+# no `cnf`. The human path is unaffected.
+#
+# NO MACHINE TOKEN ISSUED ON THIS PLATFORM CARRIES `cnf`. A service-account key
+# is exchanged at the platform's token endpoint, and at the identity service
+# image this tree pins that endpoint takes no proof of possession, so the token
+# it mints is unbound. Setting requireMachineTokenBinding therefore rejects every
+# service-account token, and there is no rollout order that avoids it: issuance
+# has no switch that binds the token. The knob becomes usable once issuance
+# binds the token to a proof presented at exchange; until then
+# deploy/tests/helm/machine-credential-posture-test.sh refuses a profile that
+# sets it.
 authn:
   # ─── посадка личности (#1125) ──────────────────────────────────────────────
   # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА. Законное значение одно — `own`, наша

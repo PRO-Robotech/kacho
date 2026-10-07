@@ -43,7 +43,7 @@ const (
 	f1bOurIssuer    = "https://kaname.kacho.local"
 	f1bLegacyIssuer = "https://legacy.api.kacho.test"
 	f1bServiceAud   = "registry.kacho.local"
-	f1bSubject      = "sva-ci"
+	f1bSubject      = "sva-0000000000000000c"
 )
 
 // f1bKeySetOf поднимает НАСТОЯЩИЙ источник набора ключей одного издателя.

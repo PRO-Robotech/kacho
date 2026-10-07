@@ -18,7 +18,8 @@ import (
 // подписка отвечает «источник недоступен» и никогда ничем иным.
 func TestSingleConnDSNCarriesNoPoolParameter(t *testing.T) {
 	cfg := Config{
-		DBHost: "h", DBPort: "5432", DBUser: "u", DBPassword: "p",
+		Notifications: probeNotificationsOff(),
+		DBHost:        "h", DBPort: "5432", DBUser: "u", DBPassword: "p",
 		DBName: "kacho_compute", DBSSLMode: "require", DBMaxConns: 10,
 	}
 

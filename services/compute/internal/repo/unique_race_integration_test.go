@@ -36,11 +36,11 @@ func TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne(t *testing.T)
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := repo.NewGuestAccessKeyRepo(pool)
+	r := mustJournalWriter(repo.NewGuestAccessKeyRepo(pool, probeJournalOptions))
 
 	t.Run("одно имя — ровно один ключ", func(t *testing.T) {
 		const project, name = "proj-race-name", "one-name"
@@ -135,11 +135,11 @@ func TestPlacementGroup_ConcurrentSameNameLeavesExactlyOne(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := repo.NewPlacementGroupRepo(pool)
+	r := mustJournalWriter(repo.NewPlacementGroupRepo(pool, probeJournalOptions))
 
 	const project, name = "proj-plg-race", "one-group"
 	const n = 8

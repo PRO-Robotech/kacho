@@ -38,8 +38,8 @@ import (
 // каскад его исправно убирает; именно поэтому проверяется очередь, а не признак.
 func TestRegistryDelete_WithdrawsEveryChildRepositoryRegistration(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 
 	children := []string{"team/app", "team/api", "infra/base"}
@@ -72,8 +72,8 @@ func TestRegistryDelete_WithdrawsEveryChildRepositoryRegistration(t *testing.T) 
 // подряд», а лишнее снятие — это снос authz-объекта, который ещё жив.
 func TestRegistryDelete_NoChildren_EmitsOnlyItsOwnWithdrawal(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade-empty")
 
 	require.NoError(t, repo.Delete(ctx, regID,
@@ -94,8 +94,8 @@ func TestRegistryDelete_NoChildren_EmitsOnlyItsOwnWithdrawal(t *testing.T) {
 // у собственного снятия реестра).
 func TestRegistryDelete_ChildWithdrawalIsAtomicWithTheDelete(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
-	ctx := context.Background()
+	repo := mustJournalWriter(kachopg.NewRegistryRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade-idem")
 
 	require.NoError(t, repo.RegisterRepository(ctx,

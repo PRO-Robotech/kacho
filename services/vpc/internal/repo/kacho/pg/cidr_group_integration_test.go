@@ -100,11 +100,11 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	referenced := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "referenced", []string{"203.0.113.0/24"}, nil))
@@ -117,7 +117,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	err = w.CidrGroups().Delete(ctx, referenced.ID)
+	err = removalErr(w.CidrGroups().Delete(ctx, referenced.ID))
 	w.Abort()
 	require.Error(t, err, "набор с живой ссылкой удалён — внешний ключ не держит")
 	assert.ErrorIs(t, err, repo.ErrFailedPrecondition,
@@ -127,7 +127,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.CidrGroups().Delete(ctx, free.ID),
+	require.NoError(t, removalErr(w2.CidrGroups().Delete(ctx, free.ID)),
 		"набор без ссылок не удалился — отрицание выше ничего не доказывает")
 	require.NoError(t, w2.Commit())
 
@@ -151,11 +151,11 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "grp", []string{"203.0.113.0/24"}, nil))
@@ -172,7 +172,7 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.CidrGroups().Delete(ctx, group.ID),
+	require.NoError(t, removalErr(w2.CidrGroups().Delete(ctx, group.ID)),
 		"набор остался занят после снятия правила — проекция ссылок не убирается вместе с ним")
 	require.NoError(t, w2.Commit())
 }
@@ -187,11 +187,11 @@ func TestCidrGroup_ConcurrentAddCannotExceedTheCap(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	// Набор заполнен до предела минус два, и оба писателя просят по два блока:
 	// пройти обязан ровно один.
@@ -257,11 +257,11 @@ func TestCidrGroup_AddIsIdempotentAndDoesNotEatTheCap(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "idem", []string{"203.0.113.0/24"}, nil))
 
@@ -295,11 +295,11 @@ func TestCidrGroup_CapIsPerFamilyAndRefusalNamesTheNumbers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	full := make([]string, 0, domain.MaxCidrGroupBlocks)
 	for i := 0; i < domain.MaxCidrGroupBlocks; i++ {
@@ -334,11 +334,11 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "office", nil, nil))
 
@@ -394,11 +394,11 @@ func TestCidrGroup_EmptyingAReferencedSetIsRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
-	r := kachopg.New(pool, nil)
+	r := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 
 	group := seedCidrGroup(ctx, t, r,
 		newCidrGroup("prj-1", "held", []string{"203.0.113.0/24", "198.51.100.0/24"}, nil))

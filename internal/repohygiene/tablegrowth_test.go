@@ -178,6 +178,13 @@ type TableGrowthDecl struct {
 // таблицу — поэтому таблицы, которой в дереве нет, здесь нет тоже.
 var tableGrowthRegistry = []TableGrowthDecl{
 	{
+		Owner: "services/notify", Table: "recipient_key_fence",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "строка-одиночка: первичный ключ singleton с CHECK (singleton) допускает ровно " +
+			"одну строку — отпечаток действующего ключа сетки; старт реплики её переписывает, " +
+			"а не добавляет (замысел NTF-1 З24, §6; полоса N7, kacho#2915)",
+	},
+	{
 		Owner: "services/compute", Table: "quota_sync_cursor",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на ВИД синхронизации, а не на событие: ключ id перечисляет виды. " +

@@ -21,7 +21,7 @@ import (
 func TestLB_NLB_1_51_SecurityGroupIds_RoundTrip(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01SG00000000000001", "sg-lb")
 	lb.Type = domain.LBTypeInternal
@@ -58,7 +58,7 @@ func TestLB_NLB_1_51_SecurityGroupIds_RoundTrip(t *testing.T) {
 func TestLB_NLB_1_52_SecurityGroupIds_InternalCheck(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lb := newLB("prj01SG00000000000002", "sg-ext-lb") // newLB default Type = EXTERNAL
 	lb.SecurityGroupIDs = []string{"sg-aaa"}

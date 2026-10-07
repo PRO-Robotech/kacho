@@ -70,6 +70,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/migrationchains"
 )
 
 // nameFormEnginePkgDir — дом двигателя. Гейт читает его, чтобы узнать входные
@@ -202,13 +204,19 @@ func nameFormReceiverTypeName(e ast.Expr) string {
 func readNameFormDBGateCorpus(t *testing.T, tt *trackedTree) map[string]string {
 	t.Helper()
 
+	// Миграция — файл цепочки из перечня migrationchains, а не путь с сегментом
+	// /internal/migrations/ (kacho#2915, CX1-114).
+	chains, cerr := migrationchains.List(tt.root)
+	if cerr != nil {
+		t.Fatalf("перечень цепочек дерева: %v", cerr)
+	}
 	out := map[string]string{}
 	for _, rel := range tt.SortedFiles() {
 		rel = filepath.ToSlash(rel)
 		if !strings.HasPrefix(rel, "services/") {
 			continue
 		}
-		isMigration := strings.HasSuffix(rel, ".sql") && strings.Contains(rel, "/internal/migrations/")
+		isMigration := migrationchains.IsChainSQL(chains, rel)
 		if !isMigration && !strings.HasSuffix(rel, "_test.go") {
 			continue
 		}

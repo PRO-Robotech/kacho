@@ -36,8 +36,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ ОБЪЯВЛЕНИЯ, А НЕ РЕНДЕР
 //
-// Та же причина, что у соседних posture_parity_test.go и
-// deploy/helm/umbrella/token_shape_test.go: контракт — то, что профиль ОБЪЯВЛЯЕТ.
+// Та же причина, что у соседнего posture_parity_test.go: контракт — то, что
+// профиль ОБЪЯВЛЯЕТ.
 // Проверке не нужны ни `helm`, ни скачанные зависимости чартов, поэтому она не
 // умеет пропуститься. Рендер тут и не помог бы: значение, приехавшее из
 // умолчания чарта, в манифесте выглядит точно так же, как объявленное.
@@ -63,9 +63,8 @@
 // ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
 //
 //   - Проверяются ТОЛЬКО подчарты НАШЕГО дерева (зависимости `file://` +
-//     каталоги charts/). Хранилища Ory держат свою строку соединения сами,
-//     их послабление объявлено в шапке values.fe3455-prod.yaml, и решать
-//     за них здесь нечего — они не наши.
+//     каталоги charts/). Чужое хранилище держит свою строку соединения само,
+//     и решать за него здесь нечего — оно не наше.
 //   - Проверяются ТОЛЬКО стеки, у которых хотя бы одна база отдаёт TLS. Там,
 //     где сервер TLS не отдаёт, требовать `require` от клиента значило бы
 //     требовать несуществующего: соединение просто не установится. Правило
@@ -277,13 +276,17 @@ type stackFacts struct {
 	declared  map[string]any // слияние ТОЛЬКО профилей стека
 	effective map[string]any // значения умбреллы + профили стека
 	pgTLSOn   []string       // наши инстансы Postgres, у которых tls.enabled=true
+	// subTLS — по подчарту: базы, которые он называет (строковые листья его
+	// поддерева), и отдаёт ли TLS хоть одна из них. Нет записи — подчарт ни одной
+	// базы не называет, и ручку судит правило стека (pgTLSOn).
+	subTLS map[string]bool
 }
 
 // ourPGAliases — инстансы Postgres, которые НАШИ подчарты называют своим
 // хостом. Выводится из дерева: хост в значениях записан как `<release>-<alias>`
 // (`kacho-umbrella-pg-iam`), поэтому принадлежность устанавливается суффиксом,
-// а не списком имён. Хранилища Ory сюда не попадают by construction —
-// на них не ссылается ни один наш подчарт.
+// а не списком имён. Чужое хранилище сюда не попадает by construction —
+// на него не ссылается ни один наш подчарт.
 func ourPGAliases(aliases []string, effective map[string]any, ours map[string]string) []string {
 	referenced := map[string]bool{}
 	subs := make([]string, 0, len(ours))
@@ -355,7 +358,31 @@ func stackFactsFor(t *testing.T, chain []string, base map[string]any,
 			on = append(on, a)
 		}
 	}
-	return stackFacts{declared: declared, effective: effective, pgTLSOn: on}
+	tlsOn := map[string]bool{}
+	for _, a := range aliases {
+		if v, ok := lookup(effective, a, "tls", "enabled"); ok && v == true {
+			tlsOn[a] = true
+		}
+	}
+	// Стек бывает СМЕШАННЫМ: первая фаза подъёма стенда (`dev`) держит базы
+	// служб без TLS, а базы notify — с TLS с первого подъёма (служба стартует
+	// только в боевой посадке, NTF1-G15). Ручку подчарта, все базы которого TLS
+	// не отдают, требовать `require` значило бы требовать соединения, которое не
+	// установится, — довод (г) самопроверки ниже, применённый к базе подчарта, а
+	// не к стеку целиком.
+	// Базы подчарта читаются по дереву С умолчаниями подчартов: адрес своей
+	// базы служба несёт в собственном values.yaml, профили его не повторяют.
+	subTLS := map[string]bool{}
+	for sub, node := range valuesWithSubchartDefaults(t, chain) {
+		for _, leaf := range stringLeaves(node) {
+			for _, a := range aliases {
+				if leaf == a || strings.HasSuffix(leaf, "-"+a) {
+					subTLS[sub] = subTLS[sub] || tlsOn[a]
+				}
+			}
+		}
+	}
+	return stackFacts{declared: declared, effective: effective, pgTLSOn: on, subTLS: subTLS}
 }
 
 // allStackFacts — факты по всем стекам дерева.
@@ -398,6 +425,9 @@ func scanDBTLS(stacks map[string]stackFacts, knobs []dbTLSKnob) []dbFinding {
 			continue // базы этого стека TLS не отдают — требовать нечего
 		}
 		for _, k := range knobs {
+			if tls, named := f.subTLS[k.subchart]; named && !tls {
+				continue // базы, которые называет подчарт, TLS не отдают — см. stackFactsFor
+			}
 			v, ok := lookup(f.declared, append([]string{k.subchart}, k.path...)...)
 			if !ok {
 				out = append(out, dbFinding{name, k.coord(), "не объявлено", k.chartDefault})
@@ -648,6 +678,25 @@ func TestScanDBTLS_SelfTest(t *testing.T) {
 	}
 	if got := scanDBTLS(noTLS, knobs); len(got) != 0 {
 		t.Fatalf("стек без TLS на базах покрашен: %+v", got)
+	}
+
+	// (д) СМЕШАННЫЙ стек: TLS отдаёт база ДРУГОГО подчарта, а базы этого — нет.
+	//     Близнец (г) на уровне базы подчарта: молчит.
+	mixed := map[string]stackFacts{
+		"injected": {
+			declared: map[string]any{"kacho-geo": map[string]any{"db": map[string]any{"sslmode": "disable"}}},
+			pgTLSOn:  []string{"pg-notify"},
+			subTLS:   map[string]bool{"kacho-geo": false, "notify": true},
+		},
+	}
+	if got := scanDBTLS(mixed, knobs); len(got) != 0 {
+		t.Fatalf("смешанный стек: ручка подчарта, чьи базы TLS не отдают, покрашена: %+v", got)
+	}
+	// (е) инъекция той же формы: база ЭТОГО подчарта отдаёт TLS, клиент — открытым
+	//     текстом. Обязан покраснеть: послабление (д) не распространяется на неё.
+	mixed["injected"].subTLS["kacho-geo"] = true
+	if got := scanDBTLS(mixed, knobs); len(got) != 1 || got[0].kind != "открытый текст" {
+		t.Fatalf("смешанный стек: открытый канал к базе с TLS не пойман: %+v", got)
 	}
 }
 

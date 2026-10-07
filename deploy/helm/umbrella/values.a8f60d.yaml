@@ -59,20 +59,12 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main 275240efdc1e763e0f8433eddf5fdb3106e5bd37
+# порождено-от: main ba01514b98bb870841adbce431a5b1c9ceec86f0
 #
-# ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
-# собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
-# этом дереве он не разрешается by construction — значит запись «порождено-от»
-# его не покрывает и покрывать не вправе. Прежде покрывала: пин назывался
-# коммитом ЭТОГО дерева, выглядел выведенным — и не тянулся, потому что образа с
-# таким тегом в реестре нет. Проверка вывода этого не видит: она сверяет тег с
-# записью, а не с реестром. Досягаемость держит
-# deploy/published_image_pin_is_reachable_test.go.
-#
-# Директива самоистекает по ВНЕШНЕМУ факту: как только в теге окажется коммит
-# этого дерева, запись упадёт сама.
-# без-вывода: kaname — образ собирает конвейер своего репозитория PRO-Robotech/kaname; коммит её ствола в этом дереве не разрешается
+# ОБРАЗ СЛУЖБЫ ДОСТУПА ЭТОТ ПРОФИЛЬ НЕ ПИНИТ (kacho#2915, Д64): тег объявлен
+# один раз, в values.yaml, и там же стоит его запись о невыводимости — образ
+# собирает конвейер PRO-Robotech/kaname. Копия пина и записи в каждой накладке
+# была отдельным местом одной смены.
 cert-manager:
   enabled: false
 mtls:
@@ -114,12 +106,6 @@ ingress-nginx:
 # ОЧИСТКА ДВУХ РУЧЕК — НЕ ФОРМАЛЬНОСТЬ. `cookieDomain`/`webauthnRpId` объявляет
 # слой под нами (values.dev.yaml, `kacho.local`). Оставить их значило бы принять
 # величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
-#
-# `kratosPublicBaseURL` здесь НЕ объявлен намеренно: относительный
-# `/.ory/kratos/public/` приходит из values.dev.yaml, и именно он работает на
-# живом стенде (консоль проксирует службу через себя же, same-origin). Второе
-# объявление того же предмета разошлось бы с первым молча — тот же довод, что у
-# предела процессора pg-iam ниже.
 global:
   kacho:
     identity:
@@ -142,6 +128,21 @@ global:
       domainless: true
       cookieDomain: ""
       webauthnRpId: ""
+    # ─── ПРОБА-ИСТОЧНИК NOTIFY ЗДЕСЬ НЕ ПИШЕТ ПОЧТУ (NTF-1, Д102; замысел З28) ──
+    # Полоса этого профиля ведёт во внешний ретранслятор с настоящим доменом
+    # отправителя; notify в его рендере нет, пока записи домена не опубликованы.
+    # Слой под нами (values.dev.yaml) включает пробу — здесь оба ключа сняты:
+    # переопределение модуля и развёртывание (`notifyProbe.enabled` ниже).
+    # Перечень источников notify этой цепочки пуст.
+    notifications:
+      modules:
+        notifyProbe:
+          enabled: false
+    # Зона DNS стенда снята (Д102): слой под нами (values.dev.yaml) её объявляет
+    # значениями kind, а полоса этого профиля — внешний ретранслятор; посев зоны
+    # стенда сюда запрещён (deploy/stacks-mail.txt, признак `relay`).
+    standDNS:
+      enabled: false
 # ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
 #
 # Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
@@ -300,26 +301,6 @@ pg-registry:
   readReplicas:
     persistence:
       enabled: false
-pg-kratos:
-  primary:
-    persistence:
-      enabled: false
-    resources: *id001
-  volumePermissions:
-    enabled: false
-  readReplicas:
-    persistence:
-      enabled: false
-pg-hydra:
-  primary:
-    persistence:
-      enabled: false
-    resources: *id001
-  volumePermissions:
-    enabled: false
-  readReplicas:
-    persistence:
-      enabled: false
 # ── ПОТОЛОК ФЛОТА ЗДЕСЬ НИЖЕ, И ЭТО ТО ЖЕ РЕШЕНИЕ О РАЗМЕРЕ (#1451) ─────────
 #
 # Обе службы объявляют autoscaling.maxReplicas = 5 в своих значениях, и до сих
@@ -354,17 +335,17 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-275240ef
+  image: docker.io/prorobotech/kacho-vpc:main-ba01514b
 compute:
   autoscaling:
     maxReplicas: 2
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-275240ef
+  image: docker.io/prorobotech/kacho-compute:main-ba01514b
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
 # ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
 #
@@ -381,7 +362,7 @@ registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -410,7 +391,7 @@ registry:
     resources: *id002
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-275240ef
+  image: docker.io/prorobotech/kacho-api-gateway:main-ba01514b
 kaname:
   resources: *id002
   # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — СУЖЕНА ПРЕДЕЛОМ ЭТОГО КЛАСТЕРА
@@ -452,60 +433,69 @@ kaname:
     # выше: его собирает конвейер PRO-Robotech/kaname, и коммит её ствола в этом
     # дереве не разрешается. Здесь стоял `main-7bb0a6e1` — коммит ЭТОГО дерева,
     # применённый к чужому образу: выглядит выведенным, манифеста нет (404).
-    # Остальные пины профиля (сегодня шестнадцать, на `main-275240ef`) достижимы,
+    # Остальные пины профиля (выведенные из записи «порождено-от») достижимы,
     # поэтому расхождение не видно ни по одному из них. Здесь стояло
     # «девятнадцать» — число дня записи, пережившее свой предмет: перечень
     # модулей консоли с тех пор сузился, а число при пинах не считалось.
-    tag: 366-4af7fd4f
+    # ТЕГ ЗДЕСЬ НЕ ПОВТОРЯЕТСЯ (kacho#2915, Д64): пин образа службы доступа объявлен
+    # ОДИН раз — `kaname.image.tag` в values.yaml, и этот профиль его наследует.
+    # Копия тега в каждой накладке была пятью местами одной смены: при подъёме
+    # пина каждую надо было найти, и пропущенная разводила стенды молча.
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-275240ef
+  image: docker.io/prorobotech/kacho-geo:main-ba01514b
+notify:
+  # NTF-1, полоса D1: образ стенда разработки под нами — локальная сборка, а
+  # эта площадка тянет образы из реестра. Опубликованного образа notify ещё нет,
+  # поэтому тег объявлен пустым, а не выведен из записи коммита: выведенный
+  # назвал бы манифест, которого нет. Чарт без тега рендер отвергает; на этой
+  # полосе notify в цепочке не рендерится (перечень источников пуст).
+  image:
+    repository: docker.io/prorobotech/kacho-notify
+    tag: ""
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-275240ef
+    tag: main-ba01514b
     pullPolicy: IfNotPresent
-hydra:
-  deployment:
-    resources: *id002
-kratos:
-  deployment:
-    resources: *id002
-kratos-selfservice-ui:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      memory: 512Mi
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+  image: docker.io/prorobotech/kacho-ui-future-host:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-275240efdc1e763e0f8433eddf5fdb3106e5bd37
+    image: docker.io/prorobotech/kacho-ui-future-system:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
     resources: *id002
+
+# Проба-источник notify не развёрнута (Д102; см. `global.kacho.notifications` выше).
+notifyProbe:
+  enabled: false
+
+# Базы notify и пробы (полоса D6) слой под нами включает; здесь их служб нет.
+pg-notify:
+  enabled: false
+pg-notifyprobe:
+  enabled: false

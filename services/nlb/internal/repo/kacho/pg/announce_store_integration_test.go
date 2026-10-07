@@ -20,7 +20,7 @@ func seedLB(t *testing.T, repo kacho.Repository, projectID, name string) string 
 	t.Helper()
 	lb := newLB(projectID, name)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(context.Background(), lb)
+		_, err := w.LoadBalancers().Insert(journalPrincipalCtx(context.Background()), lb)
 		require.NoError(t, err)
 	})
 	return string(lb.ID)
@@ -29,7 +29,7 @@ func seedLB(t *testing.T, repo kacho.Repository, projectID, name string) string 
 func TestAnnounceStore_UpsertAndRead(t *testing.T) {
 	tc := newTestCtx(t)
 	store := kachopg.NewAnnounceStore(tc.Pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 
 	lbID := seedLB(t, tc.Repo, "prj-A", "lb-announce")
 
@@ -51,7 +51,7 @@ func TestAnnounceStore_UpsertAndRead(t *testing.T) {
 func TestAnnounceStore_UpsertIdempotent(t *testing.T) {
 	tc := newTestCtx(t)
 	store := kachopg.NewAnnounceStore(tc.Pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	lbID := seedLB(t, tc.Repo, "prj-A", "lb-idem")
 
 	z := domain.AnnounceZone{ZoneID: "zone-a", IPVersion: domain.IPVersionV4, BGPSessionUp: false, RouteID: "rt-1", InfraID: 1}
@@ -73,7 +73,7 @@ func TestAnnounceStore_UpsertIdempotent(t *testing.T) {
 func TestAnnounceStore_FKCascadeOnLBDelete(t *testing.T) {
 	tc := newTestCtx(t)
 	store := kachopg.NewAnnounceStore(tc.Pool)
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	lbID := seedLB(t, tc.Repo, "prj-A", "lb-cascade")
 
 	require.NoError(t, store.ReportZones(ctx, lbID,
@@ -98,7 +98,7 @@ func TestAnnounceStore_FKCascadeOnLBDelete(t *testing.T) {
 func TestAnnounceStore_LoadStateAbsentLB(t *testing.T) {
 	tc := newTestCtx(t)
 	store := kachopg.NewAnnounceStore(tc.Pool)
-	_, found, err := store.LoadState(context.Background(), "nlbDOESNOTEXIST00000")
+	_, found, err := store.LoadState(journalPrincipalCtx(context.Background()), "nlbDOESNOTEXIST00000")
 	require.NoError(t, err)
 	require.False(t, found)
 }
@@ -112,7 +112,7 @@ func TestAnnounceStore_ReportZonesAbsentLB(t *testing.T) {
 	tc := newTestCtx(t)
 	store := kachopg.NewAnnounceStore(tc.Pool)
 
-	err := store.ReportZones(context.Background(), "nlbDOESNOTEXIST00000",
+	err := store.ReportZones(journalPrincipalCtx(context.Background()), "nlbDOESNOTEXIST00000",
 		[]domain.AnnounceZone{{ZoneID: "zone-a", IPVersion: domain.IPVersionV4, InfraID: 1}})
 	require.Error(t, err, "report to a nonexistent LB must fail (FK 23503)")
 	require.ErrorIs(t, err, kacho.ErrFailedPrecondition, "FK-violation must map to FailedPrecondition")

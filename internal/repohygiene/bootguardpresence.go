@@ -138,17 +138,17 @@ var postureSpecFields = []string{
 
 // componentOf — имя компонента по пути от корня репозитория. Край — компонент
 // наравне с сервисами: он объявляет посадочные ручки и потому подлежит тому же
-// вопросу.
-func componentOf(rel string) string {
+// вопросу. Компонент службы — ПРОЦЕСС (правило Д74, processroots.go): у
+// каталога с двумя корнями (services/notify) каждый корень объявляет свои
+// ручки и принимает свой дескриптор, и судить их одним компонентом значило бы
+// приписать ручку одного процесса изъятию оси другого.
+func componentOf(roots map[string][]string, rel string) string {
 	switch {
 	case strings.HasPrefix(rel, "gateway/"):
 		return "gateway"
 	case strings.HasPrefix(rel, "services/"):
-		parts := strings.Split(rel, "/")
-		if len(parts) < 2 {
-			return ""
-		}
-		return parts[1]
+		proc, _ := processOfFile(roots, rel)
+		return proc
 	default:
 		return ""
 	}
@@ -204,6 +204,16 @@ func scanPostureReach(root string) (postureReach, error) {
 	fset := token.NewFileSet()
 	parsed := map[string][]parsedFile{}
 
+	var serviceRels []string
+	if svcAll, err := treecorpus.Under(filepath.Join(root, "services")); err == nil {
+		for _, p := range svcAll {
+			if rel, rerr := filepath.Rel(root, p); rerr == nil {
+				serviceRels = append(serviceRels, filepath.ToSlash(rel))
+			}
+		}
+	}
+	roots := catalogProcessRoots(serviceRels)
+
 	for _, dir := range []string{"services", "gateway"} {
 		abs := filepath.Join(root, dir)
 		all, err := treecorpus.Under(abs)
@@ -224,7 +234,7 @@ func scanPostureReach(root string) (postureReach, error) {
 				return res, fmt.Errorf("относительный путь %s: %w", path, err)
 			}
 			rel = filepath.ToSlash(rel)
-			comp := componentOf(rel)
+			comp := componentOf(roots, rel)
 			if comp == "" {
 				continue
 			}

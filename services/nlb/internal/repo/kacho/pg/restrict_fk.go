@@ -209,26 +209,31 @@ func tgMoveBlockedByListeners(ctx context.Context, tx pgx.Tx, tgID string) error
 // пережившая отказ транзакция могла ПЕРЕЧИСЛИТЬ то, что БД назвала блокирующим:
 // после 23503 без точки сохранения соединение остаётся в отменённой транзакции
 // и не отвечает ни на один запрос.
-func deleteParentRow(ctx context.Context, tx pgx.Tx, kind, id, deleteSQL string) error {
+//
+// deleteSQL обязан кончаться `RETURNING name`: возвращается снимок имени
+// снятой строки — то, что строка `DELETED` журнала несёт под ключом `name`
+// (NTF-3, замысел issue-2918 З2 «Имя на снятии»). Снимок берётся тем же
+// оператором, что удаляет, а не чтением до него: между чтением и удалением имя
+// могло смениться.
+func deleteParentRow(ctx context.Context, tx pgx.Tx, kind, id, deleteSQL string) (string, error) {
 	sp, err := tx.Begin(ctx)
 	if err != nil {
-		return mapPgErr(err, kind, id)
+		return "", mapPgErr(err, kind, id)
 	}
-	tag, execErr := sp.Exec(ctx, deleteSQL, id)
-	if execErr != nil {
+	var name string
+	if execErr := sp.QueryRow(ctx, deleteSQL, id).Scan(&name); execErr != nil {
 		// ROLLBACK TO SAVEPOINT — транзакция снова пригодна для чтения.
 		_ = sp.Rollback(ctx)
-		return mapRestrictBlocked(ctx, tx, kind, id, execErr)
-	}
-	if tag.RowsAffected() == 0 {
-		_ = sp.Rollback(ctx)
-		return fmt.Errorf("%w: %s %s not found", kacho.ErrNotFound, kind, id)
+		if pgxIsNoRows(execErr) {
+			return "", fmt.Errorf("%w: %s %s not found", kacho.ErrNotFound, kind, id)
+		}
+		return "", mapRestrictBlocked(ctx, tx, kind, id, execErr)
 	}
 	// RELEASE SAVEPOINT — удаление остаётся в объемлющей транзакции.
 	if err := sp.Commit(ctx); err != nil {
-		return mapPgErr(err, kind, id)
+		return "", mapPgErr(err, kind, id)
 	}
-	return nil
+	return name, nil
 }
 
 // mapRestrictBlocked — SQLSTATE 23503 → код и КОНТРАКТНЫЙ ТЕКСТ с перечнем

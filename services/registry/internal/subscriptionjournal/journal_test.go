@@ -4,6 +4,7 @@
 package subscriptionjournal
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ const probeEndpointBase = "registry.kacho.local"
 // сервера. Отказ здесь — отказ ПОДЪЁМА, и обнаруживать его первым запросом в
 // бою нельзя.
 func TestJournalIsAcceptedByTheCommonServer(t *testing.T) {
-	if err := Journal(probeEndpointBase).Validate(); err != nil {
+	if err := Journal(probeEndpointBase, false).Validate(); err != nil {
 		t.Fatalf("объявление отвергнуто общим сервером: %v", err)
 	}
 }
@@ -54,24 +55,24 @@ func TestTheChannelIsNotTheOneOfTheRightsQueue(t *testing.T) {
 	}
 }
 
-// TestKindDictionaryNamesTheRegistryAndOnlyIt — словарь видов назван ОДНИМ
-// предметом, и это решение, а не недоделка.
-//
-// Строку в базе реестра имеет ТОЛЬКО реестр: репозиторий и тег живут в zot, и
-// транзакции, к которой можно пристегнуть эмиссию, у них нет. Вид, о видимости
-// которого нельзя спросить модель прав, не доставляется — поток по нему молчал
-// бы, оставаясь «зелёным».
-func TestKindDictionaryNamesTheRegistryAndOnlyIt(t *testing.T) {
-	got := Journal(probeEndpointBase).KindDictionary()
-	if len(got) != 1 || got[0] != domain.FGAObjectTypeRegistry {
-		t.Fatalf("словарь видов %v, ожидался ровно один — %q", got, domain.FGAObjectTypeRegistry)
+// TestKindDictionaryNamesTheRegistryAndTheRepository — словарь видов назван
+// двумя предметами: реестр (строку пишет триггер) и репозиторий (строку пишет
+// писатель признака его существования в той же транзакции). Тег видом не
+// является: у его самого частого пути появления транзакции с базой нет.
+func TestKindDictionaryNamesTheRegistryAndTheRepository(t *testing.T) {
+	got := append([]string(nil), Journal(probeEndpointBase, false).KindDictionary()...)
+	sort.Strings(got)
+	want := []string{domain.FGAObjectTypeRegistry, domain.FGAObjectTypeRepository}
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("словарь видов %v, ожидался %v", got, want)
 	}
 }
 
 // TestKindTakesItsWordsFromTheProducers — тип объекта и действие взяты у
 // производителей, а не выписаны здесь вторым написанием чужого словаря.
 func TestKindTakesItsWordsFromTheProducers(t *testing.T) {
-	binding, ok := Journal(probeEndpointBase).Mapping.Kinds[JournalWordRegistry]
+	binding, ok := Journal(probeEndpointBase, false).Mapping.Kinds[JournalWordRegistry]
 	if !ok {
 		t.Fatalf("слова журнала %q нет в словаре видов", JournalWordRegistry)
 	}
@@ -111,7 +112,7 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 // Вывод «состояния нет, значит это снятие» сработал бы и на настоящем сбое
 // разбора, и два разных исхода стали бы неразличимы.
 func TestRemovalCarriesNoState(t *testing.T) {
-	st, absence, err := Journal(probeEndpointBase).Mapping.State(subscription.Row{
+	st, absence, err := Journal(probeEndpointBase, false).Mapping.State(subscription.Row{
 		Kind:      JournalWordRegistry,
 		ID:        "reg-0000000000000001",
 		ProjectID: "prj-0000000000000001",
@@ -146,7 +147,7 @@ func TestRemovalCarriesNoState(t *testing.T) {
 // разумно перечитать. Сведи их в одну, и половина подписчиков будет перечитывать
 // снятые реестры вечно, а другая — молча терять живые.
 func TestStateAbsenceIsNamedByTheOwner(t *testing.T) {
-	state := Journal(probeEndpointBase).Mapping.State
+	state := Journal(probeEndpointBase, false).Mapping.State
 	row := func(change, payload string) subscription.Row {
 		return subscription.Row{
 			Kind:      JournalWordRegistry,
@@ -193,7 +194,7 @@ func TestStateAbsenceIsNamedByTheOwner(t *testing.T) {
 // TestChangeDictionaryNamesEveryWordWithItsSubject — три рода изменения, каждый
 // со своим смыслом у подписчика.
 func TestChangeDictionaryNamesEveryWordWithItsSubject(t *testing.T) {
-	changes := Journal(probeEndpointBase).Mapping.Changes
+	changes := Journal(probeEndpointBase, false).Mapping.Changes
 	for word, want := range map[string]subscriptionv1.SubscriptionEvent_Change{
 		changeCreated: subscriptionv1.SubscriptionEvent_CREATED,
 		changeUpdated: subscriptionv1.SubscriptionEvent_UPDATED,

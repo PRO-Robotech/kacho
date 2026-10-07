@@ -59,10 +59,10 @@ func requireHideExistence(t *testing.T, foreignErr error, foreignID string, miss
 // материализации чужих данных).
 func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	pool := newTestPool(t)
-	vr := pg.NewVolumeRepo(pool)
-	sr := pg.NewSnapshotRepo(pool)
-	ir := pg.NewImageRepo(pool)
-	ctx := context.Background()
+	vr := mustJournalWriter(pg.NewVolumeRepo(pool, probeJournalOptions))
+	sr := mustJournalWriter(pg.NewSnapshotRepo(pool, probeJournalOptions))
+	ir := mustJournalWriter(pg.NewImageRepo(pool, probeJournalOptions))
+	ctx := journalPrincipalCtx(context.Background())
 
 	// Приватные ресурсы «жертвы».
 	victimVol := mkVolume(t, pool, vr, projVictim, "victim-vol", 8<<30)

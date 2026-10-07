@@ -138,6 +138,13 @@ type CatalogEntry struct {
 	//     TestScopeFilteredRowsBelongToADomainThatEnforcesThem, whose one recorded
 	//     exception is iam and carries its reason.
 	ScopeFiltered bool `json:"scope_filtered"`
+
+	// judgesIDShape — край судит id конкретной области этой записи строгой
+	// формой чеканки фундамента (kacho#2976). Из документа каталога НЕ читается:
+	// его выводит загрузка (markIDShapeJudged) из пакета метода и из того, какие
+	// корни называют тип своей областью. Запись, собранная вне загрузки, несёт
+	// false — прежний суд одним префиксом.
+	judgesIDShape bool
 }
 
 // ScopeExtractor — mirrored from `kaname.cloud.iam.v1.PermissionScopeExtractor`.
@@ -158,6 +165,15 @@ type ScopeExtractor struct {
 	// the FGA Check object type from this request field and `ObjectType` is the
 	// fallback. Empty for the fixed-scope majority of RPCs.
 	ObjectTypeFromRequestField string `json:"object_type_from_request_field"`
+
+	// BoundToServer — форма ScopeBound (`scope_extractor.bound_to_server`,
+	// kacho#2915, замысел NTF-1 §З14): объект проверки — экземпляр типа
+	// ObjectType, к которому процесс, поднявший сервер, привязал его при подъёме
+	// (`servicecontract.Bound`). Запрос идентификатора не несёт, и
+	// FromRequestField у строки пуст законно. Край такого сервера не поднимает и
+	// привязки не знает, поэтому строку не обслуживает: закрытый отказ
+	// (phaseScopeBound), а не подстановка `*` из пустого поля.
+	BoundToServer bool `json:"bound_to_server"`
 }
 
 // IsExempt reports whether this entry is the wildcard public-allowlist marker.
@@ -262,6 +278,7 @@ func (c *PermissionCatalog) LoadFromBytes(buf []byte) error {
 		}
 		next[e.FQN] = e
 	}
+	markIDShapeJudged(next)
 	c.entries.Store(&next)
 	return nil
 }

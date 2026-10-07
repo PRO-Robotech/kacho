@@ -348,15 +348,19 @@ func (w *addressPoolWriter) Update(ctx context.Context, p *domain.AddressPool) (
 // external_ipv4.address_pool_id) маппится через wrapPgErr → ErrFailedPrecondition
 // (если FK задан на DB-уровне) ИЛИ caller отвергает sync через
 // CountAddressesByPool guard (DeleteAddressPoolUseCase).
-func (w *addressPoolWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM address_pools WHERE id = $1`, id)
+//
+// Возвращает имя снятой строки из `RETURNING` удаляющего оператора — снимок
+// для строки снятия журнала (NTF-3, З2), а не чтение до удаления.
+func (w *addressPoolWriter) Delete(ctx context.Context, id string) (string, error) {
+	var name string
+	err := w.tx.QueryRow(ctx, `DELETE FROM address_pools WHERE id = $1 RETURNING name`, id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("%w: AddressPool %s", helpers.ErrNotFound, id)
+	}
 	if err != nil {
-		return helpers.WrapPgErr(err, "AddressPool", id)
+		return "", helpers.WrapPgErr(err, "AddressPool", id)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: AddressPool %s", helpers.ErrNotFound, id)
-	}
-	return nil
+	return name, nil
 }
 
 // LockForUpdate — row-lock pool (`FOR UPDATE`). Конфликтует с `FOR SHARE`,

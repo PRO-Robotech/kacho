@@ -1197,7 +1197,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('message includes \"Project b1gnonexistent999999 not found\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('Project b1gnonexistent999999 not found'));"
+                  "pm.test('message includes \"Project b1g00000000000000009 not found\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('Project b1g00000000000000009 not found'));"
                 ]
               }
             }

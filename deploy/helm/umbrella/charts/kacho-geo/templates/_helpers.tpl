@@ -75,3 +75,16 @@ kacho-geo.trustDomain — ДОМЕН ДОВЕРИЯ установки, ОДНИ
 {{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}
 {{- $sp.trustDomain | default "kacho.cloud" -}}
 {{- end -}}
+
+{{/*
+kacho-geo.dataMigration.selectorLabels — метка пода Job переноса географии.
+
+Её читают шаблон самого Job и политика входа хранилищ умбреллы
+(`templates/networkpolicy-datastore.yaml`), впускающая Job к pg-compute и
+pg-geo — ТОЛЬКО когда Job включён. Определение одно: выписанная в двух местах
+метка расходится молча, и правило перестаёт пропускать Job (kacho#2941).
+Значений не читает — его зовут из контекста умбреллы.
+*/}}
+{{- define "kacho-geo.dataMigration.selectorLabels" -}}
+kacho.cloud/job: geo-data-migration
+{{- end -}}

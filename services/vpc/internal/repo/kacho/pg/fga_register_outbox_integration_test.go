@@ -67,13 +67,13 @@ func TestVPC_SEC_D_01_RegisterIntentInWriterTx(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test requires Docker")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-a")
 
 	w, err := repo.Writer(ctx)
@@ -112,13 +112,13 @@ func TestVPC_SEC_D_02_AbortRollsBackRegisterIntent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test requires Docker")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-abort")
 
 	w, err := repo.Writer(ctx)
@@ -146,13 +146,13 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test requires Docker")
 	}
-	ctx := context.Background()
+	ctx := journalPrincipalCtx(context.Background())
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.New(pool, nil)
+	repo := mustJournalWriter(kachopg.New(pool, nil, probeJournalOptions))
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-del")
 
 	// create
@@ -167,7 +167,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	w2, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w2.Abort()
-	require.NoError(t, w2.Networks().Delete(ctx, created.ID))
+	require.NoError(t, removalErr(w2.Networks().Delete(ctx, created.ID)))
 	require.NoError(t, w2.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w2.FGARegister().EmitUnregister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID))))
 	require.NoError(t, w2.Commit())

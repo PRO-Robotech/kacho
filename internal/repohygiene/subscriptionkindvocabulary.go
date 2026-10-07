@@ -39,9 +39,17 @@
 //     Голое имя своего пакета — та же копия, только с лишним шагом.
 //
 //  2. ОБЪЯВЛЕН ЛИ ТАКОЙ ТИП ВООБЩЕ. Тип объекта, попавший в словарь видов,
-//     обязан встречаться `object_type:` хотя бы в одной аннотации контракта.
-//     Иначе владелец объявил вид, которого платформа не знает, — и поток по нему
-//     не доставит ничего, оставаясь «зелёным».
+//     обязан быть объявлен КАНОНИЧЕСКОЙ МОДЕЛЬЮ прав и нести отношение
+//     видимости `v_get` (Д127 (б)). Строка журнала доставляется подписчику
+//     только после вопроса модели «вправе ли он видеть этот объект»: тип, которого
+//     модель не объявляет, или тип без `v_get` делают вопрос невыполнимым, и поток
+//     по виду не доставит ничего, оставаясь «зелёным».
+//
+//     Прежде признаком служила аннотация контракта (`object_type:`). Она
+//     недобирала законные виды: у вида уровня кластера (пул адресов) метод
+//     сторожится объектом `cluster`, а у репозитория реестра своего контракта
+//     нет вовсе — модель же их объявляет, и именно её спрашивает сужатель.
+//     Признак теперь — тот, о котором спрашивают при доставке.
 //
 // # ЧЕГО ОН НЕ СУДИТ, и это названо, чтобы его не «починили» в эвристику
 //
@@ -60,8 +68,8 @@
 // # Падает на ПУСТОМ ОБХОДЕ
 //
 // Ноль прочитанных файлов Go, ноль найденных объявлений журнала либо ноль
-// объявленных типов объекта в контрактах — «ноль находок» неотличимо от «ноль
-// прочитанного».
+// типов модели с `v_get` (модель не прочитана или пуста) — «ноль находок»
+// неотличимо от «ноль прочитанного».
 package repohygiene
 
 import (
@@ -98,7 +106,7 @@ const (
 	KindVocabularyLiteral = "KIND-VOCABULARY-LITERAL"
 	// KindVocabularyLocal — слово взято у СВОЕГО пакета: та же копия, шагом дальше.
 	KindVocabularyLocal = "KIND-VOCABULARY-LOCAL"
-	// KindVocabularyUndeclared — типа объекта не знает ни одна аннотация контракта.
+	// KindVocabularyUndeclared — тип объекта не объявлен канонической моделью с `v_get`.
 	KindVocabularyUndeclared = "KIND-VOCABULARY-UNDECLARED"
 	// KindVocabularyUnresolved — имя взято у производителя, но значение не
 	// добылось: тогда вторая половина вердикта не вынесена, и молчать об этом
@@ -106,27 +114,45 @@ const (
 	KindVocabularyUnresolved = "KIND-VOCABULARY-UNRESOLVED"
 )
 
-// objectTypeAnnotationRe — объявление типа объекта в аннотации контракта.
-var objectTypeAnnotationRe = regexp.MustCompile(`object_type:\s*"([a-z0-9_]+)"`)
+// modelTypeLineRe — заголовок объявления типа в модели (`type <имя>`).
+var modelTypeLineRe = regexp.MustCompile(`^type\s+([a-z0-9_]+)\s*$`)
+
+// modelVGetLineRe — объявление отношения видимости внутри типа.
+var modelVGetLineRe = regexp.MustCompile(`^\s+define\s+v_get\s*:`)
 
 // SubscriptionKindOptions — вход анализатора.
 type SubscriptionKindOptions struct {
-	Root      string
-	ProtoRoot string
+	Root string
+	// ModelFile — каноническая модель прав (абсолютный путь; в настоящем
+	// дереве его разрешает `internal/contractsource` по
+	// `kaname/cloud/iam/v1/fga_model.fga`). Признак «платформа знает этот вид» —
+	// тип модели, объявляющий отношение видимости `v_get` (Д127 (б)).
+	ModelFile string
 	// GoRoots — каталоги прод-кода, в которых ищутся объявления журналов.
 	GoRoots []string
 	// ClientPage — клиентская страница подписки от корня. Пусто означает, что
 	// вторая половина вердикта НЕ выносится, и перепись говорит это вслух:
 	// «не сверялось» обязано быть отличимо от «сошлось».
 	ClientPage string
+	// InternalKinds — виды, объявленные владельцем, но служимые ТОЛЬКО на
+	// внутреннем слушателе: край их не маршрутизирует, и клиентская страница
+	// называть их не вправе (вид → причина и предикат снятия). Запись, чей вид
+	// не объявляет ни один журнал, — находка KIND-INTERNAL-UNUSED: она пережила
+	// предмет.
+	InternalKinds map[string]string
 }
+
+// KindInternalUnused — запись внутреннего вида, которого не объявляет ни один журнал.
+const KindInternalUnused = "KIND-INTERNAL-UNUSED"
 
 // SubscriptionKindCensus — объём осмотренного. Печатается ВСЕГДА.
 type SubscriptionKindCensus struct {
 	// Root — корень дерева. Живёт в переписи, а не отдельным аргументом, чтобы
 	// разрешение чужих констант шло от того же корня, от которого шёл обход.
-	Root            string
-	ProtoFiles      int
+	Root string
+	// ModelBytes — прочитано байт канонической модели.
+	ModelBytes int
+	// DeclaredTypes — типов модели, объявляющих `v_get`.
 	DeclaredTypes   int
 	GoFiles         int
 	JournalMappings int
@@ -154,12 +180,21 @@ func AuditSubscriptionKindVocabulary(
 	var census SubscriptionKindCensus
 	census.Root = o.Root
 
-	declared, protoFiles, err := collectDeclaredObjectTypes(filepath.Join(o.Root, o.ProtoRoot))
+	declared, modelTypes, modelBytes, err := collectModelVisibleTypes(o.ModelFile)
 	if err != nil {
 		return nil, census, err
 	}
-	census.ProtoFiles = protoFiles
+	census.ModelBytes = modelBytes
 	census.DeclaredTypes = len(declared)
+	// Внутренний вид (ведомость InternalKinds) клиенту не служится: его читатель —
+	// служба по своему отношению модели (`reader` у ленты извещений), а не
+	// арендатор по `v_get`. Для него признак — тип объявлен моделью; `v_get` не
+	// требуется. Ключ ведомости — тип объекта, тем же словом.
+	for kind := range o.InternalKinds {
+		if _, ok := modelTypes[kind]; ok {
+			declared[kind] = struct{}{}
+		}
+	}
 
 	var findings []SubscriptionKindFinding
 	used := map[string]struct{}{}
@@ -194,9 +229,10 @@ func AuditSubscriptionKindVocabulary(
 		return nil, census, fmt.Errorf(
 			"обход пуст: файлов прод-кода Go 0 — «ноль находок» неотличимо от «ноль прочитанного»")
 	case census.DeclaredTypes == 0:
-		_, _ = fmt.Fprintf(log, "осмотрено: типов объекта объявлено 0\n")
+		_, _ = fmt.Fprintf(log, "осмотрено: модель %d байт, типов с v_get 0\n", census.ModelBytes)
 		return nil, census, fmt.Errorf(
-			"в контрактах не найдено ни одного объявления типа объекта — вторая половина вердикта беспредметна")
+			"в канонической модели (%s, %d байт) не найдено ни одного типа с v_get — вторая половина вердикта беспредметна",
+			o.ModelFile, census.ModelBytes)
 	case census.JournalMappings == 0:
 		_, _ = fmt.Fprintf(log, "осмотрено: объявлений журнала 0 при %d файлах Go\n", census.GoFiles)
 		return nil, census, fmt.Errorf(
@@ -204,7 +240,26 @@ func AuditSubscriptionKindVocabulary(
 			census.GoFiles)
 	}
 
-	pageFindings, perr := auditClientPageKinds(o.Root, o.ClientPage, used, &census)
+	// Внутренние виды клиентской страницей не судятся: возможности у клиента
+	// нет. Страница, назвавшая такой вид, — KIND-PAGE-INVENTS (обещание
+	// возможности, которой нет); запись без предмета — находка.
+	clientUsed := make(map[string]struct{}, len(used))
+	for kind := range used {
+		if _, internal := o.InternalKinds[kind]; !internal {
+			clientUsed[kind] = struct{}{}
+		}
+	}
+	for kind := range o.InternalKinds {
+		if _, ok := used[kind]; !ok {
+			findings = append(findings, SubscriptionKindFinding{
+				Kind:  KindInternalUnused,
+				Where: kind,
+				What:  "запись внутреннего вида пережила предмет: ни один журнал вид не объявляет — снимите запись",
+			})
+		}
+	}
+
+	pageFindings, perr := auditClientPageKinds(o.Root, o.ClientPage, clientUsed, &census)
 	if perr != nil {
 		return nil, census, perr
 	}
@@ -216,8 +271,8 @@ func AuditSubscriptionKindVocabulary(
 	}
 
 	_, _ = fmt.Fprintf(log,
-		"осмотрено: файлов контракта %d · типов объекта объявлено %d · файлов прод-кода Go %d · объявлений журнала %d · записей вида %d · типов объекта в словарях %d · клиентская страница: %s\n",
-		census.ProtoFiles, census.DeclaredTypes, census.GoFiles,
+		"осмотрено: модель прав %d байт · типов с v_get %d · файлов прод-кода Go %d · объявлений журнала %d · записей вида %d · типов объекта в словарях %d · клиентская страница: %s\n",
+		census.ModelBytes, census.DeclaredTypes, census.GoFiles,
 		census.JournalMappings, census.KindEntries, census.ObjectTypesUsed, pageNote)
 
 	sort.Slice(findings, func(i, j int) bool {
@@ -229,25 +284,39 @@ func AuditSubscriptionKindVocabulary(
 	return findings, census, nil
 }
 
-// collectDeclaredObjectTypes собирает типы объекта, объявленные аннотациями
-// контрактов, и число прочитанных файлов.
-func collectDeclaredObjectTypes(protoRoot string) (map[string]struct{}, int, error) {
-	files, err := collectFiles(protoRoot, ".proto")
+// collectModelVisibleTypes — типы канонической модели прав, объявляющие
+// отношение видимости `v_get`; все объявленные типы; число прочитанных байт.
+//
+// Разбор построчный по форме модели: заголовок `type <имя>` с начала строки
+// открывает тип, `define v_get:` с отступом внутри него — признак. Текст после
+// `#` — комментарий и не читается: тип, названный в комментарии, объявлением не
+// является. Пустой путь — отказ, а не пустое множество.
+func collectModelVisibleTypes(modelFile string) (vget, all map[string]struct{}, size int, err error) {
+	if modelFile == "" {
+		return nil, nil, 0, fmt.Errorf("путь канонической модели прав не задан — признак вида не измерить")
+	}
+	// #nosec G304 -- путь разрешён internal/contractsource либо стендом пробы
+	raw, err := os.ReadFile(modelFile)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, fmt.Errorf("каноническая модель прав не прочитана: %w", err)
 	}
 	out := map[string]struct{}{}
-	for _, path := range files {
-		// #nosec G304 -- путь получен обходом каталога контракта ЭТОГО дерева, не извне
-		raw, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return nil, 0, rerr
+	all = map[string]struct{}{}
+	current := ""
+	for _, line := range strings.Split(string(raw), "\n") {
+		if k := strings.Index(line, "#"); k >= 0 {
+			line = line[:k]
 		}
-		for _, m := range objectTypeAnnotationRe.FindAllStringSubmatch(stripProtoComments(string(raw)), -1) {
-			out[m[1]] = struct{}{}
+		if m := modelTypeLineRe.FindStringSubmatch(line); m != nil {
+			current = m[1]
+			all[current] = struct{}{}
+			continue
+		}
+		if current != "" && modelVGetLineRe.MatchString(line) {
+			out[current] = struct{}{}
 		}
 	}
-	return out, len(files), nil
+	return out, all, len(raw), nil
 }
 
 // auditOneFileForKindVocabulary судит один файл прод-кода.
@@ -432,8 +501,8 @@ func isQualifiedType(expr ast.Expr, pkg, name string) bool {
 //
 // Обе половины нужны, и они ловят разное. Форма закрывает «написание одно»:
 // `Instance` с заглавной есть слово хранилища, попавшее наружу. Объявленность
-// закрывает «такой предмет платформе известен»: тип, которого нет ни в одной
-// аннотации, даёт поток, не доставляющий ничего и остающийся зелёным.
+// закрывает «такой предмет платформе известен»: тип, которого модель не объявляет
+// с `v_get`, даёт поток, не доставляющий ничего и остающийся зелёным.
 func judgeObjectTypeWord(
 	word, where, field string, declared map[string]struct{},
 ) []SubscriptionKindFinding {
@@ -452,8 +521,8 @@ func judgeObjectTypeWord(
 			Kind:  KindVocabularyUndeclared,
 			Where: where,
 			What: fmt.Sprintf(
-				"%s = %q не объявлен ни одной аннотацией контракта: платформа такого предмета не знает, "+
-					"и поток по нему не доставит ничего, оставаясь зелёным", field, word),
+				"%s = %q не объявлен канонической моделью прав с отношением v_get: вопрос видимости о нём "+
+					"невыполним, и поток по нему не доставит ничего, оставаясь зелёным", field, word),
 		})
 	}
 	return out
