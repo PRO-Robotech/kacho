@@ -5,7 +5,7 @@ import { requestUrl } from "@shared/test/fetch-capture";
 import { SubscriptionHub, type EventSourceLike } from "@shared/lib/subscription/hub";
 import { orderedTransport } from "./carrier-order";
 import { api } from "./client";
-import { FormTokenHolder, formToken, loginLane } from "./login-lane";
+import { CHANGES_FORM_CONTEXT, FormTokenHolder, LOGIN_LANE, SETS_CARRIER, formToken, loginLane } from "./login-lane";
 import { setStepUpRequester } from "./step-up";
 
 // Модульная проба упорядочения (приёмка F8, Р10, §11.1) — держатель ПОРЯДКА.
@@ -16,8 +16,9 @@ import { setStepUpRequester } from "./step-up";
 // велит проба, и пишет ленту событий — выпуск, отмену и исход каждого
 // обращения, открытие и закрытие потока. Лента и судится.
 //
-// По каждому из семи глаголов, которые консоль зовёт в S1+S2 (вход,
-// регистрация, смена пароля, подтверждение, снятие, перечеканка, повышение), и
+// По каждому из восьми глаголов, которые консоль зовёт в S1+S2 и S4 (вход,
+// регистрация, смена пароля, подтверждение, снятие, перечеканка, повышение,
+// вход ключом), и
 // по каждому из трёх исходов глагола — ответ, отказ края `503`, «ответа нет»:
 // чтение в полёте отменено до выпуска глагола и выпущено снова после исхода;
 // мутация в полёте дождалась исхода; поток закрыт до глагола и открыт после;
@@ -260,7 +261,15 @@ function twinBreaches(tape: Tape, verb: string): string[] {
 const holder = (kind: ConstructorParameters<typeof FormTokenHolder>[0]) => new FormTokenHolder(kind);
 const byCode = { method: "lookup_secret" as const, code: "abcd-efgh" };
 
-/** Семь глаголов, ставящих носитель, которые консоль зовёт в S1+S2 (N17). */
+/** Тело предъявления ключа — форма закрытой проекции; значения пробе безразличны. */
+const ASSERTION_BODY = {
+  id: "Y3JlZA",
+  rawId: "Y3JlZA",
+  type: "public-key",
+  response: { clientDataJSON: "e30", authenticatorData: "AA", signature: "AA", userHandle: "aA" },
+};
+
+/** Восемь глаголов, ставящих носитель, которые консоль зовёт в S1+S2 (N17) и S4. */
 const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Promise<unknown> }> = [
   { name: "вход", verb: "POST /iam/v1/auth/login", run: () => loginLane.login(holder("login"), { email: "a@kacho.local", password: "p" }) },
   {
@@ -288,6 +297,13 @@ const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Prom
     name: "повышение",
     verb: "POST /iam/v1/auth/step-up",
     run: () => loginLane.stepUp(holder("step-up"), { method: "password", password: "p" }),
+  },
+  // Вход ключом доступа (приёмка F8-S4, Р6; F8S4-11 ч. 2): выдаёт сессию той же
+  // операцией, что вход паролем, — ставит носитель и меняет контекст формы.
+  {
+    name: "вход ключом",
+    verb: "POST /iam/v1/auth/access-key/login",
+    run: () => loginLane.accessKeyLogin(holder("access-key-login"), ASSERTION_BODY),
   },
 ];
 
@@ -407,6 +423,37 @@ const VERB_B = "POST /iam/v1/auth/second-factor/confirm";
 const VERB_C = "POST /iam/v1/auth/step-up";
 const verbCall = (label: string) =>
   orderedTransport.fetch(label.slice("POST ".length), { method: "POST" }, { setsCarrier: true }).catch(() => undefined);
+
+describe("F8S4-11 · вход ключом стоит в перечнях упорядочения, испытание — нет", () => {
+  // Базы перечней на момент изменения (приёмка F8-S4, N6, перемер @0ae22f8f):
+  // носитель ставят 9 глаголов, контекст формы меняют 3, модульная проба
+  // упорядочения прогоняет 7. Каждый перечень длиннее своей базы ровно на вход ключом.
+  const BASE = { setsCarrier: 9, changesFormContext: 3, carrierVerbs: 7 };
+
+  it("F8S4-11 · вход ключом в SETS_CARRIER и CHANGES_FORM_CONTEXT, испытания нет ни в одном, длины — база плюс один", () => {
+    expect({
+      login: [SETS_CARRIER.has(LOGIN_LANE.accessKeyLogin), CHANGES_FORM_CONTEXT.has(LOGIN_LANE.accessKeyLogin)],
+      begin: [SETS_CARRIER.has(LOGIN_LANE.accessKeyBegin), CHANGES_FORM_CONTEXT.has(LOGIN_LANE.accessKeyBegin)],
+      sizes: [SETS_CARRIER.size, CHANGES_FORM_CONTEXT.size, CARRIER_VERBS.length],
+      inLoop: CARRIER_VERBS.filter((v) => v.verb.includes("/access-key/")).map((v) => v.verb),
+    }).toEqual({
+      login: [true, true],
+      begin: [false, false],
+      sizes: [BASE.setsCarrier + 1, BASE.changesFormContext + 1, BASE.carrierVerbs + 1],
+      inLoop: ["POST /iam/v1/auth/access-key/login"],
+    });
+  });
+
+  // Положительный контроль той же пробы, что у признака формы в F8-46: глагол
+  // испытания носителя не ставит, и упорядочения вокруг него нет.
+  for (const outcome of OUTCOMES) {
+    it(`F8S4-11 · испытание входа ключом, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
+      const verb = "POST /iam/v1/auth/access-key/begin";
+      const tape = await scenario(verb, () => loginLane.accessKeyBegin(holder("access-key-begin")), outcome);
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+  }
+});
 
 describe("F8-46 · глаголы, ждущие исхода чужого глагола, выпускаются по одному и по порядку поступления", () => {
   it("F8-46 · идёт A, ждут глагол B и следом чтение R: R не летит во время B", async () => {

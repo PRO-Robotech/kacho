@@ -55,6 +55,11 @@ export const LOGIN_LANE = {
   // предъявление кода — оба под сессией человека, адреса в теле нет.
   verifyEmail: "/iam/v1/auth/verify-email",
   verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа без пароля (приёмка Ф13, Р1; экран — приёмка F8-S4):
+  // выдача испытания и предъявление утверждения — оба без сессии, у каждого
+  // свой вид признака формы.
+  accessKeyBegin: "/iam/v1/auth/access-key/begin",
+  accessKeyLogin: "/iam/v1/auth/access-key/login",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
@@ -69,7 +74,9 @@ export type FormKind =
   | "second-factor"
   | "step-up"
   | "verify-email"
-  | "verify-email-confirm";
+  | "verify-email-confirm"
+  | "access-key-begin"
+  | "access-key-login";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -232,6 +239,13 @@ function wwwAuthenticateOf(res: Response): string | null {
   return res.headers?.get?.("WWW-Authenticate") ?? null;
 }
 
+/**
+ * Текст, которым консоль называет ответ, не несущий ни отказа службы, ни того,
+ * что глагол обещал: тело отказа не пришло, либо ответ успеха не той формы.
+ * Причины консоль не знает и не выдумывает.
+ */
+export const NOT_BY_SUBSTANCE_TEXT = "Служба не ответила по существу";
+
 /** Отказ из ответа. Разбор один — на все глаголы и на окно повышения. */
 export function refusalOf(res: Response, text: string): LaneRefusal {
   const status = parseRpcStatus(text);
@@ -250,7 +264,7 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
   // Тела отказа служба не прислала — ответила раздача либо промежуточный узел.
   // Причины консоль не знает и не выдумывает; код ответа остаётся в `status`
   // для того, кто чинит, а не в тексте для того, кто читает экран.
-  return new LaneRefusal(res.status, null, "Служба не ответила по существу", null, null, retryAfterOf(res), www);
+  return new LaneRefusal(res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, retryAfterOf(res), www);
 }
 
 /** Ответ глагола: статус, заголовки и тело — как их прислали. */
@@ -404,10 +418,10 @@ export class FormTokenHolder {
 
 /**
  * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
- * закрыт, девять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
- * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель). Пять переписывают
- * дайджест той же записи — прежний носитель с этого момента негоден; четыре
- * заводят новую запись.
+ * закрыт, десять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
+ * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель; вход ключом доступа —
+ * приёмка F8-S4, Р6). Пять переписывают дайджест той же записи — прежний
+ * носитель с этого момента негоден; пять заводят новую запись.
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
  * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
@@ -424,13 +438,17 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/second-factor/backup-codes",
   "/iam/v1/auth/step-up",
   "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа выдаёт сессию той же операцией, что вход паролем (Ф13
+  // Р4; приёмка F8-S4, Р6). Испытание входа носителя не ставит — его здесь нет.
+  "/iam/v1/auth/access-key/login",
 ]);
 
 /** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
-const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
+export const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
   "/iam/v1/auth/register",
   "/iam/v1/auth/recovery/complete",
+  "/iam/v1/auth/access-key/login",
 ]);
 
 function noteAnswered(path: string) {
@@ -541,6 +559,24 @@ export const loginLane = {
    */
   confirmAddress(holder: FormTokenHolder, code: string) {
     return submit<{ session: LaneSession }>(holder, LOGIN_LANE.verifyEmailConfirm, { code }, false);
+  },
+  /**
+   * Выдача испытания входа ключом (Ф13 Р1, Р9). Тело — только признак формы
+   * вида `access-key-begin`. Ответ отдаётся КАК ПРИСЛАН: его разбор в параметры
+   * церемонии браузера — дело кодека (`access-key.ts`), который ничего не
+   * подставляет. Глагол носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-S4, Р6).
+   */
+  accessKeyBegin(holder: FormTokenHolder) {
+    return submit<unknown>(holder, LOGIN_LANE.accessKeyBegin, {}, false);
+  },
+  /**
+   * Предъявление утверждения браузера (Ф13 Р1, Р4). `credential` — закрытая
+   * проекция ответа браузера (`assertionBodyOf`), признак — вида
+   * `access-key-login`. Успех выдаёт сессию той же операцией, что вход паролем.
+   */
+  accessKeyLogin(holder: FormTokenHolder, credential: Record<string, unknown>) {
+    return submit<SignedIn>(holder, LOGIN_LANE.accessKeyLogin, { credential }, false);
   },
 };
 
