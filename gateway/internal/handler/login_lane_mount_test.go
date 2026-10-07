@@ -28,7 +28,7 @@ import (
 func relayFor(t *testing.T, target middleware.RelayTarget) *handler.LoginLaneRelay {
 	t.Helper()
 	r, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Serves: target,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Serves: target, AnonMailGate: anonMailGateFor(target),
 		Target: "https://kaname.kacho.svc:9096", ClientIP: func(*http.Request) string { return "" },
 	})
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestMountLoginLaneRoutes_L13_Injection_DuplicateEmptyAndNilAreRefused(t *te
 func TestNewLoginLaneRelay_L13_RefusesWithoutADeclaredTarget(t *testing.T) {
 	for _, tg := range []middleware.RelayTarget{"", "foreign"} {
 		_, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Serves: tg,
+			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Serves: tg, AnonMailGate: anonMailGateFor(tg),
 			Target: "https://kaname.kacho.svc:9096", ClientIP: func(*http.Request) string { return "" },
 		})
 		require.Error(t, err, "цель %q", tg)
@@ -157,4 +157,14 @@ func TestMountLoginLaneRoutes_L13_Injection_NoNotHereAnswerForExternalOnlyRecord
 
 	_, err = handler.MountLoginLaneRoutes(http.NewServeMux(), http.NotFoundHandler(), set...)
 	require.NoError(t, err, "законный близнец с ответом внутреннего слушателя не смонтировался")
+}
+
+// anonMailGateFor — звено-ограничитель пробы: у цели с записями anonMail —
+// пропускающее (предмет этих проб — ретрансляция, а не лимиты), у прочих — нет
+// звена (ретранслятор отвергает звено, которому нечего судить).
+func anonMailGateFor(t middleware.RelayTarget) func(http.Handler) http.Handler {
+	if t == middleware.RelayTargetForm {
+		return func(h http.Handler) http.Handler { return h }
+	}
+	return nil
 }

@@ -561,7 +561,7 @@ func renderChainCached(t *testing.T, chain []string, sets ...string) string {
 }
 
 func TestNoStackRendersAnIdentityVendorObject(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	rules := currentPostureRules(t)
 	names := sortedStackNames(stacks)
 	renders := make([]chainRender, 0, len(names))
@@ -659,7 +659,7 @@ func TestOwnRenderControl_RaisedVendorDependencyIsFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	chainName := sortedStackNames(stacks)[0]
 	chain := stacks[chainName]
 	if len(deps) == 0 {

@@ -27,7 +27,7 @@ const npNamespace = "kacho"
 // ровно тем вызовом helm, которым стенд поднимается.
 func npChainDocs(t *testing.T, name string) []map[string]any {
 	t.Helper()
-	chain, ok := deployStacks(t)[name]
+	chain, ok := deployStacksForRender(t, renderGateOperatorSample)[name]
 	if !ok {
 		t.Fatalf("стека %q в таблице %s нет — предпосылка пробы исчезла, а не рендер стал чистым", name, stacksTable)
 	}
@@ -44,7 +44,7 @@ func npChainDocs(t *testing.T, name string) []map[string]any {
 
 // TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods — сам гейт.
 func TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	var policies, isolated, dials, judged int
 	for _, name := range sortedStackNames(stacks) {
 		v, err := judgeNetworkPolicies(npNamespace, npChainDocs(t, name))

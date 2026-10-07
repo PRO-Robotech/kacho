@@ -203,3 +203,46 @@ func TestKnobParityInjection_UnknownFormIsAFindingWithItsCoordinate(t *testing.T
 		t.Fatalf("объявленная эмиссия в знакомой форме объявлена находкой: %q", back)
 	}
 }
+
+// Текст отказа `required` и `fail` — проза, а не эмиссия: функция либо
+// возвращает ВТОРОЙ аргумент, либо обрывает рендер, и первый аргумент-литерал в
+// под не попадает никогда. Отказ рендера обязан называть ручку (приёмка NTF-2
+// Р8: рендер без числа доверенных прыжков отказывает с именем
+// KACHO_API_GATEWAY_TRUSTED_HOPS), поэтому имя в тексте отказа — законная форма.
+//
+// Близнецы-находки: имя в ПОЗИЦИИ ЗНАЧЕНИЯ того же `required`, имя в `printf`
+// и текст отказа, собранный не литералом (`required (printf …)`), — остаются
+// нераспознанной формой: они попадают в рендер либо не читаются разбором.
+func TestKnobParityInjection_RefusalMessageIsProseAndTheValuePositionIsNot(t *testing.T) {
+	silent := "env:\n" +
+		"  - name: KACHO_X_REAL\n" +
+		"    value: {{ required \"KACHO_X_REAL не задана: умолчания нет \\\"x\\\"\" .Values.x | quote }}\n" +
+		"  - name: KACHO_X_FILE\n" +
+		"    value: {{ printf \"%s/%s\" (required \"KACHO_X_FILE: каталог\" .a) (required \"KACHO_X_FILE: ключ\" .b) | quote }}\n" +
+		"  {{- if .Values.y }}{{ fail \"KACHO_X_PROSE задана вместе с y\" }}{{ end }}\n"
+	scan := scanTemplate("t.yaml", silent)
+	if len(scan.Unrecognized) != 0 {
+		t.Fatalf("имя в тексте отказа required/fail записано нераспознанной формой: %v", scan.Unrecognized)
+	}
+	if len(scan.Emitted) != 2 || len(scan.Emitted["KACHO_X_REAL"]) != 1 || len(scan.Emitted["KACHO_X_FILE"]) != 1 {
+		t.Fatalf("эмиссии обязаны быть ровно KACHO_X_REAL и KACHO_X_FILE: %v", scan.Emitted)
+	}
+	if scan.NamedLines != 2 {
+		t.Fatalf("исполняемых строк с именем продукта %d, ожидалось 2 (строки name:)", scan.NamedLines)
+	}
+
+	red := "env:\n" +
+		"  - name: KACHO_X_REAL\n" +
+		"    value: {{ required \"msg\" \"KACHO_X_VALUE\" | quote }}\n" +
+		"    value: {{ printf \"KACHO_X_PRINTF\" }}\n" +
+		"    value: {{ required (printf \"KACHO_X_DYN %s\" .x) .y }}\n"
+	scan = scanTemplate("t.yaml", red)
+	cols := knobColumns{Declared: map[string]bool{"KACHO_X_REAL": true}, Emitted: scan.Emitted,
+		Unrecognized: scan.Unrecognized, TemplateFiles: 1, TemplateLines: 1}
+	got := judgeUnrecognizedForms(cols)
+	if len(got) != 3 || !strings.Contains(got[0], "t.yaml:3") || !strings.Contains(got[1], "t.yaml:4") ||
+		!strings.Contains(got[2], "t.yaml:5") {
+		t.Fatalf("имя в позиции значения, в printf и в нелитеральном тексте отказа обязано быть "+
+			"тремя находками с координатами t.yaml:3, :4, :5: %q", got)
+	}
+}

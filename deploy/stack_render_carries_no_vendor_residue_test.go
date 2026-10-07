@@ -186,7 +186,7 @@ func judgeVendorAbsence(stack string, r vendorResidue) []string {
 
 // TestNoStackRenderCarriesAVendorResidue — сам гейт по каждой цепочке.
 func TestNoStackRenderCarriesAVendorResidue(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	names := make([]string, 0, len(stacks))
 	for n := range stacks {
 		names = append(names, n)
@@ -235,7 +235,7 @@ func TestNoStackRenderCarriesAVendorResidue(t *testing.T) {
 // возвращён издатель поставщика, — находка с адресом; законный близнец — тот же
 // перечень с нашим вторым издателем — молчание.
 func TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	chain, ok := stacks["prod"]
 	if !ok {
 		t.Fatal("стека prod в таблице нет — вход инъекции исчез")

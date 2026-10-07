@@ -85,7 +85,7 @@ func buildAuthzMiddleware(t *testing.T, catalog *middleware.PermissionCatalog, c
 		Enabled:         true,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, true),
+		Context:         mustExtractor(t, time.Now, "1"),
 		Resources:       middleware.NewResourceExtractor(nil),
 		Checker:         checker,
 		Logger:          silentLogger(),

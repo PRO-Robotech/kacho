@@ -971,8 +971,11 @@ helm_group() {
                 n=0
                 # Присваиванием, а не списком \`for\`: тот теряет код ВСЕГДА.
                 stacks=\"\$(bash ../../tests/helm/stacks.sh --names)\"
+                # Цепочки гейта — обёрткой: к prod она дописывает слой оператора
+                # (приёмка NTF-2 Р8, Д51 — поставка не несёт числа прыжков края).
+                . ../../tests/helm/lib/render-chain.sh
                 for stack in \$stacks; do
-                    args=\"\$(bash ../../tests/helm/stacks.sh --args \"\$stack\")\"
+                    args=\"\$(render_chain_args \"\$stack\" . operator.yaml)\"
                     # shellcheck disable=SC2086
                     helm template ci . \$args > /dev/null
                     n=\$((n + 1))
