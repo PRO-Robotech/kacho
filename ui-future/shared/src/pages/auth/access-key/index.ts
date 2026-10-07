@@ -8,3 +8,9 @@ export {
   type AccessKeyFailure,
   type AccessKeySignIn,
 } from "./use-access-key-sign-in";
+export {
+  AccessKeysSection,
+  KEY_CEREMONY_BROWSER_REFUSED,
+  KEY_CEREMONY_UNSUPPORTED,
+  accessKeyCreationSupported,
+} from "./AccessKeysSection";

@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { createHash, generateKeyPairSync, randomBytes, type KeyObject } from "node:crypto";
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 import { expect, type CDPSession, type Page } from "@playwright/test";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import { SESSION_IDENTITY, lastIssued, type Seed } from "./ceremony-seed";
@@ -125,7 +125,16 @@ interface RegistrationChallenge {
 export async function seedAccessKey(
   seed: Seed,
   baseURL: string | undefined,
-  { userVerification }: { userVerification: boolean },
+  {
+    userVerification,
+    name,
+    description,
+  }: {
+    userVerification: boolean;
+    /** Имя и описание ключа — их задаёт сценарий (посев К′ приёмки F8, группа L); не названы — не посылаются. */
+    name?: string;
+    description?: string;
+  },
 ): Promise<SeededAccessKey> {
   const origin = originOf(baseURL);
   const me = await seed.read(SESSION_IDENTITY);
@@ -175,6 +184,8 @@ export async function seedAccessKey(
   const finishPath = `/iam/v1/users/${userId}/accessKeys`;
   const finished = await seed.api.post(finishPath, {
     data: {
+      ...(name === undefined ? {} : { name }),
+      ...(description === undefined ? {} : { description }),
       credential: {
         id: credentialId.toString("base64"),
         clientDataJson: clientDataJSON.toString("base64"),
@@ -223,6 +234,77 @@ export async function revokeAccessKey(seed: Seed, key: SeededAccessKey): Promise
   await operationSucceeded(readerOf(seed), op, "посев К-снят: снятие ключа");
 }
 
+// ─── «ключ принят / не принят» — запись выпускающего (приёмка F8, группа L) ──
+
+/** Удостоверение, которым проба собирает утверждение сама. */
+export interface PresentableKey {
+  credentialId: Buffer;
+  /** PKCS#8 DER, P-256. */
+  privateKey: Buffer;
+  userHandle: Buffer;
+  /** Последний счётчик подписи, который служба приняла либо хранит. */
+  signCount: number;
+}
+
+/**
+ * Предъявить ключ службе утверждением, собранным ПРОБОЙ (Ф7 §3.0): контекст
+ * посева зовёт `accessKeys:beginAssertion` и `accessKeys:finishAssertion`, а
+ * подпись ставит закрытый ключ удостоверения — посева К или аутентификатора
+ * страницы (`WebAuthn.getCredentials`). Счётчик — строго больше хранимого
+ * (F8-S4 N16): `signCount` плюс один; принятый счётчик запоминается. Исход
+ * отдаётся как есть — «принят» и «не принят» судит вызывающий. Ось источника
+ * глаголы Ф7 не тратят (N29), носителя не ставят.
+ */
+export async function presentAccessKey(
+  seed: Seed,
+  baseURL: string | undefined,
+  key: PresentableKey,
+): Promise<{ status: number; text: string }> {
+  const begun = await seed.api.post("/iam/v1/accessKeys:beginAssertion", { data: {} });
+  const beginText = await begun.text();
+  expect(begun.status(), `проба: выдача испытания утверждения — ${begun.status()} ${beginText.slice(0, 300)}`).toBe(200);
+  const ch = JSON.parse(beginText) as { challenge?: string; rpId?: string };
+  const challenge = Buffer.from(ch.challenge ?? "", "base64");
+  const rpId = ch.rpId ?? "";
+  expect(
+    { challenge: challenge.length > 0, rpId: rpId !== "" },
+    "проба: испытание утверждения без испытания или имени доверяющей стороны",
+  ).toEqual({ challenge: true, rpId: true });
+
+  const counter = Buffer.alloc(4);
+  counter.writeUInt32BE(key.signCount + 1, 0);
+  // UP = 1, UV = 1 — как у аутентификатора страницы; BE = 0, BS = 0.
+  const authData = Buffer.concat([createHash("sha256").update(rpId).digest(), Buffer.from([FLAG_UP | FLAG_UV]), counter]);
+  const clientDataJSON = Buffer.from(
+    JSON.stringify({
+      type: "webauthn.get",
+      challenge: challenge.toString("base64url"),
+      origin: originOf(baseURL),
+      crossOrigin: false,
+    }),
+    "utf8",
+  );
+  const signature = sign(
+    "sha256",
+    Buffer.concat([authData, createHash("sha256").update(clientDataJSON).digest()]),
+    createPrivateKey({ key: key.privateKey, format: "der", type: "pkcs8" }),
+  );
+  const res = await seed.api.post("/iam/v1/accessKeys:finishAssertion", {
+    data: {
+      credential: {
+        id: key.credentialId.toString("base64"),
+        clientDataJson: clientDataJSON.toString("base64"),
+        authenticatorData: authData.toString("base64"),
+        signature: signature.toString("base64"),
+        userHandle: key.userHandle.toString("base64"),
+      },
+    },
+  });
+  const text = await res.text();
+  if (res.status() === 200) key.signCount += 1;
+  return { status: res.status(), text };
+}
+
 // ─── аутентификатор страницы ─────────────────────────────────────────────────
 
 export interface PageAuthenticator {
@@ -231,11 +313,12 @@ export interface PageAuthenticator {
 }
 
 /**
- * Виртуальный аутентификатор браузера страницы с удостоверением посева К —
- * ДО открытия страницы сценария; обращений страницы не порождает. `k` — номер
- * контекста браузера в сценарии по порядку входа (§6.0 шаг 3).
+ * Виртуальный аутентификатор браузера страницы БЕЗ удостоверений — шаг 1 посева К
+ * дословно (§6.0): `ctap2`, `internal`, резидентный ключ, проверка пользователя
+ * по `userVerification`, флаги резервного копирования `false`. Удостоверение в
+ * нём заводит либо посев (`authenticatorWithKey`), либо экран страницы.
  */
-export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k = 1): Promise<PageAuthenticator> {
+export async function pageAuthenticator(page: Page, userVerification: boolean): Promise<PageAuthenticator> {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable", { enableUI: false });
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -243,13 +326,23 @@ export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k =
       protocol: "ctap2",
       transport: "internal",
       hasResidentKey: true,
-      hasUserVerification: key.userVerification,
-      isUserVerified: key.userVerification,
+      hasUserVerification: userVerification,
+      isUserVerified: userVerification,
       automaticPresenceSimulation: true,
       defaultBackupEligibility: false,
       defaultBackupState: false,
     },
   });
+  return { cdp, authenticatorId };
+}
+
+/**
+ * Виртуальный аутентификатор браузера страницы с удостоверением посева К —
+ * ДО открытия страницы сценария; обращений страницы не порождает. `k` — номер
+ * контекста браузера в сценарии по порядку входа (§6.0 шаг 3).
+ */
+export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k = 1): Promise<PageAuthenticator> {
+  const { cdp, authenticatorId } = await pageAuthenticator(page, key.userVerification);
   await cdp.send("WebAuthn.addCredential", {
     authenticatorId,
     credential: {

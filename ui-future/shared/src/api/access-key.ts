@@ -10,11 +10,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ И ЧЕГО ЗДЕСЬ НЕТ
 //
-//   • ни сети, ни состояния, ни журнала: глаголы живут в клиенте полосы
-//     (`login-lane.ts`), попытка — в экране; кодек — чистые функции;
-//   • base64url без дополнения — единственная форма в обе стороны: служба
-//     принимает только её (`loginlanehttp/access_key_login.go`), и второе
-//     написание того же значения кодек не принимает и не производит;
+//   • ни сети, ни состояния, ни журнала: глаголы входа живут в клиенте полосы
+//     (`login-lane.ts`), глаголы заведения и снятия — в клиенте раздела ключей
+//     (`api/access-keys.ts`), попытка — в экране;
+//     кодек — чистые функции;
+//   • у ВХОДА ключом base64url без дополнения — единственная форма в обе
+//     стороны: полоса службы принимает только её
+//     (`loginlanehttp/access_key_login.go`), и второе написание того же
+//     значения кодек входа не принимает и не производит. Заведение идёт
+//     поверхностью платформы, у которой форма `bytes` другая, — раздел ниже;
 //   • параметры церемонии берутся из ответа службы ДОСЛОВНО и только названные:
 //     имя доверяющей стороны не выводится из адреса страницы, срок и требование
 //     проверки пользователя не выдумываются, перечень удостоверений не
@@ -100,7 +104,10 @@ export function assertionRequestOf(answer: unknown): PublicKeyCredentialRequestO
     options.timeout = pk.timeout;
   }
   if (pk.userVerification !== undefined) {
-    options.userVerification = stringOf(pk.userVerification, "publicKey.userVerification") as UserVerificationRequirement;
+    options.userVerification = stringOf(
+      pk.userVerification,
+      "publicKey.userVerification",
+    ) as UserVerificationRequirement;
   }
   if (pk.allowCredentials !== undefined) {
     if (!Array.isArray(pk.allowCredentials)) throw new AccessKeyEncodingError("publicKey.allowCredentials");
@@ -154,7 +161,170 @@ export function assertionBodyOf(credential: unknown): AccessKeyAssertionBody {
       clientDataJSON: encode(r.clientDataJSON, "credential.response.clientDataJSON"),
       authenticatorData: encode(r.authenticatorData, "credential.response.authenticatorData"),
       signature: encode(r.signature, "credential.response.signature"),
-      userHandle: r.userHandle === null || r.userHandle === undefined ? "" : encode(r.userHandle, "credential.response.userHandle"),
+      userHandle:
+        r.userHandle === null || r.userHandle === undefined
+          ? ""
+          : encode(r.userHandle, "credential.response.userHandle"),
     },
   };
+}
+
+// ─── заведение ключа из сессии (Ф7; экран — приёмка F8, ред. 12, Р11) ────────
+//
+// Глаголы заведения — поверхность ПЛАТФОРМЫ (`/iam/v1/users/{userId}/accessKeys…`),
+// а не полоса формы: их отвечает край разбором контракта службы, и `bytes` в
+// таком ответе — строка base64 СТАНДАРТНОГО алфавита с дополнением (`protojson`).
+// Разбор края принимает оба алфавита, с дополнением и без, поэтому кодек
+// заведения читает так же; пишет он каноническую форму — стандартный алфавит с
+// дополнением. Сравнение «без изменения» — по байтам, а не по строкам.
+//
+// Ответ испытания регистрации кодек получает в той форме, в какой его отдаёт
+// клиент платформы (`api/client.ts` переводит ключи провода в snake_case). Поле,
+// которого ответ не нёс, у `protojson` означает значение по умолчанию (пустую
+// строку, пустой перечень), и кодек переносит его этим значением, а не
+// выдумывает своё; испытание и рукоятка человека пустыми не бывают.
+
+const WIRE_BASE64 = /^[A-Za-z0-9+/_-]+={0,2}$/;
+
+/** `bytes` провода платформы → байты: оба алфавита, с дополнением и без. */
+export function bytesOfWire(text: unknown, part: string): ArrayBuffer {
+  if (typeof text !== "string" || !WIRE_BASE64.test(text)) throw new AccessKeyEncodingError(part);
+  const bare = text.replace(/=+$/, "");
+  if (bare.length % 4 === 1) throw new AccessKeyEncodingError(part);
+  const std = bare.replace(/-/g, "+").replace(/_/g, "/");
+  let binary: string;
+  try {
+    binary = atob(std + "=".repeat((4 - (std.length % 4)) % 4));
+  } catch {
+    throw new AccessKeyEncodingError(part);
+  }
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out.buffer;
+}
+
+/** Байты → `bytes` провода платформы: стандартный алфавит с дополнением. */
+export function base64Of(bytes: unknown, part: string): string {
+  const view = bytesOfBuffer(bytes, part);
+  let binary = "";
+  for (const b of view) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+/** Строка ответа, которую `protojson` опускает пустой: нет поля — `""`. */
+function textOrDefault(value: unknown, part: string): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string") throw new AccessKeyEncodingError(part);
+  return value;
+}
+
+/** Целое `int64` провода: `protojson` пишет его строкой; число принимается тоже. */
+function integerOf(value: unknown, part: string): number {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^-?\d+$/.test(value)) return Number(value);
+  throw new AccessKeyEncodingError(part);
+}
+
+/**
+ * Ответ выдачи испытания регистрации (`AccessKeyRegistrationChallenge`, ключи
+ * клиента платформы) → параметры `navigator.credentials.create`. Названное
+ * службой переносится без изменения; срок испытания (`expires_at`) браузеру не
+ * передаётся — свой срок церемонии консоль не выдумывает, судит срок служба.
+ */
+export function registrationRequestOf(answer: unknown): PublicKeyCredentialCreationOptions {
+  const a = objectOf(answer, "answer");
+  const rp = objectOf(a.rp, "rp");
+  const user = objectOf(a.user, "user");
+  const params = a.pub_key_cred_params === undefined ? [] : a.pub_key_cred_params;
+  if (!Array.isArray(params)) throw new AccessKeyEncodingError("pub_key_cred_params");
+  const userId = bytesOfWire(user.id, "user.id");
+  if (userId.byteLength === 0) throw new AccessKeyEncodingError("user.id");
+  const challenge = bytesOfWire(a.challenge, "challenge");
+  if (challenge.byteLength === 0) throw new AccessKeyEncodingError("challenge");
+  const options: PublicKeyCredentialCreationOptions = {
+    challenge,
+    rp: { id: stringOf(rp.id, "rp.id"), name: textOrDefault(rp.name, "rp.name") },
+    user: {
+      id: userId,
+      name: textOrDefault(user.name, "user.name"),
+      displayName: textOrDefault(user.display_name, "user.display_name"),
+    },
+    pubKeyCredParams: params.map((raw) => {
+      const p = objectOf(raw, "pub_key_cred_params");
+      return {
+        type: stringOf(p.type, "pub_key_cred_params.type") as PublicKeyCredentialType,
+        alg: integerOf(p.alg, "pub_key_cred_params.alg"),
+      };
+    }),
+  };
+  if (a.authenticator_selection !== undefined) {
+    const s = objectOf(a.authenticator_selection, "authenticator_selection");
+    const selection: AuthenticatorSelectionCriteria = {};
+    if (s.resident_key !== undefined) {
+      selection.residentKey = stringOf(
+        s.resident_key,
+        "authenticator_selection.resident_key",
+      ) as ResidentKeyRequirement;
+    }
+    if (s.require_resident_key !== undefined) {
+      if (typeof s.require_resident_key !== "boolean") {
+        throw new AccessKeyEncodingError("authenticator_selection.require_resident_key");
+      }
+      selection.requireResidentKey = s.require_resident_key;
+    }
+    if (s.user_verification !== undefined) {
+      selection.userVerification = stringOf(
+        s.user_verification,
+        "authenticator_selection.user_verification",
+      ) as UserVerificationRequirement;
+    }
+    options.authenticatorSelection = selection;
+  }
+  if (a.attestation !== undefined) {
+    options.attestation = stringOf(a.attestation, "attestation") as AttestationConveyancePreference;
+  }
+  if (a.extensions !== undefined) {
+    const e = objectOf(a.extensions, "extensions");
+    if (e.cred_props !== undefined && typeof e.cred_props !== "boolean") throw new AccessKeyEncodingError("extensions");
+    // `credProps: false` — значение по умолчанию: `protojson` его не пишет, и
+    // просить браузер о нём незачем; переносится только просьба.
+    if (e.cred_props === true) options.extensions = { credProps: true };
+  }
+  return options;
+}
+
+/**
+ * Результат регистрации в теле приёма (`RegistrationCredential`) — ровно поля
+ * контракта. `discoverable` — три состояния Ф7-41: `true`, `false` и «нет поля»,
+ * как браузер сообщил `credProps.rk`; консоль обнаружимость не судит.
+ */
+export interface AccessKeyRegistrationCredential {
+  [field: string]: unknown;
+  id: string;
+  clientDataJson: string;
+  attestationObject: string;
+  discoverable?: boolean;
+}
+
+/**
+ * Ответ браузера (`navigator.credentials.create`) → результат регистрации.
+ * Закрытая проекция: `transports`, `publicKeyAlgorithm`, прочие расширения и
+ * `authenticatorAttachment` в тело не идут — их в контракте нет.
+ */
+export function registrationCredentialOf(credential: unknown): AccessKeyRegistrationCredential {
+  const c = objectOf(credential, "credential");
+  const r = objectOf(c.response, "credential.response");
+  const out: AccessKeyRegistrationCredential = {
+    id: base64Of(c.rawId, "credential.rawId"),
+    clientDataJson: base64Of(r.clientDataJSON, "credential.response.clientDataJSON"),
+    attestationObject: base64Of(r.attestationObject, "credential.response.attestationObject"),
+  };
+  const results =
+    typeof c.getClientExtensionResults === "function"
+      ? (c.getClientExtensionResults as () => unknown).call(credential)
+      : undefined;
+  const props = results && typeof results === "object" ? (results as { credProps?: unknown }).credProps : undefined;
+  const rk = props && typeof props === "object" ? (props as { rk?: unknown }).rk : undefined;
+  if (typeof rk === "boolean") out.discoverable = rk;
+  return out;
 }

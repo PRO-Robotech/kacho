@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ И ПОЧЕМУ ОДНИМ МЕСТОМ
 //
-// Служба объявляет пятнадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
+// Служба объявляет глаголы `/iam/v1/auth/*` одним перечнем, край их
 // ретранслирует, раздача уводит `^/iam/v1/` на край безусловно. Консоль зовёт
 // их отсюда и ни откуда больше: экраны входа, регистрации, выхода, параметров
 // учётной записи, подтверждения адреса почты, восстановления доступа и окно
@@ -46,6 +46,9 @@ export const LOGIN_LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  // Первый пароль из живой сессии (служба — приёмка FP; экран — приёмка F8,
+  // ред. 12, Р13): у человека без пароля; носителя не ставит (её Р5).
+  passwordEnroll: "/iam/v1/auth/password/enroll",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
   confirm: "/iam/v1/auth/second-factor/confirm",
@@ -76,6 +79,7 @@ export type FormKind =
   | "login"
   | "logout"
   | "password"
+  | "password-enroll"
   | "register"
   | "second-factor"
   | "step-up"
@@ -530,6 +534,18 @@ export const loginLane = {
       { currentPassword: form.currentPassword, newPassword: form.newPassword },
       true,
     );
+  },
+  /**
+   * Первый пароль человеку без пароля (приёмка F8, ред. 12, Р13). Тело — РОВНО
+   * `{newPassword, csrfToken}`: текущего пароля у такого человека нет. Правило
+   * пароля и «пароль уже есть» судит служба, консоль — нет. Глагол требует
+   * свежего предъявления, поэтому отказ свежести ведёт к повышению и одному
+   * повтору тем же паролем. Носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-67): членство в них — равенство пути
+   * целиком, а `/iam/v1/auth/password` — лишь начало этой строки.
+   */
+  enrollPassword(holder: FormTokenHolder, form: { newPassword: string }) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.passwordEnroll, { newPassword: form.newPassword }, true);
   },
   secondFactorState() {
     return exchange<SecondFactorState>("GET", LOGIN_LANE.secondFactor);
