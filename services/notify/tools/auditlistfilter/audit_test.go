@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // moduleRoot — the directory holding go.mod above this test file.
@@ -31,7 +33,21 @@ func moduleRoot(t *testing.T) string {
 // adapters it derives the ban from.
 var copiedPaths = []string{"services/notify", "pkg/listnarrow/narrowiam", "pkg/authz/authziam"}
 
-// treeCopy copies the non-test Go sources the audit reads into a fresh module
+// syntheticCorpus — the listing of a probe's own copy: it is not a repository,
+// there is no index to ask, and its walk is the only authority.
+func syntheticCorpus(dir string) ([]string, error) {
+	tr, err := treecorpus.SyntheticTree(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, rel := range tr.SortedFiles() {
+		out = append(out, filepath.Join(dir, filepath.FromSlash(rel)))
+	}
+	return out, nil
+}
+
+// treeCopy copies the tracked non-test Go sources the audit reads into a fresh module
 // root, so an injection changes one fact of the REAL tree and nothing else.
 func treeCopy(t *testing.T) string {
 	t.Helper()
@@ -39,26 +55,26 @@ func treeCopy(t *testing.T) string {
 	dst := t.TempDir()
 	n := 0
 	for _, rel := range copiedPaths {
-		err := filepath.WalkDir(filepath.Join(src, rel), func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			r, _ := filepath.Rel(src, path)
-			raw, rerr := os.ReadFile(path) // #nosec G304 -- path walked under this module's own root
-			if rerr != nil {
-				return rerr
-			}
-			if merr := os.MkdirAll(filepath.Dir(filepath.Join(dst, r)), 0o750); merr != nil {
-				return merr
-			}
-			n++
-			return os.WriteFile(filepath.Join(dst, r), raw, 0o600)
-		})
+		files, err := treecorpus.Under(filepath.Join(src, rel))
 		if err != nil {
 			t.Fatal(err)
+		}
+		for _, path := range files {
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			r, _ := filepath.Rel(src, path)
+			raw, rerr := os.ReadFile(path) // #nosec G304 -- path from this module's own git index
+			if rerr != nil {
+				t.Fatal(rerr)
+			}
+			if merr := os.MkdirAll(filepath.Dir(filepath.Join(dst, r)), 0o750); merr != nil {
+				t.Fatal(merr)
+			}
+			if werr := os.WriteFile(filepath.Join(dst, r), raw, 0o600); werr != nil {
+				t.Fatal(werr)
+			}
+			n++
 		}
 	}
 	if n == 0 {
@@ -86,7 +102,8 @@ func inject(t *testing.T, root, rel, old, repl string) {
 func run(t *testing.T, root string) (Report, error, string) {
 	t.Helper()
 	var out bytes.Buffer
-	rep, err := Audit(Profile, Options{ServiceRoot: filepath.Join(root, "services/notify"), ModuleRoot: root}, &out)
+	rep, err := Audit(Profile, Options{ServiceRoot: filepath.Join(root, "services/notify"), ModuleRoot: root,
+		Corpus: syntheticCorpus}, &out)
 	return rep, err, out.String()
 }
 

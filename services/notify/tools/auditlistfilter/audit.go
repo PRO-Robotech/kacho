@@ -57,6 +57,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // ErrNotInspected — the tree the gate was pointed at could not be read; distinct
@@ -146,6 +148,11 @@ type Options struct {
 	// RPCOptions — reads the authorization options of a compiled method. Nil
 	// means the descriptors linked into this binary.
 	RPCOptions func(fullName string) (RPCAuthz, error)
+	// Corpus — absolute paths of the files under a directory. Nil means the git
+	// index (treecorpus.Under): the verdict is a property of the commit, not of
+	// whatever lies in the working directory. A synthetic tree built by a probe
+	// passes its own listing.
+	Corpus func(dir string) ([]string, error)
 }
 
 // RPCAuthz — the authorization options of one compiled method.
@@ -254,6 +261,7 @@ type analyser struct {
 	o           Options
 	serviceRoot string
 	moduleRoot  string
+	corpus      func(dir string) ([]string, error)
 	fset        *token.FileSet
 	pkgs        map[string]*pkg // by dir
 	files       int
@@ -278,7 +286,37 @@ func newAnalyser(p Layout, o Options) (*analyser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &analyser{p: p, o: o, serviceRoot: sr, moduleRoot: mr, fset: token.NewFileSet(), pkgs: map[string]*pkg{}}, nil
+	corpus := o.Corpus
+	if corpus == nil {
+		corpus = indexCorpus
+	}
+	return &analyser{p: p, o: o, serviceRoot: sr, moduleRoot: mr, corpus: corpus, fset: token.NewFileSet(), pkgs: map[string]*pkg{}}, nil
+}
+
+// indexCorpus — tracked files under dir. A directory with nothing tracked is an
+// empty answer; any other refusal of the index is a refusal of the run.
+func indexCorpus(dir string) ([]string, error) {
+	files, err := treecorpus.Under(dir)
+	if errors.Is(err, treecorpus.ErrEmptyCorpus) {
+		return nil, nil
+	}
+	return files, err
+}
+
+// goSources — the non-test .go files directly inside dir, from the corpus.
+func (a *analyser) goSources(dir string) ([]string, error) {
+	all, err := a.corpus(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, f := range all {
+		if filepath.Dir(f) == dir && strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, "_test.go") {
+			out = append(out, f)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func moduleRootOf(dir string) (string, error) {
@@ -318,17 +356,13 @@ func (a *analyser) pkg(dir string) (*pkg, error) {
 	if p, ok := a.pkgs[dir]; ok {
 		return p, nil
 	}
-	entries, err := os.ReadDir(dir)
+	sources, err := a.goSources(dir)
 	if err != nil {
 		return nil, err
 	}
 	p := &pkg{dir: dir, path: a.importPathOf(dir), funcs: map[string]*ast.FuncDecl{},
 		methods: map[string]*ast.FuncDecl{}, types: map[string]*ast.TypeSpec{}, fileOf: map[ast.Node]*file{}}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
+	for _, path := range sources {
 		f, perr := parser.ParseFile(a.fset, path, nil, 0)
 		if perr != nil {
 			return nil, fmt.Errorf("parse %s: %w", path, perr)
@@ -882,19 +916,24 @@ type callSite struct {
 // it is built over is the declared verdict client.
 func (a *analyser) judgeNarrowers(rep *Report) {
 	var all []callSite
-	err := filepath.WalkDir(a.serviceRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	files, err := a.corpus(a.serviceRoot)
+	if err != nil {
+		rep.findingf("service tree could not be listed: %v — narrower sites were not censused", err)
+		return
+	}
+	dirs := map[string]bool{}
+	for _, f := range files {
+		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") ||
+			strings.Contains(filepath.ToSlash(f), "/testdata/") {
+			continue
 		}
-		if !d.IsDir() {
-			return nil
-		}
-		if n := d.Name(); path != a.serviceRoot && (n == "testdata" || strings.HasPrefix(n, ".")) {
-			return filepath.SkipDir
-		}
-		p, perr := a.pkg(path)
+		dirs[filepath.Dir(f)] = true
+	}
+	for _, dir := range sortedKeys(dirs) {
+		p, perr := a.pkg(dir)
 		if perr != nil {
-			return perr
+			rep.findingf("service package %s unreadable: %v — narrower sites were not censused", dir, perr)
+			return
 		}
 		for _, fl := range p.files {
 			for _, decl := range fl.ast.Decls {
@@ -910,11 +949,6 @@ func (a *analyser) judgeNarrowers(rep *Report) {
 				})
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		rep.findingf("service tree walk failed: %v — narrower sites were not censused", err)
-		return
 	}
 	declared := map[string]bool{}
 	for _, s := range a.p.NarrowerSites {
