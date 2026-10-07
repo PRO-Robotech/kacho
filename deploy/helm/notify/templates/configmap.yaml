@@ -43,6 +43,12 @@ data:
   # Значения — профиля установки, умолчаний в чарте нет: пустое доезжает до
   # процесса и отвергается стражем с именем ручки. Каталог ключа отпечатка —
   # путь монтирования тома объекта ключа (тот же помощник, что у тома).
+  # KACHO_NOTIFY_SECRET_RELOAD_INTERVAL здесь не стоит: это интервал, а не
+  # секрет, но имя переменной с «SECRET» карта нести не может — гейт IaC
+  # (KSV-0109) судит ключи карты по имени, а исключение в `.trivyignore.yaml`
+  # пофайловое и сняло бы суждение со всей карты. Ручка — литералом `env`
+  # контейнера notify (deployment.yaml); смена значения меняет шаблон пода и
+  # перекатывает его.
   KACHO_NOTIFY_FEEDBACK_MAILBOX_ADDR: {{ tpl (.Values.feedback.mailboxAddr | toString) $ | quote }}
   KACHO_NOTIFY_FEEDBACK_MAILBOX_LOCAL_PART: {{ .Values.feedback.mailboxLocalPart | toString | quote }}
   KACHO_NOTIFY_RETURN_DOMAIN: {{ .Values.returnDomain | toString | quote }}
@@ -59,7 +65,6 @@ data:
   KACHO_NOTIFY_SUPPRESSION_SOFT_WINDOW: {{ .Values.suppression.softWindow | toString | quote }}
   KACHO_NOTIFY_SUPPRESSION_SOFT_TTL: {{ .Values.suppression.softTTL | toString | quote }}
   KACHO_NOTIFY_SUPPRESSION_SWEEP_INTERVAL: {{ .Values.suppression.sweepInterval | toString | quote }}
-  KACHO_NOTIFY_SECRET_RELOAD_INTERVAL: {{ .Values.secretReloadInterval | toString | quote }}
   KACHO_NOTIFY_ADDRESS_KEY_DIR: {{ include "notify.addressKeyDir" . | quote }}
   KACHO_NOTIFY_REPUTATION_HARD_BOUNCE_RATE_MAX: {{ .Values.reputation.hardBounceRateMax | toString | quote }}
   KACHO_NOTIFY_REPUTATION_COMPLAINT_RATE_MAX: {{ .Values.reputation.complaintRateMax | toString | quote }}

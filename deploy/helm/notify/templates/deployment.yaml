@@ -147,6 +147,12 @@ spec:
                 secretKeyRef:
                   name: {{ $dbpwName | quote }}
                   key: {{ $dbpw.key | quote }}
+            # Интервал перечитывания объектов секрета (NTF-4 Р11, Р16) — значение
+            # профиля без умолчания: пустое доезжает до процесса и отвергается
+            # стражем с именем ручки. Не ключом карты: имя с «SECRET» в карте —
+            # находка KSV-0109 (configmap.yaml).
+            - name: KACHO_NOTIFY_SECRET_RELOAD_INTERVAL
+              value: {{ .Values.secretReloadInterval | toString | quote }}
             # Ключ сетки — только переменной secretKeyRef (З24): объект чарта
             # `<полное имя>-recipient-key` либо объект стенда (Д123).
             - name: KACHO_NOTIFY_RECIPIENT_KEY

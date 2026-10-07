@@ -24,7 +24,8 @@ package deploy_test
 // Утверждения по каждой цепочке stacks.txt, где рендерятся объекты notify:
 //
 //	(а) каждая обязательная ручка видна контейнеру `notify`;
-//	(б) значение ключа карты не пусто — пустое страж отверг бы на старте;
+//	(б) значение ключа карты либо литерала `env` не пусто — пустое страж
+//	    отверг бы на старте;
 //	(в) KACHO_NOTIFY_ADDRESS_KEY_DIR — путь монтирования тома объекта ключа
 //	    отпечатка: том целиком (без `items`), монтирование без `subPath`,
 //	    только чтение (Р11, Д23).
@@ -131,19 +132,18 @@ func notifyLoaderKnobs(t *testing.T) []string {
 }
 
 // notifyPodKnobs — переменные, видимые контейнеру `notify` рендера: имя →
-// значение (для ключа карты) либо "<ref>" (запись env со ссылкой). objs == 0 —
-// notify в рендере нет.
+// значение (ключа карты либо литерала env) или "<ref>" (запись env со
+// ссылкой). objs == 0 — notify в рендере нет.
 type notifyPodView struct {
-	objs    int
-	vars    map[string]string
-	fromMap map[string]bool
-	keyDir  string // путь монтирования тома объекта ключа отпечатка (нарушения — в keyBad)
-	keyBad  []string
+	objs   int
+	vars   map[string]string
+	keyDir string // путь монтирования тома объекта ключа отпечатка (нарушения — в keyBad)
+	keyBad []string
 }
 
 func notifyPodKnobs(t *testing.T, rendered string) notifyPodView {
 	t.Helper()
-	v := notifyPodView{vars: map[string]string{}, fromMap: map[string]bool{}}
+	v := notifyPodView{vars: map[string]string{}}
 	var mine []renderedObj
 	for _, o := range parseRendered(t, rendered) {
 		if strings.Contains(o.source, "/charts/notify/") || strings.HasPrefix(o.source, "notify/") {
@@ -174,7 +174,6 @@ func notifyPodKnobs(t *testing.T, rendered string) notifyPodView {
 				name := nstr(ndig(ef, "configMapRef", "name"))
 				for k, val := range maps[name] {
 					v.vars[k] = nstr(val)
-					v.fromMap[k] = true
 				}
 			}
 			for _, e := range nlist(cm["env"]) {
@@ -228,7 +227,7 @@ func judgeNotifyKnobs(knobs []string, v notifyPodView) []string {
 		switch {
 		case !ok:
 			out = append(out, env+": (а) рендер ручку не выводит — страж старта откажет «ручка не задана»")
-		case v.fromMap[env] && strings.TrimSpace(val) == "":
+		case strings.TrimSpace(val) == "":
 			out = append(out, env+": (б) значение пусто — страж старта отвергнет его с именем ручки")
 		}
 	}
@@ -332,9 +331,11 @@ func TestNotifyLoaderKnobsRenderInjections(t *testing.T) {
 		expectNamed("снята строка "+env, env, views)
 	}
 
-	// Пустое значение профиля.
+	// Пустое значение профиля — у ключа карты и у литерала `env`.
 	views, _ := notifyChainViews(t, notifyUmbrellaCopy(t, umbrellaCopyOpts{}), "notify.feedback.pollInterval=")
 	expectNamed("пустой notify.feedback.pollInterval", "KACHO_NOTIFY_FEEDBACK_POLL_INTERVAL", views)
+	views, _ = notifyChainViews(t, notifyUmbrellaCopy(t, umbrellaCopyOpts{}), "notify.secretReloadInterval=")
+	expectNamed("пустой notify.secretReloadInterval", "KACHO_NOTIFY_SECRET_RELOAD_INTERVAL", views)
 
 	// Том ключа отпечатка с subPath.
 	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
