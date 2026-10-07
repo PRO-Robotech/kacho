@@ -57,8 +57,8 @@ case-id обязан быть здесь литерально ИЛИ покры�
 
 | case-id | class | prio | проверка |
 |---|---|---|---|
-| `ANP-REG-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalRegion.Create rejected on public endpoint, accepted on internal |
-| `ANP-ZON-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalZone.Create rejected on public endpoint, accepted on internal |
+| `ANP-REG-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalRegion.Create on public endpoint → 501/12 edge route miss (method), body exact, before authN (kacho#3053); accepted on internal |
+| `ANP-ZON-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalZone.Create on public endpoint → 501/12 edge route miss (method), body exact, before authN (kacho#3053); accepted on internal |
 
 ## Authz matrix — `authz-deny.py`
 

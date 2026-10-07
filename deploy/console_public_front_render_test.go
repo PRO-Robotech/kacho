@@ -23,7 +23,11 @@
 //  3. серверный блок раздачи слушает порт `https` с `ssl`, а слушатель
 //     `redirect` — отдельный блок, в котором нет ничего, кроме `308` на
 //     ОБЪЯВЛЕННОЕ происхождение консоли (не на заголовок `Host`), то есть по
-//     http ни одна форма не обслуживается;
+//     http ни одна форма не обслуживается. Единственная законная полоса рядом —
+//     вызов решателя ACME (kacho#3024): ровно `location ^~
+//     /.well-known/acme-challenge/`, только GET, только к адресу решателя
+//     (`KACHO_UI_ACME_SOLVER_UPSTREAM`); полоса шире, с другими методами или к
+//     другому соседу — находка;
 //  4. происхождение консоли — `https`, и его хост назван в сертификате, который
 //     выписывается в смонтированный секрет;
 //  5. адрес клиента доезжает до раздачи (kacho#3028): Service несёт
@@ -47,13 +51,13 @@
 //     переписи не меньше одного, и «на всех цепочках со входом всё верно» не
 //     бывает истинным и пустым.
 //
-// Почему фикстура, а не профиль стенда. В профиле a8f60d вход сегодня
-// ВЫКЛЮЧЕН: выпуск сертификата на IP-литерал отвергнут решением владельца, вход
-// стенда переезжает на доменное имя (kacho#3024). Открытый http этой цепочки
-// при этом не прощён молча — его называет запись-исключение сверки
-// происхождения (console_origin_is_secure_test.go) с той же задачей. Фикстура
-// держит хост в зарезервированной зоне `.example` (RFC 2606): адреса стенда в
-// сверку не копируются.
+// Фикстура рядом с профилем стенда. Профиль a8f60d вход включает сам
+// (kacho#3024) — с поставщиком ACME из релиза и именем сертификата из
+// происхождения; его рендер судится в общем обходе цепочек. Фикстура держит
+// ВТОРОЙ вариант того же входа — с поставщиком площадки (`issuerRef`, ACME
+// чарта выключен) и именем, объявленным перечнем, — чтобы перепись не стала
+// односторонней по варианту. Хост фикстуры — в зарезервированной зоне
+// `.example` (RFC 2606): адреса стенда в сверку не копируются.
 //
 // Способность упасть — console_public_front_render_injection_test.go.
 package deploy_test
@@ -105,7 +109,9 @@ func selects(selector, labels map[string]any) bool {
 }
 
 var (
-	nginxServerBlock = regexp.MustCompile(`(?s)server \{(.*?)\n    \}`)
+	// Серверный блок карты — от `server {` в начале строки до `}` в начале
+	// строки: разобранная карта несёт блоки без отступа, их полосы — с отступом.
+	nginxServerBlock = regexp.MustCompile(`(?ms)^server \{(.*?)^\}`)
 	listenDirective  = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)(\s+ssl)?\s*;`)
 	redirectReturn   = regexp.MustCompile(`(?m)^\s*return 308 (\S+)\$request_uri;\s*$`)
 	nginxDirective   = regexp.MustCompile(`(?m)^\s*(proxy_pass|try_files|root|alias|fastcgi_pass|grpc_pass)\b`)
@@ -209,6 +215,53 @@ func judgeLaneForwardedFor(conf string) (findings []string, proxied int) {
 		findings = append(findings, "в карте настройки раздачи нет ни одной проксирующей полосы — п. 6 судить нечего")
 	}
 	return findings, proxied
+}
+
+// acmeSolverLaneHead — единственная законная полоса слушателя redirect рядом с
+// переадресацией: вызов решателя ACME (kacho#3024).
+const acmeSolverLaneHead = "^~ /.well-known/acme-challenge/"
+
+var (
+	acmeSolverBound  = regexp.MustCompile(`(?m)^\s*set\s+\$acme_solver\s+"\$\{KACHO_UI_ACME_SOLVER_UPSTREAM\}"\s*;`)
+	acmeGetOnly      = regexp.MustCompile(`(?m)^\s*limit_except\s+GET\s*\{\s*deny\s+all;\s*\}`)
+	acmeSolverLaneRe = regexp.MustCompile(`(?m)^[ \t]*location\s+\^~\s+/\.well-known/acme-challenge/\s*\{`)
+)
+
+// cutSolverLane — блок слушателя redirect без полосы решателя ACME и находки о
+// самой полосе. Полосы нет — блок как есть, находок нет: поставщик листа тогда
+// вне релиза, и порт 80 обязан только переадресовывать.
+func cutSolverLane(block string) (string, []string) {
+	loc := acmeSolverLaneRe.FindStringIndex(block)
+	if loc == nil {
+		return block, nil
+	}
+	depth, end := 1, -1
+	for i := loc[1]; i < len(block) && end < 0; i++ {
+		switch block[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = i
+			}
+		}
+	}
+	if end < 0 {
+		return block, []string{"тело полосы решателя ACME не закрыто"}
+	}
+	body := block[loc[1]:end]
+	var findings []string
+	if pp := proxyPassLine.FindStringSubmatch(body); pp == nil || pp[1] != "http://$acme_solver" {
+		findings = append(findings, "полоса решателя ACME передаёт запрос не адресу решателя (`proxy_pass http://$acme_solver`)")
+	}
+	if !acmeSolverBound.MatchString(body) {
+		findings = append(findings, "полоса решателя ACME не связывает `$acme_solver` с адресом решателя (KACHO_UI_ACME_SOLVER_UPSTREAM)")
+	}
+	if !acmeGetOnly.MatchString(body) {
+		findings = append(findings, "полоса решателя ACME принимает не только GET — по http не должно приниматься ничего, кроме вызова решателя")
+	}
+	return block[:loc[0]] + block[end+1:], findings
 }
 
 // judgePublicFronts — НАХОДКИ по рендерам. Чистая функция.
@@ -356,6 +409,10 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 			case port == named["https"]:
 				say("порт https %d слушается без ssl", port)
 			case port == named["redirect"]:
+				block, solverFindings := cutSolverLane(block)
+				for _, f := range solverFindings {
+					say("слушатель redirect %d: %s", port, f)
+				}
 				ret := redirectReturn.FindStringSubmatch(block)
 				switch {
 				case ret == nil:
@@ -427,8 +484,8 @@ const publicFrontFixtureStack = "a8f60d"
 // `.example` (RFC 2606), не адрес стенда.
 const publicFrontFixtureOrigin = "https://console.stand.example"
 
-// publicFrontFixtureSets — вход, включённый ручками чарта: ровно те, что
-// объявляет профиль, переводя стенд на вход по доменному имени.
+// publicFrontFixtureSets — вход, включённый ручками чарта, с поставщиком
+// площадки вместо поставщика из релиза.
 var publicFrontFixtureSets = []string{
 	"global.kacho.identity.appBaseURL=" + publicFrontFixtureOrigin,
 	"uif.publicFront.enabled=true",
@@ -436,6 +493,8 @@ var publicFrontFixtureSets = []string{
 	"uif.publicFront.tls.certificate.create=true",
 	"uif.publicFront.tls.certificate.issuerRef.name=console-public",
 	"uif.publicFront.tls.certificate.dnsNames[0]=console.stand.example",
+	"uif.publicFront.tls.certificate.namesFromOrigin=false",
+	"uif.publicFront.acme.enabled=false",
 }
 
 // readPublicFrontRenders — рендер каждой цепочки с её объявленным

@@ -64,7 +64,10 @@
 #
 # Из (а) ВЫЧИТАЕТСЯ то, что производит сам выкат: `kind: Secret` рендера и
 # `spec.secretName` каждого `Certificate` — их чеканит cert-manager из того же
-# применения, требовать их ДО него значило бы требовать невозможного.
+# применения, требовать их ДО него значило бы требовать невозможного. Вычитается
+# ПАРОЙ (namespace, имя): Certificate в другом namespace секрета в ns релиза не
+# производит, и опора пода на секрет того же имени — опора на копию, которую
+# предполёт требует и сверяет с источником (kacho#3054).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ВЕЛИЧИНА ПОРОЖДАЕТСЯ ОДНАЖДЫ И ПЕРЕИСПОЛЬЗУЕТСЯ
@@ -90,6 +93,8 @@
 #   1  недостающие остались: на управляемом кластере — всегда (их заводит не
 #      этот скрипт), на локальном — если у секрета нет рецепта либо чеканка
 #      отказала. Каждый назван поимённо вместе с производителем
+#      Либо копия секрета, рождённого в другом namespace, не от текущего
+#      источника (источника нет либо сертификат в нём другой)
 #   2  ПРЕДПОСЫЛКА ИСЧЕЗЛА: нет helm/kubectl/python3, кластер не отвечает,
 #      цепочка стенда не прочиталась, рендер отказал либо требуемых секретов
 #      выведено НОЛЬ. «Ноль находок» обязано быть отличимо от «ноль прочитанного»
@@ -148,72 +153,83 @@ seed_verb='create secret'
 # Разрыв виден глазом и ничего не обходит: имя секрета здесь не создаётся.
 SEED_NAMES="$(grep -oE "$seed_verb generic [a-z0-9][a-z0-9-]*" "$SEED_SH" | awk '{print $4}' | sort -u)"
 [ -n "$SEED_NAMES" ] || die "из посева $SEED_SH не прочитано ни одного имени секрета — судить (б) нечем" 2
-REQUIRED="$(
+# Перечень — ПАРАМИ (namespace, имя), а не именами (kacho#3054). Прежде множество
+# «производится применением» собиралось по имени: Certificate корня внутреннего CA,
+# рождённого в пространстве ресурсов cert-manager (`caNamespace` ≠ ns релиза),
+# засчитывал произведённым и секрет ТОГО ЖЕ ИМЕНИ в ns релиза — копию, которую не
+# производит никто. Предполёт её не требовал, поды вставали на устаревшей копии, и
+# хоп к соседу отказывал после первого перевыпуска корня.
+#
+# Строки вывода: `need <имя>` — требуется в ns релиза; `copy <имя> <ns>` — то же
+# имя производит Certificate в ДРУГОМ ns, то есть требуется копия чужого секрета,
+# и её мало иметь: она обязана быть от ТЕКУЩЕГО секрета-источника (сверка ниже).
+NEEDS="$(
     printf '%s\n' "$RENDER" | python3 -c '
 import sys, yaml
+rel=sys.argv[2]
 docs=[d for d in yaml.safe_load_all(sys.stdin) if isinstance(d, dict)]
-# Производит сам выкат: Secret рендера и то, что чеканит cert-manager по Certificate.
-made={d["metadata"]["name"] for d in docs if d.get("kind")=="Secret"}
-made|={(d.get("spec") or {}).get("secretName") for d in docs if d.get("kind")=="Certificate"}
-made.discard(None)
+def ns_of(d):
+    return ((d.get("metadata") or {}).get("namespace")) or rel
+# Производит сам выкат: Secret рендера и то, что чеканит cert-manager по
+# Certificate, — каждый В СВОЁМ namespace.
+made=set()
+for d in docs:
+    if d.get("kind")=="Secret":
+        made.add((ns_of(d), d["metadata"]["name"]))
+    if d.get("kind")=="Certificate" and (d.get("spec") or {}).get("secretName"):
+        made.add((ns_of(d), d["spec"]["secretName"]))
 # Имя, названное в аргументах задания (Job) ТОГО ЖЕ применения, этим
 # применением и заводится (напр. `--secret-name=…` у создателя удостоверения
-# вебхука допуска). Требовать его ДО применения значит требовать невозможного.
+# вебхука допуска) — в namespace задания. Требовать его ДО применения значит
+# требовать невозможного.
 for d in docs:
     if d.get("kind")!="Job": continue
     pod=((d.get("spec") or {}).get("template") or {}).get("spec") or {}
     for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
         for a in (c.get("command") or [])+(c.get("args") or []):
             for part in str(a).replace("="," ").split():
-                made.add(part)
+                made.add((ns_of(d), part))
 need=set()
-def scan(pod):
+referenced=set()
+def scan(pod, ns):
     for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
         for e in c.get("env") or []:
             r=(e.get("valueFrom") or {}).get("secretKeyRef")
-            if r and not r.get("optional", False): need.add(r["name"])
+            if r:
+                referenced.add((ns, r["name"]))
+                if not r.get("optional", False): need.add((ns, r["name"]))
         for ef in c.get("envFrom") or []:
             r=ef.get("secretRef")
-            if r and not r.get("optional", False): need.add(r["name"])
+            if r:
+                referenced.add((ns, r["name"]))
+                if not r.get("optional", False): need.add((ns, r["name"]))
     for v in pod.get("volumes") or []:
         s=v.get("secret")
-        if s and s.get("secretName") and not s.get("optional", False): need.add(s["secretName"])
+        if s and s.get("secretName"):
+            referenced.add((ns, s["secretName"]))
+            if not s.get("optional", False): need.add((ns, s["secretName"]))
 for d in docs:
     spec=d.get("spec") or {}
     if d.get("kind")=="Pod":
-        scan(spec); continue
+        scan(spec, ns_of(d)); continue
     tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
-    if tpl: scan(tpl.get("spec") or {})
+    if tpl: scan(tpl.get("spec") or {}, ns_of(d))
 # (б) ПОСЕВ: имя требуется, только если рендер на него ССЫЛАЕТСЯ (любой
 # ссылкой, обязательной или нет). Прежде требование ветвилось ещё и по посадке
 # службы (второй фактор читался только под `own`); посадка у службы одна
 # (kaname#363), и ключа посадки в её настройках нет (kacho#2818) — ветвиться
 # больше не по чему.
-referenced=set()
-def scan_any(pod):
-    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
-        for e in c.get("env") or []:
-            r=(e.get("valueFrom") or {}).get("secretKeyRef")
-            if r: referenced.add(r["name"])
-        for ef in c.get("envFrom") or []:
-            r=ef.get("secretRef")
-            if r: referenced.add(r["name"])
-    for v in pod.get("volumes") or []:
-        s=v.get("secret")
-        if s and s.get("secretName"): referenced.add(s["secretName"])
-for d in docs:
-    spec=d.get("spec") or {}
-    if d.get("kind")=="Pod":
-        scan_any(spec); continue
-    tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
-    if tpl: scan_any(tpl.get("spec") or {})
-seed=[n for n in sys.argv[1].split() if n]
-for n in seed:
-    if n not in referenced or n in made: continue
-    need.add(n)
-print("\n".join(sorted(n for n in need if n not in made)))
-' "$SEED_NAMES" | sort -u | grep -v '^$'
+for n in [n for n in sys.argv[1].split() if n]:
+    if (rel, n) in referenced: need.add((rel, n))
+for ns, n in sorted(need):
+    if (ns, n) in made: continue
+    print("need", n)
+    for mns, mn in sorted(made):
+        if mn == n and mns != ns: print("copy", n, mns)
+' "$SEED_NAMES" "$NS"
 )" || die "перечень требуемых секретов не выведен (причина выше)" 2
+REQUIRED="$(printf '%s\n' "$NEEDS" | awk '$1=="need"{print $2}' | sort -u)"
+COPIES="$(printf '%s\n' "$NEEDS" | awk '$1=="copy"{print $2" "$3}')"
 
 req_n="$(printf '%s\n' "$REQUIRED" | grep -c .)"
 [ "$req_n" -gt 0 ] || die "требуемых секретов выведено НОЛЬ — обход слеп, а не стенд готов" 2
@@ -238,6 +254,50 @@ for s in $REQUIRED; do
        существующей. Выкатка не применена; повтори, когда кластер отвечает." 2
   [ "$st" = present ] || missing="$missing $s"
 done
+
+# ── КОПИЯ ЧУЖОГО СЕКРЕТА: есть — мало, обязана быть от ТЕКУЩЕГО источника ────
+# cert_fp <ns> <имя> — отпечаток SHA-256 сертификата из ключа tls.crt; «absent» —
+# секрета нет (NotFound). Фильтр jsonpath работает на стороне клиента: сервер
+# отдаёт объект ЦЕЛИКОМ, и учётка, исполняющая проверку, обязана иметь get на весь
+# секрет-источник — у источника корня это и закрытый ключ корня. Право чтения
+# секрета до одного ключа не сужается; выдавать его как «чтение сертификата» нельзя.
+# В вывод идёт только «совпадает/нет», отпечаток и содержимое не печатаются. Ветвь
+# исполняется, лишь когда профиль опирается на копию (на дереве — ни одна цепочка).
+# Отказ сервера — код 2 и его текст: «не знаю» ≠ «нет».
+cert_fp() {
+  local out
+  if ! out="$(kubectl -n "$1" get secret "$2" -o 'jsonpath={.data.tls\.crt}' 2>&1)"; then
+    case "$out" in *"(NotFound)"*) echo absent; return 0 ;; esac
+    printf '%s' "$out"; return 2
+  fi
+  printf '%s' "$out" | base64 -d 2>/dev/null | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/^[^=]*=//'
+}
+stale=""
+while read -r name src; do
+  [ -n "$name" ] || continue
+  case " $missing " in *" $name "*) continue ;; esac
+  want="$(cert_fp "$src" "$name")" || die "секрет-источник $name в ns $src прочитать НЕ УСТАНОВЛЕНО — сервер
+       ответил отказом: $want
+       Без источника копию не с чем сверить; «не прочитал» не равно «совпало»." 2
+  have="$(cert_fp "$NS" "$name")" || die "копию $name в ns $NS прочитать НЕ УСТАНОВЛЕНО — сервер ответил
+       отказом: $have" 2
+  if [ "$want" != absent ] && [ -n "$want" ] && [ -n "$have" ] &&
+    [ "$have" = "$want" ]; then
+    log "копия $name в ns $NS — от текущего источника в ns $src"
+    continue
+  fi
+  stale="$stale $name:$src"
+done <<<"$COPIES"
+if [ -n "$stale" ]; then
+  for c in $stale; do
+    printf '  %s в ns %s — не от текущего корня: источник в ns %s отсутствует либо несёт другой сертификат\n' \
+      "${c%%:*}" "$NS" "${c#*:}" >&2
+  done
+  die "выкатка НЕ применена: под опирается на копию секрета, рождённого в другом namespace, и
+       копия не от текущего корня. Поды встали бы (секрет существует), а хоп к соседу
+       отказывал бы на листе нового корня. Копию не производит ни чарт, ни этот скрипт:
+       опора на неё — дефект профиля; якорь хопа — ca.crt секрета листа соседа (kacho#3054)."
+fi
 
 if [ -z "$missing" ]; then
   log "стенд $STACK: требуется $req_n, на месте $req_n, отсутствует 0."
@@ -270,7 +330,9 @@ producer_of() {
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
     stand-cloud-admin)  echo "адрес и пароль первого администратора облака (ключи email + password; kacho#2878) — на площадке заводит оператор, человека заводит шаг bootstrap-cloud-admin" ;;
-    *)                        echo "" ;;
+    *)                        copy_src="$(printf '%s\n' "$COPIES" | awk -v n="$1" '$1==n{print $2; exit}')"
+                              [ -n "$copy_src" ] && { echo "КОПИЯ секрета из ns $copy_src — её не производит ни чарт, ни оператор по рецепту; опора на неё — дефект профиля, якорь хопа — ca.crt секрета листа соседа (kacho#3054)"; return 0; }
+                              echo "" ;;
   esac
 }
 

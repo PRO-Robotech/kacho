@@ -88,6 +88,16 @@ spec:
                 port:
                   name: tls
           {{- end }}
+          # Объявление церемонии OAuth (kacho#3060): ТОЧНОЕ совпадение, тот же
+          # адрес, что у полосы раздачи. Соседи под `/.well-known/` достаются
+          # консоли, а не краю (запрет #6: наружу ровно один адрес).
+          - path: /.well-known/oauth-authorization-server
+            pathType: Exact
+            backend:
+              service:
+                name: {{ $edge }}
+                port:
+                  name: tls
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
