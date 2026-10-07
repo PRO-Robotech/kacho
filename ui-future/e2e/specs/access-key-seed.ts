@@ -125,7 +125,16 @@ interface RegistrationChallenge {
 export async function seedAccessKey(
   seed: Seed,
   baseURL: string | undefined,
-  { userVerification }: { userVerification: boolean },
+  {
+    userVerification,
+    name,
+    description,
+  }: {
+    userVerification: boolean;
+    /** Имя и описание ключа — их задаёт сценарий (посев К′ приёмки F8, группа L); не названы — не посылаются. */
+    name?: string;
+    description?: string;
+  },
 ): Promise<SeededAccessKey> {
   const origin = originOf(baseURL);
   const me = await seed.read(SESSION_IDENTITY);
@@ -175,6 +184,8 @@ export async function seedAccessKey(
   const finishPath = `/iam/v1/users/${userId}/accessKeys`;
   const finished = await seed.api.post(finishPath, {
     data: {
+      ...(name === undefined ? {} : { name }),
+      ...(description === undefined ? {} : { description }),
       credential: {
         id: credentialId.toString("base64"),
         clientDataJson: clientDataJSON.toString("base64"),
@@ -231,11 +242,12 @@ export interface PageAuthenticator {
 }
 
 /**
- * Виртуальный аутентификатор браузера страницы с удостоверением посева К —
- * ДО открытия страницы сценария; обращений страницы не порождает. `k` — номер
- * контекста браузера в сценарии по порядку входа (§6.0 шаг 3).
+ * Виртуальный аутентификатор браузера страницы БЕЗ удостоверений — шаг 1 посева К
+ * дословно (§6.0): `ctap2`, `internal`, резидентный ключ, проверка пользователя
+ * по `userVerification`, флаги резервного копирования `false`. Удостоверение в
+ * нём заводит либо посев (`authenticatorWithKey`), либо экран страницы.
  */
-export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k = 1): Promise<PageAuthenticator> {
+export async function pageAuthenticator(page: Page, userVerification: boolean): Promise<PageAuthenticator> {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable", { enableUI: false });
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -243,13 +255,23 @@ export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k =
       protocol: "ctap2",
       transport: "internal",
       hasResidentKey: true,
-      hasUserVerification: key.userVerification,
-      isUserVerified: key.userVerification,
+      hasUserVerification: userVerification,
+      isUserVerified: userVerification,
       automaticPresenceSimulation: true,
       defaultBackupEligibility: false,
       defaultBackupState: false,
     },
   });
+  return { cdp, authenticatorId };
+}
+
+/**
+ * Виртуальный аутентификатор браузера страницы с удостоверением посева К —
+ * ДО открытия страницы сценария; обращений страницы не порождает. `k` — номер
+ * контекста браузера в сценарии по порядку входа (§6.0 шаг 3).
+ */
+export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k = 1): Promise<PageAuthenticator> {
+  const { cdp, authenticatorId } = await pageAuthenticator(page, key.userVerification);
   await cdp.send("WebAuthn.addCredential", {
     authenticatorId,
     credential: {

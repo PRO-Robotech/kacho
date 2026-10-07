@@ -18,7 +18,9 @@ const COMPLETE_KEYS = ["code", "csrfToken", "email", "newPassword"];
 
 /** Ключи тела сверх объявленных — пусто, когда тело ровно объявленное. */
 function undeclared(body: Record<string, unknown> | null, declared: readonly string[]): string[] {
-  return Object.keys(body ?? {}).filter((k) => !declared.includes(k)).sort();
+  return Object.keys(body ?? {})
+    .filter((k) => !declared.includes(k))
+    .sort();
 }
 
 /** Члены объединения `FormKind` в исходнике клиента — разбором, а не счётом строк. */
@@ -76,11 +78,18 @@ describe("F8S3-17 · клиент полосы и глаголы восстан�
 
   it("F8S3-17 · FormKind несёт recovery и recovery-complete — видов на два больше базы", () => {
     // База — 10 видов на голове сборки (8 на 9b14ae7f01c из N12 и два вида входа
-    // ключом, F8-S4); S3 добавляет ровно два.
+    // ключом, F8-S4); S3 добавляет ровно два; вид первого пароля (приёмка F8,
+    // ред. 12, F8-67) — ещё один, его держит проба ниже.
     const kinds = formKinds();
     expect(kinds).toEqual(expect.arrayContaining(["recovery", "recovery-complete"]));
-    expect(kinds).toHaveLength(12);
+    expect(kinds.filter((k) => k !== "password-enroll")).toHaveLength(12);
     expect(new Set(kinds).size).toBe(kinds.length);
+  });
+
+  it("F8-67 · FormKind длиннее своей базы ровно на password-enroll", () => {
+    // База — 12 видов головы сборки до S2 ред. 12 (F8S3-17 выше).
+    const kinds = formKinds();
+    expect({ hasEnroll: kinds.includes("password-enroll"), size: kinds.length }).toEqual({ hasEnroll: true, size: 13 });
   });
 
   it("пути глаголов — точные, как их объявляет служба и ретранслирует край", () => {

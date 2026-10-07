@@ -109,6 +109,29 @@ export const SESSION_NOT_FRESH = laneRefusal(
   "SESSION_NOT_FRESH",
 );
 
+/**
+ * Сессия не свежа на глаголе ключа доступа (Ф7) — отказ службы СИНХРОННО, до
+ * операции (приёмка F8, N28): `api/access_keys/refusals.go` `sessionNotFresh` →
+ * `withReason(PERMISSION_DENIED, SESSION_NOT_FRESH, TextSessionNotFresh)` с
+ * `ErrorInfo` домена отказа службы. Глаголы Ф7 — поверхность платформы, а не
+ * полоса формы: тело отдаёт край разбором `google.rpc.Status` по-умолчанию
+ * (`403`, `{code, message, details}`, `Content-Type: application/json`).
+ * Средство оси 3 (Р9) у F8-51 и F8-57: подставляется ТОЛЬКО первый ответ.
+ */
+export const ACCESS_KEY_SESSION_NOT_FRESH: ProducerAnswer = {
+  producer:
+    "kaname api/access_keys.sessionNotFresh → withReason(PERMISSION_DENIED, SESSION_NOT_FRESH, TextSessionNotFresh) → край: google.rpc.Status 403",
+  status: 403,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    code: 7,
+    message: "re-authentication required: present a credential again",
+    details: [
+      { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: REFUSAL_DOMAIN },
+    ],
+  }),
+};
+
 /** Край: служба не ответила о предъявленном на глаголе с носителем (KA1, Р1) — носитель цел. */
 export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE);
 

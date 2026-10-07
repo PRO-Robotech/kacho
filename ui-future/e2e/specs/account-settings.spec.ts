@@ -20,6 +20,7 @@ import {
 } from "./ceremony-seed";
 import { CANCELLED_BY_PAGE, ceremonyCensus, formatCall, test, type CeremonyCall, type CeremonyCensus } from "./fixtures";
 import { challengeError } from "../../shared/src/api/step-up";
+import { conditionNotCreated } from "./mail-receiver";
 import { EDGE_CREDENTIAL_STATE_UNKNOWN, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
@@ -448,6 +449,83 @@ test("F8-25 · служба молчит на глаголе с носителе
     await expect(s.password.refusal, "ответ края не назван на экране").toContainText(ended.message);
     expect(new URL(page.url()).pathname, "консоль ушла с экрана параметров").toBe("/settings");
     expect(await bearerOf(page.context()), "консоль погасила носитель сессии").toBe(before);
+  });
+});
+
+// ═══ S2 — группа M. Первый пароль из живой сессии (Р13) ══════════════════════
+
+const PASSWORD_ENROLL = "/iam/v1/auth/password/enroll";
+
+test("F8-63 · человек с паролем выбрал заведение: отказ службы назван, путь к смене дан", async ({
+  page,
+}, testInfo) => {
+  // verifies #3058 — близнец F8-23: изменено только то, какую форму раздела
+  // человек отправил. Положительный путь первого пароля браузером на стенде не
+  // строим (N32: человека без пароля продукт действием не заводит) — его держит
+  // модульная F8-62; здесь утверждается строимое: глагол достигнут сквозь край,
+  // признак своего вида принят, отказ состояния — СЛУЖБЫ, а не края.
+  await withHuman(testInfo, "F8-63", page.context(), async (_seed, human) => {
+    const census = ceremonyCensus(page.context());
+    const s = await openSettings(page);
+    const before = await bearerOf(page.context());
+    const enroll = s.password.region.getByRole("button", { name: "У меня нет пароля — завести" });
+    await expect(enroll, "раздел «Пароль» не предлагает завести пароль (Р13)").toBeVisible();
+    const issued = page.waitForResponse((r) => {
+      const u = new URL(r.url());
+      return u.pathname === LANE.csrf && u.searchParams.get("form") === "password-enroll";
+    });
+    await enroll.click();
+    // П5 (§4): служба стенда знает вид признака `password-enroll`. Не знает — она
+    // отвечает отказом поля `form` на выдаче признака, и глагол недостижим.
+    const token = await issued;
+    if (token.status() !== 200) {
+      const text = await token.text();
+      if (/Illegal argument form:/.test(text)) {
+        conditionNotCreated(
+          `условие не создано (приёмка F8, §4 П5): служба стенда не знает вид признака формы password-enroll — ` +
+            `${token.status()} ${text.slice(0, 200)}`,
+        );
+      }
+    }
+    // Пароль F8-63 проходит правило службы и отличен от пароля посева: служба
+    // судит правило РАНЬШЕ, чем «пароль уже есть» (password_enroll.go:121 против :141).
+    await s.password.next.fill(`${human.password}-F863`);
+    const [res] = await Promise.all([
+      lanePost(page, PASSWORD_ENROLL),
+      s.password.region.getByRole("button", { name: "Завести пароль" }).click(),
+    ]);
+    // П5 (§4): глагол достигнут сквозь край только тогда, когда отвечает ПОЛОСА
+    // службы — её отказ несёт `ErrorInfo` домена отказа службы. Иной ответ
+    // (путь не ретранслирован, край судит его как путь платформы) — условие
+    // стенда, а не исход экрана: признаков два — статус не 409 и нет отказа полосы.
+    if (res.status() !== 409) {
+      const text = await res.text();
+      const laneRefusal = /"domain"\s*:\s*"iam\.kaname\.cloud"/.test(text);
+      if (!laneRefusal) {
+        conditionNotCreated(
+          `условие не создано (приёмка F8, §4 П5): глагол ${PASSWORD_ENROLL} на стенде не достигнут сквозь край — ` +
+            `${res.status()} ${text.slice(0, 200)}`,
+        );
+      }
+    }
+    expectContains(census, "GET", LANE.csrf, "?form=password-enroll");
+    expectContains(census, "POST", PASSWORD_ENROLL);
+    expect(res.status(), `заведение у человека с паролем: ${await res.text()}`).toBe(409);
+    const refusal = (await res.json()) as { code: number; message: string; details?: Array<{ reason?: string }> };
+    expect({
+      code: refusal.code,
+      message: refusal.message,
+      reasons: (refusal.details ?? []).map((d) => d.reason),
+    }).toEqual({
+      code: 6,
+      message: "password is already set; change it with the current password",
+      reasons: ["PASSWORD_ALREADY_SET"],
+    });
+    await expect(s.password.region, "отказ службы не назван дословно").toContainText(refusal.message);
+    await expect(s.password.current, "раздел не вернул к форме смены пароля").toBeVisible();
+    await expect(s.password.submit).toBeVisible();
+    expect(await bearerOf(page.context()), "носитель сессии изменился при отказе").toBe(before);
+    expectNoProvider(census);
   });
 });
 

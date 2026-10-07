@@ -41,7 +41,12 @@ interface Wire {
  * Ответ так, как его видит `fetch`: статус, заголовки, текст тела. Как у
  * браузера, отмена обращения после заголовков срывает чтение тела.
  */
-function response(status: number, body: unknown, headers: Record<string, string>, signal?: AbortSignal | null): Response {
+function response(
+  status: number,
+  body: unknown,
+  headers: Record<string, string>,
+  signal?: AbortSignal | null,
+): Response {
   const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
   return {
     ok: status >= 200 && status < 300,
@@ -231,7 +236,8 @@ function orderBreaches(tape: Tape, verb: string): string[] {
   const cancel = at(tape, `отмена ${READ}`);
   if (cancel < 0 || cancel > issue) out.push("п. 1: чтение в полёте не отменено до выпуска глагола");
   const mutationDone = outcomeOf(tape, MUTATION);
-  if (mutationDone < 0 || mutationDone > issue) out.push("п. 1: мутация в полёте не дождалась исхода до выпуска глагола");
+  if (mutationDone < 0 || mutationDone > issue)
+    out.push("п. 1: мутация в полёте не дождалась исхода до выпуска глагола");
   const closed = at(tape, "поток закрыт 1");
   if (closed < 0 || closed > issue) out.push("п. 1: поток не закрыт до выпуска глагола");
   const between = tape.slice(issue + 1, done).filter((e) => e.startsWith("выпуск ") || e.startsWith("поток открыт"));
@@ -271,7 +277,11 @@ const ASSERTION_BODY = {
 
 /** Восемь глаголов, ставящих носитель, которые консоль зовёт в S1+S2 (N17) и S4. */
 const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Promise<unknown> }> = [
-  { name: "вход", verb: "POST /iam/v1/auth/login", run: () => loginLane.login(holder("login"), { email: "a@kacho.local", password: "p" }) },
+  {
+    name: "вход",
+    verb: "POST /iam/v1/auth/login",
+    run: () => loginLane.login(holder("login"), { email: "a@kacho.local", password: "p" }),
+  },
   {
     name: "регистрация",
     verb: "POST /iam/v1/auth/register",
@@ -287,7 +297,11 @@ const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Prom
     verb: "POST /iam/v1/auth/second-factor/confirm",
     run: () => loginLane.confirm(holder("second-factor"), "123456"),
   },
-  { name: "снятие", verb: "POST /iam/v1/auth/second-factor/remove", run: () => loginLane.remove(holder("second-factor"), byCode) },
+  {
+    name: "снятие",
+    verb: "POST /iam/v1/auth/second-factor/remove",
+    run: () => loginLane.remove(holder("second-factor"), byCode),
+  },
   {
     name: "перечеканка",
     verb: "POST /iam/v1/auth/second-factor/backup-codes",
@@ -653,7 +667,11 @@ describe("F8-46 · держатель способен упасть: обе ст
 
   it("F8-46 · консоль, упорядочивающая всякую отправку, — заведение второго фактора выпущено упорядочением: близнец красный", async () => {
     const verb = "POST /iam/v1/auth/second-factor/enroll";
-    const tape = await scenario(verb, () => orderedTransport.fetch("/iam/v1/auth/second-factor/enroll", { method: "POST" }, { setsCarrier: true }), "ответ");
+    const tape = await scenario(
+      verb,
+      () => orderedTransport.fetch("/iam/v1/auth/second-factor/enroll", { method: "POST" }, { setsCarrier: true }),
+      "ответ",
+    );
     expect(twinBreaches(tape, verb)).toEqual([
       "чтение в полёте отменено",
       "поток закрыт",
@@ -661,4 +679,50 @@ describe("F8-46 · держатель способен упасть: обе ст
       "обращение, начатое во время глагола, ждало его исхода",
     ]);
   });
+});
+
+describe("F8-67 · новые глаголы S2 и S4 носителя не ставят: в перечни Р10 не входят, чтения в полёте не отменяют", () => {
+  const ENROLL = "/iam/v1/auth/password/enroll";
+
+  it("F8-67 · заведения пароля нет ни в SETS_CARRIER, ни в CHANGES_FORM_CONTEXT; членство — равенством пути, смена пароля — есть", () => {
+    expect({
+      enroll: [SETS_CARRIER.has(ENROLL), CHANGES_FORM_CONTEXT.has(ENROLL)],
+      // Положительная сторона: `/iam/v1/auth/password` — начало той же строки — в
+      // SETS_CARRIER есть; сравнение по префиксу отнесло бы заведение к смене.
+      change: SETS_CARRIER.has(LOGIN_LANE.password),
+      declared: (LOGIN_LANE as Record<string, string>).passwordEnroll,
+      byPrefix: [...SETS_CARRIER].filter((p) => ENROLL.startsWith(p)),
+    }).toEqual({ enroll: [false, false], change: true, declared: ENROLL, byPrefix: [LOGIN_LANE.password] });
+  });
+
+  for (const outcome of OUTCOMES) {
+    it(`F8-67 · заведение первого пароля, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
+      const verb = `POST ${ENROLL}`;
+      const enroll = (
+        loginLane as unknown as Record<string, (h: FormTokenHolder, f: { newPassword: string }) => Promise<unknown>>
+      ).enrollPassword;
+      const tape = await scenario(
+        verb,
+        () => enroll(holder("password-enroll" as never), { newPassword: "p" }),
+        outcome,
+      );
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+  }
+
+  // Глаголы Ф7 зовёт клиент платформы — упорядочивающим транспортом, без
+  // признака «ставит носитель»: приём результата регистрации и снятие ключа.
+  const KEYS = "/iam/v1/users/usr-1/accessKeys";
+  for (const outcome of OUTCOMES) {
+    it(`F8-67 · приём результата регистрации ключа, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
+      const verb = `POST ${KEYS}`;
+      const tape = await scenario(verb, () => api.post(KEYS, { name: "k", credential: {} }), outcome);
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+    it(`F8-67 · снятие ключа, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
+      const verb = `DELETE ${KEYS}/ak-1`;
+      const tape = await scenario(verb, () => api.delete(`${KEYS}/ak-1`), outcome);
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+  }
 });
