@@ -38,6 +38,11 @@
 #      отказа обёртки «не файл каталога образцов». Близнец — контроль C.
 #   I4. каталога зонтика нет — п.2 «не выполнилось» с текстом отказа обёртки
 #      «каталог обязателен». Близнец — контроль C.
+#   I5. в `charts/` вернулся необъявленный подчарт поставщика (имя — отметка
+#      единственного дома `internal/identityvendor`, читаемая во время прогона,
+#      а не выписанная здесь) с одним Deployment — п.2 и п.4 «не выполнено»,
+#      подчарт назван. Близнец — контроль C: тот же зонтик без подчарта, где
+#      поставщика после kacho#1276 нет и ноль — исход, а не «не прочитано».
 #
 # Исходы — по контракту `outcome.sh`: 0 зелёный, 1 находка, 2 условие не создано.
 set -uo pipefail
@@ -95,7 +100,7 @@ commit_copy() {
   fi
   if ! git -C "$1" -c user.name=ntf2-inject -c user.email=ntf2-inject@invalid \
          -c core.hooksPath=/dev/null -c commit.gpgsign=false \
-         commit -q --no-verify --allow-empty -m "$2" >/dev/null 2>"$WORK/commit.err"; then
+         commit -q --allow-empty -m "$2" >/dev/null 2>"$WORK/commit.err"; then
     echo "коммит копии не сделан: $(cat "$WORK/commit.err")" >&2; return 2
   fi
 }
@@ -203,5 +208,33 @@ refusal_case I4-umbrella "каталог обязателен" rm -rf deploy/hel
 # Близнец I2–I4 — контроль C: та же копия с таблицей, образцом и зонтиком на
 # месте дала у п.2 «выполнено» либо «не выполнено» (утверждено выше).
 
-findings_verdict "копий дерева: контроль и инъекций 4 (I1–I4)"
+# ── I5. необъявленный подчарт поставщика вернулся в charts/ ─────────────────
+# Имя подчарта собирается из отметки словаря во время прогона: литерал имени
+# в развёртывании — единица потолка привязок к снятому поставщику.
+MARK="$(cd "$REPO" && go doc -u ./internal/identityvendor marks 2>"$WORK/mark.err" \
+  | awk '/^var marks = /{d=1} d{while (match($0, /"[^"]*"/)) {print substr($0, RSTART+1, RLENGTH-2); $0=substr($0, RSTART+RLENGTH)}} d&&/}/{exit}' \
+  | grep -v / | head -n 1)"
+[ -n "$MARK" ] || fatal "I5: отметка поставщика из internal/identityvendor не прочитана: $(cat "$WORK/mark.err")"
+I5_CHART="$MARK-ntf2-inject"
+I5="$(make_copy i5)" || fatal "копия I5 не собрана"
+mkdir -p "$I5/deploy/helm/umbrella/charts/$I5_CHART/templates" || fatal "I5: каталог подчарта не создан"
+printf 'apiVersion: v2\nname: %s\nversion: 0.1.0\ntype: application\n' "$I5_CHART" \
+  >"$I5/deploy/helm/umbrella/charts/$I5_CHART/Chart.yaml" || fatal "I5: Chart.yaml подчарта не записан"
+printf 'enabled: true\n' >"$I5/deploy/helm/umbrella/charts/$I5_CHART/values.yaml" || fatal "I5: values.yaml подчарта не записан"
+printf 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: ntf2-inject\n' \
+  >"$I5/deploy/helm/umbrella/charts/$I5_CHART/templates/deployment.yaml" || fatal "I5: шаблон подчарта не записан"
+commit_copy "$I5" "I5: необъявленный подчарт поставщика в charts/" || fatal "I5: копия не закоммичена"
+run_probe "$I5" "$WORK/i5.out"
+for p in п.2 п.4; do
+  o="$(outcome_of "$WORK/i5.out" "$p")"
+  [ "$o" = "не выполнено" ] || fail "I5: $p дал «${o:-нет строки}», ожидалось «не выполнено»: $(grep "^$p:" "$WORK/i5.out")"
+  ok
+done
+grep -q "^п.4: не выполнено — .*$I5_CHART" "$WORK/i5.out" || fail "I5: п.4 не назвал вернувшийся подчарт $I5_CHART: $(grep '^п.4:' "$WORK/i5.out")"
+grep -qE "^  цепочка [^:]+: .*рабочих объектов поставщика 1$" "$WORK/i5.out" \
+  || fail "I5: ни одна цепочка не насчитала объекта вернувшегося подчарта: $(grep '^  цепочка' "$WORK/i5.out" | head -n 3)"
+echo "I5: $(grep '^п.4:' "$WORK/i5.out" | cut -c1-200)"
+ok
+
+findings_verdict "копий дерева: контроль и инъекций 5 (I1–I5)"
 exit 0
