@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/PRO-Robotech/corelib/notify/feed"
+	"github.com/PRO-Robotech/corelib/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
@@ -60,7 +61,7 @@ func TestLimits_NetHitsSeriesAreTheNetworkClasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: ленивый пул не собран: %v", err)
 	}
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	reg := prometheus.NewRegistry()
 	if _, err := limits.New(limits.Options{
 		Pool:       pool,
