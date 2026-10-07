@@ -8,6 +8,29 @@
      a pre-existing cert-manager in another namespace (e.g. beget-cert-manager). */}}
 {{- $caNs := $ca.caNamespace | default .Release.Namespace }}
 {{/*
+─── Root born OUTSIDE the release namespace has NO copy inside it (kacho#3054) ───
+
+With caNamespace ≠ release namespace the root secret lives only in caNamespace.
+A pod in the release namespace that mounts a secret of the same name mounts a
+COPY that this chart neither produces nor keeps in step with the root: after the
+root is re-issued the copy stays old, pods still start, and every peer leaf
+signed by the new root is refused. Producing the copy is not offered either:
+reading the root secret means reading the root PRIVATE KEY (a secret read cannot
+be narrowed to one of its keys). Every edge hop already has an anchor that
+cert-manager keeps next to the peer's own leaf (`ca.crt` of the peer's secret),
+always from the root that signed the leaf being presented — use that one.
+The edge knobs that name a trust anchor are judged here; any other reference to
+the copy is refused before apply by deploy/scripts/stack-secrets.sh.
+*/}}
+{{- if ne $caNs .Release.Namespace }}
+{{- range $knob := list "issuerKeySetsCa" "revocationCa" }}
+{{- $anchor := dig "api-gateway" "tokenAcceptance" $knob "secretName" "" $.Values.AsMap }}
+{{- if eq $anchor $ca.caSecretName }}
+{{- fail (printf "api-gateway.tokenAcceptance.%s.secretName=%s: корень внутреннего CA рождается в namespace %s, а не в namespace релиза %s — копию корня внутреннего CA чарт не производит и с корнем не сверяет. Якорь хопа — ca.crt секрета листа соседа (как у боевых цепочек), а не копия корня" $knob $anchor $caNs $.Release.Namespace) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{/*
 ─── SEC-F — cluster-internal mTLS PKI (internal-CA ClusterIssuer chain) ──────────
 
 Lives in the umbrella (cluster-scoped, shared by every component sub-chart). The
