@@ -29,6 +29,7 @@ import { useAuth } from "@shared/contexts/AuthContext";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { resolveMutationResponse } from "@shared/lib/operation-outcome";
+import { adminPlaneMutable, useAdminPlanePosture } from "@shared/lib/admin-plane-posture";
 
 export default function ClusterAdminsPage() {
   const qc = useQueryClient();
@@ -37,6 +38,11 @@ export default function ClusterAdminsPage() {
   const [grantOpen, setGrantOpen] = useState(false);
   const [revokeOpId, setRevokeOpId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  // Выдача «устаревшим путём» и отзыв — `InternalClusterService`: их обслуживает
+  // только admin-плоскость. На посадке без неё (и пока посадка не названа)
+  // кнопок нет — нажатие кончилось бы «маршрута нет» (#3091). Выдача через
+  // привязку доступа — публичный путь и от посадки не зависит.
+  const mutable = adminPlaneMutable(useAdminPlanePosture());
 
   const adminsQ = useQuery({
     queryKey: ["cluster-admins"],
@@ -157,6 +163,7 @@ export default function ClusterAdminsPage() {
       key: "actions",
       width: 60,
       render: (_v, row) => {
+        if (!mutable) return null;
         const isSelf = row.subject_id === currentUserId;
         const isLast = adminsCount === 1;
         const disabled = isSelf || isLast;
@@ -216,14 +223,16 @@ export default function ClusterAdminsPage() {
     // отвечал на вопрос, которого на этой странице не задают.
     <Space direction="vertical" size={16} style={{ width: "100%" }} data-testid="cluster-admins-page">
       <Space size={8} wrap>
-        <Button
-          type="primary"
-          icon={<UserAddOutlined />}
-          onClick={() => setGrantOpen(true)}
-          data-testid="cluster-admins-grant-button"
-        >
-          Добавить администратора (устаревший путь)
-        </Button>
+        {mutable && (
+          <Button
+            type="primary"
+            icon={<UserAddOutlined />}
+            onClick={() => setGrantOpen(true)}
+            data-testid="cluster-admins-grant-button"
+          >
+            Добавить администратора (устаревший путь)
+          </Button>
+        )}
         <Button
           icon={<UserAddOutlined />}
           onClick={() =>

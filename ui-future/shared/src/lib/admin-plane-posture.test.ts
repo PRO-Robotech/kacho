@@ -59,7 +59,8 @@ function namesTheLanding(services: string[]): boolean {
 describe("путь пробы посадки", () => {
   it("на пути пробы под GET — только внутренние службы: 404 там значит «плоскости нет», а не «ресурса нет»", () => {
     const services = getServices(routeTable(), ADMIN_PLANE_PROBE_PATH);
-    console.log(`[посадка] GET ${ADMIN_PLANE_PROBE_PATH}: ${services.join(", ") || "в таблице нет"}`);
+    // Перечень служб сверяется целиком: при провале он и есть объяснение.
+    expect(services).toEqual(["InternalClusterService"]);
     expect(namesTheLanding(services)).toBe(true);
   });
 

@@ -8,7 +8,6 @@
 // Подменены транспорт (ответ пробы посадки и списка) и соседи страницы, чьё
 // поведение здесь не предмет; вывод посадки и сама страница — настоящие.
 
-import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
