@@ -130,6 +130,11 @@ type frontUnderTest struct {
 	Conf, Resolver, Reload    string
 	Internal, HTTPS, Redirect int
 	Origin                    string
+	// Neighbours — ручки адресов соседей раздачи из рендера пода, кроме края:
+	// подъём даёт каждой немаршрутизируемый адрес. Перечень берётся из рендера,
+	// а не выписывается: сосед, которого рендер добавил (решатель ACME,
+	// kacho#3024), иначе остался бы без подстановки, и раздача не стартовала бы.
+	Neighbours []string
 }
 
 func frontFromRender(t *testing.T) frontUnderTest {
@@ -150,6 +155,13 @@ func frontFromRender(t *testing.T) frontUnderTest {
 				cs, _ := lookup(d, "spec", "template", "spec", "containers")
 				c := cs.([]any)[0].(map[string]any)
 				f.Image, _ = c["image"].(string)
+				for _, e := range slice(c, "env") {
+					name, _ := e.(map[string]any)["name"].(string)
+					if strings.HasPrefix(name, "KACHO_UI_") && strings.HasSuffix(name, "_UPSTREAM") &&
+						name != "KACHO_UI_API_GATEWAY_UPSTREAM" {
+						f.Neighbours = append(f.Neighbours, name)
+					}
+				}
 				for _, p := range c["ports"].([]any) {
 					pm := p.(map[string]any)
 					switch pm["name"] {
@@ -439,8 +451,11 @@ func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun 
 		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
 		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
 	}
-	for _, m := range []string{"DASHBOARD", "VPC", "IAM", "NLB", "REGISTRY", "SYSTEM", "COMPUTE", "STORAGE"} {
-		args = append(args, "-e", "KACHO_UI_"+m+"_UPSTREAM=127.0.0.1:9")
+	if len(front.Neighbours) == 0 {
+		t.Fatal("рендер пода раздачи не объявил ни одной ручки адреса соседа — подъём потерял предпосылку")
+	}
+	for _, n := range front.Neighbours {
+		args = append(args, "-e", n+"=127.0.0.1:9")
 	}
 	args = append(args, front.Image)
 	id := dockerOut(t, args...)

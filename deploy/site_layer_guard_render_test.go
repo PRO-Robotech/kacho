@@ -54,14 +54,15 @@ func renderWithSiteLayer(t *testing.T, chain []string, site string, sets ...stri
 }
 
 // Слой площадки пробы — НЕ заглушки (иначе близнец ничего не доказал бы) и не
-// чьи-то координаты: домен для проб (RFC 6761) и частная сеть.
+// чьи-то координаты: домен для проб (RFC 6761), и происхождение консоли — по
+// https: профиль стенда завершает TLS на крае и http-происхождения не примет.
 const probeSiteLayer = `global:
   kacho:
     identity:
       smtp:
         connectionURI: "smtps://sender%40mail.kacho.test@relay.kacho.test:465/"
         fromAddress: "sender@mail.kacho.test"
-      appBaseURL: "http://10.20.30.40"
+      appBaseURL: "https://console.kacho.test"
 `
 
 const probeSiteLayerMailOnly = `global:
