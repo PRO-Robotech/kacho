@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -116,12 +117,17 @@ func NewSourceGate(module string, sl SourceLimits, now func() time.Time, reg pro
 
 // Classes — классы, которые забирает `Claim` источника: на паузе источника
 // или при достигнутом суточном потолке потока — только security, иначе оба
-// (NTF1-H05, NTF1-H06). Пауза одного источника других не трогает.
+// класса контракта сети (NTF1-H05, NTF1-H06). Пауза одного источника других не
+// трогает. Классы `feed.LocalOnlyClasses` (obligation) в этот набор не входят
+// ни при каком исходе: строки этого класса ставит только владелец notify, Claim
+// сети их не выдаёт (NTF-5 Р12), и их пределы — свои (NTF-5 Р15).
 func (g *SourceGate) Classes(ceilingReached bool) []feed.Class {
 	if g.limits.Paused || ceilingReached {
 		return []feed.Class{feed.ClassSecurity}
 	}
-	return feed.Classes()
+	return slices.DeleteFunc(feed.Classes(), func(c feed.Class) bool {
+		return slices.Contains(feed.LocalOnlyClasses(), c)
+	})
 }
 
 // Take — сколько из n строк источник выдаёт сейчас по ведру: не больше n и
