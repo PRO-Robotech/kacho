@@ -62,6 +62,24 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mustSay: "что-то обслуживает",
 		},
 		{
+			name:    "полоса решателя ACME расширена до всего /.well-known/",
+			from:    "location ^~ /.well-known/acme-challenge/ {",
+			to:      "location ^~ /.well-known/ {",
+			mustSay: "что-то обслуживает",
+		},
+		{
+			name:    "полоса решателя ACME принимает любые методы",
+			from:    "limit_except GET {\n                deny all;\n            }\n",
+			to:      "",
+			mustSay: "не только GET",
+		},
+		{
+			name:    "полоса решателя ACME ведёт к краю",
+			from:    `set $acme_solver "${KACHO_UI_ACME_SOLVER_UPSTREAM}";`,
+			to:      `set $acme_solver "${KACHO_UI_API_GATEWAY_UPSTREAM}";`,
+			mustSay: "не связывает `$acme_solver`",
+		},
+		{
 			name: "сертификат не называет хост происхождения",
 			from: "    - " + host + "\n", to: "    - 192.0.2.250\n",
 			mustSay: "не назван ни в одном сертификате",
