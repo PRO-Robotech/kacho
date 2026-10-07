@@ -34,6 +34,15 @@ import { standTlsTrustArgs } from "./stand-tls-trust.ts";
  */
 const PRECONDITION_PROJECT = "precondition";
 
+/**
+ * Условие части набора — проба ключа доступа (приёмка F8-S4, §4 П4). Имя проекта
+ * несёт приставку `precondition:`: по ней гейт вердикта относит запись к условиям.
+ */
+const ACCESS_KEY_CONDITION_PROJECT = `${PRECONDITION_PROJECT}:access-key-origin`;
+const ACCESS_KEY_ORIGIN_CONDITION = "access-key-origin.precondition.ts";
+/** Пробы, которым нужен ключ доступа на стенде: файлы `*access-key*.spec.ts`. */
+const ACCESS_KEY_SPECS = /access-key[^/]*\.spec\.ts$/;
+
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
   throw new Error(
@@ -193,9 +202,36 @@ const config: PlaywrightTestConfig = {
   // Выписать поимённо те немногие, кому арендатор не нужен, значило бы завести
   // перечень, расходящийся с деревом молча; цена отказа от него — у них нет
   // вердикта там, где его нет и у остального набора.
+  //
+  // УСЛОВИЕ ЧАСТИ НАБОРА — СВОЙ ПРОЕКТ (kacho#3057, приёмка F8-S4 §4 П4). Пробы
+  // ключа доступа исполнимы лишь там, где служба принимает происхождение
+  // браузера набора; в профиле своего стенда перечень пуст намеренно (#3068).
+  // Пока это условие наступало внутри проб, каждая проба ключа падала «условие
+  // не создано» и тратила бюджет ранней остановки ниже: пять таких падений
+  // остановили набор, и пробы, к ключам отношения не имеющие, не стартовали.
+  // Поэтому у условия ключа свой проект (`precondition:<предмет>` — гейт
+  // вердикта узнаёт его по имени), а от него зависит ТОЛЬКО проект проб ключа.
+  // Принадлежность пробы части — по имени файла (`ACCESS_KEY_SPECS`), а не
+  // перечнем: новая проба ключа попадает в часть без правки этого файла.
   projects: [
-    { name: PRECONDITION_PROJECT, testDir: "./preconditions", testMatch: "*.precondition.ts" },
-    { name: "probes", dependencies: [PRECONDITION_PROJECT] },
+    {
+      name: PRECONDITION_PROJECT,
+      testDir: "./preconditions",
+      testMatch: "*.precondition.ts",
+      testIgnore: ACCESS_KEY_ORIGIN_CONDITION,
+    },
+    {
+      name: ACCESS_KEY_CONDITION_PROJECT,
+      testDir: "./preconditions",
+      testMatch: ACCESS_KEY_ORIGIN_CONDITION,
+      dependencies: [PRECONDITION_PROJECT],
+    },
+    { name: "probes", testIgnore: ACCESS_KEY_SPECS, dependencies: [PRECONDITION_PROJECT] },
+    {
+      name: "probes:access-key",
+      testMatch: ACCESS_KEY_SPECS,
+      dependencies: [PRECONDITION_PROJECT, ACCESS_KEY_CONDITION_PROJECT],
+    },
   ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
