@@ -1015,6 +1015,22 @@ kaname:
   manifests:
     configMapName: kacho-module-manifests
     required: true
+    # УСЛОВНАЯ ДОСТАВКА — манифест стендовой пробы-источника notify (решение
+    # владельца 2026-10-07: только на стенде, в боевую установку не попадает).
+    # Манифест лежит вне безусловного обхода `services/*/manifest.yaml` и
+    # достаётся цепочке, только если `notifyProbe.enabled` — тем же значением,
+    # которым этот чарт поднимает саму пробу, прочитанным тем же наложением
+    # профилей, что у helm (corelib/modulemanifest/producer, §«Условная
+    # доставка»). Чарт службы доступа этот ключ не читает: его читает
+    # производитель объекта (`make module-manifests-configmap`).
+    #
+    # Объявлено здесь, а не в values.yaml зонта: производитель получает только
+    # цепочку профилей стенда. Что доставка идёт РОВНО цепочкам, поднимающим
+    # пробу, в обе стороны, судит по рендеру
+    # TestStandOnlyProbeManifestReachesExactlyTheChainsThatRaiseTheProbe.
+    conditional:
+      - source: services/notify/probe/manifest.yaml
+        enabledBy: notifyProbe.enabled
   # ── ЗВЕНО ИДЕНТИЧНОСТИ СЛУЖБ Р2 (NTF1-M09): notify спрашивает ResolveSend
   # своим клиентским листом (SAN учётки из `notify.fullnameOverride`), и служба
   # доступа узнаёт в нём субъект `service:notify`. Без звена решение о письме —
