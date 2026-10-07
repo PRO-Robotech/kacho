@@ -11,6 +11,7 @@ import (
 	"github.com/PRO-Robotech/corelib/notify/feed"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // fullRecord — запись перечня, у которой есть каждое поле. Отрицания снимают
@@ -142,6 +143,10 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		{"SAN без пути", "san", "spiffe://kacho.cloud"},
 		{"SAN с запросом", "san", "spiffe://kacho.cloud/ns/kacho/sa/x?y=1"},
 		{"класс вне перечня", "classes", []string{"marketing"}},
+		// Класс строки, которую берёт только точка входа в процессе notify
+		// (feed.LocalOnlyClasses): Claim сети его не выдаёт, и источник,
+		// объявивший его, объявил класс, которого от него не придёт.
+		{"класс только процесса notify", "classes", []string{string(feed.ClassObligation)}},
 		{"классов нет", "classes", []string{}},
 		{"класс дважды", "classes", []string{"notice", "notice"}},
 		{"форма адресата вне перечня", "recipientForms", []string{"subject"}},
@@ -168,17 +173,18 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		useFixture(t, rosterEdits(t, fullRecord(), fullRecord()))
 		requireOnlyRefusal(t, start(t), "notify.sources", `"probe"`, "дважды")
 	})
-	t.Run("перечень классов закрытый — тот же, что у ленты", func(t *testing.T) {
-		for _, c := range feed.Classes() {
+	t.Run("перечень классов закрытый — классы сети ленты", func(t *testing.T) {
+		net := limits.NetClasses()
+		for _, c := range net {
 			rec := fullRecord()
 			rec["classes"] = []string{string(c)}
 			useFixture(t, rosterEdits(t, rec))
 			if err := start(t); err != nil {
-				t.Fatalf("класс ленты %q отвергнут перечнем notify: %v", c, err)
+				t.Fatalf("класс сети ленты %q отвергнут перечнем notify: %v", c, err)
 			}
 		}
-		if len(feed.Classes()) == 0 {
-			t.Fatal("перечень классов ленты пуст — проба не перебрала ничего")
+		if len(net) == 0 {
+			t.Fatal("перечень классов сети ленты пуст — проба не перебрала ничего")
 		}
 	})
 }

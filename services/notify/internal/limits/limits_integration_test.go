@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -739,5 +740,44 @@ func TestReserveHolderVanishedDoesNotStallFleet(t *testing.T) {
 			}
 			t.Logf("соседний резерв за %s (держатель молчит: %v)", took, vanish)
 		})
+	}
+}
+
+// Ряды `notify_recipient_net_hits_total` заводятся при сборке по одному на
+// класс, у которого есть сетка адресата: классы сети. Класс, который берёт
+// только точка входа в процессе (feed.LocalOnlyClasses), сетки не имеет —
+// его ряд не сдвинулся бы никогда. Близнец — каждый класс сети ряд имеет.
+func TestLimits_NetHitsSeriesExistOnlyForNetClasses(t *testing.T) {
+	pool := openPool(t, pgtest.NewDB(t))
+	r := newReplica(t, pool, keyOne, gridWide, newClock(noon))
+	mfs, err := r.reg.Gather()
+	if err != nil {
+		t.Fatalf("реестр метрик не собран: %v", err)
+	}
+	var got []string
+	for _, mf := range mfs {
+		if mf.GetName() != "notify_recipient_net_hits_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, lp := range m.GetLabel() {
+				if lp.GetName() == "class" {
+					got = append(got, lp.GetValue())
+				}
+			}
+		}
+	}
+	if len(got) == 0 {
+		t.Fatal("рядов notify_recipient_net_hits_total нет — проба не увидела ничего")
+	}
+	for _, c := range feed.LocalOnlyClasses() {
+		if slices.Contains(got, string(c)) {
+			t.Errorf("ряд notify_recipient_net_hits_total{class=%q} заведён, а сетки у класса процесса нет; ряды %v", c, got)
+		}
+	}
+	for _, c := range []feed.Class{feed.ClassSecurity, feed.ClassNotice} {
+		if !slices.Contains(got, string(c)) {
+			t.Errorf("близнец: ряда notify_recipient_net_hits_total{class=%q} нет; ряды %v", c, got)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -114,14 +115,30 @@ func NewSourceGate(module string, sl SourceLimits, now func() time.Time, reg pro
 	return g, nil
 }
 
+// NetClasses — классы, строки которых источник выдаёт по сети (`Claim`
+// сервера ленты): закрытый перечень ленты без классов, которые берёт только
+// точка входа в процессе (feed.LocalOnlyClasses). Перечень выводится у
+// производителя, а не выписывается: новый класс ленты попадает сюда сам,
+// новый класс процесса — нет.
+func NetClasses() []feed.Class {
+	local := feed.LocalOnlyClasses()
+	var out []feed.Class
+	for _, c := range feed.Classes() {
+		if !slices.Contains(local, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // Classes — классы, которые забирает `Claim` источника: на паузе источника
-// или при достигнутом суточном потолке потока — только security, иначе оба
-// (NTF1-H05, NTF1-H06). Пауза одного источника других не трогает.
+// или при достигнутом суточном потолке потока — только security, иначе все
+// классы сети (NTF1-H05, NTF1-H06). Пауза одного источника других не трогает.
 func (g *SourceGate) Classes(ceilingReached bool) []feed.Class {
 	if g.limits.Paused || ceilingReached {
 		return []feed.Class{feed.ClassSecurity}
 	}
-	return feed.Classes()
+	return NetClasses()
 }
 
 // Take — сколько из n строк источник выдаёт сейчас по ведру: не больше n и

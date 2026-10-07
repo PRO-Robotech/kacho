@@ -29,6 +29,7 @@ import (
 	"github.com/PRO-Robotech/corelib/notify/feed"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // sourceCallTimeout — срок вызова `Claim` и установления потока `Subscribe`
@@ -170,7 +171,7 @@ func (c Config) validate() error {
 		for _, cl := range s.Classes {
 			if _, ok := wireClass(cl); !ok {
 				errs = append(errs, fmt.Errorf("запись #%d (модуль %q): класс %q вне перечня %v",
-					i+1, s.Module, cl, feed.Classes()))
+					i+1, s.Module, cl, limits.NetClasses()))
 			}
 		}
 	}

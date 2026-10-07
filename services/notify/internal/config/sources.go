@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/notify/feed"
+
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // RecipientForm — форма адресата, которую notify принимает из ленты источника.
@@ -188,7 +190,7 @@ func parseSourceRecord(rec map[string]json.RawMessage) (Source, []string) {
 	}
 	if raw, ok := present("classes"); ok {
 		if l, ok := list("classes", raw); ok {
-			src.Classes, problems = closedSet("classes", l, feed.Classes(), false, problems)
+			src.Classes, problems = closedSet("classes", l, limits.NetClasses(), false, problems)
 		}
 	}
 	if raw, ok := present("recipientForms"); ok {
