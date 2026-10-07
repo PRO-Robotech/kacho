@@ -185,10 +185,25 @@ func hopsSource(trees []edgeChainTree) string {
 	return src
 }
 
+// hopsForbiddenSources — файлы, из которых число прыжков приходить не вправе:
+// база зонта и профили поставки `prod`. Профили поставки берутся из таблицы
+// цепочек, а не выписываются: копия цепочки разошлась бы с таблицей молча.
+func hopsForbiddenSources(t *testing.T) map[string]bool {
+	t.Helper()
+	out := map[string]bool{"values.yaml": true}
+	prod, ok := deployableStacks(t)[edgeOperatorSampleChain]
+	if !ok || len(prod) == 0 {
+		t.Fatalf("цепочки %s в таблице нет — судить источник прыжков не с чем", edgeOperatorSampleChain)
+	}
+	for _, p := range prod {
+		out[p] = true
+	}
+	return out
+}
+
 // judgeHopsSource — число прыжков не из базы зонта и не из поставки `prod`.
-func judgeHopsSource(label, src string) []string {
-	switch src {
-	case "values.yaml", "values.prod.yaml":
+func judgeHopsSource(label, src string, forbidden map[string]bool) []string {
+	if forbidden[src] {
 		return []string{fmt.Sprintf("%s: число доверенных прыжков приходит из %s — его молча унаследовала бы "+
 			"каждая установка (Д51); место значения — файл профиля стенда либо слой оператора", label, src)}
 	}
@@ -204,6 +219,7 @@ func TestEdgeGuardedKnobs_EveryChainRendersWhatTheGuardDemands(t *testing.T) {
 			"унаследовала бы каждая установка (Д51)")
 	}
 
+	forbidden := hopsForbiddenSources(t)
 	chains := edgeAlertChains(t)
 	for _, c := range chains {
 		label := "чарт края без зонтика"
@@ -220,7 +236,7 @@ func TestEdgeGuardedKnobs_EveryChainRendersWhatTheGuardDemands(t *testing.T) {
 		if !found {
 			t.Fatalf("%s: в рендере нет пода края — смотреть было не на что", label)
 		}
-		for _, f := range append(judgeGuardedRender(label, guarded, got), judgeHopsSource(label, src)...) {
+		for _, f := range append(judgeGuardedRender(label, guarded, got), judgeHopsSource(label, src, forbidden)...) {
 			t.Error(f)
 		}
 		t.Logf("  %s: ручек стража в поде %d из %d; %s=%q из %s; ключ — %s",
@@ -329,14 +345,15 @@ func TestEdgeGuardedKnobs_HopsComeFromTheStandProfileOnly(t *testing.T) {
 		t.Errorf("вариант «значение 0»: %s = %q, ожидалось \"0\"", config.TrustedHopsKnob, got.env[config.TrustedHopsKnob])
 	}
 
-	if f := judgeHopsSource("инъекция", "values.yaml"); len(f) != 1 {
-		t.Errorf("судья источника молчит на значении в базе зонта: %q", f)
+	forbidden := hopsForbiddenSources(t)
+	for src := range forbidden {
+		if f := judgeHopsSource("инъекция", src, forbidden); len(f) != 1 {
+			t.Errorf("судья источника молчит на значении в %s (база зонта либо поставка prod): %q", src, f)
+		}
 	}
-	if f := judgeHopsSource("инъекция", "values.prod.yaml"); len(f) != 1 {
-		t.Errorf("судья источника молчит на значении в поставке prod: %q", f)
-	}
-	if f := judgeHopsSource("близнец", "values.own.yaml"); len(f) != 0 {
-		t.Errorf("судья источника краснеет на файле профиля стенда: %q", f)
+	ownSrc := hopsSource(edgeChainTrees(t, chains["own"]))
+	if f := judgeHopsSource("близнец", ownSrc, forbidden); len(f) != 0 {
+		t.Errorf("судья источника краснеет на файле профиля стенда %s: %q", ownSrc, f)
 	}
 }
 
