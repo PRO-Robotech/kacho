@@ -335,11 +335,12 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinates
 			closedVerbs = append(closedVerbs, rt.Path)
 		}
 	}
-	// Закрытых одиннадцать: девять по приёмке F6b и два глагола входа ключом
-	// (Ф13, kacho#3037) — перечень девяти открытых закрыт приёмкой F6b, и
-	// запись без решения до подтверждения адреса недоступна.
-	if len(openVerbs) != 6 || len(closedVerbs) != 11 || len(ceremony) != 3 {
-		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 11), координат церемонии %d (ожидалось 3)",
+	// Закрытых двенадцать: девять по приёмке F6b, два глагола входа ключом
+	// (Ф13, kacho#3037) и заведение первого пароля (kaname#213, kacho#3056) —
+	// перечень девяти открытых закрыт приёмкой F6b, и запись без решения до
+	// подтверждения адреса недоступна.
+	if len(openVerbs) != 6 || len(closedVerbs) != 12 || len(ceremony) != 3 {
+		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 12), координат церемонии %d (ожидалось 3)",
 			len(openVerbs), len(closedVerbs), len(ceremony))
 	}
 	for _, p := range append(append([]string{}, openNonVerbPaths...), openVerbs...) {
@@ -383,7 +384,7 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinates
 			t.Fatalf("закрытый глагол %s ретранслирован неподтверждённой сессии %d раз", p, rig.reached[p])
 		}
 	}
-	// Близнец: те же девять БЕЗ носителя — рубеж без носителя сессии не действует.
+	// Близнец: те же закрытые глаголы БЕЗ носителя — рубеж без носителя сессии не действует.
 	for _, p := range closedVerbs {
 		rec := rig.present(http.MethodPost, p, false)
 		if !notAddressRefusal(rec) || rig.reached[p] != 1 {

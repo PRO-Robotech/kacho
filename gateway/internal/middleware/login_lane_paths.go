@@ -9,8 +9,9 @@
 //     регистрация Ф4 (kacho#2699), два глагола восстановления доступа Ф5
 //     (kacho#2701), шесть глаголов второго фактора Ф12 (приёмка Ф12 Р4,
 //     kacho#1281), два глагола подтверждения адреса почты (приёмка F6b Р5,
-//     kacho#2900) и два глагола входа ключом доступа (приёмка Ф13 Р1, Ф13-28,
-//     kacho#3037) — семнадцать путей, тот же перечень, что служба объявляет у
+//     kacho#2900), два глагола входа ключом доступа (приёмка Ф13 Р1, Ф13-28,
+//     kacho#3037) и заведение первого пароля из живой сессии (kaname#213,
+//     kacho#3056) — восемнадцать путей, тот же перечень, что служба объявляет у
 //     своего слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
 //   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
 //     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
@@ -124,6 +125,11 @@ const (
 	// паролем (Р7) — «сессии нет» ретранслируется, отсечка — отказ края.
 	LoginLanePathAccessKeyBegin = "/iam/v1/auth/access-key/begin"
 	LoginLanePathAccessKeyLogin = "/iam/v1/auth/access-key/login"
+	// Заведение первого пароля из живой сессии (kaname#213, приёмка службы
+	// first-password-from-a-live-session; kacho#3056): подпуть семейства
+	// пароля, точным совпадением отличён от смены пароля. Читает носитель
+	// сессии — решения записи парой со сменой пароля (Ф3-20 «д»).
+	LoginLanePathPasswordEnroll = "/iam/v1/auth/password/enroll" // #nosec G101 -- путь глагола заведения пароля, а не удостоверение
 )
 
 // Координаты церемонии авторизации (замысел LINE-A-1 §5.1). Навигация — бэрый
@@ -177,7 +183,7 @@ func RelayTargets() []RelayTarget {
 // M1) — там координата церемонии получает ответ, которым слушатель отвечает на
 // путь, которого у него нет (`handler.MountLoginLaneRoutes`).
 //
-// Форма — нет, и это решение kacho#2849 с именем потребителя: у семнадцати
+// Форма — нет, и это решение kacho#2849 с именем потребителя: у восемнадцати
 // глаголов формы на внутреннем слушателе есть потребитель — операторская
 // консоль посадки Б (docs/architecture/admin-api-door-on-external-stand.md;
 // консоль «одна на обе посадки», ui-future/shared/src/lib/admin-plane-posture.ts).
@@ -226,9 +232,9 @@ type LoginLaneRoute struct {
 	//     обнаружения — публичный документ, не читающий ничего) либо
 	//     сессию оканчивает (выход — Ф3-17);
 	//   - нулевое значение — ответ Р1 (KA1) на крае, носитель цел. Глагол читает
-	//     сессию носителя (смена пароля — Ф3-20 «д»; шесть глаголов второго
-	//     фактора, включая чтение состояния, — Ф12 Р4; два глагола
-	//     подтверждения адреса — Р6 службы), и запрос с носителем, чью отсечку
+	//     сессию носителя (смена пароля — Ф3-20 «д»; заведение первого пароля —
+	//     kaname#213; шесть глаголов второго фактора, включая чтение состояния, —
+	//     Ф12 Р4; два глагола подтверждения адреса — Р6 службы), и запрос с носителем, чью отсечку
 	//     установить не удалось, до него не доходит.
 	//
 	// Отказ — умолчание: глагол, дописанный без решения, получает ответ Р1 (KA1).
@@ -257,7 +263,9 @@ type LoginLaneRoute struct {
 	// Отказ — умолчание, как у `relayWhenUnanswered`: запись, дописанная без
 	// решения, до подтверждения адреса недоступна. Так стоят и два глагола
 	// входа ключом (Ф13): перечень девяти закрыт приёмкой F6b, решения Ф13 о
-	// неподтверждённой сессии нет, и сходство с `login` здесь не наследуется.
+	// неподтверждённой сессии нет, и сходство с `login` здесь не наследуется. Так
+	// стоит и заведение первого пароля: служба держит то же (положение
+	// подтверждения — отказ, A7 Р2).
 	openBeforeAddressConfirmation bool
 	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
 	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
@@ -275,7 +283,8 @@ type LoginLaneRoute struct {
 func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
 // loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b,
-// Ф13 и координаты церемонии; читатели по нему не ветвятся.
+// Ф13, заведение первого пароля и координаты церемонии; читатели по нему не
+// ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "logout", Path: LoginLanePathLogout, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
@@ -294,6 +303,7 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "verify-email-confirm", Path: LoginLanePathVerifyEmailConfirm, Target: RelayTargetForm, openBeforeAddressConfirmation: true},
 	{Verb: "access-key-begin", Path: LoginLanePathAccessKeyBegin, Target: RelayTargetForm, relayWhenUnanswered: true},
 	{Verb: "access-key-login", Path: LoginLanePathAccessKeyLogin, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "password-enroll", Path: LoginLanePathPasswordEnroll, Target: RelayTargetForm},
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
