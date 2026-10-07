@@ -186,7 +186,19 @@ async function expectFactorLine(page: Page, line: string, why: string): Promise<
  */
 async function openResetFor(page: Page, email: string, confirmTitle: string) {
   await page.goto("/iam/users", { waitUntil: "domcontentloaded" });
+  // Ждётся ОТВЕТ поиска, а не только строка: у человека без прав администратора
+  // его строка есть уже в несуженном списке, и меню, открытое до прихода
+  // суженного ответа, закрывается перерисовкой таблицы (наблюдалось на прогоне
+  // 37616918067: пункт найден и отсоединён от документа на нажатии).
+  const searched = page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === "/iam/v1/users" &&
+      (new URL(r.url()).searchParams.get("filter") ?? "").includes(email) &&
+      r.request().method() === "GET",
+  );
   await page.getByPlaceholder("Поиск по почте или идентификатору").fill(email);
+  const answered = await searched;
+  expect(answered.status(), `поиск строки ${email} в списке пользователей не отвечен`).toBe(200);
   const row = page.locator("tr").filter({ hasText: email }).first();
   await expect(row, `строки ${email} нет в списке пользователей — условие пробы не создано`).toBeVisible({
     timeout: 60_000,
