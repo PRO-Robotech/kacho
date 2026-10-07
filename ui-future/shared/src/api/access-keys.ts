@@ -1,12 +1,14 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { ApiError, api } from "@shared/api/client";
-import type { Operation } from "@shared/api/types";
+import { ApiError, api } from "./client";
+import type { Operation } from "./types";
 import { operationIdOf } from "@shared/lib/operation-outcome";
 
 // Глаголы ключей доступа человека из сессии (Ф7; экран — приёмка F8, ред. 12,
-// Р11) — ЕДИНСТВЕННОЕ место консоли, где они зовутся.
+// Р11) — ЕДИНСТВЕННОЕ место консоли, где они зовутся. Это транспорт: исход
+// человеку называет вызывающий раздел (`pages/auth/access-key/AccessKeysSection.tsx`)
+// единым механизмом сигнала — и текстом у раздела, и уведомлением.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧЕРЕЗ КЛИЕНТ ПЛАТФОРМЫ, А НЕ ПОЛОСУ ФОРМЫ

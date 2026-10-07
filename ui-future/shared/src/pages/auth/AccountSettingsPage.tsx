@@ -19,6 +19,7 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
+import { Toaster } from "@shared/components/molecules/Toaster";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
@@ -545,6 +546,9 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
       {/* Окно повышения живёт рядом с экраном, который его спрашивает: шаги
           свежести зовут его отсюда (`requestStepUp`). */}
       <StepUpModal leave={leave} />
+      {/* Показ сигналов об исходе действий экрана (раздел ключей доступа):
+          каркас его не несёт, а очередь без показа глотает сигнал молча. */}
+      <Toaster />
       {who === undefined && <Spin />}
       {who?.kind === "absent" && (
         <Typography.Paragraph>

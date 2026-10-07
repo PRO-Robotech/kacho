@@ -10,11 +10,18 @@ import { FieldError, fieldErrorId } from "@shared/components/organisms/form/Fiel
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { formatDateTime } from "@shared/lib/datetime";
 import {
+  genderOfLabel,
+  mutationFailureText,
+  mutationSuccessText,
+  type MutationSubject,
+} from "@shared/lib/mutation-signal";
+import { toast } from "@shared/lib/toast";
+import {
   AccessKeyOperationFailed,
   AccessKeyOperationUnknown,
   accessKeysClient,
   type AccessKeyRecord,
-} from "./access-keys-client";
+} from "@shared/api/access-keys";
 
 // Раздел «Ключи доступа» экрана параметров учётной записи (приёмка F8, ред. 12,
 // S4, группа L; Р11).
@@ -36,6 +43,11 @@ import {
 //   • имя и описание раздел НЕ проверяет: форму судит служба, и её нарушение
 //     поля стоит у поля (`BadRequest.fieldViolations`), остальное — у раздела
 //     (F8-70, F8-71); введённое при любом отказе сохранено.
+//
+// ИСХОД — ЕДИНЫМ МЕХАНИЗМОМ СИГНАЛА (решение владельца 2026-08-15: каждое
+// действие сообщает о выполнении или отказе). Тексты — `mutation-signal.ts`,
+// показ — уведомлением (`toast`; показ примонтирован экраном параметров) и,
+// поскольку отказ обязан стоять у поля либо у раздела (Р11), ещё и на месте.
 //
 // ОТКАЗ НАЗЫВАЕТ ШАГ И НЕ РАСКРЫВАЕТ КЛАСС. Текст службы — дословно; над ним
 // раздел называет свой шаг («Ключ не добавлен»). Отказ церемонии браузером — ОДИН
@@ -67,6 +79,12 @@ export function accessKeyCreationSupported(): boolean {
 }
 
 type KeyField = "name" | "description";
+
+/** Подлежащее сигнала: ключ доступа по имени (пустое имя — по идентификатору). */
+const KEY_LABEL = "Ключ доступа";
+function keySubject(name: string): MutationSubject {
+  return { label: KEY_LABEL, gender: genderOfLabel(KEY_LABEL) ?? "m", name: name.trim() || null };
+}
 
 /** Отказ шага раздела: текст для человека и — если служба назвала — поле. */
 interface KeysRefusal {
@@ -191,10 +209,19 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     };
     try {
       let publicKey: PublicKeyCredentialCreationOptions;
+      const subject = keySubject(name);
+      const failed = (refusal: KeysRefusal) => {
+        toast.error(mutationFailureText("create", subject, refusal.text));
+        settle(() => setAddRefusal(refusal));
+      };
+      const refusedByBrowser = () => {
+        toast.error(mutationFailureText("create", subject, KEY_CEREMONY_BROWSER_REFUSED));
+        settle(() => setBrowserRefused(true));
+      };
       try {
         publicKey = registrationRequestOf(await accessKeysClient.beginRegistration(userId));
       } catch (e) {
-        settle(() => setAddRefusal(refusalOf(e, step)));
+        failed(refusalOf(e, step));
         return;
       }
       let created: Credential | null;
@@ -202,7 +229,7 @@ export function AccessKeysSection({ userId }: { userId: string }) {
         created = await navigator.credentials.create({ publicKey, signal: controller.signal });
       } catch {
         // Отказ церемонии браузером: приём результата не зовётся — результата нет.
-        settle(() => setBrowserRefused(true));
+        refusedByBrowser();
         return;
       }
       if (controller.signal.aborted) return;
@@ -210,13 +237,13 @@ export function AccessKeysSection({ userId }: { userId: string }) {
       try {
         credential = registrationCredentialOf(created);
       } catch {
-        settle(() => setBrowserRefused(true));
+        refusedByBrowser();
         return;
       }
       try {
         await accessKeysClient.finishRegistration(userId, { name, description, credential });
       } catch (e) {
-        settle(() => setAddRefusal(refusalOf(e, step)));
+        failed(refusalOf(e, step));
         // Операция кончилась отказом либо без исхода — перечень мог измениться.
         if (e instanceof AccessKeyOperationFailed || e instanceof AccessKeyOperationUnknown) await reload();
         return;
@@ -226,6 +253,7 @@ export function AccessKeysSection({ userId }: { userId: string }) {
         setDescription("");
       });
       await reload();
+      toast.success(mutationSuccessText("create", subject));
     } finally {
       settle(() => setAdding(false));
     }
@@ -236,11 +264,15 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     if (!controller || removing !== null) return;
     setRemoving(record.id);
     setRemoveRefusal(null);
+    const subject = keySubject(record.name || record.id);
     try {
       await accessKeysClient.revoke(userId, record.id);
       await reload();
+      toast.success(mutationSuccessText("delete", subject));
     } catch (e) {
-      if (!controller.signal.aborted) setRemoveRefusal(refusalOf(e, `Ключ «${record.name || record.id}» не удалён.`));
+      const refusal = refusalOf(e, `Ключ «${record.name || record.id}» не удалён.`);
+      toast.error(mutationFailureText("delete", subject, refusal.text));
+      if (!controller.signal.aborted) setRemoveRefusal(refusal);
       // Отказ операции (гонка двух снятий) — перечень перечитан; синхронный отказ
       // снятия — операции не было, и перечень прежний.
       if (e instanceof AccessKeyOperationFailed || e instanceof AccessKeyOperationUnknown) await reload();

@@ -1,9 +1,14 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { createHash, createPrivateKey, sign } from "node:crypto";
 import { expect, type BrowserContext, type Locator, type Page, type Request, type TestInfo } from "@playwright/test";
-import { pageAuthenticator, seedAccessKey, type PageAuthenticator } from "./access-key-seed";
+import {
+  pageAuthenticator,
+  presentAccessKey,
+  seedAccessKey,
+  type PageAuthenticator,
+  type PresentableKey,
+} from "./access-key-seed";
 import {
   SESSION_COOKIE,
   SESSION_IDENTITY,
@@ -51,8 +56,6 @@ import { ACCESS_KEY_SESSION_NOT_FRESH, fulfillWith } from "./producer-answers";
  * Ожидания временем нет: ждётся условие — отрисованный раздел, ответ, перечень.
  */
 
-const KEY_BEGIN_ASSERTION = "/iam/v1/accessKeys:beginAssertion";
-const KEY_FINISH_ASSERTION = "/iam/v1/accessKeys:finishAssertion";
 const STEP_UP = "/iam/v1/auth/step-up";
 const NOT_ACCEPTED = "access key assertion is not accepted";
 
@@ -156,79 +159,15 @@ async function withKeysHuman<T>(
 
 // ─── «ключ принят / не принят» — запись выпускающего ─────────────────────────
 
-/** Удостоверение, которым проба собирает утверждение сама. */
-interface PresentableKey {
-  credentialId: Buffer;
-  /** PKCS#8 DER, P-256. */
-  privateKey: Buffer;
-  userHandle: Buffer;
-  /** Последний счётчик подписи, который служба приняла либо хранит. */
-  signCount: number;
-}
-
 function originOf(testInfo: TestInfo): string {
   const base = testInfo.project.use.baseURL;
   if (!base) throw new Error("у проекта нет baseURL — происхождение браузера не названо");
   return new URL(base).origin;
 }
 
-/**
- * Предъявить ключ службе утверждением, собранным пробой. Счётчик — строго больше
- * хранимого (F8-S4 N16): `signCount` плюс один; принятый счётчик запоминается.
- */
-async function present(
-  h: KeysHuman,
-  testInfo: TestInfo,
-  key: PresentableKey,
-): Promise<{ status: number; text: string }> {
-  const begun = await h.seed.api.post(KEY_BEGIN_ASSERTION, { data: {} });
-  const beginText = await begun.text();
-  expect(begun.status(), `проба: выдача испытания утверждения — ${begun.status()} ${beginText.slice(0, 300)}`).toBe(
-    200,
-  );
-  const ch = JSON.parse(beginText) as { challenge?: string; rpId?: string };
-  const challenge = Buffer.from(ch.challenge ?? "", "base64");
-  const rpId = ch.rpId ?? "";
-  expect(
-    { challenge: challenge.length > 0, rpId: rpId !== "" },
-    "проба: испытание утверждения без испытания или имени доверяющей стороны",
-  ).toEqual({
-    challenge: true,
-    rpId: true,
-  });
-
-  const counter = Buffer.alloc(4);
-  counter.writeUInt32BE(key.signCount + 1, 0);
-  // UP = 1, UV = 1 — как у аутентификатора страницы; BE = 0, BS = 0.
-  const authData = Buffer.concat([createHash("sha256").update(rpId).digest(), Buffer.from([0x01 | 0x04]), counter]);
-  const clientDataJSON = Buffer.from(
-    JSON.stringify({
-      type: "webauthn.get",
-      challenge: challenge.toString("base64url"),
-      origin: originOf(testInfo),
-      crossOrigin: false,
-    }),
-    "utf8",
-  );
-  const signature = sign(
-    "sha256",
-    Buffer.concat([authData, createHash("sha256").update(clientDataJSON).digest()]),
-    createPrivateKey({ key: key.privateKey, format: "der", type: "pkcs8" }),
-  );
-  const res = await h.seed.api.post(KEY_FINISH_ASSERTION, {
-    data: {
-      credential: {
-        id: key.credentialId.toString("base64"),
-        clientDataJson: clientDataJSON.toString("base64"),
-        authenticatorData: authData.toString("base64"),
-        signature: signature.toString("base64"),
-        userHandle: key.userHandle.toString("base64"),
-      },
-    },
-  });
-  const text = await res.text();
-  if (res.status() === 200) key.signCount += 1;
-  return { status: res.status(), text };
+/** Предъявление ключа службе — запись выпускающего (`presentAccessKey`, посев К). */
+function present(h: KeysHuman, testInfo: TestInfo, key: PresentableKey) {
+  return presentAccessKey(h.seed, testInfo.project.use.baseURL, key);
 }
 
 async function expectAccepted(h: KeysHuman, testInfo: TestInfo, key: PresentableKey, what: string) {

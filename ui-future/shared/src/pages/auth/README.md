@@ -18,7 +18,7 @@
 | экран подтверждения адреса почты (`/verification`) | `VerificationPage.tsx` |
 | уход на экран подтверждения по отказу края `EMAIL_NOT_VERIFIED` | `address-confirmation-exit.ts` |
 | параметры учётной записи (`/settings`): пароль, первый пароль, второй фактор | `AccountSettingsPage.tsx` |
-| ключи доступа на `/settings` — перечень, заведение, снятие (глаголы Ф7 клиентом платформы) | `access-key/AccessKeysSection.tsx`, `access-key/access-keys-client.ts` |
+| ключи доступа на `/settings` — перечень, заведение, снятие (глаголы Ф7 клиентом платформы) | `access-key/AccessKeysSection.tsx`, `shared/src/api/access-keys.ts` |
 | вход ключом доступа на `/login` | `access-key/use-access-key-sign-in.ts`, `access-key/AccessKeySignInButton.tsx` |
 | кодек церемонии ключа — вход и заведение | `shared/src/api/access-key.ts` |
 | клиент глаголов полосы формы и единственный читатель «есть ли сессия» | `shared/src/api/login-lane.ts` |
