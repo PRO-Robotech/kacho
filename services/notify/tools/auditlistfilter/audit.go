@@ -187,16 +187,14 @@ func Audit(p Layout, o Options, out io.Writer) (Report, error) {
 	rep := Report{SourceMethods: map[string]int{}}
 	a, err := newAnalyser(p, o)
 	if err != nil {
-		fmt.Fprintf(out, "audit-list-filter[%s]: NOT INSPECTED — %v\n", p.Service, err)
-		return rep, fmt.Errorf("%w: %v", ErrNotInspected, err)
+		return rep, notInspected(out, p, err, "")
 	}
 	transport, err := a.pkg(filepath.Join(a.serviceRoot, p.TransportDir))
 	if err != nil || len(transport.files) == 0 {
 		if err == nil {
 			err = fmt.Errorf("transport %s holds no non-test .go file", p.TransportDir)
 		}
-		fmt.Fprintf(out, "audit-list-filter[%s]: NOT INSPECTED — %v (zero findings must not be reachable from zero reads)\n", p.Service, err)
-		return rep, fmt.Errorf("%w: %v", ErrNotInspected, err)
+		return rep, notInspected(out, p, err, " (zero findings must not be reachable from zero reads)")
 	}
 
 	banned := a.deriveBan(&rep)
@@ -204,36 +202,50 @@ func Audit(p Layout, o Options, out io.Writer) (Report, error) {
 	a.judgeNarrowers(&rep)
 
 	rep.Files, rep.Packages = a.files, len(a.pkgs)
-	printCensus(p, rep, out)
+	if _, werr := io.WriteString(out, census(p, rep)); werr != nil {
+		return rep, fmt.Errorf("%w: census could not be written: %v", ErrNotInspected, werr)
+	}
 	if len(rep.Findings) > 0 {
 		return rep, ErrFindings
 	}
 	return rep, nil
 }
 
-func printCensus(p Layout, rep Report, out io.Writer) {
+// notInspected prints and returns the refusal of a run that opened nothing.
+func notInspected(out io.Writer, p Layout, cause error, note string) error {
+	err := fmt.Errorf("%w: %v", ErrNotInspected, cause)
+	if _, werr := fmt.Fprintf(out, "audit-list-filter[%s]: NOT INSPECTED — %v%s\n", p.Service, cause, note); werr != nil {
+		return errors.Join(err, werr)
+	}
+	return err
+}
+
+// census renders what the run saw — on the passing and the refusing path alike.
+func census(p Layout, rep Report) string {
+	var b strings.Builder
 	pre := "audit-list-filter[" + p.Service + "]: "
-	fmt.Fprintf(out, "%sexamined %d file(s) in %d package(s), %d listing method(s) (%d undeclared, %d admin-surface, %d declaration(s) attributed to no resource)\n",
+	fmt.Fprintf(&b, "%sexamined %d file(s) in %d package(s), %d listing method(s) (%d undeclared, %d admin-surface, %d declaration(s) attributed to no resource)\n",
 		pre, rep.Files, rep.Packages, len(rep.Listings), len(rep.Undeclared), len(rep.Admin), len(rep.Unattributed))
-	fmt.Fprintf(out, "%sjudged %s\n", pre, strings.Join(rep.Listings, ", "))
-	fmt.Fprintf(out, "%snarrower sites %d (declared %d): %s\n", pre, len(rep.NarrowerCalls), len(p.NarrowerSites), strings.Join(rep.NarrowerCalls, ", "))
+	fmt.Fprintf(&b, "%sjudged %s\n", pre, strings.Join(rep.Listings, ", "))
+	fmt.Fprintf(&b, "%snarrower sites %d (declared %d): %s\n", pre, len(rep.NarrowerCalls), len(p.NarrowerSites), strings.Join(rep.NarrowerCalls, ", "))
 	srcs := make([]string, 0, len(rep.SourceMethods))
 	for s := range rep.SourceMethods {
 		srcs = append(srcs, s)
 	}
 	sort.Strings(srcs)
-	fmt.Fprintf(out, "%senumerate-then-narrow ban — %d call(s) %v derived from %d source(s)\n", pre, len(rep.Banned), rep.Banned, len(srcs))
+	fmt.Fprintf(&b, "%senumerate-then-narrow ban — %d call(s) %v derived from %d source(s)\n", pre, len(rep.Banned), rep.Banned, len(srcs))
 	for _, s := range srcs {
-		fmt.Fprintf(out, "%s  source %s: %d method(s)\n", pre, s, rep.SourceMethods[s])
+		fmt.Fprintf(&b, "%s  source %s: %d method(s)\n", pre, s, rep.SourceMethods[s])
 	}
 	if len(rep.Findings) == 0 {
-		fmt.Fprintf(out, "%sOK\n", pre)
-		return
+		fmt.Fprintf(&b, "%sOK\n", pre)
+		return b.String()
 	}
 	for _, f := range rep.Findings {
-		fmt.Fprintf(out, "%sFINDING %s\n", pre, f)
+		fmt.Fprintf(&b, "%sFINDING %s\n", pre, f)
 	}
-	fmt.Fprintf(out, "%s%d finding(s)\n", pre, len(rep.Findings))
+	fmt.Fprintf(&b, "%s%d finding(s)\n", pre, len(rep.Findings))
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------

@@ -48,7 +48,9 @@ type internalNoticeHandler struct {
 }
 
 // Server — сервер InternalNoticeService над набором use-case'ов.
-func (s *InternalNotice) Server() notifyv1.InternalNoticeServiceServer { return &internalNoticeHandler{uc: s} }
+func (s *InternalNotice) Server() notifyv1.InternalNoticeServiceServer {
+	return &internalNoticeHandler{uc: s}
+}
 
 func (s *internalNoticeHandler) Create(ctx context.Context, r *notifyv1.CreateNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Create.Execute(ctx, r)
