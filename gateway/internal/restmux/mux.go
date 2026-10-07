@@ -55,8 +55,14 @@
 // вопрос «есть ли здесь административный путь». Это existence-hiding без
 // содержания; см. external_refusal_shape_test.go.
 //
-// Корневой `http.Handler` (диспетчер) экспонируется как `http.Handler`
+// Корневой `http.Handler` (диспетчер) экспонируется как `*Mux`
 // и передается в `httpMux.Handle("/", restHandler)` в `cmd/api-gateway/main.go`.
+//
+// Укрытие в диспетчере стоит ПОСЛЕДНИМ звеном цепочки края, и слои перед ним
+// (аутентификация, ступень подтверждения, права) отвечали бы на внутренний путь
+// раньше него. Поэтому то же решение «маршрута нет» корень принимает ещё раз —
+// сторожем маршрута снаружи аутентификации (`Mux.ExternalRouteGate`); укрытие
+// здесь остаётся эшелоном на случай сборки без сторожа.
 //
 // # Активные сервисы
 //
@@ -302,8 +308,10 @@ func isInternalPath(path string) bool {
 // NewMux создает grpc-gateway split-mux (public + internal) и регистрирует
 // активные публичные сервисы плюс OperationService (через OpsProxy).
 //
-// Возвращает `http.Handler`-диспетчер, который на каждый request выбирает
-// public или internal sub-mux на основании `isInternalRoute(r.Method, r.URL.Path)`.
+// Возвращает *Mux: его ServeHTTP — диспетчер, который на каждый request выбирает
+// public или internal sub-mux на основании `isInternalRoute(r.Method, r.URL.Path)`,
+// а ExternalRouteGate — сторож маршрута внешнего слушателя, который корень ставит
+// снаружи аутентификации (external_route_gate.go, kacho#3053).
 //
 // addrs — карта domain → адрес gRPC backend:
 //
@@ -349,7 +357,7 @@ func NewMux(
 	conns map[string]*grpc.ClientConn,
 	dialOpts map[string]grpc.DialOption,
 	backendBudget time.Duration,
-) (http.Handler, error) {
+) (*Mux, error) {
 	// Бюджет вызова моста к бэкенду — ручка KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
 	// (приёмка KA1, Р4). Без него зависший бэкенд держит запрос, пока его держит
 	// клиент: сервер края ответ не ограничивает (WriteTimeout не задан
@@ -419,6 +427,18 @@ func NewMux(
 		runtime.WithIncomingHeaderMatcher(principalHeaderMatcher),
 		runtime.WithMetadata(principalMetadata),
 	)
+	// Таблица маршрутов внешнего слушателя для сторожа маршрута
+	// (external_route_gate.go). Опции — те же, что у publicMux: ответ на промах
+	// обязан быть побайтно тем, что publicMux отвечает на маршрут, которого у
+	// него нет. Регистрируется тем же циклом ниже как НЕ-internalMux, поэтому
+	// административных служб на ней нет by construction — ровно как на publicMux.
+	var routeTable *runtime.ServeMux
+	routeTable = runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, publicMarshaler),
+		runtime.WithIncomingHeaderMatcher(principalHeaderMatcher),
+		runtime.WithMetadata(principalMetadata),
+		runtime.WithMiddlewares(forwardMatchedRoute(&routeTable)),
+	)
 
 	// optsFor returns the dial-options for one backend-key: that backend's
 	// per-edge transport credentials (mTLS client-cert + ServerName when the edge
@@ -483,7 +503,11 @@ func NewMux(
 	//     отказ внешнему вызывающему был неотличим от промаха, его обязан
 	//     произвести ТОТ ЖЕ производитель, что и обычный промах, — а не вторая
 	//     функция с похожим смыслом.
-	muxes := []*runtime.ServeMux{publicMux, internalMux}
+	//
+	// Третий — таблица маршрутов сторожа: её обработчики не исполняются (см.
+	// forwardMatchedRoute), а набор маршрутов совпадает с publicMux, потому что
+	// собран ЭТИМ ЖЕ циклом.
+	muxes := []*runtime.ServeMux{publicMux, internalMux, routeTable}
 
 	for _, mux := range muxes {
 		// --- vpc: Network + Subnet + Address + RouteTable + SecurityGroup + Gateway ---
@@ -1063,7 +1087,7 @@ func NewMux(
 		publicMux.ServeHTTP(w, r)
 	})
 
-	return dispatcher, nil
+	return &Mux{dispatch: dispatcher, public: publicMux, routes: routeTable}, nil
 }
 
 // backendBudgetInterceptor ограничивает унарный вызов моста бюджетом. Исход
