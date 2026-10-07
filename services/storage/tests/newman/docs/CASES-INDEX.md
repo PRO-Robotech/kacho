@@ -307,7 +307,7 @@ cluster-admin: для последнего решение принимается
 Файл `internal-*` — validate-cases освобождает его от таблицы-паттернов (каталогизирован
 **этой заметкой**, как в vpc `internal-*.py`). Кейсы `IVOL-{ATTACH,DETACH,LISTATTACHMENTS,
 GETINTERNAL}-EXTERNAL-ABSENT` — INV-7a: Internal-only RPC отсутствуют на external endpoint
-(→ 404), провокабельная часть CS1-S4-11. Attach-CAS happy/negative/race (CS1-S4-01..12) —
+(→ 404 / code 5, тело ровно `{"code":5,"message":"Not Found","details":[]}` — промах маршрута края, до аутентификации, kacho#3053), провокабельная часть CS1-S4-11. Attach-CAS happy/negative/race (CS1-S4-01..12) —
 **integration-only** (:9091 mTLS + seeded Instance + concurrent `-race`), не black-box
 (см. `docs/RESULTS.md` «Integration-only»).
 

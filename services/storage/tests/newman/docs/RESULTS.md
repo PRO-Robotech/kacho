@@ -87,6 +87,8 @@ Go-тесты use-case-слоя (`internal/apps/kacho/api/*/list_filter_test.go`
 internal-volume external-absence 403 fail-closed vs [404,405,501]; FieldMask snake→camel)
 были **test-staleness** — приведены к фактическому gateway-контракту (family-agnostic
 edge-message; fail-closed uncatalogued 403; camelCase FieldMask paths), см. диффы кейсов.
+(Запись историческая: «uncatalogued 403» для внешнего отсутствия снят сторожем маршрута
+kacho#3053 — нынешний исход IVOL-* — промах края 404 / code 5, см. «Провокабельная часть» ниже.)
 
 ## STOR-1 redesign — Image (`cases/image.py`, 43 кейса)
 
