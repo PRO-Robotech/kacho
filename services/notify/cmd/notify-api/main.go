@@ -52,7 +52,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	}
 	switch args[0] {
 	case "serve":
-		cfg, err := config.LoadAPI()
+		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 
 // runServe — композиционный корень процесса: пул, диагностическая
 // поверхность, удостоверения, затем носитель (serveAPI).
-func runServe(ctx context.Context, cfg config.API, logger *slog.Logger) error {
+func runServe(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mode, err := cfg.Mode()
 	if err != nil {
 		return err

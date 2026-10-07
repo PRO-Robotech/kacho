@@ -22,9 +22,9 @@ import (
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/paging"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzcheck"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/paging"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/authzcheck"
 )
 
 // RelationRead — отношение права на область запроса и на каждый объект

@@ -19,7 +19,7 @@ const postureService = "notify"
 // bootPosture — самоотчёт о посадке notify-api, выведенный из ПРИНЯТОГО
 // дескриптора: форма слушателя — та, что поднимет носитель (internal_only),
 // публичного mTLS нет по форме, внутренний — всегда, круг пересылающих сужен.
-func bootPosture(cfg config.API, d servicecontract.Descriptor) (observability.BootPosture, error) {
+func bootPosture(cfg config.Config, d servicecontract.Descriptor) (observability.BootPosture, error) {
 	form, noServed := servicehost.PostureOf(&d)
 	return observability.NewBootPosture(observability.BootPosture{
 		Service:            postureService,

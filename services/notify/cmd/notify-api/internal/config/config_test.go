@@ -13,8 +13,8 @@ import (
 	"github.com/PRO-Robotech/corelib/authz"
 )
 
-// apiEnv — годный набор ручек notify-api: значения в границах.
-func apiEnv() map[string]string {
+// configEnv — годный набор ручек notify-api: значения в границах.
+func configEnv() map[string]string {
 	return map[string]string{
 		"KACHO_NOTIFY_AUTH_MODE":                          "production",
 		"KACHO_NOTIFY_PEER_TLS_CERT_FILE":                 "/etc/notify/peer/tls.crt",
@@ -45,8 +45,8 @@ func apiEnv() map[string]string {
 	}
 }
 
-// setAPIEnv выставляет окружение пробы и снимает прочие KACHO_NOTIFY_*.
-func setAPIEnv(t *testing.T, env map[string]string) {
+// setConfigEnv выставляет окружение пробы и снимает прочие KACHO_NOTIFY_*.
+func setConfigEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
@@ -64,10 +64,10 @@ func setAPIEnv(t *testing.T, env map[string]string) {
 	}
 }
 
-func loadAPI(t *testing.T, env map[string]string) (API, error) {
+func loadConfig(t *testing.T, env map[string]string) (Config, error) {
 	t.Helper()
-	setAPIEnv(t, env)
-	c, err := LoadAPI()
+	setConfigEnv(t, env)
+	c, err := Load()
 	if err != nil {
 		return c, err
 	}
@@ -87,21 +87,21 @@ func refusedKnobs(err error) []string {
 	return out
 }
 
-// TestAPIConfig_EveryKnobHasAReaderAndTheTwinStarts — годный набор принимается,
+// TestConfig_EveryKnobHasAReaderAndTheTwinStarts — годный набор принимается,
 // и перепись ручек совпадает с набором пробы: ручки, которую никто не задаёт,
 // нет, и задаваемой, которую загрузчик не читает, нет.
-func TestAPIConfig_EveryKnobHasAReaderAndTheTwinStarts(t *testing.T) {
-	c, err := loadAPI(t, apiEnv())
+func TestConfig_EveryKnobHasAReaderAndTheTwinStarts(t *testing.T) {
+	c, err := loadConfig(t, configEnv())
 	if err != nil {
 		t.Fatalf("годный набор отвергнут: %v", err)
 	}
-	knobs := APIKnobs()
+	knobs := Knobs()
 	t.Logf("ручек notify-api: %d", len(knobs))
-	if len(knobs) != len(apiEnv()) {
-		t.Fatalf("ручек в переписи %d, в наборе пробы %d", len(knobs), len(apiEnv()))
+	if len(knobs) != len(configEnv()) {
+		t.Fatalf("ручек в переписи %d, в наборе пробы %d", len(knobs), len(configEnv()))
 	}
 	for _, k := range knobs {
-		if _, ok := apiEnv()[k.Env]; !ok {
+		if _, ok := configEnv()[k.Env]; !ok {
 			t.Fatalf("ручка %s вне набора пробы", k)
 		}
 	}
@@ -110,9 +110,9 @@ func TestAPIConfig_EveryKnobHasAReaderAndTheTwinStarts(t *testing.T) {
 	}
 }
 
-// TestAPIConfig_EachRefusalNamesItsKnob — каждая инъекция меняет один факт
+// TestConfig_EachRefusalNamesItsKnob — каждая инъекция меняет один факт
 // годного набора и даёт отказ старта ровно с именем своей ручки.
-func TestAPIConfig_EachRefusalNamesItsKnob(t *testing.T) {
+func TestConfig_EachRefusalNamesItsKnob(t *testing.T) {
 	ceiling := authz.RevocationPolicy.Ceiling
 	cases := []struct {
 		name, env, value string
@@ -133,13 +133,13 @@ func TestAPIConfig_EachRefusalNamesItsKnob(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			env := apiEnv()
+			env := configEnv()
 			if c.unset {
 				delete(env, c.env)
 			} else {
 				env[c.env] = c.value
 			}
-			_, err := loadAPI(t, env)
+			_, err := loadConfig(t, env)
 			got := refusedKnobs(err)
 			if len(got) != 1 || got[0] != c.env {
 				t.Fatalf("отказ %v (ручки %v), ожидался ровно по %s", err, got, c.env)

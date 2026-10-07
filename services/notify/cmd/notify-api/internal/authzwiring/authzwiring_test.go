@@ -11,7 +11,7 @@ import (
 	"github.com/PRO-Robotech/corelib/listnarrow"
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice"
 )
 
 type allow struct{}

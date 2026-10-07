@@ -31,20 +31,20 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/authzwiring"
 	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
-	noticecancel "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/cancel"
-	noticecomplete "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/complete"
-	noticecreate "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/create"
-	noticeget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/get"
-	noticelist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/list"
-	noticestart "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/start"
-	noticeupdate "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/update"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
-	publicget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/get"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/getbyaccount"
-	publiclist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/list"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/listbyaccount"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzcheck"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
+	noticecancel "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/cancel"
+	noticecomplete "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/complete"
+	noticecreate "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/create"
+	noticeget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/get"
+	noticelist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/list"
+	noticestart "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/start"
+	noticeupdate "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/update"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice"
+	publicget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/get"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/getbyaccount"
+	publiclist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/list"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/listbyaccount"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/authzcheck"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/repo/noticerepo"
 )
@@ -70,8 +70,8 @@ type apiRuntime struct {
 //
 // cfg — значения ручек notify-api (замысел issue-2924 З1, З14, З16, З17;
 // приёмка NTF-4 Р20 — таблица полей дескриптора носителя Х5). Страж ручек
-// (config.API.Validate) зовёт main до этой функции.
-func serveAPI(ctx context.Context, cfg config.API, rt apiRuntime) error {
+// (config.Config.Validate) зовёт main до этой функции.
+func serveAPI(ctx context.Context, cfg config.Config, rt apiRuntime) error {
 	if rt.Pool == nil || rt.Now == nil || rt.Metrics == nil {
 		return errors.New("notify-api: пул, часы и реестр метрик обязательны")
 	}

@@ -69,7 +69,7 @@ var nonCreatingVerbs = map[string]bool{
 	"GetUtilization": true, "ListAddresses": true, "ChangeDiskType": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
 	"AttachNetworkInterface": true, "BatchCheck": true, "Block": true, "Cancel": true, "Check": true, "Delete": true,
 	"DeleteRepository": true, "DeleteTag": true, "DetachDisk": true, "DetachNetworkInterface": true, "Disable": true,
-	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByValue": true, "GetRepository": true,
+	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByAccount": true, "GetByValue": true, "GetRepository": true,
 	"GetSerialPortOutput": true, "GetTargetStates": true, "List": true, "ListAccessBindings": true, "ListAllOperations": true,
 	"ListAssignableRoles": true, "ListByAccount": true, "ListByRole": true, "ListByScope": true, "ListBySubject": true,
 	"ListBySubnet": true, "ListMembers": true, "ListOperations": true, "ListPermissionCatalog": true,

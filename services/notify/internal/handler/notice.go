@@ -14,17 +14,17 @@ import (
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/cancel"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/complete"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/create"
-	noticeget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/get"
-	noticelist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/list"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/start"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/update"
-	publicget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/get"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/getbyaccount"
-	publiclist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/list"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/listbyaccount"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/cancel"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/complete"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/create"
+	noticeget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/get"
+	noticelist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/list"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/start"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice/update"
+	publicget "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/get"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/getbyaccount"
+	publiclist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/list"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice/listbyaccount"
 )
 
 // InternalNotice — набор use-case'ов InternalNoticeService.

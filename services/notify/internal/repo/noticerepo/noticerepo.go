@@ -28,8 +28,8 @@ import (
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/operations"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/notice/rules"
 )
 

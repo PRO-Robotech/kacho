@@ -16,7 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/pagetoken"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
 )
 
 // Request — разобранные page_size и page_token.

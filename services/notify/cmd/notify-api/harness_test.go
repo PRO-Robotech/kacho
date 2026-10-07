@@ -13,13 +13,13 @@ package main
 // Корень развёртывания `notify-api` (замысел issue-2924 З1, З14, З16, З17;
 // приёмка NTF-5 Р2, Р16, Р18) — пакет main каталога services/notify/cmd/notify-api:
 //
-//	serveAPI(ctx, config.API, apiRuntime) error — поднимает единственный
+//	serveAPI(ctx, config.Config, apiRuntime) error — поднимает единственный
 //	    внутренний слушатель носителя Х5 (форма «только внутренний слушатель») с
 //	    цепочкой звеньев личности (пара CertIdentityExtract → TrustedPrincipalExtract
 //	    с кругом пересылающих) и прав (authz.Interceptor по аннотациям каталога),
 //	    регистрирует InternalNoticeService, NoticeService и OperationService;
 //	    возвращается по отмене ctx (nil) либо с ошибкой носителя.
-//	config.API — значения ручек notify-api в том виде, в каком их отдаёт загрузчик:
+//	config.Config — значения ручек notify-api в том виде, в каком их отдаёт загрузчик:
 //	    порт и удостоверение слушателя, домен доверия и круг пересылающих, адрес и
 //	    клиентское удостоверение ребра к службе доступа (Check звена прав и
 //	    use-case, пакетная проверка сужателя — больше корню notify-api не дано
@@ -65,7 +65,7 @@ func raise(t *testing.T, w *world, k apiKnobs) edge {
 	stopped := make(chan struct{})
 	srv := w.ca.serverFiles(t, "notify-api", apiSAN)
 	peerCert, peerKey := w.ca.issue(t, "notify-api-client", false, apiSAN)
-	cfg := config.API{
+	cfg := config.Config{
 		AuthMode:                    "dev",
 		PeerTLSCertFile:             peerCert,
 		PeerTLSKeyFile:              peerKey,

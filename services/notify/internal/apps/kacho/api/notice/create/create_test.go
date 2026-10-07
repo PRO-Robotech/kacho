@@ -17,7 +17,7 @@ import (
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
 )
 
 var t0 = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)

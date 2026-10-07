@@ -34,7 +34,7 @@ const (
 // describe собирает ОБЪЯВЛЕНИЕ notify-api о себе в форме носителя «только
 // внутренний слушатель» (Х5; приёмка NTF-4 Р20, таблица полей). Стражей старта
 // здесь нет: их исполняют конструктор дескриптора и носитель.
-func describe(cfg config.API, mode servicecontract.Mode, internalCreds, kanameCreds credentials.TransportCredentials,
+func describe(cfg config.Config, mode servicecontract.Mode, internalCreds, kanameCreds credentials.TransportCredentials,
 	rt apiRuntime, observe func(read func() authz.Metrics)) (servicecontract.Descriptor, error) {
 	d, err := servicecontract.New(servicecontract.Spec{
 		Service: serviceName,

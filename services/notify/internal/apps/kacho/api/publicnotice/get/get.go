@@ -10,9 +10,9 @@ import (
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzcheck"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/publicnotice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/authzcheck"
 )
 
 // UseCase — Get.

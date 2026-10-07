@@ -15,7 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/operations"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/kacho/api/notice"
 )
 
 type fakeNarrower struct {

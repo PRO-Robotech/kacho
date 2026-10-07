@@ -55,13 +55,13 @@ const (
 	forwarderSANsMinPerSet = 1
 )
 
-// API — значения ручек развёртывания notify-api. Поля заполняет [LoadAPI];
-// читать их до [API.Validate] нельзя — незаданная ручка неотличима от нулевой.
+// Config — значения ручек развёртывания notify-api. Поля заполняет [Load];
+// читать их до [Config.Validate] нельзя — незаданная ручка неотличима от нулевой.
 //
 // Ручки общие с notify-sender (посадка, база, удостоверение пира) носят те же
 // переменные: развёртывания читают каждое свою копию values. Ручку, которую
 // notify-api не читает, его загрузчик не объявляет (`api-accepted-ignored`).
-type API struct {
+type Config struct {
 	// AuthMode — посадка; notify-api поднимается только в боевой (NTF1-G15).
 	AuthMode string `envconfig:"KACHO_NOTIFY_AUTH_MODE" knob:"notify.authMode"`
 
@@ -156,10 +156,10 @@ func (fs findings) err() error {
 	return &RefusalError{Findings: fs}
 }
 
-// APIKnobs — перечень ручек notify-api, выведенный из тегов [API]. Второго
+// Knobs — перечень ручек notify-api, выведенный из тегов [Config]. Второго
 // перечня нет.
-func APIKnobs() []Knob {
-	t := reflect.TypeFor[API]()
+func Knobs() []Knob {
+	t := reflect.TypeFor[Config]()
 	out := make([]Knob, 0, t.NumField())
 	for i := range t.NumField() {
 		f := t.Field(i)
@@ -172,29 +172,29 @@ func APIKnobs() []Knob {
 	return out
 }
 
-func apiKnob(field string) Knob {
-	f, ok := reflect.TypeFor[API]().FieldByName(field)
+func knobOf(field string) Knob {
+	f, ok := reflect.TypeFor[Config]().FieldByName(field)
 	if !ok {
-		panic("config: поля API." + field + " нет — перечень ручек notify-api разошёлся с кодом стража")
+		panic("config: поля Config." + field + " нет — перечень ручек notify-api разошёлся с кодом стража")
 	}
 	return Knob{Name: f.Tag.Get("knob"), Env: f.Tag.Get("envconfig"), Kind: f.Type.Kind()}
 }
 
-// LoadAPI читает ручки notify-api из окружения. Значение, не разбирающееся в
-// вид ручки, — отказ с её именем; незаданные ручки судит [API.Validate].
-func LoadAPI() (API, error) {
-	var c API
+// Load читает ручки notify-api из окружения. Значение, не разбирающееся в
+// вид ручки, — отказ с её именем; незаданные ручки судит [Config.Validate].
+func Load() (Config, error) {
+	var c Config
 	if err := corecfg.Load(&c); err != nil {
 		var pe *envconfig.ParseError
 		if errors.As(err, &pe) {
 			var fs findings
-			fs.add(apiKnobByEnv(pe.KeyName), "значение %q не разбирается: %v", pe.Value, pe.Err)
-			return API{}, fs.err()
+			fs.add(knobByEnv(pe.KeyName), "значение %q не разбирается: %v", pe.Value, pe.Err)
+			return Config{}, fs.err()
 		}
-		return API{}, fmt.Errorf("загрузка конфигурации notify-api: %w", err)
+		return Config{}, fmt.Errorf("загрузка конфигурации notify-api: %w", err)
 	}
 	c.unset = map[string]bool{}
-	for _, k := range APIKnobs() {
+	for _, k := range Knobs() {
 		if _, ok := os.LookupEnv(k.Env); !ok {
 			c.unset[k.Env] = true
 		}
@@ -202,8 +202,8 @@ func LoadAPI() (API, error) {
 	return c, nil
 }
 
-func apiKnobByEnv(env string) Knob {
-	for _, k := range APIKnobs() {
+func knobByEnv(env string) Knob {
+	for _, k := range Knobs() {
 		if k.Env == env {
 			return k
 		}
@@ -212,10 +212,10 @@ func apiKnobByEnv(env string) Knob {
 }
 
 // Mode — посадка для общего дескриптора.
-func (c API) Mode() (servicecontract.Mode, error) { return servicecontract.ParseMode(c.AuthMode) }
+func (c Config) Mode() (servicecontract.Mode, error) { return servicecontract.ParseMode(c.AuthMode) }
 
 // DSN — строка соединения с kacho_notify.
-func (c API) DSN() string {
+func (c Config) DSN() string {
 	u := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.DBUser, c.DBPassword),
@@ -231,15 +231,15 @@ func (c API) DSN() string {
 
 // TrustedForwarders — круг пересылающих принципала: единственное место, где
 // читается сырой перечень; решения о круге принимаются по типу фундамента.
-func (c API) TrustedForwarders() grpcsrv.TrustedForwarders {
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
 	return grpcsrv.NewTrustedForwarders(c.AuthzTrustedForwarderSANs...)
 }
 
 // TrustDomain — домен доверия пары звеньев личности.
-func (c API) TrustDomain() grpcsrv.TrustDomain { return grpcsrv.NewTrustDomain(c.AuthzTrustDomain) }
+func (c Config) TrustDomain() grpcsrv.TrustDomain { return grpcsrv.NewTrustDomain(c.AuthzTrustDomain) }
 
 // InternalServerTLS — удостоверение единственного слушателя; mTLS всегда.
-func (c API) InternalServerTLS() grpcsrv.TLSServer {
+func (c Config) InternalServerTLS() grpcsrv.TLSServer {
 	return grpcsrv.TLSServer{Enable: true, CertFile: c.InternalServerCertFile, KeyFile: c.InternalServerKeyFile,
 		ClientCAFiles: c.InternalServerClientCAFiles}
 }
@@ -247,7 +247,7 @@ func (c API) InternalServerTLS() grpcsrv.TLSServer {
 // PeerTLS — клиентское удостоверение к службе доступа; mTLS всегда. Имя, которое
 // обязан предъявить сертификат сервера, — узел из адреса службы доступа: тот,
 // кого набирают, и проверяется, второй ручки об одном предмете нет.
-func (c API) PeerTLS() grpcclient.TLSClient {
+func (c Config) PeerTLS() grpcclient.TLSClient {
 	host, _, err := net.SplitHostPort(c.AuthzIAMGRPCAddr)
 	if err != nil {
 		host = ""
@@ -257,7 +257,7 @@ func (c API) PeerTLS() grpcclient.TLSClient {
 }
 
 // ListFilter — величины сужателя затронутых ресурсов.
-func (c API) ListFilter() ListFilter {
+func (c Config) ListFilter() ListFilter {
 	return ListFilter{CacheTTL: c.ListFilterCacheTTL, CheckTimeout: c.AuthzCheckTimeout}
 }
 
@@ -265,9 +265,9 @@ func (c API) ListFilter() ListFilter {
 // разом. Посадку, которую судит общий дескриптор (режим против транспорта,
 // sslmode), здесь повторно не судят; здесь — заданность каждой ручки и её
 // граница.
-func (c *API) Validate() error {
+func (c *Config) Validate() error {
 	var fs findings
-	for _, k := range APIKnobs() {
+	for _, k := range Knobs() {
 		if c.unset[k.Env] {
 			fs.add(k, "ручка не задана; умолчания у неё нет")
 		}
@@ -283,12 +283,12 @@ func (c *API) Validate() error {
 	return fs.err()
 }
 
-func (c *API) set(field string) (Knob, bool) {
-	k := apiKnob(field)
+func (c *Config) set(field string) (Knob, bool) {
+	k := knobOf(field)
 	return k, !c.unset[k.Env]
 }
 
-func (c *API) duration(fs *findings, field string, v, lo, hi time.Duration) bool {
+func (c *Config) duration(fs *findings, field string, v, lo, hi time.Duration) bool {
 	k, ok := c.set(field)
 	if !ok {
 		return false
@@ -300,7 +300,7 @@ func (c *API) duration(fs *findings, field string, v, lo, hi time.Duration) bool
 	return true
 }
 
-func (c *API) nonEmpty(fs *findings, fields ...string) {
+func (c *Config) nonEmpty(fs *findings, fields ...string) {
 	for _, field := range fields {
 		if k, ok := c.set(field); ok && strings.TrimSpace(reflect.ValueOf(*c).FieldByName(field).String()) == "" {
 			fs.add(k, "значение пусто")
@@ -308,7 +308,7 @@ func (c *API) nonEmpty(fs *findings, fields ...string) {
 	}
 }
 
-func (c *API) validatePosture(fs *findings) {
+func (c *Config) validatePosture(fs *findings) {
 	if k, ok := c.set("AuthMode"); ok {
 		mode, err := c.Mode()
 		switch {
@@ -322,7 +322,7 @@ func (c *API) validatePosture(fs *findings) {
 	c.nonEmpty(fs, "PeerTLSCertFile", "PeerTLSKeyFile", "PeerTLSCAFile")
 }
 
-func (c *API) validateDB(fs *findings) {
+func (c *Config) validateDB(fs *findings) {
 	c.nonEmpty(fs, "DBHost", "DBUser", "DBPassword", "DBName", "DBSSLMode")
 	if k, ok := c.set("DBPort"); ok {
 		if _, err := parsePort(c.DBPort); err != nil {
@@ -347,7 +347,7 @@ func hostPort(fs *findings, k Knob, v string) (string, bool) {
 	return port, true
 }
 
-func (c *API) validateListener(fs *findings) {
+func (c *Config) validateListener(fs *findings) {
 	diagPort := ""
 	if k, ok := c.set("DiagAddr"); ok {
 		diagPort, _ = hostPort(fs, k, c.DiagAddr)
@@ -363,7 +363,7 @@ func (c *API) validateListener(fs *findings) {
 		case p < InternalPortMin || p > InternalPortMax:
 			fs.add(k, "порт %d вне границы [%d..%d]", p, InternalPortMin, InternalPortMax)
 		case c.InternalPort == diagPort:
-			fs.add(k, "порт %d совпадает с портом %s", p, apiKnob("DiagAddr"))
+			fs.add(k, "порт %d совпадает с портом %s", p, knobOf("DiagAddr"))
 		}
 	}
 	for _, field := range []string{"InternalServerCertFile", "InternalServerKeyFile"} {
@@ -391,7 +391,7 @@ func (c *API) validateListener(fs *findings) {
 	}
 }
 
-func (c *API) validateAuthz(fs *findings) {
+func (c *Config) validateAuthz(fs *findings) {
 	domainOK := false
 	if k, ok := c.set("AuthzTrustDomain"); ok {
 		if !isDNSName(c.AuthzTrustDomain) {
@@ -422,7 +422,7 @@ func (c *API) validateAuthz(fs *findings) {
 	if k, ok := c.set("HandlingBudget"); ok && checkOK {
 		if c.HandlingBudget <= c.AuthzCheckTimeout || c.HandlingBudget > HandlingBudgetMax {
 			fs.add(k, "значение %s вне границы (%s %s..%s]", c.HandlingBudget,
-				apiKnob("AuthzCheckTimeout"), c.AuthzCheckTimeout, HandlingBudgetMax)
+				knobOf("AuthzCheckTimeout"), c.AuthzCheckTimeout, HandlingBudgetMax)
 		}
 	}
 }
