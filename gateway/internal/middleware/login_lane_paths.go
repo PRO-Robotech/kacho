@@ -9,8 +9,9 @@
 //     регистрация Ф4 (kacho#2699), два глагола восстановления доступа Ф5
 //     (kacho#2701), шесть глаголов второго фактора Ф12 (приёмка Ф12 Р4,
 //     kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b Р5,
-//     kacho#2900) — пятнадцать путей, тот же перечень, что служба объявляет у
-//     своего слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
+//     kacho#2900) и предъявление кода регистрации (приёмка NTF-2, Р9) —
+//     шестнадцать путей, тот же перечень, что служба объявляет у своего
+//     слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
 //   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
 //     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
 //     авторизации, обмен кода и метаданные обнаружения — три записи; цель —
@@ -99,6 +100,11 @@ const (
 	// паролем — два глагола, две формы, два вида признака.
 	LoginLanePathRecovery         = "/iam/v1/auth/recovery"
 	LoginLanePathRecoveryComplete = "/iam/v1/auth/recovery/complete"
+	// LoginLanePathRegisterConfirm — предъявление кода регистрации (приёмка
+	// NTF-2, Р9): второй шаг «сначала письмо, потом сессия». Подпуть пути
+	// регистрации, как предъявление кода восстановления — подпуть запроса кода;
+	// совпадение точное, поэтому два глагола различимы.
+	LoginLanePathRegisterConfirm = "/iam/v1/auth/register/confirm"
 	// Второй фактор (Ф12 Р4, kacho#1281): четыре глагола семейства подпутями,
 	// чтение состояния на корне семейства, церемония повышения своим подпутём.
 	// Те же полоса, признак формы и ретрансляция, что у четырёх глаголов Ф3;
@@ -254,7 +260,20 @@ type LoginLaneRoute struct {
 	// удостоверение клиента этой схемы (`CarriesClientBasic`). Умолчание —
 	// снятие: запись, дописанная без решения, `Authorization` не несёт.
 	carriesClientBasic bool
+	// anonMail — стоит ли перед ретрансляцией записи ограничитель анонимной
+	// почты края (приёмка NTF-2, Р5; замысел issue-2917, З8). Истина ровно у
+	// путей, которые ставят письмо на адрес из тела запроса: запрос кода
+	// восстановления и регистрация. Пути предъявления кода письма не ставят, и
+	// перебор кода на них держат оси службы (Р6, NTF2-63). Умолчание — нет:
+	// запись, дописанная без решения, ограничителем не судится, и монтаж корня
+	// требует звено ровно для записей с признаком.
+	anonMail bool
 }
+
+// AnonMail — стоит ли перед ретрансляцией записи ограничитель анонимной почты
+// края (NTF2-63). Читатель — монтаж корня (`handler.MountLoginLaneRoutes`):
+// второго перечня путей у звена нет.
+func (rt LoginLaneRoute) AnonMail() bool { return rt.anonMail }
 
 // CarriesClientBasic — оставляет ли ретранслятор на этой записи удостоверение
 // клиента базовой схемой. Истина ровно у обмена кода: обработчик выдачи на
@@ -264,15 +283,17 @@ type LoginLaneRoute struct {
 // `StripCredentialAndIdentityHeadersKeepingClientBasic`).
 func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b
-// и координаты церемонии; читатели по нему не ветвятся.
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4 (с
+// предъявлением кода регистрации NTF-2), Ф5, Ф12, F6b и координаты церемонии;
+// читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "logout", Path: LoginLanePathLogout, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "password", Path: LoginLanePathPassword, Target: RelayTargetForm},
 	{Verb: "csrf", Path: LoginLanePathCSRF, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
-	{Verb: "register", Path: LoginLanePathRegister, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
-	{Verb: "recovery", Path: LoginLanePathRecovery, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "register", Path: LoginLanePathRegister, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, anonMail: true},
+	{Verb: "register-confirm", Path: LoginLanePathRegisterConfirm, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "recovery", Path: LoginLanePathRecovery, Target: RelayTargetForm, relayWhenUnanswered: true, anonMail: true},
 	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete, Target: RelayTargetForm, relayWhenUnanswered: true},
 	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor, Target: RelayTargetForm},
 	{Verb: "second-factor-enroll", Path: LoginLanePathSecondFactorEnroll, Target: RelayTargetForm},

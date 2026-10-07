@@ -382,7 +382,8 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/storage/internal/migrations \
 	./services/vpc/internal/migrations \
 	./services/nlb/internal/apps/kacho/jobs \
-	./gateway/internal/idempotencypg
+	./gateway/internal/idempotencypg \
+	./gateway/internal/middleware/anonmail
 
 # Здесь стояли ЧЕТЫРЕ записи фундамента — `./pkg/dropguard`, `./pkg/subscription`,
 # `./pkg/schemaguard`, `./pkg/migratorcli`. Они сняты ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ:

@@ -35,6 +35,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
@@ -150,7 +151,7 @@ func buildE2E(t *testing.T, opts ...func(*middleware.AuthzMiddlewareConfig)) (*h
 		Enabled:         true,
 		Catalog:         cat,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, true),
+		Context:         mustExtractor(t, time.Now, "1"),
 		Resources:       middleware.NewResourceExtractor(nil),
 		Checker:         checker,
 		Logger:          silentLogger(),
@@ -390,4 +391,19 @@ func TestE2E_AuthZ_CacheExpiresAfterTTL(t *testing.T) {
 
 	// Two distinct uncached calls.
 	assert.Equal(t, int64(2), stub.calls.Load())
+}
+
+// mustExtractor — оператор клиентского адреса с числом прыжков, построенным
+// разбором значения ручки, как у корня края.
+func mustExtractor(t testing.TB, now func() time.Time, hops string) *middleware.ContextExtractor {
+	t.Helper()
+	parsed, err := config.ParseTrustedHops(hops)
+	if err != nil {
+		t.Fatalf("число прыжков %q: %v", hops, err)
+	}
+	e, err := middleware.NewContextExtractor(now, parsed)
+	if err != nil {
+		t.Fatalf("оператор клиентского адреса: %v", err)
+	}
+	return e
 }

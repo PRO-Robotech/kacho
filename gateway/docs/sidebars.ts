@@ -19,7 +19,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Установка',
       collapsed: true,
-      items: ['install/deploy', 'install/configuration'],
+      items: ['install/deploy', 'install/configuration', 'install/observability'],
     },
     {
       type: 'category',

@@ -68,6 +68,15 @@ var muxOwnStatuses = map[int]string{
 	413: "объявленная длина тела больше потолка — отдаёт middleware края ДО мультиплексора " +
 		"(и ingress своим пределом тоже), поэтому проба, допускающая 413 на большом теле, " +
 		"называет исход, у которого есть производитель",
+	// Ограничитель анонимной почты края (приёмка NTF-2, Р5; замысел issue-2917,
+	// З8) отвечает САМ, до ретрансляции к службе: два вида 429 — вызов
+	// proof-of-work (`PROOF_OF_WORK_REQUIRED`) и жёсткий отказ (`RATE_LIMITED`,
+	// `Retry-After`) — и 503 «хранилище ограничителя недоступно» (`code` 14,
+	// пустой `details`). Коды совпадают с отображением библиотеки для
+	// RESOURCE_EXHAUSTED и UNAVAILABLE, но производитель — наш код, и запись
+	// держится его живым литералом, а не библиотекой.
+	429: "ограничитель анонимной почты края: вызов proof-of-work и жёсткий отказ — до ретрансляции к службе",
+	503: "ограничитель анонимной почты края: хранилище ограничителя недоступно — до ретрансляции к службе",
 }
 
 // edgeStatusProducers — чем ДОКАЗЫВАЕТСЯ каждая запись muxOwnStatuses, которую
@@ -79,6 +88,8 @@ var muxOwnStatuses = map[int]string{
 // начнёт освобождать пробу, ждущую невозможного.
 var edgeStatusProducers = map[int]struct{ file, literal string }{
 	413: {"gateway/internal/middleware/http_body_limit.go", "http.StatusRequestEntityTooLarge"},
+	429: {"gateway/internal/middleware/anonmail/gate.go", "http.StatusTooManyRequests"},
+	503: {"gateway/internal/middleware/anonmail/gate.go", "http.StatusServiceUnavailable"},
 }
 
 // statusAssertion — литерал кода рядом с `pm.response.code`.

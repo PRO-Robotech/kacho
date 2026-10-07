@@ -20,15 +20,16 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// newClientAddressOperator — ОДИН оператор чтения цепочки пересылки на два
-// читателя: условие `client_ip` модели прав и `X-Forwarded-For` ретрансляции
-// полосы формы. Обе ручки те же: доверять ли заголовкам пересылки и сколько
-// доверенных прыжков стоит перед краем (адрес берётся СПРАВА). Второй
-// экземпляр с теми же ручками разошёлся бы с первым при следующей правке одной
-// из них.
-func newClientAddressOperator(cfg config.Config) *middleware.ContextExtractor {
-	return middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor,
-		middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount))
+// newClientAddressOperator — ОДИН оператор чтения цепочки пересылки на всех
+// читателей клиентского адреса: условие `client_ip` модели прав,
+// `X-Forwarded-For` ретрансляции полосы формы и ключи ограничителя анонимной
+// почты. Ручка одна — число доверенных прыжков (адрес берётся СПРАВА), и оно
+// приходит обязательным параметром, разобранным стражем ручек края
+// (config.ResolveEdgeLimits); умолчания у числа нет. Корень строит оператор
+// ОДИН раз и отдаёт всем читателям: второй экземпляр разошёлся бы с первым при
+// следующей правке одного из них.
+func newClientAddressOperator(hops config.TrustedHops) (*middleware.ContextExtractor, error) {
+	return middleware.NewContextExtractor(time.Now, hops)
 }
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь

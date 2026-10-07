@@ -40,6 +40,14 @@
 global:
   imageRegistry: ""
   kacho:
+    # ПРАВИЛА ТРЕВОГИ ВЫКЛЮЧЕНЫ (выключатель один на дерево kacho — CX2-92 (а)):
+    # CRD PrometheusRule на kind-стенде нет — объект отверг бы всю установку.
+    # Замер 2026-10-01: `kubectl --context kind-kacho get crd
+    # prometheusrules.monitoring.coreos.com` → NotFound. Цепочки поверх этого
+    # слоя называют свою причину сами.
+    alertRules:
+      enabled: false
+      disabledBecause: "CRD PrometheusRule на kind-стенде нет (замер kind-kacho 2026-10-01)"
     # ─── СЛУЖБА ЛИЧНОСТИ: АДРЕСА СТЕНДА, А НЕ БОЕВЫЕ ─────────────────────────
     #
     # Умолчание происхождения консоли собирается из `domain: api.kacho.cloud` и

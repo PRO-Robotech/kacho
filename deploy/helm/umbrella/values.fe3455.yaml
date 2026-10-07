@@ -288,6 +288,14 @@ ingress-nginx:
 # площадки адреса почты больше не несёт (cutover-creds-layer.sh, CX1-85).
 global:
   kacho:
+    # Правила тревоги выключены (выключатель один на дерево kacho — CX2-92
+    # (а)): есть ли на кластере CRD PrometheusRule, НЕ измерено (доступа с
+    # машины разработки нет). Включённый объект на кластере без CRD отверг бы
+    # всю установку. Включать — после замера
+    # `kubectl get crd prometheusrules.monitoring.coreos.com` на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере fe3455 не измерено"
     identity:
       smtp:
         connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'

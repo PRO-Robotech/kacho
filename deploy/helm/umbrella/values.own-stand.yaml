@@ -60,6 +60,13 @@ global:
   security:
     allowInsecureImages: true
   kacho:
+    # Правила тревоги выключены (выключатель один на дерево kacho — CX2-92
+    # (а)): CRD PrometheusRule на kind-стенде `own` нет (замер 2026-10-01,
+    # `kubectl --context kind-kacho-own-2816 get crd
+    # prometheusrules.monitoring.coreos.com` → NotFound).
+    alertRules:
+      enabled: false
+      disabledBecause: "CRD PrometheusRule на kind-стенде own нет (замер kind-kacho-own-2816 2026-10-01)"
     identity:
       # ─── ПОЧТОВАЯ ПОЛОСА СТЕНДА ──────────────────────────────────────────
       #

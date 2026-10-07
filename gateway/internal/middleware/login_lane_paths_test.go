@@ -8,7 +8,7 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — пятнадцать путей одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — шестнадцать путей одним объявлением после приёмки NTF-2, Р9):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
 // восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
 // kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
@@ -24,6 +24,10 @@ var loginLaneWant = map[string]string{
 	"register":          "/iam/v1/auth/register",
 	"recovery":          "/iam/v1/auth/recovery",
 	"recovery-complete": "/iam/v1/auth/recovery/complete",
+	// Предъявление кода регистрации (приёмка NTF-2, Р9; замысел issue-2917, З8):
+	// второй шаг «сначала письмо, потом сессия», анонимный, как предъявление
+	// кода восстановления.
+	"register-confirm": "/iam/v1/auth/register/confirm",
 	// Второй фактор (Ф12 Р4): четыре глагола семейства подпутями, чтение
 	// состояния на корне семейства, церемония повышения своим подпутём.
 	"second-factor-status":       "/iam/v1/auth/second-factor",
@@ -160,8 +164,8 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d записей объявления", len(added), len(LoginLaneRoutes()))
 }
 
-// TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation —
-// объявление несёт 18 записей: 15 глаголов формы с целью «слушатель формы» и 3
+// TestLoginLanePaths_F6b_11_NineteenRecordsAndNineOpenBeforeAddressConfirmation —
+// объявление несёт 19 записей: 16 глаголов формы с целью «слушатель формы» и 3
 // координаты церемонии с целью «слушатель выдачи»; у каждой — решение «доступна
 // до подтверждения адреса», и доступных ровно девять (приёмка F6b, Р5, F6b-11).
 //
@@ -169,10 +173,10 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 // подтверждения недоступна. Оба глагола подтверждения носитель читают (Р6
 // службы: «под сессией человека»), поэтому при службе, не ответившей о сессии,
 // край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
-func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmation(t *testing.T) {
+func TestLoginLanePaths_F6b_11_NineteenRecordsAndNineOpenBeforeAddressConfirmation(t *testing.T) {
 	routes := LoginLaneRoutes()
-	if len(routes) != 18 || len(loginLaneWant) != 15 || len(ceremonyWant) != 3 {
-		t.Fatalf("записей объявлено %d, по приёмке — 18: глаголов формы 15 (%d выписано), координат церемонии 3 (%d выписано)",
+	if len(routes) != 19 || len(loginLaneWant) != 16 || len(ceremonyWant) != 3 {
+		t.Fatalf("записей объявлено %d, по приёмке — 19: глаголов формы 16 (%d выписано), координат церемонии 3 (%d выписано)",
 			len(routes), len(loginLaneWant), len(ceremonyWant))
 	}
 	open, form, issuance := 0, 0, 0
@@ -191,8 +195,8 @@ func TestLoginLanePaths_F6b_11_EighteenRecordsAndNineOpenBeforeAddressConfirmati
 			open++
 		}
 	}
-	if form != 15 || issuance != 3 {
-		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 15 и 3", form, issuance)
+	if form != 16 || issuance != 3 {
+		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 16 и 3", form, issuance)
 	}
 	if open != 9 {
 		t.Fatalf("доступных до подтверждения адреса записей %d, по приёмке — 9", open)
