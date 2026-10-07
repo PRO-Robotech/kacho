@@ -1,0 +1,149 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package config
+
+import (
+	"errors"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/PRO-Robotech/corelib/authz"
+)
+
+// apiEnv — годный набор ручек notify-api: значения в границах.
+func apiEnv() map[string]string {
+	return map[string]string{
+		"KACHO_NOTIFY_AUTH_MODE":                          "production",
+		"KACHO_NOTIFY_PEER_TLS_CERT_FILE":                 "/etc/notify/peer/tls.crt",
+		"KACHO_NOTIFY_PEER_TLS_KEY_FILE":                  "/etc/notify/peer/tls.key",
+		"KACHO_NOTIFY_PEER_TLS_CA_FILE":                   "/etc/notify/peer/ca.crt",
+		"KACHO_NOTIFY_DB_HOST":                            "pg",
+		"KACHO_NOTIFY_DB_PORT":                            "5432",
+		"KACHO_NOTIFY_DB_USER":                            "notify",
+		"KACHO_NOTIFY_DB_PASSWORD":                        "secret",
+		"KACHO_NOTIFY_DB_NAME":                            "kacho_notify",
+		"KACHO_NOTIFY_DB_SSLMODE":                         "require",
+		"KACHO_NOTIFY_DB_MAX_CONNS":                       "10",
+		"KACHO_NOTIFY_DIAG_ADDR":                          ":9095",
+		"KACHO_NOTIFY_AUTHZ_IAM_GRPC_ADDR":                "kaname:9091",
+		"KACHO_NOTIFY_INTERNAL_PORT":                      "9091",
+		"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CERTFILE":      "/etc/notify/server/tls.crt",
+		"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_KEYFILE":       "/etc/notify/server/tls.key",
+		"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES": "/etc/notify/server/ca.crt",
+		"KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN":                 "kacho.cloud",
+		"KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS":       "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
+		"KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER":          "false",
+		"KACHO_NOTIFY_AUTHZ_CACHE_TTL":                    "5s",
+		"KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT":                "2s",
+		"KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC":          "100",
+		"KACHO_NOTIFY_HANDLING_BUDGET":                    "30s",
+		"KACHO_NOTIFY_NOTICE_REMINDER_LEAD":               "24h",
+		"KACHO_NOTIFY_LIST_FILTER_CACHE_TTL":              "5s",
+	}
+}
+
+// setAPIEnv выставляет окружение пробы и снимает прочие KACHO_NOTIFY_*.
+func setAPIEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		k, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(k, "KACHO_NOTIFY_") {
+			if _, keep := env[k]; !keep {
+				t.Setenv(k, "")
+				if err := os.Unsetenv(k); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func loadAPI(t *testing.T, env map[string]string) (API, error) {
+	t.Helper()
+	setAPIEnv(t, env)
+	c, err := LoadAPI()
+	if err != nil {
+		return c, err
+	}
+	return c, c.Validate()
+}
+
+// refusedKnobs — ручки, названные отказом старта.
+func refusedKnobs(err error) []string {
+	var re *RefusalError
+	if !errors.As(err, &re) {
+		return nil
+	}
+	var out []string
+	for _, f := range re.Findings {
+		out = append(out, f.Knob.Env)
+	}
+	return out
+}
+
+// TestAPIConfig_EveryKnobHasAReaderAndTheTwinStarts — годный набор принимается,
+// и перепись ручек совпадает с набором пробы: ручки, которую никто не задаёт,
+// нет, и задаваемой, которую загрузчик не читает, нет.
+func TestAPIConfig_EveryKnobHasAReaderAndTheTwinStarts(t *testing.T) {
+	c, err := loadAPI(t, apiEnv())
+	if err != nil {
+		t.Fatalf("годный набор отвергнут: %v", err)
+	}
+	knobs := APIKnobs()
+	t.Logf("ручек notify-api: %d", len(knobs))
+	if len(knobs) != len(apiEnv()) {
+		t.Fatalf("ручек в переписи %d, в наборе пробы %d", len(knobs), len(apiEnv()))
+	}
+	for _, k := range knobs {
+		if _, ok := apiEnv()[k.Env]; !ok {
+			t.Fatalf("ручка %s вне набора пробы", k)
+		}
+	}
+	if c.ListFilter().CacheTTL != 5*time.Second || c.NoticeReminderLead != 24*time.Hour {
+		t.Fatalf("величины не дошли: %+v", c.ListFilter())
+	}
+}
+
+// TestAPIConfig_EachRefusalNamesItsKnob — каждая инъекция меняет один факт
+// годного набора и даёт отказ старта ровно с именем своей ручки.
+func TestAPIConfig_EachRefusalNamesItsKnob(t *testing.T) {
+	ceiling := authz.RevocationPolicy.Ceiling
+	cases := []struct {
+		name, env, value string
+		unset            bool
+	}{
+		{"не задана ручка окна сужателя", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", "", true},
+		{"окно сужателя выше потолка политики", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", (ceiling + time.Second).String(), false},
+		{"окно сужателя ниже секунды", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", "500ms", false},
+		{"напоминание короче часа", "KACHO_NOTIFY_NOTICE_REMINDER_LEAD", "30m", false},
+		{"напоминание длиннее недели", "KACHO_NOTIFY_NOTICE_REMINDER_LEAD", "169h", false},
+		{"не боевая посадка", "KACHO_NOTIFY_AUTH_MODE", "dev", false},
+		{"граница обработки не больше срока вопроса", "KACHO_NOTIFY_HANDLING_BUDGET", "2s", false},
+		{"порт слушателя равен диагностическому", "KACHO_NOTIFY_INTERNAL_PORT", "9095", false},
+		{"пересылающий вне домена доверия", "KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS", "spiffe://other.cloud/ns/kacho/sa/gw", false},
+		{"окно звена прав выше 30 с", "KACHO_NOTIFY_AUTHZ_CACHE_TTL", "31s", false},
+		{"бюджет отказов ноль", "KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC", "0", false},
+		{"относительный путь УЦ клиентов", "KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES", "ca.crt", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := apiEnv()
+			if c.unset {
+				delete(env, c.env)
+			} else {
+				env[c.env] = c.value
+			}
+			_, err := loadAPI(t, env)
+			got := refusedKnobs(err)
+			if len(got) != 1 || got[0] != c.env {
+				t.Fatalf("отказ %v (ручки %v), ожидался ровно по %s", err, got, c.env)
+			}
+		})
+	}
+}

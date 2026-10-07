@@ -1,0 +1,373 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/kelseyhightower/envconfig"
+
+	"github.com/PRO-Robotech/corelib/authz"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+)
+
+// Границы ручек notify-api (приёмка NTF-4 Р16/Р20 — звено прав и слушатель;
+// приёмка NTF-5 Р17 — напоминание и окно сужателя).
+const (
+	AuthzCacheTTLMin       = time.Second
+	AuthzCacheTTLMax       = 30 * time.Second
+	AuthzCheckTimeoutMin   = 100 * time.Millisecond
+	AuthzCheckTimeoutMax   = 10 * time.Second
+	AuthzDenyBudgetMin     = 1.0
+	AuthzDenyBudgetMax     = 10000.0
+	HandlingBudgetMax      = 60 * time.Second
+	InternalPortMin        = 1024
+	InternalPortMax        = 65535
+	ForwarderSANsMax       = 8
+	ClientCAFilesMax       = 4
+	NoticeReminderLeadMin  = time.Hour
+	NoticeReminderLeadMax  = 168 * time.Hour
+	ListFilterCacheTTLMin  = time.Second
+	forwarderSANsMinPerSet = 1
+)
+
+// API — значения ручек развёртывания notify-api. Поля заполняет [LoadAPI];
+// читать их до [API.Validate] нельзя — незаданная ручка неотличима от нулевой.
+//
+// Ручки общие с notify-sender (посадка, база, удостоверение пира) носят те же
+// переменные: развёртывания читают каждое свою копию values. Ручку, которую
+// notify-api не читает, его загрузчик не объявляет (`api-accepted-ignored`).
+type API struct {
+	// AuthMode — посадка; notify-api поднимается только в боевой (NTF1-G15).
+	AuthMode string `envconfig:"KACHO_NOTIFY_AUTH_MODE" knob:"notify.authMode"`
+
+	// PeerTLS* — клиентское удостоверение notify-api к службе доступа и УЦ её
+	// сервера. Выключателя mTLS нет.
+	PeerTLSCertFile string `envconfig:"KACHO_NOTIFY_PEER_TLS_CERT_FILE" knob:"notify.peerTLS.certFile"`
+	PeerTLSKeyFile  string `envconfig:"KACHO_NOTIFY_PEER_TLS_KEY_FILE" knob:"notify.peerTLS.keyFile"`
+	PeerTLSCAFile   string `envconfig:"KACHO_NOTIFY_PEER_TLS_CA_FILE" knob:"notify.peerTLS.caFile"`
+
+	// DB* — соединение с kacho_notify; режим шифрования судит дескриптор.
+	DBHost     string `envconfig:"KACHO_NOTIFY_DB_HOST" knob:"notify.db.host"`
+	DBPort     string `envconfig:"KACHO_NOTIFY_DB_PORT" knob:"notify.db.port"`
+	DBUser     string `envconfig:"KACHO_NOTIFY_DB_USER" knob:"notify.db.user"`
+	DBPassword string `envconfig:"KACHO_NOTIFY_DB_PASSWORD" knob:"notify.db.password"`
+	DBName     string `envconfig:"KACHO_NOTIFY_DB_NAME" knob:"notify.db.name"`
+	DBSSLMode  string `envconfig:"KACHO_NOTIFY_DB_SSLMODE" knob:"notify.db.sslMode"`
+	DBMaxConns int    `envconfig:"KACHO_NOTIFY_DB_MAX_CONNS" knob:"notify.db.maxConns"`
+
+	// DiagAddr — диагностическая поверхность (/metrics, /healthz, /readyz).
+	DiagAddr string `envconfig:"KACHO_NOTIFY_DIAG_ADDR" knob:"notify.diagAddr"`
+
+	// AuthzIAMGRPCAddr — внутренний адрес службы доступа: Check звена прав и
+	// use-case, пакетная проверка сужателя.
+	AuthzIAMGRPCAddr string `envconfig:"KACHO_NOTIFY_AUTHZ_IAM_GRPC_ADDR" knob:"notify.authz.iamGRPCAddr"`
+
+	// Internal* — единственный (внутренний) слушатель и его удостоверение.
+	InternalPort                string   `envconfig:"KACHO_NOTIFY_INTERNAL_PORT" knob:"notify.internalPort"`
+	InternalServerCertFile      string   `envconfig:"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CERTFILE" knob:"notify.internalServer.certFile"`
+	InternalServerKeyFile       string   `envconfig:"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_KEYFILE" knob:"notify.internalServer.keyFile"`
+	InternalServerClientCAFiles []string `envconfig:"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES" knob:"notify.internalServer.clientCAFiles"`
+
+	// Authz* — звено прав слушателя.
+	AuthzTrustDomain          string        `envconfig:"KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN" knob:"notify.authz.trustDomain"`
+	AuthzTrustedForwarderSANs []string      `envconfig:"KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS" knob:"notify.authz.trustedForwarderSANs"`
+	AuthzTrustAnyForwarder    bool          `envconfig:"KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER" knob:"notify.authz.trustAnyForwarder"`
+	AuthzCacheTTL             time.Duration `envconfig:"KACHO_NOTIFY_AUTHZ_CACHE_TTL" knob:"notify.authz.cacheTTL"`
+	AuthzCheckTimeout         time.Duration `envconfig:"KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT" knob:"notify.authz.checkTimeout"`
+	AuthzDenyBudgetPerSec     float64       `envconfig:"KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC" knob:"notify.authz.denyBudgetPerSec"`
+
+	// HandlingBudget — граница обработки одного вызова.
+	HandlingBudget time.Duration `envconfig:"KACHO_NOTIFY_HANDLING_BUDGET" knob:"notify.handlingBudget"`
+
+	// NoticeReminderLead — за сколько до начала работ напоминание MAINTENANCE.
+	NoticeReminderLead time.Duration `envconfig:"KACHO_NOTIFY_NOTICE_REMINDER_LEAD" knob:"notify.notice.reminderLead"`
+	// ListFilterCacheTTL — окно положительных вердиктов сужателя затронутых
+	// ресурсов (окно отзыва). Верх границы — потолок политики окон отзыва.
+	ListFilterCacheTTL time.Duration `envconfig:"KACHO_NOTIFY_LIST_FILTER_CACHE_TTL" knob:"notify.listFilter.cacheTTL"`
+
+	// unset — ручки, переменной которых нет в окружении вовсе.
+	unset map[string]bool
+}
+
+// APIKnobs — перечень ручек notify-api, выведенный из тегов [API]. Второго
+// перечня нет.
+func APIKnobs() []Knob {
+	t := reflect.TypeFor[API]()
+	out := make([]Knob, 0, t.NumField())
+	for i := range t.NumField() {
+		f := t.Field(i)
+		env := f.Tag.Get("envconfig")
+		if env == "" {
+			continue
+		}
+		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind()})
+	}
+	return out
+}
+
+func apiKnob(field string) Knob {
+	f, ok := reflect.TypeFor[API]().FieldByName(field)
+	if !ok {
+		panic("config: поля API." + field + " нет — перечень ручек notify-api разошёлся с кодом стража")
+	}
+	return Knob{Name: f.Tag.Get("knob"), Env: f.Tag.Get("envconfig"), Kind: f.Type.Kind()}
+}
+
+// LoadAPI читает ручки notify-api из окружения. Значение, не разбирающееся в
+// вид ручки, — отказ с её именем; незаданные ручки судит [API.Validate].
+func LoadAPI() (API, error) {
+	var c API
+	if err := corecfg.Load(&c); err != nil {
+		var pe *envconfig.ParseError
+		if errors.As(err, &pe) {
+			var fs findings
+			fs.add(apiKnobByEnv(pe.KeyName), "значение %q не разбирается: %v", pe.Value, pe.Err)
+			return API{}, fs.err()
+		}
+		return API{}, fmt.Errorf("загрузка конфигурации notify-api: %w", err)
+	}
+	c.unset = map[string]bool{}
+	for _, k := range APIKnobs() {
+		if _, ok := os.LookupEnv(k.Env); !ok {
+			c.unset[k.Env] = true
+		}
+	}
+	return c, nil
+}
+
+func apiKnobByEnv(env string) Knob {
+	for _, k := range APIKnobs() {
+		if k.Env == env {
+			return k
+		}
+	}
+	return Knob{Name: env, Env: env}
+}
+
+// Mode — посадка для общего дескриптора.
+func (c API) Mode() (servicecontract.Mode, error) { return servicecontract.ParseMode(c.AuthMode) }
+
+// DSN — строка соединения с kacho_notify.
+func (c API) DSN() string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(c.DBUser, c.DBPassword),
+		Host:   net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:   "/" + c.DBName,
+		RawQuery: url.Values{
+			"sslmode":        []string{c.DBSSLMode},
+			"pool_max_conns": []string{strconv.Itoa(c.DBMaxConns)},
+		}.Encode(),
+	}
+	return u.String()
+}
+
+// ListFilter — величины сужателя затронутых ресурсов.
+func (c API) ListFilter() ListFilter {
+	return ListFilter{CacheTTL: c.ListFilterCacheTTL, CheckTimeout: c.AuthzCheckTimeout}
+}
+
+// Validate — страж старта notify-api (ban #16, fail-closed): все находки
+// разом. Посадку, которую судит общий дескриптор (режим против транспорта,
+// sslmode), здесь повторно не судят; здесь — заданность каждой ручки и её
+// граница.
+func (c *API) Validate() error {
+	var fs findings
+	for _, k := range APIKnobs() {
+		if c.unset[k.Env] {
+			fs.add(k, "ручка не задана; умолчания у неё нет")
+		}
+	}
+	c.validatePosture(&fs)
+	c.validateDB(&fs)
+	c.validateListener(&fs)
+	c.validateAuthz(&fs)
+	c.duration(&fs, "NoticeReminderLead", c.NoticeReminderLead, NoticeReminderLeadMin, NoticeReminderLeadMax)
+	// Верх окна сужателя — потолок политики окон отзыва платформы: литерала
+	// верхней границы здесь нет (замысел issue-2924 З14 п.3).
+	c.duration(&fs, "ListFilterCacheTTL", c.ListFilterCacheTTL, ListFilterCacheTTLMin, authz.RevocationPolicy.Ceiling)
+	return fs.err()
+}
+
+func (c *API) set(field string) (Knob, bool) {
+	k := apiKnob(field)
+	return k, !c.unset[k.Env]
+}
+
+func (c *API) duration(fs *findings, field string, v, lo, hi time.Duration) bool {
+	k, ok := c.set(field)
+	if !ok {
+		return false
+	}
+	if v < lo || v > hi {
+		fs.add(k, "значение %s вне границы [%s..%s]", v, lo, hi)
+		return false
+	}
+	return true
+}
+
+func (c *API) nonEmpty(fs *findings, fields ...string) {
+	for _, field := range fields {
+		if k, ok := c.set(field); ok && strings.TrimSpace(reflect.ValueOf(*c).FieldByName(field).String()) == "" {
+			fs.add(k, "значение пусто")
+		}
+	}
+}
+
+func (c *API) validatePosture(fs *findings) {
+	if k, ok := c.set("AuthMode"); ok {
+		mode, err := c.Mode()
+		switch {
+		case err != nil:
+			fs.add(k, "ось authMode: %v", err)
+		case !mode.IsProduction():
+			fs.add(k, "ось authMode: посадка %q не боевая; notify поднимается только в production "+
+				"или production-strict (NTF1-G15)", mode)
+		}
+	}
+	c.nonEmpty(fs, "PeerTLSCertFile", "PeerTLSKeyFile", "PeerTLSCAFile")
+}
+
+func (c *API) validateDB(fs *findings) {
+	c.nonEmpty(fs, "DBHost", "DBUser", "DBPassword", "DBName", "DBSSLMode")
+	if k, ok := c.set("DBPort"); ok {
+		if _, err := parsePort(c.DBPort); err != nil {
+			fs.add(k, "%v", err)
+		}
+	}
+	if k, ok := c.set("DBMaxConns"); ok && (c.DBMaxConns < DBMaxConnsMin || c.DBMaxConns > DBMaxConnsMax) {
+		fs.add(k, "значение %d вне границы [%d..%d]", c.DBMaxConns, DBMaxConnsMin, DBMaxConnsMax)
+	}
+}
+
+func hostPort(fs *findings, k Knob, v string) (string, bool) {
+	_, port, err := net.SplitHostPort(v)
+	if err != nil {
+		fs.add(k, "адрес %q не в форме узел:порт: %v", v, err)
+		return "", false
+	}
+	if _, perr := parsePort(port); perr != nil {
+		fs.add(k, "%v", perr)
+		return "", false
+	}
+	return port, true
+}
+
+func (c *API) validateListener(fs *findings) {
+	diagPort := ""
+	if k, ok := c.set("DiagAddr"); ok {
+		diagPort, _ = hostPort(fs, k, c.DiagAddr)
+	}
+	if k, ok := c.set("AuthzIAMGRPCAddr"); ok {
+		hostPort(fs, k, c.AuthzIAMGRPCAddr)
+	}
+	if k, ok := c.set("InternalPort"); ok {
+		p, err := strconv.Atoi(c.InternalPort)
+		switch {
+		case err != nil:
+			fs.add(k, "порт %q не число", c.InternalPort)
+		case p < InternalPortMin || p > InternalPortMax:
+			fs.add(k, "порт %d вне границы [%d..%d]", p, InternalPortMin, InternalPortMax)
+		case c.InternalPort == diagPort:
+			fs.add(k, "порт %d совпадает с портом %s", p, apiKnob("DiagAddr"))
+		}
+	}
+	for _, field := range []string{"InternalServerCertFile", "InternalServerKeyFile"} {
+		if k, ok := c.set(field); ok {
+			if v := reflect.ValueOf(*c).FieldByName(field).String(); !filepath.IsAbs(v) {
+				fs.add(k, "путь %q не абсолютный", v)
+			}
+		}
+	}
+	if k, ok := c.set("InternalServerClientCAFiles"); ok {
+		list := c.InternalServerClientCAFiles
+		if len(list) < 1 || len(list) > ClientCAFilesMax {
+			fs.add(k, "файлов УЦ %d вне границы [1..%d]", len(list), ClientCAFilesMax)
+		}
+		seen := map[string]bool{}
+		for _, p := range list {
+			if !filepath.IsAbs(p) {
+				fs.add(k, "путь %q не абсолютный", p)
+			}
+			if seen[p] {
+				fs.add(k, "путь %q повторён", p)
+			}
+			seen[p] = true
+		}
+	}
+}
+
+func (c *API) validateAuthz(fs *findings) {
+	domainOK := false
+	if k, ok := c.set("AuthzTrustDomain"); ok {
+		if !isDNSName(c.AuthzTrustDomain) {
+			fs.add(k, "домен доверия %q — не имя DNS из двух меток и больше", c.AuthzTrustDomain)
+		} else {
+			domainOK = true
+		}
+	}
+	if k, ok := c.set("AuthzTrustedForwarderSANs"); ok {
+		sans := c.AuthzTrustedForwarderSANs
+		if len(sans) < forwarderSANsMinPerSet || len(sans) > ForwarderSANsMax {
+			fs.add(k, "записей %d вне границы [%d..%d]", len(sans), forwarderSANsMinPerSet, ForwarderSANsMax)
+		}
+		seen := map[string]bool{}
+		for _, s := range sans {
+			if seen[s] {
+				fs.add(k, "запись %q повторена", s)
+			}
+			seen[s] = true
+			if domainOK && !forwarderInDomain(s, c.AuthzTrustDomain) {
+				fs.add(k, "запись %q — не spiffe://%s/ns/<ns>/sa/<sa>", s, c.AuthzTrustDomain)
+			}
+		}
+	}
+	c.duration(fs, "AuthzCacheTTL", c.AuthzCacheTTL, AuthzCacheTTLMin, AuthzCacheTTLMax)
+	checkOK := c.duration(fs, "AuthzCheckTimeout", c.AuthzCheckTimeout, AuthzCheckTimeoutMin, AuthzCheckTimeoutMax)
+	if k, ok := c.set("AuthzDenyBudgetPerSec"); ok &&
+		(c.AuthzDenyBudgetPerSec < AuthzDenyBudgetMin || c.AuthzDenyBudgetPerSec > AuthzDenyBudgetMax) {
+		fs.add(k, "значение %v вне границы [%v..%v]", c.AuthzDenyBudgetPerSec, AuthzDenyBudgetMin, AuthzDenyBudgetMax)
+	}
+	if k, ok := c.set("HandlingBudget"); ok && checkOK {
+		if c.HandlingBudget <= c.AuthzCheckTimeout || c.HandlingBudget > HandlingBudgetMax {
+			fs.add(k, "значение %s вне границы (%s %s..%s]", c.HandlingBudget,
+				apiKnob("AuthzCheckTimeout"), c.AuthzCheckTimeout, HandlingBudgetMax)
+		}
+	}
+}
+
+// isDNSName — имя DNS по RFC 1123 не меньше чем из двух меток.
+func isDNSName(s string) bool {
+	labels := strings.Split(s, ".")
+	if len(labels) < 2 {
+		return false
+	}
+	for _, l := range labels {
+		if !isDNSLabel(l) {
+			return false
+		}
+	}
+	return true
+}
+
+// forwarderInDomain — URI SAN формы spiffe://<домен>/ns/<ns>/sa/<sa>.
+func forwarderInDomain(s, domain string) bool {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "spiffe" || u.Host != domain {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "ns" && parts[1] != "" && parts[2] == "sa" && parts[3] != ""
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowmetrics"
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	"github.com/PRO-Robotech/corelib/servicecontract"
@@ -137,6 +138,12 @@ func serveAPI(ctx context.Context, in apiInputs) error {
 	if err != nil {
 		return err
 	}
+	// Самоотчёт о посадке — после принятия дескриптора и до подъёма слушателя.
+	posture, err := bootPosture(in, desc)
+	if err != nil {
+		return fmt.Errorf("notify-api: самоотчёт о посадке: %w", err)
+	}
+	observability.LogBootPosture(in.Logger, posture)
 
 	ops := operations.NewRepo(in.Pool, operationsSchema)
 	store := noticerepo.New(in.Pool, ops)
