@@ -8,8 +8,12 @@
 // удостоверение пира), носят те же переменные, но объявлены здесь — каждый корень
 // объявляет ровно то, что читает (замысел issue-2924 З20; правило Д74:
 // конфигурация корня живёт под его каталогом `cmd/<корень>/internal/`).
-// Умолчаний нет: незаданная ручка или значение вне границы — отказ старта с
-// именем ручки (`sec-no-silent-default-for-guarded-knob`).
+// Умолчание есть у одной ручки — окна сужателя
+// (`KACHO_NOTIFY_LIST_FILTER_CACHE_TTL`, приёмка NTF-5 Р17): его величину сверяет
+// с записью политики окон отзыва гейт `tools/revocationwindowgate`, а границу
+// судит страж старта так же, как у заданного значения. У прочих ручек умолчания
+// нет: незаданная ручка или значение вне границы — отказ старта с именем ручки
+// (`sec-no-silent-default-for-guarded-knob`).
 package config
 
 import (
@@ -108,9 +112,12 @@ type Config struct {
 	NoticeReminderLead time.Duration `envconfig:"KACHO_NOTIFY_NOTICE_REMINDER_LEAD" knob:"notify.notice.reminderLead"`
 	// ListFilterCacheTTL — окно положительных вердиктов сужателя затронутых
 	// ресурсов (окно отзыва). Верх границы — потолок политики окон отзыва.
-	ListFilterCacheTTL time.Duration `envconfig:"KACHO_NOTIFY_LIST_FILTER_CACHE_TTL" knob:"notify.listFilter.cacheTTL"`
+	// Умолчание 5s — запись политики «notify KACHO_NOTIFY_LIST_FILTER_CACHE_TTL»
+	// (corelib/authz.RevocationPolicy.Windows); расхождение тега с записью — красное
+	// гейта окна отзыва с именем процесса и ручки (NTF-5 Р17, DoD 10.1 п.10).
+	ListFilterCacheTTL time.Duration `envconfig:"KACHO_NOTIFY_LIST_FILTER_CACHE_TTL" knob:"notify.listFilter.cacheTTL" default:"5s"`
 
-	// unset — ручки, переменной которых нет в окружении вовсе.
+	// unset — ручки без умолчания, переменной которых нет в окружении вовсе.
 	unset map[string]bool
 }
 
@@ -120,6 +127,9 @@ type Knob struct {
 	Name string
 	Env  string
 	Kind reflect.Kind
+	// Defaulted — у ручки есть умолчание загрузчика (тег `default`): незаданная
+	// она получает его, а не отказ «не задана».
+	Defaulted bool
 }
 
 func (k Knob) String() string { return k.Name + " (" + k.Env + ")" }
@@ -167,7 +177,7 @@ func Knobs() []Knob {
 		if env == "" {
 			continue
 		}
-		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind()})
+		out = append(out, knobOfField(f))
 	}
 	return out
 }
@@ -177,7 +187,12 @@ func knobOf(field string) Knob {
 	if !ok {
 		panic("config: поля Config." + field + " нет — перечень ручек notify-api разошёлся с кодом стража")
 	}
-	return Knob{Name: f.Tag.Get("knob"), Env: f.Tag.Get("envconfig"), Kind: f.Type.Kind()}
+	return knobOfField(f)
+}
+
+func knobOfField(f reflect.StructField) Knob {
+	_, defaulted := f.Tag.Lookup("default")
+	return Knob{Name: f.Tag.Get("knob"), Env: f.Tag.Get("envconfig"), Kind: f.Type.Kind(), Defaulted: defaulted}
 }
 
 // Load читает ручки notify-api из окружения. Значение, не разбирающееся в
@@ -195,7 +210,7 @@ func Load() (Config, error) {
 	}
 	c.unset = map[string]bool{}
 	for _, k := range Knobs() {
-		if _, ok := os.LookupEnv(k.Env); !ok {
+		if _, ok := os.LookupEnv(k.Env); !ok && !k.Defaulted {
 			c.unset[k.Env] = true
 		}
 	}

@@ -177,10 +177,14 @@ var knobNames = map[string]string{
 	"KACHO_GEO_AUTHZ_CACHE_TTL":      "check",
 	// probe process of the notify catalog (services/notify/cmd/notify-probe)
 	"KACHO_NOTIFYPROBE_AUTHZ_CACHE_TTL": "check",
+	// listener authz link of the notify public surface (services/notify/cmd/notify-api)
+	"KACHO_NOTIFY_AUTHZ_CACHE_TTL": "check",
 	// per-object List visibility cache (internal/authzfilter)
 	"authz.list-filter.cache-ttl":            "list-filter",
 	"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
 	"KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
+	// affected-resources narrower of notify-api (listnarrow, NTF-5 R16/R17)
+	"KACHO_NOTIFY_LIST_FILTER_CACHE_TTL": "list-filter",
 	// per-request decision cache at the EDGE (gateway/internal/middleware).
 	// The edge is the only site with a proactive drop (self-flush on the serving
 	// replica plus the edge's own cursor read of the iam subject_change journal),

@@ -118,7 +118,8 @@ func TestConfig_EachRefusalNamesItsKnob(t *testing.T) {
 		name, env, value string
 		unset            bool
 	}{
-		{"не задана ручка окна сужателя", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", "", true},
+		{"не задано напоминание — умолчания у него нет", "KACHO_NOTIFY_NOTICE_REMINDER_LEAD", "", true},
+		{"окно сужателя ноль", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", "0s", false},
 		{"окно сужателя выше потолка политики", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", (ceiling + time.Second).String(), false},
 		{"окно сужателя ниже секунды", "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL", "500ms", false},
 		{"напоминание короче часа", "KACHO_NOTIFY_NOTICE_REMINDER_LEAD", "30m", false},
@@ -145,5 +146,40 @@ func TestConfig_EachRefusalNamesItsKnob(t *testing.T) {
 				t.Fatalf("отказ %v (ручки %v), ожидался ровно по %s", err, got, c.env)
 			}
 		})
+	}
+}
+
+// listFilterWindowKey — запись окна сужателя в политике окон отзыва платформы
+// (corelib/authz.RevocationPolicy.Windows); ключ в форме переписи гейта
+// «<процесс> <ручка>».
+const listFilterWindowKey = "notify KACHO_NOTIFY_LIST_FILTER_CACHE_TTL"
+
+// TestConfig_UnsetWindowKnobStartsWithThePolicyWindow — NTF5-53 (б): ручка окна
+// сужателя не задана — старт с умолчанием загрузчика, и оно равно записи
+// политики окон отзыва, а не литералу пробы. Близнец — та же ручка, заданная
+// значением в границе, отличным от умолчания: доходит без подмены.
+func TestConfig_UnsetWindowKnobStartsWithThePolicyWindow(t *testing.T) {
+	want, ok := authz.RevocationPolicy.Windows[listFilterWindowKey]
+	if !ok {
+		t.Fatalf("записи %q в политике окон отзыва нет — сверять умолчание не с чем", listFilterWindowKey)
+	}
+	env := configEnv()
+	delete(env, "KACHO_NOTIFY_LIST_FILTER_CACHE_TTL")
+	c, err := loadConfig(t, env)
+	if err != nil {
+		t.Fatalf("ручка окна не задана — старт отвергнут: %v", err)
+	}
+	if got := c.ListFilter().CacheTTL; got != want {
+		t.Fatalf("окно сужателя без ручки %s, политика объявляет %s", got, want)
+	}
+
+	twin := configEnv()
+	twin["KACHO_NOTIFY_LIST_FILTER_CACHE_TTL"] = "2s"
+	c, err = loadConfig(t, twin)
+	if err != nil {
+		t.Fatalf("близнец отвергнут: %v", err)
+	}
+	if got := c.ListFilter().CacheTTL; got != 2*time.Second {
+		t.Fatalf("заданное окно 2s не дошло: %s", got)
 	}
 }
