@@ -38,43 +38,43 @@ type InternalNotice struct {
 	Cancel   *cancel.UseCase
 }
 
-var _ notifyv1.InternalNoticeServiceServer = (*internalNotice)(nil)
+var _ notifyv1.InternalNoticeServiceServer = (*internalNoticeHandler)(nil)
 
-// internalNotice — адаптер имён: методы сервера совпадают по именам с полями
+// internalNoticeHandler — адаптер имён: методы сервера совпадают по именам с полями
 // use-case'ов, поэтому сервер — отдельный тип над набором.
-type internalNotice struct {
+type internalNoticeHandler struct {
 	notifyv1.UnimplementedInternalNoticeServiceServer
 	uc *InternalNotice
 }
 
 // Server — сервер InternalNoticeService над набором use-case'ов.
-func (s *InternalNotice) Server() notifyv1.InternalNoticeServiceServer { return &internalNotice{uc: s} }
+func (s *InternalNotice) Server() notifyv1.InternalNoticeServiceServer { return &internalNoticeHandler{uc: s} }
 
-func (s *internalNotice) Create(ctx context.Context, r *notifyv1.CreateNoticeRequest) (*operationv1.Operation, error) {
+func (s *internalNoticeHandler) Create(ctx context.Context, r *notifyv1.CreateNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Create.Execute(ctx, r)
 }
 
-func (s *internalNotice) Get(ctx context.Context, r *notifyv1.GetInternalNoticeRequest) (*notifyv1.InternalNotice, error) {
+func (s *internalNoticeHandler) Get(ctx context.Context, r *notifyv1.GetInternalNoticeRequest) (*notifyv1.InternalNotice, error) {
 	return s.uc.Get.Execute(ctx, r)
 }
 
-func (s *internalNotice) List(ctx context.Context, r *notifyv1.ListInternalNoticesRequest) (*notifyv1.ListInternalNoticesResponse, error) {
+func (s *internalNoticeHandler) List(ctx context.Context, r *notifyv1.ListInternalNoticesRequest) (*notifyv1.ListInternalNoticesResponse, error) {
 	return s.uc.List.Execute(ctx, r)
 }
 
-func (s *internalNotice) Update(ctx context.Context, r *notifyv1.UpdateNoticeRequest) (*operationv1.Operation, error) {
+func (s *internalNoticeHandler) Update(ctx context.Context, r *notifyv1.UpdateNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Update.Execute(ctx, r)
 }
 
-func (s *internalNotice) Start(ctx context.Context, r *notifyv1.StartNoticeRequest) (*operationv1.Operation, error) {
+func (s *internalNoticeHandler) Start(ctx context.Context, r *notifyv1.StartNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Start.Execute(ctx, r)
 }
 
-func (s *internalNotice) Complete(ctx context.Context, r *notifyv1.CompleteNoticeRequest) (*operationv1.Operation, error) {
+func (s *internalNoticeHandler) Complete(ctx context.Context, r *notifyv1.CompleteNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Complete.Execute(ctx, r)
 }
 
-func (s *internalNotice) Cancel(ctx context.Context, r *notifyv1.CancelNoticeRequest) (*operationv1.Operation, error) {
+func (s *internalNoticeHandler) Cancel(ctx context.Context, r *notifyv1.CancelNoticeRequest) (*operationv1.Operation, error) {
 	return s.uc.Cancel.Execute(ctx, r)
 }
 
@@ -86,28 +86,28 @@ type PublicNotice struct {
 	GetByAccount  *getbyaccount.UseCase
 }
 
-type publicNotice struct {
+type publicNoticeHandler struct {
 	notifyv1.UnimplementedNoticeServiceServer
 	uc *PublicNotice
 }
 
-var _ notifyv1.NoticeServiceServer = (*publicNotice)(nil)
+var _ notifyv1.NoticeServiceServer = (*publicNoticeHandler)(nil)
 
 // Server — сервер NoticeService над набором use-case'ов.
-func (s *PublicNotice) Server() notifyv1.NoticeServiceServer { return &publicNotice{uc: s} }
+func (s *PublicNotice) Server() notifyv1.NoticeServiceServer { return &publicNoticeHandler{uc: s} }
 
-func (s *publicNotice) List(ctx context.Context, r *notifyv1.ListNoticesRequest) (*notifyv1.ListNoticesResponse, error) {
+func (s *publicNoticeHandler) List(ctx context.Context, r *notifyv1.ListNoticesRequest) (*notifyv1.ListNoticesResponse, error) {
 	return s.uc.List.Execute(ctx, r)
 }
 
-func (s *publicNotice) ListByAccount(ctx context.Context, r *notifyv1.ListNoticesByAccountRequest) (*notifyv1.ListNoticesResponse, error) {
+func (s *publicNoticeHandler) ListByAccount(ctx context.Context, r *notifyv1.ListNoticesByAccountRequest) (*notifyv1.ListNoticesResponse, error) {
 	return s.uc.ListByAccount.Execute(ctx, r)
 }
 
-func (s *publicNotice) Get(ctx context.Context, r *notifyv1.GetNoticeRequest) (*notifyv1.Notice, error) {
+func (s *publicNoticeHandler) Get(ctx context.Context, r *notifyv1.GetNoticeRequest) (*notifyv1.Notice, error) {
 	return s.uc.Get.Execute(ctx, r)
 }
 
-func (s *publicNotice) GetByAccount(ctx context.Context, r *notifyv1.GetNoticeByAccountRequest) (*notifyv1.Notice, error) {
+func (s *publicNoticeHandler) GetByAccount(ctx context.Context, r *notifyv1.GetNoticeByAccountRequest) (*notifyv1.Notice, error) {
 	return s.uc.GetByAccount.Execute(ctx, r)
 }
