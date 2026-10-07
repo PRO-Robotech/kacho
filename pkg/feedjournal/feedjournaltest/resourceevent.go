@@ -60,8 +60,11 @@ type feedRow struct {
 //   - близнец «откат» — та же вставка при флаге `true`, откаченная, не
 //     оставляет строки ленты (NTF3-69).
 //
-// Транзакцию открывает помощник `journaltx` — тот же, что у писателей журнала
-// модуля: он и ставит настройки инициатора и флага, которые читает функция.
+// Транзакцию открывает помощник `journaltx`, строку журнала пишет функция
+// фундамента `Journal.Emit` — те же, что у писателей журнала модуля: помощник
+// ставит настройки инициатора и флага, которые читает функция базы.
+// Идентификаторы ресурсов постоянны: база у каждой пробы своя
+// (`pgtest.NewDB`).
 func RequireResourceEventFeedRow(t *testing.T, s ResourceEventStand) {
 	t.Helper()
 	userID := ids.NewHyphenID(ids.PrefixUser)
@@ -80,14 +83,10 @@ func RequireResourceEventFeedRow(t *testing.T, s ResourceEventStand) {
 			t.Fatalf("проба НЕ ИСПОЛНЯЛАСЬ: помощник journaltx не открыл транзакцию: %v", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }() // после Commit — пустой ход
-		st := s.Journal.Storage
-		payload, err := json.Marshal(map[string]string{subscription.NamePayloadKey: name})
-		if err != nil {
-			t.Fatalf("проба НЕ ИСПОЛНЯЛАСЬ: полезная нагрузка: %v", err)
-		}
-		q := fmt.Sprintf(`INSERT INTO %s (%s, %s, %s, %s, %s) VALUES ($1, $2, $3, $4, $5)`,
-			st.Table, st.KindColumn, st.IDColumn, st.ChangeColumn, st.PayloadColumn, st.ProjectColumn)
-		if _, err := tx.Exec(ctx, q, s.Kind, id, deleted, payload, project); err != nil {
+		if err := s.Journal.Emit(ctx, tx, subscription.Entry{
+			Kind: s.Kind, ID: id, ProjectID: project, Change: deleted,
+			Payload: map[string]any{subscription.NamePayloadKey: name},
+		}); err != nil {
 			t.Fatalf("строка журнала %s %s (флаг %v) отвергнута: %v", s.Kind, id, on, err)
 		}
 		if !commit {
@@ -100,7 +99,7 @@ func RequireResourceEventFeedRow(t *testing.T, s ResourceEventStand) {
 
 	signalsBefore := s.signals(t)
 
-	onID := "feedprobe-" + ids.NewHyphenID("on")
+	const onID = "feedprobe-on"
 	write(true, onID, true)
 	rows := s.feedRows(t, onID)
 	if len(rows) != 1 {
@@ -127,7 +126,7 @@ func RequireResourceEventFeedRow(t *testing.T, s ResourceEventStand) {
 		t.Errorf("строка журнала при флаге true дала строк сигнала %s:%s %d, ожидалась 1", feed.JournalKey, s.Module, n)
 	}
 
-	offID := "feedprobe-" + ids.NewHyphenID("off")
+	const offID = "feedprobe-off"
 	signalsBefore = s.signals(t)
 	write(false, offID, true)
 	if rows := s.feedRows(t, offID); len(rows) != 0 {
@@ -137,7 +136,7 @@ func RequireResourceEventFeedRow(t *testing.T, s ResourceEventStand) {
 		t.Errorf("строка журнала при флаге false дала строк сигнала %d, ожидалось 0", n)
 	}
 
-	rbID := "feedprobe-" + ids.NewHyphenID("rb")
+	const rbID = "feedprobe-rollback"
 	write(true, rbID, false)
 	if rows := s.feedRows(t, rbID); len(rows) != 0 {
 		t.Errorf("откаченная строка журнала оставила строк ленты %d, ожидалось 0 (NTF3-69)", len(rows))

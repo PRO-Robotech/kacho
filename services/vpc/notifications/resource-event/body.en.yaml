@@ -1,7 +1,0 @@
-# Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: BUSL-1.1
-
-blocks:
-  - p: "Resource {{ kind }} {{ resource_id }} ({{ scope }}): {{ change }} at {{ occurred_at }}."
-  - p: "Name: {{ name }}"
-    when: name

@@ -98,7 +98,7 @@ func RequireJournalDeclaration(t testing.TB, path, module string, j subscription
 	if err != nil {
 		t.Fatalf("проба НЕ ИСПОЛНЯЛАСЬ: объявление журнала на Go не переводится в форму генератора: %v", err)
 	}
-	data, err := os.ReadFile(path) //nolint:gosec // путь задаёт проба модуля, а не ввод
+	data, err := os.ReadFile(path) // #nosec G304 -- путь задаёт проба модуля, а не ввод
 	if err != nil {
 		t.Fatalf("%s не читается — функции resource-event модуля %s не из чего выводиться: %v", path, module, err)
 	}
