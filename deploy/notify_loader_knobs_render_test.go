@@ -325,7 +325,6 @@ func TestNotifyLoaderKnobsRenderInjections(t *testing.T) {
 		"KACHO_NOTIFY_REPUTATION_WINDOW",
 		notifyKeyDirEnv,
 	} {
-		env := env
 		c := notifyUmbrellaCopy(t, umbrellaCopyOpts{notifyEdits: map[string]func(string) string{
 			"templates/configmap.yaml": dropLineWith("  " + env + ":"),
 		}})
