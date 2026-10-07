@@ -21,9 +21,13 @@ package main
 //	    OperationService; возвращается по отмене ctx (nil) либо с ошибкой носителя.
 //	apiInputs — зависимости корня: адрес и удостоверение слушателя, домен доверия
 //	    и круг пересылающих, пул kacho_notify, часы notify (они же часы сужателя,
-//	    З14 п.1 — `authzwiring.NewListNarrower(cfg, clk)`), соединение к службе
-//	    доступа (Check и пакетная проверка сужателя — больше корню notify-api не
-//	    дано ничего, З1), ручки KACHO_NOTIFY_NOTICE_REMINDER_LEAD и
+//	    З14 п.1 — `authzwiring.NewListNarrower(cli, cfg, now)`), адрес и
+//	    удостоверение ребра к службе доступа (Check звена прав и use-case,
+//	    пакетная проверка сужателя — больше корню notify-api не дано ничего,
+//	    З1; соединение набирают носитель и корень, поэтому подаётся ребро, а не
+//	    готовое соединение), посадка (режим, sslmode) и величины звена прав
+//	    (окно, срок вопроса, бюджет отказов, граница обработки — ручки NTF-4
+//	    Р20), ручки KACHO_NOTIFY_NOTICE_REMINDER_LEAD и
 //	    KACHO_NOTIFY_LIST_FILTER_CACHE_TTL, реестр метрик, журнал.
 //
 // Поля apiInputs — то, что оснастка ПОДАЁТ; их имена — предмет этого файла и
@@ -37,6 +41,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // apiKnobs — ручки notify-api, которые задаёт «Дано».
@@ -60,9 +66,16 @@ func raise(t *testing.T, w *world, k apiKnobs) edge {
 		ServerTLS:            w.ca.serverFiles(t, "notify-api", apiSAN),
 		TrustDomain:          trustDomain,
 		TrustedForwarderSANs: []string{gatewaySAN},
+		Mode:                 servicecontract.ModeDev,
+		DBSSLMode:            "disable",
 		Pool:                 w.pool,
 		Now:                  w.clock.Now,
-		Authz:                w.kanameConn(t),
+		KanameAddr:           w.path.addr(),
+		KanameCreds:          w.kanameCreds(t),
+		AuthzCacheTTL:        5 * time.Second,
+		AuthzCheckTimeout:    2 * time.Second,
+		AuthzDenyBudget:      100,
+		HandlingBudget:       30 * time.Second,
 		ReminderLead:         k.reminderLead,
 		ListFilterCacheTTL:   k.listFilterTTL,
 		Metrics:              prometheus.NewRegistry(),
