@@ -470,6 +470,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.registry.v1.RegistryService/DeleteRepository": {},
 	"/kacho.cloud.registry.v1.RegistryService/RenameRepository": {},
 
+	// notify.v1 — NoticeService (извещения оператора, только чтение арендатором).
+	// У края все четыре — `<exempt>`: право `v_get` на область запроса судит
+	// use-case службы после проверки формы. InternalNoticeService.* (ведение
+	// извещений оператором) — НЕ в allowlist (HasInternalSuffix; ban #6).
+	"/kacho.cloud.notify.v1.NoticeService/List":          {},
+	"/kacho.cloud.notify.v1.NoticeService/ListByAccount": {},
+	"/kacho.cloud.notify.v1.NoticeService/Get":           {},
+	"/kacho.cloud.notify.v1.NoticeService/GetByAccount":  {},
+
 	// operation (без v1!) — OperationService (in-process OpsProxy, фан-аут по domain-prefix)
 	"/corelib.operation.OperationService/Get":    {},
 	"/corelib.operation.OperationService/Cancel": {},

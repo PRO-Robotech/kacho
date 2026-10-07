@@ -806,6 +806,76 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Cancel",
+    "permission": "notify.notices.cancel",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Complete",
+    "permission": "notify.notices.complete",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Create",
+    "permission": "notify.notices.create",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Get",
+    "permission": "notify.notices.get",
+    "required_relation": "system_viewer",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/List",
+    "permission": "notify.notices.list",
+    "required_relation": "system_viewer",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Start",
+    "permission": "notify.notices.start",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.InternalNoticeService/Update",
+    "permission": "notify.notices.update",
+    "required_relation": "system_admin",
+    "scope_extractor": {
+      "object_type": "cluster",
+      "from_request_field": "*"
+    },
+    "required_acr_min": "2"
+  },
+  {
     "fqn": "kacho.cloud.notify.v1.InternalNotifyProbeService/Send",
     "permission": "notify.probeNotifications.send",
     "required_relation": "system_admin",
@@ -814,6 +884,46 @@
       "from_request_field": "*"
     },
     "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.NoticeService/Get",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "HANDLER_DECIDES"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.NoticeService/GetByAccount",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "HANDLER_DECIDES"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.NoticeService/List",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "HANDLER_DECIDES"
+  },
+  {
+    "fqn": "kacho.cloud.notify.v1.NoticeService/ListByAccount",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "HANDLER_DECIDES"
   },
   {
     "fqn": "kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats",
