@@ -185,6 +185,33 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"а не добавляет (замысел NTF-1 З24, §6; полоса N7, kacho#2915)",
 	},
 	{
+		Owner: "services/notify", Table: "notices",
+		Tempo: tempoOurs, Verdict: verdictDebt,
+		Reason: "извещение публикует только оператор установки (Р9). Снятие решено приёмкой NTF-5 " +
+			"Р14: извещение в COMPLETED/CANCELLED старше KACHO_NOTIFY_NOTICE_RETENTION удаляет " +
+			"подметальщик вместе с зависимыми строками каскадом (замысел issue-2924 З24). Схема " +
+			"входит полосой N1 раньше подметальщика (полоса N4 той же задачи) — до его посадки " +
+			"оператора снятия в дереве нет",
+		Issue: "#2924",
+	},
+	{
+		Owner: "services/notify", Table: "notice_create_requests",
+		Tempo: tempoOurs, Verdict: verdictDebt,
+		Reason: "заявку Create пишет оператор установки; снимает её notify-sender той же " +
+			"транзакцией, что завершает операцию, либо взятием при уже завершённой операции " +
+			"(приёмка NTF-5 Р10 шаги 2–6, замысел issue-2924 З3). Схема входит полосой N1 " +
+			"раньше взятия (полоса N3 той же задачи) — до его посадки оператора снятия нет",
+		Issue: "#2924",
+	},
+	{
+		Owner: "services/notify", Table: "notice_counters",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "ключ (name, labels) поверх конечного множества: имя — закрытый перечень CHECK " +
+			"notice_counters_name_chk из четырёх счётчиков Р19, ярлыки — закрытые словари вида, " +
+			"этапа, исхода и причины отсрочки (приёмка NTF-5 Р4, Р19; замысел issue-2924 З21). " +
+			"Приращение сливается по ключу, строк не добавляет",
+	},
+	{
 		Owner: "services/compute", Table: "quota_sync_cursor",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на ВИД синхронизации, а не на событие: ключ id перечисляет виды. " +
