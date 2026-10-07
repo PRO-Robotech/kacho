@@ -20,7 +20,7 @@ const { VerificationPage } = await import("./VerificationPage");
 const ME = "GET /iam/v1/auth/me";
 const ACCOUNTS = "/iam/v1/accounts";
 const CONFIRM = "/iam/v1/auth/verify-email/confirm";
-const NOT_NAMED_TEXT = "Не удалось узнать, подтверждён ли адрес: край не назвал это в ответе о сессии";
+const NOT_NAMED_TEXT = "Не удалось узнать, подтверждён ли адрес почты: служба доступа не сообщила этого в ответе о сессии.";
 
 const USER = { id: "usr-1", email: "a@kacho.local", displayName: "a", subjectType: "user", permissions: [] };
 

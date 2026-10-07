@@ -10,7 +10,8 @@
 // Служба объявляет пятнадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
 // ретранслирует, раздача уводит `^/iam/v1/` на край безусловно. Консоль зовёт
 // их отсюда и ни откуда больше: экраны входа, регистрации, выхода, параметров
-// учётной записи, подтверждения адреса почты и окно повышения уровня. Второй клиент тех же глаголов
+// учётной записи, подтверждения адреса почты, восстановления доступа и окно
+// повышения уровня. Второй клиент тех же глаголов
 // разошёлся бы с первым молча — ровно так расходились две копии окна повышения.
 //
 // ЧЕГО КОНСОЛЬ НЕ ДЕЛАЕТ (Р2). Правило пароля, занятость адреса, годность кода
@@ -60,6 +61,11 @@ export const LOGIN_LANE = {
   // свой вид признака формы.
   accessKeyBegin: "/iam/v1/auth/access-key/begin",
   accessKeyLogin: "/iam/v1/auth/access-key/login",
+  // Восстановление доступа (приёмка Ф5 службы; экран — приёмка F8-S3): запрос
+  // кода на адрес почты и предъявление кода с новым паролем — оба без сессии, у
+  // каждого свой вид признака формы.
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
@@ -76,7 +82,9 @@ export type FormKind =
   | "verify-email"
   | "verify-email-confirm"
   | "access-key-begin"
-  | "access-key-login";
+  | "access-key-login"
+  | "recovery"
+  | "recovery-complete";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -577,6 +585,30 @@ export const loginLane = {
    */
   accessKeyLogin(holder: FormTokenHolder, credential: Record<string, unknown>) {
     return submit<SignedIn>(holder, LOGIN_LANE.accessKeyLogin, { credential }, false);
+  },
+  /**
+   * Запрос кода восстановления на адрес почты (Ф5; приёмка F8-S3, Р3). Тело —
+   * РОВНО `{email, csrfToken}`: разбор службы строгий. Ответ `200 {}` на любой
+   * исход — заведён адрес или нет, — и экран его не различает (Р2). Носителя не
+   * ставит и контекста формы не меняет — в перечнях упорядочения его нет (Р7).
+   */
+  requestRecovery(holder: FormTokenHolder, form: { email: string }) {
+    return submit<Record<string, never>>(holder, LOGIN_LANE.recovery, { email: form.email }, false);
+  },
+  /**
+   * Предъявление кода с новым паролем (Ф5; приёмка F8-S3, Р3, Р5). Тело — РОВНО
+   * `{email, code, newPassword, csrfToken}`, поля `secondFactor` нет: лишнее поле
+   * служба отвергла бы `400`. Код и пароль уходят как введены — своего суждения о
+   * содержимом консоль не выносит. Успех отвечает как вход: сессия и новый
+   * контекст формы.
+   */
+  completeRecovery(holder: FormTokenHolder, form: { email: string; code: string; newPassword: string }) {
+    return submit<SignedIn>(
+      holder,
+      LOGIN_LANE.recoveryComplete,
+      { email: form.email, code: form.code, newPassword: form.newPassword },
+      false,
+    );
   },
 };
 
