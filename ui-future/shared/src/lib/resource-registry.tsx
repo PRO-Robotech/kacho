@@ -4,7 +4,7 @@
 
 import type { ReactNode } from "react";
 import { Tag, Tooltip, Typography } from "antd";
-import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
+import { SafetyOutlined, StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { NAME_FORM, NAME_FORM_REGISTRY, NAME_HINT, NAME_HINT_OPTIONAL, NAME_HINT_REGISTRY } from "./name-form";
 import { setByPath, getByPath as getByPathImpl } from "./path";
@@ -46,6 +46,7 @@ import {
   targetKind,
   targetResources,
   userBlockPath,
+  userResetSecondFactorPath,
   userUnblockPath,
   userRemoveFromAccountPath,
   type AccessBindingTarget,
@@ -898,6 +899,45 @@ export const REGISTRY: Record<string, ResourceSpec> = {
               narrowExitFromAccount(ctx, isSelf),
             okText: isSelf ? "Да, запретить себе" : "Запретить",
             progressTitle: "Запрет участия",
+          };
+        },
+      },
+      {
+        // СБРОС ВТОРОГО ФАКТОРА распорядителем (приёмка F8r, S1; kacho#3063).
+        //
+        // Пункт есть на КАЖДОЙ строке и ни на одной не выключен (Р3): право держит
+        // только администратор облака, и решает это край — консоли отношение
+        // записи каталога неизвестно, а флаг «кто я» отвечает на другой вопрос.
+        // Не-держатель увидит пункт и получит названный отказ края. Строка
+        // `PENDING` тоже не выключается: фактора у неё нет, служба ответит «нечего
+        // сбрасывать», и этот исход назван вердиктом консоли (Р6), а не
+        // суждением консоли до вызова.
+        //
+        // Над собой действие не запрещается: администратор облака держит
+        // отношение и на своей записи, — но подтверждение говорит прямо, что
+        // эта сессия тоже завершится.
+        key: "reset-second-factor",
+        resolve: (row, ctx): RowVerbState => {
+          const id = (row.id as string | undefined) ?? "";
+          const who = (row.email as string | undefined) || id;
+          const isSelf = !!ctx.selfId && ctx.selfId === id;
+          return {
+            label: "Сбросить второй фактор",
+            icon: <SafetyOutlined />,
+            danger: true,
+            path: userResetSecondFactorPath(id),
+            confirmTitle: isSelf ? "Сбросить СВОЙ второй фактор?" : "Сбросить второй фактор?",
+            confirmText: isSelf
+              ? `Все ваши сессии, включая эту, завершатся. С вашей учётной записи («${who}») будет ` +
+                `снят второй фактор и запасные коды. Войти вы сможете паролем или ключом доступа и ` +
+                `заново настроить второй фактор в настройках учётной записи.`
+              : `У «${who}» будет снят второй фактор и запасные коды, все его сессии завершатся. ` +
+                `Войти он сможет паролем или ключом доступа и заново настроить второй фактор в ` +
+                `настройках учётной записи.`,
+            okText: "Сбросить",
+            progressTitle: "Сброс второго фактора",
+            succeededText: "Второй фактор сброшен",
+            failedText: "Не удалось сбросить второй фактор",
           };
         },
       },
