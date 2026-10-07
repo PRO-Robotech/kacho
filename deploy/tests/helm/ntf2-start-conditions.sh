@@ -33,7 +33,10 @@
 #     только шелл-обёрткой NTF1-D9 с образцом П7-узла `ntf2-p7.yaml` (Д48, CX2-58,
 #     CX2-66, CX2-67), строка цепочки печатается с образцом последним;
 #   п.3 — пути полосы формы края (§1.4);
-#   п.4 — подчарты поставщика в зонтике (условие только полосы стража почты);
+#   п.4 — подчарты поставщика в зонтике (условие только полосы стража почты):
+#     зависимости поставщика и записи `charts/` с его именем; ноль — исход, когда
+#     обход прочитал отметки, зависимости и записи `charts/` (после kacho#1276
+#     поставщика в зонтике нет, и ноль — ожидаемый ответ, а не «не прочитано»);
 #   п.5 — узел почты цепочки `dev`: команда Р16 п.5 над `values.yaml` и файлами
 #     `stacks.sh --chain dev` (CX2-64), контроль — один `values.yaml`;
 #   п.6 и признак K — читают чарт `notify` и перечень источников NTF-1 (Е13
@@ -60,9 +63,13 @@ POSTURE_KNOB="KACHO_API_GATEWAY_IDENTITY_PROVIDER"
 # состав чужого выводит гейт `TestOwnPostureRaisesNoForeignIdentityService`
 # (`foreignIdentityRepoMark`, deploy/own_posture_foreign_identity_test.go).
 # Имён подчартов поставщика проба не выписывает: они выводятся из зонтика на <B>
-# (`provider_charts`), как у гейта, — выписанный перечень расходился бы с
-# деревом молча, и потолок привязок к снимаемому издателю их не допускает.
+# (`provider_census`), как у гейта, по отметкам единственного дома имени
+# поставщика `internal/identityvendor` той же ревизии (тот же словарь у потолка
+# привязок и у рендерной пробы `TestNoStackRendersAnIdentityVendorObject`), —
+# выписанный перечень расходился бы со словарём молча, а литерал имени в
+# развёртывании — единица потолка привязок к снятому поставщику.
 PROVIDER_REPO_MARK="ory.sh"
+VENDOR_HOME="internal/identityvendor"
 
 for f in "$HERE/stacks.sh" "$HERE/lib/render-chain.sh"; do
   [ -r "$f" ] || { echo "FATAL: $f не читается — общий читатель таблицы либо обёртка рендера отсутствуют" >&2; exit 2; }
@@ -176,36 +183,91 @@ cond1() {
 }
 
 # ── п.2 посадка own во всех цепочках ─────────────────────────────────────────
-# provider_charts — подчарты поставщика на <B>, по строке, как их выводит гейт
-# посадки: зависимости зонтика с репозиторием поставщика (имя видимое значениям —
-# alias, если он есть), их базы `pg-<имя>` и каталоги `charts/<имя>-…` без
-# объявления зависимостью. Пусто — отказ: «чужого не найдено» неотличимо от
-# «чужое не прочитано».
-provider_charts() {
-  local chart all prov listing p d out=""
-  chart="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>&1)" || { echo "Chart.yaml зонтика на $B не читается: $chart" >&2; return 2; }
-  all="$(printf '%s\n' "$chart" | yq -r '.dependencies[] | (.alias // .name)' 2>&1)" || { echo "зависимости зонтика не разобраны: $all" >&2; return 2; }
-  prov="$(printf '%s\n' "$chart" | yq -r ".dependencies[] | select((.repository // \"\") | contains(\"$PROVIDER_REPO_MARK\")) | (.alias // .name)" 2>&1)" \
-    || { echo "зависимости поставщика не разобраны: $prov" >&2; return 2; }
-  [ -n "$prov" ] || { echo "среди зависимостей зонтика на $B нет ни одной с репозиторием $PROVIDER_REPO_MARK — поставщик переехал либо признак его не узнаёт" >&2; return 2; }
-  listing="$(git -C "$REPO" ls-tree -d --name-only "$B" deploy/helm/umbrella/charts/ 2>&1)" || { echo "каталоги charts/ на $B не читаются: $listing" >&2; return 2; }
-  for p in $prov; do
-    out="$out$p"$'\n'
-    if [[ $'\n'"$all"$'\n' == *$'\n'"pg-$p"$'\n'* ]]; then out="${out}pg-$p"$'\n'; fi
-    for d in $listing; do
-      d="${d##*/}"
-      case "$d" in "$p"-*) [[ $'\n'"$all"$'\n' == *$'\n'"$d"$'\n'* ]] || out="$out$d"$'\n' ;; esac
-    done
-  done
-  printf '%s' "$out" | sort -u
+# vendor_marks — отметки имени поставщика из `internal/identityvendor` на <B>,
+# по строке. Объявление читает разбор `go doc` над файлом той ревизии в
+# отдельном модуле, а не поиск по тексту исходника.
+vendor_marks() {
+  local d="$WORK/identityvendor" out
+  mkdir -p "$d" || { echo "каталог разбора словаря не создан" >&2; return 2; }
+  git -C "$REPO" show "$B:$VENDOR_HOME/identityvendor.go" >"$d/identityvendor.go" 2>"$WORK/err" \
+    || { echo "словарь поставщика $VENDOR_HOME на $B не читается: $(cat "$WORK/err")" >&2; return 2; }
+  printf 'module ntf2probe/identityvendor\n\ngo 1.22\n' >"$d/go.mod" || { echo "go.mod разбора словаря не записан" >&2; return 2; }
+  out="$(cd "$d" && GOWORK=off GOFLAGS='' go doc -u . marks 2>&1)" \
+    || { echo "go doc словаря поставщика на $B отказал: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" >&2; return 2; }
+  printf '%s\n' "$out" | awk '
+    /^var marks = / { d = 1 }
+    d { while (match($0, /"[^"]*"/)) { print tolower(substr($0, RSTART + 1, RLENGTH - 2)); $0 = substr($0, RSTART + RLENGTH) } }
+    d && /}/ { exit }' | grep .
 }
-PROVIDER_PARENTS=""   # зависимости с репозиторием поставщика — для п.4
-PROVIDER_SET=""       # все подчарты поставщика — для п.2
+# has_mark <строка> — 0, если строка несёт отметку (подстрока без учёта регистра,
+# как у потолка привязок).
+has_mark() {
+  local s="${1,,}" m
+  for m in $MARKS; do [[ "$s" == *"$m"* ]] && return 0; done
+  return 1
+}
+
+# provider_census — подчарты поставщика на <B>, как их выводят гейты посадки и
+# рендера: зависимости зонтика с репозиторием поставщика либо с отметкой в
+# имени или псевдониме (имя, видимое значениям, — alias), их базы `pg-<имя>`,
+# записи `charts/` с отметкой в имени записи либо в `name` своего Chart.yaml
+# (каталог и имя разные законно, #2759) и записи `charts/<имя>-…` зависимостей
+# поставщика. Заполняет PROVIDER_SET (имена подчартов для рендера),
+# PROVIDER_ENTRIES (найденное, для п.4) и PROVIDER_CENSUS (объём обхода).
+# Ноль найденного — исход, когда обход прочитал отметки, зависимости и записи
+# `charts/`; пустой обход — отказ: «чужого нет» неотличимо от «не прочитано».
+PROVIDER_SET=""; PROVIDER_ENTRIES=""; PROVIDER_CENSUS=""; PROVIDER_ERR=""; MARKS=""
+provider_census() {
+  local chart deps all line name repo shown nd=0 ne=0 listing type path base sub prov="" hit p
+  MARKS="$(vendor_marks 2>"$WORK/perr")" || { PROVIDER_ERR="$(cat "$WORK/perr")"; return 1; }
+  [ -n "$MARKS" ] || { PROVIDER_ERR="в $VENDOR_HOME на $B не прочитано ни одной отметки — поставщика узнавать нечем"; return 1; }
+  chart="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>&1)" || { PROVIDER_ERR="Chart.yaml зонтика на $B не читается: $chart"; return 1; }
+  deps="$(printf '%s\n' "$chart" | yq -r '.dependencies[] | [(.alias // .name // ""), (.name // ""), (.repository // "")] | join("	")' 2>&1)" \
+    || { PROVIDER_ERR="зависимости зонтика не разобраны: $deps"; return 1; }
+  all="$(printf '%s\n' "$deps" | cut -f1)"
+  while IFS='	' read -r shown name repo; do
+    [ -n "$shown$name$repo" ] || continue
+    nd=$((nd + 1))
+    if [[ "$repo" == *"$PROVIDER_REPO_MARK"* ]] || has_mark "$shown" || has_mark "$name"; then
+      prov="$prov$shown"$'\n'
+      PROVIDER_SET="$PROVIDER_SET$shown"$'\n'; PROVIDER_ENTRIES="${PROVIDER_ENTRIES}зависимость $shown"$'\n'
+      if [[ $'\n'"$all"$'\n' == *$'\n'"pg-$shown"$'\n'* ]]; then
+        PROVIDER_SET="${PROVIDER_SET}pg-$shown"$'\n'; PROVIDER_ENTRIES="${PROVIDER_ENTRIES}зависимость pg-$shown"$'\n'
+      fi
+    fi
+  done <<<"$deps"
+  [ "$nd" -ge 1 ] || { PROVIDER_ERR="в Chart.yaml зонтика на $B не прочитано ни одной зависимости — состав чужого взять неоткуда"; return 1; }
+  listing="$(git -C "$REPO" ls-tree "$B" deploy/helm/umbrella/charts/ 2>&1)" || { PROVIDER_ERR="записи charts/ на $B не читаются: $listing"; return 1; }
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ne=$((ne + 1))
+    read -r _ type _ <<<"${line%%	*}"; path="${line#*	}"; base="${path##*/}"
+    sub=""
+    if [ "$type" = tree ]; then
+      # Каталог без читаемого Chart.yaml — не подчарт, и имени у него нет.
+      sub="$(git -C "$REPO" show "$B:$path/Chart.yaml" 2>/dev/null | yq -r '.name // ""' 2>/dev/null)" || sub=""
+    fi
+    hit=0
+    if has_mark "$base" || { [ -n "$sub" ] && has_mark "$sub"; }; then hit=1; fi
+    for p in $prov; do case "$base" in "$p"-*) hit=1 ;; esac; done
+    [ "$hit" = 1 ] || continue
+    PROVIDER_ENTRIES="${PROVIDER_ENTRIES}charts/$base"$'\n'
+    # Объекты необъявленного подчарта helm подписывает его `name`.
+    if [ -n "$sub" ] && [[ $'\n'"$all"$'\n' != *$'\n'"$sub"$'\n'* ]]; then PROVIDER_SET="$PROVIDER_SET$sub"$'\n'; fi
+  done <<<"$listing"
+  [ "$ne" -ge 1 ] || { PROVIDER_ERR="в deploy/helm/umbrella/charts/ на $B записей 0 — подчарт без объявления искать негде"; return 1; }
+  PROVIDER_SET="$(printf '%s' "$PROVIDER_SET" | grep . | sort -u || true)"
+  PROVIDER_ENTRIES="$(printf '%s' "$PROVIDER_ENTRIES" | grep . | sort -u || true)"
+  PROVIDER_CENSUS="отметок словаря $(printf '%s\n' "$MARKS" | grep -c .), зависимостей зонтика $nd, записей charts/ $ne"
+  return 0
+}
 
 # Распознаватели рендера. Принадлежность объекта — `# Source:` под подчартом.
-provider_objects() { # <рендер> — рабочих объектов поставщика
-  local re
-  re="/charts/($(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' '|' | sed 's/|$//'))/"
+provider_objects() { # <рендер> [<имена подчартов по строке>] — рабочих объектов поставщика
+  local set="${2-$PROVIDER_SET}" re
+  set="$(printf '%s\n' "$set" | grep . || true)"
+  [ -n "$set" ] || { awk 'END { print 0 }' "$1"; return; }
+  re="/charts/($(printf '%s\n' "$set" | tr '\n' '|' | sed 's/|$//'))/"
   awk -v re="$re" '
     function flush() { if (src ~ re && kind ~ /^(Deployment|StatefulSet|Job)$/) c++; src = ""; kind = "" }
     /^---/ { flush(); next }
@@ -219,14 +281,15 @@ env_values() { # <рендер> <имя переменной> — значени
 render_objects() { grep -c '^# Source: ' "$1" || true; }
 
 cond2_control() { # распознаватели обязаны видеть то, что считают
-  local syn="$WORK/synthetic.yaml" v n first
-  first="$(printf '%s\n' "$PROVIDER_SET" | grep . | head -n 1)"
+  # Имя подчарта синтетики своё, а не из выведенного набора: распознаватель
+  # доказывается и тогда, когда поставщика в зонтике нет (после kacho#1276).
+  local syn="$WORK/synthetic.yaml" v n first="ntf2-control-provider"
   printf '%s\n' '---' "# Source: kacho-umbrella/charts/$first/templates/deployment.yaml" 'kind: Deployment' \
     'spec:' '  template:' '    spec:' '      containers:' '        - env:' \
     "            - name: $POSTURE_KNOB" '              value: "foreign"' \
     '---' '# Source: kacho-umbrella/charts/api-gateway/templates/deployment.yaml' 'kind: Deployment' \
     '---' "# Source: kacho-umbrella/charts/$first/templates/configmap.yaml" 'kind: ConfigMap' >"$syn"
-  n="$(provider_objects "$syn")"
+  n="$(provider_objects "$syn" "$first")"
   v="$(env_values "$syn" "$POSTURE_KNOB" 2>"$WORK/err")" || { echo "yq отказал на синтетике: $(cat "$WORK/err")"; return 1; }
   [ "$n" = 1 ] && [ "$v" = foreign ] || { echo "синтетика: объектов поставщика $n (ожидался 1), посадка «$v» (ожидалась foreign)"; return 1; }
   echo "синтетика: Deployment под charts/$first/ → объектов поставщика 1, ConfigMap там же и Deployment края — 0; посадка foreign"
@@ -254,8 +317,8 @@ cond2() {
   done
   command -v helm >/dev/null 2>&1 || { nr п.2 "helm не найден"; return; }
   [[ "$(yq --version 2>/dev/null)" == *mikefarah* ]] || { nr п.2 "в PATH не mikefarah yq"; return; }
-  [ -n "$PROVIDER_SET" ] || { nr п.2 "подчарты поставщика не выведены: $PROVIDER_ERR"; return; }
-  echo "  подчарты поставщика на $B: $(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' ' ' | sed 's/ $//')"
+  [ -z "$PROVIDER_ERR" ] || { nr п.2 "подчарты поставщика не выведены: $PROVIDER_ERR"; return; }
+  echo "  подчарты поставщика на $B: $(printf '%s\n' "$PROVIDER_SET" | grep . | tr '\n' ' ' | sed 's/ $//' | grep . || echo нет) ($PROVIDER_CENSUS)"
   ctl="$(cond2_control)" || { nr п.2 "контроль распознавателей: $ctl"; return; }
   echo "  контроль п.2: $ctl"
   for n in $names; do
@@ -299,24 +362,14 @@ cond3() {
 }
 
 # ── п.4 подчартов поставщика в зонтике нет (условие полосы стража почты) ─────
+# Команда Р16 п.4 — счёт записей `charts/` поставщика; здесь к ней добавлены
+# объявленные зависимости поставщика (архив внешней зависимости в дереве не
+# лежит). Имена — отметки словаря, а не выписанный перечень.
 cond4() {
-  local out n k p e found=""
-  [ -n "$PROVIDER_PARENTS" ] || { nr п.4 "зависимости поставщика не выведены: $PROVIDER_ERR"; return; }
-  out="$(git -C "$REPO" ls-tree --name-only "$B" deploy/helm/umbrella/charts/ 2>"$WORK/err")" \
-    || { nr п.4 "git ls-tree charts/ отказал: $(cat "$WORK/err")"; return; }
-  n="$(printf '%s' "$out" | grep -c . || true)"
-  [ "$n" -ge 1 ] || { nr п.4 "контроль: в deploy/helm/umbrella/charts/ на $B записей 0 — каталог не виден"; return; }
-  # Команда Р16 п.4 — счёт записей `charts/<поставщик>-…`; имена поставщика —
-  # зависимости с его репозиторием, а не выписанный перечень.
-  k=0
-  for e in $out; do
-    e="${e##*/}"
-    for p in $PROVIDER_PARENTS; do
-      case "$e" in "$p"-*) k=$((k + 1)); found="$found $e"; break ;; esac
-    done
-  done
-  local detail
-  detail="подчартов поставщика ($(printf '%s\n' "$PROVIDER_PARENTS" | tr '\n' ' ' | sed 's/ $//')) в charts/: $k из записей $n${found:+ (${found# })} (только для полосы, правящей страж почты, DoD п.14)"
+  local k detail
+  [ -z "$PROVIDER_ERR" ] || { nr п.4 "подчарты поставщика не выведены: $PROVIDER_ERR"; return; }
+  k="$(printf '%s\n' "$PROVIDER_ENTRIES" | grep -c . || true)"
+  detail="подчартов поставщика в зонтике: $k$( [ "$k" = 0 ] || printf ' (%s)' "$(printf '%s\n' "$PROVIDER_ENTRIES" | tr '\n' ' ' | sed 's/ $//')") ($PROVIDER_CENSUS; только для полосы, правящей страж почты, DoD п.14)"
   if [ "$k" = 0 ]; then outcome п.4 выполнено "$detail"; else outcome п.4 "не выполнено" "$detail"; fi
 }
 
@@ -373,14 +426,7 @@ cond6k() {
   nr K "записи перечня источников notify читаются из рендера чарта notify NTF1-D1/NTF1-D2 (Е13); на $B зависимость notify в зонтике: $notify"
 }
 
-PROVIDER_ERR=""
-if PROVIDER_SET="$(provider_charts 2>"$WORK/perr")"; then
-  PROVIDER_PARENTS="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>/dev/null \
-    | yq -r ".dependencies[] | select((.repository // \"\") | contains(\"$PROVIDER_REPO_MARK\")) | (.alias // .name)" 2>/dev/null)" \
-    || PROVIDER_PARENTS=""
-else
-  PROVIDER_SET=""; PROVIDER_ERR="$(cat "$WORK/perr")"
-fi
+provider_census || true
 
 cond1
 cond2
