@@ -378,6 +378,7 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./internal/migratorapply \
 	./services/compute/internal/migrations \
 	./services/nlb/internal/migrations \
+	./services/notify/internal/migrations \
 	./services/registry/internal/migrations \
 	./services/storage/internal/migrations \
 	./services/vpc/internal/migrations \

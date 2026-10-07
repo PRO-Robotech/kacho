@@ -317,6 +317,11 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// краснеет сама, а не ждёт, пока кто-то вспомнит про этот файл.
 	"services/compute/internal/migrations": "make test-pg-outside-selection",
 	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
+	// Пробы схемы извещений оператора notify (задача #2924, полоса N1): именованные
+	// ограничения, отложенная форма аудитории, каскад и накат цепочки kacho_notify
+	// на пустую базу судятся настоящим Postgres; отбор интеграционной джобы
+	// называет у notify только internal/limits и точки cmd/.
+	"services/notify/internal/migrations":  "make test-pg-outside-selection",
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
 	// Пробы журнала registry (задача #2918, NTF3-62 и УК3-28): колонка инициатора,
 	// её умолчание и функция базы registries_journal_emit судятся вставкой в
