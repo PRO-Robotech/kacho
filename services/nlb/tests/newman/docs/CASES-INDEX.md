@@ -87,8 +87,8 @@ existing pattern, no separate catalogue entry needed").
 - `*-DEL-STATE-HAS-LISTENER` — STATE,NEG/P0 — Delete with listeners → FailedPrecondition (Verifies REQ-NLB-DEL-LISTENERS)
 
 ### HTTP method semantics
-- `*-METHOD-PUT-NOT-ALLOWED` — VAL,NEG/P3 — PUT on collection → 403/404/405/501
-- `*-METHOD-DELETE-LIST` — VAL,NEG/P3 — DELETE on collection → 403/404/405/501
+- `*-METHOD-PUT-NOT-ALLOWED` — VAL,NEG/P3 — PUT on collection → 501/12 edge route miss (method), body exact
+- `*-METHOD-DELETE-LIST` — VAL,NEG/P3 — DELETE on collection → 501/12 edge route miss (method), body exact
 
 ### Lifecycle conformance
 - `*-LIFECYCLE-CONF` — CRUD,CONF,STATE/P1 — full Create→Get→List-includes→Update→Get-updated→Delete→List-excludes→Get-404
@@ -286,7 +286,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-GET-CRUD-COMPLETED` — CRUD/P0 — Get completed op returns done=true + response
 - `*-GET-NEG-NF-INVALID-PREFIX` — NEG/P0 — malformed opId → InvalidArgument (Verifies REQ-OP-GET-NEG-PREFIX)
 - `*-GET-NEG-NF-VALID-PREFIX` — NEG/P1 — well-formed but missing → NotFound
-- `*-LST-NEG-UNROUTED-FAIL-CLOSED` — NEG,SEC/P1 — путь без записи в каталоге прав → 403 fail-closed (Verifies REQ-OP-LST-01)
+- `*-LST-NEG-UNROUTED-FAIL-CLOSED` — NEG,SEC/P1 — путь без публичного маршрута → 404 / code 5, тело ровно промах края, до аутентификации (Verifies REQ-OP-LST-01)
 - `*-CANCEL-STATE-ALREADY-DONE` — STATE,NEG/P1 — Cancel already-done → FailedPrecondition (Verifies REQ-OP-CANCEL-DONE)
 - `*-CANCEL-IDEMPOTENT` — IDM,STATE/P1 — повторная отмена возвращает ТОТ ЖЕ исход, что первая; отмена идемпотентна на уже отменённой операции у всех доменов
 
@@ -343,7 +343,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-TGR-CR-STRANGER-DENIED` — AZD/P1 — Stranger Create TG → PERMISSION_DENIED
 - `*-NLB-CR-ANONYMOUS-LST-UNAUTH` — AZD/P0 — Listener.Create anonymous → 401
 - `*-TGR-CR-ANONYMOUS-UNAUTH` — AZD/P0 — TG.Create anonymous → 401
-- `*-OP-LIST-STRANGER-FILTERS-SCOPE` — AZD/P1 — Op.List by stranger returns empty (scope-filter)
+- `*-OP-LIST-STRANGER-UNROUTED` — AZD/P1 — коллекция /operations постороннему и анониму → тот же промах маршрута 404/5, что владельцу (ответ не зависит от вызывающего)
 
 ---
 

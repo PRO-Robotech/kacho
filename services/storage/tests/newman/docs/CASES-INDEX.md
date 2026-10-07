@@ -275,8 +275,11 @@ cluster-admin: для последнего решение принимается
 из них. Матрица зеркалит compute-набор для того же каталога, чтобы сжатие раскола
 блочного хранения не унесло единственную живую проверку этой поверхности.
 
-Две линии отказа различаются намеренно: без учётных данных → 401 / code 16
-UNAUTHENTICATED; с учётными данными, но без права → 403 / code 7 PERMISSION_DENIED.
+Линии различаются намеренно: без учётных данных на опубликованном маршруте (чтение)
+→ 401 / code 16 UNAUTHENTICATED; административная мутация у внешнего слушателя не
+опубликована (внутренняя служба, ban #6), и сторож маршрута (kacho#3053) отвечает на
+неё до аутентификации одинаково всем шестерым, анониму в том числе: 501 / code 12,
+тело ровно `{"code":12,"message":"Method Not Allowed","details":[]}`.
 
 | case-id | scope | вердикт |
 |---|---|---|
@@ -292,12 +295,12 @@ UNAUTHENTICATED; с учётными данными, но без права → 
 | SDT-GT-AAA | catalog-read | ALLOW (200) |
 | SDT-GT-AAB | catalog-read | ALLOW (200) |
 | SDT-GT-INV | catalog-read | ALLOW (200) |
-| SDT-CR-ANON | catalog-mutate | UNAUTH (401/16) |
-| SDT-CR-NOB | catalog-mutate | DENY (403/7) |
-| SDT-CR-PA1 | catalog-mutate | DENY (403/7) |
-| SDT-CR-AAA | catalog-mutate | DENY (403/7) |
-| SDT-CR-AAB | catalog-mutate | DENY (403/7) |
-| SDT-CR-INV | catalog-mutate | DENY (403/7) |
+| SDT-CR-ANON | catalog-mutate | NOROUTE (501/12) |
+| SDT-CR-NOB | catalog-mutate | NOROUTE (501/12) |
+| SDT-CR-PA1 | catalog-mutate | NOROUTE (501/12) |
+| SDT-CR-AAA | catalog-mutate | NOROUTE (501/12) |
+| SDT-CR-AAB | catalog-mutate | NOROUTE (501/12) |
+| SDT-CR-INV | catalog-mutate | NOROUTE (501/12) |
 
 ## InternalVolumeService (`cases/internal-volume.py`) — stage S4 (заметка)
 

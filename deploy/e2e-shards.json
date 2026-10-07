@@ -171,7 +171,7 @@
       "id": "nlb",
       "suites": ["nlb"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb"],
-      "why": "10 коллекций / 1789 запросов. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
+      "why": "10 коллекций / 1790 запросов. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
     },
     {
       "id": "compute-storage",
