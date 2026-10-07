@@ -196,16 +196,47 @@ func edgeAlertChains(t *testing.T) []edgeAlertChain {
 	return out
 }
 
-// edgeLayers — слои значений края для цепочки: поддерево края и `global` из
-// базы зонта и каждого профиля, ровно так, как их получает подчарт.
-func edgeLayers(t *testing.T, c edgeAlertChain) []map[string]any {
+// edgeChainTree — один слой цепочки зонтика: имя файла и его дерево.
+type edgeChainTree struct {
+	file string
+	tree map[string]any
+}
+
+// edgeChainTrees — деревья слоёв цепочки в порядке `-f`: база зонта, профили
+// цепочки и — у `prod` — слой оператора.
+//
+// Цепочка `prod` — поставка: число доверенных прыжков ей задаёт оператор
+// (приёмка NTF-2 Р8, Д51), и рендер без него отказывает. Гейты рендера `prod`
+// берут слой оператора из каталога образцов — тем же правилом, что обёртка
+// рендера цепочек (`deploy/tests/helm/lib/render-chain.sh`): образец
+// дописывается ТОЛЬКО к `prod`.
+func edgeChainTrees(t *testing.T, c edgeAlertChain) []edgeChainTree {
 	t.Helper()
 	if c.chain == nil {
 		return nil
 	}
-	var out []map[string]any
+	out := make([]edgeChainTree, 0, len(c.chain)+2)
 	for _, profile := range append([]string{"values.yaml"}, c.chain...) {
-		tree := umbrellaValues(t, profile)
+		out = append(out, edgeChainTree{profile, umbrellaValues(t, profile)})
+	}
+	if c.name == edgeOperatorSampleChain {
+		out = append(out, edgeChainTree{edgeOperatorSamplePath, edgeOperatorSample(t)})
+	}
+	return out
+}
+
+// edgeLayers — слои значений края для цепочки: поддерево края и `global` из
+// базы зонта и каждого профиля, ровно так, как их получает подчарт.
+func edgeLayers(t *testing.T, c edgeAlertChain) []map[string]any {
+	t.Helper()
+	return edgeLayersOf(edgeChainTrees(t, c))
+}
+
+// edgeLayersOf — слои подчарта края из деревьев зонтика.
+func edgeLayersOf(trees []edgeChainTree) []map[string]any {
+	var out []map[string]any
+	for _, ct := range trees {
+		tree := ct.tree
 		layer := map[string]any{}
 		if sub, ok := tree["api-gateway"].(map[string]any); ok {
 			layer = mergeInto(layer, sub)
@@ -216,6 +247,29 @@ func edgeLayers(t *testing.T, c edgeAlertChain) []map[string]any {
 		out = append(out, layer)
 	}
 	return out
+}
+
+// edgeOperatorSampleChain — цепочка, к которой гейты рендера дописывают слой
+// оператора; edgeOperatorSamplePath — сам слой (каталог образцов NTF-1).
+const (
+	edgeOperatorSampleChain = "prod"
+	edgeOperatorSamplePath  = "../../deploy/testdata/mail-node/operator.yaml"
+	// edgeStandaloneLayer — слой рендера чарта края без зонтика (Д52).
+	edgeStandaloneLayer = "../../deploy/testdata/notify-standalone/edge.yaml"
+)
+
+// edgeOperatorSample — дерево слоя оператора в форме зонтика.
+func edgeOperatorSample(t *testing.T) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(edgeOperatorSamplePath)
+	if err != nil {
+		t.Fatalf("слой оператора %s не читается: %v — рендер `prod` без него не создан", edgeOperatorSamplePath, err)
+	}
+	var tree map[string]any
+	if err := yaml.Unmarshal(raw, &tree); err != nil {
+		t.Fatalf("слой оператора %s не разобран: %v", edgeOperatorSamplePath, err)
+	}
+	return tree
 }
 
 // edgeAlertSwitch — положение выключателя `global.kacho.alertRules` на
@@ -253,6 +307,14 @@ func alertSwitch(enabled bool, reason string) map[string]any {
 // рендера возвращается: часть проб утверждает именно отказ.
 func renderEdgeChain(t *testing.T, c edgeAlertChain, extra ...map[string]any) (string, error) {
 	t.Helper()
+	return renderEdgeLayers(t, c.chain == nil, append(edgeLayers(t, c), extra...))
+}
+
+// renderEdgeLayers рендерит чарт края готовыми слоями. standalone — рендер чарта
+// без зонтика: число доверенных прыжков он получает ТОЛЬКО слоем (Д52), и слой
+// идёт первым, под слоями вызывающего.
+func renderEdgeLayers(t *testing.T, standalone bool, layers []map[string]any) (string, error) {
+	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("helm не в PATH при CI — рендер-гейт обязан исполняться, а не пропускаться")
@@ -261,10 +323,13 @@ func renderEdgeChain(t *testing.T, c edgeAlertChain, extra ...map[string]any) (s
 	}
 	dir := t.TempDir()
 	args := []string{"template", "api-gateway", ".", "-n", "kacho"}
-	for i, layer := range append(edgeLayers(t, c), extra...) {
+	if standalone {
+		args = append(args, "-f", edgeStandaloneLayer)
+	}
+	for i, layer := range layers {
 		raw, err := yaml.Marshal(layer)
 		if err != nil {
-			t.Fatalf("слой %d цепочки %s не сериализовался: %v", i, c.name, err)
+			t.Fatalf("слой %d не сериализовался: %v", i, err)
 		}
 		path := filepath.Join(dir, fmt.Sprintf("%02d.yaml", i))
 		if err := os.WriteFile(path, raw, 0o600); err != nil {
