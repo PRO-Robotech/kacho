@@ -10,7 +10,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/listnarrow"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
 )
 
 type allow struct{}
@@ -38,13 +39,13 @@ func TestNewListNarrower_WindowIsTheKnobAndZeroIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.Visible(context.Background(), "user:usr-c", "compute_instance", ActionGet, RelationGet, []string{"ins-1"}); err != nil {
+	if _, err := n.Visible(context.Background(), "user:usr-c", "compute_instance", publicnotice.ActionRead, publicnotice.RelationRead, []string{"ins-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := n.CacheSize(); got != 1 {
 		t.Fatalf("окно держит %d записей, ожидалась 1", got)
 	}
-	if rels, ok := n.Relations("storage_image"); !ok || len(rels) != 1 || rels[0] != RelationGet {
+	if rels, ok := n.Relations("storage_image"); !ok || len(rels) != 1 || rels[0] != publicnotice.RelationRead {
 		t.Fatalf("отношение типа storage_image: %v %v", rels, ok)
 	}
 }

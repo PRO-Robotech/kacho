@@ -24,14 +24,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
 	coredb "github.com/PRO-Robotech/corelib/db"
-	"github.com/PRO-Robotech/corelib/grpcclient"
-	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/observability/health"
 	"github.com/PRO-Robotech/corelib/schemaguard"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/migrations"
 )
 
@@ -76,14 +74,6 @@ func runServe(ctx context.Context, cfg config.API, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	kanameCreds, err := grpcclient.TLSClientTransportCreds(grpcclient.TLSClient{
-		Enable: true, CertFile: cfg.PeerTLSCertFile, KeyFile: cfg.PeerTLSKeyFile,
-		CAFiles: []string{cfg.PeerTLSCAFile},
-	})
-	if err != nil {
-		return fmt.Errorf("notify-api→kaname mTLS: %w", err)
-	}
-
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return fmt.Errorf("пул базы %s: %w", cfg.DBName, err)
@@ -111,28 +101,7 @@ func runServe(ctx context.Context, cfg config.API, logger *slog.Logger) error {
 		return fmt.Errorf("диагностическая поверхность: %w", err)
 	}
 
-	serveErr := serveAPI(ctx, apiInputs{
-		ListenAddr: ":" + cfg.InternalPort,
-		ServerTLS: grpcsrv.TLSServer{Enable: true, CertFile: cfg.InternalServerCertFile,
-			KeyFile: cfg.InternalServerKeyFile, ClientCAFiles: cfg.InternalServerClientCAFiles},
-		TrustDomain:          cfg.AuthzTrustDomain,
-		TrustedForwarderSANs: cfg.AuthzTrustedForwarderSANs,
-		TrustAnyForwarder:    cfg.AuthzTrustAnyForwarder,
-		Mode:                 mode,
-		DBSSLMode:            coredb.SSLModeFromDSN(cfg.DSN()),
-		Pool:                 pool,
-		Now:                  time.Now,
-		KanameAddr:           cfg.AuthzIAMGRPCAddr,
-		KanameCreds:          kanameCreds,
-		AuthzCacheTTL:        cfg.AuthzCacheTTL,
-		AuthzCheckTimeout:    cfg.AuthzCheckTimeout,
-		AuthzDenyBudget:      cfg.AuthzDenyBudgetPerSec,
-		HandlingBudget:       cfg.HandlingBudget,
-		ReminderLead:         cfg.NoticeReminderLead,
-		ListFilterCacheTTL:   cfg.ListFilterCacheTTL,
-		Metrics:              reg,
-		Logger:               logger,
-	})
+	serveErr := serveAPI(ctx, cfg, apiRuntime{Pool: pool, Now: time.Now, Metrics: reg, Logger: logger})
 
 	stopDiag()
 	if derr := waitDiag(); derr != nil {

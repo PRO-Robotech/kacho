@@ -830,18 +830,12 @@ func g0(t *testing.T) *world {
 	}
 }
 
-// kanameCreds — клиентское удостоверение notify-api к подмене службы доступа:
-// журнал подмены пишет его SAN, сервер обязан предъявить SAN подмены.
-func (w *world) kanameCreds(t *testing.T) credentials.TransportCredentials {
-	t.Helper()
-	return w.ca.clientTLS(t, "notify-api-client", apiSAN, "spiffe://kacho.cloud/ns/n2-probe/sa/kaname")
-}
-
 // kanameConn — соединение к подмене через разрыв С-А под удостоверением
-// notify-api.
+// notify-api (журнал подмены пишет его SAN).
 func (w *world) kanameConn(t *testing.T) *grpc.ClientConn {
 	t.Helper()
-	conn, err := grpc.NewClient(w.path.addr(), grpc.WithTransportCredentials(w.kanameCreds(t)))
+	conn, err := grpc.NewClient(w.path.addr(), grpc.WithTransportCredentials(
+		w.ca.clientTLS(t, "notify-api-client", apiSAN, "spiffe://kacho.cloud/ns/n2-probe/sa/kaname")))
 	if err != nil {
 		t.Fatal(err)
 	}

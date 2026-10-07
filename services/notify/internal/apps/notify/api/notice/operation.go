@@ -43,9 +43,9 @@ func NewOperation(description string, metadata proto.Message, noticeID string, n
 	return operations.Operation{
 		ID:          ids.NewID(ids.PrefixOperationNotify),
 		Description: description,
-		CreatedAt:   now,
+		CreatedAt:   now.Truncate(time.Second),
 		CreatedBy:   p.ID,
-		ModifiedAt:  now,
+		ModifiedAt:  now.Truncate(time.Second),
 		Metadata:    meta,
 		ResourceID:  noticeID,
 		Principal:   p,

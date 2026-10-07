@@ -25,11 +25,14 @@ import (
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/paging"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzcheck"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzwiring"
 )
 
-// RelationRead — отношение права на область запроса (Р16).
+// RelationRead — отношение права на область запроса и на каждый объект
+// затронутого ресурса (Р16): `v_get` вызывающего.
 const RelationRead = "v_get"
+
+// ActionRead — действие пакетного вопроса сужения ссылок.
+const ActionRead = "get"
 
 // Reader — порт выборки с предикатом видимости Р16 в WHERE (З13 п.1, п.2).
 // Видимое из проекта P — аудитория P либо «все аккаунты»; из аккаунта A —
@@ -131,7 +134,7 @@ func narrow(ctx context.Context, n Narrower, refs []notice.Ref) ([]notice.Ref, e
 	}
 	visible := map[notice.Ref]bool{}
 	for _, t := range types {
-		got, err := n.Visible(ctx, subject, t, authzwiring.ActionGet, authzwiring.RelationGet, byType[t])
+		got, err := n.Visible(ctx, subject, t, ActionRead, RelationRead, byType[t])
 		if err != nil {
 			return nil, authzcheck.PeerUnavailable()
 		}

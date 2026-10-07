@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
+
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
 )
 
 // serviceName — имя процесса в дескрипторе, самоотчёте и метках.
@@ -32,24 +34,24 @@ const (
 // describe собирает ОБЪЯВЛЕНИЕ notify-api о себе в форме носителя «только
 // внутренний слушатель» (Х5; приёмка NTF-4 Р20, таблица полей). Стражей старта
 // здесь нет: их исполняют конструктор дескриптора и носитель.
-func describe(in apiInputs, internalCreds credentials.TransportCredentials,
-	observe func(read func() authz.Metrics)) (servicecontract.Descriptor, error) {
+func describe(cfg config.API, mode servicecontract.Mode, internalCreds, kanameCreds credentials.TransportCredentials,
+	rt apiRuntime, observe func(read func() authz.Metrics)) (servicecontract.Descriptor, error) {
 	d, err := servicecontract.New(servicecontract.Spec{
 		Service: serviceName,
-		Mode:    in.Mode,
-		Logger:  in.Logger,
+		Mode:    mode,
+		Logger:  rt.Logger,
 
 		HostForm:       servicecontract.HostInternalOnly,
 		HostFormReason: hostFormReason,
 
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders(in.TrustedForwarderSANs...)),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		// Опт-ин «доверять любому пересылающему» — ручка вне боевой посадки: в
 		// боевой страж круга его не читает (corelib grpcsrv.ForwarderGate), а
 		// дескриптор требует имя обеих ручек для текста отказа.
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
-			SANs: forwarderSANsKnob, TrustAny: trustAnyKnob, OptIn: in.TrustAnyForwarder,
+			SANs: forwarderSANsKnob, TrustAny: trustAnyKnob, OptIn: cfg.AuthzTrustAnyForwarder,
 		},
-		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain(in.TrustDomain)),
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: trustDomainKnob,
 
 		ServiceIdentity: servicecontract.NotApplicable[grpcsrv.ServiceIdentity](
@@ -57,22 +59,22 @@ func describe(in apiInputs, internalCreds credentials.TransportCredentials,
 				"принципалом оператора либо арендатора; служебного принципала notify-api не принимает"),
 
 		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(in.KanameAddr, in.KanameCreds),
+		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthzIAMGRPCAddr, kanameCreds),
 		PeerCheck:    authziam.NewCheckClient,
-		CacheWindow:  in.AuthzCacheTTL,
-		ClientBudget: in.AuthzCheckTimeout,
+		CacheWindow:  cfg.AuthzCacheTTL,
+		ClientBudget: cfg.AuthzCheckTimeout,
 		AuthzObserve: observe,
-		DenyBudget:   servicecontract.Value(in.AuthzDenyBudget),
+		DenyBudget:   servicecontract.Value(cfg.AuthzDenyBudgetPerSec),
 
-		Metrics:        in.Metrics,
-		HandlingBudget: in.HandlingBudget,
+		Metrics:        rt.Metrics,
+		HandlingBudget: cfg.HandlingBudget,
 		StreamBudget:   servicecontract.NotApplicable[time.Duration](notApplicableStream),
 		// Потолок на вызывающего — пол платформы внутреннего слушателя: своей
 		// величины у notify-api нет, публичной половины нет по форме хоста.
 		Admission: servicecontract.Value(servicecontract.Admission{Internal: grpcsrv.PlatformInternalAdmission()}),
 
-		DBSSLMode:     servicecontract.Value(in.DBSSLMode),
-		InternalAddr:  in.ListenAddr,
+		DBSSLMode:     servicecontract.Value(cfg.DBSSLMode),
+		InternalAddr:  ":" + cfg.InternalPort,
 		InternalCreds: internalCreds,
 
 		Emits:     servicecontract.NotApplicable[[]proxytuple.Relation](notApplicableEmits),

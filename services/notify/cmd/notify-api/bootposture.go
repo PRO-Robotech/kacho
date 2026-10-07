@@ -8,6 +8,8 @@ import (
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
+
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
 )
 
 // postureService — имя службы в самоотчёте посадки: у обоих развёртываний
@@ -17,16 +19,16 @@ const postureService = "notify"
 // bootPosture — самоотчёт о посадке notify-api, выведенный из ПРИНЯТОГО
 // дескриптора: форма слушателя — та, что поднимет носитель (internal_only),
 // публичного mTLS нет по форме, внутренний — всегда, круг пересылающих сужен.
-func bootPosture(in apiInputs, d servicecontract.Descriptor) (observability.BootPosture, error) {
+func bootPosture(cfg config.API, d servicecontract.Descriptor) (observability.BootPosture, error) {
 	form, noServed := servicehost.PostureOf(&d)
 	return observability.NewBootPosture(observability.BootPosture{
 		Service:            postureService,
 		AuthMode:           d.Spec().Mode.String(),
-		DBSSLMode:          in.DBSSLMode,
+		DBSSLMode:          cfg.DBSSLMode,
 		PublicMTLS:         false,
-		InternalMTLS:       observability.InternalMTLSFrom(in.ServerTLS.Enable),
-		AuthZCheck:         in.KanameAddr != "",
-		TrustedForwarders:  grpcsrv.NewTrustedForwarders(in.TrustedForwarderSANs...).IsNarrowed(),
+		InternalMTLS:       observability.InternalMTLSFrom(cfg.InternalServerTLS().Enable),
+		AuthZCheck:         cfg.AuthzIAMGRPCAddr != "",
+		TrustedForwarders:  cfg.TrustedForwarders().IsNarrowed(),
 		IdentityProvider:   observability.IdentityProviderNotApplicable,
 		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
 		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,

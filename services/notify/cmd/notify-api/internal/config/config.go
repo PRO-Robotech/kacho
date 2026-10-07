@@ -1,6 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+// Package config — конфигурация развёртывания notify-api и его страж старта.
+//
+// Значения приходят переменными окружения `KACHO_NOTIFY_*` из values
+// развёртывания notify-api. Ручки, общие с notify-sender (посадка, база,
+// удостоверение пира), носят те же переменные, но объявлены здесь — каждый корень
+// объявляет ровно то, что читает (замысел issue-2924 З20; правило Д74:
+// конфигурация корня живёт под его каталогом `cmd/<корень>/internal/`).
+// Умолчаний нет: незаданная ручка или значение вне границы — отказ старта с
+// именем ручки (`sec-no-silent-default-for-guarded-knob`).
 package config
 
 import (
@@ -19,6 +28,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
@@ -32,6 +43,8 @@ const (
 	AuthzDenyBudgetMin     = 1.0
 	AuthzDenyBudgetMax     = 10000.0
 	HandlingBudgetMax      = 60 * time.Second
+	DBMaxConnsMin          = 1
+	DBMaxConnsMax          = 100
 	InternalPortMin        = 1024
 	InternalPortMax        = 65535
 	ForwarderSANsMax       = 8
@@ -99,6 +112,48 @@ type API struct {
 
 	// unset — ручки, переменной которых нет в окружении вовсе.
 	unset map[string]bool
+}
+
+// Knob — ручка процесса: имя в values и тексте отказа, переменная окружения и
+// вид значения.
+type Knob struct {
+	Name string
+	Env  string
+	Kind reflect.Kind
+}
+
+func (k Knob) String() string { return k.Name + " (" + k.Env + ")" }
+
+// Finding — одна причина отказа старта: ручка и почему.
+type Finding struct {
+	Knob Knob
+	Why  string
+}
+
+// RefusalError — отказ старта со всеми находками разом.
+type RefusalError struct {
+	Findings []Finding
+}
+
+func (e *RefusalError) Error() string {
+	lines := make([]string, 0, len(e.Findings))
+	for _, f := range e.Findings {
+		lines = append(lines, f.Knob.String()+": "+f.Why)
+	}
+	return "notify-api отказывается стартовать:\n  " + strings.Join(lines, "\n  ")
+}
+
+type findings []Finding
+
+func (fs *findings) add(k Knob, why string, args ...any) {
+	*fs = append(*fs, Finding{Knob: k, Why: fmt.Sprintf(why, args...)})
+}
+
+func (fs findings) err() error {
+	if len(fs) == 0 {
+		return nil
+	}
+	return &RefusalError{Findings: fs}
 }
 
 // APIKnobs — перечень ручек notify-api, выведенный из тегов [API]. Второго
@@ -172,6 +227,33 @@ func (c API) DSN() string {
 		}.Encode(),
 	}
 	return u.String()
+}
+
+// TrustedForwarders — круг пересылающих принципала: единственное место, где
+// читается сырой перечень; решения о круге принимаются по типу фундамента.
+func (c API) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthzTrustedForwarderSANs...)
+}
+
+// TrustDomain — домен доверия пары звеньев личности.
+func (c API) TrustDomain() grpcsrv.TrustDomain { return grpcsrv.NewTrustDomain(c.AuthzTrustDomain) }
+
+// InternalServerTLS — удостоверение единственного слушателя; mTLS всегда.
+func (c API) InternalServerTLS() grpcsrv.TLSServer {
+	return grpcsrv.TLSServer{Enable: true, CertFile: c.InternalServerCertFile, KeyFile: c.InternalServerKeyFile,
+		ClientCAFiles: c.InternalServerClientCAFiles}
+}
+
+// PeerTLS — клиентское удостоверение к службе доступа; mTLS всегда. Имя, которое
+// обязан предъявить сертификат сервера, — узел из адреса службы доступа: тот,
+// кого набирают, и проверяется, второй ручки об одном предмете нет.
+func (c API) PeerTLS() grpcclient.TLSClient {
+	host, _, err := net.SplitHostPort(c.AuthzIAMGRPCAddr)
+	if err != nil {
+		host = ""
+	}
+	return grpcclient.TLSClient{Enable: true, CertFile: c.PeerTLSCertFile, KeyFile: c.PeerTLSKeyFile,
+		CAFiles: []string{c.PeerTLSCAFile}, ServerName: host}
 }
 
 // ListFilter — величины сужателя затронутых ресурсов.
@@ -319,18 +401,15 @@ func (c *API) validateAuthz(fs *findings) {
 		}
 	}
 	if k, ok := c.set("AuthzTrustedForwarderSANs"); ok {
-		sans := c.AuthzTrustedForwarderSANs
-		if len(sans) < forwarderSANsMinPerSet || len(sans) > ForwarderSANsMax {
-			fs.add(k, "записей %d вне границы [%d..%d]", len(sans), forwarderSANsMinPerSet, ForwarderSANsMax)
+		circle := c.TrustedForwarders()
+		if n := circle.Len(); n < forwarderSANsMinPerSet || n > ForwarderSANsMax {
+			fs.add(k, "записей %d вне границы [%d..%d]", n, forwarderSANsMinPerSet, ForwarderSANsMax)
 		}
-		seen := map[string]bool{}
-		for _, s := range sans {
-			if seen[s] {
-				fs.add(k, "запись %q повторена", s)
-			}
-			seen[s] = true
-			if domainOK && !forwarderInDomain(s, c.AuthzTrustDomain) {
-				fs.add(k, "запись %q — не spiffe://%s/ns/<ns>/sa/<sa>", s, c.AuthzTrustDomain)
+		if domainOK {
+			for _, s := range circle.SANs() {
+				if !forwarderInDomain(s, c.AuthzTrustDomain) {
+					fs.add(k, "запись %q — не spiffe://%s/ns/<ns>/sa/<sa>", s, c.AuthzTrustDomain)
+				}
 			}
 		}
 	}
@@ -370,4 +449,28 @@ func forwarderInDomain(s, domain string) bool {
 	}
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	return len(parts) == 4 && parts[0] == "ns" && parts[1] != "" && parts[2] == "sa" && parts[3] != ""
+}
+
+func parsePort(s string) (int, error) {
+	p, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("порт %q не число", s)
+	}
+	if p < 1 || p > 65535 {
+		return 0, fmt.Errorf("порт %d вне границы [1..65535]", p)
+	}
+	return p, nil
+}
+
+// isDNSLabel — метка DNS по RFC 1123 (строчные буквы, цифры, дефис не по краям).
+func isDNSLabel(s string) bool {
+	if s == "" || len(s) > 63 || s[0] == '-' || s[len(s)-1] == '-' {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }

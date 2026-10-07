@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
@@ -24,13 +23,14 @@ import (
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
-	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 
 	notifyv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/authzwiring"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice"
 	noticecancel "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/cancel"
 	noticecomplete "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/notice/complete"
@@ -45,8 +45,6 @@ import (
 	publiclist "github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/list"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice/listbyaccount"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzcheck"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/authzwiring"
-	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/repo/noticerepo"
 )
@@ -55,52 +53,12 @@ import (
 // создают свои таблицы в схеме по умолчанию.
 const operationsSchema = "public"
 
-// apiInputs — зависимости корня notify-api (замысел issue-2924 З1, З14, З16,
-// З17; приёмка NTF-4 Р20 — таблица полей дескриптора носителя Х5). Каждое поле —
-// значение ручки либо часть, собранная корнем процесса; умолчаний здесь нет:
-// незаданное поле отвергает конструктор дескриптора либо сборщик сужателя.
-type apiInputs struct {
-	// ListenAddr — адрес единственного (внутреннего) слушателя.
-	ListenAddr string
-	// ServerTLS — серверное удостоверение слушателя с проверкой клиентов.
-	ServerTLS grpcsrv.TLSServer
-	// TrustDomain, TrustedForwarderSANs — домен доверия и круг пересылающих
-	// принципала (пара звеньев личности носителя).
-	TrustDomain          string
-	TrustedForwarderSANs []string
-	// TrustAnyForwarder — опт-ин «доверять любому пересылающему» вне боевой
-	// посадки (KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER); в боевой не читается.
-	TrustAnyForwarder bool
-
-	// Mode — посадка; DBSSLMode — шифрование до kacho_notify.
-	Mode      servicecontract.Mode
-	DBSSLMode string
-
-	// Pool — пул kacho_notify.
-	Pool *pgxpool.Pool
-	// Now — часы notify; они же часы сужателя (З14 п.1).
-	Now func() time.Time
-
-	// KanameAddr, KanameCreds — ребро к службе доступа: Check звена прав и
-	// use-case, пакетная проверка сужателя. Справочник notify-api не зовёт (З1).
-	KanameAddr  string
-	KanameCreds credentials.TransportCredentials
-
-	// AuthzCacheTTL — окно звена прав (KACHO_NOTIFY_AUTHZ_CACHE_TTL);
-	// AuthzCheckTimeout — срок одного вопроса о правах;
-	// AuthzDenyBudget — темп непоглощаемых исходов на принципала;
-	// HandlingBudget — граница обработки одного вызова.
-	AuthzCacheTTL     time.Duration
-	AuthzCheckTimeout time.Duration
-	AuthzDenyBudget   float64
-	HandlingBudget    time.Duration
-
-	// ReminderLead — KACHO_NOTIFY_NOTICE_REMINDER_LEAD (напоминание MAINTENANCE).
-	ReminderLead time.Duration
-	// ListFilterCacheTTL — KACHO_NOTIFY_LIST_FILTER_CACHE_TTL (окно сужателя).
-	ListFilterCacheTTL time.Duration
-
-	// Metrics — реестр диагностической поверхности; Logger — журнал процесса.
+// apiRuntime — части корня notify-api, которые не ручки: пул kacho_notify,
+// часы notify (они же часы сужателя, З14 п.1), реестр метрик и журнал. Значения
+// ручек приходят отдельно — типом конфигурации, тем же, что разбирает загрузчик.
+type apiRuntime struct {
+	Pool    *pgxpool.Pool
+	Now     func() time.Time
 	Metrics prometheus.Registerer
 	Logger  *slog.Logger
 }
@@ -108,58 +66,75 @@ type apiInputs struct {
 // serveAPI поднимает единственный внутренний слушатель носителя Х5 с
 // InternalNoticeService, NoticeService и OperationService и возвращается по
 // отмене ctx (nil) либо с ошибкой носителя. Цепочку звеньев личности и прав
-// собирает носитель; корень приносит только объявление о себе и службы.
-func serveAPI(ctx context.Context, in apiInputs) error {
-	if in.Pool == nil || in.Now == nil || in.Metrics == nil || in.KanameCreds == nil {
-		return errors.New("notify-api: пул, часы, реестр метрик и удостоверение ребра к службе доступа обязательны")
+// собирает носитель; корень приносит объявление о себе и службы.
+//
+// cfg — значения ручек notify-api (замысел issue-2924 З1, З14, З16, З17;
+// приёмка NTF-4 Р20 — таблица полей дескриптора носителя Х5). Страж ручек
+// (config.API.Validate) зовёт main до этой функции.
+func serveAPI(ctx context.Context, cfg config.API, rt apiRuntime) error {
+	if rt.Pool == nil || rt.Now == nil || rt.Metrics == nil {
+		return errors.New("notify-api: пул, часы и реестр метрик обязательны")
 	}
-	internalCreds, err := grpcsrv.TLSServerTransportCreds(in.ServerTLS)
+	mode, err := cfg.Mode()
+	if err != nil {
+		return fmt.Errorf("notify-api: %w", err)
+	}
+	internalCreds, err := grpcsrv.TLSServerTransportCreds(cfg.InternalServerTLS())
 	if err != nil {
 		return fmt.Errorf("notify-api: транспорт слушателя: %w", err)
 	}
-	conn, err := grpc.NewClient(in.KanameAddr, grpc.WithTransportCredentials(in.KanameCreds),
+	kanameCreds, err := grpcclient.TLSClientTransportCreds(cfg.PeerTLS())
+	if err != nil {
+		return fmt.Errorf("notify-api→kaname mTLS: %w", err)
+	}
+	conn, err := grpc.NewClient(cfg.AuthzIAMGRPCAddr, grpc.WithTransportCredentials(kanameCreds),
 		grpcclient.KeepaliveDialOption(true))
 	if err != nil {
-		return fmt.Errorf("notify-api: ребро к службе доступа %s: %w", in.KanameAddr, err)
+		return fmt.Errorf("notify-api: ребро к службе доступа %s: %w", cfg.AuthzIAMGRPCAddr, err)
 	}
 	defer func() { _ = conn.Close() }()
 
-	narrower, err := authzwiring.NewListNarrower(narrowiam.New(conn),
-		config.ListFilter{CacheTTL: in.ListFilterCacheTTL, CheckTimeout: in.AuthzCheckTimeout}, in.Now)
+	narrower, err := authzwiring.NewListNarrower(narrowiam.New(conn), cfg.ListFilter(), rt.Now)
 	if err != nil {
 		return fmt.Errorf("notify-api: сужатель затронутых ресурсов: %w", err)
 	}
 	authzCache := &authzmetrics.Source{}
-	if err := registerAuthzCollectors(in.Metrics, authzCache, narrower); err != nil {
+	if err := registerAuthzCollectors(rt.Metrics, authzCache, narrower); err != nil {
 		return fmt.Errorf("notify-api: величины звена прав: %w", err)
 	}
 
-	desc, err := describe(in, internalCreds, authzCache.Install)
+	desc, err := describe(cfg, mode, internalCreds, kanameCreds, rt, authzCache.Install)
 	if err != nil {
 		return err
 	}
 	// Самоотчёт о посадке — после принятия дескриптора и до подъёма слушателя.
-	posture, err := bootPosture(in, desc)
+	posture, err := bootPosture(cfg, desc)
 	if err != nil {
 		return fmt.Errorf("notify-api: самоотчёт о посадке: %w", err)
 	}
-	observability.LogBootPosture(in.Logger, posture)
+	observability.LogBootPosture(rt.Logger, posture)
 
-	ops := operations.NewRepo(in.Pool, operationsSchema)
-	store := noticerepo.New(in.Pool, ops)
-	clock := notice.Clock(in.Now)
+	ops := operations.NewRepo(rt.Pool, operationsSchema)
+	// Уборка терминальных строк таблицы операций: порог и расписание объявлены
+	// фундаментом один раз; незавершённые (заявки Create до фиксации) она не
+	// трогает — предикат судит `done = true`.
+	if _, err := operations.StartRetentionSweep(ctx, ops, operations.DefaultRetentionConfig(), rt.Logger); err != nil {
+		return fmt.Errorf("notify-api: уборка таблицы операций: %w", err)
+	}
+	store := noticerepo.New(rt.Pool, ops)
+	clock := notice.Clock(rt.Now)
 	internalNotice := (&handler.InternalNotice{
 		Create:   noticecreate.New(store, clock),
 		Get:      noticeget.New(store),
 		List:     noticelist.New(store),
-		Update:   noticeupdate.New(store, clock, in.ReminderLead),
+		Update:   noticeupdate.New(store, clock, cfg.NoticeReminderLead),
 		Start:    noticestart.New(store, clock),
 		Complete: noticecomplete.New(store, clock),
 		Cancel:   noticecancel.New(store, clock),
 	}).Server()
 	reads := publicnotice.Deps{
 		Reader:   store,
-		Checker:  authzcheck.WithBudget(authziam.NewCheckClient(conn), in.AuthzCheckTimeout),
+		Checker:  authzcheck.WithBudget(authziam.NewCheckClient(conn), cfg.AuthzCheckTimeout),
 		Narrower: narrower,
 	}
 	publicNotice := (&handler.PublicNotice{

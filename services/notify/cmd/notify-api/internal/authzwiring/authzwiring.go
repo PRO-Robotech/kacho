@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package authzwiring — сборка сужателя затронутых ресурсов notify-api
-// (замысел issue-2924 З14): единственное место вызова `listnarrow.New` в
-// не-тестовом дереве services/notify. Его зовут корень notify-api с часами
-// процесса и обвязка проб — с управляемыми; второй сборки сужателя нет.
+// (замысел issue-2924 З14): единственное место вызова `listnarrow.New` у
+// развёртывания notify-api. Его зовёт корень notify-api с часами процесса —
+// в пробах это управляемые часы обвязки; второй сборки сужателя нет. Пакет
+// живёт под корнем процесса, которому принадлежит сужатель (правило Д74).
 package authzwiring
 
 import (
@@ -13,20 +14,14 @@ import (
 
 	"github.com/PRO-Robotech/corelib/listnarrow"
 
-	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/apps/notify/api/publicnotice"
 	"github.com/PRO-Robotech/kacho/services/notify/internal/notice/rules"
 )
 
 // cacheMaxEntries — ёмкость окна положительных вердиктов: умолчание
 // `listnarrow`, записанное явно (З14 п.2) — величина выбрана, а не унаследована.
 const cacheMaxEntries = 10000
-
-// RelationGet — отношение вопроса о видимости ссылки (Р16): `v_get` вызывающего
-// на каждый объект ссылки.
-const RelationGet = "v_get"
-
-// ActionGet — действие пакетного вопроса.
-const ActionGet = "get"
 
 // NewListNarrower собирает сужатель над клиентом пакетной проверки владельца
 // модели. Окно — значение ручки без преобразования; ноль и отрицательное —
@@ -48,7 +43,7 @@ func NewListNarrower(cli listnarrow.AuthorizeClient, cfg config.ListFilter, now 
 	}
 	relations := map[string][]string{}
 	for _, t := range rules.TenantResourceTypes() {
-		relations[t] = []string{RelationGet}
+		relations[t] = []string{publicnotice.RelationRead}
 	}
 	n := listnarrow.New(cli, listnarrow.Config{
 		Relations:             relations,

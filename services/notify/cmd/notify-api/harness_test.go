@@ -13,25 +13,24 @@ package main
 // Корень развёртывания `notify-api` (замысел issue-2924 З1, З14, З16, З17;
 // приёмка NTF-5 Р2, Р16, Р18) — пакет main каталога services/notify/cmd/notify-api:
 //
-//	serveAPI(ctx, apiInputs) error — поднимает единственный внутренний слушатель
-//	    носителя Х5 (форма «только внутренний слушатель») с цепочкой звеньев
-//	    личности (пара CertIdentityExtract → TrustedPrincipalExtract с кругом
-//	    пересылающих TrustedForwarderSANs) и прав (authz.Interceptor по
-//	    аннотациям каталога), регистрирует InternalNoticeService, NoticeService и
-//	    OperationService; возвращается по отмене ctx (nil) либо с ошибкой носителя.
-//	apiInputs — зависимости корня: адрес и удостоверение слушателя, домен доверия
-//	    и круг пересылающих, пул kacho_notify, часы notify (они же часы сужателя,
-//	    З14 п.1 — `authzwiring.NewListNarrower(cli, cfg, now)`), адрес и
-//	    удостоверение ребра к службе доступа (Check звена прав и use-case,
-//	    пакетная проверка сужателя — больше корню notify-api не дано ничего,
-//	    З1; соединение набирают носитель и корень, поэтому подаётся ребро, а не
-//	    готовое соединение), посадка (режим, sslmode) и величины звена прав
-//	    (окно, срок вопроса, бюджет отказов, граница обработки — ручки NTF-4
-//	    Р20), ручки KACHO_NOTIFY_NOTICE_REMINDER_LEAD и
-//	    KACHO_NOTIFY_LIST_FILTER_CACHE_TTL, реестр метрик, журнал.
+//	serveAPI(ctx, config.API, apiRuntime) error — поднимает единственный
+//	    внутренний слушатель носителя Х5 (форма «только внутренний слушатель») с
+//	    цепочкой звеньев личности (пара CertIdentityExtract → TrustedPrincipalExtract
+//	    с кругом пересылающих) и прав (authz.Interceptor по аннотациям каталога),
+//	    регистрирует InternalNoticeService, NoticeService и OperationService;
+//	    возвращается по отмене ctx (nil) либо с ошибкой носителя.
+//	config.API — значения ручек notify-api в том виде, в каком их отдаёт загрузчик:
+//	    порт и удостоверение слушателя, домен доверия и круг пересылающих, адрес и
+//	    клиентское удостоверение ребра к службе доступа (Check звена прав и
+//	    use-case, пакетная проверка сужателя — больше корню notify-api не дано
+//	    ничего, З1), посадка, величины звена прав (ручки NTF-4 Р20),
+//	    KACHO_NOTIFY_NOTICE_REMINDER_LEAD и KACHO_NOTIFY_LIST_FILTER_CACHE_TTL.
+//	apiRuntime — не ручки: пул kacho_notify, часы notify (они же часы сужателя,
+//	    З14 п.1 — `authzwiring.NewListNarrower(cli, cfg, now)`), реестр метрик,
+//	    журнал.
 //
-// Поля apiInputs — то, что оснастка ПОДАЁТ; их имена — предмет этого файла и
-// правятся полосой реализации здесь и только здесь, вместе с её формой корня.
+// Поля, которые оснастка ПОДАЁТ, — предмет этого файла и правятся полосой
+// реализации здесь и только здесь, вместе с её формой корня.
 
 import (
 	"context"
@@ -42,7 +41,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/kacho/services/notify/cmd/notify-api/internal/config"
 )
 
 // apiKnobs — ручки notify-api, которые задаёт «Дано».
@@ -55,35 +54,46 @@ type apiKnobs struct {
 var g0Knobs = apiKnobs{reminderLead: 24 * time.Hour, listFilterTTL: 5 * time.Second}
 
 // raise поднимает notify-api над частями оснастки w и отдаёт клиента края.
+// Ручки — значения типа конфигурации notify-api, как их отдал бы загрузчик;
+// посадка — dev (боевую судит страж main, а не носитель), база — pgtest без TLS.
 func raise(t *testing.T, w *world, k apiKnobs) edge {
 	t.Helper()
-	addr := "127.0.0.1:" + freePort(t)
+	port := freePort(t)
+	addr := "127.0.0.1:" + port
 	ctx, cancel := context.WithCancel(context.Background())
 	var serveErr error
 	stopped := make(chan struct{})
-	in := apiInputs{
-		ListenAddr:           addr,
-		ServerTLS:            w.ca.serverFiles(t, "notify-api", apiSAN),
-		TrustDomain:          trustDomain,
-		TrustedForwarderSANs: []string{gatewaySAN},
-		Mode:                 servicecontract.ModeDev,
-		DBSSLMode:            "disable",
-		Pool:                 w.pool,
-		Now:                  w.clock.Now,
-		KanameAddr:           w.path.addr(),
-		KanameCreds:          w.kanameCreds(t),
-		AuthzCacheTTL:        5 * time.Second,
-		AuthzCheckTimeout:    2 * time.Second,
-		AuthzDenyBudget:      100,
-		HandlingBudget:       30 * time.Second,
-		ReminderLead:         k.reminderLead,
-		ListFilterCacheTTL:   k.listFilterTTL,
-		Metrics:              prometheus.NewRegistry(),
-		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+	srv := w.ca.serverFiles(t, "notify-api", apiSAN)
+	peerCert, peerKey := w.ca.issue(t, "notify-api-client", false, apiSAN)
+	cfg := config.API{
+		AuthMode:                    "dev",
+		PeerTLSCertFile:             peerCert,
+		PeerTLSKeyFile:              peerKey,
+		PeerTLSCAFile:               w.ca.caFile(),
+		DBSSLMode:                   "disable",
+		AuthzIAMGRPCAddr:            w.path.addr(),
+		InternalPort:                port,
+		InternalServerCertFile:      srv.CertFile,
+		InternalServerKeyFile:       srv.KeyFile,
+		InternalServerClientCAFiles: srv.ClientCAFiles,
+		AuthzTrustDomain:            trustDomain,
+		AuthzTrustedForwarderSANs:   []string{gatewaySAN},
+		AuthzCacheTTL:               5 * time.Second,
+		AuthzCheckTimeout:           2 * time.Second,
+		AuthzDenyBudgetPerSec:       100,
+		HandlingBudget:              30 * time.Second,
+		NoticeReminderLead:          k.reminderLead,
+		ListFilterCacheTTL:          k.listFilterTTL,
+	}
+	rt := apiRuntime{
+		Pool:    w.pool,
+		Now:     w.clock.Now,
+		Metrics: prometheus.NewRegistry(),
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	go func() {
 		defer close(stopped)
-		serveErr = serveAPI(ctx, in)
+		serveErr = serveAPI(ctx, cfg, rt)
 	}()
 	t.Cleanup(func() {
 		cancel()
