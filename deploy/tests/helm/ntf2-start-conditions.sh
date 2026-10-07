@@ -67,8 +67,9 @@ POSTURE_KNOB="KACHO_API_GATEWAY_IDENTITY_PROVIDER"
 # поставщика `internal/identityvendor` той же ревизии (тот же словарь у потолка
 # привязок и у рендерной пробы `TestNoStackRendersAnIdentityVendorObject`), —
 # выписанный перечень расходился бы со словарём молча, а литерал имени в
-# развёртывании — единица потолка привязок к снятому поставщику.
-PROVIDER_REPO_MARK="ory.sh"
+# развёртывании — единица потолка привязок к снятому поставщику. Слово
+# поставщика узнаётся, как у рендерной пробы (`vendorWordIn`): отметка —
+# подстрокой без учёта регистра, бренд — с границей буквы с обеих сторон.
 VENDOR_HOME="internal/identityvendor"
 
 for f in "$HERE/stacks.sh" "$HERE/lib/render-chain.sh"; do
@@ -183,44 +184,50 @@ cond1() {
 }
 
 # ── п.2 посадка own во всех цепочках ─────────────────────────────────────────
-# vendor_marks — отметки имени поставщика из `internal/identityvendor` на <B>,
-# по строке. Объявление читает разбор `go doc` над файлом той ревизии в
-# отдельном модуле, а не поиск по тексту исходника.
-vendor_marks() {
+# vendor_dict <объявление> — строки объявления `internal/identityvendor` на <B>
+# (переменная `marks` либо константа `brand`), по строке, в нижнем регистре.
+# Объявление читает разбор `go doc` над файлом той ревизии в отдельном модуле,
+# а не поиск по тексту исходника.
+vendor_dict() {
   local d="$WORK/identityvendor" out
-  mkdir -p "$d" || { echo "каталог разбора словаря не создан" >&2; return 2; }
-  git -C "$REPO" show "$B:$VENDOR_HOME/identityvendor.go" >"$d/identityvendor.go" 2>"$WORK/err" \
-    || { echo "словарь поставщика $VENDOR_HOME на $B не читается: $(cat "$WORK/err")" >&2; return 2; }
-  printf 'module ntf2probe/identityvendor\n\ngo 1.22\n' >"$d/go.mod" || { echo "go.mod разбора словаря не записан" >&2; return 2; }
-  out="$(cd "$d" && GOWORK=off GOFLAGS='' go doc -u . marks 2>&1)" \
-    || { echo "go doc словаря поставщика на $B отказал: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" >&2; return 2; }
-  printf '%s\n' "$out" | awk '
-    /^var marks = / { d = 1 }
+  if [ ! -f "$d/go.mod" ]; then
+    mkdir -p "$d" || { echo "каталог разбора словаря не создан" >&2; return 2; }
+    git -C "$REPO" show "$B:$VENDOR_HOME/identityvendor.go" >"$d/identityvendor.go" 2>"$WORK/err" \
+      || { echo "словарь поставщика $VENDOR_HOME на $B не читается: $(cat "$WORK/err")" >&2; return 2; }
+    printf 'module ntf2probe/identityvendor\n\ngo 1.22\n' >"$d/go.mod" || { echo "go.mod разбора словаря не записан" >&2; return 2; }
+  fi
+  out="$(cd "$d" && GOWORK=off GOFLAGS='' go doc -u . "$1" 2>&1)" \
+    || { echo "go doc $1 словаря поставщика на $B отказал: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" >&2; return 2; }
+  printf '%s\n' "$out" | awk -v sym="$1" '
+    $1 ~ /^(var|const)$/ && $2 == sym && $3 == "=" { d = 1 }
     d { while (match($0, /"[^"]*"/)) { print tolower(substr($0, RSTART + 1, RLENGTH - 2)); $0 = substr($0, RSTART + RLENGTH) } }
-    d && /}/ { exit }' | grep .
+    d && ($0 ~ /}/ || $1 == "const") { exit }' | grep .
 }
-# has_mark <строка> — 0, если строка несёт отметку (подстрока без учёта регистра,
-# как у потолка привязок).
-has_mark() {
+# vendor_word <строка> — 0, если строка называет поставщика: отметка подстрокой
+# без учёта регистра либо бренд с границей буквы (как `vendorWordIn`).
+vendor_word() {
   local s="${1,,}" m
   for m in $MARKS; do [[ "$s" == *"$m"* ]] && return 0; done
-  return 1
+  [[ "$s" =~ (^|[^a-z])${BRAND}([^a-z]|$) ]]
 }
 
 # provider_census — подчарты поставщика на <B>, как их выводят гейты посадки и
-# рендера: зависимости зонтика с репозиторием поставщика либо с отметкой в
-# имени или псевдониме (имя, видимое значениям, — alias), их базы `pg-<имя>`,
+# рендера: зависимости зонтика, чьё имя, псевдоним (имя, видимое значениям) или
+# репозиторий называет поставщика, их базы `pg-<имя>`,
 # записи `charts/` с отметкой в имени записи либо в `name` своего Chart.yaml
 # (каталог и имя разные законно, #2759) и записи `charts/<имя>-…` зависимостей
 # поставщика. Заполняет PROVIDER_SET (имена подчартов для рендера),
 # PROVIDER_ENTRIES (найденное, для п.4) и PROVIDER_CENSUS (объём обхода).
 # Ноль найденного — исход, когда обход прочитал отметки, зависимости и записи
 # `charts/`; пустой обход — отказ: «чужого нет» неотличимо от «не прочитано».
-PROVIDER_SET=""; PROVIDER_ENTRIES=""; PROVIDER_CENSUS=""; PROVIDER_ERR=""; MARKS=""
+PROVIDER_SET=""; PROVIDER_ENTRIES=""; PROVIDER_CENSUS=""; PROVIDER_ERR=""; MARKS=""; BRAND=""
 provider_census() {
   local chart deps all line name repo shown nd=0 ne=0 listing type path base sub prov="" hit p
-  MARKS="$(vendor_marks 2>"$WORK/perr")" || { PROVIDER_ERR="$(cat "$WORK/perr")"; return 1; }
+  MARKS="$(vendor_dict marks 2>"$WORK/perr")" || { PROVIDER_ERR="$(cat "$WORK/perr")"; return 1; }
   [ -n "$MARKS" ] || { PROVIDER_ERR="в $VENDOR_HOME на $B не прочитано ни одной отметки — поставщика узнавать нечем"; return 1; }
+  BRAND="$(vendor_dict brand 2>"$WORK/perr")" || { PROVIDER_ERR="$(cat "$WORK/perr")"; return 1; }
+  # Бренд встаёт в выражение границы как есть: допустимы только буквы.
+  [[ "$BRAND" =~ ^[a-z]+$ ]] || { PROVIDER_ERR="бренд словаря $VENDOR_HOME на $B — «$BRAND», а не одно слово из букв"; return 1; }
   chart="$(git -C "$REPO" show "$B:deploy/helm/umbrella/Chart.yaml" 2>&1)" || { PROVIDER_ERR="Chart.yaml зонтика на $B не читается: $chart"; return 1; }
   deps="$(printf '%s\n' "$chart" | yq -r '.dependencies[] | [(.alias // .name // ""), (.name // ""), (.repository // "")] | join("	")' 2>&1)" \
     || { PROVIDER_ERR="зависимости зонтика не разобраны: $deps"; return 1; }
@@ -228,7 +235,7 @@ provider_census() {
   while IFS='	' read -r shown name repo; do
     [ -n "$shown$name$repo" ] || continue
     nd=$((nd + 1))
-    if [[ "$repo" == *"$PROVIDER_REPO_MARK"* ]] || has_mark "$shown" || has_mark "$name"; then
+    if vendor_word "$shown" || vendor_word "$name" || vendor_word "$repo"; then
       prov="$prov$shown"$'\n'
       PROVIDER_SET="$PROVIDER_SET$shown"$'\n'; PROVIDER_ENTRIES="${PROVIDER_ENTRIES}зависимость $shown"$'\n'
       if [[ $'\n'"$all"$'\n' == *$'\n'"pg-$shown"$'\n'* ]]; then
@@ -248,7 +255,7 @@ provider_census() {
       sub="$(git -C "$REPO" show "$B:$path/Chart.yaml" 2>/dev/null | yq -r '.name // ""' 2>/dev/null)" || sub=""
     fi
     hit=0
-    if has_mark "$base" || { [ -n "$sub" ] && has_mark "$sub"; }; then hit=1; fi
+    if vendor_word "$base" || { [ -n "$sub" ] && vendor_word "$sub"; }; then hit=1; fi
     for p in $prov; do case "$base" in "$p"-*) hit=1 ;; esac; done
     [ "$hit" = 1 ] || continue
     PROVIDER_ENTRIES="${PROVIDER_ENTRIES}charts/$base"$'\n'
@@ -258,7 +265,7 @@ provider_census() {
   [ "$ne" -ge 1 ] || { PROVIDER_ERR="в deploy/helm/umbrella/charts/ на $B записей 0 — подчарт без объявления искать негде"; return 1; }
   PROVIDER_SET="$(printf '%s' "$PROVIDER_SET" | grep . | sort -u || true)"
   PROVIDER_ENTRIES="$(printf '%s' "$PROVIDER_ENTRIES" | grep . | sort -u || true)"
-  PROVIDER_CENSUS="отметок словаря $(printf '%s\n' "$MARKS" | grep -c .), зависимостей зонтика $nd, записей charts/ $ne"
+  PROVIDER_CENSUS="отметок словаря $(printf '%s\n' "$MARKS" | grep -c .) и бренд, зависимостей зонтика $nd, записей charts/ $ne"
   return 0
 }
 
