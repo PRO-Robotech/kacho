@@ -133,6 +133,9 @@ import (
 
 	// kacho-registry (registry.v1) — public RPC под /registry/v1/*.
 	registrypb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	// notify (notify.v1) — извещения оператора: публичное чтение под
+	// /notify/v1/notices и административная поверхность под /notify/v1/internal/*.
+	notifypb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	// kacho-storage (storage.v1) — public RPC под /storage/v1/*.
 	storagepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -322,6 +325,9 @@ func isInternalPath(path string) bool {
 //	"registryInternal"     → kacho-registry.kacho.svc:9091 (InternalRegistryService GC/stats admin)
 //	"storage"              → kacho-storage.kacho.svc:9090 (Volume/Snapshot/DiskType read)
 //	"storageInternal"      → kacho-storage.kacho.svc:9091 (InternalVolume attach/detach + InternalDiskType admin)
+//	"notifyInternal"       → внутренний слушатель notify-api (единственный слушатель notify;
+//	                        NoticeService и InternalNoticeService); ключа нет, когда
+//	                        адрес notify в установке не объявлен
 //
 // conns — карта domain → *grpc.ClientConn (нужна для OpsProxy);
 // при nil — OperationService регистрируется через no-op Unimplemented (тесты).
@@ -432,7 +438,8 @@ func NewMux(
 	// здесь больше нет: единственный маршрут, который его требовал, снят
 	// вместе со своим потоком (#814).
 	// registryAddr / registryInternalAddr обслуживают kacho-registry (registry.v1).
-	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
+	// notifyInternalAddr — единственный адрес notify (см. config.NotifyInternalAddr).
+	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr, notifyInternalAddr string
 	if addrs != nil {
 		vpcAddr = addrs["vpc"]
 		vpcInternalAddr = addrs["vpcInternal"]
@@ -447,6 +454,7 @@ func NewMux(
 		registryInternalAddr = addrs["registryInternal"]
 		storageAddr = addrs["storage"]
 		storageInternalAddr = addrs["storageInternal"]
+		notifyInternalAddr = addrs["notifyInternal"]
 	}
 
 	// ПУБЛИЧНЫЙ handler регистрируется на ОБА mux'а (public + internal): диспетчер
@@ -991,6 +999,31 @@ func NewMux(
 		if mux == internalMux && registryInternalAddr != "" {
 			if err := registrypb.RegisterInternalRegistryServiceHandlerFromEndpoint(ctx, mux, registryInternalAddr, optsFor("registryInternal")); err != nil {
 				return nil, fmt.Errorf("register registry InternalRegistryService: %w", err)
+			}
+		}
+
+		// --- notify.v1 (notify-api): NoticeService ---
+		// Публичное чтение извещений оператора арендатором под /notify/v1/notices.
+		// У notify один слушатель — внутренний слушатель notify-api (NTF-4 Р20), —
+		// поэтому публичный handler идёт по тому же адресу и ребру mTLS, что и
+		// административный, и регистрируется только при объявленном адресе: пустой
+		// адрес означает «notify в установке нет», и маршрута тогда нет вовсе.
+		if notifyInternalAddr != "" {
+			if err := notifypb.RegisterNoticeServiceHandlerFromEndpoint(ctx, mux, notifyInternalAddr, optsFor("notifyInternal")); err != nil {
+				return nil, fmt.Errorf("register notify NoticeService: %w", err)
+			}
+		}
+
+		// --- notify.v1 admin (InternalNoticeService) — internal mux only ---
+		// Публикация и переходы извещения оператором (Create/Get/List/Update/
+		// Start/Complete/Cancel под /notify/v1/internal/notices). Только на
+		// внутреннем mux (запрет #6): на внешнем листенере диспетчер отдаёт эти пути
+		// publicMux'у, где их нет. InternalNotifyProbeService здесь НЕ
+		// регистрируется: он служится корнем notify-probe, а не notify-api, и
+		// маршрута края к нему нет.
+		if mux == internalMux && notifyInternalAddr != "" {
+			if err := notifypb.RegisterInternalNoticeServiceHandlerFromEndpoint(ctx, mux, notifyInternalAddr, optsFor("notifyInternal")); err != nil {
+				return nil, fmt.Errorf("register notify InternalNoticeService: %w", err)
 			}
 		}
 
