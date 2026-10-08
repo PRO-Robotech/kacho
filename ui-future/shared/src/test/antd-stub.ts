@@ -441,6 +441,12 @@ export function antdStub(): Record<string, unknown> {
   // `onChange`), и только затем `onSelect`. Обратный порядок оставил бы в поле
   // идентификатор вместо почты — то есть дублёр расходился бы с настоящим ровно
   // там, где вызывающий на порядок и рассчитывает.
+  //
+  // ТРЕТЬЕ: без `value` настоящее поле НЕУПРАВЛЯЕМОЕ — текст ведёт оно само, и
+  // выбор подсказки ставит в поле её `value` (`@rc-component/select`, режим
+  // `combobox`). Заменитель, державший текст только пропом, показывал пустоту
+  // на любом наборе в неуправляемое поле — то есть был строже настоящего и
+  // краснел на продукте, который у настоящего работает (#3094).
   const AutoComplete = ({
     options,
     value,
@@ -450,15 +456,18 @@ export function antdStub(): Record<string, unknown> {
     notFoundContent,
     children,
     ...props
-  }: SelectProps & { onSelect?: (value: string, option: SelectOption) => void }) =>
-    React.createElement(
+  }: SelectProps & { onSelect?: (value: string, option: SelectOption) => void }) => {
+    const [inner, setInner] = React.useState("");
+    const shown = value === undefined ? inner : (value ?? "");
+    return React.createElement(
       "div",
       null,
       React.createElement("input", {
         ...props,
         role: "combobox",
-        value: value ?? "",
+        value: shown,
         onChange: (e: { target: { value: string } }) => {
+          setInner(e.target.value);
           onSearch?.(e.target.value);
           onChange?.(e.target.value);
         },
@@ -470,6 +479,7 @@ export function antdStub(): Record<string, unknown> {
             key: String(o.value),
             role: "option",
             onClick: () => {
+              setInner(String(o.value));
               onChange?.(String(o.value), o);
               onSelect?.(String(o.value), o);
             },
@@ -482,6 +492,7 @@ export function antdStub(): Record<string, unknown> {
         : null,
       children,
     );
+  };
   // Настоящее ЧИСЛОВОЕ поле зовёт `onChange` с ЧИСЛОМ (или `null` на пустоте), а
   // не с событием. Заменитель, отдававший событие, делал недостижимым весь путь
   // «ввёл число → отправили»: вызывающий, разбирающий число, получал объект,
