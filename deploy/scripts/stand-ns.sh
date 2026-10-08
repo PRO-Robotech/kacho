@@ -6,12 +6,29 @@
 #
 #   stand-ns.sh up NS [STACK] [REF]   поднять стек STACK (умолчание dev-prod) от ревизии REF
 #   stand-ns.sh down NS               снять пространство целиком; идемпотентно
+#   stand-ns.sh run NS [--keep] [--stack S] [--ref R] -- КОМАНДА…
+#                                     up → проброс → КОМАНДА (CONSOLE_BASE, EDGE_BASE и
+#                                     окружение проб) → down ВСЕГДА: успех, падение, kill;
+#                                     код выхода — код КОМАНДЫ; --keep оставляет стенд для
+#                                     разбора на срок STAND_TTL_HOURS (≤ 12 ч)
 #   stand-ns.sh census [--expired]    перечень тестовых пространств; --expired снимает просроченные
 #   stand-ns.sh forward NS            проброс консоли, края и приёмника писем + файл окружения проб
 #   stand-ns.sh unforward NS          снять проброс
 #   stand-ns.sh self-test             проба правил имени, срока и порта (кластера не требует)
 #
-# Зовут его цели `make -C deploy stand-ns-up | stand-ns-down | stand-ns-census`.
+# Зовут его цели `make -C deploy stand-ns-up | stand-ns-down | stand-ns-run | stand-ns-census`.
+#
+# ── ПОРЯДОК ПОДЪЁМА И СНЯТИЕ НА НЕУСПЕХЕ ──────────────────────────────────────
+#
+#   1. всё, что можно проверить БЕЗ записи в кластер: имя, кластер, цепочка,
+#      ревизия (правило входов сборки — tools/standns/inputs.go), образы ревизии в
+#      реестре, право завести пространство, квоту и пределы, предрендер;
+#   2. первая запись — ОДНИМ применением: пространство с метками и сроком, затем
+#      квота и пределы (квота — первый объект пространства);
+#   3. с этого момента взведена ловушка EXIT/INT/TERM: любой неуспех и любой kill
+#      (кроме SIGKILL — его ловить нечем, остаток снимет `census --expired` по сроку)
+#      снимает созданное этим вызовом. Пространство, существовавшее ДО вызова
+#      (повторный up), ловушка не снимает — оно не этого вызова.
 #
 # ── ЗАЧЕМ ──────────────────────────────────────────────────────────────────────
 #
@@ -67,6 +84,7 @@ UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
 RELEASE="${STACK_RELEASE:-kacho-umbrella}"
 WORK_ROOT="${KACHO_STAND_NS_WORKDIR:-$DEPLOY_ROOT/.stand-ns}"
 TTL_HOURS="${STAND_TTL_HOURS:-12}"
+TTL_MAX_HOURS=12
 IMAGE_PREFIX="${STAND_IMAGE_PREFIX:-docker.io/prorobotech}"
 IMAGE_BRANCHES="${STAND_IMAGE_BRANCHES:-1266 main}"
 UP_TIMEOUT="${STAND_TIMEOUT:-15m}"
@@ -93,6 +111,7 @@ ns_valid() {
 # ns_port NS — первый из трёх портов проброса (консоль, край, приёмник писем).
 # Выводится из имени, а не выбирается: он входит в происхождение консоли, а
 # происхождение запекается в настройки службы доступа при подъёме.
+#
 ns_port() {
   local sum
   sum="$(printf '%s' "$1" | cksum | awk '{print $1}')"
@@ -100,6 +119,9 @@ ns_port() {
 }
 
 ns_host() { printf '%s.%s' "$1" "$HOST_SUFFIX"; }
+
+# ttl_valid H — срок стенда в часах: целое 1..TTL_MAX_HOURS.
+ttl_valid() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le "$TTL_MAX_HOURS" ]; }
 
 # expired_at RFC3339 NOW_EPOCH — 0, если срок истёк; 2, если срок не читается.
 expired_at() {
@@ -125,6 +147,8 @@ self_test() {
   if expired_at "2999-01-01T00:00:00Z" "$now"; then bad "будущий срок истёк"; else ok "срок в будущем — жив"; fi
   local rc=0; expired_at "не дата" "$now" || rc=$?
   if [ "$rc" -eq 2 ]; then ok "нечитаемый срок — код 2, не «истёк»"; else bad "нечитаемый срок прочитан (код $rc)"; fi
+  if ttl_valid 12 && ttl_valid 1 && ! ttl_valid 13 && ! ttl_valid 0 && ! ttl_valid x; then
+    ok "срок 1..$TTL_MAX_HOURS ч принят, 0, 13 и не число — отвергнуты"; else bad "правило срока"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -168,9 +192,10 @@ ns_state() {
   return 2
 }
 
+# build_tool DIR — двоичный файл кладётся в рабочий каталог стенда и снимается
+# вместе с ним (down, ловушка подъёма), а не остаётся в общем TMPDIR.
 build_tool() {
-  local out
-  out="${TMPDIR:-/tmp}/kacho-stand-ns.$(id -u).$(printf '%s' "$REPO_ROOT" | sha256sum | cut -c1-16)"
+  local out="$1/bin"
   mkdir -p "$out" || return 1
   ( cd "$REPO_ROOT" && go build -o "$out/stand-ns" ./tools/standns/cmd/stand-ns ) >&2 || {
     warn "tools/standns не собрался — переносить рендер нечем"; return 1; }
@@ -195,13 +220,34 @@ has_default_storage_class() {
 
 # ── ПОДЪЁМ ───────────────────────────────────────────────────────────────────
 
-# Квота и пределы пространства. Числа — по замеру стенда dev-prod на этом
-# кластере (kacho#3102, комментарий задачи «замер подъёма»): сумма запросов
-# поднятого стенда и пик потребления, с запасом на один перекат (helm --wait
-# поднимает новый под рядом со старым). Балансировщиков ноль: вход стенда
-# пробрасывается, площадка его не публикует.
-quota_manifest() {
+# ns_objects NS TASK EXPIRES STACK SHA — ПЕРВАЯ запись подъёма одним применением:
+# пространство уже с метками и сроком (kill между «создал» и «пометил» оставил бы
+# непомеченное пространство, которое down по праву счёл бы чужим), затем квота
+# и пределы — первые объекты пространства, до любой нагрузки.
+#
+# Числа квоты — по замеру стенда dev-prod на этом кластере (kacho#3102,
+# комментарий задачи «замер подъёма»): сумма запросов поднятого стенда и пик
+# потребления, с запасом на один перекат (helm --wait поднимает новый под рядом
+# со старым). Балансировщиков ноль: вход стенда пробрасывается, площадка его не
+# публикует.
+ns_objects() {
   cat <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $1
+  labels:
+    $LABEL_STAND: test
+    $LABEL_TASK: "$2"
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+  annotations:
+    $ANN_EXPIRES: "$3"
+    kacho.io/stack: "$4"
+    kacho.io/ref: "$5"
+---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -234,6 +280,81 @@ spec:
 EOF
 }
 
+# can_write NS — право завести пространство, квоту и пределы, спрошенное ДО
+# записи: отказ на середине оставил бы пространство без квоты.
+can_write() {
+  local verb_res
+  for verb_res in "create namespaces" "create resourcequotas -n $1" "create limitranges -n $1" "delete namespaces"; do
+    # shellcheck disable=SC2086 # «глагол ресурс [-n ns]» — разбор по словам и нужен
+    [ "$(kubectl auth can-i $verb_res --request-timeout=30s 2>/dev/null)" = yes ] || {
+      warn "у учётки нет права «$verb_res»"; return 1; }
+  done
+}
+
+# kill_tree PID — сигнал процессу и всем его потомкам (helm под tee, npx под
+# браузером) и ОЖИДАНИЕ их конца: `kill` одного родителя оставил бы детей писать
+# в кластер, а снятие, начатое до конца helm, шло бы наперегонки с его записью.
+# Не вышедшие за 60 с получают SIGKILL.
+descendants() {
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do descendants "$c"; printf '%s\n' "$c"; done
+}
+kill_tree() {
+  local pids p alive
+  pids="$(descendants "$1") $1"
+  for p in $pids; do kill -TERM "$p" 2>/dev/null || true; done
+  for _ in $(seq 1 60); do
+    alive=""
+    for p in $pids; do
+      # Зомби (вышел, не прибран родителем) живым не считается.
+      case "$(ps -o stat= -p "$p" 2>/dev/null)" in ''|Z*) ;; *) alive="$alive $p" ;; esac
+    done
+    [ -n "$alive" ] || return 0
+    sleep 1
+  done
+  warn "не вышли за 60 с после TERM:$alive — SIGKILL"
+  for p in $alive; do kill -KILL "$p" 2>/dev/null || true; done
+}
+
+# bg КОМАНДА… — исполнить в фоне и ждать. Ловушку на сигнал bash исполняет
+# только ПОСЛЕ конца переднего процесса — kill посреди `helm --wait` ждал бы
+# пятнадцать минут; `wait` же сигналом прерывается сразу.
+CHILD=""
+bg() {
+  "$@" & CHILD=$!
+  wait "$CHILD"; local rc=$?
+  CHILD=""
+  return "$rc"
+}
+
+UP_NS="" UP_WORK="" UP_CREATED=0 UP_DONE=0
+up_on_signal() {
+  trap - INT TERM
+  warn "подъём $UP_NS прерван сигналом $1"
+  exit "$2"
+}
+up_on_exit() {
+  local rc=$?
+  trap - EXIT INT TERM
+  [ -z "$CHILD" ] || { kill_tree "$CHILD"; wait "$CHILD" 2>/dev/null; }
+  [ "$UP_DONE" = 1 ] && exit "$rc"
+  [ "$rc" -ne 0 ] || rc=1
+  if [ "$UP_CREATED" = 1 ]; then
+    warn "подъём $UP_NS не завершён (код $rc) — снимаю созданное этим вызовом"
+    ( cmd_down "$UP_NS" ) || warn "СНЯТИЕ НЕ ПРОШЛО — остаток снимается: make -C deploy stand-ns-down NS=$UP_NS"
+  elif [ "${UP_STATE:-}" = absent ]; then
+    rm -rf "${UP_WORK:?}"
+    warn "подъём $UP_NS отказал (код $rc) ДО первой записи в кластер — снимать в кластере нечего"
+  else
+    # Пространство было до вызова (повторный up) либо его состояние не прочитано:
+    # ни его, ни рабочий каталог стоящего стенда ловушка не трогает — только своё.
+    [ -z "$UP_WORK" ] || rm -rf "${UP_WORK:?}/bin"
+    [ "${UP_STATE:-}" != test ] ||
+      warn "пространство $UP_NS существовало до вызова — ловушка его не снимает (make -C deploy stand-ns-down NS=$UP_NS)"
+  fi
+  exit "$rc"
+}
+
 stand_overlay() {
   local ns="$1" cans="$2" persist="$3" port="$4"
   local host; host="$(ns_host "$ns")"
@@ -253,6 +374,14 @@ global:
       appBaseURL: "https://$host:$port"
       webauthnRpId: "$host"
 uif:
+  # Первый лист внешнего входа консоли — ВРЕМЕННЫЙ (certificate-public.yaml,
+  # issue-temporary-certificate), настоящий раздача перечитывает сторожем раз в
+  # tlsReload.intervalSeconds (умолчание 300 с). Стенд проб живёт часы и
+  # используется сразу после подъёма: пять минут временного листа, которому
+  # браузер проб не доверяет, — это пять минут «не выполнилось». Период — только
+  # каденция перечтения, посадку он не трогает.
+  tlsReload:
+    intervalSeconds: 10
   subscriptionStream:
     ingress:
       enabled: true
@@ -347,55 +476,70 @@ reachable() {
 }
 
 # ref_guard SHA — образы ревизии SHA вправе исполнять чарт рабочей копии, только
-# если между ними не менялся ни один вход сборки образов: иначе стенд назывался
-# бы стендом этой копии, а исполнял бы другой код.
+# если между ними не менялся ни один ВХОД СБОРКИ ОБРАЗОВ: иначе стенд назывался бы
+# стендом этой копии, а исполнял бы другой код. Что вход, а что нет, выводится из
+# Dockerfile дерева (tools/standns/inputs.go, правило в шапке): оснастка стенда,
+# чарты и проверки, не доезжающие ни до одного образа, отличием не считаются;
+# продуктовый код в замыкании `go build`, исходник консоли в контексте её образа,
+# Dockerfile и go.mod — считаются всегда. Сравнивается рабочее дерево (вместе с
+# незакоммиченным и неотслеживаемым), а не только HEAD.
 ref_guard() {
-  local sha="$1" head changed
+  local sha="$1" head out rc
   head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-  [ "$sha" = "$head" ] && return 0
   git -C "$REPO_ROOT" merge-base --is-ancestor "$sha" "$head" || {
     warn "ревизия образов $sha не предок рабочей копии $head — чарт и образы из разных историй"; return 1; }
-  changed="$(git -C "$REPO_ROOT" diff --name-only "$sha" "$head" | grep -vE '(^|/)deploy/|^docs/|\.md$|_test\.go$|^ui-future/e2e/|^tools/standns/' || true)"
-  if [ -n "$changed" ]; then
-    warn "между ревизией образов $sha и рабочей копией $head менялись входы сборки образов:"
-    printf '%s\n' "$changed" | sed 's/^/  /' >&2
-    warn "образы ревизии этого кода не несут; подними стенд от ревизии, для которой они опубликованы"
-    return 1
-  fi
-  log "чарт рабочей копии $head поверх образов $sha: между ними менялись только развёртывание, доки и пробы"
+  out="$("$STAND_NS_BIN" inputs -root "$REPO_ROOT" -base "$sha")"; rc=$?
+  case "$rc" in
+    0) log "чарт рабочей копии $head поверх образов $sha: $(tail -1 <<<"$out" | sed 's/^stand-ns inputs: //')" ;;
+    1) warn "между ревизией образов $sha и рабочей копией менялись входы сборки образов:"
+       grep -E '^  ВХОД' <<<"$out" >&2
+       warn "образы ревизии этого кода не несут; подними стенд от ревизии, для которой они опубликованы"
+       return 1 ;;
+    *) warn "входы сборки не выведены (код $rc) — «не вывел» не равно «не менялись»"; printf '%s\n' "$out" >&2; return 1 ;;
+  esac
+}
+
+helm_install() {
+  HELM_PLUGINS="$DEPLOY_ROOT/helm/plugins" KACHO_STAND_NS_BIN="$STAND_NS_BIN" \
+    helm upgrade --install "$RELEASE" "$UMBRELLA" -n "$UP_NS" "$@" \
+      --wait --timeout "$UP_TIMEOUT" 2>&1 | tee "$UP_WORK/helm.log"
+  return "${PIPESTATUS[0]}"
+}
+
+# tee_to FILE КОМАНДА… — вывод на экран и в журнал, код — команды.
+tee_to() {
+  local f="$1"; shift
+  "$@" 2>&1 | tee "$f"
+  return "${PIPESTATUS[0]}"
 }
 
 cmd_up() {
-  local ns="$1" stack="${2:-dev-prod}" ref="${3:-HEAD}" task state cans persist port sha start work chain
+  local ns="$1" stack="${2:-dev-prod}" ref="${3:-HEAD}" task cans persist port sha start work chain expires
   task="$(ns_valid "$ns")" || die "имя «$ns» не по правилу t<номер задачи>-<коротко> (≤ 40 знаков, DNS-1123). Пространство kacho — рабочий стенд, цель его не трогает" 2
+  ttl_valid "$TTL_HOURS" || die "STAND_TTL_HOURS=«$TTL_HOURS» вне 1..$TTL_MAX_HOURS — стенд проб без срока не живёт" 2
   need_tools; guard_context
   start="$(date +%s)"
+  work="$WORK_ROOT/$ns"
+  UP_NS="$ns"; UP_WORK="$work"
+  trap 'up_on_exit' EXIT
+  trap 'up_on_signal INT 130' INT
+  trap 'up_on_signal TERM 143' TERM
+
+  # ── 1. Без записи в кластер ──
+  UP_STATE="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
+  [ "$UP_STATE" != foreign ] || die "пространство $ns существует и НЕ помечено $LABEL_STAND=test — оно чужое, стенд в него не ставится" 1
   chain="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --args "$stack" "$UMBRELLA")" && [ -n "$chain" ] ||
     die "цепочка «$stack» в deploy/stacks.txt не прочитана — стенд без цепочки сел бы на умолчания чарта" 2
   sha="$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}" 2>/dev/null)" || die "ревизия «$ref» не разрешается в коммит" 2
+  mkdir -p "$work" || die "рабочий каталог $work не заведён" 2
+  build_tool "$work" || die "инструмент переноса не собран" 2
   ref_guard "$sha" || die "ревизия образов и рабочая копия расходятся (выше)" 2
-  build_tool || die "инструмент переноса не собран" 2
-
-  state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
-  [ "$state" != foreign ] || die "пространство $ns существует и НЕ помечено $LABEL_STAND=test — оно чужое, стенд в него не ставится" 1
   cans="$(ca_namespace)" || die "контроллер cert-manager на кластере не прочитан" 2
   [ "$(wc -w <<<"$cans")" = 1 ] || die "пространство ресурсов cert-manager не установлено однозначно («$cans»): стенд cert-manager не ставит, он переиспользует ровно один существующий" 2
   if has_default_storage_class; then persist=on; else persist=off; fi
   port="$(ns_port "$ns")"
   log "кластер: cert-manager переиспользуется (ресурсы в ns $cans); класс томов по умолчанию: $persist; контроллер входа не ставится"
 
-  local expires; expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
-  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null || die "пространство $ns не заведено" 1
-  kubectl label namespace "$ns" --overwrite >/dev/null \
-    "$LABEL_STAND=test" "$LABEL_TASK=$task" \
-    pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
-    pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest || die "метки $ns не поставлены" 1
-  kubectl annotate namespace "$ns" --overwrite >/dev/null \
-    "$ANN_EXPIRES=$expires" "kacho.io/ref=$sha" "kacho.io/stack=$stack" || die "аннотации $ns не поставлены" 1
-  log "пространство $ns: задача #$task, срок $expires"
-  quota_manifest "$ns" | kubectl apply -f - >/dev/null || die "квота и пределы $ns не применены" 1
-
-  work="$WORK_ROOT/$ns"; mkdir -p "$work"
   stand_overlay "$ns" "$cans" "$persist" "$port" >"$work/stand.yaml"
   subchart_defaults >"$work/subchart-defaults.yaml" || die "умолчания подчартов не прочитаны" 2
   local layers=("$work/subchart-defaults.yaml" "$UMBRELLA/values.yaml") f files
@@ -404,20 +548,23 @@ cmd_up() {
   for f in $files; do layers+=("$UMBRELLA/$f"); done
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
 
-  bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2
-  make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \
-    MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" || die "манифесты модулей не доставлены" 1
-  local mm="$UMBRELLA/values.module-manifests.yaml"
-  local extra=(-f "$work/images.yaml" -f "$work/stand.yaml" -f "$mm" --set cert-manager.enabled=false)
-  # shellcheck disable=SC2206 # цепочка — слова `-f <файл>`, разбор по словам и нужен
-  local args=($chain "${extra[@]}")
-  STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" bash "$HERE/stack-secrets.sh" "$stack" "${extra[@]}" ||
-    die "предусловные секреты стенда не созданы" 1
+  expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
+  ns_objects "$ns" "$task" "$expires" "$stack" "$sha" >"$work/ns.yaml"
+  kubectl apply --dry-run=client -f "$work/ns.yaml" >/dev/null || die "пространство, квота и пределы не проходят проверку манифеста" 2
+  can_write "$ns" || die "завести пространство с квотой нечем (права выше) — ни одной записи не сделано" 2
 
-  # Предрендер тем же входом и тем же переносом: отказ переноса и заявка на том
-  # без класса видны ДО применения, а не через предел ожидания helm.
+  bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2
+  local extra_base=(-f "$work/images.yaml" -f "$work/stand.yaml")
+  # shellcheck disable=SC2206 # цепочка — слова `-f <файл>`, разбор по словам и нужен
+  local chain_args=($chain)
+  # Предрендер ДО записи: отказ переноса и заявка на том без класса видны раньше,
+  # чем появится пространство. Отпечаток доставки манифестов модулей становится
+  # известен только после доставки — на предрендере он заглушка (helm template
+  # кластера не спрашивает, на форму рендера отпечаток не влияет).
+  printf 'global:\n  kachoModuleManifests:\n    digest: "prerender"\n' >"$work/mm-prerender.yaml"
   HELM_PLUGINS="$DEPLOY_ROOT/helm/plugins" KACHO_STAND_NS_BIN="$STAND_NS_BIN" \
-    helm template "$RELEASE" "$UMBRELLA" -n "$ns" "${args[@]}" \
+    helm template "$RELEASE" "$UMBRELLA" -n "$ns" "${chain_args[@]}" "${extra_base[@]}" -f "$work/mm-prerender.yaml" \
+      --set cert-manager.enabled=false \
       --post-renderer kacho-stand-ns \
       --post-renderer-args "-namespace=$ns" --post-renderer-args "-ca-namespace=$cans" >"$work/render.yaml" ||
     die "предрендер стенда отказал (текст выше)" 2
@@ -432,30 +579,132 @@ for d in yaml.safe_load_all(open(sys.argv[1])):
     [ -z "$claims" ] || die "у кластера нет класса томов по умолчанию, а рендер заявляет тома — их заявки висели бы в Pending:
 $claims" 2
   fi
+  log "проверено без записи в кластер: ревизия, образы, право на квоту, предрендер"
+
+  # ── 2. Первая запись: пространство с метками и сроком, квота, пределы ──
+  [ "$UP_STATE" = absent ] && UP_CREATED=1
+  kubectl apply -f "$work/ns.yaml" >/dev/null || die "пространство $ns с квотой не заведено" 1
+  log "пространство $ns: задача #$task, срок $expires; квота и пределы применены"
+
+  # ── 3. Стенд ──
+  bg make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \
+    MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" || die "манифесты модулей не доставлены" 1
+  local mm="$UMBRELLA/values.module-manifests.yaml"
+  local extra=("${extra_base[@]}" -f "$mm" --set cert-manager.enabled=false)
+  local args=("${chain_args[@]}" "${extra[@]}")
+  STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" bg bash "$HERE/stack-secrets.sh" "$stack" "${extra[@]}" ||
+    die "предусловные секреты стенда не созданы" 1
 
   log "helm: цепочка $stack + образы $sha + стенд, перенос в $ns"
-  HELM_PLUGINS="$DEPLOY_ROOT/helm/plugins" KACHO_STAND_NS_BIN="$STAND_NS_BIN" \
-    helm upgrade --install "$RELEASE" "$UMBRELLA" -n "$ns" "${args[@]}" \
+  bg helm_install "${args[@]}" \
       --post-renderer kacho-stand-ns \
-      --post-renderer-args "-namespace=$ns" --post-renderer-args "-ca-namespace=$cans" \
-      --wait --timeout "$UP_TIMEOUT" 2>&1 | tee "$work/helm.log"
-  [ "${PIPESTATUS[0]}" -eq 0 ] || die "helm upgrade --install отказал (журнал $work/helm.log)" 1
+      --post-renderer-args "-namespace=$ns" --post-renderer-args "-ca-namespace=$cans" ||
+    die "helm upgrade --install отказал (журнал $work/helm.log)" 1
 
   # Прокси API-сервера на управляемом кластере до подов не доходит — вопрос
   # задаётся пробросом (scripts/wait-edge-ready.sh, EDGE_READY_VIA).
-  EDGE_READY_VIA=port-forward bash "$HERE/wait-edge-ready.sh" "$ns" api-gateway 90 2 3 || die "край стенда не ответил готовностью" 1
-  KACHO_NS="$ns" bash "$HERE/seed-geo-baseline.sh" || die "посев каталога geo не прошёл" 1
-  KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bash "$HERE/seed-storage-catalog.sh" || die "посев каталога хранения не прошёл" 1
-  KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bash "$HERE/seed-vpc-address-pools.sh" || die "посев полосы адресов не прошёл" 1
-  NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" POSTURE_PROFILE=production bash "$HERE/assert-production-posture.sh" 2>&1 | tee "$work/posture.log"
-  [ "${PIPESTATUS[0]}" -eq 0 ] || die "боевая посадка стенда не доказана (журнал $work/posture.log)" 1
-  bash "$HERE/stand-provenance.sh" --namespace "$ns" --expect "$sha" 2>&1 | tee "$work/provenance.log"
-  local prc="${PIPESTATUS[0]}"
+  EDGE_READY_VIA=port-forward bg bash "$HERE/wait-edge-ready.sh" "$ns" api-gateway 90 2 3 || die "край стенда не ответил готовностью" 1
+  KACHO_NS="$ns" bg bash "$HERE/seed-geo-baseline.sh" || die "посев каталога geo не прошёл" 1
+  KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-storage-catalog.sh" || die "посев каталога хранения не прошёл" 1
+  KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-vpc-address-pools.sh" || die "посев полосы адресов не прошёл" 1
+  NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" POSTURE_PROFILE=production \
+    bg tee_to "$work/posture.log" bash "$HERE/assert-production-posture.sh" || die "боевая посадка стенда не доказана (журнал $work/posture.log)" 1
+  local prc=0
+  bg tee_to "$work/provenance.log" bash "$HERE/stand-provenance.sh" --namespace "$ns" --expect "$sha" || prc=$?
   [ "$prc" -eq 0 ] || die "провенанс стенда не сходится с ревизией $sha (код $prc, журнал $work/provenance.log)" 1
 
+  UP_DONE=1
+  trap - EXIT INT TERM
   log "стенд $ns ПОДНЯТ за $(( $(date +%s) - start )) с: цепочка $stack, образы $sha, срок $expires"
   log "консоль https://$(ns_host "$ns"):$port · край https://127.0.0.1:$((port + 1)) · приёмник http://127.0.0.1:$((port + 2))"
   log "проброс и окружение проб:  bash deploy/scripts/stand-ns.sh forward $ns"
+}
+
+# ── ПРОГОН: ПОДЪЁМ → КОМАНДА → СНЯТИЕ ВСЕГДА ─────────────────────────────────
+#
+# Код выхода — код КОМАНДЫ. Если стенд не поднялся или проброс не встал, команда
+# не исполнялась: это «не выполнилось», а не красное, и код — RUN_UNMET (125),
+# которого команда сама не даёт (код 125 зарезервирован этим смыслом).
+RUN_UNMET=125
+RUN_NS="" RUN_KEEP=0 RUN_UP=0 RUN_CHILD=""
+run_on_signal() {
+  trap - INT TERM
+  warn "прогон на $RUN_NS прерван сигналом $1"
+  if [ -n "$RUN_CHILD" ]; then
+    # Подъём снимает своё сам (его ловушка); команде — сигнал всему дереву.
+    if [ "$RUN_UP" = 1 ]; then kill_tree "$RUN_CHILD"; else kill -TERM "$RUN_CHILD" 2>/dev/null; fi
+    wait "$RUN_CHILD" 2>/dev/null
+    RUN_CHILD=""
+  fi
+  exit "$2"
+}
+run_on_exit() {
+  local rc=$? exp
+  trap - EXIT INT TERM
+  [ -z "$RUN_CHILD" ] || { kill_tree "$RUN_CHILD"; wait "$RUN_CHILD" 2>/dev/null; }
+  # Журналы проброса уходят вместе с рабочим каталогом стенда — на неуспехе они
+  # печатаются ДО снятия: обрыв проброса отличим от дефекта продукта только по ним.
+  if [ "$rc" -ne 0 ] && [ "$RUN_UP" = 1 ]; then
+    local f
+    for f in "$WORK_ROOT/$RUN_NS"/forward-*.log; do
+      [ -f "$f" ] || continue
+      warn "── $(basename "$f"): ошибок проброса $(grep -c '^E[0-9]' "$f")"
+      grep '^E[0-9]' "$f" | tail -n 5 >&2
+    done
+  fi
+  bash "$HERE/stand-ns.sh" unforward "$RUN_NS" >/dev/null 2>&1
+  if [ "$RUN_KEEP" = 1 ] && [ "$RUN_UP" = 1 ]; then
+    exp="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
+    kubectl annotate namespace "$RUN_NS" --overwrite "$ANN_EXPIRES=$exp" >/dev/null ||
+      warn "срок $RUN_NS не продлён — снимет census --expired по прежнему"
+    log "--keep: стенд $RUN_NS ОСТАВЛЕН для разбора до $exp; снять: make -C deploy stand-ns-down NS=$RUN_NS"
+  else
+    bash "$HERE/stand-ns.sh" down "$RUN_NS" || {
+      warn "СНЯТИЕ $RUN_NS НЕ ПРОШЛО — остаток: make -C deploy stand-ns-down NS=$RUN_NS"
+      [ "$rc" -ne 0 ] || rc=1
+    }
+  fi
+  log "прогон на $RUN_NS: код $rc"
+  exit "$rc"
+}
+
+cmd_run() {
+  local ns="$1" stack=dev-prod ref=HEAD state rc
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --keep)  RUN_KEEP=1 ;;
+      --stack) stack="${2:?--stack без значения}"; shift ;;
+      --ref)   ref="${2:?--ref без значения}"; shift ;;
+      --)      shift; break ;;
+      *) die "run: неизвестный аргумент «$1» (команда — после --)" 2 ;;
+    esac
+    shift
+  done
+  [ $# -gt 0 ] || die "run: команда не названа (stand-ns.sh run NS [--keep] [--stack S] [--ref R] -- КОМАНДА…)" 2
+  ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер задачи>-<коротко>; пространство kacho цель не трогает" 2
+  ttl_valid "$TTL_HOURS" || die "STAND_TTL_HOURS=«$TTL_HOURS» вне 1..$TTL_MAX_HOURS" 2
+  need_tools; guard_context
+  state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
+  [ "$state" = absent ] || die "пространство $ns уже есть ($state): прогон поднимает СВОЙ стенд и его же снимает — возьми другое имя" 1
+  RUN_NS="$ns"
+  trap 'run_on_exit' EXIT
+  trap 'run_on_signal INT 130' INT
+  trap 'run_on_signal TERM 143' TERM
+
+  bash "$HERE/stand-ns.sh" up "$ns" "$stack" "$ref" & RUN_CHILD=$!
+  wait "$RUN_CHILD"; rc=$?; RUN_CHILD=""
+  [ "$rc" -eq 0 ] || { warn "стенд $ns не поднят (код $rc) — команда НЕ исполнялась: условие прогона не создано"; exit "$RUN_UNMET"; }
+  bash "$HERE/stand-ns.sh" forward "$ns" || { warn "проброс $ns не поднят — команда НЕ исполнялась"; exit "$RUN_UNMET"; }
+  # shellcheck disable=SC1090,SC1091 # файл окружения пишет cmd_forward
+  . "$WORK_ROOT/$ns/probe.env"
+  export CONSOLE_BASE="$KACHO_CONSOLE_URL" EDGE_BASE="$KACHO_EDGE_URL" KACHO_STAND_NS="$ns"
+  RUN_UP=1
+  log "команда на $ns: $*"
+  "$@" & RUN_CHILD=$!
+  wait "$RUN_CHILD"; rc=$?; RUN_CHILD=""
+  log "команда завершилась кодом $rc"
+  exit "$rc"
 }
 
 # ── ПРОБРОС ──────────────────────────────────────────────────────────────────
@@ -482,14 +731,30 @@ cmd_forward() {
   # Спрашивается оболочка консоли (`/`), а не `/healthz`: на порту внешнего входа
   # точка здоровья намеренно отвечает 404 (ui-future/deploy, configmap-nginx.yaml) —
   # её читают пробы кубелета на внутреннем порту, не пользователь.
-  local code
-  for _ in $(seq 1 30); do
+  #
+  # Ждётся ответ 200 под корнем стенда, то есть раздача отдаёт ВЫПУЩЕННЫЙ лист, а
+  # не временный первого выпуска (certificate-public.yaml): его сменяет сторож
+  # раздачи после того, как кубелет обновит смонтированный секрет. Предел —
+  # синхронизация секрета кубелетом (до ~2 мин) и период сторожа, с запасом;
+  # ручка STAND_FORWARD_WAIT (секунды).
+  local code="" deadline=$(( $(date +%s) + ${STAND_FORWARD_WAIT:-300} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$work/console-ca.pem" \
       --resolve "$host:$port:127.0.0.1" "https://$host:$port/" || true)"
     [ "$code" = 200 ] && break
-    sleep 2
+    sleep 3
   done
-  [ "$code" = 200 ] || die "консоль через проброс не ответила (последний код $code, журналы $work/forward-*.log)" 1
+  if [ "$code" != 200 ]; then
+    local f served want
+    for f in "$work"/forward-*.log; do warn "── $(basename "$f")"; tail -n 5 "$f" >&2; done
+    served="$(openssl s_client -connect "127.0.0.1:$port" -servername "$host" </dev/null 2>/dev/null |
+      openssl x509 -noout -issuer -fingerprint -sha256 2>/dev/null | tr '\n' ' ')"
+    want="$(openssl x509 -in "$work/console-leaf.pem" -noout -issuer -fingerprint -sha256 | tr '\n' ' ')"
+    warn "раздача отдаёт лист: ${served:-<не прочитан>}"
+    warn "в секрете выпущен:   $want"
+    cmd_unforward "$ns" >/dev/null 2>&1
+    die "консоль через проброс не ответила за ${STAND_FORWARD_WAIT:-300} с (последний код $code; журналы и листы выше)" 1
+  fi
   cat >"$work/probe.env" <<EOF
 export KACHO_CONSOLE_URL=https://$host:$port
 export KACHO_CONSOLE_HOST_IP=127.0.0.1
@@ -600,10 +865,11 @@ cmd_census() {
 
 case "${1:-}" in
   up)        shift; [ -n "${1:-}" ] || die "up: не названо пространство (NS=t<задача>-<коротко>)" 2; cmd_up "$@" ;;
+  run)       shift; [ -n "${1:-}" ] || die "run: не названо пространство" 2; cmd_run "$@" ;;
   down)      shift; [ -n "${1:-}" ] || die "down: не названо пространство" 2; cmd_down "$1" ;;
   census)    shift; cmd_census "$@" ;;
   forward)   shift; [ -n "${1:-}" ] || die "forward: не названо пространство" 2; cmd_forward "$1" ;;
   unforward) shift; [ -n "${1:-}" ] || die "unforward: не названо пространство" 2; cmd_unforward "$1" ;;
   self-test) self_test ;;
-  *) die "режим не назван: up | down | census | forward | unforward | self-test" 2 ;;
+  *) die "режим не назван: up | down | run | census | forward | unforward | self-test" 2 ;;
 esac

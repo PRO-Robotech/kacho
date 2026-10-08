@@ -34,3 +34,30 @@ func TestStandNamespaceDownRefusesTheWorkingStandBeforeTouchingTheCluster(t *tes
 		t.Fatalf("down kacho: ждали отказ кодом 2 до кластера, получили %v:\n%s", err, out)
 	}
 }
+
+// Прогон (`run`) и подъём отказывают ДО кластера на тех же правилах: имя рабочего
+// стенда, непоименованная команда, срок вне 1..12 ч. Законный близнец каждого —
+// t3102-probe с командой и сроком 12, он доходит до кластера (здесь — до
+// отсутствующего kubectl, код 2 с другим текстом).
+func TestStandNamespaceRunAndUpRefuseBeforeTheCluster(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  []string
+		args []string
+		want string
+	}{
+		{"run kacho", nil, []string{"run", "kacho", "--", "true"}, "kacho"},
+		{"run без команды", nil, []string{"run", "t3102-probe"}, "команда не названа"},
+		{"run срок 13", []string{"STAND_TTL_HOURS=13"}, []string{"run", "t3102-probe", "--", "true"}, "вне 1..12"},
+		{"up срок 0", []string{"STAND_TTL_HOURS=0"}, []string{"up", "t3102-probe"}, "вне 1..12"},
+		{"законный run", []string{"STAND_TTL_HOURS=12"}, []string{"run", "t3102-probe", "--", "true"}, "нет 'kubectl'"},
+	} {
+		cmd := exec.Command("bash", append([]string{"scripts/stand-ns.sh"}, c.args...)...)
+		cmd.Env = append([]string{"PATH=/nonexistent"}, c.env...)
+		out, err := cmd.CombinedOutput()
+		ee, ok := err.(*exec.ExitError)
+		if !ok || ee.ExitCode() != 2 || !strings.Contains(string(out), c.want) {
+			t.Errorf("%s: ждали код 2 и «%s», получили %v:\n%s", c.name, c.want, err, out)
+		}
+	}
+}

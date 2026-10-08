@@ -13,7 +13,7 @@
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
-        stand-ns-up stand-ns-down stand-ns-census \
+        stand-ns-up stand-ns-down stand-ns-run stand-ns-census \
         bootstrap-cloud-admin
 
 SHELL := bash
@@ -1097,7 +1097,17 @@ stack-up:
 #
 #   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>]
 #   make stand-ns-down   NS=t<задача>-<коротко>
+#   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
 #   make stand-ns-census [EXPIRED=1]
+#
+# stand-ns-run — подъём → проброс → CMD (в окружении CONSOLE_BASE, EDGE_BASE и
+# файла проб стенда, из каталога DIR; умолчание — корень репозитория) → снятие
+# ВСЕГДА: успех, падение, kill. Код выхода — код CMD; 125 — CMD не исполнялась
+# (стенд не поднят). KEEP=1 оставляет стенд для разбора на STAND_TTL_HOURS (≤ 12 ч).
+# Команда идёт переменной, а не словами после `--`: make читает их как цели и
+# присваивания. Сам скрипт форму `-- КОМАНДА…` принимает: scripts/stand-ns.sh run.
+# CMD передаётся НЕРАСКРЫТЫМ ($(value CMD)): `$EDGE_BASE` в команде раскрывает
+# оболочка прогона, а не make (иначе он стал бы пустой строкой до подъёма).
 #
 # Стек тот же, что поднимает конвейерный «свой стенд» (`dev-prod` — умолчание),
 # но в отдельное пространство имён общего кластера и на образах, ОПУБЛИКОВАННЫХ
@@ -1116,6 +1126,12 @@ stand-ns-up:
 stand-ns-down:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — снимать нечего"; exit 2; }
 	@bash scripts/stand-ns.sh down "$(NS)"
+
+stand-ns-run:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
+	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
+	@cd "$(CURDIR)/../$(DIR)" && bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'
 
 stand-ns-census:
 	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
