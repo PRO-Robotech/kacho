@@ -19,6 +19,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
@@ -50,6 +51,19 @@ func rawConn(t *testing.T, ca *testCA, addr, wantSAN string) *grpc.ClientConn {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
+}
+
+// readyConn устанавливает соединение и ждёт состояния READY (до 10 с).
+func readyConn(t *testing.T, conn *grpc.ClientConn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn.Connect()
+	for st := conn.GetState(); st != connectivity.Ready; st = conn.GetState() {
+		if !conn.WaitForStateChange(ctx, st) {
+			t.Fatalf("фикстура: соединение не установлено за 10 с (состояние %v)", st)
+		}
+	}
 }
 
 func rawClaim(ctx context.Context, conn *grpc.ClientConn, maxRows uint32) (*notifyv1.ClaimResponse, error) {
@@ -105,6 +119,11 @@ func TestFixtureSourceFreezeAndLateAnswer(t *testing.T) {
 	ca := newTestCA(t)
 	src := newFakeSource(t, ca, "probe", sourceOpts{leaseTTL: 2 * time.Second})
 	conn := rawConn(t, ca, src.addr, "")
+	// Соединение установлено ДО заморозки: срок вызова 300 мс судит ответ
+	// замороженного источника, а не рукопожатие mTLS (под -race и соседними
+	// параллельными пробами оно длится дольше срока, и вызов не доходит до
+	// сервера вовсе).
+	readyConn(t, conn)
 
 	src.put(1, false)
 	src.setFrozen(true)
@@ -253,5 +272,44 @@ func TestFixtureRequiresClientCertificate(t *testing.T) {
 	defer cancel()
 	if _, err := rawClaim(ctx, conn, 1); err == nil {
 		t.Fatal("фикстура: сервер принял клиента без сертификата")
+	}
+}
+
+// TestFixtureSourceAcceptsAckOfItsOwnLease — Ack фикстуры: токен аренды,
+// выданный `Claim`, принят, и строка больше не выдаётся; чужой токен —
+// FAILED_PRECONDITION, исход не записан.
+func TestFixtureSourceAcceptsAckOfItsOwnLease(t *testing.T) {
+	t.Parallel()
+	ca := newTestCA(t)
+	src := newFakeSource(t, ca, "probe", sourceOpts{})
+	conn := rawConn(t, ca, src.addr, sanOf("probe"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	src.put(1, false)
+	resp, err := rawClaim(ctx, conn, 1)
+	if err != nil || len(resp.GetNotifications()) != 1 {
+		t.Fatalf("фикстура: Claim: %v (строк %d)", err, len(resp.GetNotifications()))
+	}
+	row := resp.GetNotifications()[0]
+	client := notifyv1.NewInternalNotificationFeedServiceClient(conn)
+	sent := &notifyv1.Outcome{Kind: notifyv1.OutcomeKind_SENT}
+	_, err = client.Ack(ctx, &notifyv1.AckRequest{Id: row.GetId(), LeaseToken: "foreign", Outcome: sent})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("фикстура: Ack чужим токеном = %v, ожидался FAILED_PRECONDITION", err)
+	}
+	if n := len(src.acksSeen()); n != 0 {
+		t.Fatalf("фикстура: Ack чужим токеном записал исход (%d)", n)
+	}
+	if _, err := client.Ack(ctx, &notifyv1.AckRequest{Id: row.GetId(), LeaseToken: row.GetLeaseToken(), Outcome: sent}); err != nil {
+		t.Fatalf("фикстура: Ack своим токеном: %v", err)
+	}
+	acks := src.acksSeen()
+	if len(acks) != 1 || acks[0].id != row.GetId() || acks[0].kind != "SENT" {
+		t.Fatalf("фикстура: записанные исходы %+v", acks)
+	}
+	again, err := rawClaim(ctx, conn, 1)
+	if err != nil || len(again.GetNotifications()) != 0 {
+		t.Fatalf("фикстура: строка с записанным исходом выдана снова (%v, %d)", err, len(again.GetNotifications()))
 	}
 }

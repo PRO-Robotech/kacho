@@ -145,14 +145,15 @@ import (
 // врёт тем увереннее, чем дольше живёт.
 //
 // Вторая альтернатива — пакеты каталога notify с настоящей базой (kacho#2915,
-// Д90, Д92): процесс пробы-источника, его глагол Send, точка наката и сетка
-// лимитов шлюза (internal/limits, полоса N7); и сборка шаблонов bundle (полоса
-// N9: пробы G17 копируют дерево и зовут цели bundle и bundle-check — базы им не
-// нужно, но кратким режимом они гейтятся). Их
+// Д90, Д92): процесс пробы-источника, его глагол Send, точка наката, сетка
+// лимитов шлюза (internal/limits, полоса N7), корень notify-api (#2924, полоса
+// N2: пробы приёма, переходов и чтения извещений над базой kacho_notify) и
+// сборка шаблонов bundle (полоса N9: пробы G17 копируют дерево и зовут цели
+// bundle и bundle-check — базы им не нужно, но кратким режимом они гейтятся). Их
 // пробы гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит;
 // шире (`cmd/` всех служб) отбор не берётся — радиус не измерен.
 var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)` +
-	`|^services/notify/(bundle|cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$`)
+	`|^services/notify/(bundle|cmd/(notify-api|notify-probe(/internal/send)?|migrator)|internal/limits)$`)
 
 // shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
 // режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
@@ -319,6 +320,11 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// краснеет сама, а не ждёт, пока кто-то вспомнит про этот файл.
 	"services/compute/internal/migrations": "make test-pg-outside-selection",
 	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
+	// Пробы схемы извещений оператора notify (задача #2924, полоса N1): именованные
+	// ограничения, отложенная форма аудитории, каскад и накат цепочки kacho_notify
+	// на пустую базу судятся настоящим Postgres; отбор интеграционной джобы
+	// называет у notify только internal/limits и точки cmd/.
+	"services/notify/internal/migrations":  "make test-pg-outside-selection",
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
 	// Пробы журнала registry (задача #2918, NTF3-62 и УК3-28): колонка инициатора,
 	// её умолчание и функция базы registries_journal_emit судятся вставкой в
@@ -353,6 +359,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// исполнялись бы НИГДЕ — и пакет, отдавший ноль исполненных проб, печатал бы
 	// `ok`.
 	"gateway/internal/idempotencypg": "make test-pg-outside-selection",
+
+	// Ограничитель анонимной почты края (приёмка NTF-2, Р5; замысел issue-2917,
+	// З8): хранилище postgres, гонки ключей, пределы сервера, исход фиксации за
+	// TCP-посредником — предмет есть поведение под настоящим Postgres. Пакет
+	// лежит вне отбора интеграционной джобы так же, как хранилище однократности.
+	"gateway/internal/middleware/anonmail": "make test-pg-outside-selection",
 
 	// Общий сервер потока подписки (kacho#1018). Его пробы — не «интеграция ради
 	// интеграции»: предмет фазы есть ПОВЕДЕНИЕ под настоящим Postgres, и ни одно
@@ -605,7 +617,7 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 		t.Fatal(err)
 	}
 	const want = `grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)` +
-		`|/services/notify/(bundle|cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'`
+		`|/services/notify/(bundle|cmd/(notify-api|notify-probe(/internal/send)?|migrator)|internal/limits)$$'`
 	if !strings.Contains(string(raw), want) {
 		t.Fatalf("в корневом Makefile нет отбора %q — копия в этом файле "+
 			"(integrationSelectionRe) описывает отбор, которого не существует", want)

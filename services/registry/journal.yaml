@@ -1,0 +1,30 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# Объявление журнала модуля — вход notifygen init -journal (corelib
+# cmd/notifygen, NTF-3 З10): из него генератор выводит тело функции базы
+# resource-event на таблице журнала. Значения — те же, что объявляет журнал на
+# Go (internal/subscriptionjournal, Journal при включённом флаге ленты):
+# расхождение держит проба TestJournalDeclaration_AgreesWithTheJournal пакета
+# subscriptionjournal. Правка объявления — затем notifygen init -journal:
+# действующее тело функции, отставшее от объявления, notifygen -check судит
+# красным.
+
+module: registry
+table: kacho_registry.registry_resource_journal
+columns:
+  kind: resource_kind
+  id: resource_id
+  change: event_type
+  payload: payload
+  project: project_id
+  initiator: initiator
+  occurred_at: created_at
+kinds:
+  Registry: {name_form: dns, scope: project}
+  Repository: {name_form: none, scope: project}
+  notification: {name_form: none, scope: cluster}
+changes:
+  CREATED: CREATED
+  UPDATED: UPDATED
+  DELETED: DELETED

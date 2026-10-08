@@ -588,7 +588,7 @@ func nameFormDeclaringMigrations(files map[string]string, rels []string, canonPa
 	var declaring []string
 	for _, rel := range ordered {
 		up := nameFormUpSection(files[rel])
-		declares := canonPattern != "" && strings.Contains(up, canonPattern)
+		declares := canonPattern != "" && strings.Contains(up, canonPattern) && !nameFormFeedFunctionBody([]byte(files[rel]))
 		switch {
 		case declares:
 			declaring = append(declaring, rel)

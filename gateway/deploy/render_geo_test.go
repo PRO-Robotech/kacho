@@ -33,7 +33,10 @@ func helmTemplate(t *testing.T, sets ...string) string {
 		}
 		t.Skip("helm binary not on PATH — skipping deploy render-guard")
 	}
-	args := []string{"template", "."}
+	// Слой рендера чарта края без зонтика (приёмка NTF-2 Р8, Д52): число
+	// доверенных прыжков в базе чарта не объявлено, и без слоя рендер
+	// отказывает с именем ручки. Значение — только слоем, не `--set`.
+	args := []string{"template", ".", "-f", "../../deploy/testdata/notify-standalone/edge.yaml"}
 	for _, s := range sets {
 		args = append(args, "--set", s)
 	}

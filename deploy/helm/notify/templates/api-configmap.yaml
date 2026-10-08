@@ -1,0 +1,49 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+{{- $tls := include "notify.api.tlsDir" . }}
+{{- $sans := .Values.authz.trustedForwarderSANs | default list }}
+{{- if not $sans }}
+{{- fail "notify.authz.trustedForwarderSANs (KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS): круг пересылающих личность notify-api пуст — пустой круг не «никому», а отказ старта (NTF-4 Р20); задайте SAN края" }}
+{{- end }}
+# Конфигурация процесса notify-api — ключи KACHO_NOTIFY_* его загрузчика
+# (services/notify/cmd/notify-api/internal/config, NTF-4 Р16, Р22). Читается
+# один раз, при старте: смену карты перекатывает аннотация `checksum/config`.
+# Ручки без умолчания — под `required` с именем ручки: незаданное значение —
+# отказ рендера, а не под в отказе старта.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "notify.api.fullname" . }}-config
+  labels:
+    {{- include "notify.api.labels" . | nindent 4 }}
+data:
+  # ── посадка, база, удостоверение (группа NTF-1 notify-api, Р22) ───────────
+  KACHO_NOTIFY_AUTH_MODE: {{ required "notify.authMode (KACHO_NOTIFY_AUTH_MODE): посадка не задана" .Values.authMode | quote }}
+  KACHO_NOTIFY_PEER_TLS_CERT_FILE: {{ printf "%s/tls.crt" $tls | quote }}
+  KACHO_NOTIFY_PEER_TLS_KEY_FILE: {{ printf "%s/tls.key" $tls | quote }}
+  KACHO_NOTIFY_PEER_TLS_CA_FILE: {{ printf "%s/ca.crt" $tls | quote }}
+  KACHO_NOTIFY_DB_HOST: {{ required "notify.db.host (KACHO_NOTIFY_DB_HOST): узел базы kacho_notify не задан" .Values.db.host | quote }}
+  KACHO_NOTIFY_DB_PORT: {{ .Values.db.port | toString | quote }}
+  KACHO_NOTIFY_DB_USER: {{ .Values.db.user | quote }}
+  KACHO_NOTIFY_DB_NAME: {{ .Values.db.name | quote }}
+  KACHO_NOTIFY_DB_SSLMODE: {{ .Values.db.sslMode | quote }}
+  KACHO_NOTIFY_DB_MAX_CONNS: {{ .Values.db.maxConns | toString | quote }}
+  KACHO_NOTIFY_DIAG_ADDR: {{ printf ":%d" (int .Values.api.ports.diag) | quote }}
+  KACHO_NOTIFY_AUTHZ_IAM_GRPC_ADDR: {{ required "notify.authz.iamGRPCAddr (KACHO_NOTIFY_AUTHZ_IAM_GRPC_ADDR): внутренний адрес службы доступа не задан" .Values.authz.iamGRPCAddr | quote }}
+  # ── внутренний слушатель и звено прав (стадия S3, Р16, Р20) ─────────────────
+  KACHO_NOTIFY_INTERNAL_PORT: {{ .Values.api.ports.internal | toString | quote }}
+  KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CERTFILE: {{ printf "%s/tls.crt" $tls | quote }}
+  KACHO_NOTIFY_INTERNAL_SERVER_MTLS_KEYFILE: {{ printf "%s/tls.key" $tls | quote }}
+  KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES: {{ printf "%s/ca.crt" $tls | quote }}
+  KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN: {{ include "notify.trustDomain" . | quote }}
+  KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS: {{ join "," $sans | quote }}
+  KACHO_NOTIFY_AUTHZ_CACHE_TTL: {{ required "notify.authz.cacheTTL (KACHO_NOTIFY_AUTHZ_CACHE_TTL): окно отзыва права не задано — величину объявляет профиль установки (NTF-4 Р16), умолчания нет" .Values.authz.cacheTTL | toString | quote }}
+  KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT: {{ required "notify.authz.checkTimeout (KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT): срок Check не задан" .Values.authz.checkTimeout | toString | quote }}
+  KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC: {{ required "notify.authz.denyBudgetPerSec (KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC): бюджет отказов не задан" .Values.authz.denyBudgetPerSec | toString | quote }}
+  KACHO_NOTIFY_HANDLING_BUDGET: {{ required "notify.handlingBudget (KACHO_NOTIFY_HANDLING_BUDGET): граница обработки вызова не задана" .Values.handlingBudget | toString | quote }}
+  # ── извещения (NTF-5 Р17) ──────────────────────────────────────────────────
+  KACHO_NOTIFY_NOTICE_REMINDER_LEAD: {{ required "notify.notice.reminderLead (KACHO_NOTIFY_NOTICE_REMINDER_LEAD): срок напоминания не задан" .Values.notice.reminderLead | toString | quote }}
+{{- end }}

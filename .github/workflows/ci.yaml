@@ -1162,7 +1162,7 @@ jobs:
       # переименовывает в `<svc>.green` только тот, чей гейт вышел нулём, — суффикс
       # и есть различение «судить» и «не судить». Судья читает журналы и печатает
       # перепись; способность упасть он доказывает сам шагом выше.
-      - name: listauthz — списочные методы сужены по объекту (все 6 сервисов дерева)
+      - name: listauthz — списочные методы сужены по объекту (все службы дерева, объявляющие цель)
         run: |
           set -euo pipefail
           logs="$(mktemp -d)"
@@ -1171,7 +1171,7 @@ jobs:
           # отдельным продуктом (задача #1111): её Makefile уехал вместе с
           # каталогом, и вызов у неё исполниться не мог бы вовсе — шаг отказал
           # бы на несуществующем рецепте, а не на несужённом списке.
-          for svc in compute geo nlb registry storage vpc; do
+          for svc in compute geo nlb notify registry storage vpc; do
             echo "::group::audit-list-filter ${svc}"
             # Код возврата берётся ДАННЫМИ: под `bash -e` голый вызов оборвал бы шаг
             # молча, до присваивания и до развилки.
@@ -2627,8 +2627,14 @@ jobs:
           # стеков, а страж ниже назвал бы это «не отрендерено ни одного» —
           # верным словом о неверной причине.
           stacks="$(bash ../../tests/helm/stacks.sh --names)"
+          # Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она
+          # дописывает слой оператора из каталога образцов. Поставка не несёт ни
+          # узла почты (Д48), ни числа доверенных прыжков края (приёмка NTF-2 Р8,
+          # Д51), и голый рендер `prod` отказывает по построению.
+          # shellcheck source=/dev/null
+          . ../../tests/helm/lib/render-chain.sh
           for stack in $stacks; do
-            args="$(bash ../../tests/helm/stacks.sh --args "$stack")"
+            args="$(render_chain_args "$stack" . operator.yaml)"
             echo "=== $stack: helm template $args ==="
             # shellcheck disable=SC2086
             helm template ci . $args > /dev/null

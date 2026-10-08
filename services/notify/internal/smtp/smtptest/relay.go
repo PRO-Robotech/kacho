@@ -38,6 +38,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
@@ -523,6 +524,12 @@ func (ca *CA) Pool() *x509.CertPool {
 	p := x509.NewCertPool()
 	p.AddCert(ca.cert)
 	return p
+}
+
+// PEM — сертификат УЦ в форме PEM: файл якоря проверки листа узла
+// (`notify.smtp.trustAnchorFile`), каким его монтирует чарт.
+func (ca *CA) PEM() []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.cert.Raw})
 }
 
 // Leaf выпускает сертификат сервера на host (IP-литерал или DNS-имя).

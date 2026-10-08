@@ -290,6 +290,39 @@ data:
       # must not ship "trust anybody".
       trusted-forwarder-sans:
 {{ toYaml (.Values.config.authn.trustedForwarderSANs | default list) | indent 8 }}
+      {{- /* ─── ЗВЕНО ИДЕНТИЧНОСТИ СЛУЖБ Р2 (приёмка NTF-1 Р2 п.2, NTF1-M09; Д112 (в)) ──
+      Блок значений `serviceIdentity: {methods, services}` → ключ процесса
+      `authn.service-identity` (форма та же, что у собственного чарта службы на
+      пине). Ключ «только файл»: его единственная форма — эта карта настроек.
+      Три исхода:
+        · блок пуст либо не задан — ключа НЕТ: служебного субъекта нет никому,
+          `ResolveSend` от notify — отказ (fail-closed);
+        · задана половина либо строка без `san`/`name` — отказ РЕНДЕРА с
+          именем ручки;
+        · согласный блок — ключ целиком.
+      Согласие по существу (перечень закрыт `{ResolveSend}`, SAN канонический,
+      без повторов) судит корень процесса. */}}
+      {{- $si := .Values.serviceIdentity | default dict }}
+      {{- $siMethods := $si.methods | default list }}
+      {{- $siServices := $si.services | default list }}
+      {{- if and $siMethods (not $siServices) }}
+      {{- fail "kaname: `serviceIdentity.methods` задан, а `serviceIdentity.services` пуст — методы объявлены для служб, которых звено не опознает никогда (ключ процесса `authn.service-identity`, NTF1-M09)" }}
+      {{- end }}
+      {{- if and $siServices (not $siMethods) }}
+      {{- fail "kaname: `serviceIdentity.services` задан, а `serviceIdentity.methods` пуст — службы объявлены, а открыть им нечего (ключ процесса `authn.service-identity`, NTF1-M09)" }}
+      {{- end }}
+      {{- if $siMethods }}
+      service-identity:
+        methods:
+          {{- range $i, $m := $siMethods }}
+          - {{ required (printf "kaname: `serviceIdentity.methods[%d]` пуст — метод звена называется полным именем без ведущей косой" $i) $m | quote }}
+          {{- end }}
+        services:
+          {{- range $i, $s := $siServices }}
+          - san: {{ required (printf "kaname: `serviceIdentity.services[%d].san` не задан — строка таблицы звена без точного SAN службы не опознаёт никого" $i) $s.san | quote }}
+            name: {{ required (printf "kaname: `serviceIdentity.services[%d].name` не задан — субъект `service:<имя>` без имени не выражается" $i) $s.name | quote }}
+          {{- end }}
+      {{- end }}
 
       {{- with .Values.config.authn.login }}
       # ПОЛОСА ВХОДА ПАРОЛЕМ (Ф3, kacho#1269). Каждая величина — условие старта,

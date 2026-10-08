@@ -202,18 +202,24 @@ INTERNAL_ENDPOINTS = {
     "vpc": ("svc/vpc", 9091, "vpc.kacho.svc.cluster.local"),
     "compute": ("svc/compute", 9091, "compute.kacho.svc.cluster.local"),
     "storage": ("svc/kacho-storage", 9091, "kacho-storage.kacho.svc.cluster.local"),
-    # Носитель `notify` (каталог services/notify) — ТОЛЬКО ВНУТРЕННИЙ: его
-    # Internal*-службы (`InternalNotifyProbeService`, сервер подписки вида
-    # `notification_feed`) поднимает процесс пробы-источника notify-probe на
-    # своём :9091, публичных служб у пробы нет, а у шлюза notify gRPC-слушателя
-    # нет вовсе (замысел З29, Д74). Имя — сегмент `sa/` идентичности пробы в
-    # таблице источников (`kacho-notify-probe`); Service с этим именем заводит
-    # шаблон зонта deploy/helm/umbrella/templates/notify-probe.yaml (#2915,
-    # полоса D3; имя постоянное, держит deploy/mail_receiver_core_test.go,
-    # TestNotifyProbeServiceIsTheBan6Carrier). Домен `notify` — в ядре манифеста
-    # шардов (deploy/e2e-shards.json, `core_ban6_domains`); пока профиль стенда
-    # пробу не рендерит, его судит ветка Д91 ниже («вне опроса»).
-    "notify": ("svc/kacho-notify-probe", 9091, "kacho-notify-probe.kacho.svc.cluster.local"),
+    # Носитель `notify` (каталог services/notify) — внутренний слушатель
+    # развёртывания notify-api (NTF-4 Р20, NTF-5 Р2, замысел issue-2924 З19):
+    # единственный слушатель службы, публичного у notify нет по построению; на
+    # нём InternalNoticeService, NoticeService и OperationService. Значения —
+    # из рендера чарта notify, а не выдуманы: Service `kacho-notify-api`
+    # (deploy/helm/notify/templates/api-service.yaml, имя — полное имя установки
+    # `kacho-notify` плюс `-api`), порт `notify.api.ports.internal` (9091),
+    # authority — DNS-имя листа notify-api (api-certificate.yaml). Сходимость
+    # держит deploy/mail_receiver_core_test.go (TestNotifyAPIServiceIsTheBan6Carrier).
+    # Стендовая проба-источник notify-probe служит тому же домену свои
+    # Internal-службы (лента, проба) на своём :9091, но носитель каталога —
+    # notify-api: он поднимается везде, где notify, а проба — только на стенде.
+    # Встречный контроль спрашивает у носителя службы домена по очереди и
+    # засчитывает первую обслуженную (служб ленты и пробы у notify-api нет —
+    # они отвечают «маршрута нет»). Домен `notify` — в ядре манифеста шардов
+    # (deploy/e2e-shards.json, `core_ban6_domains`); профиль, который notify не
+    # рендерит, судит ветка Д91 ниже («вне опроса»).
+    "notify": ("svc/kacho-notify-api", 9091, "kacho-notify-api.kacho.svc.cluster.local"),
 }
 
 # Вердикты встречного контроля (отдельные от вердиктов внешней пробы — вопрос
@@ -369,6 +375,52 @@ def domain_of(pkg: str) -> str:
     if len(parts) == 2:
         return parts[1]
     return parts[2] if len(parts) > 2 else pkg
+
+
+def counterpart_methods(dom: str, rows: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """По одному методу на каждую Internal-службу домена, в порядке предмета.
+
+    Встречный контроль спрашивает у носителя службы домена ПО ОЧЕРЕДИ: домен
+    служат не обязательно одним процессом (у `notify` ленту и пробу служит
+    стендовая проба, извещения — notify-api), и первая служба перечня у носителя
+    может законно отвечать «маршрута нет».
+    """
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str, str]] = []
+    for p, sv, m in rows:
+        if domain_of(p) == dom and (p, sv) not in seen:
+            seen.add((p, sv))
+            out.append((p, sv, m))
+    return out
+
+
+def endpoint_map_findings(b6: dict, subject_doms: set[str],
+                          endpoints: dict) -> dict[str, list[str]]:
+    """Сверка карты носителей с переписью — в ОБЕ стороны, плюс узнавание регистраций.
+
+    gap          — домены предмета, ни у одного носителя которых нет эндпоинта
+                   («запись снята»: встречный контроль домена звонить некуда);
+    lost         — носители с эндпоинтом и исходниками в дереве, не служащие ни
+                   одного провязанного домена (запись пережила предмет);
+    missing      — провязанные домены без единого метода в предмете;
+    unregistered — службы провязанного домена, регистрации которых перепись не
+                   узнала («регистрация не узнана»: служба числится в предмете,
+                   но ни один листенер её не служит).
+    Каждая находка называет носителя или домен.
+    """
+    hosts_of = b6.get("hosts", {})
+    gap = sorted(d for d in subject_doms
+                 if not [h for h in hosts_of.get(d, []) if h in endpoints])
+    known = set(endpoints)
+    serving = {h for d in b6["served"] for h in hosts_of.get(d, [])}
+    unwired = known - serving
+    in_tree = b6["service_dirs"]
+    external = sorted(unwired - in_tree) if in_tree else []
+    lost = sorted(unwired - set(external))
+    missing = sorted(set(b6["served"]) - subject_doms)
+    unregistered = sorted(f"{d}: {', '.join(v)}" for d, v in b6.get("unregistered", {}).items())
+    return {"gap": gap, "lost": lost, "missing": missing,
+            "unregistered": unregistered, "external": external}
 
 
 def counterpart_candidates(dom: str, hosts_of: dict[str, list[str]],
@@ -563,10 +615,10 @@ def _kube_secret_file(ns: str, secret: str, key: str, dest: str) -> bool:
 # ─────────────────── ветка Д91: notify, которого профиль НЕ РЕНДЕРИТ ─────────
 #
 # Знаменатель гейта — носители, ОТРЕНДЕРЕННЫЕ профилем стенда (Д91). Носитель
-# домена notify — процесс пробы-источника (`kacho-notify-probe`, собственный
-# слушатель :9091 по карте INTERNAL_ENDPOINTS — канон гейта, Д94); до полос
-# D2/D3 профиль его не рендерит, и предмета у живой пробы домена нет by
-# construction. Такой домен печатается строкой «notify: профиль <имя> его не
+# домена notify — процесс notify-api (`kacho-notify-api`, собственный слушатель
+# :9091 по карте INTERNAL_ENDPOINTS — канон гейта, Д94, З19); профиль, в котором
+# notify не рендерится (перечень источников пуст), его не рендерит, и предмета у
+# живой пробы домена нет by construction. Такой домен печатается строкой «notify: профиль <имя> его не
 # рендерит — вне опроса» с числом носителей и в знаменатель не входит: это
 # ЗЕЛЁНЫЙ по названному объёму, а не третья категория и не код 2.
 #
@@ -817,7 +869,8 @@ def main(argv: list[str]) -> int:
 
         hosts_of = b6.get("hosts", {})
         for dom in domains:
-            rep = next(((p, s, mm) for p, s, mm in rows if domain_of(p) == dom), None)
+            reps = counterpart_methods(dom, rows)
+            rep = reps[0] if reps else None
             candidates = counterpart_candidates(dom, hosts_of, only)
             if not rep:
                 unconfirmed.append((dom, "не из чего собрать пробу"))
@@ -843,7 +896,6 @@ def main(argv: list[str]) -> int:
                 if not sentinel:
                     why.append(f"{host}: не из чего собрать стража предпосылки")
                     continue
-                v, d, mode = probe_internal(target, port, authority, method)
                 sv, sd, _ = probe_internal(target, port, authority, sentinel)
 
                 # Предпосылка: на ЭТОМ листенере незарегистрированный метод обязан
@@ -853,12 +905,27 @@ def main(argv: list[str]) -> int:
                     why.append(f"{host}: предпосылка не выполняется — чужой метод "
                                f"получил '{sv}' ({sd})")
                     continue
-                if v == SERVED:
+                # Службы домена — по очереди, по одному методу на службу: процесс
+                # носителя служит не обязательно ВСЕ службы своего домена (у
+                # notify-api нет ленты и пробы — их служит стендовая проба).
+                # «Маршрута нет» у одной службы — повод спросить следующую, а не
+                # вердикт; засчитывается первая ОБСЛУЖЕННАЯ, отказ харнесса
+                # перебор останавливает — он не ответ.
+                served_by = None
+                for rp in reps:
+                    m = f"{rp[0]}.{rp[1]}/{rp[2]}"
+                    v, d, mode = probe_internal(target, port, authority, m)
+                    if v == SERVED:
+                        served_by = (m, mode)
+                        break
+                    why.append(f"{host}: {m}: {v} — {d}")
+                    if v != ABSENT:
+                        break
+                if served_by:
                     confirmed.add(dom)
-                    print(f"  {dom:<14} {method:<50} ОБСЛУЖЕН у носителя '{host}' [{mode}] "
-                          f"(контроль: чужой метод → {ABSENT})")
+                    print(f"  {dom:<14} {served_by[0]:<50} ОБСЛУЖЕН у носителя '{host}' "
+                          f"[{served_by[1]}] (контроль: чужой метод → {ABSENT})")
                     break
-                why.append(f"{host}: {v} — {d}")
             else:
                 # Ни один носитель не подтвердил. Перечисляются ВСЕ попытки: «домен
                 # не подтверждён» без разбора по носителям неотличимо от «носителя
@@ -963,7 +1030,7 @@ def _self_test_main_notify_branch() -> int:
          измерен, у листенера notify не спрошено НИЧЕГО;
       б) профиль рендерит, подов нагрузки 0 → код 1, причина названа;
       в) профиль рендерит, поды есть → домен notify меряется СОБСТВЕННЫМ слушателем
-         носителя (svc/kacho-notify-probe :9091, Д94) — код 0;
+         носителя (svc/kacho-notify-api :9091, Д94, З19) — код 0;
       е) профиль рендерит лишь шлюз kacho-notify, носителя нет → вне опроса: поды
          шлюза носителем домена не считаются (Д94);
       г) ответа о рендере нет → ветки нет, домен меряется как прочие; листенер
@@ -1087,6 +1154,81 @@ def _self_test_main_notify_branch() -> int:
              None, 1, True, 0, ["ОБСЛУЖЕН у носителя 'notify'", "OK: BAN6-EXT-GRPC"])
     run_case("д2) дерево как есть (настоящий рендер dev-prod), подов 0 → КРАСНЫЙ",
              None, 0, True, 1, ["подов его нагрузки 0", "FAIL: профиль рендерит носителя notify"])
+    return rc
+
+
+def _self_test_notify_carrier() -> int:
+    """Носитель notify в карте и узнавание регистрации notify-api (З19) — пара
+    инъекций с близнецом, каждая меняет ОДИН факт:
+
+      близнец — синтетическое дерево двух корней домена `notify` (лента в
+        фундаменте, служит проба; извещения в платформе, служит notify-api в
+        форме носителя Х5 `notifyv1.Register…Server(r, …)` внутри обратного
+        вызова) и карта как есть → ни одной находки, у домена три службы;
+      «запись снята» — та же перепись, карта без записи `notify` → находка gap
+        с именем `notify`;
+      «регистрация не узнана» — регистрация notify-api записана формой, которую
+        образец не узнаёт → находка unregistered с именем `notify` и службы.
+    """
+    import tempfile
+    mod = _ban6_module()
+    rc = 0
+    print("\nсамопроверка носителя notify (З19):")
+
+    def tree(api_register: str) -> pathlib.Path:
+        root = pathlib.Path(tempfile.mkdtemp(prefix="ban6-notify-"))
+        files = {
+            "proto/corelib/notify/feed.proto":
+                "syntax = \"proto3\";\npackage corelib.notify;\n"
+                "service InternalNotificationFeedService {\n  rpc Claim(A) returns (B);\n}\n",
+            "proto/kacho/cloud/notify/v1/internal_notice_service.proto":
+                "syntax = \"proto3\";\npackage kacho.cloud.notify.v1;\n"
+                "service InternalNoticeService {\n  rpc Get(A) returns (B);\n}\n",
+            "proto/kacho/cloud/notify/v1/internal_notify_probe_service.proto":
+                "syntax = \"proto3\";\npackage kacho.cloud.notify.v1;\n"
+                "service InternalNotifyProbeService {\n  rpc Send(A) returns (B);\n}\n",
+            "services/notify/cmd/notify-probe/feed_wiring.go":
+                "package main\nfunc w(s any) {\n\tcorelibnotify.RegisterInternalNotificationFeedServiceServer(s, x)\n"
+                "\tnotifyv1.RegisterInternalNotifyProbeServiceServer(s, y)\n}\n",
+            "services/notify/cmd/notify-api/serve.go":
+                "package main\nfunc serveAPI() {\n\tservicehost.Serve(ctx, desc, nil, func(r grpc.ServiceRegistrar) {\n"
+                f"\t\t{api_register}\n\t}})\n}}\n",
+        }
+        for rel, body in files.items():
+            f = root / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(body, encoding="utf-8")
+        for cmd in (["init", "-q"], ["add", "-A"]):
+            subprocess.run(["git", "-C", str(root), *cmd], check=True, capture_output=True)
+        return root
+
+    def findings(root: pathlib.Path, endpoints: dict) -> tuple[dict, dict]:
+        mod.invalidate()
+        b6 = mod.census(root)
+        doms = set(b6["served"])
+        return b6, endpoint_map_findings(b6, doms, endpoints)
+
+    def report(label: str, ok: bool, detail: str) -> None:
+        nonlocal rc
+        print(f"  {label:<58} → {'ОК' if ok else 'ПРОВАЛ'}  [{detail}]")
+        rc |= 0 if ok else 1
+
+    good = "notifyv1.RegisterInternalNoticeServiceServer(r, internalNotice)"
+    endpoints = {"notify": INTERNAL_ENDPOINTS["notify"]}
+    b6, f = findings(tree(good), endpoints)
+    svcs = b6["services"].get("notify", [])
+    report("близнец: оба корня домена, регистрация Х5 узнана",
+           len(svcs) == 3 and not any(f[k] for k in ("gap", "lost", "missing", "unregistered")),
+           f"служб notify {len(svcs)} ({', '.join(svcs)}); находок "
+           f"{sum(len(f[k]) for k in ('gap', 'lost', 'missing', 'unregistered'))}")
+
+    _, f = findings(tree(good), {})
+    report("инъекция «запись снята»", f["gap"] == ["notify"], f"gap: {f['gap']}")
+
+    _, f = findings(tree("r.RegisterService(internalNotice.Desc(), internalNotice)"), endpoints)
+    hit = [x for x in f["unregistered"] if x.startswith("notify:") and "InternalNoticeService" in x]
+    report("инъекция «регистрация не узнана»", bool(hit), f"unregistered: {f['unregistered']}")
+    mod.invalidate()
     return rc
 
 
@@ -1289,6 +1431,16 @@ def self_test() -> int:
           f"{'ПРОВАЛ' if missing else 'ОК'}")
     rc |= 1 if missing else 0
 
+    # УЗНАВАНИЕ РЕГИСТРАЦИЙ: служба провязанного домена, регистрацию которой
+    # перепись не узнала, проходила бы внешнюю пробу «изолированной» из одного
+    # отсутствия (её не служит ни один листенер, встречный контроль о ней не
+    # спрашивает). На дереве таких служб ноль.
+    unreg = endpoint_map_findings(b6, doms, INTERNAL_ENDPOINTS)["unregistered"]
+    print(f"  узнавание регистраций: служб провязанных доменов без узнанной "
+          f"регистрации: {'; '.join(unreg) if unreg else 'нет'} — {'ПРОВАЛ' if unreg else 'ОК'}")
+    rc |= 1 if unreg else 0
+
+    rc |= _self_test_notify_carrier()
     rc |= _self_test_main_notify_branch()
 
     print("\nсамопроверка перечисления предмета:")

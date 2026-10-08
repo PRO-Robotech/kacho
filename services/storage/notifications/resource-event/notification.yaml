@@ -1,0 +1,23 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# Шаблон строки ленты resource-event модуля storage (NTF-3 Р3, З10): создание,
+# правка и снятие ресурса. Форма fanout — адресата нет; строку ставит функция
+# базы на журнале модуля (notifygen init -journal), лимитов у формы нет.
+# Атрибуты — закрытый список Р3; initiator ставит функция из колонки
+# инициатора строки журнала (имя занято ключом окна постановки), name —
+# optional: где имени нет, ключ опускается (З17).
+name: resource-event
+class: notice
+ttl: 72h
+recipient: fanout
+attributes:
+  kind: {type: text, presence: required}
+  resource_id: {type: text, presence: required}
+  scope: {type: text, presence: required}
+  change: {type: text, presence: required}
+  occurred_at: {type: timestamp, presence: required}
+  name: {type: text, presence: optional}
+subject:
+  ru: "{{ kind }} {{ resource_id }}: {{ change }}"
+  en: "{{ kind }} {{ resource_id }}: {{ change }}"

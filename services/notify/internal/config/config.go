@@ -32,6 +32,7 @@ import (
 
 	corecfg "github.com/PRO-Robotech/corelib/config"
 	"github.com/PRO-Robotech/corelib/notify/feed"
+	"github.com/PRO-Robotech/corelib/notify/form"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
@@ -47,6 +48,10 @@ const (
 	ResolveSendTimeoutMax = 30 * time.Second
 	SMTPSessionTimeoutMin = time.Second
 	SMTPSessionTimeoutMax = 120 * time.Second
+	// WorkersMin, WorkersMax — граница `notify.workers` (З21): размер `Claim`
+	// не больше числа исполнителей и меньше предела ленты feed.MaxClaim.
+	WorkersMin = 1
+	WorkersMax = 256
 )
 
 // AckMargin — запас на `Ack` перед концом аренды строки. Константа, не ручка
@@ -58,112 +63,208 @@ const AckMargin = 5 * time.Second
 // до [Config.Validate] нельзя — незаданная ручка здесь неотличима от нулевой.
 //
 // Тег `knob` — имя ручки в values и в тексте отказа; тег `envconfig` — имя
-// переменной. Оба тега — единственный перечень ручек: по нему загрузчик читает
-// окружение, страж проверяет заданность, а перепись [Knobs] печатает состав.
+// переменной; тег `group` — группа ручки ([GroupNTF1] либо [GroupNTF4], Р16
+// приёмки NTF-4 «Держатель»). Теги — единственный перечень ручек: по нему
+// загрузчик читает окружение, страж проверяет заданность, а перепись [Knobs]
+// печатает состав с группами.
 type Config struct {
 	// ── посадка ─────────────────────────────────────────────────────────────
 
 	// AuthMode — режим посадки. notify поднимается только в боевом
 	// (`production`, `production-strict`): вне боевой посадки у него нет ни
 	// фикстуры, ни стенда, которым она была бы нужна (NTF1-G15).
-	AuthMode string `envconfig:"KACHO_NOTIFY_AUTH_MODE" knob:"notify.authMode"`
+	AuthMode string `envconfig:"KACHO_NOTIFY_AUTH_MODE" knob:"notify.authMode" group:"NTF-1"`
 
 	// PeerTLSCertFile / PeerTLSKeyFile / PeerTLSCAFile — удостоверение notify
 	// для mTLS к источникам и kaname (сертификат службы, выпущенный политикой
 	// З30) и УЦ, которым проверяется сертификат сервера. Выключателя mTLS нет:
 	// без файлов — отказ старта по оси mTLS (NTF1-G15).
-	PeerTLSCertFile string `envconfig:"KACHO_NOTIFY_PEER_TLS_CERT_FILE" knob:"notify.peerTLS.certFile"`
-	PeerTLSKeyFile  string `envconfig:"KACHO_NOTIFY_PEER_TLS_KEY_FILE" knob:"notify.peerTLS.keyFile"`
-	PeerTLSCAFile   string `envconfig:"KACHO_NOTIFY_PEER_TLS_CA_FILE" knob:"notify.peerTLS.caFile"`
+	PeerTLSCertFile string `envconfig:"KACHO_NOTIFY_PEER_TLS_CERT_FILE" knob:"notify.peerTLS.certFile" group:"NTF-1"`
+	PeerTLSKeyFile  string `envconfig:"KACHO_NOTIFY_PEER_TLS_KEY_FILE" knob:"notify.peerTLS.keyFile" group:"NTF-1"`
+	PeerTLSCAFile   string `envconfig:"KACHO_NOTIFY_PEER_TLS_CA_FILE" knob:"notify.peerTLS.caFile" group:"NTF-1"`
 
 	// DB* — соединение с собственной базой `kacho_notify`. Режим шифрования
 	// судит общий дескриптор (ось DBSSLMode) — на боевой посадке только
 	// безопасные значения.
-	DBHost     string `envconfig:"KACHO_NOTIFY_DB_HOST" knob:"notify.db.host"`
-	DBPort     string `envconfig:"KACHO_NOTIFY_DB_PORT" knob:"notify.db.port"`
-	DBUser     string `envconfig:"KACHO_NOTIFY_DB_USER" knob:"notify.db.user"`
-	DBPassword string `envconfig:"KACHO_NOTIFY_DB_PASSWORD" knob:"notify.db.password"`
-	DBName     string `envconfig:"KACHO_NOTIFY_DB_NAME" knob:"notify.db.name"`
-	DBSSLMode  string `envconfig:"KACHO_NOTIFY_DB_SSLMODE" knob:"notify.db.sslMode"`
+	DBHost     string `envconfig:"KACHO_NOTIFY_DB_HOST" knob:"notify.db.host" group:"NTF-1"`
+	DBPort     string `envconfig:"KACHO_NOTIFY_DB_PORT" knob:"notify.db.port" group:"NTF-1"`
+	DBUser     string `envconfig:"KACHO_NOTIFY_DB_USER" knob:"notify.db.user" group:"NTF-1"`
+	DBPassword string `envconfig:"KACHO_NOTIFY_DB_PASSWORD" knob:"notify.db.password" group:"NTF-1"`
+	DBName     string `envconfig:"KACHO_NOTIFY_DB_NAME" knob:"notify.db.name" group:"NTF-1"`
+	DBSSLMode  string `envconfig:"KACHO_NOTIFY_DB_SSLMODE" knob:"notify.db.sslMode" group:"NTF-1"`
 
 	// DBMaxConns — ширина пула базы, в [1..100] (полоса D6). Объявлена ручкой,
 	// а не умолчанием драйвера (max(4, число ядер узла)): произведение «пул ×
 	// реплики» против `max_connections` базы судит гейт развёртывания по
 	// объявленной величине. В пул уходит параметром `pool_max_conns` строки
 	// соединения ([Config.DSN]).
-	DBMaxConns int `envconfig:"KACHO_NOTIFY_DB_MAX_CONNS" knob:"notify.db.maxConns"`
+	DBMaxConns int `envconfig:"KACHO_NOTIFY_DB_MAX_CONNS" knob:"notify.db.maxConns" group:"NTF-1"`
 
 	// DiagAddr — адрес диагностической поверхности (`/healthz`, `/readyz`,
 	// `/metrics`), досягаемой только внутри кластера (З15).
-	DiagAddr string `envconfig:"KACHO_NOTIFY_DIAG_ADDR" knob:"notify.diagAddr"`
+	DiagAddr string `envconfig:"KACHO_NOTIFY_DIAG_ADDR" knob:"notify.diagAddr" group:"NTF-1"`
 
 	// ── предмет notify ───────────────────────────────────────────────────────
 
 	// ClaimInterval — такт `Claim` по таймеру, в [1s..5m] (NTF1-E04).
-	ClaimInterval time.Duration `envconfig:"KACHO_NOTIFY_CLAIM_INTERVAL" knob:"notify.claimInterval"`
+	ClaimInterval time.Duration `envconfig:"KACHO_NOTIFY_CLAIM_INTERVAL" knob:"notify.claimInterval" group:"NTF-1"`
 
 	// ResolveSendTimeout — срок вызова `ResolveSend`, в [100ms..30s].
-	ResolveSendTimeout time.Duration `envconfig:"KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT" knob:"notify.resolveSendTimeout"`
+	ResolveSendTimeout time.Duration `envconfig:"KACHO_NOTIFY_RESOLVE_SEND_TIMEOUT" knob:"notify.resolveSendTimeout" group:"NTF-1"`
 
 	// SMTPSessionTimeout — срок одной SMTP-сессии, в [1s..120s].
-	SMTPSessionTimeout time.Duration `envconfig:"KACHO_NOTIFY_SMTP_SESSION_TIMEOUT" knob:"notify.smtp.sessionTimeout"`
+	SMTPSessionTimeout time.Duration `envconfig:"KACHO_NOTIFY_SMTP_SESSION_TIMEOUT" knob:"notify.smtp.sessionTimeout" group:"NTF-1"`
+
+	// Workers — число исполнителей строк, в [WorkersMin..WorkersMax] (З21).
+	Workers int `envconfig:"KACHO_NOTIFY_WORKERS" knob:"notify.workers" group:"NTF-1"`
+
+	// DeferFor — отсрочка DEFER по `grant_skew`, `platform_unavailable`,
+	// `template_skew`, в [feed.MinDefer..feed.MaxDefer] (З23).
+	DeferFor time.Duration `envconfig:"KACHO_NOTIFY_DEFER_FOR" knob:"notify.deferFor" group:"NTF-1"`
+
+	// KanameAddr — внутренний слушатель kaname `узел:порт` для `ResolveSend`
+	// (ребро notify → kaname, §9 замысла).
+	KanameAddr string `envconfig:"KACHO_NOTIFY_KANAME_ADDR" knob:"notify.kaname.addr" group:"NTF-1"`
+
+	// KanameSAN — точный URI SAN (SPIFFE ID) листа kaname: решение о письме
+	// принимается только от него, а не от любого листа внутреннего УЦ.
+	KanameSAN string `envconfig:"KACHO_NOTIFY_KANAME_SAN" knob:"notify.kaname.san" group:"NTF-1"`
 
 	// Origin — origin установки: абсолютный `https://` без пути, база ссылок
 	// писем (NTF1-G06).
-	Origin string `envconfig:"KACHO_NOTIFY_ORIGIN" knob:"notify.origin"`
+	Origin string `envconfig:"KACHO_NOTIFY_ORIGIN" knob:"notify.origin" group:"NTF-1"`
 
 	// Sources — перечень источников, выведенный чартом (З28): JSON-массив
 	// записей `{module, feedAddr, san, classes, recipientForms, authorization}`
 	// (NTF1-G01). Разбор — [Config.SourceRoster].
-	Sources string `envconfig:"KACHO_NOTIFY_SOURCES" knob:"notify.sources"`
+	Sources string `envconfig:"KACHO_NOTIFY_SOURCES" knob:"notify.sources" group:"NTF-1"`
 
 	// SMTPConnectionURI — адрес ретранслятора, ОДНА ручка узла почты без
 	// умолчания (Д44, CX1-77). Разбор — закрытой таблицей ([parseRelayURI]):
 	// схема → режим TLS, узел, порт, имя пользователя; результат — [Config.Relay].
-	SMTPConnectionURI string `envconfig:"KACHO_NOTIFY_SMTP_CONNECTION_URI" knob:"notify.smtp.connectionURI"`
+	SMTPConnectionURI string `envconfig:"KACHO_NOTIFY_SMTP_CONNECTION_URI" knob:"notify.smtp.connectionURI" group:"NTF-1"`
 
 	// SMTPFromAddress — адрес отправителя установки (З20 «Отправитель»): форма
 	// `notify/address` с непустым доменом. Его домен — домен `From` и домен
 	// проверок DNS установки (§12а, Д101); результат — [Config.FromDomain].
-	SMTPFromAddress string `envconfig:"KACHO_NOTIFY_SMTP_FROM_ADDRESS" knob:"notify.smtp.fromAddress"`
+	SMTPFromAddress string `envconfig:"KACHO_NOTIFY_SMTP_FROM_ADDRESS" knob:"notify.smtp.fromAddress" group:"NTF-1"`
+
+	// SMTPFromName — имя отправителя установки (заголовок From, З25): форма
+	// `notify/form.HeaderText`; результат — [Config.FromName].
+	SMTPFromName string `envconfig:"KACHO_NOTIFY_SMTP_FROM_NAME" knob:"notify.smtp.fromName" group:"NTF-1"`
 
 	// ── DNS установки (Р19, §12а) ───────────────────────────────────────────
 
 	// DNSBootDeadline — срок стража DNS на старте, в [10s..10m] (NTF1-P13).
-	DNSBootDeadline time.Duration `envconfig:"KACHO_NOTIFY_DNS_BOOT_DEADLINE" knob:"notify.dns.bootDeadline"`
+	DNSBootDeadline time.Duration `envconfig:"KACHO_NOTIFY_DNS_BOOT_DEADLINE" knob:"notify.dns.bootDeadline" group:"NTF-1"`
 
 	// DNSRecheckInterval — интервал перепроверки DNS, в [1m..24h] (NTF1-P13).
-	DNSRecheckInterval time.Duration `envconfig:"KACHO_NOTIFY_DNS_RECHECK_INTERVAL" knob:"notify.dns.recheckInterval"`
+	DNSRecheckInterval time.Duration `envconfig:"KACHO_NOTIFY_DNS_RECHECK_INTERVAL" knob:"notify.dns.recheckInterval" group:"NTF-1"`
 
 	// DKIMKeyFile / DKIMSelectorFile — пути файлов ключа и селектора DKIM в
 	// томе объекта, смонтированном без `subPath` (§12а «Ключ и селектор DKIM»).
 	// Оба пути — в одном каталоге тома; пара читается из одного поколения.
-	DKIMKeyFile      string `envconfig:"KACHO_NOTIFY_DKIM_KEY_FILE" knob:"notify.dkim.keyFile"`
-	DKIMSelectorFile string `envconfig:"KACHO_NOTIFY_DKIM_SELECTOR_FILE" knob:"notify.dkim.selectorFile"`
+	DKIMKeyFile      string `envconfig:"KACHO_NOTIFY_DKIM_KEY_FILE" knob:"notify.dkim.keyFile" group:"NTF-1"`
+	DKIMSelectorFile string `envconfig:"KACHO_NOTIFY_DKIM_SELECTOR_FILE" knob:"notify.dkim.selectorFile" group:"NTF-1"`
 
 	// StandDNS — зона DNS стенда (Д104): `off` либо хост приёмника стенда,
 	// равный хосту адреса ретранслятора. Не адрес резолвера и не обход
 	// проверки: страж DNS исполняется на резолвере пода при любом значении.
-	StandDNS string `envconfig:"KACHO_NOTIFY_STAND_DNS" knob:"notify.standDNS"`
+	StandDNS string `envconfig:"KACHO_NOTIFY_STAND_DNS" knob:"notify.standDNS" group:"NTF-1"`
 
 	// ── лимиты Р10 (З24, NTF1-H08) ──────────────────────────────────────────
 
 	// LimitSecurityPerDay — сетка security на адресата за сутки UTC, в [1..1000].
-	LimitSecurityPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_SECURITY_PER_DAY" knob:"notify.limits.recipient.security.perDay"`
+	LimitSecurityPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_SECURITY_PER_DAY" knob:"notify.limits.recipient.security.perDay" group:"NTF-1"`
 
 	// LimitNoticePerHour — сетка notice на адресата за час, в [1..10000].
-	LimitNoticePerHour int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_HOUR" knob:"notify.limits.recipient.notice.perHour"`
+	LimitNoticePerHour int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_HOUR" knob:"notify.limits.recipient.notice.perHour" group:"NTF-1"`
 
 	// LimitNoticePerDay — сетка notice на адресата за сутки UTC, в [1..10000].
-	LimitNoticePerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_DAY" knob:"notify.limits.recipient.notice.perDay"`
+	LimitNoticePerDay int `envconfig:"KACHO_NOTIFY_LIMITS_RECIPIENT_NOTICE_PER_DAY" knob:"notify.limits.recipient.notice.perDay" group:"NTF-1"`
 
 	// LimitGlobalPerDay — суточный потолок потока установки, в [1..10000000].
-	LimitGlobalPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_GLOBAL_PER_DAY" knob:"notify.limits.global.perDay"`
+	LimitGlobalPerDay int `envconfig:"KACHO_NOTIFY_LIMITS_GLOBAL_PER_DAY" knob:"notify.limits.global.perDay" group:"NTF-1"`
 
 	// SourceLimits — ручки на источник: JSON-объект «модуль → {rate, burst,
 	// paused}», параметризующий перечень [Config.Sources] (Р10). Разбор и
 	// страж — validateSourceLimits.
-	SourceLimits string `envconfig:"KACHO_NOTIFY_SOURCE_LIMITS" knob:"notify.sourceLimits"`
+	SourceLimits string `envconfig:"KACHO_NOTIFY_SOURCE_LIMITS" knob:"notify.sourceLimits" group:"NTF-1"`
+
+	// ── ручки NTF-4 стадии S1 (Р16 приёмки NTF-4; страж — validateNTF4) ─────
+
+	// FeedbackMailboxAddr — адрес POP3 ящика обратной связи: `узел:порт`, порт
+	// в [1..65535].
+	FeedbackMailboxAddr string `envconfig:"KACHO_NOTIFY_FEEDBACK_MAILBOX_ADDR" knob:"notify.feedback.mailboxAddr" group:"NTF-4"`
+
+	// FeedbackMailboxLocalPart — локальная часть адреса возврата: 1..15 октетов
+	// dot-atom без `+` (15 = 64 − 1 − 48, Р2).
+	FeedbackMailboxLocalPart string `envconfig:"KACHO_NOTIFY_FEEDBACK_MAILBOX_LOCAL_PART" knob:"notify.feedback.mailboxLocalPart" group:"NTF-4"`
+
+	// ReturnDomain — домен возврата: имя DNS по RFC 1123, не меньше двух меток.
+	ReturnDomain string `envconfig:"KACHO_NOTIFY_RETURN_DOMAIN" knob:"notify.returnDomain" group:"NTF-4"`
+
+	// FeedbackPollInterval — интервал опроса ящика, в [5s..10m].
+	FeedbackPollInterval time.Duration `envconfig:"KACHO_NOTIFY_FEEDBACK_POLL_INTERVAL" knob:"notify.feedback.pollInterval" group:"NTF-4"`
+
+	// FeedbackPollStaleMax — срок, после которого опрос считается застывшим:
+	// в [max(4 × опрос, опрос + 60s)..24h].
+	FeedbackPollStaleMax time.Duration `envconfig:"KACHO_NOTIFY_FEEDBACK_POLL_STALE_MAX" knob:"notify.feedback.pollStaleMax" group:"NTF-4"`
+
+	// FeedbackMaxMessageBytes — потолок размера письма обратной связи, в
+	// [64 КиБ..25 МиБ].
+	FeedbackMaxMessageBytes int `envconfig:"KACHO_NOTIFY_FEEDBACK_MAX_MESSAGE_BYTES" knob:"notify.feedback.maxMessageBytes" group:"NTF-4"`
+
+	// FeedbackMaxExpansionRatio — потолок коэффициента распаковки, в [1..100].
+	FeedbackMaxExpansionRatio int `envconfig:"KACHO_NOTIFY_FEEDBACK_MAX_EXPANSION_RATIO" knob:"notify.feedback.maxExpansionRatio" group:"NTF-4"`
+
+	// FeedbackCanaryInterval — интервал контрольного письма, в [1m..24h].
+	FeedbackCanaryInterval time.Duration `envconfig:"KACHO_NOTIFY_FEEDBACK_CANARY_INTERVAL" knob:"notify.feedback.canaryInterval" group:"NTF-4"`
+
+	// FeedbackCanaryDeadline — срок ожидания контрольного письма: от 30s и
+	// строго меньше интервала контрольного письма.
+	FeedbackCanaryDeadline time.Duration `envconfig:"KACHO_NOTIFY_FEEDBACK_CANARY_DEADLINE" knob:"notify.feedback.canaryDeadline" group:"NTF-4"`
+
+	// FeedbackLeaseTTL — срок аренды одиночки опроса (Р21): от max(30s,
+	// 2 × опрос) и строго меньше «застывший опрос − опрос».
+	FeedbackLeaseTTL time.Duration `envconfig:"KACHO_NOTIFY_FEEDBACK_LEASE_TTL" knob:"notify.feedback.leaseTTL" group:"NTF-4"`
+
+	// SentLogRetention — срок журнала отправленного, в [7 сут..90 сут].
+	SentLogRetention time.Duration `envconfig:"KACHO_NOTIFY_SENT_LOG_RETENTION" knob:"notify.sentLog.retention" group:"NTF-4"`
+
+	// SuppressionHardTTL — срок подавления `HARD_BOUNCE`, в [1h..72h] (Д11).
+	SuppressionHardTTL time.Duration `envconfig:"KACHO_NOTIFY_SUPPRESSION_HARD_TTL" knob:"notify.suppression.hardTTL" group:"NTF-4"`
+
+	// SuppressionSoftThreshold — порог мягких отказов, в [2..20].
+	SuppressionSoftThreshold int `envconfig:"KACHO_NOTIFY_SUPPRESSION_SOFT_THRESHOLD" knob:"notify.suppression.softThreshold" group:"NTF-4"`
+
+	// SuppressionSoftWindow — окно счёта мягких отказов, в [1h..7 сут].
+	SuppressionSoftWindow time.Duration `envconfig:"KACHO_NOTIFY_SUPPRESSION_SOFT_WINDOW" knob:"notify.suppression.softWindow" group:"NTF-4"`
+
+	// SuppressionSoftTTL — срок подавления по мягким отказам, в [1h..7 сут].
+	SuppressionSoftTTL time.Duration `envconfig:"KACHO_NOTIFY_SUPPRESSION_SOFT_TTL" knob:"notify.suppression.softTTL" group:"NTF-4"`
+
+	// SuppressionSweepInterval — интервал уборки истёкших подавлений, в
+	// [1m..24h].
+	SuppressionSweepInterval time.Duration `envconfig:"KACHO_NOTIFY_SUPPRESSION_SWEEP_INTERVAL" knob:"notify.suppression.sweepInterval" group:"NTF-4"`
+
+	// SecretReloadInterval — интервал перечитывания объектов секрета (Р11), в
+	// [5s..10m].
+	SecretReloadInterval time.Duration `envconfig:"KACHO_NOTIFY_SECRET_RELOAD_INTERVAL" knob:"notify.secretReloadInterval" group:"NTF-4"`
+
+	// AddressKeyDir — абсолютный путь каталога монтирования объекта ключа
+	// отпечатка адреса (Р15, Д23). Страж читает в нём файл ключа при старте.
+	AddressKeyDir string `envconfig:"KACHO_NOTIFY_ADDRESS_KEY_DIR" knob:"notify.addressKeyDir" group:"NTF-4"`
+
+	// ReputationHardBounceRateMax — порог доли жёстких отказов, в [0.001..0.2].
+	ReputationHardBounceRateMax float64 `envconfig:"KACHO_NOTIFY_REPUTATION_HARD_BOUNCE_RATE_MAX" knob:"notify.reputation.hardBounceRateMax" group:"NTF-4"`
+
+	// ReputationComplaintRateMax — порог доли жалоб, в [0.0001..0.05].
+	ReputationComplaintRateMax float64 `envconfig:"KACHO_NOTIFY_REPUTATION_COMPLAINT_RATE_MAX" knob:"notify.reputation.complaintRateMax" group:"NTF-4"`
+
+	// ReputationWindow — окно долей репутации: в [1h..30 сут] и не больше срока
+	// журнала отправленного (Р12, Д26·6).
+	ReputationWindow time.Duration `envconfig:"KACHO_NOTIFY_REPUTATION_WINDOW" knob:"notify.reputation.window" group:"NTF-4"`
 
 	// credential — удостоверение ретранслятора: три состояния, а не строка
 	// (CX1-81 (а)). Читается [os.LookupEnv], а не загрузчиком с подстановкой
@@ -174,6 +275,16 @@ type Config struct {
 	// Читается [os.LookupEnv], а не загрузчиком: значение в перепись и в
 	// строковый вид не попадает; ручка — [recipientKeyKnob].
 	recipientKey RecipientKey
+
+	// trustAnchor — путь якоря проверки листа ретранслятора; trustAnchorSet —
+	// переменная есть в окружении. Читается [os.LookupEnv]: отсутствие —
+	// законное значение (доверенный набор — корневое хранилище образа), поэтому
+	// тега `envconfig` у поля нет; ручка — [trustAnchorKnob].
+	trustAnchor    string
+	trustAnchorSet bool
+
+	// fromName — разобранное имя отправителя; заполняет [Config.Validate].
+	fromName form.HeaderText
 
 	// sources — разобранный перечень; заполняет [Config.Validate].
 	sources []Source
@@ -193,17 +304,29 @@ type Config struct {
 // credentialKnob — ручка удостоверения ретранслятора. Переменная — только
 // ссылка `secretKeyRef` на объект узла `global.kacho.identity.smtp.credentialSecret`.
 var credentialKnob = Knob{
-	Name: "notify.smtp.credential",
-	Env:  "KACHO_NOTIFY_SMTP_CREDENTIAL",
-	Kind: reflect.String,
+	Name:  "notify.smtp.credential",
+	Env:   "KACHO_NOTIFY_SMTP_CREDENTIAL",
+	Kind:  reflect.String,
+	Group: GroupNTF1,
+}
+
+// trustAnchorKnob — якорь проверки листа ретранслятора. Переменную чарт
+// рендерит только при объявленном якоре узла почты (`trustAnchorSecret`);
+// без неё доверенный набор — корневое хранилище образа.
+var trustAnchorKnob = Knob{
+	Name:  "notify.smtp.trustAnchorFile",
+	Env:   "KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE",
+	Kind:  reflect.String,
+	Group: GroupNTF1,
 }
 
 // recipientKeyKnob — ключ сетки на адресата (З24). Переменная — только ссылка
 // `secretKeyRef` на объект `<полное имя>-recipient-key` чарта notify.
 var recipientKeyKnob = Knob{
-	Name: "notify.recipientKey",
-	Env:  "KACHO_NOTIFY_RECIPIENT_KEY",
-	Kind: reflect.String,
+	Name:  "notify.recipientKey",
+	Env:   "KACHO_NOTIFY_RECIPIENT_KEY",
+	Kind:  reflect.String,
+	Group: GroupNTF1,
 }
 
 // RecipientKeyMinBytes — нижняя граница длины ключа сетки (Д89). Ключ —
@@ -251,18 +374,30 @@ func (c Credential) String() string {
 	return "задано"
 }
 
-// Knob — ручка процесса: имя в values и тексте отказа, переменная окружения и
-// вид значения.
+// Группы ручек загрузчика `notify-sender` (Р16 приёмки NTF-4 «Держатель»):
+// ручки NTF-1 и ручки NTF-4 стадии S1. Группы не пересекаются, их объединение
+// — все ручки, которые читает загрузчик.
+const (
+	GroupNTF1 = "NTF-1"
+	GroupNTF4 = "NTF-4"
+)
+
+// Knob — ручка процесса: имя в values и тексте отказа, переменная окружения,
+// вид значения и группа.
 type Knob struct {
-	Name string
-	Env  string
-	Kind reflect.Kind
+	Name  string
+	Env   string
+	Kind  reflect.Kind
+	Group string
 }
 
 func (k Knob) String() string { return k.Name + " (" + k.Env + ")" }
 
-// Knobs — перечень ручек процесса: выводится из тегов [Config] плюс ручка
-// удостоверения, которую загрузчик читает отдельно. Второго перечня нет.
+// Knobs — перечень ручек процесса: выводится из тегов [Config] плюс ручки
+// удостоверения и ключа сетки, которые загрузчик читает отдельно. Второго
+// перечня нет. Группа ручки — тег `group`; группу вне [GroupNTF1] и
+// [GroupNTF4] и состав группы NTF-4 судит держатель Р16 пакета
+// (TestRequiredKnobsS1, подпроба «группы»).
 func Knobs() []Knob {
 	t := reflect.TypeFor[Config]()
 	out := make([]Knob, 0, t.NumField()+1)
@@ -272,9 +407,9 @@ func Knobs() []Knob {
 		if env == "" {
 			continue
 		}
-		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind()})
+		out = append(out, Knob{Name: f.Tag.Get("knob"), Env: env, Kind: f.Type.Kind(), Group: f.Tag.Get("group")})
 	}
-	return append(out, credentialKnob, recipientKeyKnob)
+	return append(out, credentialKnob, recipientKeyKnob, trustAnchorKnob)
 }
 
 func knobByEnv(env string) Knob {
@@ -353,6 +488,7 @@ func Load() (Config, error) {
 	}
 	v, ok := os.LookupEnv(credentialKnob.Env)
 	c.credential = Credential{present: ok, value: v}
+	c.trustAnchor, c.trustAnchorSet = os.LookupEnv(trustAnchorKnob.Env)
 	if key, ok := os.LookupEnv(recipientKeyKnob.Env); ok {
 		c.recipientKey = RecipientKey{value: []byte(key)}
 	}
@@ -373,6 +509,14 @@ func (c Config) SourceRoster() []Source {
 	copy(out, c.sources)
 	return out
 }
+
+// FromName — имя отправителя установки; годно только после успешного
+// [Config.Validate].
+func (c Config) FromName() form.HeaderText { return c.fromName }
+
+// TrustAnchorFile — путь якоря проверки листа ретранслятора; ok=false —
+// якоря нет, доверенный набор — корневое хранилище образа.
+func (c Config) TrustAnchorFile() (string, bool) { return c.trustAnchor, c.trustAnchorSet }
 
 // Mode — режим посадки для общего дескриптора.
 func (c Config) Mode() (servicecontract.Mode, error) { return servicecontract.ParseMode(c.AuthMode) }
@@ -404,7 +548,8 @@ func (c *Config) Validate() error {
 	var fs findings
 
 	for _, k := range Knobs() {
-		if k == credentialKnob {
+		if k == credentialKnob || k == trustAnchorKnob {
+			// Отсутствие этих двух — законное значение; их судят свои стражи.
 			continue
 		}
 		if c.unset[k.Env] {
@@ -425,6 +570,7 @@ func (c *Config) Validate() error {
 	}
 
 	c.checkInt(&fs, "DBMaxConns", c.DBMaxConns, DBMaxConnsMin, DBMaxConnsMax)
+	c.validateDelivery(&fs)
 	c.validateOrigin(&fs)
 	c.validateSources(&fs)
 	c.validateGrid(&fs)
@@ -436,6 +582,7 @@ func (c *Config) Validate() error {
 	c.validateDNS(&fs)
 	c.validateDKIM(&fs)
 	c.validateStandDNS(&fs)
+	c.validateNTF4(&fs)
 
 	return fs.err()
 }

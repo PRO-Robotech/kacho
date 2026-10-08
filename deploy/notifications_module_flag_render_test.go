@@ -110,7 +110,7 @@ func ntf366KnobValues(t *testing.T, stack string, docs []renderedDoc) map[string
 
 func ntf366Stacks(t *testing.T) []string {
 	t.Helper()
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	if len(stacks) == 0 {
 		t.Fatalf("ФИКСТУРА: таблица стеков пуста — пустой обход вердиктом не является")
 	}
@@ -125,7 +125,7 @@ func ntf366Stacks(t *testing.T) []string {
 // TestNTF366_ModuleFlagsAreDerivedFromOneDeclarationAndAnOverride — NTF3-66
 // (флаги модулей) на каждом стеке таблицы stacks.txt.
 func TestNTF366_ModuleFlagsAreDerivedFromOneDeclarationAndAnOverride(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	for _, name := range ntf366Stacks(t) {
 		chain := stacks[name]
 		t.Run(name, func(t *testing.T) {
@@ -198,7 +198,7 @@ func TestNTF366_RenderRefusesWithoutTheGlobalDeclaration(t *testing.T) {
 // отказ рендера с полным путём (CX1-111 (а)). Близнец — тот же стек без
 // ключа рендерится (TestNTF366_ModuleFlagsAreDerived…).
 func TestNTF366_ModuleOwnFlagKeyIsRefused(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	chain, ok := stacks["dev"]
 	if !ok {
 		t.Fatalf("ФИКСТУРА: стека dev в таблице стеков нет")

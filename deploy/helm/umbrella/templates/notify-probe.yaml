@@ -24,13 +24,12 @@ SPDX-License-Identifier: BUSL-1.1
 ЧЕГО ФАЙЛ НЕ УТВЕРЖДАЕТ: что проба ПОДНЯЛАСЬ — это вопрос подъёма в боевой
 посадке (полоса D6), а не рендера.
 */}}
-{{/* Имя пробы — постоянное, а не из имени выпуска: по нему пробу спрашивает
-     встречный контроль ban #6 (`svc/kacho-notify-probe` в карте носителей
-     deploy/scripts/assert-ban6-external-isolation.py) и называет таблица
-     источников notify (сегмент `sa/` идентичности пробы). Выпуск стенда
-     `kacho-umbrella` дал бы `kacho-umbrella-notify-probe` — и то и другое
-     промахнулось бы мимо пробы (deploy/mail_receiver_core_test.go,
-     TestNotifyProbeServiceIsTheBan6Carrier). */}}
+{{/* Имя пробы — постоянное, а не из имени выпуска: по нему пробу называет
+     таблица источников notify (адрес ленты `kacho-notify-probe.kacho.svc:9091`
+     и сегмент `sa/` идентичности пробы, deploy/helm/notify/templates/_sources.tpl).
+     Выпуск стенда `kacho-umbrella` дал бы `kacho-umbrella-notify-probe` — и
+     notify звонил бы мимо пробы. Носитель домена notify в карте встречного
+     контроля ban #6 — не проба, а notify-api (замысел issue-2924 З19). */}}
 {{- define "kacho.notifyProbe.fullname" -}}
 kacho-notify-probe
 {{- end }}

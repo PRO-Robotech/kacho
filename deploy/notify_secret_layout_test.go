@@ -360,8 +360,25 @@ func configMapsWithKey(objs []renderedObj, key string) []renderedObj {
 	return out
 }
 
-func podAnnotation(objs []renderedObj, key string) string {
+// senderDeployments — рабочие объекты notify-sender: под с контейнером `notify`.
+// Чарт notify рендерит два развёртывания (notify-sender и notify-api, NTF-5
+// Р2); суждения о ключе сетки, узле почты, доступности и накате схемы — о
+// notify-sender, и notify-api в них не подставляется молча первым в списке.
+func senderDeployments(objs []renderedObj) []renderedObj {
+	var out []renderedObj
 	for _, d := range objsOfKind(objs, "Deployment") {
+		for _, c := range containersOf(nPodSpec(d)) {
+			if nstr(c["name"]) == "notify" {
+				out = append(out, d)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func podAnnotation(objs []renderedObj, key string) string {
+	for _, d := range senderDeployments(objs) {
 		if v := nstr(ndig(d.doc, "spec", "template", "metadata", "annotations", key)); v != "" {
 			return v
 		}
@@ -399,7 +416,10 @@ type secretRef struct{ name, key string }
 
 // notifyLayoutFindings — РЕШЕНИЕ гейта раскладки по разобранному рендеру.
 //
-//	ключ сетки   единственный Secret чарта, `<полное имя>-recipient-key`;
+//	ключи        Secret чарта ровно два — объекты ключей: ключ сетки
+//	             `<полное имя>-recipient-key` и ключ отпечатка адреса
+//	             `<полное имя>-address-key` (NTF-4 Д23); иной Secret — находка;
+//	ключ сетки   `<полное имя>-recipient-key`;
 //	             ссылается ровно одна рабочая нагрузка и только переменной
 //	             `secretKeyRef`; в ConfigMap его нет; объект ключа и объект
 //	             удостоверения — разные;
@@ -408,13 +428,19 @@ type secretRef struct{ name, key string }
 //	             адреса или URI из секрета нет.
 func notifyLayoutFindings(objs []renderedObj, keySecret string, cred *secretRef) []string {
 	var out []string
+	addressKeySecret := strings.TrimSuffix(keySecret, "-recipient-key") + "-address-key"
 	for _, s := range objsOfKind(objs, "Secret") {
-		if s.name != keySecret {
-			out = append(out, "Secret "+s.name+" в рендере notify — единственный Secret чарта обязан быть "+
-				"объектом ключа сетки "+keySecret+"; секрет почты чарт не рендерит (CX1-82 (а))")
+		if s.name != keySecret && s.name != addressKeySecret {
+			out = append(out, "Secret "+s.name+" в рендере notify — Secret чарта обязан быть объектом ключа "+
+				"сетки "+keySecret+" либо ключа отпечатка "+addressKeySecret+" (NTF-4 Д23); секрет почты чарт "+
+				"не рендерит (CX1-82 (а))")
 		}
 	}
-	if len(objsOfKind(objs, "Secret")) == 0 {
+	hasKey := false
+	for _, s := range objsOfKind(objs, "Secret") {
+		hasKey = hasKey || s.name == keySecret
+	}
+	if !hasKey {
 		out = append(out, "объекта ключа сетки "+keySecret+" в рендере нет")
 	}
 	for _, cm := range objsOfKind(objs, "ConfigMap") {
@@ -527,14 +553,18 @@ func TestNotifySecretLayout(t *testing.T) {
 			return o
 		}},
 		{"второй монтирующий", func(o []renderedObj) []renderedObj {
-			d := objsOfKind(o, "Deployment")[0]
+			d := senderDeployments(o)[0]
 			twin := parseRendered(t, mustRenderOut(t, chart))
-			second := objsOfKind(twin, "Deployment")[0]
-			second.name = d.name + "-api"
+			second := senderDeployments(twin)[0]
+			second.name = d.name + "-twin"
 			return append(o, second)
 		}},
+		{"секрет почты третьим Secret чарта", func(o []renderedObj) []renderedObj {
+			return append(o, renderedObj{kind: "Secret", name: notifyRelease + "-smtp",
+				doc: map[string]any{"kind": "Secret", "metadata": map[string]any{"name": notifyRelease + "-smtp"}}})
+		}},
 		{"ключ томом", func(o []renderedObj) []renderedObj {
-			spec := nPodSpec(objsOfKind(o, "Deployment")[0])
+			spec := nPodSpec(senderDeployments(o)[0])
 			spec["volumes"] = append(nlist(spec["volumes"]), map[string]any{
 				"name": "recipient-key", "secret": map[string]any{"secretName": keySecret}})
 			return o
@@ -565,11 +595,25 @@ func mustRenderOut(t *testing.T, chart string, sets ...string) string {
 
 // recipientKeyNames — имя объекта ключа и `secretKeyRef.name` переменной.
 func recipientKeyNames(objs []renderedObj) (secret, ref string) {
-	if s := objsOfKind(objs, "Secret"); len(s) == 1 {
+	if s := recipientKeyObjects(objs); len(s) == 1 {
 		secret = s[0].name
 	}
 	ref = nstr(ndig(notifyEnv(objs, notifyRecipientEnv), "valueFrom", "secretKeyRef", "name"))
 	return secret, ref
+}
+
+// recipientKeyObjects — объекты Secret рендера, несущие ключ данных
+// `recipientKey`. Secret чарта не один (ключ отпечатка адреса — свой объект,
+// NTF-4 Д23), поэтому объект ключа сетки выбирается по ключу данных, а не по
+// виду.
+func recipientKeyObjects(objs []renderedObj) []renderedObj {
+	var out []renderedObj
+	for _, s := range objsOfKind(objs, "Secret") {
+		if _, ok := ndig(s.doc, "data", "recipientKey").(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // TestNotifyRecipientKeyObjectNameIsConstant — два рендера с разными ключами:
@@ -666,7 +710,7 @@ func TestNotifyRecipientKeyShorterThanTheHashIsRefusedAtRender(t *testing.T) {
 			t.Errorf("%s: рендер отказал на ключе, равном границе:\n%s", c.name, out)
 		case !c.refused:
 			var got string
-			if sec := objsOfKind(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key), "Secret"); len(sec) == 1 {
+			if sec := recipientKeyObjects(mustRenderNotify(t, chart, standaloneLeg(), "recipientKey="+c.key)); len(sec) == 1 {
 				raw, decErr := base64.StdEncoding.DecodeString(nstr(ndig(sec[0].doc, "data", "recipientKey")))
 				if decErr == nil {
 					got = string(raw)
@@ -922,7 +966,7 @@ func TestNotifyOtherMailNodeFieldsReachTheProcess(t *testing.T) {
 		t.Errorf("dev: узел с якорем, а %s нет (якорь узла: %v)", notifyAnchorEnv, anchor)
 	} else {
 		found := false
-		spec := nPodSpec(objsOfKind(devObjs, "Deployment")[0])
+		spec := nPodSpec(senderDeployments(devObjs)[0])
 		for _, v := range nlist(spec["volumes"]) {
 			if nstr(ndig(v, "secret", "secretName")) != nstr(anchor["name"]) {
 				continue
@@ -1001,9 +1045,9 @@ func mailNodeTemplateFindings(t *testing.T, chart string) []string {
 // выбирающий под notify.
 func notifyAvailabilityFindings(objs []renderedObj) []string {
 	var out []string
-	deps := objsOfKind(objs, "Deployment")
+	deps := senderDeployments(objs)
 	if len(deps) != 1 {
-		return []string{"развёртываний notify " + strconv.Itoa(len(deps)) + ", ожидалось одно"}
+		return []string{"развёртываний notify-sender " + strconv.Itoa(len(deps)) + ", ожидалось одно"}
 	}
 	d := deps[0]
 	if r, _ := ndig(d.doc, "spec", "replicas").(int); r < 2 {
@@ -1045,9 +1089,9 @@ func TestNotifyAvailability(t *testing.T) {
 // migrateFindings — инициализирующий контейнер `migrate`: `kacho-migrator up`,
 // DSN базы `kacho_notify`, пароль — ссылкой на секрет.
 func migrateFindings(objs []renderedObj) []string {
-	deps := objsOfKind(objs, "Deployment")
+	deps := senderDeployments(objs)
 	if len(deps) != 1 {
-		return []string{"развёртываний notify " + strconv.Itoa(len(deps))}
+		return []string{"развёртываний notify-sender " + strconv.Itoa(len(deps))}
 	}
 	for _, c := range nlist(nPodSpec(deps[0])["initContainers"]) {
 		if nstr(ndig(c, "name")) != "migrate" {
@@ -1108,11 +1152,13 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	}
 }
 
-// migrateDeployment — синтетическое развёртывание notify с контейнером migrate
+// migrateDeployment — синтетическое развёртывание notify-sender (контейнер
+// `notify`) с контейнером migrate
 // и DSN dsn: вход решения migrateFindings без рендера.
 func migrateDeployment(dsn string) []renderedObj {
 	return []renderedObj{{kind: "Deployment", name: "kacho-notify", doc: map[string]any{
 		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "notify"}},
 			"initContainers": []any{map[string]any{
 				"name": "migrate", "command": []any{"kacho-migrator"}, "args": []any{"up"},
 				"env": []any{

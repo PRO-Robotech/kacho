@@ -98,7 +98,7 @@ func judgeOne(t *testing.T, name string, profiles []string, text string, rules p
 }
 
 func TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	rules := currentPostureRules(t)
 	axes := []string{vendorAxisName, vendorAxisImage, vendorAxisChart, vendorAxisSource}
 	words := vendorWords()
@@ -178,7 +178,7 @@ func TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase(t *testing.T) {
 // Настоящая ручка профиля переводит одну половину стенда — находка называет
 // цепочку и половину; законное значение той же ручки — молчание.
 func TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	rules := currentPostureRules(t)
 	halves := []struct{ half, knob, want string }{
 		{"служба доступа", "kaname.config.authn.identityProvider", accessPostureKeyPath},

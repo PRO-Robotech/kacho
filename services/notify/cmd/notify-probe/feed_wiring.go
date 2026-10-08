@@ -93,6 +93,10 @@ func buildFeed(cfg config.Config, pool *pgxpool.Pool, narrower *listnarrow.Narro
 		Keyring: cfg.Keyring,
 		Metrics: reg,
 		Log:     logger.With(slog.String("component", "notification_feed")),
+		// Сервер ленты модуля исхода не наблюдает: наблюдатель — у владельца
+		// класса obligation в notify-sender (feed.NewLocal), а у модуля его нет,
+		// и это пишется явным значением, а не пропуском (issue-2924 З28 п.3).
+		Observer: feed.NopObserver,
 	})
 	if err != nil {
 		return feedParts{}, fmt.Errorf("сервер ленты: %w", err)

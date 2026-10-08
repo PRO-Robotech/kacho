@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -115,13 +116,16 @@ func NewSourceGate(module string, sl SourceLimits, now func() time.Time, reg pro
 }
 
 // Classes — классы, которые забирает `Claim` источника: на паузе источника
-// или при достигнутом суточном потолке потока — только security, иначе оба
-// (NTF1-H05, NTF1-H06). Пауза одного источника других не трогает.
+// или при достигнутом суточном потолке потока — только security, иначе
+// классы сети ([NetworkClasses]) (NTF1-H05, NTF1-H06). Пауза одного источника
+// других не трогает. Классы `feed.LocalOnlyClasses` (obligation) в этот набор
+// не входят ни при каком исходе: строки этого класса ставит только владелец
+// notify, Claim сети их не выдаёт (NTF-5 Р12), и их пределы — свои (NTF-5 Р15).
 func (g *SourceGate) Classes(ceilingReached bool) []feed.Class {
 	if g.limits.Paused || ceilingReached {
 		return []feed.Class{feed.ClassSecurity}
 	}
-	return feed.Classes()
+	return NetworkClasses()
 }
 
 // Take — сколько из n строк источник выдаёт сейчас по ведру: не больше n и
@@ -160,4 +164,22 @@ func registerVec[C prometheus.Collector](reg prometheus.Registerer, c C) (C, err
 		return zero, fmt.Errorf("регистрация метрики: %w", err)
 	}
 	return c, nil
+}
+
+// NetworkClasses — классы, которые источник отдаёт notify по сети: закрытый
+// перечень ленты без классов только процесса (feed.LocalOnlyClasses —
+// obligation, NTF-5 Р12). Строку такого класса берёт только точка входа ленты
+// в процессе её владельца; Claim сервера ленты её не выдаёт, и в контракте
+// corelib.notify класса нет. Перечень выводится из двух перечней ленты, а не
+// выписывается: класс, который лента добавит, попадает сюда либо в классы
+// только процесса без правки notify.
+func NetworkClasses() []feed.Class {
+	local := feed.LocalOnlyClasses()
+	out := make([]feed.Class, 0, len(feed.Classes()))
+	for _, c := range feed.Classes() {
+		if !slices.Contains(local, c) {
+			out = append(out, c)
+		}
+	}
+	return out
 }

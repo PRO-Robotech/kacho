@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -152,6 +153,19 @@ type Config struct {
 	// справочника DiskType). Cluster-internal listener only. Same host, internal
 	// port (mirrors iam/nlb/registry).
 	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc:9091"`
+
+	// NotifyInternalAddr — ЕДИНСТВЕННЫЙ адрес notify у края: внутренний
+	// gRPC-слушатель развёртывания notify-api. Публичного слушателя у notify нет
+	// по построению (NTF-4 Р20), поэтому и публичный NoticeService, и
+	// административный InternalNoticeService идут по одному соединению. Второй
+	// ручки адреса notify нет (NTF-5 З18 п.1).
+	//
+	// УМОЛЧАНИЯ НЕТ — намеренно, в отличие от прочих бэкендов. Адрес объявляет
+	// профиль установки; незаданное значение означает «notify в установке не
+	// объявлен»: ключей notify в карте соединений нет, его REST-маршруты не
+	// регистрируются, методы notify перечня получают отказ маршрута, а не вызов по
+	// подставленному адресу службы, которой в установке может не быть.
+	NotifyInternalAddr string `envconfig:"KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC"`
 
 	// --- Проекция потока изменений в браузер (kacho#1020) ---
 
@@ -647,21 +661,56 @@ type Config struct {
 	// Empty → no overrides. SIGHUP reload.
 	AuthZOverridesFile string `envconfig:"KACHO_API_GATEWAY_AUTHZ_OVERRIDES_FILE" default:""`
 
-	// AuthZTrustedXForwardedFor — honour X-Forwarded-For / X-Real-IP when
-	// computing the `client_ip` Condition context value. True for typical
-	// k8s ingress topology (api-gateway sits behind an L7 LB that strips
-	// client-supplied values). Flip to false when running api-gateway
-	// directly on the wire.
-	AuthZTrustedXForwardedFor bool `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF" default:"true"`
+	// TrustedHops — число доверенных прыжков перед краем (ручка
+	// KACHO_API_GATEWAY_TRUSTED_HOPS, замысел issue-2917, З8). Одна ручка на
+	// обоих читателей клиентского адреса: условие `client_ip` модели прав и
+	// ключи ограничителя анонимной почты. `0` — заголовкам пересылки не верить,
+	// адрес — TCP-пир; `N ≥ 1` — адрес берётся справа на глубине N.
+	//
+	// Строка, а не число, и без умолчания: `0` — законное значение, и
+	// «не задано» обязано быть представимо отдельно от него. Разбор и граница —
+	// ParseTrustedHops и таблица границ края (`anon_mail_bounds.go`); незаданная
+	// ручка — отказ старта с её именем.
+	TrustedHops string `envconfig:"KACHO_API_GATEWAY_TRUSTED_HOPS"`
 
-	// AuthZTrustedProxyCount — number of trusted reverse-proxy hops in front of
-	// the gateway. X-Forwarded-For is read from the RIGHT: the client IP is the
-	// entry the outermost trusted proxy recorded (parts[len-N]), so a
-	// client-forged leftmost XFF cannot drive `client_ip` / `source_ip_in_range`.
-	// Default 1 (single k8s ingress). Set 0 to ignore forwarded headers entirely
-	// and treat the TCP peer as authoritative. Only consulted when
-	// AuthZTrustedXForwardedFor is true.
-	AuthZTrustedProxyCount int `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT" default:"1"`
+	// --- ограничитель анонимной почты края (приёмка NTF-2, Р5, Р8) ---
+	//
+	// Ни у одной ручки нет умолчания: значения поставляет профиль, наличие и
+	// границы судит страж ResolveEdgeLimits по одной таблице
+	// (`anon_mail_bounds.go`). Поля строковые: отсутствие отличимо от любого
+	// значения, и разбор с границей живут в одном месте — в таблице.
+
+	// Ось источника: счёт FREE ≤ POW ≤ HARD и окна W_F ≤ W_P ≤ W_H.
+	AnonMailIPFreeLimit  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_LIMIT"`
+	AnonMailIPPoWLimit   string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_POW_LIMIT"`
+	AnonMailIPHardLimit  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_LIMIT"`
+	AnonMailIPFreeWindow string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_FREE_WINDOW"`
+	AnonMailIPPoWWindow  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_POW_WINDOW"`
+	AnonMailIPHardWindow string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_IP_HARD_WINDOW"`
+
+	// Сложность вызова proof-of-work: базовая и повышенная, в битах.
+	AnonMailPoWBitsBase string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_BASE"`
+	AnonMailPoWBitsHigh string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_POW_BITS_HIGH"`
+
+	// Ось подсети: счёт по длине префикса и окна, общие для длин.
+	AnonMailSubnetV4Len24PoWLimit  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_POW_LIMIT"`
+	AnonMailSubnetV4Len24HardLimit string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V4_24_HARD_LIMIT"`
+	AnonMailSubnetV6Len56PoWLimit  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_POW_LIMIT"`
+	AnonMailSubnetV6Len56HardLimit string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_56_HARD_LIMIT"`
+	AnonMailSubnetV6Len48PoWLimit  string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_POW_LIMIT"`
+	AnonMailSubnetV6Len48HardLimit string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_V6_48_HARD_LIMIT"`
+	AnonMailSubnetPoWWindow        string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_POW_WINDOW"`
+	AnonMailSubnetHardWindow       string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_SUBNET_HARD_WINDOW"`
+
+	// Общий поток: ведро RATE в секунду и всплеск BURST.
+	AnonMailGlobalRatePerSecond string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_RATE_PER_SECOND"`
+	AnonMailGlobalBurst         string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_GLOBAL_BURST"`
+
+	// AnonMailPoWKeyFile — путь к файлу секрета, которым подписываются вызовы
+	// proof-of-work (замысел issue-2917, З9). Один секрет на флот; вывода из
+	// другого секрета нет. Без файла или с ключом короче 32 байт — отказ
+	// старта (ReadAnonMailPoWKey). В 19 ключей Р8 не входит.
+	AnonMailPoWKeyFile string `envconfig:"KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE"`
 
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
@@ -692,6 +741,7 @@ type Config struct {
 	MTLSGeoEnable      bool `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_ENABLE"      default:"false"`
 	MTLSRegistryEnable bool `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_ENABLE" default:"false"`
 	MTLSStorageEnable  bool `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_ENABLE"  default:"false"`
+	MTLSNotifyEnable   bool `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE"   default:"false"`
 
 	// Per-edge SNI/server-name overrides. Empty ⇒ derive from the dial-addr host.
 	MTLSVPCServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_VPC_SERVER_NAME"      default:""`
@@ -701,6 +751,7 @@ type Config struct {
 	MTLSGeoServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_SERVER_NAME"      default:""`
 	MTLSRegistryServerName string `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_SERVER_NAME" default:""`
 	MTLSStorageServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
+	MTLSNotifyServerName   string `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_SERVER_NAME"   default:""`
 
 	// Hybrid external listener: when true, the external TLS listener
 	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven and the internal CA
@@ -898,8 +949,12 @@ func (c Config) DomainsWithInternalBackend() []string {
 // по которому gRPC-роутер (server.go Resolver / shimproxy.go) выбирает backend.
 // "geo" / "geoInternal" — kacho-geo public / internal endpoints. Domain-ключ
 // "geo" совпадает с proto-package `kacho.cloud.geo.v1.*` (та же маршрутизация).
+// "notifyInternal" — единственный адрес notify (внутренний слушатель notify-api),
+// и только когда он объявлен. Ключа "notify" здесь нет: у notify один слушатель,
+// и ключ домена для резолвера композиционный корень ставит псевдонимом на то же
+// соединение, а не вторым адресом (NTF-5 З18 п.1, п.2).
 func (c Config) BackendAddrs() map[string]string {
-	return map[string]string{
+	addrs := map[string]string{
 		"vpc":             c.VPCAddr,
 		"vpcInternal":     c.VPCInternalAddr,
 		"compute":         c.ComputeAddr,
@@ -922,10 +977,14 @@ func (c Config) BackendAddrs() map[string]string {
 		"storage":              c.StorageAddr,
 		"storageInternal":      c.StorageInternalAddr,
 	}
+	if c.NotifyInternalAddr != "" {
+		addrs[InternalBackendKey("notify")] = c.NotifyInternalAddr
+	}
+	return addrs
 }
 
 // EdgeTLSClient assembles the corelib grpcclient.TLSClient value-struct for a
-// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage"),
+// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage" | "notify"),
 // deriving the server-name from the dial address host when no per-edge override
 // is set.
 //
@@ -990,6 +1049,8 @@ func (c Config) edgeMTLS(edge string) (enable bool, serverName string, err error
 		return c.MTLSRegistryEnable, c.MTLSRegistryServerName, nil
 	case "storage":
 		return c.MTLSStorageEnable, c.MTLSStorageServerName, nil
+	case "notify":
+		return c.MTLSNotifyEnable, c.MTLSNotifyServerName, nil
 	default:
 		return false, "", fmt.Errorf("unknown mtls edge %q", edge)
 	}
@@ -1063,3 +1124,53 @@ func PostureOf(raw string) servicecontract.Mode {
 	}
 	return mode
 }
+
+// TrustedHopsKnob — имя ручки числа доверенных прыжков. Объявлено один раз:
+// его называют отказ разбора и отказ сборки оператора клиентского адреса.
+const TrustedHopsKnob = "KACHO_API_GATEWAY_TRUSTED_HOPS"
+
+// TrustedHops — число доверенных прыжков перед краем, построенное разбором
+// ручки (замысел issue-2917, З8; CX2-12).
+//
+// Нулевое значение типа — «не построено разбором», а не «ноль прыжков»: поле
+// parsed отличает законный ноль от забытого значения. Поэтому потребитель
+// (`middleware.NewContextExtractor`) может отвергнуть непостроенное значение
+// ошибкой сборки корня, и «вызывающий забыл число прыжков» невыразимо — прежнее
+// умолчание «1 прыжок» снято вместе с опцией, которая его переопределяла.
+type TrustedHops struct {
+	n      int
+	parsed bool
+}
+
+// ParseTrustedHops — единственный построитель TrustedHops: целое ≥ 0. Пустое,
+// нечисловое и отрицательное значения — ошибка с именем ручки.
+func ParseTrustedHops(raw string) (TrustedHops, error) {
+	h, err := parseTrustedHopsValue(raw)
+	if err != nil {
+		return TrustedHops{}, fmt.Errorf("%s %w", TrustedHopsKnob, err)
+	}
+	return h, nil
+}
+
+// parseTrustedHopsValue — разбор без имени ручки: имя добавляет вызывающий
+// (ParseTrustedHops либо таблица границ края, называющая каждую строку сама).
+func parseTrustedHopsValue(raw string) (TrustedHops, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return TrustedHops{}, errNotSet
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return TrustedHops{}, fmt.Errorf("= %q: не целое число (граница: целое ≥ 0)", s)
+	}
+	if n < 0 {
+		return TrustedHops{}, fmt.Errorf("= %d: граница ≥ 0 (0 — заголовкам пересылки не верить)", n)
+	}
+	return TrustedHops{n: n, parsed: true}, nil
+}
+
+// Count — число доверенных прыжков.
+func (h TrustedHops) Count() int { return h.n }
+
+// Parsed сообщает, построено ли значение разбором ручки.
+func (h TrustedHops) Parsed() bool { return h.parsed }

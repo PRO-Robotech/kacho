@@ -14,9 +14,11 @@ package deliver
 //     дождаться строк в полёте (остановка процесса доводит их, З24 (в)).
 //   - Порты: сборка ([Build]), право ([Grants] — `*grant.Resolver`), сетка
 //     ([Limiter] — `*limits.Limiter`), рендер ([Renderer], предмет N5),
-//     отправитель ([Sender] — `*smtp.Sender`), лента источника по модулю
-//     ([Feed] — клиент gRPC ленты), внедряемые часы ([Clock]: длительности,
-//     а не моменты для арифметики сроков, УК80).
+//     отправитель ([Sender] — `*smtp.Sender`), внедряемые часы ([Clock]:
+//     длительности, а не моменты для арифметики сроков, УК80).
+//   - Путь `Ack` строки — путь ПАЧКИ (`source.Batch.Feed`, полоса A2): исход
+//     уходит по тому соединению, по которому строка взята в аренду; перечня
+//     клиентов ленты у исполнителей нет.
 //   - [Resolved] — описание строки после клеток 1–2; рендер получает его.
 //   - Подпись DKIM (полоса N15, Р19 «Подпись», замысел §12а): порт [Signer]
 //     в [Config] — `Sign(msg []byte) ([]byte, error)`, им становится
@@ -116,7 +118,6 @@ func newRig(t *testing.T, o rigOpts) *rig {
 		reg:     prometheus.NewRegistry(),
 	}
 	r.relay, r.sender = relayWith(t, o.relay, o.senderLimit)
-	feeds := map[string]Feed{}
 	for _, s := range o.sources {
 		f := newFakeFeed()
 		if o.feed != nil {
@@ -124,7 +125,6 @@ func newRig(t *testing.T, o rigOpts) *rig {
 		}
 		r.feeds[s.Module] = f
 		r.sources[s.Module] = s
-		feeds[s.Module] = f
 	}
 	logger, lb := newLog()
 	r.log = lb
@@ -143,7 +143,6 @@ func newRig(t *testing.T, o rigOpts) *rig {
 		Render:             fixtureRender{r.render},
 		Sender:             r.sender,
 		Signer:             signer,
-		Feeds:              feeds,
 		From:               fixtureFrom,
 		Workers:            8,
 		ResolveSendTimeout: probeResolveSendTimeout,
@@ -173,7 +172,7 @@ func (r *rig) deliver(module string, sentAt time.Time, rows ...*notifyv1.Claimed
 	if free := r.w.Free(); free < len(rows) {
 		r.t.Fatalf("свободных исполнителей %d меньше пачки %d", free, len(rows))
 	}
-	r.w.Deliver(context.Background(), source.Batch{Source: src, Rows: rows, SentAt: sentAt})
+	r.w.Deliver(context.Background(), source.Batch{Source: src, Rows: rows, SentAt: sentAt, Feed: r.feeds[module]})
 	r.w.Wait()
 }
 

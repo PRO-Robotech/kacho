@@ -18,6 +18,12 @@
 // `kacho_journal.initiator`, выставленная ЛОКАЛЬНО к транзакции
 // (`set_config(…, true)`). Оператор вставки колонку `initiator` не называет
 // никогда: её единственный производитель — умолчание колонки.
+//
+// Флаг ленты `kacho_feed.enabled` транзакция пробы ставит ВСЕГДА, как и помощник
+// (`journaltx.Begin` ставит обе настройки): функция базы `resource-event` на
+// журнале модуля (NTF-3 З10) отвергает транзакцию без флага. Значение `false` —
+// предмет проб инициатор, а не лента; отрицательный кейс «инициатор не
+// выставлен» меняет против близнеца ровно один факт.
 package migrations_test
 
 import (
@@ -44,6 +50,10 @@ import (
 
 // journalInitiatorSetting — настройка, из которой умолчание колонки берёт инициатора.
 const journalInitiatorSetting = "kacho_journal.initiator"
+
+// journalFeedSetting — флаг ленты модуля в транзакции записи журнала; его читает
+// функция базы resource-event.
+const journalFeedSetting = "kacho_feed.enabled"
 
 // journalInitiatorColumn — колонка инициатора строки журнала.
 const journalInitiatorColumn = "initiator"
@@ -120,19 +130,24 @@ func dryRun(conn *pgx.Conn, fn func(pgx.Tx) error) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT set_config($1, $2, true)`, journalInitiatorSetting, probeInitiator); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT set_config($1, $2, true), set_config($3, 'false', true)`,
+		journalInitiatorSetting, probeInitiator, journalFeedSetting); err != nil {
 		return err
 	}
 	return fn(tx)
 }
 
 // inJournalTx исполняет fn в транзакции, первым оператором которой — установка
-// инициатора локально к транзакции (если who != nil). Ошибка fn или фиксации
+// флага ленты и инициатора (если who != nil) локально к транзакции. Ошибка fn или фиксации
 // откатывает транзакцию и возвращается как есть: часть утверждений ждёт отказа базы.
 func inJournalTx(conn *pgx.Conn, who initiatorOf, fn func(pgx.Tx) error) error {
 	ctx := context.Background()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config($1, 'false', true)`, journalFeedSetting); err != nil {
+		_ = tx.Rollback(ctx)
 		return err
 	}
 	if who != nil {

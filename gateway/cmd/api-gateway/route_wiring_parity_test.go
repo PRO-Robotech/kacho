@@ -49,10 +49,50 @@ const (
 	minBackendKeys    = 10
 )
 
-// realBackends открывает карту соединений тем же вызовом, что и composition root.
-// grpc.NewClient ленив — сети здесь не касаемся.
-func realBackends(t *testing.T) (config.Config, proxy.Backends) {
+// installation — какую установку объявляет проба.
+//
+// У notify адреса по умолчанию нет (NTF-4 Р20): пустое поле означает «notify в
+// установке не объявлен», и карта соединений ключей notify тогда не несёт. Поэтому
+// проба, которой нужна установка С notify, объявляет её явно — адресом и парой
+// mTLS, ровно как профиль развёртывания, — а не получает её подстановкой
+// умолчания. Без этой опции проба судила бы установку, которой не бывает.
+type installation int
+
+const (
+	// installationWithoutNotify — адрес notify не объявлен.
+	installationWithoutNotify installation = iota
+	// installationWithNotify — адрес внутреннего слушателя notify-api и пара mTLS
+	// края к нему объявлены.
+	installationWithNotify
+)
+
+// notifyProbeAddr — адрес, которым проба объявляет notify. grpc.NewClient ленив,
+// поэтому имя не разрешается и сети проба не касается.
+const notifyProbeAddr = "notify-api.kacho.svc:9091"
+
+// declareInstallation выставляет окружение установки до config.Load.
+func declareInstallation(t *testing.T, inst installation) {
 	t.Helper()
+	switch inst {
+	case installationWithNotify:
+		cert, key, ca := writePEMTriple(t)
+		fullCertEnv(t, cert, key, ca)
+		t.Setenv("KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC", notifyProbeAddr)
+		t.Setenv("KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE", "true")
+	case installationWithoutNotify:
+		// Явно пусто: значение из окружения процесса, запустившего пробу, не
+		// подменяет объявленную установку.
+		t.Setenv("KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC", "")
+	default:
+		t.Fatalf("неизвестная установка %d", inst)
+	}
+}
+
+// realBackends открывает карту соединений тем же вызовом, что и composition root,
+// для объявленной установки. grpc.NewClient ленив — сети здесь не касаемся.
+func realBackends(t *testing.T, inst installation) (config.Config, proxy.Backends) {
+	t.Helper()
+	declareInstallation(t, inst)
 	cfg, err := config.Load()
 	require.NoError(t, err, "config.Load")
 	backends, cleanup, err := dialBackends(cfg)
@@ -73,7 +113,7 @@ func realBackends(t *testing.T) (config.Config, proxy.Backends) {
 // поверхность, поэтому целый домен может выпасть из нативного gRPC и не
 // проявиться ни в одном наблюдаемом симптоме, кроме «RPC не работает».
 func TestRouteWiring_EveryAllowedMethodResolvesOnTheRealBackends(t *testing.T) {
-	_, backends := realBackends(t)
+	_, backends := realBackends(t, installationWithNotify)
 	resolve := proxy.Resolver(backends)
 
 	require.GreaterOrEqual(t, len(allowlist.AllowedMethods), minAllowedMethods,
@@ -122,7 +162,7 @@ func TestRouteWiring_EveryAllowedMethodResolvesOnTheRealBackends(t *testing.T) {
 // же убедительно, как «всё провязано»: предикат обязан уметь ответить «нет» на
 // том же самом входе, отличающемся ТОЛЬКО отсутствием ключа.
 func TestRouteWiring_UnwiredDomainIsRefused(t *testing.T) {
-	_, backends := realBackends(t)
+	_, backends := realBackends(t, installationWithNotify)
 
 	const probe = "/kacho.cloud.vpc.v1.NetworkService/Get"
 	require.True(t, allowlist.IsAllowed(probe), "проба обязана быть настоящим разрешённым путём")
@@ -151,14 +191,96 @@ func TestRouteWiring_UnwiredDomainIsRefused(t *testing.T) {
 // выше не должно достигаться тем, что резолвер маршрутизирует вообще всё.
 // Административная поверхность на той же самой карте по-прежнему не резолвится.
 func TestRouteWiring_InternalStaysUnroutedOnTheSameWiring(t *testing.T) {
-	_, backends := realBackends(t)
+	_, backends := realBackends(t, installationWithNotify)
 	resolve := proxy.Resolver(backends)
 
-	const adminProbe = "/kacho.cloud.vpc.v1.InternalAddressPoolService/List"
-	require.True(t, proxy.IsInternalRoute(adminProbe), "проба обязана быть настоящим Internal*-путём")
-	if _, _, routed := resolve(adminProbe); routed {
-		t.Fatalf("Internal*-метод %q резолвится на внешней карте (запрет #6)", adminProbe)
+	// Второй путь — notify: его соединение ведёт на ВНУТРЕННИЙ слушатель, где
+	// InternalNoticeService зарегистрирован, поэтому отказ здесь держит только
+	// резолвер, а не построение соединения (NTF-4 Р20).
+	for _, adminProbe := range []string{
+		"/kacho.cloud.vpc.v1.InternalAddressPoolService/List",
+		"/kacho.cloud.notify.v1.InternalNoticeService/Create",
+	} {
+		require.True(t, proxy.IsInternalRoute(adminProbe), "проба обязана быть настоящим Internal*-путём")
+		if _, _, routed := resolve(adminProbe); routed {
+			t.Fatalf("Internal*-метод %q резолвится на внешней карте (запрет #6)", adminProbe)
+		}
 	}
+}
+
+// TestRouteWiring_NotifyKeysShareOneConnection — у notify слушатель один, и оба
+// ключа карты (`notify` для резолвера по домену пакета, `notifyInternal` для
+// внутреннего REST) ведут в ОДНО соединение: один адрес, одно ребро mTLS, одно
+// закрытие (NTF-5 З18 п.1–п.3).
+//
+// Близнец — vpc: у него два слушателя, и его два ключа — два соединения. Без
+// близнеца равенство указателей ниже могло бы означать, что карта вообще
+// склеивает ключи домена, а не что у notify псевдоним.
+func TestRouteWiring_NotifyKeysShareOneConnection(t *testing.T) {
+	_, backends := realBackends(t, installationWithNotify)
+
+	notify, ok := backends["notify"]
+	require.True(t, ok, "установка с notify, а ключа \"notify\" в карте нет")
+	notifyInternal, ok := backends["notifyInternal"]
+	require.True(t, ok, "установка с notify, а ключа \"notifyInternal\" в карте нет")
+	require.Same(t, notifyInternal, notify,
+		"ключи notify и notifyInternal ведут в разные соединения — у notify слушатель один, "+
+			"второе соединение было бы вторым адресом одного предмета")
+	require.Equal(t, notifyProbeAddr, notify.Target(),
+		"соединение notify ведёт не на объявленный адрес")
+
+	vpc, vpcInternal := backends["vpc"], backends["vpcInternal"]
+	require.NotNil(t, vpc)
+	require.NotNil(t, vpcInternal)
+	require.NotSame(t, vpc, vpcInternal,
+		"близнец сломан: у vpc два слушателя, а ключи склеены в одно соединение")
+
+	require.Equal(t, backendEdge("notify"), backendEdge("notifyInternal"),
+		"у двух ключей notify разные рёбра mTLS")
+	require.Equal(t, "notify", backendEdge("notify"))
+}
+
+// TestRouteWiring_NoNotifyAddressNoNotifyKeys — установка без notify: ни одного из
+// двух ключей, и ни одна строка notify перечня не резолвится — вызывающий получает
+// отказ маршрута, а не вызов по пустому адресу (NTF-5 З18 п.4, CX5-45 (г)).
+//
+// Положительный близнец — та же проба на установке с notify: те же строки
+// резолвятся. Без него ноль резолвов ниже мог бы означать, что строк notify в
+// перечне нет вовсе.
+func TestRouteWiring_NoNotifyAddressNoNotifyKeys(t *testing.T) {
+	var notifyRows []string
+	for m := range allowlist.AllowedMethods {
+		if d, ok := proxy.RoutableDomain(m); ok && d == "notify" {
+			notifyRows = append(notifyRows, m)
+		}
+	}
+	sort.Strings(notifyRows)
+	require.NotEmpty(t, notifyRows, "в перечне нет ни одной строки notify — пробе нечего судить")
+
+	t.Run("without", func(t *testing.T) {
+		_, backends := realBackends(t, installationWithoutNotify)
+		for _, key := range []string{"notify", "notifyInternal"} {
+			_, ok := backends[key]
+			require.False(t, ok, "адрес notify не объявлен, а ключ %q в карте есть", key)
+		}
+		resolve := proxy.Resolver(backends)
+		for _, m := range notifyRows {
+			if _, _, routed := resolve(m); routed {
+				t.Errorf("установка без notify, а %q резолвится", m)
+			}
+		}
+	})
+
+	t.Run("with", func(t *testing.T) {
+		_, backends := realBackends(t, installationWithNotify)
+		resolve := proxy.Resolver(backends)
+		for _, m := range notifyRows {
+			if _, conn, routed := resolve(m); !routed || conn == nil {
+				t.Errorf("близнец: установка с notify, а %q не резолвится", m)
+			}
+		}
+		t.Logf("строк notify в перечне: %d, все резолвятся на установке с notify", len(notifyRows))
+	})
 }
 
 // TestRouteWiring_EveryBackendKeyHasAConsumer — зеркальная сторона: за каждым
@@ -171,7 +293,7 @@ func TestRouteWiring_InternalStaysUnroutedOnTheSameWiring(t *testing.T) {
 // список; и то и другое находка. Списка исключений у правила нет, поэтому
 // истекать нечему.
 func TestRouteWiring_EveryBackendKeyHasAConsumer(t *testing.T) {
-	_, backends := realBackends(t)
+	_, backends := realBackends(t, installationWithNotify)
 
 	routed := map[string]struct{}{}
 	for m := range allowlist.AllowedMethods {

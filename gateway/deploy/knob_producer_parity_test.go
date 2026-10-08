@@ -212,6 +212,7 @@ func scanTemplate(path, body string) templateScan {
 		var line string
 		line, inComment = knobStripTemplateComments(raw, inComment)
 		line = knobStripYAMLComment(line)
+		line = knobStripRefusalMessages(line)
 		var named []string
 		for _, w := range knobProductToken.FindAllString(line, -1) {
 			if knobIsProductName(w) {
@@ -305,6 +306,20 @@ func knobStripYAMLComment(line string) string {
 		}
 	}
 	return line
+}
+
+// knobRefusalMessage — текст отказа `required` и `fail` литералом в двойных
+// кавычках: первый аргумент функции, которая либо возвращает ВТОРОЙ аргумент,
+// либо обрывает рендер. В под этот литерал не попадает никогда, поэтому он —
+// проза, как комментарий: отказ рендера обязан называть ручку (приёмка NTF-2
+// Р8), и имя в нём не эмиссия. Снимается ТОЛЬКО литерал: текст, собранный
+// выражением (`required (printf …)`), и любая иная позиция имени остаются на
+// строке и судятся (близнецы — TestKnobParityInjection_RefusalMessageIsProse…).
+var knobRefusalMessage = regexp.MustCompile(`\b(required|fail)\s+"(?:[^"\\]|\\.)*"`)
+
+// knobStripRefusalMessages — строка без литералов текста отказа.
+func knobStripRefusalMessages(line string) string {
+	return knobRefusalMessage.ReplaceAllString(line, `$1 ""`)
 }
 
 func mergeEmissions(dst, src map[string][]string) map[string][]string {

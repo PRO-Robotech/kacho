@@ -1,0 +1,63 @@
+From: Kacho
+ <noreply@example.invalid>
+To: recipient@example.invalid
+Subject: [kind] [resource_id]: [change]
+Date: Thu, 01 Jan 2026 00:00:00 +0000
+Message-ID: <d96ff73ee272ffd912d0ded6dd68d60b@example.invalid>
+Auto-Submitted: auto-generated
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="=_alt_d96ff73ee272ffd912d0ded6dd68d60b"
+
+--=_alt_d96ff73ee272ffd912d0ded6dd68d60b
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Kacho
+
+=D0=A0=D0=B5=D1=81=D1=83=D1=80=D1=81 [kind] [resource_id] ([scope]): [chang=
+e] =D0=B2 2026-01-01T00:00:00Z.
+
+=D0=98=D0=BC=D1=8F: [name]
+
+--=_alt_d96ff73ee272ffd912d0ded6dd68d60b
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html lang=3D"ru">
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8">
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1"=
+>
+<title>[kind] [resource_id]: [change]</title>
+</head>
+<body style=3D"margin:0;padding:0;background-color:#f4f5f7;">
+<table role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=
+=3D"0" border=3D"0" style=3D"width:100%;background-color:#f4f5f7;">
+<tr>
+<td align=3D"center" style=3D"padding:24px 12px;">
+<table role=3D"presentation" width=3D"600" cellpadding=3D"0" cellspacing=3D=
+"0" border=3D"0" style=3D"width:100%;max-width:600px;background-color:#ffff=
+ff;border:1px solid #e1e4e8;border-radius:6px;">
+<tr>
+<td style=3D"padding:20px 32px;border-bottom:1px solid #e1e4e8;font-family:=
+Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#24292f;">=
+Kacho</td>
+</tr>
+<tr>
+<td style=3D"padding:24px 32px;font-family:Arial,Helvetica,sans-serif;font-=
+size:15px;line-height:22px;color:#24292f;">
+<p style=3D"margin:0 0 16px 0;">=D0=A0=D0=B5=D1=81=D1=83=D1=80=D1=81 [kind]=
+ [resource_id] ([scope]): [change] =D0=B2 2026-01-01T00:00:00Z.</p>
+<p style=3D"margin:0 0 16px 0;">=D0=98=D0=BC=D1=8F: [name]</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+
+--=_alt_d96ff73ee272ffd912d0ded6dd68d60b--

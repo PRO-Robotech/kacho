@@ -108,6 +108,12 @@ ingress-nginx:
 # величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
 global:
   kacho:
+    # Слой под этим (values.dev.yaml) выключает правила тревоги причиной
+    # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на кластере
+    # a8f60d НЕ измерен. Включать — после замера на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере a8f60d не измерено"
     identity:
       smtp:
         connectionURI: "smtps://info%40prorobotech.ru@smtp.yandex.ru:465/"
@@ -392,6 +398,12 @@ registry:
 api-gateway:
   resources: *id002
   image: docker.io/prorobotech/kacho-api-gateway:main-ba01514b
+  # notify в этой цепочке не рендерится (проба notify-probe выключена выше), и
+  # notify-api нет — адрес notify, объявленный слоем стенда values.dev.yaml,
+  # снят: край не зовёт службу, которой в установке нет
+  # (deploy/notify_api_render_test.go).
+  backends:
+    notifyInternal: ""
 kaname:
   resources: *id002
   # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — СУЖЕНА ПРЕДЕЛОМ ЭТОГО КЛАСТЕРА

@@ -47,7 +47,12 @@
 set -euo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 SCRIPT="$(basename "$0")"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -226,9 +231,11 @@ while IFS= read -r row; do
   name="${row%%|*}"; files="${row#*|}"
   args=""; missing=""
   for f in $files; do
-    if [ -f "$UMBRELLA/$f" ]; then args="$args -f $UMBRELLA/$f"; else missing="$missing $f"; fi
+    [ -f "$UMBRELLA/$f" ] || missing="$missing $f"
   done
   if [ -n "$missing" ]; then violation "$name: нет values-файлов:$missing"; continue; fi
+  args="$(render_chain_args "$name" "$UMBRELLA" operator.yaml)" \
+    || fatal "цепочка $name гейта не прочитана — рендерить нечего"
 
   echo "=== профиль $name ($files) ==="
   # shellcheck disable=SC2086

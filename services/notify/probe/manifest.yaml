@@ -1,0 +1,29 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# ==========================================================================
+#  notify-probe — манифест СТЕНДОВОЙ пробы-источника notify.
+#
+#  Единственная строка — `notifications`: проба публикует ленту своего
+#  пространства, читатель ленты — notify. По этой строке применитель службы
+#  доступа заводит кортеж reader (notify читает ленту `notify-probe`) и запись
+#  выдачи пространства. Ресурсов, ролей и посева у пробы нет.
+#
+#  ТОЛЬКО НА СТЕНДЕ (решение владельца 2026-10-07). Файл лежит ВНЕ безусловного
+#  обхода производителя доставки (`services/*/manifest.yaml`): там он достался
+#  бы каждой цепочке, и в боевой установке появились бы права на ленту службы,
+#  которой там нет. Доставку объявляет профиль стенда перечнем
+#  `kaname.manifests.conditional` с условием `notifyProbe.enabled` — тем же
+#  значением, которым чарт поднимает саму пробу (deploy/helm/umbrella/
+#  values.dev.yaml; закон — corelib/modulemanifest/producer, §«Условная
+#  доставка»).
+#
+#  Что доставка идёт РОВНО цепочкам, поднимающим пробу, судит
+#      go test ./deploy/ -run TestStandOnlyProbeManifestReachesExactlyTheChainsThatRaiseTheProbe -count=1
+# ==========================================================================
+apiVersion: iam/v1
+module: notify-probe
+resources: []
+notifications:
+  namespace: notify-probe
+  readers: [notify]

@@ -9,6 +9,7 @@ package bundle
 import (
 	"io/fs"
 	"path"
+	"sort"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -39,8 +40,10 @@ func embeddedCopy(t *testing.T) fstest.MapFS {
 	return m
 }
 
-// fileWithPrefix — путь единственного файла копии, чьё базовое имя
-// начинается с prefix; не один — ФИКСТУРА.
+// fileWithPrefix — путь файла копии, чьё базовое имя начинается с prefix:
+// первый по порядку путей, чтобы порча была детерминированной при любом числе
+// шаблонов каталога. Порча одного шаблона обязана ронять всю сборку, поэтому
+// выбор шаблона предмета не меняет; ни одного файла — ФИКСТУРА.
 func fileWithPrefix(t *testing.T, m fstest.MapFS, prefix string) string {
 	t.Helper()
 	var hit []string
@@ -49,9 +52,10 @@ func fileWithPrefix(t *testing.T, m fstest.MapFS, prefix string) string {
 			hit = append(hit, p)
 		}
 	}
-	if len(hit) != 1 {
-		t.Fatalf("ФИКСТУРА: файлов с префиксом %q в копии %d, ждали 1", prefix, len(hit))
+	if len(hit) == 0 {
+		t.Fatalf("ФИКСТУРА: файлов с префиксом %q в копии 0 — портить нечего", prefix)
 	}
+	sort.Strings(hit)
 	return hit[0]
 }
 

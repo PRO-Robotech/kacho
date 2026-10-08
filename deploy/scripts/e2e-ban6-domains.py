@@ -119,8 +119,17 @@ def internal_services(root: pathlib.Path) -> tuple[dict[str, list[str]], int]:
 
     Читается ИЗ ДЕРЕВА, а не списком в коде: список разъехался бы с proto молча, и
     новый домен с Internal-контрактом выпал бы из охвата, не покраснев нигде.
+
+    ОДНО ИМЯ ДОМЕНА МОЖЕТ ЖИТЬ ПОД ДВУМЯ КОРНЯМИ, и службы складываются, а не
+    затирают друг друга. Домен `notify` — так: форма ленты лежит в фундаменте
+    (`proto/corelib/notify`, пакет `corelib.notify`), службы извещений и пробы — в
+    платформе (`proto/kacho/cloud/notify`, пакет `kacho.cloud.notify.v1`), и
+    проба ban #6 зовёт оба пакета одним доменом (`domain_of`). Пока корень,
+    пройденный последним, ЗАТИРАЛ запись первого, перепись видела у notify одну
+    ленту: InternalNoticeService и InternalNotifyProbeService выпадали молча, и
+    регистрация notify-api не узнавалась (kacho#2924, З19).
     """
-    out: dict[str, list[str]] = {}
+    acc: dict[str, set[str]] = {}
     files_read = 0
     for parts in PROTO_BASES:
         base = root.joinpath(*parts)
@@ -134,8 +143,8 @@ def internal_services(root: pathlib.Path) -> tuple[dict[str, list[str]], int]:
                 files_read += 1
                 found |= set(SERVICE_DECL.findall(f.read_text(encoding="utf-8")))
             if found:
-                out[dom.name] = sorted(found)
-    return out, files_read
+                acc.setdefault(dom.name, set()).update(found)
+    return {d: sorted(v) for d, v in acc.items()}, files_read
 
 
 def production_registrations(root: pathlib.Path) -> dict[str, list[str]]:
@@ -220,6 +229,8 @@ def census(root: pathlib.Path) -> dict:
       unserved       — домен → службы, чей контракт приземлён, но не провязан:
                        у ban #6 для них предмета НЕТ, и это печатается, а не
                        умалчивается;
+      unregistered   — провязанный домен → его службы, регистрации которых
+                       перепись не узнала (домен в предмете по соседней службе);
       proto_files_read / domains_with_contract / registrations_found —
                        объём осмотренного.
     """
@@ -230,10 +241,18 @@ def census(root: pathlib.Path) -> dict:
     regs = production_registrations(root)
     served: set[str] = set()
     unserved: dict[str, list[str]] = {}
+    # Службы провязанного домена, регистрации которых перепись НЕ узнала. Домен
+    # остаётся в предмете по соседней службе, и без этого ключа такая служба
+    # проходила бы пробу внешнего листенера «изолированной» из одного отсутствия:
+    # ни один листенер её не служит, и встречный контроль о ней не спрашивал.
+    unregistered: dict[str, list[str]] = {}
     for dom, names in services.items():
         wired = [n for n in names if regs.get(n)]
         if wired:
             served.add(dom)
+            missed = [n for n in names if not regs.get(n)]
+            if missed:
+                unregistered[dom] = missed
         else:
             unserved[dom] = list(names)
     # Носители — ВЫВОДЯТСЯ из путей регистраций, а не выписываются. Ведомость
@@ -251,6 +270,7 @@ def census(root: pathlib.Path) -> dict:
         "hosts": hosts,
         "served": served,
         "unserved": unserved,
+        "unregistered": unregistered,
         "service_dirs": service_dirs(root),
         "proto_files_read": files_read,
         "domains_with_contract": len(services),

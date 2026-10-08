@@ -1157,6 +1157,53 @@ notify:
   authMode: production
   db:
     sslMode: require
+  # Поставляемые значения ручек NTF-4 стадии S1 — столбец «поставляемое
+  # значение» таблицы Р16 приёмки NTF-4 (Д11); оператор меняет их в пределах
+  # границ, которые судит страж старта. Адрес ящика обратной связи, локальную
+  # часть адреса возврата и домен возврата задаёт оператор — здесь их нет, и
+  # незаданные они доезжают до процесса пустыми (отказ старта с именем ручки).
+  # Ключ отпечатка адреса — `notify.addressKey` либо объект
+  # `notify.addressKeySecret.name`, его заводит оператор (Д23).
+  feedback:
+    pollInterval: "1m"
+    pollStaleMax: "30m"
+    maxMessageBytes: "10485760"    # 10 МиБ
+    maxExpansionRatio: "20"
+    canaryInterval: "1h"
+    canaryDeadline: "15m"
+    leaseTTL: "3m"
+  sentLog:
+    retention: "720h"              # 30 сут
+  suppression:
+    hardTTL: "72h"
+    softThreshold: "3"
+    softWindow: "72h"
+    softTTL: "24h"
+    sweepInterval: "1h"
+  secretReloadInterval: "30s"
+  reputation:
+    hardBounceRateMax: "0.02"
+    complaintRateMax: "0.001"
+    window: "24h"
+  # ── notify-api (NTF-4 Р16, Р20, Р22; NTF-5 Р17) ─────────────────────────────
+  # Поставляемые значения — столбец «поставляемое значение» таблицы Р16 NTF-4 и
+  # Р17 NTF-5. Окно отзыва права `authz.cacheTTL` равно записи политики окон
+  # отзыва `notify KACHO_NOTIFY_AUTHZ_CACHE_TTL` (5s): величину отсюда сверяет
+  # гейт TestRevocationWindowIsDeclaredPolicy. Умолчаний у этих ручек нет —
+  # незаданная ручка — отказ рендера чарта notify с её именем.
+  authz:
+    # Внутренний слушатель службы доступа: Check звена прав и пакетная проверка
+    # сужателя; узел адреса — имя, сверяемое с листом службы доступа.
+    iamGRPCAddr: kaname-internal.kacho.svc:9091
+    # Круг пересылающих личность — край, единственный пересылающий (Р20).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+    cacheTTL: 5s
+    checkTimeout: 2s
+    denyBudgetPerSec: 100
+  handlingBudget: 30s
+  notice:
+    reminderLead: 24h
 
 storage:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).

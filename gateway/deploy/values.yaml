@@ -57,6 +57,14 @@ backends:
   # Пустое значение → storage-handlers не регистрируются вовсе (как у registry/geo/nlb).
   storage: kacho-storage.kacho.svc:9090
   storageInternal: kacho-storage.kacho.svc:9091
+  # notify — ЕДИНСТВЕННЫЙ адрес: внутренний mTLS-слушатель notify-api (NTF-4 Р20,
+  # NTF-5 З18 п.1). Публичного слушателя у notify нет; NoticeService и
+  # InternalNoticeService идут по одному соединению (REST InternalNoticeService —
+  # только на внутреннем REST-слушателе края). УМОЛЧАНИЯ НЕТ, в отличие от прочих
+  # бэкендов: адрес объявляет профиль, где notify-api развёрнут; пусто — ключей
+  # notify в карте соединений нет и маршруты notify не регистрируются. Заданный
+  # адрес требует ребра mTLS (`mtls.edges.notify`) — иначе отказ рендера.
+  notifyInternal: ""
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
 # Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
@@ -594,6 +602,57 @@ mtls:
                       # derived per dial-host (kacho-registry / kacho-registry-internal)
     storage: false    # gateway→storage (+ storageInternal); SERVER_NAME unset →
                       # derived per dial-host (kacho-storage), in peer SAN
+    notify: false     # gateway→notify-api (notifyInternal); SERVER_NAME unset →
+                      # derived per dial-host (kacho-notify-api), in peer SAN
+
+# ── ОГРАНИЧИТЕЛЬ АНОНИМНОЙ ПОЧТЫ КРАЯ (приёмка NTF-2, Р5, Р8) ────────────────
+#
+# Значения базового профиля поставки — ориентиры таблицы Р8 приёмки. Умолчаний
+# у процесса нет: страж старта (`gateway/internal/config/anon_mail_bounds.go`,
+# ResolveEdgeLimits) отказывает в пуске, называя незаданную ручку и нарушенную
+# границу. Шаблон умолчаний тоже не подставляет: каждая строка выводится через
+# `required`, и снятый здесь ключ — отказ рендера с именем ручки, а не под,
+# который не стартует.
+#
+# Число доверенных прыжков (`trustedHops`, KACHO_API_GATEWAY_TRUSTED_HOPS) в
+# этом файле НЕ объявляется намеренно (решение Д51): верное число зависит от
+# топологии установки, и значение здесь молча унаследовала бы каждая цепочка.
+# Его задаёт файл профиля стенда либо оператор; рендер без него отказывает.
+anonMail:
+  # Ось источника: FREE ≤ POW ≤ HARD; 1 мин ≤ W_F ≤ W_P ≤ W_H ≤ 24 ч; HARD/W_H ≤ 1000/ч.
+  ipFreeLimit: 3
+  ipPowLimit: 10
+  ipHardLimit: 100
+  ipFreeWindow: 15m
+  ipPowWindow: 1h
+  ipHardWindow: 1h
+  # Сложность вызова proof-of-work, биты: 8 ≤ BASE < HIGH ≤ 24.
+  powBitsBase: 16
+  powBitsHigh: 20
+  # Ось подсети: POW ≤ HARD у каждой длины префикса; окна общие для длин;
+  # HARD/W_Hs ≤ 10000/ч.
+  subnetV4Len24PowLimit: 50
+  subnetV4Len24HardLimit: 500
+  subnetV6Len56PowLimit: 50
+  subnetV6Len56HardLimit: 500
+  subnetV6Len48PowLimit: 50
+  subnetV6Len48HardLimit: 1000
+  subnetPowWindow: 1h
+  subnetHardWindow: 1h
+  # Общий поток: ведро RATE в секунду, всплеск BURST ≥ RATE.
+  globalRatePerSecond: 20
+  globalBurst: 100
+  # Ключ подписи вызовов proof-of-work (замысел issue-2917, З9): КООРДИНАТА
+  # объекта Secret, а не материал. Материал в дерево не попадает — репозиторий
+  # публичен. На стенде kind объект заводит посев `deploy/scripts/seed-notify-stand-secrets.sh`
+  # (один раз, дальше переиспользуется), на площадке — оператор (ведомость
+  # производителей `deploy/scripts/stack-secrets.sh`). Ключ — не короче 32 байт,
+  # один на весь флот края. Том обязательный: недостающий объект держит под до
+  # старта с именем секрета.
+  powKey:
+    secretName: kacho-api-gateway-anon-mail-pow-key
+    secretKey: pow.key
+    mountPath: /etc/api-gateway/anon-mail-pow
 
 # Arbitrary env vars escape-hatch (key: value).
 extraEnv: {}
@@ -727,6 +786,25 @@ metricsScrape:
   # где ключ уже есть, аннотация читает ЕГО — два места об одном порте
   # разъехались бы молча.
   port: 9095
+
+# global.kacho.alertRules — ПОСТАВКА ПРАВИЛ ТРЕВОГИ КРАЯ объектом PrometheusRule
+# (templates/prometheusrule.yaml; правила объяснены на странице
+# docs/content/install/observability.mdx).
+#
+# Адрес — под `global` (CX2-92 (а)): выключатель один на дерево kacho, его
+# читает чарт края в зонтике и без него, и тем же адресом его ставит каждая
+# цепочка стендов. Ручки `alertRules` в корне значений нет — второй адрес того
+# же решения молча не действовал бы (держит TestEdgeAlertRules_SwitchLivesUnderGlobalOnly).
+#
+# PrometheusRule — вид чужого оператора: где CRD нет, кластер отвергнет всю
+# установку. Такая цепочка выключает объект — и называет причину: выключение без
+# `disabledBecause` рендер отвергает, потому что невыставленная тревога молчит
+# так же, как исправное звено. Умолчание `true` стоит на стороне, которая шумит.
+global:
+  kacho:
+    alertRules:
+      enabled: true
+      disabledBecause: ""
 
 # ── ПОСАДКА БЕЗОПАСНОСТИ ─────────────────────────────────────────────────
 #

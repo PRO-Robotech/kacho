@@ -92,6 +92,11 @@ func useFixture(t *testing.T, edits map[string]*string) {
 		t.Setenv(envDKIMKeyFile, filepath.Join(dir, dkimKeyName))
 		t.Setenv(envDKIMSelectorFile, filepath.Join(dir, dkimSelectorName))
 	}
+	// Каталог ключа отпечатка фикстуры (Р15, Д23) — тоже каталог формы kubelet,
+	// выпущенный пробой: правка пробы, называющая эту ручку, его заменяет.
+	if _, edited := edits[envAddressKeyDir]; !edited {
+		t.Setenv(envAddressKeyDir, addressKeyDir(t))
+	}
 }
 
 func str(s string) *string { return &s }

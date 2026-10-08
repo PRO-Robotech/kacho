@@ -41,7 +41,7 @@ const (
 	forgedSubject = "usr-forged-9"
 	// relayedClientIP — адрес, который оператор цепочки выводит СПРАВА по одному
 	// доверенному прыжку из `X-Forwarded-For: 203.0.113.9, 10.0.0.1`
-	// (`chainWithRelay`: `WithTrustedProxyHops(1)`).
+	// (`chainWithRelay`: число прыжков 1).
 	relayedClientIP = "10.0.0.1"
 )
 

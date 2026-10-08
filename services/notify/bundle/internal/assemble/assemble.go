@@ -67,6 +67,9 @@ type Source struct {
 func Sources() []Source {
 	return []Source{
 		{Namespace: "notify-probe", Dir: "services/notify/notifications"},
+		{Namespace: "compute", Dir: "services/compute/notifications"},
+		{Namespace: "registry", Dir: "services/registry/notifications"},
+		{Namespace: "storage", Dir: "services/storage/notifications"},
 	}
 }
 

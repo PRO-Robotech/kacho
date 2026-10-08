@@ -73,6 +73,12 @@ global:
   # ключи пробы обратно (deploy/stacks-mail.txt уже называет этот файл файлом
   # кластера).
   kacho:
+    # Слой под этим (values.dev.yaml) выключает правила тревоги причиной
+    # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на её
+    # кластере НЕ измерен. Включать — после замера на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере цепочки prorobotech не измерено"
     notifications:
       modules:
         notifyProbe:
@@ -91,6 +97,12 @@ compute:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
+  # notify в этой цепочке не рендерится (проба notify-probe выключена выше), и
+  # notify-api нет — адрес notify, объявленный слоем стенда values.dev.yaml,
+  # снят: край не зовёт службу, которой в установке нет
+  # (deploy/notify_api_render_test.go).
+  backends:
+    notifyInternal: ""
 
 kaname:
   image:

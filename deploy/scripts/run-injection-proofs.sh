@@ -122,6 +122,7 @@ deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
+deploy/tests/helm/ntf2-start-conditions-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
 deploy/tests/helm/servername-checked-against-the-peer-inject.sh
 gateway/deploy/revocation_authority_inject.sh

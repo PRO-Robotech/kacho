@@ -23,11 +23,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 
 	notifyv1 "github.com/PRO-Robotech/corelib/api/corelib/notify"
 	"github.com/PRO-Robotech/corelib/notify/feed"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // sourceCallTimeout — срок вызова `Claim` и установления потока `Subscribe`
@@ -55,6 +57,15 @@ type Batch struct {
 	// не проходит через `.UTC()`, `.Round()` и сериализацию — монотонное
 	// показание снимается ими (УК80).
 	SentAt time.Time
+	// Feed — путь `Ack` строк пачки: клиент ТОГО ЖЕ соединения, по которому
+	// строки взяты в аренду (то же удостоверение notify и точный SAN сервера
+	// ленты). Второго соединения к источнику у исполнителей нет.
+	Feed Feed
+}
+
+// Feed — лента источника в части `Ack` (клиент gRPC ленты).
+type Feed interface {
+	Ack(ctx context.Context, req *notifyv1.AckRequest, opts ...grpc.CallOption) (*notifyv1.AckResponse, error)
 }
 
 // Deliverer — получатель пачек: исполнители строк.
@@ -65,6 +76,9 @@ type Deliverer interface {
 	// Deliver принимает пачку. Зовётся на цикле источника последовательно;
 	// строки пачки получатель обрабатывает параллельно, а не здесь по одной.
 	Deliver(ctx context.Context, b Batch)
+	// Wait дожидается строк в полёте: их `Ack` идёт по соединению пачки, и
+	// [Loops.Wait] закрывает соединения только после него.
+	Wait()
 }
 
 // Config — то, из чего поднимаются циклы.
@@ -87,14 +101,19 @@ type Config struct {
 
 // Loops — поднятые циклы источников.
 type Loops struct {
-	wg    sync.WaitGroup
-	conns []io.Closer
+	wg        sync.WaitGroup
+	conns     []io.Closer
+	deliverer Deliverer
 }
 
-// Wait ждёт, пока все циклы остановятся после отмены контекста [Start], и
-// закрывает соединения с источниками.
+// Wait ждёт, пока все циклы остановятся после отмены контекста [Start], затем
+// — строк в полёте у получателя ([Deliverer.Wait]: их `Ack` идёт по
+// соединениям циклов), и только после этого закрывает соединения с
+// источниками. Обратный порядок роняет `Ack` строки, чьё письмо уже ушло, и
+// следующий `Claim` выдаёт её снова — дубль письма.
 func (l *Loops) Wait() {
 	l.wg.Wait()
+	l.deliverer.Wait()
 	for _, c := range l.conns {
 		_ = c.Close()
 	}
@@ -111,7 +130,7 @@ func Start(ctx context.Context, cfg Config) (*Loops, error) {
 	if err != nil {
 		return nil, err
 	}
-	loops := &Loops{}
+	loops := &Loops{deliverer: cfg.Deliverer}
 	built := make([]*loop, 0, len(cfg.Sources))
 	for _, src := range cfg.Sources {
 		lp, err := newLoop(cfg, src, m)
@@ -152,7 +171,7 @@ func (c Config) validate() error {
 		for _, cl := range s.Classes {
 			if _, ok := wireClass(cl); !ok {
 				errs = append(errs, fmt.Errorf("запись #%d (модуль %q): класс %q вне перечня %v",
-					i+1, s.Module, cl, feed.Classes()))
+					i+1, s.Module, cl, limits.NetworkClasses()))
 			}
 		}
 	}

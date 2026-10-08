@@ -249,8 +249,12 @@ func TestNTF1P12StandDNSProfiles(t *testing.T) {
 	}
 	sort.Strings(names)
 	rendered := 0
+	// Рендер — цепочками ГЕЙТА: `prod` несёт слой оператора из каталога образцов
+	// (число доверенных прыжков края поставка не несёт, приёмка NTF-2 Р8, Д51);
+	// суждение (а)–(в) выше читает профили дословно.
+	renderStacks := deployStacksForRender(t, "operator.yaml")
 	for _, n := range names {
-		out, err := renderStandProfile(t, c, stacks[n])
+		out, err := renderStandProfile(t, c, renderStacks[n])
 		if err != nil {
 			t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: рендер профиля %s отказал: %v\n%s", n, err, lastLines(out, 5))
 		}

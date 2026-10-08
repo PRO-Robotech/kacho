@@ -27,7 +27,9 @@ package deploy_test
 //
 //	(1) каждый стенд, ОБЪЯВИВШИЙ доставку, получает от производителя годный
 //	    объект: имя — то самое, ключи — по одному на манифест дерева, тела —
-//	    побайтово те же;
+//	    побайтово те же; условно доставленный манифест (глубже
+//	    services/<каталог>/) судится здесь по телу, а КОМУ он доставлен — в
+//	    notify_probe_manifest_delivery_test.go по рендеру цепочки;
 //	(2) хотя бы один стенд доставку объявляет — иначе проверка беспредметна и
 //	    зеленела бы на дереве, где производителя нет вовсе;
 //	(3) собранный объект РАЗБИРАЕТСЯ обратно в те же байты: производитель
@@ -53,6 +55,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -201,6 +204,17 @@ func assertKeysMatchTree(t *testing.T, stack string, d manifestproducer.Delivery
 	t.Helper()
 	seen := map[string]bool{}
 	for _, s := range d.Sources {
+		if conditionalSource(s) {
+			// Условный источник (глубже services/<каталог>/): КОМУ он
+			// доставляется, судит гейт по рендеру
+			// (notify_probe_manifest_delivery_test.go); здесь — ЧТО: тело
+			// побайтово то, что лежит по его пути в дереве.
+			if body := treeFileAt(t, s.Path); string(s.Body) != string(body) {
+				t.Errorf("стенд %s: тело условного ключа %q разошлось с %s — доставляется "+
+					"не то, что в дереве", stack, s.Key(), s.Path)
+			}
+			continue
+		}
 		seen[s.Dir] = true
 		body, ok := tree[s.Dir]
 		if !ok {
@@ -245,9 +259,20 @@ func assertRenderRoundTrips(t *testing.T, stack string, d manifestproducer.Deliv
 		t.Errorf("стенд %s: объект не является ConfigMap %q: apiVersion=%q kind=%q name=%q",
 			stack, d.Name, back.APIVersion, back.Kind, back.Metadata.Name)
 	}
-	if len(back.Data) != len(tree) {
-		t.Errorf("стенд %s: ключей в объекте %d при манифестах дерева %d",
-			stack, len(back.Data), len(tree))
+	conditional := 0
+	for _, s := range d.Sources {
+		if !conditionalSource(s) {
+			continue
+		}
+		conditional++
+		if got, ok := back.Data[s.Key()]; !ok || got != string(treeFileAt(t, s.Path)) {
+			t.Errorf("стенд %s: условный ключ %q после печати и разбора отсутствует или "+
+				"разошёлся с %s", stack, s.Key(), s.Path)
+		}
+	}
+	if len(back.Data) != len(tree)+conditional {
+		t.Errorf("стенд %s: ключей в объекте %d при манифестах дерева %d и условно доставленных %d",
+			stack, len(back.Data), len(tree), conditional)
 	}
 	for dir, body := range tree {
 		got, ok := back.Data[dir+".manifest.yaml"]
@@ -260,4 +285,21 @@ func assertRenderRoundTrips(t *testing.T, stack string, d manifestproducer.Deliv
 				"доставится не то, что в дереве", stack, dir+".manifest.yaml")
 		}
 	}
+}
+
+// conditionalSource — источник условной доставки: лежит ГЛУБЖЕ
+// services/<каталог>/, вне безусловного обхода (corelib/modulemanifest/producer,
+// §«Условная доставка»).
+func conditionalSource(s manifestproducer.Source) bool { return strings.Contains(s.Dir, "/") }
+
+// treeFileAt — файл дерева по пути от корня репозитория, прочитанный проверкой
+// САМОСТОЯТЕЛЬНО, а не взятый у производителя.
+func treeFileAt(t *testing.T, rel string) []byte {
+	t.Helper()
+	// #nosec G304 -- путь от константы repoRoot и источника, объявленного профилем дерева.
+	body, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("%s не прочитан: %v", rel, err)
+	}
+	return body
 }
