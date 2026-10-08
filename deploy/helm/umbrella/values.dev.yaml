@@ -306,6 +306,7 @@ api-gateway:
       registry: true   # gateway→registry backend mTLS (registry.mtls.enable=true → server RequireAndVerifyClientCert)
       storage: true    # gateway→storage backend mTLS (storage.mtls.enable=true); needs the storage edge added to the gateway chart (below)
       notify: true     # gateway→notify-api mTLS — внутренний слушатель notify-api только mTLS (NTF-4 Р20)
+      notifyProbe: true  # gateway→notify-probe mTLS — слушатели пробы только mTLS (адрес notifyProbeInternal ниже)
   # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
   # api-gateway proxy un-freezes the loadbalancer domain (see
   # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
@@ -336,6 +337,14 @@ api-gateway:
     # иначе край звал бы службу, которой в установке нет. Сходимость «адрес у края
     # ⇔ notify-api в рендере» держит deploy/notify_api_render_test.go.
     notifyInternal: kacho-notify-api.kacho.svc:9091
+    # notify-probe — внутренний слушатель стендовой пробы (Service
+    # `kacho-notify-probe`, templates/notify-probe.yaml). Маршрут к ней край
+    # регистрирует ТОЛЬКО во внутреннем REST-блоке: InternalNotifyProbeService/Send
+    # зовёт администратор кластера своей личностью (решение владельца
+    # 2026-10-08 (1)). Профиль, где проба не рендерится (`notifyProbe.enabled:
+    # false`), адрес снимает (`notifyProbeInternal: ""`). Сходимость «адрес у
+    # края ⇔ проба в рендере» держит deploy/notify_probe_edge_route_render_test.go.
+    notifyProbeInternal: kacho-notify-probe.kacho.svc:9091
   # The local stand authenticates the same way every other stand does: a bearer the
   # edge verifies by SIGNATURE against the identity facade's published JWKS.
   #

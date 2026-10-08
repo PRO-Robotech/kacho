@@ -158,6 +158,19 @@ spec:
             - name: KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.backends.notifyProbeInternal }}
+            {{- /* оба слушателя пробы — только mTLS (ban #16): адрес без ребра
+                 mTLS дал бы незашифрованный дозвон, отвергнутый на рукопожатии
+                 при зелёных рендере и готовности края. */}}
+            {{- if not (and $.Values.mtls.enable $.Values.mtls.edges.notifyProbe) }}
+            {{- fail "backends.notifyProbeInternal (KACHO_API_GATEWAY_NOTIFY_PROBE_INTERNAL_GRPC) задан, а ребро mTLS к пробе не включено (mtls.enable и mtls.edges.notifyProbe) — слушатели notify-probe принимают только mTLS" }}
+            {{- end }}
+            # Внутренний слушатель стендовой пробы notify-probe: маршрут к ней —
+            # только во внутреннем REST-блоке края (решение владельца 2026-10-08 (1)).
+            # Не задан — пробы в установке нет, маршрута к ней нет.
+            - name: KACHO_API_GATEWAY_NOTIFY_PROBE_INTERNAL_GRPC
+              value: {{ . | quote }}
+            {{- end }}
             # Проекция потока изменений в браузер (kacho#1020).
             #
             # Перечень владельцев объявляется ВСЕГДА, в том числе пустым: пусто
@@ -426,6 +439,13 @@ spec:
             # mTLS (NTF-4 Р20); SERVER_NAME выводится из узла адреса
             # (kacho-notify-api.kacho.svc ∈ SAN листа notify-api).
             - name: KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE
+              value: "true"
+            {{- end }}
+            {{- if .Values.mtls.edges.notifyProbe }}
+            # gateway→notify-probe mTLS: внутренний слушатель пробы — только mTLS;
+            # SERVER_NAME выводится из узла адреса (kacho-notify-probe.kacho.svc ∈
+            # SAN серверного листа пробы).
+            - name: KACHO_API_GATEWAY_MTLS_NOTIFY_PROBE_ENABLE
               value: "true"
             {{- end }}
             {{- if .Values.mtls.hybridExternal }}

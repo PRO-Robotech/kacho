@@ -65,6 +65,15 @@ backends:
   # notify в карте соединений нет и маршруты notify не регистрируются. Заданный
   # адрес требует ребра mTLS (`mtls.edges.notify`) — иначе отказ рендера.
   notifyInternal: ""
+  # notifyProbe — внутренний mTLS-слушатель стендовой пробы notify-probe
+  # (InternalNotifyProbeService, NTF-1 З29). Маршрут к пробе — ТОЛЬКО во
+  # внутреннем REST-блоке края: глагол зовёт администратор кластера своей
+  # личностью (решение владельца 2026-10-08 (1)); в карту gRPC-маршрутизатора,
+  # ведущую наружу, адрес не входит (ban #6). УМОЛЧАНИЯ НЕТ: проба — стендовый
+  # объект, в цепочке prod её нет (NTF1-I04); пусто — маршрута к пробе нет.
+  # Заданный адрес требует ребра mTLS (`mtls.edges.notifyProbe`) — иначе отказ
+  # рендера: оба слушателя пробы принимают только mTLS.
+  notifyProbeInternal: ""
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
 # Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
@@ -604,6 +613,8 @@ mtls:
                       # derived per dial-host (kacho-storage), in peer SAN
     notify: false     # gateway→notify-api (notifyInternal); SERVER_NAME unset →
                       # derived per dial-host (kacho-notify-api), in peer SAN
+    notifyProbe: false  # gateway→notify-probe (notifyProbeInternal); SERVER_NAME
+                        # unset → derived per dial-host (kacho-notify-probe), in peer SAN
 
 # ── ОГРАНИЧИТЕЛЬ АНОНИМНОЙ ПОЧТЫ КРАЯ (приёмка NTF-2, Р5, Р8) ────────────────
 #
