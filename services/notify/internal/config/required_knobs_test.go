@@ -694,7 +694,7 @@ var envReaders = map[string][]string{
 // loaderDirs — загрузчики процессов `services/notify`: каталог относительно
 // корня службы. Исключение истекает само: загрузчик, не читающий окружение,
 // — находка.
-var loaderDirs = []string{"internal/config", "cmd/notify-probe/internal/config"}
+var loaderDirs = []string{"internal/config", "cmd/notify-probe/internal/config", "cmd/notify-api/internal/config"}
 
 // envReadFindings — чтения окружения вне загрузчиков в исходниках srcs
 // (путь относительно корня службы → текст) и число осмотренных файлов.

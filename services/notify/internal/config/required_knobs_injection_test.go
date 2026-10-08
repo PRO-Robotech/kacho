@@ -48,6 +48,7 @@ func syntheticSources() map[string]string {
 	return map[string]string{
 		"internal/config/config.go":                  "package config\nimport \"os\"\nfunc f() { _ = os.Getenv(\"X\") }\n",
 		"cmd/notify-probe/internal/config/config.go": "package config\nimport \"os\"\nfunc f() { _, _ = os.LookupEnv(\"X\") }\n",
+		"cmd/notify-api/internal/config/config.go":   "package config\nimport \"os\"\nfunc f() { _, _ = os.LookupEnv(\"X\") }\n",
 		"internal/deliver/deliver.go":                "package deliver\nimport \"os\"\nfunc g() { _, _ = os.ReadFile(\"x\") }\n",
 	}
 }
