@@ -79,7 +79,13 @@
 //   - a census entry whose declared value no longer matches what the service's
 //     source actually says. This is the direction that makes the gate bite: an
 //     operator who changes a default and does not touch the policy gets a red
-//     naming both numbers, so the change becomes a decision instead of a drift.
+//     naming both numbers, so the change becomes a decision instead of a drift;
+//   - a known knob whose value the census cannot compare: declared REQUIRED
+//     (no default in source, the value is left to the deployment), or declared
+//     with a default the parser cannot read. Both used to be dropped by the
+//     parser, so the census reported "a record without a subject" for a knob
+//     that was plainly in the tree — the consequence instead of the cause. Each
+//     is now a site (or a finding) with its coordinate; see Site.InSource.
 //
 // # What it must stay silent about
 //
@@ -138,14 +144,23 @@ import (
 	"time"
 )
 
-// Site is one construction site of an authorization-verdict cache: the file it
-// was found in, the service it belongs to, and the window the program will use.
+// Site is one declaration of a knob that sizes an authorization-verdict
+// window: the file it was found in, the service it belongs to, and — when the
+// source states one — the window the program will use.
+//
+// InSource tells the two declaration forms apart. True: the source carries the
+// value (a viper default, an envconfig `default` tag) and Window holds it.
+// False: the knob is REQUIRED — the source names it but leaves its value to the
+// deployment, so Window is zero and means nothing. Such a site is still a site:
+// dropping it made the census report "a record without a subject" for a knob
+// that is plainly in the tree, which names the consequence and hides the cause.
 type Site struct {
-	Service string
-	Knob    string
-	File    string
-	Line    int
-	Window  time.Duration
+	Service  string
+	Knob     string
+	File     string
+	Line     int
+	Window   time.Duration
+	InSource bool
 }
 
 // Report is the outcome, including what was examined.
@@ -159,6 +174,15 @@ type Report struct {
 // Findingf appends a finding.
 func (r *Report) Findingf(format string, args ...any) {
 	r.Findings = append(r.Findings, fmt.Sprintf(format, args...))
+}
+
+// unreadable records a declaration of a KNOWN knob whose value the parser
+// cannot read. It is a finding, never a skip: a census that declines to read a
+// declaration it recognised reports nothing at all, and nothing reads exactly
+// like "this site does not exist".
+func (r *Report) unreadable(path string, line int, knob, form string) {
+	r.Findingf("%s:%d: ручка окна %s объявлена с умолчанием (%s), но разбор величину не читает — "+
+		"окно, которое перепись не видит; запиши умолчание литералом длительности", path, line, knob, form)
 }
 
 // knobNames — the declared names that size an authorization-VERDICT cache.
@@ -343,14 +367,16 @@ func ScanFile(rep *Report, service, path, src string) error {
 			if _, recognised := knobNames[key]; !recognised {
 				return true
 			}
+			line := fset.Position(node.Pos()).Line
 			d, ok := durationOf(node.Args[1])
 			if !ok {
+				rep.unreadable(path, line, key, "SetDefault")
 				return true
 			}
 			rep.SitesMatched++
 			rep.Sites = append(rep.Sites, Site{
 				Service: service, Knob: key, File: path,
-				Line: fset.Position(node.Pos()).Line, Window: d,
+				Line: line, Window: d, InSource: true,
 			})
 		case *ast.StructType:
 			// envconfig: Field time.Duration `envconfig:"<KNOB>" default:"<v>"`
@@ -367,18 +393,26 @@ func ScanFile(rep *Report, service, path, src string) error {
 				if _, recognised := knobNames[knob]; !recognised {
 					continue
 				}
-				def := tag.Get("default")
-				if def == "" {
+				line := fset.Position(fld.Pos()).Line
+				def, hasDefault := tag.Lookup("default")
+				if !hasDefault {
+					// Ручка обязательна: величину выбирает посадка. Это площадка,
+					// а не пустое место, — её судит гейт дерева, а не разбор.
+					rep.SitesMatched++
+					rep.Sites = append(rep.Sites, Site{
+						Service: service, Knob: knob, File: path, Line: line,
+					})
 					continue
 				}
 				d, ok := parseWindow(knob, def)
 				if !ok {
+					rep.unreadable(path, line, knob, "default:\""+def+"\"")
 					continue
 				}
 				rep.SitesMatched++
 				rep.Sites = append(rep.Sites, Site{
 					Service: service, Knob: knob, File: path,
-					Line: fset.Position(fld.Pos()).Line, Window: d,
+					Line: line, Window: d, InSource: true,
 				})
 			}
 		}
