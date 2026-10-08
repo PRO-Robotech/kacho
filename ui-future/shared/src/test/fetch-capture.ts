@@ -57,3 +57,28 @@ export function requestBody(body: BodyInit | null | undefined): Record<string, u
   const text = requestBodyText(body);
   return text === undefined ? null : (JSON.parse(text) as Record<string, unknown>);
 }
+
+/**
+ * Заголовки запроса — в той форме, в какой их передал клиент, с именами в
+ * нижнем регистре (имя заголовка регистра не несёт).
+ *
+ * `HeadersInit` бывает тремя формами: `Headers`, массив пар и запись. Читаются
+ * все три; иначе проба, утверждающая «заголовка не было», была бы зелёной на
+ * форме, которую не умеет прочесть.
+ */
+export function requestHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  if (headers === undefined) return {};
+  const out: Record<string, string> = {};
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    headers.forEach((value, name) => {
+      out[name.toLowerCase()] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) {
+    for (const [name, value] of headers) out[name.toLowerCase()] = value;
+    return out;
+  }
+  for (const [name, value] of Object.entries(headers)) out[name.toLowerCase()] = String(value);
+  return out;
+}

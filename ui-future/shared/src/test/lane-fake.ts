@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { requestBody, requestUrl } from "./fetch-capture";
+import { requestBody, requestHeaders, requestUrl } from "./fetch-capture";
 
 /**
  * Дублёр полосы формы для проб экранов церемоний — сеть, и только сеть.
@@ -18,6 +18,8 @@ export interface LaneCall {
   path: string;
   query: string;
   body: Record<string, unknown> | null;
+  /** Заголовки, которые клиент отправил; имена — в нижнем регистре. */
+  headers: Record<string, string>;
 }
 
 export interface LaneAnswer {
@@ -59,7 +61,13 @@ export function installLane(routes: Record<string, Handler | LaneAnswer>) {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(requestUrl(input), "http://console.test");
     const method = (init?.method ?? "GET").toUpperCase();
-    const call: LaneCall = { method, path: url.pathname, query: url.search, body: requestBody(init?.body) };
+    const call: LaneCall = {
+      method,
+      path: url.pathname,
+      query: url.search,
+      body: requestBody(init?.body),
+      headers: requestHeaders(init?.headers),
+    };
     calls.push(call);
     const key = `${method} ${url.pathname}`;
     const nth = (seen.get(key) ?? 0) + 1;
