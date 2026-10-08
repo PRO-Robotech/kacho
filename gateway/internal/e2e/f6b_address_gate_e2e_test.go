@@ -54,9 +54,13 @@ import (
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 )
 
+// f6bAddressRefusalText — текст отказа Р3 с редакции 7 приёмки F6b
+// (kaname#526): состояние и шаг, который его снимает, побайтово.
+const f6bAddressRefusalText = "email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)"
+
 // f6bAddressRefusal — отказ адреса побайтово: значение службы
 // (`loginlanehttp.writeRefusal` у kaname), без `metadata` (приёмка F6b, Р3).
-const f6bAddressRefusal = `{"code":7,"message":"email address is not verified","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
+const f6bAddressRefusal = `{"code":7,"message":"` + f6bAddressRefusalText + `","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
 
 const (
 	f6bProject        = "prj00000000000000f6b"
@@ -388,7 +392,7 @@ func TestF6b45_DecisionRefusalWithTheServiceReasonIsTheAddressRefusalOnEveryObje
 	} {
 		got := st.callGRPC(t, call.method, token, call.in)
 		require.Equal(t, codes.PermissionDenied, got.Code(), "%s: %v", call.method, got.Err())
-		require.Equal(t, "email address is not verified", got.Message(), call.method)
+		require.Equal(t, f6bAddressRefusalText, got.Message(), call.method)
 		info := errorInfoOf(got)
 		require.NotNil(t, info, "%s: отказ адреса без ErrorInfo", call.method)
 		require.Equal(t, "EMAIL_NOT_VERIFIED", info.GetReason(), call.method)

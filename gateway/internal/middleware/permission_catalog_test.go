@@ -448,6 +448,33 @@ func TestPermissionCatalog_InternalClusterService_LockedSystemAdmin(t *testing.T
 	}
 }
 
+// TestPermissionCatalog_ClusterService_PublicTwinMatchesInternal — kacho#3093.
+// Публичный близнец `ClusterService` (kaname#661) открыт на внешнем слушателе,
+// и каждая его запись каталога обязана совпадать с записью внутреннего близнеца
+// по всему, что решает доступ: ключ права, отношение `system_admin`, область
+// (`cluster`, `*`) и порог подтверждения. Расхождение любого поля сделало бы
+// публичный адрес дешёвым обходом внутреннего; отсутствие записи — отказом
+// проверки прав в рантайме при зелёной сборке.
+func TestPermissionCatalog_ClusterService_PublicTwinMatchesInternal(t *testing.T) {
+	c, err := middleware.LoadEmbeddedPermissionCatalog("")
+	require.NoError(t, err)
+
+	for _, verb := range []string{"Get", "ListAdmins", "GrantAdmin", "RevokeAdmin"} {
+		t.Run(verb, func(t *testing.T) {
+			pub, ok := c.Lookup("kaname.cloud.iam.v1.ClusterService/" + verb)
+			require.True(t, ok, "public twin ClusterService/%s missing from embedded catalog", verb)
+			intr, ok := c.Lookup("kaname.cloud.iam.v1.InternalClusterService/" + verb)
+			require.True(t, ok, "internal twin InternalClusterService/%s missing from embedded catalog", verb)
+			assert.False(t, pub.IsExempt(), "ClusterService/%s must NOT be <exempt>", verb)
+			assert.Equal(t, intr.Permission, pub.Permission, "permission drift between twins on %s", verb)
+			assert.Equal(t, "system_admin", pub.RequiredRelation, "required_relation on ClusterService/%s", verb)
+			assert.Equal(t, intr.RequiredRelation, pub.RequiredRelation, "relation drift between twins on %s", verb)
+			assert.Equal(t, intr.ScopeExtractor, pub.ScopeExtractor, "scope drift between twins on %s", verb)
+			assert.Equal(t, intr.RequiredACRMin, pub.RequiredACRMin, "acr floor drift between twins on %s", verb)
+		})
+	}
+}
+
 // TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones — the
 // embedded catalog MUST:
 //   - carry PermissionCatalogService.ListPermissionCatalog as an

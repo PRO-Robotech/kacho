@@ -94,7 +94,8 @@ type consoleSpec struct {
 	Line int
 	ID   string
 	// MutationBasePath — путь, по которому консоль шлёт создание и правку:
-	// `admin.basePath ?? apiPath` (`mutationBasePath()` в самом реестре).
+	// `apiPath` ресурса. Второго пути мутации у спеки нет: поле `admin` с его
+	// `basePath` снято вместе с внутренней плоскостью консоли (kacho#3094).
 	MutationBasePath string
 	CanCreate        bool
 	CanUpdate        bool
@@ -431,24 +432,6 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 		return consoleSpec{}, jsValue{}, err
 	}
 	s.MutationBasePath = apiPath
-	if adminV, ok := v.prop("admin"); ok {
-		resolved, err := resolveConst(adminV, scope)
-		if err != nil {
-			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin`: %w", file, adminV.line, id, err)
-		}
-		if resolved.kind != jsObject {
-			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin` is %s, expected an object literal", file, resolved.line, id, resolved.kind)
-		}
-		base, ok := resolved.prop("basePath")
-		if !ok {
-			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin` without `basePath`", file, resolved.line, id)
-		}
-		baseStr, err := resolveString(base, scope)
-		if err != nil {
-			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin.basePath`: %w", file, base.line, id, err)
-		}
-		s.MutationBasePath = baseStr
-	}
 
 	opsV, ok := v.prop("ops")
 	if !ok {

@@ -1,23 +1,25 @@
 // Geography (Region / Zone) — the placement axis every placeable resource is
 // pinned to. Owned by kacho-geo, the leaf platform-topology service.
 //
-// Two surfaces, and they are not interchangeable:
+// The console speaks to the PUBLIC surface only (kacho#3094):
 //
-//   public   GET /geo/v1/regions[/{id}]      RegionService  — read-only
-//            GET /geo/v1/zones[/{id}]        ZoneService    — read-only
-//   internal POST|PATCH|DELETE|GET
-//            /geo/v1/internal/{regions,zones}[/{id}]        — admin CRUD +
-//                                                             GetInternal
+//   GET    /geo/v1/regions[/{id}]        RegionService.Get/List
+//   POST   /geo/v1/regions               RegionService.Create
+//   PATCH  /geo/v1/regions/{id}          RegionService.Update   (countryCode, status)
+//   DELETE /geo/v1/regions/{id}          RegionService.Delete
+//   …and the same five verbs on /geo/v1/zones (ZoneService; Update — status only).
 //
-// The public read is project-scope EXEMPT (authN-only): every authenticated
-// tenant has to read the catalog to launch anything placeable. The admin CRUD
-// requires system_admin on the cluster and is routed exclusively through the
-// cluster-internal REST listener — a POST/PATCH/DELETE on the public path is not
-// routed at all.
+// Reads are the ambient catalog every authenticated tenant reads. Mutations are
+// the administrator's verbs: `system_admin` on the cluster, the same permission
+// and the same assurance floor as their InternalRegionService/InternalZoneService
+// twins (#3092). The infra° block is NOT part of the public input or output —
+// assigning it stays an act of the cluster-internal plane, and the console does
+// not offer it: a field the edge drops in silence would be a field that lies.
 //
-// Two projections: the public Region/Zone carry only tenant-facing intent plus
-// the derived openForPlacement°; the raw admin `status` and the entire infra°
-// block exist on InternalRegion/InternalZone alone.
+// The public projection carries no raw admin `status`; the edit form derives it
+// from openForPlacement° and placementBlockedReason (`geoStatusOfRegion` /
+// `geoStatusOfZone` below), and leaves it unsaid where the projection does not
+// determine it.
 //
 // Field names below are snake_case because api/client.ts converts the wire
 // camelCase on the way in (and back on the way out).
@@ -28,12 +30,10 @@ import type { Operation } from "./types";
 
 export const GEO_REGIONS_PATH = "/geo/v1/regions";
 export const GEO_ZONES_PATH = "/geo/v1/zones";
-export const GEO_INTERNAL_REGIONS_PATH = "/geo/v1/internal/regions";
-export const GEO_INTERNAL_ZONES_PATH = "/geo/v1/internal/zones";
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
-/** Raw admin maintenance flag. Lives on the Internal projection only. */
+/** Raw admin maintenance flag — an input of Create/Update; not on the public read. */
 export type GeoStatus = "GEO_STATUS_UNSPECIFIED" | "UP" | "DOWN";
 
 /**
@@ -73,41 +73,6 @@ export interface Zone {
   /** Derived (= zone.status==UP && region.status==UP). */
   open_for_placement?: boolean;
   placement_blocked_reason?: PlacementBlockedReason;
-}
-
-// ── Internal projections (never on the public surface) ───────────────────────
-
-export interface RegionInfra {
-  /** int64 on the wire. Immutable after create. */
-  numeric_infra_id?: string;
-  /** Read-time rollup of the zone capacity hints; not persisted, not settable. */
-  capacity_hint?: string;
-}
-
-export interface ZoneInfra {
-  /** int64 on the wire. Immutable after create. */
-  numeric_infra_id?: string;
-  host_classes?: string[];
-  failure_domain_count?: number;
-  underlay_anchor?: string;
-  /** AMPLE | CONSTRAINED | FULL. */
-  capacity_hint?: string;
-}
-
-export interface InternalRegion {
-  id: string;
-  created_at?: string;
-  country_code?: string;
-  status?: GeoStatus;
-  infra?: RegionInfra;
-}
-
-export interface InternalZone {
-  id: string;
-  region_id: string;
-  created_at?: string;
-  status?: GeoStatus;
-  infra?: ZoneInfra;
 }
 
 // ── List envelopes ───────────────────────────────────────────────────────────
@@ -189,4 +154,30 @@ export function readCountHint(value: unknown): number | null {
   if (!/^\d+$/.test(value.trim())) return null;
   const n = Number(value.trim());
   return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
+ * The raw admin status a public Region implies: openForPlacement° = status==UP.
+ * The public mux emits unpopulated fields, so `false` arrives as `false`; an
+ * absent field is not a status and comes back `undefined`, never a guessed DOWN.
+ */
+export function geoStatusOfRegion(region: Pick<Region, "open_for_placement">): GeoStatus | undefined {
+  if (region.open_for_placement === true) return "UP";
+  if (region.open_for_placement === false) return "DOWN";
+  return undefined;
+}
+
+/**
+ * The raw admin status a public Zone implies. openForPlacement° = zone UP &&
+ * region UP, and placementBlockedReason has zone precedence (zone DOWN ⇒
+ * ZONE_DOWN; else region DOWN ⇒ REGION_DOWN), so the zone's own status is fully
+ * determined: open ⇒ UP; ZONE_DOWN ⇒ DOWN; REGION_DOWN ⇒ UP. Anything else
+ * (no reason on a closed zone, an unknown reason) is left unsaid.
+ */
+export function geoStatusOfZone(zone: Pick<Zone, "open_for_placement" | "placement_blocked_reason">): GeoStatus | undefined {
+  if (zone.open_for_placement === true) return "UP";
+  if (zone.open_for_placement !== false) return undefined;
+  if (zone.placement_blocked_reason === "ZONE_DOWN") return "DOWN";
+  if (zone.placement_blocked_reason === "REGION_DOWN") return "UP";
+  return undefined;
 }

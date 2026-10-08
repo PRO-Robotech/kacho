@@ -10,10 +10,13 @@
 package geov1
 
 import (
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -26,6 +29,148 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// CreatePublicRegionRequest — public Create input. Deliberately a separate
+// message from the internal CreateRegionRequest: it carries NO infra° block.
+type CreatePublicRegionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Region ID — admin-assigned immutable slug PK (e.g. "ru-central1").
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// ISO-3166 alpha-2 country code (validated on input if non-empty).
+	CountryCode string `protobuf:"bytes,2,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
+	// Optional; DEFAULT DOWN (fail-safe) if omitted → region stays CLOSED to
+	// placement (CreateRegionMetadata.warnings says so).
+	Status        GeoStatus `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePublicRegionRequest) Reset() {
+	*x = CreatePublicRegionRequest{}
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePublicRegionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePublicRegionRequest) ProtoMessage() {}
+
+func (x *CreatePublicRegionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePublicRegionRequest.ProtoReflect.Descriptor instead.
+func (*CreatePublicRegionRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreatePublicRegionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *CreatePublicRegionRequest) GetCountryCode() string {
+	if x != nil {
+		return x.CountryCode
+	}
+	return ""
+}
+
+func (x *CreatePublicRegionRequest) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+// UpdatePublicRegionRequest — public Update input; no infra° block. Mutable
+// through the mask: `status`, `countryCode`. A mask path naming `id` or
+// `infra.numericInfraId` is refused with its immutability text; any other path
+// (including every other `infra.*`) is refused as an unknown update_mask field.
+type UpdatePublicRegionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the region to update.
+	RegionId string `protobuf:"bytes,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// New ISO-3166 alpha-2 country code.
+	CountryCode string `protobuf:"bytes,2,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
+	// New administrative status (UP opens the region for placement).
+	Status GeoStatus `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	// Fields to update; empty = apply what the caller carried.
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,4,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdatePublicRegionRequest) Reset() {
+	*x = UpdatePublicRegionRequest{}
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdatePublicRegionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdatePublicRegionRequest) ProtoMessage() {}
+
+func (x *UpdatePublicRegionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdatePublicRegionRequest.ProtoReflect.Descriptor instead.
+func (*UpdatePublicRegionRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *UpdatePublicRegionRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *UpdatePublicRegionRequest) GetCountryCode() string {
+	if x != nil {
+		return x.CountryCode
+	}
+	return ""
+}
+
+func (x *UpdatePublicRegionRequest) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+func (x *UpdatePublicRegionRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
 type GetRegionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the region to return information about.
@@ -36,7 +181,7 @@ type GetRegionRequest struct {
 
 func (x *GetRegionRequest) Reset() {
 	*x = GetRegionRequest{}
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[0]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +193,7 @@ func (x *GetRegionRequest) String() string {
 func (*GetRegionRequest) ProtoMessage() {}
 
 func (x *GetRegionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[0]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +206,7 @@ func (x *GetRegionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRegionRequest.ProtoReflect.Descriptor instead.
 func (*GetRegionRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{0}
+	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetRegionRequest) GetRegionId() string {
@@ -88,7 +233,7 @@ type ListRegionsRequest struct {
 
 func (x *ListRegionsRequest) Reset() {
 	*x = ListRegionsRequest{}
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -100,7 +245,7 @@ func (x *ListRegionsRequest) String() string {
 func (*ListRegionsRequest) ProtoMessage() {}
 
 func (x *ListRegionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -113,7 +258,7 @@ func (x *ListRegionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRegionsRequest.ProtoReflect.Descriptor instead.
 func (*ListRegionsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListRegionsRequest) GetPageSize() int64 {
@@ -149,7 +294,7 @@ type ListRegionsResponse struct {
 
 func (x *ListRegionsResponse) Reset() {
 	*x = ListRegionsResponse{}
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +306,7 @@ func (x *ListRegionsResponse) String() string {
 func (*ListRegionsResponse) ProtoMessage() {}
 
 func (x *ListRegionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_geo_v1_region_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +319,7 @@ func (x *ListRegionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRegionsResponse.ProtoReflect.Descriptor instead.
 func (*ListRegionsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListRegionsResponse) GetRegions() []*Region {
@@ -195,7 +340,17 @@ var File_kacho_cloud_geo_v1_region_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
+	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a1kacho/cloud/geo/v1/internal_catalog_service.proto\x1a$corelib/authz/v1/authz_options.proto\"\x85\x01\n" +
+	"\x19CreatePublicRegionRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\fcountry_code\x18\x02 \x01(\tR\vcountryCode\x125\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\"\xcf\x01\n" +
+	"\x19UpdatePublicRegionRequest\x12\x1b\n" +
+	"\tregion_id\x18\x01 \x01(\tR\bregionId\x12!\n" +
+	"\fcountry_code\x18\x02 \x01(\tR\vcountryCode\x125\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x12;\n" +
+	"\vupdate_mask\x18\x04 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"/\n" +
 	"\x10GetRegionRequest\x12\x1b\n" +
 	"\tregion_id\x18\x01 \x01(\tR\bregionId\"~\n" +
 	"\x12ListRegionsRequest\x12\x1b\n" +
@@ -205,12 +360,21 @@ const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\x12open_for_placement\x18\x03 \x01(\bR\x10openForPlacement\"s\n" +
 	"\x13ListRegionsResponse\x124\n" +
 	"\aregions\x18\x01 \x03(\v2\x1a.kacho.cloud.geo.v1.RegionR\aregions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd6\x02\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xe9\a\n" +
 	"\rRegionService\x12\x9e\x01\n" +
 	"\x03Get\x12$.kacho.cloud.geo.v1.GetRegionRequest\x1a\x1a.kacho.cloud.geo.v1.Region\"U\x8a\xb5\x18\x0fgeo.regions.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/geo/v1/regions/{region_id}\x12\xa3\x01\n" +
 	"\x04List\x12&.kacho.cloud.geo.v1.ListRegionsRequest\x1a'.kacho.cloud.geo.v1.ListRegionsResponse\"J\x8a\xb5\x18\x10geo.regions.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x11\x12\x0f/geo/v1/regionsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x11\x12\x0f/geo/v1/regions\x12\xce\x01\n" +
+	"\x06Create\x12-.kacho.cloud.geo.v1.CreatePublicRegionRequest\x1a\x1c.corelib.operation.Operation\"w\x8a\xb5\x18\x12geo.regions.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
+	"\x14CreateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/geo/v1/regions\x12\xdb\x01\n" +
+	"\x06Update\x12-.kacho.cloud.geo.v1.UpdatePublicRegionRequest\x1a\x1c.corelib.operation.Operation\"\x83\x01\x8a\xb5\x18\x12geo.regions.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
+	"\x14UpdateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02 :\x01*2\x1b/geo/v1/regions/{region_id}\x12\xe1\x01\n" +
+	"\x06Delete\x12'.kacho.cloud.geo.v1.DeleteRegionRequest\x1a\x1c.corelib.operation.Operation\"\x8f\x01\x8a\xb5\x18\x12geo.regions.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*-\n" +
+	"\x14DeleteRegionMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1d*\x1b/geo/v1/regions/{region_id}B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_region_service_proto_rawDescOnce sync.Once
@@ -224,24 +388,39 @@ func file_kacho_cloud_geo_v1_region_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_geo_v1_region_service_proto_rawDescData
 }
 
-var file_kacho_cloud_geo_v1_region_service_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_kacho_cloud_geo_v1_region_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_kacho_cloud_geo_v1_region_service_proto_goTypes = []any{
-	(*GetRegionRequest)(nil),    // 0: kacho.cloud.geo.v1.GetRegionRequest
-	(*ListRegionsRequest)(nil),  // 1: kacho.cloud.geo.v1.ListRegionsRequest
-	(*ListRegionsResponse)(nil), // 2: kacho.cloud.geo.v1.ListRegionsResponse
-	(*Region)(nil),              // 3: kacho.cloud.geo.v1.Region
+	(*CreatePublicRegionRequest)(nil), // 0: kacho.cloud.geo.v1.CreatePublicRegionRequest
+	(*UpdatePublicRegionRequest)(nil), // 1: kacho.cloud.geo.v1.UpdatePublicRegionRequest
+	(*GetRegionRequest)(nil),          // 2: kacho.cloud.geo.v1.GetRegionRequest
+	(*ListRegionsRequest)(nil),        // 3: kacho.cloud.geo.v1.ListRegionsRequest
+	(*ListRegionsResponse)(nil),       // 4: kacho.cloud.geo.v1.ListRegionsResponse
+	(GeoStatus)(0),                    // 5: kacho.cloud.geo.v1.GeoStatus
+	(*fieldmaskpb.FieldMask)(nil),     // 6: google.protobuf.FieldMask
+	(*Region)(nil),                    // 7: kacho.cloud.geo.v1.Region
+	(*DeleteRegionRequest)(nil),       // 8: kacho.cloud.geo.v1.DeleteRegionRequest
+	(*operation.Operation)(nil),       // 9: corelib.operation.Operation
 }
 var file_kacho_cloud_geo_v1_region_service_proto_depIdxs = []int32{
-	3, // 0: kacho.cloud.geo.v1.ListRegionsResponse.regions:type_name -> kacho.cloud.geo.v1.Region
-	0, // 1: kacho.cloud.geo.v1.RegionService.Get:input_type -> kacho.cloud.geo.v1.GetRegionRequest
-	1, // 2: kacho.cloud.geo.v1.RegionService.List:input_type -> kacho.cloud.geo.v1.ListRegionsRequest
-	3, // 3: kacho.cloud.geo.v1.RegionService.Get:output_type -> kacho.cloud.geo.v1.Region
-	2, // 4: kacho.cloud.geo.v1.RegionService.List:output_type -> kacho.cloud.geo.v1.ListRegionsResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 0: kacho.cloud.geo.v1.CreatePublicRegionRequest.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	5, // 1: kacho.cloud.geo.v1.UpdatePublicRegionRequest.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	6, // 2: kacho.cloud.geo.v1.UpdatePublicRegionRequest.update_mask:type_name -> google.protobuf.FieldMask
+	7, // 3: kacho.cloud.geo.v1.ListRegionsResponse.regions:type_name -> kacho.cloud.geo.v1.Region
+	2, // 4: kacho.cloud.geo.v1.RegionService.Get:input_type -> kacho.cloud.geo.v1.GetRegionRequest
+	3, // 5: kacho.cloud.geo.v1.RegionService.List:input_type -> kacho.cloud.geo.v1.ListRegionsRequest
+	0, // 6: kacho.cloud.geo.v1.RegionService.Create:input_type -> kacho.cloud.geo.v1.CreatePublicRegionRequest
+	1, // 7: kacho.cloud.geo.v1.RegionService.Update:input_type -> kacho.cloud.geo.v1.UpdatePublicRegionRequest
+	8, // 8: kacho.cloud.geo.v1.RegionService.Delete:input_type -> kacho.cloud.geo.v1.DeleteRegionRequest
+	7, // 9: kacho.cloud.geo.v1.RegionService.Get:output_type -> kacho.cloud.geo.v1.Region
+	4, // 10: kacho.cloud.geo.v1.RegionService.List:output_type -> kacho.cloud.geo.v1.ListRegionsResponse
+	9, // 11: kacho.cloud.geo.v1.RegionService.Create:output_type -> corelib.operation.Operation
+	9, // 12: kacho.cloud.geo.v1.RegionService.Update:output_type -> corelib.operation.Operation
+	9, // 13: kacho.cloud.geo.v1.RegionService.Delete:output_type -> corelib.operation.Operation
+	9, // [9:14] is the sub-list for method output_type
+	4, // [4:9] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_geo_v1_region_service_proto_init() }
@@ -249,14 +428,16 @@ func file_kacho_cloud_geo_v1_region_service_proto_init() {
 	if File_kacho_cloud_geo_v1_region_service_proto != nil {
 		return
 	}
+	file_kacho_cloud_geo_v1_geo_common_proto_init()
 	file_kacho_cloud_geo_v1_region_proto_init()
+	file_kacho_cloud_geo_v1_internal_catalog_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_geo_v1_region_service_proto_rawDesc), len(file_kacho_cloud_geo_v1_region_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

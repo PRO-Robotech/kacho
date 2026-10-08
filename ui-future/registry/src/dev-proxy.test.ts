@@ -60,7 +60,7 @@ function registryDomains(): string[] {
   for (const id of reachedSpecIds()) {
     const spec = REGISTRY[id];
     if (!spec) continue;
-    for (const p of [spec.apiPath, spec.internalGetPath, spec.admin?.basePath]) {
+    for (const p of [spec.apiPath, spec.internalGetPath]) {
       const d = p ? domainOf(p) : null;
       if (d) out.add(d);
     }

@@ -11,6 +11,7 @@ package geov1
 
 import (
 	context "context"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -22,23 +23,52 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RegionService_Get_FullMethodName  = "/kacho.cloud.geo.v1.RegionService/Get"
-	RegionService_List_FullMethodName = "/kacho.cloud.geo.v1.RegionService/List"
+	RegionService_Get_FullMethodName    = "/kacho.cloud.geo.v1.RegionService/Get"
+	RegionService_List_FullMethodName   = "/kacho.cloud.geo.v1.RegionService/List"
+	RegionService_Create_FullMethodName = "/kacho.cloud.geo.v1.RegionService/Create"
+	RegionService_Update_FullMethodName = "/kacho.cloud.geo.v1.RegionService/Update"
+	RegionService_Delete_FullMethodName = "/kacho.cloud.geo.v1.RegionService/Delete"
 )
 
 // RegionServiceClient is the client API for RegionService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// A set of methods to retrieve information about regions (public, read-only).
-// Admin CRUD over regions — see InternalRegionService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// RegionService — the placement catalog of regions on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog): gated by `system_admin` @ `cluster` — a relation no
+// wildcard tuple satisfies — with the SAME permission name and the SAME
+// identity-assurance floor as their InternalRegionService twins. The floor
+// belongs to the action, not to the address: a public path with a cheaper floor
+// would be a cheaper way to do the same thing.
+//
+// The public input carries NO infra° block (security.md two-projection): a
+// region created here gets numericInfraId = 0 ("not assigned"), and since that
+// field is immutable after create, assigning it stays an internal-plane act.
+// InternalRegionService keeps the full admin plane on the cluster-internal port.
+//
+// Mutations complete synchronously (one INSERT, no saga): Operation with
+// done=true in the response itself; `response` is the public Region (Empty for
+// Delete); a storage refusal is in Operation.error, an input refusal is a
+// synchronous gRPC status.
 type RegionServiceClient interface {
 	// Returns the information about the specified region.
 	Get(ctx context.Context, in *GetRegionRequest, opts ...grpc.CallOption) (*Region, error)
 	// Retrieves the list of regions.
 	List(ctx context.Context, in *ListRegionsRequest, opts ...grpc.CallOption) (*ListRegionsResponse, error)
+	// Creates a region. Administrator's verb: the same permission, relation, scope
+	// and identity-assurance floor as InternalRegionService.Create.
+	Create(ctx context.Context, in *CreatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Updates a region (status, countryCode). Same gate as
+	// InternalRegionService.Update.
+	Update(ctx context.Context, in *UpdatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Deletes a region. A region that still has zones is refused in
+	// Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
+	// as InternalRegionService.Delete.
+	Delete(ctx context.Context, in *DeleteRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type regionServiceClient struct {
@@ -69,19 +99,75 @@ func (c *regionServiceClient) List(ctx context.Context, in *ListRegionsRequest, 
 	return out, nil
 }
 
+func (c *regionServiceClient) Create(ctx context.Context, in *CreatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, RegionService_Create_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *regionServiceClient) Update(ctx context.Context, in *UpdatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, RegionService_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *regionServiceClient) Delete(ctx context.Context, in *DeleteRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, RegionService_Delete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegionServiceServer is the server API for RegionService service.
 // All implementations must embed UnimplementedRegionServiceServer
 // for forward compatibility.
 //
-// A set of methods to retrieve information about regions (public, read-only).
-// Admin CRUD over regions — see InternalRegionService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// RegionService — the placement catalog of regions on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog): gated by `system_admin` @ `cluster` — a relation no
+// wildcard tuple satisfies — with the SAME permission name and the SAME
+// identity-assurance floor as their InternalRegionService twins. The floor
+// belongs to the action, not to the address: a public path with a cheaper floor
+// would be a cheaper way to do the same thing.
+//
+// The public input carries NO infra° block (security.md two-projection): a
+// region created here gets numericInfraId = 0 ("not assigned"), and since that
+// field is immutable after create, assigning it stays an internal-plane act.
+// InternalRegionService keeps the full admin plane on the cluster-internal port.
+//
+// Mutations complete synchronously (one INSERT, no saga): Operation with
+// done=true in the response itself; `response` is the public Region (Empty for
+// Delete); a storage refusal is in Operation.error, an input refusal is a
+// synchronous gRPC status.
 type RegionServiceServer interface {
 	// Returns the information about the specified region.
 	Get(context.Context, *GetRegionRequest) (*Region, error)
 	// Retrieves the list of regions.
 	List(context.Context, *ListRegionsRequest) (*ListRegionsResponse, error)
+	// Creates a region. Administrator's verb: the same permission, relation, scope
+	// and identity-assurance floor as InternalRegionService.Create.
+	Create(context.Context, *CreatePublicRegionRequest) (*operation.Operation, error)
+	// Updates a region (status, countryCode). Same gate as
+	// InternalRegionService.Update.
+	Update(context.Context, *UpdatePublicRegionRequest) (*operation.Operation, error)
+	// Deletes a region. A region that still has zones is refused in
+	// Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
+	// as InternalRegionService.Delete.
+	Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedRegionServiceServer()
 }
 
@@ -97,6 +183,15 @@ func (UnimplementedRegionServiceServer) Get(context.Context, *GetRegionRequest) 
 }
 func (UnimplementedRegionServiceServer) List(context.Context, *ListRegionsRequest) (*ListRegionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedRegionServiceServer) Create(context.Context, *CreatePublicRegionRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedRegionServiceServer) Update(context.Context, *UpdatePublicRegionRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedRegionServiceServer) Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
 func (UnimplementedRegionServiceServer) mustEmbedUnimplementedRegionServiceServer() {}
 func (UnimplementedRegionServiceServer) testEmbeddedByValue()                       {}
@@ -155,6 +250,60 @@ func _RegionService_List_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegionService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePublicRegionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegionServiceServer).Create(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegionService_Create_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegionServiceServer).Create(ctx, req.(*CreatePublicRegionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegionService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePublicRegionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegionServiceServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegionService_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegionServiceServer).Update(ctx, req.(*UpdatePublicRegionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegionService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteRegionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegionServiceServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegionService_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegionServiceServer).Delete(ctx, req.(*DeleteRegionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegionService_ServiceDesc is the grpc.ServiceDesc for RegionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -169,6 +318,18 @@ var RegionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _RegionService_List_Handler,
+		},
+		{
+			MethodName: "Create",
+			Handler:    _RegionService_Create_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _RegionService_Update_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _RegionService_Delete_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

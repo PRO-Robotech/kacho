@@ -64,8 +64,9 @@ control-plane: за физическое размещение нагрузок �
 ## Доменная модель
 
 Kachō Geo управляет **двумя типами ресурсов**. Оба — «плоские» (flat): domain-поля на верхнем
-уровне сообщения, без K8s-envelope. Region и Zone — read-only справочники: публичный API только
-читает их, а наполняет каталог администратор через `Internal*`-сервисы.
+уровне сообщения, без K8s-envelope. Region и Zone — справочники: читает их любой
+аутентифицированный арендатор, а наполняет каталог администратор кластера — публичными
+административными глаголами (без инфраструктурного блока) либо через `Internal*`-сервисы.
 
 <table>
   <thead>
@@ -100,7 +101,7 @@ flowchart TD
 
 :::tip Порядок удаления — сначала зоны
 FK-ограничение (`RESTRICT`) требует удалять зоны раньше региона: пока к региону привязана хотя
-бы одна Zone, `InternalRegionService.Delete` вернёт `FAILED_PRECONDITION`. Сначала удаляются
+бы одна Zone, удаление региона вернёт операцию с `FAILED_PRECONDITION`. Сначала удаляются
 зоны, затем регион.
 :::
 
@@ -109,7 +110,9 @@ FK-ограничение (`RESTRICT`) требует удалять зоны р
 Kachō Geo — один из доменных сервисов платформы и её **leaf-узел**: он не зависит ни от
 одного другого сервиса (по аналогии с IAM). Tenant-запросы на чтение проходят через
 `api-gateway`; peer-сервисы (Compute, VPC и др.) зовут публичный listener напрямую для
-валидации `zoneId` / `regionId`; admin-CRUD доступен только на cluster-internal listener.
+валидации `zoneId` / `regionId`; административные глаголы каталога — на тех же публичных путях
+под правом `system_admin`, а полная плоскость (с `infra` и `GetInternal`) — только на
+cluster-internal listener.
 
 ```mermaid
 flowchart LR
@@ -160,7 +163,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>▤</span>
     <span className={hero.featureTitle}>Sync-каталог</span>
-    <span className={hero.featureBody}>Чтение синхронное; admin-мутации Region/Zone тоже синхронные — это reference-каталог, не LRO.</span>
+    <span className={hero.featureBody}>Чтение синхронное; admin-мутации Region/Zone отвечают Operation, завершённой в самом ответе, — это reference-каталог без саги.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⛓</span>

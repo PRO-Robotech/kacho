@@ -24,24 +24,26 @@ nlb), размещая ресурсы по зонам, — поэтому мод
 
 ## Контракт API
 
-Region и Zone — **admin-каталог**: пользователи только **читают** их (синхронно), а
-заводит и правит записи администратор. Поэтому форма API отличается от ресурсов с
-жизненным циклом:
+Region и Zone — **admin-каталог**: арендаторы их **читают** (синхронно), а заводит и
+правит записи администратор кластера (`system_admin` @ `cluster`):
 
 | Поверхность | Методы | Листенер |
 |---|---|---|
 | Публичное чтение | `RegionService.Get/List`, `ZoneService.Get/List` | `9090` |
-| Admin-управление (sync) | `InternalRegionService.Create/Update/Delete`, `InternalZoneService.Create/Update/Delete` | `9091` (internal) |
+| Публичное администрирование (ADM-1, без `infra`) | `RegionService.Create/Update/Delete`, `ZoneService.Create/Update/Delete` | `9090` |
+| Полная плоскость администрирования (с `infra`, `GetInternal`) | `InternalRegionService.*`, `InternalZoneService.*` | `9091` (internal) |
 
-Мутации каталога **синхронны** — возвращают ресурс сразу (это осознанное решение для
-admin-managed справочника с админ-назначаемыми неизменяемыми `id`), а не асинхронный
-`Operation`. Admin-методы и весь internal-листенер `9091` **не публикуются** на внешнем
-endpoint. Каждый RPC обоих листенеров проходит per-RPC авторизацию через kaname.
+Мутации каталога возвращают `Operation`, **завершённую в самом ответе** (`done = true`,
+`response` — публичный ресурс): у записи каталога нет саги. Публичные и внутренние мутации
+стоят на одном праве и одном пороге подтверждения личности; публичный вход
+инфраструктурного блока не несёт. Internal-методы и весь internal-листенер `9091`
+**не публикуются** на внешнем endpoint. Каждый RPC обоих листенеров проходит per-RPC
+авторизацию через kaname.
 
 ```bash
 # Публичное чтение зоны (REST через api-gateway)
 curl http://localhost:18080/geo/v1/zones/zone-a -H 'Authorization: Bearer <JWT>'
-# → { "id": "zone-a", "regionId": "region-1", "status": "UP", "name": "Zone A", "createdAt": "..." }
+# → { "id": "zone-a", "regionId": "region-1", "openForPlacement": true, "placementBlockedReason": "NONE", "createdAt": "..." }
 ```
 
 ## Быстрый старт
@@ -60,8 +62,9 @@ KACHO_GEO_DB_PASSWORD=secret bin/kacho-migrator status
 bin/kacho-geo serve
 ```
 
-Каталог стартует пустым — регионы и зоны заводит администратор через
-`InternalRegionService`/`InternalZoneService` (встроенного seed нет).
+Каталог стартует пустым — регионы и зоны заводит администратор публичными глаголами
+`RegionService`/`ZoneService` либо через `InternalRegionService`/`InternalZoneService`
+(встроенного seed нет).
 
 Конфигурация — через YAML/ENV (префикс `KACHO_GEO_`). По умолчанию сервис **secure
 by default**: per-RPC авторизация через kaname и mTLS на обоих листенерах
