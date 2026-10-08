@@ -129,3 +129,22 @@ misconfiguration:
       - global.kacho.identity.smtp.dkim.secretName=trivy-scan-only
       - global.kacho.identity.smtp.dkim.privateKeyKey=trivy-scan-only
       - global.kacho.identity.smtp.dkim.selectorKey=trivy-scan-only
+      # ── notify-api в том же чарте (#2924, S1; NTF-4 Р16, Р20, Р22; NTF-5 Р17) ──
+      # Ручки notify-api без умолчания: чарт судит каждую `required`/`fail` с
+      # именем ручки, поэтому без любой из них рендер notify отказывает целиком и
+      # сканер теряет весь чарт, а не только объекты notify-api. Метки пода края
+      # — `fail` в политике сети (правило без отправителя). Круг пересылающих —
+      # список (чарт судит непустоту и склеивает `join`). Каждую судит
+      # `assert-scan-stubs-hide-nothing.py`: снятая, она выбивает чарт notify из
+      # осмотра. Одноимённые ключи других чартов (`db.host`, `authz.*`) подменяют
+      # там адреса и длительности окружения процесса, а не поля пода, которые
+      # читают проверки, — это тоже утверждение того же гейта, а не довод.
+      - api.networkPolicy.edgePodLabels.app=trivy-scan-only
+      - authz.trustedForwarderSANs[0]=spiffe://trivy-scan-only.invalid/edge
+      - authz.iamGRPCAddr=trivy-scan-only.invalid:9091
+      - authz.cacheTTL=5s
+      - authz.checkTimeout=2s
+      - authz.denyBudgetPerSec=100
+      - handlingBudget=30s
+      - notice.reminderLead=24h
+      - db.host=trivy-scan-only.invalid

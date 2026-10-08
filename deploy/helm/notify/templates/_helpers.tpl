@@ -118,3 +118,33 @@ notify.recipientKeySecretName — имя объекта ключа сетки, �
 {{- define "notify.recipientKeySecretName" -}}
 {{- (.Values.recipientKeySecret | default dict).name | default (printf "%s-recipient-key" (include "notify.fullname" .)) -}}
 {{- end -}}
+
+{{/*
+──── notify-api — развёртывание запросов оператора и арендаторов (NTF-5 Р2) ────
+
+notify.api.fullname — имя каждого объекта notify-api: учётки (сегмент `sa/` её
+SPIFFE-идентичности), Service внутреннего слушателя (адрес края и носитель гейта
+изоляции ban #6) и рабочего объекта. Выводится из полного имени установки, а не
+пишется вторым литералом: в зонтике это `kacho-notify-api`.
+*/}}
+{{- define "notify.api.fullname" -}}
+{{- printf "%s-api" (include "notify.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "notify.api.labels" -}}
+app: {{ include "notify.api.fullname" . }}
+app.kubernetes.io/name: {{ include "notify.api.fullname" . }}
+app.kubernetes.io/component: notify-api
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{- define "notify.api.selectorLabels" -}}
+app: {{ include "notify.api.fullname" . }}
+{{- end -}}
+
+{{/*
+notify.api.tlsDir — каталог листа notify-api в поде: им же он предъявляет себя
+краю (сервер внутреннего слушателя) и службе доступа (клиент ребра Check).
+Лист один: идентичность у развёртывания одна.
+*/}}
+{{- define "notify.api.tlsDir" -}}/var/run/kacho/notify-api/tls{{- end -}}

@@ -16,8 +16,9 @@
 //
 // Гейт связывает дерево с ОДНИМ объявлением (`pkg/authz.RevocationPolicy`):
 // каждая найденная площадка обязана быть в переписи политики, её значение —
-// совпадать с тем, что реально написано в исходнике сервиса, и не превышать
-// потолок. Смена умолчания без правки политики роняет проверку и называет оба
+// совпадать с тем, что реально написано в исходнике сервиса (у обязательной
+// ручки без умолчания — в боевом профиле установки по пути из тега knob), и не
+// превышать потолок. Смена умолчания без правки политики роняет проверку и называет оба
 // числа — так изменение становится решением, а не дрейфом.
 package repohygiene
 
@@ -48,6 +49,11 @@ var revocationScanRoots = []string{
 	// величину окна объявляет ЭТОТ конфиг. Ключ переписи — «notify <ручка>»:
 	// serviceOfPath берёт имя сервиса из пути, а не имя бинаря.
 	"services/notify/cmd/notify-probe/internal/config",
+	// Процесс публичной поверхности notify (NTF-5 S1): окно звена прав
+	// слушателя и окно сужателя затронутых ресурсов объявляет ЭТОТ конфиг
+	// (правило Д74 — конфигурация корня под cmd/<корень>/internal/). Ключ
+	// переписи тот же «notify <ручка>»: notify-sender окон не держит.
+	"services/notify/cmd/notify-api/internal/config",
 	// ЗДЕСЬ БЫЛ КАТАЛОГ ОБЪЯВЛЕНИЙ ВЛАДЕЛЬЦА МОДЕЛИ — он снят вместе со своим
 	// предметом: служба доступа вынесена отдельным продуктом, и каталога в дереве
 	// нет ни одним файлом. Гейт назвал это сам («предпосылка гейта нарушена:
@@ -109,53 +115,62 @@ func TestRevocationWindowIsDeclaredPolicy(t *testing.T) {
 			"известные ручки: %v", rep.FilesParsed, revocationwindowgate.KnobNames())
 	}
 
-	ceiling := authz.RevocationPolicy.Ceiling
-	declared := authz.RevocationPolicy.Windows
+	// Известная ручка, умолчание которой разбор не прочитал, — находка с
+	// координатой: перепись, промолчавшая о площадке, которую узнала, читается
+	// как «площадки нет».
+	for _, f := range rep.Findings {
+		t.Errorf("окно не прочитано: %s", f)
+	}
 
-	seen := map[string]bool{}
-	for _, s := range rep.Sites {
-		key := s.Service + " " + s.Knob
-		seen[key] = true
-
-		want, ok := declared[key]
-		if !ok {
-			t.Errorf("окно не объявлено политикой: %s (%s:%d) держит %s, "+
-				"но записи «%s» в pkg/authz.RevocationPolicy.Windows нет.\n"+
-				"Окно отзыва — параметр безопасности: у него должен быть автор. "+
-				"Внеси запись с обоснованием либо убери кеш.",
-				key, s.File, s.Line, s.Window, key)
+	// Площадка без умолчания в исходнике получает величину от установки:
+	// гейт читает её в боевом профиле зонтика по пути values из тега knob
+	// объявления и сверяет так же, как величину из исходника (приёмка NTF-4
+	// Р16). Прочие профили зонтика, где ключ задан, обязаны задавать то же.
+	// Боевой профиль не читается — отказ предпосылки, а не тишина.
+	prodSrc, err := os.ReadFile(filepath.Join(root, landingProdProfile))
+	if err != nil {
+		t.Fatalf("предпосылка гейта нарушена: боевой профиль %s не читается: %v", landingProdProfile, err)
+	}
+	prod := revocationwindowgate.Profile{Path: landingProdProfile, Src: prodSrc}
+	profilePaths, err := treecorpus.Glob(filepath.Join(root, landingProfilesGlob))
+	if err != nil {
+		t.Fatalf("предпосылка гейта нарушена: профили %s не перечисляются: %v", landingProfilesGlob, err)
+	}
+	var others []revocationwindowgate.Profile
+	for _, abs := range profilePaths {
+		rel, _ := filepath.Rel(root, abs)
+		rel = filepath.ToSlash(rel)
+		if rel == landingProdProfile {
 			continue
 		}
-		if s.Window != want {
-			t.Errorf("окно разошлось с политикой: %s (%s:%d) держит %s, политика объявляет %s.\n"+
-				"Смена окна отзыва — решение, а не правка умолчания: обнови "+
-				"pkg/authz.RevocationPolicy вместе с исходником (или верни прежнее значение).",
-				key, s.File, s.Line, s.Window, want)
+		src, rerr := os.ReadFile(abs)
+		if rerr != nil {
+			t.Fatalf("read %s: %v", rel, rerr)
 		}
-		if s.Window > ceiling {
-			t.Errorf("окно превышает потолок политики: %s (%s:%d) держит %s при потолке %s.\n"+
-				"Потолок — это обещание, которое платформа даёт про отзыв доступа.",
-				key, s.File, s.Line, s.Window, ceiling)
-		}
+		others = append(others, revocationwindowgate.Profile{Path: rel, Src: src})
 	}
 
-	// Самоистечение: запись политики, которой больше нечего описывать, —
-	// находка. Иначе перепись переживёт свой предмет и станет ложным
-	// утверждением о дереве.
-	var stale []string
-	for key := range declared {
-		if !seen[key] {
-			stale = append(stale, key)
-		}
+	v := revocationwindowgate.Judge(rep.Sites, revocationwindowgate.Policy{
+		Windows: authz.RevocationPolicy.Windows,
+		Ceiling: authz.RevocationPolicy.Ceiling,
+	}, prod, others)
+	t.Logf("посадка: профилей зонтика прочитано=%d, площадок с величиной из посадки=%d",
+		v.ProfilesRead, len(v.Landed))
+	for _, l := range v.Landed {
+		t.Logf("  %s = %s — %s:%d", l.Key, l.Window, l.Profile, l.Line)
 	}
-	sort.Strings(stale)
-	for _, key := range stale {
-		t.Errorf("запись политики без предмета: «%s» объявлена в "+
-			"pkg/authz.RevocationPolicy.Windows, но такой площадки в дереве нет.\n"+
-			"Ручку переименовали или кеш убрали — сними запись, иначе перепись "+
-			"описывает мир, которого нет.", key)
+	for _, f := range v.Findings {
+		t.Error(f)
 	}
 }
+
+// landingProdProfile — боевой профиль установки: величину обязательной ручки
+// окна гейт читает отсюда; landingProfilesGlob — все профили зонтика, каждый из
+// которых, задав ключ окна, обязан задать значение записи политики.
+const (
+	landingProdProfile  = "deploy/helm/umbrella/values.prod.yaml"
+	landingProfilesGlob = "deploy/helm/umbrella/values*.yaml"
+)
 
 // TestCorelibDefaultIsTheDeclaredWindow — сервисы, передающие ttl≤0, берут
 // окно из политики, а не из литерала, вкомпилированного в corelib.

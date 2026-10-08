@@ -10,10 +10,11 @@ import (
 	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
-// TestNotifyCatalogCountsTwoProcessRoots — правило Д74 на дереве: по каталогу
-// services/notify два корня процессов (notify, notify-probe), точка наката
-// процессом не считается.
-func TestNotifyCatalogCountsTwoProcessRoots(t *testing.T) {
+// TestNotifyCatalogCountsItsProcessRoots — правило Д74 на дереве: по каталогу
+// services/notify три корня процессов — шлюз notify, развёртывание notify-api
+// (kacho#2924, полоса N2) и проба-источник notify-probe; точка наката процессом
+// не считается.
+func TestNotifyCatalogCountsItsProcessRoots(t *testing.T) {
 	t.Parallel()
 	tree, err := treecorpus.NewTree(repoRoot(t))
 	if err != nil {
@@ -23,8 +24,8 @@ func TestNotifyCatalogCountsTwoProcessRoots(t *testing.T) {
 	for svc, rs := range roots {
 		t.Logf("  %-9s корней %d %v", svc, len(rs), rs)
 	}
-	if got := strings.Join(roots["notify"], ","); got != "notify,notify-probe" {
-		t.Fatalf("корни процессов services/notify: %q, ожидались notify,notify-probe", got)
+	if got := strings.Join(roots["notify"], ","); got != "notify,notify-api,notify-probe" {
+		t.Fatalf("корни процессов services/notify: %q, ожидались notify,notify-api,notify-probe", got)
 	}
 	if len(roots) == 0 {
 		t.Fatal("обход пуст: каталогов с корнями процессов ноль")

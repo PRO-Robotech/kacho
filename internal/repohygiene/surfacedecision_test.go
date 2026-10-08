@@ -146,37 +146,21 @@ func readTreeRecord(root string) func(rel string) (string, error) {
 	}
 }
 
-// notifySurfaceRecord — документ, где решения о поверхности notify записаны
-// прозой. Один на обе ведомости: предмет у них общий — публичного входящего RPC
-// у каталога нет (шлюз без gRPC, проба-источник — только Internal*).
-const notifySurfaceRecord = "services/notify/README.md"
-
 // noListingSurface — службы без публичного списка ПО РЕШЕНИЮ. Держит
 // TestCoverage_PremiseEveryServiceHasAListingSurface.
-var noListingSurface = []surfaceDecision{
-	{
-		Service: "notify",
-		Issue:   2915,
-		Record:  notifySurfaceRecord,
-		Because: "ни один процесс каталога notify не служит List*: шлюз — форма хоста без " +
-			"gRPC, единственная поверхность — диагностический HTTP (NTF-1 Р1, NTF1-G19); " +
-			"проба-источник notify-probe служит только Internal* (Send, лента Claim/Ack, " +
-			"подписка, З29). Отбирать нечего, анализатор судил бы пустоту. Пересмотр — первый " +
-			"List* в транспорте службы: запись истекает сама, и гейт требует анализатор",
-	},
-}
+//
+// Пуст: здесь стояла запись notify (kacho#2915, «ни один процесс каталога не
+// служит List*»). Она истекла сама: развёртывание notify-api (kacho#2924) служит
+// `NoticeService.List`, `ListByAccount` и `InternalNoticeService.List`, и гейт
+// требует анализатор отбора списков службы, его цель Makefile и шаг конвейера.
+var noListingSurface = []surfaceDecision{}
 
 // noUseCaseLayer — службы без слоя бизнес-логики под
 // `internal/apps/<сегмент>/api/` ПО РЕШЕНИЮ. Держит TestUseCaseLayoutPremiseHolds.
-var noUseCaseLayer = []surfaceDecision{
-	{
-		Service: "notify",
-		Issue:   2915,
-		Record:  notifySurfaceRecord,
-		Because: "у notify нет ресурса с use-case (NTF-1 Р1): шлюз входящего RPC не служит, " +
-			"глагол пробы-источника Send — стендовая постановка одной транзакцией без ресурса; " +
-			"рабочие циклы службы (подписка, Claim/Ack, отправка) — не обработчики глагола. " +
-			"Пересмотр — появление `internal/apps/` у службы: запись истекает сама, и " +
-			"предпосылка судится как у всех",
-	},
-}
+//
+// Пуст: здесь стояла запись notify (kacho#2915, «у notify нет ресурса с
+// use-case»). Она истекла сама, как и было записано: развёртывание notify-api
+// (kacho#2924) принесло ресурс «извещение» и слой
+// `internal/apps/kacho/api/{notice,publicnotice}`, и предпосылка судится как у
+// всех служб.
+var noUseCaseLayer = []surfaceDecision{}

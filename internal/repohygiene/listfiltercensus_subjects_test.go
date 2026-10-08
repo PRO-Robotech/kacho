@@ -46,8 +46,9 @@ func TestCensusSubjects_RecordedServiceIsNotRunAndUnrecordedIs(t *testing.T) {
 }
 
 // TestCensusSubjects_ReadsTheSharedLedger — перепись читает ту же ведомость,
-// что соседние тесты: на дереве notify записана и исключается из прогона
-// анализаторов, а служб для анализатора остаётся не ноль.
+// что соседние тесты: служба, записанная в ней, исключается из прогона
+// анализаторов, а служб для анализатора остаётся не ноль. Ведомость сегодня
+// пуста (запись notify истекла с notify-api, kacho#2924), и все службы судятся.
 func TestCensusSubjects_ReadsTheSharedLedger(t *testing.T) {
 	t.Parallel()
 	root := repoRootForCoverage(t)
@@ -57,9 +58,10 @@ func TestCensusSubjects_ReadsTheSharedLedger(t *testing.T) {
 	for _, f := range findings {
 		t.Error(f)
 	}
+	recorded := recordedServices(noListingSurface)
 	for _, s := range judge {
-		if s == "notify" {
-			t.Errorf("notify записана в noListingSurface, а перепись зовёт её анализатор")
+		if recorded[s] {
+			t.Errorf("%s записана в noListingSurface, а перепись зовёт её анализатор", s)
 		}
 	}
 	if len(judge) == 0 {

@@ -5,12 +5,14 @@ package config_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/notify/feed"
 
 	"github.com/PRO-Robotech/kacho/services/notify/internal/config"
+	"github.com/PRO-Robotech/kacho/services/notify/internal/limits"
 )
 
 // fullRecord — запись перечня, у которой есть каждое поле. Отрицания снимают
@@ -168,8 +170,8 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		useFixture(t, rosterEdits(t, fullRecord(), fullRecord()))
 		requireOnlyRefusal(t, start(t), "notify.sources", `"probe"`, "дважды")
 	})
-	t.Run("перечень классов закрытый — тот же, что у ленты", func(t *testing.T) {
-		for _, c := range feed.Classes() {
+	t.Run("перечень классов закрытый — классы ленты, которые отдаёт сеть", func(t *testing.T) {
+		for _, c := range limits.NetworkClasses() {
 			rec := fullRecord()
 			rec["classes"] = []string{string(c)}
 			useFixture(t, rosterEdits(t, rec))
@@ -177,8 +179,27 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 				t.Fatalf("класс ленты %q отвергнут перечнем notify: %v", c, err)
 			}
 		}
-		if len(feed.Classes()) == 0 {
-			t.Fatal("перечень классов ленты пуст — проба не перебрала ничего")
+		if len(limits.NetworkClasses()) == 0 {
+			t.Fatal("перечень классов сети ленты пуст — проба не перебрала ничего")
+		}
+	})
+	// Класс только процесса (feed.LocalOnlyClasses — obligation, NTF-5 Р12)
+	// сеть источника не отдаёт: Claim сервера ленты его не выдаёт, в
+	// контракте corelib.notify его нет. Запись источника с ним — отказ старта
+	// с именем поля и класса, а не принятое значение, которое отвергнет
+	// следующий страж текстом «вне перечня», где этот класс перечислен.
+	// Близнец — подтест выше: те же записи с классами сети стартуют.
+	t.Run("класс только процесса отвергнут с именем поля", func(t *testing.T) {
+		local := feed.LocalOnlyClasses()
+		if len(local) == 0 {
+			t.Fatal("НЕ ВЫПОЛНИЛОСЬ: у ленты нет классов только процесса — отрицанию нечего подавать")
+		}
+		for _, c := range local {
+			rec := fullRecord()
+			rec["classes"] = []string{string(c)}
+			useFixture(t, rosterEdits(t, rec))
+			requireOnlyRefusal(t, start(t), "notify.sources", `"classes"`, `"`+string(c)+`"`,
+				"вне перечня "+fmt.Sprint(limits.NetworkClasses()))
 		}
 	})
 }

@@ -84,6 +84,16 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 		backends[key] = conn
 	}
 
+	// Псевдонимы: ключ домена, у которого нет своего слушателя, получает
+	// соединение того ключа, на который он указывает, — тот же *grpc.ClientConn, не
+	// второй дозвон. В opened он не попадает: закрывается один раз, как его цель.
+	// Цели нет (адрес домена не объявлен) — нет и псевдонима.
+	for alias, target := range backendAliases {
+		if conn, ok := backends[target]; ok {
+			backends[alias] = conn
+		}
+	}
+
 	// operation self-loopback — always insecure (in-process re-entry).
 	loopbackAddr := cfg.ListenAddr
 	if len(loopbackAddr) > 0 && loopbackAddr[0] == ':' {
@@ -100,6 +110,17 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 	return backends, cleanup, nil
 }
 
+// backendAliases — ключ домена → ключ, чьё соединение он разделяет.
+//
+// notify: у службы один слушатель — внутренний слушатель notify-api (NTF-4 Р20).
+// Резолвер gRPC края ищет соединение по домену пакета (`notify`), внутренний REST
+// — по `notifyInternal`; оба ведут в одно соединение по одному адресу
+// (NTF-5 З18 п.2). Это единственное место, где ключ получает соединение без
+// собственного адреса.
+var backendAliases = map[string]string{
+	"notify": config.InternalBackendKey("notify"),
+}
+
 // backendEdge maps a backend-domain key (as produced by config.BackendAddrs) to
 // its mTLS edge name. The public and internal ports of a service share one edge
 // (one backend identity, one enable flag): "vpc"+"vpcInternal" → "vpc", etc.
@@ -108,6 +129,7 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 // "geo"+"geoInternal" → "geo".
 // "registry"+"registryInternal" → "registry".
 // "storage"+"storageInternal" → "storage".
+// "notify"+"notifyInternal" → "notify" (one listener, one connection, one edge).
 func backendEdge(backendKey string) string {
 	switch backendKey {
 	case "vpc", "vpcInternal":
@@ -124,6 +146,8 @@ func backendEdge(backendKey string) string {
 		return "registry"
 	case "storage", "storageInternal":
 		return "storage"
+	case "notify", "notifyInternal":
+		return "notify"
 	default:
 		// Unknown keys (e.g. "operation" self-loopback) have no cross-pod edge.
 		// They are never passed here in the production wiring; returning "" makes

@@ -1,0 +1,26 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+# Служба notify-api — ТОЛЬКО внутренний слушатель (ban #6, NTF-4 Р20): к нему
+# ходит край одним соединением (InternalNoticeService, NoticeService,
+# OperationService). Имя — носитель домена notify в гейте изоляции
+# (deploy/scripts/assert-ban6-external-isolation.py). Диагностическая
+# поверхность в службе не публикуется: её собирают по аннотации пода.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "notify.api.fullname" . }}
+  labels:
+    {{- include "notify.api.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "notify.api.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: grpc-internal
+      port: {{ .Values.api.ports.internal | int }}
+      targetPort: grpc-internal
+      protocol: TCP
+{{- end }}
