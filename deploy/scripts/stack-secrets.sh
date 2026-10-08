@@ -271,6 +271,7 @@ producer_of() {
     kacho-api-gateway-anon-mail-pow-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ подписи вызовов proof-of-work края, ключ pow.key (случайные байты, не короче 32; один на флот края)" ;;
     kacho-notify-db|kacho-notifyprobe-db) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: пароли базы notify/пробы, ключи password + postgres-password (их же берёт экземпляр базы existingSecret)" ;;
     kacho-notify-recipient-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ сетки на адресата notify, ключ recipientKey (не короче 32 байт; смена — ротация сетки)" ;;
+    kacho-notify-address-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ отпечатка адреса notify, ключ addressKey (hex, не короче 64 символов; не ротируется)" ;;
     kacho-notify-probe-feed-keyring) echo "посев seed-notify-stand-secrets.sh · стендовый объект пробы-источника: кольцо ключей ленты, ключ keyring" ;;
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
@@ -344,7 +345,7 @@ notify_seed_ran=0
 produce() {
   local name="$1"
   case "$name" in
-    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-probe-feed-keyring|kacho-api-gateway-anon-mail-pow-key)
+    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-address-key|kacho-notify-probe-feed-keyring|kacho-api-gateway-anon-mail-pow-key)
       # Объекты стенда notify и ключ proof-of-work почтовой полосы края — свой
       # посев (не dev-prod-secrets.sh: тот читает предполёт боевой раскатки
       # площадки, и его секреты он требует там посевом).

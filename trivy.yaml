@@ -114,7 +114,7 @@ misconfiguration:
       # то, без чего notify с перечнем `{notify-probe}` (единственный источник
       # таблицы) не рендерится: флаг, запись ручек на источник (чарт судит её
       # наличие, поля — страж старта процесса, поэтому заглушка одна), тег образа,
-      # ключ сетки, ссылка на секрет пароля базы, адрес узла почты и тройка узла
+      # ключ сетки, ключ отпечатка адреса (чарт судит форму hex), ссылка на секрет пароля базы, адрес узла почты и тройка узла
       # DKIM (объект ключа, ключ закрытого ключа, ключ селектора — каждое поле
       # чарт судит `required` в `notify.dkimNode`, defd00a9e64). Каждую судит
       # `assert-scan-stubs-hide-nothing.py`: снятая, она выбивает чарт notify из
@@ -123,6 +123,7 @@ misconfiguration:
       - sourceLimits.notify-probe.paused=false
       - image.tag=trivy-scan-only
       - recipientKey=trivy-scan-only-recipient-key-not-a-secret
+      - addressKey=00000000000000000000000000000000000000000000000000000000000000ff
       - db.passwordSecret.name=trivy-scan-only
       - global.kacho.identity.smtp.connectionURI=smtp://trivy-scan-only.invalid:25/
       - global.kacho.identity.smtp.dkim.secretName=trivy-scan-only
