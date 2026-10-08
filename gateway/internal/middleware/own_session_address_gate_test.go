@@ -35,8 +35,9 @@ import (
 )
 
 // addressRefusalWant — отказ Р3 побайтово: значение службы (`kaname`
-// `loginlanehttp.writeRefusal`), без `metadata`.
-const addressRefusalWant = `{"code":7,"message":"email address is not verified","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
+// `loginlanehttp.writeRefusal`), без `metadata`; текст — Р3 с редакции 7
+// (approvedR3Text, kaname#526).
+const addressRefusalWant = `{"code":7,"message":"` + approvedR3Text + `","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
 
 // addressPlatformPaths — «путь платформы» преамбулы §4 приёмки: каждый из четырёх.
 var addressPlatformPaths = []struct{ method, path string }{
