@@ -20,7 +20,12 @@
 set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UMBRELLA="$(cd "$HERE/../../helm/umbrella" && pwd)"
@@ -39,13 +44,23 @@ require_helm
 # находок» был бы «ноль прочитанного» ровно до тех пор, пока кто-нибудь не
 # вспомнит.
 PROFILES="$(stacks_table | tr ':' '|')"
+# Слой оператора к `prod` — ПОСЛЕДНИЙ элемент цепочки обёртки, абсолютным путём.
+PROD_SAMPLE="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
+  || fatal "цепочка prod гейта не прочитана — слой оператора дописать нечем"
+PROD_SAMPLE="${PROD_SAMPLE##* }"
+PROFILES="$(printf '%s\n' "$PROFILES" | sed "s#^prod|\(.*\)\$#prod|\1,$PROD_SAMPLE#")"
 
 # render <файлы через запятую> <имя профиля> — манифест профиля в $HELM_OUT.
 # Отказ рендера — УСЛОВИЕ прогона, а не свойство дерева: код 2 и текст helm.
 render() {
   local args=() f
   local IFS=,
-  for f in $1; do args+=(-f "$UMBRELLA/$f"); done
+  for f in $1; do
+    case "$f" in
+      /*) args+=(-f "$f") ;;            # слой оператора обёртки — абсолютным путём
+      *)  args+=(-f "$UMBRELLA/$f") ;;
+    esac
+  done
   unset IFS
   helm_try kacho-umbrella "$UMBRELLA" "${args[@]}"
   render_or_fatal "профиль $2"

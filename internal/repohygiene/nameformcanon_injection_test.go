@@ -73,6 +73,13 @@ func TestNameFormCanonAdoptions_ProvenByInjection(t *testing.T) {
 			body: "form text := " + nameFormLiteral + ";",
 		},
 		{
+			// Тело функции resource-event сверяет снимок имени с формой — это
+			// проверка полезной нагрузки, а не ограничение схемы (NTF-3 З10).
+			what: "функция базы resource-event — вывод шаблона corelib",
+			rel:  "services/zeta/internal/migrations/20261004000001_notify_feed_resource_event.sql",
+			body: feedWritesResourceEvent(t),
+		},
+		{
 			what: "миграция сервиса, канон НЕ принявшего",
 			rel:  "services/eps/internal/migrations/0017_quota.sql",
 			body: "CREATE TABLE t (name text);\n",

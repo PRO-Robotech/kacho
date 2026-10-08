@@ -21,6 +21,10 @@ import (
 // здесь не предмет (его держат NTF3-57, NTF3-58, NTF3-62 и гейт УК3-27).
 // Сессионная установка законна ТОЛЬКО в тестовом дереве (правило (г) гейта
 // УК3-27).
+//
+// Тем же параметром старта выставлен флаг ленты `kacho_feed.enabled=false`:
+// функция базы `resource-event` на журнале модуля (NTF-3 З10) отвергает
+// транзакцию записи журнала без флага, а лента фикстуре не предмет.
 func fixtureInitiatorDSN(t testing.TB, dsn string) string {
 	t.Helper()
 	u, err := url.Parse(dsn)
@@ -28,7 +32,7 @@ func fixtureInitiatorDSN(t testing.TB, dsn string) string {
 		t.Fatalf("DSN фикстуры не разобрался: %v", err)
 	}
 	q := u.Query()
-	q.Set("options", strings.TrimSpace(q.Get("options")+" -c kacho_journal.initiator=user:"+ids.NewHyphenID(ids.PrefixUser)))
+	q.Set("options", strings.TrimSpace(q.Get("options")+" -c kacho_journal.initiator=user:"+ids.NewHyphenID(ids.PrefixUser)+" -c kacho_feed.enabled=false"))
 	u.RawQuery = q.Encode()
 	return u.String()
 }

@@ -1,0 +1,90 @@
+{
+  "challengeTtlSeconds": 300,
+  "solverBudgetSeconds": 240,
+  "vectors": [
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAi7TUIuzYbq57dGr5PNyppxKQZRQvbomdqr8pg2vRJ5og",
+      "nonce": "894",
+      "leadingZeroBits": 10,
+      "bits": 8,
+      "accepted": true
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAi7TUIuzYbq57dGr5PNyppxKQZRQvbomdqr8pg2vRJ5og",
+      "nonce": "0",
+      "leadingZeroBits": 0,
+      "bits": 8,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAi7TUIuzYbq57dGr5PNyppxKQZRQvbomdqr8pg2vRJ5og",
+      "nonce": "894",
+      "leadingZeroBits": 10,
+      "bits": 11,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAqd7oN4ZFfD6mow-DS283XncTljZIpsfhjqf_uFT950Ww",
+      "nonce": "2449",
+      "leadingZeroBits": 11,
+      "bits": 10,
+      "accepted": true
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAqd7oN4ZFfD6mow-DS283XncTljZIpsfhjqf_uFT950Ww",
+      "nonce": "0",
+      "leadingZeroBits": 0,
+      "bits": 10,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAqd7oN4ZFfD6mow-DS283XncTljZIpsfhjqf_uFT950Ww",
+      "nonce": "2449",
+      "leadingZeroBits": 11,
+      "bits": 12,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAzycJh4cE_KvOBoS1RUfJiBdHfZyhu--0UAwerRAYXxpQ",
+      "nonce": "285",
+      "leadingZeroBits": 12,
+      "bits": 12,
+      "accepted": true
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAzycJh4cE_KvOBoS1RUfJiBdHfZyhu--0UAwerRAYXxpQ",
+      "nonce": "0",
+      "leadingZeroBits": 1,
+      "bits": 12,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LAzycJh4cE_KvOBoS1RUfJiBdHfZyhu--0UAwerRAYXxpQ",
+      "nonce": "285",
+      "leadingZeroBits": 12,
+      "bits": 13,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LA7WyDLfrZX5ZKK_ague-0_yaJnwRWri3j3H4SWDKyUaBQ",
+      "nonce": "32248",
+      "leadingZeroBits": 15,
+      "bits": 14,
+      "accepted": true
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LA7WyDLfrZX5ZKK_ague-0_yaJnwRWri3j3H4SWDKyUaBQ",
+      "nonce": "0",
+      "leadingZeroBits": 1,
+      "bits": 14,
+      "accepted": false
+    },
+    {
+      "challenge": "AQcBCQMHAQkDBwEJAwcBCQMAAAAAcT-0LA7WyDLfrZX5ZKK_ague-0_yaJnwRWri3j3H4SWDKyUaBQ",
+      "nonce": "32248",
+      "leadingZeroBits": 15,
+      "bits": 16,
+      "accepted": false
+    }
+  ]
+}
