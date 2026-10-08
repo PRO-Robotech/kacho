@@ -23,7 +23,7 @@ tests/newman/
   docs/{TAXONOMY,CASES-INDEX,TEST-PLAN,RESULTS,PRODUCT-REQUIREMENTS}.md
 ```
 
-## What is covered (57 cases across 7 collections — see docs/CASES-INDEX.md)
+## What is covered (71 cases across 8 collections — see docs/CASES-INDEX.md)
 
 Public sync reads — `RegionService.Get/List`, `ZoneService.Get/List`
 (`GET /geo/v1/regions[/{id}]`, `GET /geo/v1/zones[/{id}]`):
@@ -36,8 +36,12 @@ Public sync reads — `RegionService.Get/List`, `ZoneService.Get/List`
 - **authN** — anonymous → 401 `UNAUTHENTICATED` (EXEMPT removes authZ scope, never authN).
 - **Two-projection / anonymization** — public body NotContains infra / host-class /
   placement fields (they live only in the Internal projection `:9091`).
-- **Internal-vs-external split** — admin write-verb on the public endpoint as a non-admin
-  is rejected (401/403/404/501), never 200/mutation.
+- **Internal-vs-external split** — the internal admin path (`/geo/v1/internal/…`) on the public
+  endpoint is a 404 edge route miss, never a mutation (`admin-not-on-public.py`).
+- **Public admin verbs (ADM-1, `public-catalog.py`)** — `POST/PATCH/DELETE /geo/v1/{regions,zones}`
+  on the public endpoint: tenant → 403 and nothing changed, anonymous → 401, cluster admin →
+  Operation done in the response; storage refusals in `Operation.error` verbatim; public bodies
+  carry no `infra`/`status`.
 
 Source of truth: APPROVED `docs/specs/sub-phase-GEO-1-region-zone-redesign-acceptance.md`
 (`# verifies GEO-1-NN` annotations) + `.claude/rules/api-conventions.md`.
@@ -56,15 +60,16 @@ redesign"; they are added to this suite alongside the GEO-1 PR (its DoD requires
 matching newman case). No product-bug red cases and no known-failing cases (see
 `docs/RESULTS.md`).
 
-## Admin-CRUD (Internal, :9091) — out of this suite
+## Admin-CRUD (Internal, :9091)
 
-`InternalRegionService`/`InternalZoneService` (Create/Update/Delete) are Internal-only
-(security.md ban #6) and gated `system_admin`. They ARE covered black-box — via the
+`InternalRegionService`/`InternalZoneService` (Create/Update/Delete with `infra`, GetInternal)
+are Internal-only (security.md ban #6) and gated `system_admin`; the same catalog verbs without
+`infra` are also public (ADM-1, see above). They ARE covered black-box — via the
 cluster-internal REST listener (`{{internalBaseUrl}}`, steps marked `internal=True`):
 `cases/internal-region.py`, `cases/internal-zone.py`. Their mutations answer with a
 synchronously completed Operation, and a rejection arrives in `result.error` under HTTP
 200 — hence `assert_operation_envelope()` / `assert_operation_failed()` and the preflight
-selftest. The `ANP-*` cases stay as the guard that this admin surface is NOT reachable on
+selftest. The `ANP-*` cases stay as the guard that the INTERNAL admin path is NOT reachable on
 the public endpoint.
 
 ## Run

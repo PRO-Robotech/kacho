@@ -835,9 +835,18 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// оставшийся от снятого поставщика (kaname#564). Запись была освобождённой
 	// (INTERNAL_LISTENER) и без порога, поэтому сдвинулась только полоса «без
 	// порога». Числа ЗАМЕРЕНЫ прогоном после регенерации: 30→29, 349→348.
-	assert.Equal(t, 289, n1, "routine count")
+	//
+	// ADM-1 geo (kacho#3092) добавила ШЕСТЬ записей публичных
+	// `RegionService`/`ZoneService` `Create/Update/Delete`, все рутинные:
+	// порог принадлежит действию, а не адресу, и равен порогу внутреннего
+	// близнеца («1») — равенство держит проба пары записей
+	// (TestPermissionCatalog_ADM1GEO15_PublicGeoAdminEqualsInternalTwin), а не
+	// это число. Внутренние шесть остаются — прирост, а не замена. Полосы
+	// «чувствительное» и «без порога» не двигаются. Числа ЗАМЕРЕНЫ прогоном
+	// после регенерации: 289→295, 348→354.
+	assert.Equal(t, 295, n1, "routine count")
 	assert.Equal(t, 29, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 348, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 354, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

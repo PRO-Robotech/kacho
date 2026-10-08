@@ -23,6 +23,10 @@ import (
 
 // fakeGeoZoneCli — geov1.ZoneServiceClient под instance-use-case-тест (geo-validate).
 type fakeGeoZoneCli struct {
+	// Административные глаголы ZoneService (ADM-1) клиент потребителя не зовёт;
+	// встроенный интерфейс отвечает на них паникой на nil — громко, а не молча.
+	geov1.ZoneServiceClient
+
 	get func(context.Context, *geov1.GetZoneRequest) (*geov1.Zone, error)
 }
 
