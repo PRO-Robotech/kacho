@@ -12,7 +12,8 @@
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
-        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up
+        managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
+        installation-mail-dns
 
 SHELL := bash
 
@@ -1130,6 +1131,25 @@ stack-up:
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
 	  $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
 
+
+# installation-mail-dns — объект ключа DKIM и записи DKIM, SPF, DMARC домена
+# отправителя установки с внешним ретранслятором (kacho#3017; признак `relay` в
+# stacks-mail.txt). Записи публикует владелец домена у регистратора — вне
+# дерева; цель их порождает и сверяет опубликованное. Порядок:
+#
+#   make -C deploy installation-mail-dns STACK=a8f60d STEP=seed     # объект ключа, только если его нет
+#   make -C deploy installation-mail-dns STACK=a8f60d STEP=records  # три записи для публикации
+#   make -C deploy installation-mail-dns STACK=a8f60d STEP=verify   # опубликованное против порождённого
+#
+# Шаги — ручные и в stack-up не провязаны: notify этой цепочки в рендер не
+# входит, пока записей нет (Д102), а verify зелёный — условие его возврата.
+# Коды и разбор — в шапке scripts/installation-mail-dns.sh.
+installation-mail-dns:
+	@[ -n "$(STACK)" ] && [ -n "$(STEP)" ] || { \
+	  echo "ABORT: нужны STACK=<профиль с признаком relay> и STEP=seed|records|verify — умолчаний нет."; \
+	  exit 2; }
+	@STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
+	  bash scripts/installation-mail-dns.sh $(STACK) $(STEP) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS)
 
 # assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.
 #
