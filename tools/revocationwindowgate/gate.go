@@ -80,12 +80,14 @@
 //     source actually says. This is the direction that makes the gate bite: an
 //     operator who changes a default and does not touch the policy gets a red
 //     naming both numbers, so the change becomes a decision instead of a drift;
-//   - a known knob whose value the census cannot compare: declared REQUIRED
-//     (no default in source, the value is left to the deployment), or declared
-//     with a default the parser cannot read. Both used to be dropped by the
+//   - a known knob whose value the census cannot compare: declared with a
+//     default the parser cannot read, or declared REQUIRED (no default in
+//     source) while the installation profile does not set it at the values
+//     path the declaration's `knob` tag names. Both used to be dropped by the
 //     parser, so the census reported "a record without a subject" for a knob
 //     that was plainly in the tree — the consequence instead of the cause. Each
-//     is now a site (or a finding) with its coordinate; see Site.InSource.
+//     is now a site (or a finding) with its coordinate; see Site.InSource and
+//     Judge, which reads a required site's window where the landing writes it.
 //
 // # What it must stay silent about
 //
@@ -154,13 +156,18 @@ import (
 // deployment, so Window is zero and means nothing. Such a site is still a site:
 // dropping it made the census report "a record without a subject" for a knob
 // that is plainly in the tree, which names the consequence and hides the cause.
+//
+// ValuesPath is the path in the installation values that the declaration's
+// `knob` tag names ("notify.authz.cacheTTL"). A REQUIRED site has its window
+// read from there — see Judge; the gate keeps no list of paths of its own.
 type Site struct {
-	Service  string
-	Knob     string
-	File     string
-	Line     int
-	Window   time.Duration
-	InSource bool
+	Service    string
+	Knob       string
+	File       string
+	Line       int
+	Window     time.Duration
+	InSource   bool
+	ValuesPath string
 }
 
 // Report is the outcome, including what was examined.
@@ -394,13 +401,16 @@ func ScanFile(rep *Report, service, path, src string) error {
 					continue
 				}
 				line := fset.Position(fld.Pos()).Line
+				valuesPath := tag.Get("knob")
 				def, hasDefault := tag.Lookup("default")
 				if !hasDefault {
 					// Ручка обязательна: величину выбирает посадка. Это площадка,
-					// а не пустое место, — её судит гейт дерева, а не разбор.
+					// а не пустое место; величину ей читает Judge из профиля
+					// установки по пути values из тега knob.
 					rep.SitesMatched++
 					rep.Sites = append(rep.Sites, Site{
 						Service: service, Knob: knob, File: path, Line: line,
+						ValuesPath: valuesPath,
 					})
 					continue
 				}
@@ -412,7 +422,7 @@ func ScanFile(rep *Report, service, path, src string) error {
 				rep.SitesMatched++
 				rep.Sites = append(rep.Sites, Site{
 					Service: service, Knob: knob, File: path,
-					Line: line, Window: d, InSource: true,
+					Line: line, Window: d, InSource: true, ValuesPath: valuesPath,
 				})
 			}
 		}
