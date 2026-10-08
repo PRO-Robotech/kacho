@@ -229,7 +229,7 @@ red=0 silent=0
 txt() {
   local out rc=0
   out="$(dig +short +time=5 +tries=2 TXT "$1" ${RESOLVER:+@"$RESOLVER"} 2>&1)" || rc=$?
-  if [ "$rc" != 0 ] || grep -q '^;;' <<<"$out"; then
+  if [ "$rc" != 0 ] || [[ $'\n'"$out" == *$'\n;;'* ]]; then
     printf '%s\n' "$out" | sed 's/^/      /' >&2
     return 2
   fi

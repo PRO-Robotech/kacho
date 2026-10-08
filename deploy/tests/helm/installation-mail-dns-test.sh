@@ -87,9 +87,9 @@ run() { # run <профиль> <действие> → RC, OUT
   RC=$?
 }
 expect() { # expect <случай> <код> <подстрока>
-  if [ "$RC" != "$2" ] || ! grep -qF -- "$3" <<<"$OUT"; then
+  if [ "$RC" != "$2" ] || [[ "$OUT" != *"$3"* ]]; then
     printf '%s\n' "$OUT" | sed 's/^/    /' >&2
-    fail "$1: код $RC (ожидался $2), «$3» в выводе: $(grep -cF -- "$3" <<<"$OUT")"
+    fail "$1: код $RC (ожидался $2), а «$3» в выводе нет либо код иной"
   fi
   echo "  ✓ $1"
   ok
@@ -97,7 +97,7 @@ expect() { # expect <случай> <код> <подстрока>
 
 publish "$OBJ_P" "$SPF" "$DMARC"
 run a8f60d verify
-[ "$RC" = 2 ] && grep -q 'отказала\|COMPUTED' <<<"$OUT" && fatal "значения цепочки a8f60d не вычислены: $OUT"
+[ "$RC" = 2 ] && [[ "$OUT" == *отказала* || "$OUT" == *COMPUTED* ]] && fatal "значения цепочки a8f60d не вычислены: $OUT"
 expect "согласные записи" 0 "все три записи домена $DOM опубликованы и согласны"
 
 publish "$OTHER_P" "$SPF" "$DMARC"; run a8f60d verify
@@ -120,7 +120,7 @@ expect "профиль стенда" 1 "признак почтовой поло
 
 run a8f60d records
 expect "records: DKIM из объекта" 0 "$SEL._domainkey.$DOM."$'\t'"TXT"$'\t'"\"v=DKIM1; k=rsa; p=$OBJ_P\""
-grep -qF "\"$SPF\"" <<<"$OUT" && grep -qF "\"$DMARC\"" <<<"$OUT" \
+[[ "$OUT" == *"\"$SPF\""* && "$OUT" == *"\"$DMARC\""* ]] \
   || fail "records: строки SPF/DMARC профиля не напечатаны"
 
 outcome_verdict
