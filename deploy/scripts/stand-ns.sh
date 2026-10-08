@@ -398,8 +398,10 @@ cmd_up() {
   work="$WORK_ROOT/$ns"; mkdir -p "$work"
   stand_overlay "$ns" "$cans" "$persist" "$port" >"$work/stand.yaml"
   subchart_defaults >"$work/subchart-defaults.yaml" || die "умолчания подчартов не прочитаны" 2
-  local layers=("$work/subchart-defaults.yaml" "$UMBRELLA/values.yaml") f
-  for f in $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain "$stack" ' '); do layers+=("$UMBRELLA/$f"); done
+  local layers=("$work/subchart-defaults.yaml" "$UMBRELLA/values.yaml") f files
+  files="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain "$stack" ' ')" && [ -n "$files" ] ||
+    die "слои цепочки «$stack» не прочитаны — накладку образов выводить не из чего" 2
+  for f in $files; do layers+=("$UMBRELLA/$f"); done
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
 
   bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2

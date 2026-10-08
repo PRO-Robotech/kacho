@@ -445,6 +445,11 @@ var quotaCensusRules = []quotaCensusRule{
 		Token: regexp.MustCompile(`RefusedSubjectQuota|refusedSubjectQuota|axStreamsPerSubject`),
 	},
 	{
+		Surface: quotaSurfaceForeign, Code: "F6",
+		Why: "ResourceQuota кластера — предел пространства имён стенда проб (kacho#3102), а не квота ресурсов облака",
+		Token: regexp.MustCompile(`kind: ResourceQuota`),
+	},
+	{
 		Surface: quotaSurfaceForeign, Code: "F2",
 		Why:   "ёмкость проекта в БАЙТАХ у хранилища — иной механизм, списывающего триггера нет",
 		Token: regexp.MustCompile(`storage quota exceeded`),
