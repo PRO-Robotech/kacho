@@ -235,7 +235,19 @@ async function choose(
   typed: string,
   option: RegExp,
 ): Promise<void> {
-  await page.getByText(shown, { exact: true }).first().click();
+  // Поле-список открывается своим вводом: видимая подпись лежит ПОД ним, и
+  // нажатие на неё перехватывает сам ввод — его и нажимаем, найдя по подписи
+  // рядом (общий родитель подписи и ввода).
+  const input = page
+    .getByText(shown, { exact: true })
+    .first()
+    .locator("xpath=..")
+    .getByRole("combobox");
+  await expect(
+    input,
+    `поля-списка с подписью «${shown}» нет на форме`,
+  ).toBeVisible({ timeout: 20_000 });
+  await input.click();
   await page.keyboard.type(typed);
   await expect(
     page.getByRole("option", { name: option }).first(),
@@ -450,9 +462,9 @@ test("администраторы кластера: администратор 
         await page.goto("/system/cluster/admins", {
           waitUntil: "domcontentloaded",
         });
+        // Имя кнопки начинается подписью значка — сверяется окончание.
         const grant = page.getByRole("button", {
-          name: "Добавить администратора",
-          exact: true,
+          name: /Добавить администратора$/,
         });
         await expect(
           grant,
@@ -542,7 +554,7 @@ test("администраторы кластера: администратор 
   }
 });
 
-test("регионы: арендатор без права получает отказ словами, а не «маршрута нет»", async ({
+test("регионы и администраторы кластера: арендатор без права получает отказ словами, а не «маршрута нет»", async ({
   page,
 }) => {
   // verifies #3094 — близнец позиции регионов: различие одно — вызывающий не держит system_admin на кластере.
@@ -563,6 +575,20 @@ test("регионы: арендатор без права получает от
     page.getByText(FORBIDDEN_EXPLANATION, { exact: false }).first(),
     "отказ края не назван словами — объяснением вердикта AUTHZ_DENIED",
   ).toBeVisible({ timeout: 30_000 });
+  // Экран администраторов кластера: перечня арендатору край не отдаёт — экран
+  // говорит это словами и выдать права не предлагает.
+  await page.goto("/system/cluster/admins", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByText("Недостаточно прав для просмотра администраторов облака.", {
+      exact: true,
+    }),
+    "экран администраторов кластера не назвал отказ края словами",
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("button", { name: /Добавить администратора$/ }),
+    "арендатору без права экран предлагает выдачу прав",
+  ).toHaveCount(0);
+
   expect(
     (await page.request.get(`/geo/v1/regions/${regionId}`)).status(),
     "отказ края, а регион заведён",
