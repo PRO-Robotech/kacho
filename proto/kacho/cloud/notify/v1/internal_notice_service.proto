@@ -1,0 +1,278 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package kacho.cloud.notify.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "corelib/api/v1/operation.proto";
+import "corelib/authz/v1/authz_options.proto";
+import "corelib/operation/operation.proto";
+import "kacho/cloud/notify/v1/notice.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1";
+
+// InternalNoticeService — ведение извещений оператором установки.
+//
+// # Только внутренняя поверхность
+//
+// Префикс `Internal` выводит службу из внешнего маршрутизатора края
+// механически (ban #6): её REST-пути край регистрирует только на внутреннем
+// mux. Метода `Delete` нет: извещение — запись обязательства оператора, и
+// снимает его только подметальщик по сроку хранения.
+//
+// # Право
+//
+// Оператор — `system_admin` на синглтоне `cluster`; мутации требуют ступени
+// аутентификации `acr ≥ 2`; чтения — `system_viewer`. Право судят оба звена:
+// прослойка прав края и звено прав слушателя службы, по одной и той же
+// аннотации.
+//
+// # Операции
+//
+// `Create` — длительная операция: ответ `done=false`, аудитория проверяется у
+// владельца до фиксации извещения; в `metadata` — уже назначенный `notice_id`.
+// Переходы `Start`, `Complete`, `Cancel` и `Update` отвечают операцией с
+// `done=true` в самом ответе; отказ перехода — синхронный
+// `FAILED_PRECONDITION`, операция при этом не создаётся.
+service InternalNoticeService {
+  // Create — опубликовать извещение. Вид задаёт допустимые поля и начальное
+  // состояние; поле, запрещённое видом, — `INVALID_ARGUMENT`
+  // `<field>: not allowed for kind <KIND>`, а не молча проигнорированное.
+  rpc Create(CreateNoticeRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = {
+      post: "/notify/v1/internal/notices"
+      body: "*"
+    };
+    option (corelib.api.v1.operation) = {
+      metadata: "CreateNoticeMetadata"
+      response: "InternalNotice"
+    };
+    option (corelib.authz.v1.permission)        = "notify.notices.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Get — извещение во внутренней проекции. Неверная форма id —
+  // `invalid notice id '<X>'`; нет такого — `NOT_FOUND` `Notice <id> not found`.
+  rpc Get(GetInternalNoticeRequest) returns (InternalNotice) {
+    option (google.api.http) = {get: "/notify/v1/internal/notices/{notice_id}"};
+    option (corelib.authz.v1.permission)        = "notify.notices.get";
+    option (corelib.authz.v1.required_relation) = "system_viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "1";
+  }
+
+  // List — все извещения установки во внутренней проекции, без области,
+  // курсором `(created_at, id)` по возрастанию.
+  rpc List(ListInternalNoticesRequest) returns (ListInternalNoticesResponse) {
+    option (google.api.http) = {get: "/notify/v1/internal/notices"};
+    option (corelib.authz.v1.permission)        = "notify.notices.list";
+    option (corelib.authz.v1.required_relation) = "system_viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "1";
+  }
+
+  // Update — перенести моменты извещения в `SCHEDULED`
+  // (`MAINTENANCE`, `DECOMMISSION`, `TERMS_CHANGE`). Изменяемы только
+  // `starts_at` и `ends_at`; `kind`, `audience`, `affected_resources` в маске —
+  // `INVALID_ARGUMENT` `<field> is immutable after Notice.Create`. Пустая маска —
+  // полная правка изменяемых полей. Изменение значений повышает `revision`;
+  // правка без изменения значений — нет.
+  rpc Update(UpdateNoticeRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = {
+      patch: "/notify/v1/internal/notices/{notice_id}"
+      body: "*"
+    };
+    option (corelib.api.v1.operation) = {
+      metadata: "UpdateNoticeMetadata"
+      response: "InternalNotice"
+    };
+    option (corelib.authz.v1.permission)        = "notify.notices.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Start — `SCHEDULED → IN_PROGRESS` (`MAINTENANCE`, `DECOMMISSION`,
+  // `TERMS_CHANGE`); ставит `started_at`.
+  rpc Start(StartNoticeRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = {
+      post: "/notify/v1/internal/notices/{notice_id}:start"
+      body: "*"
+    };
+    option (corelib.api.v1.operation) = {
+      metadata: "StartNoticeMetadata"
+      response: "InternalNotice"
+    };
+    option (corelib.authz.v1.permission)        = "notify.notices.start";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Complete — `IN_PROGRESS → COMPLETED` (все виды); ставит `completed_at`.
+  rpc Complete(CompleteNoticeRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = {
+      post: "/notify/v1/internal/notices/{notice_id}:complete"
+      body: "*"
+    };
+    option (corelib.api.v1.operation) = {
+      metadata: "CompleteNoticeMetadata"
+      response: "InternalNotice"
+    };
+    option (corelib.authz.v1.permission)        = "notify.notices.complete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Cancel — `SCHEDULED → CANCELLED` (`MAINTENANCE`, `DECOMMISSION`,
+  // `TERMS_CHANGE`); ставит `cancelled_at`. Это переход извещения, а не отмена
+  // операции: операцию `Create` отменяет `OperationService.Cancel`.
+  rpc Cancel(CancelNoticeRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = {
+      post: "/notify/v1/internal/notices/{notice_id}:cancel"
+      body: "*"
+    };
+    option (corelib.api.v1.operation) = {
+      metadata: "CancelNoticeMetadata"
+      response: "InternalNotice"
+    };
+    option (corelib.authz.v1.permission)        = "notify.notices.cancel";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message CreateNoticeRequest {
+  // kind — вид. Обязателен: `KIND_UNSPECIFIED` — `kind: required`.
+  Notice.Kind kind = 1;
+
+  // starts_at — обязателен у `MAINTENANCE`, `DECOMMISSION`, `TERMS_CHANGE` и
+  // строго в будущем (`startsAt: must be in the future`); у прочих видов
+  // запрещён — момент ставит сервер.
+  google.protobuf.Timestamp starts_at = 2;
+
+  // ends_at — обязателен у `MAINTENANCE` и строго позже `starts_at`
+  // (`endsAt: must be after startsAt`); у прочих видов запрещён.
+  google.protobuf.Timestamp ends_at = 3;
+
+  // audience — аудитория. Обязательна: не задана — `audience: required`.
+  NoticeAudience audience = 4;
+
+  // affected_resources — затронутые ресурсы арендатора, не больше 50
+  // (`affectedResources: at most 50 items`); допустимы только у `MAINTENANCE`,
+  // `OUTAGE`, `DECOMMISSION`. Порядок значим и сохраняется. Тип — из закрытого
+  // перечня `Notice.affected_resources`; существование ресурсов не проверяется.
+  repeated AffectedResource affected_resources = 5;
+}
+
+message CreateNoticeMetadata {
+  // notice_id — идентификатор извещения, назначенный при приёме заявки. До
+  // успешного завершения операции извещения с этим id нет: `Get` — `NOT_FOUND`.
+  string notice_id = 1;
+}
+
+message GetInternalNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`).
+  string notice_id = 1;
+}
+
+message ListInternalNoticesRequest {
+  // page_size — размер страницы: `0` — 50, наибольшее 1000; вне `[0..1000]` —
+  // `INVALID_ARGUMENT` с именем поля, без подрезки.
+  int64 page_size = 1;
+
+  // page_token — непрозрачный курсор из `next_page_token`; мусорный —
+  // `INVALID_ARGUMENT` с именем поля.
+  string page_token = 2;
+}
+
+message ListInternalNoticesResponse {
+  // notices — страница извещений в порядке `(created_at, id)` по возрастанию
+  // (порядок значим).
+  repeated InternalNotice notices = 1;
+
+  // next_page_token — курсор следующей страницы; пустой на странице с
+  // последним извещением.
+  string next_page_token = 2;
+}
+
+message UpdateNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`).
+  string notice_id = 1;
+
+  // update_mask — изменяемые поля: `starts_at`, `ends_at`. Неизменяемое поле —
+  // `<field> is immutable after Notice.Create` (проверяется до известного
+  // набора); неизвестное — `INVALID_ARGUMENT`. Пустая маска — полная правка.
+  google.protobuf.FieldMask update_mask = 2;
+
+  // starts_at — новое начало, срок либо момент вступления в силу; строго в
+  // будущем.
+  google.protobuf.Timestamp starts_at = 3;
+
+  // ends_at — новый конец (`MAINTENANCE`); у прочих видов запрещён.
+  google.protobuf.Timestamp ends_at = 4;
+}
+
+message UpdateNoticeMetadata {
+  // notice_id — идентификатор изменённого извещения.
+  string notice_id = 1;
+}
+
+message StartNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`).
+  string notice_id = 1;
+}
+
+message StartNoticeMetadata {
+  // notice_id — идентификатор извещения.
+  string notice_id = 1;
+}
+
+message CompleteNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`).
+  string notice_id = 1;
+}
+
+message CompleteNoticeMetadata {
+  // notice_id — идентификатор извещения.
+  string notice_id = 1;
+}
+
+message CancelNoticeRequest {
+  // notice_id — идентификатор извещения (`ntc-…`).
+  string notice_id = 1;
+}
+
+message CancelNoticeMetadata {
+  // notice_id — идентификатор извещения.
+  string notice_id = 1;
+}

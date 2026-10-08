@@ -8,7 +8,7 @@ IMAGE  := kacho-notify:dev
 # Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
 include ../../provenance.mk
 
-.PHONY: build test test-short integration vet lint docker bundle bundle-check
+.PHONY: build test test-short integration vet lint docker bundle bundle-check audit-list-filter
 
 # Сборка шаблонов (NTF-1 Р7, NTF1-G17): каталоги шаблонов источников по
 # таблице bundle/internal/assemble → копия, встраиваемая в notify
@@ -48,6 +48,16 @@ export GOLANGCI_LINT_CACHE
 
 lint:
 	golangci-lint run ./...
+
+# audit-list-filter — гейт списков: листинг отдаёт только то, что вызывающему
+# видеть можно. Транспорт notify — тонкий адаптер, решение о праве принимает
+# use-case в своём пакете, поэтому анализатор свой и идёт по делегации
+# (tools/auditlistfilter/audit.go, раздел о причине). Первой строкой печатает
+# перепись осмотренного; код 2 — дерево не прочитано, 1 — находки, 0 — судимо и
+# чисто. Тот же анализ гоняют пробы tools/auditlistfilter/audit_test.go с
+# инъекциями на копиях дерева и перепись internal/repohygiene/listfiltercensus_test.go.
+audit-list-filter:
+	@go run ./tools/auditlistfilter/cmd/audit-list-filter
 
 # Контекст сборки — корень монорепо: образу нужен единый go.mod, pkg/ и proto/.
 docker:

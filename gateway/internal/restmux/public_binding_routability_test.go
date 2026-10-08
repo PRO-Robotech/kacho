@@ -59,7 +59,23 @@ const minPublicBindings = 200
 // (`if storageAddr != ""`), а не его значением. Умолчания — DNS-имена сервисов
 // кластера; вне кластера каждый пробный запрос ждёт их разрешения, и проба
 // занимала 43 секунды вместо долей секунды, измеряя резолвер DNS, а не маршруты.
+//
+// Установка объявляется ПОЛНОЙ, с notify. У адреса notify умолчания нет (NTF-4
+// Р20): незаданный адрес значит «notify в установке нет», и тогда его биндинги
+// честно не маршрутизируются. Проба полноты маршрутов судит установку, в которой
+// notify есть, поэтому объявляет его явно, как профиль развёртывания; установку
+// без notify судит отдельный близнец (TestNotifyBindingsFollowTheDeclaredInstallation).
 func probeAddrs(t *testing.T) map[string]string {
+	t.Helper()
+	t.Setenv(notifyAddrKnob, "notify-api.kacho.svc:9091")
+	return loadProbeAddrs(t)
+}
+
+// notifyAddrKnob — ручка единственного адреса notify у края.
+const notifyAddrKnob = "KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC"
+
+// loadProbeAddrs — карта composition root'а для уже объявленного окружения.
+func loadProbeAddrs(t *testing.T) map[string]string {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {

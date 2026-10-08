@@ -76,6 +76,15 @@ var exemptReasonDictionary = map[string]string{
 var EnforcementSite = map[string]string{
 	"corelib.operation.OperationService/Get":    "gateway/internal/opsproxy/proxy.go",
 	"corelib.operation.OperationService/Cancel": "gateway/internal/opsproxy/proxy.go",
+
+	// Чтение извещений арендатором (kacho#2924, приёмка NTF-5 Р16, замысел З16
+	// п.2): у края освобождено, право `v_get` на область запроса судит
+	// `authzcheck.RequireScope` в use-case каждого метода, после проверок формы и
+	// до выборки.
+	"kacho.cloud.notify.v1.NoticeService/List":          "services/notify/internal/apps/kacho/api/publicnotice/list/list.go",
+	"kacho.cloud.notify.v1.NoticeService/ListByAccount": "services/notify/internal/apps/kacho/api/publicnotice/listbyaccount/listbyaccount.go",
+	"kacho.cloud.notify.v1.NoticeService/Get":           "services/notify/internal/apps/kacho/api/publicnotice/get/get.go",
+	"kacho.cloud.notify.v1.NoticeService/GetByAccount":  "services/notify/internal/apps/kacho/api/publicnotice/getbyaccount/getbyaccount.go",
 }
 
 // ExemptCatalogRow — запись каталога прав вместе с копией, из которой прочитана.

@@ -13,7 +13,8 @@ package middleware_test
 // NOT changed by the acr addition (net-strengthening: exempt-permission + acr=2).
 //
 // This is the primary RED→GREEN lock: before the proto refinement 372 RPCs carry
-// "2" (blanket step-up); after it, exactly 32 do (kacho#2918: Revoke/Restore of the notification grant).
+// "2" (blanket step-up); after it, exactly 37 do (kacho#2924: the five mutations of
+// InternalNoticeService joined the set as category M).
 //
 // Set revision (hardening round): UserService/Invite JOINED category B — it
 // creates an AccessBinding atomically (project_id+role_id) and is therefore a
@@ -239,6 +240,19 @@ func sensitiveACR2FQNs() []string {
 		// "1" explicitly, and the over-inclusion assertion below is silent on them.
 		"kaname.cloud.iam.v1.InternalNotificationGrantService/Restore",
 		"kaname.cloud.iam.v1.InternalNotificationGrantService/Revoke",
+		//
+		// Category M — operator notices (NTF-5 Р18, kacho#2924). Every mutation
+		// of `InternalNoticeService` publishes or changes an obligation letter
+		// that the platform sends, as a trusted sender, to the contacts of every
+		// account in the audience — possibly all of them — and that the
+		// recipients cannot switch off. The acceptance doc puts a second factor
+		// on that act; the contract declares "2" EXPLICITLY on all five. The two
+		// reads of the same service (`Get`, `List`) stay at "1". 32 → 37.
+		"kacho.cloud.notify.v1.InternalNoticeService/Cancel",
+		"kacho.cloud.notify.v1.InternalNoticeService/Complete",
+		"kacho.cloud.notify.v1.InternalNoticeService/Create",
+		"kacho.cloud.notify.v1.InternalNoticeService/Start",
+		"kacho.cloud.notify.v1.InternalNoticeService/Update",
 	}
 }
 
@@ -296,7 +310,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	fqns := sensitiveACR2FQNs()
 	require.Empty(t, repeatedFQNs(fqns), "the sensitive list must name each FQN once")
 	require.Len(t, fqns, len(sensitive), "the sensitive list and its set must be the same size")
-	require.Len(t, sensitive, 32, "the acceptance-doc sensitive set must contain exactly 32 FQNs")
+	require.Len(t, sensitive, 37, "the acceptance-doc sensitive set must contain exactly 37 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -317,7 +331,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 32, "exactly 32 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 37, "exactly 37 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -746,7 +760,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
 	// утверждения этой пробы после регенерации каталога. Сумма сходится
 	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
-	assert.Equal(t, 32, n2, "sensitive count")
+	assert.Equal(t, 37, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -883,9 +897,22 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// объявлял, и генератор ставил "2" по умолчанию (полосы мерили 34 и 292);
 	// пин kaname@c1b397b7 (Д121) объявляет "1" явно, и после регенерации
 	// каталога полосы ЗАМЕРЕНЫ прогоном: 32 · 294 · 30, итог 351→356.
-	assert.Equal(t, 294, n1, "routine count")
-	assert.Equal(t, 30, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 356, n2+n1+nEmpty, "catalog total")
+	//
+	// Контракт извещений оператора notify (kacho#2924, NTF-5) привёз
+	// ОДИННАДЦАТЬ записей. Пять мутаций `InternalNoticeService` — в полосу
+	// «чувствительное» явным "2" контракта (Р18): 32→37. Два чтения того же
+	// сервиса — на полу «1», полоса «рутина»: 294→296. Четыре метода
+	// `NoticeService` — освобождённые (`HANDLER_DECIDES`: право `v_get` на
+	// область судит use-case) и без порога: 30→34. Итог 356→367.
+	//
+	// Подъём пина на kaname@33010d434 (kacho#2924, голова 484-notify) привёз
+	// ОДНУ запись — `InternalIAMService/CurrentAuthzRevision`, освобождённую
+	// (INTERNAL_LISTENER) и без порога: 34→35. Полосы «чувствительное» и
+	// «рутина» не сдвинулись. Числа ЗАМЕРЕНЫ прогоном после регенерации
+	// каталога: 37 · 296 · 35, итог 367→368.
+	assert.Equal(t, 296, n1, "routine count")
+	assert.Equal(t, 35, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 368, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

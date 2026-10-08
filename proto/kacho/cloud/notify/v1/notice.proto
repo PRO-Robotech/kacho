@@ -1,0 +1,279 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package kacho.cloud.notify.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1";
+
+// Notice — извещение оператора установки: запись обязательства оператора перед
+// арендаторами о событии, которое меняет их ресурсы или отношения с оператором
+// без их участия (плановые работы, авария, вывод из эксплуатации, приостановка,
+// инцидент безопасности, изменение условий).
+//
+// Это ПУБЛИЧНАЯ проекция: её отдают `NoticeService.List`, `ListByAccount`, `Get`
+// и `GetByAccount`. Аудитории, автора, ревизии, напоминаний и счётчиков доставки
+// в ней нет по построению — они живут только во внутренней проекции
+// `InternalNotice`. Две проекции — два сообщения, а не одно с полями, которые
+// публичное чтение «не заполняет».
+//
+// Извещение создаёт и ведёт только оператор (`InternalNoticeService`). Удаления
+// нет: завершённое или отменённое извещение снимает подметальщик по сроку
+// хранения, до этого оно читается.
+message Notice {
+  // Kind — вид извещения. Перечень закрыт: вид задаёт допустимые поля,
+  // начальное состояние, категорию контакта и этапы писем.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // MAINTENANCE — плановые работы: `starts_at` и `ends_at` обязательны,
+    // начальное состояние `SCHEDULED`.
+    MAINTENANCE = 1;
+    // OUTAGE — авария: моменты ставит сервер, начальное состояние `IN_PROGRESS`.
+    OUTAGE = 2;
+    // DECOMMISSION — вывод из эксплуатации: `starts_at` — срок, начальное
+    // состояние `SCHEDULED`.
+    DECOMMISSION = 3;
+    // SUSPENSION — приостановка: моменты ставит сервер, начальное состояние
+    // `IN_PROGRESS`; аудитория «все аккаунты» для этого вида запрещена.
+    SUSPENSION = 4;
+    // SECURITY_INCIDENT — инцидент безопасности: моменты ставит сервер,
+    // начальное состояние `IN_PROGRESS`.
+    SECURITY_INCIDENT = 5;
+    // TERMS_CHANGE — изменение условий: `starts_at` — момент вступления в силу,
+    // начальное состояние `SCHEDULED`.
+    TERMS_CHANGE = 6;
+  }
+
+  // State — состояние жизненного цикла. Переходы: `SCHEDULED → IN_PROGRESS →
+  // COMPLETED` и `SCHEDULED → CANCELLED`; иных нет.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    SCHEDULED = 1;
+    IN_PROGRESS = 2;
+    COMPLETED = 3;
+    CANCELLED = 4;
+  }
+
+  // Category — категория контакта, по которой идёт адресация писем. Выводится
+  // из вида и только из него: `MAINTENANCE`, `OUTAGE`, `DECOMMISSION` →
+  // `OPERATIONS`; `SUSPENSION`, `TERMS_CHANGE` → `ACCOUNT_LEGAL`;
+  // `SECURITY_INCIDENT` → `SECURITY`.
+  enum Category {
+    CATEGORY_UNSPECIFIED = 0;
+    SECURITY = 1;
+    ACCOUNT_LEGAL = 2;
+    OPERATIONS = 3;
+  }
+
+  // id — идентификатор извещения: `ntc-` и 17 символов crockford base32.
+  // Неизменяем.
+  string id = 1;
+
+  // kind — вид. Задаётся при создании и не меняется.
+  Kind kind = 2;
+
+  // category — категория контакта, выведенная из `kind`. Только выход: на
+  // входе создания такого поля нет.
+  Category category = 3;
+
+  // state — текущее состояние.
+  State state = 4;
+
+  // starts_at — начало (`MAINTENANCE`), срок (`DECOMMISSION`) либо момент
+  // вступления в силу (`TERMS_CHANGE`), как его задал оператор; у видов,
+  // рождённых в `IN_PROGRESS`, — момент приёма заявки создания, поставленный
+  // сервером. Точность — секунда. Заполняют все чтения обеих проекций.
+  google.protobuf.Timestamp starts_at = 5;
+
+  // ends_at — конец плановых работ; задан только у `MAINTENANCE`, у прочих
+  // видов не задан никогда. Точность — секунда. Заполняют все чтения обеих
+  // проекций.
+  google.protobuf.Timestamp ends_at = 6;
+
+  // started_at — момент перехода в `IN_PROGRESS` по часам службы, точность —
+  // секунда; у видов, рождённых в `IN_PROGRESS`, равен моменту приёма заявки
+  // создания. Не задан — такого перехода не было, и только это. Заполняют все
+  // чтения обеих проекций (`Get`, `GetByAccount`, `List`, `ListByAccount` и
+  // внутренние `Get`, `List`) одинаково.
+  google.protobuf.Timestamp started_at = 7;
+
+  // completed_at — момент перехода в `COMPLETED` по часам службы, точность —
+  // секунда. Не задан — такого перехода не было, и только это. Заполняют все
+  // чтения обеих проекций одинаково.
+  google.protobuf.Timestamp completed_at = 8;
+
+  // cancelled_at — момент перехода в `CANCELLED` по часам службы, точность —
+  // секунда. Не задан — такого перехода не было, и только это. Заполняют все
+  // чтения обеих проекций одинаково.
+  google.protobuf.Timestamp cancelled_at = 9;
+
+  // created_at — момент приёма заявки создания по часам службы, точность —
+  // секунда (не момент её фиксации после проверки аудитории).
+  google.protobuf.Timestamp created_at = 10;
+
+  // updated_at — момент последнего изменения извещения, точность — секунда.
+  google.protobuf.Timestamp updated_at = 11;
+
+  // affected_resources — затронутые ресурсы арендатора, СУЖЕННЫЕ по праву
+  // `v_get` вызывающего на каждый ресурс: ссылка, на которую у вызывающего нет
+  // права (в том числе ссылка на снятый ресурс), в ответ не попадает.
+  //
+  // Какие чтения заполняют: только `NoticeService.Get` и `GetByAccount`. В
+  // `List` и `ListByAccount` поле НЕ заполняется никогда — пустое там значит
+  // «список этого поля не несёт», а не «ресурсов нет». У видов `SUSPENSION`,
+  // `SECURITY_INCIDENT`, `TERMS_CHANGE` поле пусто всегда.
+  //
+  // Порядок значим: порядок, заданный оператором при создании; сужение
+  // выбрасывает элементы, не переставляя оставшиеся.
+  //
+  // Тип ссылки — из закрытого перечня 18 типов ресурса арендатора: `vpc_network`,
+  // `vpc_subnet`, `vpc_security_group`, `vpc_route_table`, `vpc_address`,
+  // `vpc_gateway`, `vpc_network_interface`, `vpc_cidr_group`, `compute_instance`,
+  // `compute_placement_group`, `nlb_network_load_balancer`, `nlb_target_group`,
+  // `nlb_listener`, `registry_registry`, `registry_repository`, `storage_volume`,
+  // `storage_snapshot`, `storage_image`. Перечень — константа контракта: новый
+  // тип ресурса арендатора дописывается сюда правкой контракта, префиксом
+  // идентификатора он не выводится.
+  repeated AffectedResource affected_resources = 12;
+}
+
+// AffectedResource — ссылка на затронутый ресурс арендатора.
+//
+// Ссылка не держит ресурс: существование при создании извещения не
+// проверяется, ресурс может быть снят позже, и тогда ссылка при чтении
+// арендатором выпадает по праву, а во внутренней проекции остаётся как была
+// задана.
+message AffectedResource {
+  // type — тип ресурса из закрытого перечня 18 типов ресурса арендатора
+  // (перечень — в комментарии `Notice.affected_resources`).
+  string type = 1;
+
+  // id — идентификатор ресурса этого типа.
+  string id = 2;
+}
+
+// NoticeAudience — аудитория извещения: ровно одна из трёх форм.
+//
+// Две формы сразу, ни одной, пустой элемент перечня и больше 100 элементов
+// отвергаются при создании (`INVALID_ARGUMENT` с именем поля). Аудитория
+// неизменна после создания.
+message NoticeAudience {
+  // all_accounts — каждый аккаунт установки. Для `SUSPENSION` запрещена.
+  bool all_accounts = 1;
+
+  // account_ids — аккаунты, 1…100. Набор: порядок не значим для адресации;
+  // внутренняя проекция возвращает его в порядке, заданном при создании.
+  repeated string account_ids = 2;
+
+  // project_ids — проекты, 1…100. Набор: порядок не значим для адресации;
+  // внутренняя проекция возвращает его в порядке, заданном при создании.
+  repeated string project_ids = 3;
+}
+
+// NoticeReminder — назначенное и ещё не состоявшееся напоминание.
+message NoticeReminder {
+  // at — назначенный момент напоминания, точность — секунда.
+  google.protobuf.Timestamp at = 1;
+
+  // stage — этап письма напоминания; в этой редакции всегда `reminder`
+  // (имя этапа — то же написание, что в имени шаблона письма и в метке
+  // `stage` метрик службы).
+  string stage = 2;
+}
+
+// NoticeDeliveryCount — число строк доставки одного этапа с одним исходом.
+message NoticeDeliveryCount {
+  // Outcome — вид исхода строки доставки. Словарь закрыт: исходы письма
+  // службы отправки, клетки адресата-субъекта и снятие неактуальной строки.
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    // SENT — ретранслятор принял письмо.
+    SENT = 1;
+    // RECIPIENT_REJECTED — ретранслятор отверг адресата.
+    RECIPIENT_REJECTED = 2;
+    // DEFER — строка отложена и будет взята снова; не терминален.
+    DEFER = 3;
+    // DENIED — у кандидата нет права на область либо права на отправку
+    // отозваны.
+    DENIED = 4;
+    // INVALID — строка не может быть отправлена никогда.
+    INVALID = 5;
+    // DROPPED — письмо сброшено ограничением на адресата.
+    DROPPED = 6;
+    // NO_ADDRESS — у кандидата нет пригодного адреса (субъекта нет, он не
+    // активен либо адрес не подтверждён).
+    NO_ADDRESS = 7;
+    // SUPERSEDED — строку закрыл переход извещения до отправки: её факт несёт
+    // письмо того же перехода либо момент, о котором она напоминала, больше не
+    // наступит.
+    SUPERSEDED = 8;
+  }
+
+  // stage — этап письма: `scheduled`, `reminder`, `rescheduled`, `cancelled`,
+  // `completed`, `started`, `resolved`, `lifted`, `opened`, `closed` (то же
+  // написание, что в имени шаблона письма и в метке `stage` метрик службы).
+  string stage = 1;
+
+  // outcome — вид исхода.
+  Outcome outcome = 2;
+
+  // count — число строк этапа с этим исходом; каждая строка считается один раз
+  // своим исходом. Строки, ещё не получившие исхода, не считаются.
+  int64 count = 3;
+}
+
+// InternalNotice — ВНУТРЕННЯЯ проекция извещения: публичная плюс поля
+// оператора. Отдают её только `InternalNoticeService.Get` и `List`; в публичную
+// поверхность она не попадает.
+message InternalNotice {
+  // id, kind, category, state, starts_at, ends_at, started_at, completed_at,
+  // cancelled_at, created_at, updated_at — те же поля и с тем же смыслом, что у
+  // `Notice`.
+  string id = 1;
+  Notice.Kind kind = 2;
+  Notice.Category category = 3;
+  Notice.State state = 4;
+  google.protobuf.Timestamp starts_at = 5;
+  google.protobuf.Timestamp ends_at = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+  google.protobuf.Timestamp cancelled_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+
+  // affected_resources — затронутые ресурсы БЕЗ сужения, ровно как их задал
+  // оператор, в его порядке (порядок значим). Заполняют оба внутренних чтения,
+  // `Get` и `List`. Закрытый перечень типов — в комментарии
+  // `Notice.affected_resources`.
+  repeated AffectedResource affected_resources = 12;
+
+  // audience — аудитория, как её задал оператор. Заполняют оба внутренних
+  // чтения.
+  NoticeAudience audience = 13;
+
+  // created_by — субъект оператора, создавшего извещение (`user:<id>`).
+  string created_by = 14;
+
+  // revision — ревизия моментов извещения: `1` при создании, `+1` на каждый
+  // `Update`, изменивший значения; правка без изменения значений её не
+  // повышает.
+  int64 revision = 15;
+
+  // reminders — несостоявшиеся назначенные напоминания.
+  //
+  // Порядок значим: по `at` по возрастанию. Состоявшиеся и снятые напоминания в
+  // поле не входят. У вида без напоминаний и у извещения не в `SCHEDULED` поле
+  // пусто — и это значит «назначенных напоминаний нет», и только это.
+  // Заполняют оба внутренних чтения, `Get` и `List`.
+  repeated NoticeReminder reminders = 16;
+
+  // delivery_counts — счётчики строк доставки по этапу и исходу.
+  //
+  // Набор: порядок не значим, пара (`stage`, `outcome`) встречается не больше
+  // одного раза, пара с нулём строк не выводится. Заполняют оба внутренних
+  // чтения, `Get` и `List`.
+  repeated NoticeDeliveryCount delivery_counts = 17;
+}

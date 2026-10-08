@@ -190,7 +190,8 @@ func parseSourceRecord(rec map[string]json.RawMessage) (Source, []string) {
 	}
 	if raw, ok := present("classes"); ok {
 		if l, ok := list("classes", raw); ok {
-			src.Classes, problems = closedSet("classes", l, limits.NetClasses(), false, problems)
+			// Классы сети: класс только процесса (obligation) источник не отдаёт.
+			src.Classes, problems = closedSet("classes", l, limits.NetworkClasses(), false, problems)
 		}
 	}
 	if raw, ok := present("recipientForms"); ok {

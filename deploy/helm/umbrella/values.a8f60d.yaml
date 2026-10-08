@@ -398,6 +398,12 @@ registry:
 api-gateway:
   resources: *id002
   image: docker.io/prorobotech/kacho-api-gateway:main-ba01514b
+  # notify в этой цепочке не рендерится (проба notify-probe выключена выше), и
+  # notify-api нет — адрес notify, объявленный слоем стенда values.dev.yaml,
+  # снят: край не зовёт службу, которой в установке нет
+  # (deploy/notify_api_render_test.go).
+  backends:
+    notifyInternal: ""
 kaname:
   resources: *id002
   # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — СУЖЕНА ПРЕДЕЛОМ ЭТОГО КЛАСТЕРА

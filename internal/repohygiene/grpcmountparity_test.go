@@ -251,6 +251,58 @@ func TestGRPCMountParity_SeesAnUnmountedServiceAsUnmounted(t *testing.T) {
 	}
 }
 
+// splitCatalogTree — каталог demo с двумя корнями над одним proto-пакетом:
+// корень demo монтирует AlphaService, корень demo-api — BetaService (если
+// apiMountsBeta), как notify-probe и notify-api над kacho.cloud.notify.v1.
+func splitCatalogTree(t *testing.T, apiMountsBeta bool) string {
+	t.Helper()
+	root := tinyTree(t, false, "")
+	body := "\tdemov1.RegisterBetaServiceServer(srv, nil)\n"
+	if !apiMountsBeta {
+		body = "\t_ = srv\n"
+	}
+	p := filepath.Join(root, "services/demo/cmd/demo-api/main.go")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `package main
+
+import (
+	"github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/demo/v1"
+)
+
+var srv any
+
+func main() {
+` + body + `}
+`
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// TestGRPCMountParity_ACatalogWithTwoRootsOwnsThePackageTogether — два корня
+// одного каталога делят пакет: каждый сервис смонтирован хотя бы одним — тишина;
+// близнец — второй корень сервис не монтирует, и тот становится находкой.
+func TestGRPCMountParity_ACatalogWithTwoRootsOwnsThePackageTogether(t *testing.T) {
+	t.Parallel()
+	f, c, err := AuditGRPCMountParity(tinyOptions(splitCatalogTree(t, true)), nil)
+	if err != nil || len(f) != 0 {
+		t.Fatalf("сервисы пакета подняты разными корнями каталога — найдено %v (err=%v)", f, err)
+	}
+	if c.OwningBinaries != 2 {
+		t.Fatalf("монтирующих корней %d, ожидалось 2", c.OwningBinaries)
+	}
+	f, _, err = AuditGRPCMountParity(tinyOptions(splitCatalogTree(t, false)), nil)
+	if err != nil {
+		t.Fatalf("анализатор не отработал: %v", err)
+	}
+	if len(f) != 1 || f[0].FQN != "kacho.cloud.demo.v1.BetaService" {
+		t.Fatalf("ни один корень каталога не монтирует BetaService — ожидалась ровно одна находка, получено %v", f)
+	}
+}
+
 // TestGRPCMountParity_ReadsTheImportAliasAndNotThePathTail — у сгенерированных
 // пакетов последний сегмент пути «v1», поэтому имя импорта обязано браться из
 // алиаса либо из объявления пакета. Проба разом на обе формы.

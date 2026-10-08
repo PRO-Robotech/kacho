@@ -171,7 +171,7 @@ func (c Config) validate() error {
 		for _, cl := range s.Classes {
 			if _, ok := wireClass(cl); !ok {
 				errs = append(errs, fmt.Errorf("запись #%d (модуль %q): класс %q вне перечня %v",
-					i+1, s.Module, cl, limits.NetClasses()))
+					i+1, s.Module, cl, limits.NetworkClasses()))
 			}
 		}
 	}

@@ -36,6 +36,17 @@
 // не покрыт — такой пропуск ловится другой полосой (маршрутизируемостью на краю),
 // и здесь честно назван переписью «владеющих пакетов».
 //
+// # Каталог с несколькими корнями владеет пакетом целиком
+//
+// У каталога службы может быть несколько корней процессов (правило Д74:
+// `services/notify/cmd/{notify,notify-api,notify-probe}`), и proto-пакет домена
+// тогда делят их слушатели: пробе-источнику — её Internal*-сервис, корню API —
+// сервисы извещений. Сервис пакета считается смонтированным, если его монтирует
+// ХОТЯ БЫ ОДИН корень того же каталога: требовать каждый сервис от каждого корня
+// значило бы требовать второй слушатель того же предмета. Пропуск по-прежнему
+// виден — сервис, который не монтирует ни один корень каталога, остаётся
+// находкой и называет корень, по чьему владению пакетом он судится.
+//
 // # Исключение живёт, пока у него есть предмет
 //
 // Сервис, намеренно не поднимаемый по gRPC (обслуживается иначе либо не
@@ -331,8 +342,20 @@ func AuditGRPCMountParity(opts MountOptions, out io.Writer) ([]MountFinding, Mou
 		}
 	}
 
+	byCatalog := map[string]map[string]struct{}{}
+	for bin, set := range mounted {
+		cat := mountCatalogOf(bin)
+		if byCatalog[cat] == nil {
+			byCatalog[cat] = map[string]struct{}{}
+		}
+		for fqn := range set {
+			byCatalog[cat][fqn] = struct{}{}
+		}
+	}
+
 	for _, bin := range sortedStrKeys(mounted) {
 		set := mounted[bin]
+		catalogSet := byCatalog[mountCatalogOf(bin)]
 		owned := map[string]struct{}{}
 		for fqn := range set {
 			owned[fqn[:strings.LastIndexByte(fqn, '.')]] = struct{}{}
@@ -345,7 +368,7 @@ func AuditGRPCMountParity(opts MountOptions, out io.Writer) ([]MountFinding, Mou
 		for _, pkg := range sortedStrKeys2(owned) {
 			for _, svc := range declared[pkg] {
 				fqn := pkg + "." + svc
-				if _, ok := set[fqn]; ok {
+				if _, ok := catalogSet[fqn]; ok {
 					continue
 				}
 				if _, ok := allow[fqn]; ok {
@@ -479,6 +502,16 @@ func declaredServices(homes []apiStubHome, c *MountCensus) (map[string][]string,
 
 // mountedServices разбирает композиционные корни и собирает FQN сервисов,
 // поднятых вызовом `Register<X>ServiceServer`.
+// mountCatalogOf — каталог службы корня `services/<svc>/cmd/<корень>`; корень вне
+// `services/` (край) — сам себе каталог.
+func mountCatalogOf(bin string) string {
+	parts := strings.Split(bin, "/")
+	if len(parts) >= 4 && parts[0] == "services" && parts[2] == "cmd" {
+		return parts[0] + "/" + parts[1]
+	}
+	return bin
+}
+
 func mountedServices(opts MountOptions, homes []apiStubHome, dirToProto map[string]string, c *MountCensus) (map[string]map[string]struct{}, error) {
 	out := map[string]map[string]struct{}{}
 	for _, root := range opts.Roots {

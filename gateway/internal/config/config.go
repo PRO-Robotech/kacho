@@ -154,6 +154,19 @@ type Config struct {
 	// port (mirrors iam/nlb/registry).
 	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc:9091"`
 
+	// NotifyInternalAddr — ЕДИНСТВЕННЫЙ адрес notify у края: внутренний
+	// gRPC-слушатель развёртывания notify-api. Публичного слушателя у notify нет
+	// по построению (NTF-4 Р20), поэтому и публичный NoticeService, и
+	// административный InternalNoticeService идут по одному соединению. Второй
+	// ручки адреса notify нет (NTF-5 З18 п.1).
+	//
+	// УМОЛЧАНИЯ НЕТ — намеренно, в отличие от прочих бэкендов. Адрес объявляет
+	// профиль установки; незаданное значение означает «notify в установке не
+	// объявлен»: ключей notify в карте соединений нет, его REST-маршруты не
+	// регистрируются, методы notify перечня получают отказ маршрута, а не вызов по
+	// подставленному адресу службы, которой в установке может не быть.
+	NotifyInternalAddr string `envconfig:"KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC"`
+
 	// --- Проекция потока изменений в браузер (kacho#1020) ---
 
 	// SubscriptionOwners — ЗАКРЫТЫЙ перечень владельцев журналов, чей поток край
@@ -728,6 +741,7 @@ type Config struct {
 	MTLSGeoEnable      bool `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_ENABLE"      default:"false"`
 	MTLSRegistryEnable bool `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_ENABLE" default:"false"`
 	MTLSStorageEnable  bool `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_ENABLE"  default:"false"`
+	MTLSNotifyEnable   bool `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE"   default:"false"`
 
 	// Per-edge SNI/server-name overrides. Empty ⇒ derive from the dial-addr host.
 	MTLSVPCServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_VPC_SERVER_NAME"      default:""`
@@ -737,6 +751,7 @@ type Config struct {
 	MTLSGeoServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_SERVER_NAME"      default:""`
 	MTLSRegistryServerName string `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_SERVER_NAME" default:""`
 	MTLSStorageServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
+	MTLSNotifyServerName   string `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_SERVER_NAME"   default:""`
 
 	// Hybrid external listener: when true, the external TLS listener
 	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven and the internal CA
@@ -934,8 +949,12 @@ func (c Config) DomainsWithInternalBackend() []string {
 // по которому gRPC-роутер (server.go Resolver / shimproxy.go) выбирает backend.
 // "geo" / "geoInternal" — kacho-geo public / internal endpoints. Domain-ключ
 // "geo" совпадает с proto-package `kacho.cloud.geo.v1.*` (та же маршрутизация).
+// "notifyInternal" — единственный адрес notify (внутренний слушатель notify-api),
+// и только когда он объявлен. Ключа "notify" здесь нет: у notify один слушатель,
+// и ключ домена для резолвера композиционный корень ставит псевдонимом на то же
+// соединение, а не вторым адресом (NTF-5 З18 п.1, п.2).
 func (c Config) BackendAddrs() map[string]string {
-	return map[string]string{
+	addrs := map[string]string{
 		"vpc":             c.VPCAddr,
 		"vpcInternal":     c.VPCInternalAddr,
 		"compute":         c.ComputeAddr,
@@ -958,10 +977,14 @@ func (c Config) BackendAddrs() map[string]string {
 		"storage":              c.StorageAddr,
 		"storageInternal":      c.StorageInternalAddr,
 	}
+	if c.NotifyInternalAddr != "" {
+		addrs[InternalBackendKey("notify")] = c.NotifyInternalAddr
+	}
+	return addrs
 }
 
 // EdgeTLSClient assembles the corelib grpcclient.TLSClient value-struct for a
-// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage"),
+// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage" | "notify"),
 // deriving the server-name from the dial address host when no per-edge override
 // is set.
 //
@@ -1026,6 +1049,8 @@ func (c Config) edgeMTLS(edge string) (enable bool, serverName string, err error
 		return c.MTLSRegistryEnable, c.MTLSRegistryServerName, nil
 	case "storage":
 		return c.MTLSStorageEnable, c.MTLSStorageServerName, nil
+	case "notify":
+		return c.MTLSNotifyEnable, c.MTLSNotifyServerName, nil
 	default:
 		return false, "", fmt.Errorf("unknown mtls edge %q", edge)
 	}

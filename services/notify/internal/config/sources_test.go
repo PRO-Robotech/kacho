@@ -5,6 +5,7 @@ package config_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -143,10 +144,6 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		{"SAN без пути", "san", "spiffe://kacho.cloud"},
 		{"SAN с запросом", "san", "spiffe://kacho.cloud/ns/kacho/sa/x?y=1"},
 		{"класс вне перечня", "classes", []string{"marketing"}},
-		// Класс строки, которую берёт только точка входа в процессе notify
-		// (feed.LocalOnlyClasses): Claim сети его не выдаёт, и источник,
-		// объявивший его, объявил класс, которого от него не придёт.
-		{"класс только процесса notify", "classes", []string{string(feed.ClassObligation)}},
 		{"классов нет", "classes", []string{}},
 		{"класс дважды", "classes", []string{"notice", "notice"}},
 		{"форма адресата вне перечня", "recipientForms", []string{"subject"}},
@@ -173,18 +170,36 @@ func TestSourceRosterValuesAreClosed(t *testing.T) {
 		useFixture(t, rosterEdits(t, fullRecord(), fullRecord()))
 		requireOnlyRefusal(t, start(t), "notify.sources", `"probe"`, "дважды")
 	})
-	t.Run("перечень классов закрытый — классы сети ленты", func(t *testing.T) {
-		net := limits.NetClasses()
-		for _, c := range net {
+	t.Run("перечень классов закрытый — классы ленты, которые отдаёт сеть", func(t *testing.T) {
+		for _, c := range limits.NetworkClasses() {
 			rec := fullRecord()
 			rec["classes"] = []string{string(c)}
 			useFixture(t, rosterEdits(t, rec))
 			if err := start(t); err != nil {
-				t.Fatalf("класс сети ленты %q отвергнут перечнем notify: %v", c, err)
+				t.Fatalf("класс ленты %q отвергнут перечнем notify: %v", c, err)
 			}
 		}
-		if len(net) == 0 {
+		if len(limits.NetworkClasses()) == 0 {
 			t.Fatal("перечень классов сети ленты пуст — проба не перебрала ничего")
+		}
+	})
+	// Класс только процесса (feed.LocalOnlyClasses — obligation, NTF-5 Р12)
+	// сеть источника не отдаёт: Claim сервера ленты его не выдаёт, в
+	// контракте corelib.notify его нет. Запись источника с ним — отказ старта
+	// с именем поля и класса, а не принятое значение, которое отвергнет
+	// следующий страж текстом «вне перечня», где этот класс перечислен.
+	// Близнец — подтест выше: те же записи с классами сети стартуют.
+	t.Run("класс только процесса отвергнут с именем поля", func(t *testing.T) {
+		local := feed.LocalOnlyClasses()
+		if len(local) == 0 {
+			t.Fatal("НЕ ВЫПОЛНИЛОСЬ: у ленты нет классов только процесса — отрицанию нечего подавать")
+		}
+		for _, c := range local {
+			rec := fullRecord()
+			rec["classes"] = []string{string(c)}
+			useFixture(t, rosterEdits(t, rec))
+			requireOnlyRefusal(t, start(t), "notify.sources", `"classes"`, `"`+string(c)+`"`,
+				"вне перечня "+fmt.Sprint(limits.NetworkClasses()))
 		}
 	})
 }

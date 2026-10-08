@@ -22,6 +22,15 @@ package notify
 var ServeSurfaceLedger = map[string][]string{
 	// cmd/notify — шлюз NTF-1: форма хоста no-grpc, входящего глагола нет.
 	"cmd/notify": {},
+	// cmd/notify-api — развёртывание запросов оператора и арендаторов (NTF-5 Р2,
+	// kacho#2924): единственный внутренний слушатель носителя в форме «только
+	// внутренний» (Д17, Д20) служит внутренний сервис извещений, их чтение
+	// арендатором и опрос операций.
+	"cmd/notify-api": {
+		"kacho.cloud.notify.v1.InternalNoticeService",
+		"kacho.cloud.notify.v1.NoticeService",
+		"corelib.operation.OperationService",
+	},
 	// cmd/migrator — процесс наката цепочек миграций notify (одноразовый,
 	// задание развёртывания): ни слушателя, ни gRPC-сервиса у него нет.
 	"cmd/migrator": {},

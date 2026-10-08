@@ -97,6 +97,12 @@ compute:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
+  # notify в этой цепочке не рендерится (проба notify-probe выключена выше), и
+  # notify-api нет — адрес notify, объявленный слоем стенда values.dev.yaml,
+  # снят: край не зовёт службу, которой в установке нет
+  # (deploy/notify_api_render_test.go).
+  backends:
+    notifyInternal: ""
 
 kaname:
   image:

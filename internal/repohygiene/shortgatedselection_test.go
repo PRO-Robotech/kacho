@@ -145,14 +145,15 @@ import (
 // врёт тем увереннее, чем дольше живёт.
 //
 // Вторая альтернатива — пакеты каталога notify с настоящей базой (kacho#2915,
-// Д90, Д92): процесс пробы-источника, его глагол Send, точка наката и сетка
-// лимитов шлюза (internal/limits, полоса N7); и сборка шаблонов bundle (полоса
-// N9: пробы G17 копируют дерево и зовут цели bundle и bundle-check — базы им не
-// нужно, но кратким режимом они гейтятся). Их
+// Д90, Д92): процесс пробы-источника, его глагол Send, точка наката, сетка
+// лимитов шлюза (internal/limits, полоса N7), корень notify-api (#2924, полоса
+// N2: пробы приёма, переходов и чтения извещений над базой kacho_notify) и
+// сборка шаблонов bundle (полоса N9: пробы G17 копируют дерево и зовут цели
+// bundle и bundle-check — базы им не нужно, но кратким режимом они гейтятся). Их
 // пробы гейтятся кратким режимом, а путь до `internal/(repo|…)` не доходит;
 // шире (`cmd/` всех служб) отбор не берётся — радиус не измерен.
 var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler|subscriptionjournal)(/|$)` +
-	`|^services/notify/(bundle|cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$`)
+	`|^services/notify/(bundle|cmd/(notify-api|notify-probe(/internal/send)?|migrator)|internal/limits)$`)
 
 // shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
 // режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
@@ -616,7 +617,7 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 		t.Fatal(err)
 	}
 	const want = `grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)` +
-		`|/services/notify/(bundle|cmd/(notify-probe(/internal/send)?|migrator)|internal/limits)$$'`
+		`|/services/notify/(bundle|cmd/(notify-api|notify-probe(/internal/send)?|migrator)|internal/limits)$$'`
 	if !strings.Contains(string(raw), want) {
 		t.Fatalf("в корневом Makefile нет отбора %q — копия в этом файле "+
 			"(integrationSelectionRe) описывает отбор, которого не существует", want)

@@ -154,7 +154,8 @@ func New(o Options) (*Limiter, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range NetClasses() {
+	// Ряды — классы сети: у класса только процесса окон сетки нет (windowsOf).
+	for _, c := range NetworkClasses() {
 		netHits.WithLabelValues(string(c))
 	}
 	key := append([]byte(nil), o.Key...)
@@ -234,7 +235,7 @@ func (l *Limiter) windowsOf(class feed.Class, now time.Time) ([]netWindow, error
 			{class, periodHour, now.Truncate(time.Hour), l.grid.NoticePerHour},
 		}, nil
 	}
-	return nil, fmt.Errorf("класс строки %q вне перечня классов сети %v", class, NetClasses())
+	return nil, fmt.Errorf("класс строки %q вне перечня %v", class, NetworkClasses())
 }
 
 // netKeyOf — ключ строки сетки адресата: HMAC-SHA256(ключ сетки, адрес).

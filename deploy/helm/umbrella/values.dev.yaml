@@ -305,6 +305,7 @@ api-gateway:
       geo: true        # gateway→geo (+ geoInternal) mTLS; backends.geo uses chart default kacho-geo.* (geo cutover, kacho-workspace#82)
       registry: true   # gateway→registry backend mTLS (registry.mtls.enable=true → server RequireAndVerifyClientCert)
       storage: true    # gateway→storage backend mTLS (storage.mtls.enable=true); needs the storage edge added to the gateway chart (below)
+      notify: true     # gateway→notify-api mTLS — внутренний слушатель notify-api только mTLS (NTF-4 Р20)
   # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
   # api-gateway proxy un-freezes the loadbalancer domain (see
   # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
@@ -328,6 +329,13 @@ api-gateway:
     # would NXDOMAIN 503 every registry control-plane REST call. Override to the real name.
     registry: registry.kacho.svc:9090
     registryInternal: registry-internal.kacho.svc:9091
+    # notify — единственный адрес, внутренний слушатель notify-api (Service
+    # `kacho-notify-api` чарта notify, порт `notify.api.ports.internal`). notify
+    # рендерится на этом стенде (перечень источников непуст — проба notify-probe);
+    # профиль, где notify не рендерится, адрес снимает (`notifyInternal: ""`):
+    # иначе край звал бы службу, которой в установке нет. Сходимость «адрес у края
+    # ⇔ notify-api в рендере» держит deploy/notify_api_render_test.go.
+    notifyInternal: kacho-notify-api.kacho.svc:9091
   # The local stand authenticates the same way every other stand does: a bearer the
   # edge verifies by SIGNATURE against the identity facade's published JWKS.
   #
@@ -555,6 +563,49 @@ notify:
   # сетки (З24), а не побочный эффект повторного подъёма.
   recipientKeySecret:
     name: kacho-notify-recipient-key
+  # Ключ отпечатка адреса (NTF-4 Р15, Д23) — тоже ОБЪЕКТ СТЕНДА, по тому же
+  # доводу: объект `kacho-notify-address-key` (ключ `addressKey`, 64 hex-символа)
+  # заводит посев стенда один раз и не перечеканивает — ключ отпечатка не
+  # ротируется, новый сделал бы чужими все отпечатки базы стенда.
+  addressKeySecret:
+    name: kacho-notify-address-key
+  # Ручки NTF-4 стадии S1 (Р16): стенд задаёт короткие окна у нижних границ,
+  # чтобы сценарии укладывались в прогон (П9); пороги репутации — те, что
+  # называют сценарии NTF4-64 и NTF4-66. Зависимые границы соблюдены:
+  # pollStaleMax 2m ≥ max(4 × 5s, 5s + 60s); leaseTTL 30s ∈ [max(30s, 2 × 5s),
+  # 2m − 5s); canaryDeadline 30s < canaryInterval 1m; reputation.window 1h ≤
+  # sentLog.retention 168h.
+  feedback:
+    # Ящик обратной связи стенда — отдельный экземпляр рядом с приёмником писем
+    # (приёмка NTF-4, строка «приёмник писем стенда»), POP3 поверх неявного TLS.
+    # Узел выводится из имени релиза, как узел приёмника. На стадии S1 адрес
+    # судится стражем только по форме: опросчика ящика в процессе ещё нет, и
+    # экземпляр ящика заводит стадия, которая вводит опрос.
+    mailboxAddr: '{{ .Release.Name }}-feedback-mailbox:995'
+    mailboxLocalPart: "bounces"
+    pollInterval: "5s"
+    pollStaleMax: "2m"
+    maxMessageBytes: "10485760"
+    maxExpansionRatio: "20"
+    canaryInterval: "1m"
+    canaryDeadline: "30s"
+    leaseTTL: "30s"
+  # Домен возврата стенда — домен отправителя стенда, которому отвечает зона DNS
+  # стенда (`global.kacho.identity.smtp.fromAddress` выше).
+  returnDomain: "kacho.cloud"
+  sentLog:
+    retention: "168h"              # 7 сут — нижняя граница
+  suppression:
+    hardTTL: "1h"
+    softThreshold: "2"
+    softWindow: "1h"
+    softTTL: "1h"
+    sweepInterval: "1m"
+  secretReloadInterval: "5s"
+  reputation:
+    hardBounceRateMax: "0.05"      # NTF4-64
+    complaintRateMax: "0.01"       # NTF4-66
+    window: "1h"
   # Origin установки — база ссылок писем, только `https://` без пути (NTF1-G06).
   # Консоль стенда отвечает по `http` на проброшенном порту kind (`appBaseURL`
   # выше), и ссылкой по ней письмо стенда не станет: страж старта её отверг бы.
@@ -575,6 +626,25 @@ notify:
   limits:
     global:
       perDay: 1000
+  # ── notify-api (NTF-4 Р16, Р20, Р22; NTF-5 Р17) ─────────────────────────────
+  # Стенд берёт поставляемые значения — столбец «поставляемое значение» таблицы Р16 NTF-4 и
+  # Р17 NTF-5. Окно отзыва права `authz.cacheTTL` равно записи политики окон
+  # отзыва `notify KACHO_NOTIFY_AUTHZ_CACHE_TTL` (5s): величину отсюда сверяет
+  # гейт TestRevocationWindowIsDeclaredPolicy. Умолчаний у этих ручек нет —
+  # незаданная ручка — отказ рендера чарта notify с её именем.
+  authz:
+    # Внутренний слушатель службы доступа: Check звена прав и пакетная проверка
+    # сужателя; узел адреса — имя, сверяемое с листом службы доступа.
+    iamGRPCAddr: kaname-internal.kacho.svc:9091
+    # Круг пересылающих личность — край, единственный пересылающий (Р20).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+    cacheTTL: 5s
+    checkTimeout: 2s
+    denyBudgetPerSec: 100
+  handlingBudget: 30s
+  notice:
+    reminderLead: 24h
 
 # ─── notify-probe — стендовая проба-источник notify (NTF-1, полосы D2, D3) ────
 # Развёрнута на стенде (NTF1-I04: в `prod` её нет); пишет ли она почтовые

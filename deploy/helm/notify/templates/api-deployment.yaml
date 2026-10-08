@@ -1,0 +1,92 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if include "notify.renders" . }}
+{{- $dbpw := .Values.db.passwordSecret }}
+{{- $dbpwName := required "db.passwordSecret.name (чарт notify): секрет пароля базы kacho_notify не назван" $dbpw.name }}
+{{- $name := include "notify.api.fullname" . }}
+# notify-api — второй процесс каталога notify (тот же образ, бинарь
+# `kacho-notify-api`; NTF-5 Р2). Секрета почты и SMTP-клиента у него нет.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "notify.api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "notify.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "notify.api.labels" . | nindent 8 }}
+      annotations:
+        # Объявление сбора величин — порт ручки KACHO_NOTIFY_DIAG_ADDR.
+        {{- if .Values.api.metricsScrape.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.api.ports.diag | quote }}
+        prometheus.io/path: /metrics
+        {{- else }}
+        kacho.cloud/metrics-scrape-disabled-because: {{ .Values.api.metricsScrape.disabledBecause | quote }}
+        {{- end }}
+        # Привязка пода к содержимому образа каталога notify (тег `:dev` неизменен).
+        kacho.cloud/image-id: {{ dig "kachoImageIds" "notify" "unset" .Values.global | quote }}
+        # Конфигурация читается при старте: смена карты обязана перекатить под.
+        checksum/config: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: tls
+          secret:
+            secretName: {{ $name }}-tls
+      containers:
+        - name: notify-api
+          image: {{ include "notify.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/kacho-notify-api"]
+          args: ["serve"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: grpc-internal
+              containerPort: {{ .Values.api.ports.internal | int }}
+            - name: diag
+              containerPort: {{ .Values.api.ports.diag | int }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: tls
+              mountPath: {{ include "notify.api.tlsDir" . | quote }}
+              readOnly: true
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}-config
+          env:
+            - name: KACHO_NOTIFY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbpwName | quote }}
+                  key: {{ $dbpw.key | quote }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: diag
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: diag
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+{{- end }}

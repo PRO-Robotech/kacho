@@ -57,6 +57,14 @@ backends:
   # Пустое значение → storage-handlers не регистрируются вовсе (как у registry/geo/nlb).
   storage: kacho-storage.kacho.svc:9090
   storageInternal: kacho-storage.kacho.svc:9091
+  # notify — ЕДИНСТВЕННЫЙ адрес: внутренний mTLS-слушатель notify-api (NTF-4 Р20,
+  # NTF-5 З18 п.1). Публичного слушателя у notify нет; NoticeService и
+  # InternalNoticeService идут по одному соединению (REST InternalNoticeService —
+  # только на внутреннем REST-слушателе края). УМОЛЧАНИЯ НЕТ, в отличие от прочих
+  # бэкендов: адрес объявляет профиль, где notify-api развёрнут; пусто — ключей
+  # notify в карте соединений нет и маршруты notify не регистрируются. Заданный
+  # адрес требует ребра mTLS (`mtls.edges.notify`) — иначе отказ рендера.
+  notifyInternal: ""
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
 # Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
@@ -594,6 +602,8 @@ mtls:
                       # derived per dial-host (kacho-registry / kacho-registry-internal)
     storage: false    # gateway→storage (+ storageInternal); SERVER_NAME unset →
                       # derived per dial-host (kacho-storage), in peer SAN
+    notify: false     # gateway→notify-api (notifyInternal); SERVER_NAME unset →
+                      # derived per dial-host (kacho-notify-api), in peer SAN
 
 # ── ОГРАНИЧИТЕЛЬ АНОНИМНОЙ ПОЧТЫ КРАЯ (приёмка NTF-2, Р5, Р8) ────────────────
 #
