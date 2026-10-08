@@ -91,11 +91,19 @@ import (
 // его, как и остальные, только она. Запись заведена по тому же основанию;
 // перепись «исключений вне предмета» после этого печатает 23 (перемерено
 // прогоном).
+//
+// kaname#661 (край — kacho#3093) добавил службе ещё ОДИН сервис —
+// `ClusterService`, публичный близнец `InternalClusterService`; он приехал
+// подъёмом пина модуля на 8b0379e2, и монтирует его, как и остальные, только
+// она. Запись заведена по тому же основанию; перепись «исключений вне
+// предмета» печатает 24, а гейт достижимости каталога прощает 119 строк из 352
+// (перемерено прогоном @ kacho#3093).
 var mountAllow = []string{
 	"kaname.cloud.iam.v1.AccessBindingService",
 	"kaname.cloud.iam.v1.AccessKeyService",
 	"kaname.cloud.iam.v1.AccountService",
 	"kaname.cloud.iam.v1.AuthorizeService",
+	"kaname.cloud.iam.v1.ClusterService",
 	"kaname.cloud.iam.v1.GroupService",
 	"kaname.cloud.iam.v1.IdentityQuotaService",
 	"kaname.cloud.iam.v1.InternalBootstrapTokenService",
