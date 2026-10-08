@@ -446,7 +446,7 @@ var quotaCensusRules = []quotaCensusRule{
 	},
 	{
 		Surface: quotaSurfaceForeign, Code: "F6",
-		Why: "ResourceQuota кластера — предел пространства имён стенда проб (kacho#3102), а не квота ресурсов облака",
+		Why:   "ResourceQuota кластера — предел пространства имён стенда проб (kacho#3102), а не квота ресурсов облака",
 		Token: regexp.MustCompile(`kind: ResourceQuota`),
 	},
 	{
