@@ -43,6 +43,8 @@ package deploy_test
 
 import (
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,7 +89,7 @@ type stackRender struct {
 
 func renderNamedStack(t *testing.T, name string) stackRender {
 	t.Helper()
-	chain, ok := deployStacks(t)[name]
+	chain, ok := deployStacksForRender(t, renderGateOperatorSample)[name]
 	if !ok {
 		t.Fatalf("стека %q в таблице stacks.txt нет — предпосылка пробы исчезла, а не "+
 			"рендер стал чистым", name)
@@ -410,7 +412,7 @@ func originOf(raw string) string {
 // системные корни процесса, и сертификат ретранслятора тогда не проверился бы.
 func TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt(t *testing.T) {
 	names := make([]string, 0)
-	for n := range deployStacks(t) {
+	for n := range deployStacksForRender(t, renderGateOperatorSample) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -460,7 +462,7 @@ func TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt(t *test
 // половина пары) обязан уметь отказать. Каждая инъекция меняет ОДИН факт
 // против законного близнеца, и законный близнец — неизменённый стек — молчит.
 func TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	cases := []struct {
 		name, stack string
 		sets        []string
@@ -484,7 +486,8 @@ func TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane(t *testing.T) {
 			[]string{"global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"},
 			"объявлен наполовину"},
 		{"якорь без полосы", addrGateProdStack,
-			[]string{"global.kacho.identity.smtp.trustAnchorSecret.name=kacho-mailpit-tls", "global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"},
+			append(operatorMailNodeRemoved(t),
+				"global.kacho.identity.smtp.trustAnchorSecret.name=kacho-mailpit-tls", "global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"),
 			"узел полосы НЕ задан"},
 	}
 	for _, c := range cases {
@@ -504,4 +507,43 @@ func TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane(t *testing.T) {
 			t.Logf("%s: исход как ждали", c.name)
 		}
 	}
+}
+
+// operatorMailNodeRemoved — наборы `--set …=null`, снимающие узел почты слоя
+// оператора целиком: каждый лист `global.kacho.identity.smtp` образца (NTF-1
+// М43). Цепочка `prod` гейта несёт слой оператора — без него рендер отказал бы
+// числом доверенных прыжков края раньше стража полосы (приёмка NTF-2 Р8, Д51), —
+// а случаю «якорь без полосы» нужен `prod` без узла. Листья выводятся из
+// образца, а не выписываются: новый ключ образца иначе остался бы узлом.
+func operatorMailNodeRemoved(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(mailNodeSamplesDir, renderGateOperatorSample)) // #nosec G304 -- образец каталога дерева
+	if err != nil {
+		t.Fatalf("образец оператора не читается: %v — снимать узел не из чего", err)
+	}
+	var tree struct {
+		Global struct {
+			Kacho struct {
+				Identity struct {
+					SMTP map[string]any `yaml:"smtp"`
+				} `yaml:"identity"`
+			} `yaml:"kacho"`
+		} `yaml:"global"`
+	}
+	if err := yaml.Unmarshal(raw, &tree); err != nil {
+		t.Fatalf("образец оператора не разобран: %v", err)
+	}
+	keys := make([]string, 0, len(tree.Global.Kacho.Identity.SMTP))
+	for k := range tree.Global.Kacho.Identity.SMTP {
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		t.Fatal("в образце оператора нет узла global.kacho.identity.smtp — снимать нечего, и случай судил бы не то")
+	}
+	sort.Strings(keys)
+	sets := make([]string, 0, len(keys))
+	for _, k := range keys {
+		sets = append(sets, "global.kacho.identity.smtp."+k+"=null")
+	}
+	return sets
 }

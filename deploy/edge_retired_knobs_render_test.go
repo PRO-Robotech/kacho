@@ -89,20 +89,25 @@ func judgeRetiredEmissions(names []string, retired map[string]string) []string {
 	return out
 }
 
-// renderEdgeChartAlone — рендер чарта края без профиля.
+// renderEdgeChartAlone — рендер чарта края без профиля (со слоем чарта без
+// зонтика).
 func renderEdgeChartAlone(t *testing.T) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Fatalf("helm не в PATH — рендерная проба под тегом helmcharts обязана исполняться, " +
 			"а не пропускаться: без helm условие этого задания не создано")
 	}
-	out, err := exec.Command("helm", "template", edgeDeploymentName, edgeChartDir, "-n", "kacho").CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	// Число доверенных прыжков в базе чарта не объявлено (приёмка NTF-2 Р8,
+	// Д51): чарт без зонтика получает его ТОЛЬКО слоем (Д52), путь — от базы
+	// этого пакета, `deploy/`.
+	out, err := exec.Command("helm", "template", edgeDeploymentName, edgeChartDir, "-n", "kacho",
+		"-f", "testdata/notify-standalone/edge.yaml").CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
 	return string(out), err
 }
 
 func TestNoStackRendersARetiredEdgeKnob(t *testing.T) {
 	retired := retiredknobs.Edge()
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	names := make([]string, 0, len(stacks))
 	for n := range stacks {
 		names = append(names, n)

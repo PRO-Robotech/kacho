@@ -40,6 +40,14 @@
 global:
   imageRegistry: ""
   kacho:
+    # ПРАВИЛА ТРЕВОГИ ВЫКЛЮЧЕНЫ (выключатель один на дерево kacho — CX2-92 (а)):
+    # CRD PrometheusRule на kind-стенде нет — объект отверг бы всю установку.
+    # Замер 2026-10-01: `kubectl --context kind-kacho get crd
+    # prometheusrules.monitoring.coreos.com` → NotFound. Цепочки поверх этого
+    # слоя называют свою причину сами.
+    alertRules:
+      enabled: false
+      disabledBecause: "CRD PrometheusRule на kind-стенде нет (замер kind-kacho 2026-10-01)"
     # ─── СЛУЖБА ЛИЧНОСТИ: АДРЕСА СТЕНДА, А НЕ БОЕВЫЕ ─────────────────────────
     #
     # Умолчание происхождения консоли собирается из `domain: api.kacho.cloud` и
@@ -185,6 +193,11 @@ mailpit:
   enabled: true
 
 api-gateway:
+  # ЧИСЛО ДОВЕРЕННЫХ ПРЫЖКОВ ПЕРЕД КРАЕМ (KACHO_API_GATEWAY_TRUSTED_HOPS;
+  # приёмка NTF-2 Р8, решение Д51). В базе поставки значения нет: верное число
+  # зависит от топологии установки. Стенд объявляет его своим файлом профиля —
+  # `1` (один вход перед краем), с которым он работает сегодня.
+  trustedHops: 1
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) — ОБЪЯВЛЕНО ЯВНО ────────

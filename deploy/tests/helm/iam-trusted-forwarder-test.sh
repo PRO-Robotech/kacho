@@ -100,7 +100,11 @@ peer_san() { # peer_san <chart-path> → $PEER_SAN
   #   zot.auth.*        — чарт реестра ОТКАЗЫВАЕТ в рендере без учётных данных
   #                       хранилища слоёв (развернуть открытое он не умеет).
   # К предмету проверки (кто вправе передавать чужую личность) отношения не имеют.
-  helm_try x "$1" --namespace kacho --set mtls.enable=true --set db.password=x \
+  # Чарт края без зонтика получает число доверенных прыжков ТОЛЬКО слоем
+  # (приёмка NTF-2 Р8, Д52); прочим чартам слой не подаётся.
+  local layer=()
+  [ "$1" = "$REPO_ROOT/gateway/deploy" ] && layer=(-f "$REPO_ROOT/deploy/testdata/notify-standalone/edge.yaml")
+  helm_try x "$1" "${layer[@]}" --namespace kacho --set mtls.enable=true --set db.password=x \
     --set zot.auth.username=selftest --set zot.auth.password=selftest \
     --show-only templates/certificate.yaml
   # ДВА РАЗНЫХ ВОПРОСА, и раньше они давали один ответ: «чарт не отрендерился»

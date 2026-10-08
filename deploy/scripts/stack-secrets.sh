@@ -268,6 +268,7 @@ producer_of() {
     kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
     kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
     kaname-mail-keys)         echo "посев dev-prod-secrets.sh · на площадке — оператор: ключи почтовой полосы, ключи mail-window.key и device-label.key (случайные байты, не короче 32 каждый)" ;;
+    kacho-api-gateway-anon-mail-pow-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ подписи вызовов proof-of-work края, ключ pow.key (случайные байты, не короче 32; один на флот края)" ;;
     kacho-notify-db|kacho-notifyprobe-db) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: пароли базы notify/пробы, ключи password + postgres-password (их же берёт экземпляр базы existingSecret)" ;;
     kacho-notify-recipient-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ сетки на адресата notify, ключ recipientKey (не короче 32 байт; смена — ротация сетки)" ;;
     kacho-notify-address-key) echo "посев seed-notify-stand-secrets.sh · на площадке — оператор: ключ отпечатка адреса notify, ключ addressKey (hex, не короче 64 символов; не ротируется)" ;;
@@ -344,9 +345,10 @@ notify_seed_ran=0
 produce() {
   local name="$1"
   case "$name" in
-    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-address-key|kacho-notify-probe-feed-keyring)
-      # Объекты стенда notify — свой посев (не dev-prod-secrets.sh: тот читает
-      # предполёт боевой раскатки площадки, где notify нет).
+    kacho-notify-db|kacho-notifyprobe-db|kacho-notify-recipient-key|kacho-notify-address-key|kacho-notify-probe-feed-keyring|kacho-api-gateway-anon-mail-pow-key)
+      # Объекты стенда notify и ключ proof-of-work почтовой полосы края — свой
+      # посев (не dev-prod-secrets.sh: тот читает предполёт боевой раскатки
+      # площадки, и его секреты он требует там посевом).
       if [ "$notify_seed_ran" -eq 0 ]; then
         KACHO_NAMESPACE="$NS" bash "$HERE/seed-notify-stand-secrets.sh" || return 1
         notify_seed_ran=1

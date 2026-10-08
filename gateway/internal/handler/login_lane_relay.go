@@ -113,6 +113,14 @@ type LoginLaneRelayConfig struct {
 	Transport http.RoundTripper
 	// ClientIP — оператор вывода клиентского адреса из запроса; обязателен.
 	ClientIP func(*http.Request) string
+	// AnonMailGate — звено-ограничитель анонимной почты края (приёмка NTF-2,
+	// Р5; замысел issue-2917, З8): ставится ПЕРЕД ретрансляцией записей цели с
+	// признаком `anonMail` (`middleware.LoginLaneRoute.AnonMail`) и только их.
+	// Обязательно у цели, у которой такие записи есть: ретранслятор без звена
+	// пропускал бы почтовые глаголы без лимита — ветки «звена нет → пропустить»
+	// нет. У цели без таких записей задавать его нечему, и заданное — ошибка
+	// сборки (звено, которое ничего не судит).
+	AnonMailGate func(http.Handler) http.Handler
 	// Timeout — предел на одну ретрансляцию; ноль берёт `LoginLaneRelayTimeout`.
 	// Композиционный корень его НЕ задаёт (гейт корня): значение для проб.
 	Timeout time.Duration
@@ -138,6 +146,9 @@ type LoginLaneRelay struct {
 
 	relayed     map[string]*atomic.Uint64
 	unreachable atomic.Uint64
+	// gated — ретрансляция за звеном-ограничителем: записи с признаком
+	// `anonMail`; nil у цели без таких записей.
+	gated http.Handler
 }
 
 // NewLoginLaneRelay собирает ретранслятор. Адрес и оператор адреса обязательны:
@@ -166,9 +177,25 @@ func NewLoginLaneRelay(cfg LoginLaneRelayConfig) (*LoginLaneRelay, error) {
 		timeout = LoginLaneRelayTimeout
 	}
 	r := &LoginLaneRelay{logger: cfg.Logger, timeout: timeout, serves: cfg.Serves, relayed: map[string]*atomic.Uint64{}}
+	var anonMail []string
 	for _, rt := range middleware.LoginLaneRoutes() {
 		if rt.Target == cfg.Serves {
 			r.relayed[rt.Verb] = &atomic.Uint64{}
+			if rt.AnonMail() {
+				anonMail = append(anonMail, rt.Path)
+			}
+		}
+	}
+	switch {
+	case len(anonMail) > 0 && cfg.AnonMailGate == nil:
+		return nil, fmt.Errorf("login lane relay: records %v carry anonMail and need the anonymous mail limiter — "+
+			"relaying them without it would place mail without any limit", anonMail)
+	case len(anonMail) == 0 && cfg.AnonMailGate != nil:
+		return nil, fmt.Errorf("login lane relay: target %q has no anonMail records — the limiter would judge nothing", cfg.Serves)
+	case len(anonMail) > 0:
+		r.gated = cfg.AnonMailGate(http.HandlerFunc(r.relay))
+		if r.gated == nil {
+			return nil, errors.New("login lane relay: anonymous mail limiter returned no handler")
 		}
 	}
 	clientIP := cfg.ClientIP
@@ -208,6 +235,18 @@ func (r *LoginLaneRelay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
+	if rt.AnonMail() {
+		// Звено решает до ретрансляции: пропущенный запрос оно передаёт
+		// дальше само, остальным отвечает своим вызовом или отказом.
+		r.gated.ServeHTTP(w, req)
+		return
+	}
+	r.relay(w, req)
+}
+
+// relay — сама ретрансляция записи (после звена, где оно есть).
+func (r *LoginLaneRelay) relay(w http.ResponseWriter, req *http.Request) {
+	rt, _ := middleware.LoginLaneRouteFor(req.URL.Path)
 	ctx, cancel := context.WithTimeout(req.Context(), r.timeout)
 	defer cancel()
 	r.relayed[rt.Verb].Add(1)

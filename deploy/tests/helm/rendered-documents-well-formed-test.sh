@@ -64,7 +64,12 @@
 set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART="$(cd "$HERE/../.." && pwd)/helm/umbrella"
@@ -186,8 +191,12 @@ EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACK_ROWS" | grep -c . || true)"
 while IFS= read -r row; do
   [ -z "$row" ] && continue
   stack="${row%%:*}"; files="${row#*:}"
-  args=(); label="$stack ($(printf '%s' "$files" | tr ',' '+'))"
-  IFS=','; for f in $files; do args+=(-f "$CHART/$f"); done; unset IFS
+  label="$stack ($(printf '%s' "$files" | tr ',' '+'))"
+  chain_args="$(render_chain_args "$stack" "$CHART" operator.yaml)" \
+    || fatal "цепочка $stack гейта не прочитана — рендерить нечего"
+  # shellcheck disable=SC2206  # цепочка `-f a -f b` обязана разбиться на слова
+  args=($chain_args)
+  [ "$stack" = "prod" ] && label="$label + слой оператора"
   # Слой учётных данных боевой площадки НАМЕРЕННО не в репозитории (см.
   # cutover-fe3455.sh). Посадки он больше не несёт, поэтому его отсутствие в CI
   # ничего не скрывает; добавляем, когда файл на месте. Что именно измерено,

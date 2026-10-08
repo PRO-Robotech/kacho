@@ -63,8 +63,15 @@ set -uo pipefail
 # Запись `services/iam/deploy` снята вместе со своим предметом: чарт-тёзка службы
 # доступа уехал в её репозиторий, и прощать здесь стало нечего — ведомость
 # краснеет на записи без чарта так же, как на чарте без записи.
+#
+# Запись края подаёт СЛОЙ, а не значение (приёмка NTF-2 Р8, решение Д52): число
+# доверенных прыжков в базе чарта не объявлено (Д51), и рендер чарта края без
+# зонтика получает его только файлом deploy/testdata/notify-standalone/edge.yaml.
+# Путь `-f` записи пишется от корня дерева и разрешается от <корня> обхода
+# (rebase_layers), а не от текущего каталога.
 LEDGER='services/nlb/deploy|--set db.password=zz-lint-not-a-real-password
-services/registry/deploy|--set zot.auth.password=zz-lint-not-a-real-password'
+services/registry/deploy|--set zot.auth.password=zz-lint-not-a-real-password
+gateway/deploy|-f deploy/testdata/notify-standalone/edge.yaml'
 
 # charts <корень> — перечень ВЫВОДИТСЯ из индекса git, а не выписывается.
 #
@@ -81,6 +88,23 @@ charts() {
 
 # coords <ведомость> <чарт> — аргументы записи либо пусто.
 coords() { printf '%s\n' "$1" | awk -F'|' -v c="$2" '$1 == c { print $2; found = 1 } END { exit !found }'; }
+
+# rebase_layers <корень> <аргументы> — аргументы записи, где путь слоя `-f`
+# разрешён от корня обхода. Относительный путь записи — от корня дерева; от
+# текущего каталога он указывал бы в чужое дерево (самопроверка обходит
+# синтетический корень). Абсолютный путь не трогается.
+rebase_layers() {
+  local root="$1" w prev="" out=""
+  # shellcheck disable=SC2086
+  for w in $2; do
+    if [ "$prev" = "-f" ] && [ "${w#/}" = "$w" ]; then
+      w="$root/$w"
+    fi
+    out="${out:+$out }$w"
+    prev="$w"
+  done
+  printf '%s' "$out"
+}
 
 # sweep <корень> <ведомость> — обход и вердикт. 0 — чисто, 1 — находка, 2 — не выполнилось.
 #
@@ -104,6 +128,7 @@ sweep() {
     [ -n "$c" ] || continue
     n=$((n + 1))
     args="$(coords "$ledger" "$c")" || args=""
+    args="$(rebase_layers "$root" "$args")"
 
     # 1. Разбор. Единственное, что `helm lint` умеет находить (см. замер выше).
     # shellcheck disable=SC2086
@@ -211,6 +236,13 @@ data:
         'services/plain/deploy|--set zz=zz-lint-value' 'пережила свой предмет'
   check "координат записи НЕ хватает" 1 \
         'services/needy/deploy|--set zzOther=zz-lint-value' 'не рендерится ДАЖЕ с координатами'
+  # Слой записи разрешается от корня обхода: файл лежит только в синтетическом
+  # дереве, и рендер находит его там, а не в текущем каталоге.
+  mkdir -p "$t/zz-layers"; printf 'zzKey: zz-lint-layer\n' > "$t/zz-layers/needy.yaml"
+  check "слой записи — от корня обхода" 0 \
+        'services/needy/deploy|-f zz-layers/needy.yaml' 'из них потребовали координат 1 · находок 0'
+  check "слой записи, которого в корне нет" 1 \
+        'services/needy/deploy|-f zz-layers/absent.yaml' 'zz-layers/absent.yaml: no such file'
 
   # Пустой обход — находка, а не зелёное.
   local e; e="$(mktemp -d)"; git -C "$e" init -q >/dev/null 2>&1

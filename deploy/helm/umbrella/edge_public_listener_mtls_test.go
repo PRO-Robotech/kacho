@@ -420,7 +420,7 @@ func edgeListenerRender(t *testing.T, chain []string, extra ...map[string]any) e
 		if g, ok := tree["global"]; ok {
 			layer["global"] = g
 		}
-		args = append(args, "-f", edgeListenerWriteLayer(t, tmp, fmt.Sprintf("%02d-%s", i, profile), layer))
+		args = append(args, "-f", edgeListenerWriteLayer(t, tmp, fmt.Sprintf("%02d-%s", i, filepath.Base(profile)), layer))
 	}
 	for i, layer := range extra {
 		args = append(args, "-f", edgeListenerWriteLayer(t, tmp, fmt.Sprintf("x%02d.yaml", i), layer))
@@ -659,8 +659,29 @@ func edgeListenerChains(t *testing.T) (names []string, stacks map[string][]strin
 	if len(names) == 0 {
 		t.Fatalf("%s не объявляет ни одной боевой цепочки — проба не вправе заключить, что их нет", stacksTable)
 	}
+	// Цепочка поставки `prod` несёт слой оператора из каталога образцов —
+	// тем же правилом, что обёртки рендера цепочек (`deploy/stacks_render_wrapper_test.go`,
+	// `deploy/tests/helm/lib/render-chain.sh`): число доверенных прыжков края
+	// поставка не несёт (приёмка NTF-2 Р8, Д51), его задаёт оператор, и рендер
+	// без него отказывает. Слой дописывается ПОСЛЕ классификации: класс цепочки
+	// судят её собственные профили, а не образец.
+	if prod, ok := stacks[edgeOperatorSampleChain]; ok {
+		layered := make(map[string][]string, len(stacks))
+		for n, c := range stacks {
+			layered[n] = c
+		}
+		layered[edgeOperatorSampleChain] = append(append([]string(nil), prod...), edgeOperatorSample)
+		stacks = layered
+	}
 	return names, stacks, skipped
 }
+
+// edgeOperatorSampleChain и edgeOperatorSample — цепочка, к которой гейт
+// рендера дописывает слой оператора, и сам слой относительно каталога зонтика.
+const (
+	edgeOperatorSampleChain = "prod"
+	edgeOperatorSample      = "../../testdata/mail-node/operator.yaml"
+)
 
 func edgeListenerRead(t *testing.T, p edgeListenerProducer, env edgeListenerEnv) edgeListenerReading {
 	t.Helper()

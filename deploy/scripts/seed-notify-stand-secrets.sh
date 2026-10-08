@@ -2,8 +2,9 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 #
-# seed-notify-stand-secrets.sh — объекты СТЕНДА шлюза уведомлений и его пробы-
-# источника (NTF-1, полоса D6; Д123).
+# seed-notify-stand-secrets.sh — объекты СТЕНДА шлюза уведомлений, его пробы-
+# источника (NTF-1, полоса D6; Д123) и ключ подписи вызовов proof-of-work
+# почтовой полосы края (NTF-2 Р5, замысел З9; kacho#2917).
 #
 # ПОЧЕМУ ОТДЕЛЬНЫЙ ПОСЕВ, А НЕ dev-prod-secrets.sh. Тот посев читает предполёт
 # боевой раскатки площадки (helm/umbrella/cutover-fe3455.sh, (б) «секреты,
@@ -12,6 +13,12 @@
 # его объектов там остановило бы раскатку по предмету, которого у неё нет.
 # Требует их тот, кто их монтирует: рендер стенда (scripts/stack-secrets.sh
 # выводит требуемое из рендера и зовёт этот посев производителем).
+#
+# Ключ proof-of-work края — здесь же, а не в dev-prod-secrets.sh: его
+# производитель тот же, что у остальных объектов почтовой полосы стенда, и
+# предполёт боевой раскатки (helm/umbrella/cutover-fe3455.sh) его посевом не
+# требует: приёмка NTF-2 (посев «после NTF-2», DoD п.13–п.15, строка 7 таблицы
+# дерева) правит в нём только абзац о разделе `courier`.
 #
 # Каждый объект заводится ОДИН раз и не перечеканивается; повторный прогон
 # переиспользует существующий. Отказ сервера, отличный от NotFound, — отказ
@@ -114,6 +121,29 @@ elif [[ "$out" == *"(NotFound)"* ]]; then
     --dry-run=client -o yaml | create_once kacho-notify-probe-feed-keyring "кольцо ключей ленты пробы, ключ keyring"
 else
   refuse_unknown kacho-notify-probe-feed-keyring "$out"
+fi
+
+# ─── КЛЮЧ ПОДПИСИ ВЫЗОВОВ PROOF-OF-WORK КРАЯ: ОДИН РАЗ, НЕ РОТИРУЕТСЯ ─────────
+#
+# (kacho#2917, приёмка NTF-2 Р5; замысел З9). Край читает файл
+# KACHO_API_GATEWAY_ANON_MAIL_POW_KEY_FILE — случайные байты, не короче 32, ОДИН
+# ключ на весь флот края. Страж старта края требует его на ЛЮБОЙ посадке, поэтому
+# объект нужен каждому стенду. Том у пода обязательный: недостающий объект держит
+# под до старта с именем секрета.
+#
+# Порождаем ОДИН раз, дальше переиспользуем: ключом подписаны вызовы, уже
+# выданные клиентам. Смена ключа делает каждый выданный и ещё не решённый вызов
+# недействительным — клиент получает отказ на доказательстве, которое честно
+# посчитал. Величина проходит процессной подстановкой прямо в манифест и НЕ
+# печатается.
+if out="$(kubectl -n "$NS" get secret kacho-api-gateway-anon-mail-pow-key -o name 2>&1)"; then
+  echo "kacho-api-gateway-anon-mail-pow-key already present — reusing (смена ключа гасит выданные вызовы)"
+elif [[ "$out" == *"(NotFound)"* ]]; then
+  kubectl -n "$NS" create secret generic kacho-api-gateway-anon-mail-pow-key \
+    --from-file=pow.key=<(openssl rand 32) \
+    --dry-run=client -o yaml | create_once kacho-api-gateway-anon-mail-pow-key "ключ подписи вызовов proof-of-work края, ключ pow.key, 32 случайных байта"
+else
+  refuse_unknown kacho-api-gateway-anon-mail-pow-key "$out"
 fi
 
 echo "notify stand secrets ready in ns/$NS"

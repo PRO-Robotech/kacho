@@ -108,6 +108,12 @@ ingress-nginx:
 # величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
 global:
   kacho:
+    # Слой под этим (values.dev.yaml) выключает правила тревоги причиной
+    # kind-стенда; у этой цепочки причина своя: CRD PrometheusRule на кластере
+    # a8f60d НЕ измерен. Включать — после замера на площадке.
+    alertRules:
+      enabled: false
+      disabledBecause: "наличие CRD PrometheusRule на кластере a8f60d не измерено"
     identity:
       smtp:
         connectionURI: "smtps://info%40prorobotech.ru@smtp.yandex.ru:465/"

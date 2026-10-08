@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware/anonmail"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
@@ -58,6 +59,29 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+
+	// СТРАЖ РУЧЕК КРАЯ (приёмка NTF-2, Р8, сценарий 71): 19 ключей без
+	// умолчаний — наличие и границы по одной таблице (`anon_mail_bounds.go`),
+	// затем ключ подписи вызовов proof-of-work (З9). Отказ называет ключ и
+	// нарушенную границу; журнал старта печатает действующие значения.
+	edgeLimits, elErr := config.ResolveEdgeLimits(cfg)
+	if elErr != nil {
+		log.Fatalf("edge knobs startup-validation: %v", elErr)
+	}
+	powKey, pkErr := config.ReadAnonMailPoWKey(cfg)
+	if pkErr != nil {
+		log.Fatalf("anonymous mail proof-of-work key: %v", pkErr)
+	}
+	logger.Info("edge knobs resolved",
+		"limits", edgeLimits,
+		config.AnonMailPoWKeyFileKnob, cfg.AnonMailPoWKeyFile)
+
+	// ОПЕРАТОР КЛИЕНТСКОГО АДРЕСА — один на всех читателей (модель прав,
+	// ретрансляция полосы формы), число прыжков — из стража выше.
+	clientAddress, caErr := newClientAddressOperator(edgeLimits.TrustedHops)
+	if caErr != nil {
+		log.Fatalf("client address operator: %v", caErr)
+	}
 
 	// Посадка процесса — ЧЕРЕЗ ЦЕНТРАЛЬНЫЙ ДЕСКРИПТОР, и до первого исходящего
 	// соединения (задача продукта #1407). Раньше набора рёбер: страж, стоящий
@@ -167,6 +191,57 @@ func main() {
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
+	// ХРАНИЛИЩЕ ОДНОКРАТНОСТИ СТРОИТСЯ ЗДЕСЬ, до ретрансляции полосы формы и
+	// до стража DPoP: его запись держит однократность предъявления
+	// доказательства владения (DPoP), а его построение накатывает схему, на
+	// которой стоит пул ограничителя анонимной почты (З8, CX2-44 (1)). Порядок
+	// — не стиль: страж, собранный раньше хранилища, получил бы память
+	// процесса при живом общем хранилище, и различие увидела бы только вторая
+	// реплика — то есть никто (#909).
+	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
+		StoreKind: cfg.IdempotencyStoreKind,
+		DSN:       cfg.IdempotencyDSN,
+		FleetSize: cfg.FleetSize,
+	}); pairErr != nil {
+		log.Fatalf("idempotency store startup-validation: %v", pairErr)
+	}
+	idempStore, sharedReplayStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
+	if idempErr != nil {
+		log.Fatalf("idempotency store: %v", idempErr)
+	}
+	if idempCloser != nil {
+		defer func() { _ = idempCloser.Close() }()
+	}
+
+	// ОГРАНИЧИТЕЛЬ АНОНИМНОЙ ПОЧТЫ (приёмка NTF-2, Р5; замысел З8, З9) — звено
+	// перед ретрансляцией записей формы с признаком anonMail. Хранилище
+	// строится ПОСЛЕ хранилища однократности и закрывается раньше него (порядок
+	// отложенных закрытий), то есть после остановки HTTP-сервера: решение,
+	// начатое до остановки, дорабатывает на живом пуле (CX2-44 (2)).
+	var anonMailGate *anonmail.Gate
+	if identityLane == identityposture.Own {
+		anonStore, asErr := buildAnonMailStore(context.Background(), sharedReplayStore, cfg, edgeLimits.AnonMail, logger)
+		if asErr != nil {
+			log.Fatalf("anonymous mail limiter store: %v", asErr)
+		}
+		defer func() { _ = anonStore.Close() }()
+		pow, powErr := anonmail.NewPoW(powKey.Bytes(), time.Now)
+		if powErr != nil {
+			log.Fatalf("anonymous mail proof-of-work: %v", powErr)
+		}
+		gate, gErr := anonmail.NewGate(anonmail.GateConfig{
+			Store:    anonStore,
+			PoW:      pow,
+			ClientIP: clientAddress.ClientIP,
+			Now:      time.Now,
+			Logger:   logger,
+		})
+		if gErr != nil {
+			log.Fatalf("anonymous mail limiter: %v", gErr)
+		}
+		anonMailGate = gate
+	}
+
 	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
 	// входа и церемония авторизации принадлежат той чеканке, которая личность
 	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
@@ -182,7 +257,7 @@ func main() {
 	if identityLane == identityposture.Own {
 		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
 		// прав: справа по числу доверенных прыжков (Ф3 Р2).
-		clientIP := newClientAddressOperator(cfg).ClientIP
+		clientIP := clientAddress.ClientIP
 
 		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
 		if ftErr != nil {
@@ -194,6 +269,9 @@ func main() {
 			Target:    cfg.LoginLaneURL,
 			Transport: formTransport,
 			ClientIP:  clientIP,
+			// Звено-ограничитель перед ретрансляцией записей с признаком
+			// anonMail (NTF2-63); без него ретранслятор не строится.
+			AnonMailGate: anonMailGate.Wrap,
 		})
 		if rErr != nil {
 			log.Fatalf("login lane relay: %v", rErr)
@@ -533,26 +611,9 @@ func main() {
 	// anonymous when requireForAllRequests=false).
 	var dpopMiddleware *middleware.DPoPMiddleware
 	var cnfGRPCInterceptor *middleware.CnfBindingInterceptor
-	// ХРАНИЛИЩЕ ОДНОКРАТНОСТИ СТРОИТСЯ ЗДЕСЬ, а не ниже по файлу: его же
-	// запись держит однократность предъявления доказательства владения
-	// (DPoP), и страж этой проверки собирается парой строк ниже. Порядок
-	// здесь — не стиль: страж, собранный раньше хранилища, получил бы память
-	// процесса при живом общем хранилище, и различие увидела бы только вторая
-	// реплика — то есть никто (#909).
-	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
-		StoreKind: cfg.IdempotencyStoreKind,
-		DSN:       cfg.IdempotencyDSN,
-		FleetSize: cfg.FleetSize,
-	}); pairErr != nil {
-		log.Fatalf("idempotency store startup-validation: %v", pairErr)
-	}
-	idempStore, sharedReplayStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
-	if idempErr != nil {
-		log.Fatalf("idempotency store: %v", idempErr)
-	}
-	if idempCloser != nil {
-		defer func() { _ = idempCloser.Close() }()
-	}
+	// Хранилище однократности построено выше — до ретрансляции полосы формы:
+	// его же база держит ограничитель анонимной почты (З8), а страж DPoP ниже
+	// получает уже построенное общее хранилище (#909).
 
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
@@ -735,7 +796,7 @@ func main() {
 			)
 		}
 
-		authz, err = buildAuthzMiddleware(cfg, logger)
+		authz, err = buildAuthzMiddleware(cfg, clientAddress, logger)
 		if err != nil {
 			log.Fatalf("authz middleware: %v", err)
 		}
@@ -750,7 +811,7 @@ func main() {
 				"app_env", appEnv,
 				"catalog_override_file", cfg.AuthZPermissionCatalogFile,
 				"overrides_file", cfg.AuthZOverridesFile,
-				"trusted_xff", cfg.AuthZTrustedXForwardedFor,
+				"trusted_hops", edgeLimits.TrustedHops.Count(),
 			)
 		} else {
 			logger.Info("authz-mw disabled (set KACHO_API_GATEWAY_AUTHZ_ENABLED=true to enable)")
@@ -815,6 +876,9 @@ func main() {
 		// обязано быть видно величиной, а не выводиться из того, что никто не
 		// жаловался.
 		diagMetrics.RegisterIdempotencyReap(sharedReplayStore.ReapSweepStats)
+	}
+	if anonMailGate != nil {
+		diagMetrics.RegisterAnonMail(anonMailGate.Stats)
 	}
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
@@ -1515,7 +1579,9 @@ type authzWiring struct {
 // buildAuthzMiddleware constructs the AuthZ middleware from
 // configuration. When AuthZEnabled=false this returns a no-op middleware
 // (the caller still wires it into the chain, but it pass-through everything).
-func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, error) {
+// clientAddress — the ONE client-address operator of the composition root: the
+// `client_ip` condition reads the same address the login-lane relay forwards.
+func buildAuthzMiddleware(cfg config.Config, clientAddress *middleware.ContextExtractor, logger *slog.Logger) (authzWiring, error) {
 	if !cfg.AuthZEnabled {
 		// Накопитель собирается и на выключенной проверке: серии обязаны стоять
 		// нулями и здесь, иначе «проверка выключена» на поверхности выглядело бы
@@ -1577,7 +1643,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, 
 		FailOpen:        cfg.AuthZFailOpen,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         newClientAddressOperator(cfg),
+		Context:         clientAddress,
 		Resources:       middleware.NewResourceExtractor(restRouter.PathTemplates()),
 		Checker:         clients.NewAuthzChecker(authzClient),
 		Overrides:       overrides,

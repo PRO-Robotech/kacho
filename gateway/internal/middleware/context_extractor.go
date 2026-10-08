@@ -40,10 +40,13 @@
 package middleware
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
 // ContextExtractor — stateless builder.
@@ -51,53 +54,32 @@ type ContextExtractor struct {
 	// now — injectable clock for tests; defaults to time.Now.
 	now func() time.Time
 
-	// trustedXForwardedFor controls whether `X-Forwarded-For` / `X-Real-IP`
-	// headers are honoured when computing `client_ip`. In production we sit
-	// behind an L7 LB that strips client-supplied values and inserts the
-	// trusted peer; on a misconfigured deploy a tenant could spoof
-	// `source_ip_in_range` via a forged X-Forwarded-For. Default = true
-	// (typical k8s ingress topology); operators can flip to false when
-	// running api-gateway directly on the wire.
-	trustedXForwardedFor bool
-
-	// trustedProxyCount is the number of trusted reverse-proxy hops in front of
-	// the gateway. X-Forwarded-For is read from the RIGHT — the client IP is the
-	// entry the OUTERMOST trusted proxy recorded (parts[len-trustedProxyCount]).
-	// A client can only forge entries to the LEFT of that trusted block, which we
-	// never select, so a spoofed leftmost XFF can no longer drive `client_ip`.
-	// 0 disables forwarded-header trust entirely (TCP peer is authoritative).
-	// Default 1 (single k8s ingress).
-	trustedProxyCount int
+	// trustedHops — число доверенных прыжков перед краем (ручка
+	// KACHO_API_GATEWAY_TRUSTED_HOPS). X-Forwarded-For читается СПРАВА: адрес
+	// клиента — запись, которую сделал самый внешний доверенный прыжок
+	// (parts[len-trustedHops]). Клиент подделывает только записи ЛЕВЕЕ
+	// доверенного блока, а их оператор не выбирает никогда. 0 — заголовкам
+	// пересылки не верить, адрес — TCP-пир. Умолчания нет: значение приходит
+	// конструктору обязательным параметром.
+	trustedHops int
 }
 
-// ExtractorOption configures a ContextExtractor at construction.
-type ExtractorOption func(*ContextExtractor)
-
-// WithTrustedProxyHops sets the number of trusted reverse-proxy hops in front of
-// the gateway (see ContextExtractor.trustedProxyCount). 0 disables
-// forwarded-header trust; the TCP peer becomes authoritative.
-func WithTrustedProxyHops(n int) ExtractorOption {
-	return func(e *ContextExtractor) {
-		if n < 0 {
-			n = 0
-		}
-		e.trustedProxyCount = n
+// NewContextExtractor собирает оператор клиентского адреса. now=nil → time.Now.
+//
+// Число прыжков — обязательный параметр (замысел issue-2917, З8; CX2-12):
+// значение, не построенное разбором ручки (нулевое config.TrustedHops), —
+// ошибка сборки корня. Прежнее умолчание «1 прыжок» и опция, его
+// переопределявшая, сняты: «вызывающий забыл число прыжков» невыразимо, и край
+// с моделью прав не могут читать адрес на разной глубине.
+func NewContextExtractor(now func() time.Time, hops config.TrustedHops) (*ContextExtractor, error) {
+	if !hops.Parsed() {
+		return nil, fmt.Errorf("оператор клиентского адреса: число доверенных прыжков не построено "+
+			"разбором ручки %s — отказ сборки корня", config.TrustedHopsKnob)
 	}
-}
-
-// NewContextExtractor constructs an extractor. now=nil falls back to
-// time.Now; trustedXForwardedFor toggles X-Forwarded-For honour (see field
-// comment). The number of trusted proxy hops defaults to 1 and can be overridden
-// with WithTrustedProxyHops.
-func NewContextExtractor(now func() time.Time, trustedXForwardedFor bool, opts ...ExtractorOption) *ContextExtractor {
 	if now == nil {
 		now = time.Now
 	}
-	e := &ContextExtractor{now: now, trustedXForwardedFor: trustedXForwardedFor, trustedProxyCount: 1}
-	for _, o := range opts {
-		o(e)
-	}
-	return e
+	return &ContextExtractor{now: now, trustedHops: hops.Count()}, nil
 }
 
 // BuildHTTP composes the context map for an HTTP request path.
@@ -237,8 +219,8 @@ func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string
 
 // clientIPFromForwardHeaders returns the client IP asserted by trusted reverse
 // proxies, or "" when forwarded headers must not be trusted (so the caller falls
-// back to the TCP peer). Only honoured when trustedXForwardedFor is set AND at
-// least one trusted proxy hop is configured.
+// back to the TCP peer). Honoured only when at least one trusted hop is
+// configured.
 //
 // X-Forwarded-For is parsed from the RIGHT: with N trusted hops the client IP is
 // parts[len-N] — the entry the outermost trusted proxy recorded. A client can
@@ -247,12 +229,12 @@ func (e *ContextExtractor) resolveIPFromPeer(peerAddr net.Addr, headerFwd string
 // X-Real-IP (a single value a trusted proxy computed) is honoured only as a
 // fallback and only when a trusted proxy is present.
 func (e *ContextExtractor) clientIPFromForwardHeaders(xRealIP, xff string) string {
-	if !e.trustedXForwardedFor || e.trustedProxyCount <= 0 {
+	if e.trustedHops <= 0 {
 		return ""
 	}
 	if xff != "" {
 		parts := strings.Split(xff, ",")
-		if idx := len(parts) - e.trustedProxyCount; idx >= 0 && idx < len(parts) {
+		if idx := len(parts) - e.trustedHops; idx >= 0 && idx < len(parts) {
 			if ip := strings.TrimSpace(parts[idx]); validIP(ip) {
 				return canonicaliseIP(ip)
 			}
