@@ -7,16 +7,16 @@
 
 import React from "react";
 import { jest } from "@jest/globals";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 
-const list = jest.fn<(path: string, query?: Record<string, string>) => Promise<unknown>>();
+const get = jest.fn<(path: string, query?: Record<string, string>) => Promise<unknown>>();
 
 jest.unstable_mockModule("@shared/api/client", () => ({
-  api: { list, get: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), action: jest.fn() },
+  api: { list: jest.fn(), get, create: jest.fn(), update: jest.fn(), delete: jest.fn(), action: jest.fn() },
   ApiError,
 }));
 
@@ -82,17 +82,39 @@ beforeEach(() => {
 
 describe("SystemRoutes — посадка admin-плоскости", () => {
   it("плоскости на этой посадке нет: раздел говорит это словами, а действия сняты", async () => {
-    list.mockRejectedValue(new ApiError(404, 5, [], "Not Found"));
+    get.mockRejectedValue(new ApiError(404, 5, [], "Not Found"));
 
     openAt("/system/regions");
 
     expect(await screen.findByText(/недоступен на этой посадке/)).toBeInTheDocument();
     expect(await screen.findByText("список regions create=false update=false delete=false")).toBeInTheDocument();
-    expect(list).toHaveBeenCalledWith("/vpc/v1/addressPools", expect.objectContaining({ pageSize: "1" }));
+    expect(get).toHaveBeenCalledWith("/iam/v1/internal/cluster");
+  });
+
+  it("плоскости нет — слова стоят и над администраторами кластера: их мутации живут там же", async () => {
+    get.mockRejectedValue(new ApiError(404, 5, [], "Not Found"));
+
+    openAt("/system/cluster/admins");
+
+    expect(await screen.findByText(/недоступен на этой посадке/)).toBeInTheDocument();
+    expect(await screen.findByText("администраторы")).toBeInTheDocument();
+  });
+
+  it("пулы адресов — публичная служба (ADM-1 S1): их действия не зависят от посадки admin-плоскости (#3091)", async () => {
+    get.mockRejectedValue(new ApiError(404, 5, [], "Not Found"));
+
+    openAt("/system/address-pools");
+
+    expect(await screen.findByText("список address-pools create=true update=true delete=true")).toBeInTheDocument();
+    // Ждём, пока посадка названа (у соседнего маршрута она уже сняла бы действия),
+    // и только тогда утверждаем отсутствие слов.
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    await act(async () => {});
+    expect(unavailable()).not.toBeInTheDocument();
   });
 
   it("плоскость обслуживается: слов о недоступности нет, действия на месте — контроль в обратную сторону", async () => {
-    list.mockResolvedValue({ addressPools: [] });
+    get.mockResolvedValue({ id: "cluster_root" });
 
     openAt("/system/regions");
 
@@ -101,7 +123,7 @@ describe("SystemRoutes — посадка admin-плоскости", () => {
   });
 
   it("отказ в правах — не отсутствие раздела: слова не показываются, отказ остаётся отказом", async () => {
-    list.mockRejectedValue(new ApiError(403, 7, [{ reason: "AUTHZ_DENIED" }], "permission denied"));
+    get.mockRejectedValue(new ApiError(403, 7, [{ reason: "AUTHZ_DENIED" }], "permission denied"));
 
     openAt("/system/zones");
 
@@ -110,11 +132,11 @@ describe("SystemRoutes — посадка admin-плоскости", () => {
   });
 
   it("пока посадка не известна, действия не предлагаются — иначе кнопка успела бы отказать раньше слов", () => {
-    list.mockReturnValue(new Promise(() => {}));
+    get.mockReturnValue(new Promise(() => {}));
 
-    openAt("/system/address-pools");
+    openAt("/system/zones");
 
-    expect(screen.getByText("список address-pools create=false update=false delete=false")).toBeInTheDocument();
+    expect(screen.getByText("список zones create=false update=false delete=false")).toBeInTheDocument();
     expect(unavailable()).not.toBeInTheDocument();
   });
 });
