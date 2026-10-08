@@ -158,12 +158,15 @@ export default function ClusterAdminsPage() {
       width: 180,
       render: (v?: string) => fmtTs(v),
     },
-    {
+  ];
+  // Столбец отзыва — только там, где отзыв есть: без него он остался бы пустой
+  // колонкой без заголовка и содержимого.
+  if (mutable) {
+    columns.push({
       title: "",
       key: "actions",
       width: 60,
       render: (_v, row) => {
-        if (!mutable) return null;
         const isSelf = row.subject_id === currentUserId;
         const isLast = adminsCount === 1;
         const disabled = isSelf || isLast;
@@ -196,8 +199,8 @@ export default function ClusterAdminsPage() {
           </Popconfirm>
         );
       },
-    },
-  ];
+    });
+  }
 
   if (isForbidden) {
     return (

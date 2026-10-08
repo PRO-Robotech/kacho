@@ -101,6 +101,19 @@ describe("ClusterAdminsPage — посадка admin-плоскости", () => 
     expect(screen.queryByTestId("cluster-admins-grant-button")).not.toBeInTheDocument();
   });
 
+  it("без отзыва в строках нет и пустого столбца под него — смотрящий не видит колонку без содержимого", async () => {
+    get.mockImplementation((path: string) =>
+      path.endsWith("/admins") ? Promise.resolve({ admins: ADMINS }) : new Promise(() => {}),
+    );
+
+    open();
+
+    const row = (await screen.findByText("other@kacho.local")).closest("tr");
+    expect(row).not.toBeNull();
+    const empty = [...row!.querySelectorAll("td")].filter((td) => td.textContent === "" && td.children.length === 0);
+    expect(empty).toHaveLength(0);
+  });
+
   it("плоскость есть: выдача и отзыв на месте — контроль в обратную сторону", async () => {
     edgeAnswers("present");
 
@@ -108,5 +121,6 @@ describe("ClusterAdminsPage — посадка admin-плоскости", () => 
 
     expect(await screen.findByTestId("cluster-admins-grant-button")).toBeInTheDocument();
     expect(await screen.findByTestId("cluster-admins-revoke-usr-other")).toBeInTheDocument();
+    expect(screen.getByTestId("cluster-admins-revoke-usr-other").closest("td")).not.toBeNull();
   });
 });
