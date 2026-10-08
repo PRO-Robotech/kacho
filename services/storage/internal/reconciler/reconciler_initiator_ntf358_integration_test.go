@@ -71,7 +71,9 @@ func ntf358Stand(t *testing.T) (fixture, subject *pgxpool.Pool, volumeID string)
 	u, err := url.Parse(dsn)
 	require.NoError(t, err)
 	q := u.Query()
-	q.Set("options", strings.TrimSpace(q.Get("options")+" -c kacho_journal.initiator="+userA))
+	// Флаг ленты — тем же параметром старта: функция базы resource-event (NTF-3
+	// З10) отвергает транзакцию записи журнала без него, а лента фикстуре не предмет.
+	q.Set("options", strings.TrimSpace(q.Get("options")+" -c kacho_journal.initiator="+userA+" -c kacho_feed.enabled=false"))
 	u.RawQuery = q.Encode()
 	fixture, err = coredb.NewPool(ctx, u.String())
 	require.NoError(t, err)

@@ -219,6 +219,72 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"Приращение сливается по ключу, строк не добавляет",
 	},
 	{
+		Owner: "services/compute", Table: "compute_notification_outbox",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"закрытые строки ленты старше feed.ClosedRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
+		Owner: "services/compute", Table: "compute_notification_window",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"прошедшие окна лимитов старше feed.WindowRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
+		Owner: "services/registry", Table: "registry_notification_outbox",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"закрытые строки ленты старше feed.ClosedRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
+		Owner: "services/registry", Table: "registry_notification_window",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"прошедшие окна лимитов старше feed.WindowRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
+		Owner: "services/storage", Table: "storage_notification_outbox",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"закрытые строки ленты старше feed.ClosedRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
+		Owner: "services/storage", Table: "storage_notification_window",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "лента извещений модуля (NTF-3 З10): схему выпускает notifygen init, строки ставит " +
+			"функция базы resource-event на каждую строку журнала. Снимает их фундамент — " +
+			"прошедшие окна лимитов старше feed.WindowRetention (feed.RetentionSubjects, петля corelib/retention), " +
+			"а петлю поднимает композиционный корень модуля вместе с сервером ленты (приёмка NTF-3 " +
+			"§3 шаг (3)); схема входит раньше этой проводки, и до неё оператора снятия в процессе " +
+			"модуля нет",
+		Issue: "#2918",
+	},
+	{
 		Owner: "services/compute", Table: "quota_sync_cursor",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на ВИД синхронизации, а не на событие: ключ id перечисляет виды. " +

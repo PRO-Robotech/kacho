@@ -20,10 +20,10 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 h1:XRzhVemXdgv
 github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/PRO-Robotech/corelib v1.10.1-0.20261005124114-e7d6197fc5dc h1:1eHsThh87FLm9uFStTLz6f4rFWg/be0kT/u1mFZKa1w=
-github.com/PRO-Robotech/corelib v1.10.1-0.20261005124114-e7d6197fc5dc/go.mod h1:Wa9ZZIkr7DVr82wtGSYUl5lRS99SvlPSQ8NMhok+S9g=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261005134806-cbd729cfa9b1 h1:hlOTBS+VifwGW9V0g9Szc7I/LI26uEUVDx22HtKY26w=
-github.com/PRO-Robotech/kaname v0.4.1-0.20261005134806-cbd729cfa9b1/go.mod h1:61zXKTwKDZGx7xUw+85PJOuhREb7aHVZif0sD5jrE8E=
+github.com/PRO-Robotech/corelib v1.10.1-0.20261006190655-67ba3443c149 h1:yzpPOA6xZGeFm94TM1L0b9tczA4r94CWoRbLWybHyuE=
+github.com/PRO-Robotech/corelib v1.10.1-0.20261006190655-67ba3443c149/go.mod h1:Wa9ZZIkr7DVr82wtGSYUl5lRS99SvlPSQ8NMhok+S9g=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261006222401-56bcb3036d71 h1:j/QN+XHR4jp+68NWVr5TKguIqOPgFhaUTOdyI88Bum0=
+github.com/PRO-Robotech/kaname v0.4.1-0.20261006222401-56bcb3036d71/go.mod h1:CUZD0N5/swBcNxA+caGOrq6gV3hntTwrVQZqWjAvAuQ=
 github.com/ProtonMail/go-crypto v1.3.0 h1:ILq8+Sf5If5DCpHQp4PbZdS1J7HDFRXz/+xKBiRGFrw=
 github.com/ProtonMail/go-crypto v1.3.0/go.mod h1:9whxjD8Rbs29b4XWbB8irEcE8KHMqaR2e7GWU1R+/PE=
 github.com/agext/levenshtein v1.2.2 h1:0S/Yg6LYmFJ5stwQeRp6EeOcCbj7xiqQSdNelsXvaqE=
