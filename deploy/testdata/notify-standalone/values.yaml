@@ -37,6 +37,11 @@ recipientKey: "fixture-recipient-key-not-a-secret-0123456789"
 # называет явно.
 recipientKeySecret:
   name: ""
+# Ключ отпечатка адреса значением (NTF-4 Д23) — по тому же доводу, что ключ
+# сетки выше: 64 hex-символа фикстуры, не секрет.
+addressKey: "f1f2f3f4f5f6f7f8f9fafbfcfdfeff00f1f2f3f4f5f6f7f8f9fafbfcfdfeff00"
+addressKeySecret:
+  name: ""
 db:
   host: notify-postgres
   passwordSecret:

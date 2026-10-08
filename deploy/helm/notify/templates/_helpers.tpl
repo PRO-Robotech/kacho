@@ -95,6 +95,22 @@ notify.dkimNode — объект ключа DKIM установки, узел
 {{- define "notify.dkimDir" -}}/etc/kacho/notify/dkim{{- end -}}
 
 {{/*
+notify.addressKeySecretName — имя объекта ключа отпечатка адреса, который
+монтирует под: объект стенда (`addressKeySecret.name`, Д123) либо объект чарта с
+постоянным именем `<полное имя>-address-key` (NTF-4 Д23).
+*/}}
+{{- define "notify.addressKeySecretName" -}}
+{{- (.Values.addressKeySecret | default dict).name | default (printf "%s-address-key" (include "notify.fullname" .)) -}}
+{{- end -}}
+
+{{/*
+notify.addressKeyDir — каталог монтирования объекта ключа отпечатка адреса
+(NTF-4 Р15, Д23). Значение ручки KACHO_NOTIFY_ADDRESS_KEY_DIR — этот же
+помощник: путь ручки и путь тома не расходятся по построению.
+*/}}
+{{- define "notify.addressKeyDir" -}}/etc/kacho/notify/address-key{{- end -}}
+
+{{/*
 notify.recipientKeySecretName — имя объекта ключа сетки, на которое ссылается
 переменная пода: объект стенда (`recipientKeySecret.name`, Д123) либо объект
 чарта с постоянным именем `<полное имя>-recipient-key` (CX1-68 (г)).
