@@ -1102,8 +1102,18 @@ stack-up:
 #
 # stand-ns-run — подъём → проброс → CMD (в окружении CONSOLE_BASE, EDGE_BASE и
 # файла проб стенда, из каталога DIR; умолчание — корень репозитория) → снятие
-# ВСЕГДА: успех, падение, kill. Код выхода — код CMD; 125 — CMD не исполнялась
-# (стенд не поднят). KEEP=1 оставляет стенд для разбора на STAND_TTL_HOURS (≤ 12 ч).
+# ВСЕГДА: успех, падение, kill. KEEP=1 оставляет стенд для разбора на
+# STAND_TTL_HOURS (≤ 12 ч).
+#
+# КОД ВЫХОДА. Код — у `scripts/stand-ns.sh run`: код CMD; 125 — CMD не исполнялась
+# (стенд не поднят, условие прогона не создано). Цель make его НЕ передаёт: GNU make
+# на любом ненулевом коде рецепта выходит кодом 2, и `exec` в рецепте этого не
+# меняет — make ждёт свою оболочку и читает её код сам (замерено, GNU Make 4.4.1:
+# `exec bash -c 'exit 7'` → make 2). Поэтому цель печатает код скрипта ПОСЛЕДНЕЙ
+# строкой рецепта — `stand-ns-run: код scripts/stand-ns.sh run = N` — и выходит
+# этим же кодом в рецепте (make снаружи: 0 либо 2, и строку «Ошибка N» ниже
+# печатает он сам). Вызывающий, которому нужен код как число (125 отличить от
+# красного), зовёт скрипт: `bash deploy/scripts/stand-ns.sh run NS … -- КОМАНДА…`.
 # Команда идёт переменной, а не словами после `--`: make читает их как цели и
 # присваивания. Сам скрипт форму `-- КОМАНДА…` принимает: scripts/stand-ns.sh run.
 # CMD передаётся НЕРАСКРЫТЫМ ($(value CMD)): `$EDGE_BASE` в команде раскрывает
@@ -1130,8 +1140,14 @@ stand-ns-down:
 stand-ns-run:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
 	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
-	@cd "$(CURDIR)/../$(DIR)" && bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
-	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'
+	@cd "$(CURDIR)/../$(DIR)" || exit 2; \
+	bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
+	code=$$?; \
+	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \
+	  *) what="команда завершилась ненулевым кодом" ;; esac; \
+	echo "stand-ns-run: код scripts/stand-ns.sh run = $$code ($$what)"; \
+	exit $$code
 
 stand-ns-census:
 	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)

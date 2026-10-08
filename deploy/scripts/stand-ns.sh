@@ -149,6 +149,31 @@ self_test() {
   if [ "$rc" -eq 2 ]; then ok "нечитаемый срок — код 2, не «истёк»"; else bad "нечитаемый срок прочитан (код $rc)"; fi
   if ttl_valid 12 && ttl_valid 1 && ! ttl_valid 13 && ! ttl_valid 0 && ! ttl_valid x; then
     ok "срок 1..$TTL_MAX_HOURS ч принят, 0, 13 и не число — отвергнуты"; else bad "правило срока"; fi
+  # Первая запись подъёма: Pod Security и сетевая изоляция судятся по разобранному
+  # манифесту. Близнец — тот же разбор на манифесте с впущенным `kacho`: отказ.
+  local iso
+  iso='
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+ns = next(d for d in docs if d["kind"] == "Namespace")
+pol = {d["metadata"]["name"]: d["spec"] for d in docs if d["kind"] == "NetworkPolicy"}
+lab = ns["metadata"]["labels"]
+assert lab.get("pod-security.kubernetes.io/enforce") == "baseline", "enforce не baseline"
+i, e = pol["stand-ingress"], pol["stand-egress"]
+assert i["podSelector"] == {} and i["policyTypes"] == ["Ingress"], "вход не на все поды"
+assert i["ingress"] == [{"from": [{"podSelector": {}}]}], "вход шире своего пространства"
+assert e["podSelector"] == {} and e["policyTypes"] == ["Egress"], "выход не на все поды"
+names = [p["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
+         for r in e["egress"] for p in r.get("to", []) if "namespaceSelector" in p]
+assert names == [sys.argv[1]], "выход в пространства %s, ждали только %s" % (names, sys.argv[1])
+assert all(set(p) <= {"podSelector", "namespaceSelector", "ipBlock"} for r in e["egress"] for p in r.get("to", []))
+assert [p for r in e["egress"] for p in r.get("to", []) if "podSelector" in p and "namespaceSelector" not in p] == [{"podSelector": {}}]
+'
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef cm-ns | python3 -c "$iso" cm-ns; then
+    ok "пространство: enforce=baseline, вход — свои поды, выход — свои, DNS, cert-manager, вне кластера"
+  else bad "Pod Security или сетевая изоляция пространства не по правилу"; fi
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef kacho | python3 -c "$iso" cm-ns 2>/dev/null; then
+    bad "выход в «kacho» принят разбором"; else ok "выход в «kacho» разбором отвергнут"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -220,10 +245,30 @@ has_default_storage_class() {
 
 # ── ПОДЪЁМ ───────────────────────────────────────────────────────────────────
 
-# ns_objects NS TASK EXPIRES STACK SHA — ПЕРВАЯ запись подъёма одним применением:
+# ns_objects NS TASK EXPIRES STACK SHA CANS — ПЕРВАЯ запись подъёма одним применением:
 # пространство уже с метками и сроком (kill между «создал» и «пометил» оставил бы
-# непомеченное пространство, которое down по праву счёл бы чужим), затем квота
-# и пределы — первые объекты пространства, до любой нагрузки.
+# непомеченное пространство, которое down по праву счёл бы чужим), затем квота,
+# пределы и сетевая изоляция — первые объекты пространства, до любой нагрузки.
+#
+# Pod Security — enforce=baseline (замер kacho#3102: стенд dev-prod под ним
+# поднимается целиком), warn/audit=restricted — видимость остатка до restricted.
+#
+# Сетевая изоляция стенда — две политики на все поды пространства:
+#   stand-ingress  вход только от подов своего пространства. Проброс порта приходит
+#                  в под с петли, пробы готовности — от узла; политикой они не
+#                  судятся. Политики чарта ДОБАВЛЯЮТ разрешённое (NetworkPolicy
+#                  только объединяет): порт сбора величин края чарт открывает
+#                  всем пространствам (networkpolicy-api-gateway.yaml), и стенд
+#                  его не сужает — вычитать политикой нечем;
+#   stand-egress   выход: свои поды · DNS (порт 53 куда угодно — где живёт
+#                  резолвер, свойство кластера) · пространство ресурсов
+#                  cert-manager · адреса вне кластера (реестры, зеркала, apiserver
+#                  управляемой площадки) блоком 0.0.0.0/0 и ::/0. Пространства
+#                  кластера, кроме названных, не выбраны ничем — `kacho` и чужие
+#                  стенды закрыты. Блок адресов узлы и поды кластера на CNI с
+#                  идентичностью конечных точек (cilium) не выбирает; что это так
+#                  на кластере стенда, утверждает scripts/stand-ns-isolation-probe.sh
+#                  (к краю `kacho` — отказ, к своему — проходит).
 #
 # Числа квоты — по замеру стенда dev-prod на этом кластере (kacho#3102,
 # комментарий задачи «замер подъёма»): сумма запросов поднятого стенда и пик
@@ -239,6 +284,8 @@ metadata:
   labels:
     $LABEL_STAND: test
     $LABEL_TASK: "$2"
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
     pod-security.kubernetes.io/audit: restricted
@@ -277,6 +324,41 @@ spec:
       defaultRequest: {cpu: 10m, memory: 32Mi}
       default: {memory: 512Mi}
       max: {memory: 8Gi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stand-ingress
+  namespace: $1
+  labels: {$LABEL_STAND: test}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stand-egress
+  namespace: $1
+  labels: {$LABEL_STAND: test}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: {}
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: "$6"}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+        - ipBlock: {cidr: "::/0"}
 EOF
 }
 
@@ -284,7 +366,7 @@ EOF
 # записи: отказ на середине оставил бы пространство без квоты.
 can_write() {
   local verb_res
-  for verb_res in "create namespaces" "create resourcequotas -n $1" "create limitranges -n $1" "delete namespaces"; do
+  for verb_res in "create namespaces" "create resourcequotas -n $1" "create limitranges -n $1" "create networkpolicies -n $1" "delete namespaces"; do
     # shellcheck disable=SC2086 # «глагол ресурс [-n ns]» — разбор по словам и нужен
     [ "$(kubectl auth can-i $verb_res --request-timeout=30s 2>/dev/null)" = yes ] || {
       warn "у учётки нет права «$verb_res»"; return 1; }
@@ -549,8 +631,8 @@ cmd_up() {
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
 
   expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
-  ns_objects "$ns" "$task" "$expires" "$stack" "$sha" >"$work/ns.yaml"
-  kubectl apply --dry-run=client -f "$work/ns.yaml" >/dev/null || die "пространство, квота и пределы не проходят проверку манифеста" 2
+  ns_objects "$ns" "$task" "$expires" "$stack" "$sha" "$cans" >"$work/ns.yaml"
+  kubectl apply --dry-run=client -f "$work/ns.yaml" >/dev/null || die "пространство, квота, пределы и сетевая изоляция не проходят проверку манифеста" 2
   can_write "$ns" || die "завести пространство с квотой нечем (права выше) — ни одной записи не сделано" 2
 
   bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2
@@ -584,7 +666,7 @@ $claims" 2
   # ── 2. Первая запись: пространство с метками и сроком, квота, пределы ──
   [ "$UP_STATE" = absent ] && UP_CREATED=1
   kubectl apply -f "$work/ns.yaml" >/dev/null || die "пространство $ns с квотой не заведено" 1
-  log "пространство $ns: задача #$task, срок $expires; квота и пределы применены"
+  log "пространство $ns: задача #$task, срок $expires; квота, пределы, Pod Security baseline и сетевая изоляция применены"
 
   # ── 3. Стенд ──
   bg make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \

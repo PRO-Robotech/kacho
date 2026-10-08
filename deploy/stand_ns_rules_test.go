@@ -61,3 +61,40 @@ func TestStandNamespaceRunAndUpRefuseBeforeTheCluster(t *testing.T) {
 		}
 	}
 }
+
+// Цель make кода скрипта наружу не передаёт (GNU make на любом ненулевом коде
+// рецепта выходит 2), поэтому код `stand-ns.sh run` печатается ПОСЛЕДНЕЙ строкой
+// рецепта. Проба — без кластера: имя рабочего стенда скрипт отвергает до kubectl
+// кодом 2, и строка обязана назвать именно его код. Близнец: без NS отказывает сам
+// make до скрипта — строки кода скрипта там нет, потому что скрипт не звался.
+func TestStandNamespaceRunTargetPrintsTheScriptCodeLast(t *testing.T) {
+	const line = "stand-ns-run: код scripts/stand-ns.sh run = "
+	run := func(args ...string) (string, int) {
+		cmd := exec.Command("make", append([]string{"-s", "--no-print-directory", "stand-ns-run"}, args...)...)
+		cmd.Env = append(cmd.Environ(), "STAND_APISERVER=", "KUBECONFIG=/nonexistent")
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatalf("make не запустился: %v", err)
+		}
+		return string(out), code
+	}
+
+	out, code := run("NS=kacho", "CMD=exit 7")
+	var last string
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		if !strings.HasPrefix(l, "make: ***") {
+			last = l
+		}
+	}
+	if code != 2 || !strings.HasPrefix(last, line+"2 ") {
+		t.Fatalf("NS=kacho: ждали код make 2 и последней строкой рецепта «%s2 …», получили %d, «%s»:\n%s", line, code, last, out)
+	}
+
+	out, code = run("CMD=exit 7")
+	if code != 2 || strings.Contains(out, line) || !strings.Contains(out, "NS не задан") {
+		t.Fatalf("без NS: ждали отказ make до скрипта без строки кода, получили %d:\n%s", code, out)
+	}
+}
