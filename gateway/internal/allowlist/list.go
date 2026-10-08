@@ -345,6 +345,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.SAKeyService/Issue":  {},
 	"/kaname.cloud.iam.v1.SAKeyService/List":   {},
 	"/kaname.cloud.iam.v1.SAKeyService/Revoke": {},
+	// iam.v1 — ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец
+	// InternalClusterService: администраторы кластера на публичной поверхности
+	// под /iam/v1/cluster…. Гейт — system_admin на cluster:cluster_root
+	// (не выполним подстановочным знаком), мутации — с полом подтверждения 2.
+	// Внутренний близнец остаётся на :9091 и в перечень НЕ входит (запрет #6).
+	"/kaname.cloud.iam.v1.ClusterService/Get":         {}, // sync read (REST GET /iam/v1/cluster)
+	"/kaname.cloud.iam.v1.ClusterService/ListAdmins":  {}, // sync read (REST GET /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/GrantAdmin":  {}, // Operation (REST POST /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/RevokeAdmin": {}, // Operation (REST DELETE /iam/v1/cluster/admins/{subject_id})
 	// iam.v1 — AuthorizeService (REST /iam/v1/authorize:* и /iam/v1/me) —
 	// tenant-facing запросы к модели прав: предпросмотр разрешений в консоли и
 	// самоописание вызывающего. Публичный сервис, не Internal*.

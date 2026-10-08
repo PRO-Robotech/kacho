@@ -1,40 +1,23 @@
 // GEO-1 contract lock for the Region/Zone registry specs.
 //
-// Region/Zone is a two-projection resource: the public RegionService/ZoneService
-// serve a lean tenant-facing read (id/name/countryCode/createdAt + the derived
-// openForPlacement°), while the raw admin `status` and the whole infra° block
-// exist only on the Internal* projection behind /geo/v1/internal/… . Admin CRUD
-// lives there too — POST/PATCH/DELETE on the public path is not routed at all.
+// The console speaks to the PUBLIC RegionService/ZoneService only (kacho#3094):
+// reads and the administrator's Create/Update/Delete live on the same
+// /geo/v1/{regions,zones} paths (#3092). The public projection carries the
+// derived openForPlacement° and no raw `status` and no infra° block; the edit
+// form derives `status` from the projection and offers no infra° field at all.
 
-import { GEO_INTERNAL_REGIONS_PATH, GEO_INTERNAL_ZONES_PATH } from "@shared/api/geo";
-import { editReadPath, mutationBasePath, REGISTRY, resourceProjectPath, type ResourceSpec } from "./resource-registry";
+import { REGISTRY, resourceProjectPath, type ResourceSpec } from "./resource-registry";
 
 const columnPaths = (spec: ResourceSpec) => spec.columns.map((c) => c.path);
 const fieldNames = (spec: ResourceSpec) => (spec.fields ?? []).map((f) => f.name);
 const field = (spec: ResourceSpec, name: string) => (spec.fields ?? []).find((f) => f.name === name);
 const asObj = (v: unknown) => v as Record<string, unknown>;
 
-describe("geo registry — admin surface routing", () => {
-  it.each(["regions", "zones"])("%s reads the public path and mutates the internal one", (id) => {
+describe("geo registry — public surface routing (#3094)", () => {
+  it.each(["regions", "zones"])("%s reads and mutates the public path — no internal plane", (id) => {
     const spec = REGISTRY[id];
     expect(spec.apiPath).toBe(`/geo/v1/${id}`);
-    expect(spec.admin?.basePath).toBe(id === "regions" ? GEO_INTERNAL_REGIONS_PATH : GEO_INTERNAL_ZONES_PATH);
-    expect(mutationBasePath(spec)).toBe(spec.admin!.basePath);
-  });
-
-  it("reads the edit form from the Internal projection — the mutable fields are not on the public one", () => {
-    // `status` and infra° never appear on the public Region/Zone, so hydrating an
-    // edit form from the public read would show the operator a blank status and
-    // let them flip it blind.
-    expect(REGISTRY.regions.admin?.readForEdit).toBe(true);
-    expect(REGISTRY.zones.admin?.readForEdit).toBe(true);
-    expect(editReadPath(REGISTRY.regions, "ru-central1")).toBe("/geo/v1/internal/regions/ru-central1");
-    expect(editReadPath(REGISTRY.zones, "ru-central1-a")).toBe("/geo/v1/internal/zones/ru-central1-a");
-  });
-
-  it("keeps reading a resource without an admin surface on its own path", () => {
-    expect(mutationBasePath(REGISTRY.networks)).toBe(REGISTRY.networks.apiPath);
-    expect(editReadPath(REGISTRY.networks, "net-1")).toBe(`${REGISTRY.networks.apiPath}/net-1`);
+    expect(JSON.stringify(spec)).not.toContain("/internal");
   });
 
   it.each(["regions", "zones"])("%s declares that its mutations answer with an Operation", (id) => {
@@ -44,8 +27,8 @@ describe("geo registry — admin surface routing", () => {
     expect(REGISTRY[id].mutationsReturnOperation).toBe(true);
   });
 
-  it.each(["regions", "zones"])("%s offers the Internal projection as a detail tab", (id) => {
-    expect(REGISTRY[id].internalGetPath).toBe(`/geo/v1/internal/${id}/{id}`);
+  it.each(["regions", "zones"])("%s offers no Internal projection tab — it is not on the public surface", (id) => {
+    expect(REGISTRY[id].internalGetPath).toBeUndefined();
   });
 });
 
@@ -103,8 +86,8 @@ describe("geo registry — Region", () => {
     expect(paths).toContain("open_zone_count_hint");
   });
 
-  it("accepts exactly the fields the admin Create takes", () => {
-    expect(fieldNames(regions)).toEqual(["id", "country_code", "status", "infra.numeric_infra_id"]);
+  it("accepts exactly the fields the public Create takes — no infra° block", () => {
+    expect(fieldNames(regions)).toEqual(["id", "country_code", "status"]);
   });
 
   it("pins the id as an immutable admin-assigned slug", () => {
@@ -136,24 +119,13 @@ describe("geo registry — Region", () => {
     expect(t.id).toBe("");
   });
 
-  it("keeps numericInfraId settable once and never editable", () => {
-    const n = field(regions, "infra.numeric_infra_id")!;
-    expect(n.immutable).toBe(true);
-  });
-
-  it("does not offer the region capacity rollup as an input — it is not settable", () => {
-    expect(fieldNames(regions)).not.toContain("infra.capacity_hint");
-  });
-
   it("drops the empty optionals instead of sending blanks", () => {
     const out = regions.sanitize!({
       id: "ru-central1",
       country_code: "",
       status: "DOWN",
-      infra: { numeric_infra_id: "" },
     });
     expect(out).not.toHaveProperty("country_code");
-    expect(out).not.toHaveProperty("infra");
     expect(out.id).toBe("ru-central1");
   });
 
@@ -162,10 +134,16 @@ describe("geo registry — Region", () => {
       id: "ru-central1",
       country_code: "RU",
       status: "UP",
-      infra: { numeric_infra_id: "42" },
     });
     expect(out.country_code).toBe("RU");
-    expect(out.infra).toEqual({ numeric_infra_id: "42" });
+    expect(out.status).toBe("UP");
+  });
+
+  it("derives the edit form's status from openForPlacement° — the public read has no raw status", () => {
+    expect(asObj(regions.hydrate!({ id: "r", open_for_placement: true })).status).toBe("UP");
+    expect(asObj(regions.hydrate!({ id: "r", open_for_placement: false })).status).toBe("DOWN");
+    // Absent is not a status: nothing is guessed, and an untouched field stays out of the mask.
+    expect(asObj(regions.hydrate!({ id: "r" })).status).toBeUndefined();
   });
 
   it("offers the placement filter server-side, so it applies to the whole list", () => {
@@ -184,17 +162,8 @@ describe("geo registry — Zone", () => {
     expect(paths).toContain("placement_blocked_reason");
   });
 
-  it("accepts exactly the fields the admin Create takes", () => {
-    expect(fieldNames(zones)).toEqual([
-      "id",
-      "region_id",
-      "status",
-      "infra.numeric_infra_id",
-      "infra.host_classes",
-      "infra.failure_domain_count",
-      "infra.underlay_anchor",
-      "infra.capacity_hint",
-    ]);
+  it("accepts exactly the fields the public Create takes — no infra° block", () => {
+    expect(fieldNames(zones)).toEqual(["id", "region_id", "status"]);
   });
 
   it("pins regionId immutable — moving a zone would break every placed resource", () => {
@@ -218,31 +187,18 @@ describe("geo registry — Zone", () => {
     expect(zones.validate!({ id: "ru-central1-a", region_id: "" })).toBeNull();
   });
 
-  it("edits the mutable infra° block and keeps numericInfraId out of it", () => {
-    expect(field(zones, "infra.numeric_infra_id")!.immutable).toBe(true);
-    expect(field(zones, "infra.host_classes")!.immutable).toBeFalsy();
-    expect(field(zones, "infra.failure_domain_count")!.type).toBe("int");
-    expect(field(zones, "infra.capacity_hint")!.type).toBe("enum");
+  it("derives the zone's own status from the projection — zone precedence of the blocked reason", () => {
+    const st = (row: Record<string, unknown>) => asObj(zones.hydrate!({ id: "z", ...row })).status;
+    expect(st({ open_for_placement: true, placement_blocked_reason: "NONE" })).toBe("UP");
+    expect(st({ open_for_placement: false, placement_blocked_reason: "ZONE_DOWN" })).toBe("DOWN");
+    // Region down, zone itself up: ZONE_DOWN would have taken precedence otherwise.
+    expect(st({ open_for_placement: false, placement_blocked_reason: "REGION_DOWN" })).toBe("UP");
+    expect(st({ open_for_placement: false })).toBeUndefined();
+    expect(st({})).toBeUndefined();
   });
 
-  it("turns the host-class textarea into the repeated field the service expects", () => {
-    const out = zones.sanitize!({
-      id: "ru-central1-a",
-      region_id: "ru-central1",
-      name: "A",
-      status: "UP",
-      infra: { host_classes: "std-1\n  gpu-a100  \n\n", failure_domain_count: 3 },
-    });
-    expect(asObj(out.infra).host_classes).toEqual(["std-1", "gpu-a100"]);
-    expect(asObj(out.infra).failure_domain_count).toBe(3);
-  });
-
-  it("reads the repeated field back into the textarea for editing", () => {
-    const form = zones.hydrate!({
-      id: "ru-central1-a",
-      infra: { host_classes: ["std-1", "gpu-a100"] },
-    });
-    expect(asObj(asObj(form).infra).host_classes).toBe("std-1\ngpu-a100");
+  it("sends no blank status — an underived status stays out of the body", () => {
+    expect(zones.sanitize!({ id: "z", region_id: "r", status: undefined })).not.toHaveProperty("status");
   });
 
   it("does not send regionId on update — the service reserved that field", () => {

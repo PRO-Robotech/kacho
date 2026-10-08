@@ -329,19 +329,6 @@ export interface ResourceSpec {
    *  service→service), поэтому вкладки internal у NIC быть не может.
    *  Большинство ресурсов поля не имеют. */
   internalGetPath?: string;
-  /** Admin-плоскость ресурса (`Internal*`-сервис на cluster-internal listener).
-   *  `apiPath` остаётся поверхностью ЧТЕНИЯ; когда задан `admin`, Create/Update/
-   *  Delete уходят на `admin.basePath`. Нужно там, где публичный путь мутации
-   *  вообще не смаршрутизирован — geo Region/Zone читаются на /geo/v1/{regions,
-   *  zones}, а меняются на /geo/v1/internal/…; POST на публичный путь не
-   *  обслуживается никем.
-   *
-   *  `readForEdit` — читать начальное состояние формы редактирования с
-   *  `admin.basePath/{id}` (GetInternal): у двухпроекционного ресурса мутируемые
-   *  поля (`status`, `infra°`) на публичной проекции отсутствуют, и форма,
-   *  заполненная публичным чтением, показала бы оператору пустое поле там, где
-   *  на самом деле есть значение. */
-  admin?: { basePath: string; readForEdit?: boolean };
   /** Мутации ресурса отвечают `operation.Operation` — **умолчание, а не
    *  пожелание**: этого требует ban #9. Ответ без operation-id есть нарушение
    *  контракта, а не синхронный успех, и страница говорит об этом вместо того,

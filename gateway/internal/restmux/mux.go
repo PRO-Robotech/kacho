@@ -847,6 +847,14 @@ func NewMux(
 			if err := iampb.RegisterAccessKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccessKeyService: %w", err)
 			}
+			// ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец InternalClusterService:
+			// администраторы кластера под /iam/v1/cluster и /iam/v1/cluster/admins.
+			// Обе стороны исполняют одни и те же экземпляры сценариев службы, гейт —
+			// system_admin на cluster:cluster_root по каталогу прав. Внутренний
+			// близнец остаётся в блоке iamInternalAddr ниже (запрет #6).
+			if err := iampb.RegisterClusterServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam ClusterService: %w", err)
+			}
 			// AuthorizeService — tenant FGA check (POST /iam/v1/authorize:check).
 			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AuthorizeService: %w", err)

@@ -145,3 +145,24 @@ func TestResolver_MalformedPathNotResolved(t *testing.T) {
 		t.Error("malformed path не должен резолвиться")
 	}
 }
+
+// Публичный близнец ClusterService (kaname#661) резолвится на iam-backend всеми
+// четырьмя глаголами; внутренний близнец с теми же глаголами — не резолвится
+// вовсе (запрет #6).
+func TestResolver_ClusterServicePublicVsInternal(t *testing.T) {
+	backends := makeTestBackends(t, []string{"iam", "vpc"})
+	resolve := proxy.Resolver(backends)
+	for _, verb := range []string{"Get", "ListAdmins", "GrantAdmin", "RevokeAdmin"} {
+		pub := "/kaname.cloud.iam.v1.ClusterService/" + verb
+		_, conn, ok := resolve(pub)
+		if !ok {
+			t.Errorf("публичный %q не резолвится", pub)
+		} else if conn != backends["iam"] {
+			t.Errorf("публичный %q резолвится не на iam-backend", pub)
+		}
+		intr := "/kaname.cloud.iam.v1.InternalClusterService/" + verb
+		if _, _, ok := resolve(intr); ok {
+			t.Errorf("Internal метод %q должен быть заблокирован", intr)
+		}
+	}
+}

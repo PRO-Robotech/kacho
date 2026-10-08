@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Modal } from "antd";
 import { InlineResourceForm } from "@shared/components/organisms/InlineResourceForm";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
-import { editReadPath, REGISTRY } from "@shared/lib/resource-registry";
+import { REGISTRY } from "@shared/lib/resource-registry";
 import { useContext } from "@shared/lib/context-store";
 import { api } from "@shared/api/client";
 import { presetFieldsForSpec } from "@shared/lib/preset-fields";
@@ -51,12 +51,10 @@ export function ResourceFormModal({ projectId }: Props) {
   }, [searchParams, setSearchParams]);
 
   // Для Edit: загружаем ресурс (нужно для InlineResourceEditForm — она
-  // принимает data, а не id). Откуда читать, решает `editReadPath`: у
-  // двухпроекционного ресурса мутируемые поля живут на Internal-проекции, и
-  // чтение с публичной показало бы пустой статус там, где он есть (#2692).
-  // Ключ запроса несёт путь: одна и та же пара (ресурс, id) с двух проекций —
-  // два разных ответа, и общий ключ отдал бы карточке публичную проекцию.
-  const editPath = spec && id ? editReadPath(spec, id) : "";
+  // принимает data, а не id). Читается путь самого ресурса; то, чего его
+  // проекция не несёт, форма выводит своим `hydrate` (#3094). Ключ запроса
+  // несёт путь: он и есть предмет чтения.
+  const editPath = spec && id ? `${spec.apiPath}/${id}` : "";
   const { data: editData } = useQuery({
     queryKey: [specId, "detail", id, editPath],
     queryFn: () => api.get<Record<string, unknown>>(editPath),
