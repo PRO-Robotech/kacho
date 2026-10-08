@@ -1031,11 +1031,11 @@ func TestNotifyProbeMigratesItsDatabaseBeforeItStarts(t *testing.T) {
 	t.Logf("инъекция «migrate снят» → %v; близнец (объект как есть) → находок %d", f, len(twin))
 }
 
-// ─── ИМЯ НОСИТЕЛЯ: служба пробы — та, которую спрашивает ban #6 ─────────────
+// ─── ИМЯ НОСИТЕЛЯ: служба notify-api — та, которую спрашивает ban #6 ────────
 
 // ban6CarrierRe — строка носителя notify в карте встречного контроля гейта
 // ban #6 (`INTERNAL_ENDPOINTS["notify"]`). Производитель ожидаемого имени —
-// гейт, который будет звонить пробе, а не этот файл: имя, выписанное здесь
+// гейт, который будет звонить носителю, а не этот файл: имя, выписанное здесь
 // второй копией, разошлось бы с гейтом молча.
 var ban6CarrierRe = regexp.MustCompile(`(?m)^\s*"notify":\s*\("svc/([a-z0-9-]+)",\s*(\d+),`)
 
@@ -1057,23 +1057,27 @@ func ban6NotifyCarrier(t *testing.T) (string, int) {
 	return m[0][1], port
 }
 
-// probeServiceFindings — служба пробы в рендере названа и слушает так, как её
-// спрашивает гейт ban #6: ровно одна Service шаблона пробы, имя want, порт port.
-// Имя, выведенное из имени выпуска, на стенде (`kacho-umbrella`) дало бы
-// `kacho-umbrella-notify-probe`, и встречный контроль звонил бы в пустоту.
-func probeServiceFindings(objs []renderedObj, want string, port int) []string {
+// notifyAPIServiceSource — шаблон службы внутреннего слушателя notify-api в
+// рендере зонтика (замысел issue-2924 З19: носитель notify — notify-api).
+const notifyAPIServiceSource = "kacho-umbrella/charts/notify/templates/api-service.yaml"
+
+// carrierServiceFindings — служба носителя в рендере названа и слушает так, как
+// её спрашивает гейт ban #6: ровно одна Service шаблона source, имя want, порт
+// port. Имя, разошедшееся с картой гейта, — встречный контроль звонил бы в
+// пустоту.
+func carrierServiceFindings(objs []renderedObj, source, want string, port int) []string {
 	var svcs []renderedObj
 	for _, o := range objs {
-		if o.source == probeTemplateSource && o.kind == "Service" {
+		if o.source == source && o.kind == "Service" {
 			svcs = append(svcs, o)
 		}
 	}
 	if len(svcs) != 1 {
-		return []string{fmt.Sprintf("служб пробы в рендере %d, ждали ровно 1", len(svcs))}
+		return []string{fmt.Sprintf("служб носителя (%s) в рендере %d, ждали ровно 1", source, len(svcs))}
 	}
 	var out []string
 	if svcs[0].name != want {
-		out = append(out, fmt.Sprintf("Service/%s: служба пробы названа не так, как её спрашивает гейт ban #6 (svc/%s)",
+		out = append(out, fmt.Sprintf("Service/%s: служба носителя названа не так, как её спрашивает гейт ban #6 (svc/%s)",
 			svcs[0].name, want))
 	}
 	found := false
@@ -1090,11 +1094,11 @@ func probeServiceFindings(objs []renderedObj, want string, port int) []string {
 	return out
 }
 
-// TestNotifyProbeServiceIsTheBan6Carrier — служба пробы в цепочке стенда с
-// пробой носит имя и порт носителя notify из карты гейта ban #6 (Д94).
-// Близнец — рендер как есть → молчание; инъекция — служба переименована по
-// имени выпуска → находка с именем объекта.
-func TestNotifyProbeServiceIsTheBan6Carrier(t *testing.T) {
+// TestNotifyAPIServiceIsTheBan6Carrier — служба notify-api в цепочке стенда
+// носит имя и порт носителя notify из карты гейта ban #6 (З19). Близнец —
+// рендер как есть → молчание; инъекция — служба названа иначе → находка с
+// именем объекта.
+func TestNotifyAPIServiceIsTheBan6Carrier(t *testing.T) {
 	want, port := ban6NotifyCarrier(t)
 	c := notifyUmbrellaCopy(t, umbrellaCopyOpts{})
 	chains := deployStacksForRender(t, "operator.yaml")
@@ -1103,28 +1107,27 @@ func TestNotifyProbeServiceIsTheBan6Carrier(t *testing.T) {
 	if !ok {
 		t.Fatalf("цепочки %q в таблице нет — рендерить нечего", standChain)
 	}
-	out, err := renderChainFiles(c.umbrella, chain, probeStandSets...)
+	out, err := renderChainFiles(c.umbrella, chain)
 	if err != nil {
-		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s с пробой (%v): рендер отказал: %v\n%s",
-			standChain, probeStandSets, err, lastLines(out, 5))
+		t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: цепочка %s: рендер отказал: %v\n%s", standChain, err, lastLines(out, 5))
 	}
 	objs := parseRendered(t, out)
-	twin := probeServiceFindings(objs, want, port)
+	twin := carrierServiceFindings(objs, notifyAPIServiceSource, want, port)
 	for _, f := range twin {
-		t.Errorf("Д94: цепочка %s с пробой: %s", standChain, f)
+		t.Errorf("З19: цепочка %s: %s", standChain, f)
 	}
 
 	// Инъекция: имя службы выведено из имени выпуска.
 	injected := "kacho-umbrella-" + want
 	var mutated []renderedObj
 	for _, o := range objs {
-		if o.source == probeTemplateSource && o.kind == "Service" {
+		if o.source == notifyAPIServiceSource && o.kind == "Service" {
 			o.name = injected
 		}
 		mutated = append(mutated, o)
 	}
-	f := probeServiceFindings(mutated, want, port)
-	wantPrefix := "Service/" + injected + ": служба пробы названа не так"
+	f := carrierServiceFindings(mutated, notifyAPIServiceSource, want, port)
+	wantPrefix := "Service/" + injected + ": служба носителя названа не так"
 	if len(f) != 1 || !strings.HasPrefix(f[0], wantPrefix) {
 		t.Errorf("инъекция «имя по выпуску»: находки %v, ждали одну, начинающуюся с %q", f, wantPrefix)
 	}
