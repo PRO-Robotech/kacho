@@ -105,7 +105,7 @@ describe("F8r-05 · отмена подтверждения не уходит к
 describe("Р5 · исход сброса назван словами действия", () => {
   it("F8r-01 · операция завершилась без ошибки — «Второй фактор сброшен»", async () => {
     // verifies #3063
-    operation = { id: "op-1", done: true } as Operation;
+    operation = { id: "op-1", done: true };
     renderUsersMenu();
     openReset();
     fireEvent.click(screen.getByRole("button", { name: "Сбросить" }));
