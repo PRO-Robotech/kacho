@@ -34,7 +34,14 @@ export function refusalHint(refusal: LaneRefusal): string | null {
   return null;
 }
 
-export function LaneRefusalAlert({ refusal }: { refusal: LaneRefusal }) {
-  const hint = refusalHint(refusal);
+/**
+ * `verbatim` — без своего текста вовсе: только `message` ответа. Так экран
+ * показывает отказ ограничителя края на анонимных почтовых глаголах —
+ * восстановлении доступа и регистрации (приёмка NTF-2, Р5, NTF2-58): `503`
+ * хранилища ограничителя, вызов доказательства работы, отказ по частоте. Своего
+ * текста о них у консоли нет, и приглашение повторить было бы им.
+ */
+export function LaneRefusalAlert({ refusal, verbatim = false }: { refusal: LaneRefusal; verbatim?: boolean }) {
+  const hint = verbatim ? null : refusalHint(refusal);
   return <Alert type="error" showIcon message={refusal.message} description={hint ?? undefined} />;
 }

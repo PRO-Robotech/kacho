@@ -137,9 +137,10 @@ describe("App", () => {
 
   /*
    * Адреса церемоний принадлежат консоли МАРШРУТОМ (приёмка F8, Р3): все шесть
-   * получают маршрут, четыре консоль ведёт, два отвечают названной страницей —
-   * и ни один не уводится замыкающим правилом на панель. Радиус правки назван:
-   * адрес вне шести (`/error`) по-прежнему уходит на панель.
+   * получают маршрут и все шесть консоль ведёт — восстановление доступа с
+   * приёмки NTF-2 (NTF2-43, NTF2-72), — и ни один не уводится замыкающим
+   * правилом на панель. Радиус правки назван: адрес вне шести (`/error`)
+   * по-прежнему уходит на панель.
    */
   // Заголовок экрана по адресу — для ВСЕХ адресов перечня, который читает
   // маршрутизатор (условие C1): адрес, добавленный в перечень без экрана,
@@ -149,10 +150,11 @@ describe("App", () => {
     registration: "Новая учётная запись",
     logout: "Выход из консоли",
     verification: "Подтвердите адрес почты",
+    recovery: "Восстановление доступа",
   };
   const outsideShell = CEREMONY_ADDRESSES.filter((a) => CEREMONY_ROUTING[a].kind !== "in-shell").map((a) => {
     const serving = CEREMONY_ROUTING[a];
-    return [a, serving.kind === "screen" ? SCREEN_TITLE[serving.screen] : "Такого адреса здесь нет"];
+    return [a, serving.kind === "in-shell" ? "" : SCREEN_TITLE[serving.screen]];
   });
 
   it("C1 · перечень адресов церемоний — шесть, без /error и /consent", () => {
@@ -289,13 +291,16 @@ describe("F6b · страж над каркасом консоли", () => {
     expect(network.mock.calls.map(([input]) => urlOf(input))).toContain("/iam/v1/accounts");
   });
 
-  it("F6b-16 · близнец: /recovery у подтверждённой сессии — названная страница, как до этой под-фазы", async () => {
+  it("F6b-16 · NTF2-72 · близнец: /recovery у подтверждённой сессии — экран восстановления вне каркаса: страж пропустил", async () => {
+    // verifies #2917
     window.history.pushState(null, "", "/recovery");
     stubConsole(true);
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Такого адреса здесь нет" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Восстановление доступа" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Адрес электронной почты" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/recovery");
+    expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
   });
 });

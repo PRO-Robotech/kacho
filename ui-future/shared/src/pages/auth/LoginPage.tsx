@@ -18,7 +18,7 @@ import { FieldError, fieldErrorId } from "@shared/components/organisms/form/Fiel
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { CeremonyScreen } from "./CeremonyScreen";
-import { registrationAddress } from "./ceremony-addresses";
+import { recoveryAddress, registrationAddress } from "./ceremony-addresses";
 import { useReturnTo } from "./use-return-to";
 
 // Экран входа — церемонию ведёт консоль своими глаголами (приёмка F8, S1).
@@ -39,8 +39,10 @@ import { useReturnTo } from "./use-return-to";
 //   • после входа уводит документ на адрес возврата, только своего
 //     происхождения (F8-13): перезагрузка документа нужна, чтобы каждый модуль
 //     прочёл новую личность, а не держал прежнюю;
-//   • пути на восстановление доступа НЕ предлагает: его на посадке нет до S3, и
-//     обещание пути, которого нет, хуже его отсутствия (Р4, F8-39).
+//   • путь на восстановление доступа предлагает: экран восстановления консоль
+//     ведёт с приёмки NTF-2 (NTF2-43, NTF2-72); до неё пути не было, и экран его
+//     не обещал (Р4, F8-39). Путь на подтверждение адреса не предлагает: экран
+//     подтверждения — экран неподтверждённой СЕССИИ, а не человека у входа.
 //
 // Своего правила пароля, формы кода или адреса здесь нет (Р2): незаполненное
 // поле называет служба.
@@ -140,7 +142,13 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   return (
     <CeremonyScreen
       title="Вход в консоль"
-      footer={<Link to={registrationAddress(returnTo)}>Завести учётную запись</Link>}
+      footer={
+        <>
+          <Link to={registrationAddress(returnTo)}>Завести учётную запись</Link>
+          {" · "}
+          <Link to={recoveryAddress(returnTo)}>Забыли пароль — восстановить доступ</Link>
+        </>
+      }
     >
       {sessionUnknown && (
         <div style={{ marginBottom: 16 }}>

@@ -235,14 +235,23 @@ describe("экран входа", () => {
     }
   });
 
-  it("F8-39 · пути на восстановление и подтверждение адреса нет, на регистрацию — есть", async () => {
+  it("F8-39 · NTF-2 · путь на восстановление доступа и на регистрацию есть, на подтверждение адреса — нет", async () => {
+    // verifies #2917
+    //
+    // Приёмка F8 (Р4) запрещала обещать путь, которого на посадке нет; экран
+    // восстановления консоль ведёт с приёмки NTF-2 (NTF2-43, NTF2-72), и путь на
+    // него экран входа предлагает. Подтверждение адреса — экран сессии, а не
+    // человека у входа: пути на него по-прежнему нет.
     lane = installLane({});
-    renderAt("/login");
+    renderAt("/login?returnTo=%2Fiam%2Fusers");
     await formShown();
-    const destinations = screen.getAllByRole("link").map((a) => new URL((a as HTMLAnchorElement).href).pathname);
-    expect(destinations).not.toContain("/recovery");
+    const links = screen.getAllByRole("link").map((a) => new URL((a as HTMLAnchorElement).href));
+    const destinations = links.map((u) => u.pathname);
+    expect(destinations).toContain("/recovery");
     expect(destinations).not.toContain("/verification");
     expect(destinations).toContain("/registration");
+    const recovery = links.find((u) => u.pathname === "/recovery")!;
+    expect(recovery.searchParams.get("returnTo")).toBe("/iam/users");
   });
 
   it("F8-40 · экран отказа — функция ТОЛЬКО тела ответа: заведён адрес или нет, экран один", async () => {

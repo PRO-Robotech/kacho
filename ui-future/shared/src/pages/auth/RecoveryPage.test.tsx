@@ -4,7 +4,7 @@
 import { jest } from "@jest/globals";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { installLane, type LaneAnswer } from "@shared/test/lane-fake";
+import { installLane, refusal, type LaneAnswer } from "@shared/test/lane-fake";
 import { installPowWorker, loadPowVectors } from "@shared/test/pow-worker-fake";
 
 // Экран восстановления доступа на ограничителе края (приёмка NTF-2, Р5,
@@ -226,5 +226,91 @@ describe("экран восстановления на ограничителе 
     workers.lives[0].answer();
     await settle();
     expect(lane.of("POST", RECOVERY)).toHaveLength(1);
+  });
+});
+
+describe("экран восстановления: код из письма и новый пароль (NTF2-43)", () => {
+  const COMPLETE = "/iam/v1/auth/recovery/complete";
+
+  async function renderWithLeave(url = "/recovery") {
+    const { RecoveryPage } = await import("./RecoveryPage");
+    const leave = jest.fn<(to: string) => void>();
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <RecoveryPage leave={leave} />
+      </MemoryRouter>,
+    );
+    return leave;
+  }
+
+  it("NTF2-43 · до запроса письма поля кода нет; после 200 — код и новый пароль уходят recovery/complete с адресом запроса, и экран уводит на адрес возврата", async () => {
+    // verifies #2917
+    lane = installLane({
+      [`POST ${RECOVERY}`]: { status: 200, body: {} },
+      [`POST ${COMPLETE}`]: {
+        status: 200,
+        body: { user: { id: "usr-1", email: "z@kacho.local", displayName: "z" }, session: {} },
+      },
+    });
+    const leave = await renderWithLeave("/recovery?returnTo=%2Fiam%2Fusers");
+    expect(screen.queryByLabelText("Код из письма")).toBeNull();
+    send("z@kacho.local");
+    await screen.findByText(UNIFORM);
+
+    // Адрес в форме запроса правят после ответа: предъявление идёт с тем
+    // адресом, на который письмо запрошено, а не с тем, что сейчас в поле.
+    fireEvent.change(email(), { target: { value: "other@kacho.local" } });
+    fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "123456" } });
+    fireEvent.change(screen.getByLabelText("Новый пароль"), { target: { value: "Kacho-E2E-2026!y" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сменить пароль и войти" }));
+
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/iam/users"));
+    expect(lane.of("POST", COMPLETE).map((c) => c.body)).toEqual([
+      {
+        email: "z@kacho.local",
+        code: "123456",
+        newPassword: "Kacho-E2E-2026!y",
+        csrfToken: "tok-recovery-complete-1",
+      },
+    ]);
+  });
+
+  it("NTF2-43 · близнец: неверный код — отказ службы дословно, в консоль не уводит, код можно ввести снова", async () => {
+    // verifies #2917
+    lane = installLane({
+      [`POST ${RECOVERY}`]: { status: 200, body: {} },
+      [`POST ${COMPLETE}`]: refusal(401, 16, "authentication failed"),
+    });
+    const leave = await renderWithLeave();
+    send("z@kacho.local");
+    await screen.findByText(UNIFORM);
+    fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "000000" } });
+    fireEvent.change(screen.getByLabelText("Новый пароль"), { target: { value: "Kacho-E2E-2026!y" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сменить пароль и войти" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("authentication failed");
+    expect(leave).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Код из письма")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Сменить пароль и войти" })).toBeEnabled();
+  });
+
+  it("NTF2-43 · правило пароля судит служба: отмечен новый пароль, который она назвала", async () => {
+    // verifies #2917
+    const message = "Illegal argument newPassword: shorter than the declared minimum length";
+    lane = installLane({
+      [`POST ${RECOVERY}`]: { status: 200, body: {} },
+      [`POST ${COMPLETE}`]: refusal(400, 3, message),
+    });
+    await renderWithLeave();
+    send("z@kacho.local");
+    await screen.findByText(UNIFORM);
+    fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "123456" } });
+    fireEvent.change(screen.getByLabelText("Новый пароль"), { target: { value: "abc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сменить пароль и войти" }));
+
+    await screen.findByText(message);
+    expect(screen.getByLabelText("Новый пароль")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Код из письма")).not.toHaveAttribute("aria-invalid");
+    expect(lane.of("POST", COMPLETE)[0].body).toMatchObject({ newPassword: "abc" });
   });
 });

@@ -292,13 +292,19 @@ describe("признак формы добывается на КАЖДУЮ от�
   });
 
   it("C12 · ответ глагола, сменившего контекст формы, гасит признаки, добытые заранее другими формами", async () => {
+    // Контекст меняет глагол, заводящий сессию: с приёмки NTF-2 (Р9, NTF2-80) у
+    // регистрации это предъявление кода, а не `register` (`200 {}` без печений).
     lane = installLane({
-      "POST /iam/v1/auth/register": SIGNED_IN,
+      "POST /iam/v1/auth/register/confirm": SIGNED_IN,
       "POST /iam/v1/auth/logout": { status: 200, body: {} },
     });
     const logout = new FormTokenHolder("logout");
     await logout.get(); // добыт заранее — экран выхода открыт раньше регистрации
-    await loginLane.register(new FormTokenHolder("register"), { email: "a", password: "p" });
+    await loginLane.confirmRegistration(new FormTokenHolder("register-confirm"), {
+      email: "a",
+      code: "123456",
+      password: "p",
+    });
     await loginLane.logout(logout);
     expect(lane.of("POST", "/iam/v1/auth/logout")[0].body?.csrfToken).toBe("tok-logout-2");
   });

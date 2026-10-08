@@ -29,8 +29,11 @@
 // и не пишет: их держит браузер, выдаёт и гасит служба.
 
 import { displayText } from "@shared/lib/display-text";
+import { PROOF_HEADER } from "@shared/lib/pow/pow";
+import { ProofOfWorkSolver } from "@shared/lib/pow/solver";
 import type { SecondFactorMethod } from "@shared/lib/step-up-methods";
 import { orderedTransport } from "./carrier-order";
+import { LANE_REASON } from "./lane-reasons";
 import { formContextEpoch, noteFormContextChanged } from "./lane-epochs";
 import { refusalActionOf, type RefusalSigns } from "./refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
@@ -44,6 +47,14 @@ export const LOGIN_LANE = {
   login: "/iam/v1/auth/login",
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
+  // Регистрация «сначала письмо, потом сессия» (приёмка NTF-2, Р9): `register`
+  // отвечает `200 {}` и шлёт код; учётную запись и сессию заводит предъявление
+  // кода с тем же паролем.
+  registerConfirm: "/iam/v1/auth/register/confirm",
+  // Восстановление доступа (приёмка NTF-2, NTF2-43): запрос письма с кодом и
+  // предъявление кода с новым паролем.
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
   password: "/iam/v1/auth/password",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
@@ -66,6 +77,9 @@ export type FormKind =
   | "logout"
   | "password"
   | "register"
+  | "register-confirm"
+  | "recovery"
+  | "recovery-complete"
   | "second-factor"
   | "step-up"
   | "verify-email"
@@ -199,6 +213,8 @@ export class LaneRefusal extends Error implements RefusalSigns {
     readonly retryAfterSeconds: number | null,
     /** Вызов края `WWW-Authenticate` целиком; `null` — вызова нет. */
     readonly wwwAuthenticate: string | null = null,
+    /** Вызов доказательства работы края; `null` — отказ не вызов либо вызов не той формы. */
+    readonly proofChallenge: ProofChallenge | null = null,
   ) {
     super(message);
     this.name = "LaneRefusal";
@@ -208,6 +224,35 @@ export class LaneRefusal extends Error implements RefusalSigns {
   get challenge(): string | null {
     return challengeError(this.wwwAuthenticate);
   }
+}
+
+/**
+ * Вызов доказательства работы — из `ErrorInfo` с причиной
+ * `PROOF_OF_WORK_REQUIRED` (замысел `issue-2917` З9, З10): `metadata` — карта
+ * строк, `difficultyBits` пишется десятичной строкой. Вызов не той формы —
+ * не вызов: решать нечего, и отказ показывается как есть.
+ */
+export interface ProofChallenge {
+  challenge: string;
+  difficultyBits: number;
+}
+
+function proofChallengeOf(details: readonly unknown[]): ProofChallenge | null {
+  for (const d of details) {
+    if (!d || typeof d !== "object") continue;
+    const info = d as { reason?: unknown; metadata?: unknown };
+    if (info.reason !== LANE_REASON.proofOfWorkRequired) continue;
+    const metadata = info.metadata;
+    if (!metadata || typeof metadata !== "object") return null;
+    const { challenge, difficultyBits } = metadata as { challenge?: unknown; difficultyBits?: unknown };
+    if (typeof challenge !== "string" || challenge === "") return null;
+    if (typeof difficultyBits !== "string" || !/^\d{1,3}$/.test(difficultyBits)) return null;
+    const bits = Number(difficultyBits);
+    // Дайджест SHA-256 — 256 битов: сложности сверх них решения нет вовсе.
+    if (bits > 256) return null;
+    return { challenge, difficultyBits: bits };
+  }
+  return null;
 }
 
 /** Любой отказ шага как отказ полосы: не отказ полосы — называется тем, что наблюдалось. */
@@ -245,6 +290,7 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
       refusalInput(status.code, status.message),
       retryAfterOf(res),
       www,
+      proofChallengeOf(status.details),
     );
   }
   // Тела отказа служба не прислала — ответила раздача либо промежуточный узел.
@@ -266,7 +312,23 @@ function bodyOf<T>({ text }: Answered): T {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown, read: Reader<T> = bodyOf): Promise<T> {
+/**
+ * Решатель вызова края для ОДНОЙ отправки формы: чей `Worker` и какой номер
+ * отправки. Обмен без него вызова не решает — отдаёт его как отказ.
+ */
+interface ProofSolving {
+  solver: ProofOfWorkSolver;
+  submission: number;
+}
+
+async function exchange<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+  read: Reader<T> = bodyOf,
+  proof: ProofSolving | null = null,
+  extraHeaders: Readonly<Record<string, string>> = {},
+): Promise<T> {
   // Глагол, ставящий носитель, выпускается упорядочением вокруг себя (Р10):
   // обращения вкладки, выпущенные раньше, к его выпуску имеют исход, и новые
   // ждут его исхода. Остальные обращения полосы — обычные обращения вкладки.
@@ -279,8 +341,8 @@ async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown,
         credentials: "same-origin",
         headers:
           body === undefined
-            ? { Accept: "application/json" }
-            : { Accept: "application/json", "Content-Type": "application/json" },
+            ? { Accept: "application/json", ...extraHeaders }
+            : { Accept: "application/json", "Content-Type": "application/json", ...extraHeaders },
         body: body === undefined ? undefined : JSON.stringify(body),
       },
       { setsCarrier: method === "POST" && SETS_CARRIER.has(path) },
@@ -289,8 +351,45 @@ async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown,
     throw new LaneRefusal(0, null, "Запрос не дошёл до службы: нет соединения", null, null, null);
   }
   const text = await res.text();
-  if (!res.ok) throw refusalOf(res, text);
+  if (!res.ok) {
+    const refusal = refusalOf(res, text);
+    if (proof === null || refusal.proofChallenge === null) throw refusal;
+    return exchange<T>(method, path, body, read, null, await proofHeader(proof, refusal));
+  }
   return read({ res, text });
+}
+
+/**
+ * Вызов доказательства работы края (приёмка NTF-2, Р5; замысел `issue-2917`
+ * З10) — решается ОДИН раз: доказательство ищет `Worker` этой отправки, и
+ * уходит повтор ТОГО ЖЕ тела — с тем же признаком формы: вызов края до службы
+ * не дошёл, и признак не истрачен — с заголовком
+ * `X-Kacho-Proof: <challenge>:<nonce>`. Повтор идёт без решателя: второй вызов
+ * подряд отдаётся как отказ. Прочие отказы — `RATE_LIMITED`, `503`
+ * ограничителя — отдаются как есть, без решателя и без повтора: их `message`
+ * экран показывает дословно, своего текста о них у консоли нет.
+ *
+ * Бюджет решателя исчерпан (исход `expired`) либо решатель не исполнился —
+ * доказательства нет, запрос с ним не уходит ни тогда, ни после: отдаётся
+ * последний ответ края, и следующая отправка идёт без доказательства за новым
+ * вызовом. Отправку сменила новая либо экран ушёл — `SubmissionSuperseded`.
+ */
+async function proofHeader(proof: ProofSolving, refusal: LaneRefusal): Promise<Record<string, string>> {
+  const challenge = refusal.proofChallenge!;
+  const outcome = await proof.solver.solve(proof.submission, challenge.challenge, challenge.difficultyBits);
+  switch (outcome.kind) {
+    case "solved":
+      return { [PROOF_HEADER]: `${challenge.challenge}:${outcome.nonce}` };
+    case "superseded":
+      throw new SubmissionSuperseded();
+    case "expired":
+    case "failed":
+      throw refusal;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`исход решателя «${JSON.stringify(unhandled)}» не разобран`);
+    }
+  }
 }
 
 /**
@@ -364,7 +463,19 @@ export class FormTokenHolder {
   private pending: { token: Promise<string>; context: number } | null = null;
   private queue: Promise<unknown> = Promise.resolve();
 
+  /**
+   * Решатель вызова края этой формы — его `Worker` принадлежит одной отправке
+   * (замысел `issue-2917` З10, CX2-30): новая отправка и уход экрана (`end()`)
+   * завершают решатель прежней.
+   */
+  readonly solver = new ProofOfWorkSolver();
+
   constructor(readonly kind: FormKind) {}
+
+  /** Экран формы ушёл: решатель текущей отправки завершается. */
+  end(): void {
+    this.solver.end();
+  }
 
   /** Признак для следующей отправки: добытый заранее либо добываемый сейчас. */
   get(): Promise<string> {
@@ -407,7 +518,9 @@ export class FormTokenHolder {
  * закрыт, девять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
  * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель). Пять переписывают
  * дайджест той же записи — прежний носитель с этого момента негоден; четыре
- * заводят новую запись.
+ * заводят новую запись. Регистрация носителя больше не ставит — его ставит
+ * предъявление кода регистрации (приёмка NTF-2, Р9, NTF2-80: `register` —
+ * `200 {}` без печений, `register/confirm` — ответ и печенья как у входа).
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
  * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
@@ -416,7 +529,7 @@ export class FormTokenHolder {
  */
 export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
-  "/iam/v1/auth/register",
+  "/iam/v1/auth/register/confirm",
   "/iam/v1/auth/password",
   "/iam/v1/auth/recovery/complete",
   "/iam/v1/auth/second-factor/confirm",
@@ -426,10 +539,14 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/verify-email/confirm",
 ]);
 
-/** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
+/**
+ * Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы), — те,
+ * что заводят сессию. Регистрация её больше не заводит и печений не ставит
+ * (приёмка NTF-2, Р9, NTF2-80): контекст меняет предъявление кода регистрации.
+ */
 const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
-  "/iam/v1/auth/register",
+  "/iam/v1/auth/register/confirm",
   "/iam/v1/auth/recovery/complete",
 ]);
 
@@ -453,11 +570,15 @@ async function submit<T>(
   replayed = false,
   read: Reader<T> = bodyOf,
 ): Promise<T> {
+  // Номер отправки берётся ДО очереди держателя: новая отправка завершает
+  // решатель прежней сразу, а не после того, как прежняя дождётся бюджета.
+  const submission = holder.solver.begin();
   try {
     return await holder.exclusive(async () => {
       const csrfToken = await holder.take();
+      const sent = { ...body, csrfToken };
       try {
-        const out = await exchange<T>("POST", path, { ...body, csrfToken }, read);
+        const out = await exchange<T>("POST", path, sent, read, { solver: holder.solver, submission });
         noteAnswered(path);
         return out;
       } catch (e) {
@@ -480,6 +601,18 @@ async function submit<T>(
   }
 }
 
+/**
+ * Отправка, сменённая новой отправкой той же формы либо уходом экрана, пока
+ * её решатель искал доказательство. Отказом службы не является, и экран её не
+ * показывает: её место заняла новая отправка (либо экрана уже нет).
+ */
+export class SubmissionSuperseded extends Error {
+  constructor() {
+    super("Отправку формы сменила новая");
+    this.name = "SubmissionSuperseded";
+  }
+}
+
 /** Тело предъявления: способа нет, пока человек его не выбрал. */
 function presentation(factor: SecondFactorPresentation): Record<string, unknown> {
   return factor.method === null ? { code: factor.code } : { method: factor.method, code: factor.code };
@@ -491,8 +624,46 @@ export const loginLane = {
     if (form.secondFactor) body.secondFactor = presentation(form.secondFactor);
     return submit<SignedIn>(holder, LOGIN_LANE.login, body, false);
   },
+  /**
+   * Регистрация, шаг 1 (приёмка NTF-2, Р9, NTF2-80): служба отвечает `200 {}`
+   * ОДИНАКОВО на свободный и занятый адрес и шлёт письмо; сессии ответ не несёт.
+   * Вызов доказательства работы края решается здесь же (NTF2-72).
+   */
   register(holder: FormTokenHolder, form: { email: string; password: string }) {
-    return submit<SignedIn>(holder, LOGIN_LANE.register, { email: form.email, password: form.password }, false);
+    return submit<Record<string, never>>(
+      holder,
+      LOGIN_LANE.register,
+      { email: form.email, password: form.password },
+      false,
+    );
+  },
+  /**
+   * Регистрация, шаг 2 (NTF2-80, NTF2-82): код из письма с адресом и ТЕМ ЖЕ
+   * паролем; успех заводит учётную запись и сессию, как вход.
+   */
+  confirmRegistration(holder: FormTokenHolder, form: { email: string; code: string; password: string }) {
+    return submit<SignedIn>(
+      holder,
+      LOGIN_LANE.registerConfirm,
+      { email: form.email, code: form.code, password: form.password },
+      false,
+    );
+  },
+  /**
+   * Восстановление доступа, шаг 1 (NTF2-43, NTF2-72): ответ `200 {}` одинаков
+   * для заведённого и незаведённого адреса. Вызов края решается здесь же.
+   */
+  requestRecovery(holder: FormTokenHolder, form: { email: string }) {
+    return submit<Record<string, never>>(holder, LOGIN_LANE.recovery, { email: form.email }, false);
+  },
+  /** Восстановление доступа, шаг 2 (NTF2-43): код из письма и новый пароль; успех выдаёт сессию. */
+  completeRecovery(holder: FormTokenHolder, form: { email: string; code: string; newPassword: string }) {
+    return submit<SignedIn>(
+      holder,
+      LOGIN_LANE.recoveryComplete,
+      { email: form.email, code: form.code, newPassword: form.newPassword },
+      false,
+    );
   },
   logout(holder: FormTokenHolder) {
     return submit<Record<string, never>>(holder, LOGIN_LANE.logout, {}, false);

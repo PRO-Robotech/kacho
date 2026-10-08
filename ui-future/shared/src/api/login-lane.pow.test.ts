@@ -77,6 +77,15 @@ async function settle() {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
+/**
+ * Дать обещаниям клиента дойти до УСЛОВИЯ — не до числа шагов: число шагов
+ * планировщика — свойство реализации, а не предмет пробы. Предел — чтобы
+ * несбывшееся условие краснело, а не висело.
+ */
+async function settleUntil(condition: () => boolean) {
+  for (let i = 0; i < 1000 && !condition(); i++) await Promise.resolve();
+}
+
 /** Исход обещания, не дожидаясь его: `pending` — ещё не решено. */
 function track<T>(p: Promise<T>) {
   const state: {
@@ -294,7 +303,7 @@ describe("срок жизни решателя — одна отправка и 
 
     // Вторая отправка не ждёт бюджета первой: решатель первой завершён сразу.
     const second = track(loginLane.requestRecovery(holder, { email: "z@kacho.local" }));
-    await settle();
+    await settleUntil(() => second.kind !== "pending");
     expect(workers.lives[0].terminated).toBe(true);
     const posts = lane.of("POST", RECOVERY);
     expect(posts).toHaveLength(2);
