@@ -12,11 +12,15 @@
 |---|---|
 | адреса церемоний и как консоль отвечает на каждый — одно объявление | `ceremony-addresses.ts` (`CEREMONY_ROUTING`) |
 | вход, регистрация, выход | `LoginPage.tsx`, `RegistrationPage.tsx`, `LogoutPage.tsx` (+ `use-logout.ts`) |
-| адрес, которого консоль пока не ведёт | `CeremonyAddressNotServedPage.tsx` |
+| восстановление доступа (`/recovery`) — экран за стражем, ссылка «Не получается войти?» на экране входа | `RecoveryPage.tsx` |
+| отказ полосы на экране и следующий шаг к нему | `shared/src/components/molecules/auth/LaneRefusalAlert/` |
 | страж над каркасом: дальше входа — только с подтверждённым адресом | `AddressConfirmationGate.tsx` (+ `address-state.ts`, `use-address-state.ts`, `AddressStateUnknownPage.tsx`) |
 | экран подтверждения адреса почты (`/verification`) | `VerificationPage.tsx` |
 | уход на экран подтверждения по отказу края `EMAIL_NOT_VERIFIED` | `address-confirmation-exit.ts` |
-| параметры учётной записи (`/settings`) | `AccountSettingsPage.tsx` |
+| параметры учётной записи (`/settings`): пароль, первый пароль, второй фактор | `AccountSettingsPage.tsx` |
+| ключи доступа на `/settings` — перечень, заведение, снятие (глаголы Ф7 клиентом платформы) | `access-key/AccessKeysSection.tsx`, `shared/src/api/access-keys.ts` |
+| вход ключом доступа на `/login` | `access-key/use-access-key-sign-in.ts`, `access-key/AccessKeySignInButton.tsx` |
+| кодек церемонии ключа — вход и заведение | `shared/src/api/access-key.ts` |
 | клиент глаголов полосы формы и единственный читатель «есть ли сессия» | `shared/src/api/login-lane.ts` |
 | разбор тела отказа — один у экранов и у сквозного набора | `shared/src/api/rpc-status.ts` |
 | что делать на отказ — одно решение по машинным признакам | `shared/src/api/refusal-action.ts` |
@@ -29,9 +33,10 @@
 ## Адреса
 
 Маршрут получают все шесть: `/login`, `/registration`, `/logout`, `/settings`,
-`/recovery`, `/verification`. Консоль ведёт пять; `/recovery` отвечает
-страницей «такого адреса здесь нет» — восстановление доступа ждёт своей
-под-фазы, и экран входа пути на него не обещает. `/verification` — экран
+`/recovery`, `/verification`, и все шесть консоль ведёт. `/recovery` — экран
+восстановления доступа (приёмка `docs/specs/sub-phase-F8-S3-console-access-recovery-screen-acceptance.md`
+в воркспейсе): вне каркаса, за стражем подтверждённости; экран входа ведёт на
+него ссылкой «Не получается войти?». `/verification` — экран
 подтверждения адреса почты (приёмка `docs/specs/sub-phase-F6b-console-and-edge-confirmed-address-gate-acceptance.md`
 в воркспейсе). `/error` и `/consent` маршрутов не получают: это адреса чужих
 потоков.

@@ -117,7 +117,7 @@ describe("экран подтверждения адреса: вид и обра
     lane = installLane({ [ME]: me(undefined) });
     const { leave } = renderAt("/verification");
     expect(
-      await screen.findByText("Не удалось узнать, подтверждён ли адрес: край не назвал это в ответе о сессии"),
+      await screen.findByText("Не удалось узнать, подтверждён ли адрес почты: служба доступа не сообщила этого в ответе о сессии."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Проверить снова" })).toBeInTheDocument();
     expect(logoutButton()).toBeInTheDocument();
