@@ -102,7 +102,6 @@ type Config struct {
 	// Authz* — звено прав слушателя.
 	AuthzTrustDomain          string        `envconfig:"KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN" knob:"notify.authz.trustDomain"`
 	AuthzTrustedForwarderSANs []string      `envconfig:"KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS" knob:"notify.authz.trustedForwarderSANs"`
-	AuthzTrustAnyForwarder    bool          `envconfig:"KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER" knob:"notify.authz.trustAnyForwarder"`
 	AuthzCacheTTL             time.Duration `envconfig:"KACHO_NOTIFY_AUTHZ_CACHE_TTL" knob:"notify.authz.cacheTTL"`
 	AuthzCheckTimeout         time.Duration `envconfig:"KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT" knob:"notify.authz.checkTimeout"`
 	AuthzDenyBudgetPerSec     float64       `envconfig:"KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC" knob:"notify.authz.denyBudgetPerSec"`

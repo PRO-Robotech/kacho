@@ -25,7 +25,7 @@ const serviceName = "notify-api"
 const (
 	trustDomainKnob     = "KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN"
 	forwarderSANsKnob   = "KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS"
-	trustAnyKnob        = "KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER"
+	noOptInReason       = "посадка notify только боевая (NTF1-G15), а в боевом режиме общий страж круга опт-ина не принимает: ручки «доверять любому пересылающему» у notify нет (приёмка NTF-4 Р20)"
 	hostFormReason      = "notify публичного слушателя не имеет по построению (приёмка NTF-5 Р2, решение Д17): все поверхности notify-api — внутренний сервис оператора и сервисы чтения арендатором — край маршрутизирует на единственный внутренний mTLS-слушатель по одному соединению notifyInternal, и граница ban06 держится таблицами маршрутов края"
 	notApplicableEmits  = "notify-api не эмитит владельцу прав намерений регистрации: права на методы InternalNoticeService спрашиваются на объекте cluster, на чтение арендатором — на области запроса (проект либо аккаунт), своих объектов модели прав у извещения нет"
 	notApplicableStream = "серверных стримов notify-api не служит: InternalNoticeService, NoticeService и OperationService отдают единичный ответ"
@@ -45,11 +45,12 @@ func describe(cfg config.Config, mode servicecontract.Mode, internalCreds, kanam
 		HostFormReason: hostFormReason,
 
 		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
-		// Опт-ин «доверять любому пересылающему» — ручка вне боевой посадки: в
-		// боевой страж круга его не читает (corelib grpcsrv.ForwarderGate), а
-		// дескриптор требует имя обеих ручек для текста отказа.
+		// Опт-ина «доверять любому пересылающему» у notify нет вовсе (приёмка
+		// NTF-4 Р20): ручки нет, и дескриптор объявляет это причиной — пустой
+		// круг тогда отказ в любом режиме (corelib grpcsrv.ForwarderGate.NoOptIn).
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
-			SANs: forwarderSANsKnob, TrustAny: trustAnyKnob, OptIn: cfg.AuthzTrustAnyForwarder,
+			SANs:           forwarderSANsKnob,
+			NoOptInBecause: noOptInReason,
 		},
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: trustDomainKnob,

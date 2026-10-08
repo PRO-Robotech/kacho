@@ -35,7 +35,6 @@ func configEnv() map[string]string {
 		"KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES": "/etc/notify/server/ca.crt",
 		"KACHO_NOTIFY_AUTHZ_TRUST_DOMAIN":                 "kacho.cloud",
 		"KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS":       "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
-		"KACHO_NOTIFY_AUTHZ_TRUST_ANY_FORWARDER":          "false",
 		"KACHO_NOTIFY_AUTHZ_CACHE_TTL":                    "5s",
 		"KACHO_NOTIFY_AUTHZ_CHECK_TIMEOUT":                "2s",
 		"KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC":          "100",
@@ -259,5 +258,26 @@ func TestConfig_AuthzWindowCeilingFollowsAPolicySubstitution(t *testing.T) {
 	twin[authzWindowKnob] = "7s"
 	if _, err := loadConfig(t, twin); err != nil {
 		t.Fatalf("при потолке %s окно 7s отвергнуто: %v", substituted, err)
+	}
+}
+
+// TestNoTrustAnyForwarderKnob — у notify-api ручки опт-ина «доверять любому
+// пересылающему» нет (приёмка NTF-4 Р20: посадка notify только боевая, общий
+// страж опт-ина в боевом режиме не принимает; дескриптор объявляет это
+// NoOptInBecause). Ручка, которую нельзя законно взвести, — второе написание
+// одного состояния: незаданная она отказывала бы в старте, а заданная не
+// значила бы ничего. Близнец — ручка круга есть.
+func TestNoTrustAnyForwarderKnob(t *testing.T) {
+	var circle bool
+	for _, k := range Knobs() {
+		if strings.Contains(k.Env, "TRUST_ANY") {
+			t.Errorf("ручка %s объявлена загрузчиком notify-api, а опт-ина у notify нет (NTF-4 Р20)", k)
+		}
+		if k.Env == "KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS" {
+			circle = true
+		}
+	}
+	if !circle {
+		t.Fatal("НЕ ВЫПОЛНИЛОСЬ: ручки круга KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS в переписи нет — перепись слепа")
 	}
 }
