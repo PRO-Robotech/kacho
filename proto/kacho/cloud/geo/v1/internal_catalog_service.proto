@@ -18,7 +18,9 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;ge
 
 // InternalRegionService / InternalZoneService — kacho-only admin API to manage
 // the Region/Zone catalog AND its Internal-only projection (raw `status` +
-// infra°). Exposed ONLY on the cluster-internal port of kacho-geo (:9091),
+// infra°). The catalog verbs without infra° are ALSO on the public
+// RegionService/ZoneService (ADM-1), under the same permission and floor; what
+// stays only here is the infra° block (on Create and Update) and GetInternal. Exposed ONLY on the cluster-internal port of kacho-geo (:9091),
 // routed through the api-gateway internal mux onto the SELF-DESCRIBING
 // /geo/v1/internal/… segment — NEVER on the external TLS endpoint (ban #6,
 // security.md §Internal-vs-external).
@@ -104,7 +106,8 @@ message CreateRegionRequest {
   RegionInfra infra = 5;
 }
 
-// CreateRegionMetadata — operation.metadata for InternalRegionService.Create.
+// CreateRegionMetadata — operation.metadata for InternalRegionService.Create and
+// for the public RegionService.Create (one metadata shape for both paths).
 message CreateRegionMetadata {
   // ID of the Region that is being created.
   string region_id = 1;
@@ -127,14 +130,16 @@ message UpdateRegionRequest {
   google.protobuf.FieldMask update_mask = 6;
 }
 
-// UpdateRegionMetadata — operation.metadata for InternalRegionService.Update.
+// UpdateRegionMetadata — operation.metadata for InternalRegionService.Update and
+// RegionService.Update.
 message UpdateRegionMetadata {
   string region_id = 1;
 }
 
 message DeleteRegionRequest { string region_id = 1; }
 
-// DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete.
+// DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete and
+// RegionService.Delete.
 message DeleteRegionMetadata {
   string region_id = 1;
 }
@@ -215,7 +220,8 @@ message CreateZoneRequest {
   ZoneInfra infra = 5;
 }
 
-// CreateZoneMetadata — operation.metadata for InternalZoneService.Create.
+// CreateZoneMetadata — operation.metadata for InternalZoneService.Create and
+// ZoneService.Create.
 message CreateZoneMetadata {
   // ID of the Zone that is being created.
   string zone_id = 1;
@@ -240,14 +246,16 @@ message UpdateZoneRequest {
   google.protobuf.FieldMask update_mask = 6;
 }
 
-// UpdateZoneMetadata — operation.metadata for InternalZoneService.Update.
+// UpdateZoneMetadata — operation.metadata for InternalZoneService.Update and
+// ZoneService.Update.
 message UpdateZoneMetadata {
   string zone_id = 1;
 }
 
 message DeleteZoneRequest { string zone_id = 1; }
 
-// DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete.
+// DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete and
+// ZoneService.Delete.
 message DeleteZoneMetadata {
   string zone_id = 1;
 }

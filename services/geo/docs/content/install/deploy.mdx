@@ -62,8 +62,8 @@ API-сервер поднимает два независимых gRPC-listener'
 <table>
   <thead><tr><th>Listener</th><th>Порт (дефолт)</th><th>Поверхность</th></tr></thead>
   <tbody>
-    <tr><td>public</td><td><code>:9090</code></td><td>Read-only: <code>RegionService</code> / <code>ZoneService</code></td></tr>
-    <tr><td>internal</td><td><code>:9091</code></td><td>Admin CRUD: <code>InternalRegionService</code> / <code>InternalZoneService</code> (cluster-internal, mTLS)</td></tr>
+    <tr><td>public</td><td><code>:9090</code></td><td><code>RegionService</code> / <code>ZoneService</code>: чтение и административные глаголы каталога без <code>infra</code> (право <code>system_admin</code>)</td></tr>
+    <tr><td>internal</td><td><code>:9091</code></td><td>Полная плоскость администрирования: <code>InternalRegionService</code> / <code>InternalZoneService</code> (с <code>infra</code>, <code>GetInternal</code>; cluster-internal, mTLS)</td></tr>
   </tbody>
 </table>
 
@@ -79,8 +79,8 @@ Internal listener **не публикуется** на external endpoint — е�
 
 ```mermaid
 flowchart LR
-  agw["api-gateway"] -->|"public mux"| pub["kacho-geo :9090<br/>read-only"]
-  agw -->|"internal mux"| int["kacho-geo :9091<br/>admin CRUD (mTLS)"]
+  agw["api-gateway"] -->|"public mux"| pub["kacho-geo :9090<br/>чтение + admin без infra"]
+  agw -->|"internal mux"| int["kacho-geo :9091<br/>admin с infra (mTLS)"]
   pub --> pg[("kacho_geo")]
   int --> pg
   pub -->|"authz"| iam["kaname"]
