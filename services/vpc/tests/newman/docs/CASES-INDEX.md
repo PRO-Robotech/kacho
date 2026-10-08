@@ -96,8 +96,8 @@
 | `*-AUTHZ-EMPTY-PROJECT-HEADER` | AUTHZ | P1 | 6 (add,gat,net,rou,sec,sub) | List с пустым x-kacho-project-id header → текущее: 200 (dev mode) |
 | `NET-SUBNET-ADDR-NIC-DELETE-CHAIN` | CONF,STATE | P0 | 1 (sub) | Multi-resource delete-chain: Network→Subnet→Address(internal)→NIC создаются, затем удаляются строго снизу вверх (NIC→Address→Subnet→Network); попытка удалить parent раньше child → `FailedPrecondition`. Verifies REQ-DEL-06/07/08. |
 | `*-HEADERS-MISSING-CT` | NEG,VAL | P3 | 3 (add,gat,net) | POST без Content-Type → 415 или 400 или 200 (lenient) |
-| `*-METHOD-DELETE-LIST` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | DELETE на List endpoint (без id) → 405 или 404 |
-| `*-METHOD-PUT-NOT-ALLOWED` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | PUT на List endpoint → 405 или 404 |
+| `*-METHOD-DELETE-LIST` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | DELETE на List endpoint (без id) → 501 / code 12, тело ровно `{"code":12,"message":"Method Not Allowed","details":[]}` — промах маршрута края «метода нет», до аутентификации (kacho#3053) |
+| `*-METHOD-PUT-NOT-ALLOWED` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | PUT на List endpoint → 501 / code 12, тело ровно `{"code":12,"message":"Method Not Allowed","details":[]}` — промах маршрута края «метода нет», до аутентификации (kacho#3053) |
 
 ### AddCidrBlocks
 

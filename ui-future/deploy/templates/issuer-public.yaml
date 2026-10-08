@@ -1,0 +1,60 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+Поставщик листа внешнего входа консоли — ИЗ РЕЛИЗА (kacho#3024). Разбор —
+values.yaml, блок `publicFront.acme`.
+
+Issuer, а не ClusterIssuer: листов другим пространствам имён он не выписывает.
+Решатель — ровно один, http01. Объект входа, который cert-manager заводит на
+каждый вызов, получает класс без контроллера: вызов решателя доходит до пода
+решателя одним путём — портом переадресации раздачи (configmap-nginx.yaml) и
+Service решателя ниже, а не любым контроллером входа кластера. Поды решателя
+помечены меткой этого Issuer; по ней и по метке cert-manager их выбирает
+Service решателя — чужой решатель того же пространства имён им не выбирается.
+
+Контакт аккаунта ACME не объявляется: адрес почты — координата, а не свойство
+продукта.
+*/}}
+{{- if and .Values.publicFront.enabled (.Values.publicFront.acme).enabled }}
+{{- include "ui.publicFrontGuard" . }}
+{{- $name := include "ui.publicFrontIssuerName" . }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: {{ .Values.publicFront.acme.server | quote }}
+    privateKeySecretRef:
+      name: {{ printf "%s-account" $name }}
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: {{ printf "%s-unrouted" (include "ui.publicFrontAcmeSolverName" .) | quote }}
+            serviceType: ClusterIP
+            podTemplate:
+              metadata:
+                labels:
+                  kacho.cloud/acme-solver: {{ $name | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.publicFrontAcmeSolverName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    acme.cert-manager.io/http01-solver: "true"
+    kacho.cloud/acme-solver: {{ $name | quote }}
+  ports:
+    - name: http
+      port: {{ include "ui.acmeSolverPort" . }}
+      protocol: TCP
+      targetPort: {{ include "ui.acmeSolverPort" . }}
+{{- end }}

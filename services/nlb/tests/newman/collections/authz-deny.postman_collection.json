@@ -8401,7 +8401,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('internal route NOT exposed on public mux (404/403/501)', () =>   pm.expect(pm.response.code).to.be.oneOf([401, 403, 404, 405, 501]));"
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }
@@ -8734,7 +8742,7 @@
       ]
     },
     {
-      "name": "AZD-OP-LIST-STRANGER-FILTERS-SCOPE — OP.List by stranger → only ops in subject's accessible scope returned",
+      "name": "AZD-OP-LIST-STRANGER-UNROUTED — OP коллекция /operations постороннему и анониму → тот же «маршрута нет» 404/5, что владельцу",
       "description": "class:AZD | priority:P1",
       "item": [
         {
@@ -8781,13 +8789,65 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('stranger is refused, or listed and shown nothing', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
-                  "  const ops = (pm.response.json().operations || pm.response.json().items || []);",
-                  "  pm.test('scope-filtered (empty for stranger)', () =>     pm.expect(ops.length).to.eql(0));",
-                  "} else {",
-                  "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () =>     pm.expect(pm.response.json().code).to.eql(7));",
-                  "}"
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "lst-anon-ops",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations?projectId={{_suiteProjectId}}&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations?projectId={{_suiteProjectId}}&pageSize=10"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: anonymous (strip Authorization header)",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }

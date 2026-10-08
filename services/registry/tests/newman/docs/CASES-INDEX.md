@@ -149,7 +149,7 @@ setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (g
 | `REG-RD-F4-NEG-REGION-NOTFOUND` | NEG | P1 | Create with nonexistent regionId → FAILED_PRECONDITION (code 9) peer-validate geo | REG-1-12 |
 | `REG-RD-F4-NEG-REGION-IMMUTABLE` | NEG, CONF | P1 | Update `updateMask=regionId`/`placementType` → 400 (immutable placement anchor) | REG-1-14 |
 | `REG-RD-F1-FIELD-ABSENCE` | CONF | P1 | Get → no globalSlug/displayName/top-level visibility/infra fields (two-projection, ban #15) | REG-1-02 |
-| `REG-RD-F1-NEG-ID-IMMUTABLE` | NEG, CONF | P0 | Update `updateMask=id` → 400 (id immutable); POST `:rename` → route absent (no id-rename) | REG-1-04 |
+| `REG-RD-F1-NEG-ID-IMMUTABLE` | NEG, CONF | P0 | Update `updateMask=id` → 400 (id immutable); POST `:rename` → 501/12 edge route miss (method), body exact, before authN (no id-rename; kacho#3053) | REG-1-04 |
 | `REG-RD-F2-RENAME-STABLE-ID` | CRUD, CONF | P0 | Rename name via Update → name changes, id/endpoint **unchanged** (URL/pull by immutable id) | REG-1-06, REG-1-07 |
 | `REG-RD-F5-INHERIT-PRIVATE` | CRUD | P1 | defaultRepositoryVisibility PRIVATE seeds new Repository.visibility when visibility omitted | REG-1-15 |
 | `REG-RD-F5-NEG-PUBLIC-ADMIN-GATE` | NEG, AZ | P0 | Non-admin drives defaultRepositoryVisibility→PUBLIC → 403 PERMISSION_DENIED; description-only Update → OK | REG-1-16 |

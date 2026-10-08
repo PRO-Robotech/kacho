@@ -22,6 +22,15 @@
 //     нет — и тогда, когда уровень в вызове не назван;
 //   • служба требует свежести (`SESSION_NOT_FRESH`) — годится и пароль.
 //
+// «ВОЙТИ ЗАНОВО» (приёмка F8, ред. 12, Р12). Повышение ключом доступа служба
+// не ведёт: способов повышения три — пароль, код из приложения, запасной код, —
+// и у человека, чей единственный способ входа — ключ, из окна выхода нет. Узнать
+// это заранее консоль не может (ни один ответ не говорит, есть ли пароль) и
+// угадывать не вправе. Поэтому окно, открытое отказом СВЕЖЕСТИ, предлагает
+// третий путь — выход и вход любым способом с возвратом на текущий адрес: вход —
+// это предъявление, и он даёт свежую сессию. Окно, открытое вызовом края на
+// УРОВЕНЬ, этого пути не несёт: уровень вход заново не поднимает.
+//
 // ПОЧЕМУ «ВТОРОЙ ФАКТОР НЕ НАСТРОЕН» — НАЗВАННОЕ СОСТОЯНИЕ, А НЕ ПУСТОЕ ОКНО
 //
 // Окно не спрашивает заранее, заведён ли фактор: служба отвечает на
@@ -45,7 +54,8 @@ import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalA
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useOptionalAuth } from "@shared/contexts/AuthContext";
-import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
+import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "@shared/pages/auth/ceremony-addresses";
+import { useLogout } from "@shared/pages/auth/use-logout";
 
 const { Paragraph } = Typography;
 
@@ -60,7 +70,34 @@ interface PendingRequest {
 
 type Branch = "пароль" | "второй фактор";
 
-export function StepUpModal() {
+/** Адрес, на который человек вернётся после входа заново, — текущий. */
+function currentAddress(): string {
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+/**
+ * «Войти заново» — выход ТЕМ ЖЕ действием, что у консоли один (`useLogout`,
+ * условие C13), и вход с возвратом сюда. Монтируется только в окне свежести:
+ * признак формы выхода добывается, когда путь предложен, а не на каждой странице.
+ */
+function ReauthenticateAction({ leave, disabled }: { leave: (to: string) => void; disabled: boolean }) {
+  const { logout, busy, refusal } = useLogout(() => leave(loginAddress(currentAddress())));
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Paragraph style={{ marginBottom: 8 }}>Либо войдите заново любым способом входа, ключом доступа тоже.</Paragraph>
+      {refusal && (
+        <div style={{ marginBottom: 8 }}>
+          <LaneRefusalAlert refusal={refusal} />
+        </div>
+      )}
+      <Button loading={busy} disabled={disabled} onClick={() => void logout()}>
+        Войти заново
+      </Button>
+    </div>
+  );
+}
+
+export function StepUpModal({ leave = (to) => window.location.replace(to) }: { leave?: (to: string) => void } = {}) {
   const id = useId();
   const auth = useOptionalAuth();
   // Признак добывается при отправке, а не при монтировании: окно смонтировано
@@ -197,6 +234,7 @@ export function StepUpModal() {
         {/* Отправка клавишей ввода из поля — та же, что кнопкой. */}
         <button type="submit" hidden aria-hidden tabIndex={-1} />
       </FormGrid>
+      {passwordAllowed && <ReauthenticateAction leave={leave} disabled={submitting} />}
     </Modal>
   );
 }

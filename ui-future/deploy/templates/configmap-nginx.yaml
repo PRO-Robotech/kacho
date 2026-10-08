@@ -175,6 +175,26 @@ data:
             proxy_send_timeout 30s;
         }
 
+        # ОБЪЯВЛЕНИЕ ЦЕРЕМОНИИ OAUTH (RFC 8414) — координата, которую объявляет
+        # край (kacho#3060). Без этого блока адрес доставался общему
+        # `location /`, и клиент церемонии получал оболочку консоли с кодом `200`
+        # вместо документа. ТОЧНОЕ совпадение: соседи —
+        # `/.well-known/openid-configuration`, форма с хвостом, всё прочее под
+        # `/.well-known/` — краю не достаются (запрет #6: наружу ровно один
+        # адрес). Те же заголовки и лист звена, что у соседних полос.
+        location = /.well-known/oauth-authorization-server {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $http_x_request_id;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
         # Поток изменений — единственная ручка края, отдающая браузеру не ответ, а
         # ПОСЛЕДОВАТЕЛЬНОСТЬ кадров. До этого блока её адрес не покрывала ни одна
         # полоса: он доставался общему `location /`, а тот отдаёт `index.html` с
@@ -314,6 +334,29 @@ data:
         listen {{ .Values.publicFront.redirectPort }};
         server_name _;
         {{- include "ui.securityHeaders" . | nindent 8 }}
+        {{- if (.Values.publicFront.acme).enabled }}
+
+        # ВЫЗОВ РЕШАТЕЛЯ ACME (kacho#3024). Подтверждение владения http01 ACME
+        # спрашивает по http на порту 80 — то есть ЗДЕСЬ, до переадресации:
+        # иначе вызов уходил бы на https и получал оболочку консоли, и лист не
+        # выпускался и не продлевался. Только этот сервер, только GET (и HEAD), и
+        # только на Service решателя этого релиза; на TLS-порту консоли путь
+        # обслуживает оболочка, на край он не ведёт.
+        resolver ${KUBE_DNS_SERVER} valid=10s ipv6=off;
+        location ^~ /.well-known/acme-challenge/ {
+            limit_except GET {
+                deny all;
+            }
+            set $acme_solver "${KACHO_UI_ACME_SOLVER_UPSTREAM}";
+            proxy_pass http://$acme_solver;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 10s;
+            proxy_send_timeout 10s;
+        }
+        {{- end }}
         location / {
             return 308 {{ include "ui.publicFrontOrigin" . }}$request_uri;
         }

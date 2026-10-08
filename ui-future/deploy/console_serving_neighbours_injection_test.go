@@ -80,6 +80,24 @@ func TestConsoleServingNeighboursGate_ProvenByInjection(t *testing.T) {
 			findings: 0,
 		},
 		{
+			name: "решатель ACME вне своего пути — сосед без роли",
+			block: lines(
+				"        location ^~ /.well-known/ {",
+				`            set $acme_solver "${KACHO_UI_ACME_SOLVER_UPSTREAM}";`,
+				"            proxy_pass http://$acme_solver;",
+				"        }"),
+			findings: 1, mentions: []string{"ACME_SOLVER", "нет роли"},
+		},
+		{
+			name: "близнец: решатель ACME на своём пути",
+			block: lines(
+				"        location ^~ /.well-known/acme-challenge/ {",
+				`            set $acme_solver "${KACHO_UI_ACME_SOLVER_UPSTREAM}";`,
+				"            proxy_pass http://$acme_solver;",
+				"        }"),
+			findings: 0,
+		},
+		{
 			name: "обращение по буквальному адресу мимо подстановки",
 			block: lines(
 				"        location ^~ /.ory/idp/public/ {",

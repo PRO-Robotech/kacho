@@ -81,7 +81,7 @@
 |---|---|---|---|
 | List | CRUD (≥4 seeded, contains network-ssd/-hdd, zoneIds non-empty), BVA (page 0/1/1001 + token) | DT-LST-* (5) | ▣ |
 | Get | CRUD (network-ssd / network-hdd), NEG (garbage→404), CONF (NF-text) | DT-GET-* (4) | ▣ |
-| (Create — read-only) | NEG (POST → 405) | DT-CR-NEG-NOT-ALLOWED | ◐ |
+| (Create — read-only) | NEG (POST → 501/12, промах маршрута края) | держатель у владельца: storage `DT-CR-NEG-EXTERNAL-ABSENT` | ◐ |
 
 **Coverage: 2/2 RPC (100%).**
 
@@ -91,7 +91,7 @@
 |---|---|---|---|
 | List | CRUD (≥3 seeded, contains ru-central1-{a,b,d}, status UP, regionId), PAGE (0/1/1001 + roundtrip) | ZONE-LST-* (6) | ▣ |
 | Get | CRUD (ru-central1-a / -b), NEG (garbage→404), CONF (NF-text) | ZONE-GET-* (5) | ▣ |
-| (Create — read-only) | NEG (POST → 405) | ZONE-CR-NEG-NOT-ALLOWED | ◐ |
+| (Create — read-only) | NEG (POST → 501/12, промах маршрута края) | держатель у владельца: geo `ANP-ZON-CR-NOT-PUBLIC` | ◐ |
 
 **Coverage: 2/2 RPC (100%).**
 
