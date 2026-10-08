@@ -46,3 +46,19 @@ db:
   host: notify-postgres
   passwordSecret:
     name: notify-db-password
+# notify-api — ручки без умолчаний (NTF-4 Р16, Р22): нога без зонтика задаёт их
+# сама; адрес службы доступа — её самостоятельной поставки рядом (NTF1-I06).
+authz:
+  iamGRPCAddr: kaname-internal.kaname.svc:9091
+  trustedForwarderSANs:
+    - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+  cacheTTL: 5s
+  checkTimeout: 2s
+  denyBudgetPerSec: 100
+handlingBudget: 30s
+notice:
+  reminderLead: 24h
+api:
+  networkPolicy:
+    edgePodLabels:
+      app: api-gateway

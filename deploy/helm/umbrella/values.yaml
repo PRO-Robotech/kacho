@@ -805,6 +805,15 @@ notify:
       rate: 5
       burst: 5
       paused: false
+  # notify-api: политика сети впускает на внутренний слушатель только край.
+  # Метки пода края — значение `api-gateway.name` (`api-gateway.selectorLabels`
+  # чарта края); подчарт notify чужого определения не видит, поэтому метка
+  # названа здесь, а что она выбирает отрендеренный под края, держит
+  # deploy/network_policy_admission_render_test.go.
+  api:
+    networkPolicy:
+      edgePodLabels:
+        app: api-gateway
 
 # ─── notify-probe — стендовая проба-источник notify (NTF-1, полоса D3) ────────
 #

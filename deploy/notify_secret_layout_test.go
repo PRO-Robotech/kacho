@@ -360,8 +360,25 @@ func configMapsWithKey(objs []renderedObj, key string) []renderedObj {
 	return out
 }
 
-func podAnnotation(objs []renderedObj, key string) string {
+// senderDeployments — рабочие объекты notify-sender: под с контейнером `notify`.
+// Чарт notify рендерит два развёртывания (notify-sender и notify-api, NTF-5
+// Р2); суждения о ключе сетки, узле почты, доступности и накате схемы — о
+// notify-sender, и notify-api в них не подставляется молча первым в списке.
+func senderDeployments(objs []renderedObj) []renderedObj {
+	var out []renderedObj
 	for _, d := range objsOfKind(objs, "Deployment") {
+		for _, c := range containersOf(nPodSpec(d)) {
+			if nstr(c["name"]) == "notify" {
+				out = append(out, d)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func podAnnotation(objs []renderedObj, key string) string {
+	for _, d := range senderDeployments(objs) {
 		if v := nstr(ndig(d.doc, "spec", "template", "metadata", "annotations", key)); v != "" {
 			return v
 		}
@@ -536,10 +553,10 @@ func TestNotifySecretLayout(t *testing.T) {
 			return o
 		}},
 		{"второй монтирующий", func(o []renderedObj) []renderedObj {
-			d := objsOfKind(o, "Deployment")[0]
+			d := senderDeployments(o)[0]
 			twin := parseRendered(t, mustRenderOut(t, chart))
-			second := objsOfKind(twin, "Deployment")[0]
-			second.name = d.name + "-api"
+			second := senderDeployments(twin)[0]
+			second.name = d.name + "-twin"
 			return append(o, second)
 		}},
 		{"секрет почты третьим Secret чарта", func(o []renderedObj) []renderedObj {
@@ -547,7 +564,7 @@ func TestNotifySecretLayout(t *testing.T) {
 				doc: map[string]any{"kind": "Secret", "metadata": map[string]any{"name": notifyRelease + "-smtp"}}})
 		}},
 		{"ключ томом", func(o []renderedObj) []renderedObj {
-			spec := nPodSpec(objsOfKind(o, "Deployment")[0])
+			spec := nPodSpec(senderDeployments(o)[0])
 			spec["volumes"] = append(nlist(spec["volumes"]), map[string]any{
 				"name": "recipient-key", "secret": map[string]any{"secretName": keySecret}})
 			return o
@@ -949,7 +966,7 @@ func TestNotifyOtherMailNodeFieldsReachTheProcess(t *testing.T) {
 		t.Errorf("dev: узел с якорем, а %s нет (якорь узла: %v)", notifyAnchorEnv, anchor)
 	} else {
 		found := false
-		spec := nPodSpec(objsOfKind(devObjs, "Deployment")[0])
+		spec := nPodSpec(senderDeployments(devObjs)[0])
 		for _, v := range nlist(spec["volumes"]) {
 			if nstr(ndig(v, "secret", "secretName")) != nstr(anchor["name"]) {
 				continue
@@ -1028,9 +1045,9 @@ func mailNodeTemplateFindings(t *testing.T, chart string) []string {
 // выбирающий под notify.
 func notifyAvailabilityFindings(objs []renderedObj) []string {
 	var out []string
-	deps := objsOfKind(objs, "Deployment")
+	deps := senderDeployments(objs)
 	if len(deps) != 1 {
-		return []string{"развёртываний notify " + strconv.Itoa(len(deps)) + ", ожидалось одно"}
+		return []string{"развёртываний notify-sender " + strconv.Itoa(len(deps)) + ", ожидалось одно"}
 	}
 	d := deps[0]
 	if r, _ := ndig(d.doc, "spec", "replicas").(int); r < 2 {
@@ -1072,9 +1089,9 @@ func TestNotifyAvailability(t *testing.T) {
 // migrateFindings — инициализирующий контейнер `migrate`: `kacho-migrator up`,
 // DSN базы `kacho_notify`, пароль — ссылкой на секрет.
 func migrateFindings(objs []renderedObj) []string {
-	deps := objsOfKind(objs, "Deployment")
+	deps := senderDeployments(objs)
 	if len(deps) != 1 {
-		return []string{"развёртываний notify " + strconv.Itoa(len(deps))}
+		return []string{"развёртываний notify-sender " + strconv.Itoa(len(deps))}
 	}
 	for _, c := range nlist(nPodSpec(deps[0])["initContainers"]) {
 		if nstr(ndig(c, "name")) != "migrate" {
@@ -1135,11 +1152,13 @@ func TestNotifyMigratesItsSchemaBeforeStart(t *testing.T) {
 	}
 }
 
-// migrateDeployment — синтетическое развёртывание notify с контейнером migrate
+// migrateDeployment — синтетическое развёртывание notify-sender (контейнер
+// `notify`) с контейнером migrate
 // и DSN dsn: вход решения migrateFindings без рендера.
 func migrateDeployment(dsn string) []renderedObj {
 	return []renderedObj{{kind: "Deployment", name: "kacho-notify", doc: map[string]any{
 		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "notify"}},
 			"initContainers": []any{map[string]any{
 				"name": "migrate", "command": []any{"kacho-migrator"}, "args": []any{"up"},
 				"env": []any{

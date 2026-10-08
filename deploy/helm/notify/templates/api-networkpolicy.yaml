@@ -1,0 +1,41 @@
+{{- /*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+*/ -}}
+{{- if and (include "notify.renders" .) .Values.api.networkPolicy.enabled }}
+{{- if not .Values.api.networkPolicy.edgePodLabels }}
+{{- fail "api.networkPolicy.edgePodLabels (чарт notify): метки пода края не заданы, а политика сети notify-api включена — правило без отправителя не пропускало бы никого, и notify-api был бы недостижим при зелёных рендере и готовности; в зонтике это метки чарта края (app: api-gateway)" }}
+{{- end }}
+# ─── ПОЛИТИКА СЕТИ notify-api (ban #6, sec-internal-trusted-assumption-banned) ─
+#
+# Внутренний слушатель принимает ТОЛЬКО край — единственного пересылающего
+# личность (круг KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS, NTF-4 Р20). mTLS и
+# круг держат то же на уровне процесса; политика снимает достижимость слушателя
+# для остальных подов кластера (lateral movement). Диагностическая поверхность —
+# изнутри кластера (сбор величин, З15). Иной вход закрыт: под выбран политикой.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "notify.api.fullname" . }}
+  labels:
+    {{- include "notify.api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "notify.api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.api.networkPolicy.edgePodLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.api.ports.internal | int }}
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.api.ports.diag | int }}
+{{- end }}

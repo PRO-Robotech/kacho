@@ -145,6 +145,19 @@ spec:
             - name: KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC
               value: "{{ .Values.backends.storageInternal }}"
             {{- end }}
+            {{- with .Values.backends.notifyInternal }}
+            {{- /* notify слушает ТОЛЬКО mTLS (NTF-4 Р20): адрес без ребра mTLS дал
+                 бы незашифрованный дозвон к слушателю, который его отвергнет на
+                 рукопожатии при зелёных рендере и готовности края (ban #16). */}}
+            {{- if not (and $.Values.mtls.enable $.Values.mtls.edges.notify) }}
+            {{- fail "backends.notifyInternal (KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC) задан, а ребро mTLS к notify не включено (mtls.enable и mtls.edges.notify) — внутренний слушатель notify-api принимает только mTLS (NTF-4 Р20)" }}
+            {{- end }}
+            # ЕДИНСТВЕННЫЙ адрес notify у края — внутренний слушатель notify-api
+            # (NTF-5 З18 п.1): по нему идут и NoticeService, и InternalNoticeService
+            # (одно соединение). Не задан — notify в установке не объявлен.
+            - name: KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC
+              value: {{ . | quote }}
+            {{- end }}
             # Проекция потока изменений в браузер (kacho#1020).
             #
             # Перечень владельцев объявляется ВСЕГДА, в том числе пустым: пусто
@@ -406,6 +419,13 @@ spec:
             # present its client leaf; SERVER_NAME derives from the dial-host
             # (kacho-storage.kacho.svc ∈ storage server-cert SAN).
             - name: KACHO_API_GATEWAY_MTLS_STORAGE_ENABLE
+              value: "true"
+            {{- end }}
+            {{- if .Values.mtls.edges.notify }}
+            # gateway→notify-api mTLS: внутренний слушатель notify-api — только
+            # mTLS (NTF-4 Р20); SERVER_NAME выводится из узла адреса
+            # (kacho-notify-api.kacho.svc ∈ SAN листа notify-api).
+            - name: KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE
               value: "true"
             {{- end }}
             {{- if .Values.mtls.hybridExternal }}

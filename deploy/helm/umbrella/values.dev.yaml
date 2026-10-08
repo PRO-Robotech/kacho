@@ -305,6 +305,7 @@ api-gateway:
       geo: true        # gateway→geo (+ geoInternal) mTLS; backends.geo uses chart default kacho-geo.* (geo cutover, kacho-workspace#82)
       registry: true   # gateway→registry backend mTLS (registry.mtls.enable=true → server RequireAndVerifyClientCert)
       storage: true    # gateway→storage backend mTLS (storage.mtls.enable=true); needs the storage edge added to the gateway chart (below)
+      notify: true     # gateway→notify-api mTLS — внутренний слушатель notify-api только mTLS (NTF-4 Р20)
   # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
   # api-gateway proxy un-freezes the loadbalancer domain (see
   # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
@@ -328,6 +329,13 @@ api-gateway:
     # would NXDOMAIN 503 every registry control-plane REST call. Override to the real name.
     registry: registry.kacho.svc:9090
     registryInternal: registry-internal.kacho.svc:9091
+    # notify — единственный адрес, внутренний слушатель notify-api (Service
+    # `kacho-notify-api` чарта notify, порт `notify.api.ports.internal`). notify
+    # рендерится на этом стенде (перечень источников непуст — проба notify-probe);
+    # профиль, где notify не рендерится, адрес снимает (`notifyInternal: ""`):
+    # иначе край звал бы службу, которой в установке нет. Сходимость «адрес у края
+    # ⇔ notify-api в рендере» держит deploy/notify_api_render_test.go.
+    notifyInternal: kacho-notify-api.kacho.svc:9091
   # The local stand authenticates the same way every other stand does: a bearer the
   # edge verifies by SIGNATURE against the identity facade's published JWKS.
   #
@@ -609,6 +617,25 @@ notify:
   limits:
     global:
       perDay: 1000
+  # ── notify-api (NTF-4 Р16, Р20, Р22; NTF-5 Р17) ─────────────────────────────
+  # Стенд берёт поставляемые значения — столбец «поставляемое значение» таблицы Р16 NTF-4 и
+  # Р17 NTF-5. Окно отзыва права `authz.cacheTTL` равно записи политики окон
+  # отзыва `notify KACHO_NOTIFY_AUTHZ_CACHE_TTL` (5s): величину отсюда сверяет
+  # гейт TestRevocationWindowIsDeclaredPolicy. Умолчаний у этих ручек нет —
+  # незаданная ручка — отказ рендера чарта notify с её именем.
+  authz:
+    # Внутренний слушатель службы доступа: Check звена прав и пакетная проверка
+    # сужателя; узел адреса — имя, сверяемое с листом службы доступа.
+    iamGRPCAddr: kaname-internal.kacho.svc:9091
+    # Круг пересылающих личность — край, единственный пересылающий (Р20).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+    cacheTTL: 5s
+    checkTimeout: 2s
+    denyBudgetPerSec: 100
+  handlingBudget: 30s
+  notice:
+    reminderLead: 24h
 
 # ─── notify-probe — стендовая проба-источник notify (NTF-1, полосы D2, D3) ────
 # Развёрнута на стенде (NTF1-I04: в `prod` её нет); пишет ли она почтовые
