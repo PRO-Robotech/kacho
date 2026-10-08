@@ -1,7 +1,7 @@
 // GrantAdminModal — KAC-196 Task 5.
 //
 // AntD Modal с AutoComplete над списком User'ов. Debounce 300ms:
-//   - input change → выставляет внутренний `query`;
+//   - ввод → `query` (текст поля ведёт само поле, см. ниже);
 //   - effect: после 300ms тишины — fetch /iam/v1/users → опции AutoComplete;
 //   - выбор → store userId → "Выдать" → clusterApi.grantAdmin → poll Operation
 //     → toast + close + invalidate ["cluster-admins"] (родитель).
@@ -35,7 +35,9 @@ interface Props {
 }
 
 interface UserOption {
-  value: string; // user.id
+  // То, что поле покажет после выбора: почта, а без неё — идентификатор. Почты
+  // после отсева дублей уникальны, поэтому значение называет ровно одного.
+  value: string;
   label: React.ReactNode;
   user: User;
 }
@@ -101,7 +103,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
         // прислал именно по этому вводу.
         setOptions(
           users.map((u) => ({
-            value: u.id,
+            value: u.email || u.id,
             label: (
               <span>
                 <Typography.Text strong>{u.email || u.id}</Typography.Text>
@@ -229,18 +231,22 @@ export function GrantAdminModal({ open, onClose }: Props) {
           colon={false}
         >
           <Form.Item label="Пользователь" required>
+            {/* Текст ввода ведёт само поле, а не состояние окна (#3094).
+                Управляемое поле (`value` из состояния окна) на быстром наборе
+                роняет весь раздел: «Maximum update depth exceeded» в
+                браузере, раздел заменяется экраном «временно недоступен».
+                Измерено живым браузером на этом же окне: управляемое — 4–5
+                падений из 5 наборов, неуправляемое — 0 из 10. Окну нужен не
+                текст, а два факта: что спрошено у края (`onSearch`) и кто
+                выбран (`onSelect`); прежний текст снимает `destroyOnHidden`. */}
             <AutoComplete
               options={options}
-              value={query}
               onSearch={setQuery}
               onChange={(v) => {
-                setQuery(v);
                 if (!v) setSelectedUser(null);
               }}
               onSelect={(_value, option) => {
-                const opt = option;
-                setSelectedUser(opt.user);
-                setQuery(opt.user.email || opt.user.id);
+                setSelectedUser(option.user);
               }}
               placeholder={placeholder}
               title={USERS_SCOPE.notice}

@@ -23,6 +23,11 @@ import (
 // тесты GeoZoneClient. Программируется ответами Get/List. -race-safe не нужен:
 // каждый тест использует свой инстанс последовательно.
 type fakeGeoZoneClient struct {
+	// Встроенный интерфейс закрывает административные глаголы ZoneService
+	// (Create/Update/Delete, ADM-1): клиент потребителя их не зовёт, и вызов
+	// незаданного метода упал бы паникой на nil — то есть громко, а не молча.
+	geov1.ZoneServiceClient
+
 	getResp  *geov1.Zone
 	getErr   error
 	getCalls int

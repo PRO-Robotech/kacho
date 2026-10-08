@@ -27,7 +27,7 @@ function domainOf(apiPath: string): string | null {
 function registryDomains(): string[] {
   const out = new Set<string>();
   for (const spec of Object.values(REGISTRY)) {
-    for (const p of [spec.apiPath, spec.internalGetPath, spec.admin?.basePath]) {
+    for (const p of [spec.apiPath, spec.internalGetPath]) {
       const d = p ? domainOf(p) : null;
       if (d) out.add(d);
     }

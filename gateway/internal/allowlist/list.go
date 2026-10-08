@@ -218,15 +218,24 @@ var AllowedMethods = map[string]struct{}{
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.
 
-	// geo.v1 — RegionService (read-only справочник).
+	// geo.v1 — RegionService: справочник (Get/List) и административные глаголы
+	// каталога (Create/Update/Delete — ADM-1, право system_admin @ cluster, тот же
+	// порог подтверждения, что у внутреннего близнеца; вход без infra°).
 	// Geography живет в leaf-сервисе kacho-geo; теперь единственный owner.
-	"/kacho.cloud.geo.v1.RegionService/Get":  {},
-	"/kacho.cloud.geo.v1.RegionService/List": {},
-	// geo.v1 — ZoneService (read-only справочник)
-	"/kacho.cloud.geo.v1.ZoneService/Get":  {},
-	"/kacho.cloud.geo.v1.ZoneService/List": {},
+	"/kacho.cloud.geo.v1.RegionService/Get":    {},
+	"/kacho.cloud.geo.v1.RegionService/List":   {},
+	"/kacho.cloud.geo.v1.RegionService/Create": {},
+	"/kacho.cloud.geo.v1.RegionService/Update": {},
+	"/kacho.cloud.geo.v1.RegionService/Delete": {},
+	// geo.v1 — ZoneService: то же для зон.
+	"/kacho.cloud.geo.v1.ZoneService/Get":    {},
+	"/kacho.cloud.geo.v1.ZoneService/List":   {},
+	"/kacho.cloud.geo.v1.ZoneService/Create": {},
+	"/kacho.cloud.geo.v1.ZoneService/Update": {},
+	"/kacho.cloud.geo.v1.ZoneService/Delete": {},
 	// geo.v1 — InternalRegionService / InternalZoneService.* — НЕ в allowlist
-	// (admin-CRUD на :9091; HasInternalSuffix блокирует автоматически, запрет #6).
+	// (полная плоскость с infra° и GetInternal на :9091; HasInternalSuffix
+	// блокирует автоматически, запрет #6).
 
 	// iam.v1 — AccountService
 	"/kaname.cloud.iam.v1.AccountService/Get":  {},
@@ -336,6 +345,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.SAKeyService/Issue":  {},
 	"/kaname.cloud.iam.v1.SAKeyService/List":   {},
 	"/kaname.cloud.iam.v1.SAKeyService/Revoke": {},
+	// iam.v1 — ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец
+	// InternalClusterService: администраторы кластера на публичной поверхности
+	// под /iam/v1/cluster…. Гейт — system_admin на cluster:cluster_root
+	// (не выполним подстановочным знаком), мутации — с полом подтверждения 2.
+	// Внутренний близнец остаётся на :9091 и в перечень НЕ входит (запрет #6).
+	"/kaname.cloud.iam.v1.ClusterService/Get":         {}, // sync read (REST GET /iam/v1/cluster)
+	"/kaname.cloud.iam.v1.ClusterService/ListAdmins":  {}, // sync read (REST GET /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/GrantAdmin":  {}, // Operation (REST POST /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/RevokeAdmin": {}, // Operation (REST DELETE /iam/v1/cluster/admins/{subject_id})
 	// iam.v1 — AuthorizeService (REST /iam/v1/authorize:* и /iam/v1/me) —
 	// tenant-facing запросы к модели прав: предпросмотр разрешений в консоли и
 	// самоописание вызывающего. Публичный сервис, не Internal*.

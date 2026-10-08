@@ -76,17 +76,17 @@ afterEach(() => {
 // СТРАНИЦА ПРАВКИ, а не geo, поэтому фикстура переведена на живое поле, а не
 // проба удалена.
 describe("ResourceEditPage", () => {
-  it("начальное состояние читается с проекции, где живут правимые поля", async () => {
-    // У региона правимые поля объявлены на внутренней проекции — читать надо
-    // оттуда, а не с публичной.
+  it("начальное состояние читается с пути самого ресурса — публичного (#3094)", async () => {
+    // Регион правится публичной службой и читается с неё же: внутренней
+    // проекции консоль не спрашивает.
     const spec = REGISTRY.regions;
     stubFetch({ id: "reg-1", country_code: "RU", description: "" });
     renderEdit(spec);
 
     expect(await screen.findByDisplayValue("RU")).toBeInTheDocument();
-    const expected = spec.admin?.readForEdit ? spec.admin.basePath : spec.apiPath;
     await waitFor(() => expect(reads().length).toBeGreaterThan(0));
-    expect(reads()[0].url).toContain(`${expected}/reg-1`);
+    expect(reads()[0].url).toContain(`${spec.apiPath}/reg-1`);
+    expect(reads()[0].url).not.toContain("/internal/");
   });
 
   it("правка без изменений запроса не делает и возвращает на карточку", async () => {

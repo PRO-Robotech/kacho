@@ -615,9 +615,10 @@ const (
 	// with the deny reason `email_not_verified` (приёмка F6b, Р3а; Р4а службы):
 	// the caller is a person whose email address is not verified, and the owner
 	// says so about EVERY object, before evaluating any relation. Rendered as the
-	// owner's own refusal value — HTTP 403 / gRPC PermissionDenied, text
-	// `email address is not verified`, ErrorInfo EMAIL_NOT_VERIFIED — the same
-	// bytes the session lane's address gate writes (address_refusal.go).
+	// owner's own refusal value — HTTP 403 / gRPC PermissionDenied, the fixed
+	// text that names the confirmation step (addressRefusalText), ErrorInfo
+	// EMAIL_NOT_VERIFIED — the same bytes the session lane's address gate
+	// writes (address_refusal.go).
 	//
 	// It takes precedence over hide-existence ON PURPOSE: the reason is about the
 	// caller, not the object, and the owner gives it for existing and

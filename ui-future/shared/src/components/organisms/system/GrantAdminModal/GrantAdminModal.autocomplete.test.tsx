@@ -92,4 +92,19 @@ describe("GrantAdminModal — поле с подсказками", () => {
     expect(field().value).toBe("ops@example.com");
     expect(field().value).not.toBe("[object Object]");
   });
+
+  it("выбранный человек стоит в поле почтой, и окно называет его идентификатор", async () => {
+    // #3094 — поле неуправляемое: после выбора в нём то, что оператор
+    // узнаёт (почта), а не идентификатор, и выбор окном принят.
+    listUsers.mockResolvedValue({
+      users: [{ id: "usr-ops", email: "ops@example.com", invite_status: "ACTIVE" }],
+    });
+    show();
+    await waitFor(() => expect(screen.getByText("ops@example.com")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("option"));
+
+    expect(field().value).toBe("ops@example.com");
+    expect(screen.getByText("usr-ops")).toBeInTheDocument();
+  });
 });

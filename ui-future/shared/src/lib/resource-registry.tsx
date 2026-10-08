@@ -4,7 +4,7 @@
 
 import type { ReactNode } from "react";
 import { Tag, Tooltip, Typography } from "antd";
-import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
+import { SafetyOutlined, StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { NAME_FORM, NAME_FORM_REGISTRY, NAME_HINT, NAME_HINT_OPTIONAL, NAME_HINT_REGISTRY } from "./name-form";
 import { setByPath, getByPath as getByPathImpl } from "./path";
@@ -12,10 +12,10 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { PlacementBadge } from "@shared/components/atoms/PlacementBadge";
 import {
-  GEO_INTERNAL_REGIONS_PATH,
-  GEO_INTERNAL_ZONES_PATH,
   GEO_REGIONS_PATH,
   GEO_ZONES_PATH,
+  geoStatusOfRegion,
+  geoStatusOfZone,
   placementBlockedText,
   readCountHint,
   zoneBelongsToRegion,
@@ -46,6 +46,7 @@ import {
   targetKind,
   targetResources,
   userBlockPath,
+  userResetSecondFactorPath,
   userUnblockPath,
   userRemoveFromAccountPath,
   type AccessBindingTarget,
@@ -207,31 +208,15 @@ const GEO_STATUS_OPTIONS = [
   { value: "DOWN", label: "DOWN — закрыт для размещения" },
 ];
 
-/** Строки textarea → repeated-поле: пустые и пробельные отбрасываем. */
-function splitLines(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string" && v.trim() !== "");
-  if (typeof value !== "string") return [];
-  return value
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 /**
  * Общая чистка формы Region/Zone перед отправкой: пустые опциональные скаляры не
- * шлём, пустой блок infra° не шлём. Пустая строка и «поле не задано» — разные
- * вещи, и сервер валидирует первую (напр. countryCode).
+ * шлём. Пустая строка и «поле не задано» — разные вещи, и сервер валидирует
+ * первую (напр. countryCode).
  */
 function sanitizeGeoCommon(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...obj };
   if (out.country_code === "") delete out.country_code;
-  const infra = out.infra as Record<string, unknown> | undefined;
-  if (infra) {
-    const next: Record<string, unknown> = { ...infra };
-    if (next.numeric_infra_id === "") delete next.numeric_infra_id;
-    if (Object.keys(next).length === 0) delete out.infra;
-    else out.infra = next;
-  }
+  if (out.status === "" || out.status === undefined) delete out.status;
   return out;
 }
 
@@ -898,6 +883,45 @@ export const REGISTRY: Record<string, ResourceSpec> = {
               narrowExitFromAccount(ctx, isSelf),
             okText: isSelf ? "Да, запретить себе" : "Запретить",
             progressTitle: "Запрет участия",
+          };
+        },
+      },
+      {
+        // СБРОС ВТОРОГО ФАКТОРА распорядителем (приёмка F8r, S1; kacho#3063).
+        //
+        // Пункт есть на КАЖДОЙ строке и ни на одной не выключен (Р3): право держит
+        // только администратор облака, и решает это край — консоли отношение
+        // записи каталога неизвестно, а флаг «кто я» отвечает на другой вопрос.
+        // Не-держатель увидит пункт и получит названный отказ края. Строка
+        // `PENDING` тоже не выключается: фактора у неё нет, служба ответит «нечего
+        // сбрасывать», и этот исход назван вердиктом консоли (Р6), а не
+        // суждением консоли до вызова.
+        //
+        // Над собой действие не запрещается: администратор облака держит
+        // отношение и на своей записи, — но подтверждение говорит прямо, что
+        // эта сессия тоже завершится.
+        key: "reset-second-factor",
+        resolve: (row, ctx): RowVerbState => {
+          const id = (row.id as string | undefined) ?? "";
+          const who = (row.email as string | undefined) || id;
+          const isSelf = !!ctx.selfId && ctx.selfId === id;
+          return {
+            label: "Сбросить второй фактор",
+            icon: <SafetyOutlined />,
+            danger: true,
+            path: userResetSecondFactorPath(id),
+            confirmTitle: isSelf ? "Сбросить СВОЙ второй фактор?" : "Сбросить второй фактор?",
+            confirmText: isSelf
+              ? `Все ваши сессии, включая эту, завершатся. С вашей учётной записи («${who}») будет ` +
+                `снят второй фактор и запасные коды. Войти вы сможете паролем или ключом доступа и ` +
+                `заново настроить второй фактор в настройках учётной записи.`
+              : `У «${who}» будет снят второй фактор и запасные коды, все его сессии завершатся. ` +
+                `Войти он сможет паролем или ключом доступа и заново настроить второй фактор в ` +
+                `настройках учётной записи.`,
+            okText: "Сбросить",
+            progressTitle: "Сброс второго фактора",
+            succeededText: "Второй фактор сброшен",
+            failedText: "Не удалось сбросить второй фактор",
           };
         },
       },
@@ -2748,11 +2772,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: false, update: false, delete: false },
     // Каталог типов дисков ведёт оператор платформы, а не арендатор. Край
-    // обслуживает CRUD, но у консоли для него нет admin-плоскости этого ресурса
-    // (`spec.admin` не объявлен), поэтому мутации не выставлены НИКОМУ.
+    // обслуживает CRUD, но экрана администрирования этого ресурса в консоли нет,
+    // поэтому мутации не выставлены НИКОМУ.
     mutationsNotOffered:
-      "Каталог ведёт оператор платформы; admin-плоскости этого ресурса в консоли нет " +
-      "(`spec.admin` не объявлен), поэтому мутации не выставлены и администратору.",
+      "Каталог ведёт оператор платформы; экрана администрирования этого ресурса в консоли нет, " +
+      "поэтому мутации не выставлены и администратору.",
     columns: [
       { header: "Имя", path: "name", format: "text", className: "font-medium" },
       // Идентификатор — `uid-short`, а не `text`: этот формат и есть форма
@@ -2836,6 +2860,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    // Публичная служба geo обслуживает и мутации каталога (#3092), но здесь —
+    // справочник для выбора размещения в разделе вычислений; каталог ведётся
+    // экраном раздела «Система» (#3094).
+    mutationsNotOffered: "Справочник зон для выбора размещения; каталог ведёт администратор облака в разделе «Система».",
     emptyState: {
       title: "Каталог зон доступности пуст",
       body:
@@ -2882,6 +2910,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    // Публичная служба geo обслуживает и мутации каталога (#3092), но здесь —
+    // справочник для выбора размещения в разделе вычислений; каталог ведётся
+    // экраном раздела «Система» (#3094).
+    mutationsNotOffered: "Справочник регионов для выбора размещения; каталог ведёт администратор облака в разделе «Система».",
     emptyState: {
       title: "Каталог регионов пуст",
       body:
@@ -4051,23 +4083,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
   // ====== Geography (kacho-geo): Region / Zone ====== + System AddressPool ======
   //
-  // Region/Zone — ось размещения платформы, владелец kacho-geo. Две поверхности,
-  // и это НЕ одна и та же:
-  //   read  = geo.v1.{Region,Zone}Service — GET /geo/v1/{regions,zones}[/{id}].
-  //           project-scope EXEMPT: каталог обязан читать любой аутентифицированный
-  //           тенант, иначе ему нечего подставить в zoneId/regionId при запуске
-  //           чего угодно размещаемого. authN при этом обязателен.
-  //   admin = geo.v1.Internal{Region,Zone}Service — POST/PATCH/DELETE/GET на
-  //           /geo/v1/internal/{regions,zones}. system_admin на кластере,
-  //           исключительно через cluster-internal REST listener. Мутация по
-  //           ПУБЛИЧНОМУ пути не смаршрутизирована вообще (до редизайна реестр
-  //           слал Create именно туда — молча в никуда).
+  // Region/Zone — ось размещения платформы, владелец kacho-geo. Консоль говорит
+  // с ПУБЛИЧНОЙ поверхностью целиком (kacho#3094):
+  //   read  = geo.v1.{Region,Zone}Service.Get/List — GET /geo/v1/{regions,zones}.
+  //           Каталог обязан читать любой аутентифицированный тенант, иначе ему
+  //           нечего подставить в zoneId/regionId.
+  //   admin = те же службы, Create/Update/Delete на тех же путях (#3092):
+  //           system_admin на кластере, тот же пол, что у внутренних близнецов.
   //
-  // Две проекции: публичные Region/Zone несут только tenant-facing намерение плюс
-  // производный openForPlacement°; сырой admin-`status` и весь блок infra° живут
-  // на InternalRegion/InternalZone. Поэтому форма редактирования читается с
-  // internal-пути (`admin.readForEdit`) — по публичному чтению оператор увидел бы
-  // пустой статус и переключал бы его вслепую.
+  // Блока infra° на публичной поверхности нет ни во входе, ни в ответе — его
+  // назначение остаётся актом внутренней плоскости, и форма его не предлагает:
+  // край отбрасывает неизвестные поля молча, и поле формы обещало бы то, чего
+  // не делает. Сырого `status` нет в публичном чтении — форма правки выводит его
+  // из openForPlacement° и placementBlockedReason (`hydrate`), а где проекция
+  // его не определяет, оставляет пустым и в маску не кладёт.
   //
   // Мутации каталога завершаются синхронно, но всё равно отвечают Operation
   // (`done=true` сразу) — отсюда `mutationsReturnOperation`.
@@ -4081,9 +4110,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     idIsTheName: true,
     route: "regions",
     apiPath: GEO_REGIONS_PATH,
-    admin: { basePath: GEO_INTERNAL_REGIONS_PATH, readForEdit: true },
     mutationsReturnOperation: true,
-    internalGetPath: `${GEO_INTERNAL_REGIONS_PATH}/{id}`,
     payloadKey: "regions",
     singular: ENTITIES.regions.singular,
     accusative: "регион",
@@ -4148,23 +4175,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "enum",
         options: GEO_STATUS_OPTIONS,
         description:
-          "Сырой admin-флаг. DOWN — регион закрыт для размещения (и все его зоны вместе с ним). Виден только в admin-плоскости.",
-      },
-      {
-        name: "infra.numeric_infra_id",
-        label: "Числовой инфра-идентификатор",
-        type: "string",
-        immutable: true,
-        placeholder: "1",
-        description:
-          "Инфраструктурный идентификатор региона. Задаётся один раз при создании; на публичную поверхность не выходит.",
-        pattern: "^[0-9]*$",
+          "Состояние обслуживания. DOWN — регион закрыт для размещения (и все его зоны вместе с ним); UP — открыт.",
       },
     ],
     // Свежий регион поднимается закрытым — тот же fail-safe, что и на сервере.
-    template: () => ({ id: "", country_code: "", status: "DOWN", infra: { numeric_infra_id: "" } }),
+    template: () => ({ id: "", country_code: "", status: "DOWN" }),
     sanitize: (obj) => sanitizeGeoCommon(obj),
-    hydrate: (obj) => obj,
+    // Сырого status в публичном чтении нет — он выводится из openForPlacement°.
+    hydrate: (obj) => ({ ...obj, status: geoStatusOfRegion(obj) }),
     emptyState: {
       title: "Каталог регионов пуст",
       body: "Регион — верхний уровень оси размещения. Пока в каталоге нет ни одного региона, разместить нельзя ничего: zoneId и regionId берутся отсюда.",
@@ -4177,9 +4195,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     idIsTheName: true,
     route: "zones",
     apiPath: GEO_ZONES_PATH,
-    admin: { basePath: GEO_INTERNAL_ZONES_PATH, readForEdit: true },
     mutationsReturnOperation: true,
-    internalGetPath: `${GEO_INTERNAL_ZONES_PATH}/{id}`,
     payloadKey: "zones",
     singular: ENTITIES.zones.singular,
     accusative: "зону",
@@ -4263,66 +4279,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "enum",
         options: GEO_STATUS_OPTIONS,
         description:
-          "Сырой admin-флаг зоны. Зона открыта для размещения, только когда UP и она, и её регион. Виден только в admin-плоскости.",
-      },
-      {
-        name: "infra.numeric_infra_id",
-        label: "Числовой инфра-идентификатор",
-        type: "string",
-        immutable: true,
-        placeholder: "1",
-        description: "Задаётся один раз при создании; на публичную поверхность не выходит.",
-        pattern: "^[0-9]*$",
-      },
-      {
-        name: "infra.host_classes",
-        label: "Классы хостов",
-        type: "text",
-        rows: 3,
-        placeholder: "std-1\ngpu-a100",
-        description: "Инвентарь классов хостов зоны, по одному в строке. Никогда не показывается тенанту.",
-      },
-      {
-        name: "infra.failure_domain_count",
-        label: "Доменов отказа",
-        type: "int",
-        min: 0,
-        description: "Сколько доменов отказа внутри зоны. Никогда не показывается тенанту.",
-      },
-      {
-        name: "infra.underlay_anchor",
-        label: "Якорь транспортной сети",
-        type: "string",
-        placeholder: "spine-1",
-        description: "Транспортная координата зоны. Никогда не показывается тенанту.",
-      },
-      {
-        name: "infra.capacity_hint",
-        label: "Запас ёмкости",
-        type: "enum",
-        options: [
-          { value: "", label: "Не задано" },
-          { value: "AMPLE", label: "AMPLE — запас есть" },
-          { value: "CONSTRAINED", label: "CONSTRAINED — ограничен" },
-          { value: "FULL", label: "FULL — исчерпан" },
-        ],
-        description:
-          "Сигнал планировщику. Публичная ошибка нехватки ёмкости обезличена и этого значения не раскрывает.",
+          "Состояние обслуживания зоны. Зона открыта для размещения, только когда UP и она, и её регион.",
       },
     ],
     // Свежая зона поднимается закрытой — тот же fail-safe, что и на сервере.
-    template: () => ({
-      id: "",
-      region_id: "",
-      status: "DOWN",
-      infra: {
-        numeric_infra_id: "",
-        host_classes: "",
-        failure_domain_count: 0,
-        underlay_anchor: "",
-        capacity_hint: "",
-      },
-    }),
+    template: () => ({ id: "", region_id: "", status: "DOWN" }),
     // Связка id ↔ regionId, которую сервер проверяет первой. Не выводим регион из
     // имени зоны — оба идентификатора оператор вводит сам, а решает всё равно geo.
     validate: (obj) => {
@@ -4334,29 +4295,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       }
       return null;
     },
-    sanitize: (obj) => {
-      const out = sanitizeGeoCommon(obj);
-      // regionId у Update зарезервирован — в теле он всё равно будет отброшен, но
-      // не отправляем то, чего в запросе нет.
-      const infra = out.infra as Record<string, unknown> | undefined;
-      if (infra && "host_classes" in infra) {
-        infra.host_classes = splitLines(infra.host_classes);
-        if ((infra.host_classes as string[]).length === 0) delete infra.host_classes;
-      }
-      if (infra && infra.capacity_hint === "") delete infra.capacity_hint;
-      if (infra && infra.underlay_anchor === "") delete infra.underlay_anchor;
-      if (infra && Object.keys(infra).length === 0) delete out.infra;
-      return out;
-    },
-    // Обратно в форму: repeated поле — textarea по строке на элемент.
-    hydrate: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
-      const infra = obj.infra as Record<string, unknown> | undefined;
-      if (infra && Array.isArray(infra.host_classes)) {
-        out.infra = { ...infra, host_classes: (infra.host_classes as string[]).join("\n") };
-      }
-      return out;
-    },
+    sanitize: (obj) => sanitizeGeoCommon(obj),
+    // Сырого status в публичном чтении нет — он выводится из openForPlacement° и
+    // причины закрытости (у причины приоритет зоны).
+    hydrate: (obj) => ({
+      ...obj,
+      status: geoStatusOfZone(obj),
+    }),
     emptyState: {
       title: "Каталог зон пуст",
       body: "Зона — точка размещения внутри региона. Пока зон нет, зональные ресурсы (подсети, машины, тома) создать нельзя.",
@@ -5630,29 +5575,6 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
     if (o[k] === "" || o[k] === undefined) delete o[k];
   }
   return o;
-}
-
-/**
- * Куда уходят Create / Update / Delete этого ресурса.
- *
- * Обычно — туда же, откуда он читается. У ресурса с admin-плоскостью (`admin`)
- * это разные пути: публичный путь geo Region/Zone обслуживает только чтение, и
- * POST по нему не смаршрутизирован вообще.
- */
-export function mutationBasePath(spec: ResourceSpec): string {
-  return spec.admin?.basePath ?? spec.apiPath;
-}
-
-/**
- * Откуда форма редактирования читает начальное состояние.
- *
- * У двухпроекционного ресурса мутируемые поля живут только на Internal-проекции,
- * поэтому читать надо оттуда — иначе форма покажет пустое значение там, где оно
- * есть, и оператор перезапишет его вслепую.
- */
-export function editReadPath(spec: ResourceSpec, id: string): string {
-  const base = spec.admin?.readForEdit ? spec.admin.basePath : spec.apiPath;
-  return `${base}/${id}`;
 }
 
 export function getResource(id: string): ResourceSpec | undefined {

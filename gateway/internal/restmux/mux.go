@@ -720,12 +720,16 @@ func NewMux(
 			}
 		}
 
-		// --- geo.v1: Region + Zone (public read-only) ---
+		// --- geo.v1: Region + Zone (public) ---
 		// Geography (Region/Zone) — отдельный leaf-сервис kacho-geo.
-		// RegionService/ZoneService — public read под /geo/v1/regions,
-		// /geo/v1/zones. Регистрируется условно по geoAddr (graceful: kacho-geo
-		// может быть еще не задеплоен — симметрично lbAddr/iamAddr выше).
-		// Geography обслуживается ИСКЛЮЧИТЕЛЬНО geo.v1.
+		// RegionService/ZoneService под /geo/v1/regions, /geo/v1/zones: чтение
+		// справочника (GET) и административные глаголы каталога (POST/PATCH/DELETE,
+		// ADM-1) — на ОБОИХ mux этого цикла. Мутации гейтит каталог прав
+		// (`system_admin` @ cluster, тот же порог, что у внутреннего близнеца), а
+		// не слушатель: граница проходит по праву вызывающего; инфраструктурного
+		// блока публичный вход не несёт. Регистрируется условно по geoAddr
+		// (graceful: kacho-geo может быть еще не задеплоен — симметрично
+		// lbAddr/iamAddr выше). Geography обслуживается ИСКЛЮЧИТЕЛЬНО geo.v1.
 		if geoAddr != "" {
 			if err := geopb.RegisterRegionServiceHandlerFromEndpoint(ctx, mux, geoAddr, optsFor("geo")); err != nil {
 				return nil, fmt.Errorf("register geo RegionService: %w", err)
@@ -736,13 +740,14 @@ func NewMux(
 		}
 
 		// --- geo admin (InternalRegionService/InternalZoneService) — kacho-only, internal-port (9091) ---
-		// Admin-CRUD справочников Region/Zone (POST/PATCH/DELETE на /geo/v1/regions,
-		// /geo/v1/zones). Доступен ТОЛЬКО через cluster-internal REST listener для
-		// UI/admin-tooling. На external TLS endpoint admin Region/Zone-
-		// функции не светятся: gRPC-роутер блокирует Internal*-сервисы через
-		// HasInternalSuffix, а authz-каталог гейтит эти RPC relation `system_admin`
-		// на cluster-singleton. Мутации Region/Zone — это catalog-паттерн (sync-ответ
-		// ресурсом, НЕ Operation; как InternalDiskType).
+		// Полная плоскость администрирования каталога: мутации С инфраструктурным
+		// блоком (infra°) и полная проекция GetInternal — на самоописываемом
+		// сегменте /geo/v1/internal/{regions,zones}. Доступна ТОЛЬКО через
+		// cluster-internal REST listener: на external TLS endpoint эти пути — 404
+		// (диспетчер классифицирует по принадлежности RPC Internal*-сервису,
+		// gRPC-роутер блокирует их через HasInternalSuffix), а каталог прав гейтит
+		// их `system_admin` на cluster-singleton. Мутации отвечают синхронно
+		// завершённым Operation (done=true в самом ответе).
 		if mux == internalMux && geoInternalAddr != "" {
 			if err := geopb.RegisterInternalRegionServiceHandlerFromEndpoint(ctx, mux, geoInternalAddr, optsFor("geoInternal")); err != nil {
 				return nil, fmt.Errorf("register geo InternalRegionService: %w", err)
@@ -841,6 +846,14 @@ func NewMux(
 			// отвечают 404, неотличимым от скрытой admin-поверхности.
 			if err := iampb.RegisterAccessKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccessKeyService: %w", err)
+			}
+			// ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец InternalClusterService:
+			// администраторы кластера под /iam/v1/cluster и /iam/v1/cluster/admins.
+			// Обе стороны исполняют одни и те же экземпляры сценариев службы, гейт —
+			// system_admin на cluster:cluster_root по каталогу прав. Внутренний
+			// близнец остаётся в блоке iamInternalAddr ниже (запрет #6).
+			if err := iampb.RegisterClusterServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam ClusterService: %w", err)
 			}
 			// AuthorizeService — tenant FGA check (POST /iam/v1/authorize:check).
 			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
