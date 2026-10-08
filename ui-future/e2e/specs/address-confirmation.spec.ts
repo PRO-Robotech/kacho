@@ -426,7 +426,9 @@ async function expectAddressRefusal(res: APIResponse, where: string): Promise<Ed
   ).toEqual({
     status: 403,
     code: 7,
-    message: "email address is not verified",
+    // Текст службы с kaname#526 называет шаг, снимающий отказ; край произносит
+    // ту же причину своей копией, побайтово равной (#3069).
+    message: `email address is not verified: confirm it with the code from the letter (POST ${VERIFY_EMAIL_CONFIRM})`,
     reason: "EMAIL_NOT_VERIFIED",
     domain: "iam.kaname.cloud",
     challenge: false,
