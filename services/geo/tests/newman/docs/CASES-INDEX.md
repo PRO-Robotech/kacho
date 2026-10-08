@@ -57,8 +57,31 @@ case-id обязан быть здесь литерально ИЛИ покры�
 
 | case-id | class | prio | проверка |
 |---|---|---|---|
-| `ANP-REG-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalRegion.Create on public endpoint → 501/12 edge route miss (method), body exact, before authN (kacho#3053); accepted on internal |
-| `ANP-ZON-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | InternalZone.Create on public endpoint → 501/12 edge route miss (method), body exact, before authN (kacho#3053); accepted on internal |
+| `ANP-REG-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | POST /geo/v1/internal/regions on the public endpoint → 404/5 edge route miss (path), body exact, before authN (kacho#3053); accepted on internal. Representative changed by ADM-1 geo §Р7: `POST /geo/v1/regions` is now the public admin verb |
+| `ANP-ZON-CR-NOT-PUBLIC` | NEG/AUTHZ | P0 | POST /geo/v1/internal/zones on the public endpoint → 404/5 edge route miss (path), body exact, before authN (kacho#3053); accepted on internal (same §Р7 change) |
+
+## Public admin verbs of the placement catalog (ADM-1 geo, kacho#3092) — `public-catalog.py`
+
+Case-id = scenario ID of `docs/specs/sub-phase-ADM-1-geo-placement-catalog-admin-acceptance.md`
+(workspace). Scenarios 08 and 11 are asserted on both sides of every axis by the service
+integration probe; newman carries one INVALID_ARGUMENT → 400 mapping case (08). Scenarios 14,
+15, 17 are Go probes (service / edge) and are not newman cases.
+
+| case-id | class | prio | проверка |
+|---|---|---|---|
+| `ADM-1-GEO-01` | CRUD/AUTHZ | P0 | POST /geo/v1/regions: tenant → 403 and region absent (404); admin → Operation done, metadata.regionId/response.id; tenant reads it (RU, open, createdAt) |
+| `ADM-1-GEO-02` | CRUD/AUTHZ | P0 | POST /geo/v1/zones: tenant → 403 and zone absent; admin → done; zone open, NONE |
+| `ADM-1-GEO-03` | CRUD/AUTHZ | P0 | PATCH region status: tenant → 403 unchanged; admin DOWN → zone REGION_DOWN; UP → NONE |
+| `ADM-1-GEO-04` | CRUD/AUTHZ | P0 | PATCH zone status: tenant → 403 still NONE; admin DOWN → ZONE_DOWN |
+| `ADM-1-GEO-05` | CRUD/AUTHZ | P0 | DELETE zone/region: tenant → 403 zone stays; admin → done; 404 verbatim `Zone <id> not found` |
+| `ADM-1-GEO-06` | NEG/CRUD | P1 | DELETE region with a zone → Operation.error 9 `region <id> is not empty`; without zones → deleted |
+| `ADM-1-GEO-07` | NEG/IDM | P1 | duplicate id → Operation.error 6 `Region <id> already exists` |
+| `ADM-1-GEO-08` | VAL/NEG | P1 | malformed id → sync 400/3 `invalid region id 'Bad_Id'` (mapping case) |
+| `ADM-1-GEO-09` | NEG/CRUD | P1 | zone in a missing region → Operation.error 9 `Zone <id> violates a reference constraint`; twin passes |
+| `ADM-1-GEO-10` | NEG/CRUD | P1 | PATCH missing region → Operation.error 5 `Region <id> not found`; twin passes |
+| `ADM-1-GEO-12` | NEG/AUTHZ | P0 | POST /geo/v1/internal/{regions,zones} on external → 404 route miss; on internal → accepted |
+| `ADM-1-GEO-13` | CONF/SEC | P0 | public Create response and Get bodies carry no `infra`/`status`; GetInternal → status DOWN, numericInfraId 0/absent |
+| `ADM-1-GEO-16` | AUTHZ/NEG | P0 | anonymous POST/PATCH/DELETE → 401/16; tenant → 403; admin → accepted |
 
 ## Authz matrix — `authz-deny.py`
 

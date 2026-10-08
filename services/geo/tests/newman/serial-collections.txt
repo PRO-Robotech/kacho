@@ -6,7 +6,8 @@
 # parallel pool, one at a time — same pattern as vpc EXTERNAL AddressPool (#59).
 #
 # Membership rule: a stem belongs here iff it issues a POST/PATCH/DELETE against
-# /geo/v1/internal/{regions,zones} that is EXPECTED TO SUCCEED. A mutating verb that
+# /geo/v1/internal/{regions,zones} or /geo/v1/{regions,zones} that is EXPECTED TO
+# SUCCEED. A mutating verb that
 # asserts 401/403 changes nothing in the catalog and does NOT belong (see authz-deny
 # below). Default auth in gen.py is jwtBootstrap, which carries system_admin@cluster —
 # so a mutating step WITHOUT an explicit non-admin `auth=` override does land.
@@ -22,6 +23,12 @@ internal-zone
 #   cases/admin-not-on-public.py:89-113  create region qa-anp-zr-*, create zone
 #                                        qa-anp-zr-*-a, DELETE both
 admin-not-on-public
+
+# Public admin verbs of the catalog (ADM-1 geo, kacho#3092): every case creates and
+# deletes its own region/zone through POST/PATCH/DELETE /geo/v1/{regions,zones}
+# (the PUBLIC admin path, jwtBootstrap = system_admin) — the same hazard as the
+# internal-* suites, through the other door. Membership rule above extends to it.
+public-catalog
 
 # Operation-envelope suite: it needs a real admin mutation to have an Operation to
 # assert on, so it creates and deletes a region on the live catalog.

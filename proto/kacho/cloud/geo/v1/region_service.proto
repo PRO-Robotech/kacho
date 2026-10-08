@@ -6,15 +6,36 @@ syntax = "proto3";
 package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "corelib/api/v1/operation.proto";
+import "corelib/operation/operation.proto";
+import "kacho/cloud/geo/v1/geo_common.proto";
 import "kacho/cloud/geo/v1/region.proto";
+import "kacho/cloud/geo/v1/internal_catalog_service.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
-// A set of methods to retrieve information about regions (public, read-only).
-// Admin CRUD over regions — see InternalRegionService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// RegionService — the placement catalog of regions on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog): gated by `system_admin` @ `cluster` — a relation no
+// wildcard tuple satisfies — with the SAME permission name and the SAME
+// identity-assurance floor as their InternalRegionService twins. The floor
+// belongs to the action, not to the address: a public path with a cheaper floor
+// would be a cheaper way to do the same thing.
+//
+// The public input carries NO infra° block (security.md two-projection): a
+// region created here gets numericInfraId = 0 ("not assigned"), and since that
+// field is immutable after create, assigning it stays an internal-plane act.
+// InternalRegionService keeps the full admin plane on the cluster-internal port.
+//
+// Mutations complete synchronously (one INSERT, no saga): Operation with
+// done=true in the response itself; `response` is the public Region (Empty for
+// Delete); a storage refusal is in Operation.error, an input refusal is a
+// synchronous gRPC status.
 service RegionService {
   // Returns the information about the specified region.
   rpc Get (GetRegionRequest) returns (Region) {
@@ -51,6 +72,85 @@ service RegionService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+
+  // Creates a region. Administrator's verb: the same permission, relation, scope
+  // and identity-assurance floor as InternalRegionService.Create.
+  rpc Create (CreatePublicRegionRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { post: "/geo/v1/regions" body: "*" };
+    option (corelib.api.v1.operation) = {
+      metadata: "CreateRegionMetadata"
+      response: "Region"
+    };
+    option (corelib.authz.v1.permission)        = "geo.regions.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+
+  // Updates a region (status, countryCode). Same gate as
+  // InternalRegionService.Update.
+  rpc Update (UpdatePublicRegionRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { patch: "/geo/v1/regions/{region_id}" body: "*" };
+    option (corelib.api.v1.operation) = {
+      metadata: "UpdateRegionMetadata"
+      response: "Region"
+    };
+    option (corelib.authz.v1.permission)        = "geo.regions.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+
+  // Deletes a region. A region that still has zones is refused in
+  // Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
+  // as InternalRegionService.Delete.
+  rpc Delete (DeleteRegionRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { delete: "/geo/v1/regions/{region_id}" };
+    option (corelib.api.v1.operation) = {
+      metadata: "DeleteRegionMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (corelib.authz.v1.permission)        = "geo.regions.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+}
+
+// CreatePublicRegionRequest — public Create input. Deliberately a separate
+// message from the internal CreateRegionRequest: it carries NO infra° block.
+message CreatePublicRegionRequest {
+  // Region ID — admin-assigned immutable slug PK (e.g. "ru-central1").
+  string id = 1;
+  // ISO-3166 alpha-2 country code (validated on input if non-empty).
+  string country_code = 2;
+  // Optional; DEFAULT DOWN (fail-safe) if omitted → region stays CLOSED to
+  // placement (CreateRegionMetadata.warnings says so).
+  GeoStatus status = 3;
+}
+
+// UpdatePublicRegionRequest — public Update input; no infra° block. Mutable
+// through the mask: `status`, `countryCode`. A mask path naming `id` or
+// `infra.numericInfraId` is refused with its immutability text; any other path
+// (including every other `infra.*`) is refused as an unknown update_mask field.
+message UpdatePublicRegionRequest {
+  // ID of the region to update.
+  string region_id = 1;
+  // New ISO-3166 alpha-2 country code.
+  string country_code = 2;
+  // New administrative status (UP opens the region for placement).
+  GeoStatus status = 3;
+  // Fields to update; empty = apply what the caller carried.
+  google.protobuf.FieldMask update_mask = 4;
 }
 
 message GetRegionRequest {
