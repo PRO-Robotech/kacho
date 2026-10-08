@@ -480,19 +480,30 @@ test("администраторы кластера: администратор 
         });
         // Почта набирается клавишами, как её набирает человек: поле с
         // подсказками ведёт свой выбор по вводу, а не по подставленному
-        // значению (подставленное `fill` оставляет вариант невыбираемым —
-        // проверено на том же компоненте в браузере).
-        await modal.getByRole("combobox").click();
-        await page.keyboard.type(email);
-        // Вариант называет человека почтой — её и видит администратор в списке.
-        const option = page.getByText(email, { exact: true }).first();
-        await expect(
-          option,
-          `человека ${email} нет среди вариантов выдачи`,
-        ).toBeVisible({ timeout: 30_000 });
-        // Выбор — нажатием на вариант. Окно после выбора обязано остаться
-        // открытым и назвать выбранного (строка «ID»).
-        await option.click();
+        // значению. Ввод спрашивает край (`search`), и выбор делается ПОСЛЕ его
+        // ответа: вариант, выбранный до ответа, перерисовка списка снимает.
+        const searched = page.waitForResponse(
+          (r) =>
+            new URL(r.url()).pathname === "/iam/v1/users" &&
+            (new URL(r.url()).searchParams.get("filter") ?? "").includes(email),
+          { timeout: 30_000 },
+        );
+        await modal.getByRole("combobox").pressSequentially(email);
+        const answer = await searched;
+        expect(
+          answer.status(),
+          `поиск человека ${email} в окне выдачи не отвечен`,
+        ).toBe(200);
+        expect(
+          await answer.text(),
+          `край не нашёл человека ${email} по почте`,
+        ).toContain(email);
+        // Выбор — клавишами: стрелка на первый вариант ответа и подтверждение.
+        // Нажатие по тексту почты здесь неоднозначно: ту же строку несёт и
+        // скрытое зеркало ввода. Окно после выбора обязано остаться открытым и
+        // назвать выбранного (строка «ID»).
+        await page.keyboard.press("ArrowDown");
+        await page.keyboard.press("Enter");
         await expect(
           modal.getByText("ID", { exact: true }),
           "после выбора человека окно выдачи не назвало его — выбор не состоялся либо окно закрылось",
