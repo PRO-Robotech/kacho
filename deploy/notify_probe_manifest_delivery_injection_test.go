@@ -1,3 +1,5 @@
+//go:build helmcharts
+
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
@@ -63,7 +65,7 @@ func requireOneFinding(t *testing.T, label string, rows []probeDeliveryRow, want
 }
 
 func TestStandOnlyProbeManifestGateFallsOnItsSubjectAndStaysSilentOnTheTwin(t *testing.T) {
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	dev, prod := chainPaths(stacks["dev"]), chainPaths(stacks["prod"])
 	if len(dev) == 0 || len(prod) == 0 {
 		t.Fatalf("предпосылка инъекции: стенды dev и prod обязаны быть в %s", stacksTable)

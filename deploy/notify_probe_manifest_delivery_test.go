@@ -1,3 +1,5 @@
+//go:build helmcharts
+
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
@@ -200,7 +202,7 @@ func TestStandOnlyProbeManifestReachesExactlyTheChainsThatRaiseTheProbe(t *testi
 	if _, err := os.Stat(filepath.Join(repoRoot, probeManifestSource)); err != nil {
 		t.Fatalf("манифест пробы %s не найден: %v — доставлять стенду нечего", probeManifestSource, err)
 	}
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	names := make([]string, 0, len(stacks))
 	for name := range stacks {
 		names = append(names, name)
