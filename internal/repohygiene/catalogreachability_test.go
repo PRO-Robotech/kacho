@@ -120,6 +120,11 @@ import (
 // Р2/Р5) и `InternalNotificationRecipientService/{Resolve,ListProjectAudience}`
 // (X4D): внутренние глаголы службы, обслуживаемые ею в её дереве. Перемерено
 // прогоном после регенерации: строк каталога 356.
+//
+// Подъём пина на 33010d434 (kacho#2924, голова 484-notify, волна fence K1)
+// добавил ОДНУ — `InternalIAMService/CurrentAuthzRevision`: внутренний глагол
+// службы, обслуживаемый ею в её дереве. Перемерено прогоном после регенерации:
+// строк каталога 368, находок рода unmounted 121.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -171,6 +176,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalHumanSessionService/Resolve",
 	"kaname.cloud.iam.v1.InternalIAMService/Check",
 	"kaname.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive",
+	"kaname.cloud.iam.v1.InternalIAMService/CurrentAuthzRevision",
 	"kaname.cloud.iam.v1.InternalIAMService/ForceLogout",
 	"kaname.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
 	"kaname.cloud.iam.v1.InternalIAMService/LookupSubject",

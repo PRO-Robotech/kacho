@@ -904,9 +904,15 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// сервиса — на полу «1», полоса «рутина»: 294→296. Четыре метода
 	// `NoticeService` — освобождённые (`HANDLER_DECIDES`: право `v_get` на
 	// область судит use-case) и без порога: 30→34. Итог 356→367.
+	//
+	// Подъём пина на kaname@33010d434 (kacho#2924, голова 484-notify) привёз
+	// ОДНУ запись — `InternalIAMService/CurrentAuthzRevision`, освобождённую
+	// (INTERNAL_LISTENER) и без порога: 34→35. Полосы «чувствительное» и
+	// «рутина» не сдвинулись. Числа ЗАМЕРЕНЫ прогоном после регенерации
+	// каталога: 37 · 296 · 35, итог 367→368.
 	assert.Equal(t, 296, n1, "routine count")
-	assert.Equal(t, 34, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 367, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 35, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 368, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим
