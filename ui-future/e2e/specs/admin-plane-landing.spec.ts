@@ -53,6 +53,12 @@ interface Surface {
   action: (page: Page) => ReturnType<Page["getByRole"]>;
   /** Подпись, которую рисует только сам модуль раздела: признак, что экран отрисован. */
   rendered: (page: Page) => ReturnType<Page["getByText"]>;
+  /**
+   * Мутация обслуживается на ЛЮБОЙ посадке — у неё публичная служба на обоих
+   * слушателях края. Тогда ответ края на неё утверждается, а не только читается:
+   * «маршрута нет» на ней — это уже не посадка, а потерянная публичная служба.
+   */
+  servedOnEveryLanding?: true;
 }
 
 const SURFACES: Surface[] = [
@@ -80,6 +86,19 @@ const SURFACES: Surface[] = [
       }),
     rendered: (page) => page.getByText("Зоны", { exact: true }).first(),
   },
+  {
+    // Пулы адресов — экран, чьё поведение фикс #3091 развёл с соседями: их
+    // мутации с ADM-1 S1 обслуживает публичная `AddressPoolService`, и на
+    // посадке без admin-плоскости кнопка «Создать» обязана остаться, а слов о
+    // недоступности над экраном быть не должно. Ветвь здесь одна — served — на
+    // обеих посадках.
+    name: "пулы адресов",
+    address: "/system/address-pools",
+    mutation: "/vpc/v1/addressPools",
+    action: (page) => page.getByRole("link", { name: /Создать/ }),
+    rendered: (page) => page.getByText("Регионы", { exact: true }).first(),
+    servedOnEveryLanding: true,
+  },
 ];
 
 const UNAVAILABLE = "Раздел «Система» недоступен на этой посадке";
@@ -87,7 +106,7 @@ const UNAVAILABLE = "Раздел «Система» недоступен на �
 /** Координата под префиксом домена края, которой нет ни у одного слушателя. */
 const ABSENT_MUTATION = "/geo/v1/internal/kachoProbeAbsentResource";
 
-test("раздел «Система» показывает мутацию регионов, зон и администраторов кластера ровно там, где край её обслуживает", async ({
+test("раздел «Система» показывает мутацию регионов, зон, администраторов кластера и пулов адресов ровно там, где край её обслуживает", async ({
   page,
 }, testInfo) => {
   // verifies #3091 — ложное «плоскость есть» после ADM-1 S1: кнопки мутаций на внешней посадке.
@@ -122,9 +141,13 @@ test("раздел «Система» показывает мутацию рег
       const res = await seed.api.post(s.mutation, { data: {} });
       const status = res.status();
       expect(
-        gated ? [401, 404].includes(status) : status === 401,
+        gated && !s.servedOnEveryLanding
+          ? [401, 404].includes(status)
+          : status === 401,
         `край ответил на мутацию экрана «${s.name}» (${s.mutation}) ${status} ${await res.text()} — ` +
-          "ответ не совместим с названным слушателем, условие пробы не создано",
+          (s.servedOnEveryLanding
+            ? "а её обслуживает публичная служба на любой посадке — ждался отказ входа 401"
+            : "ответ не совместим с названным слушателем, условие пробы не создано"),
       ).toBe(true);
       served.set(s.name, status !== 404);
       testInfo.annotations.push({
