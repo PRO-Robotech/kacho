@@ -20,7 +20,8 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: LoadBalancer
+  type: {{ include "ui.publicFrontServiceType" . }}
+  {{- if eq (include "ui.publicFrontServiceType" .) "LoadBalancer" }}
   # Адрес клиента обязан дойти до раздачи (kacho#3028). При `Cluster` kube-proxy
   # подменяет адрес источника адресом узла: раздача и край видят вместо клиентов
   # адреса узлов, и ограничение частоты входа «на источник» у службы доступа
@@ -30,6 +31,7 @@ spec:
   # живости (порт узла на них не отвечает). Ручки здесь нет намеренно: законного
   # значения, кроме `Local`, у входа, считающего клиентов по адресу, нет.
   externalTrafficPolicy: Local
+  {{- end }}
   selector:
     {{- include "ui.hostSelectorLabels" . | nindent 4 }}
   ports:

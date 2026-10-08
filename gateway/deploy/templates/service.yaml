@@ -5,7 +5,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.name }}
-  namespace: kacho
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     {{- include "api-gateway.selectorLabels" . | nindent 4 }}

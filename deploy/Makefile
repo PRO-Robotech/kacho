@@ -13,6 +13,7 @@
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
+        stand-ns-up stand-ns-down stand-ns-census \
         bootstrap-cloud-admin
 
 SHELL := bash
@@ -1091,6 +1092,34 @@ stack-up:
 # прогон означал бы ровно то, что мы и ловим — сервис не поднялся в production.
 # На провале печатаем диагностику (pods + describe + логи не-Ready подов), чтобы
 # красный CI был actionable, а не «timed out».
+
+# ── СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН ВНЕШНЕГО КЛАСТЕРА (kacho#3102) ──────
+#
+#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>]
+#   make stand-ns-down   NS=t<задача>-<коротко>
+#   make stand-ns-census [EXPIRED=1]
+#
+# Стек тот же, что поднимает конвейерный «свой стенд» (`dev-prod` — умолчание),
+# но в отдельное пространство имён общего кластера и на образах, ОПУБЛИКОВАННЫХ
+# для ревизии REF (умолчание — голова рабочей копии). Общекластерное не ставится
+# и не снимается; пространство помечается задачей и сроком, и задача, его
+# поднявшая, его же снимает. Подтверждения человеком нет: пишется только своё
+# помеченное пространство и свои помеченные издатели CA, а `kacho` имя не проходит.
+# Кластер называется адресом apiserver'а — STAND_APISERVER (scripts/stand-cluster-pin.sh).
+# Устройство, правила имени и срока — шапка scripts/stand-ns.sh.
+NS ?=
+EXPIRED ?=
+stand-ns-up:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
+	@bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"
+
+stand-ns-down:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — снимать нечего"; exit 2; }
+	@bash scripts/stand-ns.sh down "$(NS)"
+
+stand-ns-census:
+	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
+
 assert-rollout-ready:
 	@set -e; \
 	fail=0; seen=0; \

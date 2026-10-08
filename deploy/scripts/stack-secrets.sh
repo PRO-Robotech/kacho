@@ -318,6 +318,20 @@ is_local_stand() {
   [ -n "$want" ] && [ "$want" = "$have" ]
 }
 
+# ── СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН (kacho#3102) ────────────────────────
+# Пространство, помеченное `kacho.io/stand=test` целью `stand-ns-up`, живёт до
+# своего срока и снимается целиком (`stand-ns-down`): ключевой материал в нём
+# одноразовый так же, как на kind, и площадочного производителя у него нет.
+# Метка читается у ЖИВОГО объекта, а не из переменной: заявить «это тестовое»
+# окружением нельзя. Пространство рабочего стенда сюда не попадает никогда —
+# его имя отвергается до чтения метки.
+is_test_stand_ns() {
+  local label
+  [ "$NS" != kacho ] || return 1
+  label="$(kubectl get namespace "$NS" -o 'jsonpath={.metadata.labels.kacho\.io/stand}' 2>/dev/null)" || return 1
+  [ "$label" = test ]
+}
+
 # ── ВЕДОМОСТЬ ПРОИЗВОДИТЕЛЕЙ ────────────────────────────────────────────────
 # Строка объясняет, КТО заводит секрет на управляемой площадке; функция ниже
 # умеет завести его на локальном стенде. Секрет без строки — находка, а не
@@ -441,7 +455,11 @@ produce() {
   esac
 }
 
-if ! is_local_stand; then
+if is_local_stand; then
+  where="локальный стенд kind"
+elif is_test_stand_ns; then
+  where="стенд проб ns $NS (kacho.io/stand=test)"
+else
   warn "стенд $STACK: требуется $req_n, ОТСУТСТВУЕТ $(printf '%s\n' $missing | grep -c .):"
   for s in $missing; do
     who="$(producer_of "$s")"
@@ -455,7 +473,7 @@ if ! is_local_stand; then
        Заведи перечисленное в ns $NS и повтори."
 fi
 
-log "локальный стенд kind: производителя вне дерева нет — завожу недостающее ($(printf '%s\n' $missing | grep -c .) из $req_n)"
+log "$where: производителя вне дерева нет — завожу недостающее ($(printf '%s\n' $missing | grep -c .) из $req_n)"
 unmade=""
 for s in $missing; do
   produce "$s" || unmade="$unmade $s"

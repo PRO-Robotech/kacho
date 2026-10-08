@@ -70,6 +70,13 @@ Dev-стенд Kachō (kind + Helm + Postgres + ingress) + e2e.
   не находка. Что владелец позван КАЖДОЙ такой работой, держит гейт
   `deploy/stand_verdict_carries_provenance_test.go` (перечень работ ВЫВОДИТСЯ из
   дерева по рецепту подъёма, а не выписан).
+- Стенд проб в СВОЁМ пространстве имён общего кластера (kacho#3102) —
+  `make stand-ns-up NS=t<задача>-<коротко> [STACK=…] [REF=…]`, `make stand-ns-down NS=…`,
+  `make stand-ns-census [EXPIRED=1]`. Кластер называется адресом apiserver'а
+  (`STAND_APISERVER`), подтверждения нет, `kacho` имя не проходит. Образы — опубликованные
+  для REF; общекластерное переиспользуется, свои издатели CA помечены и снимаются вместе
+  со стендом. Проброс консоли, края и приёмника писем и окружение проб —
+  `bash scripts/stand-ns.sh forward NS`. Устройство — шапка `scripts/stand-ns.sh`.
 - Database-per-service — отдельная Postgres-схема `kacho_<domain>` на сервис.
 - e2e/newman гоняются против REST api-gateway. Порт задаётся `GW_PORT` (умолчание 18080)
   и его приходится менять, когда умолчание занято посторонним слушателем: проба посева
