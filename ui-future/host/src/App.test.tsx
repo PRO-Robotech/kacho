@@ -1,10 +1,14 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { stubNetwork } from "@shared/test/network-stub";
 import ts from "typescript";
-import { CEREMONY_ADDRESSES, CEREMONY_ROUTING } from "@shared/pages/auth/ceremony-addresses";
+import {
+  CEREMONY_ADDRESSES,
+  CEREMONY_ROUTING,
+  OPEN_BEFORE_ADDRESS_CONFIRMATION,
+} from "@shared/pages/auth/ceremony-addresses";
 import App from "./App";
 
 const jsonResponse = (body: unknown) => {
@@ -137,8 +141,9 @@ describe("App", () => {
 
   /*
    * Адреса церемоний принадлежат консоли МАРШРУТОМ (приёмка F8, Р3): все шесть
-   * получают маршрут, четыре консоль ведёт, два отвечают названной страницей —
-   * и ни один не уводится замыкающим правилом на панель. Радиус правки назван:
+   * получают маршрут и все шесть консоль ведёт (с приёмки F8-S3 названной
+   * страницей не отвечает ни один) — и ни один не уводится замыкающим правилом
+   * на панель. Радиус правки назван:
    * адрес вне шести (`/error`) по-прежнему уходит на панель.
    */
   // Заголовок экрана по адресу — для ВСЕХ адресов перечня, который читает
@@ -149,10 +154,11 @@ describe("App", () => {
     registration: "Новая учётная запись",
     logout: "Выход из консоли",
     verification: "Подтвердите адрес почты",
+    recovery: "Восстановление доступа",
   };
   const outsideShell = CEREMONY_ADDRESSES.filter((a) => CEREMONY_ROUTING[a].kind !== "in-shell").map((a) => {
     const serving = CEREMONY_ROUTING[a];
-    return [a, serving.kind === "screen" ? SCREEN_TITLE[serving.screen] : "Такого адреса здесь нет"];
+    return [a, serving.kind === "in-shell" ? "" : SCREEN_TITLE[serving.screen]];
   });
 
   it("C1 · перечень адресов церемоний — шесть, без /error и /consent", () => {
@@ -162,7 +168,7 @@ describe("App", () => {
   });
 
   it.each(outsideShell)(
-    "F8-01/F8-03 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель",
+    "F8-01/F8S3-01 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель",
     async (path, title) => {
       window.history.pushState(null, "", path);
       // Экран подтверждения — экран НЕПОДТВЕРЖДЁННОЙ сессии; прочим экранам
@@ -289,13 +295,82 @@ describe("F6b · страж над каркасом консоли", () => {
     expect(network.mock.calls.map(([input]) => urlOf(input))).toContain("/iam/v1/accounts");
   });
 
-  it("F6b-16 · близнец: /recovery у подтверждённой сессии — названная страница, как до этой под-фазы", async () => {
+  it("F6b-16 · близнец: /recovery у подтверждённой сессии формы не показывает — экран уводит на адрес возврата", async () => {
+    // Приёмка F8-S3, §3.1: ветвь `/recovery` F6b-16 переписана — названной
+    // страницы больше нет, подтверждённая сессия формы восстановления не видит
+    // (F8S3-02; уход документа держит RecoveryPage.test.tsx).
     window.history.pushState(null, "", "/recovery");
-    stubConsole(true);
+    const network = stubConsole(true);
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Такого адреса здесь нет" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(network.mock.calls.filter(([input]) => urlOf(input) === "/iam/v1/auth/me").length).toBeGreaterThanOrEqual(
+        2,
+      ),
+    );
+    expect(screen.queryByLabelText("Адрес почты")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Такого адреса здесь нет" })).toBeNull();
+  });
+});
+
+// ─── приёмка F8-S3 · F8S3-19 · маршрут восстановления доступа ────────────────
+describe("F8S3-19 · /recovery — экран за стражем; вида «не ведёт» нет", () => {
+  it("F8S3-19 · /recovery отдаёт экран восстановления, и ни один из шести адресов не отвечает названной страницей", () => {
+    expect(CEREMONY_ROUTING["/recovery"]).toEqual({ kind: "guarded-screen", screen: "recovery" });
+    // Видов решения ровно три, и каждый ведёт экран: вида «не ведёт» нет. У
+    // каждого адреса — названный экран, то есть ни один не отвечает страницей
+    // «такого адреса здесь нет».
+    const kinds = new Set(CEREMONY_ADDRESSES.map((a) => CEREMONY_ROUTING[a].kind as string));
+    expect([...kinds].sort()).toEqual(["guarded-screen", "in-shell", "screen"]);
+    expect(CEREMONY_ADDRESSES.filter((a) => !("screen" in CEREMONY_ROUTING[a]))).toEqual([]);
+  });
+
+  it("F8S3-19 · до подтверждения открыты ровно четыре адреса, /recovery среди них нет", () => {
+    expect([...OPEN_BEFORE_ADDRESS_CONFIRMATION].sort()).toEqual([
+      "/login",
+      "/logout",
+      "/registration",
+      "/verification",
+    ]);
+  });
+
+  it("F8S3-19 · страницы «такого адреса здесь нет» в дереве нет, и прод-файлов, её называющих, — ноль", () => {
+    const uiRoot = fileURLToPath(new URL("../..", import.meta.url));
+    expect(existsSync(`${uiRoot}shared/src/pages/auth/CeremonyAddressNotServedPage.tsx`)).toBe(false);
+    const naming: string[] = [];
+    let read = 0;
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "dist" || entry.name.startsWith(".")) continue;
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\./.test(entry.name)) {
+          read += 1;
+          if (readFileSync(full, "utf8").includes("CeremonyAddressNotServedPage")) naming.push(full);
+        }
+      }
+    };
+    for (const pkg of ["shared/src", "host/src"]) walk(`${uiRoot}${pkg}`);
+    process.stdout.write(
+      `\n[F8S3-19] прод-файлов прочитано ${read} · называющих страницу «не ведёт» ${naming.length}\n`,
+    );
+    expect(read).toBeGreaterThan(100);
+    expect(naming).toEqual([]);
+  });
+
+  it("F8S3-19 · без сессии страж пропускает к экрану; неподтверждённую уводит на подтверждение", async () => {
+    window.history.pushState(null, "", "/recovery");
+    stubConsole(null);
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole("heading", { name: "Восстановление доступа" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/recovery");
+    unmount();
+
+    window.history.pushState(null, "", "/recovery");
+    stubConsole(false);
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Подтвердите адрес почты" })).toBeInTheDocument();
+    expect(`${window.location.pathname}${window.location.search}`).toBe("/verification?returnTo=%2Frecovery");
   });
 });
