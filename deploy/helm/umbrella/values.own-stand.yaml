@@ -239,7 +239,7 @@ pg-registry:
 # названную ветку: образа с таким тегом тогда нет, и пин назвал бы то, чего
 # kubelet не вытянет.
 #
-# порождено-от: 2798 87329e2935c54a3e1ddb3f2099afcedd1607894e
+# порождено-от: 1266 ad74c3ea01b5fa9a882379220c07cd14868e4b47
 #
 # Это голова ветки волны-4 (kacho#2798) в момент, когда она догнала ветку эпика
 # после волны-3; её дерево совпадает с деревом ветки эпика `6edea09c`. Предок
@@ -256,13 +256,13 @@ pg-registry:
 # Служба доступа сюда не входит: её исходники вынесены отдельным продуктом, её
 # пин объявлен базовым слоем и из записи выше не выводится by construction.
 vpc:
-  image: docker.io/prorobotech/kacho-vpc:2798-87329e29
+  image: docker.io/prorobotech/kacho-vpc:1266-ad74c3ea
 compute:
-  image: docker.io/prorobotech/kacho-compute:2798-87329e29
+  image: docker.io/prorobotech/kacho-compute:1266-ad74c3ea
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:2798-87329e29
+  image: docker.io/prorobotech/kacho-geo:1266-ad74c3ea
 api-gateway:
-  image: docker.io/prorobotech/kacho-api-gateway:2798-87329e29
+  image: docker.io/prorobotech/kacho-api-gateway:1266-ad74c3ea
   # АДРЕС КЛИЕНТА (kacho#3028): на этом стенде к краю звонят ДВА звена фронта —
   # контроллер входа (внешний вход края, слой values.prod.yaml) и раздача
   # консоли (включена слоем values.own.yaml). Оба названы поимённо безголовыми
@@ -275,35 +275,35 @@ api-gateway:
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: 2798-87329e29
+    tag: 1266-ad74c3ea
 storage:
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: 2798-87329e29
+    tag: 1266-ad74c3ea
 # КОНСОЛЬ — та же ревизия, ПОЛНОЙ формой тега: сборка консоли коммит не режет, и
 # реестр несёт у её образов теги только полной формы (замер 2026-09-30: 200 на
 # полную форму у хозяина и у каждого из восьми модулей, 404 на сокращённую
 # `2798-87329e29` у хозяина и у модуля обзора). Включает консоль накладка стенда
 # (values.own.yaml), а не этот слой: здесь — только то, ЧЕМ она поднимается.
 uif:
-  image: docker.io/prorobotech/kacho-ui-future-host:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+  image: docker.io/prorobotech/kacho-ui-future-host:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   imagePullPolicy: IfNotPresent
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-vpc:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-compute:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-storage:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-nlb:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-registry:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-iam:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:2798-87329e2935c54a3e1ddb3f2099afcedd1607894e
+    image: docker.io/prorobotech/kacho-ui-future-system:1266-ad74c3ea01b5fa9a882379220c07cd14868e4b47
 # ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЯЕТСЯ, И ЭТО СКАЗАНО, А НЕ УМОЛЧАНО.
 #
 # Этот файл — слой площадки: он называет образы и адреса, а посадку безопасности
@@ -322,4 +322,4 @@ uif:
 registry:
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: 2798-87329e29
+    tag: 1266-ad74c3ea
