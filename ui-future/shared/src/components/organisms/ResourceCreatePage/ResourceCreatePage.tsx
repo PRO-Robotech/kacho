@@ -6,7 +6,7 @@ import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api } from "@shared/api/client";
-import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { presetFieldsForSpec } from "@shared/lib/preset-fields";
 import { buildCreateBody } from "@shared/lib/update-mask";
@@ -145,14 +145,12 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
 
   // Исход мутации — через единый механизм (`use-signalled-mutation`): он же
   // разбирает ответ, поллит операцию и сообщает про все три исхода одной формой.
-  // Мутация уходит на admin-плоскость ресурса, если она у него есть: публичный
-  // путь geo Region/Zone обслуживает только чтение (POST по нему не
-  // смаршрутизирован никем).
+  // Мутация уходит на путь ресурса — тот же, с которого он читается (#3094).
   const mutation = useSignalledMutation<Record<string, unknown>>({
     verb: "create",
     subject: (body) => subjectOfSpec(spec, subjectNameOf(body)),
     expectOperation: spec.mutationsReturnOperation !== false,
-    mutationFn: (item) => api.create(mutationBasePath(spec), item),
+    mutationFn: (item) => api.create(spec.apiPath, item),
     onSucceeded: () => {
       invalidate(spec.id, filterValue ?? null);
       void navigate(backHref);

@@ -20,6 +20,12 @@ import { registerAndSignIn, test } from "./fixtures";
  * администратора», а край на их мутации отвечает внешнему вызывающему «маршрута
  * нет» — кнопка обещала действие, которого на этой посадке нет.
  *
+ * С kacho#3094 все четыре экрана стоят на публичных службах — консоль посадку
+ * больше не спрашивает, и у каждого экрана ветвь одна: мутация обслуживается
+ * на любой посадке, кнопка на месте. Ответ края на неё по-прежнему
+ * утверждается: «маршрута нет» на публичной мутации — это потерянная служба,
+ * а не посадка.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * ЧТО УТВЕРЖДАЕТСЯ И ОТКУДА БЕРЁТСЯ ОЖИДАНИЕ
  *
@@ -63,28 +69,35 @@ interface Surface {
 
 const SURFACES: Surface[] = [
   {
+    // Регионы, зоны и администраторы кластера — на публичных службах (kacho#3094:
+    // geo #3092, ClusterService края #3093): ветвь у них, как у пулов адресов,
+    // одна — served — на обеих посадках.
     name: "регионы",
     address: "/system/regions",
-    mutation: "/geo/v1/internal/regions",
+    mutation: "/geo/v1/regions",
     action: (page) => page.getByRole("link", { name: /Создать/ }),
     rendered: (page) => page.getByText("Зоны", { exact: true }).first(),
+    servedOnEveryLanding: true,
   },
   {
     name: "зоны",
     address: "/system/zones",
-    mutation: "/geo/v1/internal/zones",
+    mutation: "/geo/v1/zones",
     action: (page) => page.getByRole("link", { name: /Создать/ }),
     rendered: (page) => page.getByText("Регионы", { exact: true }).first(),
+    servedOnEveryLanding: true,
   },
   {
     name: "администраторы кластера",
     address: "/system/cluster/admins",
-    mutation: "/iam/v1/internal/cluster/admins",
+    mutation: "/iam/v1/cluster/admins",
     action: (page) =>
       page.getByRole("button", {
-        name: "Добавить администратора (устаревший путь)",
+        name: "Добавить администратора",
+        exact: true,
       }),
     rendered: (page) => page.getByText("Зоны", { exact: true }).first(),
+    servedOnEveryLanding: true,
   },
   {
     // Пулы адресов — экран, чьё поведение фикс #3091 развёл с соседями: их
@@ -110,6 +123,7 @@ test("раздел «Система» показывает мутацию рег
   page,
 }, testInfo) => {
   // verifies #3091 — ложное «плоскость есть» после ADM-1 S1: кнопки мутаций на внешней посадке.
+  // verifies #3094 — экраны регионов, зон и администраторов кластера на публичных службах: кнопки на любой посадке.
   test.setTimeout(240_000);
 
   // Ответ края на мутацию каждого экрана — до входа, анонимно.

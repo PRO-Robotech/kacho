@@ -1,16 +1,18 @@
 // Contract lock for the geo (Region/Zone) client surface.
 //
 // Ground truth: proto/kacho/cloud/geo/v1/{region,zone,geo_common}.proto plus the
-// services on top of them — public read-only RegionService/ZoneService under
-// /geo/v1/{regions,zones}, admin CRUD under /geo/v1/internal/… . The public
-// projection is lean: the raw `status` and the whole infra° block live on the
-// Internal* projection only (two-projection).
+// public RegionService/ZoneService on top of them — reads AND the administrator's
+// Create/Update/Delete under /geo/v1/{regions,zones} (#3092). The console speaks
+// to nothing else (#3094): the raw `status` and the infra° block are not on the
+// public read, and `status` is derived from the projection.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
-  GEO_INTERNAL_REGIONS_PATH,
-  GEO_INTERNAL_ZONES_PATH,
   GEO_REGIONS_PATH,
   GEO_ZONES_PATH,
+  geoStatusOfRegion,
+  geoStatusOfZone,
   openForPlacementLabel,
   placementBlockedText,
   readCountHint,
@@ -18,15 +20,32 @@ import {
 } from "./geo";
 
 describe("geo REST paths", () => {
-  it("keeps reads on the public surface and mutations on the internal one", () => {
-    // Reads are project-scope EXEMPT public RPCs; the gateway serves them on the
-    // external listener.
+  it("keeps reads and mutations on the public surface", () => {
     expect(GEO_REGIONS_PATH).toBe("/geo/v1/regions");
     expect(GEO_ZONES_PATH).toBe("/geo/v1/zones");
-    // Admin CRUD lives on the self-describing /geo/v1/internal/… segment. A
-    // POST/PATCH/DELETE on the public path is deliberately not routed at all.
-    expect(GEO_INTERNAL_REGIONS_PATH).toBe("/geo/v1/internal/regions");
-    expect(GEO_INTERNAL_ZONES_PATH).toBe("/geo/v1/internal/zones");
+  });
+
+  it.each(["geo.ts", "cluster.ts"])("%s names no internal path — the external edge does not serve one (#3094)", (file) => {
+    // The issue's predicate verbatim: `grep -c '/internal/'` over the two clients is 0.
+    const text = readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
+    expect(text.length).toBeGreaterThan(0);
+    expect(text.split("\n").filter((l) => l.includes("/internal/"))).toEqual([]);
+  });
+});
+
+describe("raw status derived from the public projection", () => {
+  it("region: openForPlacement° is status==UP; absent says nothing", () => {
+    expect(geoStatusOfRegion({ open_for_placement: true })).toBe("UP");
+    expect(geoStatusOfRegion({ open_for_placement: false })).toBe("DOWN");
+    expect(geoStatusOfRegion({})).toBeUndefined();
+  });
+
+  it("zone: zone precedence of the blocked reason determines the zone's own status", () => {
+    expect(geoStatusOfZone({ open_for_placement: true })).toBe("UP");
+    expect(geoStatusOfZone({ open_for_placement: false, placement_blocked_reason: "ZONE_DOWN" })).toBe("DOWN");
+    expect(geoStatusOfZone({ open_for_placement: false, placement_blocked_reason: "REGION_DOWN" })).toBe("UP");
+    expect(geoStatusOfZone({ open_for_placement: false, placement_blocked_reason: "NONE" })).toBeUndefined();
+    expect(geoStatusOfZone({})).toBeUndefined();
   });
 });
 

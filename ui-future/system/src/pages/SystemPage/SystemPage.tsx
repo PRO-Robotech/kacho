@@ -7,10 +7,14 @@
 //
 // Ресурсы (registry-driven, generic ResourceListPage/CreatePage/DetailPage/
 // EditPage — location-relative, панель/страница-формы):
-//   Regions       — /geo/v1/regions             (чтение RegionService; мутации InternalRegionService — только admin-плоскость)
-//   Zones         — /geo/v1/zones               (чтение ZoneService; мутации InternalZoneService — только admin-плоскость)
+//   Regions       — /geo/v1/regions             (RegionService — чтение и мутации публичные, #3092)
+//   Zones         — /geo/v1/zones               (ZoneService — чтение и мутации публичные, #3092)
 //   AddressPools  — /vpc/v1/addressPools        (AddressPoolService — публичная с ADM-1 S1; CIDR через :addCidrBlocks/:removeCidrBlocks)
-//   Cluster admins— /iam/v1/internal/cluster    (кастомная ClusterAdminsPage; InternalClusterService — только admin-плоскость)
+//   Cluster admins— /iam/v1/cluster             (кастомная ClusterAdminsPage; ClusterService — публичная, край #3093)
+//
+// Все четыре экрана — на публичных службах, поэтому от посадки края (внешний
+// или внутренний слушатель) не зависит ни один: кнопки мутаций показываются
+// везде, а права решает край — отказ приходит словами (#3094).
 // Все мутации async → Operation (poll /operations/{id}).
 //
 // Плюс /system/search — общая admin-страница поиска по id/имени (живёт в shared).
@@ -20,12 +24,10 @@
 // память, а SystemPage.proxy-coverage.test.ts: он берёт таблицу целей у самой
 // страницы поиска и правила — у загруженного vite.config.ts.
 
-import { lazy, Suspense, useMemo, type ReactNode } from "react";
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { Spin } from "antd";
-import { REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
-import { adminPlaneMutable, useAdminPlanePosture } from "@shared/lib/admin-plane-posture";
-import { AdminPlaneUnavailable } from "@shared/components/molecules/AdminPlaneUnavailable";
+import { REGISTRY } from "@shared/lib/resource-registry";
 import { AdminLayout } from "@/components/organisms/AdminLayout";
 import { ResourceListPage } from "@shared/components/organisms/ResourceListPage";
 import { ResourceCreatePage } from "@shared/components/organisms/ResourceCreatePage";
@@ -56,43 +58,7 @@ const zonesSpec = REGISTRY.zones;
 const addressPoolsSpec = REGISTRY["address-pools"];
 export const ROUTED_SPECS = [regionsSpec, zonesSpec, addressPoolsSpec];
 
-/**
- * Спека без мутаций: чтение остаётся, кнопок создания/правки/удаления нет.
- *
- * Снимаются они у регионов и зон — их мутации обслуживает только admin-плоскость
- * (`InternalRegionService`/`InternalZoneService`), — когда `adminPlaneMutable`
- * говорит «нет». Пулы адресов не снимаются никогда: с ADM-1 S1 их мутации
- * обслуживает публичная `AddressPoolService` на обоих слушателях края, и снятые
- * на внешней посадке кнопки отняли бы у администратора облака работающее
- * действие (#3091).
- */
-function withoutMutations(spec: ResourceSpec): ResourceSpec {
-  return { ...spec, ops: { create: false, update: false, delete: false } };
-}
-
-/**
- * Экран, чьи мутации живут только на admin-плоскости: на посадке без неё над ним
- * — слова о том, что раздел здесь недоступен. Над пулами адресов этих слов нет:
- * там они были бы ложью.
- */
-function OnAdminPlane({ absent, children }: { absent: boolean; children: ReactNode }) {
-  return (
-    <>
-      {absent && <AdminPlaneUnavailable />}
-      {children}
-    </>
-  );
-}
-
 export function SystemRoutes() {
-  const posture = useAdminPlanePosture();
-  const mutable = adminPlaneMutable(posture);
-  const absent = posture === "absent";
-  const [regions, zones] = useMemo(
-    () => (mutable ? [regionsSpec, zonesSpec] : [regionsSpec, zonesSpec].map(withoutMutations)),
-    [mutable],
-  );
-  const plane = (node: ReactNode) => <OnAdminPlane absent={absent}>{node}</OnAdminPlane>;
   return (
     <Routes>
       <Route index element={<Navigate to="regions" replace />} />
@@ -100,16 +66,16 @@ export function SystemRoutes() {
       {/* List/cluster страницы — в общей оболочке раздела (вертикальный рейл
           пунктов, тот же, что на карточке ресурса). */}
       <Route element={<AdminLayout />}>
-        <Route path="regions" element={plane(<ResourceListPage spec={regions} panelForms />)} />
-        <Route path="zones" element={plane(<ResourceListPage spec={zones} panelForms />)} />
+        <Route path="regions" element={<ResourceListPage spec={regionsSpec} panelForms />} />
+        <Route path="zones" element={<ResourceListPage spec={zonesSpec} panelForms />} />
         <Route path="address-pools" element={<ResourceListPage spec={addressPoolsSpec} panelForms />} />
         <Route
           path="cluster/admins"
-          element={plane(
+          element={
             <Suspense fallback={spin}>
               <ClusterAdminsPage />
-            </Suspense>,
-          )}
+            </Suspense>
+          }
         />
         {/* ЗДЕСЬ БЫЛ раздел администратора «Пределы» — назначение величин.
             Служба, которой он правил величины, выпилена из службы доступа
@@ -120,13 +86,13 @@ export function SystemRoutes() {
       </Route>
 
       {/* Create/Detail/Edit — страница-формы (без рейла раздела). */}
-      <Route path="regions/create" element={plane(<ResourceCreatePage spec={regions} />)} />
-      <Route path="regions/:uid" element={plane(<ResourceDetailPage spec={regions} />)} />
-      <Route path="regions/:uid/edit" element={plane(<ResourceEditPage spec={regions} />)} />
+      <Route path="regions/create" element={<ResourceCreatePage spec={regionsSpec} />} />
+      <Route path="regions/:uid" element={<ResourceDetailPage spec={regionsSpec} />} />
+      <Route path="regions/:uid/edit" element={<ResourceEditPage spec={regionsSpec} />} />
 
-      <Route path="zones/create" element={plane(<ResourceCreatePage spec={zones} />)} />
-      <Route path="zones/:uid" element={plane(<ResourceDetailPage spec={zones} />)} />
-      <Route path="zones/:uid/edit" element={plane(<ResourceEditPage spec={zones} />)} />
+      <Route path="zones/create" element={<ResourceCreatePage spec={zonesSpec} />} />
+      <Route path="zones/:uid" element={<ResourceDetailPage spec={zonesSpec} />} />
+      <Route path="zones/:uid/edit" element={<ResourceEditPage spec={zonesSpec} />} />
 
       {/* Поиск — адрес, который рекламирует рейл хоста; без этого маршрута
           «Поиск» молча уводил на список регионов через catch-all ниже. */}
