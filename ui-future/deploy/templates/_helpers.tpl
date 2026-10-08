@@ -160,10 +160,11 @@
 {{- end -}}
 {{- $host := $u.host -}}
 {{- if regexMatch ":[0-9]+$" $host -}}
-{{- if not (hasSuffix ":443" $host) -}}
-{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q называет порт, отличный от 443, а вход публикует TLS на 443" $origin) -}}
+{{- $port := regexFind "[0-9]+$" $host -}}
+{{- if and (ne $port "443") (ne (include "ui.publicFrontServiceType" .) "ClusterIP") -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q называет порт, отличный от 443, а вход публикует TLS на 443 (порт проброса допустим только у входа, который площадка не публикует: publicFront.service.type=ClusterIP)" $origin) -}}
 {{- end -}}
-{{- $host = trimSuffix ":443" $host -}}
+{{- $host = trimSuffix (printf ":%s" $port) $host -}}
 {{- end -}}
 {{- $host -}}
 {{- end -}}
@@ -252,6 +253,17 @@
 {{- end -}}
 {{- end -}}
 
+{{- /*
+ui.publicFrontServiceType — кто публикует вход (values.yaml, `publicFront.service.type`).
+Закрытый перечень: значение вне него — отказ рендера, а не тихий LoadBalancer.
+*/}}
+{{- define "ui.publicFrontServiceType" -}}
+{{- $t := .Values.publicFront.service.type | default "LoadBalancer" -}}
+{{- if not (has $t (list "LoadBalancer" "ClusterIP")) -}}
+{{- fail (printf "uif.publicFront.service.type=%q: допустимы LoadBalancer (вход публикует площадка) и ClusterIP (вход пробрасывает пользующийся)" $t) -}}
+{{- end -}}
+{{- $t -}}
+{{- end -}}
 {{- define "ui.publicFrontServiceName" -}}
 {{- .Values.publicFront.service.name | default (printf "%s-public" (include "ui.hostName" .)) -}}
 {{- end -}}

@@ -174,3 +174,7 @@ terraform
 # сборки он промахивает слой `COPY . .` мимо кэша на КАЖДОМ прогоне.
 go.work
 go.work.sum
+
+# Рабочие файлы стенда проб в своём пространстве имён (deploy/scripts/stand-ns.sh,
+# kacho#3102) — ни один Dockerfile их не читает.
+deploy/.stand-ns/

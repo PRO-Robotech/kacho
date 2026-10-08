@@ -13,6 +13,7 @@
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
+        stand-ns-up stand-ns-down stand-ns-run stand-ns-census \
         bootstrap-cloud-admin
 
 SHELL := bash
@@ -1091,6 +1092,66 @@ stack-up:
 # прогон означал бы ровно то, что мы и ловим — сервис не поднялся в production.
 # На провале печатаем диагностику (pods + describe + логи не-Ready подов), чтобы
 # красный CI был actionable, а не «timed out».
+
+# ── СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН ВНЕШНЕГО КЛАСТЕРА (kacho#3102) ──────
+#
+#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>]
+#   make stand-ns-down   NS=t<задача>-<коротко>
+#   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
+#   make stand-ns-census [EXPIRED=1]
+#
+# stand-ns-run — подъём → проброс → CMD (в окружении CONSOLE_BASE, EDGE_BASE и
+# файла проб стенда, из каталога DIR; умолчание — корень репозитория) → снятие
+# ВСЕГДА: успех, падение, kill. KEEP=1 оставляет стенд для разбора на
+# STAND_TTL_HOURS (≤ 12 ч).
+#
+# КОД ВЫХОДА. Код — у `scripts/stand-ns.sh run`: код CMD; 125 — CMD не исполнялась
+# (стенд не поднят, условие прогона не создано). Цель make его НЕ передаёт: GNU make
+# на любом ненулевом коде рецепта выходит кодом 2, и `exec` в рецепте этого не
+# меняет — make ждёт свою оболочку и читает её код сам (замерено, GNU Make 4.4.1:
+# `exec bash -c 'exit 7'` → make 2). Поэтому цель печатает код скрипта ПОСЛЕДНЕЙ
+# строкой рецепта — `stand-ns-run: код scripts/stand-ns.sh run = N` — и выходит
+# этим же кодом в рецепте (make снаружи: 0 либо 2, и строку «Ошибка N» ниже
+# печатает он сам). Вызывающий, которому нужен код как число (125 отличить от
+# красного), зовёт скрипт: `bash deploy/scripts/stand-ns.sh run NS … -- КОМАНДА…`.
+# Команда идёт переменной, а не словами после `--`: make читает их как цели и
+# присваивания. Сам скрипт форму `-- КОМАНДА…` принимает: scripts/stand-ns.sh run.
+# CMD передаётся НЕРАСКРЫТЫМ ($(value CMD)): `$EDGE_BASE` в команде раскрывает
+# оболочка прогона, а не make (иначе он стал бы пустой строкой до подъёма).
+#
+# Стек тот же, что поднимает конвейерный «свой стенд» (`dev-prod` — умолчание),
+# но в отдельное пространство имён общего кластера и на образах, ОПУБЛИКОВАННЫХ
+# для ревизии REF (умолчание — голова рабочей копии). Общекластерное не ставится
+# и не снимается; пространство помечается задачей и сроком, и задача, его
+# поднявшая, его же снимает. Подтверждения человеком нет: пишется только своё
+# помеченное пространство и свои помеченные издатели CA, а `kacho` имя не проходит.
+# Кластер называется адресом apiserver'а — STAND_APISERVER (scripts/stand-cluster-pin.sh).
+# Устройство, правила имени и срока — шапка scripts/stand-ns.sh.
+NS ?=
+EXPIRED ?=
+stand-ns-up:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
+	@bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"
+
+stand-ns-down:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — снимать нечего"; exit 2; }
+	@bash scripts/stand-ns.sh down "$(NS)"
+
+stand-ns-run:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
+	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
+	@cd "$(CURDIR)/../$(DIR)" || exit 2; \
+	bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
+	code=$$?; \
+	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \
+	  *) what="команда завершилась ненулевым кодом" ;; esac; \
+	echo "stand-ns-run: код scripts/stand-ns.sh run = $$code ($$what)"; \
+	exit $$code
+
+stand-ns-census:
+	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
+
 assert-rollout-ready:
 	@set -e; \
 	fail=0; seen=0; \

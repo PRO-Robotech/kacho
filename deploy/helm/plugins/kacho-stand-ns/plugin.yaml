@@ -1,0 +1,19 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Пост-обработчик рендера helm для стенда проб в своём пространстве имён
+# (kacho#3102). Подключается ТОЛЬКО целью `make -C deploy stand-ns-up`
+# (deploy/scripts/stand-ns.sh): она ставит HELM_PLUGINS на каталог выше и
+# называет обработчик `--post-renderer kacho-stand-ns`. Глобально не
+# устанавливается; рабочий стенд и прочие цели его не видят.
+#
+# Что делает — tools/standns (перенос адресов соседей, издателей CA и корня CA
+# в пространство стенда; отказ на общекластерном и на чужом пространстве).
+apiVersion: v1
+type: postrenderer/v1
+name: kacho-stand-ns
+version: 1.0.0
+runtime: subprocess
+runtimeConfig:
+  platformCommand:
+    - command: ${HELM_PLUGIN_DIR}/relocate.sh
