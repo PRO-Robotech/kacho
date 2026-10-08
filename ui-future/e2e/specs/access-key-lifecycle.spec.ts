@@ -28,8 +28,10 @@ import { ACCESS_KEY_LIFECYCLE_CONDITIONS, FIXTURE_UNMET_PREFIX } from "./produce
  *
  * Сценарии путь не заводит заново — он исполняет сценарии двух одобренных
  * приёмок ОДНИМ человеком и ОДНИМ ключом подряд: заведение экраном (F8-50),
- * вход ключом (F8S4-02 при проверке пользователя, F8S4-03 без неё), снятие
- * (F8-56) и отказ снятого (F8S4-04). Порознь эти сценарии держат свои пробы
+ * вход ключом (F8S4-02), снятие (F8-56) и отказ снятого (F8S4-04). Без
+ * проверки пользователя путь кончается на стыке входа (F8S4-03 редакции 4):
+ * ключ, заведённый экраном, браузер при входе без имени отвергает, и экран
+ * называет следующий шаг. Порознь эти сценарии держат свои пробы
  * (`account-access-keys.spec.ts`, `access-key-login.spec.ts`), и у каждой своё
  * «Дано» посевом: ключ входа там заводит КОД ПОСЕВА, а не экран. Здесь посева
  * ключа нет вовсе — ключ, которым человек входит, завёл экран консоли настоящей
@@ -54,6 +56,12 @@ import { ACCESS_KEY_LIFECYCLE_CONDITIONS, FIXTURE_UNMET_PREFIX } from "./produce
  * Иначе тест «уровень 3» был бы зелёным на любом уровне, совпавшем с ожиданием
  * случайно, а не по построению.
  *
+ * Без проверки пользователя уровня «2» путь не утверждает и не может: при
+ * входе без имени (испытание службы называет пустой `allowCredentials`)
+ * браузер утверждения с UV = 0 не выдаёт вовсе (N17 приёмки F8-S4); уровень
+ * такого ключа держит проба службы (N18). Путь утверждает то, что видит
+ * человек: вход не начался, следующий шаг назван.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * УСЛОВИЕ П4 — ДВА ПРИЗНАКА, А НЕ ОДНА ФРАЗА
  *
@@ -75,6 +83,12 @@ import { ACCESS_KEY_LIFECYCLE_CONDITIONS, FIXTURE_UNMET_PREFIX } from "./produce
 const ACCESS_KEY_BEGIN = "/iam/v1/auth/access-key/begin";
 const ACCESS_KEY_LOGIN = "/iam/v1/auth/access-key/login";
 const FORM_LANE_VERBS = [LANE.logout, ACCESS_KEY_BEGIN, ACCESS_KEY_LOGIN] as const;
+
+/**
+ * Текст консоли на отказ церемонии браузером (приёмка F8-S4, Р5) — дословно,
+ * литералом: проба судит то, что видит человек, а не константу экрана.
+ */
+const ACCESS_KEY_BROWSER_REFUSED = "Вход ключом прерван в браузере — повторите или войдите паролем";
 
 /** Тело отказа входа — одно на все причины (Ф13 Р7). */
 const AUTHENTICATION_FAILED = { code: 16, message: "authentication failed", details: [] };
@@ -317,7 +331,7 @@ function sentFlags(res: LaneAnswer): number {
 }
 
 /** Шаг входа ключом: `200`, уровень — по факту проверки пользователя, уход на адрес возврата. */
-async function signInWithKey(w: Walker, userVerification: boolean) {
+async function signInWithKey(w: Walker) {
   const { page } = w;
   const res = await pressKey(page, "/settings");
   expect(res.status(), `вход ключом, заведённым экраном, не прошёл: ${await res.text()}`).toBe(200);
@@ -325,12 +339,9 @@ async function signInWithKey(w: Walker, userVerification: boolean) {
   const flags = sentFlags(res);
   expect(flags & FLAG_UP, "утверждение без флага присутствия пользователя").toBe(FLAG_UP);
   const verified = (flags & FLAG_UV) === FLAG_UV;
-  expect(verified, "флаг проверки пользователя — не тот, что даёт аутентификатор сценария").toBe(userVerification);
+  expect(verified, "флаг проверки пользователя — не тот, что даёт аутентификатор сценария").toBe(true);
   const body = (await res.json()) as { session?: { assuranceLevel?: unknown } };
-  expect(
-    String(body.session?.assuranceLevel ?? ""),
-    `уровень сессии при ${verified ? "проверке пользователя (UV)" : "одном присутствии (UP)"}`,
-  ).toBe(verified ? "3" : "2");
+  expect(String(body.session?.assuranceLevel ?? ""), "уровень сессии при проверке пользователя (UV)").toBe("3");
 
   await expectAddress(page, "/settings", "после входа ключом консоль не увела на адрес возврата");
   expect(await sessionHeld(page.context()), "после входа ключом у браузера нет носителя сессии").toBe(true);
@@ -369,6 +380,29 @@ async function revokedKeyRefused(w: Walker) {
   for (const control of [s.email, s.password, s.submit, s.key]) await expect(control).toBeEnabled();
 }
 
+/**
+ * Стык входа без проверки пользователя (F8S4-03 редакции 4): испытание выдано,
+ * церемонию отверг браузер, глагол входа не позван, следующий шаг назван.
+ */
+async function keyRefusedByBrowser(w: Walker) {
+  const { page, census } = w;
+  await page.goto(`/login?returnTo=${encodeURIComponent("/settings")}`, { waitUntil: "domcontentloaded" });
+  const s = loginScreen(page);
+  await expect(s.key, "кнопки входа ключом на /login нет").toBeVisible({ timeout: 30_000 });
+  const challenge = answerTo(page, "POST", ACCESS_KEY_BEGIN);
+  await s.key.click();
+  const issued = await challenge;
+  expect(issued.status(), `испытание входа ключом не выдано: ${await issued.text()}`).toBe(200);
+  await expect(s.refusal, "отказ церемонии браузером не назван на экране").toHaveText(ACCESS_KEY_BROWSER_REFUSED);
+  expect(
+    [ACCESS_KEY_BEGIN, ACCESS_KEY_LOGIN].map((p) => census.matching("POST", p).length),
+    `после отказа браузера глагол входа позван:\n${census.describe()}`,
+  ).toEqual([1, 0]);
+  expect(pathOf(page), "после отказа браузера адрес страницы сменился").toBe("/login");
+  expect(await sessionHeld(page.context()), "после отказа браузера у браузера появился носитель сессии").toBe(false);
+  for (const control of [s.email, s.password, s.submit, s.key]) await expect(control).toBeEnabled();
+}
+
 // ─── путь целиком ─────────────────────────────────────────────────────────────
 
 async function walkLifecycle(page: Page, testInfo: TestInfo, scenario: string, userVerification: boolean) {
@@ -390,7 +424,14 @@ async function walkLifecycle(page: Page, testInfo: TestInfo, scenario: string, u
     const name = `key-${scenario.toLowerCase()}`;
     const id = await enrolOnSettings(w, auth, name);
     await signOut(w);
-    await signInWithKey(w, userVerification);
+    if (!userVerification) {
+      // Без проверки пользователя путь кончается здесь: входа нет, и снимать
+      // ключ экраном некому — сессии нет (F8S4-03 редакции 4).
+      await keyRefusedByBrowser(w);
+      expectNoProvider(w.census);
+      return;
+    }
+    await signInWithKey(w);
     await revokeOnSettings(w, name, id);
     await signOut(w);
     await revokedKeyRefused(w);
@@ -415,10 +456,11 @@ test("F8S4-02 · путь ключа сквозь консоль: завести
   await walkLifecycle(page, testInfo, "F8S4-02-path", true);
 });
 
-test("F8S4-03 · путь ключа сквозь консоль без проверки пользователя: вход ключом даёт уровень «2», удалённый отказан", async ({
+test("F8S4-03 · путь ключа сквозь консоль без проверки пользователя: ключ, заведённый экраном, при входе без имени браузер отвергает — экран называет следующий шаг", async ({
   page,
 }, testInfo) => {
-  // verifies #3059 — вариант пути F8S4-02, различие одно: аутентификатор
-  // подтверждает только присутствие (F8S4-03).
+  // verifies #3059 — F8S4-03 редакции 4 приёмки F8-S4 на пути F8-50 → выход →
+  // вход ключом; близнец пути F8S4-02, различие одно: аутентификатор
+  // подтверждает только присутствие. Уровня «2» здесь нет (N17, N18).
   await walkLifecycle(page, testInfo, "F8S4-03-path", false);
 });

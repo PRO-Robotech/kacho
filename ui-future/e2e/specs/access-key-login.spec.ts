@@ -45,6 +45,13 @@ const BEGIN = "/iam/v1/auth/access-key/begin";
 const ACCESS_KEY_LOGIN = "/iam/v1/auth/access-key/login";
 const ACCESS_KEY_VERBS = [BEGIN, ACCESS_KEY_LOGIN] as const;
 
+/**
+ * Текст консоли на отказ церемонии браузером (приёмка F8-S4, Р5) — дословно;
+ * литерал, а не импорт экрана: проба судит то, что видит человек, а не
+ * константу, которую экран мог бы переписать вместе с ней.
+ */
+const ACCESS_KEY_BROWSER_REFUSED = "Вход ключом прерван в браузере — повторите или войдите паролем";
+
 /** Тело отказа входа — одно на все причины (Ф13 Р7). */
 const AUTHENTICATION_FAILED = { code: 16, message: "authentication failed", details: [] };
 
@@ -260,15 +267,32 @@ test("F8S4-02 · вход ключом проходит целиком и уво
   expect(await sessionHeld(page.context()), "после входа ключом у браузера нет носителя сессии").toBe(true);
 });
 
-test("F8S4-03 · ключ без проверки пользователя входит с уровнем «2»", async ({ page }, testInfo) => {
-  // verifies #1282 — вариант F8S4-02: аутентификатор пользователя не проверяет.
+test("F8S4-03 · ключ без проверки пользователя при входе без имени: браузер отверг церемонию, консоль называет следующий шаг, глагол входа не зовётся", async ({
+  page,
+}, testInfo) => {
+  // verifies #1282 — F8S4-03 редакции 4 приёмки F8-S4 (переутверждение — #3059):
+  // близнец F8S4-02, различие одно — аутентификатор пользователя не проверяет.
+  // Уровень «2» такого ключа здесь не утверждается: в браузере утверждения с
+  // UV = 0 на пути входа без имени нет (N17), свойство держит проба службы (N18).
   const { key } = await given(testInfo, "F8S4-03", { userVerification: false });
+  const census = ceremonyCensus(page.context());
   const s = await openLogin(page, key);
-  const res = await pressKey(page, () => s.key.click());
-  expect(res.status(), `вход ключом не прошёл: ${await res.text()}`).toBe(200);
-  expect(await sessionLevel(res), "уровень сессии ключа без проверки пользователя").toBe("2");
-  await expectAddress(page, "/dashboard", "после входа ключом консоль не увела на адрес возврата");
-  expect(await sessionHeld(page.context()), "после входа ключом у браузера нет носителя сессии").toBe(true);
+  const challenge = page.waitForResponse(
+    (r) => r.request().method() === "POST" && new URL(r.url()).pathname === BEGIN,
+  );
+  await s.key.click();
+  const issued = await challenge;
+  expect(issued.status(), `испытание входа ключом не выдано: ${await issued.text()}`).toBe(200);
+
+  // Отказ браузера назван текстом консоли (Р5) — ждётся условие, а не время.
+  await expect(s.refusal, "отказ церемонии браузером не назван на экране").toHaveText(ACCESS_KEY_BROWSER_REFUSED);
+  expect(
+    [countOf(census, "POST", BEGIN), countOf(census, "POST", ACCESS_KEY_LOGIN)],
+    `после отказа браузера глагол входа позван:\n${census.describe()}`,
+  ).toEqual([1, 0]);
+  expect(pathOf(page), "после отказа браузера адрес страницы сменился").toBe("/login");
+  expect(await sessionHeld(page.context()), "после отказа браузера у браузера появился носитель сессии").toBe(false);
+  for (const control of [s.email, s.password, s.submit, s.key]) await expect(control).toBeEnabled();
 });
 
 test("F8S4-04 · снятый ключ: назван единый отказ, сессии нет, пароль доступен", async ({ page }, testInfo) => {
