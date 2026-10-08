@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { expect, type Page, type Request, type Route, type Worker } from "@playwright/test";
 import { test } from "./fixtures";
 import { conditionNotCreated } from "./mail-receiver";
@@ -31,9 +31,17 @@ import { conditionNotCreated } from "./mail-receiver";
  * `issue-2917` З10): тот же файл судит константу консоли модульной пробой.
  */
 
-const VECTORS_PATH = fileURLToPath(
-  new URL("../../../gateway/internal/middleware/anonmail/testdata/pow_vectors.json", import.meta.url),
-);
+/**
+ * Путь к общему файлу векторов берётся от каталога проб, который объявляет
+ * конфигурация прогона (`test.info().project.testDir` → `ui-future/e2e/specs`),
+ * а не от `import.meta.url`: прогонщик проб загружает спеки как CommonJS, и
+ * файл с `import.meta` Node читает как модуль ES, где `require` загрузчика
+ * прогонщика не определён, — спек не загружается, и с ним ни одна проба набора.
+ */
+function vectorsPath(): string {
+  const e2eRoot = path.dirname(test.info().project.testDir);
+  return path.join(e2eRoot, "../../gateway/internal/middleware/anonmail/testdata/pow_vectors.json");
+}
 
 interface PowVectors {
   challengeTtlSeconds: number;
@@ -42,6 +50,7 @@ interface PowVectors {
 }
 
 function loadVectors(): PowVectors {
+  const VECTORS_PATH = vectorsPath();
   const raw = JSON.parse(readFileSync(VECTORS_PATH, "utf8")) as PowVectors;
   if (!Number.isInteger(raw.solverBudgetSeconds) || !Number.isInteger(raw.challengeTtlSeconds)) {
     throw new Error(`фикстура: ${VECTORS_PATH} не несёт целых solverBudgetSeconds/challengeTtlSeconds`);
