@@ -5,14 +5,13 @@
 //
 // Консоль объявляет маршруты на все шесть и не спрашивает, какая посадка под
 // ней: второй ручки «а вести ли церемонию самим» не заводится — она разошлась
-// бы с раздачей молча. Адрес, которого консоль на этой стадии не ведёт
-// (восстановление доступа), отвечает собственной страницей «такого адреса
-// здесь нет», а не переводом на панель: замыкающее правило маршрутизатора
-// делает отказ похожим на успех.
+// бы с раздачей молча. Все шесть консоль ведёт: восстановление доступа — с
+// приёмки NTF-2 (письмо с кодом, NTF2-43, NTF2-72), до неё адрес отвечал
+// страницей «такого адреса здесь нет».
 //
 // ДО ПОДТВЕРЖДЕНИЯ АДРЕСА ПОЧТЫ открыты ровно экраны вида `screen` — вход,
 // регистрация, выход и сам экран подтверждения (приёмка F6b, Р7). Всё прочее —
-// каркас, параметры учётной записи, страница неведомого адреса — стоит за
+// каркас, параметры учётной записи, экран восстановления доступа — стоит за
 // стражем подтверждённости, и перечень открытого выводится из этого же
 // объявления, а не выписывается вторым.
 //
@@ -40,11 +39,12 @@ export type CeremonyAddress = (typeof CEREMONY_ADDRESSES)[number];
  *
  *   • `screen`     — экран церемонии вне каркаса: у человека без сессии нет ни
  *                    проекта, ни разделов;
- *   • `in-shell`   — экран внутри каркаса: его открывает вошедший человек;
- *   • `not-served` — названная страница «такого адреса здесь нет»:
- *                    восстановления доступа на этой стадии консоль не ведёт;
- *                    обещать путь на него нельзя — страница входа его не
- *                    называет (Р4).
+ *   • `guarded-screen` — экран церемонии вне каркаса, но за стражем
+ *                    подтверждённости: восстановление доступа нужно человеку
+ *                    без сессии, а неподтверждённую сессию страж уводит на
+ *                    экран подтверждения, как и до приёмки NTF-2 (F6b, Р7 —
+ *                    перечень открытого не растёт);
+ *   • `in-shell`   — экран внутри каркаса: его открывает вошедший человек.
  *
  * `/verification` — экран подтверждения адреса почты (приёмка F6b, Р8): вне
  * каркаса, как вход и регистрация, — у человека без подтверждения нет ни
@@ -52,15 +52,15 @@ export type CeremonyAddress = (typeof CEREMONY_ADDRESSES)[number];
  */
 export type CeremonyServing =
   | { kind: "screen"; screen: "login" | "registration" | "logout" | "verification" }
-  | { kind: "in-shell"; screen: "account-settings" }
-  | { kind: "not-served" };
+  | { kind: "guarded-screen"; screen: "recovery" }
+  | { kind: "in-shell"; screen: "account-settings" };
 
 export const CEREMONY_ROUTING: Readonly<Record<CeremonyAddress, CeremonyServing>> = {
   "/login": { kind: "screen", screen: "login" },
   "/registration": { kind: "screen", screen: "registration" },
   "/logout": { kind: "screen", screen: "logout" },
   "/settings": { kind: "in-shell", screen: "account-settings" },
-  "/recovery": { kind: "not-served" },
+  "/recovery": { kind: "guarded-screen", screen: "recovery" },
   "/verification": { kind: "screen", screen: "verification" },
 };
 
@@ -104,6 +104,11 @@ function withReturnTo(address: CeremonyAddress, returnTo?: string): string {
 /** Адрес экрана входа с адресом возврата — ЕДИНСТВЕННАЯ его сборка. */
 export function loginAddress(returnTo?: string): string {
   return withReturnTo("/login", returnTo);
+}
+
+/** Адрес экрана восстановления доступа с адресом возврата — ЕДИНСТВЕННАЯ его сборка. */
+export function recoveryAddress(returnTo?: string): string {
+  return withReturnTo("/recovery", returnTo);
 }
 
 /** Адрес экрана регистрации с адресом возврата — ЕДИНСТВЕННАЯ его сборка. */
