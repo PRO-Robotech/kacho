@@ -70,6 +70,12 @@ const (
 // поэтому имя не разрешается и сети проба не касается.
 const notifyProbeAddr = "notify-api.kacho.svc:9091"
 
+// notifyProbeServiceAddr — адрес стендовой пробы notify-probe в той же установке.
+// Стенд с notify несёт и пробу (NTF-1 З29), поэтому установка с notify объявляет
+// оба адреса: каждая проба этого файла судит карту маршрутизатора при
+// объявленном адресе пробы, то есть ровно там, где он мог бы в неё просочиться.
+const notifyProbeServiceAddr = "kacho-notify-probe.kacho.svc:9091"
+
 // declareInstallation выставляет окружение установки до config.Load.
 func declareInstallation(t *testing.T, inst installation) {
 	t.Helper()
@@ -79,10 +85,13 @@ func declareInstallation(t *testing.T, inst installation) {
 		fullCertEnv(t, cert, key, ca)
 		t.Setenv("KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC", notifyProbeAddr)
 		t.Setenv("KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE", "true")
+		t.Setenv("KACHO_API_GATEWAY_NOTIFY_PROBE_INTERNAL_GRPC", notifyProbeServiceAddr)
+		t.Setenv("KACHO_API_GATEWAY_MTLS_NOTIFY_PROBE_ENABLE", "true")
 	case installationWithoutNotify:
 		// Явно пусто: значение из окружения процесса, запустившего пробу, не
 		// подменяет объявленную установку.
 		t.Setenv("KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC", "")
+		t.Setenv("KACHO_API_GATEWAY_NOTIFY_PROBE_INTERNAL_GRPC", "")
 	default:
 		t.Fatalf("неизвестная установка %d", inst)
 	}
@@ -200,6 +209,10 @@ func TestRouteWiring_InternalStaysUnroutedOnTheSameWiring(t *testing.T) {
 	for _, adminProbe := range []string{
 		"/kacho.cloud.vpc.v1.InternalAddressPoolService/List",
 		"/kacho.cloud.notify.v1.InternalNoticeService/Create",
+		// Третий — глагол пробы notify-probe: его адрес в установке объявлен, но
+		// живёт только в карте внутреннего REST, и резолвер внешнего края его не
+		// знает ни по списку, ни по соединению.
+		"/kacho.cloud.notify.v1.InternalNotifyProbeService/Send",
 	} {
 		require.True(t, proxy.IsInternalRoute(adminProbe), "проба обязана быть настоящим Internal*-путём")
 		if _, _, routed := resolve(adminProbe); routed {
@@ -347,4 +360,39 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+// TestRouteWiring_NotifyProbeIsAnInternalRESTOnlyBackend — адрес пробы
+// notify-probe (решение владельца 2026-10-08 (1)) доходит ровно до одного
+// потребителя — внутреннего REST — и ни до какого другого.
+//
+// Две стороны одного объявления: карта маршрутизатора (dialBackends) ключа пробы
+// не несёт — ни соединения, ни псевдонима, — а креды REST-мультиплексора
+// (buildRESTDialCreds) несут его на СВОЁМ ребре mTLS. Близнец — ключ notify-api:
+// он в обеих картах, так что «нет в карте маршрутизатора» ниже не значит
+// «карта потеряла notify».
+func TestRouteWiring_NotifyProbeIsAnInternalRESTOnlyBackend(t *testing.T) {
+	cfg, backends := realBackends(t, installationWithNotify)
+	key := config.InternalBackendKey("notifyProbe")
+
+	_, ok := backends[key]
+	require.False(t, ok, "ключ пробы %q в карте gRPC-маршрутизатора внешнего края", key)
+	for k, conn := range backends {
+		if conn != nil && conn.Target() == notifyProbeServiceAddr {
+			t.Fatalf("соединение к пробе в карте маршрутизатора под ключом %q", k)
+		}
+	}
+	_, ok = backends["notifyInternal"]
+	require.True(t, ok, "близнец: установка с notify, а ключа notifyInternal в карте нет")
+
+	rest, err := buildRESTDialCreds(cfg)
+	require.NoError(t, err)
+	require.Contains(t, rest, key, "креды внутреннего REST без ключа пробы — маршрут к ней "+
+		"дозвонился бы без mTLS (optsFor падает в insecure на отсутствующем ключе)")
+	require.Contains(t, rest, "notifyInternal")
+	require.Len(t, rest, len(cfg.RESTBackendAddrs()))
+
+	require.Equal(t, "notifyProbe", backendEdge(key))
+	require.NotEqual(t, backendEdge("notifyInternal"), backendEdge(key),
+		"проба и notify-api на одном ребре — у них разные листы сервера и разные флаги")
 }

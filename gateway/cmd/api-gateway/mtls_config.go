@@ -130,6 +130,9 @@ var backendAliases = map[string]string{
 // "registry"+"registryInternal" → "registry".
 // "storage"+"storageInternal" → "storage".
 // "notify"+"notifyInternal" → "notify" (one listener, one connection, one edge).
+// "notifyProbeInternal" → "notifyProbe": стендовая проба notify-probe — другая
+// служба с другим листом сервера, поэтому ребро своё, а не ребро notify-api;
+// ключ есть только в карте внутреннего REST (config.RESTBackendAddrs).
 func backendEdge(backendKey string) string {
 	switch backendKey {
 	case "vpc", "vpcInternal":
@@ -148,6 +151,8 @@ func backendEdge(backendKey string) string {
 		return "storage"
 	case "notify", "notifyInternal":
 		return "notify"
+	case "notifyProbeInternal":
+		return "notifyProbe"
 	default:
 		// Unknown keys (e.g. "operation" self-loopback) have no cross-pod edge.
 		// They are never passed here in the production wiring; returning "" makes
@@ -164,7 +169,19 @@ func backendEdge(backendKey string) string {
 // has exactly the keys of BackendAddrs; the "operation" loopback is intentionally
 // absent (it is dialed separately via loopbackDialCreds).
 func buildBackendDialCreds(cfg config.Config) (map[string]grpc.DialOption, error) {
-	addrs := cfg.BackendAddrs()
+	return buildDialCreds(cfg, cfg.BackendAddrs())
+}
+
+// buildRESTDialCreds — те же per-edge креды для карты REST-мультиплексора
+// (config.RESTBackendAddrs): карта маршрутизатора плюс адреса, к которым ходит
+// только внутренний REST. Ключ без кредов REST-мультиплексор дозвонил бы
+// insecure, поэтому креды строятся по ТОЙ ЖЕ карте, что адреса, а не по соседней.
+func buildRESTDialCreds(cfg config.Config) (map[string]grpc.DialOption, error) {
+	return buildDialCreds(cfg, cfg.RESTBackendAddrs())
+}
+
+// buildDialCreds — один dial-option транспортных кредов на ключ addrs.
+func buildDialCreds(cfg config.Config, addrs map[string]string) (map[string]grpc.DialOption, error) {
 	creds := make(map[string]grpc.DialOption, len(addrs))
 	for key, addr := range addrs {
 		edge := backendEdge(key)

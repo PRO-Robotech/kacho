@@ -81,7 +81,9 @@ func loadProbeAddrs(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	src := cfg.BackendAddrs()
+	// Та же карта, что композиционный корень отдаёт NewMux: карта REST, а не
+	// карта gRPC-маршрутизатора.
+	src := cfg.RESTBackendAddrs()
 	if len(src) == 0 {
 		t.Fatal("карта адресов composition root'а пуста — предмета у пробы нет")
 	}

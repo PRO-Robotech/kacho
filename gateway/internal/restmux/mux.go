@@ -328,6 +328,10 @@ func isInternalPath(path string) bool {
 //	"notifyInternal"       → внутренний слушатель notify-api (единственный слушатель notify;
 //	                        NoticeService и InternalNoticeService); ключа нет, когда
 //	                        адрес notify в установке не объявлен
+//	"notifyProbeInternal"  → внутренний слушатель стендовой пробы notify-probe
+//	                        (InternalNotifyProbeService, только internal mux);
+//	                        только в config.RESTBackendAddrs, ключа нет, когда
+//	                        адрес пробы не объявлен
 //
 // conns — карта domain → *grpc.ClientConn (нужна для OpsProxy);
 // при nil — OperationService регистрируется через no-op Unimplemented (тесты).
@@ -439,7 +443,9 @@ func NewMux(
 	// вместе со своим потоком (#814).
 	// registryAddr / registryInternalAddr обслуживают kacho-registry (registry.v1).
 	// notifyInternalAddr — единственный адрес notify (см. config.NotifyInternalAddr).
-	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr, notifyInternalAddr string
+	// notifyProbeInternalAddr — адрес пробы notify-probe, только внутренний REST
+	// (см. config.NotifyProbeInternalAddr).
+	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr, notifyInternalAddr, notifyProbeInternalAddr string
 	if addrs != nil {
 		vpcAddr = addrs["vpc"]
 		vpcInternalAddr = addrs["vpcInternal"]
@@ -455,6 +461,7 @@ func NewMux(
 		storageAddr = addrs["storage"]
 		storageInternalAddr = addrs["storageInternal"]
 		notifyInternalAddr = addrs["notifyInternal"]
+		notifyProbeInternalAddr = addrs["notifyProbeInternal"]
 	}
 
 	// ПУБЛИЧНЫЙ handler регистрируется на ОБА mux'а (public + internal): диспетчер
@@ -1018,12 +1025,30 @@ func NewMux(
 		// Публикация и переходы извещения оператором (Create/Get/List/Update/
 		// Start/Complete/Cancel под /notify/v1/internal/notices). Только на
 		// внутреннем mux (запрет #6): на внешнем листенере диспетчер отдаёт эти пути
-		// publicMux'у, где их нет. InternalNotifyProbeService здесь НЕ
-		// регистрируется: он служится корнем notify-probe, а не notify-api, и
-		// маршрута края к нему нет.
+		// publicMux'у, где их нет.
 		if mux == internalMux && notifyInternalAddr != "" {
 			if err := notifypb.RegisterInternalNoticeServiceHandlerFromEndpoint(ctx, mux, notifyInternalAddr, optsFor("notifyInternal")); err != nil {
 				return nil, fmt.Errorf("register notify InternalNoticeService: %w", err)
+			}
+		}
+
+		// --- notify.v1 стендовая проба (InternalNotifyProbeService) — internal mux only ---
+		// Глагол `Send` ставит письмо пробы на адрес (NTF-1 З29). Служится корнем
+		// notify-probe, а не notify-api, — поэтому свой адрес и своё ребро mTLS
+		// (ключ notifyProbeInternal, config.RESTBackendAddrs). Решение владельца
+		// 2026-10-08 (1): глагол зовёт администратор кластера СВОЕЙ личностью
+		// через внутренний край — личность пересылает этот mux
+		// (principalHeaderMatcher / principalMetadata), проба доверяет пересылке
+		// по кругу KACHO_NOTIFYPROBE_AUTHZ_TRUSTED_FORWARDER_SANS, право —
+		// system_admin на cluster по каталогу. Машинной учётки и гранта нет.
+		//
+		// Только внутренний mux (запрет #6): на внешнем листенере диспетчер
+		// (isInternalRoute → HasInternalSuffix) отдаёт путь publicMux'у, где
+		// маршрута нет, а gRPC-роутер внешнего края этого адреса не знает вовсе —
+		// его нет в BackendAddrs. Пустой адрес — «пробы в установке нет».
+		if mux == internalMux && notifyProbeInternalAddr != "" {
+			if err := notifypb.RegisterInternalNotifyProbeServiceHandlerFromEndpoint(ctx, mux, notifyProbeInternalAddr, optsFor("notifyProbeInternal")); err != nil {
+				return nil, fmt.Errorf("register notify InternalNotifyProbeService: %w", err)
 			}
 		}
 

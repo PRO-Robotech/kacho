@@ -167,6 +167,21 @@ type Config struct {
 	// подставленному адресу службы, которой в установке может не быть.
 	NotifyInternalAddr string `envconfig:"KACHO_API_GATEWAY_NOTIFY_INTERNAL_GRPC"`
 
+	// NotifyProbeInternalAddr — внутренний gRPC-слушатель стендовой пробы
+	// notify-probe: единственная служба за ним, InternalNotifyProbeService,
+	// ставит письмо пробы на адрес (NTF-1 З29).
+	//
+	// Адрес ТОЛЬКО внутреннего REST (решение владельца 2026-10-08 (1)): глагол
+	// зовёт администратор кластера своей личностью через внутренний край, а не
+	// машинная учётка напрямую. Поэтому адрес живёт в карте RESTBackendAddrs и
+	// не попадает в BackendAddrs — карту gRPC-маршрутизатора, ведущую наружу:
+	// Internal*-службе на той поверхности соединения не положено (запрет #6).
+	//
+	// УМОЛЧАНИЯ НЕТ: проба — стендовый объект, в цепочке prod её нет вовсе
+	// (NTF1-I04). Незаданное значение — «пробы в установке нет», маршрута к ней
+	// нет, а не вызов по подставленному адресу.
+	NotifyProbeInternalAddr string `envconfig:"KACHO_API_GATEWAY_NOTIFY_PROBE_INTERNAL_GRPC"`
+
 	// --- Проекция потока изменений в браузер (kacho#1020) ---
 
 	// SubscriptionOwners — ЗАКРЫТЫЙ перечень владельцев журналов, чей поток край
@@ -742,16 +757,19 @@ type Config struct {
 	MTLSRegistryEnable bool `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_ENABLE" default:"false"`
 	MTLSStorageEnable  bool `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_ENABLE"  default:"false"`
 	MTLSNotifyEnable   bool `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_ENABLE"   default:"false"`
+	// Ребро к пробе notify-probe — своё: другая служба, другой лист сервера.
+	MTLSNotifyProbeEnable bool `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_PROBE_ENABLE" default:"false"`
 
 	// Per-edge SNI/server-name overrides. Empty ⇒ derive from the dial-addr host.
-	MTLSVPCServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_VPC_SERVER_NAME"      default:""`
-	MTLSComputeServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_COMPUTE_SERVER_NAME"  default:""`
-	MTLSIAMServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME"      default:""`
-	MTLSNLBServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_NLB_SERVER_NAME"      default:""`
-	MTLSGeoServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_SERVER_NAME"      default:""`
-	MTLSRegistryServerName string `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_SERVER_NAME" default:""`
-	MTLSStorageServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
-	MTLSNotifyServerName   string `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_SERVER_NAME"   default:""`
+	MTLSVPCServerName         string `envconfig:"KACHO_API_GATEWAY_MTLS_VPC_SERVER_NAME"      default:""`
+	MTLSComputeServerName     string `envconfig:"KACHO_API_GATEWAY_MTLS_COMPUTE_SERVER_NAME"  default:""`
+	MTLSIAMServerName         string `envconfig:"KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME"      default:""`
+	MTLSNLBServerName         string `envconfig:"KACHO_API_GATEWAY_MTLS_NLB_SERVER_NAME"      default:""`
+	MTLSGeoServerName         string `envconfig:"KACHO_API_GATEWAY_MTLS_GEO_SERVER_NAME"      default:""`
+	MTLSRegistryServerName    string `envconfig:"KACHO_API_GATEWAY_MTLS_REGISTRY_SERVER_NAME" default:""`
+	MTLSStorageServerName     string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
+	MTLSNotifyServerName      string `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_SERVER_NAME"   default:""`
+	MTLSNotifyProbeServerName string `envconfig:"KACHO_API_GATEWAY_MTLS_NOTIFY_PROBE_SERVER_NAME" default:""`
 
 	// Hybrid external listener: when true, the external TLS listener
 	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven and the internal CA
@@ -983,8 +1001,26 @@ func (c Config) BackendAddrs() map[string]string {
 	return addrs
 }
 
+// RESTBackendAddrs — карта адресов REST-мультиплексора: вся карта
+// gRPC-маршрутизатора (BackendAddrs) плюс адреса, к которым ходит ТОЛЬКО
+// внутренний REST.
+//
+// Такой адрес сейчас один — проба notify-probe (ключ
+// InternalBackendKey("notifyProbe")), и только когда он объявлен. Он не входит в
+// BackendAddrs, потому что та карта — соединения gRPC-маршрутизатора внешнего
+// края, его готовности и OpsProxy: Internal*-служба там не потребляется никем, а
+// соединение к ней на ведущей наружу поверхности было бы мёртвой провязкой рядом
+// с запретом #6.
+func (c Config) RESTBackendAddrs() map[string]string {
+	addrs := c.BackendAddrs()
+	if c.NotifyProbeInternalAddr != "" {
+		addrs[InternalBackendKey("notifyProbe")] = c.NotifyProbeInternalAddr
+	}
+	return addrs
+}
+
 // EdgeTLSClient assembles the corelib grpcclient.TLSClient value-struct for a
-// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage" | "notify"),
+// backend edge ("vpc" | "compute" | "iam" | "nlb" | "geo" | "registry" | "storage" | "notify" | "notifyProbe"),
 // deriving the server-name from the dial address host when no per-edge override
 // is set.
 //
@@ -1051,6 +1087,8 @@ func (c Config) edgeMTLS(edge string) (enable bool, serverName string, err error
 		return c.MTLSStorageEnable, c.MTLSStorageServerName, nil
 	case "notify":
 		return c.MTLSNotifyEnable, c.MTLSNotifyServerName, nil
+	case "notifyProbe":
+		return c.MTLSNotifyProbeEnable, c.MTLSNotifyProbeServerName, nil
 	default:
 		return false, "", fmt.Errorf("unknown mtls edge %q", edge)
 	}

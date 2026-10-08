@@ -1108,13 +1108,15 @@ func main() {
 	// на external/TLS endpoint в gRPC-проксе (allowlist + HasInternalSuffix);
 	// REST-доступ к ним — только для UI / admin-tooling через cluster-internal
 	// REST listener.
-	restAddrs := cfg.BackendAddrs()
+	// Карта REST — карта маршрутизатора плюс адреса только внутреннего REST
+	// (проба notify-probe): config.RESTBackendAddrs.
+	restAddrs := cfg.RESTBackendAddrs()
 	// The REST-mux is a SEPARATE proxy-path from the gRPC routing — it dials each
 	// backend itself. It threads the SAME per-edge dial creds the gRPC routing /
 	// authz use (mTLS client-cert + per-backend ServerName when the edge is
 	// enabled, else insecure) so backends requiring a verified client-cert do not
 	// reset the UI REST calls. Fail-fast on misconfig — never start half-secured.
-	restDialCreds, err := buildBackendDialCreds(cfg)
+	restDialCreds, err := buildRESTDialCreds(cfg)
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)
 	}
