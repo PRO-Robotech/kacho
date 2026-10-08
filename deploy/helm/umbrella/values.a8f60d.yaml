@@ -561,6 +561,16 @@ uif:
     enabled: true
     service:
       name: kacho-console-lb
+      # Балансировщик площадки (пункт 2 шапки) — аннотациями объекта, и они
+      # обязаны жить В ПРОФИЛЕ (kacho#3064). Прежде их нёс только объект,
+      # заведённый рукой до того, как вход стал частью релиза; принятие его во
+      # владение их сохраняет, а переустановка с нуля (kacho#3065) завела бы
+      # объект без них — тип балансировщика решала бы площадка, а не профиль.
+      annotations:
+        lb.beget.com/type: external
+        lb.beget.com/algorithm: round_robin
+        lb.beget.com/healthcheck-interval-seconds: "10"
+        lb.beget.com/healthcheck-timeout-seconds: "5"
     tls:
       secretName: console-public-tls
       certificate:
