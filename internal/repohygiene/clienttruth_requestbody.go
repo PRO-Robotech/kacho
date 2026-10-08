@@ -216,10 +216,11 @@ import (
 	// Регистрация дескрипторов ВСЕХ доменов: источник путей, методов и сообщений.
 	// Пакет контракта и имя каталога сервиса — РАЗНЫЕ словари: балансировщик
 	// живёт в `services/nlb`, а его контракт — в `kacho.cloud.loadbalancer.v1`.
-	// Совпадение имён у остальных шести — совпадение, а не свойство дерева.
+	// Совпадение имён у остальных — совпадение, а не свойство дерева.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"

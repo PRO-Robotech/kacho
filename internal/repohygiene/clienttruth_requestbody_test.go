@@ -51,14 +51,9 @@ var clientTruthRequestBodyDomains = []ClientTruthRequestBodyDomain{
 	{Name: "geo", ProtoPackage: "kacho.cloud.geo.v1",
 		DocsDirs:    []string{"services/geo/docs/content", "services/geo/docs/engineering"},
 		UseCaseDirs: []string{"services/geo/internal/apps/kacho/api"}},
-	// Служба без внешнего API: у её контракта нет ни одного метода с телом
-	// HTTP-привязки, страницы — установка и эксплуатация. Страницы судятся так
-	// же (адрес примера — по вселенной маршрутов, grpcurl — по дескрипторам);
-	// каталога use-case'ов, отвергающих поля тела, у неё нет, потому что тела
-	// нет. Отметка судится анализатором: метод с телом у пакета — находка.
 	{Name: "notify", ProtoPackage: "kacho.cloud.notify.v1",
-		DocsDirs:      []string{"services/notify/docs/content"},
-		NoBodyMethods: true},
+		DocsDirs:    []string{"services/notify/docs/content"},
+		UseCaseDirs: []string{"services/notify/internal/apps/kacho/api"}},
 }
 
 func clientTruthRequestBodyOptions(t *testing.T) ClientTruthRequestBodyOptions {
@@ -162,7 +157,7 @@ func TestClientTruthRequestBodyKeysExistInTheRequestMessage(t *testing.T) {
 			"судить не по чему")
 	}
 	for _, d := range census.Domains {
-		if d.Methods == 0 && !d.NoBodyMethods {
+		if d.Methods == 0 {
 			t.Errorf("домен %s: методов с телом выведено 0 — его дескрипторы не "+
 				"прочитаны, и «находок нет» о нём сказать нельзя", d.Name)
 		}
