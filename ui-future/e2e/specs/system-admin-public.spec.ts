@@ -485,7 +485,14 @@ test("администраторы кластера: администратор 
           option,
           `человека ${email} нет среди вариантов выдачи`,
         ).toBeVisible({ timeout: 30_000 });
-        await option.click();
+        // Выбор — клавишей, как у поля-списка выше: первый вариант ответа на
+        // полную почту — этот человек. Окно после выбора обязано остаться
+        // открытым и назвать выбранного (строка «ID»).
+        await page.keyboard.press("Enter");
+        await expect(
+          modal.getByText("ID", { exact: true }),
+          "после выбора человека окно выдачи не назвало его — выбор не состоялся либо окно закрылось",
+        ).toBeVisible({ timeout: 15_000 });
         const [granted] = await Promise.all([
           page.waitForResponse(
             (r) =>
