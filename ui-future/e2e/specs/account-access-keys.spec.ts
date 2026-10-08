@@ -290,13 +290,16 @@ test("F8-48 · перечень ключей прочитан и показан"
       const answer = await listed;
       expect(answer.status(), `перечень ключей не прочитан: ${await answer.text()}`).toBe(200);
       const body = (await answer.json()) as {
-        accessKeys?: Array<{ name?: string; createdAt?: string; lastUsedAt?: string }>;
+        accessKeys?: Array<{ name?: string; createdAt?: string; lastUsedAt?: string | null }>;
       };
       expect(
         body.accessKeys?.map((k) => k.name),
         "ответ перечня — не один ключ посева",
       ).toEqual(["seed-f8-48"]);
-      expect(body.accessKeys?.[0].lastUsedAt, "ключ посева уже использован — «Дано» не построено").toBeUndefined();
+      // Публичный край сериализует незаполненное поле значением (`EmitUnpopulated`,
+      // gateway/internal/restmux/mux.go): незаполненная отметка времени приходит
+      // `null`, а не отсутствием ключа. «Не использовался» в контракте края — `null`.
+      expect(body.accessKeys?.[0].lastUsedAt, "ключ посева уже использован — «Дано» не построено").toBeNull();
       expectContains(census, "GET", keysOf(userId));
 
       await expect(s.list.getByRole("listitem"), "раздел показывает не ровно один ключ").toHaveCount(1);
@@ -416,6 +419,10 @@ test("F8-51 · сессия не свежа: окно повышения, зат
         new URL(r.url()).pathname === `${keysOf(h.userId)}:beginRegistration` &&
         r.status() === 200,
     );
+    // Приём результата консоль шлёт сразу за повторной выдачей испытания, без
+    // шага человека между ними: ожидание ставится ДО повышения, иначе ответ
+    // приходит раньше, чем его начали ждать.
+    const finishedAnswer = answerTo(page, "POST", keysOf(h.userId));
     await raiseWithPassword(page, h.human, census);
     const again = await retried;
     expect(again.status()).toBe(200);
@@ -425,7 +432,7 @@ test("F8-51 · сессия не свежа: окно повышения, зат
       "выдача испытания не повторена сама",
     ).toBe(2);
     await rpCondition(again, testInfo);
-    const finished = await answerTo(page, "POST", keysOf(h.userId));
+    const finished = await finishedAnswer;
     await originCondition(finished, testInfo);
     await expect(s.item("key-f8-51"), "ключ не заведён после повышения").toBeVisible({ timeout: 30_000 });
     expect(new URL(page.url()).pathname).toBe("/settings");
