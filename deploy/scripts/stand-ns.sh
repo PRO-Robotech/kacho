@@ -163,17 +163,37 @@ i, e = pol["stand-ingress"], pol["stand-egress"]
 assert i["podSelector"] == {} and i["policyTypes"] == ["Ingress"], "вход не на все поды"
 assert i["ingress"] == [{"from": [{"podSelector": {}}]}], "вход шире своего пространства"
 assert e["podSelector"] == {} and e["policyTypes"] == ["Egress"], "выход не на все поды"
-names = [p["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
-         for r in e["egress"] for p in r.get("to", []) if "namespaceSelector" in p]
-assert names == [sys.argv[1]], "выход в пространства %s, ждали только %s" % (names, sys.argv[1])
-assert all(set(p) <= {"podSelector", "namespaceSelector", "ipBlock"} for r in e["egress"] for p in r.get("to", []))
-assert [p for r in e["egress"] for p in r.get("to", []) if "podSelector" in p and "namespaceSelector" not in p] == [{"podSelector": {}}]
+rules = e["egress"]
+assert all(r.get("to") for r in rules), "правило выхода без адресата — «куда угодно»"
+nsname = lambda p: p["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
+names = sorted(nsname(p) for r in rules for p in r["to"] if "namespaceSelector" in p)
+assert names == sorted(sys.argv[1:3]), "выход в пространства %s, ждали только %s" % (names, sys.argv[1:3])
+assert all(set(p) <= {"podSelector", "namespaceSelector", "ipBlock"} for r in rules for p in r["to"])
+assert [p for r in rules for p in r["to"] if "podSelector" in p and "namespaceSelector" not in p] == [{"podSelector": {}}]
+ports = lambda r: sorted((q["protocol"], q["port"], q.get("endPort", q["port"])) for q in r.get("ports", []))
+has53 = lambda r: not r.get("ports") or any(lo <= 53 <= hi for _, lo, hi in ports(r))
+world = [r for r in rules if any("ipBlock" in p for p in r["to"])]
+assert world and not any(has53(r) for r in world), "порт 53 открыт вне кластера: %s" % world
+dns = [r for r in rules if any("namespaceSelector" in p and nsname(p) == sys.argv[2] for p in r["to"])]
+assert len(dns) == 1 and ports(dns[0]) == [("TCP", 53, 53), ("UDP", 53, 53)], "DNS кластера — не одно правило на 53: %s" % dns
+assert [nsname(p) for p in dns[0]["to"]] == [sys.argv[2]] and all(p.get("podSelector", {}).get("matchLabels") for p in dns[0]["to"]), \
+    "DNS — не поды резолвера в его пространстве: %s" % dns[0]["to"]
 '
-  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef cm-ns | python3 -c "$iso" cm-ns; then
-    ok "пространство: enforce=baseline, вход — свои поды, выход — свои, DNS, cert-manager, вне кластера"
+  local sel='{"k8s-app":"dns-probe"}'
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef cm-ns dns-ns "$sel" | python3 -c "$iso" cm-ns dns-ns; then
+    ok "пространство: enforce=baseline, вход — свои поды, выход — свои, DNS кластера, cert-manager, вне кластера кроме :53"
   else bad "Pod Security или сетевая изоляция пространства не по правилу"; fi
-  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef kacho | python3 -c "$iso" cm-ns 2>/dev/null; then
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef kacho dns-ns "$sel" | python3 -c "$iso" cm-ns dns-ns 2>/dev/null; then
     bad "выход в «kacho» принят разбором"; else ok "выход в «kacho» разбором отвергнут"; fi
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef cm-ns dns-ns '{}' | python3 -c "$iso" cm-ns dns-ns 2>/dev/null; then
+    bad "DNS на все поды пространства резолвера принят разбором"; else ok "DNS без меток подов резолвера разбором отвергнут"; fi
+  if ns_objects t3102-probe 3102 2999-01-01T00:00:00Z dev-prod deadbeef cm-ns dns-ns "$sel" | sed 's/port: 54, endPort/port: 53, endPort/' | python3 -c "$iso" cm-ns dns-ns 2>/dev/null; then
+    bad "порт 53 вне кластера принят разбором"; else ok "порт 53 вне кластера разбором отвергнут"; fi
+  local pick; pick="$(STAND_DNS_NAMESPACE=dns-ns STAND_DNS_SELECTOR='{"a":"b"}' dns_peer 2>/dev/null)"
+  if [ "$pick" = 'dns-ns {"a":"b"}' ] && ! STAND_DNS_NAMESPACE=dns-ns dns_peer >/dev/null 2>&1 &&
+     ! STAND_DNS_NAMESPACE=dns-ns STAND_DNS_SELECTOR='{}' dns_peer >/dev/null 2>&1; then
+    ok "объявленная пара DNS принята, половина пары и пустой селектор — отвергнуты"
+  else bad "объявление пары DNS: «$pick»"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -238,6 +258,37 @@ ca_namespace() {
      | (if $v == "$(POD_NAMESPACE)" then $d.metadata.namespace else $v end)] | unique | .[]' <<<"$js"
 }
 
+# dns_peer — пространство и метки подов резолвера кластера, ИЗМЕРЕННЫЕ у его
+# службы: единственная служба кластера с портом 53/UDP, её пространство и её
+# селектор подов. Печатает «<пространство> <селектор JSON>». Имя пространства
+# резолвера — свойство площадки, а не дерева (на управляемом кластере оно не
+# kube-system), поэтому оно не выписано. Служб ноль или больше одной —
+# неоднозначно, и стенд не поднимается, пока оператор не объявит пару сам:
+# STAND_DNS_NAMESPACE и STAND_DNS_SELECTOR (JSON меток подов). Код 2 — кластер
+# не ответил либо пара не установлена.
+dns_peer() {
+  if [ -n "${STAND_DNS_NAMESPACE:-}${STAND_DNS_SELECTOR:-}" ]; then
+    if [ -z "${STAND_DNS_NAMESPACE:-}" ] || ! jq -e 'type == "object" and length > 0 and all(.[]; type == "string")' \
+      <<<"${STAND_DNS_SELECTOR:-}" >/dev/null 2>&1; then
+      warn "объявлена половина пары DNS: STAND_DNS_NAMESPACE=«${STAND_DNS_NAMESPACE:-}», STAND_DNS_SELECTOR=«${STAND_DNS_SELECTOR:-}» (нужны оба, селектор — непустой JSON меток)"
+      return 2
+    fi
+    printf '%s %s\n' "$STAND_DNS_NAMESPACE" "$(jq -c . <<<"$STAND_DNS_SELECTOR")"
+    return 0
+  fi
+  local js out
+  js="$(kubectl get svc -A -o json --request-timeout=30s)" || return 2
+  out="$(jq -r '[.items[] | select(any(.spec.ports[]?; .port == 53 and (.protocol // "TCP") == "UDP"))
+                 | "\(.metadata.namespace) \((.spec.selector // {}) | tojson)"] | .[]' <<<"$js")"
+  if [ "$(grep -c . <<<"$out")" != 1 ] || [[ "$out" == *" {}" ]]; then
+    warn "служба DNS кластера не установлена однозначно (служб с 53/UDP: $(grep -c . <<<"$out"), селектор пуст — пары не выбрать):"
+    warn "$out"
+    warn "объяви пару: STAND_DNS_NAMESPACE=<пространство резолвера> STAND_DNS_SELECTOR='{\"<метка>\":\"<значение>\"}'"
+    return 2
+  fi
+  printf '%s\n' "$out"
+}
+
 has_default_storage_class() {
   kubectl get storageclass -o json --request-timeout=30s | jq -e \
     '[.items[] | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true")] | length > 0' >/dev/null
@@ -245,7 +296,7 @@ has_default_storage_class() {
 
 # ── ПОДЪЁМ ───────────────────────────────────────────────────────────────────
 
-# ns_objects NS TASK EXPIRES STACK SHA CANS — ПЕРВАЯ запись подъёма одним применением:
+# ns_objects NS TASK EXPIRES STACK SHA CANS DNSNS DNSSEL — ПЕРВАЯ запись подъёма одним применением:
 # пространство уже с метками и сроком (kill между «создал» и «пометил» оставил бы
 # непомеченное пространство, которое down по праву счёл бы чужим), затем квота,
 # пределы и сетевая изоляция — первые объекты пространства, до любой нагрузки.
@@ -260,15 +311,19 @@ has_default_storage_class() {
 #                  только объединяет): порт сбора величин края чарт открывает
 #                  всем пространствам (networkpolicy-api-gateway.yaml), и стенд
 #                  его не сужает — вычитать политикой нечем;
-#   stand-egress   выход: свои поды · DNS (порт 53 куда угодно — где живёт
-#                  резолвер, свойство кластера) · пространство ресурсов
-#                  cert-manager · адреса вне кластера (реестры, зеркала, apiserver
-#                  управляемой площадки) блоком 0.0.0.0/0 и ::/0. Пространства
-#                  кластера, кроме названных, не выбраны ничем — `kacho` и чужие
-#                  стенды закрыты. Блок адресов узлы и поды кластера на CNI с
-#                  идентичностью конечных точек (cilium) не выбирает; что это так
-#                  на кластере стенда, утверждает scripts/stand-ns-isolation-probe.sh
-#                  (к краю `kacho` — отказ, к своему — проходит).
+#   stand-egress   выход: свои поды · DNS кластера — порт 53 ТОЛЬКО к подам
+#                  резолвера кластера (пространство и метки ИЗМЕРЕНЫ у его
+#                  службы, dns_peer) · пространство ресурсов cert-manager ·
+#                  адреса вне кластера (реестры, зеркала, apiserver управляемой
+#                  площадки) блоком 0.0.0.0/0 и ::/0 на всех портах, КРОМЕ 53:
+#                  чужой резолвер — канал наружу в обход DNS кластера, и стенду
+#                  он не нужен. Пространства кластера, кроме названных, не
+#                  выбраны ничем — `kacho` и чужие стенды закрыты. Блок адресов
+#                  узлы и поды кластера на CNI с идентичностью конечных точек
+#                  (cilium) не выбирает; что это так на кластере стенда,
+#                  утверждает scripts/stand-ns-isolation-probe.sh (к краю `kacho`
+#                  — отказ, к своему — проходит; имена кластера разрешаются,
+#                  запрос к внешнему резолверу на :53 — отказ).
 #
 # Числа квоты — по замеру стенда dev-prod на этом кластере (kacho#3102,
 # комментарий задачи «замер подъёма»): сумма запросов поднятого стенда и пик
@@ -350,7 +405,12 @@ spec:
   egress:
     - to:
         - podSelector: {}
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: "$7"}
+          podSelector:
+            matchLabels: $8
+      ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
     - to:
@@ -359,6 +419,11 @@ spec:
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
         - ipBlock: {cidr: "::/0"}
+      ports:
+        - {protocol: TCP, port: 1, endPort: 52}
+        - {protocol: TCP, port: 54, endPort: 65535}
+        - {protocol: UDP, port: 1, endPort: 52}
+        - {protocol: UDP, port: 54, endPort: 65535}
 EOF
 }
 
@@ -596,7 +661,7 @@ tee_to() {
 }
 
 cmd_up() {
-  local ns="$1" stack="${2:-dev-prod}" ref="${3:-HEAD}" task cans persist port sha start work chain expires
+  local ns="$1" stack="${2:-dev-prod}" ref="${3:-HEAD}" task cans dns dnsns dnssel persist port sha start work chain expires
   task="$(ns_valid "$ns")" || die "имя «$ns» не по правилу t<номер задачи>-<коротко> (≤ 40 знаков, DNS-1123). Пространство kacho — рабочий стенд, цель его не трогает" 2
   ttl_valid "$TTL_HOURS" || die "STAND_TTL_HOURS=«$TTL_HOURS» вне 1..$TTL_MAX_HOURS — стенд проб без срока не живёт" 2
   need_tools; guard_context
@@ -618,9 +683,11 @@ cmd_up() {
   ref_guard "$sha" || die "ревизия образов и рабочая копия расходятся (выше)" 2
   cans="$(ca_namespace)" || die "контроллер cert-manager на кластере не прочитан" 2
   [ "$(wc -w <<<"$cans")" = 1 ] || die "пространство ресурсов cert-manager не установлено однозначно («$cans»): стенд cert-manager не ставит, он переиспользует ровно один существующий" 2
+  dns="$(dns_peer)" || die "резолвер кластера не установлен (выше) — выход DNS стенда сузить не до чего" 2
+  dnsns="${dns%% *}"; dnssel="${dns#* }"
   if has_default_storage_class; then persist=on; else persist=off; fi
   port="$(ns_port "$ns")"
-  log "кластер: cert-manager переиспользуется (ресурсы в ns $cans); класс томов по умолчанию: $persist; контроллер входа не ставится"
+  log "кластер: cert-manager переиспользуется (ресурсы в ns $cans); DNS — поды $dnssel в ns $dnsns; класс томов по умолчанию: $persist; контроллер входа не ставится"
 
   stand_overlay "$ns" "$cans" "$persist" "$port" >"$work/stand.yaml"
   subchart_defaults >"$work/subchart-defaults.yaml" || die "умолчания подчартов не прочитаны" 2
@@ -631,7 +698,7 @@ cmd_up() {
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
 
   expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
-  ns_objects "$ns" "$task" "$expires" "$stack" "$sha" "$cans" >"$work/ns.yaml"
+  ns_objects "$ns" "$task" "$expires" "$stack" "$sha" "$cans" "$dnsns" "$dnssel" >"$work/ns.yaml"
   kubectl apply --dry-run=client -f "$work/ns.yaml" >/dev/null || die "пространство, квота, пределы и сетевая изоляция не проходят проверку манифеста" 2
   can_write "$ns" || die "завести пространство с квотой нечем (права выше) — ни одной записи не сделано" 2
 

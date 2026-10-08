@@ -9,6 +9,7 @@ package deploy
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -69,9 +70,9 @@ func TestStandNamespaceRunAndUpRefuseBeforeTheCluster(t *testing.T) {
 // make до скрипта — строки кода скрипта там нет, потому что скрипт не звался.
 func TestStandNamespaceRunTargetPrintsTheScriptCodeLast(t *testing.T) {
 	const line = "stand-ns-run: код scripts/stand-ns.sh run = "
-	run := func(args ...string) (string, int) {
+	run := func(level string, args ...string) (string, int) {
 		cmd := exec.Command("make", append([]string{"-s", "--no-print-directory", "stand-ns-run"}, args...)...)
-		cmd.Env = append(cmd.Environ(), "STAND_APISERVER=", "KUBECONFIG=/nonexistent")
+		cmd.Env = append(cmd.Environ(), "STAND_APISERVER=", "KUBECONFIG=/nonexistent", "MAKELEVEL="+level)
 		out, err := cmd.CombinedOutput()
 		code := 0
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -82,19 +83,52 @@ func TestStandNamespaceRunTargetPrintsTheScriptCodeLast(t *testing.T) {
 		return string(out), code
 	}
 
-	out, code := run("NS=kacho", "CMD=exit 7")
+	// Прямой запуск и вложенный: в конвейере цель зовётся из другого make
+	// (MAKELEVEL ≥ 1), и сам make печатает свой отказ как «make[1]: *** …».
+	// Это строка make, а не рецепта, — предмет пробы среди строк рецепта.
+	for _, level := range []string{"", "1"} {
+		out, code := run(level, "NS=kacho", "CMD=exit 7")
+		last := lastRecipeLine(out)
+		if code != 2 || !strings.HasPrefix(last, line+"2 ") {
+			t.Fatalf("MAKELEVEL=%q NS=kacho: ждали код make 2 и последней строкой рецепта «%s2 …», получили %d, «%s»:\n%s", level, line, code, last, out)
+		}
+
+		out, code = run(level, "CMD=exit 7")
+		if code != 2 || strings.Contains(out, line) || !strings.Contains(out, "NS не задан") {
+			t.Fatalf("MAKELEVEL=%q без NS: ждали отказ make до скрипта без строки кода, получили %d:\n%s", level, code, out)
+		}
+	}
+}
+
+// makeOwnLine — строка, которую печатает сам make, а не рецепт: «make: *** …»
+// на верхнем уровне и «make[N]: *** …» при вложенном запуске.
+var makeOwnLine = regexp.MustCompile(`^make(\[[0-9]+\])?: \*\*\* `)
+
+// lastRecipeLine — последняя строка вывода, напечатанная рецептом.
+func lastRecipeLine(out string) string {
 	var last string
 	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
-		if !strings.HasPrefix(l, "make: ***") {
+		if !makeOwnLine.MatchString(l) {
 			last = l
 		}
 	}
-	if code != 2 || !strings.HasPrefix(last, line+"2 ") {
-		t.Fatalf("NS=kacho: ждали код make 2 и последней строкой рецепта «%s2 …», получили %d, «%s»:\n%s", line, code, last, out)
-	}
+	return last
+}
 
-	out, code = run("CMD=exit 7")
-	if code != 2 || strings.Contains(out, line) || !strings.Contains(out, "NS не задан") {
-		t.Fatalf("без NS: ждали отказ make до скрипта без строки кода, получили %d:\n%s", code, out)
+// Близнец фильтра: строки make обоих уровней отсеиваются, строка рецепта,
+// похожая на них лишь началом, — нет. Без него фильтр, отсеивающий всё, сделал
+// бы пробу выше пустой.
+func TestStandNamespaceRunTargetFilterDropsOnlyMakeOwnLines(t *testing.T) {
+	const rec = "stand-ns-run: код scripts/stand-ns.sh run = 2 (команда завершилась ненулевым кодом)"
+	for _, c := range []struct{ out, want string }{
+		{rec + "\nmake: *** [Makefile:1143: stand-ns-run] Error 2", rec},
+		{rec + "\nmake[1]: *** [Makefile:1143: stand-ns-run] Error 2", rec},
+		{rec + "\nmake[12]: *** [Makefile:1143: stand-ns-run] Error 2\nmake: *** [Makefile:9: ci] Error 2", rec},
+		{"make[1]: *** x\nmake[1]: ***не-make", "make[1]: ***не-make"},
+		{rec + "\nmakefile: *** рецепт", "makefile: *** рецепт"},
+	} {
+		if got := lastRecipeLine(c.out); got != c.want {
+			t.Errorf("lastRecipeLine(%q) = %q, ждали %q", c.out, got, c.want)
+		}
 	}
 }

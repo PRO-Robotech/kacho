@@ -22,6 +22,13 @@
 #   из соседа   → публичный слушатель vpc стенда                ОТКАЗ   (близнец: из соседа к vpc `kacho` — проходит)
 #   из соседа   → край стенда, порт сбора величин               ПРОХОДИТ — остаток: политика чарта
 #                                                               открывает этот порт всем пространствам
+#   из стенда   → имя службы кластера через его резолвер        ПРОХОДИТ (DNS кластера)
+#   из стенда   → DNS-запрос к внешнему резолверу, :53/UDP      ОТКАЗ   (близнец: из соседа — проходит)
+#   из стенда   → внешний резолвер, :53/TCP                     ОТКАЗ   (близнец: из соседа — проходит)
+#   из стенда   → тот же внешний адрес, :443/TCP                ПРОХОДИТ (выход вне кластера жив, закрыт лишь :53)
+#
+# Внешний резолвер — STAND_PROBE_RESOLVER (умолчание — общедоступный резолвер
+# 1.1.1.1): адрес площадки он не называет, и у пробы нет ни одного адреса кластера.
 #
 # В пространство `kacho` проба НЕ пишет: к нему только соединение TCP без
 # запроса (nc -z), ни одного объекта там не создаётся.
@@ -37,6 +44,7 @@ PEER="${NS}-peer"
 TASK="${NS#t}"; TASK="${TASK%%-*}"
 IMAGE="${STAND_PROBE_IMAGE:-docker.io/library/busybox:1.37.0}"
 METRICS_PORT="${STAND_EDGE_METRICS_PORT:-9095}"
+RESOLVER="${STAND_PROBE_RESOLVER:-1.1.1.1}"
 
 # shellcheck disable=SC2329 # зовётся ловушкой EXIT
 cleanup() {
@@ -98,11 +106,25 @@ own_edge="$(edge_ip "$NS")"; kacho_edge="$(edge_ip kacho)"
 [ -n "$own_edge" ] && [ -n "$kacho_edge" ] || { echo "ABORT: адрес пода края не прочитан (стенд: «$own_edge», kacho: «$kacho_edge»)" >&2; exit 2; }
 
 fail=0 n=0
-# check FROM_NS WANT(pass|deny) HOST PORT — что утверждается
+# check FROM_NS WANT(pass|deny) HOST PORT — что утверждается (соединение TCP)
 check() {
-  local from="$1" want="$2" host="$3" port="$4" what="$5" got
+  check_cmd "$1" "$2" "$5" nc -z -w 4 "$3" "$4"
+}
+
+# check_dns FROM_NS WANT ИМЯ [СЕРВЕР] — что утверждается (запрос DNS по UDP;
+# без сервера — резолвером из resolv.conf пода, то есть DNS кластера)
+check_dns() {
+  local from="$1" want="$2" name="$3" server="${4:-}" what="$5"
+  # shellcheck disable=SC2086 # пустой сервер — нет аргумента
+  check_cmd "$from" "$want" "$what" timeout 10 nslookup "$name" $server
+}
+
+# check_cmd FROM_NS WANT ЧТО КОМАНДА… — команда в поде-пробе: код 0 — «проходит»
+check_cmd() {
+  local from="$1" want="$2" what="$3" got
+  shift 3
   n=$((n + 1))
-  if kubectl -n "$from" exec stand-isolation-probe -- nc -z -w 4 "$host" "$port" >/dev/null 2>&1; then got=pass; else got=deny; fi
+  if kubectl -n "$from" exec stand-isolation-probe -- "$@" >/dev/null 2>&1; then got=pass; else got=deny; fi
   if [ "$got" = "$want" ]; then
     printf 'ok    %-5s %s\n' "$got" "$what"
   else
@@ -119,6 +141,12 @@ check "$NS"   pass "kubernetes.default.svc"    443             "из стенд�
 check "$PEER" pass "vpc.kacho.svc"             9090            "из соседа к vpc kacho — близнец отказа ниже"
 check "$PEER" deny "vpc.$NS.svc"               9090            "из соседа к публичному слушателю vpc стенда"
 check "$PEER" pass "$own_edge"                 "$METRICS_PORT" "из соседа к краю стенда (порт сбора величин) — остаток, открыт политикой чарта"
+check_dns "$NS"   pass "kubernetes.default.svc.cluster.local" ""          "из стенда: имя службы кластера через DNS кластера"
+check_dns "$PEER" pass "one.one.one.one"                      "$RESOLVER" "из соседа: внешний резолвер на :53/UDP — близнец отказа ниже"
+check_dns "$NS"   deny "one.one.one.one"                      "$RESOLVER" "из стенда: запрос к внешнему резолверу на :53/UDP"
+check "$PEER" pass "$RESOLVER"                 53              "из соседа: внешний резолвер на :53/TCP — близнец отказа ниже"
+check "$NS"   deny "$RESOLVER"                 53              "из стенда: внешний резолвер на :53/TCP"
+check "$NS"   pass "$RESOLVER"                 443             "из стенда: тот же внешний адрес на :443 — выход вне кластера жив"
 
 echo "stand-isolation: утверждений $n, расхождений $([ "$fail" = 0 ] && echo 0 || echo 'есть')"
 exit "$fail"
