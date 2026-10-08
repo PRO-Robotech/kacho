@@ -463,6 +463,14 @@ func writeIdempotencyStoreUnavailable(w http.ResponseWriter) {
 // writeIdempotencyStatus печатает тело в форме grpc-gateway ({code,message,details}),
 // чтобы клиент разбирал отказ края тем же кодом, что и отказ сервиса.
 func writeIdempotencyStatus(w http.ResponseWriter, httpStatus int, code codes.Code, msg string) {
+	WriteEdgeStatus(w, httpStatus, code, msg)
+}
+
+// WriteEdgeStatus — ОДНА функция формы собственных статусов края с пустым
+// `details`: её зовут однократность и ограничитель анонимной почты (замысел
+// issue-2917, З8). Второй формы того же тела не заводится — клиент разбирает
+// отказ края тем же кодом, что и отказ сервиса.
+func WriteEdgeStatus(w http.ResponseWriter, httpStatus int, code codes.Code, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
 	_ = json.NewEncoder(w).Encode(struct {

@@ -87,6 +87,15 @@ while IFS= read -r _cand; do
   if [[ "$_cand" == *gateway* ]]; then AGW="$_cand"; break; fi
 done <<<"$AGW_CANDIDATES"
 AGW="$MONOREPO/$AGW"
+# СЛОЙ ОПЕРАТОРА К `prod` — из обёртки цепочек гейта (lib/render-chain.sh):
+# последний элемент её цепочки `prod`, абсолютным путём. Поставка не несёт ни узла
+# почты (Д48), ни числа доверенных прыжков края (приёмка NTF-2 Р8, Д51), и рендер
+# `prod` без слоя оператора отказывает.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
+OPERATOR_LAYER="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
+  || fatal "цепочка prod гейта не прочитана — слоя оператора нет"
+OPERATOR_LAYER="${OPERATOR_LAYER##* }"
 # Боевой профиль забирает ключи через зеркало iam — единственный фасад к
 # провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
 # здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
@@ -135,12 +144,15 @@ no_pin() {
 # ── (1) sibling chart standalone — the retired pin is never rendered ──────────
 # Законный близнец и предмет отличаются ОДНИМ фактом: во втором рендере профиль
 # ещё называет снятые ключи. Шаблон обязан молчать на обоих.
-helm_try ag "$AGW" --set hydra.jwksUrl="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json" \
+# Чарт края без зонтика получает число доверенных прыжков ТОЛЬКО слоем (приёмка
+# NTF-2 Р8, Д52); путь — от корня монорепо.
+EDGE_LAYER="$MONOREPO/deploy/testdata/notify-standalone/edge.yaml"
+helm_try ag "$AGW" -f "$EDGE_LAYER" --set hydra.jwksUrl="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json" \
         --set hydra.issuer="https://hydra.api.kacho.cloud"
 render_or_fatal "чарт края, заданы снятые ключи hydra.jwksUrl / hydra.issuer"
 no_pin "$HELM_OUT" "sibling chart with the retired keys set"; ok
 
-helm_try ag "$AGW"
+helm_try ag "$AGW" -f "$EDGE_LAYER"
 render_or_fatal "чарт края, умолчание"
 no_pin "$HELM_OUT" "sibling chart by default"; ok
 
@@ -187,7 +199,7 @@ ok
 #        mandatory, so the JWKS URL must be the in-cluster address of the iam
 #        key-set publisher (core #16: iam is the only facade), over TLS —
 #        not the public ingress hairpin and not the provider's own Service.
-helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
+helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" -f "$OPERATOR_LAYER" \
          --show-only charts/api-gateway/templates/deployment.yaml
 render_or_fatal "умбрелла + values.prod.yaml, шаблон пода края"
 PROD="$HELM_OUT"

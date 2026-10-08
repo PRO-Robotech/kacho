@@ -98,13 +98,24 @@ require_helm
 require_mikefarah_yq
 [ -f "$PROD" ]    || fatal "values.prod.yaml нет на диске ($PROD)"
 [ -f "$DEV" ]     || fatal "values.dev.yaml нет на диске ($DEV)"
+# СЛОЙ ОПЕРАТОРА К `prod` — из обёртки цепочек гейта (lib/render-chain.sh):
+# последний элемент её цепочки `prod`, абсолютным путём. Поставка не несёт ни узла
+# почты (Д48), ни числа доверенных прыжков края (приёмка NTF-2 Р8, Д51), и рендер
+# `prod` без слоя оператора отказывает.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
+OPERATOR_LAYER="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
+  || fatal "цепочка prod гейта не прочитана — слоя оператора нет"
+OPERATOR_LAYER="${OPERATOR_LAYER##* }"
 [ -f "$IAM_TPL" ] || fatal "шаблона kaname нет на диске ($IAM_TPL)"
 [ -f "$GW_TPL" ]  || fatal "шаблона api-gateway нет на диске ($GW_TPL)"
 
 # render_only <values> <show-only-template> — результат в $HELM_OUT.
 # Отказ рендера — код 2 плюс ТЕКСТ helm, а не молчаливая смерть под `set -e`.
 render_only() {
-  helm_try kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2"
+  local layer=()
+  [ "$1" = "$PROD" ] && layer=(-f "$OPERATOR_LAYER")
+  helm_try kacho-umbrella "$UMBRELLA" -f "$1" "${layer[@]}" --show-only "$2"
   render_or_fatal "$(basename "$1") → $2"
 }
 
@@ -186,7 +197,7 @@ done
 RETIRED_OVERLAY="$(mktemp)"
 trap 'rm -f "$RETIRED_OVERLAY"' EXIT
 printf 'kaname:\n  platform:\n    iam:\n      saKey:\n        bindDpop: false\n' > "$RETIRED_OVERLAY"
-helm_try kacho-umbrella "$UMBRELLA" -f "$PROD" -f "$RETIRED_OVERLAY" --show-only charts/kaname/templates/deployment.yaml
+helm_try kacho-umbrella "$UMBRELLA" -f "$PROD" -f "$OPERATOR_LAYER" -f "$RETIRED_OVERLAY" --show-only charts/kaname/templates/deployment.yaml
 render_must_fail_because "platform.iam.saKey.bindDpop" \
   "values.prod.yaml + saKey.bindDpop → charts/kaname/templates/deployment.yaml" \
   "prod + saKey.bindDpop rendered — the identity sub-chart accepts a retired knob it no longer reads"

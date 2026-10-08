@@ -178,7 +178,12 @@ any_line_matches() {
 }
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -869,11 +874,8 @@ rendered=0
 while IFS= read -r line; do
   [ -z "$line" ] && continue
   stack="${line%%:*}"
-  files="${line#*:}"
-  args=""
-  IFS=','
-  for f in $files; do args="$args -f $UMBRELLA/$f"; done
-  unset IFS
+  args="$(render_chain_args "$stack" "$UMBRELLA" operator.yaml)" \
+    || fatal "цепочка $stack гейта не прочитана — рендерить нечего"
 
   render="$work/$stack.yaml"
   # Отказ рендера — УСЛОВИЕ прогона, а не свойство дерева: код 2 и текст самого helm.

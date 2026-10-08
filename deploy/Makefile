@@ -810,7 +810,7 @@ dev-up: preflight
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
 	kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=60s; \
-	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
+	echo "=== helm phase 3: PRODUCTION posture (цепочка dev-prod: values.dev-prod.yaml и слой стенда прогона поверх dev) ==="; \
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
 	  $(call STACK_ARGS,dev-prod) \
 	  -f ./$(IMAGE_IDS_VALUES) \

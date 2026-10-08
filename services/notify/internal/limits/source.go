@@ -133,7 +133,10 @@ func NetClasses() []feed.Class {
 
 // Classes — классы, которые забирает `Claim` источника: на паузе источника
 // или при достигнутом суточном потолке потока — только security, иначе все
-// классы сети (NTF1-H05, NTF1-H06). Пауза одного источника других не трогает.
+// классы сети (NetClasses; NTF1-H05, NTF1-H06). Пауза одного источника других
+// не трогает. Классы `feed.LocalOnlyClasses` (obligation) в этот набор не
+// входят ни при каком исходе: строки этого класса ставит только владелец
+// notify, Claim сети их не выдаёт (NTF-5 Р12), и их пределы — свои (NTF-5 Р15).
 func (g *SourceGate) Classes(ceilingReached bool) []feed.Class {
 	if g.limits.Paused || ceilingReached {
 		return []feed.Class{feed.ClassSecurity}

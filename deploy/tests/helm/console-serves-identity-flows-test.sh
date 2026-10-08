@@ -83,8 +83,12 @@ SERVING_TPL="charts/uif/templates/configmap-nginx.yaml"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-# shellcheck source=deploy/tests/helm/stacks.sh
-. "$HERE/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$HERE/lib/render-chain.sh"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # РАЗБОР — PYTHON
@@ -301,7 +305,7 @@ run_checks() {
 
   for chain in $names; do
     chains=$((chains + 1))
-    args="$(stacks_args "$chain" "$UMBRELLA")" || return $?
+    args="$(render_chain_args "$chain" "$UMBRELLA" operator.yaml)" || return $?
 
     # ПЕРВЫЙ рендер цепочки — положительный контроль: чарт с этой цепочкой
     # вообще рендерится. Без него всякое последующее утверждение о ней прошло бы
@@ -459,6 +463,10 @@ if [ "${1:-}" = "--self-test" ]; then
   # Общие реализации едут вместе с испытуемым: он подключает их по своему
   # каталогу, и без них самопроверка мерила бы отсутствие файла.
   cp "$HERE/outcome.sh" "$HERE/stacks.sh" "$WORK/deploy/tests/helm/"
+  # Обёртка цепочек гейта и её каталог образцов (слой оператора к `prod`).
+  mkdir -p "$WORK/deploy/tests/helm/lib" "$WORK/deploy/testdata"
+  cp "$HERE/lib/render-chain.sh" "$WORK/deploy/tests/helm/lib/"
+  cp -r "$DEPLOY_ROOT/testdata/mail-node" "$WORK/deploy/testdata/"
   SUT="$WORK/deploy/tests/helm/$SCRIPT"
   COPY_SRC="$WORK/ui-future/deploy"
   COPY_CHARTS="$WORK/deploy/helm/umbrella/charts"

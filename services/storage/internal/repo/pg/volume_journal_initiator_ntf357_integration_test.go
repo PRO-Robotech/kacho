@@ -63,7 +63,9 @@ func newNTF357Stand(t *testing.T) *ntf357Stand {
 	}
 	dsn := pgtest.NewDB(t)
 	var err error
-	s.fixture, err = coredb.NewPool(context.Background(), ntf357WithStartOption(t, dsn, "kacho_journal.initiator="+s.want))
+	// Пул фикстуры несёт и флаг ленты: функция базы resource-event (NTF-3 З10)
+	// отвергает транзакцию записи журнала без него, а лента фикстуре не предмет.
+	s.fixture, err = coredb.NewPool(context.Background(), ntf357WithStartOption(t, ntf357WithStartOption(t, dsn, "kacho_journal.initiator="+s.want), "kacho_feed.enabled=false"))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, s.fixture)
 	s.subject, err = coredb.NewPool(context.Background(), dsn)

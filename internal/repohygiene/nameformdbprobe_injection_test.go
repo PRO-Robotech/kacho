@@ -483,4 +483,22 @@ func TestIntegration_NameForm(t *testing.T) {
 			t.Errorf("ожидалась находка про nu, получено %v", got)
 		}
 	})
+	t.Run("функция базы resource-event формы не ставит: проверка снимка имени, а не ограничение", func(t *testing.T) {
+		// Тело функции (NTF-3 З10) сверяет снимок имени из полезной нагрузки с
+		// той же формой, что ограничения схемы, — литерал тот же, предмет другой.
+		// Близнец ниже — та же форма ограничением — ставит её.
+		canon := readCanonPattern(t, repoRoot(t))
+		fn := feedWritesResourceEvent(t)
+		if !strings.Contains(fn, canon) {
+			t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: тело функции resource-event не несёт формы имени %q — инъекция ничего не испытывает", canon)
+		}
+		files := map[string]string{"services/xi/internal/migrations/20261004000001_notify_feed_resource_event.sql": fn}
+		if cov := analyseNameFormDBCoverage(files, canon, injEntry); len(cov.Constrained) != 0 {
+			t.Errorf("функция resource-event принята за ограничение формы имени: ставят %v", cov.Services())
+		}
+		files["services/xi/internal/migrations/0001_x.sql"] = "ALTER TABLE t ADD CONSTRAINT t_name_check CHECK (name ~ '" + canon + "');"
+		if cov := analyseNameFormDBCoverage(files, canon, injEntry); len(cov.Constrained) != 1 {
+			t.Errorf("законный близнец — ограничение формой — не принят: ставят %v", cov.Services())
+		}
+	})
 }

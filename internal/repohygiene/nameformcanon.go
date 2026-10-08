@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/corelib/notify/feed/resourceevent"
 	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
@@ -56,6 +57,20 @@ import (
 // константу пакета с деревом, и взяв её оттуда же, сверяли бы значение с самим
 // собой.
 var nameFormCanonLiteral = regexp.MustCompile(`'\^\[a-z0-9\]\(\[-a-z0-9\]\{0,61\}\[a-z0-9\]\)\?\$'`)
+
+// nameFormFeedFunctionBody — миграция функции базы `resource-event` (NTF-3
+// З10), признанная выводом шаблона corelib. Форма имени стоит в её теле
+// строковым литералом SQL, но предмет у литерала другой: функция сверяет с ним
+// снимок имени из полезной нагрузки строки снятия, прежде чем поставить атрибут
+// `name` строки ленты, — ограничения схемы она не ставит и имён ограничений не
+// строит. Признание — тем же распознавателем, которым гейт писателей ленты
+// признаёт эту функцию (`resourceevent.Recognize`: входы из тела, вывод
+// шаблона на них, побайтное сравнение), а не поиском слов: правленое вручную
+// тело признанным не будет и судится как всякая миграция.
+func nameFormFeedFunctionBody(body []byte) bool {
+	_, ok := resourceevent.Recognize(body)
+	return ok
+}
 
 // nameFormMaterialisedConstraint — материализованное ограничение, несущее форму:
 // `CONSTRAINT <имя> CHECK ((name ~ '<форма>'...))`. Есть только у сведённой схемы —
@@ -134,7 +149,7 @@ func nameFormCanonAdoptionsFrom(bodies map[string][]byte) []nameFormAdoption {
 		if len(parts) < 5 || parts[0] != "services" || parts[2] != "internal" || parts[3] != "migrations" {
 			continue
 		}
-		if !strings.HasSuffix(rel, ".sql") || !nameFormCanonLiteral.Match(body) {
+		if !strings.HasSuffix(rel, ".sql") || !nameFormCanonLiteral.Match(body) || nameFormFeedFunctionBody(body) {
 			continue
 		}
 		svc := parts[1]

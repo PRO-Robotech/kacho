@@ -319,6 +319,11 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// краснеет сама, а не ждёт, пока кто-то вспомнит про этот файл.
 	"services/compute/internal/migrations": "make test-pg-outside-selection",
 	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
+	// Пробы схемы извещений оператора notify (задача #2924, полоса N1): именованные
+	// ограничения, отложенная форма аудитории, каскад и накат цепочки kacho_notify
+	// на пустую базу судятся настоящим Postgres; отбор интеграционной джобы
+	// называет у notify только internal/limits и точки cmd/.
+	"services/notify/internal/migrations":  "make test-pg-outside-selection",
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
 	// Пробы журнала registry (задача #2918, NTF3-62 и УК3-28): колонка инициатора,
 	// её умолчание и функция базы registries_journal_emit судятся вставкой в
@@ -353,6 +358,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// исполнялись бы НИГДЕ — и пакет, отдавший ноль исполненных проб, печатал бы
 	// `ok`.
 	"gateway/internal/idempotencypg": "make test-pg-outside-selection",
+
+	// Ограничитель анонимной почты края (приёмка NTF-2, Р5; замысел issue-2917,
+	// З8): хранилище postgres, гонки ключей, пределы сервера, исход фиксации за
+	// TCP-посредником — предмет есть поведение под настоящим Postgres. Пакет
+	// лежит вне отбора интеграционной джобы так же, как хранилище однократности.
+	"gateway/internal/middleware/anonmail": "make test-pg-outside-selection",
 
 	// Общий сервер потока подписки (kacho#1018). Его пробы — не «интеграция ради
 	// интеграции»: предмет фазы есть ПОВЕДЕНИЕ под настоящим Postgres, и ни одно

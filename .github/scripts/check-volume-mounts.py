@@ -120,8 +120,11 @@ CHARTS = [
     Chart("kacho-nlb", "services/nlb/deploy",
           ["--set", "db.password=x"],
           [("mtls.enable", "false", "true"), ("migrator.enable", "false", "true")]),
+    # Число доверенных прыжков края в базе чарта не объявлено (приёмка NTF-2 Р8,
+    # Д51): рендер чарта без зонтика получает его ТОЛЬКО слоем (Д52), путём от REPO.
     Chart("api-gateway", "gateway/deploy",
-          ["--set", "image=x", "--set", "name=api-gateway"],
+          ["--set", "image=x", "--set", "name=api-gateway",
+           "-f", str(REPO / "deploy/testdata/notify-standalone/edge.yaml")],
           [("tls.enabled", "false", "true"), ("mtls.enable", "false", "true"),
            # Не булев тумблер: имя секрета с якорем доверия к внутреннему CA —
            # пустое значение убирает том, непустое добавляет. Якорь хопа за

@@ -28,7 +28,7 @@ func newReloadableAuthz(t *testing.T, catalog *middleware.PermissionCatalog, ove
 		Catalog:         catalog,
 		Overrides:       overrides,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, true),
+		Context:         mustExtractor(t, time.Now, "1"),
 		Resources:       middleware.NewResourceExtractor(nil),
 		Checker:         &fakeChecker{allowed: true},
 		Logger:          reloadTestLogger(),

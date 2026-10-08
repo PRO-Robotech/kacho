@@ -32,7 +32,10 @@
 # раскатки добавляет его сам, поверх прочитанного отсюда.
 
 dev:values.dev.yaml
-dev-prod:values.dev.yaml,values.dev-prod.yaml
+# Третий слой — СЛОЙ СТЕНДА ПРОГОНА (стенд П1 приёмки NTF-2): величины, нужные
+# только стенду сквозных проб. Его не называет ни одна цепочка площадки, хотя
+# `prorobotech` и `a8f60d` наследуют средний слой `values.dev-prod.yaml`.
+dev-prod:values.dev.yaml,values.dev-prod.yaml,values.run-stand.yaml
 prod:values.prod.yaml
 # Стенд посадки `own`: платформа проверяет человека СВОЕЙ полосой, а не внешним
 # поставщиком удостоверений (kacho#2716, стадия S2 приёмки Ф4д §8). Накладка

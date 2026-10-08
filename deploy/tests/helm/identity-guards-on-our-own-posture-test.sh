@@ -70,8 +70,12 @@ UMBRELLA="${KACHO_UMBRELLA_DIR:-$REPO_ROOT/helm/umbrella}"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
-# shellcheck source=deploy/tests/helm/stacks.sh
-. "$(dirname "$0")/stacks.sh"
+# Цепочки ГЕЙТА рендера — обёрткой lib/render-chain.sh: к `prod` она дописывает
+# слой оператора из каталога образцов (поставка не несёт ни узла почты, Д48, ни
+# числа доверенных прыжков края, приёмка NTF-2 Р8, Д51). Обёртка подключает
+# stacks.sh сама.
+# shellcheck source=deploy/tests/helm/lib/render-chain.sh
+. "$(dirname "$0")/lib/render-chain.sh"
 
 # ── ЦЕПОЧКИ БЕРУТСЯ ИЗ ТАБЛИЦЫ, А НЕ ВЫПИСЫВАЮТСЯ ───────────────────────────
 # Состав стенда объявляет ТОЛЬКО deploy/stacks.txt; вторая копия расходится с
@@ -79,7 +83,7 @@ UMBRELLA="${KACHO_UMBRELLA_DIR:-$REPO_ROOT/helm/umbrella}"
 # обход в ноль утверждений и вердикт с ВЕРНЫМ словом и ЛОЖНОЙ причиной.
 OWN_ARGS="$(stacks_args own "$UMBRELLA")" \
   || fatal "стек own: цепочка профилей не прочитана — посадку own сверять нечем"
-PROD_ARGS="$(stacks_args prod "$UMBRELLA")" \
+PROD_ARGS="$(render_chain_args prod "$UMBRELLA" operator.yaml)" \
   || fatal "стек prod: цепочка профилей не прочитана — почтовую полосу боевого слоя сверять нечем"
 DEV_ARGS="$(stacks_args dev "$UMBRELLA")" \
   || fatal "стек dev: цепочка профилей не прочитана — почтовую полосу сверять нечем"
