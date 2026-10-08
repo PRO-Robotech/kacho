@@ -138,6 +138,15 @@ esac
 # отсутствием в кластере.
 #
 # deployment|service|postgres statefulset (пусто = сервис без своей БД)
+#
+# notify — ТРИ процесса одного каталога, и у каждого своя строка: отправитель
+# (`kacho-notify`, слушателей нет), его API (`kacho-notify-api`, только
+# внутренний слушатель) — оба на базе kacho_notify, — и стендовая проба
+# (`kacho-notify-probe`) на своей базе kacho_notifyprobe. Строка на процесс, а
+# не на каталог: самоотчёт пишет каждый процесс, и под без строки здесь гейт не
+# видел бы вовсе. Перечень сверяется с рендером цепочки стенда
+# (deploy/stand_posture_gate_census_test.go): развёртывание службы продукта без
+# строки здесь — красное дерева, а не молчание гейта.
 SERVICES="
 api-gateway|api-gateway|
 compute|compute|kacho-umbrella-pg-compute
@@ -147,6 +156,9 @@ kacho-nlb|nlb|kacho-umbrella-pg-nlb
 kacho-storage|storage|kacho-umbrella-pg-storage
 registry|registry|kacho-umbrella-pg-registry
 vpc|vpc|kacho-umbrella-pg-vpc
+kacho-notify|notify|kacho-umbrella-pg-notify
+kacho-notify-api|notify-api|kacho-umbrella-pg-notify
+kacho-notify-probe|notify-probe|kacho-umbrella-pg-notifyprobe
 "
 POSTURE_SKIP="${POSTURE_SKIP:-}"
 
@@ -184,7 +196,11 @@ POSTURE_SKIP="${POSTURE_SKIP:-}"
 # измерение отсутствовало ровно там, где вся тенантская поверхность. Круг сужен по
 # ФАКТИЧЕСКИМ отправителям (шлюз, compute, nlb, оператор), найденным по графу
 # вызовов: сужение до одного шлюза сломало бы привязку интерфейса и резолв подсети.
-FORWARDER_NARROWING_REQUIRED="${FORWARDER_NARROWING_REQUIRED:-geo compute nlb storage registry iam vpc}"
+# notify-api и notify-probe добавлены: оба принимают личность, пересланную краем
+# (круг KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS / KACHO_NOTIFYPROBE_AUTHZ_
+# TRUSTED_FORWARDER_SANS, страж старта отказывает на пустом), — измерение у них
+# есть. Отправитель notify слушателей не поднимает вовсе: сужать ему нечего.
+FORWARDER_NARROWING_REQUIRED="${FORWARDER_NARROWING_REQUIRED:-geo compute nlb storage registry iam vpc notify-api notify-probe}"
 
 # needs_forwarder_narrowing <svc> — участвует ли сервис в измерении.
 needs_forwarder_narrowing() {
@@ -236,10 +252,29 @@ for row in $SERVICES; do
     continue
   fi
 
-  pods="$(kubectl -n "$NS" get pods -o json 2>/dev/null \
-          | jq -r --arg d "$dep" '.items[] | select(.metadata.ownerReferences[]?.kind=="ReplicaSet")
-                                 | select(.metadata.name | startswith($d + "-"))
-                                 | select(.metadata.deletionTimestamp == null) | .metadata.name')"
+  # ПОДЫ РАЗВЁРТЫВАНИЯ — ПО ЦЕПОЧКЕ ВЛАДЕНИЯ, А НЕ ПО ПРИСТАВКЕ ИМЕНИ.
+  # Приставка `<развёртывание>-` у развёртывания, чьё имя — приставка соседнего
+  # (`kacho-notify` и `kacho-notify-api`, `kacho-notify-probe`), захватывала поды
+  # соседа: строка `notify` судила поды API и пробы, и о самом отправителе зелёное
+  # было бы неотличимо от зелёного соседей. Под принадлежит развёртыванию ровно
+  # тогда, когда его ReplicaSet принадлежит этому развёртыванию.
+  if ! rs_json="$(kubectl -n "$NS" get rs -o json 2>/dev/null)" \
+     || ! pod_json="$(kubectl -n "$NS" get pods -o json 2>/dev/null)"; then
+    fail "$svc: ReplicaSet'ы или поды не прочитаны — посадка НЕ ПРОВЕРЕНА"
+    continue
+  fi
+  # ReplicaSet'ы — файлом (--slurpfile), а не --argjson: перечень перерастает
+  # предел argv, jq падает с ПУСТЫМ выводом — тот же класс, что разобран у
+  # секции C. Сбой разбора — отказ, а не «подов нет».
+  if ! pods="$(jq -r --arg d "$dep" --slurpfile rs <(printf '%s' "$rs_json") '
+            ([ $rs[0].items[] | select(any(.metadata.ownerReferences[]?; .kind=="Deployment" and .name==$d))
+               | .metadata.name ]) as $mine
+            | .items[] | select(.metadata.deletionTimestamp == null)
+            | select(any(.metadata.ownerReferences[]?; .kind=="ReplicaSet" and (.name | IN($mine[]))))
+            | .metadata.name' <<<"$pod_json")"; then
+    fail "$svc: разбор владения подов СОРВАЛСЯ — посадка НЕ ПРОВЕРЕНА"
+    continue
+  fi
   [ -z "$pods" ] && { fail "$svc: нет ни одного пода"; continue; }
 
   # ВСЕ реплики, а не первая попавшаяся: наполовину перекатившийся Deployment
@@ -278,11 +313,24 @@ for row in $SERVICES; do
     # бы читать.
     verdict="$(printf '%s' "$line" | jq -r --argjson need_fwd "$need_fwd" '
       def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
-      [ (if ((.auth_mode // "") | test("^production(-strict)?$")) then empty
+      # ФОРМА СЛУШАТЕЛЯ (`listener_form`, corelib observability.BootPosture):
+      # pair | internal_only | none. Ключа нет — форма ПАРА: так пишет процесс,
+      # собранный до поля, и пара — самая строгая из форм, поэтому отсутствие
+      # ключа ничего не ослабляет. Величина вне трёх (в том числе `<invalid>`,
+      # которым фундамент печатает противоречие о форме) — ОТКАЗ.
+      def form: if has("listener_form") then .listener_form else "pair" end;
+      [ (if (form | IN("pair", "internal_only", "none")) then empty
+         else "listener_form=\(.listener_form | tostring)" end),
+        (if ((.auth_mode // "") | test("^production(-strict)?$")) then empty
          else "auth_mode=\(shown("auth_mode"))" end),
         (if ((.db_sslmode // "") | test("^(require|verify-ca|verify-full|n/a)$")) then empty
          else "db_sslmode=\(shown("db_sslmode"))" end),
-        (if (.public_mtls   == true) then empty else "public_mtls=\(shown("public_mtls"))"   end),
+        # ПУБЛИЧНЫЙ СЛУШАТЕЛЬ судится только там, где он ЕСТЬ. У формы
+        # internal_only и none публичного слушателя нет, и `public_mtls=false`
+        # в её строке — не «слушатель без mTLS», а «слушателя нет»: защищать
+        # нечего. У пары — mTLS обязателен, как прежде.
+        (if (.public_mtls == true) or (form == "internal_only") or (form == "none") then empty
+         else "public_mtls=\(shown("public_mtls"))" end),
         # ВНУТРЕННИЙ ЛИСТЕНЕР — ТРИ СОСТОЯНИЯ, А НЕ ДВА (задача #1024).
         #
         # Измерение стало СТРОКОВЫМ, как соседние db_sslmode и identity_provider,
@@ -305,7 +353,12 @@ for row in $SERVICES; do
         # программу вердикта целиком — гейт печатал бы ошибку jq вместо находки.
         (if (.internal_mtls == "true") or (.internal_mtls == "n/a") then empty
          else "internal_mtls=\(shown("internal_mtls"))" end),
-        (if (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
+        # Проверка прав на каждом вызове не судится ТОЛЬКО у процесса, не
+        # служащего ни одного gRPC-сервиса (форма none): вызывать у него нечего.
+        # Внутренний слушатель (internal_only) — такой же вход, как пара:
+        # «internal = trusted» запрещено (sec-both-listeners-same-rules).
+        (if (.authz_check == true) or (form == "none") then empty
+         else "authz_check=\(shown("authz_check"))" end),
         (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
          else "trusted_forwarders=\(shown("trusted_forwarders"))" end),
         # ПОСАДКА ЛИЧНОСТИ (задача #1125). Судится НЕ «какая именно» — стенд
@@ -380,7 +433,7 @@ for row in $SERVICES; do
       # у сервисов без этого измерения).
       ok "$svc/$p $(printf '%s' "$line" | jq -r '
         def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
-        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders")) identity_provider=\(shown("identity_provider")) own_rest_public_tls=\(shown("own_rest_public_tls")) own_rest_internal_tls=\(shown("own_rest_internal_tls"))"')"
+        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders")) identity_provider=\(shown("identity_provider")) own_rest_public_tls=\(shown("own_rest_public_tls")) own_rest_internal_tls=\(shown("own_rest_internal_tls")) listener_form=\(shown("listener_form"))"')"
     fi
   done
 done
