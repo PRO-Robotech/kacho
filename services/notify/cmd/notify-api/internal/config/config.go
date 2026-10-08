@@ -38,10 +38,12 @@ import (
 )
 
 // Границы ручек notify-api (приёмка NTF-4 Р16/Р20 — звено прав и слушатель;
-// приёмка NTF-5 Р17 — напоминание и окно сужателя).
+// приёмка NTF-5 Р17 — напоминание и окно сужателя). Верх обоих окон отзыва —
+// окна звена прав и окна сужателя — своего числа в notify не имеет: это потолок
+// окна отзыва платформы corelib `authz.RevocationPolicy.Ceiling`, читаемый при
+// проверке, так что смена потолка в corelib меняет границу notify вместе с ним.
 const (
 	AuthzCacheTTLMin       = time.Second
-	AuthzCacheTTLMax       = 30 * time.Second
 	AuthzCheckTimeoutMin   = 100 * time.Millisecond
 	AuthzCheckTimeoutMax   = 10 * time.Second
 	AuthzDenyBudgetMin     = 1.0
@@ -428,7 +430,7 @@ func (c *Config) validateAuthz(fs *findings) {
 			}
 		}
 	}
-	c.duration(fs, "AuthzCacheTTL", c.AuthzCacheTTL, AuthzCacheTTLMin, AuthzCacheTTLMax)
+	c.duration(fs, "AuthzCacheTTL", c.AuthzCacheTTL, AuthzCacheTTLMin, authz.RevocationPolicy.Ceiling)
 	checkOK := c.duration(fs, "AuthzCheckTimeout", c.AuthzCheckTimeout, AuthzCheckTimeoutMin, AuthzCheckTimeoutMax)
 	if k, ok := c.set("AuthzDenyBudgetPerSec"); ok &&
 		(c.AuthzDenyBudgetPerSec < AuthzDenyBudgetMin || c.AuthzDenyBudgetPerSec > AuthzDenyBudgetMax) {

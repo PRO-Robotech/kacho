@@ -128,7 +128,7 @@ func TestConfig_EachRefusalNamesItsKnob(t *testing.T) {
 		{"граница обработки не больше срока вопроса", "KACHO_NOTIFY_HANDLING_BUDGET", "2s", false},
 		{"порт слушателя равен диагностическому", "KACHO_NOTIFY_INTERNAL_PORT", "9095", false},
 		{"пересылающий вне домена доверия", "KACHO_NOTIFY_AUTHZ_TRUSTED_FORWARDER_SANS", "spiffe://other.cloud/ns/kacho/sa/gw", false},
-		{"окно звена прав выше 30 с", "KACHO_NOTIFY_AUTHZ_CACHE_TTL", "31s", false},
+		{"окно звена прав выше потолка политики", "KACHO_NOTIFY_AUTHZ_CACHE_TTL", (ceiling + time.Second).String(), false},
 		{"бюджет отказов ноль", "KACHO_NOTIFY_AUTHZ_DENY_BUDGET_PER_SEC", "0", false},
 		{"относительный путь УЦ клиентов", "KACHO_NOTIFY_INTERNAL_SERVER_MTLS_CLIENTCAFILES", "ca.crt", false},
 	}
@@ -181,5 +181,83 @@ func TestConfig_UnsetWindowKnobStartsWithThePolicyWindow(t *testing.T) {
 	}
 	if got := c.ListFilter().CacheTTL; got != 2*time.Second {
 		t.Fatalf("заданное окно 2s не дошло: %s", got)
+	}
+}
+
+// authzWindowKnob — ручка окна звена прав слушателя (приёмка NTF-4 Р16).
+const authzWindowKnob = "KACHO_NOTIFY_AUTHZ_CACHE_TTL"
+
+// refusalWhy — причина отказа по ручке env ("" — по ней отказа нет).
+func refusalWhy(err error, env string) string {
+	var re *RefusalError
+	if !errors.As(err, &re) {
+		return ""
+	}
+	for _, f := range re.Findings {
+		if f.Knob.Env == env {
+			return f.Why
+		}
+	}
+	return ""
+}
+
+// TestConfig_AuthzWindowCeilingIsThePolicyCeiling — NTF4-123/124: верх границы
+// окна звена прав — потолок окна отзыва платформы, а не своё число notify. Окно
+// на единицу разрешения (1 с) выше потолка — отказ с именем ручки и границей
+// потолка; близнец ровно на потолке — старт. Значения отличаются одним фактом.
+func TestConfig_AuthzWindowCeilingIsThePolicyCeiling(t *testing.T) {
+	ceiling := authz.RevocationPolicy.Ceiling
+
+	env := configEnv()
+	env[authzWindowKnob] = (ceiling + time.Second).String()
+	_, err := loadConfig(t, env)
+	if got := refusedKnobs(err); len(got) != 1 || got[0] != authzWindowKnob {
+		t.Fatalf("окно %s выше потолка %s: отказ %v (ручки %v), ожидался ровно по %s",
+			env[authzWindowKnob], ceiling, err, got, authzWindowKnob)
+	}
+	if why := refusalWhy(err, authzWindowKnob); !strings.Contains(why, ".."+ceiling.String()+"]") {
+		t.Fatalf("текст отказа %q не называет границу потолка %s", why, ceiling)
+	}
+
+	twin := configEnv()
+	twin[authzWindowKnob] = ceiling.String()
+	c, err := loadConfig(t, twin)
+	if err != nil {
+		t.Fatalf("окно ровно на потолке %s отвергнуто: %v", ceiling, err)
+	}
+	if c.AuthzCacheTTL != ceiling {
+		t.Fatalf("окно %s не дошло: %s", ceiling, c.AuthzCacheTTL)
+	}
+}
+
+// TestConfig_AuthzWindowCeilingFollowsAPolicySubstitution — подмена потолка
+// (держатель Р16): при потолке 7 с значение 8 с — отказ с границей `7s`, 7 с —
+// загрузка. При настоящем потолке 10 с граница из политики и литерал 10 с дают
+// одинаковый исход; различает их только подмена. Подмена меняет общее
+// состояние пакета corelib, поэтому проба не параллельна и возвращает политику.
+func TestConfig_AuthzWindowCeilingFollowsAPolicySubstitution(t *testing.T) {
+	const substituted = 7 * time.Second
+	orig := authz.RevocationPolicy.Ceiling
+	if orig == substituted {
+		t.Fatalf("предпосылка пробы: потолок политики уже %s — подмена неотличима от исходного", orig)
+	}
+	authz.RevocationPolicy.Ceiling = substituted
+	t.Cleanup(func() { authz.RevocationPolicy.Ceiling = orig })
+
+	env := configEnv()
+	env[authzWindowKnob] = "8s"
+	_, err := loadConfig(t, env)
+	if got := refusedKnobs(err); len(got) != 1 || got[0] != authzWindowKnob {
+		t.Fatalf("при потолке %s окно 8s: отказ %v (ручки %v), ожидался ровно по %s",
+			substituted, err, got, authzWindowKnob)
+	}
+	if why := refusalWhy(err, authzWindowKnob); !strings.Contains(why, "..7s]") {
+		t.Fatalf("текст отказа %q не называет подменённую границу 7s", why)
+	}
+
+	twin := configEnv()
+	twin[authzWindowKnob] = "7s"
+	if _, err := loadConfig(t, twin); err != nil {
+		t.Fatalf("при потолке %s окно 7s отвергнуто: %v", substituted, err)
 	}
 }
