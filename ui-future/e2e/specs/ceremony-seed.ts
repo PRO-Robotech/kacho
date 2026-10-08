@@ -70,6 +70,10 @@ export const LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  // Заведение первого пароля (Р13). Путь — отдельный, а не продолжение `password`:
+  // перехват ответов (`captureAnswers`) сверяет адрес целиком, и глагол, не
+  // названный здесь, в `LANE_VERBS` не входит — его ответ перехват пропускает.
+  passwordEnroll: "/iam/v1/auth/password/enroll",
   recovery: "/iam/v1/auth/recovery",
   recoveryComplete: "/iam/v1/auth/recovery/complete",
   secondFactor: "/iam/v1/auth/second-factor",
