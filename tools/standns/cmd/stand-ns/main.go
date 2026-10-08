@@ -187,7 +187,7 @@ func inputs(stdout, stderr io.Writer, args []string) int {
 		if b != "Dockerfile" && !strings.HasPrefix(b, "Dockerfile.") && !strings.HasSuffix(b, ".Dockerfile") {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(*root, t))
+		body, err := os.ReadFile(filepath.Clean(filepath.Join(*root, t)))
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "stand-ns inputs: %s не читается (%v)\n", t, err)
 			return 2
@@ -240,6 +240,8 @@ func goListDeps(root string, files []string) standns.GoDeps {
 		for _, m := range mains {
 			pk = append(pk, "./"+m)
 		}
+		// #nosec G204 -- исполняемый файл постоянный (go list); аргументы — пути пакетов
+		// из строк `go build` отслеживаемых Dockerfile этого дерева, а не ввод извне.
 		cmd := exec.Command("go", append([]string{"list", "-deps", "-f",
 			`{{if not .Standard}}{{.Dir}}{{range .EmbedFiles}}{{"\t"}}{{.}}{{end}}{{end}}`}, pk...)...)
 		cmd.Dir = dir
