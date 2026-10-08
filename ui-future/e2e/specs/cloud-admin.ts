@@ -113,7 +113,7 @@ export async function operationSucceeded(
 }
 
 /** Новый вход администратора паролем своим контекстом; шаг утверждает исход. */
-async function freshAdminSession(testInfo: TestInfo, who: string): Promise<Seed> {
+export async function freshAdminSession(testInfo: TestInfo, who: string): Promise<Seed> {
   const seed = await newSeed(testInfo);
   const res = await seed.submit(LANE.login, "login", {
     email: process.env[CLOUD_ADMIN_EMAIL_ENV],
