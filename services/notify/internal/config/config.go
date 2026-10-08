@@ -116,19 +116,19 @@ type Config struct {
 	SMTPSessionTimeout time.Duration `envconfig:"KACHO_NOTIFY_SMTP_SESSION_TIMEOUT" knob:"notify.smtp.sessionTimeout" group:"NTF-1"`
 
 	// Workers — число исполнителей строк, в [WorkersMin..WorkersMax] (З21).
-	Workers int `envconfig:"KACHO_NOTIFY_WORKERS" knob:"notify.workers"`
+	Workers int `envconfig:"KACHO_NOTIFY_WORKERS" knob:"notify.workers" group:"NTF-1"`
 
 	// DeferFor — отсрочка DEFER по `grant_skew`, `platform_unavailable`,
 	// `template_skew`, в [feed.MinDefer..feed.MaxDefer] (З23).
-	DeferFor time.Duration `envconfig:"KACHO_NOTIFY_DEFER_FOR" knob:"notify.deferFor"`
+	DeferFor time.Duration `envconfig:"KACHO_NOTIFY_DEFER_FOR" knob:"notify.deferFor" group:"NTF-1"`
 
 	// KanameAddr — внутренний слушатель kaname `узел:порт` для `ResolveSend`
 	// (ребро notify → kaname, §9 замысла).
-	KanameAddr string `envconfig:"KACHO_NOTIFY_KANAME_ADDR" knob:"notify.kaname.addr"`
+	KanameAddr string `envconfig:"KACHO_NOTIFY_KANAME_ADDR" knob:"notify.kaname.addr" group:"NTF-1"`
 
 	// KanameSAN — точный URI SAN (SPIFFE ID) листа kaname: решение о письме
 	// принимается только от него, а не от любого листа внутреннего УЦ.
-	KanameSAN string `envconfig:"KACHO_NOTIFY_KANAME_SAN" knob:"notify.kaname.san"`
+	KanameSAN string `envconfig:"KACHO_NOTIFY_KANAME_SAN" knob:"notify.kaname.san" group:"NTF-1"`
 
 	// Origin — origin установки: абсолютный `https://` без пути, база ссылок
 	// писем (NTF1-G06).
@@ -151,7 +151,7 @@ type Config struct {
 
 	// SMTPFromName — имя отправителя установки (заголовок From, З25): форма
 	// `notify/form.HeaderText`; результат — [Config.FromName].
-	SMTPFromName string `envconfig:"KACHO_NOTIFY_SMTP_FROM_NAME" knob:"notify.smtp.fromName"`
+	SMTPFromName string `envconfig:"KACHO_NOTIFY_SMTP_FROM_NAME" knob:"notify.smtp.fromName" group:"NTF-1"`
 
 	// ── DNS установки (Р19, §12а) ───────────────────────────────────────────
 
@@ -314,9 +314,10 @@ var credentialKnob = Knob{
 // рендерит только при объявленном якоре узла почты (`trustAnchorSecret`);
 // без неё доверенный набор — корневое хранилище образа.
 var trustAnchorKnob = Knob{
-	Name: "notify.smtp.trustAnchorFile",
-	Env:  "KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE",
-	Kind: reflect.String,
+	Name:  "notify.smtp.trustAnchorFile",
+	Env:   "KACHO_NOTIFY_SMTP_TRUST_ANCHOR_FILE",
+	Kind:  reflect.String,
+	Group: GroupNTF1,
 }
 
 // recipientKeyKnob — ключ сетки на адресата (З24). Переменная — только ссылка
