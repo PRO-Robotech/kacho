@@ -238,10 +238,12 @@ func judgeNotifyKnobs(knobs []string, v notifyPodView) []string {
 }
 
 // notifyChainViews — цепочки stacks.txt, рендер которых несёт объекты
-// notify, с видом пода.
+// notify, с видом пода. Рендер — цепочками ГЕЙТА: `prod` несёт слой оператора
+// из каталога образцов (число доверенных прыжков края и узел почты поставка не
+// несёт, приёмка NTF-2 Р8, Д51, Д48), иначе рендер `prod` отказывает до суждения.
 func notifyChainViews(t *testing.T, c umbrellaCopy, sets ...string) (map[string]notifyPodView, int) {
 	t.Helper()
-	stacks := deployStacks(t)
+	stacks := deployStacksForRender(t, renderGateOperatorSample)
 	var names []string
 	for n := range stacks {
 		names = append(names, n)
