@@ -49,7 +49,11 @@
 #   stand.yaml    приспособление к кластеру, ИЗМЕРЕННОЕ у него: cert-manager не
 #                 ставится (переиспользуется существующий), контроллер входа не
 #                 ставится, тома — только если у кластера есть класс по умолчанию;
-#                 и адрес консоли этого стенда;
+#                 адрес консоли этого стенда и её вход под именем, которое
+#                 пробрасывает forward; почтовая полоса — в приёмник СТЕНДА
+#                 (STARTTLS с якорем его листа), а не в ретранслятор площадки:
+#                 письмо пробы читается из ящика стенда, и наружу оно не уходит
+#                 (kacho#3065 — цепочка a8f60d объявляет ретранслятор площадки);
 #   перенос       пост-обработчик рендера (tools/standns): адреса соседей,
 #                 издатели и корень внутреннего CA — в пространство стенда.
 #
@@ -194,6 +198,31 @@ assert [nsname(p) for p in dns[0]["to"]] == [sys.argv[2]] and all(p.get("podSele
      ! STAND_DNS_NAMESPACE=dns-ns STAND_DNS_SELECTOR='{}' dns_peer >/dev/null 2>&1; then
     ok "объявленная пара DNS принята, половина пары и пустой селектор — отвергнуты"
   else bad "объявление пары DNS: «$pick»"; fi
+  # Слой стенда поверх цепочки площадки (a8f60d, kacho#3065): почта стенда — в
+  # его приёмник, вход консоли — под именем, которое пробрасывает forward.
+  # Судится разобранным слоем, а не подстрокой.
+  local ov
+  ov='
+import sys, yaml
+d = yaml.safe_load(sys.stdin)
+m = d["global"]["kacho"]["identity"]["smtp"]
+assert m["connectionURI"] == "smtp://{{ .Release.Name }}-mailpit:1025/", m["connectionURI"]
+assert m["credentialSecret"] == {"name": "", "key": ""}, m["credentialSecret"]
+assert m["trustAnchorSecret"] == {"name": "kacho-mailpit-tls", "key": "ca.crt"}, m["trustAnchorSecret"]
+assert d["uif"]["publicFront"]["service"]["name"] == "", "имя входа консоли не сброшено"
+assert d["uif"]["publicFront"]["service"]["type"] == "ClusterIP"
+'
+  if stand_overlay t3102-probe cm-ns on 20001 | python3 -c "$ov"; then
+    ok "слой стенда: почта — приёмник стенда с якорем его листа, удостоверения ретранслятора нет; вход консоли — ui-public, ClusterIP"
+  else bad "слой стенда: почтовая полоса или имя входа консоли не по правилу"; fi
+  # Секрет первого администратора облака выводится из рендера: ссылка
+  # KANAME_BOOTSTRAP_ROOT_EMAIL → secretKeyRef. Близнец — рендер без ссылки: пусто.
+  local rd; rd="$(mktemp)"
+  printf '%s\n' 'kind: Deployment' 'metadata: {name: kaname}' 'spec: {template: {spec: {containers: [{name: kaname, env: [{name: KANAME_BOOTSTRAP_ROOT_EMAIL, valueFrom: {secretKeyRef: {name: stand-cloud-admin, key: email}}}]}]}}}' >"$rd"
+  if [ "$(bootstrap_secret_of "$rd")" = stand-cloud-admin ]; then ok "секрет администратора облака выведен из рендера"; else bad "секрет администратора облака из рендера не выведен"; fi
+  printf '%s\n' 'kind: Deployment' 'metadata: {name: kaname}' 'spec: {template: {spec: {containers: [{name: kaname, env: [{name: KANAME_BOOTSTRAP_ROOT_EMAIL, value: ""}]}]}}}' >"$rd"
+  if [ -z "$(bootstrap_secret_of "$rd")" ]; then ok "рендер без ссылки на секрет — шага администратора нет"; else bad "секрет администратора выведен из рендера без ссылки"; fi
+  rm -f "$rd"
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -520,6 +549,18 @@ global:
     identity:
       appBaseURL: "https://$host:$port"
       webauthnRpId: "$host"
+      # Почта стенда — его приёмнику (блок mailpit цепочки), шифрование не
+      # снимается: STARTTLS, якорь — ca.crt листа приёмника. Удостоверения
+      # ретранслятора площадки у стенда нет и быть не должно.
+      smtp:
+        connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
+        fromAddress: "noreply@mail.kacho.test"
+        credentialSecret:
+          name: ""
+          key: ""
+        trustAnchorSecret:
+          name: kacho-mailpit-tls
+          key: ca.crt
 uif:
   # Первый лист внешнего входа консоли — ВРЕМЕННЫЙ (certificate-public.yaml,
   # issue-temporary-certificate), настоящий раздача перечитывает сторожем раз в
@@ -535,6 +576,9 @@ uif:
   publicFront:
     enabled: true
     service:
+      # Имя входа — умолчание чарта (<раздача>-public): его пробрасывает
+      # forward. Имя балансировщика площадки к стенду отношения не имеет.
+      name: ""
       type: ClusterIP
     tls:
       secretName: console-public-tls
@@ -558,6 +602,31 @@ EOF
     done
     printf 'registry:\n  zot:\n    storage:\n      persistence: false\n'
   fi
+}
+
+# bootstrap_secret_of RENDER — имя секрета первого администратора облака, на
+# который рендер ссылается из KANAME_BOOTSTRAP_ROOT_EMAIL (secretKeyRef); пусто —
+# цепочка администратора секретом не объявляет, и шага нет. Больше одного имени —
+# код 1: какой из них читать, не установлено.
+bootstrap_secret_of() {
+  python3 - "$1" <<'PY'
+import sys, yaml
+names = set()
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not isinstance(d, dict):
+        continue
+    spec = ((d.get("spec") or {}).get("template") or {}).get("spec") or {}
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        for e in c.get("env") or []:
+            if e.get("name") == "KANAME_BOOTSTRAP_ROOT_EMAIL":
+                ref = ((e.get("valueFrom") or {}).get("secretKeyRef") or {}).get("name")
+                if ref:
+                    names.add(ref)
+if len(names) > 1:
+    sys.exit("секретов администратора облака больше одного: %s" % sorted(names))
+for n in names:
+    print(n)
+PY
 }
 
 # subchart_defaults — умолчания подчартов-частей дерева под их ключом в зонтике.
@@ -756,6 +825,19 @@ $claims" 2
   KACHO_NS="$ns" bg bash "$HERE/seed-geo-baseline.sh" || die "посев каталога geo не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-storage-catalog.sh" || die "посев каталога хранения не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-vpc-address-pools.sh" || die "посев полосы адресов не прошёл" 1
+  # Первый администратор облака — посевом путём продукта (регистрация, код из
+  # ящика стенда, подтверждение; kacho#2878), если цепочка объявляет его
+  # секретом. Секрет на стенде проб чеканит stack-secrets.sh. Шаг — до гейта
+  # посадки: стенд не объявляется поднятым без входа администратора.
+  local admin_secret
+  admin_secret="$(bootstrap_secret_of "$work/render.yaml")" || die "секрет администратора облака из рендера не выведен (выше)" 1
+  if [ -n "$admin_secret" ]; then
+    STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" KACHO_CLOUD_ADMIN_SECRET="$admin_secret" \
+      bg tee_to "$work/cloud-admin.log" bash "$HERE/bootstrap-cloud-admin.sh" ||
+      die "администратор облака не заведён либо не входит (журнал $work/cloud-admin.log)" 1
+  else
+    log "цепочка $stack администратора облака секретом не объявляет — шага нет"
+  fi
   NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" POSTURE_PROFILE=production \
     bg tee_to "$work/posture.log" bash "$HERE/assert-production-posture.sh" || die "боевая посадка стенда не доказана (журнал $work/posture.log)" 1
   local prc=0
