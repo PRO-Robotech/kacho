@@ -77,8 +77,8 @@
 # Все режимы, обращающиеся к кластеру (up, run, down, census, forward), говорят
 # с контекстом -client явно названного файла профиля — STAND_KUBECONFIG либо
 # одиночный KUBECONFIG; current-context файла не читается и не меняется
-# (guard_context ниже, kacho#3065). STAND_APISERVER — необязательный второй пин
-# по адресу apiserver'а (scripts/stand-cluster-pin.sh).
+# (guard_context ниже, kacho#3065). STAND_APISERVER выводится из выбранного
+# контекста; объявленный при вызове — второй пин, обязан совпасть.
 # Подтверждения человеком НЕ спрашивается: пространство своё, помеченное, и
 # пишется только в него и в помеченные свои объекты.
 set -uo pipefail
@@ -260,8 +260,9 @@ need_tools() {
 # объявивший current-context, при слиянии побеждает), вторым — файл профиля; и
 # HELM_KUBECONTEXT. Так и шаги, читающие активный контекст, говорят с client.
 #
-# STAND_APISERVER — необязательный второй пин: объявлен — адрес apiserver'а
-# выбранного контекста сверяется с ним (scripts/stand-cluster-pin.sh).
+# STAND_APISERVER выводится из выбранного контекста и уходит дочерним шагам
+# (гейт посадки пинит им кластер, scripts/stand-cluster-pin.sh); объявленный
+# при вызове — обязан совпасть с адресом контекста -client.
 STAND_CTX="" STAND_CTX_FILE=""
 
 kubectl() {
@@ -326,10 +327,18 @@ guard_context() {
   trap ctx_cleanup EXIT
   STAND_KUBECONFIG="$file" STAND_CONTEXT="$ctx" STAND_CTX="$ctx"
   export STAND_KUBECONFIG STAND_CONTEXT KUBECONFIG="$STAND_CTX_FILE:$file" HELM_KUBECONTEXT="$ctx"
+  # Адрес apiserver'а — из ВЫБРАННОГО контекста (чтение файла, кластер не
+  # спрашивается). Объявлен STAND_APISERVER — обязан совпасть. Дальше адрес
+  # уходит дочерним шагам: гейт посадки пинит им кластер (stand-cluster-pin.sh),
+  # и тот же страж здесь сверяет, что активный для них контекст — выбранный.
+  local srv
+  srv="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
+  [ -n "$srv" ] || die "контекст -client файла профиля не отдал адрес apiserver'а — пинить кластер нечем" 2
+  [ -z "${STAND_APISERVER:-}" ] || [ "$STAND_APISERVER" = "$srv" ] ||
+    die "объявленный STAND_APISERVER не адрес контекста -client файла профиля — стенд ушёл бы не туда" 2
+  export STAND_APISERVER="$srv"
+  bash "$HERE/stand-cluster-pin.sh" >/dev/null || die "активный для дочерних шагов кластер не кластер контекста -client" 2
   log "кластер: контекст -client файла профиля (активный контекст файла не читается)"
-  if [ -n "${STAND_APISERVER:-}" ]; then
-    bash "$HERE/stand-cluster-pin.sh" || die "адрес apiserver'а контекста -client не объявленный STAND_APISERVER (выше)" 2
-  fi
 }
 
 # ns_state NS — печатает absent | test | foreign; код 2 — кластер не ответил.

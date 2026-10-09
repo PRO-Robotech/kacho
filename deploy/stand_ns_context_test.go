@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,8 @@ const fakeStandKubectl = `#!/usr/bin/env bash
   [ -n "$first" ] && [ -f "$first" ] && printf 'AMBIENT %s\n' "$(grep '^current-context:' "$first")"
 } >>"$FAKE_LOG"
 case " $* " in
+  *" config view "*) echo -n "https://cluster.invalid:6443" ;;
+  *" config current-context "*) sed -n 's/^current-context: "\(.*\)"$/\1/p' "${KUBECONFIG%%:*}" ;;
   *" get namespace -l "*|*" get clusterissuer "*"-o json"*|*" get deploy -A "*) echo '{"items":[]}' ;;
   *" get namespace "*) echo "Error from server (NotFound): namespaces not found" >&2; exit 1 ;;
 esac
@@ -105,10 +108,14 @@ func runStandNS(t *testing.T, env []string, args ...string) standRun {
 	return standRun{string(out), code, string(logb)}
 }
 
+var configRead = regexp.MustCompile(`^CALL (--kubeconfig \S+ --context \S+ )?config `)
+
+// callLines — обращения к кластеру: чтение файла конфигурации (`kubectl config …`)
+// кластер не спрашивает и сюда не входит.
 func callLines(log string) []string {
 	var calls []string
 	for _, l := range strings.Split(log, "\n") {
-		if strings.HasPrefix(l, "CALL ") {
+		if strings.HasPrefix(l, "CALL ") && !configRead.MatchString(l) {
 			calls = append(calls, l)
 		}
 	}
@@ -134,6 +141,9 @@ func TestStandNamespaceTalksToTheClientContextWhateverIsActive(t *testing.T) {
 			if len(calls) == 0 {
 				t.Fatalf("%s: ни одного вызова kubectl — проба беспредметна:\n%s", name, r.out)
 			}
+			// Чтение файла конфигурации дочерним стражем (stand-cluster-pin.sh)
+			// идёт без --context — оно читает АКТИВНЫЙ контекст, и что он client,
+			// утверждает строка AMBIENT ниже; в calls его нет.
 			for _, c := range calls {
 				if !strings.Contains(c, "--context "+standClient+" ") || !strings.Contains(c, "--kubeconfig "+prof+" ") {
 					t.Errorf("%s: вызов без явного контекста client и файла профиля: %s", name, c)
@@ -173,6 +183,7 @@ func TestStandNamespaceRefusesWithoutExactlyOneClientContext(t *testing.T) {
 		{"STAND_CONTEXT — infra", []string{"STAND_KUBECONFIG=" + good, "STAND_CONTEXT=" + standInfra}, "не оканчивается на -client"},
 		{"STAND_CONTEXT — client, которого в файле нет", []string{"STAND_KUBECONFIG=" + good, "STAND_CONTEXT=u/z-client"}, "нет контекста STAND_CONTEXT"},
 		{"файл профиля не назван", nil, "файл профиля не назван"},
+		{"STAND_APISERVER не адрес контекста client", []string{"STAND_KUBECONFIG=" + good, "STAND_APISERVER=https://other.invalid:6443"}, "не адрес контекста -client"},
 		{"KUBECONFIG — список", []string{"KUBECONFIG=" + good + ":" + onlyInfra}, "файл профиля должен быть один"},
 	} {
 		for _, op := range [][]string{{"up", "t3065-ctx", "a8f60d"}, {"down", "t3065-ctx"}, {"census"}} {
