@@ -79,6 +79,13 @@
 # одиночный KUBECONFIG; current-context файла не читается и не меняется
 # (guard_context ниже, kacho#3065). STAND_APISERVER выводится из выбранного
 # контекста; объявленный при вызове — второй пин, обязан совпасть.
+#
+# Файл профиля кластера НЕ доказывает: его могут заменить. Решение владельца
+# 2026-10-10 дословно: «По префиксу нод можешь понять тот кластер или нет, куб
+# конфет мог меняться». Кластер принимается по узлам — все `<профиль>-client-…`,
+# не меньше одного (scripts/client-context.sh, client_context_nodes) — в
+# guard_context до первого обращения с записью и в переписи, и заново перед
+# каждой фазой записи (stand_nodes): между фазами файл мог смениться.
 # Подтверждения человеком НЕ спрашивается: пространство своё, помеченное, и
 # пишется только в него и в помеченные свои объекты.
 set -uo pipefail
@@ -287,6 +294,12 @@ guard_context() {
   local file ctx
   client_context_pick || exit 2
   file="$CC_FILE" ctx="$CC_CTX"
+  # Всё, что судится по файлу, — первым (адрес контекста против объявленного);
+  # затем кластер — узлами: файл профиля его не доказывает.
+  client_context_server || exit 2
+  client_context_profile || exit 2
+  client_context_nodes || exit 2
+  export STAND_PROFILE="$CC_PROFILE"
   mkdir -p "$WORK_ROOT" || die "рабочий каталог $WORK_ROOT не заведён" 2
   STAND_CTX_FILE="$(mktemp "$WORK_ROOT/.context.XXXXXX")" || die "файл выбора контекста не заведён" 2
   client_context_file "$STAND_CTX_FILE" || exit 2
@@ -305,6 +318,13 @@ guard_context() {
   export STAND_APISERVER="$srv"
   bash "$HERE/stand-cluster-pin.sh" >/dev/null || die "активный для дочерних шагов кластер не кластер контекста -client" 2
   log "кластер: контекст -client файла профиля (активный контекст файла не читается)"
+}
+
+# stand_nodes — кластер заново доказывается узлами перед фазой записи: файл
+# профиля, которым говорит каждый kubectl и helm, мог смениться с прошлой фазы.
+stand_nodes() {
+  CC_FILE="$STAND_KUBECONFIG" CC_CTX="$STAND_CTX"
+  client_context_nodes >/dev/null || die "кластер перед фазой записи «$1» не доказан узлами (выше) — запись не начинается" 2
 }
 
 # ns_state NS — печатает absent | test | foreign; код 2 — кластер не ответил.
@@ -858,11 +878,13 @@ $claims" 2
   log "проверено без записи в кластер: ревизия, образы, право на квоту, предрендер"
 
   # ── 2. Первая запись: пространство с метками и сроком, квота, пределы ──
+  stand_nodes "пространство $ns"
   [ "$UP_STATE" = absent ] && UP_CREATED=1
   kubectl apply -f "$work/ns.yaml" >/dev/null || die "пространство $ns с квотой не заведено" 1
   log "пространство $ns: задача #$task, срок $expires; квота, пределы, Pod Security baseline и сетевая изоляция применены"
 
   # ── 3. Стенд ──
+  stand_nodes "манифесты модулей и секреты"
   bg make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \
     MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" || die "манифесты модулей не доставлены" 1
   local mm="$UMBRELLA/values.module-manifests.yaml"
@@ -871,6 +893,7 @@ $claims" 2
   STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" bg bash "$HERE/stack-secrets.sh" "$stack" "${extra[@]}" ||
     die "предусловные секреты стенда не созданы" 1
 
+  stand_nodes "helm upgrade --install"
   log "helm: цепочка $stack + образы $sha + стенд, перенос в $ns"
   bg helm_install "${args[@]}" \
       --post-renderer kacho-stand-ns \
@@ -880,6 +903,7 @@ $claims" 2
   # Прокси API-сервера на управляемом кластере до подов не доходит — вопрос
   # задаётся пробросом (scripts/wait-edge-ready.sh, EDGE_READY_VIA).
   EDGE_READY_VIA=port-forward bg bash "$HERE/wait-edge-ready.sh" "$ns" api-gateway 90 2 3 || die "край стенда не ответил готовностью" 1
+  stand_nodes "посев"
   KACHO_NS="$ns" bg bash "$HERE/seed-geo-baseline.sh" || die "посев каталога geo не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-storage-catalog.sh" || die "посев каталога хранения не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-vpc-address-pools.sh" || die "посев полосы адресов не прошёл" 1
@@ -1082,12 +1106,14 @@ cmd_down() {
   local ns="$1" state left
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер>-<коротко>; пространство kacho цель не снимает никогда" 2
   need_tools; guard_context
+  stand_nodes "снятие $ns"
   cmd_unforward "$ns" >/dev/null 2>&1
   state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил; «не прочитал» не равно «нет»" 2
   [ "$state" != foreign ] || die "пространство $ns НЕ помечено $LABEL_STAND=test — оно не стенд проб, и снимать его эта цель не вправе" 1
   if [ "$state" = test ] && helm status "$RELEASE" -n "$ns" >/dev/null 2>&1; then
     log "helm uninstall $RELEASE -n $ns (уносит свои издатели CA и корень CA)"
     helm uninstall "$RELEASE" -n "$ns" --wait --timeout 5m || warn "helm uninstall отказал — помеченное снимается ниже по метке"
+    stand_nodes "снятие $ns: помеченное и пространство"
   fi
   left="$(leftovers "$ns")"
   if [ -n "$left" ]; then

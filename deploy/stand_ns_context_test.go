@@ -34,6 +34,12 @@ const fakeStandKubectl = `#!/usr/bin/env bash
 } >>"$FAKE_LOG"
 case " $* " in
   *" config view "*) echo -n "https://cluster.invalid:6443" ;;
+  *" get nodes "*)
+    n=$(( $(cat "$FAKE_LOG.nodes" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FAKE_LOG.nodes"
+    [ -n "${FAKE_NODES_FAIL:-}" ] && { echo "Unable to connect to the server" >&2; exit 1; }
+    set -- ${FAKE_NODES-}
+    [ -n "${FAKE_NODES_SWITCH_AFTER:-}" ] && [ "$n" -gt "$FAKE_NODES_SWITCH_AFTER" ] && set -- ${FAKE_NODES_SWITCHED-}
+    for v in "$@"; do echo "$v"; done ;;
   *" config current-context "*) sed -n 's/^current-context: "\(.*\)"$/\1/p' "${KUBECONFIG%%:*}" ;;
   *" get namespace -l "*|*" get clusterissuer "*"-o json"*|*" get deploy -A "*) echo '{"items":[]}' ;;
   *" get namespace "*) echo "Error from server (NotFound): namespaces not found" >&2; exit 1 ;;
@@ -49,6 +55,8 @@ exit 1
 const (
 	standClient = "u/x-client"
 	standInfra  = "u/x-infra"
+	// Узлы client площадки x: префикс x-client-, хвост — пул.
+	standNodes = "x-client-p1a2b3-wn7jm-aaaaa x-client-p1a2b3-wn7jm-bbbbb"
 )
 
 func standProfile(t *testing.T, dir, name, current string, contexts ...string) string {
@@ -87,11 +95,15 @@ func runStandNS(t *testing.T, env []string, args ...string) standRun {
 	work := filepath.Join(dir, "work")
 	logf := filepath.Join(dir, "calls.log")
 	cmd := exec.Command("bash", append([]string{"scripts/stand-ns.sh"}, args...)...)
+	// Умолчание — кластер профиля x: его узлы x-client-…, профиль назван
+	// переменной (файлы проб названы не по площадке). Случай переопределяет.
 	cmd.Env = append([]string{
 		"PATH=" + bin + ":" + os.Getenv("PATH"),
 		"HOME=" + os.Getenv("HOME"),
 		"FAKE_LOG=" + logf,
 		"KACHO_STAND_NS_WORKDIR=" + work,
+		"STAND_PROFILE=x",
+		"FAKE_NODES=" + standNodes,
 	}, env...)
 	out, err := cmd.CombinedOutput()
 	code := 0

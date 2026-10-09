@@ -28,6 +28,12 @@ import (
 const fakeStackKubectl = `#!/usr/bin/env bash
 printf 'CALL kubectl %s\n' "$*" >>"$FAKE_LOG"
 case " $* " in
+  *" get nodes "*)
+    n=$(( $(cat "$FAKE_LOG.nodes" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FAKE_LOG.nodes"
+    [ -n "${FAKE_NODES_FAIL:-}" ] && { echo "Unable to connect to the server" >&2; exit 1; }
+    set -- ${FAKE_NODES-}
+    [ -n "${FAKE_NODES_SWITCH_AFTER:-}" ] && [ "$n" -gt "$FAKE_NODES_SWITCH_AFTER" ] && set -- ${FAKE_NODES_SWITCHED-}
+    for v in "$@"; do echo "$v"; done ;;
   *" config current-context "*)
     IFS=: read -ra files <<<"${KUBECONFIG:-}"
     for f in "${files[@]}"; do
@@ -41,6 +47,9 @@ case " $* " in
 esac
 exit 0
 `
+
+// Узлы client площадки a8f60d (имя стенда — профиль площадки).
+const stackNodes = "a8f60d-client-p1a2b3-wn7jm-aaaaa a8f60d-client-p1a2b3-wn7jm-bbbbb"
 
 const fakeStackHelm = `#!/usr/bin/env bash
 printf 'CALL helm %s\n' "$*" >>"$FAKE_LOG"
@@ -78,6 +87,7 @@ func runStackUp(t *testing.T, env []string, args ...string) stackRun {
 		"GOCACHE=" + os.Getenv("GOCACHE"),
 		"TMPDIR=" + tmp,
 		"FAKE_LOG=" + logf,
+		"FAKE_NODES=" + stackNodes,
 	}, env...)
 	out, err := cmd.CombinedOutput()
 	code := 0

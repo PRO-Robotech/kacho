@@ -24,6 +24,22 @@
 # current-context файла профиля не читается и не меняется.
 #
 # ─────────────────────────────────────────────────────────────────────────────
+# КЛАСТЕР ДОКАЗЫВАЕТСЯ УЗЛАМИ, А НЕ ФАЙЛОМ (решение владельца 2026-10-10)
+#
+# Дословно: «По префиксу нод можешь понять тот кластер или нет, куб конфет мог
+# меняться».
+#
+# Файл профиля и имена его контекстов — не доказательство кластера: файл могут
+# заменить (так и было 2026-10-10), и контекст -client нового файла поведёт в
+# другой кластер. Доказательство — узлы, которые отдаёт сам кластер. До ПЕРВОЙ
+# записи (и в переписи) выбранный контекст спрашивается `get nodes`, и кластер
+# принимается, только если узлов не меньше одного и КАЖДОЕ имя начинается с
+# `<профиль>-client-`; имя с `-infra-`, чужой профиль, ноль узлов, неответ —
+# отказ до записи. Хвост после `-client-` (пул) не зашит. Профиль — STAND_PROFILE
+# либо имя файла профиля `*--<профиль>.yaml`; названы оба и расходятся — отказ.
+# Проверка повторяется перед каждой фазой записи: между фазами файл мог смениться.
+#
+# ─────────────────────────────────────────────────────────────────────────────
 # РЕЖИМЫ
 #
 #   source client-context.sh     — функция client_context_pick: выбирает файл и
@@ -45,11 +61,16 @@
 #       Рабочий каталог (файл выбора и обёртки) снимается на любом исходе.
 #       Код — код КОМАНДЫ; 2 — отказ выбора, КОМАНДА не исполнялась.
 #
+#   client-context.sh nodes
+#       доказать кластер узлами (см. выше) перед фазой записи: внутри
+#       закреплённого вызова — его контекст и файл, иначе — выбор заново.
+#       0 — кластер тот; 2 — отказ.
+#
 #   client-context.sh verify [--ambient]
 #       страж ВНУТРИ закреплённого вызова: 0, если контекст закреплён этим
 #       файлом — KACHO_CLIENT_CONTEXT оканчивается на -client, активный
-#       контекст равен ему, и (без --ambient) kubectl и helm на PATH — обёртки
-#       закрепления. Иначе 2: цель зовут мимо `exec`, и она ушла бы в активный
+#       контекст равен ему, узлы доказывают кластер профиля, и (без --ambient)
+#       kubectl и helm на PATH — обёртки закрепления. Иначе 2: цель зовут мимо `exec`, и она ушла бы в активный
 #       контекст. `--ambient` — для пути, закрепляющего контекст файлом выбора
 #       без обёрток (scripts/stand-ns.sh).
 #
@@ -121,6 +142,49 @@ PY
     { cc_fail "объявленный STAND_APISERVER не адрес контекста -client файла профиля — выкатка ушла бы не туда"; return 2; }
 }
 
+# client_context_profile — профиль площадки, чьи узлы ждутся; CC_PROFILE.
+# STAND_PROFILE либо имя файла профиля `*--<профиль>.yaml`; оба — обязаны совпасть.
+client_context_profile() {
+  local from_file="" base
+  CC_PROFILE=""
+  base="$(basename "$CC_FILE")"
+  [[ "$base" =~ --([a-z0-9]+)\.ya?ml$ ]] && from_file="${BASH_REMATCH[1]}"
+  if [ -n "${STAND_PROFILE:-}" ]; then
+    [[ "$STAND_PROFILE" =~ ^[a-z0-9]+$ ]] || { cc_fail "STAND_PROFILE=«$STAND_PROFILE» — не имя профиля площадки (строчные латинские и цифры)"; return 2; }
+    [ -z "$from_file" ] || [ "$from_file" = "$STAND_PROFILE" ] || { cc_fail "файл профиля назван для площадки «$from_file», а ставится «$STAND_PROFILE».
+       Что сделать: возьми файл профиля площадки «$STAND_PROFILE»"; return 2; }
+    CC_PROFILE="$STAND_PROFILE"
+  else
+    [ -n "$from_file" ] || { cc_fail "профиль площадки не выведен: имя файла не вида *--<профиль>.yaml, STAND_PROFILE не задан —
+       узлы сверять не с чем.
+       Что сделать: STAND_PROFILE=<профиль площадки> либо файл профиля под его именем"; return 2; }
+    CC_PROFILE="$from_file"
+  fi
+}
+
+# client_context_nodes — кластер выбранного контекста доказывается его узлами:
+# ≥ 1 узла, каждое имя начинается с `<CC_PROFILE>-client-`, ни одно не несёт
+# `-infra-`. Спрашивается кластер (чтение); записи нет. Отказ — 2.
+client_context_nodes() {
+  local out names n bad
+  [ -n "$CC_PROFILE" ] || client_context_profile || return 2
+  out="$(command kubectl --kubeconfig "$CC_FILE" --context "$CC_CTX" get nodes --request-timeout=30s \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>&1)" ||
+    { cc_fail "узлы кластера контекста -client НЕ ПРОЧИТАНЫ — кластер не доказан, запись не начинается.
+       Ответ: $(head -c 300 <<<"$out")
+       Что сделать: проверь доступ к кластеру площадки «$CC_PROFILE» и повтори"; return 2; }
+  names="$(grep -v '^[[:space:]]*$' <<<"$out")"
+  n="$(grep -c . <<<"$names")"
+  [ "$n" -ge 1 ] || { cc_fail "у кластера контекста -client 0 узлов — это не кластер площадки «$CC_PROFILE» (он отдаёт узлы $CC_PROFILE-client-…).
+       Что сделать: проверь, что файл профиля — файл площадки «$CC_PROFILE» (его могли заменить)"; return 2; }
+  bad="$( { grep -v -E -- "^${CC_PROFILE}-client-" <<<"$names"; grep -E -- '-infra-' <<<"$names"; } | sort -u)"
+  [ -z "$bad" ] || { cc_fail "узлы кластера контекста -client — не узлы $CC_PROFILE-client-…: это не client площадки «$CC_PROFILE».
+       Чужие узлы ($(grep -c . <<<"$bad") из $n): $(head -n 5 <<<"$bad" | tr '\n' ' ')
+       Что сделать: файл профиля сменился либо ведёт не туда — возьми файл площадки «$CC_PROFILE»
+       и убедись, что его контекст -client отдаёт только узлы $CC_PROFILE-client-…"; return 2; }
+  echo "=== кластер доказан узлами: $n из $n — $CC_PROFILE-client-… ==="
+}
+
 # client_context_file PATH — файл выбора: одна строка current-context=<CC_CTX>.
 client_context_file() {
   local quoted
@@ -185,6 +249,8 @@ cc_exec() {
   [ "$#" -gt 0 ] || { cc_fail "exec без команды"; return 2; }
   client_context_pick || return 2
   client_context_server || return 2
+  client_context_profile || return 2
+  client_context_nodes || return 2
   local work code
   work="$(mktemp -d "${TMPDIR:-/tmp}/kacho-client-context.XXXXXX")" || { cc_fail "рабочий каталог не заведён"; return 2; }
   # shellcheck disable=SC2064 # путь фиксируется при заведении
@@ -196,7 +262,7 @@ cc_exec() {
   echo "=== кластер: контекст -client файла профиля (активный контекст файла не читается) ==="
   KACHO_CLIENT_CONTEXT="$CC_CTX" KACHO_CLIENT_CONTEXT_BIN="$work/bin" \
     KUBECONFIG="$work/context.yaml:$CC_FILE" HELM_KUBECONTEXT="$CC_CTX" PATH="$work/bin:$PATH" \
-    STAND_KUBECONFIG="$CC_FILE" STAND_CONTEXT="$CC_CTX" STAND_APISERVER="$CC_SERVER" \
+    STAND_KUBECONFIG="$CC_FILE" STAND_CONTEXT="$CC_CTX" STAND_APISERVER="$CC_SERVER" STAND_PROFILE="$CC_PROFILE" \
     "$@"
   code=$?
   return "$code"
@@ -224,7 +290,21 @@ cc_verify() {
       [ "$(type -P "$t")" = "$bin/$t" ] || { cc_fail "$t на PATH — не обёртка закрепления: вызов ушёл бы без явного контекста"; return 2; }
     done
   fi
-  return 0
+  cc_nodes
+}
+
+# cc_nodes — узлы перед фазой записи. Внутри закрепления — его контекст и файл
+# (KACHO_CLIENT_CONTEXT, STAND_KUBECONFIG); снаружи — выбор заново.
+cc_nodes() {
+  CC_PROFILE=""
+  if [ -n "${KACHO_CLIENT_CONTEXT:-}" ]; then
+    [[ "$KACHO_CLIENT_CONTEXT" == *-client ]] || { cc_fail "закреплённый контекст «$KACHO_CLIENT_CONTEXT» не оканчивается на -client"; return 2; }
+    [ -n "${STAND_KUBECONFIG:-}" ] && [ -r "$STAND_KUBECONFIG" ] || { cc_fail "файл профиля закрепления (STAND_KUBECONFIG) не назван либо не читается"; return 2; }
+    CC_FILE="$STAND_KUBECONFIG" CC_CTX="$KACHO_CLIENT_CONTEXT"
+  else
+    client_context_pick || return 2
+  fi
+  client_context_nodes
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
@@ -232,7 +312,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   case "$mode" in
     exec) cc_exec "$@"; exit $? ;;
     verify) cc_verify "$@"; exit $? ;;
+    nodes) cc_nodes; exit $? ;;
     pick) client_context_pick && printf '%s\n' "$CC_CTX"; exit $? ;;
-    *) echo "использование: $0 exec -- КОМАНДА… | verify [--ambient] | pick" >&2; exit 2 ;;
+    *) echo "использование: $0 exec -- КОМАНДА… | verify [--ambient] | nodes | pick" >&2; exit 2 ;;
   esac
 fi

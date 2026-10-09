@@ -80,12 +80,21 @@ STACK_EXTRA_ARGS ?=
 # снаружи закрепления она перезапускает себя через `client-context.sh exec`
 # (каждый kubectl/helm несёт --context/--kube-context client), а внутри — судит
 # закрепление (`verify`). Ноль, больше одного -client, STAND_CONTEXT вне
-# -client — отказ ДО первого обращения к кластеру. Держит:
-# deploy/stack_client_context_test.go.
+# -client — отказ ДО первого обращения к кластеру.
+#
+# Файл профиля кластер НЕ доказывает — его могут заменить. Решение владельца
+# 2026-10-10 дословно: «По префиксу нод можешь понять тот кластер или нет, куб
+# конфет мог меняться». Имя стенда здесь — профиль площадки: до первой записи и
+# заново перед каждой фазой записи ($(CLIENT_NODES)) кластер принимается, только
+# если все его узлы (≥ 1) — `<STACK>-client-…` (client-context.sh nodes).
+# Держит: deploy/stack_client_context_test.go.
 CLIENT_CONTEXT_STACKS := a8f60d
 # STACK_VIA_CLIENT — непусто, когда эта цель лишь ПЕРЕДАЁТ себя закреплению и
 # остальные её строки исполнять не должна.
 STACK_VIA_CLIENT = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),,1))
+# CLIENT_NODES — строка рецепта: перед фазой записи кластер заново доказывается
+# узлами (у стенда вне CLIENT_CONTEXT_STACKS — пусто).
+CLIENT_NODES = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh nodes;)
 # POSTURE_SKIP — сервисы, которых на этом стенде НЕТ по решению оператора.
 # Пусто = стенд полный (умолчание, локальный `make dev-up`).
 POSTURE_SKIP ?=
@@ -1096,7 +1105,7 @@ stack-up:
 	  echo "       Раскатывать:  bash helm/umbrella/cutover-fe3455.sh"; \
 	  exit 2; \
 	fi
-	@$(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),bash scripts/client-context.sh verify,bash scripts/client-context.sh exec -- $(MAKE) --no-print-directory stack-up),true)
+	@$(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),bash scripts/client-context.sh verify,STAND_PROFILE=$(STACK) bash scripts/client-context.sh exec -- $(MAKE) --no-print-directory stack-up),true)
 	@$(if $(STACK_VIA_CLIENT),exit 0;) $(MAKE) --no-print-directory guard-destructive OP="stack-up STACK=$(STACK)" TOKEN="UP-$(STACK)" \
 	  WHAT="состав кластера будет приведён к объявленной цепочке стенда $(STACK) из stacks.txt"
 	@$(if $(STACK_VIA_CLIENT),exit 0;) set -e; \
@@ -1119,14 +1128,17 @@ stack-up:
 	site_args="$$site_args --set global.kacho.siteLayer.enforced=true"; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory helm-deps; \
+	$(CLIENT_NODES) \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
+	$(CLIENT_NODES) \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
 	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) $$site_args; \
+	$(CLIENT_NODES) \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
