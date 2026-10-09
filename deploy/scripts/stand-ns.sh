@@ -274,59 +274,25 @@ helm() {
   command helm --kubeconfig "$STAND_KUBECONFIG" --kube-context "$STAND_CTX" "$@"
 }
 
-# profile_contexts FILE — имена контекстов файла, по одному в строке. Читается
-# разбором YAML, а не kubectl: выбор контекста не зависит от того, какой из них
-# сейчас активен, и не спрашивает кластер.
-profile_contexts() {
-  python3 - "$1" <<'PY'
-import sys, yaml
-d = yaml.safe_load(open(sys.argv[1])) or {}
-for c in d.get("contexts") or []:
-    if isinstance(c, dict) and c.get("name"):
-        print(c["name"])
-PY
-}
+# Выбор файла профиля и контекста -client — ЕДИНСТВЕННЫЙ на все пути выкатки:
+# scripts/client-context.sh (им же закрепляется `stack-up`). Здесь — только
+# закрепление выбранного для этого скрипта и его потомков.
+# shellcheck source=deploy/scripts/client-context.sh
+. "$HERE/client-context.sh"
 
 ctx_cleanup() { [ -z "$STAND_CTX_FILE" ] || rm -f "$STAND_CTX_FILE"; }
 
 guard_context() {
   [ -z "$STAND_CTX" ] || return 0
-  local file="${STAND_KUBECONFIG:-}" names clients n ctx
-  if [ -z "$file" ]; then
-    case "${KUBECONFIG:-}" in
-      "") die "файл профиля не назван: стенд ставится в контекст -client ЯВНО названного файла.
-       Что сделать: STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stand-ns-…" 2 ;;
-      *:*) die "KUBECONFIG — список файлов, а файл профиля должен быть один.
-       Что сделать: STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stand-ns-…" 2 ;;
-    esac
-    file="$KUBECONFIG"
-  fi
-  [ -f "$file" ] && [ -r "$file" ] || die "файл профиля «$file» не читается" 2
-  names="$(profile_contexts "$file")" || die "контексты файла профиля «$file» не разобраны" 2
-  if [ -n "${STAND_CONTEXT:-}" ]; then
-    [[ "$STAND_CONTEXT" == *-client ]] || die "STAND_CONTEXT=«$STAND_CONTEXT» не оканчивается на -client — стенд проб ставится только в client.
-       Что сделать: сними STAND_CONTEXT (выберется единственный -client файла) либо назови контекст -client" 2
-    grep -Fxq -- "$STAND_CONTEXT" <<<"$names" || die "в файле профиля «$file» нет контекста STAND_CONTEXT=«$STAND_CONTEXT»" 2
-    ctx="$STAND_CONTEXT"
-  else
-    clients="$(grep -E -- '-client$' <<<"$names")"
-    n="$(grep -c . <<<"$clients")"
-    [ "$n" = 1 ] || die "контекстов с суффиксом -client в файле профиля «$file»: $n, нужен ровно один.
-       Контексты файла: $(tr '\n' ' ' <<<"$names")
-       Что сделать: возьми файл профиля площадки с её контекстом -client, либо при нескольких
-       назови один: STAND_CONTEXT=<имя, оканчивающееся на -client>" 2
-    ctx="$clients"
-  fi
+  local file ctx
+  client_context_pick || exit 2
+  file="$CC_FILE" ctx="$CC_CTX"
   mkdir -p "$WORK_ROOT" || die "рабочий каталог $WORK_ROOT не заведён" 2
   STAND_CTX_FILE="$(mktemp "$WORK_ROOT/.context.XXXXXX")" || die "файл выбора контекста не заведён" 2
-  local quoted
-  quoted="$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$ctx")" && [ -n "$quoted" ] ||
-    die "имя контекста не записано в файл выбора" 2
-  printf 'apiVersion: v1\nkind: Config\ncurrent-context: %s\n' "$quoted" >"$STAND_CTX_FILE" ||
-    die "файл выбора контекста не записан" 2
+  client_context_file "$STAND_CTX_FILE" || exit 2
   trap ctx_cleanup EXIT
   STAND_KUBECONFIG="$file" STAND_CONTEXT="$ctx" STAND_CTX="$ctx"
-  export STAND_KUBECONFIG STAND_CONTEXT KUBECONFIG="$STAND_CTX_FILE:$file" HELM_KUBECONTEXT="$ctx"
+  export STAND_KUBECONFIG STAND_CONTEXT KUBECONFIG="$STAND_CTX_FILE:$file" HELM_KUBECONTEXT="$ctx" KACHO_CLIENT_CONTEXT="$ctx"
   # Адрес apiserver'а — из ВЫБРАННОГО контекста (чтение файла, кластер не
   # спрашивается). Объявлен STAND_APISERVER — обязан совпасть. Дальше адрес
   # уходит дочерним шагам: гейт посадки пинит им кластер (stand-cluster-pin.sh),
