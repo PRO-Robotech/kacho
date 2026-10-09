@@ -6,9 +6,9 @@ import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBou
 import { buildTheme } from "@shared/lib/theme";
 import { AccountSettingsPage } from "@shared/pages/auth/AccountSettingsPage";
 import { AddressConfirmationGate } from "@shared/pages/auth/AddressConfirmationGate";
-import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddressNotServedPage";
 import { LoginPage } from "@shared/pages/auth/LoginPage";
 import { LogoutPage } from "@shared/pages/auth/LogoutPage";
+import { RecoveryPage } from "@shared/pages/auth/RecoveryPage";
 import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
 import { VerificationPage } from "@shared/pages/auth/VerificationPage";
 import {
@@ -88,14 +88,15 @@ const App: FC = () => {
  * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
  *
  * Экраны вида `screen` открыты и до подтверждения адреса почты (приёмка F6b,
- * Р7); страница неведомого адреса — нет: она стоит за тем же стражем, что
- * каркас, и неподтверждённую сессию уводит на экран подтверждения.
+ * Р7); экран восстановления доступа (`guarded-screen`) — нет: он стоит за тем
+ * же стражем, что каркас, и неподтверждённую сессию уводит на экран
+ * подтверждения.
  */
-function ceremonyElement(serving: CeremonyServing) {
-  if (serving.kind !== "screen") {
+function ceremonyElement(serving: Exclude<CeremonyServing, { kind: "in-shell" }>) {
+  if (serving.kind === "guarded-screen") {
     return (
       <AddressConfirmationGate>
-        <CeremonyAddressNotServedPage />
+        <RecoveryPage />
       </AddressConfirmationGate>
     );
   }
@@ -122,9 +123,9 @@ function ceremonyElement(serving: CeremonyServing) {
  * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
  * разделов, и рейл с ними обещал бы то, чего он получить не может. Адреса
  * церемоний объявлены одним местом (`ceremony-addresses.ts`) и получают маршрут
- * ВСЕ шесть (приёмка F8, Р3): пять консоль ведёт — вход, регистрация, выход,
- * подтверждение адреса почты (приёмка F6b, Р8) и параметры учётной записи, —
- * восстановление доступа отвечает названной страницей, а не переводом на панель.
+ * ВСЕ шесть (приёмка F8, Р3), и все шесть консоль ведёт — вход, регистрация,
+ * выход, подтверждение адреса почты (приёмка F6b, Р8), параметры учётной записи
+ * и восстановление доступа (приёмка NTF-2, NTF2-43, NTF2-72).
  * Параметры учётной записи (`/settings`) живут в каркасе: их открывает вошедший
  * человек, и рейл ему нужен.
  *
@@ -140,9 +141,12 @@ const AppRoutes: FC<{
   setDark: Dispatch<SetStateAction<boolean>>;
 }> = ({ dark, setDark }) => (
   <Routes>
-    {CEREMONY_ADDRESSES.filter((address) => CEREMONY_ROUTING[address].kind !== "in-shell").map((address) => (
-      <Route key={address} path={address} element={ceremonyElement(CEREMONY_ROUTING[address])} />
-    ))}
+    {CEREMONY_ADDRESSES.flatMap((address) => {
+      const serving = CEREMONY_ROUTING[address];
+      return serving.kind === "in-shell"
+        ? []
+        : [<Route key={address} path={address} element={ceremonyElement(serving)} />];
+    })}
     <Route
       path="*"
       element={

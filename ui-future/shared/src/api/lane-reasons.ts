@@ -20,4 +20,9 @@ export const LANE_REASON = {
   emailNotVerified: "EMAIL_NOT_VERIFIED",
   emailAlreadyVerified: "EMAIL_ALREADY_VERIFIED",
   inviteNotValid: "INVITE_NOT_VALID",
+  // Причина КРАЯ, а не службы: ограничитель анонимных почтовых глаголов
+  // отвечает вызовом доказательства работы (приёмка NTF-2, Р5; замысел
+  // `issue-2917` З9, `anonmail.reasonChallenge`). Консоль решает его
+  // один раз и повторяет то же тело с заголовком доказательства.
+  proofOfWorkRequired: "PROOF_OF_WORK_REQUIRED",
 } as const;

@@ -221,6 +221,30 @@ func principalHeaderMatcher(key string) (string, bool) {
 	return runtime.DefaultHeaderMatcher(key)
 }
 
+// retryAfterMetadataKey — ключ метаданных ответа gRPC, которым служба кладёт
+// срок повтора отказа (целое число секунд): служба доступа на отказе
+// приглашения `INVITATION_RATE_LIMITED` ставит его `grpc.SetHeader` до
+// возврата статуса (NTF2-69, замысел issue-2917 З24 (1)). Ключи метаданных gRPC
+// приходят в нижнем регистре.
+const retryAfterMetadataKey = "retry-after"
+
+// publicOutgoingHeaderMatcher — сопоставитель исходящих заголовков публичного
+// мультиплексора: переносит метаданные ответа gRPC в HTTP-заголовки (и на
+// успехе, и на отказе — обработчик ошибок шлюза зовёт тот же сопоставитель).
+//
+// Ровно ключ `retry-after` уходит заголовком `Retry-After` — тем, что читает
+// вызывающий на `429` (RFC 9110 §10.2.3; NTF2-69 (е), замысел З24 (2)); прежней
+// формы `Grpc-Metadata-Retry-After` у этого ключа нет — у срока повтора одно
+// представление. Прочие ключи — без изменений, формой умолчания шлюза
+// `Grpc-Metadata-<ключ>`. Статус отказа по-прежнему даёт
+// `runtime.HTTPStatusFromCode`: своего обработчика ошибок край не заводит.
+func publicOutgoingHeaderMatcher(key string) (string, bool) {
+	if key == retryAfterMetadataKey {
+		return "Retry-After", true
+	}
+	return runtime.MetadataHeaderPrefix + key, true
+}
+
 // principalMetadata — grpc-gateway WithMetadata annotator: собирает outgoing
 // gRPC-metadata из gateway-выставленных headers (см. buildPrincipalMetadata).
 func principalMetadata(_ context.Context, r *http.Request) metadata.MD {
@@ -409,6 +433,7 @@ func NewMux(
 	publicMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, publicMarshaler),
 		runtime.WithIncomingHeaderMatcher(principalHeaderMatcher),
+		runtime.WithOutgoingHeaderMatcher(publicOutgoingHeaderMatcher),
 		runtime.WithMetadata(principalMetadata),
 	)
 	internalMux := runtime.NewServeMux(

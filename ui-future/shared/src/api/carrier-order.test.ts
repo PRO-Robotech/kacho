@@ -264,9 +264,12 @@ const byCode = { method: "lookup_secret" as const, code: "abcd-efgh" };
 const CARRIER_VERBS: ReadonlyArray<{ name: string; verb: string; run: () => Promise<unknown> }> = [
   { name: "вход", verb: "POST /iam/v1/auth/login", run: () => loginLane.login(holder("login"), { email: "a@kacho.local", password: "p" }) },
   {
-    name: "регистрация",
-    verb: "POST /iam/v1/auth/register",
-    run: () => loginLane.register(holder("register"), { email: "a@kacho.local", password: "p" }),
+    // Носитель ставит предъявление кода регистрации, а не `register`
+    // (приёмка NTF-2, Р9, NTF2-80: `register` — `200 {}` без печений).
+    name: "подтверждение регистрации",
+    verb: "POST /iam/v1/auth/register/confirm",
+    run: () =>
+      loginLane.confirmRegistration(holder("register-confirm"), { email: "a@kacho.local", code: "123456", password: "p" }),
   },
   {
     name: "смена пароля",
@@ -502,6 +505,19 @@ describe("F8-46 · близнецы: глагол, носителя не ста�
     it(`F8-46 · заведение второго фактора, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
       const verb = "POST /iam/v1/auth/second-factor/enroll";
       const tape = await scenario(verb, () => loginLane.enroll(holder("second-factor")), outcome);
+      expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
+    });
+  }
+
+  for (const outcome of OUTCOMES) {
+    it(`NTF2-80 · регистрация, шаг 1, исход «${outcome}»: носителя не ставит — ничего не отменено, не закрыто и не задержано`, async () => {
+      // verifies #2917
+      const verb = "POST /iam/v1/auth/register";
+      const tape = await scenario(
+        verb,
+        () => loginLane.register(holder("register"), { email: "a@kacho.local", password: "p" }),
+        outcome,
+      );
       expect({ breaches: twinBreaches(tape, verb), tape }).toEqual({ breaches: [], tape });
     });
   }
