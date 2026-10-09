@@ -188,6 +188,11 @@ var coordinates = []coordinate{
 	// живёт в профиле стенда (`deploy/helm/umbrella/values.a8f60d.yaml`,
 	// `global.kacho.identity.smtp.connectionURI`); истекает вместе с ней.
 	{"smtp.yandex.ru", "hostname of the mail relay the a8f60d stand dials; its operator named it, we only consume it"},
+	// SPF-запись того же ретранслятора: домен From установки a8f60d разрешает
+	// его отправку включением записи, которую публикует оператор ретранслятора
+	// (`deploy/stacks-mail-dns.txt`, kacho#3017). Координата потребляемого
+	// сервиса, а не наше имя; истекает вместе со строкой spf профиля.
+	{"_spf.yandex.net", "SPF record of the mail relay the a8f60d stand dials; its operator publishes it, our SPF only includes it"},
 }
 
 // exemptFile is a whole file that carries a token because the ban was enforced,

@@ -470,6 +470,14 @@ notify:
   image:
     repository: docker.io/prorobotech/kacho-notify
     tag: ""
+  # Домен возврата — домен отправителя ЭТОЙ установки (kacho#3017). Слой под
+  # нами (values.dev.yaml) объявляет домен стенда `kacho.cloud`: он отвечает
+  # зоне стенда и здесь чужой — Return-Path не был бы выровнен с `From` для
+  # DMARC, а отказы доставки с адресами получателей уходили бы в домен, который
+  # этой установке не принадлежит. Выравнивание держит
+  # deploy/notify_mail_domain_alignment_test.go; записи домена —
+  # deploy/stacks-mail-dns.txt и deploy/scripts/installation-mail-dns.sh.
+  returnDomain: "prorobotech.ru"
 kacho-nlb:
   resources: *id002
   image:

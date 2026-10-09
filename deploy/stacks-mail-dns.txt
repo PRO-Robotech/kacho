@@ -1,0 +1,34 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Записи SPF и DMARC домена отправителя установок с внешним ретранслятором
+# (kacho#3017; NTF-1 Р19). Строка:
+#
+#   <профиль>|spf|<запись TXT домена From>
+#   <профиль>|dmarc|<запись TXT _dmarc.<домен From>>
+#
+# Профиль — из deploy/stacks.txt с признаком `relay` в deploy/stacks-mail.txt:
+# стенду записи отвечает зона стенда (deploy/scripts/seed-stand-dkim.sh), а у
+# признака `operator` записи объявляет оператор вне дерева. Строки профиля —
+# ровно две, по одной на запись. Запись DKIM здесь не объявляется: она
+# ВЫВОДИТСЯ из открытого ключа и селектора объекта ключа DKIM установки, и
+# второе её написание разошлось бы со смененным ключом. Домен From — из адреса
+# отправителя профиля (`global.kacho.identity.smtp.fromAddress`), второго
+# написания домена здесь нет.
+#
+# Форма, которую требует страж DNS notify (services/notify/internal/dnscheck):
+# SPF — одна запись `v=spf1`, последний механизм `-all` или `~all`, без
+# `redirect=`; DMARC — одна запись, первый тег `v=DMARC1`, политика
+# `p=quarantine` либо `p=reject`. Строку судят те же таблицы стража
+# (services/notify/internal/dnscheck/installation_records_test.go), покрытие
+# профилей — deploy/stacks_mail_dns_test.go; опубликованное сверяет
+# `make -C deploy installation-mail-dns STACK=<профиль> STEP=verify`.
+#
+# a8f60d: SPF разрешает ретранслятор, который набирает узел почты профиля
+# (`global.kacho.identity.smtp.connectionURI`), — включением его опубликованной
+# записи, а не адресами: адреса отправки ретранслятора меняет его оператор.
+# Политика DMARC — `reject`: отправители домена — служба доступа и notify, оба
+# через тот же ретранслятор, и выравнивание есть у обоих (SPF по Return-Path
+# в домене From; у notify по приёмке NTF-1 Р19 ещё и DKIM d=<домен From>).
+a8f60d|spf|v=spf1 include:_spf.yandex.net -all
+a8f60d|dmarc|v=DMARC1; p=reject
