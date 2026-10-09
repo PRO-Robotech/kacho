@@ -74,9 +74,11 @@
 #
 # ── КЛАСТЕР НАЗЫВАЕТСЯ ЯВНО ──────────────────────────────────────────────────
 #
-# Меняющие режимы требуют STAND_APISERVER — адрес apiserver'а кластера, с которым
-# kubectl говорит на самом деле (scripts/stand-cluster-pin.sh): цель пишет в
-# кластер активного контекста, и «наверное, тот» выбором кластера не является.
+# Все режимы, обращающиеся к кластеру (up, run, down, census, forward), говорят
+# с контекстом -client явно названного файла профиля — STAND_KUBECONFIG либо
+# одиночный KUBECONFIG; current-context файла не читается и не меняется
+# (guard_context ниже, kacho#3065). STAND_APISERVER — необязательный второй пин
+# по адресу apiserver'а (scripts/stand-cluster-pin.sh).
 # Подтверждения человеком НЕ спрашивается: пространство своё, помеченное, и
 # пишется только в него и в помеченные свои объекты.
 set -uo pipefail
@@ -232,22 +234,102 @@ assert d["uif"]["publicFront"]["service"]["type"] == "ClusterIP"
 need_tools() {
   local t
   for t in kubectl helm python3 openssl jq curl go git; do
-    command -v "$t" >/dev/null 2>&1 || die "нет '$t' — исполнить нечем (условие прогона, а не находка)" 2
+    # type -P, а не command -v: kubectl и helm ниже — функции-обёртки, и
+    # command -v нашёл бы обёртку там, где исполняемого файла нет.
+    type -P "$t" >/dev/null 2>&1 || die "нет '$t' — исполнить нечем (условие прогона, а не находка)" 2
   done
 }
 
-# guard_context — кластер пинится АДРЕСОМ apiserver'а, а не именем контекста:
-# имя — ярлык автора kubeconfig, одноимённый контекст уже вёл в другой кластер.
-# Авторитет — объявление STAND_APISERVER при вызове (адрес площадки в дерево не
-# пишется), сверку делает тот же страж, что у гейта посадки
-# (scripts/stand-cluster-pin.sh). Имя контекста запоминается ПОСЛЕ сверки — его
-# просит цель доставки манифестов модулей.
+# ── КЛАСТЕР НАЗЫВАЕТСЯ ФАЙЛОМ ПРОФИЛЯ И ЕГО КОНТЕКСТОМ -client (kacho#3065) ───
+#
+# Активный контекст файла профиля — НЕ выбор стенда: файл площадки несёт два
+# контекста одного кластера, `…-client` и `…-infra`, и его current-context
+# переключает человек под свою работу. Стенд проб ставится ТОЛЬКО в client
+# (решение владельца 2026-10-09), поэтому контекст выбирается явно:
+#
+#   файл профиля  STAND_KUBECONFIG, иначе KUBECONFIG — ровно один файл;
+#   контекст      ровно один контекст файла с суффиксом -client; ноль или больше
+#                 одного — отказ ДО первого обращения к кластеру. Переопределение
+#                 — только STAND_CONTEXT, и только именем, оканчивающимся на -client.
+#
+# current-context файла не читается и не меняется. Каждый kubectl и helm этого
+# скрипта идёт с --context/--kube-context (обёртки ниже: без выбранного
+# контекста они отказывают, а не идут в активный). Дочерним шагам (make, скрипты
+# посева и посадки) достаётся KUBECONFIG из двух файлов: первым — файл из одной
+# строки current-context=<client> (без адресов и удостоверений, первый файл,
+# объявивший current-context, при слиянии побеждает), вторым — файл профиля; и
+# HELM_KUBECONTEXT. Так и шаги, читающие активный контекст, говорят с client.
+#
+# STAND_APISERVER — необязательный второй пин: объявлен — адрес apiserver'а
+# выбранного контекста сверяется с ним (scripts/stand-cluster-pin.sh).
+STAND_CTX="" STAND_CTX_FILE=""
+
+kubectl() {
+  [ -n "$STAND_CTX" ] || { warn "kubectl до выбора контекста — отказ (guard_context не пройден)"; return 2; }
+  command kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" "$@"
+}
+helm() {
+  [ -n "$STAND_CTX" ] || { warn "helm до выбора контекста — отказ (guard_context не пройден)"; return 2; }
+  command helm --kubeconfig "$STAND_KUBECONFIG" --kube-context "$STAND_CTX" "$@"
+}
+
+# profile_contexts FILE — имена контекстов файла, по одному в строке. Читается
+# разбором YAML, а не kubectl: выбор контекста не зависит от того, какой из них
+# сейчас активен, и не спрашивает кластер.
+profile_contexts() {
+  python3 - "$1" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for c in d.get("contexts") or []:
+    if isinstance(c, dict) and c.get("name"):
+        print(c["name"])
+PY
+}
+
+ctx_cleanup() { [ -z "$STAND_CTX_FILE" ] || rm -f "$STAND_CTX_FILE"; }
+
 guard_context() {
-  [ -n "${STAND_APISERVER:-}" ] || die "STAND_APISERVER не задан, а цель пишет в кластер активного контекста.
-       Объяви адрес apiserver'а кластера, на который ставится стенд:
-         STAND_APISERVER=\"\$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')\"" 2
-  bash "$HERE/stand-cluster-pin.sh" || die "активный кластер не объявленный (выше)" 2
-  STAND_CTX="$(kubectl config current-context 2>/dev/null)"
+  [ -z "$STAND_CTX" ] || return 0
+  local file="${STAND_KUBECONFIG:-}" names clients n ctx
+  if [ -z "$file" ]; then
+    case "${KUBECONFIG:-}" in
+      "") die "файл профиля не назван: стенд ставится в контекст -client ЯВНО названного файла.
+       Что сделать: STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stand-ns-…" 2 ;;
+      *:*) die "KUBECONFIG — список файлов, а файл профиля должен быть один.
+       Что сделать: STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stand-ns-…" 2 ;;
+    esac
+    file="$KUBECONFIG"
+  fi
+  [ -f "$file" ] && [ -r "$file" ] || die "файл профиля «$file» не читается" 2
+  names="$(profile_contexts "$file")" || die "контексты файла профиля «$file» не разобраны" 2
+  if [ -n "${STAND_CONTEXT:-}" ]; then
+    [[ "$STAND_CONTEXT" == *-client ]] || die "STAND_CONTEXT=«$STAND_CONTEXT» не оканчивается на -client — стенд проб ставится только в client.
+       Что сделать: сними STAND_CONTEXT (выберется единственный -client файла) либо назови контекст -client" 2
+    grep -Fxq -- "$STAND_CONTEXT" <<<"$names" || die "в файле профиля «$file» нет контекста STAND_CONTEXT=«$STAND_CONTEXT»" 2
+    ctx="$STAND_CONTEXT"
+  else
+    clients="$(grep -E -- '-client$' <<<"$names")"
+    n="$(grep -c . <<<"$clients")"
+    [ "$n" = 1 ] || die "контекстов с суффиксом -client в файле профиля «$file»: $n, нужен ровно один.
+       Контексты файла: $(tr '\n' ' ' <<<"$names")
+       Что сделать: возьми файл профиля площадки с её контекстом -client, либо при нескольких
+       назови один: STAND_CONTEXT=<имя, оканчивающееся на -client>" 2
+    ctx="$clients"
+  fi
+  mkdir -p "$WORK_ROOT" || die "рабочий каталог $WORK_ROOT не заведён" 2
+  STAND_CTX_FILE="$(mktemp "$WORK_ROOT/.context.XXXXXX")" || die "файл выбора контекста не заведён" 2
+  local quoted
+  quoted="$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$ctx")" && [ -n "$quoted" ] ||
+    die "имя контекста не записано в файл выбора" 2
+  printf 'apiVersion: v1\nkind: Config\ncurrent-context: %s\n' "$quoted" >"$STAND_CTX_FILE" ||
+    die "файл выбора контекста не записан" 2
+  trap ctx_cleanup EXIT
+  STAND_KUBECONFIG="$file" STAND_CONTEXT="$ctx" STAND_CTX="$ctx"
+  export STAND_KUBECONFIG STAND_CONTEXT KUBECONFIG="$STAND_CTX_FILE:$file" HELM_KUBECONTEXT="$ctx"
+  log "кластер: контекст -client файла профиля (активный контекст файла не читается)"
+  if [ -n "${STAND_APISERVER:-}" ]; then
+    bash "$HERE/stand-cluster-pin.sh" || die "адрес apiserver'а контекста -client не объявленный STAND_APISERVER (выше)" 2
+  fi
 }
 
 # ns_state NS — печатает absent | test | foreign; код 2 — кластер не ответил.
@@ -513,7 +595,7 @@ up_on_exit() {
   local rc=$?
   trap - EXIT INT TERM
   [ -z "$CHILD" ] || { kill_tree "$CHILD"; wait "$CHILD" 2>/dev/null; }
-  [ "$UP_DONE" = 1 ] && exit "$rc"
+  [ "$UP_DONE" = 1 ] && { ctx_cleanup; exit "$rc"; }
   [ "$rc" -ne 0 ] || rc=1
   if [ "$UP_CREATED" = 1 ]; then
     warn "подъём $UP_NS не завершён (код $rc) — снимаю созданное этим вызовом"
@@ -528,6 +610,7 @@ up_on_exit() {
     [ "${UP_STATE:-}" != test ] ||
       warn "пространство $UP_NS существовало до вызова — ловушка его не снимает (make -C deploy stand-ns-down NS=$UP_NS)"
   fi
+  ctx_cleanup
   exit "$rc"
 }
 
@@ -845,7 +928,8 @@ $claims" 2
   [ "$prc" -eq 0 ] || die "провенанс стенда не сходится с ревизией $sha (код $prc, журнал $work/provenance.log)" 1
 
   UP_DONE=1
-  trap - EXIT INT TERM
+  trap - INT TERM
+  trap ctx_cleanup EXIT
   log "стенд $ns ПОДНЯТ за $(( $(date +%s) - start )) с: цепочка $stack, образы $sha, срок $expires"
   log "консоль https://$(ns_host "$ns"):$port · край https://127.0.0.1:$((port + 1)) · приёмник http://127.0.0.1:$((port + 2))"
   log "проброс и окружение проб:  bash deploy/scripts/stand-ns.sh forward $ns"
@@ -896,6 +980,7 @@ run_on_exit() {
     }
   fi
   log "прогон на $RUN_NS: код $rc"
+  ctx_cleanup
   exit "$rc"
 }
 
@@ -943,6 +1028,7 @@ cmd_run() {
 cmd_forward() {
   local ns="$1" port work host lp
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу" 2
+  need_tools; guard_context
   [ "$(ns_state "$ns")" = test ] || die "тестового пространства $ns нет" 1
   port="$(ns_port "$ns")"; host="$(ns_host "$ns")"; work="$WORK_ROOT/$ns"; mkdir -p "$work"
   cmd_unforward "$ns" >/dev/null 2>&1
@@ -956,7 +1042,7 @@ cmd_forward() {
   local pair svc rport
   for pair in "ui-public:443:$port" "api-gateway:8443:$((port + 1))" "$RELEASE-mailpit:8025:$((port + 2))"; do
     IFS=: read -r svc rport lp <<<"$pair"
-    nohup kubectl -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
+    nohup "$(type -P kubectl)" --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
     echo $! >>"$work/forward.pids"
   done
   # Спрашивается оболочка консоли (`/`), а не `/healthz`: на порту внешнего входа
@@ -1059,12 +1145,12 @@ $left" 1
 cmd_census() {
   local expired_mode=0 js now rows n=0 nexp=0 name task exp age state
   [ "${1:-}" = --expired ] && expired_mode=1
-  need_tools
-  [ "$expired_mode" = 0 ] || guard_context
+  need_tools; guard_context
   js="$(kubectl get namespace -l "$LABEL_STAND=test" -o json --request-timeout=30s)" || die "перечень пространств НЕ ПРОЧИТАН — кластер не ответил" 2
   now="$(date -u +%s)"
   rows="$(jq -r --arg t "$LABEL_TASK" --arg e "$ANN_EXPIRES" \
-    '.items[] | [.metadata.name, (.metadata.labels[$t] // "-"), (.metadata.annotations[$e] // "-"), .metadata.creationTimestamp] | @tsv' <<<"$js")"
+    '.items[] | [.metadata.name, (.metadata.labels[$t] // "-"), (.metadata.annotations[$e] // "-"), .metadata.creationTimestamp] | @tsv' <<<"$js")" ||
+    die "перечень пространств не разобран — «не разобрал» не равно «ноль»" 2
   printf '%-32s %-7s %-8s %-22s %s\n' ПРОСТРАНСТВО ЗАДАЧА ВОЗРАСТ СРОК СОСТОЯНИЕ
   local doomed=""
   while IFS=$'\t' read -r name task exp created; do
