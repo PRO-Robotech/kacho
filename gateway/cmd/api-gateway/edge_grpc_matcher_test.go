@@ -19,8 +19,8 @@ import (
 )
 
 // Матчеры заголовков HTTP/2 библиотеки cmux. Слушатели края распознают gRPC
-// матчером cmuxh2.MatchHeaderFieldSendSettings — с ограниченной памятью на
-// соединение до аутентификации; матчеры библиотеки этих границ не несут.
+// матчером cmuxh2.MatchHeaderFieldSendSettings: ресурсы соединения до
+// аутентификации у него ограничены явно.
 // Перечень сверен с библиотекой: TestUnboundedCmuxMatcherListNamesRealFunctions
 // держит, что каждое имя существует, и не даёт ему пережить свой предмет.
 var unboundedCmuxHeaderMatchers = map[string]bool{
