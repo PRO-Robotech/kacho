@@ -30,6 +30,7 @@ import {
   type CeremonyCensus,
 } from "./fixtures";
 import { PROBE_FETCH } from "./issuance-guard.ts";
+import { AUTHENTICATION_FAILED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "./lane-texts";
 import { LETTER_BUDGET_MS, stationMailbox, type Mailbox } from "./mail-receiver";
 import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
 
@@ -202,21 +203,27 @@ function runStamp(): string {
   return runTag();
 }
 
-/** Тело отказа входа — ОДНО на все причины; служба собирает его одной функцией. */
-const AUTHENTICATION_FAILED = { code: 16, message: "authentication failed", details: [] };
+/**
+ * Тело отказа входа — ОДНО на все причины своей формы запроса; служба собирает
+ * его одной функцией. Форм две: вход без поля `secondFactor` и вход с ним — и у
+ * каждой свой текст (`lane-texts.ts`): он различает присланное, а не найденное.
+ */
+function loginRefusal(message: string) {
+  return { code: 16, message, details: [] };
+}
 
 /**
- * Экран отказа входа. Одна функция на F8-05 и F8-40 — и это держатель
+ * Экран отказа входа. Одна функция на F8-05, F8-40 и F8-34 — и это держатель
  * неразличимости, а не удобство: экран — функция ТОЛЬКО тела ответа, тело
- * утверждается побайтово, значит и экраны побайтово равны.
+ * утверждается побайтово, значит и экраны одной формы запроса побайтово равны.
  */
-async function expectAuthenticationFailedScreen(page: Page, res: LaneAnswer, email: string) {
+async function expectAuthenticationFailedScreen(page: Page, res: LaneAnswer, email: string, message: string) {
   expect(res.status(), "отказ входа обязан быть 401").toBe(401);
-  expect(await res.text(), "тело отказа входа — побайтово одно на все причины").toBe(
-    JSON.stringify(AUTHENTICATION_FAILED),
+  expect(await res.text(), "тело отказа входа — побайтово одно на все причины своей формы запроса").toBe(
+    JSON.stringify(loginRefusal(message)),
   );
   const s = loginScreen(page);
-  await expect(s.refusal, "отказ не назван на экране").toHaveText(AUTHENTICATION_FAILED.message);
+  await expect(s.refusal, "отказ не назван на экране").toHaveText(message);
   await expect(s.email, "введённый адрес потерян").toHaveValue(email);
   await expect(s.password).toBeVisible();
   expect(pathOf(page), "после отказа адрес страницы сменился").toBe("/login");
@@ -278,7 +285,7 @@ test("F8-05 · неверный пароль: назван один отказ, 
   await s.email.fill(human.email);
   await s.password.fill(`${human.password}-не-тот`);
   const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
-  await expectAuthenticationFailedScreen(page, res, human.email);
+  await expectAuthenticationFailedScreen(page, res, human.email, AUTHENTICATION_FAILED);
 });
 
 test("F8-06 · незаполненное поле названо службой по имени", async ({ page }, testInfo) => {
@@ -668,7 +675,7 @@ test("F8-40 · не заведённый адрес даёт побайтово 
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
   const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
-  await expectAuthenticationFailedScreen(page, res, email);
+  await expectAuthenticationFailedScreen(page, res, email, AUTHENTICATION_FAILED);
 });
 
 // ═══ S1 — группа C. Регистрация ═══════════════════════════════════════════════
@@ -1219,7 +1226,7 @@ test("F8-33 · вход человека с заведённым вторым ф
   });
 });
 
-test("F8-34 · неверный код второго фактора: тот же один текст отказа", async ({ page }, testInfo) => {
+test("F8-34 · неверный код второго фактора: один текст отказа входа со вторым фактором", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-33: изменено только значение запасного кода,
   // форма та же; значение выбрано построением — проба знает весь набор.
   await withSecondFactor(testInfo, "F8-34", async (human, codes) => {
@@ -1233,9 +1240,10 @@ test("F8-34 · неверный код второго фактора: тот ж�
     await f.backup.check();
     await f.code.fill(backupCodeOutside(codes));
     const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
-    // Экран не сообщает, какая из двух величин не подошла: отказ — тот же, что у
-    // неверного пароля, и экран — та же функция того же тела.
-    await expectAuthenticationFailedScreen(page, res, human.email);
+    // Экран не сообщает, какая из двух величин не подошла: отказ — один на все
+    // причины входа С полем `secondFactor` (неверный пароль, неверный код), и
+    // экран — та же функция того же тела.
+    await expectAuthenticationFailedScreen(page, res, human.email, LOGIN_WITH_SECOND_FACTOR_FAILED);
   });
 });
 

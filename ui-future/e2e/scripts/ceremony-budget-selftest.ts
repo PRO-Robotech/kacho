@@ -15,6 +15,9 @@
  *     код и текст те же, что у отказа службы: различает их причина
  *     `AUTHN_REQUIRED`, которую несёт только край, — и запись снимает её с тела
  *     ответа;
+ *   • каждый текст отказа службы (вход с полем `secondFactor`, завершение
+ *     восстановления) — в счёт; тот же текст вне семи глаголов и чужой текст
+ *     того же кода — нет;
  *   • три прогона: 33 — в бюджете, 34 — красное;
  *   • бюджета нет — отказ, а не «бюджет ноль»; отчёт без проб — отказ.
  */
@@ -30,6 +33,7 @@ import {
   type RecordedRefusal,
   type ScenarioRefusals,
 } from "../specs/ceremony-budget.ts";
+import { ACCESS_NOT_RESTORED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "../specs/lane-texts.ts";
 import { NO_VERDICT, budgetFromEnv, run as guard, scenarioRefusalsOf } from "./ceremony-budget.ts";
 
 let failed = 0;
@@ -52,7 +56,7 @@ const eleven = run(
   ["F8-23 · смена пароля", [failedLogin]],
   ["F8-24 · текущий пароль неверен", [{ ...failedLogin, path: "/iam/v1/auth/password" }]],
   ["F8-28 · неверный первый код", [{ ...failedLogin, path: "/iam/v1/auth/second-factor/confirm" }]],
-  ["F8-34 · неверный код второго фактора", [failedLogin]],
+  ["F8-34 · неверный код второго фактора", [{ ...failedLogin, message: LOGIN_WITH_SECOND_FACTOR_FAILED }]],
   ["F8-40 · адрес не заведён", [failedLogin]],
 );
 
@@ -119,6 +123,27 @@ console.log("ПРОГОН 3а — запись различает отказ с�
     }),
   );
   check(unknown !== null && countsTowardSourceAxis(unknown), "неизвестная причина — в счёт");
+}
+
+console.log("ПРОГОН 3б — каждый текст отказа службы на своём глаголе идёт в счёт");
+{
+  // Тексты службы различают ФОРМУ запроса и глагол, а не причину: вход с полем
+  // `secondFactor` и завершение восстановления отвечают своим текстом, и след по
+  // оси источника они пишут так же, как вход без поля. Сторож, узнающий один
+  // текст, недосчитал бы их молча — тело записывается так, как его отдаёт служба.
+  const bodyOf = (message: string) => JSON.stringify({ code: 16, message, details: [] });
+  const withFactor = recordableRefusal("/iam/v1/auth/login", 401, bodyOf(LOGIN_WITH_SECOND_FACTOR_FAILED));
+  const notRestored = recordableRefusal("/iam/v1/auth/recovery/complete", 401, bodyOf(ACCESS_NOT_RESTORED));
+  check(withFactor !== null && countsTowardSourceAxis(withFactor), "отказ входа с полем secondFactor — в счёт");
+  check(notRestored !== null && countsTowardSourceAxis(notRestored), "отказ завершения восстановления — в счёт");
+  // Законный близнец: тот же текст на глаголе вне семи в счёт не идёт — правило
+  // пути не ослаблено расширением текстов.
+  const offVerb = recordableRefusal("/iam/v1/auth/register", 401, bodyOf(LOGIN_WITH_SECOND_FACTOR_FAILED));
+  check(offVerb !== null && !countsTowardSourceAxis(offVerb), "тот же текст вне семи глаголов — не в счёт");
+  // И близнец по тексту: отказ того же кода с текстом, которого служба на этих
+  // путях не пишет, в счёт не идёт — перечень текстов закрыт.
+  const foreign = recordableRefusal("/iam/v1/auth/login", 401, bodyOf("some other refusal"));
+  check(foreign !== null && !countsTowardSourceAxis(foreign), "чужой текст того же кода — не в счёт");
 }
 
 console.log("ПРОГОН 4 — три прогона подряд: 33 в бюджете, 34 — нет");
@@ -196,4 +221,4 @@ if (failed > 0) {
   console.error(`\nсамопроверка сторожа бюджета оси источника: провалов ${failed}`);
   process.exit(1);
 }
-console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 8)");
+console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 9)");
