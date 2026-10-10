@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/soheilhy/cmux"
-	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
 	// Регистрация errdetails-типов в protoregistry — иначе protojson не
@@ -1394,10 +1393,6 @@ func main() {
 			log.Fatalf("tls listen %s: %v", cfg.TLSListenAddr, tlsErr)
 		}
 		logger.Info("api-gateway TLS started", "addr", cfg.TLSListenAddr)
-
-		// Включаем h2c-style HTTP/2 поддержку для http.Server (через golang.org/x/net/http2),
-		// иначе HTTP/2 over TLS не работает корректно.
-		_ = http2.ConfigureServer(httpSrv, &http2.Server{})
 
 		tlsCmux = newEdgeCmux(tlsListener, edgeFirstByteBudget)
 		tlsGrpcL := tlsCmux.MatchWithWriters(
