@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/soheilhy/cmux"
-	"golang.org/x/net/http2"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
@@ -97,7 +96,6 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 		// internal and ExternalListener conns external.
 		ConnContext: listenerorigin.ConnContext,
 	}
-	_ = http2.ConfigureServer(httpSrv, &http2.Server{})
 
 	// --- ingress-facing plaintext cmux listener (external, the fail-closed default) ---
 	plainLn, err := net.Listen("tcp", "127.0.0.1:0")
