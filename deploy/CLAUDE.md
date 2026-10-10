@@ -86,7 +86,12 @@ Dev-стенд Kachō (kind + Helm + Postgres + ingress) + e2e.
   со стендом. Почта стенда — его приёмнику, а не ретранслятору площадки; цепочка, объявляющая
   первого администратора облака секретом (a8f60d), получает его шагом подъёма
   `scripts/bootstrap-cloud-admin.sh` (kacho#3065). Проброс консоли, края и приёмника писем и окружение проб —
-  `bash scripts/stand-ns.sh forward NS`. Устройство — шапка `scripts/stand-ns.sh`.
+  `bash scripts/stand-ns.sh forward NS`; он же поднимает дверь чтения писем в форме приёмника
+  стенда службы личности (`/messages`, `/codes` — `scripts/stand-mailbox-door.py`, адрес —
+  `KACHO_STAND_MAILBOX_URL`) и называет исполнитель записи в её базу стенда
+  (`KACHO_KANAME_STORE_EXEC`, форма `--store-exec` её посевов). Ключи доступа стенда
+  принимают происхождение ЕГО консоли: слой стенда выводит перечень из адреса консоли и снимает
+  «никого» цепочки площадки. Устройство — шапка `scripts/stand-ns.sh`.
   Прогон целиком — `make stand-ns-run NS=… [REF=…] [KEEP=1] [DIR=…] CMD='…'`: подъём →
   команда (CONSOLE_BASE, EDGE_BASE, окружение проб) → снятие всегда. Код читается у
   `scripts/stand-ns.sh run`: код команды, 125 — команда не исполнялась. make его не передаёт
