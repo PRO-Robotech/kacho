@@ -33,7 +33,14 @@ import (
 //     мультиплексор, ни принять его параметром, ни поделить им порт;
 //   - к меткам происхождения слушателя listenerorigin.ExternalListener и
 //     listenerorigin.InternalListener (в самом пакете listenerorigin — к ним вне
-//     объявления).
+//     объявления);
+//   - к прямой метке «внутренний» на контексте listenerorigin.WithInternal (в
+//     самом пакете listenerorigin она законна: её зовёт ConnContext).
+//
+// Других экспортированных способов поставить метку у пакета нет: WithExternal
+// не существует, а ConnContext метит только соединение, прошедшее обёртку
+// InternalListener либо ExternalListener (типы соединений неэкспортированы),
+// поэтому без запрещённых здесь обёрток метки он не ставит.
 //
 // Обращение — любое упоминание узлом разбора: вызов, значение функции, тип,
 // переприсвоение. Импорт этих пакетов точкой вне корня — тоже находка: такую
@@ -50,7 +57,10 @@ import (
 //     (рефлексия по значению, полученному из корня как any): его видно только
 //     ревью;
 //   - соседние модули: дерево — каталог gateway, другие продукты монорепо не
-//     обходятся.
+//     обходятся;
+//   - сам пакет listenerorigin: метку внутри него можно поставить в обход
+//     экспортированных имён (markInternal{}, internalConn) и зовом WithInternal
+//     откуда угодно; пакет-владелец держат его собственные пробы.
 //
 // Перечисленные формы выноса — через cmux и метки — поэтому требуют осознанной
 // правки этого гейта (и переписи корня вслед за ним), а не проходят зелёным;
@@ -90,12 +100,15 @@ var edgeAssemblyPartsOutsideRoot = map[string]edgeAssemblyPartsRule{
 		premise: []string{"New", "Any", "CMux"},
 	},
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin": {
-		banned:  []string{"ExternalListener", "InternalListener"},
+		banned:  []string{"ExternalListener", "InternalListener", "WithInternal"},
 		premise: []string{"ExternalListener", "InternalListener"},
 	},
 }
 
-const listenerOriginImport = "github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
+// listenerOriginOwnBanned — имена, которые и внутри пакета listenerorigin
+// зовутся только в своём объявлении. WithInternal сюда не входит: её зовёт
+// ConnContext того же пакета, это и есть законная установка метки.
+var listenerOriginOwnBanned = []string{"ExternalListener", "InternalListener"}
 
 // edgeOutsideRootFile — разобранный файл и его путь относительно каталога gateway.
 type edgeOutsideRootFile struct {
@@ -146,7 +159,7 @@ func censusEdgeOutsideRoot(fset *token.FileSet, files []edgeOutsideRootFile) edg
 		var ownNames map[string]bool
 		if f.Name.Name == "listenerorigin" {
 			ownNames = map[string]bool{}
-			for _, n := range edgeAssemblyPartsOutsideRoot[listenerOriginImport].banned {
+			for _, n := range listenerOriginOwnBanned {
 				ownNames[n] = true
 			}
 		}
@@ -408,6 +421,35 @@ func Mux(l net.Listener) CMux { return New(l) }
 		want: "импортирован точкой",
 	},
 	{
+		name: "N1: метка «внутренний» напрямую в ConnContext соседнего пакета",
+		rel:  "internal/edgewrap/wrap.go",
+		src: `package edgewrap
+
+import (
+	"context"
+	"net"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
+)
+
+func ConnContext(ctx context.Context, c net.Conn) context.Context {
+	return listenerorigin.WithInternal(ctx)
+}
+`,
+		want: "listenerorigin.WithInternal вне пакета корня (internal/edgewrap/wrap.go)",
+	},
+	{
+		name: "метка «внутренний» значением функции под своим именем импорта",
+		rel:  "internal/edgewrap/mark2.go",
+		src: `package edgewrap
+
+import lo "github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
+
+var markInternal = lo.WithInternal
+`,
+		want: "lo.WithInternal вне пакета корня",
+	},
+	{
 		name: "метка внутри пакета listenerorigin вне объявления",
 		rel:  "internal/listenerorigin/wrap.go",
 		src: `package listenerorigin
@@ -456,6 +498,17 @@ import "net"
 func ExternalListener(l net.Listener) net.Listener { return l }
 
 func InternalListener(l net.Listener) net.Listener { return l }
+`,
+	},
+	{
+		// Метку ставит сам её пакет: ConnContext зовёт WithInternal в
+		// listenerorigin.go, и пакет-владелец вправе звать её где угодно.
+		rel: "internal/listenerorigin/twin_withinternal.go",
+		src: `package listenerorigin
+
+import "context"
+
+func markForAdmin(ctx context.Context) context.Context { return WithInternal(ctx) }
 `,
 	},
 }

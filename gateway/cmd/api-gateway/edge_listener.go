@@ -186,7 +186,9 @@ func serveEdgeMux(m cmux.CMux, grpcSrv *grpc.Server, httpSrv *http.Server, died 
 }
 
 // serveInternalREST обслуживает выделенный внутренний REST-слушатель: ЕДИНСТВЕННОЕ
-// место, где соединения получают метку «внутренний». Возвращает nil на
+// место кода края вне пакета listenerorigin, где соединения получают метку
+// «внутренний» (обёрткой слушателя; прямую метку на контексте здесь не ставят —
+// контекст общего сервера пометил бы и внешние слушатели). Возвращает nil на
 // остановке сервера.
 func serveInternalREST(httpSrv *http.Server, l net.Listener) error {
 	if err := httpSrv.Serve(listenerorigin.InternalListener(l)); err != nil && !errors.Is(err, http.ErrServerClosed) {

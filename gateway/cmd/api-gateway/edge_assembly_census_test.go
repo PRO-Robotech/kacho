@@ -22,7 +22,9 @@ import (
 // судит это по ИДЕНТИФИКАТОРАМ разбора, а не по имени переменной: в не-тестовых
 // файлах ПАКЕТА КОРНЯ Serve, ExternalListener, Match встречаются только внутри
 // своей функции, в какой бы форме их там ни записали — вызовом, значением
-// метода, через другое имя сервера или после переприсвоения слушателя. Формы,
+// метода, через другое имя сервера или после переприсвоения слушателя, а прямой
+// метки «внутренний» на контексте (WithInternal) в корне нет ни в какой
+// функции. Формы,
 // которые перепись обязана видеть, перечислены в edgeAssemblyInjections и
 // доказаны инъекцией.
 //
@@ -38,7 +40,10 @@ import (
 //     cmux (кроме типа соединения MuxConn) и к меткам происхождения слушателя;
 //   - обход без этих деталей — свой разбор HTTP/2 поверх слушателя
 //     (http2.Server.ServeConn) или своё деление порта без cmux: его видно только
-//     ревью.
+//     ревью;
+//   - метку внутри самого пакета listenerorigin: пакет-владелец ставит её
+//     сам (ConnContext зовёт WithInternal) и вправе делать это где угодно, его
+//     держат собственные пробы пакета, а не эта перепись.
 
 // edgeAssemblyHomes — идентификатор → функции edge_listener.go, где ему место.
 var edgeAssemblyHomes = map[string][]string{
@@ -50,6 +55,11 @@ var edgeAssemblyHomes = map[string][]string{
 	// Метки происхождения слушателя.
 	"ExternalListener": {"serveEdgeMux"},
 	"InternalListener": {"serveInternalREST"},
+	// Метка «внутренний» прямо на контексте, мимо слушателя: в корне ей места
+	// нет нигде, и в serveInternalREST тоже — там метку ставит слушатель, а
+	// контекст общего сервера (BaseContext, ConnContext) пометил бы внутренними
+	// и внешние слушатели.
+	"WithInternal": nil,
 	// Матчеры мультиплексора.
 	"Match":                                   {"splitEdgeCmux"},
 	"MatchWithWriters":                        {"splitEdgeCmux"},
@@ -64,9 +74,12 @@ const edgeServerBuilder = "newEdgeHTTPServer"
 const edgeMuxFactory = "newEdgeCmux"
 
 // internalRESTListeners — сколько раз корень поднимает внутренний REST-слушатель.
-// Метку «внутренний» ставит только serveInternalREST, и слушатель с этой меткой
-// отдаёт Internal* REST: каждое лишнее обращение к ней — ещё один такой
-// слушатель, о котором не знает ни проба, ни посадка (ban #6).
+// Метку «внутренний» в коде края вне пакета listenerorigin ставит только
+// serveInternalREST — обёрткой InternalListener; прямую метку на контексте
+// (listenerorigin.WithInternal) корень не ставит нигде, а вне корня обе формы
+// запрещает гейт edge_assembly_outside_root_test.go. Слушатель с этой меткой
+// отдаёт Internal* REST: каждое лишнее обращение к serveInternalREST — ещё один
+// такой слушатель, о котором не знает ни проба, ни посадка (ban #6).
 const internalRESTListeners = 1
 
 type edgeAssemblyCensus struct {
@@ -162,8 +175,12 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 							return true
 						}
 					}
-					c.findings = append(c.findings, fmt.Sprintf("%s: %s в %q, а место ему — %s: этот слушатель пробы края не судят",
-						fset.Position(n.Pos()), n.Name, owner, strings.Join(homes, ", ")))
+					where := "место ему — " + strings.Join(homes, ", ")
+					if len(homes) == 0 {
+						where = "места ему в корне нет"
+					}
+					c.findings = append(c.findings, fmt.Sprintf("%s: %s в %q, а %s: этот слушатель пробы края не судят",
+						fset.Position(n.Pos()), n.Name, owner, where))
 				}
 				return true
 			})
@@ -297,6 +314,21 @@ var edgeAssemblyInjections = []struct {
 	return new(http.Server)
 }`,
 		want: "http.Server собирается в \"inj\"",
+	},
+	{
+		name: "N1b: метка «внутренний» напрямую в корне",
+		src: `func connCtx(ctx context.Context, c net.Conn) context.Context {
+	return listenerorigin.WithInternal(ctx)
+}`,
+		want: "WithInternal в \"connCtx\"",
+	},
+	{
+		name: "метка «внутренний» напрямую внутри serveInternalREST",
+		src: `func serveInternalREST(httpSrv *http.Server, l net.Listener) error {
+	httpSrv.BaseContext = func(net.Listener) context.Context { return listenerorigin.WithInternal(context.Background()) }
+	return httpSrv.Serve(listenerorigin.InternalListener(l))
+}`,
+		want: "WithInternal в \"serveInternalREST\"",
 	},
 	{
 		name: "матчер cmux мимо splitEdgeCmux",
