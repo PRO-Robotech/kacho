@@ -6,7 +6,11 @@
 #
 # Накладывается ТРЕТЬИМ, поверх values.dev.yaml + values.dev-prod.yaml:
 #
-#   make -C deploy stack-up STACK=a8f60d
+#   STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stack-up STACK=a8f60d
+#
+# Ставится ТОЛЬКО в контекст -client этого файла, явным --context; активный
+# контекст файла выбором не является (deploy/Makefile, CLIENT_CONTEXT_STACKS;
+# deploy/scripts/client-context.sh).
 #
 # Цепочка здесь НАМЕРЕННО не выписана: она объявлена один раз в
 # deploy/stacks.txt, и цель читает её оттуда. Команду, набранную в

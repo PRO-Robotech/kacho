@@ -49,7 +49,11 @@
 #   stand.yaml    приспособление к кластеру, ИЗМЕРЕННОЕ у него: cert-manager не
 #                 ставится (переиспользуется существующий), контроллер входа не
 #                 ставится, тома — только если у кластера есть класс по умолчанию;
-#                 и адрес консоли этого стенда;
+#                 адрес консоли этого стенда и её вход под именем, которое
+#                 пробрасывает forward; почтовая полоса — в приёмник СТЕНДА
+#                 (STARTTLS с якорем его листа), а не в ретранслятор площадки:
+#                 письмо пробы читается из ящика стенда, и наружу оно не уходит
+#                 (kacho#3065 — цепочка a8f60d объявляет ретранслятор площадки);
 #   перенос       пост-обработчик рендера (tools/standns): адреса соседей,
 #                 издатели и корень внутреннего CA — в пространство стенда.
 #
@@ -70,9 +74,18 @@
 #
 # ── КЛАСТЕР НАЗЫВАЕТСЯ ЯВНО ──────────────────────────────────────────────────
 #
-# Меняющие режимы требуют STAND_APISERVER — адрес apiserver'а кластера, с которым
-# kubectl говорит на самом деле (scripts/stand-cluster-pin.sh): цель пишет в
-# кластер активного контекста, и «наверное, тот» выбором кластера не является.
+# Все режимы, обращающиеся к кластеру (up, run, down, census, forward), говорят
+# с контекстом -client явно названного файла профиля — STAND_KUBECONFIG либо
+# одиночный KUBECONFIG; current-context файла не читается и не меняется
+# (guard_context ниже, kacho#3065). STAND_APISERVER выводится из выбранного
+# контекста; объявленный при вызове — второй пин, обязан совпасть.
+#
+# Файл профиля кластера НЕ доказывает: его могут заменить. Решение владельца
+# 2026-10-10 дословно: «По префиксу нод можешь понять тот кластер или нет, куб
+# конфет мог меняться». Кластер принимается по узлам — все `<профиль>-client-…`,
+# не меньше одного (scripts/client-context.sh, client_context_nodes) — в
+# guard_context до первого обращения с записью и в переписи, и заново перед
+# каждой фазой записи (stand_nodes): между фазами файл мог смениться.
 # Подтверждения человеком НЕ спрашивается: пространство своё, помеченное, и
 # пишется только в него и в помеченные свои объекты.
 set -uo pipefail
@@ -194,6 +207,31 @@ assert [nsname(p) for p in dns[0]["to"]] == [sys.argv[2]] and all(p.get("podSele
      ! STAND_DNS_NAMESPACE=dns-ns STAND_DNS_SELECTOR='{}' dns_peer >/dev/null 2>&1; then
     ok "объявленная пара DNS принята, половина пары и пустой селектор — отвергнуты"
   else bad "объявление пары DNS: «$pick»"; fi
+  # Слой стенда поверх цепочки площадки (a8f60d, kacho#3065): почта стенда — в
+  # его приёмник, вход консоли — под именем, которое пробрасывает forward.
+  # Судится разобранным слоем, а не подстрокой.
+  local ov
+  ov='
+import sys, yaml
+d = yaml.safe_load(sys.stdin)
+m = d["global"]["kacho"]["identity"]["smtp"]
+assert m["connectionURI"] == "smtp://{{ .Release.Name }}-mailpit:1025/", m["connectionURI"]
+assert m["credentialSecret"] == {"name": "", "key": ""}, m["credentialSecret"]
+assert m["trustAnchorSecret"] == {"name": "kacho-mailpit-tls", "key": "ca.crt"}, m["trustAnchorSecret"]
+assert d["uif"]["publicFront"]["service"]["name"] == "", "имя входа консоли не сброшено"
+assert d["uif"]["publicFront"]["service"]["type"] == "ClusterIP"
+'
+  if stand_overlay t3102-probe cm-ns on 20001 | python3 -c "$ov"; then
+    ok "слой стенда: почта — приёмник стенда с якорем его листа, удостоверения ретранслятора нет; вход консоли — ui-public, ClusterIP"
+  else bad "слой стенда: почтовая полоса или имя входа консоли не по правилу"; fi
+  # Секрет первого администратора облака выводится из рендера: ссылка
+  # KANAME_BOOTSTRAP_ROOT_EMAIL → secretKeyRef. Близнец — рендер без ссылки: пусто.
+  local rd; rd="$(mktemp)"
+  printf '%s\n' 'kind: Deployment' 'metadata: {name: kaname}' 'spec: {template: {spec: {containers: [{name: kaname, env: [{name: KANAME_BOOTSTRAP_ROOT_EMAIL, valueFrom: {secretKeyRef: {name: stand-cloud-admin, key: email}}}]}]}}}' >"$rd"
+  if [ "$(bootstrap_secret_of "$rd")" = stand-cloud-admin ]; then ok "секрет администратора облака выведен из рендера"; else bad "секрет администратора облака из рендера не выведен"; fi
+  printf '%s\n' 'kind: Deployment' 'metadata: {name: kaname}' 'spec: {template: {spec: {containers: [{name: kaname, env: [{name: KANAME_BOOTSTRAP_ROOT_EMAIL, value: ""}]}]}}}' >"$rd"
+  if [ -z "$(bootstrap_secret_of "$rd")" ]; then ok "рендер без ссылки на секрет — шага администратора нет"; else bad "секрет администратора выведен из рендера без ссылки"; fi
+  rm -f "$rd"
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -203,22 +241,90 @@ assert [nsname(p) for p in dns[0]["to"]] == [sys.argv[2]] and all(p.get("podSele
 need_tools() {
   local t
   for t in kubectl helm python3 openssl jq curl go git; do
-    command -v "$t" >/dev/null 2>&1 || die "нет '$t' — исполнить нечем (условие прогона, а не находка)" 2
+    # type -P, а не command -v: kubectl и helm ниже — функции-обёртки, и
+    # command -v нашёл бы обёртку там, где исполняемого файла нет.
+    type -P "$t" >/dev/null 2>&1 || die "нет '$t' — исполнить нечем (условие прогона, а не находка)" 2
   done
 }
 
-# guard_context — кластер пинится АДРЕСОМ apiserver'а, а не именем контекста:
-# имя — ярлык автора kubeconfig, одноимённый контекст уже вёл в другой кластер.
-# Авторитет — объявление STAND_APISERVER при вызове (адрес площадки в дерево не
-# пишется), сверку делает тот же страж, что у гейта посадки
-# (scripts/stand-cluster-pin.sh). Имя контекста запоминается ПОСЛЕ сверки — его
-# просит цель доставки манифестов модулей.
+# ── КЛАСТЕР НАЗЫВАЕТСЯ ФАЙЛОМ ПРОФИЛЯ И ЕГО КОНТЕКСТОМ -client (kacho#3065) ───
+#
+# Активный контекст файла профиля — НЕ выбор стенда: файл площадки несёт два
+# контекста одного кластера, `…-client` и `…-infra`, и его current-context
+# переключает человек под свою работу. Стенд проб ставится ТОЛЬКО в client
+# (решение владельца 2026-10-09), поэтому контекст выбирается явно:
+#
+#   файл профиля  STAND_KUBECONFIG, иначе KUBECONFIG — ровно один файл;
+#   контекст      ровно один контекст файла с суффиксом -client; ноль или больше
+#                 одного — отказ ДО первого обращения к кластеру. Переопределение
+#                 — только STAND_CONTEXT, и только именем, оканчивающимся на -client.
+#
+# current-context файла не читается и не меняется. Каждый kubectl и helm этого
+# скрипта идёт с --context/--kube-context (обёртки ниже: без выбранного
+# контекста они отказывают, а не идут в активный). Дочерним шагам (make, скрипты
+# посева и посадки) достаётся KUBECONFIG из двух файлов: первым — файл из одной
+# строки current-context=<client> (без адресов и удостоверений, первый файл,
+# объявивший current-context, при слиянии побеждает), вторым — файл профиля; и
+# HELM_KUBECONTEXT. Так и шаги, читающие активный контекст, говорят с client.
+#
+# STAND_APISERVER выводится из выбранного контекста и уходит дочерним шагам
+# (гейт посадки пинит им кластер, scripts/stand-cluster-pin.sh); объявленный
+# при вызове — обязан совпасть с адресом контекста -client.
+STAND_CTX="" STAND_CTX_FILE=""
+
+kubectl() {
+  [ -n "$STAND_CTX" ] || { warn "kubectl до выбора контекста — отказ (guard_context не пройден)"; return 2; }
+  command kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" "$@"
+}
+helm() {
+  [ -n "$STAND_CTX" ] || { warn "helm до выбора контекста — отказ (guard_context не пройден)"; return 2; }
+  command helm --kubeconfig "$STAND_KUBECONFIG" --kube-context "$STAND_CTX" "$@"
+}
+
+# Выбор файла профиля и контекста -client — ЕДИНСТВЕННЫЙ на все пути выкатки:
+# scripts/client-context.sh (им же закрепляется `stack-up`). Здесь — только
+# закрепление выбранного для этого скрипта и его потомков.
+# shellcheck source=deploy/scripts/client-context.sh
+. "$HERE/client-context.sh"
+
+ctx_cleanup() { [ -z "$STAND_CTX_FILE" ] || rm -f "$STAND_CTX_FILE"; }
+
 guard_context() {
-  [ -n "${STAND_APISERVER:-}" ] || die "STAND_APISERVER не задан, а цель пишет в кластер активного контекста.
-       Объяви адрес apiserver'а кластера, на который ставится стенд:
-         STAND_APISERVER=\"\$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')\"" 2
-  bash "$HERE/stand-cluster-pin.sh" || die "активный кластер не объявленный (выше)" 2
-  STAND_CTX="$(kubectl config current-context 2>/dev/null)"
+  [ -z "$STAND_CTX" ] || return 0
+  local file ctx
+  client_context_pick || exit 2
+  file="$CC_FILE" ctx="$CC_CTX"
+  # Всё, что судится по файлу, — первым (адрес контекста против объявленного);
+  # затем кластер — узлами: файл профиля его не доказывает.
+  client_context_server || exit 2
+  client_context_profile || exit 2
+  client_context_nodes || exit 2
+  export STAND_PROFILE="$CC_PROFILE"
+  mkdir -p "$WORK_ROOT" || die "рабочий каталог $WORK_ROOT не заведён" 2
+  STAND_CTX_FILE="$(mktemp "$WORK_ROOT/.context.XXXXXX")" || die "файл выбора контекста не заведён" 2
+  client_context_file "$STAND_CTX_FILE" || exit 2
+  trap ctx_cleanup EXIT
+  STAND_KUBECONFIG="$file" STAND_CONTEXT="$ctx" STAND_CTX="$ctx"
+  export STAND_KUBECONFIG STAND_CONTEXT KUBECONFIG="$STAND_CTX_FILE:$file" HELM_KUBECONTEXT="$ctx" KACHO_CLIENT_CONTEXT="$ctx"
+  # Адрес apiserver'а — из ВЫБРАННОГО контекста (чтение файла, кластер не
+  # спрашивается). Объявлен STAND_APISERVER — обязан совпасть. Дальше адрес
+  # уходит дочерним шагам: гейт посадки пинит им кластер (stand-cluster-pin.sh),
+  # и тот же страж здесь сверяет, что активный для них контекст — выбранный.
+  local srv
+  srv="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
+  [ -n "$srv" ] || die "контекст -client файла профиля не отдал адрес apiserver'а — пинить кластер нечем" 2
+  [ -z "${STAND_APISERVER:-}" ] || [ "$STAND_APISERVER" = "$srv" ] ||
+    die "объявленный STAND_APISERVER не адрес контекста -client файла профиля — стенд ушёл бы не туда" 2
+  export STAND_APISERVER="$srv"
+  bash "$HERE/stand-cluster-pin.sh" >/dev/null || die "активный для дочерних шагов кластер не кластер контекста -client" 2
+  log "кластер: контекст -client файла профиля (активный контекст файла не читается)"
+}
+
+# stand_nodes — кластер заново доказывается узлами перед фазой записи: файл
+# профиля, которым говорит каждый kubectl и helm, мог смениться с прошлой фазы.
+stand_nodes() {
+  CC_FILE="$STAND_KUBECONFIG" CC_CTX="$STAND_CTX"
+  client_context_nodes >/dev/null || die "кластер перед фазой записи «$1» не доказан узлами (выше) — запись не начинается" 2
 }
 
 # ns_state NS — печатает absent | test | foreign; код 2 — кластер не ответил.
@@ -484,7 +590,7 @@ up_on_exit() {
   local rc=$?
   trap - EXIT INT TERM
   [ -z "$CHILD" ] || { kill_tree "$CHILD"; wait "$CHILD" 2>/dev/null; }
-  [ "$UP_DONE" = 1 ] && exit "$rc"
+  [ "$UP_DONE" = 1 ] && { ctx_cleanup; exit "$rc"; }
   [ "$rc" -ne 0 ] || rc=1
   if [ "$UP_CREATED" = 1 ]; then
     warn "подъём $UP_NS не завершён (код $rc) — снимаю созданное этим вызовом"
@@ -499,6 +605,7 @@ up_on_exit() {
     [ "${UP_STATE:-}" != test ] ||
       warn "пространство $UP_NS существовало до вызова — ловушка его не снимает (make -C deploy stand-ns-down NS=$UP_NS)"
   fi
+  ctx_cleanup
   exit "$rc"
 }
 
@@ -520,6 +627,18 @@ global:
     identity:
       appBaseURL: "https://$host:$port"
       webauthnRpId: "$host"
+      # Почта стенда — его приёмнику (блок mailpit цепочки), шифрование не
+      # снимается: STARTTLS, якорь — ca.crt листа приёмника. Удостоверения
+      # ретранслятора площадки у стенда нет и быть не должно.
+      smtp:
+        connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
+        fromAddress: "noreply@mail.kacho.test"
+        credentialSecret:
+          name: ""
+          key: ""
+        trustAnchorSecret:
+          name: kacho-mailpit-tls
+          key: ca.crt
 uif:
   # Первый лист внешнего входа консоли — ВРЕМЕННЫЙ (certificate-public.yaml,
   # issue-temporary-certificate), настоящий раздача перечитывает сторожем раз в
@@ -535,6 +654,9 @@ uif:
   publicFront:
     enabled: true
     service:
+      # Имя входа — умолчание чарта (<раздача>-public): его пробрасывает
+      # forward. Имя балансировщика площадки к стенду отношения не имеет.
+      name: ""
       type: ClusterIP
     tls:
       secretName: console-public-tls
@@ -558,6 +680,31 @@ EOF
     done
     printf 'registry:\n  zot:\n    storage:\n      persistence: false\n'
   fi
+}
+
+# bootstrap_secret_of RENDER — имя секрета первого администратора облака, на
+# который рендер ссылается из KANAME_BOOTSTRAP_ROOT_EMAIL (secretKeyRef); пусто —
+# цепочка администратора секретом не объявляет, и шага нет. Больше одного имени —
+# код 1: какой из них читать, не установлено.
+bootstrap_secret_of() {
+  python3 - "$1" <<'PY'
+import sys, yaml
+names = set()
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not isinstance(d, dict):
+        continue
+    spec = ((d.get("spec") or {}).get("template") or {}).get("spec") or {}
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        for e in c.get("env") or []:
+            if e.get("name") == "KANAME_BOOTSTRAP_ROOT_EMAIL":
+                ref = ((e.get("valueFrom") or {}).get("secretKeyRef") or {}).get("name")
+                if ref:
+                    names.add(ref)
+if len(names) > 1:
+    sys.exit("секретов администратора облака больше одного: %s" % sorted(names))
+for n in names:
+    print(n)
+PY
 }
 
 # subchart_defaults — умолчания подчартов-частей дерева под их ключом в зонтике.
@@ -731,11 +878,13 @@ $claims" 2
   log "проверено без записи в кластер: ревизия, образы, право на квоту, предрендер"
 
   # ── 2. Первая запись: пространство с метками и сроком, квота, пределы ──
+  stand_nodes "пространство $ns"
   [ "$UP_STATE" = absent ] && UP_CREATED=1
   kubectl apply -f "$work/ns.yaml" >/dev/null || die "пространство $ns с квотой не заведено" 1
   log "пространство $ns: задача #$task, срок $expires; квота, пределы, Pod Security baseline и сетевая изоляция применены"
 
   # ── 3. Стенд ──
+  stand_nodes "манифесты модулей и секреты"
   bg make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \
     MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" || die "манифесты модулей не доставлены" 1
   local mm="$UMBRELLA/values.module-manifests.yaml"
@@ -744,6 +893,7 @@ $claims" 2
   STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" bg bash "$HERE/stack-secrets.sh" "$stack" "${extra[@]}" ||
     die "предусловные секреты стенда не созданы" 1
 
+  stand_nodes "helm upgrade --install"
   log "helm: цепочка $stack + образы $sha + стенд, перенос в $ns"
   bg helm_install "${args[@]}" \
       --post-renderer kacho-stand-ns \
@@ -753,9 +903,23 @@ $claims" 2
   # Прокси API-сервера на управляемом кластере до подов не доходит — вопрос
   # задаётся пробросом (scripts/wait-edge-ready.sh, EDGE_READY_VIA).
   EDGE_READY_VIA=port-forward bg bash "$HERE/wait-edge-ready.sh" "$ns" api-gateway 90 2 3 || die "край стенда не ответил готовностью" 1
+  stand_nodes "посев"
   KACHO_NS="$ns" bg bash "$HERE/seed-geo-baseline.sh" || die "посев каталога geo не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-storage-catalog.sh" || die "посев каталога хранения не прошёл" 1
   KACHO_NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" bg bash "$HERE/seed-vpc-address-pools.sh" || die "посев полосы адресов не прошёл" 1
+  # Первый администратор облака — посевом путём продукта (регистрация, код из
+  # ящика стенда, подтверждение; kacho#2878), если цепочка объявляет его
+  # секретом. Секрет на стенде проб чеканит stack-secrets.sh. Шаг — до гейта
+  # посадки: стенд не объявляется поднятым без входа администратора.
+  local admin_secret
+  admin_secret="$(bootstrap_secret_of "$work/render.yaml")" || die "секрет администратора облака из рендера не выведен (выше)" 1
+  if [ -n "$admin_secret" ]; then
+    STACK_NAMESPACE="$ns" STACK_RELEASE="$RELEASE" KACHO_CLOUD_ADMIN_SECRET="$admin_secret" \
+      bg tee_to "$work/cloud-admin.log" bash "$HERE/bootstrap-cloud-admin.sh" ||
+      die "администратор облака не заведён либо не входит (журнал $work/cloud-admin.log)" 1
+  else
+    log "цепочка $stack администратора облака секретом не объявляет — шага нет"
+  fi
   NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" POSTURE_PROFILE=production \
     bg tee_to "$work/posture.log" bash "$HERE/assert-production-posture.sh" || die "боевая посадка стенда не доказана (журнал $work/posture.log)" 1
   local prc=0
@@ -763,7 +927,8 @@ $claims" 2
   [ "$prc" -eq 0 ] || die "провенанс стенда не сходится с ревизией $sha (код $prc, журнал $work/provenance.log)" 1
 
   UP_DONE=1
-  trap - EXIT INT TERM
+  trap - INT TERM
+  trap ctx_cleanup EXIT
   log "стенд $ns ПОДНЯТ за $(( $(date +%s) - start )) с: цепочка $stack, образы $sha, срок $expires"
   log "консоль https://$(ns_host "$ns"):$port · край https://127.0.0.1:$((port + 1)) · приёмник http://127.0.0.1:$((port + 2))"
   log "проброс и окружение проб:  bash deploy/scripts/stand-ns.sh forward $ns"
@@ -814,6 +979,7 @@ run_on_exit() {
     }
   fi
   log "прогон на $RUN_NS: код $rc"
+  ctx_cleanup
   exit "$rc"
 }
 
@@ -861,6 +1027,7 @@ cmd_run() {
 cmd_forward() {
   local ns="$1" port work host lp
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу" 2
+  need_tools; guard_context
   [ "$(ns_state "$ns")" = test ] || die "тестового пространства $ns нет" 1
   port="$(ns_port "$ns")"; host="$(ns_host "$ns")"; work="$WORK_ROOT/$ns"; mkdir -p "$work"
   cmd_unforward "$ns" >/dev/null 2>&1
@@ -874,7 +1041,7 @@ cmd_forward() {
   local pair svc rport
   for pair in "ui-public:443:$port" "api-gateway:8443:$((port + 1))" "$RELEASE-mailpit:8025:$((port + 2))"; do
     IFS=: read -r svc rport lp <<<"$pair"
-    nohup kubectl -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
+    nohup "$(type -P kubectl)" --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
     echo $! >>"$work/forward.pids"
   done
   # Спрашивается оболочка консоли (`/`), а не `/healthz`: на порту внешнего входа
@@ -939,12 +1106,14 @@ cmd_down() {
   local ns="$1" state left
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер>-<коротко>; пространство kacho цель не снимает никогда" 2
   need_tools; guard_context
+  stand_nodes "снятие $ns"
   cmd_unforward "$ns" >/dev/null 2>&1
   state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил; «не прочитал» не равно «нет»" 2
   [ "$state" != foreign ] || die "пространство $ns НЕ помечено $LABEL_STAND=test — оно не стенд проб, и снимать его эта цель не вправе" 1
   if [ "$state" = test ] && helm status "$RELEASE" -n "$ns" >/dev/null 2>&1; then
     log "helm uninstall $RELEASE -n $ns (уносит свои издатели CA и корень CA)"
     helm uninstall "$RELEASE" -n "$ns" --wait --timeout 5m || warn "helm uninstall отказал — помеченное снимается ниже по метке"
+    stand_nodes "снятие $ns: помеченное и пространство"
   fi
   left="$(leftovers "$ns")"
   if [ -n "$left" ]; then
@@ -977,12 +1146,12 @@ $left" 1
 cmd_census() {
   local expired_mode=0 js now rows n=0 nexp=0 name task exp age state
   [ "${1:-}" = --expired ] && expired_mode=1
-  need_tools
-  [ "$expired_mode" = 0 ] || guard_context
+  need_tools; guard_context
   js="$(kubectl get namespace -l "$LABEL_STAND=test" -o json --request-timeout=30s)" || die "перечень пространств НЕ ПРОЧИТАН — кластер не ответил" 2
   now="$(date -u +%s)"
   rows="$(jq -r --arg t "$LABEL_TASK" --arg e "$ANN_EXPIRES" \
-    '.items[] | [.metadata.name, (.metadata.labels[$t] // "-"), (.metadata.annotations[$e] // "-"), .metadata.creationTimestamp] | @tsv' <<<"$js")"
+    '.items[] | [.metadata.name, (.metadata.labels[$t] // "-"), (.metadata.annotations[$e] // "-"), .metadata.creationTimestamp] | @tsv' <<<"$js")" ||
+    die "перечень пространств не разобран — «не разобрал» не равно «ноль»" 2
   printf '%-32s %-7s %-8s %-22s %s\n' ПРОСТРАНСТВО ЗАДАЧА ВОЗРАСТ СРОК СОСТОЯНИЕ
   local doomed=""
   while IFS=$'\t' read -r name task exp created; do

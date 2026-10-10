@@ -72,6 +72,33 @@ STACK_RELEASE ?= kacho-umbrella
 STACK_NAMESPACE ?= kacho
 STACK_TIMEOUT ?= 15m
 STACK_EXTRA_ARGS ?=
+# CLIENT_CONTEXT_STACKS — стенды, которые ставятся ТОЛЬКО в контекст -client
+# файла профиля площадки (решение владельца 2026-10-09, kacho#3065). Активный
+# контекст файла их выбором не является: файл несёт и `…-infra`, и его
+# current-context переключает человек. Цель с таким STACK не исполняет ни одной
+# строки против кластера, пока scripts/client-context.sh не закрепил client:
+# снаружи закрепления она перезапускает себя через `client-context.sh exec`
+# (каждый kubectl/helm несёт --context/--kube-context client), а внутри — судит
+# закрепление (`verify`). Ноль, больше одного -client, STAND_CONTEXT вне
+# -client — отказ ДО первого обращения к кластеру.
+#
+# Файл профиля кластер НЕ доказывает — его могут заменить. Решение владельца
+# 2026-10-10 дословно: «По префиксу нод можешь понять тот кластер или нет, куб
+# конфет мог меняться». Имя стенда здесь — профиль площадки: до первой записи и
+# заново перед каждой фазой записи ($(CLIENT_NODES)) кластер принимается, только
+# если все его узлы (≥ 1) — `<STACK>-client-…` (client-context.sh nodes).
+# Держит: deploy/stack_client_context_test.go.
+CLIENT_CONTEXT_STACKS := a8f60d
+# STACK_VIA_CLIENT — непусто, когда эта цель лишь ПЕРЕДАЁТ себя закреплению и
+# остальные её строки исполнять не должна.
+STACK_VIA_CLIENT = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),,1))
+# CLIENT_NODES — команда рецепта: перед фазой записи кластер заново доказывается
+# узлами (у стенда вне CLIENT_CONTEXT_STACKS — `true`). В рецепте она стоит
+# ОТДЕЛЬНОЙ командой со своим `;` (`$(CLIENT_NODES); \`), а не приставкой к
+# следующей: разбор порядка вызовов (tests/helm/cert-manager-release-before-
+# product-test.sh, А3) читает текст рецепта, и приставка спрятала бы от него
+# вызов cert-manager-up.
+CLIENT_NODES = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh nodes,true)
 # POSTURE_SKIP — сервисы, которых на этом стенде НЕТ по решению оператора.
 # Пусто = стенд полный (умолчание, локальный `make dev-up`).
 POSTURE_SKIP ?=
@@ -514,7 +541,9 @@ guard-declared-context:
 # чужой контекст — ОТКАЗ, а не переход к вводу: объявленное и неверное
 # подтверждение хуже отсутствующего. Незаданная ручка — прежнее поведение.
 # Держит: tests/helm/guard-destructive-confirm-test.sh.
-#   make -C deploy stack-up STACK=a8f60d CONFIRM="UP-a8f60d@$(kubectl config current-context)"
+#   make -C deploy stack-up STACK=prod CONFIRM="UP-prod@$(kubectl config current-context)"
+# Стенд, который ставится только в client (CLIENT_CONTEXT_STACKS), подтверждается
+# контекстом -client файла профиля — его и разрешит kubectl внутри закрепления.
 guard-destructive:
 	@op="$(OP)"; token="$(TOKEN)"; what="$(WHAT)"; \
 	if [ -z "$$op" ] || [ -z "$$token" ]; then \
@@ -1042,7 +1071,16 @@ own-up: preflight
 # `global.kacho.siteLayer.enforced`: оставшаяся заглушка — отказ рендера уже в
 # предполёте секретов, до применения (templates/site-layer-guard.yaml).
 #
-#   make -C deploy stack-up STACK=a8f60d
+# КОНТЕКСТ -client — ДО ПЕРВОЙ СТРОКИ ПРОТИВ КЛАСТЕРА (kacho#3065). Стенд из
+# CLIENT_CONTEXT_STACKS цель ставит только в контекст -client файла профиля
+# STAND_KUBECONFIG (либо одиночного KUBECONFIG): первая строка после проверки
+# имени перезапускает цель внутри `scripts/client-context.sh exec`, а остальные
+# строки внешнего вызова не исполняются ($(STACK_VIA_CLIENT)). Подтверждение
+# guard-destructive называет поэтому контекст client, а не активный контекст
+# файла. Остальные стенды — прежний путь, активный контекст и подтверждение.
+#
+#   STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stack-up STACK=a8f60d \
+#     CONFIRM='UP-a8f60d@<контекст -client этого файла>'
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
 	@[ -n "$(STACK)" ] || { \
@@ -1071,9 +1109,10 @@ stack-up:
 	  echo "       Раскатывать:  bash helm/umbrella/cutover-fe3455.sh"; \
 	  exit 2; \
 	fi
-	@$(MAKE) --no-print-directory guard-destructive OP="stack-up STACK=$(STACK)" TOKEN="UP-$(STACK)" \
+	@$(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),bash scripts/client-context.sh verify,STAND_PROFILE=$(STACK) bash scripts/client-context.sh exec -- $(MAKE) --no-print-directory stack-up),true)
+	@$(if $(STACK_VIA_CLIENT),exit 0;) $(MAKE) --no-print-directory guard-destructive OP="stack-up STACK=$(STACK)" TOKEN="UP-$(STACK)" \
 	  WHAT="состав кластера будет приведён к объявленной цепочке стенда $(STACK) из stacks.txt"
-	@set -e; \
+	@$(if $(STACK_VIA_CLIENT),exit 0;) set -e; \
 	args="$$(bash tests/helm/stacks.sh --args "$(STACK)" ./helm/umbrella)"; \
 	[ -n "$$args" ] || { \
 	  echo "ABORT: цепочка стенда '$(STACK)' прочиталась ПУСТОЙ."; \
@@ -1093,14 +1132,17 @@ stack-up:
 	site_args="$$site_args --set global.kacho.siteLayer.enforced=true"; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory helm-deps; \
+	$(CLIENT_NODES); \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
+	$(CLIENT_NODES); \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
 	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) $$site_args; \
+	$(CLIENT_NODES); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
@@ -1147,7 +1189,8 @@ stack-up:
 # и не снимается; пространство помечается задачей и сроком, и задача, его
 # поднявшая, его же снимает. Подтверждения человеком нет: пишется только своё
 # помеченное пространство и свои помеченные издатели CA, а `kacho` имя не проходит.
-# Кластер называется адресом apiserver'а — STAND_APISERVER (scripts/stand-cluster-pin.sh).
+# Кластер — контекст -client файла профиля STAND_KUBECONFIG (либо одиночного KUBECONFIG),
+# явным --context; current-context файла не читается (шапка scripts/stand-ns.sh).
 # Устройство, правила имени и срока — шапка scripts/stand-ns.sh.
 NS ?=
 EXPIRED ?=
@@ -1895,6 +1938,7 @@ wipe-iam-db: guard-kind-context
 # `stack-up` требует `STACK`. Все три пути выкатки называют стенд явно, поэтому
 # снятие умолчания не трогает ни одного из них.
 module-manifests-configmap: guard-declared-context
+	@$(if $(filter $(MODULE_MANIFESTS_STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh verify --ambient,true)
 	@[ -n "$(MODULE_MANIFESTS_STACK)" ] || { \
 	  echo "ABORT: MODULE_MANIFESTS_STACK не задан — производить нечего и некуда."; \
 	  echo "       Умолчания здесь быть не может: цель применяет объект в кластер"; \
