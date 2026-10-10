@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 
 	// Регистрация errdetails-типов в protoregistry — иначе protojson не
@@ -40,7 +39,6 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
-	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
@@ -1224,39 +1222,9 @@ func main() {
 		middleware.HTTPRecovery(logger)(inner),
 	)
 
-	httpSrv := &http.Server{
-		Handler: httpHandler,
-		// ReadHeaderTimeout bounds the slow-header (Slowloris) attack surface
-		// independently of the body-read budget: a client trickling request
-		// headers cannot pin a connection/goroutine indefinitely (CWE-400/770).
-		// It applies only from the moment this server owns the connection — the
-		// window BEFORE that (protocol sniffing by the multiplexer) is bounded
-		// separately by edgeFirstByteBudget; see cmux_firstbyte.go.
-		// WriteTimeout is intentionally left unset — the same server multiplexes
-		// grpc-gateway responses (incl. long-lived streaming/long-poll REST) and a
-		// blanket write deadline would truncate them; slow-read draining is bounded
-		// instead by IdleTimeout + the reverse-proxy/L7 in front of the edge.
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		// SECURITY (fail-closed): the SAME httpSrv serves every HTTP listener —
-		// the plaintext cmux listener the ingress targets, the advertised
-		// external TLS listener, AND the dedicated cluster-internal admin REST
-		// listener. ConnContext tags the internal admin listener's connections
-		// (wrapped with listenerorigin.InternalListener below) internal and the
-		// two external HTTP listeners' connections (wrapped with
-		// listenerorigin.ExternalListener below) external. Each reader refuses
-		// by default: the REST dispatcher / authz middleware 404 Internal*
-		// paths on every connection without the internal mark, and the
-		// ceremony records (handler.MountLoginLaneRoutes) relay only on
-		// connections with the external mark. A listener that lost its wrapper
-		// serves neither. listener_origin_wiring_test.go holds the wrappers.
-		//
-		// Вторым ConnContext кладёт состояние TLS соединения (linktls): за
-		// мультиплексором r.TLS пуст всегда, а звено фронта узнаётся по
-		// имени в своём сертификате (kacho#3028, C4).
-		ConnContext: linktls.WithConnState(listenerorigin.ConnContext),
-	}
+	// Сервер, его сроки, протоколы и метки слушателей — edge_listener.go:
+	// newEdgeHTTPServer. Один сервер обслуживает все три HTTP-слушателя.
+	httpSrv := newEdgeHTTPServer(httpHandler)
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
 	// единственной службой (задача #1024).
@@ -1276,7 +1244,7 @@ func main() {
 	// состояния, и схлопнуть их значило бы разрешить второе молчанием первого.
 	observability.LogBootPosture(logger, bootPosture(cfg, identityLane))
 
-	// --- cmux: HTTP/2 gRPC vs HTTP/1.1 REST на одном порту ---
+	// --- cmux: gRPC (HTTP/2) и REST (HTTP/1.1 и HTTP/2) на одном порту ---
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		log.Fatalf("listen %s: %v", cfg.ListenAddr, err)
@@ -1284,28 +1252,16 @@ func main() {
 	logger.Info("api-gateway started", "addr", cfg.ListenAddr)
 
 	cmuxer := newEdgeCmux(listener, edgeFirstByteBudget)
-	// HTTP/2 с Content-Type: application/grpc → gRPC listener
-	grpcL := cmuxer.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-	)
-	// Все остальное → HTTP listener (grpc-gateway + healthz/readyz)
-	httpL := cmuxer.Match(cmux.Any())
-
-	go func() {
-		serveErr := grpcSrv.Serve(grpcL)
-		if serveErr != nil && serveErr != grpc.ErrServerStopped && ctx.Err() == nil {
-			logger.Error("grpc listener died; shutting down", "error", serveErr)
-			cancel()
+	// Отказ сервера на внешнем слушателе гасит процесс: край с мёртвой половиной
+	// порта не объявляет себя исправным.
+	edgeDied := func(listenerName string) func(string, error) {
+		return func(what string, serveErr error) {
+			if ctx.Err() == nil {
+				logger.Error(listenerName+" "+what+" listener died; shutting down", "error", serveErr)
+				cancel()
+			}
 		}
-	}()
-
-	go func() {
-		serveErr := httpSrv.Serve(listenerorigin.ExternalListener(httpL))
-		if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
-			logger.Error("http listener died; shutting down", "error", serveErr)
-			cancel()
-		}
-	}()
+	}
 
 	// --- dedicated cluster-internal admin REST listener ---
 	//
@@ -1317,9 +1273,10 @@ func main() {
 	// ingress targets and the external TLS listener, both ExternalListener-
 	// wrapped — is external and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
 	// port-forward / cluster-internal tooling reach it via the `internal-rest`
-	// Service port. It serves plain HTTP/1.1 REST (Internal* gRPC is blocked on
-	// EVERY listener by the proxy's HasInternalSuffix router), so no cmux split
-	// is needed. Empty addr → disabled (Internal* REST unreachable via gateway).
+	// Service port. It serves REST only — HTTP/1.1 and HTTP/2 by prior-knowledge
+	// preface, both by the same httpSrv (edgeHTTPProtocols); Internal* gRPC is
+	// blocked on EVERY listener by the proxy's HasInternalSuffix router, so no
+	// cmux split is needed. Empty addr → disabled (Internal* REST unreachable via gateway).
 	var internalRESTListener net.Listener
 	if cfg.InternalRESTAddr != "" {
 		var restErr error
@@ -1329,8 +1286,7 @@ func main() {
 		}
 		logger.Info("api-gateway internal admin REST started", "addr", cfg.InternalRESTAddr)
 		go func() {
-			serveErr := httpSrv.Serve(listenerorigin.InternalListener(internalRESTListener))
-			if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
+			if serveErr := serveInternalREST(httpSrv, internalRESTListener); serveErr != nil && ctx.Err() == nil {
 				logger.Error("internal REST listener died; shutting down", "error", serveErr)
 				cancel()
 			}
@@ -1340,21 +1296,14 @@ func main() {
 	// --- TLS listener (опционально) для TLS-клиентов ---
 	// Запускаем отдельный TLS-листенер; за ним — отдельный cmux, который точно так же
 	// разделяет gRPC vs HTTP/REST после TLS-handshake. Тот же grpcSrv и httpSrv обслуживают
-	// connections (через два независимых serve goroutine).
-	var (
-		tlsCmux     cmux.CMux
-		tlsListener net.Listener
-	)
+	// его соединения — через serveEdgeMux, как и у открытого слушателя.
+	var tlsListener net.Listener
 	if cfg.TLSEnabled() {
 		cert, certErr := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
 		if certErr != nil {
 			log.Fatalf("load TLS cert (%s, %s): %v", cfg.TLSCertFile, cfg.TLSKeyFile, certErr)
 		}
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"h2", "http/1.1"},
-			MinVersion:   tls.VersionTLS12,
-		}
+		tlsCfg := edgeTLSConfig(cert)
 		// Hybrid: when enabled, accept an OPTIONAL client cert
 		// (tls.VerifyClientCertIfGiven) with the internal CA and the front-link
 		// anchor as ClientCAs — a browser without a cert still handshakes (JWT
@@ -1377,34 +1326,11 @@ func main() {
 		}
 		logger.Info("api-gateway TLS started", "addr", cfg.TLSListenAddr)
 
-		tlsCmux = newEdgeCmux(tlsListener, edgeFirstByteBudget)
-		tlsGrpcL := tlsCmux.MatchWithWriters(
-			cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-		)
-		tlsHTTPL := tlsCmux.Match(cmux.Any())
-
+		tlsCmux := newEdgeCmux(tlsListener, edgeFirstByteBudget)
+		// Разделение gRPC/REST, метка «внешний» на REST и подъём обоих серверов —
+		// serveEdgeMux (edge_listener.go), тот же, что у открытого слушателя.
 		go func() {
-			serveErr := grpcSrv.Serve(tlsGrpcL)
-			if serveErr != nil && serveErr != grpc.ErrServerStopped && ctx.Err() == nil {
-				logger.Error("tls grpc listener died; shutting down", "error", serveErr)
-				cancel()
-			}
-		}()
-		// SECURITY (fail-closed): the external TLS HTTP sub-listener carries
-		// listenerorigin.ExternalListener — its connections are external, so
-		// the REST dispatcher 404s Internal* paths arriving here and the
-		// ceremony records relay. Internal* REST is served ONLY on the dedicated
-		// cluster-internal admin listener (InternalListener-wrapped, above).
-		go func() {
-			serveErr := httpSrv.Serve(listenerorigin.ExternalListener(tlsHTTPL))
-			if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
-				logger.Error("tls http listener died; shutting down", "error", serveErr)
-				cancel()
-			}
-		}()
-		go func() {
-			serveErr := tlsCmux.Serve()
-			if serveErr != nil && ctx.Err() == nil {
+			if serveErr := serveEdgeMux(tlsCmux, grpcSrv, httpSrv, edgeDied("tls")); serveErr != nil && ctx.Err() == nil {
 				logger.Error("tls cmux died; shutting down", "error", serveErr)
 				cancel()
 			}
@@ -1443,7 +1369,9 @@ func main() {
 	// from their on-disk paths (ConfigMap staged rollout / emergency override).
 	installAuthzSIGHUP(hupCh, authzMW, logger)
 
-	if serveErr := cmuxer.Serve(); serveErr != nil {
+	// Открытый внешний слушатель: разделение gRPC/REST, метка «внешний» на REST
+	// и подъём обоих серверов — serveEdgeMux (edge_listener.go).
+	if serveErr := serveEdgeMux(cmuxer, grpcSrv, httpSrv, edgeDied("plain")); serveErr != nil {
 		logger.Error("cmux serve error", "error", serveErr)
 	}
 }
