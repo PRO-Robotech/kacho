@@ -36,6 +36,7 @@ import (
 	// Обслуживается только нативный API kacho.cloud.*.
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
+	"github.com/PRO-Robotech/kacho/gateway/internal/cmuxh2"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
@@ -1241,7 +1242,7 @@ func main() {
 	cmuxer := newEdgeCmux(listener, edgeFirstByteBudget)
 	// HTTP/2 с Content-Type: application/grpc → gRPC listener
 	grpcL := cmuxer.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+		cmuxh2.MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 	)
 	// Все остальное → HTTP listener (grpc-gateway + healthz/readyz)
 	httpL := cmuxer.Match(cmux.Any())
@@ -1335,7 +1336,7 @@ func main() {
 
 		tlsCmux = newEdgeCmux(tlsListener, edgeFirstByteBudget)
 		tlsGrpcL := tlsCmux.MatchWithWriters(
-			cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+			cmuxh2.MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 		)
 		tlsHTTPL := tlsCmux.Match(cmux.Any())
 

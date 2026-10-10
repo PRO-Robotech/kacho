@@ -21,6 +21,8 @@ import (
 	"github.com/soheilhy/cmux"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/cmuxh2"
 )
 
 // serveEdgeStack поднимает ТУ ЖЕ композицию, что и шлюз: мультиплексор края с
@@ -37,7 +39,7 @@ func serveEdgeStack(t *testing.T, firstByteBudget, headerTimeout time.Duration) 
 	}
 	m := newEdgeCmux(l, firstByteBudget)
 	grpcL := m.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+		cmuxh2.MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 	)
 	httpL := m.Match(cmux.Any())
 
@@ -75,7 +77,7 @@ func serveEdgeStack(t *testing.T, firstByteBudget, headerTimeout time.Duration) 
 func serveMatchedCmux(t *testing.T, l net.Listener, m cmux.CMux) <-chan net.Conn {
 	t.Helper()
 	grpcL := m.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+		cmuxh2.MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 	)
 	httpL := m.Match(cmux.Any())
 
