@@ -36,10 +36,7 @@ func serveEdgeStack(t *testing.T, firstByteBudget, headerTimeout time.Duration) 
 		t.Fatalf("listen: %v", err)
 	}
 	m := newEdgeCmux(l, firstByteBudget)
-	grpcL := m.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-	)
-	httpL := m.Match(cmux.Any())
+	grpcL, httpL := splitEdgeCmux(m)
 
 	srv := &http.Server{
 		ReadHeaderTimeout: headerTimeout,
@@ -74,10 +71,7 @@ func serveEdgeStack(t *testing.T, firstByteBudget, headerTimeout time.Duration) 
 // соединение не должна ни одна другая сторона.
 func serveMatchedCmux(t *testing.T, l net.Listener, m cmux.CMux) <-chan net.Conn {
 	t.Helper()
-	grpcL := m.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-	)
-	httpL := m.Match(cmux.Any())
+	grpcL, httpL := splitEdgeCmux(m)
 
 	accepted := make(chan net.Conn, 8)
 	drain := func(sub net.Listener) {
