@@ -12,7 +12,8 @@
 #                                     код выхода — код КОМАНДЫ; --keep оставляет стенд для
 #                                     разбора на срок STAND_TTL_HOURS (≤ 12 ч)
 #   stand-ns.sh census [--expired]    перечень тестовых пространств; --expired снимает просроченные
-#   stand-ns.sh forward NS            проброс консоли, края и приёмника писем + файл окружения проб
+#   stand-ns.sh forward NS            проброс консоли, края и приёмника писем, дверь чтения писем
+#                                     (stand-mailbox-door.py) + файл окружения проб
 #   stand-ns.sh unforward NS          снять проброс
 #   stand-ns.sh self-test             проба правил имени, срока и порта (кластера не требует)
 #
@@ -224,6 +225,28 @@ assert d["uif"]["publicFront"]["service"]["type"] == "ClusterIP"
   if stand_overlay t3102-probe cm-ns on 20001 | python3 -c "$ov"; then
     ok "слой стенда: почта — приёмник стенда с якорем его листа, удостоверения ретранслятора нет; вход консоли — ui-public, ClusterIP"
   else bad "слой стенда: почтовая полоса или имя входа консоли не по правилу"; fi
+  # Ключи доступа стенда — происхождение ЕГО консоли (kaname#677): перечень
+  # выводит чарт из appBaseURL слоя, перечень площадки («никого», kacho#3068)
+  # снят значением null. Близнецы — слой без снятия перечня площадки и слой без
+  # вывода из консоли: первый роняет рендер двумя объявлениями, второй оставляет
+  # на стенде «никого», и церемония ключа неисполнима.
+  local ak
+  ak='
+import sys, yaml
+d = yaml.safe_load(sys.stdin)
+i = d["global"]["kacho"]["identity"]
+k = d["kaname"]["config"]["authn"]["accessKeys"]
+assert k.get("originFromConsole") is True, k
+assert "origins" in k and k["origins"] is None, k
+assert i["appBaseURL"] == "https://%s:20001" % i["webauthnRpId"], i
+'
+  if stand_overlay t3102-probe cm-ns on 20001 | python3 -c "$ak"; then
+    ok "слой стенда: ключи доступа — происхождение консоли стенда, перечень площадки снят"
+  else bad "слой стенда: происхождение ключей доступа не из консоли стенда"; fi
+  if stand_overlay t3102-probe cm-ns on 20001 | sed '/^        origins: null$/d' | python3 -c "$ak" 2>/dev/null; then
+    bad "слой без снятия перечня площадки принят разбором"; else ok "слой без снятия перечня площадки разбором отвергнут"; fi
+  if stand_overlay t3102-probe cm-ns on 20001 | sed 's/^        originFromConsole: true$/        originFromConsole: false/' | python3 -c "$ak" 2>/dev/null; then
+    bad "слой без вывода происхождения из консоли принят разбором"; else ok "слой без вывода происхождения из консоли разбором отвергнут"; fi
   # Секрет первого администратора облака выводится из рендера: ссылка
   # KANAME_BOOTSTRAP_ROOT_EMAIL → secretKeyRef. Близнец — рендер без ссылки: пусто.
   local rd; rd="$(mktemp)"
@@ -232,6 +255,11 @@ assert d["uif"]["publicFront"]["service"]["type"] == "ClusterIP"
   printf '%s\n' 'kind: Deployment' 'metadata: {name: kaname}' 'spec: {template: {spec: {containers: [{name: kaname, env: [{name: KANAME_BOOTSTRAP_ROOT_EMAIL, value: ""}]}]}}}' >"$rd"
   if [ -z "$(bootstrap_secret_of "$rd")" ]; then ok "рендер без ссылки на секрет — шага администратора нет"; else bad "секрет администратора выведен из рендера без ссылки"; fi
   rm -f "$rd"
+  # Дверь чтения писем, которую поднимает forward (kaname#684): обе формы, отказы
+  # и 502 на оборванном приёмнике — её собственной самопроверкой.
+  if python3 "$HERE/stand-mailbox-door.py" --self-test >/dev/null 2>&1; then
+    ok "дверь чтения писем стенда: /messages и /codes в форме приёмника службы, отказы и обрыв приёмника"
+  else bad "дверь чтения писем стенда: самопроверка провалена (python3 scripts/stand-mailbox-door.py --self-test)"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -639,6 +667,21 @@ global:
         trustAnchorSecret:
           name: kacho-mailpit-tls
           key: ca.crt
+kaname:
+  config:
+    authn:
+      # Ключи доступа стенда проб — происхождение ЕГО консоли (appBaseURL выше),
+      # выведенное чартом («originFromConsole»), а не выписанное второй строкой
+      # рядом с адресом: два объявления одного адреса расходились бы молча.
+      # Цепочка площадки объявляет «никого» явно («origins: []», kacho#3068) —
+      # это решение о происхождении ПЛОЩАДКИ, и консоль стенда в нём не названа:
+      # церемония ключа на стенде была бы неисполнима, и пробы ключей доступа
+      # стояли бы «условие не создано». Перечень площадки снимается здесь
+      # («null» — не объявление), иначе рядом с «originFromConsole» он — второе
+      # объявление, и рендер отказывает. Пространство kacho этот слой не видит.
+      accessKeys:
+        originFromConsole: true
+        origins: null
 uif:
   # Первый лист внешнего входа консоли — ВРЕМЕННЫЙ (certificate-public.yaml,
   # issue-temporary-certificate), настоящий раздача перечитывает сторожем раз в
@@ -1071,14 +1114,42 @@ cmd_forward() {
     cmd_unforward "$ns" >/dev/null 2>&1
     die "консоль через проброс не ответила за ${STAND_FORWARD_WAIT:-300} с (последний код $code; журналы и листы выше)" 1
   fi
+  # Дверь чтения писем в форме приёмника собственного стенда службы личности
+  # (`/messages`, `/codes`): её читают наборы и посевы службы (kaname#684). Порт —
+  # свободный, а не четвёртый подряд: порты стендов выделены по три, следующий —
+  # консоль соседнего стенда.
+  local door_port="" door_pf="$work/mailbox-door.port"
+  rm -f "$door_pf"
+  nohup python3 "$HERE/stand-mailbox-door.py" "http://127.0.0.1:$((port + 2))" --port-file "$door_pf" \
+    >"$work/mailbox-door.log" 2>&1 &
+  echo $! >>"$work/forward.pids"
+  for _ in $(seq 1 50); do [ -s "$door_pf" ] && break; sleep 0.2; done
+  door_port="$(cat "$door_pf" 2>/dev/null)"
+  [[ "$door_port" =~ ^[0-9]+$ ]] &&
+    [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$door_port/healthz")" = 200 ] || {
+    tail -n 5 "$work/mailbox-door.log" >&2
+    cmd_unforward "$ns" >/dev/null 2>&1
+    die "дверь чтения писем стенда не поднялась (журнал $work/mailbox-door.log)" 1
+  }
+  # Исполнитель записи в базу службы личности стенда — «до psql включительно»,
+  # форма --store-exec её посевов (seed_key_person, seed_stored_value): «Дано»,
+  # строящиеся записью, на этом стенде иначе не строятся (kaname#684). Только
+  # пространство стенда: имя kacho сюда не доходит (ns_valid выше).
+  local store_exec
+  store_exec="$(printf '%q ' kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" \
+    exec -i "statefulset/$RELEASE-pg-iam" -- psql -U iam -d kaname)"
   cat >"$work/probe.env" <<EOF
 export KACHO_CONSOLE_URL=https://$host:$port
 export KACHO_CONSOLE_HOST_IP=127.0.0.1
 export KACHO_CONSOLE_CA=$work/console-leaf.pem
 export NODE_EXTRA_CA_CERTS=$work/console-ca.pem
 export KACHO_CONSOLE_MAILBOX_URL=http://127.0.0.1:$((port + 2))
+export KACHO_STAND_MAILBOX_URL=http://127.0.0.1:$door_port
 export KACHO_EDGE_URL=https://127.0.0.1:$((port + 1))
 EOF
+  # Значение — слова команды, каждое в форме оболочки (%q): файл окружения читают
+  # «.», а посев режет значение по правилам оболочки (shlex.split).
+  printf 'export KACHO_KANAME_STORE_EXEC=%q\n' "${store_exec% }" >>"$work/probe.env"
   log "проброс поднят; окружение проб: . $work/probe.env"
 }
 
