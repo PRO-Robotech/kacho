@@ -19,9 +19,12 @@ func frame(typ, flags byte, payload ...byte) []byte {
 var (
 	settings    = frame(frameSettings, 0, 0, 3, 0, 0, 0, 100) // MAX_CONCURRENT_STREAMS=100
 	settingsAck = frame(frameSettings, flagSettingsAck)
-	headers     = frame(frameHeaders, 0x4|0x1, 0x82, 0x86, 0x84) // END_HEADERS|END_STREAM
-	windowUp    = frame(0x8, 0, 0, 0, 0x10, 0)
-	ping        = frame(0x6, 0, 1, 2, 3, 4, 5, 6, 7, 8)
+	// settingsAckWithPayload — ACK с телом: сервер ответит FRAME_SIZE_ERROR,
+	// фильтр же обязан пропустить кадр целиком.
+	settingsAckWithPayload = frame(frameSettings, flagSettingsAck, 0, 3, 0, 0, 0, 1)
+	headers                = frame(frameHeaders, 0x4|0x1, 0x82, 0x86, 0x84) // END_HEADERS|END_STREAM
+	windowUp               = frame(0x8, 0, 0, 0, 0x10, 0)
+	ping                   = frame(0x6, 0, 1, 2, 3, 4, 5, 6, 7, 8)
 )
 
 // frameHeaderOfLength — заголовок кадра заявленной длины без тела.
@@ -66,10 +69,29 @@ func TestFilter(t *testing.T) {
 			out:  cat(pre, settings, headers, settingsAck),
 		},
 		{
-			// SETTINGS клиента после HEADERS матчер не читал и не отвечал.
+			// Предмет: SETTINGS клиента после HEADERS матчер не читал и не
+			// отвечал — в долг он не идёт, пока долг ещё не погашен и фильтр
+			// разбирает поток. Снимается ровно одно подтверждение (матчера),
+			// подтверждение настоящего сервера на второй SETTINGS доходит.
 			name: "settings after headers are not owed",
+			in:   cat(pre, settings, headers, settings, settingsAck, settingsAck),
+			out:  cat(pre, settings, headers, settings, settingsAck),
+		},
+		{
+			// Законный близнец: долг погашен до второго SETTINGS — фильтр уже
+			// в проходе, поток идёт без разбора.
+			name: "settings after the debt is paid pass through",
 			in:   cat(pre, settings, headers, settingsAck, settings, settingsAck),
 			out:  cat(pre, settings, headers, settings, settingsAck),
+		},
+		{
+			// Предмет: подтверждение SETTINGS с телом — не ответ матчеру (RFC
+			// 9113 §6.5: у ACK длина 0), оно доходит до сервера целиком, а
+			// снимается ACK нулевой длины. Снять один заголовок без тела значило
+			// бы отдать серверу тело как начало следующего кадра.
+			name: "ack with a payload is not the matcher's",
+			in:   cat(pre, settings, settingsAckWithPayload, headers, settingsAck),
+			out:  cat(pre, settings, settingsAckWithPayload, headers),
 		},
 		{
 			// Два SETTINGS до заголовков — два ответа матчера, два снятых.

@@ -8,10 +8,13 @@
 // «внутренний» — только `listenerorigin.InternalListener`. Слушатель без
 // обёртки не отдаёт ни пути `Internal*`, ни координат церемонии: оба читателя
 // метки отказывают по умолчанию. Проба держит, что корень оборачивает каждый
-// слушатель `httpSrv.Serve`, внутренний — ровно один, и что `ConnContext`
-// общего сервера — тот, что читает обе обёртки. Корень — весь пакет
-// cmd/api-gateway без тестов: сервер и подъём слушателей вынесены из main.go в
-// edge_listener.go (kacho#3125).
+// слушатель `httpSrv.Serve`, что обёртка «внутренний» записана ровно в одном
+// месте, и что `ConnContext` общего сервера — тот, что читает обе обёртки.
+// Корень — весь пакет cmd/api-gateway без тестов: сервер и подъём слушателей
+// вынесены из main.go в edge_listener.go (kacho#3125). Обёртка «внутренний»
+// живёт в serveInternalREST, поэтому число внутренних СЛУШАТЕЛЕЙ — это число
+// обращений к ней; его сверяет перепись сборки края
+// (TestEdgeH2REST_EdgeAssemblyHasASingleHome, internalRESTListeners).
 //
 // Второе звено ConnContext (kacho#3028, C4) — состояние TLS соединения
 // (linktls.WithConnState): за мультиплексором r.TLS пуст, и звено фронта,
@@ -114,7 +117,7 @@ func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t
 			"но и внешним он не помечен: %v", bare)
 	}
 	if internal != 1 || external == 0 || connContext != 1 {
-		t.Fatalf("внутренних слушателей %d (ждали 1), внешних %d (ждали ≥1), ConnContext %d (ждали 1)", internal, external, connContext)
+		t.Fatalf("обёрток «внутренний» %d (ждали 1), обёрток «внешний» %d (ждали ≥1), ConnContext %d (ждали 1)", internal, external, connContext)
 	}
 	if linkState != 1 {
 		t.Fatalf("ConnContext без linktls.WithConnState (%d) — звено фронта за мультиплексором не узнать по сертификату", linkState)

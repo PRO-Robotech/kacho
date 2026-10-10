@@ -45,13 +45,20 @@ var edgeAssemblyHomes = map[string][]string{
 
 const edgeServerBuilder = "newEdgeHTTPServer"
 
+// internalRESTListeners — сколько раз корень поднимает внутренний REST-слушатель.
+// Метку «внутренний» ставит только serveInternalREST, и слушатель с этой меткой
+// отдаёт Internal* REST: каждое лишнее обращение к ней — ещё один такой
+// слушатель, о котором не знает ни проба, ни посадка (ban #6).
+const internalRESTListeners = 1
+
 type edgeAssemblyCensus struct {
-	files       int
-	idents      map[string]int // идентификаторы edgeAssemblyHomes, увиденные в корне
-	serverTypes int            // упоминания типа http.Server вне сигнатур
-	edgeMuxRefs []string       // места обращения к serveEdgeMux
-	decls       map[string]bool
-	findings    []string
+	files        int
+	idents       map[string]int // идентификаторы edgeAssemblyHomes, увиденные в корне
+	serverTypes  int            // упоминания типа http.Server вне сигнатур
+	edgeMuxRefs  []string       // места обращения к serveEdgeMux
+	internalRefs []string       // места обращения к serveInternalREST
+	decls        map[string]bool
+	findings     []string
 }
 
 func (c edgeAssemblyCensus) String() string {
@@ -59,8 +66,8 @@ func (c edgeAssemblyCensus) String() string {
 	for _, k := range sortedKeys(c.idents) {
 		parts = append(parts, fmt.Sprintf("%s %d", k, c.idents[k]))
 	}
-	return fmt.Sprintf("файлов %d · %s · тип http.Server вне сигнатур %d · обращений к serveEdgeMux %d · находок %d",
-		c.files, strings.Join(parts, " · "), c.serverTypes, len(c.edgeMuxRefs), len(c.findings))
+	return fmt.Sprintf("файлов %d · %s · тип http.Server вне сигнатур %d · обращений к serveEdgeMux %d · обращений к serveInternalREST %d · находок %d",
+		c.files, strings.Join(parts, " · "), c.serverTypes, len(c.edgeMuxRefs), len(c.internalRefs), len(c.findings))
 }
 
 // httpImportName — локальное имя пакета net/http в файле либо "".
@@ -118,8 +125,11 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 					if skip[n] {
 						return true
 					}
-					if n.Name == "serveEdgeMux" {
+					switch n.Name {
+					case "serveEdgeMux":
 						c.edgeMuxRefs = append(c.edgeMuxRefs, fset.Position(n.Pos()).String())
+					case "serveInternalREST":
+						c.internalRefs = append(c.internalRefs, fset.Position(n.Pos()).String())
 					}
 					homes, ok := edgeAssemblyHomes[n.Name]
 					if !ok {
@@ -141,6 +151,10 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 	if len(c.edgeMuxRefs) != variants {
 		c.findings = append(c.findings, fmt.Sprintf("обращений к serveEdgeMux %d (%s), вариантов внешнего слушателя под пробой %d — слушатель заведён без пробы либо проба без слушателя",
 			len(c.edgeMuxRefs), strings.Join(c.edgeMuxRefs, "; "), variants))
+	}
+	if len(c.internalRefs) != internalRESTListeners {
+		c.findings = append(c.findings, fmt.Sprintf("обращений к serveInternalREST %d (%s), ждали %d — слушатель с меткой «внутренний» отдаёт Internal* REST, лишний не судит ни одна проба",
+			len(c.internalRefs), strings.Join(c.internalRefs, "; "), internalRESTListeners))
 	}
 	return c
 }
@@ -209,6 +223,14 @@ var edgeAssemblyInjections = []struct {
 	_ = serveEdgeMux(m, g, s, nil)
 }`,
 		want: "обращений к serveEdgeMux 3",
+	},
+	{
+		name: "второй внутренний слушатель через serveInternalREST",
+		src: `func inj(httpSrv *http.Server) {
+	l, _ := net.Listen("tcp", ":8443")
+	_ = serveInternalREST(httpSrv, l)
+}`,
+		want: "обращений к serveInternalREST 2",
 	},
 	{
 		name: "I8e: переприсвоение слушателя после splitEdgeCmux",
