@@ -21,36 +21,78 @@ import (
 // молча (kacho#3125).
 //
 // Перепись edge_assembly_census_test.go судит ТОЛЬКО пакет корня. Сборку,
-// вынесенную в соседний пакет модуля gateway (мультиплексор, REST-половина без
-// фильтра, метка «внешний» и Serve за обёрткой), она не видит, и пробы
-// edge_h2_rest_test.go такую сборку тоже не судят. Этот гейт держит вход в
-// такой вынос: в не-тестовых файлах дерева gateway вне пакета корня нет ни
-// одного обращения к строительным деталям слушателя края —
+// вынесенную в соседний пакет модуля gateway (мультиплексор, деление порта
+// своими матчерами, REST-половина без фильтра, метка «внешний» и Serve за
+// обёрткой), она не видит, и пробы edge_h2_rest_test.go такую сборку тоже не
+// судят. Этот гейт держит вход в такой вынос: в не-тестовых файлах дерева
+// gateway вне пакета корня нет ни одного обращения —
 //
-//   - cmux.New, cmux.Any — мультиплексор порта и его «всё остальное»;
-//   - listenerorigin.ExternalListener, listenerorigin.InternalListener — метки
-//     происхождения слушателя (в самом пакете listenerorigin — обращение к ним
-//     вне объявления).
+//   - к пакету cmux, кроме типа соединения MuxConn: ни мультиплексора (New, тип
+//     CMux), ни матчеров (Any, HTTP1Fast, HTTP2, HTTP2MatchHeaderField*SendSettings
+//     и любых других имён пакета). Без этих имён вне корня нельзя ни создать
+//     мультиплексор, ни принять его параметром, ни поделить им порт;
+//   - к меткам происхождения слушателя listenerorigin.ExternalListener и
+//     listenerorigin.InternalListener (в самом пакете listenerorigin — к ним вне
+//     объявления).
 //
-// Обращение — любое упоминание узлом разбора: вызов, значение функции,
+// Обращение — любое упоминание узлом разбора: вызов, значение функции, тип,
 // переприсвоение. Импорт этих пакетов точкой вне корня — тоже находка: такую
-// форму гейт по имени не опознаёт.
+// форму гейт по имени не опознаёт. Парная половина — в переписи корня: фабрику
+// newEdgeCmux корень зовёт ровно столько раз, сколько вариантов слушателя под
+// пробой, так что мультиплексор, отданный из корня наружу, — находка и там.
 //
 // Чего гейт НЕ держит (сказано, чтобы не читать больше, чем есть):
 //   - тестовые файлы: они собирают свои мультиплексоры законно и в бой не идут;
 //   - обход через другие детали — свой разбор HTTP/2 поверх net.Listener,
 //     http2.Server.ServeConn, своё деление порта без cmux; такой обход виден
 //     только ревью;
+//   - обращение к мультиплексору, не называющее пакет cmux ни одним именем
+//     (рефлексия по значению, полученному из корня как any): его видно только
+//     ревью;
 //   - соседние модули: дерево — каталог gateway, другие продукты монорепо не
 //     обходятся.
 //
-// Вынос сборки за корень поэтому требует осознанной правки этого гейта (и
-// переписи корня вслед за ним), а не проходит зелёным.
+// Перечисленные формы выноса — через cmux и метки — поэтому требуют осознанной
+// правки этого гейта (и переписи корня вслед за ним), а не проходят зелёным;
+// формы из перечня выше гейт не судит.
 
-// edgeAssemblyPartsOutsideRoot — импорт → имена, которым вне корня не место.
-var edgeAssemblyPartsOutsideRoot = map[string][]string{
-	"github.com/soheilhy/cmux":                                      {"New", "Any"},
-	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin": {"ExternalListener", "InternalListener"},
+// edgeAssemblyPartsRule — какие имена пакета вне корня запрещены: перечень
+// banned либо, если задан allowed, все имена пакета, кроме перечисленных.
+// premise — имена, которые распознаватель обязан увидеть в пакете корня.
+type edgeAssemblyPartsRule struct {
+	banned  []string
+	allowed []string
+	premise []string
+}
+
+func (r edgeAssemblyPartsRule) bans(name string) bool {
+	if r.allowed != nil {
+		for _, a := range r.allowed {
+			if a == name {
+				return false
+			}
+		}
+		return true
+	}
+	for _, b := range r.banned {
+		if b == name {
+			return true
+		}
+	}
+	return false
+}
+
+// edgeAssemblyPartsOutsideRoot — импорт → правило имён, которым вне корня не место.
+var edgeAssemblyPartsOutsideRoot = map[string]edgeAssemblyPartsRule{
+	// Тип соединения MuxConn читает linktls (состояние TLS под мультиплексором).
+	"github.com/soheilhy/cmux": {
+		allowed: []string{"MuxConn"},
+		premise: []string{"New", "Any", "CMux"},
+	},
+	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin": {
+		banned:  []string{"ExternalListener", "InternalListener"},
+		premise: []string{"ExternalListener", "InternalListener"},
+	},
 }
 
 const listenerOriginImport = "github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
@@ -81,10 +123,10 @@ func censusEdgeOutsideRoot(fset *token.FileSet, files []edgeOutsideRootFile) edg
 	c := edgeOutsideRootCensus{files: len(files), importer: map[string]int{}}
 	for _, ef := range files {
 		f := ef.file
-		local := map[string][]string{} // локальное имя пакета → запрещённые имена
+		local := map[string]edgeAssemblyPartsRule{} // локальное имя пакета → правило
 		for _, imp := range f.Imports {
 			path, _ := strconv.Unquote(imp.Path.Value)
-			names, ok := edgeAssemblyPartsOutsideRoot[path]
+			rule, ok := edgeAssemblyPartsOutsideRoot[path]
 			if !ok {
 				continue
 			}
@@ -98,13 +140,13 @@ func censusEdgeOutsideRoot(fset *token.FileSet, files []edgeOutsideRootFile) edg
 					fset.Position(imp.Pos()), path))
 				continue
 			}
-			local[name] = names
+			local[name] = rule
 		}
 		// В самом пакете listenerorigin метки зовутся без имени пакета.
 		var ownNames map[string]bool
 		if f.Name.Name == "listenerorigin" {
 			ownNames = map[string]bool{}
-			for _, n := range edgeAssemblyPartsOutsideRoot[listenerOriginImport] {
+			for _, n := range edgeAssemblyPartsOutsideRoot[listenerOriginImport].banned {
 				ownNames[n] = true
 			}
 		}
@@ -121,12 +163,10 @@ func censusEdgeOutsideRoot(fset *token.FileSet, files []edgeOutsideRootFile) edg
 				if !ok {
 					return true
 				}
-				for _, banned := range local[x.Name] {
-					if n.Sel.Name == banned {
-						c.refs++
-						c.findings = append(c.findings, fmt.Sprintf("%s: %s.%s вне пакета корня (%s) — сборку края здесь не судят ни перепись корня, ни пробы края",
-							fset.Position(n.Pos()), x.Name, banned, ef.rel))
-					}
+				if rule, ok := local[x.Name]; ok && rule.bans(n.Sel.Name) {
+					c.refs++
+					c.findings = append(c.findings, fmt.Sprintf("%s: %s.%s вне пакета корня (%s) — сборку края здесь не судят ни перепись корня, ни пробы края",
+						fset.Position(n.Pos()), x.Name, n.Sel.Name, ef.rel))
 				}
 			case *ast.Ident:
 				if ownNames != nil && ownNames[n.Name] && !declared[n] {
@@ -219,8 +259,8 @@ func checkEdgeOutsideRootPremise(t *testing.T, outside edgeOutsideRootCensus) {
 		wrapped = append(wrapped, edgeOutsideRootFile{rel: "cmd/api-gateway/" + fset.Position(f.Pos()).Filename, file: f})
 	}
 	inRoot := censusEdgeOutsideRoot(fset, wrapped)
-	for _, names := range edgeAssemblyPartsOutsideRoot {
-		for _, n := range names {
+	for _, rule := range edgeAssemblyPartsOutsideRoot {
+		for _, n := range rule.premise {
 			seen := false
 			for _, f := range inRoot.findings {
 				if strings.Contains(f, "."+n+" ") {
@@ -318,6 +358,39 @@ import (
 func Mux(l net.Listener) cmux.CMux { return cmux.New(l) }
 `,
 		want: "cmux.New вне пакета корня",
+	},
+	{
+		name: "E1: деление порта cmux-ом в соседнем пакете без New и Any",
+		rel:  "internal/edgeextra/run.go",
+		src: `package edgeextra
+
+import (
+	"net/http"
+
+	"github.com/soheilhy/cmux"
+	"google.golang.org/grpc"
+)
+
+func Run(m cmux.CMux, g *grpc.Server, srv *http.Server) {
+	grpcL := m.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	restL := m.Match(cmux.HTTP1Fast(), cmux.HTTP2())
+	go func() { _ = srv.Serve(restL) }()
+	go func() { _ = g.Serve(grpcL) }()
+	_ = m.Serve()
+}
+`,
+		want: "cmux.HTTP2MatchHeaderFieldSendSettings вне пакета корня (internal/edgeextra/run.go)",
+	},
+	{
+		name: "мультиплексор параметром без единого матчера cmux",
+		rel:  "internal/edgeextra/param.go",
+		src: `package edgeextra
+
+import "github.com/soheilhy/cmux"
+
+func Serve(m cmux.CMux) error { return m.Serve() }
+`,
+		want: "cmux.CMux вне пакета корня (internal/edgeextra/param.go)",
 	},
 	{
 		name: "импорт точкой",

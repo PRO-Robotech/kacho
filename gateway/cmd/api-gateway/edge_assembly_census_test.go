@@ -26,14 +26,19 @@ import (
 // которые перепись обязана видеть, перечислены в edgeAssemblyInjections и
 // доказаны инъекцией.
 //
+// Фабрику мультиплексора newEdgeCmux корень зовёт ровно столько раз, сколько
+// вариантов слушателя под пробой: мультиплексор, отданный корнем кому-то кроме
+// serveEdgeMux (в том числе соседнему пакету), — лишнее обращение и находка.
+//
 // Чего перепись НЕ держит:
 //   - сборку вне пакета корня — в соседнем пакете модуля gateway за обёрткой:
 //     другие пакеты перепись не читает. Вход в такой вынос держит отдельный гейт
 //     TestEdgeH2REST_EdgeAssemblyDoesNotLeaveTheRoot
-//     (edge_assembly_outside_root_test.go): вне корня нет обращений к cmux.New,
-//     cmux.Any и меткам происхождения слушателя;
+//     (edge_assembly_outside_root_test.go): вне корня нет обращений к пакету
+//     cmux (кроме типа соединения MuxConn) и к меткам происхождения слушателя;
 //   - обход без этих деталей — свой разбор HTTP/2 поверх слушателя
-//     (http2.Server.ServeConn) или своё деление порта: его видно только ревью.
+//     (http2.Server.ServeConn) или своё деление порта без cmux: его видно только
+//     ревью.
 
 // edgeAssemblyHomes — идентификатор → функции edge_listener.go, где ему место.
 var edgeAssemblyHomes = map[string][]string{
@@ -55,6 +60,9 @@ var edgeAssemblyHomes = map[string][]string{
 
 const edgeServerBuilder = "newEdgeHTTPServer"
 
+// edgeMuxFactory — единственная фабрика мультиплексора края (cmux_firstbyte.go).
+const edgeMuxFactory = "newEdgeCmux"
+
 // internalRESTListeners — сколько раз корень поднимает внутренний REST-слушатель.
 // Метку «внутренний» ставит только serveInternalREST, и слушатель с этой меткой
 // отдаёт Internal* REST: каждое лишнее обращение к ней — ещё один такой
@@ -66,6 +74,7 @@ type edgeAssemblyCensus struct {
 	idents       map[string]int // идентификаторы edgeAssemblyHomes, увиденные в корне
 	serverTypes  int            // упоминания типа http.Server вне сигнатур
 	edgeMuxRefs  []string       // места обращения к serveEdgeMux
+	newMuxRefs   []string       // места обращения к фабрике мультиплексора newEdgeCmux
 	internalRefs []string       // места обращения к serveInternalREST
 	decls        map[string]bool
 	findings     []string
@@ -76,8 +85,8 @@ func (c edgeAssemblyCensus) String() string {
 	for _, k := range sortedKeys(c.idents) {
 		parts = append(parts, fmt.Sprintf("%s %d", k, c.idents[k]))
 	}
-	return fmt.Sprintf("файлов %d · %s · тип http.Server вне сигнатур %d · обращений к serveEdgeMux %d · обращений к serveInternalREST %d · находок %d",
-		c.files, strings.Join(parts, " · "), c.serverTypes, len(c.edgeMuxRefs), len(c.internalRefs), len(c.findings))
+	return fmt.Sprintf("файлов %d · %s · тип http.Server вне сигнатур %d · обращений к newEdgeCmux %d · обращений к serveEdgeMux %d · обращений к serveInternalREST %d · находок %d",
+		c.files, strings.Join(parts, " · "), c.serverTypes, len(c.newMuxRefs), len(c.edgeMuxRefs), len(c.internalRefs), len(c.findings))
 }
 
 // httpImportName — локальное имя пакета net/http в файле либо "".
@@ -140,6 +149,8 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 						c.edgeMuxRefs = append(c.edgeMuxRefs, fset.Position(n.Pos()).String())
 					case "serveInternalREST":
 						c.internalRefs = append(c.internalRefs, fset.Position(n.Pos()).String())
+					case edgeMuxFactory:
+						c.newMuxRefs = append(c.newMuxRefs, fset.Position(n.Pos()).String())
 					}
 					homes, ok := edgeAssemblyHomes[n.Name]
 					if !ok {
@@ -162,6 +173,16 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 		c.findings = append(c.findings, fmt.Sprintf("обращений к serveEdgeMux %d (%s), вариантов внешнего слушателя под пробой %d — слушатель заведён без пробы либо проба без слушателя",
 			len(c.edgeMuxRefs), strings.Join(c.edgeMuxRefs, "; "), variants))
 	}
+	// Мультиплексор вне корня не создаётся (cmux.New там держит гейт
+	// edge_assembly_outside_root_test.go), поэтому всякий мультиплексор края
+	// рождается в корне фабрикой. Фабрика зовётся ровно столько раз, сколько
+	// вариантов под пробой: лишнее обращение — мультиплексор, который корень
+	// отдал не serveEdgeMux, а кому-то ещё (например, соседнему пакету, где
+	// порт делят свои матчеры), и такой слушатель пробы края не судят.
+	if len(c.newMuxRefs) != variants {
+		c.findings = append(c.findings, fmt.Sprintf("обращений к newEdgeCmux %d (%s), вариантов внешнего слушателя под пробой %d — мультиплексор края собран мимо serveEdgeMux либо проба без слушателя",
+			len(c.newMuxRefs), strings.Join(c.newMuxRefs, "; "), variants))
+	}
 	if len(c.internalRefs) != internalRESTListeners {
 		c.findings = append(c.findings, fmt.Sprintf("обращений к serveInternalREST %d (%s), ждали %d — слушатель с меткой «внутренний» отдаёт Internal* REST, лишний не судит ни одна проба",
 			len(c.internalRefs), strings.Join(c.internalRefs, "; "), internalRESTListeners))
@@ -173,7 +194,7 @@ func censusEdgeAssembly(fset *token.FileSet, files []*ast.File, variants int) ed
 // разрешает только им. Иначе «находок 0» значило бы «смотреть было не на что».
 func checkEdgeAssemblyPremise(t *testing.T, c edgeAssemblyCensus) {
 	t.Helper()
-	for _, fn := range []string{"serveEdgeMux", "serveInternalREST", "splitEdgeCmux", edgeServerBuilder} {
+	for _, fn := range []string{"serveEdgeMux", "serveInternalREST", "splitEdgeCmux", edgeServerBuilder, edgeMuxFactory} {
 		if !c.decls[fn] {
 			t.Fatalf("в пакете корня нет функции %s — перепись судит пустоту", fn)
 		}
@@ -233,6 +254,18 @@ var edgeAssemblyInjections = []struct {
 	_ = serveEdgeMux(m, g, s, nil)
 }`,
 		want: "обращений к serveEdgeMux 3",
+	},
+	{
+		name: "E1: мультиплексор края уходит из корня в соседний пакет",
+		src: `func inj(l net.Listener, g *grpc.Server, s *http.Server) {
+	go edgeextra.Run(newEdgeCmux(l, edgeFirstByteBudget), g, s)
+}`,
+		want: "обращений к newEdgeCmux 3",
+	},
+	{
+		name: "мультиплексор значением функции фабрики",
+		src:  `var mk = newEdgeCmux`,
+		want: "обращений к newEdgeCmux 3",
 	},
 	{
 		name: "второй внутренний слушатель через serveInternalREST",
