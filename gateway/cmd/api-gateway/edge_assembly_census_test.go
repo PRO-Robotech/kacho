@@ -42,8 +42,10 @@ import (
 //     (http2.Server.ServeConn) или своё деление порта без cmux: его видно только
 //     ревью;
 //   - метку внутри самого пакета listenerorigin: пакет-владелец ставит её
-//     сам (ConnContext зовёт WithInternal) и вправе делать это где угодно, его
-//     держат собственные пробы пакета, а не эта перепись.
+//     сам (ConnContext зовёт WithInternal). Какими экспортированными именами
+//     метка «внутренний» выходит из пакета, держит его перепись
+//     TestListenerOriginMarkSettersMatchTheLedger (ведомость установщиков,
+//     gateway/internal/listenerorigin/mark_setter_census_test.go), а не эта.
 
 // edgeAssemblyHomes — идентификатор → функции edge_listener.go, где ему место.
 var edgeAssemblyHomes = map[string][]string{
