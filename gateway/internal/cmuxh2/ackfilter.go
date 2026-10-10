@@ -56,7 +56,7 @@ type filter struct {
 	prefaceAt   int
 	hdr         [frameHeaderLen]byte
 	hdrAt       int
-	payloadLeft uint32
+	payloadLeft int // длина кадра — 24 бита, в int помещается всегда
 	headersSeen bool
 	// owed — подтверждения SETTINGS, ещё не пришедшие на SETTINGS матчера.
 	owed int
@@ -91,16 +91,13 @@ func (f *filter) process(in, out []byte) []byte {
 			if !f.answeredAck(f.hdr[3], f.hdr[4], length) {
 				out = append(out, f.hdr[:]...)
 			}
-			f.payloadLeft = length
+			f.payloadLeft = int(length)
 			f.st = statePayload
 			if length == 0 {
 				f.frameDone()
 			}
 		case statePayload:
-			n := uint32(len(in))
-			if n > f.payloadLeft {
-				n = f.payloadLeft
-			}
+			n := min(len(in), f.payloadLeft)
 			out = append(out, in[:n]...)
 			in = in[n:]
 			f.payloadLeft -= n
