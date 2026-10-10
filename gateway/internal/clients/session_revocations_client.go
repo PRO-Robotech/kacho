@@ -155,6 +155,7 @@ func (a *SessionRevocationsAdapter) ResolveHumanSession(
 		ExpiresAt:       s.GetExpiresAt().AsTime(),
 		AssuranceLevel:  s.GetAssuranceLevel(),
 		EmailVerified:   s.GetEmailVerified(),
+		SessionID:       s.GetSessionId(),
 	}, true, nil
 }
 

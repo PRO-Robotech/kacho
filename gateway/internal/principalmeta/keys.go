@@ -84,6 +84,12 @@ const (
 	// ОСТАЁТСЯ НА КРАЮ (edgeOnlyKeys): за краем у него потребителя нет, а мост
 	// пропустил бы его наравне с прочими — префикс мост снимает сам.
 	HeaderTokenBasicCredentialID = principalwire.HeaderTokenBasicCredentialID
+
+	// HeaderTokenSessionID — НОМЕР ЗАПИСИ сессии человека, за которую край
+	// проксирует запрос (kaname#677). Ставит его полоса нашей сессии из ответа
+	// службы о носителе; потребитель за краем — служба доступа (снятие ключа
+	// щадит текущую сессию, Ф13 Р8). Ничего не аутентифицирует.
+	HeaderTokenSessionID = principalwire.HeaderTokenSessionID
 )
 
 // Grpc-Metadata-prefixed HTTP header names (grpc-gateway → gRPC metadata bridge).
@@ -95,6 +101,7 @@ const (
 	HeaderGRPCMetaTokenACR         = principalwire.HeaderGRPCMetaTokenACR
 	HeaderGRPCMetaTokenJti         = principalwire.HeaderGRPCMetaTokenJti
 	HeaderGRPCMetaTokenScope       = principalwire.HeaderGRPCMetaTokenScope
+	HeaderGRPCMetaTokenSessionID   = principalwire.HeaderGRPCMetaTokenSessionID
 )
 
 // Мостовой формы у доводов условия (`amr` / `mfa-at`) НЕТ, и одного её
@@ -125,6 +132,10 @@ const (
 	// его нет, — а ради ЗАПРЕТА: набор ключей края (edgeOnlyKeys) ведётся именно
 	// этими именами, и ключ, которого в нём нет, мост пропустил бы молча.
 	MetaTokenBasicCredentialID = principalwire.MetaTokenBasicCredentialID
+
+	// MetaTokenSessionID — нижнерегистровая форма [HeaderTokenSessionID]:
+	// ровно то, что читает служба доступа.
+	MetaTokenSessionID = principalwire.MetaTokenSessionID
 )
 
 // Lowercase prefixes used to strip forgeable client-supplied identity
@@ -154,10 +165,12 @@ const (
 //
 //   - `x-kacho-principal-` (type / id / display-name) — set by the Bearer, session,
 //     DPoP and mTLS auth paths (setPrincipalHeaders / injectVerifiedTokenHeaders).
-//   - `x-kacho-token-` (acr / jti / scope / exp / amr / mfa-at) — the validated
-//     credential's own context, consumed by the step-up gate, by the iam
-//     acr-floor on the internal re-dial, and — for amr / mfa-at — by the
-//     condition arguments the edge builds for the rights model.
+//   - `x-kacho-token-` (acr / jti / scope / exp / amr / mfa-at / session-id) —
+//     the validated credential's own context, consumed by the step-up gate, by
+//     the iam acr-floor on the internal re-dial, — for amr / mfa-at — by the
+//     condition arguments the edge builds for the rights model, and — for
+//     session-id — by the identity service, which spares the current session
+//     when an access key is revoked.
 //
 // Everything else in the namespace — `x-kacho-admin`, `x-kacho-project-id`,
 // `x-kacho-actor`, and any key added tomorrow — is client-forgeable input and is

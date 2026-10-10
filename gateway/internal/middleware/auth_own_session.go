@@ -168,12 +168,37 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 	// `mfa_fresh` о ВИДЕ способа отсутствует, о свежести — момент аутентификации.
 	setSessionAssuranceHeaders(r, assurance, nil)
 	setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
+	setSessionRecordHeader(r, sess.SessionID)
 	// Носитель — для ТОГО ЖЕ вопроса с открытого соединения (kacho#2900): отметку
 	// адреса служба называет только в ответе о сессии по носителю, и перепрос
 	// потоков спрашивает её им же. Записывается после всех вердиктов полосы.
 	r = r.WithContext(principalmeta.WithPresented(r.Context(), principalmeta.PresentedSession(bearer)))
 	a.logger.Info("auth.HTTP: Principal injected (own session)", "type", subj.Type, "id", subj.ID)
 	return r, true, false
+}
+
+// setSessionRecordHeader — номер записи текущей сессии для службы
+// (kaname#677): по нему снятие ключа доступа щадит сессию, из которой ключ
+// снят (Ф13 Р8).
+//
+// Канал — тот же, что у личности: заголовок подсемейства `x-kacho-token-`,
+// клиентские значения которого вычищены до выбора полосы
+// (`stripForgeableIdentityHeaders`), а за мост его пускает
+// `principalHeaderMatcher`; служба читает его только за вердиктом о
+// доверенном отправителе.
+//
+// Ставится ОДНА форма — мостовая. Мост снимает приставку сам и голую форму
+// пропустил бы тоже, а служба принимает номер, только когда значение одно:
+// две формы дали бы два значения, и текущая осталась бы неназванной.
+//
+// Номера нет в ответе службы — заголовок не ставится вовсе: пустое значение
+// служба прочла бы как «не названо» и так, но ключ без значения — запись,
+// которую никто не производил.
+func setSessionRecordHeader(r *http.Request, record string) {
+	if record == "" {
+		return
+	}
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenSessionID, record)
 }
 
 // reportOwnSessionUnavailable докладывает о службе, не ответившей о сессии, с
