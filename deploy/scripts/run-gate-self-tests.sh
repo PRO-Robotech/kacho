@@ -149,6 +149,7 @@ deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
+deploy/scripts/stand-mailbox-door.py
 deploy/scripts/stand-provenance.sh
 deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
