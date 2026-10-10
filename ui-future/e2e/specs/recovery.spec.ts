@@ -24,6 +24,7 @@ import {
   type Letter,
   type Mailbox,
 } from "./mail-receiver";
+import { ACCESS_NOT_RESTORED, RECOVERY_NEXT_STEP } from "./lane-texts";
 import { LANE_UNAVAILABLE, bodyOf, fulfillWith, laneTooManyAttempts } from "./producer-answers";
 
 /**
@@ -75,8 +76,11 @@ const T_CODE =
 /** Новый пароль сценария: длина больше правила стенда (8), на адрес не похож. */
 const NEW_PASSWORD = "Kacho-Recovery-2026!n";
 
-/** Тело ответа запроса кода — побайтово одно на любой исход (Ф5-01, Ф5-02). */
-const REQUESTED_BODY = "{}";
+/**
+ * Тело ответа запроса кода — побайтово одно на любой исход (Ф5-01, Ф5-02): шаг,
+ * названный условием, которое знает сам человек, а не утверждение «отправлено».
+ */
+const REQUESTED_BODY = JSON.stringify({ nextStep: RECOVERY_NEXT_STEP });
 
 // Кнопка отправки — по форме и КОНЦУ имени (см. `identity-ceremony.spec.ts`,
 // `submitOf`): значок ожидания кнопки оставляет в имени «loading».
@@ -423,10 +427,10 @@ test("F8S3-09 · неверный код: назван один отказ, се
   const res = await completeWith(page, wrong, NEW_PASSWORD);
   expect(res.status()).toBe(401);
   expect(await res.text(), "тело отказа — одно на все причины").toBe(
-    JSON.stringify({ code: 16, message: "authentication failed", details: [] }),
+    JSON.stringify({ code: 16, message: ACCESS_NOT_RESTORED, details: [] }),
   );
   const s = recoveryScreen(page);
-  await expect(s.refusal, "текст отказа на экране не дословный").toHaveText("authentication failed");
+  await expect(s.refusal, "текст отказа на экране не дословный").toHaveText(ACCESS_NOT_RESTORED);
   await expect(s.nextStep, "к отказу не назван следующий шаг").toBeVisible();
   expect(await sessionHeld(page.context()), "после отказа у браузера появился носитель").toBe(false);
   expect(pathOf(page)).toBe("/recovery");

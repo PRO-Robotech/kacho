@@ -16,8 +16,10 @@
  *
  * ПРАВИЛО СЧЁТА — В ТОЙ ПАРЕ, КОТОРУЮ ВИДИТ БРАУЗЕР (Р7). Браузер мест вызова
  * службы не видит; он видит пару «путь · отказ». В счёт идёт ответ `401` с
- * `code` = 16 и текстом `authentication failed` на путях СЕМИ глаголов, пишущих
- * след. Отказ КРАЯ в удостоверении (приёмка KA1, Р2) несёт тот же код и тот же
+ * `code` = 16 и текстом отказа службы (`SERVICE_REFUSAL_TEXTS`) на путях СЕМИ
+ * глаголов, пишущих след. Текстов три, а не один: служба различает ими форму
+ * запроса и глагол (вход с полем `secondFactor`, завершение восстановления), но
+ * не причину, — и след по оси пишет каждый из них. Отказ КРАЯ в удостоверении (приёмка KA1, Р2) несёт тот же код и тот же
  * текст — и в счёт не идёт: след пишет служба, а край отвечает раньше неё.
  * Различает их причина тела — `AUTHN_REQUIRED` несёт только край
  * (`gateway/internal/authnrefusal`), у отказа службы `details` пуст. Тот же отказ
@@ -38,6 +40,7 @@
  */
 
 import { parseRpcStatus, reasonOfDetails } from "../../shared/src/api/rpc-status.ts";
+import { ACCESS_NOT_RESTORED, AUTHENTICATION_FAILED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "./lane-texts.ts";
 
 /** Имя вложения, которым проба сдаёт свою запись. */
 export const BUDGET_ATTACHMENT = "f8-41-source-axis-refusals";
@@ -53,8 +56,15 @@ export const SOURCE_AXIS_VERBS: readonly string[] = [
   "/iam/v1/auth/step-up",
 ];
 
-/** Текст отказа, идущего в счёт, — один на все причины. */
-export const AUTHENTICATION_FAILED = "authentication failed";
+/**
+ * Тексты отказа службы, идущего в счёт. Каждый — один на все причины своей
+ * формы запроса; перечень закрыт: текст вне него в счёт не идёт.
+ */
+export const SERVICE_REFUSAL_TEXTS: readonly string[] = [
+  AUTHENTICATION_FAILED,
+  LOGIN_WITH_SECOND_FACTOR_FAILED,
+  ACCESS_NOT_RESTORED,
+];
 
 /** Причина отказа КРАЯ в удостоверении (приёмка KA1, Р2): след оси он не пишет. */
 export const EDGE_REFUSAL_REASON = "AUTHN_REQUIRED";
@@ -93,7 +103,7 @@ export function countsTowardSourceAxis(r: RecordedRefusal): boolean {
   return (
     r.status === 401 &&
     r.code === 16 &&
-    r.message === AUTHENTICATION_FAILED &&
+    SERVICE_REFUSAL_TEXTS.includes(r.message) &&
     r.reason !== EDGE_REFUSAL_REASON &&
     SOURCE_AXIS_VERBS.includes(r.path)
   );

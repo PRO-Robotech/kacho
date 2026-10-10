@@ -114,6 +114,11 @@ import (
 // ЧЕТЫРЕ — `ClusterService/{Get,ListAdmins,GrantAdmin,RevokeAdmin}`:
 // администраторы кластера на публичной поверхности, обслуживаемые службой в её
 // дереве. Перемерено прогоном после регенерации: строк каталога 352.
+//
+// Подъём пина на 9351ab09 (kacho#3126, сброс ключей доступа kaname#638)
+// добавил ОДНУ — `UserService/ResetAccessKeys`: глагол администратора облака,
+// обслуживаемый службой в её дереве. Перемерено прогоном после регенерации:
+// строк каталога 359.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -228,6 +233,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.UserService/ListOperations",
 	"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
 	"kaname.cloud.iam.v1.UserService/ResendInvite",
+	"kaname.cloud.iam.v1.UserService/ResetAccessKeys",
 	"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 	"kaname.cloud.iam.v1.UserService/Unblock",
 	"kaname.cloud.iam.v1.UserService/Update",
