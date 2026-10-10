@@ -119,10 +119,10 @@ func serveEdgeListener(t *testing.T, kind edgeListenerKind) edgeUnderTest {
 	return edgeUnderTest{addr: l.Addr().String(), pool: pool}
 }
 
-// restClient — клиент ровно одного протокола: HTTP/2 (по ALPN поверх TLS либо
-// заранее известный без TLS) или HTTP/1.1. Транспорт HTTP/2 — тот, что входит в
-// стандартную библиотеку (сборка golang.org/x/net/http2).
-func restClient(e edgeUnderTest, h2 bool) *http.Client {
+// restTransport — транспорт ровно одного протокола: HTTP/2 (по ALPN поверх TLS
+// либо заранее известный без TLS) или HTTP/1.1. Транспорт HTTP/2 — тот, что
+// входит в стандартную библиотеку (сборка golang.org/x/net/http2).
+func restTransport(e edgeUnderTest, h2 bool) *http.Transport {
 	var p http.Protocols
 	switch {
 	case h2 && e.pool != nil:
@@ -136,7 +136,69 @@ func restClient(e edgeUnderTest, h2 bool) *http.Client {
 	if e.pool != nil {
 		tr.TLSClientConfig = &tls.Config{RootCAs: e.pool, MinVersion: tls.VersionTLS12}
 	}
-	return &http.Client{Transport: tr, Timeout: 10 * time.Second}
+	return tr
+}
+
+// restAnswer — ответ края, прочитанный целиком.
+type restAnswer struct {
+	proto string
+	code  int
+	body  string
+}
+
+// h2RequestsPerConn — сколько запросов проба шлёт по ОДНОМУ соединению HTTP/2.
+//
+// Один запрос не судит соединение: сервер может ответить на HEADERS раньше,
+// чем прочтёт следующий за ними кадр, и отказ соединению (GOAWAY) придёт уже
+// после ответа — проба зеленела бы на сломанном соединении в доле прогонов,
+// зависящей от планировщика. Клиент подтверждает каждый полученный SETTINGS,
+// прочитав его, — до того, как прочтёт ответ на первый запрос, потому что
+// SETTINGS идут в соединении раньше ответа. Значит, второй запрос уходит в
+// соединение ПОСЛЕ всех подтверждений, и сервер читает его, только разобрав
+// их: сломанное подтверждениями соединение не отвечает на второй запрос ни
+// при каком порядке горутин. Третий и проверка состояния после — запас и
+// утверждение, что соединение по-прежнему открыто.
+const h2RequestsPerConn = 3
+
+// h2Exchange шлёт h2RequestsPerConn запросов GET path по одному соединению
+// HTTP/2 и утверждает, что соединение после них открыто и принимает запросы.
+func h2Exchange(t *testing.T, e edgeUnderTest, path string) []restAnswer {
+	t.Helper()
+	scheme := "http"
+	if e.pool != nil {
+		scheme = "https"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cc, err := restTransport(e, true).NewClientConn(ctx, scheme, e.addr)
+	require.NoError(t, err, "соединение HTTP/2 не открылось")
+	defer func() { _ = cc.Close() }()
+	answers := make([]restAnswer, 0, h2RequestsPerConn)
+	for i := 1; i <= h2RequestsPerConn; i++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.url(path), nil)
+		require.NoError(t, err)
+		resp, err := cc.RoundTrip(req)
+		require.NoError(t, err, "запрос %d из %d по одному соединению HTTP/2 оборван", i, h2RequestsPerConn)
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		require.NoError(t, err, "запрос %d из %d: тело ответа оборвано", i, h2RequestsPerConn)
+		answers = append(answers, restAnswer{proto: resp.Proto, code: resp.StatusCode, body: string(body)})
+	}
+	require.NoError(t, cc.Err(), "после %d запросов соединение HTTP/2 закрыто", h2RequestsPerConn)
+	require.Positive(t, cc.Available(), "после %d запросов соединение HTTP/2 не принимает новых (получен GOAWAY)", h2RequestsPerConn)
+	return answers
+}
+
+// http1Get — один запрос по HTTP/1.1.
+func http1Get(t *testing.T, e edgeUnderTest, path string) restAnswer {
+	t.Helper()
+	c := &http.Client{Transport: restTransport(e, false), Timeout: 10 * time.Second}
+	resp, err := c.Get(e.url(path))
+	require.NoError(t, err, "запрос по HTTP/1.1 оборван")
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "тело ответа оборвано")
+	return restAnswer{proto: resp.Proto, code: resp.StatusCode, body: string(body)}
 }
 
 func (e edgeUnderTest) url(path string) string {
@@ -168,14 +230,17 @@ func TestEdgeH2REST_AnonymousRequestGetsTheWholeRefusal(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				e := serveEdgeListener(t, kind)
-				resp, err := restClient(e, h2).Get(e.url("/iam/v1/me"))
-				require.NoError(t, err, "REST-запрос без учётных данных по %s на слушателе %s оборван", wantProto, kind)
-				defer func() { _ = resp.Body.Close() }()
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err, "тело отказа оборвано")
-				require.Equal(t, wantProto, resp.Proto, "клиент не согласовал проверяемый протокол — проба судила бы не то")
-				require.Equal(t, wantCode, resp.StatusCode)
-				require.Equal(t, wantBody, string(body))
+				answers := []restAnswer{}
+				if h2 {
+					answers = h2Exchange(t, e, "/iam/v1/me")
+				} else {
+					answers = append(answers, http1Get(t, e, "/iam/v1/me"))
+				}
+				for i, a := range answers {
+					require.Equal(t, wantProto, a.proto, "запрос %d: клиент не согласовал проверяемый протокол — проба судила бы не то", i+1)
+					require.Equal(t, wantCode, a.code, "запрос %d по %s на слушателе %s", i+1, wantProto, kind)
+					require.Equal(t, wantBody, a.body, "запрос %d по %s на слушателе %s", i+1, wantProto, kind)
+				}
 			})
 		}
 	}
@@ -187,13 +252,10 @@ func TestEdgeH2REST_ExternalMarkReachesTheHandlerOverH2(t *testing.T) {
 	for _, kind := range probedEdgeListeners {
 		t.Run(string(kind), func(t *testing.T) {
 			e := serveEdgeListener(t, kind)
-			resp, err := restClient(e, true).Get(e.url("/healthz"))
-			require.NoError(t, err)
-			defer func() { _ = resp.Body.Close() }()
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, resp.StatusCode)
-			require.Equal(t, "external HTTP/2.0", string(body))
+			for i, a := range h2Exchange(t, e, "/healthz") {
+				require.Equal(t, http.StatusOK, a.code, "запрос %d", i+1)
+				require.Equal(t, "external HTTP/2.0", a.body, "запрос %d", i+1)
+			}
 		})
 	}
 }
