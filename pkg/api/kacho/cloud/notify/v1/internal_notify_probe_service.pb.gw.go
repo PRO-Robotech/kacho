@@ -74,7 +74,7 @@ func RegisterInternalNotifyProbeServiceHandlerServer(ctx context.Context, mux *r
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.notify.v1.InternalNotifyProbeService/Send", runtime.WithHTTPPathPattern("/kacho.cloud.notify.v1.InternalNotifyProbeService/Send"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.notify.v1.InternalNotifyProbeService/Send", runtime.WithHTTPPathPattern("/notify/v1/internal/probeNotifications:send"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -132,7 +132,7 @@ func RegisterInternalNotifyProbeServiceHandlerClient(ctx context.Context, mux *r
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.notify.v1.InternalNotifyProbeService/Send", runtime.WithHTTPPathPattern("/kacho.cloud.notify.v1.InternalNotifyProbeService/Send"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.notify.v1.InternalNotifyProbeService/Send", runtime.WithHTTPPathPattern("/notify/v1/internal/probeNotifications:send"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -149,7 +149,7 @@ func RegisterInternalNotifyProbeServiceHandlerClient(ctx context.Context, mux *r
 }
 
 var (
-	pattern_InternalNotifyProbeService_Send_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.notify.v1.InternalNotifyProbeService", "Send"}, ""))
+	pattern_InternalNotifyProbeService_Send_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"notify", "v1", "internal", "probeNotifications"}, "send"))
 )
 
 var (

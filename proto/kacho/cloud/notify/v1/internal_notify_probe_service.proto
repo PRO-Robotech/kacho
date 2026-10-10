@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.notify.v1;
 
 import "corelib/authz/v1/authz_options.proto";
+import "google/api/annotations.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1";
 
@@ -15,9 +16,16 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1
 //
 // # Только внутренний слушатель
 //
-// Префикс `Internal` выводит службу из внешнего маршрутизатора механически
-// (ban #6), `google.api.http` не объявлен. Проба — стендовый объект: в цепочке
-// `prod` её нет вовсе (гейт NTF1-I04).
+// Префикс `Internal` выводит службу из внешнего маршрутизатора края
+// механически (ban #6): её REST-путь `/notify/v1/internal/…` край регистрирует
+// только на внутреннем mux, и только когда адрес пробы объявлен профилем
+// стенда; на внешнем листенере путь неотличим от несуществующего. Путь
+// объявлен биндингом `google.api.http`, а не берётся маршрутом grpc-gateway
+// по умолчанию: прослойка прав края переводит REST-запрос в ключ каталога по
+// таблице, порождённой из этих биндингов, и путь без записи в ней до каталога
+// не доходит. Глагол зовёт администратор кластера своей личностью через
+// внутренний край; машинной учётки у пробы нет. Проба — стендовый объект: в
+// цепочке `prod` её нет вовсе (гейт NTF1-I04).
 //
 // # Почему ответ не `Operation`
 //
@@ -41,6 +49,10 @@ service InternalNotifyProbeService {
   // Право — `system_admin` на синглтоне `cluster`: письмо ставит оператор
   // стенда, а не тенант. Отношение подстановочным знаком не выполняется.
   rpc Send(SendRequest) returns (SendResponse) {
+    option (google.api.http) = {
+      post: "/notify/v1/internal/probeNotifications:send"
+      body: "*"
+    };
     option (corelib.authz.v1.permission)        = "notify.probeNotifications.send";
     option (corelib.authz.v1.required_relation) = "system_admin";
     option (corelib.authz.v1.scope_extractor)   = {

@@ -101,8 +101,9 @@ func TestNotifyProbeRouteIsInternalOnly(t *testing.T) {
 	})
 
 	t.Run("undeclared/internal", func(t *testing.T) {
+		t.Setenv(notifyAddrKnob, "notify-api.kacho.svc:9091")
 		t.Setenv(notifyProbeAddrKnob, "")
-		addrs := probeAddrs(t)
+		addrs := loadProbeAddrs(t)
 		if _, ok := addrs["notifyProbeInternal"]; ok {
 			t.Fatal("адрес пробы не объявлен, а ключ notifyProbeInternal в карте REST есть")
 		}

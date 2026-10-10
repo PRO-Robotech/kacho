@@ -65,9 +65,15 @@ const minPublicBindings = 200
 // честно не маршрутизируются. Проба полноты маршрутов судит установку, в которой
 // notify есть, поэтому объявляет его явно, как профиль развёртывания; установку
 // без notify судит отдельный близнец (TestNotifyBindingsFollowTheDeclaredInstallation).
+//
+// Так же объявляется адрес стендовой пробы notify-probe: у него тоже нет
+// умолчания, и её административный биндинг маршрутизируется лишь при
+// объявленном адресе. Установку без пробы судит её близнец
+// (TestNotifyProbeRouteIsInternalOnly, состояние undeclared/internal).
 func probeAddrs(t *testing.T) map[string]string {
 	t.Helper()
 	t.Setenv(notifyAddrKnob, "notify-api.kacho.svc:9091")
+	t.Setenv(notifyProbeAddrKnob, "kacho-notify-probe.kacho.svc:9091")
 	return loadProbeAddrs(t)
 }
 

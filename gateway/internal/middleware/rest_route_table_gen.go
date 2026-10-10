@@ -206,6 +206,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/notify/v1/internal/notices/{notice_id}:cancel", FQN: "kacho.cloud.notify.v1.InternalNoticeService/Cancel"},
 	{Method: "POST", Template: "/notify/v1/internal/notices/{notice_id}:complete", FQN: "kacho.cloud.notify.v1.InternalNoticeService/Complete"},
 	{Method: "POST", Template: "/notify/v1/internal/notices/{notice_id}:start", FQN: "kacho.cloud.notify.v1.InternalNoticeService/Start"},
+	{Method: "POST", Template: "/notify/v1/internal/probeNotifications:send", FQN: "kacho.cloud.notify.v1.InternalNotifyProbeService/Send"},
 	{Method: "GET", Template: "/notify/v1/notices", FQN: "kacho.cloud.notify.v1.NoticeService/List"},
 	{Method: "GET", Template: "/notify/v1/notices/{notice_id}", FQN: "kacho.cloud.notify.v1.NoticeService/Get"},
 	{Method: "GET", Template: "/notify/v1/notices/{notice_id}:getByAccount", FQN: "kacho.cloud.notify.v1.NoticeService/GetByAccount"},

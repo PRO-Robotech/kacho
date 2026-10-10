@@ -21,10 +21,17 @@ import (
 
 const notifyPkg = "kacho.cloud.notify.v1."
 
+// notifyProbeService — служба стендовой пробы notify-probe: тот же пакет
+// контракта, но другой корень и своя ручка адреса. Её биндинг следует
+// объявлению адреса пробы, а не notify-api, и судится своим близнецом
+// (TestNotifyProbeRouteIsInternalOnly), поэтому из предмета notify-api выведен.
+const notifyProbeService = notifyPkg + "InternalNotifyProbeService/"
+
+// notifyBindings — биндинги, которые служит notify-api.
 func notifyBindings(subject []publicBinding) []publicBinding {
 	var out []publicBinding
 	for _, b := range subject {
-		if strings.HasPrefix(b.fqn, notifyPkg) {
+		if strings.HasPrefix(b.fqn, notifyPkg) && !strings.HasPrefix(b.fqn, notifyProbeService) {
 			out = append(out, b)
 		}
 	}

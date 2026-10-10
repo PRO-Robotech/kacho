@@ -11,6 +11,7 @@ package notifyv1
 
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -120,14 +121,14 @@ var File_kacho_cloud_notify_v1_internal_notify_probe_service_proto protoreflect.
 
 const file_kacho_cloud_notify_v1_internal_notify_probe_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/notify/v1/internal_notify_probe_service.proto\x12\x15kacho.cloud.notify.v1\x1a$corelib/authz/v1/authz_options.proto\"'\n" +
+	"9kacho/cloud/notify/v1/internal_notify_probe_service.proto\x12\x15kacho.cloud.notify.v1\x1a$corelib/authz/v1/authz_options.proto\x1a\x1cgoogle/api/annotations.proto\"'\n" +
 	"\vSendRequest\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\"7\n" +
 	"\fSendResponse\x12'\n" +
-	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationId2\xb7\x01\n" +
-	"\x1aInternalNotifyProbeService\x12\x98\x01\n" +
-	"\x04Send\x12\".kacho.cloud.notify.v1.SendRequest\x1a#.kacho.cloud.notify.v1.SendResponse\"G\x8a\xb5\x18\x1enotify.probeNotifications.send\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011BFZDgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1b\x06proto3"
+	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationId2\xed\x01\n" +
+	"\x1aInternalNotifyProbeService\x12\xce\x01\n" +
+	"\x04Send\x12\".kacho.cloud.notify.v1.SendRequest\x1a#.kacho.cloud.notify.v1.SendResponse\"}\x8a\xb5\x18\x1enotify.probeNotifications.send\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x020:\x01*\"+/notify/v1/internal/probeNotifications:sendBFZDgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/notify/v1;notifyv1b\x06proto3"
 
 var (
 	file_kacho_cloud_notify_v1_internal_notify_probe_service_proto_rawDescOnce sync.Once
