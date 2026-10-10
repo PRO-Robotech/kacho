@@ -7,16 +7,17 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"go/ast"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,11 +36,14 @@ import (
 // целиком — а не обрыв соединения. Тот же порт обязан по-прежнему обслуживать
 // gRPC.
 //
-// Сборка — та же, что у main.go: edgeTLSConfig, newEdgeCmux с боевым бюджетом,
-// splitEdgeCmux, edgeHTTPProtocols, обёртка происхождения и ConnContext; перед
-// REST — настоящий слой аутентификации в боевой посадке. Перепись в
-// TestEdgeH2REST_EveryExternalRESTListenerIsProbed держит, что вариантов
-// внешнего слушателя у корня ровно столько, сколько здесь проб.
+// Сборка — та же, что у main.go, теми же функциями, а не копией: edgeTLSConfig,
+// newEdgeCmux с боевым бюджетом, newEdgeHTTPServer и serveEdgeMux (разделение
+// порта, обёртка происхождения, подъём обоих серверов); перед REST — настоящий
+// слой аутентификации в боевой посадке. Своего у пробы — только обработчик за
+// аутентификацией и сервер gRPC со службой здоровья. Перепись
+// TestEdgeH2REST_EdgeAssemblyHasASingleHome держит, что корень не собирает
+// сервер, не делит порт и не зовёт Serve мимо этих функций, а вызовов
+// serveEdgeMux у него ровно столько, сколько здесь вариантов слушателя.
 
 // edgeListenerKind — вариант внешнего слушателя корня.
 type edgeListenerKind string
@@ -84,7 +88,6 @@ func serveEdgeListener(t *testing.T, kind edgeListenerKind) edgeUnderTest {
 	require.NoError(t, err)
 
 	m := newEdgeCmux(l, edgeFirstByteBudget)
-	grpcL, restL := splitEdgeCmux(m)
 
 	grpcSrv := grpc.NewServer(grpc.Creds(linktls.ServerCredentials()))
 	healthgrpc.RegisterHealthServer(grpcSrv, health.NewServer())
@@ -100,16 +103,13 @@ func serveEdgeListener(t *testing.T, kind edgeListenerKind) edgeUnderTest {
 		}
 		_, _ = io.WriteString(w, "unmarked "+r.Proto)
 	})
-	httpSrv := &http.Server{
-		Handler:           auth.HTTP(public),
-		ReadHeaderTimeout: 10 * time.Second,
-		ConnContext:       linktls.WithConnState(listenerorigin.ConnContext),
-		Protocols:         edgeHTTPProtocols(),
-	}
+	httpSrv := newEdgeHTTPServer(auth.HTTP(public))
 
-	go func() { _ = grpcSrv.Serve(grpcL) }()
-	go func() { _ = httpSrv.Serve(listenerorigin.ExternalListener(restL)) }()
-	go func() { _ = m.Serve() }()
+	go func() {
+		// Исход пробы судится по ответам клиенту: отказ сервера виден как
+		// оборванный запрос, а журнал после конца теста писать некуда.
+		_ = serveEdgeMux(m, grpcSrv, httpSrv, func(string, error) {})
+	}()
 	t.Cleanup(func() {
 		_ = httpSrv.Close()
 		grpcSrv.Stop()
@@ -223,57 +223,75 @@ func TestEdgeH2REST_GRPCOnTheSamePortStillWorks(t *testing.T) {
 	}
 }
 
-// Перепись: каждый внешний REST-слушатель корня получен из splitEdgeCmux, и
-// вариантов таких слушателей столько, сколько вариантов покрыто пробами выше.
-// Слушатель, обслуживаемый не через splitEdgeCmux, — находка: его REST по
-// HTTP/2 пробой не покрыт.
-func TestEdgeH2REST_EveryExternalRESTListenerIsProbed(t *testing.T) {
-	fset, f := parseMain(t)
-	fromSplit := map[string]bool{}
-	var external int
-	var unsplit []string
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.AssignStmt:
-			if len(n.Lhs) == 2 && len(n.Rhs) == 1 {
-				if call, ok := n.Rhs[0].(*ast.CallExpr); ok {
-					if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "splitEdgeCmux" {
-						if rest, ok := n.Lhs[1].(*ast.Ident); ok {
-							fromSplit[rest.Name] = true
-						}
-					}
+// dialEdgeRaw открывает соединение HTTP/2 без клиента HTTP: поверх TLS с ALPN
+// h2 либо открытое.
+func dialEdgeRaw(t *testing.T, e edgeUnderTest) net.Conn {
+	t.Helper()
+	if e.pool != nil {
+		c, err := tls.Dial("tcp", e.addr, &tls.Config{RootCAs: e.pool, NextProtos: []string{"h2"}, MinVersion: tls.VersionTLS12})
+		require.NoError(t, err)
+		return c
+	}
+	c, err := net.Dial("tcp", e.addr)
+	require.NoError(t, err)
+	return c
+}
+
+// Предмет (kacho#3125, круг 2): соединение, заявившее до первого HEADERS кадр
+// длиннее наибольшего допустимого, закрывается с FRAME_SIZE_ERROR, а не держит
+// буфер по заявленной длине до таймаута. Таких соединений много, и все они
+// анонимны: аутентификация до HEADERS не наступает. Наблюдаемое — прирост кучи,
+// пока соединения открыты, и GOAWAY с кодом отказа на каждом.
+func TestEdgeH2REST_OversizedFrameBeforeHeadersIsRefusedWithoutBuffering(t *testing.T) {
+	const (
+		conns = 50
+		// Потолок прироста кучи на соединение: TLS-соединение, горутины
+		// сервера и буферы разбора — единицы КиБ; буфер по заявленной длине —
+		// 1 МиБ.
+		perConnCeiling = 128 << 10
+	)
+	announced := 1<<20 - 1
+	hdr := []byte{byte(announced >> 16), byte(announced >> 8), byte(announced), 0xfa, 0, 0, 0, 0, 0}
+	for _, kind := range probedEdgeListeners {
+		t.Run(string(kind), func(t *testing.T) {
+			e := serveEdgeListener(t, kind)
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			cs := make([]net.Conn, 0, conns)
+			for i := 0; i < conns; i++ {
+				c := dialEdgeRaw(t, e)
+				t.Cleanup(func() { _ = c.Close() })
+				_, err := c.Write([]byte(http2.ClientPreface))
+				require.NoError(t, err)
+				fr := http2.NewFramer(c, nil)
+				require.NoError(t, fr.WriteSettings())
+				_, err = c.Write(hdr)
+				require.NoError(t, err)
+				cs = append(cs, c)
+			}
+			// Время серверу дочитать заголовки кадров: и матчеру, и серверу
+			// HTTP/2, если соединение до него дошло.
+			time.Sleep(300 * time.Millisecond)
+			runtime.GC()
+			runtime.ReadMemStats(&after)
+			growth := int64(after.HeapInuse) - int64(before.HeapInuse)
+			t.Logf("соединений %d с заявленным кадром %d Б: прирост кучи %d КиБ (потолок %d КиБ)",
+				conns, announced, growth/1024, conns*perConnCeiling/1024)
+			require.LessOrEqual(t, growth, int64(conns*perConnCeiling),
+				"анонимное соединение с заявленным длинным кадром держит буфер по его длине")
+
+			for i, c := range cs {
+				require.NoError(t, c.SetReadDeadline(time.Now().Add(5*time.Second)))
+				fr := http2.NewFramer(io.Discard, c)
+				var goAway *http2.GoAwayFrame
+				for goAway == nil {
+					f, err := fr.ReadFrame()
+					require.NoError(t, err, "соединение %d: сервер не отказал кадру до таймаута чтения", i)
+					goAway, _ = f.(*http2.GoAwayFrame)
 				}
+				require.Equal(t, http2.ErrCodeFrameSize, goAway.ErrCode, "соединение %d: код отказа", i)
 			}
-		case *ast.CallExpr:
-			sel, ok := n.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "Serve" || len(n.Args) != 1 {
-				return true
-			}
-			if recv, ok := sel.X.(*ast.Ident); !ok || recv.Name != "httpSrv" {
-				return true
-			}
-			wrap, ok := n.Args[0].(*ast.CallExpr)
-			if !ok || originFunc(wrap.Fun) != "ExternalListener" || len(wrap.Args) != 1 {
-				return true
-			}
-			external++
-			arg, ok := wrap.Args[0].(*ast.Ident)
-			if !ok || !fromSplit[arg.Name] {
-				unsplit = append(unsplit, fset.Position(n.Pos()).String())
-			}
-		}
-		return true
-	})
-	t.Logf("перепись main.go: внешних REST-слушателей %d · из splitEdgeCmux %d · вариантов под пробой %d",
-		external, external-len(unsplit), len(probedEdgeListeners))
-	if external == 0 {
-		t.Fatal("в main.go не найдено ни одного внешнего REST-слушателя — перепись судит пустоту")
-	}
-	if len(unsplit) > 0 {
-		t.Fatalf("внешний REST-слушатель обслуживается не из splitEdgeCmux — его HTTP/2 не покрыт пробой: %v", unsplit)
-	}
-	if external != len(probedEdgeListeners) {
-		t.Fatalf("внешних REST-слушателей %d, вариантов под пробой %d — новый слушатель заведён без пробы",
-			external, len(probedEdgeListeners))
+		})
 	}
 }

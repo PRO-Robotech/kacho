@@ -24,6 +24,11 @@ var (
 	ping        = frame(0x6, 0, 1, 2, 3, 4, 5, 6, 7, 8)
 )
 
+// frameHeaderOfLength — заголовок кадра заявленной длины без тела.
+func frameHeaderOfLength(n int, typ byte) []byte {
+	return []byte{byte(n >> 16), byte(n >> 8), byte(n), typ, 0, 0, 0, 0, 0}
+}
+
 func cat(parts ...[]byte) []byte { return bytes.Join(parts, nil) }
 
 // run пропускает поток через фильтр кусками заданного размера — граница куска
@@ -133,5 +138,62 @@ func TestConnReadsFilteredStreamAndUnwraps(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("got %q\nwant %q", got, want)
+	}
+}
+
+// recordingConn запоминает наибольший запрос на чтение к обёрнутому соединению.
+type recordingConn struct {
+	net.Conn
+	maxAsked int
+}
+
+func (r *recordingConn) Read(p []byte) (int, error) {
+	r.maxAsked = max(r.maxAsked, len(p))
+	return r.Conn.Read(p)
+}
+
+// Предмет: пока фильтр разбирает поток, он не держит буфер размера запроса
+// сервера. Сервер HTTP/2 читает кадр целиком в буфер своей длины; фильтр,
+// заводящий копию такого же размера, удваивал бы память соединения до
+// аутентификации. Наблюдаемое — сколько фильтр просит у соединения за раз и что
+// после разбора у него не осталось своих буферов.
+func TestConnHoldsNoBufferOfTheReadersSize(t *testing.T) {
+	const big = 1<<20 - 1
+	pre := []byte(clientPreface)
+	// Заголовок длинного кадра до HEADERS, его тело, затем HEADERS: после них
+	// долг погашен ACK и фильтр уходит в проход.
+	body := bytes.Repeat([]byte{0xab}, big)
+	bigFrame := append(frameHeaderOfLength(big, 0xfa), body...)
+	in := cat(pre, settings, bigFrame, headers, settingsAck, ping)
+	want := cat(pre, settings, bigFrame, headers, ping)
+
+	client, server := net.Pipe()
+	go func() {
+		_, _ = client.Write(in)
+		_ = client.Close()
+	}()
+	rec := &recordingConn{Conn: server}
+	c := &Conn{Conn: rec}
+	var got []byte
+	p := make([]byte, big)
+	maxBuf := 0
+	for {
+		n, err := c.Read(p)
+		got = append(got, p[:n]...)
+		maxBuf = max(maxBuf, cap(c.buf), cap(c.pending))
+		if err != nil {
+			break
+		}
+	}
+	t.Logf("запрос сервера %d Б · наибольший запрос фильтра к соединению %d Б · наибольший свой буфер %d Б",
+		len(p), rec.maxAsked, maxBuf)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("поток искажён: получено %d Б, ждали %d", len(got), len(want))
+	}
+	if maxBuf > 2*filterReadMax {
+		t.Fatalf("фильтр завёл буфер %d Б — он растёт по запросу сервера, а не ограничен %d", maxBuf, filterReadMax)
+	}
+	if c.f.st != statePass || c.buf != nil || c.pending != nil {
+		t.Fatalf("после разбора фильтр держит свои буферы: состояние %d, buf %d Б, pending %d Б", c.f.st, cap(c.buf), cap(c.pending))
 	}
 }

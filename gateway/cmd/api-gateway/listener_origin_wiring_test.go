@@ -9,7 +9,9 @@
 // обёртки не отдаёт ни пути `Internal*`, ни координат церемонии: оба читателя
 // метки отказывают по умолчанию. Проба держит, что корень оборачивает каждый
 // слушатель `httpSrv.Serve`, внутренний — ровно один, и что `ConnContext`
-// общего сервера — тот, что читает обе обёртки.
+// общего сервера — тот, что читает обе обёртки. Корень — весь пакет
+// cmd/api-gateway без тестов: сервер и подъём слушателей вынесены из main.go в
+// edge_listener.go (kacho#3125).
 //
 // Второе звено ConnContext (kacho#3028, C4) — состояние TLS соединения
 // (linktls.WithConnState): за мультиплексором r.TLS пуст, и звено фронта,
@@ -19,14 +21,51 @@ package main
 
 import (
 	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
+// parseRootPackage разбирает все не-тестовые файлы пакета корня. Пустой разбор
+// — отказ: проба по пустому корню ничего не утверждает.
+func parseRootPackage(t *testing.T) (*token.FileSet, []*ast.File) {
+	t.Helper()
+	names, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("состав пакета корня не читается: %v", err)
+	}
+	sort.Strings(names)
+	fset := token.NewFileSet()
+	var files []*ast.File
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(name)
+		if rerr != nil {
+			t.Fatalf("%s: %v", name, rerr)
+		}
+		f, perr := parser.ParseFile(fset, name, src, parser.SkipObjectResolution)
+		if perr != nil {
+			t.Fatalf("%s не разбирается: %v", name, perr)
+		}
+		files = append(files, f)
+	}
+	if len(files) == 0 {
+		t.Fatal("в пакете корня не найдено ни одного не-тестового файла")
+	}
+	return fset, files
+}
+
 func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t *testing.T) {
-	fset, f := parseMain(t)
+	fset, files := parseRootPackage(t)
 	var served, internal, external, connContext, linkState int
 	var bare []string
-	ast.Inspect(f, func(n ast.Node) bool {
+	inspect := func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.KeyValueExpr:
 			if key, ok := n.Key.(*ast.Ident); ok && key.Name == "ConnContext" {
@@ -61,11 +100,14 @@ func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t
 			}
 		}
 		return true
-	})
-	t.Logf("перепись main.go: httpSrv.Serve %d · InternalListener %d · ExternalListener %d · ConnContext %d · состояние TLS %d · без обёртки %d",
-		served, internal, external, connContext, linkState, len(bare))
+	}
+	for _, f := range files {
+		ast.Inspect(f, inspect)
+	}
+	t.Logf("перепись пакета корня (файлов %d): httpSrv.Serve %d · InternalListener %d · ExternalListener %d · ConnContext %d · состояние TLS %d · без обёртки %d",
+		len(files), served, internal, external, connContext, linkState, len(bare))
 	if served == 0 {
-		t.Fatal("в main.go не найдено ни одного httpSrv.Serve — проба судит пустоту")
+		t.Fatal("в пакете корня не найдено ни одного httpSrv.Serve — проба судит пустоту")
 	}
 	if len(bare) > 0 {
 		t.Fatalf("слушатель корня без обёртки происхождения — координаты церемонии на нём отказывают, "+
