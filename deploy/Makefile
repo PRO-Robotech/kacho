@@ -92,9 +92,13 @@ CLIENT_CONTEXT_STACKS := a8f60d
 # STACK_VIA_CLIENT — непусто, когда эта цель лишь ПЕРЕДАЁТ себя закреплению и
 # остальные её строки исполнять не должна.
 STACK_VIA_CLIENT = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),$(if $(KACHO_CLIENT_CONTEXT),,1))
-# CLIENT_NODES — строка рецепта: перед фазой записи кластер заново доказывается
-# узлами (у стенда вне CLIENT_CONTEXT_STACKS — пусто).
-CLIENT_NODES = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh nodes;)
+# CLIENT_NODES — команда рецепта: перед фазой записи кластер заново доказывается
+# узлами (у стенда вне CLIENT_CONTEXT_STACKS — `true`). В рецепте она стоит
+# ОТДЕЛЬНОЙ командой со своим `;` (`$(CLIENT_NODES); \`), а не приставкой к
+# следующей: разбор порядка вызовов (tests/helm/cert-manager-release-before-
+# product-test.sh, А3) читает текст рецепта, и приставка спрятала бы от него
+# вызов cert-manager-up.
+CLIENT_NODES = $(if $(filter $(STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh nodes,true)
 # POSTURE_SKIP — сервисы, которых на этом стенде НЕТ по решению оператора.
 # Пусто = стенд полный (умолчание, локальный `make dev-up`).
 POSTURE_SKIP ?=
@@ -1128,17 +1132,17 @@ stack-up:
 	site_args="$$site_args --set global.kacho.siteLayer.enforced=true"; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory helm-deps; \
-	$(CLIENT_NODES) \
+	$(CLIENT_NODES); \
 	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
-	$(CLIENT_NODES) \
+	$(CLIENT_NODES); \
 	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
 	  bash scripts/stack-secrets.sh $(STACK) \
 	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) $$site_args; \
-	$(CLIENT_NODES) \
+	$(CLIENT_NODES); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
