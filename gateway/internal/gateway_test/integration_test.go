@@ -22,6 +22,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/cmuxh2"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
@@ -91,7 +92,7 @@ func setupGateway(t *testing.T, backends proxy.Backends) string {
 
 	muxer := cmux.New(lis)
 	grpcL := muxer.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+		cmuxh2.MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 	)
 	httpL := muxer.Match(cmux.Any())
 
