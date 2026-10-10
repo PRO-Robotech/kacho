@@ -310,6 +310,14 @@ var AllowedMethods = map[string]struct{}{
 	// снятие требует кода. Тот же круг держателей и тот же порог, что у
 	// Block/Unblock: `identity_suspender` on iam_user, acr 2.
 	"/kaname.cloud.iam.v1.UserService/ResetSecondFactor": {},
+	// Сброс ключей доступа человека администратором облака (REST POST
+	// /iam/v1/users/{user_id}:resetAccessKeys; приёмка службы
+	// cloud-administrator-resets-login-methods Р1, Р2; PRO-Robotech/kacho#2702):
+	// снимает все ключи человека и завершает все его сессии; пароль не трогает
+	// (Р8). Публичный по решению Р1 «Отвергнуто» (а): администратор облака зовёт
+	// его через край, как Block. Тот же круг и порог, что у ResetSecondFactor:
+	// `identity_suspender` on iam_user, acr 2.
+	"/kaname.cloud.iam.v1.UserService/ResetAccessKeys": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},

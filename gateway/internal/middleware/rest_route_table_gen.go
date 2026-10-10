@@ -182,6 +182,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:block", FQN: "kaname.cloud.iam.v1.UserService/Block"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:removeFromAccount", FQN: "kaname.cloud.iam.v1.UserService/RemoveFromAccount"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:resendInvite", FQN: "kaname.cloud.iam.v1.UserService/ResendInvite"},
+	{Method: "POST", Template: "/iam/v1/users/{user_id}:resetAccessKeys", FQN: "kaname.cloud.iam.v1.UserService/ResetAccessKeys"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:resetSecondFactor", FQN: "kaname.cloud.iam.v1.UserService/ResetSecondFactor"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:unblock", FQN: "kaname.cloud.iam.v1.UserService/Unblock"},
 	{Method: "POST", Template: "/iam/v1/users:invite", FQN: "kaname.cloud.iam.v1.UserService/Invite"},
