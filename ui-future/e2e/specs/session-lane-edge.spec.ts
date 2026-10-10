@@ -17,6 +17,7 @@ import {
   type Seed,
 } from "./ceremony-seed";
 import { runTag, test } from "./fixtures";
+import { RECOVERY_NEXT_STEP } from "./lane-texts";
 import { RECOVERY_CODE_LINE, awaitLetter, stationMailbox } from "./mail-receiver";
 import { answerOf, bareSeed, carrierOf, expectSessionLaneRefusal, signedIn } from "./session-lane";
 
@@ -152,8 +153,8 @@ async function recovered(testInfo: TestInfo, scenario: string): Promise<Recovere
   const asked = await recovering.submit(LANE.recovery, "recovery", { email: human.email });
   expect(
     { status: asked.status(), body: lastIssued(recovering, LANE.recovery).body },
-    "запрос кода восстановления — один ответ `200 {}` (Ф5-01)",
-  ).toEqual({ status: 200, body: {} });
+    "запрос кода восстановления — один ответ `200 {nextStep}` (Ф5-01)",
+  ).toEqual({ status: 200, body: { nextStep: RECOVERY_NEXT_STEP } });
   const letter = await awaitLetter(mailbox, human.email, before, undefined, RECOVERY_CODE_LINE);
   const completed = await recovering.submit(LANE.recoveryComplete, "recovery-complete", {
     email: human.email,
