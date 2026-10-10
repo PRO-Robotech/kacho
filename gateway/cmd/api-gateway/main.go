@@ -1256,6 +1256,9 @@ func main() {
 		// мультиплексором r.TLS пуст всегда, а звено фронта узнаётся по
 		// имени в своём сертификате (kacho#3028, C4).
 		ConnContext: linktls.WithConnState(listenerorigin.ConnContext),
+		// Протоколы сервера — edge_listener.go: за мультиплексором соединение
+		// не *tls.Conn, и HTTP/2 по ALPN стандартный сервер сам не узнаёт.
+		Protocols: edgeHTTPProtocols(),
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
@@ -1284,12 +1287,9 @@ func main() {
 	logger.Info("api-gateway started", "addr", cfg.ListenAddr)
 
 	cmuxer := newEdgeCmux(listener, edgeFirstByteBudget)
-	// HTTP/2 с Content-Type: application/grpc → gRPC listener
-	grpcL := cmuxer.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-	)
-	// Все остальное → HTTP listener (grpc-gateway + healthz/readyz)
-	httpL := cmuxer.Match(cmux.Any())
+	// HTTP/2 с Content-Type: application/grpc → gRPC listener; всё остальное →
+	// HTTP listener (grpc-gateway + healthz/readyz). Разделение — edge_listener.go.
+	grpcL, httpL := splitEdgeCmux(cmuxer)
 
 	go func() {
 		serveErr := grpcSrv.Serve(grpcL)
@@ -1350,11 +1350,7 @@ func main() {
 		if certErr != nil {
 			log.Fatalf("load TLS cert (%s, %s): %v", cfg.TLSCertFile, cfg.TLSKeyFile, certErr)
 		}
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"h2", "http/1.1"},
-			MinVersion:   tls.VersionTLS12,
-		}
+		tlsCfg := edgeTLSConfig(cert)
 		// Hybrid: when enabled, accept an OPTIONAL client cert
 		// (tls.VerifyClientCertIfGiven) with the internal CA and the front-link
 		// anchor as ClientCAs — a browser without a cert still handshakes (JWT
@@ -1378,10 +1374,7 @@ func main() {
 		logger.Info("api-gateway TLS started", "addr", cfg.TLSListenAddr)
 
 		tlsCmux = newEdgeCmux(tlsListener, edgeFirstByteBudget)
-		tlsGrpcL := tlsCmux.MatchWithWriters(
-			cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-		)
-		tlsHTTPL := tlsCmux.Match(cmux.Any())
+		tlsGrpcL, tlsHTTPL := splitEdgeCmux(tlsCmux)
 
 		go func() {
 			serveErr := grpcSrv.Serve(tlsGrpcL)
