@@ -62,8 +62,19 @@
 # без переката не меняет ничего: `rollout restart`, `rollout status`, готовые
 # конечные точки каждой службы, выбирающей поды (kacho#3145), затем
 # готовность края (`wait-edge-ready.sh` — край отвечает /readyz только когда
-# отвечает служба доступа). Число ключей — из строки самоотчёта старта
-# «second-factor wrapping keys declared» каждого живого пода.
+# отвечает служба доступа), затем готовность МАРШРУТА посева (kacho#3152):
+# тот же адрес, что у посева, — `$KACHO_CONSOLE_URL/iam/v1/auth/csrf?form=login`
+# через вход консоли — отвечает 200 с признаком формы. Число ключей — из строки
+# самоотчёта старта «second-factor wrapping keys declared» каждого живого пода.
+#
+# ── АДРЕС МАРШРУТА ────────────────────────────────────────────────────────────
+#
+# Адрес — тот же, что у посева проб: KACHO_CONSOLE_URL (схема://хост[:порт]);
+# имя хоста разрешается отображением KACHO_CONSOLE_HOST_IP, если оно задано;
+# доверие TLS — ровно ключу листа KACHO_CONSOLE_CA, если он задан (как у
+# браузера проб, stand-tls-trust.ts), иначе обычной проверкой. Все три
+# экспортирует `stand-ns.sh run`; конвейер консоли ставит их шагу проб. Адрес
+# не назван — код 2 до первой записи: угаданный адрес судил бы другой маршрут.
 #
 # ── МАТЕРИАЛ КЛЮЧЕЙ ───────────────────────────────────────────────────────────
 #
@@ -79,8 +90,9 @@
 #   2 — вызов неверен либо кластер, пространство, секрет не названы или не
 #       выводятся: условие не создавалось, стенд не тронут;
 #   3 — условие не создано на кластере: перекат не стал готов, конечные точки
-#       служб не догнали его за предел, край не ответил,
-#       самоотчёта старта нет, счётчик не прочитан.
+#       служб не догнали его за предел, край не ответил, маршрут посева не
+#       ответил 200 с признаком формы за предел, самоотчёта старта нет,
+#       счётчик не прочитан.
 # Красного у скрипта нет: судит проба.
 set -uo pipefail
 
@@ -286,6 +298,93 @@ json.dump({"data": {sys.argv[2]: base64.b64encode(v).decode()}}, open(sys.argv[3
   fi
   endpoints_ready || die "конечные точки служб $DEPLOY не готовы после переката (выше)" 3
   edge_ready || die "край не готов после переката $DEPLOY (выше)" 3
+  route_ready || die "маршрут посева $ROUTE_URL не готов после переката $DEPLOY (выше)" 3
+}
+
+# ── МАРШРУТ ПОСЕВА ────────────────────────────────────────────────────────────
+#
+# route_ready — kacho#3152 (job 114526162992). Готовые конечные точки службы
+# доступа и `/readyz` края, спрошенный у пода напрямую, не говорят, что ВХОД
+# КОНСОЛИ ведёт к краю: во время переката службы доступа под края теряет
+# готовность, его адрес уходит из конечных точек службы края, и контроллер
+# входа догоняет их возврат позже, чем под снова отвечает `/readyz`. Первый
+# запрос посева в этот зазор получал «503 Service Temporarily Unavailable»
+# контроллера. Готовность — когда ТОТ ЖЕ запрос, с которого начинает посев
+# (признак формы входа), отвечает 200 с непустым csrfToken STREAK раз подряд;
+# 200 без признака (страница раздачи) готовностью не является. Предел —
+# ATTEMPTS запросов через INTERVAL секунд; исчерпан — отказ с последним ответом.
+ROUTE_PATH="/iam/v1/auth/csrf?form=login"
+ROUTE_ATTEMPTS="${KACHO_WRAP_ROUTE_ATTEMPTS:-90}"
+ROUTE_INTERVAL="${KACHO_WRAP_ROUTE_INTERVAL:-2}"
+ROUTE_STREAK="${KACHO_WRAP_ROUTE_STREAK:-3}"
+ROUTE_URL=""
+ROUTE_ARGS=()
+
+# route_address — адрес и способ запроса маршрута из окружения посева; вызывается
+# до первой записи, ошибка — код 2.
+route_address() {
+  local base="${KACHO_CONSOLE_URL:-}" scheme host port spki
+  [ -n "$base" ] ||
+    die "адрес маршрута посева не назван: KACHO_CONSOLE_URL пуст (его экспортирует stand-ns.sh run; конвейер ставит шагу проб) — готовность входа консоли спрашивать не у кого"
+  [[ "$base" =~ ^(https?)://([A-Za-z0-9.-]+)(:([0-9]+))?/?$ ]] ||
+    die "KACHO_CONSOLE_URL «$base» — не адрес вида схема://хост[:порт]"
+  scheme="${BASH_REMATCH[1]}" host="${BASH_REMATCH[2]}" port="${BASH_REMATCH[4]}"
+  [ -n "$port" ] || { [ "$scheme" = https ] && port=443 || port=80; }
+  command -v curl >/dev/null 2>&1 || die "нет curl — маршрут посева спрашивать нечем"
+  ROUTE_URL="${base%/}$ROUTE_PATH"
+  ROUTE_ARGS=(--silent --show-error --max-time 10 -H "Accept: application/json")
+  if [ -n "${KACHO_CONSOLE_HOST_IP:-}" ]; then
+    ROUTE_ARGS+=(--resolve "$host:$port:$KACHO_CONSOLE_HOST_IP")
+  fi
+  if [ -n "${KACHO_CONSOLE_CA:-}" ]; then
+    [ -r "$KACHO_CONSOLE_CA" ] || die "KACHO_CONSOLE_CA=$KACHO_CONSOLE_CA: файл листа стенда не читается"
+    spki="$(openssl x509 -in "$KACHO_CONSOLE_CA" -pubkey -noout 2>/dev/null |
+      openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary | base64)"
+    [ -n "$spki" ] && [ "$spki" != "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=" ] ||
+      die "KACHO_CONSOLE_CA=$KACHO_CONSOLE_CA: не сертификат PEM — ключ листа не выведен"
+    # Доверие ровно ключу листа: цепочка не проверяется, ключ сверяется всегда.
+    ROUTE_ARGS+=(--insecure --pinnedpubkey "sha256//$spki")
+  fi
+}
+
+route_ready() {
+  local i streak=0 body err code why="" verdict
+  body="$(mktemp)" err="$(mktemp)" || return 1
+  log "маршрут посева: ждём 200 с признаком формы от $ROUTE_URL ($ROUTE_STREAK запроса подряд, попыток до $ROUTE_ATTEMPTS)"
+  for ((i = 1; i <= ROUTE_ATTEMPTS; i++)); do
+    : >"$body"
+    code="$(curl "${ROUTE_ARGS[@]}" -o "$body" -w '%{http_code}' "$ROUTE_URL" 2>"$err")" || true
+    verdict="$(python3 -c '
+import json, sys
+code, path = sys.argv[1], sys.argv[2]
+raw = open(path, "rb").read().decode("utf-8", "replace")
+if code != "200":
+    print("NO ответ " + (code or "000") + ": " + " ".join(raw.split())[:200]); sys.exit()
+try:
+    tok = json.loads(raw).get("csrfToken")
+except (ValueError, AttributeError):
+    tok = None
+if isinstance(tok, str) and tok:
+    print("OK"); sys.exit()
+print("NO ответ 200 без csrfToken: " + " ".join(raw.split())[:200])
+' "$code" "$body" 2>&1)"
+    if [ "$verdict" = OK ]; then
+      streak=$((streak + 1))
+      if [ "$streak" -ge "$ROUTE_STREAK" ]; then
+        log "маршрут посева готов: 200 с признаком формы подряд $streak; попытка $i из $ROUTE_ATTEMPTS"
+        rm -f "$body" "$err"
+        return 0
+      fi
+    else
+      streak=0
+      why="${verdict#NO }"
+      [ -s "$err" ] && why="$why; $(head -1 "$err")"
+    fi
+    [ "$i" -lt "$ROUTE_ATTEMPTS" ] && sleep "$ROUTE_INTERVAL"
+  done
+  rm -f "$body" "$err"
+  log "маршрут посева не готов за $ROUTE_ATTEMPTS запросов: ${why:-серия 200 не набрана}"
+  return 1
 }
 
 # endpoints_ready — kacho#3145. `rollout status` говорит «новые реплики
@@ -413,6 +512,7 @@ cmd_set() {
   need_state
   pick_context
   load_target
+  route_address
   # Перечень проверяется до первой записи: ошибочное имя не трогает ни секрета, ни состояния.
   case ",$keys," in *,,*) die "перечень «$keys»: пустое имя" ;; esac
   [ -n "$keys" ] || die "перечень пуст: назови K1 и/или K2 через запятую"
@@ -435,6 +535,7 @@ cmd_restore() {
   fi
   pick_context
   load_target
+  route_address
   log "секрет $SECRET ← ключ стенда до пробы; перекат $DEPLOY в $NS (контекст $CTX)"
   apply_value "$STATE/K1"
   report "K1"
