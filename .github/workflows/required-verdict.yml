@@ -95,6 +95,9 @@ on:
   # `internal/repohygiene` `TestWorkflowJobAndStepIdentifiersAreMachineReadable`,
   # а не память о том, почему тут когда-то стоял push.
   pull_request:
+    # `ready_for_review` — перевод черновика в готовый заводит полный прогон, и свод
+    # обязан судить его заново (kacho#3148); прочие виды — по умолчанию.
+    types: [opened, synchronize, reopened, ready_for_review]
     # Сужено по ЦЕЛЕВОЙ ветке, и базы — те же, что у `ci.yaml` (довод и
     # перепись веток — в шапке его `on:`). Предмет джобы — вердикт по набору
     # проверок запроса, а этот набор существует ровно там, куда идут прочие
@@ -146,6 +149,7 @@ jobs:
           sparse-checkout: |
             .github/scripts
             .github/workflows
+            .github/ci-paths.json
           sparse-checkout-cone-mode: false
 
       # Решатель разбирает процессы PyYAML. Под меткой `ubuntu-latest` два пула, и
@@ -163,6 +167,9 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
           BASE: ${{ github.event.pull_request.base.ref }}
           REPO: ${{ github.repository }}
+          # Черновик судится целевым выбором и красный по построению (kacho#3148).
+          DRAFT: ${{ github.event.pull_request.draft }}
+          PR: ${{ github.event.pull_request.number }}
           SELF: сводный вердикт (все проверки завершились и зелены)
         # Цикл ожидания живёт в скрипте, а НЕ здесь, и это не стиль.
         #

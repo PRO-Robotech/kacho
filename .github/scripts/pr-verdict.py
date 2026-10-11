@@ -318,7 +318,8 @@ def _latest_per_check(runs: list[dict]) -> tuple[list[dict], list[dict]]:
     return judged, superseded
 
 
-def decide(payload: object, declared: Declared, self_name: str = "") -> Verdict:
+def decide(payload: object, declared: Declared, self_name: str = "",
+           gated: frozenset[str] = frozenset()) -> Verdict:
     """Вердикт по набору проверок против объявленного. Чистая функция: ни сети,
     ни времени, ни файлов."""
     examined = [r for r in _runs(payload) if r.get("name") != self_name]
@@ -331,7 +332,17 @@ def decide(payload: object, declared: Declared, self_name: str = "") -> Verdict:
     neutralish = [r for r in done if str(r.get("conclusion")) in NEUTRALISH]
     green = [r for r in done if str(r.get("conclusion")) == "success"]
 
-    missing = tuple(c.text for c in declared.checks if not any(_proves(c, r) for r in runs))
+    # Задание, которое карта выбора умеет пропускать (`gated`, kacho#3148), пропуском
+    # своего появления НЕ доказывает: пропуск черновика остаётся на той же голове, и без
+    # этого правила свод полного прогона, стартовав раньше заданий процессов, принял бы
+    # его за «появилось» — ровно класс #2910. Появление такого задания доказывает только
+    # прогон с исходом, а не `skipped`.
+    def present(c: JobName) -> bool:
+        need_run = _job_key(c) in gated
+        return any(_proves(c, r) and not (need_run and str(r.get("conclusion")) == "skipped")
+                   for r in runs)
+
+    missing = tuple(c.text for c in declared.checks if not present(c))
 
     counts = dict(
         total=len(examined), green=len(green), blocking=len(blocking),
@@ -753,6 +764,74 @@ def load_workflows(root: Path) -> tuple[dict[str, object], list[str]]:
     return docs, errors
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ЧЕРНОВИК: ЦЕЛЕВОЙ ПРОГОН, И ОН НЕ ДАЁТ ЗЕЛЁНОГО (kacho#3148)
+#
+# Решение владельца 2026-10-11: на мелкую правку — только затронутое, полный прогон —
+# когда всё собирают воедино. На черновике запроса в ветку эпика процессы исполняют
+# лишь задания, выбранные картой `.github/ci-paths.json` (`affected.py`), прочие — `skipped`.
+#
+# Свод на черновике судит ВЫБРАННЫЕ (каждая выбранная объявленная проверка обязана
+# появиться и завершиться) и выносит КРАСНОЕ при любом их исходе: зелёным черновика
+# вливать нельзя по построению. Защита ветки эпика требует ровно этот контекст, поэтому
+# вливание возможно только после перевода в ready — событие `ready_for_review` заводит
+# полный прогон того же состава, и свод по нему судит всё объявленное, как прежде.
+# Строка «целевой прогон: N заданий из M» — для читателя (`ci-read.sh` воркспейса).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Drafted:
+    full: bool          # выбор вернул «всё» (тронута карта, неопознанный путь, база main)
+    selected: int       # объявленных проверок в выборе
+    declared: int       # объявленных проверок всего
+
+
+def _job_key(n: JobName) -> str:
+    """«<процесс>:<id>» из `where` объявления («ci.yaml: jobs.lint»)."""
+    path, _, job = n.where.partition(": jobs.")
+    return f"{path}:{job}"
+
+
+def narrow_to_draft(d: Declared, selection: object) -> tuple[Declared, Drafted]:
+    """Объявление, суженное до выбранного. Выбор без ключей — отказ, а не «всё»."""
+    if not isinstance(selection, dict) or not isinstance(selection.get("full"), bool) \
+            or not isinstance(selection.get("jobs"), list) \
+            or not isinstance(selection.get("always"), list):
+        raise ValueError("выбор не в форме {full, jobs, always}")
+    if selection["full"]:
+        return d, Drafted(True, len(d.checks), len(d.checks))
+    keep = set(map(str, selection["jobs"])) | set(map(str, selection["always"]))
+    checks = tuple(c for c in d.checks if _job_key(c) in keep)
+    narrowed = Declared(checks=checks, workflows=d.workflows, on_request=d.on_request,
+                        breaches=d.breaches)
+    return narrowed, Drafted(False, len(checks), len(d.checks))
+
+
+def load_gated(path: Path) -> frozenset[str]:
+    """Задания, которые карта выбора умеет пропускать. Нет карты — нет и пропусков."""
+    if not path.exists():
+        return frozenset()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return frozenset(j for g in raw.get("groups", []) for j in g.get("jobs", []))
+
+
+def draft_verdict(v: Verdict, drafted: Drafted) -> Verdict:
+    """«Не готово» остаётся ожиданием; любой вынесенный исход черновика — красный."""
+    if v.state == NOT_READY:
+        return v
+    picked = "все объявленные (выбор вернул полный набор)" if drafted.full else "выбранные картой"
+    inner = ("целевой зелёный — выбранные завершились успехом" if v.state == GREEN
+             else f"целевой КРАСНЫЙ — {v.reason}")
+    reason = (f"целевой прогон: {drafted.selected} заданий из {drafted.declared} ({picked}); "
+              f"{inner}; черновик не вливается — полный прогон заводит перевод запроса в "
+              f"ready")
+    return Verdict(RED, total=v.total, green=v.green, blocking=v.blocking,
+                   neutralish=v.neutralish, pending=v.pending, declared=v.declared,
+                   present=v.present, missing=v.missing, judged=v.judged, reason=reason,
+                   offenders=v.offenders, superseded=v.superseded)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-name", required=True,
@@ -760,6 +839,9 @@ def main() -> int:
     ap.add_argument("--workflows", required=True, type=Path,
                     help="каталог процессов ревизии, которую исполнил запрос")
     ap.add_argument("--base", required=True, help="база запроса на слияние")
+    ap.add_argument("--draft-selection", type=Path, default=None,
+                    help="запрос — черновик: выбор затронутого (`affected.py "
+                         "--draft-selection`), вердикт красный по построению (kacho#3148)")
     args = ap.parse_args()
 
     try:
@@ -781,13 +863,30 @@ def main() -> int:
               "«зелено»:\n" + "\n".join(f"   • {r}" for r in refusals), file=sys.stderr)
         return 2
 
+    gated = load_gated(args.workflows.resolve().parent / "ci-paths.json")
+    drafted: Drafted | None = None
+    if args.draft_selection is not None:
+        try:
+            d, drafted = narrow_to_draft(d, json.loads(args.draft_selection.read_text(
+                encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f"ОТКАЗ: выбор черновика не прочитан ({exc}) — вердикта НЕТ, и это НЕ "
+                  f"«зелено»", file=sys.stderr)
+            return 2
+
     try:
-        v = decide(payload, d, args.self_name)
+        v = decide(payload, d, args.self_name, gated)
+        if drafted is not None:
+            v = draft_verdict(v, drafted)
     except ValueError as exc:
         print(f"ОТКАЗ: {exc} — ни одна проверка не рассмотрена, и это НЕ «зелено»",
               file=sys.stderr)
         return 2
     print(render(v))
+    if drafted is not None and v.state == RED:
+        # Аннотация — признак стража для читателей вердикта (`ci-read.sh` воркспейса):
+        # красное черновика по построению отличимо от отказа по содержимому.
+        print(f"::error title=черновик не вливается::{v.reason}")
     # «Не готово» — это не вердикт: вызывающий обязан подождать и спросить снова.
     if v.state == NOT_READY:
         return 3
