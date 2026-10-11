@@ -4,7 +4,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -24,7 +23,7 @@ func TestGeo_ADM1GEO12_PublicAdminPairsReachThePublicBackendOnBothListeners(t *t
 	const publicLiteral, internalLiteral = "127.0.0.1:1", "127.0.0.1:2"
 	addrs := geoMuxAddrs()
 	addrs["geoInternal"] = internalLiteral
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

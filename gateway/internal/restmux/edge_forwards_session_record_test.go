@@ -129,7 +129,7 @@ func edgeWithSessionLane(t *testing.T, record string) (http.Handler, *revokeReco
 	rec := &revokeRecorder{got: make(chan []string, 1)}
 	addrs := geoMuxAddrs()
 	addrs["iam"] = serveGRPC(t, func(gs *grpc.Server) { iampb.RegisterAccessKeyServiceServer(gs, rec) })
-	mux, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	mux, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
