@@ -99,7 +99,7 @@ service.yaml и internal-rest-certificate.yaml — одним определен
 api-gateway.internalRestOperatorSAN — URI-имя операторской личности внутреннего
 слушателя. Тот же домен доверия, что у листа края (api-gateway.trustDomain),
 своё имя (internalRest.operatorSaName). Лист под этим именем выпускает
-умбрелла (templates/bootstrap-operator-certificate.yaml); совпадение двух
+умбрелла (templates/internal-rest-operator-certificate.yaml); совпадение двух
 написаний держит проба рендера gateway/deploy/internal_rest_mtls_render_test.go.
 */}}
 {{- define "api-gateway.internalRestOperatorSAN" -}}

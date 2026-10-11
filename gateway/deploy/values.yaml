@@ -21,7 +21,7 @@ tlsPort: 8443
 # (internalRest.serverSecretName, templates/internal-rest-certificate.yaml),
 # требует клиентский лист УЦ установки с URI-именем из круга — операторская
 # личность (internalRest.operatorSaName; лист выпускает умбрелла,
-# templates/bootstrap-operator-certificate.yaml) плюс extraClientSANs. Без
+# templates/internal-rest-operator-certificate.yaml) плюс extraClientSANs. Без
 # материала край не стартует (validateProductionInternalListener) на любой
 # метке KACHO_APP_ENV. mTLS — аутентификация транспорта; проверка прав на
 # слушателе прежняя.

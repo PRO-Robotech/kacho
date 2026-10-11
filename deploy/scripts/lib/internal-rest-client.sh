@@ -8,7 +8,7 @@
 # Слушатель — mTLS и только он: клиентский лист обязателен, цепочка — к УЦ
 # установки, URI-имя листа — в круге края (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS).
 # Лист этого круга — операторская личность `kacho-internal-rest-operator`;
-# его выпускает умбрелла (templates/bootstrap-operator-certificate.yaml) в
+# его выпускает умбрелла (templates/internal-rest-operator-certificate.yaml) в
 # секрет ниже, и никакой под его не монтирует — инструменты оператора берут
 # его из кластера, как лист чеканки.
 #
