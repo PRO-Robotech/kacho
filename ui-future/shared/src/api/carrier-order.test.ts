@@ -463,8 +463,10 @@ describe("F8S4-11 · вход ключом стоит в перечнях упо
       // Завершение восстановления (F8-S3) в перечнях было до S4 (SETS_CARRIER,
       // CHANGES_FORM_CONTEXT), а в прогон упорядочения вошло после — своей
       // записью, которую держит F8S3-18; здесь счёт прогона ведётся без неё.
+      // Предъявление кода смены адреса (F8-S6, Р5) вошло в SETS_CARRIER после S4 —
+      // его членство держит своя проба (`login-lane.test.ts`, F8-S6 Р5).
       sizes: [
-        SETS_CARRIER.size,
+        [...SETS_CARRIER].filter((p) => p !== LOGIN_LANE.emailChangeConfirm).length,
         CHANGES_FORM_CONTEXT.size,
         CARRIER_VERBS.filter((v) => !v.verb.includes("/recovery/")).length,
       ],

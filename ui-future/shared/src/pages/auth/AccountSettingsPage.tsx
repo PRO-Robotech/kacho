@@ -26,11 +26,13 @@ import { FieldError, fieldErrorId } from "@shared/components/organisms/form/Fiel
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { AccessKeysSection } from "./access-key";
+import { EmailChangeAction } from "./email-change";
 import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 
-// Параметры учётной записи на `/settings` — пароль, второй фактор, свои сессии
-// и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмка F8-S5).
+// Параметры учётной записи на `/settings` — адрес почты, пароль, второй фактор,
+// свои сессии и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмки
+// F8-S5 и F8-S6).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЭКРАН ДЕЛАЕТ
@@ -39,7 +41,9 @@ import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 //     сессии; действия «подтвердить адрес» здесь нет: экран открыт только
 //     подтверждённому адресу (страж каркаса, приёмка F6b, Р7), а
 //     неподтверждённому подтверждение предлагает экран `/verification`
-//     (F8-17, приёмка F6b, §3.3);
+//     (F8-17, приёмка F6b, §3.3). Действие раздела — смена адреса
+//     (`email-change/`, приёмка F8-S6): покой, форма, код; после успеха экран
+//     заново спрашивает «кто я», и новый адрес называет край;
 //   • смена пароля глаголом службы; отказ — дословно, носитель консоль не
 //     трогает ни на успехе (его перевыпускает служба), ни на отказе края
 //     (F8-23…F8-25);
@@ -541,6 +545,11 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
       cancelled = true;
     };
   }, [asked]);
+  // Переспросить «кто я», НЕ сбрасывая показанного: разделы экрана остаются на
+  // месте, меняется только ответ края (смена адреса, F8-S6, Р3).
+  const reread = useCallback(async () => {
+    setWho(await sessionIdentity());
+  }, []);
 
   return (
     // Шапка стоит, содержимое прокручивается под ней — одной областью
@@ -573,6 +582,9 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
             {typeof who.session?.emailVerified === "boolean" && (
               <BoolFact value={who.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
             )}
+            <div>
+              <EmailChangeAction onChanged={reread} leave={leave} />
+            </div>
           </Section>
           <PasswordSection />
           <SecondFactorSection />

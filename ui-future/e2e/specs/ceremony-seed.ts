@@ -54,6 +54,8 @@ export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
 export type FormKind =
+  | "email-change"
+  | "email-change-confirm"
   | "login"
   | "logout"
   | "password"
@@ -89,6 +91,10 @@ export const LANE = {
   sessions: "/iam/v1/auth/sessions",
   sessionsEnd: "/iam/v1/auth/sessions/end",
   sessionsEndOthers: "/iam/v1/auth/sessions/end-others",
+  // Смена адреса почты (приёмка F8-S6, Р5; службы — EC, Р1): запрос кода на новый
+  // адрес и предъявление кода — оба под живой сессией, у каждого свой вид признака.
+  emailChange: "/iam/v1/auth/email-change",
+  emailChangeConfirm: "/iam/v1/auth/email-change/confirm",
 } as const;
 
 /** Ответ края о сессии — не глагол полосы, а вопрос «кто я»; посев задаёт его своим носителем. */
