@@ -59,7 +59,8 @@
 # оттуда. Выписанное имя разошлось бы с чартом молча.
 #
 # Переменная из секрета читается процессом на старте, поэтому смена секрета
-# без переката не меняет ничего: `rollout restart`, `rollout status`, затем
+# без переката не меняет ничего: `rollout restart`, `rollout status`, готовые
+# конечные точки каждой службы, выбирающей поды (kacho#3145), затем
 # готовность края (`wait-edge-ready.sh` — край отвечает /readyz только когда
 # отвечает служба доступа). Число ключей — из строки самоотчёта старта
 # «second-factor wrapping keys declared» каждого живого пода.
@@ -77,7 +78,8 @@
 #   0 — сделано (условие создано);
 #   2 — вызов неверен либо кластер, пространство, секрет не названы или не
 #       выводятся: условие не создавалось, стенд не тронут;
-#   3 — условие не создано на кластере: перекат не стал готов, край не ответил,
+#   3 — условие не создано на кластере: перекат не стал готов, конечные точки
+#       служб не догнали его за предел, край не ответил,
 #       самоотчёта старта нет, счётчик не прочитан.
 # Красного у скрипта нет: судит проба.
 set -uo pipefail
@@ -282,8 +284,90 @@ json.dump({"data": {sys.argv[2]: base64.b64encode(v).decode()}}, open(sys.argv[3
     k get pods -l "$SELECTOR" -o wide >&2 2>&1 || true
     die "перекат $DEPLOY не стал готов за $ROLLOUT_TIMEOUT: $(tail -1 <<<"$out")" 3
   fi
+  endpoints_ready || die "конечные точки служб $DEPLOY не готовы после переката (выше)" 3
   edge_ready || die "край не готов после переката $DEPLOY (выше)" 3
 }
+
+# endpoints_ready — kacho#3145. `rollout status` говорит «новые реплики
+# доступны», но не «адрес службы ведёт на них»: конечные точки (EndpointSlice)
+# догоняют перекат позже, и проба, стартовавшая в этот зазор, получала 503
+# входа и `connection refused` адреса службы доступа. Готовность — когда у
+# КАЖДОЙ службы (Service), чей селектор выбирает живые поды Deployment'а,
+# готовые адреса — ровно живые готовые поды, и ни один адрес (в любом
+# состоянии) не ведёт на под вне этого множества; держится STREAK опросов
+# подряд. Служб ноль — не готовность: спрашивать не о чем. Предел — ATTEMPTS
+# опросов через INTERVAL секунд; исчерпан — отказ с последней причиной.
+ENDPOINTS_ATTEMPTS="${KACHO_WRAP_ENDPOINTS_ATTEMPTS:-90}"
+ENDPOINTS_INTERVAL="${KACHO_WRAP_ENDPOINTS_INTERVAL:-2}"
+ENDPOINTS_STREAK="${KACHO_WRAP_ENDPOINTS_STREAK:-3}"
+
+endpoints_ready() {
+  local i streak=0 pods svcs slices verdict why=""
+  log "конечные точки служб $DEPLOY: ждём готовые адреса ровно живых подов ($ENDPOINTS_STREAK опроса подряд, попыток до $ENDPOINTS_ATTEMPTS)"
+  for ((i = 1; i <= ENDPOINTS_ATTEMPTS; i++)); do
+    if pods="$(k get pods -l "$SELECTOR" -o json 2>&1)" &&
+      svcs="$(k get services -o json 2>&1)" &&
+      slices="$(k get endpointslices -o json 2>&1)"; then
+      verdict="$(python3 -c "$ENDPOINTS_PY" "$pods" "$svcs" "$slices" 2>&1)"
+    else
+      verdict="NO поды, службы или конечные точки не прочитаны: $(head -1 <<<"${slices:-${svcs:-$pods}}")"
+    fi
+    if [ "${verdict%% *}" = OK ]; then
+      streak=$((streak + 1))
+      if [ "$streak" -ge "$ENDPOINTS_STREAK" ]; then
+        log "конечные точки готовы: ${verdict#OK }; подряд $streak; попытка $i из $ENDPOINTS_ATTEMPTS"
+        return 0
+      fi
+    else
+      streak=0
+      why="${verdict#NO }"
+    fi
+    [ "$i" -lt "$ENDPOINTS_ATTEMPTS" ] && sleep "$ENDPOINTS_INTERVAL"
+  done
+  log "конечные точки не готовы за $ENDPOINTS_ATTEMPTS опросов: ${why:-$verdict}"
+  return 1
+}
+
+# ENDPOINTS_PY — суд одного опроса: argv — поды селектора, службы, конечные
+# точки пространства (JSON). Печатает «OK <перепись>» либо «NO <причина>».
+read -r -d '' ENDPOINTS_PY <<'PYEP'
+import json, sys
+try:
+    pods, svcs, slices = (json.loads(a) for a in sys.argv[1:4])
+except ValueError as e:
+    print(f"NO ответ кластера не разобран: {e}"); sys.exit()
+def ready(p):
+    return any(c.get("type") == "Ready" and c.get("status") == "True" for c in p.get("status", {}).get("conditions") or [])
+live = {p["metadata"]["name"]: p["metadata"].get("labels") or {} for p in pods.get("items", [])
+        if not p["metadata"].get("deletionTimestamp") and p.get("status", {}).get("phase") == "Running" and ready(p)}
+if not live:
+    print("NO живых готовых подов нет"); sys.exit()
+names = []
+for s in svcs.get("items", []):
+    sel = (s.get("spec") or {}).get("selector") or {}
+    if sel and all(all(l.get(k) == v for k, v in sel.items()) for l in live.values()):
+        names.append(s["metadata"]["name"])
+if not names:
+    print("NO служб, чей селектор выбирает живые поды, ноль — спрашивать не о чем"); sys.exit()
+bad = []
+for n in sorted(names):
+    rdy, other = set(), set()
+    for sl in slices.get("items", []):
+        if (sl.get("metadata", {}).get("labels") or {}).get("kubernetes.io/service-name") != n:
+            continue
+        for ep in sl.get("endpoints") or []:
+            pod = (ep.get("targetRef") or {}).get("name", "")
+            if (ep.get("conditions") or {}).get("ready") is True:
+                rdy.add(pod)
+            if pod not in live:
+                other.add(pod or "<без пода>")
+    miss = sorted(set(live) - rdy)
+    if miss or other:
+        bad.append(f"{n}: не готовы адреса {','.join(miss) or '-'}; адреса чужих подов {','.join(sorted(other)) or '-'}")
+if bad:
+    print("NO " + "; ".join(bad)); sys.exit()
+print(f"OK служб {len(names)} ({' '.join(sorted(names))}), готовых подов {len(live)} ({' '.join(sorted(live))})")
+PYEP
 
 # edge_ready — готовность края тем же судьёй, что у подъёма стенда, с файлом
 # конфигурации, в котором выбранный контекст единственный.
