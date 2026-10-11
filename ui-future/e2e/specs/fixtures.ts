@@ -228,7 +228,9 @@ const tenantsOfTest = new Map<string, TenantRecord[]>();
  * дописывает тот, кто его прочитал.
  */
 export function removedAfterTest(email: string): TenantRecord {
-  const record = removedAfterTest(email);
+  const record: TenantRecord = { email, projectId: "", resources: [] };
+  const id = currentTestId();
+  tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
   return record;
 }
 
