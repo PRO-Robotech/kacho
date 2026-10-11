@@ -43,6 +43,22 @@ const ACCESS_KEY_ORIGIN_CONDITION = "access-key-origin.precondition.ts";
 /** Пробы, которым нужен ключ доступа на стенде: файлы `*access-key*.spec.ts`. */
 const ACCESS_KEY_SPECS = /access-key[^/]*\.spec\.ts$/;
 
+/**
+ * ИЗМЕРИТЕЛЬНЫЕ ПРОБЫ — СВОЙ ПРОЕКТ, СВОЙ ОТЧЁТ И СВОЙ БЮДЖЕТ (kacho#1281, Ф12-33).
+ *
+ * Замер по классам отказа (форма Ф1-48) тратит на оси источника десятки отказов
+ * `401` ПО ПОСТРОЕНИЮ. Набор `specs/` судится сторожем бюджета этой оси одной
+ * величиной на прогон (`scripts/ceremony-budget.ts`), и замер внутри набора ронял
+ * бы сторожа на каждом прогоне; спрятать его отказы от записи — маска. Поэтому
+ * каталог `measurements/` исполняется ТОЛЬКО под ручкой `KACHO_CONSOLE_MEASURE=1`
+ * и ТОЛЬКО он: проектов набора в таком прогоне нет, отчёт свой
+ * (`results-measure.json`), и тот же сторож судит его величиной, которую объявляет
+ * сам замер. Без ручки конфигурация не меняется ни на строку — набор, его граница
+ * (`testDir`) и сторож для остальных остаются прежними.
+ */
+const MEASURE = process.env.KACHO_CONSOLE_MEASURE === "1";
+const MEASURE_PROJECT = "measure";
+
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
   throw new Error(
@@ -102,7 +118,9 @@ const hostResolverArgs = (() => {
     // шаг проверки условия отображение применил, прогон проб получил
     // ERR_NAME_NOT_RESOLVED минутой позже (#985). Отличить их можно было
     // только тем, чего в логе не было.
-    console.log(`[конфиг проб] отображение имени НЕ задано (KACHO_CONSOLE_HOST_IP пуст); адрес ${BASE} разрешает резолвер браузера`);
+    console.log(
+      `[конфиг проб] отображение имени НЕ задано (KACHO_CONSOLE_HOST_IP пуст); адрес ${BASE} разрешает резолвер браузера`,
+    );
     return [];
   }
   const url = new URL(BASE);
@@ -145,13 +163,17 @@ const hostResolverArgs = (() => {
  */
 const tlsTrustArgs = standTlsTrustArgs(process.env.KACHO_CONSOLE_CA);
 if (tlsTrustArgs.length) {
-  console.log(`[конфиг проб] браузер доверяет листу стенда из KACHO_CONSOLE_CA: ${tlsTrustArgs[0]}`);
+  console.log(
+    `[конфиг проб] браузер доверяет листу стенда из KACHO_CONSOLE_CA: ${tlsTrustArgs[0]}`,
+  );
 }
 const browserArgs = [...hostResolverArgs, ...standSecureOriginArgs(BASE)];
 if (browserArgs.length > hostResolverArgs.length) {
   // ФАКТ ПЕЧАТАЕТСЯ: стенд по http без этой строки неотличим в логе от стенда, где
   // решение не поставлено, — а различаются они тем, дойдёт ли регистрация до сессии.
-  console.log(`[конфиг проб] происхождение стенда ${new URL(BASE).origin} объявлено защищённым (стенд по http)`);
+  console.log(
+    `[конфиг проб] происхождение стенда ${new URL(BASE).origin} объявлено защищённым (стенд по http)`,
+  );
 }
 
 /**
@@ -213,26 +235,44 @@ const config: PlaywrightTestConfig = {
   // вердикта узнаёт его по имени), а от него зависит ТОЛЬКО проект проб ключа.
   // Принадлежность пробы части — по имени файла (`ACCESS_KEY_SPECS`), а не
   // перечнем: новая проба ключа попадает в часть без правки этого файла.
-  projects: [
-    {
-      name: PRECONDITION_PROJECT,
-      testDir: "./preconditions",
-      testMatch: "*.precondition.ts",
-      testIgnore: ACCESS_KEY_ORIGIN_CONDITION,
-    },
-    {
-      name: ACCESS_KEY_CONDITION_PROJECT,
-      testDir: "./preconditions",
-      testMatch: ACCESS_KEY_ORIGIN_CONDITION,
-      dependencies: [PRECONDITION_PROJECT],
-    },
-    { name: "probes", testIgnore: ACCESS_KEY_SPECS, dependencies: [PRECONDITION_PROJECT] },
-    {
-      name: "probes:access-key",
-      testMatch: ACCESS_KEY_SPECS,
-      dependencies: [PRECONDITION_PROJECT, ACCESS_KEY_CONDITION_PROJECT],
-    },
-  ],
+  projects: MEASURE
+    ? [
+        {
+          name: PRECONDITION_PROJECT,
+          testDir: "./preconditions",
+          testMatch: "*.precondition.ts",
+          testIgnore: ACCESS_KEY_ORIGIN_CONDITION,
+        },
+        {
+          name: MEASURE_PROJECT,
+          testDir: "./measurements",
+          dependencies: [PRECONDITION_PROJECT],
+        },
+      ]
+    : [
+        {
+          name: PRECONDITION_PROJECT,
+          testDir: "./preconditions",
+          testMatch: "*.precondition.ts",
+          testIgnore: ACCESS_KEY_ORIGIN_CONDITION,
+        },
+        {
+          name: ACCESS_KEY_CONDITION_PROJECT,
+          testDir: "./preconditions",
+          testMatch: ACCESS_KEY_ORIGIN_CONDITION,
+          dependencies: [PRECONDITION_PROJECT],
+        },
+        {
+          name: "probes",
+          testIgnore: ACCESS_KEY_SPECS,
+          dependencies: [PRECONDITION_PROJECT],
+        },
+        {
+          name: "probes:access-key",
+          testMatch: ACCESS_KEY_SPECS,
+          dependencies: [PRECONDITION_PROJECT, ACCESS_KEY_CONDITION_PROJECT],
+        },
+      ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
   retries: 0,
@@ -267,7 +307,10 @@ const config: PlaywrightTestConfig = {
   // и красным по продукту тоже не называется. Это утверждает гейт вердикта
   // (.github/scripts/assert-console-probes-verdict.py).
   maxFailures: 5,
-  reporter: [["list"], ["json", { outputFile: "results.json" }]],
+  reporter: [
+    ["list"],
+    ["json", { outputFile: MEASURE ? "results-measure.json" : "results.json" }],
+  ],
   use: {
     baseURL: BASE,
     // Готовый браузер окружения, если он есть. Пробы обязаны работать и БЕЗ этой
@@ -289,7 +332,9 @@ const config: PlaywrightTestConfig = {
       ...(process.env.KACHO_CHROMIUM
         ? { executablePath: process.env.KACHO_CHROMIUM }
         : {}),
-      ...(browserArgs.length || tlsTrustArgs.length ? { args: [...browserArgs, ...tlsTrustArgs] } : {}),
+      ...(browserArgs.length || tlsTrustArgs.length
+        ? { args: [...browserArgs, ...tlsTrustArgs] }
+        : {}),
     },
     // Проверить ФАКТ применения args из этого файла нечем: playwright не
     // отдаёт командную строку запущенного браузера. Поэтому печатается то,
