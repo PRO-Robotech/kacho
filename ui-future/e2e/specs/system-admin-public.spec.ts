@@ -22,7 +22,7 @@ import {
   resetOwnFactor,
   type CloudAdmin,
 } from "./cloud-admin";
-import { registerAndSignIn, runTag, test } from "./fixtures";
+import { registerAndSignIn, removedAfterTest, runTag, test } from "./fixtures";
 
 /**
  * Экраны регионов, зон и администраторов кластера раздела «Система» — на
@@ -65,7 +65,8 @@ import { registerAndSignIn, runTag, test } from "./fixtures";
  * администратора облака (`resetOwnFactor`). Провал уборки не прячет провал
  * пробы и не прячется за ним.
  *
- * Арендатора пробы отказа (`registerAndSignIn`) снимает разбор пробы
+ * Арендатора пробы отказа (`registerAndSignIn`) и человека, которому проба
+ * администраторов кластера выдаёт права (посев), снимает разбор пробы
  * (`tenantRemoval` в `fixtures.ts`, путь — `tenant-removal.ts`, kacho#3106):
  * проект, аккаунт, личность — и на падении пробы тоже. Регион, который
  * арендатор пытался завести, не заводится (это утверждается) — снимать нечего.
@@ -457,7 +458,14 @@ test("администраторы кластера: администратор 
   const humanSeed = await newSeed(testInfo);
   const email = seedAddress("cluster-admin-grantee");
   try {
-    await seedConfirmedHuman(humanSeed, email);
+    try {
+      await seedConfirmedHuman(humanSeed, email);
+    } finally {
+      // Человек, которому выдаются права, — своя самостоятельная регистрация с
+      // личным аккаунтом и проектом; снимает его разбор пробы (kacho#3106).
+      // Записан и на отказе посева: регистрация могла пройти раньше отказа.
+      removedAfterTest(email);
+    }
     await withCloudAdmin(
       testInfo,
       async (admin) => {

@@ -217,15 +217,27 @@ export const test = base.extend<
   },
 });
 
-/** Арендаторы, заведённые `registerAndSignIn`, по пробе — их снимает разбор `tenantRemoval`. */
+/** Арендаторы, заведённые пробой, по пробе — их снимает разбор `tenantRemoval`. */
 const tenantsOfTest = new Map<string, TenantRecord[]>();
 
 /**
+ * Человек `email`, заведённый пробой самостоятельной регистрацией (личный аккаунт
+ * и проект по умолчанию у него есть), снимается разбором пробы тем же путём, что
+ * арендатор `registerAndSignIn` (kacho#3106). Зовут его `registerAndSignIn` и
+ * пробы, заводящие человека посевом. Возвращает запись — проект в неё
+ * дописывает тот, кто его прочитал.
+ */
+export function removedAfterTest(email: string): TenantRecord {
+  const record = removedAfterTest(email);
+  return record;
+}
+
+/**
  * Ресурс платформы по адресу `address` снимается разбором пробы вместе с
- * арендатором, заведённым в ней последним (kacho#3106): непустой проект служба
+ * арендатором, записанным в ней последним (kacho#3106): непустой проект служба
  * доступа не снимает, а каскада через границу службы нет (ban #4). Зовёт его
  * `createdResourceId` для каждого проверенного ресурса и пробы, заводящие ресурс
- * мимо него. В пробе без арендатора `registerAndSignIn` вызов ничего не
+ * мимо него. В пробе без записанного арендатора вызов ничего не
  * записывает: снимать ресурс там некому, и это прежнее поведение, а не новое.
  */
 export function removedWithTenant(address: string): void {
@@ -641,9 +653,7 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
 
   // Арендатор записан к снятию СРАЗУ после регистрации, до чтения проекта: проба,
   // упавшая на нём, человека уже завела, и убрать его обязан разбор (kacho#3106).
-  const record: TenantRecord = { email, projectId: "", resources: [] };
-  const id = currentTestId();
-  tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
+  const record = removedAfterTest(email);
 
   // Проект арендатора заводится сам; без него адресовать модули нечем.
   //
