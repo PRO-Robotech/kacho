@@ -49,6 +49,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import sys
 import urllib.error
 import urllib.parse
@@ -129,12 +130,35 @@ def cookie_value(set_cookies: list[str], name: str) -> str:
 # ─────────────────────────── поверхности ─────────────────────────────────────
 
 
-class EdgeHttp:
-    """Внешний слушатель края. Ведёт перепись обращений: (метод, путь, код)."""
+def internal_rest_tls_context() -> ssl.SSLContext:
+    """TLS-контекст ВНУТРЕННЕГО REST-слушателя края (kacho#3131).
 
-    def __init__(self, base_url: str, timeout: float = 30.0):
+    Слушатель — mTLS и только он: сервер проверяется по УЦ установки
+    (INTERNAL_REST_CA, сверка имени включена), клиент предъявляет лист
+    операторской личности (INTERNAL_REST_CERT / INTERNAL_REST_KEY). Производитель
+    переменных — deploy/scripts/lib/internal-rest-client.sh. Материала нет — это
+    «условие не создано», а не повод идти открытым текстом.
+    """
+    ca, cert, key = (os.environ.get(k, "") for k in ("INTERNAL_REST_CA", "INTERNAL_REST_CERT", "INTERNAL_REST_KEY"))
+    if not (ca and cert and key):
+        raise Unmet("условие не создано: нет клиентского материала внутреннего слушателя края "
+                    "(INTERNAL_REST_CA / INTERNAL_REST_CERT / INTERNAL_REST_KEY)")
+    ctx = ssl.create_default_context(cafile=ca)
+    ctx.load_cert_chain(cert, key)
+    return ctx
+
+
+class EdgeHttp:
+    """Слушатель края. Ведёт перепись обращений: (метод, путь, код).
+
+    tls — контекст TLS для слушателя под mTLS (внутренний: internal_rest_tls_context);
+    None — умолчание urllib.
+    """
+
+    def __init__(self, base_url: str, timeout: float = 30.0, tls: ssl.SSLContext | None = None):
         self.base = base_url.rstrip("/")
         self.timeout = timeout
+        self.tls = tls
         self.calls: list[tuple[str, str, int]] = []
 
     def ask(self, method: str, path: str, body: dict | None = None,
@@ -150,7 +174,7 @@ class EdgeHttp:
             hdrs["Authorization"] = f"Bearer {bearer}"
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=hdrs)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:  # nosec B310 — адрес стенда из окружения
+            with urllib.request.urlopen(req, timeout=self.timeout, context=self.tls) as r:  # nosec B310 — адрес стенда из окружения
                 out = (r.status, r.headers.get_all("Set-Cookie") or [], r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             out = (e.code, e.headers.get_all("Set-Cookie") or [], e.read().decode("utf-8", "replace"))
@@ -174,7 +198,7 @@ class Mailbox:
     def _get(self, path: str) -> dict:
         req = urllib.request.Request(self.base + path, headers={"Accept": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:  # nosec B310 — адрес стенда из окружения
+            with urllib.request.urlopen(req, timeout=self.timeout, context=self.tls) as r:  # nosec B310 — адрес стенда из окружения
                 raw = r.read().decode("utf-8", "replace")
                 status = r.status
         except urllib.error.HTTPError as e:

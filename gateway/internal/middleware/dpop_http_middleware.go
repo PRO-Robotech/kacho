@@ -329,8 +329,11 @@ func absoluteRequestURL(r *http.Request, apiDomain string) string {
 		host = apiDomain
 	}
 	if r.TLS == nil && !strings.HasPrefix(r.Header.Get("X-Forwarded-Proto"), "https") {
-		// On plain HTTP listener (cluster-internal), accept http scheme. The
-		// canonicalHTU helper normalises this consistently on both sides.
+		// The server sees no TLS state (plaintext cmux listener behind the
+		// ingress, or a TLS listener whose connection the multiplexer wraps):
+		// accept http scheme. The internal REST listener terminates TLS itself
+		// (kacho#3131) and lands in the https branch. The canonicalHTU helper
+		// normalises this consistently on both sides.
 		scheme = "http"
 	}
 	return scheme + "://" + host + r.URL.Path

@@ -9,9 +9,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -72,10 +74,24 @@ type Config struct {
 	// admin-UI / port-forward / cluster-internal tooling reach it via the
 	// dedicated `internal-rest` Service port. Empty → the internal REST listener
 	// is disabled (Internal* REST unreachable via the gateway entirely).
-	InternalRESTAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_ADDR"  default:":8081"`
-	TLSCertFile      string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
-	TLSKeyFile       string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
-	VPCAddr          string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
+	//
+	// Транспорт слушателя — mTLS и только он (kacho#3131): серверный лист
+	// (InternalRESTCertFile/KeyFile), клиентский лист обязателен, цепочка — к УЦ
+	// установки (MTLSCAFile), имя листа — в круге InternalRESTClientSANs. Что
+	// чего-то из этого нет, — отказ старта на ЛЮБОЙ метке KACHO_APP_ENV
+	// (InternalRESTListenerTLS); открытого текста у слушателя нет ни в одном
+	// профиле.
+	InternalRESTAddr     string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_ADDR"  default:":8081"`
+	InternalRESTCertFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE" default:""`
+	InternalRESTKeyFile  string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"  default:""`
+	// InternalRESTClientSANs — круг клиентов внутреннего слушателя: URI-имена
+	// (spiffe://…) клиентских листов через запятую. Умолчания НЕТ: лист УЦ
+	// установки есть у каждой службы и у самого края, и «любой лист УЦ» не
+	// сужал бы ничего; круг производит чарт края (internalRest.clientSANs).
+	InternalRESTClientSANs string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS" default:""`
+	TLSCertFile            string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
+	TLSKeyFile             string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
+	VPCAddr                string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
 	// VPCInternalAddr — admin-only internal-port (9091) of vpc backend.
 	// Routes AddressPool RESTful endpoints (kacho-only admin).
 	VPCInternalAddr string `envconfig:"KACHO_API_GATEWAY_VPC_INTERNAL_GRPC" default:"vpc.kacho.svc:9091"`
@@ -997,6 +1013,108 @@ func (c Config) TLSEnabled() bool {
 // endpoint-discovery RPC.
 func (c Config) AdvertisedEndpoint() string {
 	return c.AdvertisedEndpointAddr
+}
+
+// Ручки транспорта внутреннего REST-слушателя (kacho#3131). Объявлены один
+// раз: их называют отказы старта, чарт края и пробы.
+const (
+	InternalRESTCertKnob       = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE"
+	InternalRESTKeyKnob        = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"
+	InternalRESTClientSANsKnob = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS"
+	internalRESTCAKnob         = "KACHO_API_GATEWAY_MTLS_CA_FILE"
+)
+
+// InternalRESTClientCircle — разобранный круг клиентов внутреннего слушателя.
+// Пустой круг — ошибка, а не «всем»: слушатель отдаёт Internal* REST, и
+// неназванный круг значил бы «любой лист УЦ установки». Запись — URI-имя
+// spiffe://…: имя листа, по которому круг судит, — URI-SAN, и запись другой
+// формы не совпала бы ни с одним листом молча.
+//
+// Предикат «круг сужен» читается здесь и только здесь: его зовут страж старта
+// (InternalRESTListenerTLS), проверка рукопожатия и журнал старта края.
+func (c Config) InternalRESTClientCircle() ([]string, error) {
+	var circle []string
+	for _, raw := range strings.Split(c.InternalRESTClientSANs, ",") {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		u, err := url.Parse(v)
+		if err != nil || u.Scheme != "spiffe" || u.Host == "" || u.Path == "" {
+			return nil, fmt.Errorf("%s: запись %q — не URI-имя spiffe://<домен>/<путь>", InternalRESTClientSANsKnob, v)
+		}
+		circle = append(circle, u.String())
+	}
+	if len(circle) == 0 {
+		return nil, fmt.Errorf("%s пуст: круг клиентов внутреннего REST-слушателя не назван — «любой лист УЦ установки» не сужает ничего", InternalRESTClientSANsKnob)
+	}
+	return circle, nil
+}
+
+// InternalRESTListenerTLS — страж старта и транспорт внутреннего REST-слушателя
+// (kacho#3131). Слушатель не объявлен (InternalRESTAddr пуст) — (nil, nil).
+// Объявлен — mTLS и только он, на ЛЮБОЙ метке KACHO_APP_ENV:
+//   - серверный лист и ключ (InternalRESTCertFile/KeyFile) — свои, не лист
+//     внешнего слушателя;
+//   - клиентский лист обязателен (RequireAndVerifyClientCert), цепочка — к УЦ
+//     установки (MTLSCAFile) и ни к какому другому корню: якоря звеньев фронта
+//     здесь нет;
+//   - URI-имя листа — в круге InternalRESTClientCircle.
+//
+// Чего-то нет — отказ с именем ручки; открытого текста у слушателя нет. server
+// собирает серверную часть (корень передаёт edgeTLSConfig — ALPN тот же, что у
+// внешнего слушателя).
+//
+// mTLS здесь — аутентификация ТРАНСПОРТА: лист из круга принципалом не
+// становится, проверка прав на слушателе остаётся прежней.
+func (c Config) InternalRESTListenerTLS(server func(tls.Certificate) *tls.Config) (*tls.Config, error) {
+	if c.InternalRESTAddr == "" {
+		return nil, nil
+	}
+	for _, k := range []struct{ val, knob string }{
+		{c.InternalRESTCertFile, InternalRESTCertKnob},
+		{c.InternalRESTKeyFile, InternalRESTKeyKnob},
+		{c.MTLSCAFile, internalRESTCAKnob},
+	} {
+		if k.val == "" {
+			return nil, fmt.Errorf("внутренний REST-слушатель %s объявлен без mTLS: %s не задан", c.InternalRESTAddr, k.knob)
+		}
+	}
+	circle, err := c.InternalRESTClientCircle()
+	if err != nil {
+		return nil, err
+	}
+	cert, err := tls.LoadX509KeyPair(c.InternalRESTCertFile, c.InternalRESTKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", InternalRESTCertKnob, InternalRESTKeyKnob, err)
+	}
+	caPEM, err := os.ReadFile(c.MTLSCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", internalRESTCAKnob, err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("%s %q: сертификатов не разобрано", internalRESTCAKnob, c.MTLSCAFile)
+	}
+	inCircle := make(map[string]struct{}, len(circle))
+	for _, s := range circle {
+		inCircle[s] = struct{}{}
+	}
+	cfg := server(cert)
+	cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	cfg.ClientCAs = pool
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
+			return errors.New("внутренний REST-слушатель: клиентский лист не проверен")
+		}
+		for _, u := range cs.VerifiedChains[0][0].URIs {
+			if _, ok := inCircle[u.String()]; ok {
+				return nil
+			}
+		}
+		return errors.New("внутренний REST-слушатель: имя клиентского листа вне круга " + InternalRESTClientSANsKnob)
+	}
+	return cfg, nil
 }
 
 // HybridMTLSEnabled reports whether the external TLS listener should accept an

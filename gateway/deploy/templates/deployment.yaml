@@ -74,7 +74,7 @@ spec:
           ports:
             - name: cmux
               containerPort: {{ .Values.port }}
-            {{- if .Values.internalRestPort }}
+            {{- if include "api-gateway.internalRestEnabled" . }}
             - name: internal-rest
               containerPort: {{ .Values.internalRestPort }}
             {{- end }}
@@ -87,9 +87,23 @@ spec:
               value: ":{{ .Values.port }}"
             # Dedicated cluster-internal admin REST listener — the ONLY listener
             # that serves Internal* REST (ban #6). NEVER targeted by the ingress.
-            # Empty → the internal REST listener is disabled.
+            # Empty → the internal REST listener is disabled. Transport — mTLS
+            # only (kacho#3131): own server leaf, client leaf required, chain to
+            # the installation CA (KACHO_API_GATEWAY_MTLS_CA_FILE), URI-SAN in
+            # the client circle. Without mtls.enable the listener is not declared.
+            {{- if include "api-gateway.internalRestEnabled" . }}
             - name: KACHO_API_GATEWAY_INTERNAL_REST_ADDR
-              value: {{ if .Values.internalRestPort }}":{{ .Values.internalRestPort }}"{{ else }}""{{ end }}
+              value: ":{{ .Values.internalRestPort }}"
+            - name: KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE
+              value: {{ printf "%s/tls.crt" .Values.internalRest.mountPath | quote }}
+            - name: KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE
+              value: {{ printf "%s/tls.key" .Values.internalRest.mountPath | quote }}
+            - name: KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS
+              value: {{ include "api-gateway.internalRestClientSANs" . | quote }}
+            {{- else }}
+            - name: KACHO_API_GATEWAY_INTERNAL_REST_ADDR
+              value: ""
+            {{- end }}
             # Resource-management backend — kaname (отдельной RESOURCEMANAGER_GRPC переменной нет).
             - name: KACHO_API_GATEWAY_VPC_GRPC
               value: "{{ .Values.backends.vpc }}"
@@ -450,9 +464,11 @@ spec:
             {{- end }}
             {{- if .Values.appEnv }}
             # Deployment-env label (domain-LESS KACHO_APP_ENV) — keys the
-            # composition-root production guards (validateProductionAuthzConfig +
-            # validateProductionInternalListener). Empty/unset ⇒ production-class
-            # (fail-closed); only dev/local/test tolerate the dev posture.
+            # composition-root production guard validateProductionAuthzConfig.
+            # Empty/unset ⇒ production-class (fail-closed); only dev/local/test
+            # tolerate the dev posture. validateProductionInternalListener (the
+            # internal REST listener's mTLS) does not read it — it refuses at
+            # every label (kacho#3131).
             - name: KACHO_APP_ENV
               value: {{ .Values.appEnv | quote }}
             {{- end }}
@@ -507,6 +523,13 @@ spec:
             # mTLS — backend-dial client-cert (cert-manager internal-CA).
             - name: mtls-client
               mountPath: {{ .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
+            {{- if include "api-gateway.internalRestEnabled" . }}
+            # Серверный лист внутреннего REST-слушателя (kacho#3131) — свой, не
+            # лист внешнего слушателя.
+            - name: internal-rest-tls
+              mountPath: {{ .Values.internalRest.mountPath | quote }}
               readOnly: true
             {{- end }}
             {{- if .Values.clientAddress.trustedPeers }}
@@ -572,6 +595,16 @@ spec:
         - name: mtls-client
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
+        {{- if include "api-gateway.internalRestEnabled" . }}
+        - name: internal-rest-tls
+          secret:
+            secretName: {{ .Values.internalRest.serverSecretName | quote }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
         {{- end }}
         {{- if .Values.clientAddress.trustedPeers }}
         - name: front-link-ca

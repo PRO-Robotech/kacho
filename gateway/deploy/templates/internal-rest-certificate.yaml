@@ -1,0 +1,54 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+{{- if include "api-gateway.internalRestEnabled" . }}
+{{- $m := .Values.mtls }}
+{{- $ir := .Values.internalRest }}
+{{- $issuer := $m.issuer | default dict }}
+{{- $ns := .Release.Namespace }}
+{{/*
+Серверный лист внутреннего REST-слушателя края (kacho#3131). Свой, а не лист
+внешнего слушателя (`tls.secretName`): имена у них разные по предмету, и
+IP-SAN 127.0.0.1 (ниже) не должен уехать на внешний слушатель и на вход.
+
+dnsNames — имена Service края в кластере. Имена проброса — IP 127.0.0.1 и
+`localhost` — ТОЛЬКО под internalRest.loopbackSAN (умолчание false): их
+включают профили стенда, где потребители ходят пробросом порта; боевой профиль
+их не несёт.
+*/}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $ir.serverSecretName | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/name: {{ .Values.name | quote }}
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $ir.serverSecretName | quote }}
+  duration: {{ $m.leafDuration | default "2160h" | quote }}
+  renewBefore: {{ $m.leafRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuer.name | default "kacho-internal-ca" | quote }}
+    kind: {{ $issuer.kind | default "ClusterIssuer" | quote }}
+    group: cert-manager.io
+  dnsNames:
+    - {{ printf "%s.%s.svc.cluster.local" .Values.name $ns | quote }}
+    - {{ printf "%s.%s.svc" .Values.name $ns | quote }}
+    - {{ printf "%s.%s" .Values.name $ns | quote }}
+    - {{ .Values.name | quote }}
+    {{- if $ir.loopbackSAN }}
+    - "localhost"
+    {{- end }}
+  {{- if $ir.loopbackSAN }}
+  ipAddresses:
+    - "127.0.0.1"
+  {{- end }}
+  usages:
+    - server auth
+{{- end }}

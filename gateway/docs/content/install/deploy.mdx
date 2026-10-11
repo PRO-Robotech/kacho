@@ -54,7 +54,7 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
   <tbody>
     <tr><td>cmux (gRPC + REST)</td><td><code>LISTEN&#95;ADDR</code> · <code>:8080</code></td><td>Публичный вход: gRPC-proxy + REST-mux + health</td></tr>
     <tr><td>внешний TLS</td><td><code>TLS&#95;LISTEN&#95;ADDR</code> · <em>(пусто = выкл.)</em></td><td>Advertised TLS-периметр (тот же cmux-раскол)</td></tr>
-    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции)</td></tr>
+    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции); только mTLS — клиентский сертификат УЦ установки из круга <code>INTERNAL&#95;REST&#95;CLIENT&#95;SANS</code></td></tr>
   </tbody>
 </table>
 

@@ -27,7 +27,10 @@ import (
 //     (задача #1024 сняла его вместе с единственной службой). Это НЕ «false»:
 //     «слушателя нет» и «слушатель есть и не защищён» — разные состояния, и
 //     схлопнуть их значило бы разрешить второе молчанием первого. Внутренний
-//     REST-мультиплексор края — другой предмет и другой порт.
+//     REST-мультиплексор края — другой предмет и другой порт: он под mTLS
+//     (kacho#3131), и самоотчёт о нём — строка журнала старта «api-gateway
+//     internal admin REST started» (transport=mtls, размер круга клиентов);
+//     оси фундамента для него нет (corelib#109).
 //   - authz_check   — whether the per-RPC authz middleware enforces. With
 //     KACHO_API_GATEWAY_AUTHZ_ENABLED=false it mounts as a pass-through, i.e. no
 //     per-RPC Check happens at all.
