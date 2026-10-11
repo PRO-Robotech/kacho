@@ -552,3 +552,91 @@ describe("F8-S5 · три глагола своих сессий в клиент
     }
   });
 });
+
+describe("F8-S6 · смена адреса почты в клиенте полосы", () => {
+  it("F8-S6 Р5 · пути — точные, как их объявляет служба и ретранслирует край", async () => {
+    const { LOGIN_LANE } = await import("./login-lane");
+    const lanePaths = LOGIN_LANE as Record<string, string>;
+    expect([lanePaths.emailChange, lanePaths.emailChangeConfirm]).toEqual([
+      "/iam/v1/auth/email-change",
+      "/iam/v1/auth/email-change/confirm",
+    ]);
+  });
+
+  it("F8-S6 Р5 · числа перечней: путей 23, ставящих носитель 11, предъявление — среди них, запрос — нет", async () => {
+    // База — перечни после записей своих сессий (F8-S5): путей 21, ставящих
+    // носитель 10. Смена добавляет два пути и одно предъявление (EC Р8 п. 3).
+    const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE } = await import("./login-lane");
+    const paths = Object.values(LOGIN_LANE).filter((p) => p.startsWith("/iam"));
+    expect({
+      lane: paths.length,
+      setsCarrier: SETS_CARRIER.size,
+      request: [SETS_CARRIER.has("/iam/v1/auth/email-change"), CHANGES_FORM_CONTEXT.has("/iam/v1/auth/email-change")],
+      confirm: [
+        SETS_CARRIER.has("/iam/v1/auth/email-change/confirm"),
+        CHANGES_FORM_CONTEXT.has("/iam/v1/auth/email-change/confirm"),
+      ],
+    }).toEqual({ lane: 23, setsCarrier: 11, request: [false, false], confirm: [true, false] });
+  });
+
+  it("F8-S6 Р1 · запрос смены: признак вида email-change, тело ровно {newEmail, csrfToken}, срок — из Retry-After", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/email-change": { status: 200, body: {}, headers: { "Retry-After": "60" } },
+    });
+    const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
+      .requestEmailChange;
+    expect(typeof change).toBe("function");
+    expect(await change(new FormTokenHolder("email-change" as never), "n@kacho.local")).toEqual({
+      retryAfterSeconds: 60,
+    });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/csrf?form=email-change",
+      "POST /iam/v1/auth/email-change",
+    ]);
+    expect(lane.of("POST", "/iam/v1/auth/email-change")[0].body).toEqual({
+      newEmail: "n@kacho.local",
+      csrfToken: "tok-email-change-1",
+    });
+  });
+
+  it("F8-S6 Р1 · предъявление: признак вида email-change-confirm, тело ровно {code, csrfToken}, код — как введён", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/email-change/confirm": { status: 200, body: { session: { emailVerified: true } } },
+    });
+    const confirm = (loginLane as unknown as Record<string, (h: FormTokenHolder, c: string) => Promise<unknown>>)
+      .confirmEmailChange;
+    expect(typeof confirm).toBe("function");
+    await confirm(new FormTokenHolder("email-change-confirm" as never), " abcde-fghjk ");
+    expect(lane.of("POST", "/iam/v1/auth/email-change/confirm")[0].body).toEqual({
+      code: " abcde-fghjk ",
+      csrfToken: "tok-email-change-confirm-1",
+    });
+  });
+
+  it("F8-S6 Р4 · отказ поля newEmail отмечает ввод newEmail; пустой код — ввод code", () => {
+    const field = (message: string) =>
+      refusalOf(answer(400), JSON.stringify({ code: 3, message, details: [] })).field as string | null;
+    expect([field("Illegal argument newEmail: invalid format"), field("Illegal argument code: required")]).toEqual([
+      "newEmail",
+      "code",
+    ]);
+  });
+
+  it("F8-S6 Р4 · SESSION_NOT_FRESH на запросе смены: повышение «свежесть» и ОДИН повтор", async () => {
+    const asked: StepUpRequest[] = [];
+    setStepUpRequester((r) => {
+      asked.push(r);
+      return Promise.resolve();
+    });
+    lane = installLane({
+      "POST /iam/v1/auth/email-change": (_c, nth) =>
+        nth === 1 ? NOT_FRESH : { status: 200, body: {}, headers: { "Retry-After": "60" } },
+    });
+    const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
+      .requestEmailChange;
+    expect(typeof change).toBe("function");
+    await change(new FormTokenHolder("email-change" as never), "n@kacho.local");
+    expect(asked).toEqual([{ cause: "freshness" }]);
+    expect(lane.of("POST", "/iam/v1/auth/email-change")).toHaveLength(2);
+  });
+});

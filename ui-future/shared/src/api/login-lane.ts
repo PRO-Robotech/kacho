@@ -76,6 +76,11 @@ export const LOGIN_LANE = {
   sessions: "/iam/v1/auth/sessions",
   sessionsEnd: "/iam/v1/auth/sessions/end",
   sessionsEndOthers: "/iam/v1/auth/sessions/end-others",
+  // Смена адреса почты (служба — приёмка EC, Р1; экран — приёмка F8-S6, Р5):
+  // запрос кода на новый адрес и предъявление кода — оба под живой сессией, у
+  // каждого свой вид признака. Носитель ставит только предъявление (EC Р8 п. 3).
+  emailChange: "/iam/v1/auth/email-change",
+  emailChangeConfirm: "/iam/v1/auth/email-change/confirm",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
@@ -96,7 +101,9 @@ export type FormKind =
   | "access-key-login"
   | "recovery"
   | "recovery-complete"
-  | "session-end";
+  | "session-end"
+  | "email-change"
+  | "email-change-confirm";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -183,6 +190,7 @@ const REFUSAL_FIELD_INPUT: Readonly<Record<string, RefusalInput | null>> = {
   password: "password",
   currentPassword: "currentPassword",
   newPassword: "newPassword",
+  newEmail: "newEmail",
   code: "code",
   method: "method",
   "secondFactor.code": "code",
@@ -191,7 +199,7 @@ const REFUSAL_FIELD_INPUT: Readonly<Record<string, RefusalInput | null>> = {
 };
 
 /** Ввод экрана церемонии, который служба может назвать отказом. */
-export type RefusalInput = "email" | "password" | "currentPassword" | "newPassword" | "code" | "method";
+export type RefusalInput = "email" | "password" | "currentPassword" | "newPassword" | "newEmail" | "code" | "method";
 
 const FIELD_REFUSAL = /^Illegal argument (\S+): /;
 
@@ -438,9 +446,10 @@ export class FormTokenHolder {
 
 /**
  * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
- * закрыт, десять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
- * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель; вход ключом доступа —
- * приёмка F8-S4, Р6). Пять переписывают дайджест той же записи — прежний
+ * закрыт, одиннадцать (приёмка F8, Р10, N17; предъявление кода подтверждения
+ * адреса — приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель; вход ключом
+ * доступа — приёмка F8-S4, Р6; предъявление кода смены адреса — приёмка F8-S6,
+ * Р5, EC Р8 п. 3). Шесть переписывают дайджест той же записи — прежний
  * носитель с этого момента негоден; пять заводят новую запись.
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
@@ -461,6 +470,9 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   // Вход ключом доступа выдаёт сессию той же операцией, что вход паролем (Ф13
   // Р4; приёмка F8-S4, Р6). Испытание входа носителя не ставит — его здесь нет.
   "/iam/v1/auth/access-key/login",
+  // Предъявление кода смены адреса перевыпускает носитель той же сессии (EC Р8
+  // п. 3; F8-S6, Р5). Запрос кода носителя не ставит — его здесь нет.
+  "/iam/v1/auth/email-change/confirm",
 ]);
 
 /** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
@@ -636,6 +648,27 @@ export const loginLane = {
     );
   },
   /**
+   * Запрос смены адреса почты (EC, Р1; F8-S6, Р3). Тело — РОВНО `{newEmail,
+   * csrfToken}`: адрес уходит как введён, своего суждения о его форме и
+   * занятости консоль не выносит (Р2; EC Р4 — ответ на занятый побайтово тот же,
+   * что на свободный). Срок до следующего запроса — ТОЛЬКО заголовок
+   * `Retry-After` ответа. Глагол требует свежего предъявления: отказ свежести
+   * ведёт к повышению и ОДНОМУ повтору (F8-S6, Р4).
+   */
+  requestEmailChange(holder: FormTokenHolder, newEmail: string) {
+    return submit<EmailChangeRequested>(holder, LOGIN_LANE.emailChange, { newEmail }, true, false, ({ res }) => ({
+      retryAfterSeconds: retryAfterOf(res),
+    }));
+  },
+  /**
+   * Предъявление кода смены (EC, Р1). Тело — РОВНО `{code, csrfToken}`; код
+   * уходит как введён, в том числе пустым: отказ о пустом коде называет служба
+   * (F8-S6, Р3, F8S6-12). Успех перевыпускает носитель (`SETS_CARRIER`).
+   */
+  confirmEmailChange(holder: FormTokenHolder, code: string) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.emailChangeConfirm, { code }, true);
+  },
+  /**
    * Перечень своих живых сессий (OS, Р4; F8-S5, Р2) — страница за страницей
    * тем же путём; порядок — порядок службы, консоль его не переставляет.
    * Признака формы чтение не берёт.
@@ -762,6 +795,11 @@ function ownSessionsPageOf({ res, text }: Answered): OwnSessionsPage {
     sessions.push(s);
   }
   return { sessions, nextPageToken: typeof body.nextPageToken === "string" ? body.nextPageToken : "" };
+}
+
+/** Исход запроса смены адреса: срок до следующего запроса — из ответа службы, либо `null`. */
+export interface EmailChangeRequested {
+  retryAfterSeconds: number | null;
 }
 
 /** Исход запроса письма: срок до следующего — из ответа службы, либо `null`. */

@@ -50,7 +50,14 @@ describe("параметры учётной записи", () => {
     const account = await screen.findByRole("region", { name: "Учётная запись" });
     expect(account).toHaveTextContent("a@kacho.local");
     expect(account).toHaveTextContent("Адрес не подтверждён");
-    expect(within(account).queryByRole("button")).toBeNull();
+    // Единственное действие раздела — смена адреса (приёмка F8-S6, Р3, покой);
+    // «подтвердить» среди действий нет.
+    expect(
+      within(account)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Сменить адрес"]);
+    expect(within(account).queryByRole("button", { name: /подтвердить/i })).toBeNull();
   });
 
   it("F8-23 · смена пароля зовёт наш глагол с признаком своего вида", async () => {
@@ -1129,5 +1136,285 @@ describe("свои сессии (F8-S5)", () => {
       );
     const at = (t: string) => titles.indexOf(t);
     expect(at("Сессии")).toBe(at("Второй фактор") + 1);
+  });
+});
+
+// ═══ F8-S6 — смена адреса почты в разделе «Учётная запись» ═════════════════
+//
+// Три состояния раздела (Р3) и отказы (Р4). Дублёр отвечает телами и
+// заголовками производителя: запрос смены — `200 {}` с `Retry-After`
+// (`loginlanehttp.requestEmailChange`), предъявление — `{session}` той же формы,
+// что у `verify-email/confirm`, отказы — `google.rpc.Status`.
+
+const NEW_EMAIL = "n@kacho.local";
+const CHANGE = "/iam/v1/auth/email-change";
+const CHANGE_CONFIRM = "/iam/v1/auth/email-change/confirm";
+const CONFIRMED_SESSION = { ...SESSION, emailVerified: true };
+const CHANGED_ME: LaneAnswer = {
+  status: 200,
+  body: { user: { id: "usr-1", email: NEW_EMAIL, displayName: "a" }, session: CONFIRMED_SESSION },
+};
+const VERIFIED_ME: LaneAnswer = {
+  status: 200,
+  body: { user: { id: "usr-1", email: "a@kacho.local", displayName: "a" }, session: CONFIRMED_SESSION },
+};
+const CHANGE_ACCEPTED = (retryAfter: string): LaneAnswer => ({
+  status: 200,
+  body: {},
+  headers: { "Retry-After": retryAfter },
+});
+const AUTHN_FAILED = refusal(401, 16, "authentication failed");
+
+function renderPageLeaving(leave: (to: string) => void) {
+  render(
+    <MemoryRouter initialEntries={["/settings"]}>
+      <AccountSettingsPage leave={leave} />
+    </MemoryRouter>,
+  );
+}
+
+async function accountRegion() {
+  return screen.findByRole("region", { name: "Учётная запись" });
+}
+
+/** Покой → форма → «Отправить код» с адресом `email`. */
+async function submitNewEmail(region: HTMLElement, email = NEW_EMAIL) {
+  fireEvent.click(await within(region).findByRole("button", { name: "Сменить адрес" }));
+  fireEvent.change(await within(region).findByLabelText("Новый адрес"), { target: { value: email } });
+  fireEvent.click(within(region).getByRole("button", { name: "Отправить код" }));
+}
+
+/** Состояние «код»: строка письма видна. */
+async function codeState(region: HTMLElement, email = NEW_EMAIL) {
+  return within(region).findByText(`Письмо с кодом отправлено на ${email}, если этот адрес может быть использован`);
+}
+
+function enterCode(region: HTMLElement, code: string) {
+  fireEvent.change(within(region).getByLabelText("Код из письма"), { target: { value: code } });
+  fireEvent.click(within(region).getByRole("button", { name: "Подтвердить" }));
+}
+
+describe("смена адреса почты (F8-S6)", () => {
+  it("F8S6-01 · покой → форма → код → подтверждение: отсчёт по Retry-After, затем новый адрес и «Адрес подтверждён»", async () => {
+    let changed = false;
+    lane = installLane({
+      "GET /iam/v1/auth/me": () => (changed ? CHANGED_ME : VERIFIED_ME),
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: () => {
+        changed = true;
+        return { status: 200, body: { session: CONFIRMED_SESSION } };
+      },
+    });
+    renderPage();
+    const region = await accountRegion();
+    expect(region).toHaveTextContent("a@kacho.local");
+    await submitNewEmail(region);
+    await codeState(region);
+    expect(within(region).getByText("Отправить снова можно через 60 с")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Отправить снова" })).toBeDisabled();
+    enterCode(region, "ABCDE-FGHJK");
+    // Покой — и адрес раздела уже новый: строка письма с N ушла вместе с кодом.
+    expect(await within(region).findByRole("button", { name: "Сменить адрес" })).toBeInTheDocument();
+    await waitFor(() => expect(region).not.toHaveTextContent("a@kacho.local"));
+    expect(region).toHaveTextContent(NEW_EMAIL);
+    expect(region).toHaveTextContent("Адрес подтверждён");
+    expect(within(region).queryByText(/Письмо с кодом отправлено/)).toBeNull();
+    expect(lane.of("POST", CHANGE)[0].body).toEqual({ newEmail: NEW_EMAIL, csrfToken: "tok-email-change-1" });
+    expect(lane.of("POST", CHANGE_CONFIRM)[0].body).toEqual({
+      code: "ABCDE-FGHJK",
+      csrfToken: "tok-email-change-confirm-1",
+    });
+    // «Кто я» после успеха спрошен заново — новый адрес берётся у края.
+    expect(lane.of("GET", "/iam/v1/auth/me").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("F8S6-13 · «Отмена» из формы и из кода возвращает в покой и глаголов не зовёт", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    fireEvent.click(await within(region).findByRole("button", { name: "Сменить адрес" }));
+    fireEvent.change(await within(region).findByLabelText("Новый адрес"), { target: { value: NEW_EMAIL } });
+    fireEvent.click(within(region).getByRole("button", { name: "Отмена" }));
+    expect(await within(region).findByRole("button", { name: "Сменить адрес" })).toBeInTheDocument();
+    expect(within(region).queryByLabelText("Новый адрес")).toBeNull();
+    expect(lane.of("POST", CHANGE)).toHaveLength(0);
+
+    await submitNewEmail(region);
+    await codeState(region);
+    fireEvent.click(within(region).getByRole("button", { name: "Отмена" }));
+    expect(await within(region).findByRole("button", { name: "Сменить адрес" })).toBeInTheDocument();
+    expect(region).toHaveTextContent("a@kacho.local");
+    expect(lane.of("POST", CHANGE)).toHaveLength(1);
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
+  });
+
+  it("F8S6-07 · отказ поля newEmail — у поля, дословно; состояние «форма»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: refusal(400, 3, "Illegal argument newEmail: invalid format"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region, "not-an-address");
+    const input = within(region).getByLabelText("Новый адрес");
+    await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
+    expect(within(region).getByText("Illegal argument newEmail: invalid format")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Отправить код" })).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
+  });
+
+  it("F8S6-06 · 429: «Слишком много попыток», отсчёт с Retry-After, «Отправить код» выключена; близнец — состояние «код»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: (_c, nth) =>
+        nth === 1
+          ? {
+              ...refusal(429, 8, "too many attempts; try again later", "TOO_MANY_ATTEMPTS"),
+              headers: { "Retry-After": "42" },
+            }
+          : CHANGE_ACCEPTED("60"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    expect(await within(region).findByText("Слишком много попыток")).toBeInTheDocument();
+    expect(within(region).getByText("Отправить код можно через 42 с")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Отправить код" })).toBeDisabled();
+    expect(within(region).queryByText(/Письмо с кодом отправлено/)).toBeNull();
+    expect(lane.of("POST", CHANGE)).toHaveLength(1);
+  });
+
+  it("F8S6-04 · 401 на предъявлении и «кто я» 200: «Код не подошёл», поле кода очищено, состояние «код»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: AUTHN_FAILED,
+    });
+    const leave = jest.fn();
+    renderPageLeaving(leave);
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const meBefore = lane.of("GET", "/iam/v1/auth/me").length;
+    enterCode(region, "WRONG-CODE0");
+    expect(await within(region).findByText("Код не подошёл")).toBeInTheDocument();
+    expect(within(region).getByLabelText<HTMLInputElement>("Код из письма").value).toBe("");
+    await codeState(region);
+    expect(region).toHaveTextContent("a@kacho.local");
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(1);
+    expect(lane.of("GET", "/iam/v1/auth/me").length - meBefore).toBe(1);
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it("F8S6-09 · 401 на предъявлении и «сессии нет»: экран входа, «Код не подошёл» нет, второго предъявления нет", async () => {
+    let loggedOut = false;
+    lane = installLane({
+      "GET /iam/v1/auth/me": () => (loggedOut ? { status: 200, body: { user: null } } : VERIFIED_ME),
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: () => {
+        loggedOut = true;
+        return AUTHN_FAILED;
+      },
+    });
+    const leave = jest.fn();
+    renderPageLeaving(leave);
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    enterCode(region, "ABCDE-FGHJK");
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/login?returnTo=%2Fsettings"));
+    expect(within(region).queryByText("Код не подошёл")).toBeNull();
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(1);
+  });
+
+  it("F8S6-05 · 409 EMAIL_IN_USE: «Этот адрес уже используется» и состояние «форма», адрес прежний", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: refusal(409, 6, "email address is already in use", "EMAIL_IN_USE"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    enterCode(region, "ABCDE-FGHJK");
+    expect(await within(region).findByText("Этот адрес уже используется")).toBeInTheDocument();
+    expect(within(region).getByLabelText("Новый адрес")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Отправить код" })).toBeInTheDocument();
+    expect(within(region).queryByLabelText("Код из письма")).toBeNull();
+    expect(region).toHaveTextContent("a@kacho.local");
+  });
+
+  it("F8S6-12 · пустой код уходит к службе; отказ code — у поля, без вопроса «кто я»; состояние «код»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: refusal(400, 3, "Illegal argument code: required"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const codeInput = within(region).getByLabelText("Код из письма");
+    expect(codeInput).not.toHaveAttribute("required");
+    const meBefore = lane.of("GET", "/iam/v1/auth/me").length;
+    const confirm = within(region).getByRole("button", { name: "Подтвердить" });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(codeInput).toHaveAttribute("aria-invalid", "true"));
+    expect(within(region).getByText("Illegal argument code: required")).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE_CONFIRM)[0].body).toEqual({ code: "", csrfToken: "tok-email-change-confirm-1" });
+    expect(lane.of("GET", "/iam/v1/auth/me").length).toBe(meBefore);
+    await codeState(region);
+  });
+
+  it("F8S6-08 · ответ края на молчание службы: назван, «кто я» не спрошен, состояние «код»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const meBefore = lane.of("GET", "/iam/v1/auth/me").length;
+    enterCode(region, "ABCDE-FGHJK");
+    expect(await within(region).findByRole("alert")).toHaveTextContent("credential state could not be established");
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(1);
+    expect(lane.of("GET", "/iam/v1/auth/me").length).toBe(meBefore);
+    await codeState(region);
+  });
+
+  it("F8S6-14 · «Отправить снова» включается концом отсчёта и зовёт запрос с тем же адресом, отсчёт — по новому ответу", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      [`POST ${CHANGE}`]: (_c, nth) => CHANGE_ACCEPTED(nth === 1 ? "1" : "60"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const again = within(region).getByRole("button", { name: "Отправить снова" });
+    expect(again).toBeDisabled();
+    await waitFor(() => expect(again).toBeEnabled(), { timeout: 3000 });
+    fireEvent.click(again);
+    expect(await within(region).findByText("Отправить снова можно через 60 с")).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL]);
+    await codeState(region);
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
   });
 });

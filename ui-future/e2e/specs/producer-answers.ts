@@ -101,6 +101,31 @@ export function laneTooManyAttempts(retryAfterSeconds: number): ProducerAnswer {
   return { ...answer, headers: { ...answer.headers, "Retry-After": String(retryAfterSeconds) } };
 }
 
+/**
+ * F8S6-06 (приёмка F8-S6, F8 Р9): исчерпанный темп запроса смены адреса — тот
+ * же `writeError`, ветвь `TooManyAttemptsError` (EC Р6), на `POST
+ * /iam/v1/auth/email-change`. Срок 42 с — вход сценария, а не счёт службы.
+ */
+export const EMAIL_CHANGE_TOO_MANY_ATTEMPTS: ProducerAnswer = {
+  ...laneTooManyAttempts(42),
+  producer:
+    "kaname loginlanehttp.requestEmailChange → writeError → Retry-After + writeRefusal(429, RESOURCE_EXHAUSTED, TextTooManyAttempts, TOO_MANY_ATTEMPTS)",
+};
+
+/**
+ * F8S6-14 (приёмка F8-S6, F8 Р9, ось 3а): принятый запрос смены с НАИМЕНЬШИМ
+ * сроком, который служба производит, — `requestEmailChange`: `Retry-After` из
+ * `retryAfterSeconds` (округление вверх, не меньше одной секунды) и
+ * `writeJSON(200, map{})` — тело `{}` без перевода строки (`json.Marshal`).
+ */
+export const EMAIL_CHANGE_ACCEPTED_SOONEST: ProducerAnswer = {
+  producer:
+    "kaname loginlanehttp.requestEmailChange → Retry-After retryAfterSeconds(≥1) + writeJSON(200, map[string]any{})",
+  status: 200,
+  headers: { ...LANE_HEADERS, "Retry-After": "1" },
+  body: "{}",
+};
+
 /** Сессия не свежа — `ErrSessionNotFresh`. */
 export const SESSION_NOT_FRESH = laneRefusal(
   "kaname loginlanehttp.writeError → writeRefusal(403, PERMISSION_DENIED, TextSessionNotFresh, SESSION_NOT_FRESH)",
