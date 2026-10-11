@@ -138,11 +138,15 @@ ingress-nginx:
 # `**/values.*-secrets.yaml`). `make stack-up STACK=a8f60d` кладёт его
 # последним и взводит `global.kacho.siteLayer.enforced`: стенд, у которого
 # слоя нет, в рендере ОТКАЗЫВАЕТ (templates/site-layer-guard.yaml), а не
-# поднимается с неразрешимым узлом. Слой несёт ровно эти четыре величины:
+# поднимается с неразрешимым узлом. Слой несёт ровно эти величины:
 #
 #   global.kacho.identity.smtp.connectionURI  (схема smtps, учётка, узел, порт)
 #   global.kacho.identity.smtp.fromAddress
 #   global.kacho.identity.appBaseURL          (https://<имя стенда>)
+#   издатель платформы в семи местах          (то же происхождение, что appBaseURL;
+#                                             kacho#3113, «ИЗДАТЕЛЬ ПЛАТФОРМЫ» ниже):
+#     kaname.config.authn.tokenSigning.issuer
+#     {api-gateway,registry}.tokenAcceptance.{issuers,issuerKeySets,platformIssuer}
 #   uif.publicFront.clientAddress.proxyProtocol.trustedFrom
 #                                             (адрес звена балансировки, kacho#3115;
 #                                             судится, когда приём включён)
@@ -399,17 +403,30 @@ storage:
     repository: docker.io/prorobotech/kacho-storage
     tag: 1266-2785517d
     pullPolicy: IfNotPresent
-# ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
+# ── ИЗДАТЕЛЬ ПЛАТФОРМЫ — НА ПРОИСХОЖДЕНИИ КОНСОЛИ СТЕНДА (kacho#3113) ──────
 #
-# Накладка описывает образы и размеры, а приём identity-JWT берёт у слоя под
-# собой. Сказано это здесь потому, что поиск по ОДНОМУ файлу профиля даёт ноль
-# попаданий, и ноль читается как «забыли»: по такому чтению уже заводилась
-# задача о том, что реестр не поднимется, при исправной цепочке.
+# Документ обнаружения сервера авторизации (RFC 8414, путь
+# /.well-known/oauth-authorization-server на внешнем входе консоли) служба
+# доступа выводит из ОДНОЙ величины — издателя своей чеканки: issuer,
+# authorization_endpoint и token_endpoint стоят на его происхождении. Слой
+# values.dev-prod.yaml называет издателем имя разработки, которое вне кластера
+# не разрешается; унаследованное, оно публиковало бы снаружи адреса в никуда,
+# а токены этого стенда несли бы `iss` стенда разработки.
 #
-# Строка ниже машинная: проверка требует, чтобы названный слой действительно
-# объявлял приём и стоял в цепочке ПЕРЕД этим файлом. Наследование, потерявшее
-# предмет, роняет TestProfilesSilentAboutTokenAcceptanceSayWhyTheyAreSilent.
-# приём токена наследуется от: values.dev-prod.yaml
+# Поэтому издатель объявлен здесь — в семи местах, где его называют чеканка
+# (kaname ниже) и оба потребителя (реестр ниже, край ниже), — ЗАГЛУШКОЙ того
+# же происхождения, что global.kacho.identity.appBaseURL. Настоящее приходит
+# слоем площадки вне git вместе с адресом консоли; страж слоя
+# (templates/site-layer-guard.yaml) не пускает к кластеру ни оставленную
+# заглушку издателя, ни разошедшиеся копии. Издатель ОБЪЯВЛЯЕТСЯ, а не
+# выводится из адреса консоли шаблоном: адрес, производный от адреса соседа,
+# держит контроль на чужой величине (hard-no-derived-security-address).
+# Согласие семи мест между собой судит deploy/own_minting_census_test.go,
+# согласие с происхождением консоли —
+# helm/umbrella/identity_issuer_origin_test.go.
+#
+# Остальной приём (адрес отзыва, его удостоверение, тип токена) наследуется у
+# values.dev-prod.yaml: helm складывает карты по ключам.
 registry:
   resources: *id002
   image:
@@ -441,6 +458,14 @@ registry:
     storage:
       persistence: false
     resources: *id002
+  # Авторитет отзыва — тем же значением, что у слоя values.dev-prod.yaml и у
+  # края ниже: одна платформа, один авторитет (gateway/deploy,
+  # TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform).
+  tokenAcceptance:
+    issuers: "https://console.a8f60d.invalid"
+    issuerKeySets: "https://console.a8f60d.invalid=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    platformIssuer: "https://console.a8f60d.invalid"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 api-gateway:
   resources: *id002
   image: docker.io/prorobotech/kacho-api-gateway:1266-2785517d
@@ -472,6 +497,23 @@ api-gateway:
       - fc00::/7
     trustedPeers:
       - api-gateway-front-console
+  # Издатель платформы — см. «ИЗДАТЕЛЬ ПЛАТФОРМЫ» над реестром (kacho#3113).
+  # Авторитет отзыва, его якорь и удостоверение края к нему — теми же
+  # значениями, что у слоя values.dev-prod.yaml: профиль, объявляющий краю приём
+  # нашего издателя, объявляет приём ЦЕЛИКОМ, с которым процесс поднимется
+  # (gateway/deploy/f1b_token_acceptance_declared_test.go). Величины не меняются.
+  tokenAcceptance:
+    issuers: "https://console.a8f60d.invalid"
+    issuerKeySets: "https://console.a8f60d.invalid=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    platformIssuer: "https://console.a8f60d.invalid"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationCa:
+      secretName: kaname-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/platform-revocation-ca
+    revocationClientCert:
+      certFile: /etc/api-gateway/mtls/tls.crt
+      keyFile: /etc/api-gateway/mtls/tls.key
 kaname:
   # Предел службы доступа ВЫВЕДЕН из общего якоря `*id002` (448Mi), как и у
   # базы iam выше: коридор ёмкости проверяющего задают ДВА правила пина, и при
@@ -537,6 +579,38 @@ kaname:
       accessKeys:
         originFromConsole: false
         origins: []
+      # СВОЯ ЧЕКАНКА И ТОКЕН-ЭНДПОИНТ — ЦЕЛИКОМ (kacho#3113). Издатель чеканки —
+      # см. «ИЗДАТЕЛЬ ПЛАТФОРМЫ» над реестром: из него служба выводит все адреса
+      # документа обнаружения. Остальные величины — ТЕМИ ЖЕ значениями, что у
+      # слоя values.dev-prod.yaml, и повторены здесь не по выбору: профиль,
+      # объявляющий краю приём нашего издателя, называет в том же файле и выпуск
+      # предъявителя (gateway/deploy/f1b_token_acceptance_declared_test.go), а
+      # профиль, поднимающий токен-эндпоинт, объявляет все его величины и свою
+      # чеканку (deploy/client_token_declaration_test.go), а профиль со своей
+      # чеканкой — читателя предъявленного (deploy/presented_credential_declaration_test.go).
+      # Величины не меняются.
+      presentedCredential:
+        enabled: true
+        audience: "https://api.kacho.cloud"
+        revocationCacheTtl: "30s"
+      tokenSigning:
+        enabled: true
+        issuer: "https://console.a8f60d.invalid"
+        algorithm: ES256
+        allowedAlgorithms: "ES256,RS256"
+        keySetPath: /.well-known/kaname/jwks.json
+      clientToken:
+        enabled: true
+        allowedAudiences: "https://api.kacho.cloud,registry.in-cloud.io"
+        defaultAudience: "registry.in-cloud.io"
+        tokenTtl: "15m"
+        bodyCeiling: 65536
+        inFlightCeiling: 12
+        exchangesPerClientPerSec: 5
+        failedProofsPerSource: 50
+        failedProofWindow: 15m
+        authorizePerSourcePerSec: 10
+        authorizeInFlightCeiling: 12
   image:
     repository: docker.io/prorobotech/kaname
     # ЕДИНСТВЕННЫЙ образ профиля, чей тег НЕ выводится из записи «порождено-от»
