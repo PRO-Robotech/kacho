@@ -103,6 +103,9 @@ jobs:
           BASE: ${{ github.event.pull_request.base.ref }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+        # defaults.run этого процесса — ui-future, а детектор берёт из выборки только
+        # .github: без корня шаг не стартует, и все задания процесса пропущены.
+        working-directory: .
         run: python3 .github/scripts/affected.py --github-output ui.yml
 
   typecheck:

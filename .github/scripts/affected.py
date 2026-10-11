@@ -274,6 +274,17 @@ def check_wiring(m: PathMap, workflows: Path) -> list[str]:
             continue
         if detector not in jobs:
             findings.append(f"{wf.name}: детектор «{detector}» объявлен картой, а задания нет")
+        else:
+            # Детектор берёт из выборки только .github: каталог по умолчанию процесса
+            # (defaults.run.working-directory) его шаг не переживёт — шаг не стартует,
+            # и все задания процесса пропущены (ui.yml, kacho#3149).
+            wd = ((doc.get("defaults") or {}).get("run") or {}).get("working-directory")
+            steps = (jobs[detector] or {}).get("steps") or []
+            runs = [st for st in steps if isinstance(st, dict) and "run" in st]
+            if wd and wd != "." and not all(st.get("working-directory") == "." for st in runs):
+                findings.append(f"{wf.name}: детектор «{detector}» исполняется в каталоге по "
+                                f"умолчанию «{wd}», которого в его выборке нет — нужен "
+                                f"working-directory: .")
         for jid, job in jobs.items():
             key = f"{wf.name}:{jid}"
             examined += 1

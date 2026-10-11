@@ -155,6 +155,18 @@ class Wiring(unittest.TestCase):
         self.assertEqual(len(found), 1, found)
         self.assertIn("ci.yaml:lint", found[0])
 
+    def test_detector_without_root_working_directory_is_found(self):
+        wf = self._copy()
+        p = wf / "ui.yml"
+        text = p.read_text(encoding="utf-8")
+        line = "        working-directory: .\n        run: python3 .github/scripts/affected.py"
+        self.assertIn(line, text)
+        p.write_text(text.replace(line, "        run: python3 .github/scripts/affected.py"),
+                     encoding="utf-8")
+        found = affected.check_wiring(MAP, wf)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("ui.yml: детектор", found[0])
+
     def test_job_missing_from_map_is_found(self):
         m = affected.load_map()
         for g in m.groups:
