@@ -176,7 +176,7 @@ if [ "${1:-}" = "--self-test" ]; then
        -e 's|annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9095"}|annotations: {kacho.cloud/metrics-scrape-disabled-because: "проба"}|')"
   # Инъекция в настоящий рендер: незаданное пространство мониторинга — отказ
   # рендера с именем ключа; близнец — то же с заданным — рендер проходит.
-  stack_args="$(stacks_args prod "$UMBRELLA")"
+  stack_args="$(stacks_args prod "$UMBRELLA")" || { echo "  ✗ цепочка prod не прочитана — инъекции некуда попасть"; exit 2; }
   # shellcheck disable=SC2086
   helm_try kacho-umbrella "$UMBRELLA" $stack_args --set "$KNOB="
   if [ "$HELM_RC" -ne 0 ] && [[ "$HELM_ERR" == *"$KNOB"* ]]; then
@@ -191,10 +191,17 @@ if [ "${1:-}" = "--self-test" ]; then
   exit "$rc"
 fi
 
+# Код читателя перечня потребован у обоих вызовов (шапка stacks.sh, «КОД ОТКАЗА
+# ТАБЛИЦЫ ПОТРЕБОВАН КАЖДЫМ ПРОИЗВОДНЫМ»): потерянный отказ дал бы пустой обход
+# либо helm без единого -f.
+STACKS="$(stacks_names)" || fatal "таблица стеков не прочитана — обходить нечего"
+[ -n "$STACKS" ] || fatal "таблица стеков не дала ни одного имени — обходить нечего"
 judged=0
-while IFS= read -r stack; do
-  # shellcheck disable=SC2046
-  render "цепочка $stack" $(stacks_args "$stack" "$UMBRELLA")
+for stack in $STACKS; do
+  args="$(stacks_args "$stack" "$UMBRELLA")" \
+    || fatal "цепочка $stack не прочитана — helm без единого -f сел бы на умолчания чарта"
+  # shellcheck disable=SC2086
+  render "цепочка $stack" $args
   out="$(check "$RENDER_FILE" 2>"$RENDER_FILE.scope")"
   scope="$(cat "$RENDER_FILE.scope")"; rm -f "$RENDER_FILE" "$RENDER_FILE.scope"
   echo "  цепочка $stack: $scope"
@@ -203,6 +210,6 @@ while IFS= read -r stack; do
     while IFS= read -r l; do violation "цепочка $stack: $l"; done <<<"$out"
   fi
   ok
-done < <(stacks_names)
+done
 [ "$judged" -gt 0 ] || fail "ни в одной цепочке нет правила порта сбора края — «находок ноль» значило бы «осматривать нечего»"
 findings_verdict "правил порта сбора осмотрено $judged"
