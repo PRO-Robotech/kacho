@@ -305,6 +305,22 @@ func (m *AuthzMiddleware) MaybeFlushOnMutation(fqn string, httpStatus int) {
 	m.cfg.Logger.Info("authz decision-cache flushed on grant mutation", "fqn", fqn)
 }
 
+// maybeFlushOnLoginLaneOutcome гасит кеш решений, когда ретранслированный путь
+// полосы формы объявлен исходом (`flushesDecisionCacheOnSuccess`, приёмка F8-S6
+// Р2) и служба ответила 2xx. Путь полосы имени метода не несёт, поэтому
+// решение берётся из объявления путей, а не из `subjectChangingFQNs`; сброс —
+// тот же `Invalidate`, что у самосброса по имени метода.
+func (m *AuthzMiddleware) maybeFlushOnLoginLaneOutcome(path string, httpStatus int) {
+	if m.cache == nil || httpStatus < 200 || httpStatus >= 300 {
+		return
+	}
+	if !loginLaneFlushesDecisionCacheOnSuccess(path) {
+		return
+	}
+	m.cache.Invalidate()
+	m.cfg.Logger.Info("authz decision-cache flushed on login lane outcome", "path", path)
+}
+
 // InvalidateCache flushes the whole authz decision cache. Used by the
 // subject-change watcher to converge this replica after a grant change
 // observed on another replica. No-op when authz is disabled (cache is nil).
@@ -489,7 +505,13 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			// живости. Полоса нужна ровно затем, чтобы путь, которому в списке не
 			// место, был виден, а не растворялся в тишине (#798).
 			m.metrics.RecordPublicPath()
-			next.ServeHTTP(w, r)
+			if !loginLaneFlushesDecisionCacheOnSuccess(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rw := newResponseWriter(w)
+			next.ServeHTTP(rw, r)
+			m.maybeFlushOnLoginLaneOutcome(r.URL.Path, rw.statusCode)
 			return
 		}
 		// ЗДЕСЬ СТОЯЛ отказ «требуется сменить пароль» (Ф3 Р8 прежних редакций):
