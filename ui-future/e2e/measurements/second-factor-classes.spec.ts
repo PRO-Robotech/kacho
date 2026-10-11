@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type TestInfo } from "@playwright/test";
-import { noteRefusal, recordableRefusal } from "../specs/ceremony-budget";
 import {
   LANE,
   SEED_PASSWORD,
   backupCodeOutside,
   codeOutsideWindow,
+  lastIssued,
   newSeed,
   seedAddress,
   seedConfirmedHuman,
@@ -17,10 +17,7 @@ import {
   type Seed,
 } from "../specs/ceremony-seed";
 import { test } from "../specs/fixtures";
-import {
-  AUTHENTICATION_FAILED,
-  LOGIN_WITH_SECOND_FACTOR_FAILED,
-} from "../specs/lane-texts";
+import { AUTHENTICATION_FAILED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "../specs/lane-texts";
 import { conditionNotCreated } from "../specs/mail-receiver";
 import { signedIn } from "../specs/session-lane";
 
@@ -96,8 +93,7 @@ const C_ROUNDS = 4;
 
 const WRONG_PASSWORD = `${SEED_PASSWORD}-not-it`;
 
-type ClassId =
-  "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11";
+type ClassId = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11";
 
 /** Пары критерия — ровно названные «Тогда» Ф12-33. */
 const PAIRS: ReadonlyArray<readonly [ClassId, ClassId]> = [
@@ -133,28 +129,14 @@ interface Sample {
 }
 
 /**
- * Одно обращение: признак формы берётся ДО отсчёта, мерится только POST глагола.
- * Отказ идёт в запись сторожа бюджета тем же правилом, что у посева.
+ * Одно обращение: признак формы берётся ДО отсчёта, мерится только POST глагола
+ * (`Seed.submitTimed`). Отказ идёт в запись сторожа бюджета тем же путём, что у
+ * всякого обращения посева.
  */
-async function timed(
-  seed: Seed,
-  path: string,
-  kind: FormKind,
-  body: Record<string, unknown>,
-): Promise<Sample> {
-  const csrfToken = await seed.formToken(kind);
-  const t0 = performance.now();
-  const res = await seed.api.post(path, { data: { ...body, csrfToken } });
-  const text = await res.text();
-  const ms = performance.now() - t0;
-  const refused = recordableRefusal(path, res.status(), text);
-  if (refused) noteRefusal(test.info().testId, refused);
-  let parsed: { code?: unknown; message?: unknown } = {};
-  try {
-    parsed = JSON.parse(text) as typeof parsed;
-  } catch {
-    // Тело не JSON — утверждение ниже назовёт его статусом.
-  }
+async function timed(seed: Seed, path: string, kind: FormKind, body: Record<string, unknown>): Promise<Sample> {
+  const { res, ms } = await seed.submitTimed(path, kind, body);
+  const answer = lastIssued(seed, path).body as { code?: unknown; message?: unknown } | string | null;
+  const parsed = answer && typeof answer === "object" ? answer : {};
   return {
     ms,
     status: res.status(),
@@ -211,10 +193,7 @@ async function seedPerson(
   if (factor === "pending") {
     // Строка `pending` (Ф12-13): заведение без подтверждения.
     const res = await seed.submit(LANE.enroll, "second-factor", {});
-    expect(
-      res.status(),
-      `посев C: заведение фактора без подтверждения отвергнуто — ${res.status()}`,
-    ).toBe(200);
+    expect(res.status(), `посев C: заведение фактора без подтверждения отвергнуто — ${res.status()}`).toBe(200);
   }
   return {
     email: human.email,
@@ -238,11 +217,9 @@ test("Ф12-33 · одиннадцать классов отказа неразл
     const a2 = await seedPerson(testInfo, seeds, "a2", "active");
     const d = await seedPerson(testInfo, seeds, "d", "active");
     const bs: Human[] = [];
-    for (let r = 0; r < N; r++)
-      bs.push(await seedPerson(testInfo, seeds, `b${r}`, "none"));
+    for (let r = 0; r < N; r++) bs.push(await seedPerson(testInfo, seeds, `b${r}`, "none"));
     const cs: Human[] = [];
-    for (let i = 0; i < Math.ceil(N / C_ROUNDS); i++)
-      cs.push(await seedPerson(testInfo, seeds, `c${i}`, "pending"));
+    for (let i = 0; i < Math.ceil(N / C_ROUNDS); i++) cs.push(await seedPerson(testInfo, seeds, `c${i}`, "pending"));
 
     // Дверь входа: контекст без сессии, общий всем отказам входа — форма
     // запроса одна, отличие пары — один факт (личность либо поле).
@@ -250,10 +227,8 @@ test("Ф12-33 · одиннадцать классов отказа неразл
     seeds.push(door);
 
     const samples = new Map<ClassId, Sample[]>();
-    const add = (c: ClassId, s: Sample) =>
-      samples.set(c, [...(samples.get(c) ?? []), s]);
-    const login = (body: Record<string, unknown>) =>
-      timed(door, LANE.login, "login", body);
+    const add = (c: ClassId, s: Sample) => samples.set(c, [...(samples.get(c) ?? []), s]);
+    const login = (body: Record<string, unknown>) => timed(door, LANE.login, "login", body);
 
     const started = performance.now();
     let step = stepOf(Date.now());
@@ -275,27 +250,16 @@ test("Ф12-33 · одиннадцать классов отказа неразл
           password: who.password,
           secondFactor: { method: "totp", code },
         });
-        expect(
-          ok.status,
-          `круг ${round + 1}: вход ${who.email} кодом своего шага — условие замера`,
-        ).toBe(200);
+        expect(ok.status, `круг ${round + 1}: вход ${who.email} кодом своего шага — условие замера`).toBe(200);
       }
-      const dSession = await signedIn(
-        testInfo,
-        d.email,
-        d.password,
-        `D круг ${round + 1}`,
-      );
+      const dSession = await signedIn(testInfo, d.email, d.password, `D круг ${round + 1}`);
       seeds.push(dSession);
       const c6code = totpCode(d.secret, at);
       const raised = await timed(dSession, LANE.stepUp, "step-up", {
         method: "totp",
         code: c6code,
       });
-      expect(
-        raised.status,
-        `круг ${round + 1}: повышение D кодом своего шага — условие замера`,
-      ).toBe(200);
+      expect(raised.status, `круг ${round + 1}: повышение D кодом своего шага — условие замера`).toBe(200);
 
       const wrongCode = codeOutsideWindow(a1.secret, at);
       const wrongBackup = backupCodeOutside(a1.backupCodes);
@@ -400,16 +364,12 @@ test("Ф12-33 · одиннадцать классов отказа неразл
           s.status,
           `класс (${cls}), круг ${round + 1}: отказ по частоте — Ф12-33 требует ни одного (${JSON.stringify(s)})`,
         ).not.toBe(429);
-        expect(
-          { status: s.status, code: s.code },
-          `класс (${cls}), круг ${round + 1}: отказ — 401, code 16`,
-        ).toEqual({ status: 401, code: 16 });
+        expect({ status: s.status, code: s.code }, `класс (${cls}), круг ${round + 1}: отказ — 401, code 16`).toEqual({
+          status: 401,
+          code: 16,
+        });
         const text = EXPECTED_TEXT[cls];
-        if (text)
-          expect(
-            s.message,
-            `класс (${cls}), круг ${round + 1}: текст отказа`,
-          ).toBe(text);
+        if (text) expect(s.message, `класс (${cls}), круг ${round + 1}: текст отказа`).toBe(text);
         add(cls, s);
       }
     }
@@ -419,28 +379,18 @@ test("Ф12-33 · одиннадцать классов отказа неразл
     for (const [cls, ss] of samples) table.set(cls, stats(ss.map((s) => s.ms)));
     // (5) и (6) — один глагол и одна форма: тексты равны между собой.
     const ceremonyTexts = new Set(
-      [...(samples.get("5") ?? []), ...(samples.get("6") ?? [])].map((s) =>
-        String(s.message),
-      ),
+      [...(samples.get("5") ?? []), ...(samples.get("6") ?? [])].map((s) => String(s.message)),
     );
     console.log(
       `[Ф12-33] N=${N} на класс · классов ${table.size} · T=${(tookMs / 1000).toFixed(1)} с · отказов ${MEASURED_REFUSALS}\n` +
         [...table.entries()]
           .sort((x, y) => Number(x[0]) - Number(y[0]))
-          .map(
-            ([c, s]) =>
-              `  (${c}) медиана ${s.median.toFixed(1)} мс · размах ${s.iqr.toFixed(1)} мс`,
-          )
+          .map(([c, s]) => `  (${c}) медиана ${s.median.toFixed(1)} мс · размах ${s.iqr.toFixed(1)} мс`)
           .join("\n"),
     );
-    expect(
-      ceremonyTexts.size,
-      `(5) и (6) — один текст отказа: ${[...ceremonyTexts].join(" | ")}`,
-    ).toBe(1);
+    expect(ceremonyTexts.size, `(5) и (6) — один текст отказа: ${[...ceremonyTexts].join(" | ")}`).toBe(1);
 
-    const noisy = [...table.entries()].filter(
-      ([, s]) => s.iqr > IQR_CEILING_MS,
-    );
+    const noisy = [...table.entries()].filter(([, s]) => s.iqr > IQR_CEILING_MS);
     if (noisy.length) {
       conditionNotCreated(
         `не выполнилось (Ф1-50): размах выше потолка годности ${IQR_CEILING_MS} мс у ` +
