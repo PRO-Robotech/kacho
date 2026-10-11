@@ -16,6 +16,7 @@ import {
   type SeededHuman,
 } from "./ceremony-seed";
 import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
+import { AUTHENTICATION_FAILED } from "./lane-texts";
 import {
   EMAIL_CHANGED_LINE,
   EMAIL_CHANGE_CODE_LINE,
@@ -297,6 +298,9 @@ test("F8S6-01 · смена адреса целиком на /settings, вход
       await signInSeed(seedB, human.email, human.password, "B");
       await transferSession(seedB, ctxB);
       const pageB = await ctxB.newPage();
+      // Вход во втором контексте читается тем же путём, что ответы первого:
+      // перехват ставится до отправки (`answer-on-arrival.ts`).
+      await captureAnswers(pageB, LANE_VERBS);
       expect(await panelOutcome(pageB), "Дано: второй контекст не открыл панель").toBe("панель");
 
       const n = freeAddress("F8S6-01");
@@ -339,8 +343,16 @@ test("F8S6-01 · смена адреса целиком на /settings, вход
         n.toLowerCase(),
       );
       // Вход прежним адресом — отказ; новым — консоль (EC-03).
+      // Отказ — тот, что служба отвечает на неверное предъявление входа: 401 с
+      // единым телом (код 16, текст службы, без причины края), и экран его называет.
       const refused = await loginOnScreen(pageB, human.email, human.password);
-      expect(refused.status(), "вход прежним адресом прошёл").not.toBe(200);
+      expect(refused.status(), "вход прежним адресом: отказ входа обязан быть 401").toBe(401);
+      expect(await refused.text(), "вход прежним адресом: тело — не единый отказ входа службы").toBe(
+        JSON.stringify({ code: 16, message: AUTHENTICATION_FAILED, details: [] }),
+      );
+      await expect(pageB.getByRole("alert"), "отказ входа прежним адресом не назван на экране").toHaveText(
+        AUTHENTICATION_FAILED,
+      );
       expect(pathOf(pageB)).toBe("/login");
       const signed = await loginOnScreen(pageB, n, human.password);
       expect(signed.status(), `вход новым адресом не прошёл: ${await signed.text()}`).toBe(200);

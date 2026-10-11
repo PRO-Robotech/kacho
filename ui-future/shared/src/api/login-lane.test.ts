@@ -586,7 +586,7 @@ describe("F8-S6 · смена адреса почты в клиенте поло
     const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
       .requestEmailChange;
     expect(typeof change).toBe("function");
-    expect(await change(new FormTokenHolder("email-change" as never), "n@kacho.local")).toEqual({
+    expect(await change(new FormTokenHolder("email-change"), "n@kacho.local")).toEqual({
       retryAfterSeconds: 60,
     });
     expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
@@ -606,7 +606,7 @@ describe("F8-S6 · смена адреса почты в клиенте поло
     const confirm = (loginLane as unknown as Record<string, (h: FormTokenHolder, c: string) => Promise<unknown>>)
       .confirmEmailChange;
     expect(typeof confirm).toBe("function");
-    await confirm(new FormTokenHolder("email-change-confirm" as never), " abcde-fghjk ");
+    await confirm(new FormTokenHolder("email-change-confirm"), " abcde-fghjk ");
     expect(lane.of("POST", "/iam/v1/auth/email-change/confirm")[0].body).toEqual({
       code: " abcde-fghjk ",
       csrfToken: "tok-email-change-confirm-1",
@@ -635,7 +635,7 @@ describe("F8-S6 · смена адреса почты в клиенте поло
     const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
       .requestEmailChange;
     expect(typeof change).toBe("function");
-    await change(new FormTokenHolder("email-change" as never), "n@kacho.local");
+    await change(new FormTokenHolder("email-change"), "n@kacho.local");
     expect(asked).toEqual([{ cause: "freshness" }]);
     expect(lane.of("POST", "/iam/v1/auth/email-change")).toHaveLength(2);
   });
