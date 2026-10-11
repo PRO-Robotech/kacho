@@ -24,15 +24,17 @@ import (
 //     разошлись бы молча — и оператор получил бы отказ рукопожатия;
 //   - боевые цепочки (prod, fe3455) — без имён проброса (IP-SAN 127.0.0.1,
 //     DNS localhost) на листе слушателя: адрес проброса — удобство стенда, а не
-//     имя сервиса.
+//     имя сервиса;
+//   - цепочки стенда (все прочие) — С именами проброса: их потребители
+//     (deploy/scripts/bootstrap-cloud-admin.sh, deploy/scripts/newman-e2e.sh,
+//     tests/authz-fixtures/verified_human.py) ходят на
+//     https://127.0.0.1 / localhost пробросом порта и без этих имён получают
+//     отказ сверки имени. Ключ включения — `api-gateway.internalRest.loopbackSAN`
+//     в values.dev.yaml (dev и цепочки поверх него) и values.own-stand.yaml.
 //
 // Что край с материалом рендера СТАРТУЕТ, держит соседняя проба
 // TestEveryStackEdgeStartsOnItsRenderedEnvironment: её judgeEdgeStart зовёт
 // тот же config.InternalRESTListenerTLS, что корень.
-//
-// Чего проба НЕ держит: что IP-SAN ЕСТЬ у цепочек стенда — ключ включения
-// (`api-gateway.internalRest.loopbackSAN`) живёт в профилях умбреллы; проба
-// печатает его состояние в переписи.
 
 const (
 	irServerCert   = "api-gateway-internal-rest-tls"
@@ -121,8 +123,11 @@ func irJudge(name string, f irChainFacts) []string {
 		if s := ka1Str(f.serverCert, "secretName"); s == f.tlsSecret && s != "" {
 			out = append(out, fmt.Sprintf("%s: лист слушателя — секрет внешнего слушателя %q", name, s))
 		}
-		if irProductionChains[name] && irHasLoopback(f.serverCert) {
+		switch lb := irHasLoopback(f.serverCert); {
+		case irProductionChains[name] && lb:
 			out = append(out, fmt.Sprintf("%s: боевая цепочка несёт имя проброса (IP-SAN 127.0.0.1 / localhost) на листе слушателя", name))
+		case !irProductionChains[name] && !lb:
+			out = append(out, fmt.Sprintf("%s: цепочка стенда без имени проброса (IP-SAN 127.0.0.1 / localhost) на листе слушателя — потребители пробросом получат отказ сверки имени; включи api-gateway.internalRest.loopbackSAN", name))
 		}
 	}
 	if len(f.circle) == 0 {
@@ -199,6 +204,10 @@ func TestInternalRESTRenderJudgeInjection(t *testing.T) {
 	lbDev.serverCert = map[string]any{"secretName": irServerCert, "ipAddresses": []any{"127.0.0.1"}}
 	if got := irJudge("dev", lbDev); len(got) != 0 {
 		t.Fatalf("IP-SAN на цепочке стенда — не находка, а дано: %v", got)
+	}
+	noLbDev := good()
+	if got := irJudge("dev", noLbDev); len(got) != 1 || !strings.Contains(got[0], "цепочка стенда без имени проброса") {
+		t.Fatalf("цепочка стенда без IP-SAN: ждали одну находку, получили %v", got)
 	}
 	off := irChainFacts{}
 	if got := irJudge("dev", off); len(got) != 0 {

@@ -24,9 +24,15 @@
 # Открытого текста у слушателя нет: секрета нет — функция отказывает, и
 # вызывающий отказывает тоже, а не идёт открытым текстом.
 #
-# Серверный лист слушателя несёт имя `localhost` и IP 127.0.0.1 только в
-# профилях стенда (api-gateway.internalRest.loopbackSAN) — проброс порта на
-# стенде проходит сверку имени без ослабления проверки.
+# Адрес проброса (https://127.0.0.1 / https://localhost) проходит сверку имени
+# серверного листа ТОЛЬКО там, где лист несёт эти имена: ключ
+# api-gateway.internalRest.loopbackSAN (умолчание чарта — false) включён в
+# профилях умбреллы values.dev.yaml (цепочки dev, dev-prod, prorobotech,
+# a8f60d) и values.own-stand.yaml (цепочка own). На боевых цепочках (prod,
+# fe3455) этих имён нет, и вызов пробросом получит отказ рукопожатия — ходить
+# туда по имени Service. Обе стороны судит
+# gateway/deploy/internal_rest_mtls_render_test.go. Проверка сервера при этом
+# не ослабляется: УЦ и сверка имени — прежние.
 
 INTERNAL_REST_OPERATOR_SECRET="${INTERNAL_REST_OPERATOR_SECRET:-kacho-internal-rest-operator-client-tls}"
 

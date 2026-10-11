@@ -266,6 +266,16 @@ api-gateway:
   # — a cross-cutting, domain-LESS deployment-env label, NOT the per-domain
   # KACHO_<DOMAIN>_<NAME> scheme.
   appEnv: dev
+  # ИМЕНА ПРОБРОСА на серверном листе внутреннего REST-слушателя (kacho#3131):
+  # IP 127.0.0.1 и `localhost`. Потребители слушателя на стенде ходят на
+  # https://127.0.0.1 / https://localhost пробросом порта
+  # (deploy/scripts/bootstrap-cloud-admin.sh, deploy/scripts/newman-e2e.sh,
+  # tests/authz-fixtures/verified_human.py) и сверяют имя листа; без этих имён — отказ рукопожатия.
+  # Проверку не ослабляет: сверка имени и УЦ — прежние. Только стенд — боевой
+  # профиль (values.prod.yaml) их не несёт; обе стороны судит
+  # gateway/deploy/internal_rest_mtls_render_test.go.
+  internalRest:
+    loopbackSAN: true
   # mTLS: backend-dial client to every backend (cert + per-edge env). Hybrid
   # external listener (cert-or-JWT). Cert config (issuer/spiffe/secret) — chart values.
   mtls:
