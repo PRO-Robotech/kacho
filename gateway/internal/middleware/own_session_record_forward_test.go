@@ -22,15 +22,13 @@ package middleware_test
 // поверхностной форме — голой и мостовой — по нормализованному имени, а не
 // по одной выписанной строке: форма, которую проба не назвала, не ускользает.
 //
-// ОБЪЁМ. Ф11-45 утверждает здесь мостовую форму у следующего звена — ровно одно
-// значение, равное R_S. Голая форма у следующего звена этой пробой не
-// утверждается ни в одну сторону: чтение слов «в обеих формах» Ф11-45 вынесено
-// на решение приёмки (перепись поверхности полосы, находка Н1) — сегодня край
-// ставит одну мостовую форму, потому что служба принимает номер записи,
-// только когда значение одно (держатель — restmux
-// TestEdgeForwardsTheSessionRecordAndDropsTheClientOne). Ф11-46 и Ф11-47 от
-// этого чтения не зависят: они сравнивают исходы и утверждают отсутствие
-// клиентского значения в любой форме.
+// ОБЪЁМ. Ф11-45 утверждает у следующего звена ОБЕ поверхностные формы ключа —
+// голую и мостовую, как у уровня подтверждения, — каждую ровно с одним
+// значением R_S, и третьей формы нет. Что служба сквозь мост видит ровно одно
+// значение, держит restmux TestEdgeForwardsTheSessionRecordAndDropsTheClientOne,
+// а сведение двух форм к одному значению — проба строителя в principalmeta.
+// Ф11-46 и Ф11-47 сравнивают исходы и утверждают отсутствие клиентского
+// значения в любой форме.
 
 import (
 	"bytes"
@@ -172,9 +170,18 @@ func requireNothingOutward(t *testing.T, rec *httptest.ResponseRecorder, values 
 	}
 }
 
-// bridgeFormValues — значения ключа ссылки у следующего звена в мостовой форме.
-func (n *recordNext) bridgeFormValues() []string {
-	return n.forwarded[http.CanonicalHeaderKey(principalmeta.HeaderGRPCMetaTokenSessionID)]
+// requireBothForms — у следующего звена ключ ссылки ровно в двух поверхностных
+// формах, голой и мостовой, каждая — ровно [want]; других форм ключа нет.
+func (n *recordNext) requireBothForms(t *testing.T, want string) {
+	t.Helper()
+	wantForms := map[string][]string{
+		http.CanonicalHeaderKey(principalmeta.HeaderTokenSessionID):         {want},
+		http.CanonicalHeaderKey(principalmeta.HeaderGRPCMetaTokenSessionID): {want},
+	}
+	if !reflect.DeepEqual(n.forwarded, wantForms) {
+		t.Fatalf("следующее звено получило ключ ссылки %v, want %v — обе формы, в каждой ссылка из ответа службы, дословно и одна",
+			n.forwarded, wantForms)
+	}
 }
 
 // allForwardedValues — значения ключа ссылки у следующего звена во всех формах.
@@ -206,7 +213,7 @@ func TestOwnSessionRecord_Precondition_ServiceDoubleNamesTheRecord(t *testing.T)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ф11-45 — полоса нашей сессии, ответ службы о S называет R_S: запрос проходит;
-// следующее звено получает ключ ссылки со значением R_S дословно; ответ
+// следующее звено получает ключ ссылки в обеих формах со значением R_S дословно; ответ
 // клиенту не несёт ни ключа, ни значения R_S.
 
 func TestOwnSessionRecord_F11_45_SessionLaneForwardsTheServiceRecordVerbatimAndNotOutward(t *testing.T) {
@@ -220,15 +227,7 @@ func TestOwnSessionRecord_F11_45_SessionLaneForwardsTheServiceRecordVerbatimAndN
 		t.Fatalf("предпосылка: полоса нашей сессии не исполнена — asked=%d served=%d principal=%q",
 			rig.reader.asked, rig.next.served, rig.next.principal)
 	}
-	if got := rig.next.bridgeFormValues(); !reflect.DeepEqual(got, []string{recordS}) {
-		t.Errorf("следующее звено получило в мостовой форме %q, want [%q] — ссылка из ответа службы, дословно и одна",
-			got, recordS)
-	}
-	for _, v := range rig.next.allForwardedValues() {
-		if v != recordS {
-			t.Errorf("следующее звено получило значение ключа ссылки %q, не названное службой", v)
-		}
-	}
+	rig.next.requireBothForms(t, recordS)
 	requireNothingOutward(t, rec, recordS)
 	if strings.Contains(rig.log.String(), recordS) {
 		t.Errorf("ссылка R_S попала в журнал пути запроса:\n%s", rig.log.String())
@@ -259,9 +258,7 @@ func TestOwnSessionRecord_F11_46_ClientRecordInBothFormsIsNotRead(t *testing.T) 
 	}
 	// Положительный контроль пары к Ф11-47: на этой оснастке ключ ссылки
 	// следующим звеном виден.
-	if got := rig.next.bridgeFormValues(); !reflect.DeepEqual(got, []string{recordS}) {
-		t.Fatalf("следующее звено получило %q, want [%q] — R_S, а не R_V", got, recordS)
-	}
+	rig.next.requireBothForms(t, recordS)
 	for _, v := range rig.next.allForwardedValues() {
 		if v == recordV {
 			t.Fatalf("клиентское значение %q доехало до следующего звена", recordV)
@@ -295,7 +292,5 @@ func TestOwnSessionRecord_F11_47_BearerLaneForwardsNoRecordInAnyForm(t *testing.
 	// Положительный контроль на той же оснастке: полоса нашей сессии ключ
 	// ставит — иначе «ключа нет» было бы зелено на крае, не пересылающем ничего.
 	rig.bySession(forgeRecordBothForms)
-	if got := rig.next.bridgeFormValues(); !reflect.DeepEqual(got, []string{recordS}) {
-		t.Fatalf("положительный контроль: полоса нашей сессии на той же оснастке переслала %q, want [%q]", got, recordS)
-	}
+	rig.next.requireBothForms(t, recordS)
 }
