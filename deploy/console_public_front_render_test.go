@@ -40,7 +40,25 @@
 //     его к заголовку клиента (`$proxy_add_x_forwarded_for`). Судится ПОЛОСА, а
 //     не найденная строка: полоса без своей строки отдаёт дальше заголовок
 //     клиента как есть (nginx пересылает заголовки запроса по умолчанию), и
-//     перебор одних найденных строк такую полосу не видит вовсе.
+//     перебор одних найденных строк такую полосу не видит вовсе;
+//  7. адрес клиента доезжает через БАЛАНСИРОВЩИК ПЛОЩАДКИ (kacho#3115).
+//     `Local` из п. 5 сохраняет адрес только за звеном, которое пакет не
+//     проксирует; балансировщик площадки соединяется со своего адреса, и
+//     замер #3028 показал за входом одного клиента — адрес балансировщика.
+//     Поэтому адрес приходит заголовком PROXY: оба порта входа, на которые
+//     ведёт балансировщик (https и redirect), принимают его (`proxy_protocol`
+//     у `listen`), а внутренний порт `http` — нет (пробы готовности приходят
+//     от узла без заголовка); раздача верит заголовку ТОЛЬКО от звена
+//     балансировки — `real_ip_header proxy_protocol` с непустым
+//     `set_real_ip_from`, каждая запись которого — один адрес (/32, /128):
+//     порт https доступен хостам кластера, и широкий круг доверия дал бы
+//     им заявить чужой источник; Service просит балансировщик слать
+//     заголовок аннотацией площадки (`…proxy-protocol` со значением, отличным
+//     от `none`) — слушатель, ждущий заголовка, без отправителя принял бы
+//     первую строку клиента за адрес. Выключенный приём допустим только с
+//     причиной на объекте Service (аннотация
+//     kacho.cloud/client-address-proxy-protocol-disabled-because), и тогда
+//     заголовка не ждёт ни один порт.
 //
 // ЗНАМЕНАТЕЛЬ. Судятся две вещи, и обе обязательны:
 //
@@ -64,6 +82,7 @@ package deploy_test
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -112,7 +131,9 @@ var (
 	// Серверный блок карты — от `server {` в начале строки до `}` в начале
 	// строки: разобранная карта несёт блоки без отступа, их полосы — с отступом.
 	nginxServerBlock = regexp.MustCompile(`(?ms)^server \{(.*?)^\}`)
-	listenDirective  = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)(\s+ssl)?\s*;`)
+	listenDirective  = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)((?:\s+(?:ssl|proxy_protocol))*)\s*;`)
+	realIPFrom       = regexp.MustCompile(`(?m)^\s*set_real_ip_from\s+(\S+);`)
+	realIPHeader     = regexp.MustCompile(`(?m)^\s*real_ip_header\s+(\S+);`)
 	redirectReturn   = regexp.MustCompile(`(?m)^\s*return 308 (\S+)\$request_uri;\s*$`)
 	nginxDirective   = regexp.MustCompile(`(?m)^\s*(proxy_pass|try_files|root|alias|fastcgi_pass|grpc_pass)\b`)
 	forwardedForSet  = regexp.MustCompile(`(?mi)^\s*proxy_set_header\s+X-Forwarded-For\s+(\S+?)\s*;`)
@@ -398,13 +419,36 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 	for _, f := range laneFindings {
 		say("%s", f)
 	}
+	// 7. выключенный приём заголовка PROXY — только с объявленной причиной на
+	// объекте Service; тогда ни один порт заголовка не ждёт.
+	ann, _ := lookup(svc, "metadata", "annotations")
+	annMap, _ := ann.(map[string]any)
+	disabledBecause := strings.TrimSpace(fmt.Sprint(annMap[proxyProtocolDisabledBecause]))
+	proxyOff := annMap[proxyProtocolDisabledBecause] != nil && disabledBecause != ""
 	tlsServed, redirectOnly := false, false
 	for _, m := range nginxServerBlock.FindAllStringSubmatch(conf, -1) {
 		block := m[1]
 		for _, l := range listenDirective.FindAllStringSubmatch(block, -1) {
 			port := toInt(l[1])
+			// 7. заголовок PROXY — на портах балансировщика, и только на них.
+			proxied := strings.Contains(l[2], "proxy_protocol")
 			switch {
-			case port == named["https"] && l[2] != "":
+			case proxyOff && proxied:
+				say("порт %d ждёт заголовок PROXY, а Service объявляет приём выключенным (%s) — "+
+					"балансировщик заголовка не шлёт, и слушатель отверг бы каждое соединение", port, disabledBecause)
+			case proxyOff:
+			case (port == named["https"] || port == named["redirect"]) && !proxied:
+				say("порт %d, на который ведёт балансировщик площадки, не принимает заголовок PROXY и причины "+
+					"выключения нет (%s) — адрес клиента за балансировщиком теряется, все клиенты становятся "+
+					"одним источником (kacho#3115)", port, proxyProtocolDisabledBecause)
+			case port == named["http"] && proxied:
+				say("внутренний порт http %d ждёт заголовок PROXY — пробы готовности приходят без него", port)
+			}
+			if port == named["https"] && !proxyOff {
+				say7(block, port, &out, r, svc)
+			}
+			switch {
+			case port == named["https"] && strings.Contains(l[2], "ssl"):
 				tlsServed = true
 			case port == named["https"]:
 				say("порт https %d слушается без ssl", port)
@@ -533,4 +577,58 @@ func TestConsolePublicFrontTerminatesTLSAndServesNoPlainHTTP(t *testing.T) {
 	for _, f := range findings {
 		t.Error(f)
 	}
+}
+
+// say7 — п. 7: доверие заголовку PROXY только от звена балансировки и
+// просьба к балансировщику слать заголовок.
+func say7(block string, port int, out *[]string, r publicFrontRender, svc map[string]any) {
+	say := func(format string, a ...any) {
+		*out = append(*out, fmt.Sprintf("цепочка %s, Service %s: ", r.Stack, docName(svc))+fmt.Sprintf(format, a...))
+	}
+	hdr := realIPHeader.FindStringSubmatch(block)
+	if hdr == nil || hdr[1] != "proxy_protocol" {
+		say("серверный блок порта https %d не берёт адрес клиента из заголовка PROXY (`real_ip_header proxy_protocol`)", port)
+	}
+	from := realIPFrom.FindAllStringSubmatch(block, -1)
+	if len(from) == 0 {
+		say("у порта https %d нет `set_real_ip_from` — круг доверия заголовку PROXY пуст", port)
+	}
+	for _, f := range from {
+		if !narrowTrustEntry(f[1]) {
+			say("`set_real_ip_from %s` шире одного адреса звена балансировки (/32, /128) либо не адрес — "+
+				"хост кластера, дошедший до порта https, заявил бы чужой источник", f[1])
+		}
+	}
+	ann, _ := lookup(svc, "metadata", "annotations")
+	am, _ := ann.(map[string]any)
+	asked := false
+	for k, v := range am {
+		if strings.HasSuffix(k, "proxy-protocol") && fmt.Sprint(v) != "" && fmt.Sprint(v) != "none" {
+			asked = true
+		}
+	}
+	if !asked {
+		say("Service не просит балансировщик слать заголовок PROXY (аннотация `…proxy-protocol`) — "+
+			"слушатель ждёт заголовка, которого никто не шлёт")
+	}
+}
+
+// proxyProtocolDisabledBecause — аннотация Service, которой чарт консоли
+// объявляет причину выключенного приёма заголовка PROXY (ui-future/deploy,
+// service-public.yaml).
+const proxyProtocolDisabledBecause = "kacho.cloud/client-address-proxy-protocol-disabled-because"
+
+// narrowTrustEntry — запись круга доверия — ОДИН адрес (/32, /128): порт https
+// раздачи доступен хостам кластера, и каждый хост доверенной подсети заявил
+// бы чужой источник.
+func narrowTrustEntry(e string) bool {
+	if ip := net.ParseIP(e); ip != nil {
+		return true
+	}
+	_, n, err := net.ParseCIDR(e)
+	if err != nil {
+		return false
+	}
+	ones, bits := n.Mask.Size()
+	return ones == bits
 }

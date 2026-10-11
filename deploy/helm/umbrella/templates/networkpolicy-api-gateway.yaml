@@ -40,8 +40,18 @@ templates/service-api-gateway-front-links.yaml). Это первый замок;
 Проброс порта (`kubectl port-forward`, им ходят сквозные пробы) приходит в под с
 петли и политикой не судится.
 
-Порт сбора величин (`metricsScrape.port`) открыт всем, как был: адреса клиента
-он не принимает, а где живёт сборщик — свойство кластера.
+Порт сбора величин (`metricsScrape.port`) — ТОЛЬКО пространству мониторинга
+(kacho#3111). Прежде правило шло без `from` и впускало любой под любого
+пространства: политики складываются, и узкая политика рядом (изоляция стенда в
+своём пространстве, kacho#3102) широкое правило не отменяла. Где живёт сборщик —
+свойство кластера, поэтому имя пространства — значение профиля
+(`api-gateway.networkPolicy.metricsScrapeFrom.namespace`, раскрывается `tpl`:
+стенд, чей сборщик — проба в пространстве релиза, пишет `{{ .Release.Namespace }}`).
+Отправитель — ОДИН элемент `from` с `namespaceSelector` по метке
+`kubernetes.io/metadata.name`: её ставит сервер API по имени пространства, своему
+пространству арендатор её не навесит. Незаданное имя при включённом сборе —
+отказ рендера: пустой селектор значил бы «все пространства», тот же дефект.
+Держит deploy/tests/helm/networkpolicy-edge-metrics-test.sh.
 
 Ручка — `api-gateway.networkPolicy.enabled`; умолчание включено (values.yaml),
 отладочный профиль её выключает — и тогда же объявляет пустой круг: доверие
@@ -93,8 +103,16 @@ spec:
           port: tls
     {{- end }}
     {{- if $scrape.enabled }}
-    # Сбор величин — адреса клиента не принимает.
-    - ports:
+    {{- $monNs := trim (tpl (toString (($np.metricsScrapeFrom | default dict).namespace | default "")) $) }}
+    {{- if not $monNs }}
+    {{- fail "kacho-umbrella: api-gateway.networkPolicy.metricsScrapeFrom.namespace не задан при включённом сборе величин края — пустое пространство значило бы «все пространства кластера» (kacho#3111). Объявите пространство сборщика в профиле" }}
+    {{- end }}
+    # Сбор величин — только пространство мониторинга (kacho#3111).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $monNs | quote }}
+      ports:
         - protocol: TCP
           port: {{ required "api-gateway.metricsScrape.port обязателен при включённом сборе" $scrape.port }}
     {{- end }}

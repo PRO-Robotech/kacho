@@ -13,7 +13,14 @@ admin-поверхности. Здесь — ключевые проектные
 **TLS-листенер** (advertised для клиентов) — за ним тот же `cmux`-раскол.
 
 Третий листенер — **cluster-internal REST** (`KACHO_API_GATEWAY_INTERNAL_REST_ADDR`, дефолт
-`:8081`): на нём и только на нём резолвятся `Internal*`-пути доменов. Собственного
+`:8081`): на нём и только на нём резолвятся `Internal*`-пути доменов. Транспорт — только mTLS
+(kacho#3131): свой серверный лист (`KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE` / `_KEY_FILE`),
+клиентский лист обязателен, цепочка — к УЦ установки (`KACHO_API_GATEWAY_MTLS_CA_FILE`), URI-имя
+листа — в круге `KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS`. Страж старта
+`validateProductionInternalListener` отказывает без материала на любой метке `KACHO_APP_ENV`;
+сборка — `serveInternalREST` (`tls.NewListener` внешней обёрткой над меткой «внутренний»).
+Самоотчёт — строка журнала старта `api-gateway internal admin REST started` (`transport=mtls`,
+размер круга). Собственного
 cluster-internal **gRPC**-листенера край не поднимает — принимать на нём нечего с тех пор, как
 снята единственная подававшаяся там служба (см. раздел про инвалидацию ниже).
 

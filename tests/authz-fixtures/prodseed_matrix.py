@@ -95,7 +95,7 @@ from principal_pairings import unpaired_principals  # noqa: E402
 # Endpoints. Defaults match the port-forwards the newman drivers establish
 # (deploy/scripts/newman-{e2e,parallel}.sh); every one is env-overridable so the
 # same seeder works behind a different forward map without editing the file.
-INTERNAL = os.environ.get("INTERNAL_BASE_URL", "http://localhost:18081")
+INTERNAL = os.environ.get("INTERNAL_BASE_URL", "https://localhost:18081")
 PUBLIC = os.environ.get("BASE_URL", "http://localhost:18080")
 # ЗДЕСЬ СТОЯЛИ АДРЕС ВНУТРЕННЕГО СЛУШАТЕЛЯ СЛУЖБЫ ДОСТУПА И КЛИЕНТСКИЙ ЛИСТ К НЕМУ —
 # ими посев заводил людей хуком поставщика. Людей посев теперь заводит регистрацией
@@ -142,8 +142,23 @@ NLB_ZONE = os.environ.get("NLB_ZONE", "ru-central1-e")
 ALT_REGION = os.environ.get("SEED_ALT_REGION", "ru-central2")
 
 
+def _internal_tls_args():
+    """Аргументы curl внутреннего слушателя края — mTLS и только он (kacho#3131).
+
+    Лист операторской личности и УЦ установки — INTERNAL_REST_{CA,CERT,KEY}
+    (производитель: deploy/scripts/lib/internal-rest-client.sh). Материала нет —
+    отказ здесь, с именами переменных, а не запрос открытым текстом на TLS-порт.
+    """
+    ca, cert, key = (os.environ.get(k, "") for k in ("INTERNAL_REST_CA", "INTERNAL_REST_CERT", "INTERNAL_REST_KEY"))
+    if not (ca and cert and key):
+        raise RuntimeError("внутренний слушатель края: нет INTERNAL_REST_CA / INTERNAL_REST_CERT / INTERNAL_REST_KEY")
+    return ["--cacert", ca, "--cert", cert, "--key", key]
+
+
 def _curl(method, path, token, body=None, base=PUBLIC):
     args = ["curl", "-sS", "-m", "20", "-X", method, "-H", "Content-Type: application/json"]
+    if base == INTERNAL:
+        args += _internal_tls_args()
     if token:
         args += ["-H", f"Authorization: Bearer {token}"]
     if body is not None:

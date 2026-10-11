@@ -64,6 +64,20 @@ if [ -z "${IAM_INTERNAL_GRPC_MTLS_CERT:-}" ] && [ -z "${IAM_INTERNAL_GRPC_MTLS_K
   fi
 fi
 
+# Внутренний REST-слушатель края (INTERNAL_BASE_URL) — mTLS и только он (kacho#3131).
+# Та же самоснабжаемость и по той же причине: лист операторской личности
+# (kacho-internal-rest-operator-client-tls) берётся у кластера, если вызывающий его не
+# передал. Производитель — deploy/scripts/lib/internal-rest-client.sh, один на всех
+# потребителей; материал — во временном каталоге, снимается на выходе.
+if [ -z "${INTERNAL_REST_CERT:-}" ] && command -v kubectl >/dev/null 2>&1; then
+  # shellcheck source=deploy/scripts/lib/internal-rest-client.sh
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/scripts/lib/internal-rest-client.sh"
+  SETUP_IR_DIR="$(mktemp -d)"
+  trap 'rm -rf "$SETUP_IR_DIR"' EXIT
+  internal_rest_client_leaf "${SETUP_NS:-kacho}" "$SETUP_IR_DIR" \
+    || echo "[setup] внутренний слушатель края: секрета операторской личности нет — Internal*-посев получит отказ рукопожатия" >&2
+fi
+
 # require grpcurl — им чеканит первичное удостоверение mint_rs256.py на iam :9091
 # (у чеканки нет REST-маршрута). Людей посев grpcurl больше не заводит: они
 # заводятся регистрацией через край (kacho#2901). Проверка

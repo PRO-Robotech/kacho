@@ -54,9 +54,11 @@ done
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
 PF_PIDS=()
+IRDIR=""   # клиентский материал внутреннего слушателя края; снимается на выходе
 cleanup() {
   local p
   for p in "${PF_PIDS[@]}"; do kill "$p" 2>/dev/null; wait "$p" 2>/dev/null; done
+  if [ -n "$IRDIR" ]; then rm -rf "$IRDIR"; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -100,8 +102,17 @@ forward "$RELEASE-mailpit" 8025 || die "проброс к приёмнику п�
 mb="$FWD_PORT"
 log "пробросы: край (внешний, внутренний) и приёмник писем подняты; снимаются на выходе"
 
+# Внутренний слушатель края — mTLS и только он (kacho#3131): лист операторской
+# личности берётся из кластера; секрета нет — подъём отказывает, а не идёт
+# открытым текстом.
+# shellcheck source=deploy/scripts/lib/internal-rest-client.sh
+. "$HERE/lib/internal-rest-client.sh"
+IRDIR="$(mktemp -d)"
+internal_rest_client_leaf "$NS" "$IRDIR" \
+  || die "секрета $INTERNAL_REST_OPERATOR_SECRET нет — внутренний слушатель края недостижим" 75
+
 KACHO_EDGE_URL="http://127.0.0.1:$gw" \
-KACHO_EDGE_INTERNAL_URL="http://127.0.0.1:$gwi" \
+KACHO_EDGE_INTERNAL_URL="https://127.0.0.1:$gwi" \
 MAILBOX_URL="http://127.0.0.1:$mb" \
   python3 "$HERE/bootstrap_cloud_admin.py" "$@"
 rc=$?

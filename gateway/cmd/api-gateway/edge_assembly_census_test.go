@@ -42,8 +42,10 @@ import (
 //     (http2.Server.ServeConn) или своё деление порта без cmux: его видно только
 //     ревью;
 //   - метку внутри самого пакета listenerorigin: пакет-владелец ставит её
-//     сам (ConnContext зовёт WithInternal) и вправе делать это где угодно, его
-//     держат собственные пробы пакета, а не эта перепись.
+//     сам (ConnContext зовёт WithInternal). Какими экспортированными именами
+//     метка «внутренний» выходит из пакета, держит его перепись
+//     TestListenerOriginMarkSettersMatchTheLedger (ведомость установщиков,
+//     gateway/internal/listenerorigin/mark_setter_census_test.go), а не эта.
 
 // edgeAssemblyHomes — идентификатор → функции edge_listener.go, где ему место.
 var edgeAssemblyHomes = map[string][]string{
@@ -55,6 +57,10 @@ var edgeAssemblyHomes = map[string][]string{
 	// Метки происхождения слушателя.
 	"ExternalListener": {"serveEdgeMux"},
 	"InternalListener": {"serveInternalREST"},
+	// TLS-обёртка внутреннего слушателя (kacho#3131): живёт только в его доме,
+	// иначе второй слушатель с меткой «внутренний» получил бы свой транспорт
+	// мимо стража.
+	"NewListener": {"serveInternalREST"},
 	// Метка «внутренний» прямо на контексте, мимо слушателя: в корне ей места
 	// нет нигде, и в serveInternalREST тоже — там метку ставит слушатель, а
 	// контекст общего сервера (BaseContext, ConnContext) пометил бы внутренними
@@ -288,7 +294,7 @@ var edgeAssemblyInjections = []struct {
 		name: "второй внутренний слушатель через serveInternalREST",
 		src: `func inj(httpSrv *http.Server) {
 	l, _ := net.Listen("tcp", ":8443")
-	_ = serveInternalREST(httpSrv, l)
+	_ = serveInternalREST(httpSrv, l, nil)
 }`,
 		want: "обращений к serveInternalREST 2",
 	},
@@ -324,11 +330,18 @@ var edgeAssemblyInjections = []struct {
 	},
 	{
 		name: "метка «внутренний» напрямую внутри serveInternalREST",
-		src: `func serveInternalREST(httpSrv *http.Server, l net.Listener) error {
+		src: `func serveInternalREST(httpSrv *http.Server, l net.Listener, tlsCfg *tls.Config) error {
 	httpSrv.BaseContext = func(net.Listener) context.Context { return listenerorigin.WithInternal(context.Background()) }
 	return httpSrv.Serve(listenerorigin.InternalListener(l))
 }`,
 		want: "WithInternal в \"serveInternalREST\"",
+	},
+	{
+		name: "TLS-обёртка слушателя мимо serveInternalREST (kacho#3131)",
+		src: `func inj(l net.Listener, c *tls.Config) net.Listener {
+	return tls.NewListener(l, c)
+}`,
+		want: "NewListener в \"inj\"",
 	},
 	{
 		name: "матчер cmux мимо splitEdgeCmux",
