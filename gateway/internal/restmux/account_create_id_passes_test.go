@@ -84,7 +84,7 @@ func TestEdgeCarriesTheSuppliedAccountIdToTheService(t *testing.T) {
 	addr, rec := startAccountRecorder(t)
 	addrs := geoMuxAddrs()
 	addrs["iam"] = addr
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

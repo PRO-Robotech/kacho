@@ -44,7 +44,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,7 +139,7 @@ func splitAddrs(t *testing.T) (addrs map[string]string, adminLiteral string) {
 // TestExternalListener_HiddenAdminRouteIsAnsweredByTheSameProducer — факт 1.
 func TestExternalListener_HiddenAdminRouteIsAnsweredByTheSameProducer(t *testing.T) {
 	addrs := probeAddrs(t)
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -231,7 +230,7 @@ func TestExternalRefusalProbe_RejectsASecondProducer(t *testing.T) {
 	// принять — иначе он отвергает всё подряд, и его красное значит не больше
 	// его зелёного.
 	addrs := probeAddrs(t)
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -254,7 +253,7 @@ func TestExternalRefusalProbe_RejectsASecondProducer(t *testing.T) {
 // до которого он пытался дозвониться.
 func TestExternalListener_NeverReachesAnAdminBackend(t *testing.T) {
 	addrs, adminLiteral := splitAddrs(t)
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

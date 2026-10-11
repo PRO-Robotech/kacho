@@ -237,7 +237,9 @@ var annotatorProducedKeys = map[string]bool{
 	MetaPrincipalDisplay: true, // мост знает только обычную форму имени
 	MetaTokenACR:         true,
 	// Ссылка на запись сессии: полоса нашей сессии ставит обе формы, а служба
-	// принимает номер, только когда значение одно (kacho#1280, Ф11-45).
+	// принимает номер, только когда значение одно (kacho#1280, Ф11-45). Кладёт
+	// её аннотатор моста и только в вызов службы доступа ([SessionRecordMetadata],
+	// kacho#3136).
 	MetaTokenSessionID: true,
 }
 
