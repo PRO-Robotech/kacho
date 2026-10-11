@@ -247,6 +247,47 @@ assert i["appBaseURL"] == "https://%s:20001" % i["webauthnRpId"], i
     bad "слой без снятия перечня площадки принят разбором"; else ok "слой без снятия перечня площадки разбором отвергнут"; fi
   if stand_overlay t3102-probe cm-ns on 20001 | sed 's/^        originFromConsole: true$/        originFromConsole: false/' | python3 -c "$ak" 2>/dev/null; then
     bad "слой без вывода происхождения из консоли принят разбором"; else ok "слой без вывода происхождения из консоли разбором отвергнут"; fi
+  # Издатель платформы стенда проб (kacho#3113): цепочка, чей издатель —
+  # заглушка площадки (a8f60d), получает издателем происхождение консоли стенда
+  # во всех семи местах; цепочка с именем разработки (dev-prod) — нет, слой
+  # стенда издателя не трогает. Разбором слоя, а не подстрокой.
+  local iss
+  iss='
+import sys, yaml
+d = yaml.safe_load(sys.stdin)
+o = "https://%s:20001" % d["global"]["kacho"]["identity"]["webauthnRpId"]
+ks = o + "=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+assert d["kaname"]["config"]["authn"]["tokenSigning"]["issuer"] == o, d["kaname"]
+assert d["kaname"]["config"]["authn"]["accessKeys"]["originFromConsole"] is True
+for c in ("api-gateway", "registry"):
+    t = d[c]["tokenAcceptance"]
+    assert t == {"issuers": o, "issuerKeySets": ks, "platformIssuer": o}, (c, t)
+'
+  local noiss
+  noiss='
+import sys, yaml
+d = yaml.safe_load(sys.stdin)
+assert "tokenSigning" not in d["kaname"]["config"]["authn"], d["kaname"]
+assert "api-gateway" not in d and "registry" not in d, sorted(d)
+'
+  if stand_overlay t3102-probe cm-ns on 20001 "https://t3102-probe.$HOST_SUFFIX:20001" | python3 -c "$iss"; then
+    ok "слой стенда: издатель платформы — происхождение консоли стенда в семи местах"
+  else bad "слой стенда: издатель платформы не на происхождении консоли стенда"; fi
+  if stand_overlay t3102-probe cm-ns on 20001 | python3 -c "$noiss"; then
+    ok "слой стенда без издателя: чеканка и приём не тронуты"
+  else bad "слой стенда без издателя тронул чеканку либо приём"; fi
+  if stand_overlay t3102-probe cm-ns on 20001 "https://t3102-probe.$HOST_SUFFIX:20001" | sed '/^    platformIssuer: /d' | python3 -c "$iss" 2>/dev/null; then
+    bad "слой без издателя потребителей принят разбором"; else ok "слой без издателя потребителей разбором отвергнут"; fi
+  local chain_a chain_d f
+  chain_a=(); chain_d=()
+  for f in $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain a8f60d ' '); do chain_a+=("$UMBRELLA/$f"); done
+  for f in $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain dev-prod ' '); do chain_d+=("$UMBRELLA/$f"); done
+  local rca=0 rcd=0
+  chain_issuer_placeholder "${chain_a[@]}" || rca=$?
+  chain_issuer_placeholder "${chain_d[@]}" || rcd=$?
+  if [ "${#chain_a[@]}" -gt 0 ] && [ "$rca" -eq 0 ] && [ "$rcd" -eq 1 ]; then
+    ok "издатель цепочки a8f60d — заглушка площадки (слой стенда его заменит), dev-prod — нет"
+  else bad "издатель цепочки: a8f60d код $rca (ждали 0, слоёв ${#chain_a[@]}), dev-prod код $rcd (ждали 1)"; fi
   # Секрет первого администратора облака выводится из рендера: ссылка
   # KANAME_BOOTSTRAP_ROOT_EMAIL → secretKeyRef. Близнец — рендер без ссылки: пусто.
   local rd; rd="$(mktemp)"
@@ -260,6 +301,11 @@ assert i["appBaseURL"] == "https://%s:20001" % i["webauthnRpId"], i
   if python3 "$HERE/stand-mailbox-door.py" --self-test >/dev/null 2>&1; then
     ok "дверь чтения писем стенда: /messages и /codes в форме приёмника службы, отказы и обрыв приёмника"
   else bad "дверь чтения писем стенда: самопроверка провалена (python3 scripts/stand-mailbox-door.py --self-test)"; fi
+  # Проба документа обнаружения на внешнем входе консоли (kacho#3113): красная на
+  # имени разработки, чужом имени и порту, на нуле адресов; молчит на близнеце.
+  if python3 "$HERE/probe-discovery-origin.py" --self-test >/dev/null 2>&1; then
+    ok "проба документа обнаружения: N из N адресов на происхождении консоли, имя разработки и ноль адресов — находки"
+  else bad "проба документа обнаружения: самопроверка провалена (python3 scripts/probe-discovery-origin.py --self-test)"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -637,9 +683,68 @@ up_on_exit() {
   exit "$rc"
 }
 
+# chain_issuer_placeholder СЛОЙ… — 0, если издатель чеканки, сложенный по слоям
+# цепочки (kaname.config.authn.tokenSigning.issuer), — заглушка площадки (то же
+# правило, что у стража слоя площадки, templates/site-layer-guard.yaml); 1 — нет;
+# 2 — слои не прочитаны.
+chain_issuer_placeholder() {
+  python3 - "$@" <<'PY'
+import re, sys, yaml
+def merge(dst, src):
+    for k, v in (src or {}).items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+tree = {}
+try:
+    for f in sys.argv[1:]:
+        merge(tree, yaml.safe_load(open(f)) or {})
+except Exception as e:
+    print("слои цепочки не прочитаны: %s" % e, file=sys.stderr)
+    sys.exit(2)
+cur = tree
+for k in ("kaname", "config", "authn", "tokenSigning", "issuer"):
+    cur = cur.get(k) if isinstance(cur, dict) else None
+host = re.sub(r"^[A-Za-z][A-Za-z0-9+.-]*://", "", str(cur or "")).split("/")[0].split(":")[0]
+placeholder = r"(?i)^(.*\.)?(invalid|example|example\.com|example\.net|example\.org)\.?$"
+sys.exit(0 if re.match(placeholder, host) else 1)
+PY
+}
+
+# issuer_overlay ORIGIN — издатель платформы у обоих потребителей (kacho#3113):
+# приём края и реестра; издатель чеканки — в блоке kaname слоя стенда. Слой
+# стенда — слой площадки стенда проб: цепочка, чей издатель — заглушка площадки,
+# получает издателем происхождение консоли СТЕНДА, иначе документ обнаружения
+# публиковал бы адреса в никуда, а потребители судили бы `iss` заглушки.
+issuer_overlay() {
+  local o="$1" ks="$1=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+  cat <<EOF
+api-gateway:
+  tokenAcceptance:
+    issuers: "$o"
+    issuerKeySets: "$ks"
+    platformIssuer: "$o"
+registry:
+  tokenAcceptance:
+    issuers: "$o"
+    issuerKeySets: "$ks"
+    platformIssuer: "$o"
+EOF
+}
+
+# stand_overlay NS CA_NS PERSIST PORT [ISSUER] — ISSUER непуст, когда издатель
+# цепочки — заглушка площадки (chain_issuer_placeholder): тогда он равен
+# происхождению консоли стенда во всех семи местах.
 stand_overlay() {
-  local ns="$1" cans="$2" persist="$3" port="$4"
+  local ns="$1" cans="$2" persist="$3" port="$4" issuer="${5:-}"
   local host; host="$(ns_host "$ns")"
+  local signing=""
+  [ -z "$issuer" ] || signing="
+      # Издатель чеканки — происхождение консоли стенда (kacho#3113, issuer_overlay).
+      tokenSigning:
+        issuer: \"$issuer\""
   cat <<EOF
 # generated by deploy/scripts/stand-ns.sh — не редактировать, не коммитить
 # Приспособление цепочки к кластеру, ИЗМЕРЕННОЕ у него, и адрес консоли стенда $ns.
@@ -681,7 +786,7 @@ kaname:
       # объявление, и рендер отказывает. Пространство kacho этот слой не видит.
       accessKeys:
         originFromConsole: true
-        origins: null
+        origins: null$signing
 uif:
   # Первый лист внешнего входа консоли — ВРЕМЕННЫЙ (certificate-public.yaml,
   # issue-temporary-certificate), настоящий раздача перечитывает сторожем раз в
@@ -712,6 +817,7 @@ uif:
     acme:
       enabled: false
 EOF
+  [ -z "$issuer" ] || issuer_overlay "$issuer"
   if [ "$persist" = off ]; then
     # Класса томов по умолчанию у кластера нет: заявка на том висела бы в Pending
     # вечно. Базы — псевдонимы подчарта postgresql в Chart.yaml зонтика (перечень
@@ -879,12 +985,22 @@ cmd_up() {
   port="$(ns_port "$ns")"
   log "кластер: cert-manager переиспользуется (ресурсы в ns $cans); DNS — поды $dnssel в ns $dnsns; класс томов по умолчанию: $persist; контроллер входа не ставится"
 
-  stand_overlay "$ns" "$cans" "$persist" "$port" >"$work/stand.yaml"
   subchart_defaults >"$work/subchart-defaults.yaml" || die "умолчания подчартов не прочитаны" 2
   local layers=("$work/subchart-defaults.yaml" "$UMBRELLA/values.yaml") f files
   files="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain "$stack" ' ')" && [ -n "$files" ] ||
     die "слои цепочки «$stack» не прочитаны — накладку образов выводить не из чего" 2
   for f in $files; do layers+=("$UMBRELLA/$f"); done
+  # Издатель платформы (kacho#3113): заглушка площадки в цепочке заменяется
+  # происхождением консоли стенда; имя разработки слой стенда не трогает.
+  local issuer="" irc=0
+  chain_issuer_placeholder "${layers[@]}" || irc=$?
+  case "$irc" in
+    0) issuer="https://$(ns_host "$ns"):$port"
+       log "издатель цепочки $stack — заглушка площадки: издатель стенда — происхождение его консоли" ;;
+    1) ;;
+    *) die "издатель цепочки «$stack» не прочитан (код $irc) — «не прочитан» не равно «не заглушка»" 2 ;;
+  esac
+  stand_overlay "$ns" "$cans" "$persist" "$port" "$issuer" >"$work/stand.yaml"
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
 
   expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"

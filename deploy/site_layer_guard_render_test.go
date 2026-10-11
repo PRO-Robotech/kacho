@@ -56,13 +56,62 @@ func renderWithSiteLayer(t *testing.T, chain []string, site string, sets ...stri
 // Слой площадки пробы — НЕ заглушки (иначе близнец ничего не доказал бы) и не
 // чьи-то координаты: домен для проб (RFC 6761), и происхождение консоли — по
 // https: профиль стенда завершает TLS на крае и http-происхождения не примет.
-const probeSiteLayer = `global:
+//
+// Издатель платформы (kacho#3113) — то же происхождение, что консоль, во всех
+// семи местах: чеканка службы доступа и приём края и реестра.
+const probeSiteLayer = probeSiteLayerNoIssuer + probeIssuerLayer
+
+// Слой площадки, написанный до kacho#3113: координаты почты и консоли есть,
+// издателя нет — он остаётся заглушкой профиля.
+const probeSiteLayerNoIssuer = `global:
   kacho:
     identity:
       smtp:
         connectionURI: "smtps://sender%40mail.kacho.test@relay.kacho.test:465/"
         fromAddress: "sender@mail.kacho.test"
       appBaseURL: "https://console.kacho.test"
+`
+
+const probeIssuer = "https://console.kacho.test"
+
+const probeKeySet = probeIssuer + "=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+
+const probeIssuerLayer = `kaname:
+  config:
+    authn:
+      tokenSigning:
+        issuer: "` + probeIssuer + `"
+api-gateway:
+  tokenAcceptance:
+    issuers: "` + probeIssuer + `"
+    issuerKeySets: "` + probeKeySet + `"
+    platformIssuer: "` + probeIssuer + `"
+registry:
+  tokenAcceptance:
+    issuers: "` + probeIssuer + `"
+    issuerKeySets: "` + probeKeySet + `"
+    platformIssuer: "` + probeIssuer + `"
+`
+
+// Слой площадки, заменивший издателя везде, кроме издателя приёма реестра: там —
+// другое (не заглушка) происхождение. Копии разошлись. Слой целиком выписан
+// заново: второй ключ `registry:` в одном файле заменил бы первый ЦЕЛИКОМ, и
+// проба судила бы не то расхождение.
+const probeSiteLayerRegistryOnAnotherIssuer = probeSiteLayerNoIssuer + `kaname:
+  config:
+    authn:
+      tokenSigning:
+        issuer: "` + probeIssuer + `"
+api-gateway:
+  tokenAcceptance:
+    issuers: "` + probeIssuer + `"
+    issuerKeySets: "` + probeKeySet + `"
+    platformIssuer: "` + probeIssuer + `"
+registry:
+  tokenAcceptance:
+    issuers: "` + probeIssuer + `"
+    issuerKeySets: "` + probeKeySet + `"
+    platformIssuer: "https://other.kacho.test"
 `
 
 // Тот же слой площадки плюс звено балансировки, которому раздача консоли верит
@@ -96,12 +145,21 @@ func TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders(t *testing
 		{name: "законный близнец: рендер проверок без слоя площадки", stack: "a8f60d"},
 		{name: "управляемый стенд применяется без слоя площадки", stack: "a8f60d",
 			sets: []string{siteLayerEnforced},
-			want: []string{refusal, "smtp.connectionURI", "smtp.fromAddress", "appBaseURL"}},
+			want: []string{refusal, "smtp.connectionURI", "smtp.fromAddress", "appBaseURL", "tokenSigning.issuer"}},
 		{name: "законный близнец: тот же стенд со слоем площадки", stack: "a8f60d",
 			site: probeSiteLayer, sets: []string{siteLayerEnforced}},
+		{name: "слой площадки не заменил издателя платформы (kacho#3113)", stack: "a8f60d",
+			site: probeSiteLayerNoIssuer, sets: []string{siteLayerEnforced},
+			want: []string{refusal, "kaname.config.authn.tokenSigning.issuer", "api-gateway.tokenAcceptance.platformIssuer",
+				"api-gateway.tokenAcceptance.issuerKeySets", "registry.tokenAcceptance.issuers"},
+			notWant: []string{"appBaseURL", "smtp.fromAddress"}},
+		{name: "слой площадки развёл копии издателя: приём реестра на другом издателе", stack: "a8f60d",
+			site: probeSiteLayerRegistryOnAnotherIssuer, sets: []string{siteLayerEnforced},
+			want: []string{refusal, "registry.tokenAcceptance.platformIssuer", "не называет издателя чеканки"},
+			notWant: []string{"api-gateway.tokenAcceptance", "registry.tokenAcceptance.issuers"}},
 		{name: "слой площадки заменил только узел", stack: "a8f60d",
 			site: probeSiteLayerMailOnly, sets: []string{siteLayerEnforced},
-			want: []string{refusal, "smtp.fromAddress", "appBaseURL"}, notWant: []string{"smtp.connectionURI"}},
+			want: []string{refusal, "smtp.fromAddress", "appBaseURL", "tokenSigning.issuer"}, notWant: []string{"smtp.connectionURI"}},
 		{name: "боевой профиль применяется без слоя площадки", stack: "prod",
 			sets: []string{siteLayerEnforced},
 			want: []string{refusal, "smtp.connectionURI", "smtp.fromAddress"}},
