@@ -336,12 +336,13 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinates
 			closedVerbs = append(closedVerbs, rt.Path)
 		}
 	}
-	// Закрытых двенадцать: девять по приёмке F6b, два глагола входа ключом
-	// (Ф13, kacho#3037) и заведение первого пароля (kaname#213, kacho#3056) —
-	// перечень девяти открытых закрыт приёмкой F6b, и запись без решения до
-	// подтверждения адреса недоступна.
-	if len(openVerbs) != 6 || len(closedVerbs) != 12 || len(ceremony) != 3 {
-		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 12), координат церемонии %d (ожидалось 3)",
+	// Закрытых пятнадцать: девять по приёмке F6b, два глагола входа ключом
+	// (Ф13, kacho#3037), заведение первого пароля (kaname#213, kacho#3056) и
+	// три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) — перечень девяти
+	// открытых закрыт приёмкой F6b, и запись без решения до подтверждения
+	// адреса недоступна.
+	if len(openVerbs) != 6 || len(closedVerbs) != 15 || len(ceremony) != 3 {
+		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 15), координат церемонии %d (ожидалось 3)",
 			len(openVerbs), len(closedVerbs), len(ceremony))
 	}
 	for _, p := range append(append([]string{}, openNonVerbPaths...), openVerbs...) {

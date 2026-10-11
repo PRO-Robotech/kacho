@@ -10,9 +10,10 @@
 //     (kacho#2701), шесть глаголов второго фактора Ф12 (приёмка Ф12 Р4,
 //     kacho#1281), два глагола подтверждения адреса почты (приёмка F6b Р5,
 //     kacho#2900), два глагола входа ключом доступа (приёмка Ф13 Р1, Ф13-28,
-//     kacho#3037) и заведение первого пароля из живой сессии (kaname#213,
-//     kacho#3056) — восемнадцать путей, тот же перечень, что служба объявляет у
-//     своего слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
+//     kacho#3037), заведение первого пароля из живой сессии (kaname#213,
+//     kacho#3056) и три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) —
+//     двадцать один путь, тот же перечень, что служба объявляет у своего
+//     слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
 //   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
 //     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
 //     авторизации, обмен кода и метаданные обнаружения — три записи; цель —
@@ -80,8 +81,9 @@
 // Не приставка: `/iam/v1/auth/` уже однажды была приставкой, и всякий новый
 // маршрут под ней наследовал освобождение, никем не решённое (`authz_util.go`).
 // Параметры запроса (`?form=<вид>`, строка запроса церемонии) к пути не
-// относятся. Путь завершения восстановления — подпуть пути запроса кода, и
-// точное совпадение здесь несущее: приставочное не различало бы два глагола. У
+// относятся. Путь завершения восстановления — подпуть пути запроса кода, как и
+// оба снятия сессий — подпути их перечня, и точное совпадение здесь несущее:
+// приставочное не различало бы глаголы. У
 // навигации церемонии соседи по имени — четыре глагола проверки доступа
 // `/iam/v1/authorize:*`: суффикс `:verb` образует другой путь, и его обслуживает
 // транскодер REST→gRPC.
@@ -130,6 +132,15 @@ const (
 	// пароля, точным совпадением отличён от смены пароля. Читает носитель
 	// сессии — решения записи парой со сменой пароля (Ф3-20 «д»).
 	LoginLanePathPasswordEnroll = "/iam/v1/auth/password/enroll" // #nosec G101 -- путь глагола заведения пароля, а не удостоверение
+	// Свои сессии (приёмка F8-S5 Р1; глаголы службы kaname#634, kacho#3061):
+	// перечень своих живых сессий, снятие одной по номеру и снятие всех,
+	// кроме текущей. Снятия — подпути перечня, различены точным совпадением.
+	// Все три читают носитель живой сессии: недоступность службы — ответ Р1
+	// (KA1) на крае, до подтверждения адреса — отказ адреса (служба держит то
+	// же, OS Р8).
+	LoginLanePathSessions          = "/iam/v1/auth/sessions"
+	LoginLanePathSessionsEnd       = "/iam/v1/auth/sessions/end"
+	LoginLanePathSessionsEndOthers = "/iam/v1/auth/sessions/end-others"
 )
 
 // Координаты церемонии авторизации (замысел LINE-A-1 §5.1). Навигация — бэрый
@@ -183,8 +194,8 @@ func RelayTargets() []RelayTarget {
 // M1) — там координата церемонии получает ответ, которым слушатель отвечает на
 // путь, которого у него нет (`handler.MountLoginLaneRoutes`).
 //
-// Форма — нет, и это решение kacho#2849 с именем потребителя: у восемнадцати
-// глаголов формы на внутреннем слушателе есть потребитель — операторская
+// Форма — нет, и это решение kacho#2849 с именем потребителя: у двадцати одного
+// глагола формы на внутреннем слушателе есть потребитель — операторская
 // консоль посадки Б (docs/architecture/admin-api-door-on-external-stand.md;
 // консоль «одна на обе посадки»).
 // У профиля консоли ОДИН узел края, `host.upstreams.apiGateway`, и раздача шлёт
@@ -234,7 +245,8 @@ type LoginLaneRoute struct {
 	//   - нулевое значение — ответ Р1 (KA1) на крае, носитель цел. Глагол читает
 	//     сессию носителя (смена пароля — Ф3-20 «д»; заведение первого пароля —
 	//     kaname#213; шесть глаголов второго фактора, включая чтение состояния, —
-	//     Ф12 Р4; два глагола подтверждения адреса — Р6 службы), и запрос с носителем, чью отсечку
+	//     Ф12 Р4; два глагола подтверждения адреса — Р6 службы; три глагола своих
+	//     сессий — приёмка F8-S5 Р1), и запрос с носителем, чью отсечку
 	//     установить не удалось, до него не доходит.
 	//
 	// Отказ — умолчание: глагол, дописанный без решения, получает ответ Р1 (KA1).
@@ -265,7 +277,8 @@ type LoginLaneRoute struct {
 	// входа ключом (Ф13): перечень девяти закрыт приёмкой F6b, решения Ф13 о
 	// неподтверждённой сессии нет, и сходство с `login` здесь не наследуется. Так
 	// стоит и заведение первого пароля: служба держит то же (положение
-	// подтверждения — отказ, A7 Р2).
+	// подтверждения — отказ, A7 Р2). Так стоят и три глагола своих сессий:
+	// закрыты решением приёмки F8-S5 Р1, служба держит то же (OS Р8).
 	openBeforeAddressConfirmation bool
 	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
 	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
@@ -283,8 +296,8 @@ type LoginLaneRoute struct {
 func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
 // loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b,
-// Ф13, заведение первого пароля и координаты церемонии; читатели по нему не
-// ветвятся.
+// Ф13, заведение первого пароля, свои сессии (F8-S5) и координаты церемонии;
+// читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "logout", Path: LoginLanePathLogout, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
@@ -304,6 +317,9 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "access-key-begin", Path: LoginLanePathAccessKeyBegin, Target: RelayTargetForm, relayWhenUnanswered: true},
 	{Verb: "access-key-login", Path: LoginLanePathAccessKeyLogin, Target: RelayTargetForm, relayWhenUnanswered: true},
 	{Verb: "password-enroll", Path: LoginLanePathPasswordEnroll, Target: RelayTargetForm},
+	{Verb: "sessions", Path: LoginLanePathSessions, Target: RelayTargetForm},
+	{Verb: "sessions-end", Path: LoginLanePathSessionsEnd, Target: RelayTargetForm},
+	{Verb: "sessions-end-others", Path: LoginLanePathSessionsEndOthers, Target: RelayTargetForm},
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
