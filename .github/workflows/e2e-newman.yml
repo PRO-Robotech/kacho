@@ -74,6 +74,7 @@ on:
   # `on:`): ствол и ветки линии, названные номером задачи. `push` — только
   # ствол: вердикт ветки задачи, волны или эпика даёт её запрос.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - '[0-9]+'
@@ -99,6 +100,37 @@ defaults:
     shell: bash
 
 jobs:
+  # Выбор затронутого (kacho#3148): на черновике запроса в ветку эпика задания ниже
+  # исполняются, только если их выбрала карта `.github/ci-paths.json`; на ready, на
+  # запросе в main, на push и ручном запуске — полный прогон. Пропуск даёт `skipped`,
+  # а сводный вердикт на черновике красный по построению: «целевой прогон: N из M».
+  changes:
+    name: выбор затронутого (e2e-newman)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      jobs: ${{ steps.pick.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: выбор затронутого по карте путей
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/affected.py --github-output e2e-newman.yml
+
   # ─── ПЛАН: матрица выводится из дерева, и покрытие доказывается ДО стендов ──
   #
   # Матрица не выписана в этом файле намеренно. Список шардов и список суит — два
@@ -109,6 +141,8 @@ jobs:
   # Гейты здесь стоят ПЕРЕД подъёмом стендов: они стоят секунды, а стенд — минуты,
   # и красное покрытие незачем узнавать через сорок минут.
   plan:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'plan') }}
+    needs: [changes]
     name: план шардов + гейты покрытия
     # ─── ЗДЕСЬ СТОЯЛО СУЖЕНИЕ ОХВАТА ПО АВТОРУ — СНЯТО ВМЕСТЕ С ПРЕДМЕТОМ ────
     #
@@ -491,8 +525,9 @@ jobs:
 
   # ─── ШАРД: свой кластер, свой стенд, свои суиты, строго по одной коллекции ──
   shard:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'shard') }}
     name: e2e ${{ matrix.shard.id }} (${{ matrix.shard.suites }})
-    needs: plan
+    needs: [changes, plan]
     runs-on: ubuntu-latest
     strategy:
       # fail-fast: false — обязательно. С отменой по первому падению остальные
@@ -1081,7 +1116,7 @@ jobs:
   # упавшие скрипты или отчёты без единого утверждения. Ничего не вычитается.
   summary:
     name: сводный вердикт (все шарды)
-    needs: [plan, shard]
+    needs: [changes, plan, shard]
     # Условие обязано пропускать КРАСНОЕ — без этого свод не исполнится ровно
     # тогда, когда он нужен, — и обязано НЕ судить прогон, которого не было.
     # `!cancelled()` даёт и то, и другое: красный шард свод переживает, снятый
@@ -1102,7 +1137,7 @@ jobs:
     # редакции говорили об одном: «мы сюда не ходили». Теперь стенды на таких PR
     # поднимаются, описи есть, и свод произносит про них ровно то же, что про
     # любой другой прогон.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'summary')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7

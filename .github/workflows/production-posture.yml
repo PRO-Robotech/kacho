@@ -126,6 +126,7 @@ on:
   # четвертьчасовой подъём шёл бы на КАЖДЫЙ запрос — в ветки полос, ревью,
   # спасения.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - '[0-9]+'
@@ -159,7 +160,40 @@ defaults:
     shell: bash
 
 jobs:
+  # Выбор затронутого (kacho#3148): на черновике запроса в ветку эпика задания ниже
+  # исполняются, только если их выбрала карта `.github/ci-paths.json`; на ready, на
+  # запросе в main, на push и ручном запуске — полный прогон. Пропуск даёт `skipped`,
+  # а сводный вердикт на черновике красный по построению: «целевой прогон: N из M».
+  changes:
+    name: выбор затронутого (posture)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      jobs: ${{ steps.pick.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: выбор затронутого по карте путей
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/affected.py --github-output production-posture.yml
+
   stand:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'stand') }}
+    needs: [changes]
     # Имя называет измерение матрицы: у каждой ноги своё имя, то есть своя
     # проверка в своде запроса (`.github/scripts/pr-verdict.py`, литеральная
     # матрица раскрывается по ногам).

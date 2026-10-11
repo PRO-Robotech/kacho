@@ -1,0 +1,556 @@
+{
+ "_doc": "Карта «пути → задание» — единственный источник выбора затронутого (kacho#3148). Читают: .github/scripts/affected.py (детектор процессов, локальный прогон), pr-verdict.py --targeted (сводный вердикт черновика). Задание — «<процесс>:<id>». Путь, не выбранный ни одной группой, и путь из full_on выбирают ВСЁ; образец, совпадающий с любым путём (`**`), задания своей группы добавляет, но покрытием пути НЕ считается — иначе неопознанный путь «выбран» им и запасной ход не срабатывает никогда. Файл процесса выбирает все задания своего процесса. Проводку сверяет `affected_wiring.py .github/workflows` в обе стороны.",
+ "full_bases": [
+  "main"
+ ],
+ "full_on": [
+  ".github/ci-paths.json",
+  ".github/scripts/affected.py"
+ ],
+ "always": [
+  "required-verdict.yml:all-checks-green",
+  "review-text.yml:attribution",
+  "ci.yaml:changes",
+  "security-scan.yml:changes",
+  "ui.yml:changes",
+  "e2e-newman.yml:changes",
+  "console-e2e.yml:changes",
+  "production-posture.yml:changes"
+ ],
+ "detectors": {
+  "ci.yaml": "changes",
+  "security-scan.yml": "changes",
+  "ui.yml": "changes",
+  "e2e-newman.yml": "changes",
+  "console-e2e.yml": "changes",
+  "production-posture.yml": "changes"
+ },
+ "groups": [
+  {
+   "id": "go-build",
+   "why": "сборка, vet, gofmt, линтер и gosec судят Go-исходники",
+   "jobs": [
+    "ci.yaml:build-test",
+    "ci.yaml:lint",
+    "security-scan.yml:gosec"
+   ],
+   "paths": [
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    ".golangci*",
+    "**/.golangci*",
+    "scripts/go-mod-tidy-check*"
+   ],
+   "local": [
+    {
+     "kind": "go-build"
+    },
+    {
+     "kind": "go-lint"
+    }
+   ]
+  },
+  {
+   "id": "go-unit",
+   "why": "юниты: пробы пакетов и гейты дерева (internal/repohygiene читает процессы, скрипты, чарты, сюиты, документы) — любой путь",
+   "jobs": [
+    "ci.yaml:unit-plan",
+    "ci.yaml:unit-shard",
+    "ci.yaml:unit-verdict"
+   ],
+   "paths": [
+    "**"
+   ],
+   "local": [
+    {
+     "kind": "go-test"
+    }
+   ]
+  },
+  {
+   "id": "go-unit-data",
+   "why": "входы проб Go, которые не исходники: данные гейтов дерева internal/repohygiene и testdata пакетов — их читают юниты (в конвейере судят все шарды; локально — гейты дерева)",
+   "jobs": [
+    "ci.yaml:unit-plan",
+    "ci.yaml:unit-shard",
+    "ci.yaml:unit-verdict"
+   ],
+   "paths": [
+    "internal/repohygiene/**",
+    "**/testdata/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "гейты дерева internal/repohygiene",
+     "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/repohygiene/"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tree-gates-ci",
+   "why": "гейты дерева над конвейером и скриптами",
+   "jobs": [
+    "ci.yaml:unit-plan",
+    "ci.yaml:unit-shard",
+    "ci.yaml:unit-verdict"
+   ],
+   "paths": [
+    ".github/**",
+    "scripts/**",
+    "Makefile",
+    "**/Makefile",
+    "*.mk"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "гейты дерева internal/repohygiene",
+     "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/repohygiene/"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tree-gates-newman",
+   "why": "гейты дерева над newman-сюитами (перепись кейсов, известное красное)",
+   "jobs": [
+    "ci.yaml:unit-plan",
+    "ci.yaml:unit-shard",
+    "ci.yaml:unit-verdict"
+   ],
+   "paths": [
+    "**/tests/newman/**",
+    "tests/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "гейты артефактов сюит",
+     "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/repohygiene/artifactgates/",
+      "./tools/newmancensus/...",
+      "./tools/knownfailingsubject/..."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "newman-suites",
+   "why": "оснастка newman: сверщики сюит, пробы python, дисциплины ожиданий/отчётов/удаления, гейты плана шардов",
+   "jobs": [
+    "ci.yaml:authz-artifacts",
+    "ci.yaml:helm",
+    "e2e-newman.yml:plan",
+    "e2e-newman.yml:shard",
+    "e2e-newman.yml:summary"
+   ],
+   "paths": [
+    "**/tests/newman/**",
+    "tests/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "у каждой исполняемой суиты свой шаг-гейт",
+     "argv": [
+      "python3",
+      ".github/scripts/check-newman-suite-gates.py"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "регрессионные пробы оснастки сюит",
+     "argv": [
+      "python3",
+      ".github/scripts/run-python-probes.py"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "запись «известное красное» имеет предмет",
+     "argv": [
+      "go",
+      "run",
+      "./tools/knownfailingsubject/cmd/verify-known-failing-subject",
+      "."
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "дисциплины сюит (ожидание, отчёт, разбор, удаление, роли)",
+     "argv": [
+      "make",
+      "-C",
+      "deploy",
+      "waiter-discipline",
+      "report-reader-discipline",
+      "generated-scripts-parse",
+      "delete-step-discipline",
+      "fixture-role-verbs"
+     ]
+    },
+    {
+     "kind": "stand",
+     "title": "сквозные пробы newman (шарды e2e-newman) — нужен стенд"
+    }
+   ]
+  },
+  {
+   "id": "helm",
+   "why": "чарты и профили посадки: lint, template, стражи рендера, пробы тега helmcharts",
+   "jobs": [
+    "ci.yaml:helm",
+    "ci.yaml:authz-artifacts",
+    "security-scan.yml:trivy",
+    "production-posture.yml:stand",
+    "console-e2e.yml:probes",
+    "e2e-newman.yml:plan",
+    "e2e-newman.yml:shard",
+    "e2e-newman.yml:summary"
+   ],
+   "paths": [
+    "deploy/**",
+    "services/*/deploy/**",
+    "gateway/deploy/**",
+    ".github/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "helm lint",
+     "argv": [
+      "make",
+      "-C",
+      "deploy",
+      "helm-lint"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "сервисный чарт рендерится",
+     "argv": [
+      "bash",
+      ".github/scripts/lint-service-charts.sh"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "самопроверки гейтов deploy",
+     "argv": [
+      "make",
+      "-C",
+      "deploy",
+      "gate-self-test"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "пробы deploy (рендер)",
+     "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "-tags",
+      "helmcharts",
+      "./deploy/"
+     ]
+    },
+    {
+     "kind": "stand",
+     "title": "подъём стека в production-посадке (production-posture) и сквозные пробы — нужен стенд"
+    }
+   ]
+  },
+  {
+   "id": "integration",
+   "why": "интеграция на настоящем Postgres: репозитории, миграции, мигратор",
+   "jobs": [
+    "ci.yaml:integration",
+    "ci.yaml:pg-outside-selection"
+   ],
+   "paths": [
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    "**/*.sql",
+    "**/migrations/**",
+    "Makefile"
+   ],
+   "local": [
+    {
+     "kind": "stand",
+     "title": "интеграционные пробы testcontainers (тяжёлый слот) — судит конвейер"
+    }
+   ]
+  },
+  {
+   "id": "stand",
+   "why": "бинари служб и края на стенде: сквозные пробы, консоль, production-posture",
+   "jobs": [
+    "e2e-newman.yml:plan",
+    "e2e-newman.yml:shard",
+    "e2e-newman.yml:summary",
+    "console-e2e.yml:probes",
+    "production-posture.yml:stand",
+    "security-scan.yml:trivy"
+   ],
+   "paths": [
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    "proto/**",
+    "**/*.sql",
+    "**/Dockerfile*",
+    "**/Makefile",
+    "Makefile",
+    "*.mk"
+   ],
+   "local": [
+    {
+     "kind": "stand",
+     "title": "сквозные пробы newman, консоли и подъём production-посадки — нужен стенд"
+    }
+   ]
+  },
+  {
+   "id": "terraform",
+   "why": "провайдер, модули и примеры terraform (провайдер собирается из Go дерева)",
+   "jobs": [
+    "ci.yaml:terraform"
+   ],
+   "paths": [
+    "terraform/**",
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    "proto/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "пробы провайдера",
+     "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "./terraform/..."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "proto",
+   "why": "контракты: buf lint, breaking, стабы в синхроне",
+   "jobs": [
+    "ci.yaml:proto",
+    "ci.yaml:authz-artifacts"
+   ],
+   "paths": [
+    "proto/**",
+    "**/buf*.yaml",
+    "**/*.pb.go",
+    "**/*.pb.gw.go",
+    "tools/declaredbreak/**",
+    "scripts/release/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "buf lint",
+     "argv": [
+      "buf",
+      "lint"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "authz-artifacts",
+   "why": "каталог прав, таблица маршрутов края, listauthz, гейты текста продукта — читают Go, контракты, сюиты, скрипты",
+   "jobs": [
+    "ci.yaml:authz-artifacts"
+   ],
+   "paths": [
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    "proto/**",
+    "gateway/**",
+    "tools/**",
+    "deploy/scripts/**",
+    "Makefile",
+    "**/Makefile"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "каталог прав и таблица маршрутов в синхроне",
+     "argv": [
+      "make",
+      "-C",
+      "gateway",
+      "permission-catalog-check",
+      "rest-route-table-check"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "govulncheck",
+   "why": "уязвимости зависимостей",
+   "jobs": [
+    "ci.yaml:govulncheck"
+   ],
+   "paths": [
+    "**/go.mod",
+    "**/go.sum"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "govulncheck",
+     "argv": [
+      "govulncheck",
+      "./..."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "carry-drift",
+   "why": "перенос ветки не откатил ствол — свойство любой правки",
+   "jobs": [
+    "ci.yaml:carry-drift"
+   ],
+   "paths": [
+    "**"
+   ],
+   "local": []
+  },
+  {
+   "id": "docs-sites",
+   "why": "сайты документации компонентов",
+   "jobs": [
+    "ci.yaml:docs-sites"
+   ],
+   "paths": [
+    "docs/**",
+    "**/docs/**",
+    ".github/scripts/build-docs-sites.py"
+   ],
+   "local": [
+    {
+     "kind": "stand",
+     "title": "сборка сайтов документации (node) — судит конвейер"
+    }
+   ]
+  },
+  {
+   "id": "trivy",
+   "why": "сканирование файловой системы и IaC",
+   "jobs": [
+    "security-scan.yml:trivy"
+   ],
+   "paths": [
+    "**/go.mod",
+    "**/go.sum",
+    "**/package-lock.json",
+    "**/Dockerfile*",
+    "terraform/**",
+    "trivy.yaml",
+    "**/.trivyignore*",
+    "deploy/**",
+    "services/*/deploy/**",
+    "gateway/deploy/**"
+   ],
+   "local": [
+    {
+     "kind": "stand",
+     "title": "trivy fs + IaC — судит конвейер"
+    }
+   ]
+  },
+  {
+   "id": "ui",
+   "why": "консоль: типы, линт, федерация, юниты, сборка пакетов",
+   "jobs": [
+    "ui.yml:typecheck",
+    "ui.yml:lint",
+    "ui.yml:federation",
+    "ui.yml:test",
+    "ui.yml:build",
+    "ui.yml:matrix-complete",
+    "console-e2e.yml:probes"
+   ],
+   "paths": [
+    "ui-future/**",
+    "proto/**"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "консоль — типы",
+     "argv": [
+      "npm",
+      "--prefix",
+      "ui-future",
+      "run",
+      "typecheck"
+     ]
+    },
+    {
+     "kind": "cmd",
+     "title": "консоль — линт",
+     "argv": [
+      "npm",
+      "--prefix",
+      "ui-future",
+      "run",
+      "lint"
+     ]
+    },
+    {
+     "kind": "stand",
+     "title": "сквозные пробы консоли — нужен стенд"
+    }
+   ]
+  },
+  {
+   "id": "ui-go-module",
+   "why": "две пробы общего пакета консоли (@shared/test/corelib-source) читают объявление фундамента из кэша модулей той версии, что закреплена корневым go.mod; задание ui.yml:test выкачивает её по go.mod — правка go.mod/go.sum меняет их вход",
+   "jobs": [
+    "ui.yml:test"
+   ],
+   "paths": [
+    "go.mod",
+    "go.sum"
+   ],
+   "local": [
+    {
+     "kind": "cmd",
+     "title": "консоль — юниты пакета vpc (несёт пробы общего пакета, читающие фундамент)",
+     "argv": [
+      "npm",
+      "--prefix",
+      "ui-future/vpc",
+      "test"
+     ]
+    }
+   ]
+  }
+ ]
+}
