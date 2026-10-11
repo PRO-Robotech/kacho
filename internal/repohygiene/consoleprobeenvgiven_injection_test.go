@@ -25,7 +25,8 @@ func injWorkflow(stepTail string) string { return injWorkflowHead + stepTail }
 func injSuite(extra map[string]string) map[string]string {
 	s := map[string]string{
 		"ui-future/e2e/playwright.config.ts": "const BASE = process.env.KACHO_CONSOLE_URL;\n" +
-			"const exe = process.env.KACHO_CHROMIUM ? 1 : 0;\n",
+			"const exe = process.env.KACHO_CHROMIUM ? 1 : 0;\n" +
+			"const measure = process.env.KACHO_CONSOLE_MEASURE === \"1\";\n",
 	}
 	for k, v := range extra {
 		s[k] = v
@@ -93,7 +94,7 @@ func TestProbeEnvGivenInjection_EveryLawfulGivingFormIsSilent(t *testing.T) {
 		"          export KACHO_A=\"$(cat a)\"\n" +
 		"          KACHO_B=b npx playwright test\n"
 	findings, census := checkProbeEnvGiven("wf.yml", injWorkflow(tail), suite)
-	if len(findings) != 0 || census.Variables != 5 {
+	if len(findings) != 0 || census.Variables != 6 {
 		t.Fatalf("законные формы отдачи (env шага, export, префикс команды): находки %v, перепись %+v", findings, census)
 	}
 }
@@ -129,7 +130,9 @@ func TestProbeEnvGivenInjection_GivingInACommentIsNotGiving(t *testing.T) {
 
 func TestProbeEnvGivenInjection_OptionalKnobWithoutReaderExpires(t *testing.T) {
 	t.Parallel()
-	suite := map[string]string{"ui-future/e2e/playwright.config.ts": "const BASE = process.env.KACHO_CONSOLE_URL;\n"}
+	// Читатель второй необязательной ручки остаётся: истекает ровно одна — та, чьего читателя сняли.
+	suite := map[string]string{"ui-future/e2e/playwright.config.ts": "const BASE = process.env.KACHO_CONSOLE_URL;\n" +
+		"const measure = process.env.KACHO_CONSOLE_MEASURE === \"1\";\n"}
 	findings, _ := checkProbeEnvGiven("wf.yml", injWorkflow(injGivesURL+"        run: npx playwright test\n"), suite)
 	if len(findings) != 1 || !strings.Contains(findings[0], "`KACHO_CHROMIUM`") || !strings.Contains(findings[0], "нечего исключать") {
 		t.Fatalf("необязательная ручка без читателя обязана истечь находкой: %v", findings)
