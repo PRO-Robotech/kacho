@@ -138,11 +138,14 @@ ingress-nginx:
 # `**/values.*-secrets.yaml`). `make stack-up STACK=a8f60d` кладёт его
 # последним и взводит `global.kacho.siteLayer.enforced`: стенд, у которого
 # слоя нет, в рендере ОТКАЗЫВАЕТ (templates/site-layer-guard.yaml), а не
-# поднимается с неразрешимым узлом. Слой несёт ровно эти три величины:
+# поднимается с неразрешимым узлом. Слой несёт ровно эти четыре величины:
 #
 #   global.kacho.identity.smtp.connectionURI  (схема smtps, учётка, узел, порт)
 #   global.kacho.identity.smtp.fromAddress
 #   global.kacho.identity.appBaseURL          (https://<имя стенда>)
+#   uif.publicFront.clientAddress.proxyProtocol.trustedFrom
+#                                             (адрес звена балансировки, kacho#3115;
+#                                             судится, когда приём включён)
 #
 # Значения, стоявшие здесь прежде, остаются в истории публичного репозитория:
 # снятие из файла раскрытое не отзывает. Пароля в ней не было никогда — он
@@ -581,6 +584,31 @@ uif:
         lb.beget.com/algorithm: round_robin
         lb.beget.com/healthcheck-interval-seconds: "10"
         lb.beget.com/healthcheck-timeout-seconds: "5"
+    # АДРЕС КЛИЕНТА ОТ БАЛАНСИРОВЩИКА ПЛОЩАДКИ (kacho#3115). Замер #3028:
+    # балансировщик соединяется с раздачей со своего адреса, и `Local` на Service
+    # клиента не сохраняет — за входом один источник, лимиты «на источник» общие.
+    # Площадка передаёт адрес клиента заголовком PROXY v2 по аннотации объекта;
+    # просьба и приём включаются ОДНОЙ ручкой (ui.publicFrontProxyProtocol).
+    # Звено балансировки, от которого заголовку верят, — координата площадки:
+    # здесь заглушка адресом документации (RFC 5737), настоящее — в слое
+    # площадки вне git; на стенде со слоем площадки заглушка рендер не проходит
+    # (templates/site-layer-guard.yaml).
+    #
+    # ПРИЁМ ВЫКЛЮЧЕН — причина ниже. Заголовок PROXY ждут оба порта входа, и
+    # порт redirect обслуживает вызов ACME HTTP-01. Соединение изнутри кластера
+    # к внешнему адресу входа (status.loadBalancer.ingress[].ipMode = VIP)
+    # замыкается на под, минуя балансировщик, — без заголовка; так приходит и
+    # проверка достижимости вызова, которую делает выпускающий сертификат, и
+    # продление сертификата входа встало бы. Включение — после выбора способа
+    # (kacho#3115).
+    clientAddress:
+      proxyProtocol:
+        enabled: false
+        disabledBecause: "порт redirect обслуживает ACME HTTP-01, а проверка вызова изнутри кластера приходит на под без заголовка PROXY (ipMode VIP); способ — kacho#3115"
+        trustedFrom:
+          - 192.0.2.1/32
+        serviceAnnotations:
+          lb.beget.com/proxy-protocol: v2
     tls:
       secretName: console-public-tls
       certificate:
