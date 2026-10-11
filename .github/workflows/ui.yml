@@ -18,6 +18,7 @@ on:
   # Базы запроса — те же, что у `ci.yaml` (довод и перепись веток — в шапке его
   # `on:`): ствол и ветки линии, названные номером задачи.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - '[0-9]+'
@@ -73,7 +74,40 @@ env:
   STANDALONE: host dashboard compute storage nlb registry e2e
 
 jobs:
+  # Выбор затронутого (kacho#3148): на черновике запроса в ветку эпика задания ниже
+  # исполняются, только если их выбрала карта `.github/ci-paths.json`; на ready, на
+  # запросе в main, на push и ручном запуске — полный прогон. Пропуск даёт `skipped`,
+  # а сводный вердикт на черновике красный по построению: «целевой прогон: N из M».
+  changes:
+    name: выбор затронутого (ui)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      jobs: ${{ steps.pick.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: выбор затронутого по карте путей
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/affected.py --github-output ui.yml
+
   typecheck:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'typecheck') }}
+    needs: [changes]
     name: typecheck (11 пакетов)
     runs-on: ubuntu-latest
     # hard-гейт качества UI (tsc --noEmit по всем 9 приложениям + shared + e2e).
@@ -106,6 +140,8 @@ jobs:
       - run: npm run typecheck
 
   lint:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'lint') }}
+    needs: [changes]
     name: линт (покрытие 11 пакетов + shared + scripts)
     runs-on: ubuntu-latest
     # Прежде в этом workflow не было НИ ОДНОГО шага линта — ни для одного пакета
@@ -357,6 +393,8 @@ jobs:
         run: npm run lint
 
   federation:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'federation') }}
+    needs: [changes]
     name: федерация исполняется
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -394,6 +432,8 @@ jobs:
         run: node scripts/check-federation-pin-still-needed.mjs --self-test
 
   test:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'test') }}
+    needs: [changes]
     name: unit (${{ matrix.pkg }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -492,6 +532,8 @@ jobs:
       - run: npm test --prefix ${{ matrix.pkg }}
 
   build:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'build') }}
+    needs: [changes]
     name: build ${{ matrix.project }}
     runs-on: ubuntu-latest
     strategy:
@@ -626,6 +668,8 @@ jobs:
   # Гейт против дрейфа «пакет есть, а в CI его нет» — ровно того, из-за чего compute и
   # storage не проверялись в polyrepo. Сверяет матрицу build с Dockerfile'ами на диске.
   matrix-complete:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'matrix-complete') }}
+    needs: [changes]
     name: матрица покрывает все remotes
     runs-on: ubuntu-latest
     steps:

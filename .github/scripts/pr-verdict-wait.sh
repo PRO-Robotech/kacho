@@ -115,11 +115,24 @@ fetch_checks() {
 # задание свода кладёт их рядом со скриптами. Пришедшие check-runs перечнем
 # ожидаемого не служат — до #2910 вердикт «зелено» выносился над одной
 # проверкой, потому что остальные ещё не успели появиться.
+# Черновик (kacho#3148): выбор затронутого вычисляется ОДИН раз тем же скриптом и по
+# тому же входу, что у детекторов процессов, и свод судит выбранное — красным по
+# построению. Выбор не вычислен — вердикта нет, и это не «зелено».
+draft_args=()
+if [ "${DRAFT:-}" = "true" ] && [ -z "$VERDICT_DECIDE_CMD" ]; then
+  if ! python3 "$here/affected.py" --draft-selection > draft-selection.json; then
+    echo "::error::черновик: выбор затронутого не вычислен — вердикта НЕТ, и это НЕ «зелено»"
+    exit 1
+  fi
+  echo "черновик: выбор затронутого — $(cat draft-selection.json)"
+  draft_args=(--draft-selection draft-selection.json)
+fi
+
 decide_verdict() {
   if [ -n "$VERDICT_DECIDE_CMD" ]; then
     "$VERDICT_DECIDE_CMD"
   else
-    python3 "$here/pr-verdict.py" --self-name "$SELF" --workflows "$here/../workflows" --base "$BASE"
+    python3 "$here/pr-verdict.py" --self-name "$SELF" --workflows "$here/../workflows" --base "$BASE" "${draft_args[@]}"
   fi
 }
 

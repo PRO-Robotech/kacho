@@ -61,6 +61,7 @@ on:
   # `.github/scripts/assert-review-trigger-scope.py` (шаг в задании
   # `authz-artifacts` ниже), а не этот комментарий.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - '[0-9]+'
@@ -94,7 +95,40 @@ defaults:
     shell: bash
 
 jobs:
+  # Выбор затронутого (kacho#3148): на черновике запроса в ветку эпика задания ниже
+  # исполняются, только если их выбрала карта `.github/ci-paths.json`; на ready, на
+  # запросе в main, на push и ручном запуске — полный прогон. Пропуск даёт `skipped`,
+  # а сводный вердикт на черновике красный по построению: «целевой прогон: N из M».
+  changes:
+    name: выбор затронутого (ci)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      jobs: ${{ steps.pick.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: выбор затронутого по карте путей
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/affected.py --github-output ci.yaml
+
   build-test:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'build-test') }}
+    needs: [changes]
     name: build · vet · gofmt
     runs-on: ubuntu-latest
     steps:
@@ -204,6 +238,8 @@ jobs:
   # на слияние, включая тот, что состав меняет. Обязательными становятся только
   # план и сводный вердикт — имена шардов производны от дерева и в защиту не идут.
   unit-plan:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'unit-plan') }}
+    needs: [changes]
     name: план шардов юнитов · перепись полноты
     runs-on: ubuntu-latest
     outputs:
@@ -308,8 +344,9 @@ jobs:
           path: unit-shard-plan.json
 
   unit-shard:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'unit-shard') }}
     name: юниты ${{ matrix.shard.id }}
-    needs: unit-plan
+    needs: [changes, unit-plan]
     runs-on: ubuntu-latest
     strategy:
       # FAIL-FAST СНЯТ НАМЕРЕННО: с ним первый упавший шард отменяет остальные, и
@@ -424,11 +461,11 @@ jobs:
   # без упавших шагов выходит success, в том числе когда шардов исполнилось ноль.
   unit-verdict:
     name: сводный вердикт юнитов (все шарды)
-    needs: [unit-plan, unit-shard]
+    needs: [changes, unit-plan, unit-shard]
     # `!cancelled()` — несущая часть, а не украшение: задание с непройденным
     # `needs` ПРОПУСКАЕТСЯ, а пропущенное обязательное задание не краснеет — оно
     # молчит, и молчание приходит в сводку слияния тем же серым, что «ещё идёт».
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'unit-verdict')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
@@ -473,6 +510,8 @@ jobs:
   # компилируются, поэтому опечатка в связывании ресурсов и снятая проверка входа
   # проходят молча до первого apply у пользователя.
   terraform:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'terraform') }}
+    needs: [changes]
     name: terraform — формат · модульные пробы · приёмка провайдера
     runs-on: ubuntu-latest
     steps:
@@ -565,6 +604,8 @@ jobs:
         run: go test ./terraform/internal/provider -run Acceptance -count=1
 
   integration:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'integration') }}
+    needs: [changes]
     name: integration (${{ matrix.svc }})
     runs-on: ubuntu-latest
     strategy:
@@ -673,6 +714,8 @@ jobs:
   # вне отбора интеграционной джобы, — а второе задание об одном предмете разошлось
   # бы с первым в посадке и бюджете.
   pg-outside-selection:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'pg-outside-selection') }}
+    needs: [changes]
     name: Postgres-пробы вне отбора интеграционной джобы (пропуск = отказ)
     runs-on: ubuntu-latest
     steps:
@@ -716,6 +759,8 @@ jobs:
         run: make test-pg-outside-selection
 
   proto:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'proto') }}
+    needs: [changes]
     name: buf lint · breaking · generate-diff
     runs-on: ubuntu-latest
     steps:
@@ -891,6 +936,8 @@ jobs:
 
 
   authz-artifacts:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'authz-artifacts') }}
+    needs: [changes]
     name: permission-catalog · rest-route-table (staleness + copy-drift)
     runs-on: ubuntu-latest
     steps:
@@ -1365,6 +1412,12 @@ jobs:
           # упоминание в сыром тексте вызовом, поэтому немоту не показывал, а
           # одиннадцать утверждений о вердикте не исполнялись ни разу.
           python3 -m pytest -q .github/scripts/pr_verdict_test.py
+
+          # Выбор затронутого (kacho#3148): пробы карты, детектора и свода черновика,
+          # и сверка проводки процессов с картой в обе стороны — задание, которого
+          # нет в карте, на черновике не выберет никто.
+          python3 -m pytest -q .github/scripts/affected_test.py
+          python3 .github/scripts/affected.py --check-wiring .github/workflows
 
           # Решение шага `gate` в ui.yml о публикации образов консоли — исходом на
           # каждом событии, а не текстом шага (kacho#2881). Зовётся здесь, а не в
@@ -1981,6 +2034,8 @@ jobs:
   # оба сторожу видны.
 
   lint:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'lint') }}
+    needs: [changes]
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
@@ -2016,6 +2071,8 @@ jobs:
       # Модуль уехал вместе со службой; прогон снят вместе с ним.
 
   govulncheck:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'govulncheck') }}
+    needs: [changes]
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
@@ -2032,6 +2089,8 @@ jobs:
           # зависимостей. Модуль уехал вместе со службой.
 
   helm:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'helm') }}
+    needs: [changes]
     name: helm lint · template (dev + prod)
     runs-on: ubuntu-latest
     steps:
@@ -2733,6 +2792,8 @@ jobs:
   # НИ ОДНА; при выведенном из графа диапазоне не выпала ни одна из 24. То есть
   # и находка, и запись перечня жили ровно один прогон (задача #1911).
   carry-drift:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'carry-drift') }}
+    needs: [changes]
     name: перенос ветки не откатил ствол
     runs-on: ubuntu-latest
     steps:
@@ -2798,6 +2859,8 @@ jobs:
           bash tools/carrydrift/judge.sh
 
   docs-sites:
+    if: ${{ needs.changes.outputs.full == 'true' || contains(fromJSON(needs.changes.outputs.jobs || '[]'), 'docs-sites') }}
+    needs: [changes]
     # ИМЯ БЕЗ ЧИСЛА — НАМЕРЕННО. Имя джобы становится именем обязательного контекста
     # защиты ствола, а ручка защиты читается только правом администратора. Число в
     # имени делало КАЖДОЕ изменение состава сайтов админской операцией: пока имя в
