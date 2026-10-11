@@ -13,7 +13,7 @@ import {
 } from "@playwright/test";
 import { noteRefusal, recordableRefusal } from "./ceremony-budget";
 import { isRegistration, noteRegistration } from "./registration-budget.ts";
-import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
 

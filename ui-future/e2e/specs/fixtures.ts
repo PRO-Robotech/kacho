@@ -15,7 +15,8 @@ import {
 } from "./registration-budget.ts";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
-import type { TenantRecord } from "./tenant-removal";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
+import { removeTenant, type TenantRecord } from "./tenant-removal";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -138,7 +139,6 @@ export const test = base.extend<
       const tenants = tenantsOfTest.get(testInfo.testId) ?? [];
       tenantsOfTest.delete(testInfo.testId);
       if (tenants.length === 0) return;
-      const { removeTenant } = await import("./tenant-removal");
       const failures: string[] = [];
       for (const tenant of [...tenants].reverse()) {
         try {
@@ -353,16 +353,9 @@ export interface Tenant {
  */
 export const STREAM_PATH = "/subscription/v1/events";
 
-/** Пароль арендатора набора; тот же у посева «Дано» (`ceremony-seed.ts`). */
-export const E2E_PASSWORD = "Kacho-E2E-2026!x";
-
-/** Имя носителя сессии нашей службы — то, что браузер держит после входа. */
-export const SESSION_COOKIE = "kaname_session";
-
-/** уникальное имя прогона — из времени; коллизия по UNIQUE(name) иначе даёт 409 */
-export function runTag(): string {
-  return Date.now().toString(36) + Math.trunc(performance.now()).toString(36);
-}
+// Пароль арендатора, носитель сессии и метка прогона — в листе без зависимостей
+// (`run-identity.ts`, почему — там же); фикстуры отдают их прежними именами.
+export { E2E_PASSWORD, SESSION_COOKIE, runTag };
 
 /** register проводит регистрацию до РАБОЧЕЙ СЕССИИ с подтверждённым адресом и
  * отдаёт почту арендатора.
