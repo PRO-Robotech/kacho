@@ -46,7 +46,9 @@ import (
 )
 
 // externalListenRe — TLS-слушатель внешнего входа: выражение порта из values.
-var externalListenRe = regexp.MustCompile(`(?m)^\s*listen\s+\{\{-?\s*(\.Values\.publicFront\.[A-Za-z]+)\s*-?\}\}\s+ssl\s*;`)
+// За `ssl` может стоять условный приём заголовка PROXY от балансировщика
+// площадки (kacho#3115) — параметр того же слушателя, а не другой слушатель.
+var externalListenRe = regexp.MustCompile(`(?m)^\s*listen\s+\{\{-?\s*(\.Values\.publicFront\.[A-Za-z]+)\s*-?\}\}\s+ssl(?:\{\{\s*if\s+\$proxied\s*\}\}\s+proxy_protocol\{\{\s*end\s*\}\})?\s*;`)
 
 // remoteLaneRe — полоса ассетов модуля в серверном блоке оболочки.
 var remoteLaneRe = regexp.MustCompile(`^/([a-z][a-z0-9-]*)-remote/$`)

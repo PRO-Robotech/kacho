@@ -79,6 +79,22 @@ publicFront:
     type: LoadBalancer
   httpsPort: 8443
   redirectPort: 8081
+  # АДРЕС КЛИЕНТА ОТ БАЛАНСИРОВЩИКА ПЛОЩАДКИ (kacho#3115). Балансировщик,
+  # соединяющийся со своего адреса, доносит клиента только заголовком PROXY;
+  # `externalTrafficPolicy: Local` (service-public.yaml) за таким звеном адреса не
+  # сохраняет — все клиенты становятся одним источником ограничения частоты.
+  # Действует только у входа типа LoadBalancer. Правила и отказы рендера —
+  # `ui.publicFrontProxyProtocol` (_helpers.tpl).
+  clientAddress:
+    proxyProtocol:
+      enabled: false
+      # Выключение у входа LoadBalancer требует ПРИЧИНЫ: пусто — отказ рендера.
+      disabledBecause: ""
+      # Звено балансировки — адреса, от которых заголовку верят (по одному:
+      # /32, /128). Координата площадки.
+      trustedFrom: []
+      # Просьба к балансировщику площадки слать заголовок — аннотации Service.
+      serviceAnnotations: {}
   tls:
     # Секрет `kubernetes.io/tls` (ключи tls.crt / tls.key).
     secretName: ""

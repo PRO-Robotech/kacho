@@ -250,6 +250,70 @@
 {{- fail "uif.publicFront: httpsPort/redirectPort совпадает с внутренним портом раздачи" -}}
 {{- end -}}
 {{- $_ := include "ui.publicFrontOrigin" . -}}
+{{- $_ := include "ui.publicFrontProxyProtocol" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- /*
+ui.publicFrontProxyProtocol — адрес клиента от балансировщика площадки заголовком
+PROXY (kacho#3115); печатает "true", когда приём включён, иначе пусто.
+
+Действует ТОЛЬКО у входа, который публикует площадка (`service.type:
+LoadBalancer`): вход, который пробрасывает к себе пользующийся (`ClusterIP`,
+стенд проб), заголовка не получает, и слушатель, ждущий его, отверг бы каждое
+соединение.
+
+Включённый приём требует вместе, и рендер отказывает на любой недостающей:
+  - `trustedFrom` — звено балансировки, от которого заголовку верят; пусто
+    значило бы «верить никому» молча (адрес — снова балансировщик), а запись
+    шире одного адреса (/32, /128) — верить и соседям звена: порт https раздачи
+    доступен подам и узлам кластера, и каждый хост в доверенной подсети заявил
+    бы чужой источник. Заглушку слоя площадки (адрес документации) судит
+    общий страж слоя — templates/site-layer-guard.yaml умбреллы, а не этот;
+  - `serviceAnnotations` — просьба к балансировщику слать заголовок. Слушатель,
+    ждущий заголовка, без отправителя принял бы первую строку клиента за адрес;
+    поэтому просьба объявлена здесь же, а не рядом в `service.annotations`, —
+    одно включение, а не два;
+  - ни один ключ `serviceAnnotations` не переобъявлен в `service.annotations`
+    другим значением: иначе одно из двух мест молча перебило бы другое, и
+    значение «не слать заголовок» при включённом приёме дало бы клиенту самому
+    написать строку PROXY с любым адресом.
+
+Выключенный приём у входа LoadBalancer требует ПРИЧИНЫ (`disabledBecause`):
+пустая строка — это «забыли», и проверка не отличила бы её от «здесь намеренно
+нет». Причина выходит аннотацией Service, её читает рендер-гейт
+(deploy/console_public_front_render_test.go, п. 7).
+*/}}
+{{- define "ui.publicFrontProxyProtocol" -}}
+{{- $pf := .Values.publicFront -}}
+{{- $pp := (($pf.clientAddress | default dict).proxyProtocol) | default dict -}}
+{{- if and $pf.enabled (not $pp.enabled) (eq (include "ui.publicFrontServiceType" .) "LoadBalancer") (not (trim (toString ($pp.disabledBecause | default "")))) -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol: приём заголовка PROXY выключен у входа LoadBalancer без причины (disabledBecause пуст) — за балансировщиком, соединяющимся со своего адреса, все клиенты стали бы одним источником (kacho#3115). Включите приём либо назовите причину" -}}
+{{- end -}}
+{{- if and $pf.enabled $pp.enabled (eq (include "ui.publicFrontServiceType" .) "LoadBalancer") -}}
+{{- $from := $pp.trustedFrom | default list -}}
+{{- if not $from -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol.trustedFrom пуст при включённом приёме заголовка PROXY — звено балансировки не названо, и адрес клиента снова был бы адресом балансировщика (kacho#3115)" -}}
+{{- end -}}
+{{- range $from -}}
+{{- $e := toString . -}}
+{{- $ok := false -}}
+{{- if regexMatch `^([0-9]{1,3}\.){3}[0-9]{1,3}(/32)?$` $e -}}{{- $ok = true -}}{{- end -}}
+{{- if regexMatch `^[0-9a-fA-F:]*:[0-9a-fA-F:]*(/128)?$` $e -}}{{- $ok = true -}}{{- end -}}
+{{- if not $ok -}}
+{{- fail (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom: запись %q шире одного адреса звена балансировки (/32, /128) либо не адрес — хост кластера, дошедший до порта https, заявил бы чужой источник (kacho#3115)" $e) -}}
+{{- end -}}
+{{- end -}}
+{{- if not $pp.serviceAnnotations -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol.serviceAnnotations пуст при включённом приёме заголовка PROXY — балансировщик площадки не попрошен слать заголовок, и слушатель принял бы первую строку клиента за адрес (kacho#3115)" -}}
+{{- end -}}
+{{- $own := $pf.service.annotations | default dict -}}
+{{- range $k, $v := $pp.serviceAnnotations -}}
+{{- if and (hasKey $own $k) (ne (toString (get $own $k)) (toString $v)) -}}
+{{- fail (printf "uif.publicFront: аннотация %q объявлена дважды разными значениями — %q в clientAddress.proxyProtocol.serviceAnnotations и %q в service.annotations; просьба к балансировщику слать заголовок PROXY объявляется ОДНИМ местом (kacho#3115)" $k (toString $v) (toString (get $own $k))) -}}
+{{- end -}}
+{{- end -}}
+true
 {{- end -}}
 {{- end -}}
 

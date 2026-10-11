@@ -15,6 +15,10 @@ SPDX-License-Identifier: BUSL-1.1
 применения. Судятся три величины, доезжающие до процесса службы доступа:
 узел почтовой полосы, адрес отправителя, внешний origin консоли. Узел судится
 раскрытым тем же `tpl`, что у читателя величины (страж почтовой полосы).
+Четвёртая — звено балансировки, которому раздача консоли верит заголовок PROXY
+(`uif.publicFront.clientAddress.proxyProtocol.trustedFrom`, kacho#3115); она
+судится, когда приём заголовка включён: заглушка в круге доверия значила бы
+«не верить никому», и все клиенты снова стали бы одним источником.
 
 ЧЕГО СТРАЖ НЕ УТВЕРЖДАЕТ: что настоящая величина верна и узел отвечает — это
 рантайм и сквозная проба. Он утверждает только, что заглушка до кластера не
@@ -54,6 +58,16 @@ SPDX-License-Identifier: BUSL-1.1
 {{- $ohost := (splitList ":" ((splitList "/" $orest) | first)) | first }}
 {{- if or (regexMatch $placeholderHost $ohost) (regexMatch $docAddress $ohost) }}
 {{- $hits = append $hits (printf "global.kacho.identity.appBaseURL (узел %q)" $ohost) }}
+{{- end }}
+{{- end }}
+
+{{- $pp := ((((.Values.uif).publicFront).clientAddress).proxyProtocol) | default dict }}
+{{- if $pp.enabled }}
+{{- range ($pp.trustedFrom | default list) }}
+{{- $addr := (splitList "/" (toString .)) | first }}
+{{- if regexMatch $docAddress $addr }}
+{{- $hits = append $hits (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom (адрес %q)" (toString .)) }}
+{{- end }}
 {{- end }}
 {{- end }}
 
