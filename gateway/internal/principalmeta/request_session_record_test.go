@@ -11,8 +11,10 @@ package principalmeta_test
 // ПРЕДМЕТ. Полоса нашей сессии ставит ссылку в ОБЕИХ поверхностных формах —
 // голой и мостовой, как уровень подтверждения. Служба принимает ссылку, только
 // когда значение одно; поэтому единственный производитель ключа за мостом —
-// строитель: он читает обе формы и кладёт ровно одно значение, а мост этот
-// ключ не пропускает.
+// SessionRecordMetadata: он читает обе формы и кладёт ровно одно значение, а
+// мост этот ключ не пропускает. Общий строитель MetadataFromRequest ссылку НЕ
+// кладёт: он строит метаданные для любого адресата, а ссылка — только службе
+// доступа (kacho#3136).
 //
 // БЛИЗНЕЦЫ. Три входа отличаются ровно одним фактом — какая форма выставлена,
 // — и исход у всех трёх один: [R_S]. Четвёртый — заголовка нет ни в одной
@@ -29,7 +31,7 @@ import (
 
 const builderRecordS = "hss-00000000000001280s"
 
-func TestMetadataFromRequest_SessionRecord_OneValueWhicheverFormIsSet(t *testing.T) {
+func TestSessionRecordMetadata_OneValueWhicheverFormIsSet(t *testing.T) {
 	cases := []struct {
 		name  string
 		forms []string
@@ -44,7 +46,7 @@ func TestMetadataFromRequest_SessionRecord_OneValueWhicheverFormIsSet(t *testing
 			for _, h := range tc.forms {
 				r.Header.Set(h, builderRecordS)
 			}
-			got := principalmeta.MetadataFromRequest(r).Get(principalmeta.MetaTokenSessionID)
+			got := principalmeta.SessionRecordMetadata(r).Get(principalmeta.MetaTokenSessionID)
 			if !reflect.DeepEqual(got, []string{builderRecordS}) {
 				t.Fatalf("строитель положил %s = %q, want [%q] — одно значение при любой выставленной форме",
 					principalmeta.MetaTokenSessionID, got, builderRecordS)
@@ -53,12 +55,29 @@ func TestMetadataFromRequest_SessionRecord_OneValueWhicheverFormIsSet(t *testing
 	}
 }
 
-func TestMetadataFromRequest_SessionRecord_AbsentHeaderAddsNoKey(t *testing.T) {
+func TestSessionRecordMetadata_AbsentHeaderAddsNoKey(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/projects", nil)
-	md := principalmeta.MetadataFromRequest(r)
+	md := principalmeta.SessionRecordMetadata(r)
 	if _, ok := md[principalmeta.MetaTokenSessionID]; ok {
 		t.Fatalf("строитель положил ключ %s без заголовка: %q — пустое значение служба прочла бы как названное",
 			principalmeta.MetaTokenSessionID, md[principalmeta.MetaTokenSessionID])
+	}
+}
+
+// Общий строитель ссылку не кладёт ни при какой форме: его метаданные уходят
+// любому адресату. Близнец — личность того же запроса он кладёт.
+func TestMetadataFromRequest_CarriesNoSessionRecord(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
+	r.Header.Set(principalmeta.HeaderTokenSessionID, builderRecordS)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenSessionID, builderRecordS)
+	r.Header.Set(principalmeta.HeaderPrincipalID, "usr-3136")
+	md := principalmeta.MetadataFromRequest(r)
+	if got := md.Get(principalmeta.MetaPrincipalID); !reflect.DeepEqual(got, []string{"usr-3136"}) {
+		t.Fatalf("контроль: личность %q, want [usr-3136]", got)
+	}
+	if got, ok := md[principalmeta.MetaTokenSessionID]; ok {
+		t.Fatalf("общий строитель положил %s = %q — ссылка уехала бы любому адресату",
+			principalmeta.MetaTokenSessionID, got)
 	}
 }
 

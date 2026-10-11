@@ -227,8 +227,18 @@ func principalHeaderMatcher(key string) (string, bool) {
 
 // principalMetadata — grpc-gateway WithMetadata annotator: собирает outgoing
 // gRPC-metadata из gateway-выставленных headers (см. buildPrincipalMetadata).
-func principalMetadata(_ context.Context, r *http.Request) metadata.MD {
-	return buildPrincipalMetadata(r)
+//
+// Номер записи сессии добавляется ТОЛЬКО к вызову службы доступа (kacho#3136):
+// адресата аннотатор знает по имени метода, которое библиотека моста кладёт в
+// контекст ДО вызова аннотаторов (`runtime.RPCMethod`). Метода в контексте нет
+// или адресат иной — номера нет: решение «по умолчанию не уходит», а не
+// «снять у перечисленных».
+func principalMetadata(ctx context.Context, r *http.Request) metadata.MD {
+	md := buildPrincipalMetadata(r)
+	if method, ok := runtime.RPCMethod(ctx); ok && isAccessServiceMethod(method) {
+		md = metadata.Join(md, principalmeta.SessionRecordMetadata(r))
+	}
+	return md
 }
 
 // isInternalRoute решает, какой sub-mux обрабатывает запрос.
