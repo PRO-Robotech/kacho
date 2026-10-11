@@ -82,14 +82,25 @@ describe("F8S3-17 · клиент полосы и глаголы восстан�
     // ред. 12, F8-67) — ещё один, его держит проба ниже.
     const kinds = formKinds();
     expect(kinds).toEqual(expect.arrayContaining(["recovery", "recovery-complete"]));
-    expect(kinds.filter((k) => k !== "password-enroll")).toHaveLength(12);
+    // Виды позднейших приёмок (первый пароль — F8-67, свои сессии — F8-S5) держат
+    // свои пробы ниже; база S3 их не считает.
+    expect(kinds.filter((k) => k !== "password-enroll" && k !== "session-end")).toHaveLength(12);
     expect(new Set(kinds).size).toBe(kinds.length);
   });
 
   it("F8-67 · FormKind длиннее своей базы ровно на password-enroll", () => {
     // База — 12 видов головы сборки до S2 ред. 12 (F8S3-17 выше).
-    const kinds = formKinds();
+    const kinds = formKinds().filter((k) => k !== "session-end");
     expect({ hasEnroll: kinds.includes("password-enroll"), size: kinds.length }).toEqual({ hasEnroll: true, size: 13 });
+  });
+
+  it("F8-S5 Р4 · FormKind длиннее своей базы ровно на session-end — один вид на оба снимающих глагола", () => {
+    // База — 13 видов (F8-67 выше); приёмка F8-S5 добавляет ровно один.
+    const kinds = formKinds();
+    expect({ hasSessionEnd: kinds.includes("session-end"), size: kinds.length }).toEqual({
+      hasSessionEnd: true,
+      size: 14,
+    });
   });
 
   it("пути глаголов — точные, как их объявляет служба и ретранслирует край", () => {

@@ -18,6 +18,7 @@
 | экран подтверждения адреса почты (`/verification`) | `VerificationPage.tsx` |
 | уход на экран подтверждения по отказу края `EMAIL_NOT_VERIFIED` | `address-confirmation-exit.ts` |
 | параметры учётной записи (`/settings`): пароль, первый пароль, второй фактор | `AccountSettingsPage.tsx` |
+| свои сессии на `/settings` — перечень, выход из выбранной и из всех, кроме этой (раздел «Сессии») | `own-sessions/OwnSessionsSection.tsx` |
 | ключи доступа на `/settings` — перечень, заведение, снятие (глаголы Ф7 клиентом платформы) | `access-key/AccessKeysSection.tsx`, `shared/src/api/access-keys.ts` |
 | вход ключом доступа на `/login` | `access-key/use-access-key-sign-in.ts`, `access-key/AccessKeySignInButton.tsx` |
 | кодек церемонии ключа — вход и заведение | `shared/src/api/access-key.ts` |
@@ -56,6 +57,32 @@
 (`address-confirmation-exit.ts`, действие `confirm-address`). Рубеж — на крае и у
 службы; страж нужен человеку, а не вместо рубежа.
 
+## Свои сессии на `/settings`
+
+Раздел «Сессии» — после «Второго фактора» (приёмка `docs/specs/sub-phase-F8-S5-console-and-edge-own-sessions-acceptance.md`
+в воркспейсе). Три обращения — глаголы полосы формы, клиент `shared/src/api/login-lane.ts`:
+
+| обращение | когда | признак формы |
+|---|---|---|
+| `GET /iam/v1/auth/sessions` (`?pageToken=` на «Показать ещё») | при открытии экрана и после каждой попытки снятия | нет |
+| `POST /iam/v1/auth/sessions/end` с `{sessionId, csrfToken}` | «Выйти» у строки, кроме текущей | `session-end` |
+| `POST /iam/v1/auth/sessions/end-others` с `{csrfToken}` | «Выйти на всех, кроме этой» — доступна всегда | `session-end` |
+
+Описание клиента показывается как прислано, без разбора; ключа нет — «Устройство не
+названо». У текущей строки — «Эта сессия» и нет «Выйти»: текущая завершается выходом.
+Исход — строкой: «Сессия завершена», «Завершено сессий: N», «Других сессий не было».
+
+Действие на отказ — из закрытого перечня `refusal-action.ts`, своих ветвей у раздела нет:
+
+| отказ | действие | что видит человек |
+|---|---|---|
+| `403` `SESSION_NOT_FRESH` | `step-up-freshness` | окно повышения, после него — один повтор и исход снятия |
+| `404` `SESSION_NOT_FOUND` | `show` | текст дословно; перечень перечитан — строки уже нет |
+| `400` `SESSION_IS_CURRENT` | `show` | текст дословно |
+| `403` `FORM_TOKEN_REJECTED` | `fresh-form-token` | текст; повторяет человек |
+| `401` на пути полосы | `show` | текст дословно; на вход ведёт следующий запрос платформы (`sign-in`) |
+| ответ края о недоступности службы | `show` | текст края дословно; сессия не гасится |
+
 ## Чего консоль не делает
 
 - **Своего правила о содержимом поля нет.** Правило пароля, форму кода, занятость
@@ -75,7 +102,7 @@
 ## Чем удержано
 
 - браузерные пробы — `ui-future/e2e/specs/identity-ceremony.spec.ts`,
-  `ui-future/e2e/specs/account-settings.spec.ts` и
+  `ui-future/e2e/specs/account-settings.spec.ts`, `ui-future/e2e/specs/own-sessions.spec.ts` и
   `ui-future/e2e/specs/address-confirmation.spec.ts` (имя теста начинается с ID
   сценария приёмки);
 - адрес возврата читает один узел — `useReturnTo` —

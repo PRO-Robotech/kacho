@@ -458,3 +458,97 @@ describe("повышение — единственный полёт (C19)", () 
     expect(ceremonies).toBe(1);
   });
 });
+
+// ═══ Свои сессии (приёмка F8-S5, Р2, Р4; приёмка службы OS, Р1, Р4, Р5, Р7) ════
+
+describe("F8-S5 · три глагола своих сессий в клиенте полосы", () => {
+  it("F8-S5 Р1 · пути — точные, как их объявляет служба и ретранслирует край", async () => {
+    const { LOGIN_LANE } = await import("./login-lane");
+    expect([LOGIN_LANE.sessions, LOGIN_LANE.sessionsEnd, LOGIN_LANE.sessionsEndOthers]).toEqual([
+      "/iam/v1/auth/sessions",
+      "/iam/v1/auth/sessions/end",
+      "/iam/v1/auth/sessions/end-others",
+    ]);
+  });
+
+  it("F8-S5 Р4 · перечень: GET без признака формы, страница дочитывается курсором; отсутствующее поле — отсутствует", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/sessions": (call) =>
+        call.query === "?pageToken=c%2F1"
+          ? { status: 200, body: { sessions: [], nextPageToken: "" } }
+          : {
+              status: 200,
+              body: {
+                sessions: [
+                  {
+                    id: "hss-0000000000000000a",
+                    current: true,
+                    authenticatedAt: "2026-10-07T09:00:00Z",
+                    lastPresentedAt: "2026-10-07T09:00:00Z",
+                    expiresAt: "2026-10-08T09:00:00Z",
+                  },
+                ],
+                nextPageToken: "c/1",
+              },
+            },
+    });
+    const first = await loginLane.sessions();
+    expect(first.nextPageToken).toBe("c/1");
+    expect(first.sessions).toHaveLength(1);
+    expect(first.sessions[0].current).toBe(true);
+    expect("userAgent" in first.sessions[0]).toBe(false);
+    const next = await loginLane.sessions(first.nextPageToken);
+    expect(next).toEqual({ sessions: [], nextPageToken: "" });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/sessions",
+      "GET /iam/v1/auth/sessions?pageToken=c%2F1",
+    ]);
+  });
+
+  it("F8-S5 Р4 · оба снимающих глагола берут признак ОДНОГО вида session-end; тела закрыты", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/sessions/end": { status: 200, body: { ended: true } },
+      "POST /iam/v1/auth/sessions/end-others": { status: 200, body: { ended: 3 } },
+    });
+    const holder = new FormTokenHolder("session-end");
+    expect(await loginLane.endSession(holder, "hss-0000000000000000a")).toEqual({ ended: true });
+    expect(await loginLane.endOtherSessions(holder)).toEqual({ ended: 3 });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/csrf?form=session-end",
+      "POST /iam/v1/auth/sessions/end",
+      "GET /iam/v1/auth/csrf?form=session-end",
+      "POST /iam/v1/auth/sessions/end-others",
+    ]);
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end")[0].body).toEqual({
+      sessionId: "hss-0000000000000000a",
+      csrfToken: "tok-session-end-1",
+    });
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end-others")[0].body).toEqual({ csrfToken: "tok-session-end-2" });
+  });
+
+  it("F8-S5 Р5 · SESSION_NOT_FRESH на снятии: повышение «свежесть» и ОДИН повтор; близнец без отказа — повышения нет", async () => {
+    const asked: StepUpRequest[] = [];
+    setStepUpRequester((r) => {
+      asked.push(r);
+      return Promise.resolve();
+    });
+    lane = installLane({
+      "POST /iam/v1/auth/sessions/end": (_c, nth) =>
+        nth === 1
+          ? refusal(403, 7, "re-authentication required: present a credential again", "SESSION_NOT_FRESH")
+          : { status: 200, body: { ended: true } },
+    });
+    expect(await loginLane.endSession(new FormTokenHolder("session-end"), "hss-0000000000000000a")).toEqual({
+      ended: true,
+    });
+    expect(asked).toEqual([{ cause: "freshness" }]);
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end")).toHaveLength(2);
+  });
+
+  it("F8-S5 Р3 · глаголы своих сессий носителя не ставят и контекста формы не меняют", async () => {
+    const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE } = await import("./login-lane");
+    for (const path of [LOGIN_LANE.sessions, LOGIN_LANE.sessionsEnd, LOGIN_LANE.sessionsEndOthers]) {
+      expect([path, SETS_CARRIER.has(path), CHANGES_FORM_CONTEXT.has(path)]).toEqual([path, false, false]);
+    }
+  });
+});

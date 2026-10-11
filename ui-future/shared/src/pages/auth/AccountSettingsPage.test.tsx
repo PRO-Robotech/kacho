@@ -885,3 +885,249 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
     expect(password).not.toHaveTextContent("Не получается войти?");
   });
 });
+
+// ═══ S5 — свои сессии на /settings (приёмка F8-S5, Р2–Р5) ═════════════════════
+//
+// Раздел ходит тремя глаголами полосы формы; дублёр отвечает телами в форме
+// службы (приёмка службы OS, Р4, Р5, Р7): перечень `{sessions, nextPageToken}`,
+// снятие `{ended: true}`, «все, кроме этой» `{ended: N}`, отказ —
+// `google.rpc.Status`.
+
+const SESSIONS_PATH = "/iam/v1/auth/sessions";
+const END_PATH = "/iam/v1/auth/sessions/end";
+const END_OTHERS_PATH = "/iam/v1/auth/sessions/end-others";
+
+const ROW_A = {
+  id: "hss-0000000000000000a",
+  current: false,
+  authenticatedAt: "2026-10-07T09:00:00Z",
+  lastPresentedAt: "2026-10-07T09:05:00Z",
+  expiresAt: "2026-10-08T09:00:00Z",
+  userAgent: "f8-s5-c-seed-a",
+};
+const ROW_B = {
+  id: "hss-0000000000000000b",
+  current: true,
+  authenticatedAt: "2026-10-07T10:00:00Z",
+  lastPresentedAt: "2026-10-07T10:00:00Z",
+  expiresAt: "2026-10-08T10:00:00Z",
+  userAgent: "f8-s5-c-seed-b",
+};
+
+const sessionsPage = (sessions: unknown[], nextPageToken = ""): LaneAnswer => ({
+  status: 200,
+  body: { sessions, nextPageToken },
+});
+
+const SESSIONS_BASE = {
+  "GET /iam/v1/auth/me": SIGNED_IN,
+  "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+};
+
+async function sessionsRegion() {
+  return screen.findByRole("region", { name: "Сессии" });
+}
+
+/** Строка перечня по описанию клиента — как прислано. */
+async function rowOf(region: HTMLElement, text: string) {
+  const items = await within(region).findAllByRole("listitem");
+  const row = items.find((li) => li.textContent?.includes(text));
+  if (!row) throw new Error(`строки «${text}» в перечне нет: ${items.map((i) => i.textContent).join(" | ")}`);
+  return row;
+}
+
+describe("свои сессии (F8-S5)", () => {
+  it("F8-S5-01 · при открытии — одно чтение перечня; строки в порядке службы, текущая помечена и без «Выйти»", async () => {
+    lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_A, ROW_B]) });
+    renderPage();
+    const region = await sessionsRegion();
+    const items = await within(region).findAllByRole("listitem");
+    expect(
+      items.map((li) =>
+        li.textContent?.includes(ROW_A.userAgent) ? "A" : li.textContent?.includes(ROW_B.userAgent) ? "B" : "?",
+      ),
+    ).toEqual(["A", "B"]);
+    const a = await rowOf(region, ROW_A.userAgent);
+    const b = await rowOf(region, ROW_B.userAgent);
+    expect(within(b).getByText("Эта сессия")).toBeInTheDocument();
+    expect(within(b).queryByRole("button", { name: "Выйти" })).toBeNull();
+    expect(within(a).queryByText("Эта сессия")).toBeNull();
+    expect(within(a).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+    for (const label of ["Вход", "Последнее предъявление способа входа", "Действует до"]) {
+      expect(a).toHaveTextContent(label);
+    }
+    expect(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" })).toBeInTheDocument();
+    expect(lane.of("GET", SESSIONS_PATH)).toHaveLength(1);
+    // Перечень признака формы не берёт (Р4): выдачи признака при открытии экрана
+    // — только своих видов форм экрана, а вида `session-end` — одна, держателем раздела.
+    expect(lane.of("GET", SESSIONS_PATH)[0].query).toBe("");
+  });
+
+  it("F8-S5-08 · описание клиента — как прислано и целиком; отсутствие названо; дочитывание тем же путём", async () => {
+    const long = "x".repeat(600);
+    const rowC = { ...ROW_A, id: "hss-0000000000000000c", userAgent: "f8-s5-08-c" };
+    const noAgent: Record<string, unknown> = { ...ROW_B };
+    delete noAgent.userAgent;
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: (call) =>
+        call.query === "?pageToken=c1"
+          ? sessionsPage([rowC], "")
+          : sessionsPage([{ ...ROW_A, userAgent: long }, noAgent], "c1"),
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    const a = await rowOf(region, long);
+    // Значение целиком — 600 знаков, без обрезки консолью.
+    expect(within(a).getByText(long)).toBeInTheDocument();
+    const b = await rowOf(region, "Устройство не названо");
+    expect(b).toHaveTextContent("Эта сессия");
+    // Близнец (б) — (а): различие одно — ключа нет; у (а) «не названо» не пишется.
+    expect(a).not.toHaveTextContent("Устройство не названо");
+    fireEvent.click(within(region).getByRole("button", { name: "Показать ещё" }));
+    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(3));
+    const order = within(region)
+      .getAllByRole("listitem")
+      .map((li) =>
+        li.textContent?.includes(long)
+          ? "а"
+          : li.textContent?.includes("Устройство не названо")
+            ? "б"
+            : li.textContent?.includes("f8-s5-08-c")
+              ? "в"
+              : "?",
+      );
+    expect(order).toEqual(["а", "б", "в"]);
+    expect(within(region).queryByRole("button", { name: "Показать ещё" })).toBeNull();
+    expect(lane.of("GET", SESSIONS_PATH).map((c) => c.query)).toEqual(["", "?pageToken=c1"]);
+  });
+
+  it("F8-S5-02 · «Выйти» у строки: признак вида session-end, тело {sessionId, csrfToken}, исход назван, перечень перечитан", async () => {
+    let ended = false;
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: () => sessionsPage(ended ? [ROW_B] : [ROW_A, ROW_B]),
+      [`POST ${END_PATH}`]: () => {
+        ended = true;
+        return { status: 200, body: { ended: true } };
+      },
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    expect(await within(region).findByRole("status")).toHaveTextContent("Сессия завершена");
+    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    expect(lane.of("POST", END_PATH).map((c) => c.body)).toEqual([
+      { sessionId: ROW_A.id, csrfToken: "tok-session-end-1" },
+    ]);
+    expect(lane.calls.filter((c) => c.path === "/iam/v1/auth/csrf").map((c) => c.query)).toContain("?form=session-end");
+    expect(lane.of("GET", SESSIONS_PATH)).toHaveLength(2);
+  });
+
+  it("F8-S5-03 · «Выйти на всех, кроме этой»: тело {csrfToken}, «Завершено сессий: 2», перечень перечитан", async () => {
+    let ended = false;
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: () =>
+        sessionsPage(ended ? [ROW_B] : [ROW_A, { ...ROW_A, id: "hss-0000000000000000c" }, ROW_B]),
+      [`POST ${END_OTHERS_PATH}`]: () => {
+        ended = true;
+        return { status: 200, body: { ended: 2 } };
+      },
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    await within(region).findAllByRole("listitem");
+    fireEvent.click(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" }));
+    expect(await within(region).findByRole("status")).toHaveTextContent("Завершено сессий: 2");
+    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    expect(lane.of("POST", END_OTHERS_PATH).map((c) => c.body)).toEqual([{ csrfToken: "tok-session-end-1" }]);
+    expect(lane.of("GET", SESSIONS_PATH)).toHaveLength(2);
+  });
+
+  it("F8-S5-04 · единственная сессия: кнопка доступна, «Других сессий не было»", async () => {
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_B]),
+      [`POST ${END_OTHERS_PATH}`]: { status: 200, body: { ended: 0 } },
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    await within(region).findAllByRole("listitem");
+    const button = within(region).getByRole("button", { name: "Выйти на всех, кроме этой" });
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(await within(region).findByRole("status")).toHaveTextContent("Других сессий не было");
+  });
+
+  it("F8-S5-05 · SESSION_NOT_FRESH: окно повышения и РОВНО один повтор снятия", async () => {
+    let ended = false;
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: () => sessionsPage(ended ? [ROW_B] : [ROW_A, ROW_B]),
+      [`POST ${END_PATH}`]: (_c, nth) => {
+        if (nth === 1)
+          return refusal(403, 7, "re-authentication required: present a credential again", "SESSION_NOT_FRESH");
+        ended = true;
+        return { status: 200, body: { ended: true } };
+      },
+      "POST /iam/v1/auth/step-up": {
+        status: 200,
+        body: { session: SESSION, assurance: { level: "1", level2Reachable: true, missingForLevel2: [] } },
+      },
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Пароль"), { target: { value: "p" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
+    expect(await within(region).findByRole("status")).toHaveTextContent("Сессия завершена");
+    expect(lane.of("POST", END_PATH)).toHaveLength(2);
+    expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1);
+  });
+
+  it("F8-S5-06 · SESSION_NOT_FOUND: текст отказа дословно, перечень перечитан, строки уже нет", async () => {
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: (_c, nth) => sessionsPage(nth === 1 ? [ROW_A, ROW_B] : [ROW_B]),
+      [`POST ${END_PATH}`]: refusal(404, 5, "session not found", "SESSION_NOT_FOUND"),
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    expect((await within(region).findByRole("alert")).textContent).toContain("session not found");
+    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lane.of("POST", END_PATH)).toHaveLength(1);
+  });
+
+  it("F8-S5-07 · ответ края о недоступности службы: назван дословно, повтора и повышения нет", async () => {
+    lane = installLane({
+      ...SESSIONS_BASE,
+      [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_A, ROW_B]),
+      [`POST ${END_PATH}`]: laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN),
+    });
+    renderPage();
+    const region = await sessionsRegion();
+    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    expect(await within(region).findByRole("alert")).toHaveTextContent("credential state could not be established");
+    expect(lane.of("POST", END_PATH)).toHaveLength(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(within(region).queryByRole("status")).toBeNull();
+  });
+
+  it("F8-S5 Р2 · раздел — после «Второго фактора», перед «Ключами доступа»", async () => {
+    lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_B]) });
+    renderPage();
+    await sessionsRegion();
+    const titles = screen
+      .getAllByRole("region")
+      .map(
+        (r) =>
+          r.getAttribute("aria-labelledby") && document.getElementById(r.getAttribute("aria-labelledby")!)?.textContent,
+      );
+    const at = (t: string) => titles.indexOf(t);
+    expect(at("Сессии")).toBe(at("Второй фактор") + 1);
+  });
+});

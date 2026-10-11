@@ -26,10 +26,11 @@ import { FieldError, fieldErrorId } from "@shared/components/organisms/form/Fiel
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { AccessKeysSection } from "./access-key";
+import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 
-// Параметры учётной записи на `/settings` — пароль, второй фактор и ключи
-// доступа, не покидая консоли (приёмка F8, S2 и S4).
+// Параметры учётной записи на `/settings` — пароль, второй фактор, свои сессии
+// и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмка F8-S5).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЭКРАН ДЕЛАЕТ
@@ -48,6 +49,8 @@ import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 //     была бы суждением, которого Р2 не разрешает. По умолчанию раздел
 //     показывает смену; отказ «пароль уже есть» назван дословно и возвращает к
 //     смене (F8-62…F8-66);
+//   • свои сессии — раздел `own-sessions/OwnSessionsSection.tsx` после второго
+//     фактора: перечень, выход из выбранной и из всех, кроме этой (F8-S5);
 //   • ключи доступа — раздел `access-key/AccessKeysSection.tsx` над глаголами
 //     Ф7 (Р11, F8-48…F8-61, F8-69…F8-71);
 //   • второй фактор: состояние — чтением глагола; заведение → материал →
@@ -573,6 +576,7 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
           </Section>
           <PasswordSection />
           <SecondFactorSection />
+          <OwnSessionsSection />
           <AccessKeysSection userId={who.user.id} />
         </>
       )}
