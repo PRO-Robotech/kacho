@@ -16,8 +16,16 @@
 package deploy_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +35,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // Подставной kubectl. Состояние — файлы рядом с журналом:
@@ -138,6 +148,66 @@ type wrapEnv struct {
 	dir   string
 	state string
 	extra []string
+	route *fakeRoute
+}
+
+// fakeRoute — подставной вход консоли (kacho#3152): отвечает на адрес посева
+// `/iam/v1/auth/csrf?form=login` так, как отвечает контроллер входа после
+// переката службы доступа. Первые ответы — из seq (503 — страница контроллера
+// «Service Temporarily Unavailable», 200 — признак формы), дальше — tail.
+// Каждый ответ пишется в общий журнал строкой «ROUTE <путь> <код>»: порядок
+// «край → маршрут» судится по нему же, что и вызовы kubectl.
+type fakeRoute struct {
+	mu   sync.Mutex
+	log  string
+	seq  []int
+	tail int
+	n    int
+}
+
+const nginx503 = "<html>\r\n<head><title>503 Service Temporarily Unavailable</title></head>\r\n<body>\r\n" +
+	"<center><h1>503 Service Temporarily Unavailable</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+
+func (f *fakeRoute) set(tail int, seq ...int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seq, f.tail, f.n = seq, tail, 0
+}
+
+func (f *fakeRoute) asked() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.n
+}
+
+func (f *fakeRoute) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	code := f.tail
+	if f.n < len(f.seq) {
+		code = f.seq[f.n]
+	}
+	f.n++
+	f.mu.Unlock()
+	if lf, err := os.OpenFile(f.log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		fmt.Fprintf(lf, "ROUTE %s %d\n", r.URL.RequestURI(), code)
+		lf.Close()
+	}
+	if r.URL.RequestURI() != "/iam/v1/auth/csrf?form=login" {
+		http.NotFound(w, r)
+		return
+	}
+	switch code {
+	case http.StatusOK:
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"csrfToken":"t-route"}`)
+	case 299:
+		// 200 без признака формы — так отвечала бы раздача консоли своей страницей.
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<!doctype html><title>console</title>")
+	default:
+		w.WriteHeader(code)
+		fmt.Fprint(w, nginx503)
+	}
 }
 
 func newWrapEnv(t *testing.T, initial string) *wrapEnv {
@@ -168,7 +238,12 @@ func newWrapEnv(t *testing.T, initial string) *wrapEnv {
 	}))
 	t.Cleanup(edge.Close)
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(edge.URL, "http://"))
-	return &wrapEnv{dir: dir, state: filepath.Join(dir, "state"), extra: []string{"FAKE_METRICS_PORT=" + port}}
+	// Вход консоли: по умолчанию маршрут уже ведёт (200 с первого запроса).
+	route := &fakeRoute{log: filepath.Join(dir, "log"), tail: http.StatusOK}
+	rs := httptest.NewServer(route)
+	t.Cleanup(rs.Close)
+	return &wrapEnv{dir: dir, state: filepath.Join(dir, "state"), route: route,
+		extra: []string{"FAKE_METRICS_PORT=" + port, "KACHO_CONSOLE_URL=" + rs.URL, "KACHO_WRAP_ROUTE_INTERVAL=0"}}
 }
 
 func (e *wrapEnv) run(t *testing.T, env []string, args ...string) wrapRun {
@@ -407,6 +482,156 @@ func TestWrapRotate_EdgeIsAskedOnlyAfterTheServiceEndpointsAreReady(t *testing.T
 	r = e.run(t, append([]string{"FAKE_EP=noservice"}, limits...), "set", "K2", "--state", e.state)
 	if r.code != 3 || !strings.Contains(r.out, "служб") {
 		t.Fatalf("служб, выбирающих поды, ноль — не готовность, код 3; получен %d:\n%s", r.code, r.out)
+	}
+}
+
+// TestWrapRotate_ReadyMeansTheSeedRouteAnswers — kacho#3152 (job 114526162992):
+// конечные точки службы доступа готовы, `/readyz` края, спрошенный у пода
+// напрямую, — 200, а первый запрос посева через вход консоли получал 503
+// контроллера входа: маршрут «контроллер → служба края → под» ещё не вёл.
+// Готовность — когда тот же адрес, что у посева (`$KACHO_CONSOLE_URL` +
+// `/iam/v1/auth/csrf?form=login`), отвечает 200 с признаком формы STREAK раз
+// подряд, и спрашивается он ПОСЛЕ края. Подставной ответ 503→200 — условие
+// создано; 503 держится — код 3 с последним ответом; мерцание (503 между
+// двумя 200) серию сбрасывает; 200 без признака формы — не готовность.
+func TestWrapRotate_ReadyMeansTheSeedRouteAnswers(t *testing.T) {
+	limits := []string{"KACHO_WRAP_ROUTE_ATTEMPTS=6", "KACHO_WRAP_ROUTE_STREAK=2"}
+
+	// 503 → 200: условие создано, маршрут спрошен после края, 2 + 2 запроса.
+	e := newWrapEnv(t, k1)
+	e.route.set(http.StatusOK, 503, 503)
+	r := e.run(t, limits, "set", "K2,K1", "--state", e.state)
+	if r.code != 0 {
+		t.Fatalf("маршрут ответил 200 после двух 503 — условие создано, код 0; получен %d:\n%s", r.code, r.out)
+	}
+	if got := e.route.asked(); got != 4 {
+		t.Fatalf("ждалось 4 запроса маршрута (2 × 503 + 2 подряд 200), было %d:\n%s", got, r.log)
+	}
+	edge := strings.LastIndex(r.log, " get --raw ")
+	route := strings.Index(r.log, "ROUTE /iam/v1/auth/csrf?form=login ")
+	if edge < 0 || route < edge {
+		t.Fatalf("порядок не «край → маршрут посева»:\n%s", r.log)
+	}
+	if !strings.Contains(r.out, "маршрут") || !strings.Contains(r.out, "wrap-rotate: keys=2") {
+		t.Fatalf("готовность маршрута не названа либо самоотчёт не напечатан:\n%s", r.out)
+	}
+
+	// Мерцание: 503, 200, 503, 200, 200 — серия сброшена, готово на пятом.
+	e.route.set(http.StatusOK, 503, 200, 503)
+	r = e.run(t, limits, "set", "K2", "--state", e.state)
+	if r.code != 0 || e.route.asked() != 5 {
+		t.Fatalf("мерцание сбрасывает серию: ждались код 0 и 5 запросов, получены %d и %d:\n%s", r.code, e.route.asked(), r.out)
+	}
+
+	// Восстановление ключа стенда ждёт того же маршрута: следующая проба идёт за ним.
+	e.route.set(http.StatusOK, 503)
+	r = e.run(t, limits, "restore", "--state", e.state)
+	if r.code != 0 || e.route.asked() != 3 || e.secret(t) != k1 {
+		t.Fatalf("restore ждёт маршрута: код %d, запросов %d (ждалось 3), секрет восстановлен %v:\n%s",
+			r.code, e.route.asked(), e.secret(t) == k1, r.out)
+	}
+
+	// 503 держится — код 3, последний ответ назван, попыток ровно предел.
+	e = newWrapEnv(t, k1)
+	e.route.set(503)
+	r = e.run(t, limits, "set", "K2,K1", "--state", e.state)
+	if r.code != 3 || !strings.Contains(r.out, "503") || !strings.Contains(r.out, "Service Temporarily Unavailable") {
+		t.Fatalf("маршрут не повёл — код 3 с последним ответом 503; получен %d:\n%s", r.code, r.out)
+	}
+	if got := e.route.asked(); got != 6 {
+		t.Fatalf("предел запросов маршрута 6, было %d", got)
+	}
+	if strings.Contains(r.out, "wrap-rotate: keys=") {
+		t.Fatalf("самоотчёт напечатан при неготовом маршруте:\n%s", r.out)
+	}
+	_ = e.run(t, nil, "restore", "--state", e.state)
+
+	// 200 без признака формы (страница раздачи) — не готовность.
+	e = newWrapEnv(t, k1)
+	e.route.set(299)
+	r = e.run(t, limits, "set", "K2,K1", "--state", e.state)
+	if r.code != 3 || !strings.Contains(r.out, "csrfToken") {
+		t.Fatalf("200 без признака формы — не готовность, код 3 с именем csrfToken; получен %d:\n%s", r.code, r.out)
+	}
+	_ = e.run(t, nil, "restore", "--state", e.state)
+}
+
+// TestWrapRotate_RouteAddressIsNamedNotGuessed — адрес маршрута — тот, что у
+// посева (KACHO_CONSOLE_URL); не назван — код 2 до первой записи, секрет не
+// тронут. Близнец — тот же вызов с адресом — код 0.
+func TestWrapRotate_RouteAddressIsNamedNotGuessed(t *testing.T) {
+	e := newWrapEnv(t, k1)
+	r := e.run(t, []string{"KACHO_CONSOLE_URL="}, "set", "K2,K1", "--state", e.state)
+	if r.code != 2 || !strings.Contains(r.out, "KACHO_CONSOLE_URL") {
+		t.Fatalf("адрес маршрута не назван — код 2 с именем KACHO_CONSOLE_URL; получен %d:\n%s", r.code, r.out)
+	}
+	if e.secret(t) != k1 || strings.Contains(r.log, "patch secret") || strings.Contains(r.log, "rollout restart") {
+		t.Fatalf("отказ до первой записи тронул стенд:\n%s", r.log)
+	}
+	r = e.run(t, []string{"KACHO_CONSOLE_URL=console.kacho.local"}, "set", "K2,K1", "--state", e.state)
+	if r.code != 2 || e.secret(t) != k1 {
+		t.Fatalf("адрес без схемы — код 2; получен %d:\n%s", r.code, r.out)
+	}
+	r = e.run(t, nil, "set", "K2,K1", "--state", e.state)
+	if r.code != 0 {
+		t.Fatalf("близнец с адресом — код 0; получен %d:\n%s", r.code, r.out)
+	}
+	_ = e.run(t, nil, "restore", "--state", e.state)
+}
+
+// TestWrapRotate_RouteIsAskedLikeTheSeedAsksIt — вход стенда по TLS под своим
+// именем: имя разрешается отображением KACHO_CONSOLE_HOST_IP, доверие — ровно
+// ключу листа KACHO_CONSOLE_CA, как у браузера проб. Свой лист — 200; чужой
+// лист по тому же адресу — не готовность (код 3), а не молчаливое доверие.
+func TestWrapRotate_RouteIsAskedLikeTheSeedAsksIt(t *testing.T) {
+	e := newWrapEnv(t, k1)
+	srv := httptest.NewTLSServer(e.route)
+	t.Cleanup(srv.Close)
+	_, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "https://"))
+	leaf := filepath.Join(e.dir, "leaf.pem")
+	writeLeaf(t, leaf, srv.TLS.Certificates[0])
+	// Чужой лист — свой ключ: тестовые серверы httptest делят один встроенный
+	// сертификат, и «другой сервер» дал бы тот же ключ.
+	foreign := filepath.Join(e.dir, "foreign.pem")
+	writeLeaf(t, foreign, freshLeaf(t))
+
+	stand := []string{"KACHO_CONSOLE_URL=https://console.kacho.test:" + port, "KACHO_CONSOLE_HOST_IP=127.0.0.1",
+		"KACHO_WRAP_ROUTE_ATTEMPTS=3", "KACHO_WRAP_ROUTE_STREAK=1"}
+	r := e.run(t, append(stand, "KACHO_CONSOLE_CA="+leaf), "set", "K2,K1", "--state", e.state)
+	if r.code != 0 || !strings.Contains(r.log, "ROUTE /iam/v1/auth/csrf?form=login 200") {
+		t.Fatalf("маршрут по TLS под своим именем и своим листом — код 0; получен %d:\n%s\n%s", r.code, r.out, r.log)
+	}
+	r = e.run(t, append(stand, "KACHO_CONSOLE_CA="+foreign), "set", "K2", "--state", e.state)
+	if r.code != 3 {
+		t.Fatalf("лист стенда не тот — маршрут не готов, код 3; получен %d:\n%s", r.code, r.out)
+	}
+	r = e.run(t, append(stand, "KACHO_CONSOLE_CA="+filepath.Join(e.dir, "absent.pem")), "set", "K2", "--state", e.state)
+	if r.code != 2 || !strings.Contains(r.out, "KACHO_CONSOLE_CA") {
+		t.Fatalf("лист стенда не читается — код 2 с именем KACHO_CONSOLE_CA; получен %d:\n%s", r.code, r.out)
+	}
+	_ = e.run(t, append(stand, "KACHO_CONSOLE_CA="+leaf), "restore", "--state", e.state)
+}
+
+func freshLeaf(t *testing.T) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "console.kacho.test"},
+		DNSNames: []string{"console.kacho.test"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}}
+}
+
+func writeLeaf(t *testing.T, path string, c tls.Certificate) {
+	t.Helper()
+	b := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate[0]})
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
