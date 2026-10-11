@@ -278,14 +278,18 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   else bad "слой стенда без издателя тронул чеканку либо приём"; fi
   if stand_overlay t3102-probe cm-ns on 20001 "https://t3102-probe.$HOST_SUFFIX:20001" | sed '/^    platformIssuer: /d' | python3 -c "$iss" 2>/dev/null; then
     bad "слой без издателя потребителей принят разбором"; else ok "слой без издателя потребителей разбором отвергнут"; fi
-  local chain_a chain_d f
+  local chain_a chain_d f la ld
   chain_a=(); chain_d=()
-  for f in $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain a8f60d ' '); do chain_a+=("$UMBRELLA/$f"); done
-  for f in $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain dev-prod ' '); do chain_d+=("$UMBRELLA/$f"); done
+  # Перечень слоёв читается в переменную с проверкой кода: в `for … in $(…)`
+  # отказ читателя таблицы терялся бы, и ось судила бы пустую цепочку.
+  la="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain a8f60d ' ')" || la=""
+  ld="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain dev-prod ' ')" || ld=""
+  for f in $la; do chain_a+=("$UMBRELLA/$f"); done
+  for f in $ld; do chain_d+=("$UMBRELLA/$f"); done
   local rca=0 rcd=0
   chain_issuer_placeholder "${chain_a[@]}" || rca=$?
   chain_issuer_placeholder "${chain_d[@]}" || rcd=$?
-  if [ "${#chain_a[@]}" -gt 0 ] && [ "$rca" -eq 0 ] && [ "$rcd" -eq 1 ]; then
+  if [ "${#chain_a[@]}" -gt 0 ] && [ "${#chain_d[@]}" -gt 0 ] && [ "$rca" -eq 0 ] && [ "$rcd" -eq 1 ]; then
     ok "издатель цепочки a8f60d — заглушка площадки (слой стенда его заменит), dev-prod — нет"
   else bad "издатель цепочки: a8f60d код $rca (ждали 0, слоёв ${#chain_a[@]}), dev-prod код $rcd (ждали 1)"; fi
   # Секрет первого администратора облака выводится из рендера: ссылка

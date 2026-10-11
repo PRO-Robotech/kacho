@@ -73,13 +73,15 @@ def judge(console, doc):
 
 def self_test():
     console = "https://console.probe.test"
-    good = {"issuer": console, "authorization_endpoint": console + "/oauth2/authorize",
-            "token_endpoint": console + "/oauth2/token", "grant_types_supported": ["client_credentials"]}
+    # Пути — точек самой службы (kaname: ceremonyhttp.AuthorizePath,
+    # clienttokenhttp.TokenPath); проба их не судит, судит происхождение.
+    good = {"issuer": console, "authorization_endpoint": console + "/iam/v1/authorize",
+            "token_endpoint": console + "/iam/v1/token", "grant_types_supported": ["client_credentials"]}
     cases = [
         ("законный близнец: три адреса на консоли", good, 0),
         ("издатель стенда разработки", dict(good, issuer="https://kaname.kacho.local"), 1),
-        ("точка на чужом имени", dict(good, token_endpoint="https://other.probe.test/oauth2/token"), 1),
-        ("точка на другом порту", dict(good, authorization_endpoint=console + ":8443/oauth2/authorize"), 1),
+        ("точка на чужом имени", dict(good, token_endpoint="https://other.probe.test/iam/v1/token"), 1),
+        ("точка на другом порту", dict(good, authorization_endpoint=console + ":8443/iam/v1/authorize"), 1),
         ("адресов ноль", {"grant_types_supported": ["client_credentials"]}, 1),
         ("вложенный адрес на имени разработки", dict(good, extra={"jwks": ["https://x.kacho.local/k"]}), 1),
     ]
