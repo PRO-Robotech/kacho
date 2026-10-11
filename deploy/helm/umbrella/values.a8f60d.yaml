@@ -454,6 +454,12 @@ api-gateway:
   # безголовая служба звена (templates/service-api-gateway-front-links.yaml).
   networkPolicy:
     enabled: true
+    # Порт сбора величин края — только пространству сборщика (kacho#3111).
+    # Слой values.dev-prod.yaml называет им пространство релиза (сборщик стенда
+    # kind — проба в нём); здесь рабочий стенд, и пространство релиза — сам
+    # продукт, а не сборщик: имя — пространство сборщика площадки.
+    metricsScrapeFrom:
+      namespace: monitoring
   clientAddress:
     trustedProxyCIDRs:
       - 10.0.0.0/8
