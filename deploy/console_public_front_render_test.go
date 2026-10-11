@@ -608,7 +608,7 @@ func say7(block string, port int, out *[]string, r publicFrontRender, svc map[st
 		}
 	}
 	if !asked {
-		say("Service не просит балансировщик слать заголовок PROXY (аннотация `…proxy-protocol`) — "+
+		say("Service не просит балансировщик слать заголовок PROXY (аннотация `…proxy-protocol`) — " +
 			"слушатель ждёт заголовка, которого никто не шлёт")
 	}
 }
