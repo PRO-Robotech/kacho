@@ -9,13 +9,14 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — двадцать один путь одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — двадцать три пути одним объявлением):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
 // восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
 // kacho#1281), два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
 // службы), два глагола входа ключом доступа (приёмка Ф13 Р1, kacho#3037),
-// заведение первого пароля из живой сессии (kaname#213, kacho#3056) и три
-// глагола своих сессий (приёмка F8-S5 Р1, kacho#3061). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// заведение первого пароля из живой сессии (kaname#213, kacho#3056), три
+// глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) и два глагола смены
+// адреса почты (приёмка F8-S6 Р1, kacho#3062). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -51,6 +52,10 @@ var loginLaneWant = map[string]string{
 	"sessions":            "/iam/v1/auth/sessions",
 	"sessions-end":        "/iam/v1/auth/sessions/end",
 	"sessions-end-others": "/iam/v1/auth/sessions/end-others",
+	// Смена адреса почты (приёмка F8-S6 Р1, kacho#3062): запрос смены и
+	// предъявление кода с нового адреса — два глагола под живой сессией.
+	"email-change":         "/iam/v1/auth/email-change",
+	"email-change-confirm": "/iam/v1/auth/email-change/confirm",
 }
 
 // ownSessionsWant — три записи Р1 приёмки F8-S5, выписанные ДОСЛОВНО по её
@@ -59,6 +64,13 @@ var ownSessionsWant = map[string]string{
 	"sessions":            "/iam/v1/auth/sessions",
 	"sessions-end":        "/iam/v1/auth/sessions/end",
 	"sessions-end-others": "/iam/v1/auth/sessions/end-others",
+}
+
+// emailChangeWant — две записи Р1 приёмки F8-S6, выписанные ДОСЛОВНО по её
+// решению, а не по объявлению края.
+var emailChangeWant = map[string]string{
+	"email-change":         "/iam/v1/auth/email-change",
+	"email-change-confirm": "/iam/v1/auth/email-change/confirm",
 }
 
 // accessKeyFamily — приставка семейства входа ключом. Читается ТОЛЬКО пробой
@@ -94,7 +106,7 @@ var openBeforeAddressConfirmationWant = map[string]bool{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant)+len(ceremonyWant) {
-		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b + Ф13 + F8-S5) и координат церемонии %d (LINE-A-1 §5.1а)",
+		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b + Ф13 + F8-S5 + F8-S6) и координат церемонии %d (LINE-A-1 §5.1а)",
 			len(routes), len(loginLaneWant)+len(ceremonyWant), len(loginLaneWant), len(ceremonyWant))
 	}
 	for _, rt := range routes {
@@ -133,7 +145,9 @@ func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *test
 		"/iam/v1/auth/second-factor/", "/iam/v1/auth/second-factor/enrollx", "/iam/v1/auth/step-up/x",
 		"/iam/v1/auth/password/", "/iam/v1/auth/password/enrollx", "/iam/v1/auth/password/enroll/",
 		"/iam/v1/auth/sessions/", "/iam/v1/auth/sessions/other", "/iam/v1/auth/sessions/end/", "/iam/v1/auth/sessions/endx",
-		"/iam/v1/auth/session", "/iam/v1/auth/sessions/end-others/"} {
+		"/iam/v1/auth/session", "/iam/v1/auth/sessions/end-others/",
+		"/iam/v1/auth/email-change/", "/iam/v1/auth/email-changex", "/iam/v1/auth/email-change/confirm/",
+		"/iam/v1/auth/email-change/confirmx", "/iam/v1/auth/email"} {
 		if IsLoginLanePath(p) || isPublicHTTPPath(p) {
 			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
 		}
@@ -192,7 +206,7 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 }
 
 // TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirmation —
-// объявление несёт 24 записи: 21 глагол формы с целью «слушатель формы» и 3
+// объявление несёт 26 записей: 23 глагола формы с целью «слушатель формы» и 3
 // координаты церемонии с целью «слушатель выдачи»; у каждой — решение «доступна
 // до подтверждения адреса», и доступных ровно девять (приёмка F6b, Р5, F6b-11).
 // Два глагола входа ключом (Ф13, kacho#3037) решения F6b не получили: перечень
@@ -201,7 +215,8 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 // Так же стоит заведение первого пароля (kacho#3056): решения F6b о нём нет, и
 // служба держит то же — в положении подтверждения адреса отказ (A7 Р2). Так же
 // стоят три глагола своих сессий (приёмка F8-S5 Р1, F8-S5-09): закрыты до
-// подтверждения, как у службы (OS Р8).
+// подтверждения, как у службы (OS Р8). Так же стоят два глагола смены адреса
+// (приёмка F8-S6 Р1, F8S6-10): закрыты до подтверждения (EC Р2 службы).
 //
 // Число записей в имени пробы не стоит: оно растёт с каждой записью
 // объявления, и имя, несущее число, лгало бы после следующей.
@@ -212,8 +227,8 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 // край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
 func TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirmation(t *testing.T) {
 	routes := LoginLaneRoutes()
-	if len(routes) != 24 || len(loginLaneWant) != 21 || len(ceremonyWant) != 3 {
-		t.Fatalf("записей объявлено %d, по приёмке — 24: глаголов формы 21 (%d выписано), координат церемонии 3 (%d выписано)",
+	if len(routes) != 26 || len(loginLaneWant) != 23 || len(ceremonyWant) != 3 {
+		t.Fatalf("записей объявлено %d, по приёмке — 26: глаголов формы 23 (%d выписано), координат церемонии 3 (%d выписано)",
 			len(routes), len(loginLaneWant), len(ceremonyWant))
 	}
 	open, form, issuance := 0, 0, 0
@@ -232,8 +247,8 @@ func TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirm
 			open++
 		}
 	}
-	if form != 21 || issuance != 3 {
-		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 21 и 3", form, issuance)
+	if form != 23 || issuance != 3 {
+		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 23 и 3", form, issuance)
 	}
 	if open != 9 {
 		t.Fatalf("доступных до подтверждения адреса записей %d, по приёмке — 9", open)
@@ -385,4 +400,53 @@ func TestLoginLanePaths_F8_S5_09_ThreeOwnSessionVerbsAreFormRecordsClosedBeforeA
 		}
 	}
 	t.Logf("перепись: записей объявления %d · своих сессий по приёмке %d", len(LoginLaneRoutes()), len(ownSessionsWant))
+}
+
+// TestLoginLanePaths_F8S6_10_TwoEmailChangeVerbsAreFormRecordsClosedBeforeAddressConfirmation —
+// две записи Р1 приёмки F8-S6 (kacho#3062) стоят в ТОМ ЖЕ объявлении, что
+// прочие глаголы формы: цель — слушатель формы; недоступность службы — ответ
+// края (KA1), а не ретрансляция: оба глагола читают носитель живой сессии; до
+// подтверждения адреса — закрыты (EC Р2 службы); удостоверение клиента
+// базовой схемой не несётся. Предъявление — подпуть запроса, и совпадение
+// обязано их различать.
+func TestLoginLanePaths_F8S6_10_TwoEmailChangeVerbsAreFormRecordsClosedBeforeAddressConfirmation(t *testing.T) {
+	for verb, path := range emailChangeWant {
+		if loginLaneWant[verb] != path {
+			t.Errorf("дословный перечень пробы: глагол %q на пути %q, по приёмке F8-S6 Р1 — %q", verb, loginLaneWant[verb], path)
+		}
+		rt, ok := LoginLaneRouteFor(path)
+		if !ok {
+			t.Errorf("%s (%s) в объявлении края нет — путь судится как путь платформы, служба его не получает", path, verb)
+			continue
+		}
+		if rt.Verb != verb {
+			t.Errorf("запись на пути %s названа %q, по приёмке — %q (значение метки ретрансляции)", path, rt.Verb, verb)
+		}
+		if rt.Target != RelayTargetForm {
+			t.Errorf("%s ретранслируется на цель %q, по приёмке — слушатель формы", path, rt.Target)
+		}
+		if !IsLoginLanePath(path) || !isPublicHTTPPath(path) {
+			t.Errorf("%s: ветка полосы сессии узнаёт = %v, освобождён от каталога = %v — обязаны оба", path, IsLoginLanePath(path), isPublicHTTPPath(path))
+		}
+		if loginLaneRelaysWhenUnanswered(path) {
+			t.Errorf("%s читает носитель — при службе, не ответившей о сессии, край обязан отвечать сам (KA1), а не ретранслировать", path)
+		}
+		if loginLaneOpenBeforeAddressConfirmation(path) {
+			t.Errorf("%s доступен до подтверждения адреса — по приёмке F8-S6 Р1 закрыт, перечень девяти закрыт приёмкой F6b", path)
+		}
+		if rt.CarriesClientBasic() {
+			t.Errorf("%s несёт удостоверение клиента базовой схемой — исключение одно, у обмена кода", path)
+		}
+	}
+	if LoginLaneVerb(emailChangeWant["email-change"]) == LoginLaneVerb(emailChangeWant["email-change-confirm"]) {
+		t.Errorf("запрос смены и предъявление кода получили одно имя — точное совпадение обязано их различать")
+	}
+	// Отрицательный контроль: соседи по имени — не глаголы и не освобождены.
+	for _, p := range []string{"/iam/v1/auth/email-change/", "/iam/v1/auth/email-changex", "/iam/v1/auth/email-change/confirm/",
+		"/iam/v1/auth/email-change/confirmx", "/iam/v1/auth/email-change/other", "/iam/v1/auth/email"} {
+		if IsLoginLanePath(p) || isPublicHTTPPath(p) {
+			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
+		}
+	}
+	t.Logf("перепись: записей объявления %d · смены адреса по приёмке %d", len(LoginLaneRoutes()), len(emailChangeWant))
 }

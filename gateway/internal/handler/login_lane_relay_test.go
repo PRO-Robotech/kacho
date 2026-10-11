@@ -452,3 +452,86 @@ func TestLoginLaneRelay_F8_S5_09_OwnSessionVerbsReachTheFormTargetWithTheClientD
 		t.Errorf("F8-S5-09 близнец без User-Agent: цель получила описание клиента %q, которого клиент не присылал", ua)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F8S6-10 — два глагола смены адреса почты (приёмка F8-S6 Р1, kacho#3062)
+// ретранслируются на слушатель формы; путь без записи отвечает краем 404.
+
+// emailChangePaths — два пути Р1 приёмки F8-S6, выписанные ДОСЛОВНО по её
+// решению, а не взятые из объявления края.
+var emailChangePaths = map[string]string{
+	"email-change":         "/iam/v1/auth/email-change",
+	"email-change-confirm": "/iam/v1/auth/email-change/confirm",
+}
+
+func TestLoginLaneRelay_F8S6_10_EmailChangeVerbsReachTheFormTargetPathWithoutRecordIsNot(t *testing.T) {
+	stub := &formListenerStub{status: http.StatusOK, body: `{}`}
+	srv := privateloopback.NewServer(t, stub)
+	t.Cleanup(srv.Close)
+	chain, relays := chainWithRelays(t, &fakeOwn{found: true, sess: liveSession()}, &fakeCut{}, srv.URL)
+	form := relays[middleware.RelayTargetForm]
+
+	serveOne := func(req *http.Request) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		chain.ServeHTTP(rec, req)
+		return rec
+	}
+	bodies := map[string]string{
+		"email-change":         `{"newEmail":"new@example.test","csrfToken":"x"}`,
+		"email-change-confirm": `{"code":"123456","csrfToken":"x"}`,
+	}
+
+	for verb, path := range emailChangePaths {
+		before := stub.count()
+		req := ownSessionsRequest(http.MethodPost, path, "f8s6-10")
+		req.Body = io.NopCloser(strings.NewReader(bodies[verb]))
+		req.ContentLength = int64(len(bodies[verb]))
+		rec := serveOne(req)
+		if rec.Code != http.StatusOK || stub.count() != before+1 {
+			t.Errorf("F8S6-10 %s: %d %q, принято целью %d (ожидался 1) — путь обязан ретранслироваться на слушатель формы",
+				verb, rec.Code, rec.Body.String(), stub.count()-before)
+			continue
+		}
+		got := stub.last()
+		if got.method != http.MethodPost || got.path != path || got.body != bodies[verb] {
+			t.Errorf("F8S6-10 %s: цель приняла %s %s %q — метод, путь и тело обязаны доехать как есть", verb, got.method, got.path, got.body)
+		}
+		if c := got.header.Get("Cookie"); !strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") {
+			t.Errorf("F8S6-10 %s: носитель сессии не дошёл до цели: Cookie %q", verb, c)
+		}
+		for name := range got.header {
+			if l := strings.ToLower(name); l == "authorization" || l == strings.ToLower(principalmeta.BridgePrefix+"authorization") {
+				t.Errorf("F8S6-10 %s: удостоверение уехало на слушатель формы под именем %q", verb, name)
+			}
+		}
+		if left := kachoHeaders(got.header); len(left) != 0 {
+			t.Errorf("F8S6-10 %s: на слушатель формы уехали заголовки пространства x-kacho-: %v", verb, left)
+		}
+	}
+	stats := form.Stats()
+	for verb := range emailChangePaths {
+		if stats.Relayed[verb] != 1 {
+			t.Errorf("F8S6-10: клетка ретрансляции %q = %d, ожидался 1 (%v)", verb, stats.Relayed[verb], stats.Relayed)
+		}
+	}
+
+	// Путь без записи — цель не вызвана, край отвечает как на неизвестный путь.
+	// Близнец — записи выше: различие одно, путь.
+	before := stub.count()
+	unknown := serveOne(ownSessionsRequest(http.MethodPost, "/iam/v1/auth/no-such-verb", "f8s6-10"))
+	for _, p := range []string{"/iam/v1/auth/email-change/other", "/iam/v1/auth/email-change/confirm/", "/iam/v1/auth/email-changex"} {
+		rec := serveOne(ownSessionsRequest(http.MethodPost, p, "f8s6-10"))
+		if rec.Code != http.StatusNotFound || rec.Code != unknown.Code || rec.Body.String() != unknown.Body.String() {
+			t.Errorf("F8S6-10 %s: ответ %d %q, на неизвестный путь край отвечает %d %q — обязаны совпасть",
+				p, rec.Code, rec.Body.String(), unknown.Code, unknown.Body.String())
+		}
+		direct := httptest.NewRecorder()
+		form.ServeHTTP(direct, ownSessionsRequest(http.MethodPost, p, "f8s6-10"))
+		if direct.Code != http.StatusNotFound {
+			t.Errorf("F8S6-10 %s: ретранслятор формы напрямую ответил %d — второй рубеж обязан отказать", p, direct.Code)
+		}
+	}
+	if stub.count() != before {
+		t.Fatalf("F8S6-10: путь без записи дошёл до цели формы (%d обращений)", stub.count()-before)
+	}
+}

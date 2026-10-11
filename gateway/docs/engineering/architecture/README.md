@@ -94,7 +94,10 @@ rotation, чтобы одно-доменный сбой не амплифици�
 
 - **самосброс реплики, обслужившей мутацию** — реплика, через которую прошёл меняющий права
   вызов, сбрасывает свой кэш немедленно (`gateway/internal/middleware/authz.go`, набор
-  `subjectChangingFQNs`). Это самый частый случай: «сменил права и тут же проверил»;
+  `subjectChangingFQNs`). Это самый частый случай: «сменил права и тут же проверил».
+  Путь полосы формы имени метода не несёт, поэтому исход смены адреса почты
+  (`/iam/v1/auth/email-change/confirm` с ответом 2xx, приёмка F8-S6 Р2) гасит кэш по
+  решению записи объявления путей (`login_lane_paths.go`, `flushesDecisionCacheOnSuccess`);
 - **опрос журнала** — `gateway/internal/watcher/subject_change_watcher.go` зовёт
   `kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
   `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`. Непустая
