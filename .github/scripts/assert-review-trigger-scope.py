@@ -1022,7 +1022,13 @@ def read_tree(root: Path, rev: str | None) -> tuple[dict[str, str], list[str]]:
 
 INJECT_REL = f"{WORKFLOWS_DIR}/ci.yaml"
 NOT_REQUIRED_REL = f"{WORKFLOWS_DIR}/production-posture.yml"
-REVIEW_BLOCK = "  pull_request:\n    branches:\n      - main\n      - '[0-9]+'\n"
+# Блок записан так, как стоит в файлах инъекции: `types` расширен до
+# `ready_for_review` (kacho#3148 — перевод черновика в готовый заводит полный
+# прогон). Подпробы оси 3 ЗАМЕНЯЮТ строку `types`, а не дописывают вторую:
+# повтор ключа разбор отвергает, и подпроба мерила бы отказ дубля, а не ось 3.
+REVIEW_TYPES_LINE = "    types: [opened, synchronize, reopened, ready_for_review]\n"
+REVIEW_BRANCHES = "    branches:\n      - main\n      - '[0-9]+'\n"
+REVIEW_BLOCK = "  pull_request:\n" + REVIEW_TYPES_LINE + REVIEW_BRANCHES
 PUSH_BLOCK = "  push:\n    branches: [main]\n"
 JOBS_ANCHOR = "\njobs:\n"
 
@@ -1188,16 +1194,22 @@ def self_test(root: Path) -> int:
         for form, lost in (("    types: [opened]\n", "нет {`reopened`, `synchronize`}"),
                            ("    types: opened\n", "нет {`reopened`, `synchronize`}"),
                            ("    types: [opened, reopened, labeled]\n", "нет {`synchronize`}")):
-            got, c = run(lambda r, f=form: _inject(r, REVIEW_BLOCK, REVIEW_BLOCK + f))
+            got, c = run(lambda r, f=form: _inject(r, REVIEW_TYPES_LINE, f))
             _expect(len(got) == 1 and INJECT_REL in got[0] and "ось 3" in got[0] and lost in got[0], f"{form!r}: {got}")
-            _expect(c.review_types == control.review_types + 1, f"перепись не назвала сужение по types: {form!r}")
+            _expect(c.review_types == control.review_types, f"перепись не назвала сужение по types: {form!r}")
 
     @case("ось 3, близнец: types шире умолчания — законная форма")
     def _():
-        got, c = run(lambda r: _inject(r, REVIEW_BLOCK, REVIEW_BLOCK
-                                       + "    types: [reopened, ready_for_review, synchronize, opened]\n"))
+        got, c = run(lambda r: _inject(r, REVIEW_TYPES_LINE,
+                                       "    types: [reopened, ready_for_review, synchronize, opened]\n"))
         _expect(not got, f"types шире умолчания объявлен сужением: {got}")
-        _expect(c.review_types == control.review_types + 1, "перепись не назвала types")
+        _expect(c.review_types == control.review_types, "перепись не назвала types")
+
+    @case("ось 3, близнец: types снят — умолчание провайдера законно, перепись видит выбывший")
+    def _():
+        got, c = run(lambda r: _inject(r, REVIEW_TYPES_LINE, ""))
+        _expect(not got, f"запись без types объявлена нарушением: {got}")
+        _expect(c.review_types == control.review_types - 1, "перепись не назвала выбывший types")
 
     # ── ось 2 ──
     @case("ось 2: push расширен на ветки линии")
