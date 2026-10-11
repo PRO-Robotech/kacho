@@ -16,6 +16,10 @@
 // обращений к ней; его сверяет перепись сборки края
 // (TestEdgeH2REST_EdgeAssemblyHasASingleHome, internalRESTListeners).
 //
+// Внутренний слушатель — под mTLS (kacho#3131): TLS — внешняя обёртка,
+// `tls.NewListener(listenerorigin.InternalListener(l), cfg)`; метка судится
+// по первому аргументу TLS-обёртки.
+//
 // Второе звено ConnContext (kacho#3028, C4) — состояние TLS соединения
 // (linktls.WithConnState): за мультиплексором r.TLS пуст, и звено фронта,
 // предъявившее сертификат, иначе было бы неотличимо от любого пира. Тем же
@@ -93,6 +97,13 @@ func TestListenerOriginWiring_EveryHTTPListenerOfTheRootCarriesAnOriginWrapper(t
 			}
 			served++
 			wrap, ok := n.Args[0].(*ast.CallExpr)
+			// TLS внешней обёрткой над меткой (kacho#3131, внутренний слушатель
+			// под mTLS): tls.NewListener(<обёртка происхождения>, cfg) — метка
+			// судится по первому аргументу; голый tls.NewListener(l, cfg) без
+			// обёртки — по-прежнему находка.
+			if ok && pkgFunc(wrap.Fun, "tls") == "NewListener" && len(wrap.Args) == 2 {
+				wrap, ok = wrap.Args[0].(*ast.CallExpr)
+			}
 			switch {
 			case ok && originFunc(wrap.Fun) == "InternalListener":
 				internal++

@@ -750,12 +750,12 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 // independently 404s these on the external listener.
 //
 // SECURITY — be exact about what this phase is: it admits the request WITHOUT
-// EXTRACTING A PRINCIPAL, and the listener it trusts is plain HTTP/1.1 with no
-// TLS and no client certificate (cmd/api-gateway/main.go). The only thing it
-// verifies is WHERE the connection arrived — i.e. NETWORK POSITION, which is not
-// a credential ("internal = trusted" is a forbidden premise, security.md). Any
-// RPC routed through this phase is effectively callable by anything that can
-// reach the `internal-rest` Service port or hold a port-forward.
+// EXTRACTING A PRINCIPAL. What it checks is the connection's listener mark; the
+// listener itself is mutual-TLS only (kacho#3131, cmd/api-gateway/edge_listener.go
+// serveInternalREST): a client leaf of the installation CA whose URI-SAN is in
+// KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the TRANSPORT,
+// not a principal: any RPC routed through this phase is callable by every holder
+// of a leaf in that circle without any relation being checked.
 //
 // Therefore: an RPC that MINTS CREDENTIALS or GRANTS PRIVILEGE must never be
 // registered on the REST mux at all — no route, rather than an exempt route.
