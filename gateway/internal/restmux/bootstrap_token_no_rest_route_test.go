@@ -9,15 +9,16 @@ package restmux
 // InternalBootstrapTokenService/MintBootstrapToken hands out an issuer-signed RS256
 // Bearer for a cluster `system_admin` ServiceAccount. Its catalog permission is
 // `<exempt>`, and the gateway admits `<exempt>` Internal* RPCs that arrive on the
-// cluster-internal listener WITHOUT extracting a principal — so a REST route for
-// it is a CREDENTIAL-FREE control-plane takeover: the internal REST listener is
-// plain HTTP/1.1 (no TLS, no client cert — see cmd/api-gateway/main.go), so any
-// pod that can reach the `internal-rest` Service port, or anyone with a
-// port-forward, could POST an empty body and receive a cluster-admin token.
+// cluster-internal listener WITHOUT extracting a principal. The internal REST
+// listener is mutual TLS (kacho#3131, serveInternalREST in
+// cmd/api-gateway/edge_listener.go), but its client circle
+// (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS) authenticates the transport for
+// the edge's operator identity, not for the mint — so a REST route would hand a
+// cluster-admin token, for an empty body, to any holder of a leaf in that circle.
 //
-// "The mTLS listener boundary is the gate" is FALSE for this path: network
-// position is not a credential (security.md — "internal = trusted" is a forbidden
-// assumption). The mint keeps exactly one door: a DIRECT mTLS gRPC dial to iam
+// "The mTLS listener boundary is the gate" is FALSE for this path: a transport
+// credential for one surface is not an authorization for another (security.md —
+// "internal = trusted" is a forbidden assumption). The mint keeps exactly one door: a DIRECT mTLS gRPC dial to iam
 // :9091, where authzguard's per-RPC SPIFFE allow-list checks the caller's VERIFIED
 // CLIENT CERTIFICATE.
 //

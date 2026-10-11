@@ -952,13 +952,18 @@ func NewMux(
 			// ServiceAccount, and its catalog permission is `<exempt>`. The authz
 			// middleware admits an `<exempt>` Internal* RPC that arrives on the
 			// cluster-internal listener WITHOUT extracting a principal
-			// (phaseInternalOriginExempt), and this internal REST listener is plain
-			// HTTP/1.1 — no TLS, no client cert (cmd/api-gateway/main.go). A REST route
-			// would therefore be a CREDENTIAL-FREE control-plane takeover: any pod that
-			// can reach the `internal-rest` Service port, or anyone holding a
-			// port-forward, could POST an empty body and get a cluster-admin token.
-			// Network position is not a credential (security.md — "internal = trusted"
-			// is a forbidden assumption).
+			// (phaseInternalOriginExempt). This internal REST listener is mutual TLS
+			// (kacho#3131, serveInternalREST in cmd/api-gateway/edge_listener.go):
+			// the client leaf must chain to the installation CA and carry a URI-SAN
+			// from KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the
+			// TRANSPORT only — the circle is the edge's operator identity, not the
+			// mint's allow-list, and authz on this listener is unchanged. A REST route
+			// would therefore hand a cluster-admin token, for an empty body and with
+			// no principal checked, to any holder of a leaf in the listener's circle:
+			// the mint's door would widen from kaname's explicit SAN allow-list to
+			// whatever the edge's circle happens to contain. A transport credential
+			// for one surface is not an authorization for another (security.md —
+			// "internal = trusted" is a forbidden assumption).
 			//
 			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kaname
 			// :9091, where authzguard.CallerPolicy checks the caller's verified

@@ -272,6 +272,14 @@ api-gateway:
     trustedPeers:
       - api-gateway-front-ingress
       - api-gateway-front-console
+  # ИМЕНА ПРОБРОСА на серверном листе внутреннего REST-слушателя (kacho#3131):
+  # IP 127.0.0.1 и `localhost` — потребители на этом стенде ходят пробросом
+  # порта (deploy/scripts/bootstrap-cloud-admin.sh, deploy/scripts/newman-e2e.sh,
+  # tests/authz-fixtures/verified_human.py). Здесь, а не в values.own.yaml: слой стенда, а боевая
+  # основа (values.prod.yaml) их не несёт; судит
+  # gateway/deploy/internal_rest_mtls_render_test.go.
+  internalRest:
+    loopbackSAN: true
 kacho-nlb:
   image:
     repository: docker.io/prorobotech/kacho-nlb
