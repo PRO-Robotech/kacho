@@ -62,7 +62,7 @@ type HumanSession struct {
 	EmailVerified bool
 	// SessionID — НОМЕР ЗАПИСИ сессии (`hss-…`, kaname#677). Край не судит
 	// его и не показывает: он возвращает его службе с каждым запросом этой
-	// сессии (`principalmeta.HeaderGRPCMetaTokenSessionID`), и снятие ключа
+	// сессии (`principalmeta.MetaTokenSessionID`), и снятие ключа
 	// доступа по нему щадит текущую сессию (Ф13 Р8). Пусто — служба номера не
 	// назвала, и край не называет его тоже: «текущая не названа», а не догадка.
 	SessionID string

@@ -104,6 +104,12 @@ export interface Seed {
   formToken(kind: FormKind): Promise<string>;
   /** Отправка формы глагола с признаком её вида. Исход НЕ утверждается — это делает вызывающий. */
   submit(path: string, kind: FormKind, body: Record<string, unknown>): Promise<APIResponse>;
+  /**
+   * То же, что `submit`, и длительность ОДНОГО обращения глагола: признак формы
+   * берётся до отсчёта, отсчёт кончается полученным телом. Нужна измерительным
+   * пробам (`measurements/`, форма Ф1-48): в замер не попадает чужое обращение.
+   */
+  submitTimed(path: string, kind: FormKind, body: Record<string, unknown>): Promise<{ res: APIResponse; ms: number }>;
   /** Чтение глагола без тела. */
   read(path: string): Promise<APIResponse>;
   /** Значение носителя сессии у посева либо пустая строка. */
@@ -188,6 +194,15 @@ export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = 
       const res = await api.post(path, { data: { ...body, csrfToken } });
       await record(issued, "POST", path, res);
       return res;
+    },
+    async submitTimed(path, kind, body) {
+      const csrfToken = await seed.formToken(kind);
+      const t0 = performance.now();
+      const res = await api.post(path, { data: { ...body, csrfToken } });
+      await res.body();
+      const ms = performance.now() - t0;
+      await record(issued, "POST", path, res);
+      return { res, ms };
     },
     async read(path) {
       const res = await api.get(path);

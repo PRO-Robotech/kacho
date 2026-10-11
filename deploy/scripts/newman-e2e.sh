@@ -234,8 +234,23 @@ if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>
              BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
 fi
 
+# ─── ВНУТРЕННИЙ REST-СЛУШАТЕЛЬ КРАЯ: mTLS И ТОЛЬКО ОН (kacho#3131) ──────────
+#
+# {{internalBaseUrl}} — https: слушатель требует лист операторской личности
+# (kacho-internal-rest-operator-client-tls) и проверяется по УЦ установки, без
+# ослабления. Лист — списком по адресу внутреннего слушателя, а не глобальным
+# флагом. Посев (setup.sh) получает тот же материал через INTERNAL_REST_*.
+# Секрета нет — прогон отказывает здесь: открытым текстом слушатель не отвечает.
+# shellcheck source=deploy/scripts/lib/internal-rest-client.sh
+. "$SCRIPT_DIR/lib/internal-rest-client.sh"
+IR_DIR="$(mktemp -d)"; TMP_DIRS+=("$IR_DIR")
+internal_rest_client_leaf "$NS" "$IR_DIR" \
+  || { echo "[e2e] FATAL: секрета $INTERNAL_REST_OPERATOR_SECRET нет — внутренний слушатель края недостижим" >&2; exit 1; }
+internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
+
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
+INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
 MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
@@ -268,12 +283,13 @@ if [ -n "$COLLECTION" ]; then
   newman run "collections/${COLLECTION}.postman_collection.json" \
     -e environments/local.postman_environment.json \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
-    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+    --env-var "internalBaseUrl=https://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+    "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
 else
@@ -285,12 +301,13 @@ else
   set +e
   ./scripts/run.sh --service "" --delay 15 \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
-    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+    --env-var "internalBaseUrl=https://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+    "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?
   set -e

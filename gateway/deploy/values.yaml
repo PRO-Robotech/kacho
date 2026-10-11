@@ -15,7 +15,28 @@ tlsPort: 8443
 # `internal-rest` Service port for admin-UI / port-forward / in-cluster tooling.
 # Every other listener (cmux :8080 that the ingress hits, and TLS :8443) is
 # external and 404s Internal* REST. Set internalRestPort to "" to disable.
+#
+# Транспорт — mTLS и только он (kacho#3131): слушатель объявляется лишь при
+# mtls.enable (там есть УЦ установки), предъявляет свой серверный лист
+# (internalRest.serverSecretName, templates/internal-rest-certificate.yaml),
+# требует клиентский лист УЦ установки с URI-именем из круга — операторская
+# личность (internalRest.operatorSaName; лист выпускает умбрелла,
+# templates/bootstrap-operator-certificate.yaml) плюс extraClientSANs. Без
+# материала край не стартует (validateProductionInternalListener) на любой
+# метке KACHO_APP_ENV. mTLS — аутентификация транспорта; проверка прав на
+# слушателе прежняя.
 internalRestPort: 8081
+internalRest:
+  serverSecretName: api-gateway-internal-rest-tls
+  mountPath: /etc/api-gateway/internal-rest
+  # Имя операторской личности в круге: spiffe://<trustDomain>/ns/<ns>/sa/<имя>.
+  operatorSaName: kacho-internal-rest-operator
+  # Дополнительные URI-имена круга (spiffe://…). Пусто — в круге только оператор.
+  extraClientSANs: []
+  # Имена проброса на серверном листе — IP 127.0.0.1 и `localhost` — для
+  # потребителей, идущих пробросом порта (стенды разработки). Боевой профиль их
+  # не включает.
+  loopbackSAN: false
 
 # Адреса активных backend-сервисов (KACHO_API_GATEWAY_*_GRPC env vars).
 # Публичные RPC nlb обслуживаются под /nlb/v1/*.
@@ -575,9 +596,10 @@ clientAddress:
 # Cross-cutting, domain-LESS label (config.go binds `envconfig:"KACHO_APP_ENV"`,
 # NOT the per-domain KACHO_API_GATEWAY_* scheme) that keys the composition-root
 # production guards: validateProductionAuthzConfig (refuses authn.mode=dev / dev
-# HMAC secret) AND validateProductionInternalListener (refuses an insecure internal
-# :9091 listener). Secure-by-default: only the explicit dev-class labels
-# "dev"/"local"/"test" tolerate the dev auth + insecure-listener posture; every
+# HMAC secret). validateProductionInternalListener (the internal REST listener
+# without mTLS material) refuses at EVERY label, not only production-class — see
+# internalRest above. Secure-by-default: only the explicit dev-class labels
+# "dev"/"local"/"test" tolerate the dev auth posture; every
 # other value — INCLUDING empty/unset — is production-class and fails closed, so a
 # forgotten label can never silently downgrade to dev.
 #

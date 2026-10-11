@@ -154,9 +154,11 @@ def redact(email: str) -> None:
 
 def main(argv: list[str]) -> int:
     edge = vh.EdgeHttp(os.environ["KACHO_EDGE_URL"])
-    internal = vh.EdgeHttp(os.environ["KACHO_EDGE_INTERNAL_URL"])
     mailbox = vh.Mailbox(os.environ["MAILBOX_URL"])
     try:
+        # Внутренний слушатель края — mTLS (kacho#3131): лист оператора из
+        # INTERNAL_REST_{CA,CERT,KEY}, его кладёт bootstrap-cloud-admin.sh.
+        internal = vh.EdgeHttp(os.environ["KACHO_EDGE_INTERNAL_URL"], tls=vh.internal_rest_tls_context())
         vh.mailbox_precondition(mailbox)
         if "--prove-twin" in argv:
             return prove_twin(edge, internal, mailbox)

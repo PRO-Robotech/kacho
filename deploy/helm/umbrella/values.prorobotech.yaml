@@ -78,6 +78,12 @@ compute:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
+  # Порт сбора величин края — только пространству сборщика управляемого
+  # кластера (kacho#3111), а не пространству релиза, которое называет слой
+  # values.dev-prod.yaml для стенда kind.
+  networkPolicy:
+    metricsScrapeFrom:
+      namespace: monitoring
 
 kaname:
   # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА — ССЫЛКОЙ НА СЕКРЕТ (kacho#2878, kacho#3040).

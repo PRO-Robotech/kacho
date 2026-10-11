@@ -82,3 +82,40 @@ api-gateway.frontLinkSANs — имена звеньев через запяту�
 {{- end -}}
 {{- join "," $out -}}
 {{- end -}}
+
+{{/*
+api-gateway.internalRestEnabled — поднимает ли чарт внутренний REST-слушатель
+(kacho#3131). Слушатель отдаёт Internal* REST, и его транспорт — mTLS и только
+он: материал (серверный лист, УЦ установки, клиентский лист оператора) есть лишь
+под mtls.enable. Без mtls.enable слушатель НЕ объявляется вовсе (адрес пуст,
+порта нет) — открытого текста ни в одном профиле. Читают deployment.yaml,
+service.yaml и internal-rest-certificate.yaml — одним определением.
+*/}}
+{{- define "api-gateway.internalRestEnabled" -}}
+{{- if and .Values.internalRestPort (.Values.mtls | default dict).enable -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+api-gateway.internalRestOperatorSAN — URI-имя операторской личности внутреннего
+слушателя. Тот же домен доверия, что у листа края (api-gateway.trustDomain),
+своё имя (internalRest.operatorSaName). Лист под этим именем выпускает
+умбрелла (templates/bootstrap-operator-certificate.yaml); совпадение двух
+написаний держит проба рендера gateway/deploy/internal_rest_mtls_render_test.go.
+*/}}
+{{- define "api-gateway.internalRestOperatorSAN" -}}
+{{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}
+{{- $ir := .Values.internalRest | default dict -}}
+{{- printf "spiffe://%s/ns/%s/sa/%s" (include "api-gateway.trustDomain" .) ($sp.namespace | default .Release.Namespace) ($ir.operatorSaName | default "kacho-internal-rest-operator") -}}
+{{- end -}}
+
+{{/*
+api-gateway.internalRestClientSANs — круг клиентов внутреннего слушателя
+(KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS): имя оператора и дополнительные
+имена internalRest.extraClientSANs, через запятую.
+*/}}
+{{- define "api-gateway.internalRestClientSANs" -}}
+{{- $ir := .Values.internalRest | default dict -}}
+{{- $sans := list (include "api-gateway.internalRestOperatorSAN" .) -}}
+{{- range $s := ($ir.extraClientSANs | default list) }}{{ $sans = append $sans $s }}{{ end -}}
+{{- join "," $sans -}}
+{{- end -}}

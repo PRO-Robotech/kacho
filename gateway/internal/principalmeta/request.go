@@ -30,7 +30,11 @@ import (
 //     русскоязычный, и кириллическое имя роняет ВЕСЬ вызов, не дойдя до
 //     обработчика;
 //   - `x-kacho-token-acr` — подтверждённый уровень: без него пол уровня
-//     обрывался бы на внутреннем передозвоне.
+//     обрывался бы на внутреннем передозвоне;
+//   - `x-kacho-token-session-id` — номер записи сессии, за которую край
+//     проксирует запрос (kaname#677): служба доступа принимает его, только
+//     когда значение ОДНО, поэтому две формы заголовка сводятся здесь к одному
+//     значению, а мост этот ключ не пропускает.
 //
 // Полоса аутентификации ставит заголовки в двух формах — голой и мостовой
 // (`Grpc-Metadata-`); читаются обе. Отсутствующий заголовок КЛЮЧА НЕ ДОБАВЛЯЕТ:
@@ -41,6 +45,7 @@ func MetadataFromRequest(r *http.Request) metadata.MD {
 	principalID := headerEither(r, HeaderGRPCMetaPrincipalID, HeaderPrincipalID)
 	displayName := headerEither(r, HeaderGRPCMetaPrincipalDisplay, HeaderPrincipalDisplay)
 	acr := headerEither(r, HeaderGRPCMetaTokenACR, HeaderTokenACR)
+	sessionRecord := headerEither(r, HeaderGRPCMetaTokenSessionID, HeaderTokenSessionID)
 	if principalType != "" {
 		md.Append(MetaPrincipalType, principalType)
 	}
@@ -52,6 +57,9 @@ func MetadataFromRequest(r *http.Request) metadata.MD {
 	}
 	if acr != "" {
 		md.Append(MetaTokenACR, acr)
+	}
+	if sessionRecord != "" {
+		md.Append(MetaTokenSessionID, sessionRecord)
 	}
 	return md
 }

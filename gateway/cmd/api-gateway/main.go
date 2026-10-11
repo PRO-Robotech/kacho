@@ -1273,20 +1273,39 @@ func main() {
 	// ingress targets and the external TLS listener, both ExternalListener-
 	// wrapped — is external and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
 	// port-forward / cluster-internal tooling reach it via the `internal-rest`
-	// Service port. It serves REST only — HTTP/1.1 and HTTP/2 by prior-knowledge
-	// preface, both by the same httpSrv (edgeHTTPProtocols); Internal* gRPC is
+	// Service port. It serves REST only — HTTP/1.1 and HTTP/2 (ALPN after the
+	// TLS handshake), both by the same httpSrv (edgeHTTPProtocols); Internal* gRPC is
 	// blocked on EVERY listener by the proxy's HasInternalSuffix router, so no
 	// cmux split is needed. Empty addr → disabled (Internal* REST unreachable via gateway).
+	//
+	// Transport (kacho#3131): mutual TLS only — a client leaf chaining to the
+	// installation CA whose URI-SAN is in KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS.
+	// validateProductionInternalListener refuses to start a declared listener
+	// without that material at ANY KACHO_APP_ENV; there is no plaintext mode.
+	// mTLS authenticates the transport only — authz on this listener is unchanged.
 	var internalRESTListener net.Listener
 	if cfg.InternalRESTAddr != "" {
+		internalTLS, guardErr := validateProductionInternalListener(cfg)
+		if guardErr != nil {
+			log.Fatalf("internal REST listener startup-validation: %v", guardErr)
+		}
+		// Самоотчёт режима слушателя — в журнале старта (ось corelib для него —
+		// corelib#109): режим, размер круга клиентов, ручка листа. Ни листа, ни
+		// цепочки, ни имён круга в строке нет.
+		circle, _ := cfg.InternalRESTClientCircle() // страж выше уже разобрал круг без ошибки
 		var restErr error
 		internalRESTListener, restErr = net.Listen("tcp", cfg.InternalRESTAddr)
 		if restErr != nil {
 			log.Fatalf("internal REST listen %s: %v", cfg.InternalRESTAddr, restErr)
 		}
-		logger.Info("api-gateway internal admin REST started", "addr", cfg.InternalRESTAddr)
+		logger.Info("api-gateway internal admin REST started",
+			"addr", cfg.InternalRESTAddr,
+			"transport", "mtls",
+			"client_cert", "required",
+			"client_circle_size", len(circle),
+			"server_leaf_knob", config.InternalRESTCertKnob)
 		go func() {
-			if serveErr := serveInternalREST(httpSrv, internalRESTListener); serveErr != nil && ctx.Err() == nil {
+			if serveErr := serveInternalREST(httpSrv, internalRESTListener, internalTLS); serveErr != nil && ctx.Err() == nil {
 				logger.Error("internal REST listener died; shutting down", "error", serveErr)
 				cancel()
 			}

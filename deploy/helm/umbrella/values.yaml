@@ -620,6 +620,11 @@ api-gateway:
   # впускает только звенья фронта; иных отправителей ручкой не добавить.
   networkPolicy:
     enabled: true
+    # Порт сбора величин края — только пространству сборщика (kacho#3111).
+    # Где живёт сборщик — свойство кластера; профиль, чей сборщик живёт иначе,
+    # переобъявляет имя. Пусто при включённом сборе — отказ рендера.
+    metricsScrapeFrom:
+      namespace: monitoring
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella

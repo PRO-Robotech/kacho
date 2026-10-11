@@ -774,15 +774,22 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 		{
 			name: "I7 правило сбора величин диапазоном портов",
 			mutate: func(t *testing.T, docs []map[string]any) []map[string]any {
+				// Правило сбора узнаётся по ПОРТУ сбора — тому, что под края объявляет
+				// аннотацией prometheus.io/port, — а не по отсутствию `from`: с kacho#3111
+				// у правила есть отправитель (пространство сборщика).
+				scrape := edgeScrapePort(t, docs)
 				_, rules := edgeRules(t, docs)
 				for _, r := range rules {
 					rm, _ := r.(map[string]any)
-					if len(slice(rm, "from")) == 0 {
-						rm["ports"] = []any{map[string]any{"protocol": "TCP", "port": 1024, "endPort": 65535}}
-						return docs
+					for _, pr := range slice(rm, "ports") {
+						pm, _ := pr.(map[string]any)
+						if fmt.Sprint(pm["port"]) == scrape {
+							rm["ports"] = []any{map[string]any{"protocol": "TCP", "port": 1024, "endPort": 65535}}
+							return docs
+						}
 					}
 				}
-				t.Fatal("правила сбора величин в политике края нет — предпосылка инъекции")
+				t.Fatalf("правила порта сбора величин %s в политике края нет — предпосылка инъекции", scrape)
 				return nil
 			},
 			mustSay: "(endPort)",
@@ -818,4 +825,22 @@ func TestEdgeAdmissionRenderInjection_PolicyShape(t *testing.T) {
 			}
 		})
 	}
+}
+
+// edgeScrapePort — порт сбора величин края из объявления сбора на ПОДЕ края
+// (аннотации prometheus.io/scrape и prometheus.io/port шаблона Deployment).
+// Нет объявления — у инъекции I7 нет предмета, и это провал предпосылки.
+func edgeScrapePort(t *testing.T, docs []map[string]any) string {
+	t.Helper()
+	for _, d := range docs {
+		if docKind(d) != "Deployment" || docName(d) != edgeDeploymentName {
+			continue
+		}
+		ann := stringMap(submap(submap(submap(d, "spec"), "template"), "metadata")["annotations"])
+		if ann["prometheus.io/scrape"] == "true" && ann["prometheus.io/port"] != "" {
+			return ann["prometheus.io/port"]
+		}
+	}
+	t.Fatal("под края не объявляет порт сбора величин (prometheus.io/port) — предпосылка инъекции I7")
+	return ""
 }

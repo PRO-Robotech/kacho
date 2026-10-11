@@ -236,6 +236,9 @@ var annotatorProducedKeys = map[string]bool{
 	MetaPrincipalID:      true,
 	MetaPrincipalDisplay: true, // мост знает только обычную форму имени
 	MetaTokenACR:         true,
+	// Ссылка на запись сессии: полоса нашей сессии ставит обе формы, а служба
+	// принимает номер, только когда значение одно (kacho#1280, Ф11-45).
+	MetaTokenSessionID: true,
 }
 
 // IsAnnotatorProducedKey — кладёт ли этот ключ аннотатор metadata.

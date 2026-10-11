@@ -43,6 +43,22 @@ const ACCESS_KEY_ORIGIN_CONDITION = "access-key-origin.precondition.ts";
 /** Пробы, которым нужен ключ доступа на стенде: файлы `*access-key*.spec.ts`. */
 const ACCESS_KEY_SPECS = /access-key[^/]*\.spec\.ts$/;
 
+/**
+ * ИЗМЕРИТЕЛЬНЫЕ ПРОБЫ — СВОЙ ПРОЕКТ, СВОЙ ОТЧЁТ И СВОЙ БЮДЖЕТ (kacho#1281, Ф12-33).
+ *
+ * Замер по классам отказа (форма Ф1-48) тратит на оси источника десятки отказов
+ * `401` ПО ПОСТРОЕНИЮ. Набор `specs/` судится сторожем бюджета этой оси одной
+ * величиной на прогон (`scripts/ceremony-budget.ts`), и замер внутри набора ронял
+ * бы сторожа на каждом прогоне; спрятать его отказы от записи — маска. Поэтому
+ * каталог `measurements/` исполняется ТОЛЬКО под ручкой `KACHO_CONSOLE_MEASURE=1`
+ * и ТОЛЬКО он: проектов набора в таком прогоне нет, отчёт свой
+ * (`results-measure.json`), и тот же сторож судит его величиной, которую объявляет
+ * сам замер. Без ручки конфигурация не меняется ни на строку — набор, его граница
+ * (`testDir`) и сторож для остальных остаются прежними. Подмена — ниже, сразу
+ * после объявления набора.
+ */
+const MEASURE = process.env.KACHO_CONSOLE_MEASURE === "1";
+
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
   throw new Error(
@@ -318,6 +334,17 @@ const config: PlaywrightTestConfig = {
     video: "off",
   },
 };
+
+if (MEASURE) {
+  // Набор ЗАМЕРОВ вместо набора проб: условие прогона прежнее (адреса церемоний,
+  // край, приёмник писем), проектов `probes*` нет, отчёт свой.
+  config.projects = [
+    ...(config.projects ?? []).filter((p) => p.name === PRECONDITION_PROJECT),
+    { name: "measure", testDir: "./measurements", dependencies: [PRECONDITION_PROJECT] },
+  ];
+  config.reporter = [["list"], ["json", { outputFile: "results-measure.json" }]];
+  console.log("[конфиг проб] KACHO_CONSOLE_MEASURE=1: исполняется набор замеров `measurements/`, отчёт results-measure.json");
+}
 
 const refusal = remoteBrowserRefusal(process.env, config);
 if (refusal) {

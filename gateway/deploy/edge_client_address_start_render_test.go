@@ -181,6 +181,14 @@ func judgeEdgeStart(t *testing.T, env map[string]string) string {
 	if _, err := cfg.ExternalListenerClientAuth(&tls.Config{}); err != nil {
 		return "ExternalListenerClientAuth: " + err.Error()
 	}
+	// Страж и транспорт внутреннего REST-слушателя (kacho#3131) — тот же метод,
+	// что зовёт корень (validateProductionInternalListener): цепочка, рендер
+	// которой объявил слушатель без листа, УЦ или круга, края не поднимает.
+	if _, err := cfg.InternalRESTListenerTLS(func(c tls.Certificate) *tls.Config {
+		return &tls.Config{Certificates: []tls.Certificate{c}}
+	}); err != nil {
+		return "InternalRESTListenerTLS: " + err.Error()
+	}
 	return ""
 }
 
@@ -250,6 +258,11 @@ func TestEdgeStartJudgeCatchesAWrongRenderedValue(t *testing.T) {
 			e[config.TrustedProxyCAFileKnob] = e["KACHO_API_GATEWAY_MTLS_CA_FILE"]
 		}, config.TrustedProxyCAFileKnob},
 		"звенья поимённо не отрисованы": {func(e map[string]string) { delete(e, config.TrustedProxyPeersKnob) }, config.TrustedProxyPeersKnob},
+		// Внутренний REST-слушатель (kacho#3131): круг, лист и ключ — каждый
+		// отказ старта со своей ручкой.
+		"круг внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTClientSANsKnob) }, config.InternalRESTClientSANsKnob},
+		"лист внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTCertKnob) }, config.InternalRESTCertKnob},
+		"ключ внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTKeyKnob) }, config.InternalRESTKeyKnob},
 	} {
 		t.Run(name, func(t *testing.T) {
 			env := map[string]string{}

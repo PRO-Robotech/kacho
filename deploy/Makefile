@@ -14,7 +14,7 @@
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
         stand-ns-up stand-ns-down stand-ns-run stand-ns-census \
-        bootstrap-cloud-admin
+        stand-second-factor-wrap-rotate bootstrap-cloud-admin
 
 SHELL := bash
 
@@ -1216,6 +1216,31 @@ stand-ns-run:
 
 stand-ns-census:
 	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# stand-second-factor-wrap-rotate — производитель условия Ф12-35 «в» (kacho#3038):
+# перечень ключей обёртки секретов второго фактора службы доступа меняется, служба
+# перекатывается, ждётся готовность края; печатается число ключей из самоотчёта
+# старта запущенного процесса.
+#
+#   make stand-second-factor-wrap-rotate KEYS=K2,K1 STATE=<каталог> [NS=t<задача>-<коротко>]
+#   make stand-second-factor-wrap-rotate KEYS=restore STATE=<каталог> [NS=…]
+#
+# K1 — ключ стенда до первого вызова с этим STATE, K2 — свежий; материал лежит в
+# STATE и не печатается. Без NS — пространство стенда проб из KACHO_STAND_NS
+# (контекст KACHO_CLIENT_CONTEXT, их экспортирует stand-ns-run), иначе kacho на
+# kind. Читатель — ui-future/e2e/specs/second-factor-wrap-rotation.spec.ts;
+# устройство и исходы — шапка scripts/stand-second-factor-wrap-rotate.sh.
+KEYS ?=
+STATE ?=
+stand-second-factor-wrap-rotate:
+	@[ -n "$(KEYS)" ] || { echo "ABORT: KEYS не задан (K2,K1 | K2 | K1 | restore)"; exit 2; }
+	@[ -n "$(STATE)" ] || { echo "ABORT: STATE не задан — каталог, где лежит ключ стенда до пробы"; exit 2; }
+	@if [ "$(KEYS)" = restore ]; then \
+	  bash scripts/stand-second-factor-wrap-rotate.sh restore --state "$(STATE)" $(if $(NS),--ns "$(NS)",); \
+	else \
+	  bash scripts/stand-second-factor-wrap-rotate.sh set "$(KEYS)" --state "$(STATE)" $(if $(NS),--ns "$(NS)",); \
+	fi
 
 assert-rollout-ready:
 	@set -e; \

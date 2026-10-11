@@ -129,7 +129,16 @@ BASE_URL="${BASE_URL:-http://localhost:28080}"
 # so an operator running `make seed-nlb` after a `port-forward svc/api-gateway
 # 28081:8081` gets external-pool provisioning out of the box; the umbrella
 # (newman-e2e.sh) overrides it to the port it forwards (:18081).
-INTERNAL_BASE_URL="${INTERNAL_BASE_URL:-http://localhost:28081}"
+#
+# The listener is mutual-TLS only (kacho#3131): the operator leaf comes in
+# INTERNAL_REST_{CA,CERT,KEY} (producer: lib/internal-rest-client.sh). No
+# material — the internal calls are not made in plaintext; they fail and the
+# seed says so below.
+INTERNAL_BASE_URL="${INTERNAL_BASE_URL:-https://localhost:28081}"
+# shellcheck source=deploy/scripts/lib/internal-rest-client.sh
+. "$SCRIPT_DIR/lib/internal-rest-client.sh"
+INTERNAL_REST_CURL_ARGS=()
+internal_rest_curl_args || echo "[seed-nlb] внутренний слушатель края: INTERNAL_REST_{CA,CERT,KEY} не заданы — Internal*-вызовы получат отказ рукопожатия" >&2
 JWT="${JWT:-}"
 OUT_FILE="${OUT_FILE:-$REPO_ROOT/.seeded-ids.env}"
 VERBOSE="${VERBOSE:-false}"
@@ -200,11 +209,13 @@ curl_internal() {
   local body="${1:-}"
   if [ -n "$body" ]; then
     vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" \
+      ${INTERNAL_REST_CURL_ARGS[@]+"${INTERNAL_REST_CURL_ARGS[@]}"} \
       -H 'Content-Type: application/json' \
       "${admin_auth_args[@]}" \
       --data "$body"
   else
-    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" "${admin_auth_args[@]}"
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" \
+      ${INTERNAL_REST_CURL_ARGS[@]+"${INTERNAL_REST_CURL_ARGS[@]}"} "${admin_auth_args[@]}"
   fi
 }
 

@@ -190,8 +190,18 @@ func serveEdgeMux(m cmux.CMux, grpcSrv *grpc.Server, httpSrv *http.Server, died 
 // «внутренний» (обёрткой слушателя; прямую метку на контексте здесь не ставят —
 // контекст общего сервера пометил бы и внешние слушатели). Возвращает nil на
 // остановке сервера.
-func serveInternalREST(httpSrv *http.Server, l net.Listener) error {
-	if err := httpSrv.Serve(listenerorigin.InternalListener(l)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+//
+// Транспорт — mTLS и только он (kacho#3131): tlsCfg собирает страж старта
+// validateProductionInternalListener, и без обязательного клиентского листа
+// слушатель не поднимается — открытого текста у него нет ни в каком профиле.
+// TLS — ВНЕШНЯЯ обёртка, метка — под ней: сервер видит *tls.Conn, поэтому
+// заполняет r.TLS, ставит срок рукопожатия и обслуживает h2 по ALPN, а метку
+// «внутренний» ConnContext находит, разворачивая tls.Conn.NetConn().
+func serveInternalREST(httpSrv *http.Server, l net.Listener, tlsCfg *tls.Config) error {
+	if tlsCfg == nil || tlsCfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		return errors.New("внутренний REST-слушатель без mTLS (обязательного клиентского листа) не поднимается")
+	}
+	if err := httpSrv.Serve(tls.NewListener(listenerorigin.InternalListener(l), tlsCfg)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil

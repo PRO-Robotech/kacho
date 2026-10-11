@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: BUSL-1.1
 {{- /*
   ─── bootstrap-operator client identity (internal-CA leaf, client auth only) ───
+  (This file carries TWO operator identities; the second, for the api-gateway
+  internal REST listener, is at the end — kacho#3131.)
 
   A DEDICATED operator identity for the cluster-admin token mint
   (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kaname :9091).
@@ -74,6 +76,61 @@ spec:
     group: cert-manager.io
   uris:
     - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $spNs $sa | quote }}
+  usages:
+    - client auth        # client-only — this identity never terminates a listener
+{{- end }}
+{{- /*
+  ─── internal REST operator client identity (kacho#3131) ───
+
+  The SECOND identity of this file, and a different door: the api-gateway's
+  internal REST listener (Internal* REST, `internal-rest` Service port) is
+  mutual-TLS only and admits a client leaf of the installation CA whose URI-SAN
+  is in its circle (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS, rendered by the
+  api-gateway chart from `api-gateway.internalRest.operatorSaName`). This leaf is
+  that circle's operator: operator tooling (deploy/scripts, tests/authz-fixtures,
+  newman) reads it out of the cluster exactly like the mint identity above —
+  nothing mounts it.
+
+  Separate from the mint identity on purpose: holding the internal REST operator
+  leaf must not be a licence to mint cluster-admin, and vice versa — the two SANs
+  differ. mTLS here authenticates the TRANSPORT only: the leaf is no principal,
+  and authorization on the listener is unchanged.
+
+  Rendered whenever the internal-CA PKI is up (mtls.enabled) — the api-gateway
+  chart declares its internal listener under the same condition. Defaults live
+  here (no umbrella values key): saName `kacho-internal-rest-operator`, the same
+  default the api-gateway chart puts in its circle; the two spellings are tied by
+  gateway/deploy/internal_rest_mtls_render_test.go over every stack chain.
+*/ -}}
+{{- $mtls2 := .Values.mtls | default dict -}}
+{{- if $mtls2.enabled }}
+{{- $ca2 := $mtls2.internalCA | default dict -}}
+{{- $irSa := "kacho-internal-rest-operator" -}}
+{{- $irSecret := "kacho-internal-rest-operator-client-tls" }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $irSecret | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/name: {{ $irSa | quote }}
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $irSecret | quote }}
+  duration: "2160h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $ca2.clusterIssuerName | default "kacho-internal-ca" | quote }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" (include "umbrella.trustDomain" .) .Release.Namespace $irSa | quote }}
   usages:
     - client auth        # client-only — this identity never terminates a listener
 {{- end }}

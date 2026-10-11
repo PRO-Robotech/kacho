@@ -134,7 +134,11 @@ kubectl -n kacho get secret stand-cloud-admin -o jsonpath='{.data.password}' | b
 
 и входит паролем в консоль. Раздел «Система» ходит к админ-API внутреннего
 слушателя края (`docs/architecture/admin-api-door-on-external-stand.md`); на kind
-это `kubectl -n kacho port-forward svc/api-gateway 8081`.
+это `kubectl -n kacho port-forward svc/api-gateway 8081`. Внутренний слушатель —
+только mTLS: клиентский лист операторской личности лежит в секрете
+`kacho-internal-rest-operator-client-tls` (`ca.crt`, `tls.crt`, `tls.key`;
+`deploy/scripts/lib/internal-rest-client.sh` достаёт его для инструментов), и
+адрес проброса — `https://localhost:8081`.
 
 Шаг идемпотентен: повторный подъём входит тем же паролем, второго человека не
 заводит, секрет не перечеканивает. Владелец аккаунта, заведённый обычной
