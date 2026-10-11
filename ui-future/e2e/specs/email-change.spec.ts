@@ -297,6 +297,9 @@ test("F8S6-01 · смена адреса целиком на /settings, вход
       await signInSeed(seedB, human.email, human.password, "B");
       await transferSession(seedB, ctxB);
       const pageB = await ctxB.newPage();
+      // Вход во втором контексте читается тем же путём, что ответы первого:
+      // перехват ставится до отправки (`answer-on-arrival.ts`).
+      await captureAnswers(pageB, LANE_VERBS);
       expect(await panelOutcome(pageB), "Дано: второй контекст не открыл панель").toBe("панель");
 
       const n = freeAddress("F8S6-01");
