@@ -189,11 +189,15 @@ class Mailbox:
 
     Читает принятое и ничего не пишет. Адрес — `MAILBOX_URL`, его открывает
     прогонщик пробросом к службе приёмника (deploy/scripts/newman-parallel.sh).
+
+    tls — контекст TLS, если поверхность чтения стоит под TLS; None — умолчание
+    urllib (проброс к приёмнику идёт открытым текстом), как у EdgeHttp.
     """
 
-    def __init__(self, base_url: str, timeout: float = 15.0):
+    def __init__(self, base_url: str, timeout: float = 15.0, tls: ssl.SSLContext | None = None):
         self.base = base_url.rstrip("/")
         self.timeout = timeout
+        self.tls = tls
 
     def _get(self, path: str) -> dict:
         req = urllib.request.Request(self.base + path, headers={"Accept": "application/json"})
