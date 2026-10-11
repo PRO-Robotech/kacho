@@ -97,6 +97,45 @@ class Selection(unittest.TestCase):
         self.assertTrue(affected.select(m, ["elsewhere/file"]).full)
         self.assertFalse(affected.select(m, ["src/file"]).full)  # законный близнец
 
+    def test_catch_all_pattern_is_not_coverage(self):
+        # Дефект приёмки kacho#3148: группа с `**` «заявляла» любой путь, и запасной ход к
+        # полному прогону не срабатывал никогда.
+        m = affected.PathMap(full_bases=["main"], full_on=[], always=[], detectors={},
+                             groups=[affected.Group("any", "", ["a.yml:u"], ["**"]),
+                                     affected.Group("src", "", ["a.yml:x"], ["src/**"])])
+        sel = affected.select(m, ["elsewhere/file"])
+        self.assertTrue(sel.full)
+        self.assertIn("elsewhere/file", sel.reason)
+        twin = affected.select(m, ["src/file"])  # законный близнец: путь опознан узким образцом
+        self.assertFalse(twin.full)
+        self.assertEqual(twin.jobs, ["a.yml:u", "a.yml:x"])
+
+    def test_universal_pattern_forms(self):
+        for p in ("**", "**/*", "**/**"):
+            self.assertTrue(affected._universal(p), p)
+        for p in ("*", "**/*.go", "src/**", "*.mk", "**/go.mod", "**/tests/newman/**"):
+            self.assertFalse(affected._universal(p), p)
+
+    def test_path_outside_the_map_selects_everything(self):
+        for f in ("brand-new-top-level-dir/file.txt", "README.md"):
+            sel = affected.select(MAP, [f])
+            self.assertTrue(sel.full, f)
+            self.assertEqual(sorted(MAP.all_jobs()), sel.jobs, f)
+            self.assertIn(f, sel.reason)
+        # законный близнец: путь известного класса рядом с неопознанным выбирает только своё
+        self.assertFalse(affected.select(MAP, ["internal/repohygiene/retired_gate_carriers.json"])
+                         .full)
+
+    def test_root_go_module_selects_console_tests(self):
+        for f in ("go.mod", "go.sum"):
+            sel = affected.select(MAP, [f])
+            self.assertFalse(sel.full, f)
+            self.assertIn("ui.yml:test", sel.jobs, f)
+            self.assertIn("console-e2e.yml:probes", sel.jobs, f)
+        # законный близнец: newman-кейс и Go-исходник службы юнитов консоли не выбирают
+        self.assertNotIn("ui.yml:test", affected.select(MAP, [NEWMAN_CASE]).jobs)
+        self.assertNotIn("ui.yml:test", affected.select(MAP, [GO_FILE]).jobs)
+
     def test_workflow_file_selects_its_own_jobs(self):
         sel = affected.select(MAP, [".github/workflows/ui.yml"])
         self.assertIn("ui.yml:build", sel.jobs)
