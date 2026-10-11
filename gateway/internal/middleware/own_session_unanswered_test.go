@@ -178,7 +178,8 @@ func formChain(t *testing.T, book *carrierBook, cut *cutoffBook) (http.Handler, 
 
 func formVerbRequest(path, carrier string, foreign bool) *http.Request {
 	method := http.MethodPost
-	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize || path == CeremonyPathDiscovery {
+	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize || path == CeremonyPathDiscovery ||
+		path == ownSessionsWant["sessions"] {
 		method = http.MethodGet
 	}
 	req := withOurCarrier(httptest.NewRequest(method, path, strings.NewReader(`{}`)), carrier)

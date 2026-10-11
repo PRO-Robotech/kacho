@@ -61,6 +61,10 @@ const (
 	loginLaneVerbAccessKeyLogin = "access-key-login"
 	// Заведение первого пароля из живой сессии (kaname#213, kacho#3056).
 	loginLaneVerbPasswordEnroll = "password-enroll"
+	// Свои сессии (приёмка F8-S5 Р1, kacho#3061): три глагола той же полосы.
+	loginLaneVerbSessions          = "sessions"
+	loginLaneVerbSessionsEnd       = "sessions-end"
+	loginLaneVerbSessionsEndOthers = "sessions-end-others"
 	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1) и метаданные
 	// обнаружения (kacho#2721): ретранслируются на слушатель выдачи, клетки —
 	// те же.
@@ -88,6 +92,7 @@ func LoginLaneVerbLabels() []string {
 		loginLaneVerbVerifyEmail, loginLaneVerbVerifyEmailConfirm,
 		loginLaneVerbAccessKeyBegin, loginLaneVerbAccessKeyLogin,
 		loginLaneVerbPasswordEnroll,
+		loginLaneVerbSessions, loginLaneVerbSessionsEnd, loginLaneVerbSessionsEndOthers,
 		loginLaneVerbAuthorize, loginLaneVerbToken, loginLaneVerbDiscovery,
 	}
 }
@@ -212,6 +217,9 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		loginLaneVerbAccessKeyBegin:          relayed[loginLaneVerbAccessKeyBegin],
 		loginLaneVerbAccessKeyLogin:          relayed[loginLaneVerbAccessKeyLogin],
 		loginLaneVerbPasswordEnroll:          relayed[loginLaneVerbPasswordEnroll],
+		loginLaneVerbSessions:                relayed[loginLaneVerbSessions],
+		loginLaneVerbSessionsEnd:             relayed[loginLaneVerbSessionsEnd],
+		loginLaneVerbSessionsEndOthers:       relayed[loginLaneVerbSessionsEndOthers],
 		loginLaneVerbAuthorize:               relayed[loginLaneVerbAuthorize],
 		loginLaneVerbToken:                   relayed[loginLaneVerbToken],
 		loginLaneVerbDiscovery:               relayed[loginLaneVerbDiscovery],
