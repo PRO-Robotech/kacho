@@ -155,7 +155,7 @@ func TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders(t *testing
 			notWant: []string{"appBaseURL", "smtp.fromAddress"}},
 		{name: "слой площадки развёл копии издателя: приём реестра на другом издателе", stack: "a8f60d",
 			site: probeSiteLayerRegistryOnAnotherIssuer, sets: []string{siteLayerEnforced},
-			want: []string{refusal, "registry.tokenAcceptance.platformIssuer", "не называет издателя чеканки"},
+			want:    []string{refusal, "registry.tokenAcceptance.platformIssuer", "не называет издателя чеканки"},
 			notWant: []string{"api-gateway.tokenAcceptance", "registry.tokenAcceptance.issuers"}},
 		{name: "слой площадки заменил только узел", stack: "a8f60d",
 			site: probeSiteLayerMailOnly, sets: []string{siteLayerEnforced},
