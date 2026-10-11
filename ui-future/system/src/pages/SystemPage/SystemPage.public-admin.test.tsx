@@ -5,6 +5,12 @@
 //
 // Подменён ТРАНСПОРТ и страницы (метками, печатающими то, что им передали);
 // таблица маршрутов — настоящая.
+//
+// Отсутствие слов «раздел недоступен на этой посадке» здесь НЕ утверждается
+// (kacho#3110): производителя этого текста в консоли нет с kacho#3094, и
+// отрицание того, что ничто не выводит, зелёно при любом поведении экрана.
+// Предмет держит положительное свойство — экран предлагает мутации (метка
+// страницы с `create/update/delete=true`) и не спрашивает край о посадке.
 
 import React from "react";
 import { jest } from "@jest/globals";
@@ -90,14 +96,14 @@ describe("SystemRoutes — экраны на публичных службах (
     openAt(address);
 
     expect(await screen.findByText(marker)).toBeInTheDocument();
-    expect(screen.queryByText(/недоступен на этой посадке/)).not.toBeInTheDocument();
   });
 
-  it("администраторы кластера открываются без слов о посадке", async () => {
+  it("администраторы кластера открываются экраном раздела — без пробы посадки края", async () => {
     openAt("/system/cluster/admins");
 
     expect(await screen.findByText("администраторы")).toBeInTheDocument();
-    expect(screen.queryByText(/недоступен на этой посадке/)).not.toBeInTheDocument();
+    await act(async () => {});
+    expect(get).not.toHaveBeenCalled();
   });
 
   it("раздел не обращается к краю сам — во внутреннее пространство путей тем более", async () => {
