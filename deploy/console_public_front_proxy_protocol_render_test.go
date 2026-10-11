@@ -21,7 +21,12 @@ import (
 
 const proxyProtocolStack = "a8f60d"
 
-func TestConsolePublicFrontProxyProtocol_EnabledFormIsJudged(t *testing.T) {
+// Имя продолжает семейство TestConsolePublicFrontJudgement_CanFailAndStaysSilent:
+// это тот же судья п. 7 на той же цепочке, и прогон конвейера, отбирающий
+// семейство по имени (.github/workflows/ci.yaml, прогон helmcharts), отбирает и
+// эту пробу. Отказы рендера помощника — её подпроба.
+func TestConsolePublicFrontJudgement_CanFailAndStaysSilentOnTheProxyProtocolForm(t *testing.T) {
+	t.Run("отказы рендера помощника", proxyProtocolRenderRefusals)
 	requireUmbrellaPackagedFromTree(t)
 	stacks := deployStacks(t)
 	chain, ok := stacks[proxyProtocolStack]
@@ -89,7 +94,7 @@ func TestConsolePublicFrontProxyProtocol_EnabledFormIsJudged(t *testing.T) {
 	}
 }
 
-func TestConsolePublicFrontProxyProtocol_RenderRefusals(t *testing.T) {
+func proxyProtocolRenderRefusals(t *testing.T) {
 	stacks := deployStacks(t)
 	chain, ok := stacks[proxyProtocolStack]
 	if !ok {
