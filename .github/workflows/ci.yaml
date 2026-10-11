@@ -1417,7 +1417,7 @@ jobs:
           # и сверка проводки процессов с картой в обе стороны — задание, которого
           # нет в карте, на черновике не выберет никто.
           python3 -m pytest -q .github/scripts/affected_test.py
-          python3 .github/scripts/affected.py --check-wiring .github/workflows
+          python3 .github/scripts/affected_wiring.py .github/workflows
 
           # Решение шага `gate` в ui.yml о публикации образов консоли — исходом на
           # каждом событии, а не текстом шага (kacho#2881). Зовётся здесь, а не в

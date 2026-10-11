@@ -33,6 +33,7 @@ def _load(file: str, name: str):
 
 
 affected = _load("affected.py", "affected")
+wiring = _load("affected_wiring.py", "affected_wiring")
 pr_verdict = _load("pr-verdict.py", "pr_verdict_for_affected")
 
 MAP = affected.load_map()
@@ -174,7 +175,7 @@ class EventMode(unittest.TestCase):
 
 class Wiring(unittest.TestCase):
     def test_tree_wiring_matches_the_map(self):
-        self.assertEqual(affected.check_wiring(MAP, WORKFLOWS), [])
+        self.assertEqual(wiring.check_wiring(MAP, WORKFLOWS), [])
 
     def _copy(self) -> Path:
         tmp = Path(tempfile.mkdtemp())
@@ -190,7 +191,7 @@ class Wiring(unittest.TestCase):
                 "needs.changes.outputs.jobs || '[]'), 'lint') }}\n")
         self.assertIn(line, text)
         p.write_text(text.replace(line, ""), encoding="utf-8")
-        found = affected.check_wiring(MAP, wf)
+        found = wiring.check_wiring(MAP, wf)
         self.assertEqual(len(found), 1, found)
         self.assertIn("ci.yaml:lint", found[0])
 
@@ -202,7 +203,7 @@ class Wiring(unittest.TestCase):
         self.assertIn(line, text)
         p.write_text(text.replace(line, "        run: python3 .github/scripts/affected.py"),
                      encoding="utf-8")
-        found = affected.check_wiring(MAP, wf)
+        found = wiring.check_wiring(MAP, wf)
         self.assertEqual(len(found), 1, found)
         self.assertIn("ui.yml: детектор", found[0])
 
@@ -211,14 +212,14 @@ class Wiring(unittest.TestCase):
         for g in m.groups:
             g.jobs = [j for j in g.jobs if j != "ci.yaml:docs-sites"]
         m.groups = [g for g in m.groups if g.jobs]
-        found = affected.check_wiring(m, WORKFLOWS)
+        found = wiring.check_wiring(m, WORKFLOWS)
         self.assertTrue(any("ci.yaml:docs-sites" in f and "ни в одной группе" in f
                             for f in found), found)
 
     def test_map_entry_without_job_is_found(self):
         m = affected.load_map()
         m.groups[0].jobs.append("ci.yaml:no-such-job")
-        found = affected.check_wiring(m, WORKFLOWS)
+        found = wiring.check_wiring(m, WORKFLOWS)
         self.assertTrue(any("ci.yaml:no-such-job" in f and "без предмета" in f for f in found),
                         found)
 
