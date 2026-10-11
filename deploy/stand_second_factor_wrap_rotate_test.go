@@ -86,12 +86,29 @@ JSON
   *" get pods -l "*)
     cat <<JSON
 {"items":[
- {"metadata":{"name":"kaname-x-1","annotations":{"prometheus.io/port":"9095","prometheus.io/scheme":"http"}},"status":{"phase":"Running"}},
- {"metadata":{"name":"kaname-x-2","annotations":{"prometheus.io/port":"9095","prometheus.io/scheme":"http"}},"status":{"phase":"Running"}},
- {"metadata":{"name":"kaname-x-old","deletionTimestamp":"2026-01-01T00:00:00Z","annotations":{}},"status":{"phase":"Running"}}
+ {"metadata":{"name":"kaname-x-1","labels":{"app.kubernetes.io/name":"kaname"},"annotations":{"prometheus.io/port":"9095","prometheus.io/scheme":"http"}},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}},
+ {"metadata":{"name":"kaname-x-2","labels":{"app.kubernetes.io/name":"kaname"},"annotations":{"prometheus.io/port":"9095","prometheus.io/scheme":"http"}},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}},
+ {"metadata":{"name":"kaname-x-old","labels":{"app.kubernetes.io/name":"kaname"},"deletionTimestamp":"2026-01-01T00:00:00Z","annotations":{}},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"False"}]}}
 ]}
 JSON
     ;;
+  *" get services -o json "*)
+    if [ "${FAKE_EP:-}" = noservice ]; then
+      echo '{"items":[{"metadata":{"name":"vpc"},"spec":{"selector":{"app":"vpc"}}}]}'
+    else
+      echo '{"items":[{"metadata":{"name":"vpc"},"spec":{"selector":{"app":"vpc"}}},{"metadata":{"name":"kaname"},"spec":{"selector":{"app.kubernetes.io/name":"kaname"}}},{"metadata":{"name":"kaname-internal"},"spec":{"selector":{"app.kubernetes.io/name":"kaname"}}}]}'
+    fi ;;
+  *" get endpointslices -o json "*)
+    # Конечные точки догоняют перекат: первые FAKE_EP_LAG опросов адрес
+    # kaname-x-2 ещё не готов, а адрес заменённого пода ещё числится.
+    n=0; [ -f "$FAKE_DIR/ep-polls" ] && n="$(cat "$FAKE_DIR/ep-polls")"; n=$((n + 1)); echo "$n" >"$FAKE_DIR/ep-polls"
+    ep() { printf '{"addresses":["10.0.0.%s"],"conditions":{"ready":%s},"targetRef":{"kind":"Pod","name":"%s"}}' "$1" "$2" "$3"; }
+    if [ "${FAKE_EP:-}" = stale ] || [ "$n" -le "${FAKE_EP_LAG:-0}" ]; then
+      eps="$(ep 1 true kaname-x-1),$(ep 2 false kaname-x-2),$(ep 9 true kaname-x-old)"
+    else
+      eps="$(ep 1 true kaname-x-1),$(ep 2 true kaname-x-2)"
+    fi
+    echo '{"items":[{"metadata":{"name":"vpc-abc","labels":{"kubernetes.io/service-name":"vpc"}},"endpoints":[]},{"metadata":{"name":"kaname-abc","labels":{"kubernetes.io/service-name":"kaname"}},"endpoints":['"$eps"']},{"metadata":{"name":"kaname-internal-abc","labels":{"kubernetes.io/service-name":"kaname-internal"}},"endpoints":['"$eps"']}]}' ;;
   *" get pods -o json "*)
     echo '{"items":[{"metadata":{"name":"edge-1","labels":{"app":"edge"}},"status":{"phase":"Running"},"spec":{"containers":[{"ports":[{"name":"cmux","containerPort":8443}]}]}}]}' ;;
   *" get --raw "*) echo ok ;;
@@ -165,6 +182,7 @@ func (e *wrapEnv) run(t *testing.T, env []string, args ...string) wrapRun {
 		"EDGE_READY_ATTEMPTS=3",
 		"EDGE_READY_INTERVAL=0",
 		"EDGE_READY_STREAK=1",
+		"KACHO_WRAP_ENDPOINTS_INTERVAL=0",
 	}, append(e.extra, env...)...)
 	out, err := cmd.CombinedOutput()
 	code := 0
@@ -334,6 +352,61 @@ func TestWrapRotate_RefusesWhatItCannotCompose(t *testing.T) {
 	r = none.run(t, nil, "set", "K2,K1", "--state", none.state)
 	if r.code != 2 || !strings.Contains(r.out, "sf-secret") {
 		t.Fatalf("секрета нет: ждался код 2 с его именем, получен %d:\n%s", r.code, r.out)
+	}
+}
+
+// TestWrapRotate_EdgeIsAskedOnlyAfterTheServiceEndpointsAreReady — kacho#3145:
+// после переката службы доступа `rollout status` уже «выкачено», а конечные
+// точки её служб (Service) ещё не готовы — следующая проба получала 503 входа и
+// connection refused адреса службы. Фикстура ждёт, пока готовые адреса КАЖДОЙ
+// службы, выбирающей поды, станут ровно живыми готовыми подами (ни одного
+// заменённого), STREAK опросов подряд, и только потом спрашивает край. Близнец:
+// конечные точки догоняют за два опроса — проходит, и край спрошен после них;
+// адрес заменённого пода держится — код 3 с его именем, край не спрошен;
+// служб, выбирающих поды, нет — код 3.
+func TestWrapRotate_EdgeIsAskedOnlyAfterTheServiceEndpointsAreReady(t *testing.T) {
+	limits := []string{"KACHO_WRAP_ENDPOINTS_ATTEMPTS=4", "KACHO_WRAP_ENDPOINTS_INTERVAL=0", "KACHO_WRAP_ENDPOINTS_STREAK=2"}
+
+	e := newWrapEnv(t, k1)
+	r := e.run(t, append([]string{"FAKE_EP_LAG=2"}, limits...), "set", "K2,K1", "--state", e.state)
+	if r.code != 0 {
+		t.Fatalf("конечные точки догнали за два опроса — условие создано, код 0; получен %d:\n%s", r.code, r.out)
+	}
+	rollout := strings.Index(r.log, " rollout status ")
+	firstEP := strings.Index(r.log, " get endpointslices ")
+	lastEP := strings.LastIndex(r.log, " get endpointslices ")
+	edge := strings.Index(r.log, " get --raw ")
+	if rollout < 0 || firstEP < rollout || edge < lastEP || edge < 0 {
+		t.Fatalf("порядок не «перекат → конечные точки → край»:\n%s", r.log)
+	}
+	if got := strings.Count(r.log, " get endpointslices "); got != 4 {
+		t.Fatalf("ждалось 4 опроса конечных точек (2 не готовых + 2 подряд готовых), было %d:\n%s", got, r.log)
+	}
+	if !strings.Contains(r.out, "kaname-internal") {
+		t.Fatalf("перепись служб не названа:\n%s", r.out)
+	}
+	_ = e.run(t, limits, "restore", "--state", e.state)
+
+	e = newWrapEnv(t, k1)
+	r = e.run(t, append([]string{"FAKE_EP=stale"}, limits...), "set", "K2,K1", "--state", e.state)
+	if r.code != 3 || !strings.Contains(r.out, "kaname-x-old") {
+		t.Fatalf("адрес заменённого пода держится — код 3 с его именем; получен %d:\n%s", r.code, r.out)
+	}
+	if strings.Contains(r.log, " get --raw ") {
+		t.Fatalf("край спрошен при неготовых конечных точках:\n%s", r.log)
+	}
+	if got := strings.Count(r.log, " get endpointslices "); got != 4 {
+		t.Fatalf("предел опросов 4, было %d", got)
+	}
+
+	e = newWrapEnv(t, k1)
+	r = e.run(t, append([]string{"FAKE_EP=noservice"}, limits...), "restore", "--state", e.state)
+	if r.code != 0 {
+		t.Fatalf("restore без сохранённого ключа — восстанавливать нечего, код 0; получен %d", r.code)
+	}
+	r = e.run(t, append([]string{"FAKE_EP=noservice"}, limits...), "set", "K2", "--state", e.state)
+	if r.code != 3 || !strings.Contains(r.out, "служб") {
+		t.Fatalf("служб, выбирающих поды, ноль — не готовность, код 3; получен %d:\n%s", r.code, r.out)
 	}
 }
 
