@@ -11,7 +11,7 @@ import {
   type BrowserContext,
   type TestInfo,
 } from "@playwright/test";
-import { noteRefusal, recordableRefusal } from "./ceremony-budget";
+import { noteRefusal, recordableAttempt } from "./ceremony-budget";
 import { isRegistration, noteRegistration } from "./registration-budget.ts";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
@@ -141,7 +141,7 @@ async function record(issued: IssuedCall[], method: "GET" | "POST", path: string
   const text = await res.text();
   // Отказ посева тратит ту же ось источника, что и отказ страницы: он идёт в
   // запись сторожа бюджета (F8-41) за текущей пробой.
-  const refused = recordableRefusal(new URL(path, "http://seed.invalid").pathname, res.status(), text);
+  const refused = recordableAttempt(new URL(path, "http://seed.invalid").pathname, res.status(), text);
   if (refused) noteRefusal(test.info().testId, refused);
   let body: unknown = text;
   try {

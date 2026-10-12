@@ -347,10 +347,21 @@ data:
     # запрос. `308`, а не `301`: метод и тело сохраняются, и форма, отправленная
     # по http, уходит на https, а не теряется превращением в GET.
     server {
-        # Порт 80 балансировщика тоже получает заголовок PROXY (kacho#3115):
-        # балансировщик шлёт его на каждое соединение, и слушатель без приёма
-        # прочёл бы заголовок как строку запроса.
-        listen {{ .Values.publicFront.redirectPort }}{{ if $proxied }} proxy_protocol{{ end }};
+        {{- if $proxied }}
+        # Порт 80 балансировщика тоже получает заголовок PROXY (kacho#3115), но
+        # не от каждого соединения: соединение изнутри кластера к внешнему
+        # адресу входа (ipMode VIP) приходит на под без него — так приходит и
+        # проверка вызова ACME HTTP-01. Порт redirect слушает маршрутизатор
+        # (nginx.conf ниже): звено балансировки он ведёт сюда с заголовком,
+        # прочих — без. Адресу из заголовка верят только от петли — туда
+        # заголовок приводит лишь маршрутизатор.
+        listen 127.0.0.1:{{ include "ui.redirectRouteProxiedPort" . }} proxy_protocol;
+        listen 127.0.0.1:{{ include "ui.redirectRoutePlainPort" . }};
+        real_ip_header proxy_protocol;
+        set_real_ip_from 127.0.0.1;
+        {{- else }}
+        listen {{ .Values.publicFront.redirectPort }};
+        {{- end }}
         server_name _;
         {{- include "ui.securityHeaders" . | nindent 8 }}
         {{- if (.Values.publicFront.acme).enabled }}
@@ -381,6 +392,65 @@ data:
         }
     }
     {{- end }}
+  {{- if $proxied }}
+  # ГЛАВНАЯ НАСТРОЙКА nginx (kacho#3115) — только при приёме заголовка PROXY:
+  # маршрутизатор порта redirect живёт в контексте `stream`, а его объявляет
+  # только главный файл. Файловая система контейнера только для чтения, и
+  # дописать блок в файл образа (20-envsubst-on-templates.sh) нельзя — файл
+  # монтируется отсюда (deployment-host.yaml). Всё, кроме `stream`, —
+  # настройка образа nginx-unprivileged как есть.
+  nginx.conf: |
+    worker_processes  auto;
+
+    error_log  /var/log/nginx/error.log notice;
+    pid        /tmp/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        proxy_temp_path /tmp/proxy_temp;
+        client_body_temp_path /tmp/client_temp;
+        fastcgi_temp_path /tmp/fastcgi_temp;
+        uwsgi_temp_path /tmp/uwsgi_temp;
+        scgi_temp_path /tmp/scgi_temp;
+
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log  /var/log/nginx/access.log  main;
+
+        sendfile        on;
+
+        keepalive_timeout  65;
+
+        include /etc/nginx/conf.d/*.conf;
+    }
+
+    # МАРШРУТИЗАТОР ПОРТА REDIRECT. Решает по адресу TCP-пира, ждать ли
+    # заголовка PROXY: звено балансировки (тот же круг, что у порта https) —
+    # на петлевой слушатель с приёмом, прочие — на петлевой без него. Сам
+    # заголовка не ждёт и своего не дописывает: байты соединения уходят как есть.
+    stream {
+        geo $remote_addr $kacho_redirect_route {
+            default 127.0.0.1:{{ include "ui.redirectRoutePlainPort" . }};
+            {{- range .Values.publicFront.clientAddress.proxyProtocol.trustedFrom }}
+            {{ . }} 127.0.0.1:{{ include "ui.redirectRouteProxiedPort" $ }};
+            {{- end }}
+        }
+
+        server {
+            listen {{ .Values.publicFront.redirectPort }};
+            proxy_pass $kacho_redirect_route;
+            proxy_connect_timeout 2s;
+        }
+    }
+  {{- end }}
   resolver-from-resolvconf.envsh: |
     # Sourced (.envsh) до nginx 20-envsubst: экспортирует адрес кластерного DNS из
     # /etc/resolv.conf в KUBE_DNS_SERVER, чтобы envsubst подставил его в

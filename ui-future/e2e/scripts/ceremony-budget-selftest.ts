@@ -20,15 +20,30 @@
  *     того же кода — нет;
  *   • три прогона: 33 — в бюджете, 34 — красное;
  *   • бюджета нет — отказ, а не «бюджет ноль»; отчёт без проб — отказ.
+ *
+ * И для ДОЛИ S4 (приёмка F8-S4, Р8, F8S4-15) — своей ручкой
+ * `KACHO_ACCESS_KEY_SOURCE_BUDGET` на том же счёте неверных предъявлений:
+ *   • выдача испытания входа ключом (`begin` → `200`) и единый отказ входа
+ *     ключом (`401` · 16 · `authentication failed` без причины края) — в долю;
+ *   • признак формы, успешный вход, отказы `400`/`403`/`429` и отказ края — нет;
+ *   • выдача сверх бюджета доли — красное с числом и с именем сценария;
+ *     близнец той же записи на пути признака формы — не красное;
+ *   • доля S4 к доле F8-41 не прибавляет ни одного отказа;
+ *   • без величины доли S4 вердикта нет — код 3, а не «бюджет ноль».
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EDGE_AUTHN_FAILED } from "../../shared/src/test/edge-answers.ts";
 import {
+  ACCESS_KEY_BEGIN,
+  ACCESS_KEY_LOGIN,
+  ACCESS_KEY_SHARE,
+  countsTowardAccessKeyShare,
   countsTowardSourceAxis,
   judgeBudget,
+  recordableAttempt,
   recordableRefusal,
   type RecordedRefusal,
   type ScenarioRefusals,
@@ -204,21 +219,149 @@ console.log("ПРОГОН 7 — три исхода сторожа разным�
       ],
     });
   };
+  // Обе ручки объявлены: величина доли S4 (F8S4-15) — вход того же сторожа.
+  const BOTH = { KACHO_CEREMONY_FAILURE_BUDGET: "11", KACHO_ACCESS_KEY_SOURCE_BUDGET: "20" };
   const within = path.join(dir, "within.json");
   const over = path.join(dir, "over.json");
   writeFileSync(within, reportOf(Array(5).fill(failedLogin)));
   writeFileSync(over, reportOf(Array(12).fill(failedLogin)));
-  check(guard([within], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === 0, "в бюджете — 0");
-  check(guard([over], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === 1, "превышен — 1");
+  check(guard([within], BOTH) === 0, "в бюджете — 0");
+  check(guard([over], BOTH) === 1, "превышен — 1");
   // Величина не объявлена или не разобрана — не «превышен» и не умолчание 11.
-  check(guard([within], {}) === NO_VERDICT, "величины нет — вердикта нет (3), а не умолчание");
-  check(guard([within], { KACHO_CEREMONY_FAILURE_BUDGET: "одиннадцать" }) === NO_VERDICT, "величина не число — 3");
-  check(guard([path.join(dir, "нет.json")], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === NO_VERDICT, "отчёта нет — 3");
-  check(guard([], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === NO_VERDICT, "отчёт не назван — 3");
+  check(guard([within], { KACHO_ACCESS_KEY_SOURCE_BUDGET: "20" }) === NO_VERDICT, "величины нет — вердикта нет (3), а не умолчание");
+  check(guard([within], { ...BOTH, KACHO_CEREMONY_FAILURE_BUDGET: "одиннадцать" }) === NO_VERDICT, "величина не число — 3");
+  check(guard([path.join(dir, "нет.json")], BOTH) === NO_VERDICT, "отчёта нет — 3");
+  check(guard([], BOTH) === NO_VERDICT, "отчёт не назван — 3");
+}
+
+console.log("ПРОГОН 8 — F8S4-15: что идёт в долю S4, записанное так, как пишет фиксация ответа");
+{
+  const service = JSON.stringify({ code: 16, message: "authentication failed", details: [] });
+  const begun = recordableAttempt(ACCESS_KEY_BEGIN, 200, '{"publicKey":{}}');
+  const refused = recordableAttempt(ACCESS_KEY_LOGIN, 401, service);
+  check(begun !== null && countsTowardAccessKeyShare(begun), "F8S4-15 · выдача испытания begin → 200 записана и идёт в долю S4");
+  check(refused !== null && countsTowardAccessKeyShare(refused), "F8S4-15 · единый отказ входа ключом 401 · 16 — в долю S4");
+  check(
+    begun !== null && refused !== null && !countsTowardSourceAxis(begun) && !countsTowardSourceAxis(refused),
+    "F8S4-15 · обе записи доли S4 к доле F8-41 не прибавляют",
+  );
+  // Отказ края несёт те же код и текст: различает причина тела.
+  const edge = recordableAttempt(ACCESS_KEY_LOGIN, EDGE_AUTHN_FAILED.status, EDGE_AUTHN_FAILED.text);
+  check(edge !== null && !countsTowardAccessKeyShare(edge), "F8S4-15 · отказ края (AUTHN_REQUIRED) на входе ключом — не в долю");
+  // Не попытки (Ф13 Р9): признак формы, успешный вход, отказы 400 · 403 · 429.
+  check(recordableAttempt("/iam/v1/auth/csrf", 200, '{"csrfToken":"x"}') === null, "F8S4-15 · признак формы не записывается");
+  check(recordableAttempt(ACCESS_KEY_LOGIN, 200, "{}") === null, "F8S4-15 · успешный вход ключом не записывается");
+  for (const status of [400, 403, 429]) {
+    for (const p of [ACCESS_KEY_BEGIN, ACCESS_KEY_LOGIN]) {
+      const r = recordableAttempt(p, status, JSON.stringify({ code: 3, message: "x", details: [] }));
+      check(r === null || !countsTowardAccessKeyShare(r), `F8S4-15 · отказ ${status} на ${p} — не в долю`);
+    }
+  }
+  // Запись прежней формы (только `401`) не теряет ни одного отказа F8-41.
+  const old = recordableAttempt("/iam/v1/auth/login", 401, service);
+  check(old !== null && countsTowardSourceAxis(old), "F8S4-15 · отказ входа паролем записывается и идёт в долю F8-41, как прежде");
+}
+
+// Доля S4 по сценариям — записи, какими их сдаёт прогон: выдачи испытания и
+// единые отказы входа ключом. Число — бюджет шага работы.
+const S4_BUDGET = 20;
+const begin: RecordedRefusal = { path: ACCESS_KEY_BEGIN, status: 200, code: null, message: "", reason: null };
+const keyRefused: RecordedRefusal = {
+  path: ACCESS_KEY_LOGIN,
+  status: 401,
+  code: 16,
+  message: "authentication failed",
+  reason: null,
+};
+const s4 = run(
+  ["F8S4-02 · вход ключом", [begin]],
+  ["F8S4-03 · отказ браузера", [begin]],
+  ["F8S4-04 · снятый ключ", [begin, keyRefused]],
+  ["F7-07-console · чужая подпись", [begin, keyRefused]],
+  ["F8S4-05 · две попытки", [begin, keyRefused, begin, keyRefused]],
+  ["F8S4-09 · четыре адреса возврата", Array(4).fill(begin)],
+  ["F8S4-10 · второй фактор", [begin]],
+  ["F8S4-12 · клавиатура", [begin]],
+  ["F8S4-02 · путь ключа сквозь консоль", [begin, begin, keyRefused]],
+  ["F8S4-03 · путь ключа без проверки пользователя", [begin]],
+);
+
+console.log("ПРОГОН 9 — F8S4-15: доля S4 в бюджете; лишняя выдача испытания — красное с числом и именем");
+{
+  const v = judgeBudget([s4], S4_BUDGET, ACCESS_KEY_SHARE);
+  check(v.ok && v.total === S4_BUDGET, `F8S4-15 · доля S4 ${v.total} при бюджете ${S4_BUDGET} — в бюджете`);
+  check(v.report[0].startsWith("[F8S4-15]"), "F8S4-15 · отчёт доли S4 назван своим сценарием");
+  check(
+    v.report.some((l) => l.includes("F8S4-05 · две попытки")),
+    "F8S4-15 · доля S4 напечатана по сценариям",
+  );
+  const planted = [...s4, ...run(["F8S4-15 · подсадка", [begin]])];
+  const over = judgeBudget([planted], S4_BUDGET, ACCESS_KEY_SHARE);
+  check(!over.ok, `F8S4-15 · выдача испытания сверх бюджета — красное`);
+  check(over.report.some((l) => l.includes(`потратил ${S4_BUDGET + 1}`)), `F8S4-15 · названо число — ${S4_BUDGET + 1}`);
+  check(over.report.some((l) => l.includes("F8S4-15 · подсадка")), "F8S4-15 · назван сценарий, потративший долю");
+  // Положительный близнец: та же запись на пути признака формы — не попытка.
+  const twin = [...s4, ...run(["F8S4-15 · признак формы", [{ ...begin, path: "/iam/v1/auth/csrf" }]])];
+  check(judgeBudget([twin], S4_BUDGET, ACCESS_KEY_SHARE).ok, "F8S4-15 · та же запись на пути признака формы — не красное");
+}
+
+console.log("ПРОГОН 10 — F8S4-15: доля S4 к доле F8-41 не прибавляет; три прогона подряд");
+{
+  const both = [...eleven, ...s4];
+  check(judgeBudget([both], 11).total === 11, "F8S4-15 · доля F8-41 с записями S4 — та же 11");
+  check(judgeBudget([both], S4_BUDGET, ACCESS_KEY_SHARE).total === S4_BUDGET, "F8S4-15 · доля S4 с записями F8-41 — та же");
+  check(judgeBudget([s4, s4, s4], S4_BUDGET, ACCESS_KEY_SHARE).ok, `F8S4-15 · три прогона — ${3 * S4_BUDGET} в бюджете`);
+  const heavy = [...s4, ...run(["лишняя выдача", [begin]])];
+  check(!judgeBudget([s4, s4, heavy], S4_BUDGET, ACCESS_KEY_SHARE).ok, `F8S4-15 · ${3 * S4_BUDGET + 1} — красное`);
+}
+
+console.log("ПРОГОН 11 — F8S4-15: сторож судит обе доли; без величины доли S4 вердикта нет");
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "f8s4-15-"));
+  const reportOf = (records: ScenarioRefusals[]) =>
+    JSON.stringify({
+      suites: [
+        {
+          specs: records.map((r) => ({
+            tests: [
+              {
+                results: [
+                  {
+                    attachments: [
+                      { name: "f8-41-source-axis-refusals", body: Buffer.from(JSON.stringify(r)).toString("base64") },
+                    ],
+                  },
+                ],
+              },
+            ],
+          })),
+        },
+      ],
+    });
+  const within = path.join(dir, "within.json");
+  const over = path.join(dir, "over.json");
+  writeFileSync(within, reportOf([...eleven, ...s4]));
+  writeFileSync(over, reportOf([...eleven, ...s4, ...run(["F8S4-15 · подсадка", [begin]])]));
+  const env = { KACHO_CEREMONY_FAILURE_BUDGET: "11", KACHO_ACCESS_KEY_SOURCE_BUDGET: String(S4_BUDGET) };
+  check(guard([within], env) === 0, "F8S4-15 · обе доли в бюджете — 0");
+  check(guard([over], env) === 1, "F8S4-15 · доля S4 превышена, доля F8-41 в бюджете — 1");
+  check(guard([within], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === NO_VERDICT, "F8S4-15 · величины доли S4 нет — 3, а не «бюджет ноль»");
+  check(
+    guard([within], { ...env, KACHO_ACCESS_KEY_SOURCE_BUDGET: "двадцать" }) === NO_VERDICT,
+    "F8S4-15 · величина доли S4 не число — 3",
+  );
+  let refused = "";
+  try {
+    budgetFromEnv({ KACHO_CEREMONY_FAILURE_BUDGET: "11" }, ACCESS_KEY_SHARE.env);
+  } catch (e) {
+    refused = (e as Error).message;
+  }
+  check(refused.includes("KACHO_ACCESS_KEY_SOURCE_BUDGET"), "F8S4-15 · отказ называет ручку доли S4");
+  rmSync(dir, { recursive: true, force: true });
 }
 
 if (failed > 0) {
   console.error(`\nсамопроверка сторожа бюджета оси источника: провалов ${failed}`);
   process.exit(1);
 }
-console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 9)");
+console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 13)");

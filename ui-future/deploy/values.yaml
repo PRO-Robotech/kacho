@@ -83,8 +83,10 @@ publicFront:
   # соединяющийся со своего адреса, доносит клиента только заголовком PROXY;
   # `externalTrafficPolicy: Local` (service-public.yaml) за таким звеном адреса не
   # сохраняет — все клиенты становятся одним источником ограничения частоты.
-  # Действует только у входа типа LoadBalancer. Правила и отказы рендера —
-  # `ui.publicFrontProxyProtocol` (_helpers.tpl).
+  # Действует только у входа типа LoadBalancer. Порт redirect при включённом
+  # приёме слушает маршрутизатор по адресу пира: соединение изнутри кластера
+  # (проверка вызова ACME HTTP-01) приходит без заголовка. Правила и отказы
+  # рендера — `ui.publicFrontProxyProtocol` (_helpers.tpl).
   clientAddress:
     proxyProtocol:
       enabled: false

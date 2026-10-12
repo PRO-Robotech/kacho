@@ -47,7 +47,7 @@ func TestConsolePublicFrontJudgement_CanFailAndStaysSilent(t *testing.T) {
 		},
 		{
 			name: "TLS-порт без ssl",
-			from: "listen 8443 ssl;", to: "listen 8443;",
+			from: "listen 8443 ssl", to: "listen 8443",
 			mustSay: "без ssl",
 		},
 		{
