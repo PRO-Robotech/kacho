@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { test } from "@playwright/test";
-import { revokeAccessKey, seedAccessKey } from "../specs/access-key-seed";
-import { newSeed, seedAddress, seedConfirmedHuman } from "../specs/ceremony-seed";
-import { ConditionNotCreated } from "../specs/mail-receiver";
+import { accessKeyOriginCondition } from "../specs/access-key-seed";
+import { seedAddress, seedConfirmedHuman } from "../specs/ceremony-seed";
 
 /**
  * УСЛОВИЕ ЧАСТИ НАБОРА (приёмка F8-S4, §4 П4; kacho#3057): служба принимает
@@ -37,25 +36,16 @@ import { ConditionNotCreated } from "../specs/mail-receiver";
  * пропускает и кладёт его текст вложением.
  *
  * Ключ, заведённый условием, снимается тем же заходом — прогон не оставляет
- * его за собой.
+ * его за собой. Тело условия — `accessKeyOriginCondition` (`specs/access-key-seed.ts`):
+ * его же исполняет самопроверка `scripts/access-key-origin-selftest.ts` против
+ * края петли, где отказ происхождения обязан дать «не выполнилось», а отказ
+ * по иной причине — пропуск к пробам (DoD п. 6).
  */
 test("условие части набора F8-S4 §4 П4 · служба принимает происхождение браузера набора для ключей доступа", async ({
   browserName: _browser,
 }, testInfo) => {
-  const seed = await newSeed(testInfo);
-  let outcome = "";
-  try {
+  const outcome = await accessKeyOriginCondition(testInfo, async (seed) => {
     await seedConfirmedHuman(seed, seedAddress("access-key-origin"));
-    const key = await seedAccessKey(seed, testInfo.project.use.baseURL, { userVerification: true });
-    outcome = "ключ заведён — происхождение принято";
-    await revokeAccessKey(seed, key);
-  } catch (err) {
-    if (err instanceof ConditionNotCreated) throw err;
-    // Отказ не об условии: пробы ключа исполнятся и скажут о нём своим вердиктом.
-    outcome = `посев отказал не по условию — судят пробы: ${err instanceof Error ? err.message : String(err)}`;
-  } finally {
-    await testInfo.attach("исход посева К", { body: outcome || "условие не создано", contentType: "text/plain" });
-    await seed.dispose();
-  }
+  });
   console.log(`[F8-S4 П4] ${outcome}`);
 });

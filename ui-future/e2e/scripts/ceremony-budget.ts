@@ -4,12 +4,18 @@
 /**
  * Сторож бюджета оси ИСТОЧНИКА по отчёту прогона (приёмка F8, F8-41, ч. 1).
  *
- *   KACHO_CEREMONY_FAILURE_BUDGET=11 node scripts/ceremony-budget.ts results.json [results.json …]
+ *   KACHO_CEREMONY_FAILURE_BUDGET=11 KACHO_ACCESS_KEY_SOURCE_BUDGET=20 \
+ *     node scripts/ceremony-budget.ts results.json [results.json …]
  *
  * Каждая проба сдала свою запись отказов полосы вложением отчёта; сторож
  * складывает их и судит: каждый прогон ≤ бюджета, все названные вместе ≤
- * бюджета × их числа («трижды подряд» — три отчёта). Правило счёта и семь
- * глаголов — `specs/ceremony-budget.ts`, один источник на запись и суд.
+ * бюджета × их числа («трижды подряд» — три отчёта). Долей на счёте неверных
+ * предъявлений две, и каждая судится своим бюджетом: F8-41 — отказы семи
+ * глаголов (`KACHO_CEREMONY_FAILURE_BUDGET`), S4 — выдачи испытания и единые
+ * отказы входа ключом (`KACHO_ACCESS_KEY_SOURCE_BUDGET`, приёмка F8-S4, Р8,
+ * F8S4-15). Сумму долей против окна стенда судит проба развёртывания
+ * (`deploy/console_suite_budgets_fit_the_stand_test.go`). Правила счёта —
+ * `specs/ceremony-budget.ts`, один источник на запись и суд.
  *
  * Бюджет — ВХОД, а не умолчание: величину ставит тот же рецепт, что поднимает
  * стенд с профилем и гонит набор. Без неё вердикта нет, и это отказ, а не
@@ -23,7 +29,13 @@
  */
 
 import { readFileSync } from "node:fs";
-import { BUDGET_ATTACHMENT, judgeBudget, type ScenarioRefusals } from "../specs/ceremony-budget.ts";
+import {
+  ACCESS_KEY_SHARE,
+  BUDGET_ATTACHMENT,
+  CEREMONY_SHARE,
+  judgeBudget,
+  type ScenarioRefusals,
+} from "../specs/ceremony-budget.ts";
 
 interface ReportAttachment {
   name?: string;
@@ -57,11 +69,14 @@ export function scenarioRefusalsOf(report: ReportNode): { records: ScenarioRefus
 }
 
 /** Прочитать бюджет из окружения: целое неотрицательное, иначе — отказ с причиной. */
-export function budgetFromEnv(env: Record<string, string | undefined>): number {
-  const raw = env.KACHO_CEREMONY_FAILURE_BUDGET ?? "";
+export function budgetFromEnv(
+  env: Record<string, string | undefined>,
+  name: string = CEREMONY_SHARE.env,
+): number {
+  const raw = env[name] ?? "";
   if (!/^\d+$/.test(raw)) {
     throw new Error(
-      `KACHO_CEREMONY_FAILURE_BUDGET не объявлен целым числом («${raw}»): бюджет оси источника — вход ` +
+      `${name} не объявлен целым числом («${raw}»): бюджет доли оси источника — вход ` +
         "сторожа, его ставит рецепт прогона; без него вердикта о бюджете нет",
     );
   }
@@ -75,7 +90,7 @@ export const NO_VERDICT = 3;
 export function run(argv: string[], env: Record<string, string | undefined>): number {
   const files = argv.filter((a) => !a.startsWith("--"));
   try {
-    const budget = budgetFromEnv(env);
+    const shares = [CEREMONY_SHARE, ACCESS_KEY_SHARE].map((share) => ({ share, budget: budgetFromEnv(env, share.env) }));
     if (files.length === 0) throw new Error("не назван ни один отчёт прогона — вердикта о бюджете нет");
     const runs = files.map((file) => {
       let text: string;
@@ -86,14 +101,18 @@ export function run(argv: string[], env: Record<string, string | undefined>): nu
       }
       const { records, tests } = scenarioRefusalsOf(JSON.parse(text) as ReportNode);
       if (tests === 0) throw new Error(`в отчёте ${file} нет ни одной пробы — вердикта о бюджете нет`);
-      console.log(`[F8-41] ${file}: проб в отчёте ${tests}, записей отказов ${records.length}`);
+      console.log(`[F8-41 · F8S4-15] ${file}: проб в отчёте ${tests}, записей отказов ${records.length}`);
       return records;
     });
-    const verdict = judgeBudget(runs, budget);
-    for (const line of verdict.report) console.log(line);
-    return verdict.ok ? 0 : 1;
+    let ok = true;
+    for (const { share, budget } of shares) {
+      const verdict = judgeBudget(runs, budget, share);
+      for (const line of verdict.report) console.log(line);
+      ok &&= verdict.ok;
+    }
+    return ok ? 0 : 1;
   } catch (e) {
-    console.error(`[F8-41] НЕ ВЫПОЛНИЛОСЬ: ${(e as Error).message}`);
+    console.error(`[F8-41 · F8S4-15] НЕ ВЫПОЛНИЛОСЬ: ${(e as Error).message}`);
     return NO_VERDICT;
   }
 }

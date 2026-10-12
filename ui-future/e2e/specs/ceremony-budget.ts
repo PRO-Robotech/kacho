@@ -34,6 +34,16 @@
  * `BUDGET_ATTACHMENT`; судит — `scripts/ceremony-budget.ts` по отчёту, когда
  * прогон закончен. В файловую систему проба не пишет: запись несёт отчёт.
  *
+ * ДОЛЯ S4 (приёмка F8-S4, Р8, F8S4-15) — на ТОМ ЖЕ счёте неверных
+ * предъявлений, своим числом и своей ручкой. Попытка входа ключом (Ф13 Р9) —
+ * выдача испытания (`POST /iam/v1/auth/access-key/begin` → `200`) и каждый
+ * единый отказ входа ключом (`POST /iam/v1/auth/access-key/login` → `401` ·
+ * `code` 16 · `authentication failed` без причины края). Не попытка — признак
+ * формы, успешный вход и отказы `400`, `403`, `429`. Выдачу испытания запись
+ * прежде не видела вовсе (она писала только `401`), поэтому запись теперь
+ * берёт и этот `200` — и только его; к доле F8-41 он не прибавляет ничего:
+ * её правило читает только `401` на семи глаголах.
+ *
  * Модуль без зависимостей, кроме разборщика тела консоли (`rpc-status.ts`, сам
  * без зависимостей): его читает и фикстура, и сторож, запускаемый голым `node`
  * после прогона, — поэтому путь импорта с расширением.
@@ -65,6 +75,12 @@ export const SERVICE_REFUSAL_TEXTS: readonly string[] = [
   LOGIN_WITH_SECOND_FACTOR_FAILED,
   ACCESS_NOT_RESTORED,
 ];
+
+/** Выдача испытания входа ключом (Ф13): `200` на нём — попытка доли S4. */
+export const ACCESS_KEY_BEGIN = "/iam/v1/auth/access-key/begin";
+
+/** Вход ключом (Ф13): единый отказ `401` на нём — попытка доли S4. */
+export const ACCESS_KEY_LOGIN = "/iam/v1/auth/access-key/login";
 
 /** Причина отказа КРАЯ в удостоверении (приёмка KA1, Р2): след оси он не пишет. */
 export const EDGE_REFUSAL_REASON = "AUTHN_REQUIRED";
@@ -98,6 +114,20 @@ export function recordableRefusal(path: string, status: number, text: string): R
   return { path, status, code: body.code, message: body.message, reason: reasonOfDetails(body.details) };
 }
 
+/**
+ * Записывается ли ответ полосы: `401` на пути полосы формы (как прежде) и
+ * выдача испытания входа ключом `200` (доля S4). Любой другой ответ — нет.
+ */
+export function recordableAttempt(path: string, status: number, text: string): RecordedRefusal | null {
+  if (path === ACCESS_KEY_BEGIN && status === 200) return { path, status, code: null, message: "", reason: null };
+  return recordableRefusal(path, status, text);
+}
+
+/** Нужно ли ответ читать телом, чтобы записать: решается по пути и статусу, до тела. */
+export function mayRecord(path: string, status: number): boolean {
+  return (status === 401 && path.startsWith("/iam/v1/auth/")) || (status === 200 && path === ACCESS_KEY_BEGIN);
+}
+
 /** Идёт ли отказ в счёт оси источника. */
 export function countsTowardSourceAxis(r: RecordedRefusal): boolean {
   return (
@@ -108,6 +138,45 @@ export function countsTowardSourceAxis(r: RecordedRefusal): boolean {
     SOURCE_AXIS_VERBS.includes(r.path)
   );
 }
+
+/** Идёт ли запись в долю S4 (приёмка F8-S4, Р8): выдача испытания либо единый отказ входа ключом. */
+export function countsTowardAccessKeyShare(r: RecordedRefusal): boolean {
+  if (r.path === ACCESS_KEY_BEGIN) return r.status === 200;
+  return (
+    r.path === ACCESS_KEY_LOGIN &&
+    r.status === 401 &&
+    r.code === 16 &&
+    r.message === AUTHENTICATION_FAILED &&
+    r.reason !== EDGE_REFUSAL_REASON
+  );
+}
+
+/** Доля счёта неверных предъявлений: чьё правило счёта и чья ручка. */
+export interface SourceShare {
+  /** Сценарий-держатель доли — им начинаются строки вердикта. */
+  label: string;
+  /** Ручка бюджета доли в шаге работы. */
+  env: string;
+  /** Что считать: «отказов», «попыток». */
+  unit: string;
+  counts: (r: RecordedRefusal) => boolean;
+}
+
+/** Доля F8-41: отказы семи глаголов F8 Р7. */
+export const CEREMONY_SHARE: SourceShare = {
+  label: "F8-41",
+  env: "KACHO_CEREMONY_FAILURE_BUDGET",
+  unit: "отказов в счёт оси источника",
+  counts: countsTowardSourceAxis,
+};
+
+/** Доля S4: выдачи испытания и единые отказы входа ключом (приёмка F8-S4, Р8). */
+export const ACCESS_KEY_SHARE: SourceShare = {
+  label: "F8S4-15",
+  env: "KACHO_ACCESS_KEY_SOURCE_BUDGET",
+  unit: "попыток входа ключом в доле S4",
+  counts: countsTowardAccessKeyShare,
+};
 
 export interface BudgetVerdict {
   /** Отказов в счёт по прогонам — в порядке прогонов. */
@@ -124,16 +193,20 @@ export interface BudgetVerdict {
  * Судить бюджет: каждый прогон ≤ `budget`, все вместе ≤ `budget × прогонов`.
  * Бюджет — ВХОД, а не умолчание: без объявленной величины вердикта нет.
  */
-export function judgeBudget(runs: ReadonlyArray<ReadonlyArray<ScenarioRefusals>>, budget: number): BudgetVerdict {
+export function judgeBudget(
+  runs: ReadonlyArray<ReadonlyArray<ScenarioRefusals>>,
+  budget: number,
+  share: SourceShare = CEREMONY_SHARE,
+): BudgetVerdict {
   if (!Number.isInteger(budget) || budget < 0) {
-    throw new Error(`бюджет оси источника не объявлен целым неотрицательным числом: ${String(budget)}`);
+    throw new Error(`бюджет доли ${share.label} не объявлен целым неотрицательным числом: ${String(budget)}`);
   }
   if (runs.length === 0) throw new Error("сторож бюджета не получил ни одного прогона — вердикта нет");
   const byScenario = new Map<string, number>();
   const perRun = runs.map((run) => {
     let n = 0;
     for (const s of run) {
-      const counted = s.refusals.filter(countsTowardSourceAxis).length;
+      const counted = s.refusals.filter(share.counts).length;
       if (counted > 0) byScenario.set(s.scenario, (byScenario.get(s.scenario) ?? 0) + counted);
       n += counted;
     }
@@ -144,14 +217,15 @@ export function judgeBudget(runs: ReadonlyArray<ReadonlyArray<ScenarioRefusals>>
   const overRuns = perRun.map((n, i) => ({ n, i })).filter((r) => r.n > budget);
   const ok = overRuns.length === 0 && total <= ceiling;
   const report = [
-    `[F8-41] отказов в счёт оси источника: по прогонам ${perRun.join(" · ")} · всего ${total}` +
+    `[${share.label}] ${share.unit}: по прогонам ${perRun.join(" · ")} · всего ${total}` +
       ` · бюджет ${budget} на прогон, ${ceiling} на ${runs.length}`,
     ...[...byScenario.entries()].sort().map(([s, n]) => `    ${n} — ${s}`),
   ];
   if (!ok) {
-    for (const r of overRuns) report.push(`БЮДЖЕТ ПРЕВЫШЕН: прогон ${r.i + 1} потратил ${r.n} при бюджете ${budget}`);
+    for (const r of overRuns)
+      report.push(`БЮДЖЕТ ПРЕВЫШЕН [${share.label}]: прогон ${r.i + 1} потратил ${r.n} при бюджете ${budget}`);
     if (total > ceiling)
-      report.push(`БЮДЖЕТ ПРЕВЫШЕН: ${runs.length} прогонов потратили ${total} при бюджете ${ceiling}`);
+      report.push(`БЮДЖЕТ ПРЕВЫШЕН [${share.label}]: ${runs.length} прогонов потратили ${total} при бюджете ${ceiling}`);
   }
   return { perRun, total, byScenario, ok, report };
 }

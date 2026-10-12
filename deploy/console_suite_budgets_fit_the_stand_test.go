@@ -13,9 +13,12 @@
 //   - окно РЕГИСТРАЦИЙ (`scripts/registration-budget.ts`,
 //     `KACHO_REGISTRATION_BUDGET`): с kaname#456 каждая регистрация списывается
 //     с окна источника, величина — `authn.login.sourceAttempts` посадки;
-//   - отказы входа по оси источника (`scripts/ceremony-budget.ts`,
-//     `KACHO_CEREMONY_FAILURE_BUDGET`, приёмка F8, F8-41): не выше 80 % той же
-//     величины — так и объявлено у шага работы.
+//   - счёт НЕВЕРНЫХ ПРЕДЪЯВЛЕНИЙ по оси источника (`scripts/ceremony-budget.ts`)
+//     двумя долями своими ручками: отказы семи глаголов
+//     (`KACHO_CEREMONY_FAILURE_BUDGET`, приёмка F8, F8-41) и попытки входа
+//     ключом (`KACHO_ACCESS_KEY_SOURCE_BUDGET`, приёмка F8-S4, Р8, F8S4-15).
+//     Доли идут на ОДИН счёт, поэтому против 80 % окна судится их СУММА: у
+//     двух долей, каждая из которых ниже порога, сумма может быть выше него.
 //
 // Сторож, чей бюджет выше окна стенда, зеленеет ровно там, где стенд уже
 // отказал: первой о переполнении снова скажет чужая проба по чужой причине.
@@ -51,10 +54,18 @@ type suiteBudget struct {
 	percent int    // доля окна источника, которую бюджет не вправе превысить
 }
 
+// sourceRefusalPercent — доля окна источника, которую не вправе превысить
+// СУММА долей счёта неверных предъявлений (приёмка F8 Р7, F8-S4 Р8).
+const sourceRefusalPercent = 80
+
 var suiteBudgets = []suiteBudget{
 	{guard: "scripts/registration-budget.ts", env: "KACHO_REGISTRATION_BUDGET", percent: 100},
-	{guard: "scripts/ceremony-budget.ts", env: "KACHO_CEREMONY_FAILURE_BUDGET", percent: 80},
+	{guard: "scripts/ceremony-budget.ts", env: "KACHO_CEREMONY_FAILURE_BUDGET", percent: sourceRefusalPercent},
+	{guard: "scripts/ceremony-budget.ts", env: "KACHO_ACCESS_KEY_SOURCE_BUDGET", percent: sourceRefusalPercent},
 }
+
+// sourceRefusalShares — доли одного счёта неверных предъявлений: судятся суммой.
+var sourceRefusalShares = []string{"KACHO_CEREMONY_FAILURE_BUDGET", "KACHO_ACCESS_KEY_SOURCE_BUDGET"}
 
 type workflowStep struct {
 	ID  string            `yaml:"id"`
@@ -68,9 +79,10 @@ type workflowDoc struct {
 	} `yaml:"jobs"`
 }
 
-// declaredSuiteBudgets — бюджет каждого сторожа из шага, который зовёт его на
-// отчёте прогона (самопроверка сторожа — другой скрипт и бюджета не несёт).
-// Сторож без шага либо без величины — находка: судить нечего, а не «бюджет ноль».
+// declaredSuiteBudgets — бюджет каждой ручки (ключ — имя ручки) из шага, который
+// зовёт её сторожа на отчёте прогона (самопроверка сторожа — другой скрипт и
+// бюджета не несёт). Сторож без шага либо ручка без величины — находка: судить
+// нечего, а не «бюджет ноль».
 func declaredSuiteBudgets(workflow []byte) (map[string]int, []string) {
 	var doc workflowDoc
 	if err := yaml.Unmarshal(workflow, &doc); err != nil {
@@ -93,22 +105,23 @@ func declaredSuiteBudgets(workflow []byte) (map[string]int, []string) {
 						st.ID, b.guard, b.env, raw))
 					continue
 				}
-				got[b.guard] = n
+				got[b.env] = n
 			}
 		}
 		if found != 1 {
-			problems = append(problems, fmt.Sprintf("сторож %s: шагов, зовущих его на отчёте прогона, %d, а не 1",
-				b.guard, found))
+			problems = append(problems, fmt.Sprintf("сторож %s (%s): шагов, зовущих его на отчёте прогона, %d, а не 1",
+				b.guard, b.env, found))
 		}
 	}
 	return got, problems
 }
 
-// judgeSuiteBudgets — находки: бюджет выше доли окна источника стенда.
+// judgeSuiteBudgets — находки: бюджет выше доли окна источника стенда; сумма
+// долей счёта неверных предъявлений выше 80 % того же окна.
 func judgeSuiteBudgets(budgets map[string]int, stand string, window sourceWindow) []string {
 	var out []string
 	for _, b := range suiteBudgets {
-		n, ok := budgets[b.guard]
+		n, ok := budgets[b.env]
 		if !ok {
 			continue
 		}
@@ -116,6 +129,17 @@ func judgeSuiteBudgets(budgets map[string]int, stand string, window sourceWindow
 			out = append(out, fmt.Sprintf("стек %s: бюджет %s=%d выше %d %% окна источника стенда (%s) — "+
 				"сторож зеленеет там, где стенд уже отказал", stand, b.env, n, b.percent, window))
 		}
+	}
+	sum, parts := 0, make([]string, 0, len(sourceRefusalShares))
+	for _, env := range sourceRefusalShares {
+		n := budgets[env]
+		sum += n
+		parts = append(parts, fmt.Sprintf("%s=%d", env, n))
+	}
+	if sum*100 > window.attempts*sourceRefusalPercent {
+		out = append(out, fmt.Sprintf("стек %s: сумма долей счёта неверных предъявлений %s = %d выше %d %% окна "+
+			"источника стенда (%s) — каждая доля ниже порога, а счёт у них один (F8S4-15)",
+			stand, strings.Join(parts, " + "), sum, sourceRefusalPercent, window))
 	}
 	return out
 }
@@ -171,7 +195,7 @@ func TestConsoleSuiteBudgetGateIsAbleToFail(t *testing.T) {
 		t.Errorf("близнец: работа без правки дала находки %v", f)
 	}
 
-	declared := fmt.Sprintf("KACHO_REGISTRATION_BUDGET: %q", strconv.Itoa(budgets["scripts/registration-budget.ts"]))
+	declared := fmt.Sprintf("KACHO_REGISTRATION_BUDGET: %q", strconv.Itoa(budgets["KACHO_REGISTRATION_BUDGET"]))
 	if !strings.Contains(string(wf), declared) {
 		t.Fatalf("предпосылка пробы: строки %s в работе нет — инъекции не во что встать", declared)
 	}
@@ -194,4 +218,59 @@ func TestConsoleSuiteBudgetGateIsAbleToFail(t *testing.T) {
 	if _, p4 := declaredSuiteBudgets([]byte(gone)); len(p4) == 0 {
 		t.Error("инъекция «шага сторожа нет»: находки нет — пустое прочитано бы как «в бюджете»")
 	}
+}
+
+// TestF8S4_15_SourceRefusalSharesAreJudgedBySum — приёмка F8-S4, Р8, F8S4-15:
+// доли F8-41 и S4 идут на ОДИН счёт неверных предъявлений, и судится их
+// СУММА против 80 % окна стенда. Инъекция настоящим входом — работой из дерева
+// с подменённой величиной доли S4: каждая доля по отдельности не выше 80 %
+// окна, а сумма на единицу выше — находка с именем стека; сумма, равная 80 %
+// окна, — молчание.
+func TestF8S4_15_SourceRefusalSharesAreJudgedBySum(t *testing.T) {
+	wf, err := os.ReadFile(consoleSuiteWorkflow)
+	if err != nil {
+		t.Fatalf("работа %s не читается: %v", consoleSuiteWorkflow, err)
+	}
+	stacks := deployStacks(t)
+	_, suite := consoleSuiteStacks(t)
+	w := chainSourceWindow(t, suite[0], stacks[suite[0]])
+
+	budgets, problems := declaredSuiteBudgets(wf)
+	f841, okF := budgets["KACHO_CEREMONY_FAILURE_BUDGET"]
+	s4, okS := budgets["KACHO_ACCESS_KEY_SOURCE_BUDGET"]
+	if len(problems) > 0 || !okF || !okS {
+		t.Fatalf("предпосылка пробы: доли счёта неверных предъявлений из работы не прочитаны: %v %v", budgets, problems)
+	}
+	declared := fmt.Sprintf("KACHO_ACCESS_KEY_SOURCE_BUDGET: %q", strconv.Itoa(s4))
+	if !strings.Contains(string(wf), declared) {
+		t.Fatalf("предпосылка пробы: строки %s в работе нет — инъекции не во что встать", declared)
+	}
+	ceiling := w.attempts * sourceRefusalPercent / 100
+	with := func(n int) map[string]int {
+		b, p := declaredSuiteBudgets([]byte(strings.Replace(string(wf), declared,
+			fmt.Sprintf("KACHO_ACCESS_KEY_SOURCE_BUDGET: %q", strconv.Itoa(n)), 1)))
+		if len(p) > 0 {
+			t.Fatalf("инъекция доли S4 = %d: работа не прочитана: %v", n, p)
+		}
+		return b
+	}
+
+	over := ceiling - f841 + 1
+	if over*100 > w.attempts*sourceRefusalPercent || f841*100 > w.attempts*sourceRefusalPercent {
+		t.Fatalf("предпосылка близнеца: доля по отдельности уже выше %d %% окна (%d, %d)", sourceRefusalPercent, f841, over)
+	}
+	got := judgeSuiteBudgets(with(over), suite[0], w)
+	if len(got) != 1 || !strings.Contains(got[0], suite[0]) || !strings.Contains(got[0], "сумма") {
+		t.Errorf("F8S4-15 · сумма %d + %d = %d выше %d: ожидалась одна находка суммы с именем стека, получено %v",
+			f841, over, f841+over, ceiling, got)
+	}
+	if got := judgeSuiteBudgets(with(over-1), suite[0], w); len(got) != 0 {
+		t.Errorf("F8S4-15 · сумма %d + %d = %d, равная %d %% окна, — не находка; получено %v",
+			f841, over-1, f841+over-1, sourceRefusalPercent, got)
+	}
+	if got := judgeSuiteBudgets(budgets, suite[0], w); len(got) != 0 {
+		t.Errorf("F8S4-15 · работа без правки (%d + %d) дала находки %v", f841, s4, got)
+	}
+	t.Logf("F8S4-15 · стек %s: доли %d + %d = %d при %d %% окна %d (%d)",
+		suite[0], f841, s4, f841+s4, sourceRefusalPercent, w.attempts, ceiling)
 }
