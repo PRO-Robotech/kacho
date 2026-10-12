@@ -18,7 +18,10 @@
 //
 // Два клиента с РАЗНЫХ адресов (хост через проброшенный порт и отдельный
 // контейнер в той же сети) идут на TLS-вход В КАЖДУЮ полосу раздачи к краю, и
-// каждый прикладывает один и тот же подделанный `X-Forwarded-For`. Полосы
+// каждый прикладывает один и тот же подделанный `X-Forwarded-For`. Порт https,
+// ждущий заголовок PROXY (kacho#3115), получает и строку PROXY с тем же
+// подделанным адресом: пир пробы — не звено балансировки, и его заявление о
+// клиенте — такая же подделка. Полосы
 // выводятся из карты настройки рендера (всё, что проксирует на адрес края), а
 // не выписываются: полоса без своей строки заголовка отдаёт подделку краю как
 // есть, и проба, ходящая в одну полосу, остальных не видит. Утверждается:
@@ -39,7 +42,6 @@
 package deploy_test
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -142,8 +144,10 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 	frontIP := dockerOut(t, "inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", run.ID)
 
 	// Клиент A — хост, через проброшенный порт TLS-входа.
-	hostClient := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: run.Pool, MinVersion: tls.VersionTLS12}}}
+	// На порту, ждущем заголовок PROXY (kacho#3115), клиент открывает соединение
+	// строкой PROXY с тем же подделанным адресом: заявление о клиенте от пира
+	// вне круга звена балансировки — такая же подделка, как X-Forwarded-For.
+	hostClient := &http.Client{Timeout: 10 * time.Second, Transport: frontTLSTransport(t, front, run.Pool, forgedForwardedFor)}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		// На внешнем входе точка живости служебная и отказывает (kacho#3030):
@@ -177,9 +181,12 @@ func TestConsolePublicFrontCarriesTheClientAddressNotTheClientClaim(t *testing.T
 			t.Fatalf("полоса `location %s`, клиент A: %v", ln.head, err)
 		}
 		resp.Body.Close()
-		dockerOut(t, "exec", sidecar, "curl", "-sk", "--max-time", "10", "-o", "/dev/null",
-			"-H", "X-Forwarded-For: "+forgedForwardedFor, "-H", "X-Real-IP: "+forgedForwardedFor, "-H", "X-Request-ID: "+idB,
-			fmt.Sprintf("https://%s%s", net.JoinHostPort(frontIP, fmt.Sprint(front.HTTPS)), ln.path))
+		curl := []string{"exec", sidecar, "curl", "-sk", "--max-time", "10", "-o", "/dev/null",
+			"-H", "X-Forwarded-For: " + forgedForwardedFor, "-H", "X-Real-IP: " + forgedForwardedFor, "-H", "X-Request-ID: " + idB}
+		if front.HTTPSProxied {
+			curl = append(curl, "--haproxy-protocol", "--haproxy-clientip", forgedForwardedFor)
+		}
+		dockerOut(t, append(curl, fmt.Sprintf("https://%s%s", net.JoinHostPort(frontIP, fmt.Sprint(front.HTTPS)), ln.path))...)
 
 		a, okA := rec.get(idA)
 		b, okB := rec.get(idB)

@@ -42,6 +42,7 @@ package deploy_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
@@ -130,6 +131,14 @@ type frontUnderTest struct {
 	Conf, Resolver, Reload    string
 	Internal, HTTPS, Redirect int
 	Origin                    string
+	// Main — главная настройка nginx карты (`nginx.conf`, kacho#3115), если под
+	// её монтирует: в ней маршрутизатор порта redirect, и подъём без неё
+	// поднял бы не ту раздачу, что раскатывает цепочка.
+	Main string
+	// HTTPSProxied — порт https рендера ждёт заголовок PROXY (kacho#3115):
+	// каждое соединение к нему открывается строкой PROXY, как это делает
+	// балансировщик площадки, иначе nginx рвёт соединение без ответа.
+	HTTPSProxied bool
 	// Neighbours — ручки адресов соседей раздачи из рендера пода, кроме края:
 	// подъём даёт каждой немаршрутизируемый адрес. Перечень берётся из рендера,
 	// а не выписывается: сосед, которого рендер добавил (решатель ACME,
@@ -144,6 +153,7 @@ func frontFromRender(t *testing.T) frontUnderTest {
 			continue
 		}
 		f := frontUnderTest{Origin: r.Origin}
+		mainMounted := false
 		for _, d := range r.Docs {
 			switch {
 			case docKind(d) == "ConfigMap" && docName(d) == "ui-nginx":
@@ -151,7 +161,9 @@ func frontFromRender(t *testing.T) frontUnderTest {
 				f.Conf, _ = data["default.conf.template"].(string)
 				f.Resolver, _ = data["resolver-from-resolvconf.envsh"].(string)
 				f.Reload, _ = data["tls-reload.sh"].(string)
+				f.Main, _ = data["nginx.conf"].(string)
 			case docKind(d) == "Deployment" && docName(d) == "ui":
+				mainMounted = podMountsMainConf(d, "ui-nginx")
 				cs, _ := lookup(d, "spec", "template", "spec", "containers")
 				c := cs.([]any)[0].(map[string]any)
 				f.Image, _ = c["image"].(string)
@@ -178,6 +190,19 @@ func frontFromRender(t *testing.T) frontUnderTest {
 		if f.Image == "" || f.Conf == "" || f.Reload == "" || f.HTTPS == 0 || f.Redirect == 0 || f.Internal == 0 {
 			t.Fatalf("рендер цепочки %s не дал раздачи целиком: %+v", r.Stack, f)
 		}
+		// Главная настройка — ровно тогда, когда её монтирует под: карта без
+		// монтирования (или монтирование без ключа) — не та раздача, что в поде.
+		if mainMounted != (f.Main != "") {
+			t.Fatalf("рендер цепочки %s: под монтирует nginx.conf — %v, карта его несёт — %v; поднимать нечего",
+				r.Stack, mainMounted, f.Main != "")
+		}
+		for _, l := range listenDirective.FindAllStringSubmatch(f.Conf, -1) {
+			if toInt(l[1]) == f.HTTPS && strings.Contains(l[2], "proxy_protocol") {
+				f.HTTPSProxied = true
+			}
+		}
+		t.Logf("раздача цепочки %s: образ %s · порт https %d ждёт заголовок PROXY — %v · главная настройка смонтирована — %v",
+			r.Stack, f.Image, f.HTTPS, f.HTTPSProxied, f.Main != "")
 		return f
 	}
 	t.Fatal("ни одна цепочка не рендерит внешнего входа консоли — поднимать нечего")
@@ -245,7 +270,7 @@ func TestConsolePublicFrontCarriesTheFormToALegitimateClientOnly(t *testing.T) {
 	containerIP := dockerOut(t, "inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", id)
 	plainAddr := net.JoinHostPort(containerIP, fmt.Sprint(front.Internal))
 
-	tlsTransport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
+	tlsTransport := frontTLSTransport(t, front, pool, forgedForwardedFor)
 	newClient := func() *http.Client {
 		jar, _ := cookiejar.New(nil)
 		return &http.Client{Jar: jar, Transport: tlsTransport, Timeout: 10 * time.Second,
@@ -424,7 +449,11 @@ func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun 
 	pool := leafFor(t, dir)
 	for name, body := range map[string]string{
 		"default.conf.template": front.Conf, "05-resolver.envsh": front.Resolver, "06-tls-reload.sh": front.Reload,
+		"nginx.conf": front.Main,
 	} {
+		if body == "" {
+			continue
+		}
 		mode := os.FileMode(0o644)
 		if strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".envsh") {
 			mode = 0o755
@@ -451,6 +480,9 @@ func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun 
 		"-p", fmt.Sprintf("127.0.0.1::%d", front.Redirect),
 		"-e", "KACHO_UI_API_GATEWAY_UPSTREAM=" + upstream,
 	}
+	if front.Main != "" {
+		args = append(args, "-v", filepath.Join(dir, "nginx.conf")+":/etc/nginx/nginx.conf:ro")
+	}
 	if len(front.Neighbours) == 0 {
 		t.Fatal("рендер пода раздачи не объявил ни одной ручки адреса соседа — подъём потерял предпосылку")
 	}
@@ -470,6 +502,56 @@ func startFront(t *testing.T, front frontUnderTest, edge http.Handler) frontRun 
 		out := dockerOut(t, "port", id, fmt.Sprintf("%d/tcp", p))
 		return strings.TrimSpace(strings.Split(out, "\n")[0])
 	}}
+}
+
+// frontTLSTransport — клиент TLS-входа раздачи. Порт https, ждущий заголовок
+// PROXY (kacho#3115), получает его первой строкой КАЖДОГО соединения — так
+// соединяется балансировщик площадки, а без строки nginx рвёт соединение, не
+// ответив (EOF). Адрес клиента в строке — claim: заявление, которое пир делает
+// о клиенте. Пир пробы в круг доверия `set_real_ip_from` не входит, и заявление
+// адреса не меняет: краю уходит TCP-пир (п. 7 рендер-пробы,
+// console_public_front_render_test.go). Порт без приёма строки не получает.
+func frontTLSTransport(t *testing.T, front frontUnderTest, pool *x509.CertPool, claim string) *http.Transport {
+	t.Helper()
+	tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
+	if !front.HTTPSProxied {
+		return tr
+	}
+	src := net.ParseIP(claim)
+	if src == nil || src.To4() == nil {
+		t.Fatalf("адрес заявления %q для строки PROXY — не IPv4", claim)
+	}
+	// Строка — только перед рукопожатием TLS: тот же клиент ходит и на
+	// внутренний порт, и на порт redirect, а они заголовка не ждут (порт
+	// redirect решает по пиру, и пир пробы — не звено балансировки).
+	var d net.Dialer
+	tr.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		c, err := d.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		dst, _ := c.RemoteAddr().(*net.TCPAddr)
+		if dst == nil || dst.IP.To4() == nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("строка PROXY TCP4: адрес входа %v не IPv4", c.RemoteAddr())
+		}
+		line := fmt.Sprintf("PROXY TCP4 %s %s %d %d\r\n", src, dst.IP, 40000, dst.Port)
+		if _, err := io.WriteString(c, line); err != nil {
+			_ = c.Close()
+			return nil, err
+		}
+		cfg := tr.TLSClientConfig.Clone()
+		if cfg.ServerName == "" {
+			cfg.ServerName, _, _ = net.SplitHostPort(addr)
+		}
+		tc := tls.Client(c, cfg)
+		if err := tc.HandshakeContext(ctx); err != nil {
+			_ = c.Close()
+			return nil, err
+		}
+		return tc, nil
+	}
+	return tr
 }
 
 // probeLinkSAN — имя звена в листе пробы; дублёр края видит его в
