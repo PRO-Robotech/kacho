@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect } from "@playwright/test";
-import { registerAndSignIn, runTag, test } from "./fixtures";
+import { createdResourceId, registerAndSignIn, runTag, test } from "./fixtures";
 
 /**
  * Мутирующий поток проверяется по РЕСУРСУ, а не по закрытию формы.
@@ -63,6 +63,9 @@ test("создание сети: ресурс появляется и виден
     page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click(),
   ]);
   expect(response.status(), "запрос на создание отвергнут краем").toBe(200);
+  // Сеть, подтверждённая чтением по своему адресу, уходит со стенда вместе с
+  // арендатором (kacho#3106): `createdResourceId` записывает её к снятию.
+  await createdResourceId(page, response, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть, созданная формой");
 
   // Ресурс появляется в ограниченном окне — это законное ожидание СОБЫТИЯ,
   // а не повтор пробы: мутация асинхронна by design.
@@ -112,6 +115,7 @@ test("создание зональной подсети: справочник �
     data: { projectId, name: networkName, ipv4CidrBlocks: ["10.77.0.0/16"] },
   });
   expect(network.status(), "сеть не создана").toBe(200);
+  await createdResourceId(page, network, "networkId", (nid) => `/vpc/v1/networks/${nid}`, "сеть под подсеть");
 
   const netId = await expect
     .poll(
@@ -154,4 +158,5 @@ test("создание зональной подсети: справочник �
     subnet.status(),
     `зональная подсеть не создана: ${(await subnet.text()).slice(0, 200)}`,
   ).toBe(200);
+  await createdResourceId(page, subnet, "subnetId", (sid) => `/vpc/v1/subnets/${sid}`, "зональная подсеть");
 });

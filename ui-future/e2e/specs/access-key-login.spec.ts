@@ -1,6 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+import { generateKeyPairSync } from "node:crypto";
 import { expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { authenticatorWithKey, revokeAccessKey, seedAccessKey, type SeededAccessKey } from "./access-key-seed";
 import { captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
@@ -299,6 +300,22 @@ test("F8S4-04 · снятый ключ: назван единый отказ, с
   // verifies #1282 — близнец F8S4-02: ключ снят посевом К-снят.
   const { key } = await given(testInfo, "F8S4-04", { revoked: true });
   const s = await openLogin(page, key);
+  const res = await pressKey(page, () => s.key.click());
+  await expectRefusedScreen(page, res);
+});
+
+test("F7-07-console · ключ в браузере подписывает не тем закрытым ключом: вход ключом отказан единым отказом, сессии нет", async ({
+  page,
+}, testInfo) => {
+  // verifies #1273 — предикат п.2 сквозь консоль: близнец F8S4-02, изменён только
+  // закрытый ключ удостоверения в аутентификаторе страницы (идентификатор и
+  // рукоятка те же) — браузер ставит подделанную подпись настоящей церемонией.
+  const { key } = await given(testInfo, "F7-07-console");
+  const forged: SeededAccessKey = {
+    ...key,
+    privateKey: generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ format: "der", type: "pkcs8" }),
+  };
+  const s = await openLogin(page, forged);
   const res = await pressKey(page, () => s.key.click());
   await expectRefusedScreen(page, res);
 });

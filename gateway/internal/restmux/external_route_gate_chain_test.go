@@ -62,7 +62,7 @@ func realEdge(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("проверка прав: %v", err)
 	}
-	m, err := NewMux(context.Background(), probeAddrsAll(t), nil, nil, 2*time.Second)
+	m, err := NewMux(t.Context(), probeAddrsAll(t), nil, nil, 2*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
