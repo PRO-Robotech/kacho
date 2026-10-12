@@ -214,6 +214,13 @@
 {{/* Порт пода решателя http01 — задан cert-manager, ручкой не является. */}}
 {{- define "ui.acmeSolverPort" -}}8089{{- end -}}
 
+{{- /* Петлевые слушатели за маршрутизатором порта redirect (kacho#3115,
+       ui.publicFrontProxyProtocol): звену балансировки — с приёмом заголовка
+       PROXY, прочим соединениям — без него. Только 127.0.0.1: снаружи пода
+       они недостижимы. */}}
+{{- define "ui.redirectRouteProxiedPort" -}}8082{{- end -}}
+{{- define "ui.redirectRoutePlainPort" -}}8083{{- end -}}
+
 {{/* `ui.publicFrontGuard` — отказ рендера на неполном блоке; печатает пусто. */}}
 {{- define "ui.publicFrontGuard" -}}
 {{- if not (and (gt (int .Values.tlsReload.intervalSeconds) 0) (le (int .Values.tlsReload.intervalSeconds) 3600)) -}}
@@ -279,6 +286,16 @@ LoadBalancer`): вход, который пробрасывает к себе п
     значение «не слать заголовок» при включённом приёме дало бы клиенту самому
     написать строку PROXY с любым адресом.
 
+Порт redirect заголовка от КАЖДОГО соединения не ждёт: соединение изнутри
+кластера к внешнему адресу входа (ipMode VIP) замыкается на под, минуя
+балансировщик, — без заголовка; так приходит и проверка достижимости вызова
+ACME HTTP-01, которую делает выпускающий сертификат. Порт redirect слушает
+маршрутизатор (`stream` в nginx.conf, configmap-nginx.yaml): соединение от
+адреса `trustedFrom` — на петлевой слушатель с приёмом заголовка
+(`ui.redirectRouteProxiedPort`), прочие — на петлевой без него
+(`ui.redirectRoutePlainPort`). Петлевые порты не совпадают ни с одним портом
+раздачи — рендер отказывает.
+
 Выключенный приём у входа LoadBalancer требует ПРИЧИНЫ (`disabledBecause`):
 пустая строка — это «забыли», и проверка не отличила бы её от «здесь намеренно
 нет». Причина выходит аннотацией Service, её читает рендер-гейт
@@ -302,6 +319,11 @@ LoadBalancer`): вход, который пробрасывает к себе п
 {{- if regexMatch `^[0-9a-fA-F:]*:[0-9a-fA-F:]*(/128)?$` $e -}}{{- $ok = true -}}{{- end -}}
 {{- if not $ok -}}
 {{- fail (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom: запись %q шире одного адреса звена балансировки (/32, /128) либо не адрес — хост кластера, дошедший до порта https, заявил бы чужой источник (kacho#3115)" $e) -}}
+{{- end -}}
+{{- end -}}
+{{- range $p := list (include "ui.hostPort" .) $pf.httpsPort $pf.redirectPort -}}
+{{- if has (int $p) (list (int (include "ui.redirectRouteProxiedPort" $)) (int (include "ui.redirectRoutePlainPort" $))) -}}
+{{- fail (printf "uif.publicFront: порт %v раздачи совпадает с петлевым портом маршрутизатора порта redirect (%s, %s) — nginx не поднял бы оба слушателя (kacho#3115)" $p (include "ui.redirectRouteProxiedPort" $) (include "ui.redirectRoutePlainPort" $)) -}}
 {{- end -}}
 {{- end -}}
 {{- if not $pp.serviceAnnotations -}}
