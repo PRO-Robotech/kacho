@@ -10,7 +10,6 @@ package restmux
 // настоящему серверу gRPC, который записывает пришедшие метаданные.
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -46,7 +45,7 @@ func TestRESTBridge_BackendSeesNoSourceAddress(t *testing.T) {
 	addr, got := recordingBackend(t)
 	addrs := geoMuxAddrs()
 	addrs["geo"] = addr
-	h, err := NewMux(context.Background(), addrs, nil, nil, 5*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

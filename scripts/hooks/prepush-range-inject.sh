@@ -887,10 +887,206 @@ if make_broken_delete_empty; then
     assert_delete_only дефект-пустого "$tmp/del-empty-broken.n"; del_empty_broken="$(cat "$tmp/del-empty-broken.n")"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# БАЗА ПЕРВОЙ ОТПРАВКИ ОТ ВЕТКИ ЭПИКА (#3141)
+# ─────────────────────────────────────────────────────────────────────────────
+# Наблюдаемое: полоса, отведённая от ветки эпика `origin/1266`, на первой
+# отправке получала базой ствол — кандидатами были только `origin/main` и
+# `origin/release/*`, — и диапазон вбирал всю работу эпика (626 чужих файлов у
+# полос stepup и gw-listener). Свойство своё, фикстура своя, дефектов четыре —
+# по одному на каждую сторону свойства:
+#
+#   (1) ветка от эпика → дельта эпика: только своя правка;
+#   (2) ЗАКОННЫЙ БЛИЗНЕЦ — ветка от ствола → дельта ствола: не сужается (своя
+#       правка на месте) и не расширяется (работы эпика в ней нет);
+#   (3) ноль кандидатов → ОТКАЗ производителя и хука, а не «от ствола».
+#
+# Признак линии — граф, а не имя: в фикстуре есть ветка соседа, названная числом
+# и СОДЕРЖАЩАЯ мою работу. Признак по имени взял бы её базой, и не уехало бы
+# ничего — то есть ровно тот риск, ради которого набор кандидатов закрыт.
+#
+# Утверждается и производитель (диапазон и его состав — настоящим `git diff`), и
+# ИСХОД ХУКА (код, база, набор групп): решение принимает хук.
+ep="$tmp/epic"
+e() { git -C "$ep" -c user.email=p@i -c user.name=p -c commit.gpgsign=false "$@"; }
+
+rm -rf "$ep"; mkdir -p "$ep/services" "$ep/ui-future/vpc" "$ep/scripts/hooks"
+e init -q -b main
+echo core > "$ep/services/a.go"; echo ui > "$ep/ui-future/vpc/a.ts"
+printf 'scripts/\n' > "$ep/.gitignore"
+e add -A; e commit -qm "основание"
+e0="$(e rev-parse HEAD)"
+# Ствол ушёл вперёд — его коммит не должен попасть в дельту ветки от эпика.
+echo 'export const trunkUi = 1' >> "$ep/ui-future/vpc/a.ts"
+e add -A; e commit -qm "ствол правит консоль"
+e update-ref refs/remotes/origin/main "$(e rev-parse HEAD)"
+# Эпик: в него ВЛИВАЮТ (первая родительская цепь — одни слияния). Влитая полоса
+# правит консоль: эта работа обязана остаться вне дельты ветки от эпика.
+e checkout -q -b 1266 "$e0"
+e checkout -q -b lane-a "$e0"
+echo 'export const epicUi = 1' > "$ep/ui-future/vpc/epic.ts"
+e add -A; e commit -qm "полоса эпика правит консоль"
+e checkout -q 1266
+e merge -q --no-ff -m "Merge lane-a into 1266" lane-a
+e update-ref refs/remotes/origin/1266 "$(e rev-parse HEAD)"
+# Моя ветка от эпика.
+e checkout -q -b off-epic 1266
+echo 'package mine' > "$ep/services/mine.go"; e add -A; e commit -qm "моя правка от эпика"
+# Сосед, названный числом и содержащий мою работу: своя правка поверх моей.
+e checkout -q -b 3149 off-epic
+echo 'package other' > "$ep/services/other.go"; e add -A; e commit -qm "сосед поверх моей работы"
+e update-ref refs/remotes/origin/3149 "$(e rev-parse HEAD)"
+# Близнец: ветка от ствола.
+e checkout -q -b off-main refs/remotes/origin/main
+echo 'package d' > "$ep/services/d.go"; e add -A; e commit -qm "моя правка от ствола"
+cp "$repo/scripts/ci-local.sh" "$ep/scripts/ci-local.sh"
+
+ep_install() { # $1 — производитель диапазона
+    cp "$HOOK" "$ep/scripts/hooks/pre-push"
+    cp "$GROUPS_SH" "$ep/scripts/hooks/prepush-groups.sh"
+    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$ep/scripts/hooks/"
+    cp "$1" "$ep/scripts/hooks/prepush-range.sh"
+    chmod +x "$ep/scripts/hooks"/*.sh "$ep/scripts/hooks/pre-push" "$ep/scripts/ci-local.sh"
+}
+
+# Производитель на входе первой отправки: «rc<код>», затем stdout, затем stderr.
+ep_range() { # $1 — ветка
+    local sha out err rc
+    sha="$(e rev-parse "$1")"
+    out="$(cd "$ep" && printf 'refs/heads/%s %s refs/heads/%s %s\n' "$1" "$sha" "$1" "$zero" \
+        | bash scripts/hooks/prepush-range.sh 2> "$tmp/ep-range.err")"
+    rc=$?; err="$(cat "$tmp/ep-range.err")"
+    printf 'rc%s\n%s\n%s\n' "$rc" "$out" "$err"
+}
+range_line() { printf '%s' "$1" | sed -n 2p; }
+delta_of() { # $1 — диапазон; состав одной строкой, по имени
+    [ -n "$1" ] || { printf 'ДИАПАЗОНА-НЕТ'; return; }
+    e diff --name-only "$1" 2> /dev/null | sort | tr '\n' ' ' | sed 's/ $//'
+}
+
+ep_hook() { # $1 — ветка; первая отправка
+    local sha out rc
+    sha="$(e rev-parse "$1")"
+    e checkout -q "$1"
+    out="$(cd "$ep" && printf 'refs/heads/%s %s refs/heads/%s %s\n' "$1" "$sha" "$1" "$zero" \
+        | env KACHO_X=1 PATH="$tmp/bin:$PATH" bash scripts/hooks/pre-push origin "$ep" 2>&1)"
+    rc=$?
+    printf 'rc%s\n%s\n' "$rc" "$out"
+}
+
+assert_epic_base() { # $1 — метка прогона, $2 — файл для числа провалов
+    local tag="$1" out="$2" f=0 r rng d rc grp saved
+    eok()   { printf '  ok   [%s] %s\n' "$tag" "$1"; }
+    efail() { printf '  FAIL [%s] %s\n' "$tag" "$1"; f=$((f + 1)); }
+
+    # (1) ветка от эпика
+    r="$(ep_range off-epic)"; rng="$(range_line "$r")"; d="$(delta_of "$rng")"
+    case "$rng" in
+        "origin/1266..."*) eok "ветка от эпика берёт базой эпик ($rng)" ;;
+        *) efail "ветка от эпика: ждали базу origin/1266, получили «$rng»" ;;
+    esac
+    if [ "$d" = "services/mine.go" ]; then
+        eok "дельта ветки от эпика — только своя правка"
+    else
+        efail "дельта ветки от эпика: ждали «services/mine.go», получили «$d»"
+    fi
+    r="$(ep_hook off-epic)"; rc="$(rc_of "$r")"; grp="$(groups_of "$r")"
+    if [ "$rc" = "0" ] && [ "$grp" = "proto go" ]; then
+        eok "хук: первая отправка ветки от эпика без правок консоли проходит"
+    else
+        efail "хук на ветке от эпика: ждали rc=0 и «proto go», получили rc=$rc и «$grp»"
+    fi
+
+    # (2) законный близнец — ветка от ствола
+    r="$(ep_range off-main)"; rng="$(range_line "$r")"; d="$(delta_of "$rng")"
+    case "$rng" in
+        "origin/main..."*) eok "ветка от ствола берёт базой ствол при живой ветке эпика" ;;
+        *) efail "ветка от ствола: ждали базу origin/main, получили «$rng»" ;;
+    esac
+    if [ "$d" = "services/d.go" ]; then
+        eok "дельта ветки от ствола не сужена и не расширена"
+    else
+        efail "дельта ветки от ствола: ждали «services/d.go», получили «$d»"
+    fi
+
+    # (3) ноль кандидатов: ссылок origin нет вовсе
+    saved="$(e for-each-ref --format='%(refname) %(objectname)' refs/remotes/origin)"
+    while read -r ref _; do e update-ref -d "$ref"; done <<< "$saved"
+    r="$(ep_range off-epic)"; rc="$(rc_of "$r")"; rng="$(range_line "$r")"
+    if [ "$rc" = "2" ] && [ -z "$rng" ]; then
+        eok "ноль кандидатов: производитель отказывает кодом 2 и диапазона не печатает"
+    else
+        efail "ноль кандидатов: ждали код 2 и пустой диапазон, получили код $rc и «$rng»"
+    fi
+    case "$r" in
+        *"prepush-range ОТКАЗ: базы первой отправки нет"*) eok "…и называет причину" ;;
+        *) efail "…но причины отказа не назвал" ;;
+    esac
+    r="$(ep_hook off-epic)"; rc="$(rc_of "$r")"
+    if [ "$rc" = "1" ]; then
+        eok "ноль кандидатов: хук останавливает отправку"
+    else
+        efail "ноль кандидатов: хук ждали rc=1, получили rc=$rc"
+    fi
+    case "$r" in
+        *"pre-push ОТКАЗ: база диапазона не выбрана"*) eok "…своей строкой" ;;
+        *) efail "…но своей строки про невыбранную базу хук не напечатал" ;;
+    esac
+    case "$r" in
+        *"группы прогона:"*) efail "…и всё же дошёл до прогона без базы" ;;
+        *) eok "…и до прогона не доходит" ;;
+    esac
+    while read -r ref sha; do e update-ref "$ref" "$sha"; done <<< "$saved"
+
+    printf '%s' "$f" > "$out"
+}
+
+# Дефекты — по одному на сторону свойства; подменяется только производитель.
+make_epic_defects() {
+    # Д1 — до #3141: кандидаты только ствол и релизные.
+    sed '/^    integration_lines$/d' "$RANGE" > "$tmp/range-no-lines.sh"
+    ! grep -q '^    integration_lines$' "$tmp/range-no-lines.sh" || return 1
+    # Д2 — признак линии по ИМЕНИ (число), а не по графу.
+    sed -e 's/^        \[ -z "\$(git rev-list -1 --first-parent --no-merges .*$/        case "${ref##*\/}" in *[!0-9]*) continue ;; esac/' \
+        -e '/^        \[ -n "\$(git rev-list -1 --first-parent --merges /d' \
+        "$RANGE" > "$tmp/range-by-name.sh"
+    grep -q 'case "${ref##\*/}" in \*\[!0-9\]\*) continue' "$tmp/range-by-name.sh" || return 1
+    grep -q -- '--first-parent --merges' "$tmp/range-by-name.sh" && return 1
+    # Д3 — ноль кандидатов «от ствола», как было.
+    sed 's/^    \[ -n "\$best" \] || return 1$/    [ -n "$best" ] || best=origin\/main/' "$RANGE" > "$tmp/range-blind-main.sh"
+    grep -q 'best=origin/main' "$tmp/range-blind-main.sh" || return 1
+    # Д4 — линия эпика выигрывает всегда, если она есть (близнец обязан это поймать).
+    sed 's/^    local local_sha="\$1" ref short mb n best="" best_n=""$/&\
+    ref="$(integration_lines | head -1)"; [ -z "$ref" ] || { printf %s "${ref#refs\/remotes\/}"; return 0; }/' \
+        "$RANGE" > "$tmp/range-epic-always.sh"
+    grep -q 'integration_lines | head -1' "$tmp/range-epic-always.sh" || return 1
+}
+
+echo
+echo "── база первой отправки от ветки эпика (ждём ноль провалов)"
+epic_real="н/д"; epic_d1="н/д"; epic_d2="н/д"; epic_d3="н/д"; epic_d4="н/д"
+if [ -f "$RANGE" ]; then
+    ep_install "$RANGE"
+    assert_epic_base настоящий "$tmp/epic-real.n"; epic_real="$(cat "$tmp/epic-real.n")"
+fi
+if [ -f "$RANGE" ] && make_epic_defects; then
+    for pair in "d1 range-no-lines «кандидаты — только ствол и релизные»" \
+                "d2 range-by-name «признак линии — имя»" \
+                "d3 range-blind-main «ноль кандидатов — от ствола»" \
+                "d4 range-epic-always «эпик выигрывает всегда»"; do
+        read -r did dfile dlabel <<< "$pair"
+        echo
+        echo "── прогон против дефекта $dlabel (ждём хотя бы один провал)"
+        ep_install "$tmp/$dfile.sh"
+        assert_epic_base "дефект-$did" "$tmp/epic-$did.n"
+        printf -v "epic_$did" '%s' "$(cat "$tmp/epic-$did.n")"
+    done
+fi
+
 echo
 printf 'prepush-range-inject: утверждений на прогон — 6 (база диапазона) · 7 (полосы вердикта)\n'
 printf '                      · 6 (черновик по входу) · 14 (предмет вердикта) · 3 (постусловие)\n'
-printf '                      · 18 (одни удаления)\n'
+printf '                      · 18 (одни удаления) · 10 (база от ветки эпика)\n'
 printf '  провалов у настоящего: %s (норма 0)\n' "$real_fails"
 printf '  провалов у дефекта базы: %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
 printf '  провалов у настоящего (полосы): %s (норма 0)\n' "$lanes_real"
@@ -907,6 +1103,11 @@ printf '  провалов у настоящего (одни удаления): 
 printf '  провалов у дефекта «удаление гонит прогон»: %s (норма ≥1)\n' "$del_runs_broken"
 printf '  провалов у дефекта «удаление глотает смешанную»: %s (норма ≥1 — законный близнец)\n' "$del_wide_broken"
 printf '  провалов у дефекта «пустой вход — одни удаления»: %s (норма ≥1 — близнец «строк ноль»)\n' "$del_empty_broken"
+printf '  провалов у настоящего (база от эпика):    %s (норма 0)\n' "$epic_real"
+printf '  провалов у дефекта «только ствол и релизные»: %s (норма ≥1)\n' "$epic_d1"
+printf '  провалов у дефекта «признак линии — имя»:     %s (норма ≥1 — сосед с моей работой)\n' "$epic_d2"
+printf '  провалов у дефекта «ноль кандидатов — от ствола»: %s (норма ≥1)\n' "$epic_d3"
+printf '  провалов у дефекта «эпик выигрывает всегда»:  %s (норма ≥1 — законный близнец)\n' "$epic_d4"
 
 rc=0
 [ "$real_fails" = "0" ] || { echo "ОТКАЗ: настоящий хук не проходит собственных утверждений" >&2; rc=1; }
@@ -985,4 +1186,15 @@ elif [ "${del_empty_broken:-0}" -lt 1 ]; then
     echo "ОТКАЗ: проба ЗЕЛЁНАЯ на ветви одних удалений без «строки есть» — пустой вход уходит мимо прогона" >&2
     rc=1
 fi
+[ "$epic_real" = "0" ] || { echo "ОТКАЗ: настоящий производитель не берёт базой ближайшую линию интеграции (провалов: $epic_real)" >&2; rc=1; }
+for d in d1 d2 d3 d4; do
+    v="epic_$d"
+    if [ "${!v}" = "н/д" ]; then
+        echo "ОТКАЗ: дефект базы от эпика $d не воссоздан — форма производителя изменилась" >&2
+        rc=1
+    elif [ "${!v:-0}" -lt 1 ]; then
+        echo "ОТКАЗ: проба ЗЕЛЁНАЯ на дефекте базы от эпика $d — она не проверяет свой предмет" >&2
+        rc=1
+    fi
+done
 exit "$rc"

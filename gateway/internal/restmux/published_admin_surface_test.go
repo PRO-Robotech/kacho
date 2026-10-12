@@ -4,7 +4,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,7 +84,7 @@ func serveProbe(t *testing.T, h http.Handler, method, path string, internal bool
 func TestExternalListener_PublishedAdminPathReachesPublicBackendOnly(t *testing.T) {
 	addrs, adminLiteral := splitAddrs(t)
 	const publicLiteral = "127.0.0.1:1"
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

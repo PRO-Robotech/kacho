@@ -4,7 +4,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -220,7 +219,7 @@ func TestNewMux_RegistersNLBRoutes(t *testing.T) {
 		"loadbalancer":         "127.0.0.1:1",
 		"loadbalancerInternal": "127.0.0.1:1",
 	}
-	h, err := NewMux(context.Background(), addrs, nil /* conns */, nil /* dialOpts → insecure */, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil /* conns */, nil /* dialOpts → insecure */, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -264,7 +263,7 @@ func TestNewMux_NoNLBBackend_RouteNotRegistered(t *testing.T) {
 		"iam":     "127.0.0.1:1",
 		// loadbalancer/loadbalancerInternal отсутствуют намеренно
 	}
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -295,7 +294,7 @@ func TestNewMux_RegistersInternalClusterRoutes(t *testing.T) {
 		"iam":             "127.0.0.1:1",
 		"iamInternal":     "127.0.0.1:1",
 	}
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -342,7 +341,7 @@ func TestNewMux_NoIAMInternalBackend_ClusterRouteNotRegistered(t *testing.T) {
 		"vpcInternal":     "127.0.0.1:1",
 		"computeInternal": "127.0.0.1:1",
 	}
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

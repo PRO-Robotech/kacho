@@ -38,6 +38,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -45,7 +46,9 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -249,7 +252,7 @@ func internalSpaceFindings(t *testing.T, edge http.Handler, sentinel *chainSenti
 // newGateUnderTest — сборка края под пробой: сторож маршрута перед цепочкой.
 func newGateUnderTest(t *testing.T) (edge http.Handler, sentinel *chainSentinel, m *Mux) {
 	t.Helper()
-	m, err := NewMux(context.Background(), probeAddrsAll(t), nil, nil, 30*time.Second)
+	m, err := NewMux(t.Context(), probeAddrsAll(t), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -380,36 +383,30 @@ func TestExternalRouteGate_InternalMountedOnTheExternalSideIsRed(t *testing.T) {
 // TestExternalRouteGate_NeverCallsABackendOnItsOwn — отказ fail-closed: на
 // любой ветке сторож либо отдаёт запрос цепочке, либо отвечает промахом; моста
 // к бэкенду он не вызывает. Проверяется по транспорту: все бэкенды указывают на
-// слушатель-счётчик, цепочка подменена ответом без моста.
+// сервер-счётчик, цепочка подменена ответом без моста.
+//
+// Счётчик считает ВЫЗОВЫ (метод gRPC), а не принятые соединения (kacho#3097).
+// Соединение без вызова — не обращение к бэкенду: так переподключается канал,
+// оставшийся от другой пробы, когда слушатель счётчика получает освободившийся
+// порт её закрытого сервера, — и «сторож дозвонился» краснело бы чужим каналом.
+// Сам мост соединения без вызова не открывает: канал ленив и соединяется на
+// первом вызове.
 func TestExternalRouteGate_NeverCallsABackendOnItsOwn(t *testing.T) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	t.Cleanup(func() { _ = lis.Close() })
-	var accepted atomic.Int64
-	firstAccept := make(chan struct{}, 1)
-	go func() {
-		for {
-			conn, aErr := lis.Accept()
-			if aErr != nil {
-				return
-			}
-			accepted.Add(1)
-			select {
-			case firstAccept <- struct{}{}:
-			default:
-			}
-			_ = conn.Close()
-		}
-	}()
+	counter := &rpcCounter{}
+	gs := grpc.NewServer(grpc.UnknownServiceHandler(counter.handle))
+	go func() { _ = gs.Serve(lis) }()
+	t.Cleanup(gs.Stop)
 	addrs := probeAddrsAll(t)
 	for k, v := range addrs {
 		if v != "" {
 			addrs[k] = lis.Addr().String()
 		}
 	}
-	m, err := NewMux(context.Background(), addrs, nil, nil, 2*time.Second)
+	m, err := NewMux(t.Context(), addrs, nil, nil, 2*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -428,31 +425,69 @@ func TestExternalRouteGate_NeverCallsABackendOnItsOwn(t *testing.T) {
 	}
 	askThrough(edge, stub, http.MethodGet, absentTwinPath, false)
 	asked++
-	if n := accepted.Load(); n != 0 {
-		t.Fatalf("сторож дозвонился до бэкенда %d раз на %d запросах — он обслуживает в обход цепочки", n, asked)
+	if got := counter.methods(); len(got) != 0 {
+		t.Fatalf("сторож вызвал бэкенд %d раз на %d запросах — он обслуживает в обход цепочки: %v", len(got), asked, got)
 	}
 
 	// Положительный контроль счётчика: диспетчер за сторожем до бэкенда
-	// дозванивается — иначе «ноль соединений» значил бы, что счётчик слеп.
-	pub := c.public[0]
+	// дозванивается — иначе «ноль вызовов» значил бы, что счётчик слеп.
+	//
+	// Представитель назван ПОИМЁННО (kacho#3097), а не взят первым из перечня:
+	// перечень строится обходом реестра контрактов, порядок которого от
+	// процесса к процессу разный. Первым попадал и `GET /operations/{id}` —
+	// служба операций живёт в процессе края (без карты соединений —
+	// Unimplemented), ответ 501 без единого соединения, и контроль краснел
+	// жребием: 3 процесса из 80. Чтение справочника регионов уходит мостом на
+	// адрес geo, который здесь указывает на сервер-счётчик.
+	const controlFQN = "kacho.cloud.geo.v1.RegionService/List"
+	var pub publicBinding
+	for _, b := range c.public {
+		if b.fqn == controlFQN {
+			pub = b
+		}
+	}
+	if pub.fqn == "" {
+		t.Fatalf("представитель положительного контроля %s не найден среди публичных биндингов (%d)", controlFQN, len(c.public))
+	}
+	if addrs["geo"] != lis.Addr().String() {
+		t.Fatalf("адрес geo %q не указывает на сервер-счётчик %s — контролю некуда дозваниваться", addrs["geo"], lis.Addr())
+	}
 	rec := httptest.NewRecorder()
 	m.ServeHTTP(rec, httptest.NewRequest(pub.method, pub.path, strings.NewReader("{}")))
-	select {
-	case <-firstAccept:
-	case <-time.After(5 * time.Second):
+	got := counter.methods()
+	t.Logf("запросов через сторож %d, вызовов бэкенда 0; контроль %s: диспетчер напрямую -> %d, вызовы %v",
+		asked, controlFQN, rec.Code, got)
+	if len(got) != 1 || got[0] != "/"+controlFQN {
+		t.Fatalf("диспетчер напрямую вызвал бэкенд %v, want [/%s] — счётчик ничего не различает", got, controlFQN)
 	}
-	t.Logf("запросов через сторож %d, соединений с бэкендом 0; контроль: диспетчер напрямую -> %d, соединений %d",
-		asked, rec.Code, accepted.Load())
-	if accepted.Load() == 0 {
-		t.Fatal("диспетчер напрямую не дозвонился до слушателя-счётчика — счётчик ничего не различает")
-	}
+}
+
+// rpcCounter — сервер-счётчик: записывает метод каждого пришедшего вызова и
+// отвечает Unimplemented.
+type rpcCounter struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (c *rpcCounter) handle(_ any, stream grpc.ServerStream) error {
+	method, _ := grpc.MethodFromServerStream(stream)
+	c.mu.Lock()
+	c.seen = append(c.seen, method)
+	c.mu.Unlock()
+	return status.Error(codes.Unimplemented, "probe counter")
+}
+
+func (c *rpcCounter) methods() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.seen...)
 }
 
 // TestExternalRouteGate_OwnEdgePathsAndOriginalRequestReachTheChain — свои пути
 // края (любой шаблон own, кроме `/`) уходят цепочке; цепочке уходит ИСХОДНЫЙ
 // запрос — с телом и с методом, который прислал вызывающий.
 func TestExternalRouteGate_OwnEdgePathsAndOriginalRequestReachTheChain(t *testing.T) {
-	m, err := NewMux(context.Background(), probeAddrsAll(t), nil, nil, 30*time.Second)
+	m, err := NewMux(t.Context(), probeAddrsAll(t), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

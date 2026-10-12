@@ -37,6 +37,12 @@ function formKinds(): string[] {
   return out;
 }
 
+/** Виды смены адреса (приёмка F8-S6, Р5) — их держит своя проба ниже. */
+const EMAIL_CHANGE_KINDS: ReadonlySet<string> = new Set(["email-change", "email-change-confirm"]);
+
+/** Виды позднейших приёмок, которых база S3 не считает. */
+const LATER_KINDS: ReadonlySet<string> = new Set(["password-enroll", "session-end", ...EMAIL_CHANGE_KINDS]);
+
 let lane: ReturnType<typeof installLane> | null = null;
 afterEach(() => lane?.restore());
 
@@ -82,14 +88,35 @@ describe("F8S3-17 · клиент полосы и глаголы восстан�
     // ред. 12, F8-67) — ещё один, его держит проба ниже.
     const kinds = formKinds();
     expect(kinds).toEqual(expect.arrayContaining(["recovery", "recovery-complete"]));
-    expect(kinds.filter((k) => k !== "password-enroll")).toHaveLength(12);
+    // Виды позднейших приёмок (первый пароль — F8-67, свои сессии — F8-S5) держат
+    // свои пробы ниже; база S3 их не считает.
+    expect(kinds.filter((k) => !LATER_KINDS.has(k))).toHaveLength(12);
     expect(new Set(kinds).size).toBe(kinds.length);
   });
 
   it("F8-67 · FormKind длиннее своей базы ровно на password-enroll", () => {
     // База — 12 видов головы сборки до S2 ред. 12 (F8S3-17 выше).
-    const kinds = formKinds();
+    const kinds = formKinds().filter((k) => k !== "session-end" && !EMAIL_CHANGE_KINDS.has(k));
     expect({ hasEnroll: kinds.includes("password-enroll"), size: kinds.length }).toEqual({ hasEnroll: true, size: 13 });
+  });
+
+  it("F8-S5 Р4 · FormKind длиннее своей базы ровно на session-end — один вид на оба снимающих глагола", () => {
+    // База — 13 видов (F8-67 выше); приёмка F8-S5 добавляет ровно один.
+    const kinds = formKinds().filter((k) => !EMAIL_CHANGE_KINDS.has(k));
+    expect({ hasSessionEnd: kinds.includes("session-end"), size: kinds.length }).toEqual({
+      hasSessionEnd: true,
+      size: 14,
+    });
+  });
+
+  it("F8-S6 Р5 · FormKind длиннее своей базы ровно на два вида смены адреса — 16, столько же, сколько у службы", () => {
+    // База — 14 видов (F8-S5 выше); приёмка F8-S6 добавляет ровно два. Число
+    // приёмки «15» снято на базе без вида своих сессий (§1.4, 13 + 2).
+    const kinds = formKinds();
+    expect({
+      emailChange: [...EMAIL_CHANGE_KINDS].map((k) => kinds.includes(k)),
+      size: kinds.length,
+    }).toEqual({ emailChange: [true, true], size: 16 });
   });
 
   it("пути глаголов — точные, как их объявляет служба и ретранслирует край", () => {

@@ -4,7 +4,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,7 +33,7 @@ func storageMuxAddrs() map[string]string {
 // листенерах (external + internal): route найден (НЕ route-level 404).
 // Недостижимый backend 127.0.0.1:1 дает downstream gRPC-ошибку, не 404.
 func TestStorage_PublicRoutesRegistered(t *testing.T) {
-	h, err := NewMux(context.Background(), storageMuxAddrs(), nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), storageMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -80,7 +79,7 @@ func TestStorage_PublicRoutesRegistered(t *testing.T) {
 // (data-plane/admin-tooling) route должен быть найден: недостижимый backend
 // дает downstream-ошибку (НЕ route-level 404).
 func TestStorage_InternalVolumeService_InternalListenerServes(t *testing.T) {
-	h, err := NewMux(context.Background(), storageMuxAddrs(), nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), storageMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -113,7 +112,7 @@ func TestStorage_InternalVolumeService_InternalListenerServes(t *testing.T) {
 // isInternalPath ловит Internal*Service default-route (зеркалит gRPC
 // HasInternalSuffix-блок).
 func TestStorage_InternalVolumeService_ExternalListenerRejected(t *testing.T) {
-	h, err := NewMux(context.Background(), storageMuxAddrs(), nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), storageMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

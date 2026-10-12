@@ -13,7 +13,7 @@ import {
 } from "@playwright/test";
 import { noteRefusal, recordableRefusal } from "./ceremony-budget";
 import { isRegistration, noteRegistration } from "./registration-budget.ts";
-import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
 
@@ -54,6 +54,8 @@ export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
 export type FormKind =
+  | "email-change"
+  | "email-change-confirm"
   | "login"
   | "logout"
   | "password"
@@ -61,6 +63,7 @@ export type FormKind =
   | "recovery-complete"
   | "register"
   | "second-factor"
+  | "session-end"
   | "step-up"
   | "verify-email-confirm";
 
@@ -83,6 +86,15 @@ export const LANE = {
   backupCodes: "/iam/v1/auth/second-factor/backup-codes",
   stepUp: "/iam/v1/auth/step-up",
   verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
+  // Свои сессии (приёмка F8-S5, Р1; службы — OS, Р1): перечень и два снимающих
+  // глагола под живой сессией; признак у снимающих — один вид `session-end`.
+  sessions: "/iam/v1/auth/sessions",
+  sessionsEnd: "/iam/v1/auth/sessions/end",
+  sessionsEndOthers: "/iam/v1/auth/sessions/end-others",
+  // Смена адреса почты (приёмка F8-S6, Р5; службы — EC, Р1): запрос кода на новый
+  // адрес и предъявление кода — оба под живой сессией, у каждого свой вид признака.
+  emailChange: "/iam/v1/auth/email-change",
+  emailChangeConfirm: "/iam/v1/auth/email-change/confirm",
 } as const;
 
 /** Ответ края о сессии — не глагол полосы, а вопрос «кто я»; посев задаёт его своим носителем. */
@@ -143,6 +155,12 @@ async function record(issued: IssuedCall[], method: "GET" | "POST", path: string
 /** Печенье в той форме, в какой его отдают и принимают контексты playwright. */
 export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
 
+/** Величины контекста посева сверх умолчаний. */
+export interface SeedOptions {
+  /** Заголовок `User-Agent` каждого обращения посева. */
+  userAgent?: string;
+}
+
 /**
  * Свой контекст запросов посева — к тому же стенду, с тем же отношением к
  * сертификату и к происхождению стенда, что у браузера сценария, но со СВОЕЙ
@@ -158,11 +176,19 @@ export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
  * печенья остаются такими, какими их выдала служба, поэтому `transferSession`
  * по-прежнему переносит носитель как выдан.
  */
-export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = []): Promise<Seed> {
+export async function newSeed(
+  testInfo: TestInfo,
+  carrying: readonly Cookie[] = [],
+  opts: SeedOptions = {},
+): Promise<Seed> {
   const use = testInfo.project.use;
   const api = await request.newContext({
     baseURL: use.baseURL,
     ignoreHTTPSErrors: use.ignoreHTTPSErrors,
+    // Описание клиента посева (приёмка F8-S5, «Дано B»): служба пишет его в запись
+    // сессии, выданной глаголом этого контекста, и перечень своих сессий называет
+    // его как прислано. Не названо — у контекста описание по умолчанию.
+    ...(opts.userAgent === undefined ? {} : { userAgent: opts.userAgent }),
     extraHTTPHeaders: { Accept: "application/json" },
     // Носитель, переданный ЯВНО: контекст начинает с тех печений, что названы, и
     // ни с какими другими — общей банки с браузером у него нет.

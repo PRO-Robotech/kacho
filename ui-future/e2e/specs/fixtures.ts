@@ -15,6 +15,8 @@ import {
 } from "./registration-budget.ts";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
+import { removeTenant, type TenantRecord } from "./tenant-removal";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -75,7 +77,7 @@ import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
  * останется без этой фикстуры.
  */
 export const test = base.extend<
-  { sourceAxisLedger: void; issuanceLedger: void },
+  { sourceAxisLedger: void; issuanceLedger: void; tenantRemoval: void },
   { issuanceGuardedBrowser: void; standCookieCarrier: void; registrationWatchedBrowser: void }
 >({
   // СЧЁТ РЕГИСТРАЦИЙ ИСТОЧНИКА (kacho#2909) — в каждом контексте браузера, который
@@ -123,6 +125,39 @@ export const test = base.extend<
       if (breaches.length > 0) throw new Error(formatBreaches(breaches));
     },
     { auto: true },
+  ],
+  // СНЯТИЕ АРЕНДАТОРОВ ПРОБЫ (kacho#3106) — разбором пробы, то есть и на её
+  // падении: каждый арендатор, заведённый `registerAndSignIn`, уходит со стенда
+  // вместе с ресурсами, которые проба завела в его проекте. Порядок —
+  // обратный заведению. Провал уборки роняет пробу своим текстом и не прячет
+  // её собственного провала. Путь снятия — `specs/tenant-removal.ts`. Бюджет
+  // времени — свой: уборка не съедает предел, объявленный пробой.
+  tenantRemoval: [
+    async ({ browserName: _browser }, use, testInfo) => {
+      tenantsOfTest.delete(testInfo.testId);
+      await use();
+      const tenants = tenantsOfTest.get(testInfo.testId) ?? [];
+      tenantsOfTest.delete(testInfo.testId);
+      if (tenants.length === 0) return;
+      const failures: string[] = [];
+      for (const tenant of [...tenants].reverse()) {
+        try {
+          await removeTenant(tenant, testInfo);
+        } catch (e) {
+          failures.push(e instanceof Error ? e.message : String(e));
+        }
+      }
+      testInfo.annotations.push({
+        type: "уборка арендаторов",
+        description: `заведено ${tenants.length} · снято ${tenants.length - failures.length}`,
+      });
+      if (failures.length > 0) {
+        throw new Error(
+          `арендатор пробы остался на стенде (${failures.length} из ${tenants.length}):\n` + failures.join("\n"),
+        );
+      }
+    },
+    { auto: true, timeout: 180_000 },
   ],
   // Запись отказов полосы сдаётся В КАЖДОЙ пробе — и в той, что не берёт
   // `page`: её контексты и её посев тратят ту же ось (F8-41). Разбор идёт
@@ -181,6 +216,37 @@ export const test = base.extend<
     testInfo.attachments.push({ name: "trace", path: tracePath, contentType: "application/zip" });
   },
 });
+
+/** Арендаторы, заведённые пробой, по пробе — их снимает разбор `tenantRemoval`. */
+const tenantsOfTest = new Map<string, TenantRecord[]>();
+
+/**
+ * Человек `email`, заведённый пробой самостоятельной регистрацией (личный аккаунт
+ * и проект по умолчанию у него есть), снимается разбором пробы тем же путём, что
+ * арендатор `registerAndSignIn` (kacho#3106). Зовут его `registerAndSignIn` и
+ * пробы, заводящие человека посевом. Возвращает запись — проект в неё
+ * дописывает тот, кто его прочитал.
+ */
+export function removedAfterTest(email: string): TenantRecord {
+  const record: TenantRecord = { email, projectId: "", resources: [] };
+  const id = currentTestId();
+  tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
+  return record;
+}
+
+/**
+ * Ресурс платформы по адресу `address` снимается разбором пробы вместе с
+ * арендатором, записанным в ней последним (kacho#3106): непустой проект служба
+ * доступа не снимает, а каскада через границу службы нет (ban #4). Зовёт его
+ * `createdResourceId` для каждого проверенного ресурса и пробы, заводящие ресурс
+ * мимо него. В пробе без записанного арендатора вызов ничего не
+ * записывает: снимать ресурс там некому, и это прежнее поведение, а не новое.
+ */
+export function removedWithTenant(address: string): void {
+  const tenants = tenantsOfTest.get(currentTestId());
+  if (!tenants || tenants.length === 0) return;
+  tenants[tenants.length - 1].resources.push(address);
+}
 
 const REGISTRATION_WATCHED = Symbol("kacho.registration-watched-browser");
 
@@ -301,16 +367,9 @@ export interface Tenant {
  */
 export const STREAM_PATH = "/subscription/v1/events";
 
-/** Пароль арендатора набора; тот же у посева «Дано» (`ceremony-seed.ts`). */
-export const E2E_PASSWORD = "Kacho-E2E-2026!x";
-
-/** Имя носителя сессии нашей службы — то, что браузер держит после входа. */
-export const SESSION_COOKIE = "kaname_session";
-
-/** уникальное имя прогона — из времени; коллизия по UNIQUE(name) иначе даёт 409 */
-export function runTag(): string {
-  return Date.now().toString(36) + Math.trunc(performance.now()).toString(36);
-}
+// Пароль арендатора, носитель сессии и метка прогона — в листе без зависимостей
+// (`run-identity.ts`, почему — там же); фикстуры отдают их прежними именами.
+export { E2E_PASSWORD, SESSION_COOKIE, runTag };
 
 /** register проводит регистрацию до РАБОЧЕЙ СЕССИИ с подтверждённым адресом и
  * отдаёт почту арендатора.
@@ -594,6 +653,10 @@ export async function identityRefusalOnPage(page: Page): Promise<string> {
 export async function registerAndSignIn(page: Page): Promise<Tenant> {
   const email = await register(page);
 
+  // Арендатор записан к снятию СРАЗУ после регистрации, до чтения проекта: проба,
+  // упавшая на нём, человека уже завела, и убрать его обязан разбор (kacho#3106).
+  const record = removedAfterTest(email);
+
   // Проект арендатора заводится сам; без него адресовать модули нечем.
   //
   // Идентификатор берётся ИЗ ТОГО ЖЕ ЧТЕНИЯ, на котором опрос сошёлся:
@@ -619,6 +682,7 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
     )
     .not.toBe("");
 
+  record.projectId = projectId;
   return { email, projectId };
 }
 
@@ -729,6 +793,7 @@ export async function createdResourceId(
     })
     .toBe(200);
 
+  removedWithTenant(addressOf(id));
   return id;
 }
 

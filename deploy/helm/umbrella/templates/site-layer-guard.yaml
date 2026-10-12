@@ -19,6 +19,12 @@ SPDX-License-Identifier: BUSL-1.1
 (`uif.publicFront.clientAddress.proxyProtocol.trustedFrom`, kacho#3115); она
 судится, когда приём заголовка включён: заглушка в круге доверия значила бы
 «не верить никому», и все клиенты снова стали бы одним источником.
+Пятая — издатель платформы в семи местах (чеканка службы доступа, приём края
+и реестра; kacho#3113): из него служба выводит документ обнаружения, и
+заглушка в нём публиковала бы снаружи адреса в никуда. Сверх заглушки
+судится согласие шести мест потребителей с издателем чеканки — слой,
+заменивший одну копию и забывший другую, дал бы стенд, отвергающий каждый
+выданный им же токен.
 
 ЧЕГО СТРАЖ НЕ УТВЕРЖДАЕТ: что настоящая величина верна и узел отвечает — это
 рантайм и сквозная проба. Он утверждает только, что заглушка до кластера не
@@ -68,6 +74,51 @@ SPDX-License-Identifier: BUSL-1.1
 {{- if regexMatch $docAddress $addr }}
 {{- $hits = append $hits (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom (адрес %q)" (toString .)) }}
 {{- end }}
+{{- end }}
+{{- end }}
+
+{{- /* ИЗДАТЕЛЬ ПЛАТФОРМЫ (kacho#3113). Профиль, чья консоль приходит слоем
+площадки, объявляет издателя заглушкой того же происхождения в семи местах:
+чеканка службы доступа и по три у края и реестра. Слой площадки заменяет их
+вместе с адресом консоли. Судится (а) заглушка в любом из семи и (б) согласие
+шести мест потребителей с издателем чеканки: слой, заменивший издателя у
+чеканки и забывший потребителя, дал бы стенд, где обнаружение отвечает, а
+край отвергает каждый выданный токен — немой отказ. Пустое место не судится:
+незаданное отвергает страж старта процесса, называя настройку. */}}
+{{- $ts := ((((.Values.kaname).config).authn).tokenSigning) | default dict }}
+{{- $minted := trim (toString ($ts.issuer | default "")) }}
+{{- $issuerPlaces := list }}
+{{- if $minted }}
+{{- $issuerPlaces = append $issuerPlaces (list "kaname.config.authn.tokenSigning.issuer" "value" $minted) }}
+{{- end }}
+{{- range $consumer := list "api-gateway" "registry" }}
+{{- $ta := (index $.Values $consumer | default dict).tokenAcceptance | default dict }}
+{{- range $knob := list "platformIssuer" "issuers" "issuerKeySets" }}
+{{- $v := trim (toString (index $ta $knob | default "")) }}
+{{- if $v }}
+{{- $kind := ternary "value" (ternary "list" "keyset" (eq $knob "issuers")) (eq $knob "platformIssuer") }}
+{{- $issuerPlaces = append $issuerPlaces (list (printf "%s.tokenAcceptance.%s" $consumer $knob) $kind $v) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $p := $issuerPlaces }}
+{{- $name := index $p 0 }}{{- $kind := index $p 1 }}{{- $val := index $p 2 }}
+{{- $names := list }}
+{{- range $item := splitList "," $val }}
+{{- $n := trim $item }}
+{{- if eq $kind "keyset" }}{{- $n = trim ((splitList "=" $n) | first) }}{{- end }}
+{{- if $n }}{{- $names = append $names $n }}{{- end }}
+{{- end }}
+{{- $placeholder := false }}
+{{- range $n := $names }}
+{{- $nrest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $n "" }}
+{{- $nhost := (splitList ":" ((splitList "/" $nrest) | first)) | first }}
+{{- if or (regexMatch $placeholderHost $nhost) (regexMatch $docAddress $nhost) }}{{- $placeholder = true }}{{- end }}
+{{- end }}
+{{- if $placeholder }}
+{{- $hits = append $hits (printf "%s (издатель платформы — заглушка, %q)" $name $val) }}
+{{- else if and $minted (ne $name "kaname.config.authn.tokenSigning.issuer") (not (has $minted $names)) }}
+{{- $hits = append $hits (printf "%s (не называет издателя чеканки %q, а %q)" $name $minted $val) }}
 {{- end }}
 {{- end }}
 

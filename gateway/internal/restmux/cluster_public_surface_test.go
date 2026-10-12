@@ -4,7 +4,6 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -46,7 +45,7 @@ func TestExternalListener_ClusterPublicTwinReachesPublicIAMBackendOnly(t *testin
 	if addrs["iam"] == "" || addrs["iamInternal"] == "" {
 		t.Fatalf("в карте адресов нет iam/iamInternal — у пробы нет предмета: %v", addrs)
 	}
-	h, err := NewMux(context.Background(), addrs, nil, nil, 30*time.Second)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

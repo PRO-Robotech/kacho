@@ -68,6 +68,7 @@ export const CONDITION_NOT_CREATED = "условие не создано";
 
 export const UNMET_MAILBOX = "условие не создано: приёмник писем не читается";
 export const UNMET_LETTER = "условие не создано: письмо подтверждения не дошло до приёмника";
+export const UNMET_NOTICE = "условие не создано: уведомление не дошло до приёмника";
 
 /**
  * Срок ожидания письма регистрации.
@@ -93,6 +94,21 @@ export const CODE_LINE = "Код подтверждения:";
  * ждущая код восстановления, не примет код подтверждения адреса.
  */
 export const RECOVERY_CODE_LINE = "Код восстановления:";
+
+/**
+ * Строка письма смены адреса, за которой стоит код (тело письма —
+ * `RenderEmailChangeMail` службы, приёмка EC, Р7; F8-S6 §4). Своя, а не общая с
+ * письмом подтверждения: письмо регистрации на тот же адрес письмом смены не
+ * считается, и код подтверждения за код смены проба не примет.
+ */
+export const EMAIL_CHANGE_CODE_LINE = "Код подтверждения смены:";
+
+/**
+ * Строка уведомления о смене на ПРЕЖНИЙ адрес (`RenderEmailChangedMail` службы,
+ * EC Р7): кода и нового адреса уведомление не несёт, и узнаётся оно по этой
+ * строке — началом, потому что за ней служба ставит момент смены.
+ */
+export const EMAIL_CHANGED_LINE = "Адрес почты учётной записи изменён";
 
 /** Алфавит кода — Крокфорд, 10 значащих знаков (Р7 службы); дефисы и пробелы не значимы. */
 const CODE_SIGNIFICANT = /^[0-9A-HJKMNP-TV-Z]{10}$/i;
@@ -285,4 +301,49 @@ export async function awaitLetter(
     `письмо на ${address} принято приёмником, но кода под строкой «${codeLine}» в его теле нет:\n${letter.text.slice(0, 600)}`,
   ).not.toBe("");
   return letter;
+}
+
+/**
+ * Письмо БЕЗ кода на `address` — уведомление, — принятое после `before` и
+ * несущее строку `marker`. Ждётся письмо, а не время; нет в срок — условие не
+ * создано, как у `awaitLetter`: доставку на стенде держит не проба.
+ */
+export async function awaitNotice(
+  mailbox: Mailbox,
+  address: string,
+  before: ReadonlySet<string>,
+  marker: string,
+  budgetMs: number = LETTER_BUDGET_MS,
+): Promise<Letter> {
+  const last: { found: Letter[]; failure: unknown } = { found: [], failure: null };
+  let arrived = true;
+  try {
+    await expect
+      .poll(
+        async () => {
+          try {
+            last.found = (await mailbox.letters(address)).filter(
+              (l) => !before.has(l.id) && l.text.split(/\r?\n/).some((line) => line.trim().startsWith(marker)),
+            );
+            last.failure = null;
+          } catch (err) {
+            last.failure = err;
+            return "поверхность не читается";
+          }
+          return last.found.length > 0 ? "письмо есть" : "письма нет";
+        },
+        { timeout: budgetMs, intervals: [500, 1_000] },
+      )
+      .not.toBe("письма нет");
+  } catch (_budgetSpent) {
+    arrived = false;
+  }
+  if (last.failure !== null) throw last.failure;
+  if (!arrived) {
+    return conditionNotCreated(
+      `${UNMET_NOTICE}: адрес ${address}, строка «${marker}», приёмник ${mailbox.base}, ждали ${budgetMs / 1000} с`,
+    );
+  }
+  expect(last.found.length, `уведомлений «${marker}» на ${address} ${last.found.length}, ждали ровно одно`).toBe(1);
+  return last.found[0];
 }

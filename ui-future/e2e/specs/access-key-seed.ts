@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
-import { expect, type CDPSession, type Page } from "@playwright/test";
+import { expect, type APIResponse, type CDPSession, type Page } from "@playwright/test";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import { SESSION_IDENTITY, lastIssued, type Seed } from "./ceremony-seed";
 import { conditionNotCreated } from "./mail-receiver";
@@ -119,13 +119,20 @@ interface RegistrationChallenge {
   user?: { id?: string };
 }
 
+/** Ключ, чью регистрацию проба отправила, — до исхода операции. */
+export type SubmittedAccessKey = Omit<SeededAccessKey, "accessKeyId">;
+
 /**
- * Завести ключ человеку посева глаголами Ф7 через край. Посев держит сессию
- * П-п; регистрация идёт сразу после неё — внутри окна свежести Ф7 Р5.
+ * Отправить результат церемонии регистрации глаголами Ф7 через край — без
+ * суждения об ответе: «принят» и «отвергнут» судит вызывающий. Происхождение
+ * в клиентских данных — АРГУМЕНТ: положительный посев кладёт своё
+ * (`seedAccessKey`), проба привязки — чужое, и только это поле расходится с
+ * близнецом. Испытание выдаётся заново на каждый вызов; человек — тот, чью
+ * сессию держит посев.
  */
-export async function seedAccessKey(
+export async function submitRegistration(
   seed: Seed,
-  baseURL: string | undefined,
+  origin: string,
   {
     userVerification,
     name,
@@ -136,8 +143,7 @@ export async function seedAccessKey(
     name?: string;
     description?: string;
   },
-): Promise<SeededAccessKey> {
-  const origin = originOf(baseURL);
+): Promise<{ response: APIResponse; key: SubmittedAccessKey }> {
   const me = await seed.read(SESSION_IDENTITY);
   const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;
   expect(me.status(), `посев К: ответ края о сессии посева — ${me.status()}`).toBe(200);
@@ -182,8 +188,7 @@ export async function seedAccessKey(
     "utf8",
   );
 
-  const finishPath = `/iam/v1/users/${userId}/accessKeys`;
-  const finished = await seed.api.post(finishPath, {
+  const response = await seed.api.post(`/iam/v1/users/${userId}/accessKeys`, {
     data: {
       ...(name === undefined ? {} : { name }),
       ...(description === undefined ? {} : { description }),
@@ -195,6 +200,35 @@ export async function seedAccessKey(
       },
     },
   });
+  return {
+    response,
+    key: {
+      userId,
+      rpId,
+      credentialId,
+      privateKey: privateKey.export({ format: "der", type: "pkcs8" }),
+      userHandle,
+      userVerification,
+    },
+  };
+}
+
+/**
+ * Завести ключ человеку посева глаголами Ф7 через край. Посев держит сессию
+ * П-п; регистрация идёт сразу после неё — внутри окна свежести Ф7 Р5.
+ */
+export async function seedAccessKey(
+  seed: Seed,
+  baseURL: string | undefined,
+  options: {
+    userVerification: boolean;
+    /** Имя и описание ключа — их задаёт сценарий (посев К′ приёмки F8, группа L); не названы — не посылаются. */
+    name?: string;
+    description?: string;
+  },
+): Promise<SeededAccessKey> {
+  const origin = originOf(baseURL);
+  const { response: finished, key } = await submitRegistration(seed, origin, options);
   if (finished.status() !== 200) {
     const text = await finished.text();
     if (text.includes("ORIGIN_NOT_ALLOWED")) {
@@ -214,15 +248,7 @@ export async function seedAccessKey(
   const accessKeyId = String(response.accessKey?.id ?? meta.accessKeyId ?? "");
   expect(accessKeyId, "посев К: операция регистрации не назвала ключ").not.toBe("");
 
-  return {
-    userId,
-    accessKeyId,
-    rpId,
-    credentialId,
-    privateKey: privateKey.export({ format: "der", type: "pkcs8" }),
-    userHandle,
-    userVerification,
-  };
+  return { ...key, accessKeyId };
 }
 
 /**
@@ -248,19 +274,44 @@ export interface PresentableKey {
 }
 
 /**
+ * Отклонение утверждения от честного — РОВНО одно поле против близнеца (Ф7-07,
+ * Ф7-10/11). Не названо — утверждение честное. Ветки «условие не создано» здесь
+ * нет и быть не должно: отказ на отклонённом утверждении — исход продукта,
+ * который судит проба.
+ */
+export interface AssertionDeviation {
+  /** Подписать ДРУГИМ закрытым ключом (PKCS#8 DER, P-256), а не ключом удостоверения. */
+  signer?: Buffer;
+  /** Изменить один байт данных аутентификатора ПОСЛЕ подписи (старший байт счётчика). */
+  alterSignedData?: boolean;
+  /** Происхождение в клиентских данных вместо происхождения браузера набора. */
+  origin?: string;
+}
+
+/** Что проба отправила — чтобы утверждать, что ответ этих байтов не повторяет. */
+export interface SentAssertion {
+  credentialId: string;
+  clientDataJson: string;
+  authenticatorData: string;
+  signature: string;
+}
+
+/**
  * Предъявить ключ службе утверждением, собранным ПРОБОЙ (Ф7 §3.0): контекст
  * посева зовёт `accessKeys:beginAssertion` и `accessKeys:finishAssertion`, а
  * подпись ставит закрытый ключ удостоверения — посева К или аутентификатора
  * страницы (`WebAuthn.getCredentials`). Счётчик — строго больше хранимого
  * (F8-S4 N16): `signCount` плюс один; принятый счётчик запоминается. Исход
  * отдаётся как есть — «принят» и «не принят» судит вызывающий. Ось источника
- * глаголы Ф7 не тратят (N29), носителя не ставят.
+ * глаголы Ф7 не тратят (N29), носителя не ставят. `deviation` — отклонение
+ * пробы привязки (Ф7-07, Ф7-10/11); умолчание — честное утверждение.
  */
 export async function presentAccessKey(
   seed: Seed,
   baseURL: string | undefined,
   key: PresentableKey,
-): Promise<{ status: number; text: string }> {
+  deviation: AssertionDeviation = {},
+): Promise<{ status: number; text: string; sent: SentAssertion }> {
   const begun = await seed.api.post("/iam/v1/accessKeys:beginAssertion", { data: {} });
   const beginText = await begun.text();
   expect(begun.status(), `проба: выдача испытания утверждения — ${begun.status()} ${beginText.slice(0, 300)}`).toBe(200);
@@ -280,7 +331,7 @@ export async function presentAccessKey(
     JSON.stringify({
       type: "webauthn.get",
       challenge: challenge.toString("base64url"),
-      origin: originOf(baseURL),
+      origin: deviation.origin ?? originOf(baseURL),
       crossOrigin: false,
     }),
     "utf8",
@@ -288,22 +339,31 @@ export async function presentAccessKey(
   const signature = sign(
     "sha256",
     Buffer.concat([authData, createHash("sha256").update(clientDataJSON).digest()]),
-    createPrivateKey({ key: key.privateKey, format: "der", type: "pkcs8" }),
+    createPrivateKey({ key: deviation.signer ?? key.privateKey, format: "der", type: "pkcs8" }),
   );
+  // Старший байт счётчика: подписанные данные меняются, а счётчик остаётся
+  // строго больше хранимого — отказ может дать только сверка подписи.
+  if (deviation.alterSignedData) authData[33] ^= 0x80;
+  const sent: SentAssertion = {
+    credentialId: key.credentialId.toString("base64"),
+    clientDataJson: clientDataJSON.toString("base64"),
+    authenticatorData: authData.toString("base64"),
+    signature: signature.toString("base64"),
+  };
   const res = await seed.api.post("/iam/v1/accessKeys:finishAssertion", {
     data: {
       credential: {
-        id: key.credentialId.toString("base64"),
-        clientDataJson: clientDataJSON.toString("base64"),
-        authenticatorData: authData.toString("base64"),
-        signature: signature.toString("base64"),
+        id: sent.credentialId,
+        clientDataJson: sent.clientDataJson,
+        authenticatorData: sent.authenticatorData,
+        signature: sent.signature,
         userHandle: key.userHandle.toString("base64"),
       },
     },
   });
   const text = await res.text();
   if (res.status() === 200) key.signCount += 1;
-  return { status: res.status(), text };
+  return { status: res.status(), text, sent };
 }
 
 // ─── аутентификатор страницы ─────────────────────────────────────────────────
