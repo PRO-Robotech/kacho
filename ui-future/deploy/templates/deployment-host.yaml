@@ -49,6 +49,16 @@ spec:
             items:
               - key: default.conf.template
                 path: default.conf.template
+        {{- if include "ui.publicFrontProxyProtocol" . }}
+        # Главная настройка nginx с маршрутизатором порта redirect (kacho#3115,
+        # configmap-nginx.yaml).
+        - name: nginx-main
+          configMap:
+            name: {{ include "ui.hostName" . }}-nginx
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+        {{- end }}
         - name: nginx-entrypoint
           configMap:
             name: {{ include "ui.hostName" . }}-nginx
@@ -152,6 +162,12 @@ spec:
               mountPath: /etc/nginx/templates/default.conf.template
               subPath: default.conf.template
               readOnly: true
+            {{- if include "ui.publicFrontProxyProtocol" . }}
+            - name: nginx-main
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            {{- end }}
             - name: nginx-entrypoint
               mountPath: /docker-entrypoint.d/05-resolver-from-resolvconf.envsh
               subPath: 05-resolver-from-resolvconf.envsh

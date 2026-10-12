@@ -58,8 +58,22 @@ func renderWithSiteLayer(t *testing.T, chain []string, site string, sets ...stri
 // https: профиль стенда завершает TLS на крае и http-происхождения не примет.
 //
 // Издатель платформы (kacho#3113) — то же происхождение, что консоль, во всех
-// семи местах: чеканка службы доступа и приём края и реестра.
-const probeSiteLayer = probeSiteLayerNoIssuer + probeIssuerLayer
+// семи местах: чеканка службы доступа и приём края и реестра. Звено
+// балансировки (kacho#3115): профиль площадки включает приём заголовка PROXY,
+// и слой площадки обязан его назвать. Адрес — из диапазона для замеров
+// (RFC 2544), не документации и не чей-то.
+const probeSiteLayer = probeSiteLayerNoBalancer + probeBalancerLayer
+
+// Слой площадки без звена балансировки: приём заголовка PROXY включён
+// профилем, а круг доверия остаётся заглушкой.
+const probeSiteLayerNoBalancer = probeSiteLayerNoIssuer + probeIssuerLayer
+
+const probeBalancerLayer = `uif:
+  publicFront:
+    clientAddress:
+      proxyProtocol:
+        trustedFrom: ["198.18.0.10/32"]
+`
 
 // Слой площадки, написанный до kacho#3113: координаты почты и консоли есть,
 // издателя нет — он остаётся заглушкой профиля.
@@ -114,18 +128,13 @@ registry:
     platformIssuer: "https://other.kacho.test"
 `
 
-// Тот же слой площадки плюс звено балансировки, которому раздача консоли верит
-// заголовок PROXY (kacho#3115). Адрес — из диапазона для замеров (RFC 2544), не
-// документации и не чей-то.
-const probeSiteLayerWithBalancer = probeSiteLayer + `uif:
-  publicFront:
-    clientAddress:
-      proxyProtocol:
-        trustedFrom: ["198.18.0.10/32"]
-`
-
 // proxyProtocolOn — включённый приём заголовка PROXY у входа консоли.
 const proxyProtocolOn = "uif.publicFront.clientAddress.proxyProtocol.enabled=true"
+
+const (
+	proxyProtocolOffKnob   = "uif.publicFront.clientAddress.proxyProtocol.enabled=false"
+	proxyProtocolOffReason = "uif.publicFront.clientAddress.proxyProtocol.disabledBecause=проба выключенной формы"
+)
 
 const probeSiteLayerMailOnly = `global:
   kacho:
@@ -145,7 +154,8 @@ func TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders(t *testing
 		{name: "законный близнец: рендер проверок без слоя площадки", stack: "a8f60d"},
 		{name: "управляемый стенд применяется без слоя площадки", stack: "a8f60d",
 			sets: []string{siteLayerEnforced},
-			want: []string{refusal, "smtp.connectionURI", "smtp.fromAddress", "appBaseURL", "tokenSigning.issuer"}},
+			want: []string{refusal, "smtp.connectionURI", "smtp.fromAddress", "appBaseURL", "tokenSigning.issuer",
+				"proxyProtocol.trustedFrom"}},
 		{name: "законный близнец: тот же стенд со слоем площадки", stack: "a8f60d",
 			site: probeSiteLayer, sets: []string{siteLayerEnforced}},
 		{name: "слой площадки не заменил издателя платформы (kacho#3113)", stack: "a8f60d",
@@ -166,10 +176,10 @@ func TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders(t *testing
 		{name: "законный близнец: стенд разработки без заглушек", stack: "dev",
 			sets: []string{siteLayerEnforced}},
 		{name: "приём заголовка PROXY включён, слой площадки не заменил звено балансировки", stack: "a8f60d",
-			site: probeSiteLayer, sets: []string{siteLayerEnforced, proxyProtocolOn},
+			site: probeSiteLayerNoBalancer, sets: []string{siteLayerEnforced},
 			want: []string{refusal, "proxyProtocol.trustedFrom"}, notWant: []string{"appBaseURL"}},
-		{name: "законный близнец: приём включён, слой площадки называет звено балансировки", stack: "a8f60d",
-			site: probeSiteLayerWithBalancer, sets: []string{siteLayerEnforced, proxyProtocolOn}},
+		{name: "законный близнец: приём выключен с причиной, звено балансировки не названо", stack: "a8f60d",
+			site: probeSiteLayerNoBalancer, sets: []string{siteLayerEnforced, proxyProtocolOffKnob, proxyProtocolOffReason}},
 	}
 	for _, c := range cases {
 		chain, ok := stacks[c.stack]

@@ -47,7 +47,8 @@
 //     замер #3028 показал за входом одного клиента — адрес балансировщика.
 //     Поэтому адрес приходит заголовком PROXY: оба порта входа, на которые
 //     ведёт балансировщик (https и redirect), принимают его (`proxy_protocol`
-//     у `listen`), а внутренний порт `http` — нет (пробы готовности приходят
+//     у `listen`; порт redirect — через маршрутизатор, ниже), а внутренний
+//     порт `http` — нет (пробы готовности приходят
 //     от узла без заголовка); раздача верит заголовку ТОЛЬКО от звена
 //     балансировки — `real_ip_header proxy_protocol` с непустым
 //     `set_real_ip_from`, каждая запись которого — один адрес (/32, /128):
@@ -59,6 +60,17 @@
 //     причиной на объекте Service (аннотация
 //     kacho.cloud/client-address-proxy-protocol-disabled-because), и тогда
 //     заголовка не ждёт ни один порт.
+//     Порт redirect заголовка от КАЖДОГО соединения не ждёт: соединение изнутри
+//     кластера к внешнему адресу входа (ipMode VIP) замыкается на под, минуя
+//     балансировщик, — без заголовка; так приходит и проверка достижимости
+//     вызова ACME HTTP-01, которую делает выпускающий сертификат. Поэтому при
+//     включённом приёме порт redirect слушает МАРШРУТИЗАТОР (`stream` в
+//     nginx.conf той же карты, смонтированной в под): соединение от звена
+//     балансировки (тот же круг, что `set_real_ip_from` порта https, каждая
+//     запись — один адрес) он ведёт на петлевой слушатель с `proxy_protocol`,
+//     остальные — на петлевой слушатель без него; оба петлевых слушателя — в
+//     блоке переадресации, и адресу из заголовка там верят только от петли.
+//     Маршрутизатор сам заголовка не ждёт и своего не дописывает.
 //
 // ЗНАМЕНАТЕЛЬ. Судятся две вещи, и обе обязательны:
 //
@@ -85,6 +97,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -131,6 +144,14 @@ var (
 	// Серверный блок карты — от `server {` в начале строки до `}` в начале
 	// строки: разобранная карта несёт блоки без отступа, их полосы — с отступом.
 	nginxServerBlock = regexp.MustCompile(`(?ms)^server \{(.*?)^\}`)
+	loopbackListen   = regexp.MustCompile(`(?m)^\s*listen\s+127\.0\.0\.1:(\d+)((?:\s+proxy_protocol)?)\s*;`)
+	streamBlock      = regexp.MustCompile(`(?ms)^stream \{(.*)^\}`)
+	streamGeo        = regexp.MustCompile(`(?ms)^\s*geo\s+\$remote_addr\s+\$(\w+)\s*\{(.*?)^\s*\}`)
+	streamServer     = regexp.MustCompile(`(?ms)^\s*server\s*\{(.*?)^\s*\}`)
+	streamListen     = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)((?:\s+\w+)*)\s*;`)
+	streamProxyPass  = regexp.MustCompile(`(?m)^\s*proxy_pass\s+\$(\w+)\s*;`)
+	streamAddsHeader = regexp.MustCompile(`(?m)^\s*proxy_protocol\s+on\s*;`)
+	geoEntry         = regexp.MustCompile(`(?m)^\s*(\S+)\s+127\.0\.0\.1:(\d+)\s*;`)
 	listenDirective  = regexp.MustCompile(`(?m)^\s*listen\s+(\d+)((?:\s+(?:ssl|proxy_protocol))*)\s*;`)
 	realIPFrom       = regexp.MustCompile(`(?m)^\s*set_real_ip_from\s+(\S+);`)
 	realIPHeader     = regexp.MustCompile(`(?m)^\s*real_ip_header\s+(\S+);`)
@@ -395,13 +416,19 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 		say("лист TLS не смонтирован из секрета (том console-tls)")
 	}
 	// 3. настройка раздачи
-	conf := ""
+	conf, mainConf, confMap := "", "", ""
 	for _, d := range r.Docs {
 		if docKind(d) == "ConfigMap" && strings.HasSuffix(docName(d), "-nginx") {
-			if t, ok := lookup(d, "data", "default.conf.template"); ok {
-				if s, _ := t.(string); strings.Contains(s, fmt.Sprintf("listen %d", named["redirect"])) {
-					conf = s
-				}
+			t, _ := lookup(d, "data", "default.conf.template")
+			m, _ := lookup(d, "data", "nginx.conf")
+			tmpl, _ := t.(string)
+			main, _ := m.(string)
+			if tmpl == "" {
+				continue
+			}
+			rt, _ := parseRedirectRouter(main, named["redirect"])
+			if strings.Contains(tmpl, fmt.Sprintf("listen %d", named["redirect"])) || rt != nil {
+				conf, mainConf, confMap = tmpl, main, docName(d)
 			}
 		}
 	}
@@ -426,8 +453,56 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 	disabledBecause := strings.TrimSpace(fmt.Sprint(annMap[proxyProtocolDisabledBecause]))
 	proxyOff := annMap[proxyProtocolDisabledBecause] != nil && disabledBecause != ""
 	tlsServed, redirectOnly := false, false
-	for _, m := range nginxServerBlock.FindAllStringSubmatch(conf, -1) {
+	router, routerFindings := parseRedirectRouter(mainConf, named["redirect"])
+	for _, f := range routerFindings {
+		say("%s", f)
+	}
+	routed := map[int]bool{}
+	if router != nil {
+		routed[router.Default] = true
+		for _, p := range router.Trusted {
+			routed[p] = true
+		}
+	}
+	// Переадресация — одна и та же для слушателя порта redirect и для петлевых
+	// слушателей маршрутизатора.
+	judgeRedirect := func(block string, port int) {
+		block, solverFindings := cutSolverLane(block)
+		for _, f := range solverFindings {
+			say("слушатель redirect %d: %s", port, f)
+		}
+		ret := redirectReturn.FindStringSubmatch(block)
+		switch {
+		case ret == nil:
+			say("слушатель redirect %d не отвечает `308 <происхождение>$request_uri`", port)
+		case ret[1] != r.Origin:
+			say("слушатель redirect уводит на %q, а происхождение консоли — %q", ret[1], r.Origin)
+		case nginxDirective.MatchString(block):
+			say("слушатель redirect %d что-то обслуживает (%s) — по http не должно обслуживаться ничего",
+				port, nginxDirective.FindString(block))
+		default:
+			redirectOnly = true
+		}
+	}
+	httpsTrust := []string{}
+	loopProxied := map[int]bool{}
+	loopBlock := map[int]int{}
+	routedBlock := ""
+	for bi, m := range nginxServerBlock.FindAllStringSubmatch(conf, -1) {
 		block := m[1]
+		blockRouted := false
+		for _, l := range loopbackListen.FindAllStringSubmatch(block, -1) {
+			port := toInt(l[1])
+			loopProxied[port] = strings.Contains(l[2], "proxy_protocol")
+			loopBlock[port] = bi
+			if routed[port] {
+				blockRouted = true
+			}
+		}
+		if blockRouted {
+			routedBlock = block
+			judgeRedirect(block, named["redirect"])
+		}
 		for _, l := range listenDirective.FindAllStringSubmatch(block, -1) {
 			port := toInt(l[1])
 			// 7. заголовок PROXY — на портах балансировщика, и только на них.
@@ -437,6 +512,10 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 				say("порт %d ждёт заголовок PROXY, а Service объявляет приём выключенным (%s) — "+
 					"балансировщик заголовка не шлёт, и слушатель отверг бы каждое соединение", port, disabledBecause)
 			case proxyOff:
+			case port == named["redirect"] && proxied:
+				say("порт redirect %d ждёт заголовок PROXY от КАЖДОГО соединения — соединение изнутри кластера "+
+					"к внешнему адресу входа (ipMode VIP) приходит без него, и проверка вызова ACME HTTP-01 "+
+					"встала бы; порт redirect слушает маршрутизатор по звену балансировки (kacho#3115)", port)
 			case (port == named["https"] || port == named["redirect"]) && !proxied:
 				say("порт %d, на который ведёт балансировщик площадки, не принимает заголовок PROXY и причины "+
 					"выключения нет (%s) — адрес клиента за балансировщиком теряется, все клиенты становятся "+
@@ -446,29 +525,32 @@ func judgeOneFront(r publicFrontRender, svc, sel map[string]any) []string {
 			}
 			if port == named["https"] && !proxyOff {
 				say7(block, port, &out, r, svc)
+				for _, f := range realIPFrom.FindAllStringSubmatch(block, -1) {
+					httpsTrust = append(httpsTrust, f[1])
+				}
 			}
 			switch {
 			case port == named["https"] && strings.Contains(l[2], "ssl"):
 				tlsServed = true
 			case port == named["https"]:
 				say("порт https %d слушается без ssl", port)
-			case port == named["redirect"]:
-				block, solverFindings := cutSolverLane(block)
-				for _, f := range solverFindings {
-					say("слушатель redirect %d: %s", port, f)
-				}
-				ret := redirectReturn.FindStringSubmatch(block)
-				switch {
-				case ret == nil:
-					say("слушатель redirect %d не отвечает `308 <происхождение>$request_uri`", port)
-				case ret[1] != r.Origin:
-					say("слушатель redirect уводит на %q, а происхождение консоли — %q", ret[1], r.Origin)
-				case nginxDirective.MatchString(block):
-					say("слушатель redirect %d что-то обслуживает (%s) — по http не должно обслуживаться ничего",
-						port, nginxDirective.FindString(block))
-				default:
-					redirectOnly = true
-				}
+			case port == named["redirect"] && !blockRouted:
+				judgeRedirect(block, port)
+			}
+		}
+	}
+	if router != nil {
+		if proxyOff {
+			say("порт redirect %d слушает маршрутизатор заголовка PROXY, а Service объявляет приём выключенным (%s)",
+				named["redirect"], disabledBecause)
+		} else {
+			for _, f := range judgeRedirectRouter(router, httpsTrust, loopProxied, loopBlock, routedBlock) {
+				say("%s", f)
+			}
+			if !podMountsMainConf(pod, confMap) {
+				say("порт redirect %d слушает маршрутизатор из nginx.conf карты %s, а nginx.conf в под раздачи "+
+					"не смонтирован — nginx маршрутизатора не исполняет, и порт redirect не слушается вовсе",
+					named["redirect"], confMap)
 			}
 		}
 	}
@@ -631,4 +713,186 @@ func narrowTrustEntry(e string) bool {
 	}
 	ones, bits := n.Mask.Size()
 	return ones == bits
+}
+
+// redirectRouter — маршрутизатор порта redirect (п. 7): блок `stream` в
+// nginx.conf карты раздачи.
+type redirectRouter struct {
+	Flags      string         // флаги `listen` маршрутизатора
+	AddsHeader bool           // `proxy_protocol on` — дописывает свой заголовок
+	Default    int            // петлевой порт прочих соединений
+	Trusted    map[string]int // запись круга звена балансировки → петлевой порт
+}
+
+// parseRedirectRouter — маршрутизатор, слушающий порт redirect, либо nil, если
+// его нет. Находки — о маршрутизаторе, который слушает порт, но не разбирается.
+func parseRedirectRouter(main string, port int) (*redirectRouter, []string) {
+	if main == "" {
+		return nil, nil
+	}
+	var b strings.Builder
+	for _, l := range strings.Split(main, "\n") {
+		b.WriteString(stripNginxComment(l))
+		b.WriteByte('\n')
+	}
+	st := streamBlock.FindStringSubmatch(b.String())
+	if st == nil {
+		return nil, nil
+	}
+	for _, sv := range streamServer.FindAllStringSubmatch(st[1], -1) {
+		l := streamListen.FindStringSubmatch(sv[1])
+		if l == nil || toInt(l[1]) != port {
+			continue
+		}
+		r := &redirectRouter{Flags: l[2], AddsHeader: streamAddsHeader.MatchString(sv[1]), Trusted: map[string]int{}}
+		pp := streamProxyPass.FindStringSubmatch(sv[1])
+		if pp == nil {
+			return r, []string{fmt.Sprintf("маршрутизатор порта redirect %d ведёт соединения не переменной маршрута (`proxy_pass $<маршрут>`)", port)}
+		}
+		var geo []string
+		for _, g := range streamGeo.FindAllStringSubmatch(st[1], -1) {
+			if g[1] == pp[1] {
+				geo = g
+			}
+		}
+		if geo == nil {
+			return r, []string{fmt.Sprintf("маршрут $%s маршрутизатора порта redirect %d не объявлен блоком `geo $remote_addr`", pp[1], port)}
+		}
+		for _, e := range geoEntry.FindAllStringSubmatch(geo[2], -1) {
+			if e[1] == "default" {
+				r.Default = toInt(e[2])
+				continue
+			}
+			r.Trusted[e[1]] = toInt(e[2])
+		}
+		return r, nil
+	}
+	return nil, nil
+}
+
+// judgeRedirectRouter — находки п. 7 о маршрутизаторе порта redirect при
+// включённом приёме: звену балансировки — петлевой слушатель с заголовком,
+// прочим — без него; круг тот же, что у порта https; оба слушателя — в блоке
+// переадресации, и адресу из заголовка там верят только от петли.
+func judgeRedirectRouter(r *redirectRouter, httpsTrust []string, loopProxied map[int]bool, loopBlock map[int]int, block string) []string {
+	var out []string
+	if strings.Contains(r.Flags, "proxy_protocol") {
+		out = append(out, "маршрутизатор порта redirect сам ждёт заголовок PROXY от каждого соединения — соединение "+
+			"изнутри кластера (проверка вызова ACME HTTP-01) отвергается")
+	}
+	if r.AddsHeader {
+		out = append(out, "маршрутизатор порта redirect дописывает свой заголовок PROXY (`proxy_protocol on`) — "+
+			"заголовок балансировщика уходит дальше вторым, и адресом клиента становится адрес балансировщика")
+	}
+	if len(r.Trusted) == 0 {
+		out = append(out, "у маршрутизатора порта redirect нет записи звена балансировки — заголовок PROXY не "+
+			"принимается ни от кого, и соединение балансировщика читается как запрос с мусорной первой строкой")
+	}
+	var circle []string
+	for e, p := range r.Trusted {
+		circle = append(circle, e)
+		if !narrowTrustEntry(e) {
+			out = append(out, fmt.Sprintf("запись маршрутизатора порта redirect %q шире одного адреса звена "+
+				"балансировки (/32, /128) либо не адрес — хост кластера заявил бы чужой источник", e))
+		}
+		switch px, ok := loopProxied[p]; {
+		case !ok:
+			out = append(out, fmt.Sprintf("соединение звена балансировки маршрутизатор ведёт на петлевой порт %d, "+
+				"который не слушается", p))
+		case !px:
+			out = append(out, fmt.Sprintf("соединение звена балансировки маршрутизатор ведёт на петлевой порт %d, "+
+				"который не принимает заголовок PROXY — первая строка соединения читается как запрос", p))
+		}
+		if p == r.Default {
+			out = append(out, fmt.Sprintf("звено балансировки и прочие соединения маршрутизатор ведёт на один "+
+				"петлевой порт %d", p))
+		}
+	}
+	sort.Strings(circle)
+	want := append([]string(nil), httpsTrust...)
+	sort.Strings(want)
+	if strings.Join(circle, ",") != strings.Join(want, ",") {
+		out = append(out, fmt.Sprintf("круг маршрутизатора порта redirect %v расходится с кругом доверия порта "+
+			"https %v — звено балансировки объявляется одним местом", circle, want))
+	}
+	switch px, ok := loopProxied[r.Default]; {
+	case r.Default == 0 || !ok:
+		out = append(out, "прочие соединения (изнутри кластера) маршрутизатор порта redirect не ведёт на "+
+			"слушаемый петлевой порт — проверка вызова ACME HTTP-01 изнутри кластера встала бы")
+	case px:
+		out = append(out, fmt.Sprintf("прочие соединения маршрутизатор порта redirect ведёт на петлевой порт %d, "+
+			"который ждёт заголовок PROXY — соединение изнутри кластера отвергается", r.Default))
+	}
+	blocks := map[int]bool{}
+	for p := range loopProxied {
+		if p == r.Default || slicesContainsInt(r.Trusted, p) {
+			blocks[loopBlock[p]] = true
+		}
+	}
+	if len(blocks) > 1 {
+		out = append(out, "петлевые слушатели маршрутизатора порта redirect — в разных серверных блоках")
+	}
+	if block != "" {
+		hdr := realIPHeader.FindStringSubmatch(block)
+		if hdr == nil || hdr[1] != "proxy_protocol" {
+			out = append(out, "блок переадресации за маршрутизатором не берёт адрес клиента из заголовка PROXY "+
+				"(`real_ip_header proxy_protocol`)")
+		}
+		from := realIPFrom.FindAllStringSubmatch(block, -1)
+		if len(from) == 0 {
+			out = append(out, "у блока переадресации за маршрутизатором нет `set_real_ip_from` петли")
+		}
+		for _, f := range from {
+			if f[1] != "127.0.0.1" && f[1] != "127.0.0.1/32" {
+				out = append(out, fmt.Sprintf("блок переадресации за маршрутизатором верит адресу из заголовка "+
+					"не только от петли (`set_real_ip_from %s`) — заголовок туда приводит только маршрутизатор", f[1]))
+			}
+		}
+	}
+	return out
+}
+
+func slicesContainsInt(m map[string]int, v int) bool {
+	for _, x := range m {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// podMountsMainConf — под раздачи монтирует nginx.conf из карты confMap в
+// /etc/nginx/nginx.conf: без этого блок `stream` карты nginx не читает.
+func podMountsMainConf(pod map[string]any, confMap string) bool {
+	vols := map[string]bool{}
+	vs, _ := lookup(pod, "spec", "template", "spec", "volumes")
+	vsl, _ := vs.([]any)
+	for _, v := range vsl {
+		vm, _ := v.(map[string]any)
+		name, _ := lookup(vm, "configMap", "name")
+		if name != confMap {
+			continue
+		}
+		items, _ := lookup(vm, "configMap", "items")
+		il, _ := items.([]any)
+		for _, it := range il {
+			im, _ := it.(map[string]any)
+			if im["key"] == "nginx.conf" {
+				vols[fmt.Sprint(vm["name"])+"/"+fmt.Sprint(im["path"])] = true
+			}
+		}
+	}
+	cs, _ := lookup(pod, "spec", "template", "spec", "containers")
+	csl, _ := cs.([]any)
+	for _, c := range csl {
+		cm, _ := c.(map[string]any)
+		vms, _ := cm["volumeMounts"].([]any)
+		for _, vm := range vms {
+			m, _ := vm.(map[string]any)
+			if m["mountPath"] == "/etc/nginx/nginx.conf" && vols[fmt.Sprint(m["name"])+"/"+fmt.Sprint(m["subPath"])] {
+				return true
+			}
+		}
+	}
+	return false
 }
