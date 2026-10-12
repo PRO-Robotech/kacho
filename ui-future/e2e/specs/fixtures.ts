@@ -4,15 +4,10 @@
 import { expect, test as base, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
-import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
+import { mayRecord, noteRefusal, recordableAttempt } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
-import {
-  OUTSIDE_TEST,
-  REGISTRATION_ATTACHMENT,
-  isRegistration,
-  noteRegistration,
-  takeRegistrations,
-} from "./registration-budget.ts";
+import { OUTSIDE_TEST, isRegistration, noteRegistration } from "./registration-budget.ts";
+import { attachSourceAxisRecords } from "./source-axis-records";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
@@ -159,28 +154,14 @@ export const test = base.extend<
     },
     { auto: true, timeout: 180_000 },
   ],
-  // Запись отказов полосы сдаётся В КАЖДОЙ пробе — и в той, что не берёт
-  // `page`: её контексты и её посев тратят ту же ось (F8-41). Разбор идёт
-  // последним, после разбора страницы, поэтому запись к нему полна.
+  // Запись полосы (доли F8-41 и S4) и счёт регистраций (kacho#2909) сдаются В
+  // КАЖДОЙ пробе — и в той, что не берёт `page`: её контексты и её посев тратят
+  // то же окно. Разбор идёт последним, после разбора страницы, поэтому запись к
+  // нему полна.
   sourceAxisLedger: [
     async ({ browserName: _browser }, use, testInfo) => {
       await use();
-      const refusals = takeRefusals(testInfo.testId);
-      if (refusals.length > 0) {
-        await testInfo.attach(BUDGET_ATTACHMENT, {
-          body: JSON.stringify({ scenario: testInfo.title, refusals }),
-          contentType: "application/json",
-        });
-      }
-      // Счёт регистраций (kacho#2909) — тем же разбором: посев и контексты пробы
-      // к этому моменту закрыты, запись полна.
-      const registrations = takeRegistrations(testInfo.testId);
-      if (registrations > 0) {
-        await testInfo.attach(REGISTRATION_ATTACHMENT, {
-          body: JSON.stringify({ scenario: testInfo.title, registrations }),
-          contentType: "application/json",
-        });
-      }
+      await attachSourceAxisRecords(testInfo);
     },
     { auto: true },
   ],
@@ -289,15 +270,16 @@ export function watchRegistrationsInBrowser(browser: Browser): void {
 export function watchRefusals(context: BrowserContext, testId: string) {
   const pending: Array<Promise<void>> = [];
   context.on("response", (res) => {
-    if (res.status() !== 401) return;
     const path = new URL(res.url()).pathname;
-    if (!path.startsWith("/iam/v1/auth/")) return;
+    // Отказ `401` полосы (F8-41) и выдача испытания входа ключом (доля S4,
+    // приёмка F8-S4, Р8): остальные ответы тела не читаются.
+    if (!mayRecord(path, res.status())) return;
     pending.push(
       res
         .text()
         .catch(() => "")
         .then((text) => {
-          const r = recordableRefusal(path, res.status(), text);
+          const r = recordableAttempt(path, res.status(), text);
           if (r) noteRefusal(testId, r);
         }),
     );

@@ -13,6 +13,7 @@ import {
   type SeededAccessKey,
   type SentAssertion,
 } from "./access-key-seed";
+import { ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
 import { newSeed, seedAddress, seedConfirmedHuman, type Seed } from "./ceremony-seed";
 import { test } from "./fixtures";
 
@@ -45,7 +46,6 @@ import { test } from "./fixtures";
  */
 
 const NOT_ACCEPTED = "access key assertion is not accepted";
-const ORIGIN_NOT_IN_LIST = "credential origin is not in the declared list";
 
 /** Тело отказа края — google.rpc.Status. */
 interface Refusal {
@@ -192,7 +192,7 @@ test("F7-44-edge · регистрация с чужим происхожден�
       expect(
         { code: body.code, message: body.message, reasons: (body.details ?? []).map((d) => d.reason) },
         `регистрация с происхождением ${origin}: отказ не назвал причину`,
-      ).toEqual({ code: 3, message: ORIGIN_NOT_IN_LIST, reasons: ["ORIGIN_NOT_ALLOWED"] });
+      ).toEqual({ code: 3, message: ORIGIN_NOT_IN_LIST, reasons: [ORIGIN_NOT_ALLOWED] });
       expect(text.includes(origin), `регистрация с происхождением ${origin}: ответ повторяет присланное происхождение`).toBe(
         false,
       );

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
-import { expect, type APIResponse, type CDPSession, type Page } from "@playwright/test";
+import { expect, type APIResponse, type CDPSession, type Page, type TestInfo } from "@playwright/test";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
-import { SESSION_IDENTITY, lastIssued, type Seed } from "./ceremony-seed";
-import { conditionNotCreated } from "./mail-receiver";
+import { ORIGIN_NOT_ALLOWED } from "./access-key-texts";
+import { SESSION_IDENTITY, lastIssued, newSeed, type Seed } from "./ceremony-seed";
+import { ConditionNotCreated, conditionNotCreated } from "./mail-receiver";
+import { attachSourceAxisRecords } from "./source-axis-records";
 import { FIXTURE_UNMET_PREFIX } from "./producer-answers";
 
 /**
@@ -231,7 +233,7 @@ export async function seedAccessKey(
   const { response: finished, key } = await submitRegistration(seed, origin, options);
   if (finished.status() !== 200) {
     const text = await finished.text();
-    if (text.includes("ORIGIN_NOT_ALLOWED")) {
+    if (text.includes(ORIGIN_NOT_ALLOWED)) {
       conditionNotCreated(
         `${FIXTURE_UNMET_PREFIX} (приёмка F8-S4, §4 П4) происхождение браузера набора ${origin} ` +
           "не входит в перечень происхождений ключа доступа на стенде — церемония ключа на нём не выполнима",
@@ -249,6 +251,43 @@ export async function seedAccessKey(
   expect(accessKeyId, "посев К: операция регистрации не назвала ключ").not.toBe("");
 
   return { ...key, accessKeyId };
+}
+
+/**
+ * ТЕЛО ПРОБЫ-ПРЕДУСЛОВИЯ П4 (приёмка F8-S4, §4 П4, DoD п. 6): служба принимает
+ * происхождение браузера набора для ключей доступа. Зовут его предусловие
+ * (`preconditions/access-key-origin.precondition.ts`, «Дано» — посев П-п) и
+ * канарейка его самопроверки (`scripts/access-key-origin-canary/`, «Дано» —
+ * режим края петли): судится один и тот же код.
+ *
+ * «Не создано» — ТОЛЬКО отказ, помеченный посевом как несозданное условие
+ * (`ConditionNotCreated`: происхождение не в перечне). Любой иной отказ —
+ * возможный дефект службы, о нём обязаны сказать пробы ключа красным: условие
+ * его пропускает и кладёт текст вложением. Ключ, заведённый условием,
+ * снимается тем же заходом. Запись расхода окна источника (регистрации посева,
+ * обращения полосы) сдаётся тем же вложением, что у проб сценариев (DoD п. 10).
+ */
+export async function accessKeyOriginCondition(
+  testInfo: TestInfo,
+  given: (seed: Seed) => Promise<void>,
+): Promise<string> {
+  const seed = await newSeed(testInfo);
+  let outcome = "";
+  try {
+    await given(seed);
+    const key = await seedAccessKey(seed, testInfo.project.use.baseURL, { userVerification: true });
+    outcome = "ключ заведён — происхождение принято";
+    await revokeAccessKey(seed, key);
+  } catch (err) {
+    if (err instanceof ConditionNotCreated) throw err;
+    // Отказ не об условии: пробы ключа исполнятся и скажут о нём своим вердиктом.
+    outcome = `посев отказал не по условию — судят пробы: ${err instanceof Error ? err.message : String(err)}`;
+  } finally {
+    await testInfo.attach("исход посева К", { body: outcome || "условие не создано", contentType: "text/plain" });
+    await seed.dispose();
+    await attachSourceAxisRecords(testInfo);
+  }
+  return outcome;
 }
 
 /**
