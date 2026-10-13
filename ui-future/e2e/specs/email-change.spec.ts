@@ -11,6 +11,7 @@ import {
   newSeed,
   seedAddress,
   seedConfirmedHuman,
+  seedSecondFactor,
   transferSession,
   type Seed,
   type SeededHuman,
@@ -276,6 +277,62 @@ async function loginOnScreen(page: Page, email: string, password: string): Promi
 
 function locatorText(l: Locator): Promise<string> {
   return l.innerText();
+}
+
+// ─── отказ по уровню (Р4 редакции 6, §1.4в) ─────────────────────────────────
+
+/** Строка экрана, когда повышение не состоялось (Р4) — дословно. */
+const STEP_UP_NOT_DONE = "Подтверждение личности не состоялось: смена адреса требует второго фактора";
+/** Кнопка повтора того же глагола через повышение (Р4) — дословно. */
+const RETRY_WITH_STEP_UP = "Повторить с подтверждением";
+/** Машинный признак вызова повышения уровня (RFC 9470). */
+const LEVEL_CHALLENGE = 'error="insufficient_user_authentication"';
+
+function stepUpDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Подтверждение действия" });
+}
+
+/**
+ * Отказ по уровню, как его производит служба (EC Р2): `401`, `code 16`, вызов
+ * с признаком и уровнем «2». Иной ответ — служба на стенде не держит EC Р2, и
+ * сценарий красный по условию §4, а не по экрану.
+ */
+async function expectLevelRefusal(res: LaneAnswer, path: string) {
+  const challenge = res.headers()["www-authenticate"] ?? "";
+  expect(
+    { status: res.status(), challenge: challenge.includes(LEVEL_CHALLENGE) && challenge.includes('acr_values="2"') },
+    `${path} после шага 2Ф ответил не отказом по уровню (служба на стенде не держит EC Р2): ` +
+      `${res.status()} ${challenge} ${await res.text()}`,
+  ).toEqual({ status: 401, challenge: true });
+  expect(((await res.json()) as { code?: number }).code).toBe(16);
+}
+
+/**
+ * Шаг 2Ф (§4): второй фактор заводится в ОТДЕЛЬНОМ посев-контексте тем же
+ * адресом и паролем. Сессия браузера остаётся прежней — уровня «1»; повышение в
+ * браузере идёт запасным кодом, шаг кода по времени истрачен заведением.
+ */
+async function enrollSecondFactorAside(testInfo: TestInfo, human: SeededHuman): Promise<string[]> {
+  const aside = await newSeed(testInfo);
+  try {
+    await signInSeed(aside, human.email, human.password, "2Ф");
+    return (await seedSecondFactor(aside)).backupCodes;
+  } finally {
+    await aside.dispose();
+  }
+}
+
+/** Окно повышения: запасной код и «Подтвердить»; ответ повышения — со снятым телом. */
+async function stepUpWithBackupCode(page: Page, code: string): Promise<LaneAnswer> {
+  const dialog = stepUpDialog(page);
+  await expect(dialog, "консоль не открыла окно повышения на вызов уровня").toBeVisible();
+  await dialog.getByRole("radio", { name: "Запасной код" }).check();
+  await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(code);
+  const [raised] = await Promise.all([
+    lanePostAnswer(page, LANE.stepUp),
+    dialog.getByRole("button", { name: "Подтвердить" }).click(),
+  ]);
+  return raised;
 }
 
 // Ответы глаголов полосы читаются тем же путём, что у соседних экранов
@@ -713,6 +770,138 @@ test("F8S6-14 · «Отправить снова» по концу отсчёт�
     expect(JSON.parse(second.request().postData() ?? "{}").newEmail).toBe(n);
     expect(postsTo(census, CHANGE_CONFIRM), census.describe()).toEqual([]);
     await changeLetter(mailbox, n, beforeN);
+    expectNoProvider(census);
+  });
+});
+
+test("F8S6-15 · повышение на предъявлении отменено — отказ назван как есть, код не стёрт", async ({
+  page,
+}, testInfo) => {
+  // verifies #3192 — F8S6-15 приёмки F8-S6 ред. 6 (#3062); близнецы: (б) — повышение прошло; F8S6-04 (б) — без шага 2Ф.
+  test.setTimeout(240_000);
+  const mailbox = stationMailbox();
+  await withHuman(testInfo, page, "F8S6-15", async (_seed, human) => {
+    const n = freeAddress("F8S6-15");
+    const beforeN = await idsOf(mailbox, n);
+    const census = ceremonyCensus(page.context());
+    const s = await openAccount(page);
+    expect((await requestChange(page, s, n)).status()).toBe(200);
+    await expectCodeState(s, n);
+    const letter = await changeLetter(mailbox, n, beforeN);
+    // Только после письма — шаг 2Ф: запрос прошёл уровнем «1», предъявление — уже нет.
+    const backupCodes = await enrollSecondFactorAside(testInfo, human);
+    const carrier = await bearerOf(page.context());
+
+    // (а) «Подтвердить» → вызов уровня → в окне «Отменить».
+    await s.code.fill(letter.code);
+    const [refused] = await Promise.all([lanePostAnswer(page, CHANGE_CONFIRM), s.confirm.click()]);
+    await expectLevelRefusal(refused, CHANGE_CONFIRM);
+    await stepUpDialog(page).getByRole("button", { name: "Отменить" }).click();
+    await expect(stepUpDialog(page)).toBeHidden();
+    await expect(
+      s.region.getByText(STEP_UP_NOT_DONE, { exact: true }),
+      "отказ по уровню не назван как есть (Р4)",
+    ).toBeVisible();
+    await expect(s.region.getByRole("button", { name: RETRY_WITH_STEP_UP })).toBeVisible();
+    await expect(s.code, "введённый код стёрт отказом, который код не проверял").toHaveValue(letter.code);
+    await expectCodeState(s, n);
+    await expect(s.region.getByText("Код не подошёл", { exact: true })).toHaveCount(0);
+    await expect(s.region).toContainText(human.email);
+    expect(await bearerOf(page.context()), "носитель в хранилище браузера сменился").toBe(carrier);
+    expect(postsTo(census, CHANGE_CONFIRM), `второе предъявление:\n${census.describe()}`).toEqual([401]);
+    expect(postsTo(census, LANE.stepUp), `повышение после «Отменить»:\n${census.describe()}`).toEqual([]);
+    expect(
+      after(census, { method: "POST", path: CHANGE_CONFIRM }, "GET", SESSION_IDENTITY),
+      `после отказа по уровню спрошен «кто я»:\n${census.describe()}`,
+    ).toEqual([]);
+
+    // (б) «Повторить с подтверждением» → тот же вызов → запасной код → тот же C принят.
+    const [again] = await Promise.all([
+      lanePostAnswer(page, CHANGE_CONFIRM),
+      s.region.getByRole("button", { name: RETRY_WITH_STEP_UP }).click(),
+    ]);
+    await expectLevelRefusal(again, CHANGE_CONFIRM);
+    expect(JSON.parse(again.request().postData() ?? "{}").code, "повтор ушёл не с тем же кодом").toBe(letter.code);
+    const replayed = lanePostAnswer(page, CHANGE_CONFIRM);
+    const raised = await stepUpWithBackupCode(page, backupCodes[0]);
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
+    const confirmed = await replayed;
+    expect(confirmed.status(), `тот же код после повышения не принят: ${await confirmed.text()}`).toBe(200);
+    expect(JSON.parse(confirmed.request().postData() ?? "{}").code).toBe(letter.code);
+    await expect(s.region, "раздел не показывает новый адрес").toContainText(n);
+    await expect(s.verified).toBeVisible();
+    // Порядок — подпоследовательностью: между повышением и повтором стоят чтения
+    // личности окна (N1 круга 5), «ничего между» не утверждается.
+    expect(postsTo(census, CHANGE_CONFIRM), census.describe()).toEqual([401, 401, 200]);
+    expect(postsTo(census, LANE.stepUp), census.describe()).toEqual([200]);
+    expect(
+      after(census, { method: "POST", path: LANE.stepUp }, "POST", CHANGE_CONFIRM).map((c) => c.outcome),
+      `после повышения нет повтора предъявления:\n${census.describe()}`,
+    ).toEqual([200]);
+    expect(
+      after(census, { method: "POST", path: LANE.stepUp }, "GET", SESSION_IDENTITY).map((c) => c.outcome),
+      `после успешной смены «кто я» не спрошен:\n${census.describe()}`,
+    ).toContain(200);
+    expectNoProvider(census);
+  });
+});
+
+test("F8S6-16 · повышение на запросе отменено — отказ назван как есть, адрес не стёрт", async ({ page }, testInfo) => {
+  // verifies #3192 — F8S6-16 приёмки F8-S6 ред. 6 (#3062); близнецы: (б) — повышение прошло; F8S6-01 — без шага 2Ф.
+  test.setTimeout(240_000);
+  const mailbox = stationMailbox();
+  await withHuman(testInfo, page, "F8S6-16", async (_seed, human) => {
+    const backupCodes = await enrollSecondFactorAside(testInfo, human);
+    const n = freeAddress("F8S6-16");
+    const beforeN = await idsOf(mailbox, n);
+    const census = ceremonyCensus(page.context());
+    const s = await openAccount(page);
+
+    // (а) «Отправить код» → вызов уровня → в окне «Отменить».
+    const refused = await requestChange(page, s, n);
+    await expectLevelRefusal(refused, CHANGE);
+    await stepUpDialog(page).getByRole("button", { name: "Отменить" }).click();
+    await expect(stepUpDialog(page)).toBeHidden();
+    await expect(
+      s.region.getByText(STEP_UP_NOT_DONE, { exact: true }),
+      "отказ по уровню не назван как есть (Р4)",
+    ).toBeVisible();
+    await expect(s.region.getByRole("button", { name: RETRY_WITH_STEP_UP })).toBeVisible();
+    await expect(s.newEmail, "экран не в состоянии «форма» либо адрес стёрт").toHaveValue(n);
+    await expect(s.code).toHaveCount(0);
+    await expect(s.region).toContainText(human.email);
+    expect(postsTo(census, CHANGE), `второй запрос:\n${census.describe()}`).toEqual([401]);
+    expect(postsTo(census, LANE.stepUp), `повышение после «Отменить»:\n${census.describe()}`).toEqual([]);
+
+    // (б) «Повторить с подтверждением» → тот же вызов → запасной код → «код».
+    const [again] = await Promise.all([
+      lanePostAnswer(page, CHANGE),
+      s.region.getByRole("button", { name: RETRY_WITH_STEP_UP }).click(),
+    ]);
+    await expectLevelRefusal(again, CHANGE);
+    expect(JSON.parse(again.request().postData() ?? "{}").newEmail, "повтор ушёл не с тем же адресом").toBe(n);
+    const replayed = lanePostAnswer(page, CHANGE);
+    const raised = await stepUpWithBackupCode(page, backupCodes[0]);
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
+    const accepted = await replayed;
+    expect(accepted.status(), `запрос смены после повышения не прошёл: ${await accepted.text()}`).toBe(200);
+    expect(JSON.parse(accepted.request().postData() ?? "{}").newEmail).toBe(n);
+    const wait = retryAfterOf(accepted);
+    await expectCodeState(s, n);
+    await expect(s.resend, "«Отправить снова» включена сразу после запроса").toBeDisabled();
+    await expect(s.region.getByText(resendWait(wait), { exact: true }), "отсчёт не равен Retry-After").toBeVisible();
+    expect(postsTo(census, CHANGE), census.describe()).toEqual([401, 401, 200]);
+    expect(postsTo(census, LANE.stepUp), census.describe()).toEqual([200]);
+
+    // Отказы по уровню письма не ставили: письмо смены по N вне `before` — одно.
+    await changeLetter(mailbox, n, beforeN);
+    const changeLetters = (await mailbox.letters(n)).filter(
+      (l) => !beforeN.has(l.id) && l.text.includes(EMAIL_CHANGE_CODE_LINE),
+    );
+    expect(
+      changeLetters.map((l) => l.id),
+      "отказ по уровню поставил письмо смены",
+    ).toHaveLength(1);
     expectNoProvider(census);
   });
 });
