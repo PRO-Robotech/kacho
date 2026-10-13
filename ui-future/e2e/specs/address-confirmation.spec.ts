@@ -1271,6 +1271,14 @@ test("F6b-30 · сессия снята подтверждением в друг
   try {
     for (const verb of [VERIFY_EMAIL_CONFIRM, VERIFY_EMAIL]) {
       const which = verb === VERIFY_EMAIL_CONFIRM ? "а · «Подтвердить»" : "б · «Отправить новое письмо»";
+      // Вариант «а» кончается живым каркасом на /dashboard: он дочитывает
+      // платформу, и после снятых cookie его чтения получают 401, а каркас сам
+      // уходит документом на /login?returnTo=%2Fdashboard. Этот уход отменяет
+      // переход пробы на /login ниже — page.goto падает с net::ERR_ABORTED
+      // (PR #3195, прогон 38365111739). Поэтому страница уводится на пустой
+      // документ ДО снятия cookie, как в F6b-36: у прежнего документа нет ни
+      // чтений, ни ухода. Ждётся событие перехода, а не время.
+      await page.goto("about:blank");
       await page.context().clearCookies();
       // Дано: сессия S1 у посева, S2 — вход браузера; S1 предъявила код.
       const held = await heldUnconfirmed(testInfo, verb === VERIFY_EMAIL_CONFIRM ? "F6b-30-a" : "F6b-30-b");
