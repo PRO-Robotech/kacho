@@ -117,7 +117,7 @@ require (
 
 require (
 	github.com/PRO-Robotech/corelib v1.14.0
-	github.com/PRO-Robotech/kaname v0.4.1-0.20261012015804-2952ea7f3874
+	github.com/PRO-Robotech/kaname v0.4.1-0.20261013011715-68541f0de396
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0

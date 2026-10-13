@@ -46,12 +46,14 @@ func TestPermissionCatalog_UserInvite_RequiresStepUp(t *testing.T) {
 	assert.Equal(t, "2", ab.RequiredACRMin,
 		"AccessBindingService/Create is the grant-surface anchor Invite must match")
 
-	// Non-grant User lifecycle stays routine — the fix must not blanket-raise
-	// the whole service (step-up is sensitive-only, not blanket).
+	// Обратимый жизненный цикл человека остаётся рутинным: правка не вправе
+	// поднять пол службы целиком (повышение — только для чувствительного).
+	// UserService/Delete здесь больше нет: необратимое снятие человека несёт «2»
+	// решением службы (kaname#720, Р12), и это утверждает перечень
+	// sensitiveACR2FQNs в permission_catalog_acr_invariant_test.go.
 	for _, fqn := range []string{
 		"kaname.cloud.iam.v1.UserService/Get",
 		"kaname.cloud.iam.v1.UserService/Update",
-		"kaname.cloud.iam.v1.UserService/Delete",
 	} {
 		e, ok := c.Lookup(fqn)
 		require.True(t, ok, "missing from catalog: %s", fqn)
