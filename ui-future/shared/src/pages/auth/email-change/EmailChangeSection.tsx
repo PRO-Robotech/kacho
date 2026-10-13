@@ -92,12 +92,19 @@ function useCountdown(): [number | null, (s: number | null) => void] {
   return [left, setLeft];
 }
 
+/**
+ * Повтор после несостоявшегося повышения — тот же глагол с тем же вводом:
+ * запрос — с адресом, с которым он ушёл («Отправить снова» в состоянии «код» —
+ * тоже запрос), предъявление — с кодом из поля.
+ */
+type Retry = { verb: "request"; address: string } | { verb: "confirm" };
+
 /** Что показано под формой: исход последнего действия — один, новый замещает прежний. */
 type Notice =
   | { kind: "refused"; refusal: LaneRefusal }
   | { kind: "text"; text: string }
-  // Повышение не состоялось; кнопка повторяет тот же глагол с тем же вводом.
-  | { kind: "step-up-not-done" };
+  // Повышение не состоялось; кнопка — `Retry`.
+  | { kind: "step-up-not-done"; retry: Retry };
 
 function markedBy(inputId: string, error: string | null) {
   return error
@@ -128,10 +135,10 @@ function ChangeForm({
   const [requestWait, setRequestWait] = useCountdown();
   const [confirmWait, setConfirmWait] = useCountdown();
 
-  /** Отказ, общий обоим глаголам: темп и поле — по Р4; прочее — дословно. */
-  const refused = (refusal: LaneRefusal, onWait: (s: number | null) => void) => {
+  /** Отказ, общий обоим глаголам: уровень, темп и поле — по Р4; прочее — дословно. */
+  const refused = (refusal: LaneRefusal, onWait: (s: number | null) => void, retry: Retry) => {
     if (refusal.challenge === LEVEL_CHALLENGE) {
-      setNotice({ kind: "step-up-not-done" });
+      setNotice({ kind: "step-up-not-done", retry });
       return;
     }
     if (refusal.reason === LANE_REASON.tooManyAttempts) {
@@ -158,7 +165,7 @@ function ChangeForm({
       setStage("code");
       setRequestWait(retryAfterSeconds);
     } catch (err) {
-      refused(laneRefusalOf(err), setRequestWait);
+      refused(laneRefusalOf(err), setRequestWait, { verb: "request", address });
     }
     setBusy(null);
   };
@@ -179,7 +186,7 @@ function ChangeForm({
       const refusal = laneRefusalOf(err);
       if (refusal.challenge === LEVEL_CHALLENGE) {
         // Код не проверялся: он остаётся в поле, «кто я» не спрашивается.
-        refused(refusal, setConfirmWait);
+        refused(refusal, setConfirmWait, { verb: "confirm" });
       } else if (refusal.status === 401) {
         // Один вопрос «кто я»: он различает неподошедший код и снятую сессию.
         const who = await sessionIdentity();
@@ -198,7 +205,7 @@ function ChangeForm({
         setStage("form");
         setNotice({ kind: "text", text: EMAIL_IN_USE_TEXT });
       } else {
-        refused(refusal, setConfirmWait);
+        refused(refusal, setConfirmWait, { verb: "confirm" });
       }
     }
     setBusy(null);
@@ -210,7 +217,7 @@ function ChangeForm({
   const codeError = fieldError?.field === "code" ? fieldError.text : null;
 
   /** Повтор того же глагола с тем же вводом — снова через клиент полосы и его повышение. */
-  const retryAfterStepUp = () => void (stage === "form" ? request(newEmail) : confirm());
+  const retryAfterStepUp = (retry: Retry) => void (retry.verb === "request" ? request(retry.address) : confirm());
 
   const noticeView =
     notice === null ? null : (
@@ -223,7 +230,7 @@ function ChangeForm({
             showIcon
             message={STEP_UP_NOT_DONE_TEXT}
             action={
-              <Button size="small" onClick={retryAfterStepUp} disabled={busy !== null}>
+              <Button size="small" onClick={() => retryAfterStepUp(notice.retry)} disabled={busy !== null}>
                 {RETRY_WITH_STEP_UP_TEXT}
               </Button>
             }

@@ -1519,4 +1519,28 @@ describe("смена адреса почты (F8-S6)", () => {
     expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL, NEW_EMAIL]);
     expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1);
   });
+  it("F8S6-16 · отказ по уровню на «Отправить снова» в состоянии «код»: повтор — тот же запрос с тем же адресом, а не предъявление", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      "POST /iam/v1/auth/step-up": STEP_UP_DONE,
+      [`POST ${CHANGE}`]: (_c, nth) =>
+        nth === 1 ? CHANGE_ACCEPTED("1") : nth <= 3 ? LEVEL_REFUSAL : CHANGE_ACCEPTED("60"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const again = within(region).getByRole("button", { name: "Отправить снова" });
+    await waitFor(() => expect(again).toBeEnabled(), { timeout: 3000 });
+    fireEvent.click(again);
+    await cancelStepUp();
+    expect(await within(region).findByText(STEP_UP_NOT_DONE)).toBeInTheDocument();
+    await codeState(region);
+    fireEvent.click(within(region).getByRole("button", { name: RETRY_WITH_STEP_UP }));
+    await stepUpWithBackupCode();
+    expect(await within(region).findByText("Отправить снова можно через 60 с")).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL, NEW_EMAIL, NEW_EMAIL]);
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
+  });
 });
