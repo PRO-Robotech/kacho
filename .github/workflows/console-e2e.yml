@@ -1116,6 +1116,41 @@ jobs:
           KACHO_REGISTRATION_BUDGET: "320"
         run: node scripts/registration-budget.ts results.json
 
+      # ЖУРНАЛ КРАЯ И СЛУЖБЫ ПРАВ — В АРТЕФАКТ КРАСНОГО (kacho#3200). Проба,
+      # получившая от края 503 «решение о праве не принято», текстом отказа
+      # причины не называет и не должна: причина пишется только в журнал края
+      # строкой «authz check failed» с ошибкой источника вердикта. Журнала в
+      # артефакте не было, и красное прогона 38408151116 осталось без корня.
+      # Пишутся под края и под службы прав, у перезапущенного контейнера — и
+      # прежний экземпляр. Шаг служебный (в разметке исхода — `--bookkeeping`):
+      # вердикта не выносит и успехом выходит всегда, даже когда кластера нет
+      # (внешний адрес консоли).
+      - name: журнал края и службы прав (на красном)
+        id: stand-logs
+        if: ${{ always() && (steps.probes.outcome == 'failure' || steps.report-gate.outcome == 'failure') }}
+        timeout-minutes: 3
+        run: |
+          # Кластера нет (стенд не поднимался либо внешний адрес консоли) —
+          # страж печатает ПРИЧИНУ, и шаг выходит успехом: журнала нет, вердикта
+          # шаг не выносит.
+          "$GITHUB_WORKSPACE/.github/scripts/stand-present-or-explain.sh" "стенд консоли" || exit 0
+          out="ui-future/e2e/stand-logs"
+          mkdir -p "$out"
+          pods="$(kubectl -n kacho get pods -o name 2>/dev/null | grep -E '^pod/(api-gateway|kaname)-' || true)"
+          if [ -z "$pods" ]; then
+            echo "под края и службы прав не найдены — журнала нет"
+            exit 0
+          fi
+          kubectl -n kacho get pods -o wide > "$out/pods.txt" 2>&1 || true
+          for p in $pods; do
+            name="${p#pod/}"
+            kubectl -n kacho logs "$p" --all-containers --timestamps --limit-bytes=20000000 \
+              > "$out/$name.log" 2>&1 || true
+            kubectl -n kacho logs "$p" --all-containers --timestamps --previous --limit-bytes=20000000 \
+              > "$out/$name.previous.log" 2>/dev/null || rm -f "$out/$name.previous.log"
+          done
+          ls -l "$out"
+
       - name: отчёт (в том числе на красном)
         id: artifact
         if: always()
@@ -1125,6 +1160,7 @@ jobs:
           path: |
             ui-future/e2e/results.json
             ui-future/e2e/test-results/
+            ui-future/e2e/stand-logs/
           retention-days: 7
 
       # Стенд одноразовый (VM ранера его не переживает), но снос объявлен явно —
@@ -1163,7 +1199,7 @@ jobs:
             --probe-step probes \
             --verdict-step report-gate,source-axis-budget,source-registration-budget \
             --verdict-unmet "$VERDICT_UNMET" \
-            --bookkeeping pods,stand_revision,artifact,category,teardown
+            --bookkeeping pods,stand_revision,stand-logs,artifact,category,teardown
 
       - name: снести стенд
         id: teardown

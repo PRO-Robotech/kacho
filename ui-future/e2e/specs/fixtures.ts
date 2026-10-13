@@ -12,6 +12,7 @@ import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { removeTenant, type TenantRecord } from "./tenant-removal";
+import { beginSeedTraces, settleSeedTraces } from "./seed-trace";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -72,7 +73,7 @@ import { removeTenant, type TenantRecord } from "./tenant-removal";
  * останется без этой фикстуры.
  */
 export const test = base.extend<
-  { sourceAxisLedger: void; issuanceLedger: void; tenantRemoval: void },
+  { seedTraces: void; sourceAxisLedger: void; issuanceLedger: void; tenantRemoval: void },
   { issuanceGuardedBrowser: void; standCookieCarrier: void; registrationWatchedBrowser: void }
 >({
   // СЧЁТ РЕГИСТРАЦИЙ ИСТОЧНИКА (kacho#2909) — в каждом контексте браузера, который
@@ -110,6 +111,21 @@ export const test = base.extend<
       await use();
     },
     { scope: "worker", auto: true },
+  ],
+  // ТРАССА ПОСЕВА (kacho#3200) — вложение «trace» упавшей пробы, которая
+  // страницы не берёт: её обращения идут контекстом посева, и запись пишется
+  // ему. Разбор — после уборки арендаторов (объявлено раньше неё), поэтому и её
+  // посевы в записи. Устройство — `specs/seed-trace.ts`.
+  seedTraces: [
+    async ({ browserName: _browser }, use, testInfo) => {
+      beginSeedTraces(testInfo.testId);
+      try {
+        await use();
+      } finally {
+        await settleSeedTraces(testInfo);
+      }
+    },
+    { auto: true, timeout: 60_000 },
   ],
   issuanceLedger: [
     async ({ browser }, use) => {

@@ -130,6 +130,75 @@ function rotatorOf(testInfo: TestInfo): Rotator {
   };
 }
 
+/** Каталог аккаунтов — `<exempt>`: вопроса о праве край по нему не задаёт. */
+const ACCOUNTS = "/iam/v1/accounts?pageSize=1000";
+
+/** Текст отказа края «решение о праве не принято» — по нему 503 края отличим от 503 входа консоли. */
+const UNDECIDED_TEXT = "authorization could not be decided";
+
+/** Предел ожидания решения края после переката службы прав. */
+const EDGE_DECIDES_BUDGET_MS = 180_000;
+
+/**
+ * Край снова РЕШАЕТ право после переката службы прав — условие, которое проба
+ * обязана вернуть стенду вместе с перечнем ключей (kacho#3200).
+ *
+ * Оснастка переката ждёт `/readyz` каждого пода края. Прежде это ожидание
+ * дефект края МАСКИРОВАЛО: решение о праве край спрашивает своим соединением,
+ * которого `/readyz` не опрашивал, и после «готов» первый вопрос о праве ~4 с
+ * получал `503` «authorization could not be decided» (прогон 38408151116).
+ * Фикс края — в той же задаче kacho#3200: соединение решения о праве стало
+ * критичной целью `/readyz` (gateway/cmd/api-gateway/readiness.go), и «готов»
+ * теперь значит «край решает право».
+ *
+ * Поэтому здесь не ожидание окна, а ПРОВЕРКА фикса: после готовности край
+ * обязан решить право (`iam.accounts.get` с вопросом о праве — `200`) без
+ * единого `503` с текстом «решение не принято». Такой `503` — дефект края вернулся, и проба красная, а не
+ * «подождали ещё». Прочие ответы (вход консоли, догоняющий конечные точки) —
+ * не про решение о праве, их опрос продолжается до предела.
+ */
+async function edgeDecidesAfterRollout(seed: Seed): Promise<string | null> {
+  const started = Date.now();
+  let undecided = 0;
+  let last = "вопроса о праве не задано";
+  try {
+    await expect
+      .poll(
+        async () => {
+          const list = await seed.read(ACCOUNTS);
+          if (!list.ok()) {
+            last = `каталог аккаунтов: ${list.status()} ${await list.text()}`;
+            return last;
+          }
+          const id = ((await list.json()) as { accounts?: Array<{ id: string }> }).accounts?.[0]?.id;
+          if (!id) {
+            last = "у человека пробы нет аккаунта";
+            return last;
+          }
+          const got = await answerOf(await seed.read(`/iam/v1/accounts/${id}`));
+          if (got.status === 503 && got.text.includes(UNDECIDED_TEXT)) undecided += 1;
+          last = `${got.status} ${got.text}`;
+          return got.status;
+        },
+        { timeout: EDGE_DECIDES_BUDGET_MS, intervals: [250, 500, 1000] },
+      )
+      .toBe(200);
+    console.log(`[Ф12-35] край решает право после переката: ${Date.now() - started} мс, ответов 503 до решения ${undecided}`);
+    if (undecided > 0) {
+      return (
+        `край отвечал 503 «${UNDECIDED_TEXT}» ${undecided} раз(а) после «готов» в /readyz — ` +
+        `готовность края снова не учитывает соединение решения о праве (kacho#3200)`
+      );
+    }
+    return null;
+  } catch {
+    return (
+      `край не решает право после переката службы прав за ${EDGE_DECIDES_BUDGET_MS} мс ` +
+      `(ответов 503 ${undecided}); последний ответ: ${last}`
+    );
+  }
+}
+
 /** Шаг кода по времени (RFC 6238, 30 с) — тот, чей код проба предъявляет. */
 const stepOf = (ms: number) => Math.floor(ms / 30_000);
 
@@ -243,10 +312,13 @@ test("Ф12-35 (в) · перечень K2,K1 сверяет код, K2 без K1
   } finally {
     // Снятие — и на падении: перечень стенда возвращается к ключу до пробы.
     failed = rotator.restore();
+    // Стенд возвращён, лишь когда край снова решает право (kacho#3200): иначе
+    // следующая проба получает 503 на первом вопросе о праве по нашей вине.
+    if (!failed && seeds.length > 0) failed = await edgeDecidesAfterRollout(seeds[0]);
     rotator.dispose();
     await Promise.all(seeds.map((s) => s.dispose()));
     if (failed) console.error(`[Ф12-35] ${failed}`);
   }
   // Проба прошла, а стенд не возвращён — это не зелёное: следующий прогон шёл бы по чужому перечню.
-  expect(failed, "перечень ключей стенда после пробы обязан быть восстановлен").toBeNull();
+  expect(failed, "перечень ключей стенда после пробы обязан быть восстановлен, а край — снова решать право").toBeNull();
 });

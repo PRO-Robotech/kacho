@@ -1093,11 +1093,12 @@ func main() {
 	// Critical backends: iam фронтит authN+authZ на каждом запросе, без него
 	// gateway не обслуживает аутентифицированный трафик → его недоступность валит
 	// readiness. Прочие backends (vpc/compute/geo/nlb) — деградация одного домена,
-	// реплика остается в rotation (см. health.HTTPReadyz).
-	criticalBackends := map[string]bool{"iam": true, "iamInternal": true}
+	// реплика остается в rotation (см. health.HTTPReadyz). Соединение решения о
+	// праве — своя цель готовности, не из карты бэкендов (readiness.go, kacho#3200).
+	readyzTargets, criticalBackends := readinessTargets(backends, authz.calls, cfg.AuthZFailOpen)
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/healthz", health.HTTPHealthz)
-	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))
+	httpMux.Handle("/readyz", health.HTTPReadyz(readyzTargets, criticalBackends, logger))
 
 	// GET /iam/v1/auth/me — личность за браузерной сессией. Регистрируется ДО
 	// `/` чтобы перебить grpc-gateway catch-all. Читатель — ПО ПОСАДКЕ (Ф3 Р15),

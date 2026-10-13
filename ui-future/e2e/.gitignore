@@ -3,3 +3,4 @@ test-results/
 results.json
 results-measure.json
 playwright-report/
+stand-logs/
