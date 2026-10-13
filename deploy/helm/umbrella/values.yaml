@@ -121,10 +121,10 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    # Ревизия ветки службы 3066c7b6 — вливание волны PRO-Robotech/kaname#773 (kacho#3193).
+    # Ревизия ветки службы 3d5b02ed — вливание PRO-Robotech/kaname#781 (kacho#3202).
     # Ту же ревизию называет пин модуля службы в go.mod: поднимаются вместе, их
     # согласие держит deploy/outsourced_image_pin_agrees_with_module_pin_test.go.
-    tag: 296-3066c7b6
+    tag: 296-3d5b02ed
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
