@@ -5,6 +5,8 @@ import { expect, type BrowserContext, type Locator, type Page, type Request, typ
 import {
   pageAuthenticator,
   presentAccessKey,
+  raiseSeedToLevelTwo,
+  secondFactorAside,
   seedAccessKey,
   type PageAuthenticator,
   type PresentableKey,
@@ -47,6 +49,12 @@ import { ACCESS_KEY_SESSION_NOT_FRESH, FIXTURE_UNMET_PREFIX, fulfillWith } from 
  * ПОДСТАНОВКА — ТОЛЬКО ОСЬ 3 (Р9): окно свежести Ф7 — 15 минут, и проба его не
  * пересиживает; у F8-51 и F8-57 подставлен ПЕРВЫЙ ответ названного глагола
  * ответом производителя (`producer-answers.ts`), следующие — настоящие.
+ *
+ * УРОВЕНЬ СЕССИИ (kaname#747, Р3). У регистрации и снятия ключа пол «2»:
+ * «Дано» каждого сценария — человек с кодом и сессией «2», так что судится
+ * только свежесть. Сессию «1» у человека с кодом строит одна проба —
+ * KN747-02-console (п. 5 DoD kaname#747): экран регистрации открывает окно
+ * повышения и после него завершает тот же шаг.
  *
  * УСЛОВИЕ П4 (§4). Происхождение браузера набора служба обязана принимать для
  * ключей доступа. Не принимает — исход «не выполнилось: условие не создано», а
@@ -126,12 +134,21 @@ interface KeysHuman {
   seed: Seed;
   human: SeededHuman;
   userId: string;
+  /** Запасные коды человека — код заведён у каждого человека сценария. */
+  backupCodes: string[];
 }
 
+/** Уровень сессии, которую получает браузер сценария. */
+type SessionLevel = "1" | "2";
+
 /**
- * Человек П-п сценария — СВОЙ — с сессией у браузера. Посев живёт до конца
- * сценария: «ключ принят» проба спрашивает его контекстом. `before` — посев К′
- * до переноса носителя.
+ * Человек П-п сценария — СВОЙ — с кодом и сессией у браузера. Посев живёт до
+ * конца сценария: «ключ принят» проба спрашивает его контекстом. `before` —
+ * посев К′ до переноса носителя. `level` — уровень сессии браузера: «2» — код
+ * заведён и подтверждён сессией посева до переноса (пол kaname#747, Р3); «1» —
+ * браузер получает сессию одного пароля, а код заводится ОТДЕЛЬНЫМ посевом после
+ * переноса (`secondFactorAside`) — единственный факт, которым KN747-02-console
+ * отличается от F8-50.
  */
 async function withKeysHuman<T>(
   testInfo: TestInfo,
@@ -139,18 +156,21 @@ async function withKeysHuman<T>(
   context: BrowserContext,
   body: (h: KeysHuman) => Promise<T>,
   before: (h: KeysHuman) => Promise<void> = async () => undefined,
+  level: SessionLevel = "2",
 ): Promise<T> {
   const seed = await newSeed(testInfo);
   try {
     const human = await seedConfirmedHuman(seed, seedAddress(scenario));
+    const factor = level === "2" ? await raiseSeedToLevelTwo(seed) : null;
     const me = await seed.read(SESSION_IDENTITY);
     const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;
     expect(me.status(), `посев: ответ края о сессии — ${me.status()}`).toBe(200);
     const userId = typeof who?.user?.id === "string" ? who.user.id : "";
     expect(userId, "посев: край не назвал человека сессии").not.toBe("");
-    const h = { seed, human, userId };
+    const h: KeysHuman = { seed, human, userId, backupCodes: factor?.backupCodes ?? [] };
     await before(h);
     await transferSession(seed, context);
+    if (level === "1") h.backupCodes = await secondFactorAside(testInfo, human);
     return await body(h);
   } finally {
     await seed.dispose();
@@ -437,6 +457,83 @@ test("F8-51 · сессия не свежа: окно повышения, зат
     await expect(s.item("key-f8-51"), "ключ не заведён после повышения").toBeVisible({ timeout: 30_000 });
     expect(new URL(page.url()).pathname).toBe("/settings");
   });
+});
+
+test("KN747-02-console · сессия «1» у человека с кодом: регистрация ключа открывает окно повышения, после запасного кода тот же шаг заводит ключ", async ({
+  page,
+}, testInfo) => {
+  // verifies #3193 — п. 5 DoD PRO-Robotech/kaname#747 (приёмка
+  // level-two-is-enrolled-at-level-two, KN747-02 на экране). Близнец — F8-50:
+  // изменено одно — сессия браузера уровня «1» (код заведён другим посевом).
+  test.setTimeout(150_000);
+  await pageAuthenticator(page, true);
+  await withKeysHuman(
+    testInfo,
+    "KN747-02-console",
+    page.context(),
+    async (h) => {
+      const census = ceremonyCensus(page.context());
+      const s = await openKeys(page);
+      await expect(s.empty, "у человека уже есть ключи — «Дано» не построено").toBeVisible();
+      const begin = `${keysOf(h.userId)}:beginRegistration`;
+
+      const refused = answerTo(page, "POST", begin);
+      const retried = page.waitForResponse(
+        (r) => r.request().method() === "POST" && new URL(r.url()).pathname === begin && r.status() === 200,
+      );
+      // Приём результата консоль шлёт сразу за повторной выдачей испытания:
+      // ожидание ставится ДО повышения.
+      const finishedAnswer = answerTo(page, "POST", keysOf(h.userId));
+      await s.name.fill("key-kn747-02");
+      await s.add.click();
+
+      // Первый шаг — указание повысить уровень (KN747-02): 401, код 16, вызов уровня «2».
+      const first = await refused;
+      const challenge = first.headers()["www-authenticate"] ?? "";
+      expect(
+        {
+          status: first.status(),
+          floor: challenge.includes('error="insufficient_user_authentication"') && challenge.includes('acr_values="2"'),
+        },
+        `выдача испытания на сессии «1» ответила не указанием повысить уровень: ${first.status()} ${challenge} ` +
+          (await first.text()),
+      ).toEqual({ status: 401, floor: true });
+      expect(((await first.json()) as { code?: number }).code).toBe(16);
+
+      // Окно повышения на вызов уровня: пароля в выборе нет, запасной код поднимает «2».
+      const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
+      await expect(dialog, "консоль не открыла окно повышения на указание повысить уровень").toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Паролем" }), "пароль предложен на вызов уровня").toHaveCount(0);
+      await dialog.getByRole("radio", { name: "Запасной код" }).check();
+      await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(h.backupCodes[0]);
+      const [raised] = await Promise.all([
+        answerTo(page, "POST", STEP_UP),
+        dialog.getByRole("button", { name: "Подтвердить" }).click(),
+      ]);
+      expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
+      await expect(dialog).toBeHidden();
+
+      // Тот же шаг повторён сам и завершён: испытание выдано, ключ заведён и показан.
+      const again = await retried;
+      await rpCondition(again, testInfo);
+      const finished = await finishedAnswer;
+      await originCondition(finished, testInfo);
+      expect(finished.status(), `приём результата после повышения отвергнут: ${await finished.text()}`).toBe(200);
+      await expect(s.item("key-kn747-02"), "ключ не заведён после повышения").toBeVisible({ timeout: 30_000 });
+      await expect(s.list.getByRole("listitem")).toHaveCount(1);
+
+      expect(
+        census.matching("POST", begin).map((c) => c.outcome),
+        `выдача испытания: отказ по уровню, затем тот же шаг:\n${census.describe()}`,
+      ).toEqual([401, 200]);
+      expect(census.matching("POST", STEP_UP).map((c) => c.outcome), census.describe()).toEqual([200]);
+      expect(census.matching("POST", keysOf(h.userId)).map((c) => c.outcome), census.describe()).toEqual([200]);
+      expectNoProvider(census);
+      expect(new URL(page.url()).pathname).toBe("/settings");
+    },
+    async () => undefined,
+    "1",
+  );
 });
 
 test("F8-56 · удаление ключа: ключ уходит из перечня, служба его больше не принимает, второй цел", async ({

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type BrowserContext, type Page, type Response, type TestInfo } from "@playwright/test";
-import { pageAuthenticator, type PageAuthenticator } from "./access-key-seed";
+import { pageAuthenticator, raiseSeedToLevelTwo, type PageAuthenticator } from "./access-key-seed";
 import { captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
@@ -74,6 +74,12 @@ import { ACCESS_KEY_LIFECYCLE_CONDITIONS, FIXTURE_UNMET_PREFIX } from "./produce
  * консоль не вправе отправить службе чужое происхождение, и проба утверждает
  * это раньше, чем читает ответ. Без второго признака любая подмена
  * происхождения пряталась бы за «не выполнилось».
+ *
+ * «ДАНО» — ЧЕЛОВЕК С КОДОМ И СЕССИЕЙ «2». У регистрации и снятия ключа пол «2»
+ * (kaname#747, Р3), и человек пути заводит код посевом до переноса сессии в
+ * браузер — путь, который приёмка оставила законным (Р2). Свежая сессия «1»
+ * открыла бы на экране окно повышения: это предмет своей пробы
+ * (`account-access-keys.spec.ts`, KN747-02-console), а не пути.
  *
  * ЧЕГО ЗДЕСЬ НЕТ НАМЕРЕННО: ожидания временем (ждётся условие — раздел, ответ,
  * адрес); подставленных ответов (каждый ответ — служба через край); общего
@@ -413,6 +419,9 @@ async function walkLifecycle(page: Page, testInfo: TestInfo, scenario: string, u
   const seed = await newSeed(testInfo);
   try {
     await seedConfirmedHuman(seed, seedAddress(scenario));
+    // Сессия «2» — до переноса в браузер: у регистрации ключа пол «2»
+    // (kaname#747, Р3). Снятие ключа идёт после входа ключом, уровнем «3».
+    await raiseSeedToLevelTwo(seed);
     const me = await seed.read(SESSION_IDENTITY);
     expect(me.status(), `посев: ответ края о сессии — ${me.status()}`).toBe(200);
     const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;

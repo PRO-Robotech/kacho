@@ -5,7 +5,16 @@ import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign, t
 import { expect, type APIResponse, type CDPSession, type Page, type TestInfo } from "@playwright/test";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import { ORIGIN_NOT_ALLOWED } from "./access-key-texts";
-import { SESSION_IDENTITY, lastIssued, newSeed, type Seed } from "./ceremony-seed";
+import {
+  LANE,
+  SESSION_IDENTITY,
+  lastIssued,
+  newSeed,
+  seedSecondFactor,
+  type Seed,
+  type SeededHuman,
+  type SeededSecondFactor,
+} from "./ceremony-seed";
 import { ConditionNotCreated, conditionNotCreated } from "./mail-receiver";
 import { attachSourceAxisRecords } from "./source-axis-records";
 import { FIXTURE_UNMET_PREFIX } from "./producer-answers";
@@ -46,6 +55,15 @@ import { FIXTURE_UNMET_PREFIX } from "./producer-answers";
  * объявленного перечня. Отказ регистрации причиной «происхождение не в перечне»
  * — условие стенда, а не исход экрана: посев называет его «условие не создано»,
  * и сценарий не краснеет за чужую причину.
+ *
+ * УРОВЕНЬ «2» (приёмка kaname level-two-is-enrolled-at-level-two, Р2, Р3;
+ * kaname#747). У трёх глаголов ключа — обоих шагов регистрации и снятия — пол
+ * «2». Посев К поэтому заводит ключ сессией «2» путём, который приёмка оставила
+ * законным: человек с паролем заводит код и подтверждает его — подтверждение
+ * перевыпускает сессию посева уровнем «2» (`raiseSeedToLevelTwo`). Там, где
+ * «Дано» сценария — человек без кода, код снимается запасным кодом после
+ * регистрации (`dropSeedSecondFactor`); уровень сессии посева остаётся «2».
+ * Отказ по уровню посев «условием не создано» НЕ называет: это исход продукта.
  *
  * ОСЬ ИСТОЧНИКА. Глаголы Ф7 не пишут ни в один счёт источника (N14): посев К
  * ключа оси не тратит. Обращения посева перепись страниц не видит — они идут
@@ -217,7 +235,8 @@ export async function submitRegistration(
 
 /**
  * Завести ключ человеку посева глаголами Ф7 через край. Посев держит сессию
- * П-п; регистрация идёт сразу после неё — внутри окна свежести Ф7 Р5.
+ * П-п уровня «2» (`raiseSeedToLevelTwo` — «Дано» вызывающего); регистрация идёт
+ * сразу после неё — внутри окна свежести Ф7 Р5.
  */
 export async function seedAccessKey(
   seed: Seed,
@@ -251,6 +270,62 @@ export async function seedAccessKey(
   expect(accessKeyId, "посев К: операция регистрации не назвала ключ").not.toBe("");
 
   return { ...key, accessKeyId };
+}
+
+/**
+ * Поднять сессию посева до «2» (kaname#747, Р2): завести и подтвердить код
+ * (`seedSecondFactor`). Шаг утверждает уровень из ответа подтверждения: без «2»
+ * регистрация и снятие ключа упрутся в пол, и падение назвало бы виновником
+ * чужой шаг.
+ */
+export async function raiseSeedToLevelTwo(seed: Seed): Promise<SeededSecondFactor> {
+  const factor = await seedSecondFactor(seed);
+  expect(factor.assuranceLevel, "посев К: подтверждение второго фактора обязано поднять сессию посева до «2»").toBe(
+    "2",
+  );
+  return factor;
+}
+
+/**
+ * Снять код посева запасным кодом глаголом полосы (Ф12-28) — «Дано» человека без
+ * кода после регистрации ключа. Снятие предъявляет код в той же сессии, поэтому
+ * её уровень остаётся «2», и снятие ключа тем же посевом проходит пол. Прочие
+ * сессии человека снятие гасит — посев зовёт его до переноса носителя в браузер.
+ * Утверждается исход и уровень из ответа края о сессии.
+ */
+export async function dropSeedSecondFactor(seed: Seed, factor: SeededSecondFactor): Promise<void> {
+  const code = factor.backupCodes[0];
+  const removed = await seed.submit(LANE.remove, "second-factor", { method: "lookup_secret", code });
+  expect(
+    removed.status(),
+    `посев К: снятие кода запасным кодом отвергнуто — ${removed.status()} ${JSON.stringify(lastIssued(seed, LANE.remove).body)}`,
+  ).toBe(200);
+  const me = await seed.read(SESSION_IDENTITY);
+  const view = lastIssued(seed, SESSION_IDENTITY).body as { session?: { assuranceLevel?: unknown } } | null;
+  expect(
+    { status: me.status(), level: String(view?.session?.assuranceLevel ?? "") },
+    "посев К: после снятия кода сессия посева обязана остаться «2» (запасной код предъявлен в ней)",
+  ).toEqual({ status: 200, level: "2" });
+}
+
+/**
+ * Код человеку — в ОТДЕЛЬНОМ контексте посева тем же адресом и паролем: сессия,
+ * уже перенесённая в браузер, остаётся прежней, уровня «1» (подтверждение кода
+ * прочих сессий не гасит). Возвращает запасные коды: код по времени истрачен
+ * подтверждением, и повышение в браузере идёт запасным.
+ */
+export async function secondFactorAside(testInfo: TestInfo, human: SeededHuman): Promise<string[]> {
+  const aside = await newSeed(testInfo);
+  try {
+    const res = await aside.submit(LANE.login, "login", { email: human.email, password: human.password });
+    expect(
+      res.status(),
+      `посев 2Ф: вход ${human.email} отвергнут — ${res.status()} ${JSON.stringify(lastIssued(aside, LANE.login).body)}`,
+    ).toBe(200);
+    return (await seedSecondFactor(aside)).backupCodes;
+  } finally {
+    await aside.dispose();
+  }
 }
 
 /**
