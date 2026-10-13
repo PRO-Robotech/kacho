@@ -16,6 +16,7 @@ import { isRegistration, noteRegistration } from "./registration-budget.ts";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
+import { traceSeed } from "./seed-trace";
 
 /**
  * Посев «Дано» сценариев церемонии — глаголами НАШЕЙ службы, отдельным
@@ -195,6 +196,8 @@ export async function newSeed(
     storageState: { cookies: [...carrying], origins: [] },
   });
   carryStandCookies(api, async () => (await api.storageState()).cookies, use.baseURL);
+  // Запись посева — вложение «trace» упавшей пробы без страницы (kacho#3200).
+  const close = await traceSeed(api, testInfo);
   const issued: IssuedCall[] = [];
   const seed: Seed = {
     api,
@@ -239,7 +242,7 @@ export async function newSeed(
       const state = await api.storageState();
       return state.cookies.find((c) => c.name === SESSION_COOKIE)?.value ?? "";
     },
-    dispose: () => api.dispose(),
+    dispose: close,
   };
   return seed;
 }

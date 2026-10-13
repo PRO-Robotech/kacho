@@ -1130,11 +1130,15 @@ jobs:
         if: ${{ always() && (steps.probes.outcome == 'failure' || steps.report-gate.outcome == 'failure') }}
         timeout-minutes: 3
         run: |
+          # Кластера нет (стенд не поднимался либо внешний адрес консоли) —
+          # страж печатает ПРИЧИНУ, и шаг выходит успехом: журнала нет, вердикта
+          # шаг не выносит.
+          "$GITHUB_WORKSPACE/.github/scripts/stand-present-or-explain.sh" "стенд консоли" || exit 0
           out="ui-future/e2e/stand-logs"
           mkdir -p "$out"
           pods="$(kubectl -n kacho get pods -o name 2>/dev/null | grep -E '^pod/(api-gateway|kaname)-' || true)"
           if [ -z "$pods" ]; then
-            echo "под края и службы прав не найдены — журнала нет (кластера нет либо внешний адрес консоли)"
+            echo "под края и службы прав не найдены — журнала нет"
             exit 0
           fi
           kubectl -n kacho get pods -o wide > "$out/pods.txt" 2>&1 || true
