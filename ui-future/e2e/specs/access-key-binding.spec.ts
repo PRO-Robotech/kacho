@@ -5,6 +5,7 @@ import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { expect, type TestInfo } from "@playwright/test";
 import {
   presentAccessKey,
+  raiseSeedToLevelTwo,
   revokeAccessKey,
   seedAccessKey,
   submitRegistration,
@@ -86,6 +87,9 @@ async function withKeyHolder(
   let key: (SeededAccessKey & PresentableKey) | undefined;
   try {
     await seedConfirmedHuman(seed, seedAddress(scenario));
+    // Пол «2» регистрации и снятия ключа (kaname#747, Р3): иначе отказ по уровню
+    // пришёл бы раньше отказа, который утверждает проба привязки.
+    await raiseSeedToLevelTwo(seed);
     key = { ...(await seedAccessKey(seed, testInfo.project.use.baseURL, { userVerification: true })), signCount: 0 };
     await body(seed, key);
   } finally {

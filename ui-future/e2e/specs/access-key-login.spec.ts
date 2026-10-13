@@ -3,7 +3,14 @@
 
 import { generateKeyPairSync } from "node:crypto";
 import { expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
-import { authenticatorWithKey, revokeAccessKey, seedAccessKey, type SeededAccessKey } from "./access-key-seed";
+import {
+  authenticatorWithKey,
+  dropSeedSecondFactor,
+  raiseSeedToLevelTwo,
+  revokeAccessKey,
+  seedAccessKey,
+  type SeededAccessKey,
+} from "./access-key-seed";
 import { captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
@@ -11,7 +18,6 @@ import {
   newSeed,
   seedAddress,
   seedConfirmedHuman,
-  seedSecondFactor,
 } from "./ceremony-seed";
 import { ceremonyCensus, formatCall, test, watchRefusals, type CeremonyCensus } from "./fixtures";
 
@@ -146,8 +152,10 @@ interface Given {
 }
 
 /**
- * Посев П-п и посев К (либо К-снят) своим контекстом запросов. `secondFactor` —
- * до посева К человеку заводится второй фактор (F8S4-10).
+ * Посев П-п и посев К (либо К-снят) своим контекстом запросов. Ключ заводится
+ * и снимается сессией «2» (пол kaname#747, Р3): до посева К человеку заводится
+ * код. `secondFactor` — код остаётся (F8S4-10); без него код снимается запасным
+ * кодом после посева К, и «Дано» — человек с паролем и ключом, без кода.
  */
 async function given(
   testInfo: TestInfo,
@@ -157,11 +165,12 @@ async function given(
   const seed = await newSeed(testInfo);
   try {
     const human = await seedConfirmedHuman(seed, seedAddress(scenario));
-    if (opts.secondFactor) await seedSecondFactor(seed);
+    const factor = await raiseSeedToLevelTwo(seed);
     const key = await seedAccessKey(seed, testInfo.project.use.baseURL, {
       userVerification: opts.userVerification ?? true,
     });
     if (opts.revoked) await revokeAccessKey(seed, key);
+    if (!opts.secondFactor) await dropSeedSecondFactor(seed, factor);
     return { human, key };
   } finally {
     await seed.dispose();

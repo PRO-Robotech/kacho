@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { test } from "@playwright/test";
-import { accessKeyOriginCondition } from "../specs/access-key-seed";
+import { accessKeyOriginCondition, raiseSeedToLevelTwo } from "../specs/access-key-seed";
 import { seedAddress, seedConfirmedHuman } from "../specs/ceremony-seed";
 
 /**
@@ -35,6 +35,10 @@ import { seedAddress, seedConfirmedHuman } from "../specs/ceremony-seed";
  * дефект в «не выполнилось», то есть стало бы маской. Такой отказ условие
  * пропускает и кладёт его текст вложением.
  *
+ * «Дано» — человек П-п с сессией «2» (kaname#747, Р3): у регистрации и снятия
+ * ключа пол «2», и условие, заводящее ключ сессией «1», получало бы отказ по
+ * уровню — не по происхождению — и о П4 не говорило бы ничего.
+ *
  * Ключ, заведённый условием, снимается тем же заходом — прогон не оставляет
  * его за собой. Тело условия — `accessKeyOriginCondition` (`specs/access-key-seed.ts`):
  * его же исполняет самопроверка `scripts/access-key-origin-selftest.ts` против
@@ -46,6 +50,7 @@ test("условие части набора F8-S4 §4 П4 · служба пр�
 }, testInfo) => {
   const outcome = await accessKeyOriginCondition(testInfo, async (seed) => {
     await seedConfirmedHuman(seed, seedAddress("access-key-origin"));
+    await raiseSeedToLevelTwo(seed);
   });
   console.log(`[F8-S4 П4] ${outcome}`);
 });
