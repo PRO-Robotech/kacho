@@ -8,7 +8,9 @@
 
 1. **mints/destroys a credential** (bearer token, SA key); **or**
 2. **creates/modifies/removes a privilege-grant OR a live authorization-policy artifact** through which a grant resolves (binding, group-membership, role policy, condition) — i.e. it immediately changes some existing subject's effective privilege, **domain-agnostic**; **or**
-3. **irreversibly destroys a tenancy-root** (account/project — cascade + deletion-protection).
+3. **irreversibly destroys a tenancy-root** (account/project — cascade + deletion-protection); **or**
+4. **заводит или снимает способ входа, который сам даёт «2»** — ключ доступа: одно предъявление ключа даёт «2», поэтому заводится и снимается он только сессией, уже достигшей «2», и пол заведения не ниже пола выпуска личного токена (решение службы, PRO-Robotech/kaname#747, Р1, Р3); **or**
+5. **необратимо снимает субъекта** — человека или сервисный аккаунт: снятие не дешевле обратимых соседей `Block`/`Unblock` и `Disable`/`Enable`, уже требующих «2» (решение службы, PRO-Robotech/kaname#720, Р12).
 
 Every other non-exempt RPC is routine `required_acr_min="1"` (ordinary AAL1 auth). This follows RFC 9470 (OAuth 2.0 Step-Up Authentication Challenge §1) and NIST SP 800-63B (raise AAL for authenticator/privilege changes, not for routine access).
 
@@ -34,7 +36,21 @@ Measured on the retirement of the tenant condition surface:
 The six removed entries are exactly `ConditionsService/{Get,List,Create,Update,Delete,Evaluate}`;
 nothing was added. Both embedded catalog copies (gateway `gateway/internal/middleware/embed/` + iam `services/iam/internal/apps/kaname/seed/embedded/`) are byte-identical (CI gate `make permission-catalog-check`).
 
-The sensitive set, enumerated from the file rather than recalled (24 entries): 4 credential
+Перемерено на подъёме пина службы до `kaname@68541f0d` (kacho#3193), по файлу
+`gateway/internal/middleware/embed/permission_catalog.json` после `make permission-catalog-apply`:
+
+| | entries | `"2"` | `"1"` | `""` |
+|---|---|---|---|---|
+| before (`fd9f1793`) | 359 | 33 | 297 | 29 |
+| after | 359 | 38 | 292 | 29 |
+
+Пять записей перешли из «1» в «2», записей не заведено и не снято:
+`AccessKeyService/{BeginRegistration,FinishRegistration,Revoke}` (критерий 4) и
+`UserService/Delete`, `ServiceAccountService/Delete` (критерий 5). Перечень полосы «2»
+утверждает проба `gateway/internal/middleware/permission_catalog_acr_invariant_test.go`
+(`sensitiveACR2FQNs`); числа ниже по тексту — история прежних ревизий, а не состояние дерева.
+
+The sensitive set as it stood on the retirement of the tenant condition surface (24 entries): 4 credential
 (UserToken Issue/Revoke, SAKey Issue/Revoke) · 4 AccessBinding Create/Update/Delete/Revoke ·
 3 Group AddMember/RemoveMember/**Delete** · 2 Role Update/Delete · 2 InternalCluster
 Grant/RevokeAdmin · 2 Account/Project Delete · 2 ServiceAccount Disable/Enable · 2 User
@@ -50,7 +66,7 @@ no policy artifact of that kind left to step up for.
 
 - **B1 — AccessBindingService/Create = net-strengthening.** `permission="<exempt>"` (the scope-Check stays skipped, handler `requireGrantAuthority` is the precise gate) **and** `required_acr_min="2"` — the two catalog fields are orthogonal; `StepUpGate` keys on FQN+acr, not scope. Adding acr=2 closes the "create-a-new-binding instead of Update/Delete/Revoke" step-up bypass without touching the relation model.
 - **B2 — Group membership + Group/Delete = sensitive.** A non-empty group's membership materializes/revokes its bindings' privileges. `GroupService/Delete` is **revoke-by-all** (cascade `group_members` + cleanup of group-targeted `AccessBinding.subject_id`) — strictly more impactful than `RemoveMember`, same destructive-revoke class as `RoleService/Delete`.
-- **B3 — subject-delete = routine.** `ServiceAccountService/Delete`, `UserService/Delete` are neither grant, credential-destroy, nor tenancy-root cascade. Lockout symmetry is preserved by keeping `UserTokenService/Revoke` + `SAKeyService/Revoke` sensitive (A).
+- **B3 — снятие субъекта = «2» (пересмотрено).** `ServiceAccountService/Delete` и `UserService/Delete` несут `required_acr_min="2"` по решению службы (PRO-Robotech/kaname#720, Р12; критерий 5 выше). Прежнее решение «subject-delete = routine» отозвано: снятие необратимо, а его обратимые соседи `Disable`/`Enable` и `Block`/`Unblock` уже требовали «2», то есть необратимое было дешевле обратимого.
 - **B5 — non-iam `Internal*`-admin (42) = routine.** Admin-curated platform-catalog / data-plane-wiring mutations are posture-neutral; still gated by the `system_admin`/`system_viewer` relation check + mTLS + (for module-SA callers) the O-1 acr-exemption.
 - **B6 — author-inert create = routine.** `RoleService/Create`, `GroupService/Create` produce an inert artifact (no holders / no referencing bindings / empty group) — access is conferred only through a now-sensitive grant verb.
 
