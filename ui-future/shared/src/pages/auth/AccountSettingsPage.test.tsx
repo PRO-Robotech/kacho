@@ -1194,6 +1194,39 @@ function enterCode(region: HTMLElement, code: string) {
   fireEvent.click(within(region).getByRole("button", { name: "Подтвердить" }));
 }
 
+/** Отказ по уровню, как его производит служба (EC Р2): `401`, `code 16`, вызов RFC 9470. */
+const LEVEL_REFUSAL: LaneAnswer = {
+  status: 401,
+  headers: { "WWW-Authenticate": 'Bearer realm="kacho", error="insufficient_user_authentication", acr_values="2"' },
+  body: {
+    code: 16,
+    message:
+      "authentication level is insufficient: step up with a second factor, or present a credential of another kind",
+    details: [],
+  },
+};
+const STEP_UP_DONE: LaneAnswer = {
+  status: 200,
+  body: { session: SESSION, assurance: { level: "2", level2Reachable: true, missingForLevel2: [] } },
+};
+const STEP_UP_NOT_DONE = "Подтверждение личности не состоялось: смена адреса требует второго фактора";
+const RETRY_WITH_STEP_UP = "Повторить с подтверждением";
+
+/** Окно повышения: «Отменить». */
+async function cancelStepUp() {
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Отменить" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+}
+
+/** Окно повышения: запасной код и «Подтвердить». */
+async function stepUpWithBackupCode() {
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByLabelText("Запасной код"));
+  fireEvent.change(within(dialog).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
+}
+
 describe("смена адреса почты (F8-S6)", () => {
   it("F8S6-01 · покой → форма → код → подтверждение: отсчёт по Retry-After, затем новый адрес и «Адрес подтверждён»", async () => {
     let changed = false;
@@ -1415,6 +1448,99 @@ describe("смена адреса почты (F8-S6)", () => {
     expect(await within(region).findByText("Отправить снова можно через 60 с")).toBeInTheDocument();
     expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL]);
     await codeState(region);
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
+  });
+  it("F8S6-15 · отказ по уровню на предъявлении, повышение отменено: назван как есть, код цел, «кто я» не спрошен; повтор через повышение", async () => {
+    let changed = false;
+    lane = installLane({
+      "GET /iam/v1/auth/me": () => (changed ? CHANGED_ME : VERIFIED_ME),
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      "POST /iam/v1/auth/step-up": STEP_UP_DONE,
+      [`POST ${CHANGE}`]: CHANGE_ACCEPTED("60"),
+      [`POST ${CHANGE_CONFIRM}`]: (_c, nth) => {
+        if (nth <= 2) return LEVEL_REFUSAL;
+        changed = true;
+        return { status: 200, body: { session: CONFIRMED_SESSION } };
+      },
+    });
+    const leave = jest.fn();
+    renderPageLeaving(leave);
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const meBefore = lane.of("GET", "/iam/v1/auth/me").length;
+    enterCode(region, "ABCDE-FGHJK");
+    await cancelStepUp();
+    // (а) отказ назван как есть: код не проверялся — «Код не подошёл» ложь.
+    expect(await within(region).findByText(STEP_UP_NOT_DONE)).toBeInTheDocument();
+    expect(within(region).queryByText("Код не подошёл")).toBeNull();
+    expect(within(region).getByLabelText<HTMLInputElement>("Код из письма").value).toBe("ABCDE-FGHJK");
+    await codeState(region);
+    expect(lane.of("GET", "/iam/v1/auth/me").length - meBefore).toBe(0);
+    expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(1);
+    expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(0);
+    expect(leave).not.toHaveBeenCalled();
+    // (б) повтор тем же кодом через повышение.
+    fireEvent.click(within(region).getByRole("button", { name: RETRY_WITH_STEP_UP }));
+    await stepUpWithBackupCode();
+    expect(await within(region).findByRole("button", { name: "Сменить адрес" })).toBeInTheDocument();
+    await waitFor(() => expect(region).toHaveTextContent(NEW_EMAIL));
+    expect(lane.of("POST", CHANGE_CONFIRM).map((c) => c.body?.code)).toEqual([
+      "ABCDE-FGHJK",
+      "ABCDE-FGHJK",
+      "ABCDE-FGHJK",
+    ]);
+    expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1);
+  });
+
+  it("F8S6-16 · отказ по уровню на запросе, повышение отменено: назван как есть, адрес цел, состояние «форма»; повтор через повышение", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      "POST /iam/v1/auth/step-up": STEP_UP_DONE,
+      [`POST ${CHANGE}`]: (_c, nth) => (nth <= 2 ? LEVEL_REFUSAL : CHANGE_ACCEPTED("60")),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await cancelStepUp();
+    // (а) отказ назван как есть; адрес в поле, экран — «форма».
+    expect(await within(region).findByText(STEP_UP_NOT_DONE)).toBeInTheDocument();
+    expect(within(region).getByLabelText<HTMLInputElement>("Новый адрес").value).toBe(NEW_EMAIL);
+    expect(within(region).queryByLabelText("Код из письма")).toBeNull();
+    expect(region).toHaveTextContent("a@kacho.local");
+    expect(lane.of("POST", CHANGE)).toHaveLength(1);
+    expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(0);
+    // (б) повтор тем же адресом через повышение → «код».
+    fireEvent.click(within(region).getByRole("button", { name: RETRY_WITH_STEP_UP }));
+    await stepUpWithBackupCode();
+    await codeState(region);
+    expect(within(region).getByText("Отправить снова можно через 60 с")).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL, NEW_EMAIL]);
+    expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1);
+  });
+  it("F8S6-16 · отказ по уровню на «Отправить снова» в состоянии «код»: повтор — тот же запрос с тем же адресом, а не предъявление", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": VERIFIED_ME,
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      "POST /iam/v1/auth/step-up": STEP_UP_DONE,
+      [`POST ${CHANGE}`]: (_c, nth) =>
+        nth === 1 ? CHANGE_ACCEPTED("1") : nth <= 3 ? LEVEL_REFUSAL : CHANGE_ACCEPTED("60"),
+    });
+    renderPage();
+    const region = await accountRegion();
+    await submitNewEmail(region);
+    await codeState(region);
+    const again = within(region).getByRole("button", { name: "Отправить снова" });
+    await waitFor(() => expect(again).toBeEnabled(), { timeout: 3000 });
+    fireEvent.click(again);
+    await cancelStepUp();
+    expect(await within(region).findByText(STEP_UP_NOT_DONE)).toBeInTheDocument();
+    await codeState(region);
+    fireEvent.click(within(region).getByRole("button", { name: RETRY_WITH_STEP_UP }));
+    await stepUpWithBackupCode();
+    expect(await within(region).findByText("Отправить снова можно через 60 с")).toBeInTheDocument();
+    expect(lane.of("POST", CHANGE).map((c) => c.body?.newEmail)).toEqual([NEW_EMAIL, NEW_EMAIL, NEW_EMAIL, NEW_EMAIL]);
     expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
   });
 });

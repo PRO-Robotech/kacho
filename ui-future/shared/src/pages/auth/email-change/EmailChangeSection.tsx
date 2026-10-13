@@ -35,7 +35,17 @@ import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "../ceremony-addresses";
 //
 //   • `400` о поле — текст службы у поля, состояние сохраняется;
 //   • `403 SESSION_NOT_FRESH` — повышение и один повтор делает клиент полосы;
-//   • `401` на предъявлении — ОДИН вопрос «кто я»: человек есть — «Код не
+//   • `401` с вызовом `insufficient_user_authentication` на любом из двух
+//     путей — отказ по УРОВНЮ (EC Р2, §1.4в): повышение вторым фактором и
+//     один повтор делает клиент полосы. До экрана он доходит, лишь когда
+//     повышение не состоялось (отменено или не прошло): экран называет его
+//     как есть — «Подтверждение личности не состоялось…» — и предлагает
+//     «Повторить с подтверждением» тем же глаголом с тем же вводом, то есть
+//     снова через повышение. Состояние и ввод сохраняются. Вопроса «кто я»
+//     нет: при живой сессии он ответил бы `200` на оба `401`, и отказ по
+//     уровню был бы назван неподошедшим кодом, которого никто не проверял.
+//     Различает отказы машинный признак вызова, а не статус;
+//   • `401` без такого вызова на предъявлении — ОДИН вопрос «кто я»: человек есть — «Код не
 //     подошёл», поле кода очищено; сессии нет — экран входа. Неподошедший код и
 //     снятая сессия отвечают одним `401`, различает их ответ края о сессии
 //     (§1.4б, образец — экран подтверждения адреса). Второго предъявления нет;
@@ -56,6 +66,11 @@ function waitText(action: string, seconds: number): string {
 export const CODE_REJECTED_TEXT = "Код не подошёл";
 export const EMAIL_IN_USE_TEXT = "Этот адрес уже используется";
 export const TOO_MANY_ATTEMPTS_TEXT = "Слишком много попыток";
+export const STEP_UP_NOT_DONE_TEXT = "Подтверждение личности не состоялось: смена адреса требует второго фактора";
+export const RETRY_WITH_STEP_UP_TEXT = "Повторить с подтверждением";
+
+/** Признак вызова края о полу уровня (RFC 9470): отказ по уровню, а не о коде. */
+const LEVEL_CHALLENGE = "insufficient_user_authentication";
 
 function sentText(email: string): string {
   return `Письмо с кодом отправлено на ${email}, если этот адрес может быть использован`;
@@ -77,8 +92,19 @@ function useCountdown(): [number | null, (s: number | null) => void] {
   return [left, setLeft];
 }
 
+/**
+ * Повтор после несостоявшегося повышения — тот же глагол с тем же вводом:
+ * запрос — с адресом, с которым он ушёл («Отправить снова» в состоянии «код» —
+ * тоже запрос), предъявление — с кодом из поля.
+ */
+type Retry = { verb: "request"; address: string } | { verb: "confirm" };
+
 /** Что показано под формой: исход последнего действия — один, новый замещает прежний. */
-type Notice = { kind: "refused"; refusal: LaneRefusal } | { kind: "text"; text: string };
+type Notice =
+  | { kind: "refused"; refusal: LaneRefusal }
+  | { kind: "text"; text: string }
+  // Повышение не состоялось; кнопка — `Retry`.
+  | { kind: "step-up-not-done"; retry: Retry };
 
 function markedBy(inputId: string, error: string | null) {
   return error
@@ -109,8 +135,12 @@ function ChangeForm({
   const [requestWait, setRequestWait] = useCountdown();
   const [confirmWait, setConfirmWait] = useCountdown();
 
-  /** Отказ, общий обоим глаголам: темп и поле — по Р4; прочее — дословно. */
-  const refused = (refusal: LaneRefusal, onWait: (s: number | null) => void) => {
+  /** Отказ, общий обоим глаголам: уровень, темп и поле — по Р4; прочее — дословно. */
+  const refused = (refusal: LaneRefusal, onWait: (s: number | null) => void, retry: Retry) => {
+    if (refusal.challenge === LEVEL_CHALLENGE) {
+      setNotice({ kind: "step-up-not-done", retry });
+      return;
+    }
     if (refusal.reason === LANE_REASON.tooManyAttempts) {
       setNotice({ kind: "text", text: TOO_MANY_ATTEMPTS_TEXT });
       onWait(refusal.retryAfterSeconds);
@@ -135,7 +165,7 @@ function ChangeForm({
       setStage("code");
       setRequestWait(retryAfterSeconds);
     } catch (err) {
-      refused(laneRefusalOf(err), setRequestWait);
+      refused(laneRefusalOf(err), setRequestWait, { verb: "request", address });
     }
     setBusy(null);
   };
@@ -154,7 +184,10 @@ function ChangeForm({
       return;
     } catch (err) {
       const refusal = laneRefusalOf(err);
-      if (refusal.status === 401) {
+      if (refusal.challenge === LEVEL_CHALLENGE) {
+        // Код не проверялся: он остаётся в поле, «кто я» не спрашивается.
+        refused(refusal, setConfirmWait, { verb: "confirm" });
+      } else if (refusal.status === 401) {
         // Один вопрос «кто я»: он различает неподошедший код и снятую сессию.
         const who = await sessionIdentity();
         if (who.kind === "absent") {
@@ -172,7 +205,7 @@ function ChangeForm({
         setStage("form");
         setNotice({ kind: "text", text: EMAIL_IN_USE_TEXT });
       } else {
-        refused(refusal, setConfirmWait);
+        refused(refusal, setConfirmWait, { verb: "confirm" });
       }
     }
     setBusy(null);
@@ -183,11 +216,25 @@ function ChangeForm({
   const emailError = fieldError?.field === "newEmail" ? fieldError.text : null;
   const codeError = fieldError?.field === "code" ? fieldError.text : null;
 
+  /** Повтор того же глагола с тем же вводом — снова через клиент полосы и его повышение. */
+  const retryAfterStepUp = (retry: Retry) => void (retry.verb === "request" ? request(retry.address) : confirm());
+
   const noticeView =
     notice === null ? null : (
       <div style={{ marginBottom: 12 }}>
         {notice.kind === "refused" ? (
           <LaneRefusalAlert refusal={notice.refusal} />
+        ) : notice.kind === "step-up-not-done" ? (
+          <Alert
+            type="error"
+            showIcon
+            message={STEP_UP_NOT_DONE_TEXT}
+            action={
+              <Button size="small" onClick={() => retryAfterStepUp(notice.retry)} disabled={busy !== null}>
+                {RETRY_WITH_STEP_UP_TEXT}
+              </Button>
+            }
+          />
         ) : (
           <Alert type="error" showIcon message={notice.text} />
         )}
