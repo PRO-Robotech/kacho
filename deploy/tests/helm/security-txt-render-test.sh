@@ -76,7 +76,7 @@ done
 [ "$judged" -gt 0 ] || violation "ни в одной цепочке карты security.txt нет — обход пуст"
 
 # ── Инъекции на настоящем рендере ───────────────────────────────────────────
-s1="$(printf '%s\n' "$STACKS" | head -1)"
+s1="$(printf '%s\n' "$STACKS" | sed -n 1p)"
 c="$WORK/$s1.1.card"
 if [ -s "$c" ]; then
   sed -E "s/^([[:space:]]*Expires: ).*/\1$(date +%Y-%m-%dT%H:%M:%S.%NZ)/" "$c" > "$WORK/inj1"

@@ -154,7 +154,7 @@ run_checks() {
   local val
   helm_try geo-edge "$chart" --set mtls.enable=true --set mtls.edges.iamAuthz=true
   render_nonempty_or_fatal "чарт geo (mtls.enable=true, mtls.edges.iamAuthz=true)"
-  val="$(printf '%s\n' "$HELM_OUT" | grep -A1 -- "- name: $KNOB" | sed -n 's/^ *value: *//p' | head -1 | tr -d '"[:space:]')"
+  val="$(printf '%s\n' "$HELM_OUT" | grep -A1 -- "- name: $KNOB" | sed -n 's/^ *value: *//p' | sed -n 1p | tr -d '"[:space:]')"
   [ "$val" = "true" ] || violation "чарт отдаёт $KNOB со значением '$val' (ожидалось true)"
   ok
 
@@ -178,7 +178,7 @@ if [ "${1:-}" = "--self-test" ]; then
   cp -r "$DEPLOY_ROOT/helm" "$tmp/helm"
 
   # (а) прямое снятие ручки в профиле.
-  first_profile="$(ls "$tmp"/helm/umbrella/values*.yaml | head -1)"
+  first_profile="$(ls "$tmp"/helm/umbrella/values*.yaml | sed -n 1p)"
   cp "$first_profile" "$first_profile.orig"
   awk '/^kacho-geo:/{print; print "  mtls:"; print "    edges:"; print "      iamAuthz: false"; next} {print}' \
     "$first_profile.orig" > "$first_profile"

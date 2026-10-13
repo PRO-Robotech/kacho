@@ -88,7 +88,7 @@ probe() {
   if [ -n "$want_txt" ]; then
     case "$out" in
       *"$want_txt"*) ;;
-      *) violation "$label: код $rc, вывод есть, но причина не названа ('$want_txt' нет): $(printf '%s' "$out" | head -1)"; return ;;
+      *) violation "$label: код $rc, вывод есть, но причина не названа ('$want_txt' нет): $(printf '%s' "$out" | sed -n 1p)"; return ;;
     esac
   fi
   ok

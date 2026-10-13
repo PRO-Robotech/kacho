@@ -75,7 +75,7 @@ require_file_present "$DEV" "values.dev.yaml"
 require_file_present "$MAKEFILE" "deploy/Makefile — предмет проверки берётся из него"
 
 # Локально собираемые сервисы — из Makefile, а не из копии списка здесь.
-SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | head -1)"
+SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | sed -n 1p)"
 [ -n "$SERVICES" ] || fatal "в deploy/Makefile не найден SERVICES — предпосылка проверки не выполняется"
 SERVICES_N="$(wc -w <<<"$SERVICES" | tr -d '[:space:]')"
 
