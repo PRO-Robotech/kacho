@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type APIResponse, type Page, type Response, type TestInfo } from "@playwright/test";
-import { pageAuthenticator, submitRegistration } from "./access-key-seed";
+import { pageAuthenticator, raiseSeedToLevelTwo, submitRegistration } from "./access-key-seed";
 import { ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import {
@@ -76,9 +76,13 @@ function consoleOrigin(testInfo: TestInfo): string {
 /** Происхождение, заведомо не объявленное ни одним стендом. */
 const FOREIGN_ORIGIN = "https://origin-not-declared.kacho.invalid";
 
-/** Человек сценария: свой посев, сессия; `userId` — из ответа края о сессии. */
+/**
+ * Человек сценария: свой посев, сессия уровня «2» — пол регистрации ключа
+ * (kaname#747, `raiseSeedToLevelTwo`); `userId` — из ответа края о сессии.
+ */
 async function seededHuman(seed: Seed, scenario: string): Promise<string> {
   await seedConfirmedHuman(seed, seedAddress(scenario));
+  await raiseSeedToLevelTwo(seed);
   const me = await seed.read(SESSION_IDENTITY);
   expect(me.status(), `посев: ответ края о сессии — ${me.status()}`).toBe(200);
   const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;
