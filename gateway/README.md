@@ -104,7 +104,7 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 |---|---|---|
 | `KACHO_API_GATEWAY_LISTEN_ADDR` | `:8080` | cmux listener (gRPC + REST) |
 | `KACHO_API_GATEWAY_TLS_LISTEN_ADDR` | — | внешний TLS listener (пусто — выключен) |
-| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc:9090` | backend iam |
+| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc:9090` | backend iam; чарт выписывает `kaname.kacho.svc:9090` — службы `iam` чарт kaname не заводит. Он же — адрес `AuthorizeService`, пока не задан `KACHO_API_GATEWAY_IAM_AUTHORIZE_URL` (публичный порт `:9090`, не internal `:9091`) |
 | `KACHO_API_GATEWAY_VPC_GRPC` | `vpc.kacho.svc:9090` | backend vpc |
 | `KACHO_API_GATEWAY_COMPUTE_GRPC` | `compute.kacho.svc:9090` | backend compute |
 | `KACHO_API_GATEWAY_GEO_GRPC` | `kacho-geo.kacho.svc:9090` | backend geo |
