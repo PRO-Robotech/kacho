@@ -162,7 +162,12 @@ test("F8-S7-41 · перевыпуск с предупреждением: отм
   await withSeeded(testInfo, "F8-S7-41", "С-к", page.context(), async (h) => {
     const census = ceremonyCensus(page.context());
     const s = await openSecurity(page);
-    const issuedBefore = await s.backup.getByRole("row", { name: /Выпущены/ }).textContent();
+    // Момент выпуска — полным моментом подсказки (Р2: дата на экране — до минуты,
+    // полный момент — подсказкой): перевыпуск в ту же минуту, что подтверждение
+    // посева, текстом строки неотличим.
+    const issued = s.backup.getByRole("row", { name: /Выпущены/ }).locator("time");
+    const issuedBefore = await issued.getAttribute("title");
+    expect(issuedBefore, "«Выпущены» — момент с полной подсказкой").toBeTruthy();
     const regenerate = s.backup.getByRole("button", { name: "Выпустить новые коды", exact: true });
     await regenerate.click();
     const dialog = page.getByRole("dialog");
@@ -180,7 +185,7 @@ test("F8-S7-41 · перевыпуск с предупреждением: отм
     await expect(saved.getByRole("listitem"), "окно «Сохраните запасные коды» с 10 новыми").toHaveCount(10);
     await saved.getByRole("checkbox", { name: "Я сохранил коды", exact: true }).check();
     await saved.getByRole("button", { name: "Готово", exact: true }).click();
-    await expect(s.backup.getByRole("row", { name: /Выпущены/ }), "«Выпущены» сдвинуто").not.toHaveText(issuedBefore ?? "");
+    await expect(issued, "«Выпущены» сдвинуто").not.toHaveAttribute("title", issuedBefore ?? "");
   });
 });
 
