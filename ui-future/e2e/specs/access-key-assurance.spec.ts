@@ -236,9 +236,11 @@ async function ownGroup(seed: Seed, holder: KeyHolder, scenario: string): Promis
   const op = (await created.json()) as { metadata?: { groupId?: string } };
   const groupId = op.metadata?.groupId ?? "";
   expect(groupId, "операция не назвала идентификатор группы").not.toBe("");
-  // Своя свежая группа читается: право материализовано, идентификатор — не фантом.
+  // Своя свежая группа читается по своему адресу: право материализовано,
+  // идентификатор — не фантом. Контекст запросов — тот же носитель.
+  const request = seed.api;
   await expect
-    .poll(async () => (await seed.api.get(`/iam/v1/groups/${groupId}`)).status(), {
+    .poll(async () => (await request.get(`/iam/v1/groups/${groupId}`)).status(), {
       message: "своя свежая группа не читается: право не материализовалось либо id — фантом",
       timeout: 45_000,
     })
