@@ -9,6 +9,7 @@ import {
   newSeed,
   seedAddress,
   seedConfirmedHuman,
+  seedSecondFactor,
   transferSession,
   type Seed,
 } from "./ceremony-seed";
@@ -63,13 +64,25 @@ interface ListedSession {
 // ─── экран ───────────────────────────────────────────────────────────────────
 
 function sessionsSection(page: Page) {
-  const region = page.getByRole("region", { name: "Сессии" });
+  // Раздел «Активные сессии» экрана «Безопасность»: перечень — общей таблицей,
+  // «Выйти на всех, кроме этой» — с диалогом последствия, исход — областью
+  // `role="status"` экрана (приёмка F8-S7, Р3, Р6, Р9).
+  const region = page.getByRole("region", { name: "Активные сессии" });
+  const rows = region.getByRole("table").getByRole("row").filter({ has: page.getByRole("cell") });
+  const endOthers = region.getByRole("button", { name: "Выйти на всех, кроме этой" });
   return {
     region,
-    rows: region.getByRole("listitem"),
-    row: (agent: string) => region.getByRole("listitem").filter({ hasText: agent }),
-    endOthers: region.getByRole("button", { name: "Выйти на всех, кроме этой" }),
-    status: region.getByRole("status"),
+    rows,
+    row: (agent: string) => rows.filter({ hasText: agent }),
+    /** «Выйти» у строки — доступное имя называет сессию. */
+    end: (agent: string) => rows.filter({ hasText: agent }).getByRole("button", { name: /^Выйти из сессии/ }),
+    endOthers,
+    /** «Выйти на всех, кроме этой» и подтверждение диалога «Выйти». */
+    confirmEndOthers: async () => {
+      await endOthers.click();
+      await page.getByRole("dialog").getByRole("button", { name: "Выйти", exact: true }).click();
+    },
+    status: page.getByRole("status").filter({ hasText: /\S/ }),
     refusal: region.getByRole("alert"),
   };
 }
@@ -91,7 +104,7 @@ async function openSessions(page: Page): Promise<{ s: ReturnType<typeof sessions
         const now = new URL(page.url()).pathname;
         return now === "/settings" ? "ещё не отрисован" : `страница уведена на ${now}`;
       },
-      { message: "раздел «Сессии» на /settings не отрисован консолью", timeout: 30_000 },
+      { message: "раздел «Активные сессии» на /settings не отрисован консолью", timeout: 30_000 },
     )
     .toBe("отрисован");
   const res = await read;
@@ -170,6 +183,8 @@ interface GivenB {
   agentB: string;
   ctxA: BrowserContext;
   pageA: Page;
+  /** Запасные коды человека — только у «Дано» с кодом (F8-S5-05). */
+  backupCodes: string[];
 }
 
 function agent(nn: string, which: string): string {
@@ -199,6 +214,7 @@ async function withGivenB<T>(
   page: Page,
   nn: string,
   body: (g: GivenB) => Promise<T>,
+  opts: { secondFactor?: boolean } = {},
 ): Promise<T> {
   const agentA = agent(nn, "a");
   const agentB = agent(nn, "b");
@@ -208,10 +224,23 @@ async function withGivenB<T>(
   try {
     const human = await seedConfirmedHuman(seedA, seedAddress(`F8-S5-${nn}`));
     await signInSeed(seedB, human.email, human.password, "B");
+    // Код заводится сессией B: подтверждение перевыпускает её носитель, поэтому
+    // перенос в браузер — после посева фактора.
+    const factor = opts.secondFactor ? await seedSecondFactor(seedB) : null;
     await transferSession(seedB, page.context());
     await transferSession(seedA, ctxA);
     const pageA = await ctxA.newPage();
-    return await body({ seedA, seedB, email: human.email, password: human.password, agentA, agentB, ctxA, pageA });
+    return await body({
+      seedA,
+      seedB,
+      email: human.email,
+      password: human.password,
+      agentA,
+      agentB,
+      ctxA,
+      pageA,
+      backupCodes: factor?.backupCodes ?? [],
+    });
   } finally {
     await ctxA.close();
     await seedA.dispose();
@@ -246,8 +275,8 @@ test("F8-S5-01 · перечень: обе сессии, текущая поме
     await expect(s.rows.nth(0), "порядок строк — не порядок службы (S_A, затем S_B)").toContainText(g.agentA);
     await expect(s.rows.nth(1)).toContainText(g.agentB);
     await expect(s.row(g.agentB)).toContainText("Эта сессия");
-    await expect(s.row(g.agentB).getByRole("button", { name: "Выйти", exact: true })).toHaveCount(0);
-    await expect(s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true })).toBeVisible();
+    await expect(s.row(g.agentB).getByRole("button", { name: /^Выйти из сессии/ })).toHaveCount(0);
+    await expect(s.end(g.agentA)).toBeVisible();
     await expect(s.row(g.agentA)).not.toContainText("Эта сессия");
     expect(listed.map((r) => [r.userAgent, r.current])).toEqual([
       [g.agentA, false],
@@ -280,7 +309,7 @@ test("F8-S5-02 · выход из выбранной: та сессия уход
     );
     const [res] = await Promise.all([
       lanePostAnswer(page, END),
-      s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true }).click(),
+      s.end(g.agentA).click(),
     ]);
     expect(res.status(), `снятие не прошло: ${await res.text()}`).toBe(200);
     expect(await res.json()).toEqual({ ended: true });
@@ -317,7 +346,7 @@ test("F8-S5-03 · выход на всех, кроме этой: прочие у
       const reread = page.waitForResponse(
         (r) => new URL(r.url()).pathname === SESSIONS && r.request().method() === "GET",
       );
-      const [res] = await Promise.all([lanePostAnswer(page, END_OTHERS), s.endOthers.click()]);
+      const [res] = await Promise.all([lanePostAnswer(page, END_OTHERS), s.confirmEndOthers()]);
       expect(res.status(), `«все, кроме этой» не прошло: ${await res.text()}`).toBe(200);
       expect(await res.json()).toEqual({ ended: 2 });
       await expect(s.status).toContainText("Завершено сессий: 2");
@@ -337,8 +366,10 @@ test("F8-S5-03 · выход на всех, кроме этой: прочие у
   });
 });
 
-test("F8-S5-04 · единственная сессия: «все, кроме этой» ничего не снимает", async ({ page }, testInfo) => {
+test("F8-S5-04 · единственная сессия: «Других активных сессий нет.», снимать нечего", async ({ page }, testInfo) => {
   // verifies #3061 — близнец: F8-S5-03; различие одно — прочих живых сессий нет.
+  // Вид — приёмка F8-S7, Р8 (замена F8-S5, §5): при одной текущей сессии раздел
+  // говорит это словами, и кнопки «Выйти на всех, кроме этой» нет — снимать нечего.
   const seedA = await newSeed(testInfo, [], { userAgent: agent("04", "a") });
   try {
     await seedConfirmedHuman(seedA, seedAddress("F8-S5-04"));
@@ -346,13 +377,10 @@ test("F8-S5-04 · единственная сессия: «все, кроме э
     const census = ceremonyCensus(page.context());
     const { s } = await openSessions(page);
     await expect(s.rows).toHaveCount(1);
-    await expect(s.endOthers).toBeEnabled();
-    const [res] = await Promise.all([lanePostAnswer(page, END_OTHERS), s.endOthers.click()]);
-    expect(res.status(), `«все, кроме этой» не прошло: ${await res.text()}`).toBe(200);
-    expect(await res.json()).toEqual({ ended: 0 });
-    await expect(s.status).toContainText("Других сессий не было");
-    await expect(s.rows).toHaveCount(1);
     await expect(s.rows.first()).toContainText("Эта сессия");
+    await expect(s.region).toContainText("Других активных сессий нет.");
+    await expect(s.endOthers, "кнопка «Выйти на всех, кроме этой» при одной сессии").toHaveCount(0);
+    expect(census.matching("POST", END_OTHERS), census.describe()).toHaveLength(0);
     expectSectionCensusClean(census);
     expect(await panelOutcome(page, "goto"), "единственная сессия погасла").toBe("панель");
   } finally {
@@ -378,19 +406,21 @@ test("F8-S5-05 · несвежая сессия: повышение и ровн�
     const { s } = await openSessions(page);
     const [refused] = await Promise.all([
       lanePostAnswer(page, END),
-      s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true }).click(),
+      s.end(g.agentA).click(),
     ]);
     expect(refused.status()).toBe(403);
+    // Окно подтверждения — способы службы (приёмка F8-S7, Р5; пароля в окне нет,
+    // §5): человек «Дано» с кодом подтверждает запасным кодом.
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
     await expect(dialog, "консоль не открыла церемонию повышения на SESSION_NOT_FRESH").toBeVisible();
-    await dialog.getByRole("radio", { name: "Паролем" }).check();
-    await dialog.getByLabel("Пароль", { exact: true }).fill(g.password);
+    await dialog.getByRole("radio", { name: "Запасной код", exact: true }).check();
+    await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(g.backupCodes[0]);
     const retried = lanePostAnswer(page, END);
     const [raised] = await Promise.all([
       lanePostAnswer(page, LANE.stepUp),
-      dialog.getByRole("button", { name: "Подтвердить" }).click(),
+      dialog.getByRole("button", { name: "Подтвердить", exact: true }).click(),
     ]);
-    expect(raised.status(), `повышение паролем не прошло: ${await raised.text()}`).toBe(200);
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
     const again = await retried;
     expect(again.status(), `повтор снятия после повышения не прошёл: ${await again.text()}`).toBe(200);
     expect(await again.json()).toEqual({ ended: true });
@@ -404,7 +434,7 @@ test("F8-S5-05 · несвежая сессия: повышение и ровн�
     expect(substituted).toBe(true);
     expectSectionCensusClean(census);
     expect(await panelOutcome(g.pageA, "reload"), "снятая сессия ctxA не ушла на вход").toBe("экран входа");
-  });
+  }, { secondFactor: true });
 });
 
 test("F8-S5-06 · сессия ушла до нажатия: отказ назван, строка исчезает", async ({ page, browser }, testInfo) => {
@@ -421,7 +451,7 @@ test("F8-S5-06 · сессия ушла до нажатия: отказ назв
     );
     const [res] = await Promise.all([
       lanePostAnswer(page, END),
-      s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true }).click(),
+      s.end(g.agentA).click(),
     ]);
     expect(res.status()).toBe(404);
     const refused = (await res.json()) as { message?: string; details?: Array<{ reason?: string }> };
@@ -451,7 +481,7 @@ test("F8-S5-07 · служба молчит: ответ края назван, �
     const { s } = await openSessions(page);
     const [res] = await Promise.all([
       lanePostAnswer(page, END),
-      s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true }).click(),
+      s.end(g.agentA).click(),
     ]);
     expect(res.status()).toBe(EDGE_CREDENTIAL_STATE_UNKNOWN.status);
     await expect(s.refusal, "ответ края не назван на экране").toContainText(unanswered.message);
@@ -470,25 +500,27 @@ test("F8-S5-11 · раздел достижим с клавиатуры", async 
     const census = ceremonyCensus(page.context());
     const { s } = await openSessions(page);
     await expect(s.rows).toHaveCount(2);
-    // Фокус — с последнего управляющего элемента раздела «Второй фактор».
-    const factor = page.getByRole("region", { name: "Второй фактор" });
-    await factor.getByRole("button").last().focus();
+    // Фокус — с последнего управляющего элемента раздела перед «Активными
+    // сессиями», у которого он есть: «Ключи доступа» (у «Запасных кодов» без
+    // кода действий нет; порядок разделов — приёмка F8-S7, Р1).
+    const keys = page.getByRole("region", { name: "Ключи доступа" });
+    await keys.getByRole("button").last().focus();
     const focused: string[] = [];
     for (let i = 0; i < 2; i++) {
       await page.keyboard.press("Tab");
       focused.push(
         await page.evaluate(() => {
           const el = document.activeElement as HTMLElement | null;
-          const row = el?.closest("li");
+          const row = el?.closest("tr");
           return `${el?.textContent?.trim() ?? ""}${row ? ` · ${row.textContent ?? ""}` : ""}`;
         }),
       );
     }
-    expect(focused[0], `фокус после «Второго фактора»: ${focused.join(" → ")}`).toMatch(/^Выйти · /);
+    expect(focused[0], `фокус после «Ключей доступа»: ${focused.join(" → ")}`).toMatch(/^Выйти · /);
     expect(focused[0]).toContain(g.agentA);
     expect(focused[1], `фокус после «Выйти»: ${focused.join(" → ")}`).toBe("Выйти на всех, кроме этой");
 
-    await s.row(g.agentA).getByRole("button", { name: "Выйти", exact: true }).focus();
+    await s.end(g.agentA).focus();
     const [res] = await Promise.all([lanePostAnswer(page, END), page.keyboard.press("Enter")]);
     expect(res.status(), `снятие с клавиатуры не прошло: ${await res.text()}`).toBe(200);
     expect(await res.json()).toEqual({ ended: true });

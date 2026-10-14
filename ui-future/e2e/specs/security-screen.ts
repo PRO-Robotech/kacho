@@ -1,6 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+import { spawnSync } from "node:child_process";
 import { expect, type BrowserContext, type Page, type Request, type Route, type TestInfo } from "@playwright/test";
 import {
   dropSeedSecondFactor,
@@ -39,10 +40,14 @@ import { FIXTURE_UNMET_PREFIX } from "./producer-answers";
  *   • перепись тел исходящих запросов страницы — для «секрет не уходит ни в один
  *     запрос» (F8-S7-12) и «step-up с method …» (F8-S7-21…23).
  *
- * ПОСЕВ С-л («только ключ») здесь НЕ строится: человека без пароля продукт
- * действием не заводит (F8 N32), а посев К F8-S4, который называет приёмка,
- * оставляет пароль. Сценарии на нём — «не выполнилось: условие не создано»
- * (`keyOnlyNotBuildable`), вопрос к приёмке — в возврате полосы.
+ * ПОСЕВ С-л («только ключ») — С-кл, у которого строка способа «пароль» снята
+ * ЗАПИСЬЮ в хранилище службы (решение диспетчера по вопросу полосы, форма —
+ * посев `seed_key_person.py` службы): человека без пароля продукт действием не
+ * заводит (F8 N32), и это единственный шаг посева мимо продукта. Запись — та
+ * же форма «после переноса», что кладёт миграция службы: отметка открытого
+ * пути восстановления и снятие строки пароля одной транзакцией. Исполнитель
+ * записи — `KACHO_KANAME_STORE_EXEC` окружения стенда (`stand-ns.sh forward`);
+ * его нет либо он отказал — «условие не создано», а не красное.
  *
  * Ожидания временем нет: ждётся условие — отрисованный экран, ответ, переход
  * ступени кода по времени.
@@ -164,7 +169,7 @@ export function stepUpMethodsSent(sent: readonly SentBody[]): string[] {
 
 // ─── посевы §3 ───────────────────────────────────────────────────────────────
 
-export type SeedKind = "С-п" | "С-к" | "С-кл" | "С-ккл";
+export type SeedKind = "С-п" | "С-к" | "С-кл" | "С-ккл" | "С-л";
 
 export interface Human {
   seed: Seed;
@@ -175,9 +180,20 @@ export interface Human {
 }
 
 /**
+ * Имя ключа посева — в форме имени ресурса службы
+ * (`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`): имя иной формы служба отвергает, и
+ * посев падал бы на регистрации ключа раньше предмета пробы.
+ */
+export function seedKeyName(scenario: string): string {
+  return `key-${scenario.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+}
+
+/**
  * Человек посева `kind` (§3), носитель — в браузере. `level` — уровень сессии
  * браузера: «2» — сессия посева (поднята подтверждением кода), «1» — отдельный
- * вход паролем тем же адресом (`sessionOne`).
+ * вход паролем тем же адресом (`sessionOne`). У С-л вход паролем невозможен по
+ * построению: `before` идёт ДО снятия пароля (вторая сессия заводится входом
+ * паролем, пока он есть), а уровень сессии браузера — только «2».
  */
 export async function withSeeded<T>(
   testInfo: TestInfo,
@@ -190,19 +206,26 @@ export async function withSeeded<T>(
   const seed = await newSeed(testInfo);
   try {
     const human = await seedConfirmedHuman(seed, seedAddress(scenario));
-    const keyName = `ключ ${scenario}`;
+    const keyName = seedKeyName(scenario);
     let factor: SeededSecondFactor | null = null;
     let key: SeededAccessKey | null = null;
     if (kind !== "С-п") factor = await raiseSeedToLevelTwo(seed);
-    if (kind === "С-кл" || kind === "С-ккл") {
+    if (kind === "С-кл" || kind === "С-ккл" || kind === "С-л") {
       key = await seedAccessKey(seed, testInfo.project.use.baseURL, { userVerification: true, name: keyName });
     }
-    if (kind === "С-кл" && factor) {
+    if ((kind === "С-кл" || kind === "С-л") && factor) {
       await dropSeedSecondFactor(seed, factor);
       factor = null;
     }
     const h: Human = { seed, human, factor, key, keyName };
     if (opts.before) await opts.before(h);
+    if (kind === "С-л") {
+      expect(opts.level ?? "2", "посев С-л: входа паролем у человека только с ключом нет").toBe("2");
+      // Исход записи утверждает её возврат (отметка и одна снятая строка пароля);
+      // вход прежним паролем для проверки не делается: отказ входа тратит общую
+      // ось источника прогона (`ceremony-budget.ts`), а следствие уже прочитано.
+      dropPasswordByRecord(human.email);
+    }
     if ((opts.level ?? "2") === "1") {
       await sessionOne(testInfo, human, context);
     } else {
@@ -267,15 +290,56 @@ export async function seedStepUp(seed: Seed, method: "totp" | "lookup_secret", c
   ).toBe(200);
 }
 
+/** Адрес, который оператор записи кладёт в текст без экранирования, — только безопасного алфавита. */
+const STORE_SAFE_EMAIL = /^[a-z0-9.-]+@[a-z0-9.-]+$/;
+
 /**
- * Посев С-л не строится (модуль: «ПОСЕВ С-л»). Пометка — «условие не создано»,
- * гейт вердикта относит её к третьей категории.
+ * Форма «после переноса» одной транзакцией (та же, что у посева службы
+ * `seed_key_person.py`, `drop_password_sql`): отметка открытого пути
+ * восстановления и снятие строки способа «пароль». `ACTIVE` без строки пароля
+ * законна в продукте ровно с этой отметкой.
  */
-export function keyOnlyNotBuildable(scenario: string): never {
-  conditionNotCreated(
-    `${FIXTURE_UNMET_PREFIX} (приёмка F8-S7, §3 посев С-л) ${scenario}: человек только с ключом продуктом не заводится ` +
-      "(F8 N32), а посев К F8-S4, который называет приёмка, оставляет человеку пароль — «Дано» сценария не построить",
+export function dropPasswordSql(email: string): string {
+  return (
+    "BEGIN;\n" +
+    "UPDATE kaname.users SET recovery_path_opened_at = now()\n" +
+    ` WHERE email = '${email}' AND recovery_path_opened_at IS NULL\n` +
+    "RETURNING 'opened';\n" +
+    "DELETE FROM kaname.user_login_methods m USING kaname.users u\n" +
+    ` WHERE u.id = m.user_id AND u.email = '${email}' AND m.kind = 'password'\n` +
+    "RETURNING m.kind;\n" +
+    "COMMIT;\n"
   );
+}
+
+/** Снять строку пароля записью; оператор утверждает обе строки возврата. */
+function dropPasswordByRecord(email: string): void {
+  const exec = process.env.KACHO_KANAME_STORE_EXEC ?? "";
+  if (exec === "") {
+    conditionNotCreated(
+      `${FIXTURE_UNMET_PREFIX} (приёмка F8-S7, §3 посев С-л) исполнителя записи в хранилище службы нет ` +
+        "(KACHO_KANAME_STORE_EXEC окружения стенда) — человека только с ключом не построить",
+    );
+  }
+  if (!STORE_SAFE_EMAIL.test(email)) {
+    conditionNotCreated(`${FIXTURE_UNMET_PREFIX} посев С-л: адрес вне безопасного алфавита оператора — посев не пишет`);
+  }
+  const r = spawnSync("bash", ["-c", `${exec} -qtAX -v ON_ERROR_STOP=1 -f -`], {
+    input: dropPasswordSql(email),
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  if (r.status !== 0) {
+    conditionNotCreated(
+      `${FIXTURE_UNMET_PREFIX} посев С-л: исполнитель записи отказал (код ${r.status ?? r.signal ?? r.error?.message}): ` +
+        `${(r.stderr ?? "").trim().slice(-300)}`,
+    );
+  }
+  const rows = (r.stdout ?? "").split("\n").filter((l) => l.trim() !== "");
+  expect(rows, "посев С-л: форма «после переноса» — отметка открытого пути и одна снятая строка пароля").toEqual([
+    "opened",
+    "password",
+  ]);
 }
 
 /**

@@ -5,11 +5,11 @@ import { expect, type Page } from "@playwright/test";
 import { authenticatorWithKey, pageAuthenticator, presentAccessKey } from "./access-key-seed";
 import { LANE, codeOutsideWindow, totpCode } from "./ceremony-seed";
 import { ceremonyCensus, test } from "./fixtures";
-import { fulfillWith, laneTooManyAttempts } from "./producer-answers";
+import { SESSION_NOT_FRESH, fulfillWith, laneTooManyAttempts } from "./producer-answers";
 import {
   SECTION_ORDER,
   STEP_UP_BEGIN,
-  keyOnlyNotBuildable,
+  anotherSession,
   keysTurnedOff,
   nextStepCode,
   openSecurity,
@@ -37,7 +37,8 @@ import {
  * доступных имён приёмки (таблицы, «Удалить ключ доступа «<имя>»», «Подтвердить
  * ключом доступа», «Другой способ»), нет ветви ключа в окне подтверждения.
  *
- * С-л не строится (`keyOnlyNotBuildable`): F8-S7-26 и F8-S7-43 — «не выполнилось».
+ * С-л (F8-S7-26, F8-S7-43) — С-кл со строкой пароля, снятой записью в
+ * хранилище службы (`security-screen.ts`, «ПОСЕВ С-л»).
  */
 
 const DELETE_KEY = (h: Human) => `/iam/v1/users/${h.key!.userId}/accessKeys/${h.key!.accessKeyId}`;
@@ -48,7 +49,13 @@ async function deleteKey(page: Page, s: SecurityScreen, h: Human) {
   await page.getByRole("dialog").getByRole("button", { name: "Удалить", exact: true }).click();
 }
 
-/** Число полос прокрутки страницы, кроме документа: Р1 — прокрутка одна. */
+/**
+ * Число полос прокрутки страницы, кроме документа: Р1 — прокрутка одна. Ею
+ * служит область содержимого под шапкой (`PageFrame`, `ui-page-single-scroll`:
+ * рабочая область каркаса и документ сами не прокручиваются — та же мерка, что
+ * у пробы прокрутки F8, `visibleScrollAreas`), поэтому полос — не больше одной;
+ * вторая — таблица раздела со своей прокруткой либо вложенная область.
+ */
 async function innerScrollers(page: Page): Promise<number> {
   return page.evaluate(() => {
     let n = 0;
@@ -75,7 +82,7 @@ test("F8-S7-01 · один экран «Безопасность», раздел
     await expect(s.nav.getByRole("link"), "навигация «Разделы страницы» — пять ссылок").toHaveCount(5);
     await s.nav.getByRole("link", { name: "Ключи доступа", exact: true }).click();
     await expect(s.keys.getByRole("heading", { level: 2, name: "Ключи доступа" }), "фокус — на заголовке раздела").toBeFocused();
-    expect(await innerScrollers(page), "полоса прокрутки одна (ui-page-single-scroll)").toBe(0);
+    expect(await innerScrollers(page), "полоса прокрутки одна (ui-page-single-scroll)").toBeLessThanOrEqual(1);
   });
 });
 
@@ -265,9 +272,32 @@ test("F8-S7-25 · человек с паролем и ключом без код
   );
 });
 
-test("F8-S7-26 · только ключ, отказ свежести: окно предлагает ключ, «Войти заново» не показан", async () => {
-  // verifies #3230 — kaname#729.
-  keyOnlyNotBuildable("F8-S7-26");
+test("F8-S7-26 · только ключ, отказ свежести: окно предлагает ключ, «Войти заново» не показан", async ({
+  page,
+}, testInfo) => {
+  // verifies #3230 — kaname#729; близнец F8-S7-27, отличие — `stepUpMethods = ["webauthn"]`.
+  await withSeeded(
+    testInfo,
+    "F8-S7-26",
+    "С-л",
+    page.context(),
+    async (h) => {
+      await authenticatorWithKey(page, h.key!);
+      // Окно открывает отказ свежести на «Выйти на всех, кроме этой» — подстановка
+      // ответа производителя (F8 Р9, посев С-несвежая); повтор идёт к службе.
+      await page.route(LANE.sessionsEndOthers, (route) => fulfillWith(route, SESSION_NOT_FRESH), { times: 1 });
+      const s = await openSecurity(page);
+      await s.sessions.getByRole("button", { name: "Выйти на всех, кроме этой", exact: true }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Выйти", exact: true }).click();
+      const w = stepUpWindow(page);
+      await expect(w.keyButton, "окно предлагает «Подтвердить ключом доступа» (Р5)").toBeVisible();
+      await expect(w.signInAgain, "«Войти заново» не показан — у человека есть прямой путь").toHaveCount(0);
+      await w.keyButton.click();
+      await expect(w.dialog, "окно закрыто").toBeHidden();
+      await expect(s.status, "сессии завершены").toContainText("Завершено сессий: 1");
+    },
+    { before: async (h) => anotherSession(testInfo, h.human) },
+  );
 });
 
 test("F8-S7-30 · неверный код: «Подтверждение не прошло…» в role=alert, действие не повторено", async ({ page }, testInfo) => {
@@ -390,9 +420,19 @@ test("F8-S7-42 · отключение кода, последний способ
   });
 });
 
-test("F8-S7-43 · удаление последнего способа входа — текст службы дословно, ключ в таблице", async () => {
+test("F8-S7-43 · удаление последнего способа входа — текст службы дословно, ключ в таблице", async ({
+  page,
+}, testInfo) => {
   // verifies #3230 — «Дано» С-л; положительный близнец (С-ккл) — F8-S7-71.
-  keyOnlyNotBuildable("F8-S7-43");
+  await withSeeded(testInfo, "F8-S7-43", "С-л", page.context(), async (h) => {
+    const s = await openSecurity(page);
+    await deleteKey(page, s, h);
+    await expect(
+      s.keys.getByText("last sign-in method cannot be revoked: enrol another sign-in method first", { exact: true }),
+      "текст службы дословно",
+    ).toBeVisible();
+    await expect(s.keyDelete(h.keyName), "ключ в таблице").toBeVisible();
+  });
 });
 
 test("F8-S7-50 · ключи выключены на установке: состояние раздела, BeginRegistration — 0, «Удалить» — сообщение", async ({

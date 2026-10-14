@@ -73,16 +73,22 @@ const keysOf = (userId: string) => `/iam/v1/users/${userId}/accessKeys`;
 
 function keysScreen(page: Page) {
   const region = page.getByRole("region", { name: "Ключи доступа" });
-  const list = region.getByRole("list", { name: "Заведённые ключи" });
+  // Перечень — общей таблицей раздела (приёмка F8-S7, Р3): строка ключа — строка
+  // тела таблицы, у которой есть ячейки.
+  const table = region.getByRole("table");
+  const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
+  const adding = page.getByRole("dialog", { name: "Добавить ключ доступа" });
   return {
-    heading: page.getByRole("heading", { name: "Параметры учётной записи" }),
+    heading: page.getByRole("heading", { level: 1, name: "Безопасность", exact: true }),
     region,
-    list,
-    item: (name: string) => list.getByRole("listitem").filter({ hasText: name }),
-    name: region.getByLabel("Имя", { exact: true }),
-    description: region.getByLabel("Описание", { exact: true }),
-    add: region.getByRole("button", { name: /Добавить ключ доступа$/ }),
-    empty: region.getByText("Ключей доступа нет", { exact: true }),
+    rows,
+    item: (name: string) => rows.filter({ hasText: name }),
+    /** Действие раздела «Добавить ключ доступа» — открывает окно добавления (Р3). */
+    add: region.getByRole("button", { name: "Добавить ключ доступа", exact: true }),
+    name: adding.getByLabel("Имя", { exact: true }),
+    description: adding.getByLabel("Описание", { exact: true }),
+    submit: adding.getByRole("button", { name: "Добавить", exact: true }),
+    empty: region.getByText("Ключей доступа нет. Входите и подтверждайте действия без пароля и кода.", { exact: true }),
   };
 }
 
@@ -265,23 +271,27 @@ async function firstAnswerNotFresh(page: Page, method: string, matches: (path: s
   return state;
 }
 
-/** Окно повышения, открытое отказом свежести: пароль и «Войти заново» (Р12); повышение паролем. */
-async function raiseWithPassword(page: Page, human: SeededHuman, census: CeremonyCensus) {
+/**
+ * Окно подтверждения, открытое отказом свежести (F8 Р12 в редакции F8-S7, §5):
+ * способы — у службы (`stepUpMethods`); у человека с кодом пути «Войти заново»
+ * нет — он подтверждает запасным кодом.
+ */
+async function raiseWithBackupCode(page: Page, h: KeysHuman, census: CeremonyCensus) {
   const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
-  await expect(dialog, "консоль не открыла окно повышения на SESSION_NOT_FRESH").toBeVisible();
+  await expect(dialog, "консоль не открыла окно подтверждения на SESSION_NOT_FRESH").toBeVisible();
+  await dialog.getByRole("radio", { name: "Запасной код", exact: true }).check();
   await expect(
     dialog.getByRole("button", { name: /Войти заново$/ }),
-    "в окне свежести нет пути «Войти заново» (Р12)",
-  ).toBeVisible();
-  await dialog.getByRole("radio", { name: "Паролем" }).check();
-  await dialog.getByLabel("Пароль", { exact: true }).fill(human.password);
+    "у человека со способами подтверждения окно предлагает «Войти заново» (F8-S7, Р5)",
+  ).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(h.backupCodes[0]);
   const [raised] = await Promise.all([
     answerTo(page, "POST", STEP_UP),
-    dialog.getByRole("button", { name: "Подтвердить" }).click(),
+    dialog.getByRole("button", { name: "Подтвердить", exact: true }).click(),
   ]);
-  expect(raised.status(), `повышение паролем не прошло: ${await raised.text()}`).toBe(200);
+  expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
   const sent = JSON.parse(raised.request().postData() ?? "{}") as { method?: unknown };
-  expect(sent.method, "повышение ушло не способом «пароль»").toBe("password");
+  expect(sent.method, "повышение ушло не способом «запасной код»").toBe("lookup_secret");
   await expect(dialog).toBeHidden();
   expectContains(census, "POST", STEP_UP);
 }
@@ -291,7 +301,7 @@ function requestBody(req: Request): Record<string, unknown> {
 }
 
 function expectNoDeletion(locator: Locator, what: string) {
-  return expect(locator.getByRole("button", { name: /Удалить$/ }), what).toHaveCount(0);
+  return expect(locator.getByRole("button", { name: /^Удалить/ }), what).toHaveCount(0);
 }
 
 // ═══ S4 — группа L ═══════════════════════════════════════════════════════════
@@ -322,17 +332,16 @@ test("F8-48 · перечень ключей прочитан и показан"
       expect(body.accessKeys?.[0].lastUsedAt, "ключ посева уже использован — «Дано» не построено").toBeNull();
       expectContains(census, "GET", keysOf(userId));
 
-      await expect(s.list.getByRole("listitem"), "раздел показывает не ровно один ключ").toHaveCount(1);
+      await expect(s.rows, "раздел показывает не ровно один ключ").toHaveCount(1);
       const item = s.item("seed-f8-48");
       await expect(item).toContainText("Рабочий ноутбук");
-      const created = new Date(body.accessKeys![0].createdAt!).toLocaleDateString("ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
+      // Формат даты экрана «Безопасность» — «14 окт. 2026, 21:04» (приёмка F8-S7, Р2).
+      const created = new Date(body.accessKeys![0].createdAt!)
+        .toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })
+        .replace(/\s*г\.$/, "");
       await expect(item, "момент заведения из ответа перечня не показан").toContainText(created);
       await expect(item).toContainText("Ещё не использовался");
-      await expect(item.getByRole("button", { name: /Удалить$/ })).toBeVisible();
+      await expect(item.getByRole("button", { name: "Удалить ключ доступа «seed-f8-48»", exact: true })).toBeVisible();
       await expect(s.add).toBeVisible();
       expectNoProvider(census);
     },
@@ -366,9 +375,10 @@ test("F8-50 · заведение ключа на /settings проходит, и
 
     const begun = answerTo(page, "POST", `${keysOf(h.userId)}:beginRegistration`);
     const finished = answerTo(page, "POST", keysOf(h.userId));
+    await s.add.click();
     await s.name.fill("key-f8-50");
     await s.description.fill("Ноутбук");
-    await s.add.click();
+    await s.submit.click();
     const challenge = await begun;
     expect(challenge.status(), `выдача испытания регистрации: ${await challenge.text()}`).toBe(200);
     await rpCondition(challenge, testInfo);
@@ -431,8 +441,9 @@ test("F8-51 · сессия не свежа: окно повышения, зат
   await withKeysHuman(testInfo, "F8-51", page.context(), async (h) => {
     const census = ceremonyCensus(page.context());
     const s = await openKeys(page);
-    await s.name.fill("key-f8-51");
     await s.add.click();
+    await s.name.fill("key-f8-51");
+    await s.submit.click();
     const retried = page.waitForResponse(
       (r) =>
         r.request().method() === "POST" &&
@@ -443,7 +454,7 @@ test("F8-51 · сессия не свежа: окно повышения, зат
     // шага человека между ними: ожидание ставится ДО повышения, иначе ответ
     // приходит раньше, чем его начали ждать.
     const finishedAnswer = answerTo(page, "POST", keysOf(h.userId));
-    await raiseWithPassword(page, h.human, census);
+    await raiseWithBackupCode(page, h, census);
     const again = await retried;
     expect(again.status()).toBe(200);
     expect(state.substituted).toBe(true);
@@ -484,8 +495,9 @@ test("KN747-02-console · сессия «1» у человека с кодом: 
       // Приём результата консоль шлёт сразу за повторной выдачей испытания:
       // ожидание ставится ДО повышения.
       const finishedAnswer = answerTo(page, "POST", keysOf(h.userId));
-      await s.name.fill("key-kn747-02");
       await s.add.click();
+      await s.name.fill("key-kn747-02");
+      await s.submit.click();
 
       // Первый шаг — указание повысить уровень (KN747-02): 401, код 16, вызов уровня «2».
       const first = await refused;
@@ -505,7 +517,7 @@ test("KN747-02-console · сессия «1» у человека с кодом: 
       await expect(dialog, "консоль не открыла окно повышения на указание повысить уровень").toBeVisible();
       await expect(dialog.getByRole("radio", { name: "Паролем" }), "пароль предложен на вызов уровня").toHaveCount(0);
       await dialog.getByRole("radio", { name: "Запасной код" }).check();
-      await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(h.backupCodes[0]);
+      await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(h.backupCodes[0]);
       const [raised] = await Promise.all([
         answerTo(page, "POST", STEP_UP),
         dialog.getByRole("button", { name: "Подтвердить" }).click(),
@@ -520,7 +532,7 @@ test("KN747-02-console · сессия «1» у человека с кодом: 
       await originCondition(finished, testInfo);
       expect(finished.status(), `приём результата после повышения отвергнут: ${await finished.text()}`).toBe(200);
       await expect(s.item("key-kn747-02"), "ключ не заведён после повышения").toBeVisible({ timeout: 30_000 });
-      await expect(s.list.getByRole("listitem")).toHaveCount(1);
+      await expect(s.rows).toHaveCount(1);
 
       expect(
         census.matching("POST", begin).map((c) => c.outcome),
@@ -552,7 +564,7 @@ test("F8-56 · удаление ключа: ключ уходит из пере�
       await expect(s.item("key-a")).toBeVisible();
       await s
         .item("key-a")
-        .getByRole("button", { name: /Удалить$/ })
+        .getByRole("button", { name: /^Удалить ключ доступа/ })
         .click();
       const dialog = page.getByRole("dialog").filter({ hasText: "key-a" });
       await expect(dialog, "диалог удаления не назвал ключ").toBeVisible();
@@ -562,7 +574,7 @@ test("F8-56 · удаление ключа: ключ уходит из пере�
       expect(res.status(), `снятие отвергнуто: ${await res.text()}`).toBe(200);
       expect(keys.a!.accessKeyId, "путь снятия несёт не платформенный id").toMatch(/^ak/);
       await expect(s.item("key-a"), "снятый ключ остался в перечне").toHaveCount(0, { timeout: 30_000 });
-      await expect(s.list.getByRole("listitem")).toHaveCount(1);
+      await expect(s.rows).toHaveCount(1);
       await expect(s.item("key-b")).toBeVisible();
       expectContains(census, "DELETE", `${keysOf(h.userId)}/${keys.a!.accessKeyId}`);
       await expectNotAccepted(h, testInfo, keys.a!, "снятый ключ key-a");
@@ -592,18 +604,18 @@ test("F8-57 · удаление при несвежей сессии: окно �
       const s = await openKeys(page);
       await s
         .item("key-a")
-        .getByRole("button", { name: /Удалить$/ })
+        .getByRole("button", { name: /^Удалить ключ доступа/ })
         .click();
       await page
         .getByRole("dialog")
         .filter({ hasText: "key-a" })
-        .getByRole("button", { name: /Удалить$/ })
+        .getByRole("button", { name: "Удалить", exact: true })
         .click();
       const path = `${keysOf(h.userId)}/${keys.a!.accessKeyId}`;
       const retried = page.waitForResponse(
         (r) => r.request().method() === "DELETE" && new URL(r.url()).pathname === path && r.status() === 200,
       );
-      await raiseWithPassword(page, h.human, census);
+      await raiseWithBackupCode(page, h, census);
       expect((await retried).status()).toBe(200);
       expect(state.substituted).toBe(true);
       expect(census.matching("DELETE", path).length, "снятие не повторено само").toBe(2);

@@ -1321,7 +1321,7 @@ test("F8-35 · повышение уровня по вызову края идё
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
     await expect(dialog, "консоль не ответила на вызов края церемонией повышения").toBeVisible();
     await dialog.getByRole("radio", { name: "Запасной код" }).check();
-    await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(codes[0]);
+    await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(codes[0]);
     const replayed = page.waitForResponse(
       (r) =>
         new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` &&
@@ -1357,7 +1357,7 @@ test("F8-36 · повышать нечем: назван отказ и путь,
   const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("radio", { name: "Запасной код" }).check();
-  await dialog.getByRole("textbox", { name: "Код", exact: true }).fill("ABCDEFGHJK");
+  await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill("ABCDEFGHJK");
   const [refused] = await Promise.all([
     lanePost(page, LANE.stepUp),
     dialog.getByRole("button", { name: "Подтвердить" }).click(),
