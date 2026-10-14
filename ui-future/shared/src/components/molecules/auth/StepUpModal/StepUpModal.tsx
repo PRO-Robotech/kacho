@@ -56,7 +56,7 @@ import {
   type Ceremony,
 } from "@shared/api/login-lane";
 import { setStepUpRequester, type StepUpRequest } from "@shared/api/step-up";
-import { FactorCodeChoice } from "@shared/components/molecules/auth/FactorCodeChoice";
+import { SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useOptionalAuth } from "@shared/contexts/AuthContext";
@@ -408,11 +408,12 @@ export function StepUpModal({ leave = (to) => window.location.replace(to) }: { l
             </div>
           )}
           {ordered.length > 0 && (
-            <FactorCodeChoice
+            <SecondFactorCodeField
+              variant="confirm"
               groupLabel="Другой способ"
               methods={ordered}
-              value={codeChosen ? chosen : null}
-              onChange={(m) => {
+              method={codeChosen ? chosen : null}
+              onMethodChange={(m) => {
                 setChosen(m);
                 setCode("");
                 setCodeError(null);

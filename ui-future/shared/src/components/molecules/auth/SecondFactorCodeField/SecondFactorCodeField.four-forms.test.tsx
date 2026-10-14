@@ -7,11 +7,12 @@ import { requestStepUp } from "@shared/api/step-up";
 import { SESSION, SIGNED_IN, installLane, type LaneAnswer } from "@shared/test/lane-fake";
 
 // Ветвь «код из приложения» ЧЕТЫРЁХ форм, принимающих код (приёмка F8, Р9 —
-// цена средства оси 4; F8-30, F8-31, F8-33, F8-35). Вход — полем
-// `SecondFactorCodeField` (выбора по умолчанию нет, условие C16); окно
-// подтверждения и диалоги «Отключить» и «Выпустить новые коды» экрана
-// «Безопасность» — выбором `FactorCodeChoice` (по умолчанию код из приложения,
-// приёмка F8-S7, Р5, Р6), и поле кода там названо своим способом.
+// цена средства оси 4; F8-30, F8-31, F8-33, F8-35). Все четыре — ОДНИМ полем
+// `SecondFactorCodeField` и одними переключателями роли `radio`: на входе
+// (`variant="sign-in"`) выбора по умолчанию нет (условие C16) и поле зовётся
+// «Код»; в окне подтверждения и диалогах «Отключить» и «Выпустить новые коды»
+// экрана «Безопасность» (`variant="confirm"`) по умолчанию код из приложения
+// (приёмка F8-S7, Р5, Р6), и поле кода названо своим способом.
 //
 // После посева браузер предъявляет второй фактор только запасным кодом: код по
 // времени дважды одним человеком не предъявляется. Поэтому ветвь кода из
@@ -52,7 +53,7 @@ describe("четыре формы предъявления кода называ
       );
       await screen.findByRole("form", { name: "Вход в консоль" });
       fireEvent.click(screen.getByLabelText("Подтвердить вторым фактором"));
-      fireEvent.click(screen.getByLabelText(choice.label));
+      fireEvent.click(screen.getByRole("radio", { name: choice.label }));
       fireEvent.change(screen.getByLabelText("Код"), { target: { value: choice.code } });
       fireEvent.click(screen.getByRole("button", { name: "Войти" }));
       await waitFor(() => expect(lane!.of("POST", "/iam/v1/auth/login")).toHaveLength(1));

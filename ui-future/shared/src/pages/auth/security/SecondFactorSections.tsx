@@ -12,7 +12,7 @@ import {
   type SecondFactorState,
 } from "@shared/api/login-lane";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
-import { FACTOR_CODE_LABEL, FactorCodeChoice } from "@shared/components/molecules/auth/FactorCodeChoice";
+import { CODE_METHOD_LABEL, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { type Column, ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
@@ -136,11 +136,11 @@ function CodeDialog({
         onClose();
       }}
     >
-      <FactorCodeChoice
-        groupLabel="Способ подтверждения"
+      <SecondFactorCodeField
+        variant="confirm"
         methods={methods}
-        value={method}
-        onChange={(m) => {
+        method={method}
+        onMethodChange={(m) => {
           setMethod(m);
           setCode("");
           setCodeError(null);
@@ -268,7 +268,7 @@ function EnrollDialog({
             </p>
           )}
           <FormGrid label="Подтверждение приложения-аутентификатора" onSubmit={() => void confirm()}>
-            <Form.Item label={FACTOR_CODE_LABEL.totp} htmlFor={codeId}>
+            <Form.Item label={CODE_METHOD_LABEL.totp} htmlFor={codeId}>
               <Input
                 id={codeId}
                 value={code}
