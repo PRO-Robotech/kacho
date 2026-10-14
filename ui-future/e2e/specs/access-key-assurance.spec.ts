@@ -216,10 +216,21 @@ async function edgeLevel(seed: Seed): Promise<string> {
   return String(view?.session?.assuranceLevel ?? "");
 }
 
+/**
+ * Имя группы по единой форме имени (DNS-метка): номер сценария несёт кириллицу
+ * («Ф13-10»), и в имя идёт только его латинская часть — иначе отказ формы имени
+ * роняет фикстуру раньше предмета.
+ */
+function groupName(scenario: string): string {
+  const name = `e2e-f${scenario.replace(/[^0-9-]/g, "")}-${runTag()}`;
+  expect(name, "имя группы фикстуры обязано быть по форме имени").toMatch(/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/);
+  return name;
+}
+
 /** Группа человека, заведённая на доступном уровне (пол «1»): предмет глагола с полом «2». */
 async function ownGroup(seed: Seed, holder: KeyHolder, scenario: string): Promise<string> {
   const created = await seed.api.post("/iam/v1/groups", {
-    data: { accountId: holder.accountId, name: `e2e-${scenario.toLowerCase()}-${runTag()}`, description: "пол «2»" },
+    data: { accountId: holder.accountId, name: groupName(scenario), description: "пол «2»" },
   });
   expect(created.status(), `заведение группы не удалось: ${await created.text()}`).toBe(200);
   const op = (await created.json()) as { metadata?: { groupId?: string } };
