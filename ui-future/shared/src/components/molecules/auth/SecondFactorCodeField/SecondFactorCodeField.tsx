@@ -5,7 +5,7 @@ import { useId } from "react";
 import { Form, Input, Radio } from "antd";
 import type { CodeMethod, SecondFactorPresentation } from "@shared/api/login-lane";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
-import { OWN_STEP_UP_METHODS } from "@shared/lib/step-up-methods";
+import { CODE_METHODS } from "@shared/lib/step-up-methods";
 
 // Предъявление второго фактора — ОДНО поле на четыре формы: вход, повышение
 // уровня, снятие фактора и перечеканку запасных кодов (приёмка F8, Р9).
@@ -67,7 +67,7 @@ export function SecondFactorCodeField({ value, onChange, codeError = null, metho
           disabled={disabled}
           value={value.method ?? undefined}
           onChange={(e) => onChange({ method: e.target.value as CodeMethod, code: value.code })}
-          options={OWN_STEP_UP_METHODS.map((m) => ({
+          options={CODE_METHODS.map((m) => ({
             value: m,
             label: CODE_METHOD_LABEL[m],
           }))}

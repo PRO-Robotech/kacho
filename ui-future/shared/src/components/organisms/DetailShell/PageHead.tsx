@@ -70,6 +70,10 @@ interface Props {
    *  в двух десятках пикселей друг от друга читаются как пустая полоса между
    *  ними, а имя ресурса отрывается от своих же вкладок. */
   divider?: boolean;
+  /** Уровень заголовка. У страницы без своей оболочки списка или карточки
+   *  (экран «Безопасность») заголовок — главный заголовок документа. Вид от
+   *  уровня не зависит. */
+  level?: 1 | 3;
 }
 
 /**
@@ -94,7 +98,7 @@ interface Props {
  *  - иконки-плитки. Иконка здесь — признак ИДЕНТИЧНОСТИ ресурса, и её место в
  *    боковой панели карточки, рядом с именем экземпляра. У секции её нет.
  */
-export function PageHead({ title, badges, right, divider = true }: Props) {
+export function PageHead({ title, badges, right, divider = true, level = 3 }: Props) {
   return (
     <div
       style={{
@@ -131,7 +135,7 @@ export function PageHead({ title, badges, right, divider = true }: Props) {
           ширины, поэтому оба свойства нужны вместе, а не по отдельности. */}
       <div style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}>
         <Typography.Title
-          level={3}
+          level={level}
           ellipsis={{ tooltip: undefined }}
           style={{
             margin: 0,

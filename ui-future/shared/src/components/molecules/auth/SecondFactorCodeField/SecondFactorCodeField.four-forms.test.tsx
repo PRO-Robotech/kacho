@@ -7,7 +7,11 @@ import { requestStepUp } from "@shared/api/step-up";
 import { SESSION, SIGNED_IN, installLane, type LaneAnswer } from "@shared/test/lane-fake";
 
 // Ветвь «код из приложения» ЧЕТЫРЁХ форм, принимающих код (приёмка F8, Р9 —
-// цена средства оси 4; F8-30, F8-31, F8-33, F8-35).
+// цена средства оси 4; F8-30, F8-31, F8-33, F8-35). Вход — полем
+// `SecondFactorCodeField` (выбора по умолчанию нет, условие C16); окно
+// подтверждения и диалоги «Отключить» и «Выпустить новые коды» экрана
+// «Безопасность» — выбором `FactorCodeChoice` (по умолчанию код из приложения,
+// приёмка F8-S7, Р5, Р6), и поле кода там названо своим способом.
 //
 // После посева браузер предъявляет второй фактор только запасным кодом: код по
 // времени дважды одним человеком не предъявляется. Поэтому ветвь кода из
@@ -65,8 +69,8 @@ describe("четыре формы предъявления кода называ
         void requestStepUp("2");
       });
       const dialog = await screen.findByRole("dialog");
-      fireEvent.click(within(dialog).getByLabelText(choice.label));
-      fireEvent.change(within(dialog).getByLabelText("Код"), { target: { value: choice.code } });
+      fireEvent.click(await within(dialog).findByRole("radio", { name: choice.label }));
+      fireEvent.change(within(dialog).getByLabelText(choice.label), { target: { value: choice.code } });
       fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
       await waitFor(() => expect(lane!.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1));
       expect(lane.of("POST", "/iam/v1/auth/step-up")[0].body).toMatchObject({
@@ -76,11 +80,18 @@ describe("четыре формы предъявления кода называ
     });
 
     for (const form of [
-      { id: "F8-30", open: "Снять второй фактор", send: "Снять", path: "/iam/v1/auth/second-factor/remove" },
+      {
+        id: "F8-30",
+        region: "Второй фактор",
+        open: "Отключить",
+        send: "Отключить",
+        path: "/iam/v1/auth/second-factor/remove",
+      },
       {
         id: "F8-31",
-        open: "Выпустить новые запасные коды",
-        send: "Выпустить коды",
+        region: "Запасные коды",
+        open: "Выпустить новые коды",
+        send: "Выпустить",
         path: "/iam/v1/auth/second-factor/backup-codes",
       },
     ]) {
@@ -88,6 +99,8 @@ describe("четыре формы предъявления кода называ
         lane = installLane({
           "GET /iam/v1/auth/me": SIGNED_IN,
           "GET /iam/v1/auth/second-factor": ENROLLED,
+          "GET /iam/v1/users/usr-1/accessKeys": { status: 200, body: {} },
+          "GET /iam/v1/auth/sessions": { status: 200, body: { sessions: [] } },
           [`POST ${form.path}`]: { status: 200, body: { backupCodes: ["0A1B2C3D4E"], session: SESSION } },
         });
         render(
@@ -95,11 +108,12 @@ describe("четыре формы предъявления кода называ
             <AccountSettingsPage />
           </MemoryRouter>,
         );
-        const factor = await screen.findByRole("region", { name: "Второй фактор" });
-        fireEvent.click(await within(factor).findByRole("button", { name: form.open }));
-        fireEvent.click(within(factor).getByLabelText(choice.label));
-        fireEvent.change(within(factor).getByLabelText("Код"), { target: { value: choice.code } });
-        fireEvent.click(within(factor).getByRole("button", { name: form.send }));
+        const region = await screen.findByRole("region", { name: form.region });
+        fireEvent.click(await within(region).findByRole("button", { name: form.open }));
+        const dialog = await screen.findByRole("dialog");
+        fireEvent.click(within(dialog).getByRole("radio", { name: choice.label }));
+        fireEvent.change(within(dialog).getByLabelText(choice.label), { target: { value: choice.code } });
+        fireEvent.click(within(dialog).getByRole("button", { name: form.send }));
         await waitFor(() => expect(lane!.of("POST", form.path)).toHaveLength(1));
         expect(lane.of("POST", form.path)[0].body).toMatchObject({ method: choice.method, code: choice.code });
       });

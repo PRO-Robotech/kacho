@@ -41,7 +41,14 @@ function formKinds(): string[] {
 const EMAIL_CHANGE_KINDS: ReadonlySet<string> = new Set(["email-change", "email-change-confirm"]);
 
 /** Виды позднейших приёмок, которых база S3 не считает. */
-const LATER_KINDS: ReadonlySet<string> = new Set(["password-enroll", "session-end", ...EMAIL_CHANGE_KINDS]);
+/** Вид испытания повышения ключом (приёмка F8-S7, Р5; служба — SUA Р2). */
+const STEP_UP_KEY_KIND = "step-up-access-key-begin";
+const LATER_KINDS: ReadonlySet<string> = new Set([
+  "password-enroll",
+  "session-end",
+  ...EMAIL_CHANGE_KINDS,
+  STEP_UP_KEY_KIND,
+]);
 
 let lane: ReturnType<typeof installLane> | null = null;
 afterEach(() => lane?.restore());
@@ -96,13 +103,15 @@ describe("F8S3-17 · клиент полосы и глаголы восстан�
 
   it("F8-67 · FormKind длиннее своей базы ровно на password-enroll", () => {
     // База — 12 видов головы сборки до S2 ред. 12 (F8S3-17 выше).
-    const kinds = formKinds().filter((k) => k !== "session-end" && !EMAIL_CHANGE_KINDS.has(k));
+    const kinds = formKinds().filter(
+      (k) => k !== "session-end" && !EMAIL_CHANGE_KINDS.has(k) && k !== STEP_UP_KEY_KIND,
+    );
     expect({ hasEnroll: kinds.includes("password-enroll"), size: kinds.length }).toEqual({ hasEnroll: true, size: 13 });
   });
 
   it("F8-S5 Р4 · FormKind длиннее своей базы ровно на session-end — один вид на оба снимающих глагола", () => {
     // База — 13 видов (F8-67 выше); приёмка F8-S5 добавляет ровно один.
-    const kinds = formKinds().filter((k) => !EMAIL_CHANGE_KINDS.has(k));
+    const kinds = formKinds().filter((k) => !EMAIL_CHANGE_KINDS.has(k) && k !== STEP_UP_KEY_KIND);
     expect({ hasSessionEnd: kinds.includes("session-end"), size: kinds.length }).toEqual({
       hasSessionEnd: true,
       size: 14,
@@ -112,11 +121,21 @@ describe("F8S3-17 · клиент полосы и глаголы восстан�
   it("F8-S6 Р5 · FormKind длиннее своей базы ровно на два вида смены адреса — 16, столько же, сколько у службы", () => {
     // База — 14 видов (F8-S5 выше); приёмка F8-S6 добавляет ровно два. Число
     // приёмки «15» снято на базе без вида своих сессий (§1.4, 13 + 2).
-    const kinds = formKinds();
+    const kinds = formKinds().filter((k) => k !== STEP_UP_KEY_KIND);
     expect({
       emailChange: [...EMAIL_CHANGE_KINDS].map((k) => kinds.includes(k)),
       size: kinds.length,
     }).toEqual({ emailChange: [true, true], size: 16 });
+  });
+
+  it("F8-S7 Р5 · FormKind длиннее своей базы ровно на вид испытания повышения ключом — 17", () => {
+    // База — 16 видов (F8-S6 выше); приёмка F8-S7 добавляет ровно один — свой
+    // вид признака у выдачи испытания повышения ключом (SUA Р2).
+    const kinds = formKinds();
+    expect({ hasStepUpKey: kinds.includes(STEP_UP_KEY_KIND), size: kinds.length }).toEqual({
+      hasStepUpKey: true,
+      size: 17,
+    });
   });
 
   it("пути глаголов — точные, как их объявляет служба и ретранслирует край", () => {

@@ -1463,6 +1463,11 @@ export function antdStub(): Record<string, unknown> {
           React.createElement("button", { type: "button", ...domAttrs(rest) }, children),
       },
     ),
+    // Настоящий QR-код antd — холст внутри своего корня (`ant-qrcode`), а
+    // значение в разметку не попадает: оно рисуется на холсте. Заменитель
+    // ровно такой же: адрес с секретом, которого нет в DOM настоящего, проба на
+    // дублёре видеть не должна (экран «Безопасность», F8-S7 Р2).
+    QRCode: () => React.createElement("div", { className: "ant-qrcode" }, React.createElement("canvas")),
     Row: Component,
     // Настоящий переключатель рисует варианты ВИДИМЫМ ТЕКСТОМ — по ним оператор
     // и выбирает. Варианты приходят пропом `options`, детьми он их не получает,

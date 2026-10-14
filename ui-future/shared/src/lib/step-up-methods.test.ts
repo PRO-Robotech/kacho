@@ -18,8 +18,14 @@ import * as stepUpMethods from "./step-up-methods";
 // значило бы подтвердить модуль его же текстом, ничего не исполнив.
 
 describe("C0 · способы нашей церемонии повышения отданы под именем, которое читает гейт", () => {
-  it("C0 · OWN_STEP_UP_METHODS — код из приложения и запасной код", () => {
-    expect([...stepUpMethods.OWN_STEP_UP_METHODS].sort()).toEqual(["lookup_secret", "totp"]);
+  it("C0 · OWN_STEP_UP_METHODS — код из приложения, запасной код и ключ доступа (F8-S7, Р10)", () => {
+    expect([...stepUpMethods.OWN_STEP_UP_METHODS].sort()).toEqual(["lookup_secret", "totp", "webauthn"]);
+  });
+
+  it("F8-S7 Р5 · перечень кодов — без ключа: ключ предъявляется утверждением, а не полем кода", () => {
+    expect([...stepUpMethods.CODE_METHODS].sort()).toEqual(["lookup_secret", "totp"]);
+    expect(stepUpMethods.isStepUpFactor("webauthn")).toBe(true);
+    expect(stepUpMethods.isStepUpFactor("password")).toBe(false);
   });
 
   it("C0 · перечня потока поставщика нет: консоль его не ведёт", () => {
