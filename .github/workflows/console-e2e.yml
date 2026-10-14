@@ -992,6 +992,13 @@ jobs:
             export KACHO_CLOUD_ADMIN_EMAIL="$admin_email"
             export KACHO_CLOUD_ADMIN_PASSWORD="$admin_password"
           fi
+          # Исполнитель записи в базу службы личности стенда — «до psql
+          # включительно», та же форма, что у своего стенда проб
+          # (deploy/scripts/stand-ns.sh, forward): посев С-л приёмки F8-S7
+          # (человек только с ключом) строится ЗАПИСЬЮ — снятием строки пароля, —
+          # потому что продукт такого человека действием не заводит (F8 N32).
+          # Пишется только база стенда этого прогона.
+          export KACHO_KANAME_STORE_EXEC="kubectl -n kacho exec -i statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kaname"
           npx playwright test
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли
