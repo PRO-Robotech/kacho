@@ -51,7 +51,7 @@ require_python_yaml
 require_file_present "$MAKEFILE" "deploy/Makefile — предмет проверки берётся из него"
 command -v make >/dev/null || fatal "make не найден — рецепты исполнять нечем"
 
-SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | head -1)"
+SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | sed -n 1p)"
 [ -n "$SERVICES" ] || fatal "в deploy/Makefile не найден SERVICES — предпосылка проверки не выполняется"
 UI_DECL="$(grep -m1 '^UI_PROJECTS *:=' "$MAKEFILE")"
 [ -n "$UI_DECL" ] || fatal "в deploy/Makefile не найдено объявление UI_PROJECTS"

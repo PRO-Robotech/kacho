@@ -55,7 +55,7 @@ KNOB="KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS"
 # инструмента с несовместимым синтаксисом, и тест не должен зависеть от того,
 # какой из них оказался в PATH.
 env_val() {
-  printf '%s\n' "$1" | grep -A1 -- "- name: $KNOB" | sed -n 's/^ *value: *//p' | head -1 | sed 's/^"//; s/"$//'
+  printf '%s\n' "$1" | grep -A1 -- "- name: $KNOB" | sed -n 's/^ *value: *//p' | sed -n 1p | sed 's/^"//; s/"$//'
 }
 
 # yaml_block_value <file> <top-level-key> <leaf-key> — значение leaf-ключа внутри
