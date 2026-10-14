@@ -19,15 +19,24 @@
   and authorization on the listener is unchanged.
 
   Rendered whenever the internal-CA PKI is up (mtls.enabled) — the api-gateway
-  chart declares its internal listener under the same condition. Defaults live
-  here (no umbrella values key): saName `kacho-internal-rest-operator`, the same
-  default the api-gateway chart puts in its circle; the two spellings are tied by
-  gateway/deploy/internal_rest_mtls_render_test.go over every stack chain.
+  chart declares its internal listener under the same condition.
+
+  ИМЯ ЛИСТА — ОДНО НАПИСАНИЕ С КРУГОМ КРАЯ (kacho#3151). URI-имя берётся тем же
+  помощником, которым чарт края строит свой круг
+  (`api-gateway.internalRestOperatorSAN`), над значениями чарта края: домен
+  доверия, ЗАКРЕПЛЁННОЕ пространство личности (`api-gateway.mtls.spiffe.namespace`)
+  и имя учётки (`api-gateway.internalRest.operatorSaName`). Прежняя редакция
+  брала пространство из пространства релиза, и в любом пространстве, кроме
+  рабочего, край отвергал лист оператора, а рендер и установка были зелёными.
+  Совпадение держат gateway/deploy/internal_rest_mtls_render_test.go (рендер в
+  рабочее пространство) и tools/standns (рендер каждой цепочки в тестовое
+  пространство и перенос стенда проб, отказывающий на расхождении).
 */ -}}
 {{- $mtls2 := .Values.mtls | default dict -}}
 {{- if $mtls2.enabled -}}
 {{- $ca2 := $mtls2.internalCA | default dict -}}
-{{- $irSa := "kacho-internal-rest-operator" -}}
+{{- $edge := dict "Values" (index .Values "api-gateway") "Release" .Release -}}
+{{- $irSa := dig "internalRest" "operatorSaName" "kacho-internal-rest-operator" (index .Values "api-gateway") -}}
 {{- $irSecret := "kacho-internal-rest-operator-client-tls" }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -51,7 +60,7 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
   uris:
-    - {{ printf "spiffe://%s/ns/%s/sa/%s" (include "umbrella.trustDomain" .) .Release.Namespace $irSa | quote }}
+    - {{ include "api-gateway.internalRestOperatorSAN" $edge | quote }}
   usages:
     - client auth        # client-only — this identity never terminates a listener
 {{- end }}
