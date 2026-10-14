@@ -6,6 +6,7 @@ import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 import { installHostMapping } from "./host-mapping.ts";
 import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
 import { standSecureOriginArgs } from "./stand-secure-origin.ts";
+import { standTlsTrustArgs } from "./stand-tls-trust.ts";
 
 /**
  * Сквозные пробы консоли.
@@ -32,6 +33,31 @@ import { standSecureOriginArgs } from "./stand-secure-origin.ts";
  * по нему, а не по тексту отказа, он отличает «условие не создано» от красного.
  */
 const PRECONDITION_PROJECT = "precondition";
+
+/**
+ * Условие части набора — проба ключа доступа (приёмка F8-S4, §4 П4). Имя проекта
+ * несёт приставку `precondition:`: по ней гейт вердикта относит запись к условиям.
+ */
+const ACCESS_KEY_CONDITION_PROJECT = `${PRECONDITION_PROJECT}:access-key-origin`;
+const ACCESS_KEY_ORIGIN_CONDITION = "access-key-origin.precondition.ts";
+/** Пробы, которым нужен ключ доступа на стенде: файлы `*access-key*.spec.ts`. */
+const ACCESS_KEY_SPECS = /access-key[^/]*\.spec\.ts$/;
+
+/**
+ * ИЗМЕРИТЕЛЬНЫЕ ПРОБЫ — СВОЙ ПРОЕКТ, СВОЙ ОТЧЁТ И СВОЙ БЮДЖЕТ (kacho#1281, Ф12-33).
+ *
+ * Замер по классам отказа (форма Ф1-48) тратит на оси источника десятки отказов
+ * `401` ПО ПОСТРОЕНИЮ. Набор `specs/` судится сторожем бюджета этой оси одной
+ * величиной на прогон (`scripts/ceremony-budget.ts`), и замер внутри набора ронял
+ * бы сторожа на каждом прогоне; спрятать его отказы от записи — маска. Поэтому
+ * каталог `measurements/` исполняется ТОЛЬКО под ручкой `KACHO_CONSOLE_MEASURE=1`
+ * и ТОЛЬКО он: проектов набора в таком прогоне нет, отчёт свой
+ * (`results-measure.json`), и тот же сторож судит его величиной, которую объявляет
+ * сам замер. Без ручки конфигурация не меняется ни на строку — набор, его граница
+ * (`testDir`) и сторож для остальных остаются прежними. Подмена — ниже, сразу
+ * после объявления набора.
+ */
+const MEASURE = process.env.KACHO_CONSOLE_MEASURE === "1";
 
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
@@ -129,6 +155,14 @@ const hostResolverArgs = (() => {
  * `specs/ceremony-seed.ts`. Решение, его границы и снятие — `stand-secure-origin.ts`;
  * здесь они не пересказываются.
  */
+/**
+ * ЛИСТ КОНСОЛИ СВОЕГО СТЕНДА (kacho#3025): доверие ровно его ключу, а не отказ
+ * от проверки. Решение и его границы — `stand-tls-trust.ts`.
+ */
+const tlsTrustArgs = standTlsTrustArgs(process.env.KACHO_CONSOLE_CA);
+if (tlsTrustArgs.length) {
+  console.log(`[конфиг проб] браузер доверяет листу стенда из KACHO_CONSOLE_CA: ${tlsTrustArgs[0]}`);
+}
 const browserArgs = [...hostResolverArgs, ...standSecureOriginArgs(BASE)];
 if (browserArgs.length > hostResolverArgs.length) {
   // ФАКТ ПЕЧАТАЕТСЯ: стенд по http без этой строки неотличим в логе от стенда, где
@@ -184,9 +218,36 @@ const config: PlaywrightTestConfig = {
   // Выписать поимённо те немногие, кому арендатор не нужен, значило бы завести
   // перечень, расходящийся с деревом молча; цена отказа от него — у них нет
   // вердикта там, где его нет и у остального набора.
+  //
+  // УСЛОВИЕ ЧАСТИ НАБОРА — СВОЙ ПРОЕКТ (kacho#3057, приёмка F8-S4 §4 П4). Пробы
+  // ключа доступа исполнимы лишь там, где служба принимает происхождение
+  // браузера набора; в профиле своего стенда перечень пуст намеренно (#3068).
+  // Пока это условие наступало внутри проб, каждая проба ключа падала «условие
+  // не создано» и тратила бюджет ранней остановки ниже: пять таких падений
+  // остановили набор, и пробы, к ключам отношения не имеющие, не стартовали.
+  // Поэтому у условия ключа свой проект (`precondition:<предмет>` — гейт
+  // вердикта узнаёт его по имени), а от него зависит ТОЛЬКО проект проб ключа.
+  // Принадлежность пробы части — по имени файла (`ACCESS_KEY_SPECS`), а не
+  // перечнем: новая проба ключа попадает в часть без правки этого файла.
   projects: [
-    { name: PRECONDITION_PROJECT, testDir: "./preconditions", testMatch: "*.precondition.ts" },
-    { name: "probes", dependencies: [PRECONDITION_PROJECT] },
+    {
+      name: PRECONDITION_PROJECT,
+      testDir: "./preconditions",
+      testMatch: "*.precondition.ts",
+      testIgnore: ACCESS_KEY_ORIGIN_CONDITION,
+    },
+    {
+      name: ACCESS_KEY_CONDITION_PROJECT,
+      testDir: "./preconditions",
+      testMatch: ACCESS_KEY_ORIGIN_CONDITION,
+      dependencies: [PRECONDITION_PROJECT],
+    },
+    { name: "probes", testIgnore: ACCESS_KEY_SPECS, dependencies: [PRECONDITION_PROJECT] },
+    {
+      name: "probes:access-key",
+      testMatch: ACCESS_KEY_SPECS,
+      dependencies: [PRECONDITION_PROJECT, ACCESS_KEY_CONDITION_PROJECT],
+    },
   ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
@@ -244,7 +305,7 @@ const config: PlaywrightTestConfig = {
       ...(process.env.KACHO_CHROMIUM
         ? { executablePath: process.env.KACHO_CHROMIUM }
         : {}),
-      ...(browserArgs.length ? { args: browserArgs } : {}),
+      ...(browserArgs.length || tlsTrustArgs.length ? { args: [...browserArgs, ...tlsTrustArgs] } : {}),
     },
     // Проверить ФАКТ применения args из этого файла нечем: playwright не
     // отдаёт командную строку запущенного браузера. Поэтому печатается то,
@@ -273,6 +334,17 @@ const config: PlaywrightTestConfig = {
     video: "off",
   },
 };
+
+if (MEASURE) {
+  // Набор ЗАМЕРОВ вместо набора проб: условие прогона прежнее (адреса церемоний,
+  // край, приёмник писем), проектов `probes*` нет, отчёт свой.
+  config.projects = [
+    ...(config.projects ?? []).filter((p) => p.name === PRECONDITION_PROJECT),
+    { name: "measure", testDir: "./measurements", dependencies: [PRECONDITION_PROJECT] },
+  ];
+  config.reporter = [["list"], ["json", { outputFile: "results-measure.json" }]];
+  console.log("[конфиг проб] KACHO_CONSOLE_MEASURE=1: исполняется набор замеров `measurements/`, отчёт results-measure.json");
+}
 
 const refusal = remoteBrowserRefusal(process.env, config);
 if (refusal) {

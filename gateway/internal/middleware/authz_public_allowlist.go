@@ -63,6 +63,16 @@ package middleware
 // DefaultPublicAllowlist returns the curated list of gRPC FQNs that pass
 // through the AuthZ middleware without any AuthorizeService.Check call.
 //
+// It has TWO readers and is their single source (kacho#3033): the AuthZ
+// middleware admits an entry at decide() step 1, and the authentication
+// interceptor (auth.go, built from this list in NewAuthInterceptor) admits an
+// entry presented with no credential instead of refusing it. The interceptor
+// sits earlier in the chain, so before it read the list the waiver below was
+// only half-true: a tokenless probe was refused before decide() ever ran. What
+// the authentication reader waives is exactly the "no credential" refusal — a
+// credential that IS presented on an entry is still verified, and no principal
+// is invented for a caller who presented none.
+//
 // Sorted alphabetically — keep that property when adding entries; tests
 // rely on it.
 func DefaultPublicAllowlist() []string {

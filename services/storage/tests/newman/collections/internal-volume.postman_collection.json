@@ -44,7 +44,7 @@
   ],
   "item": [
     {
-      "name": "IVOL-ATTACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Attach на external endpoint → not served there (Internal-only :9091, ban #6/INV-7)",
+      "name": "IVOL-ATTACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Attach на external endpoint → 404/5 промах маршрута края (Internal-only :9091, ban #6/INV-7)",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -74,15 +74,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(_d || {}).toLowerCase()).to.not.include('sqlstate'));"
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }
@@ -91,7 +91,7 @@
       ]
     },
     {
-      "name": "IVOL-DETACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Detach на external endpoint → not served there (Internal-only :9091, ban #6/INV-7)",
+      "name": "IVOL-DETACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Detach на external endpoint → 404/5 промах маршрута края (Internal-only :9091, ban #6/INV-7)",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -121,15 +121,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(_d || {}).toLowerCase()).to.not.include('sqlstate'));"
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }
@@ -138,7 +138,7 @@
       ]
     },
     {
-      "name": "IVOL-LISTATTACHMENTS-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/ListAttachments на external endpoint → not served there (Internal-only :9091, ban #6/INV-7)",
+      "name": "IVOL-LISTATTACHMENTS-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/ListAttachments на external endpoint → 404/5 промах маршрута края (Internal-only :9091, ban #6/INV-7)",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -168,15 +168,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(_d || {}).toLowerCase()).to.not.include('sqlstate'));"
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }
@@ -185,7 +185,7 @@
       ]
     },
     {
-      "name": "IVOL-GETINTERNAL-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/GetInternal на external endpoint → not served there (Internal-only :9091, ban #6/INV-7)",
+      "name": "IVOL-GETINTERNAL-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/GetInternal на external endpoint → 404/5 промах маршрута края (Internal-only :9091, ban #6/INV-7)",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -215,15 +215,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(_d || {}).toLowerCase()).to.not.include('sqlstate'));"
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
                 ]
               }
             }

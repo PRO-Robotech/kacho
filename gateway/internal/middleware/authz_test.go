@@ -328,7 +328,9 @@ func TestAuthz_GRPC_Deny_ReturnsPermissionDenied(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.PermissionDenied, st.Code())
-	assert.Contains(t, st.Message(), "vpc.networks.delete")
+	// Причина уровня — заголовок называет шаг (сторона края kaname#511); право
+	// остаётся в ErrorInfo.
+	assert.Contains(t, st.Message(), "step up with a second factor")
 	// Details should contain a PreconditionFailure.
 	require.NotEmpty(t, st.Details())
 }

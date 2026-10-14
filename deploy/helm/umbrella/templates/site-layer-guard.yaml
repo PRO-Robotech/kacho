@@ -1,0 +1,128 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+СТРАЖ СЛОЯ ПЛОЩАДКИ (kacho#3040): профиль с заглушками не применяется к кластеру.
+
+Публичный профиль несёт координаты площадки ЗАГЛУШКАМИ — зарезервированные
+имена (RFC 2606: `.invalid`, `.example`, `example.{com,net,org}`) и адреса
+документации (RFC 5737). Настоящие приходят слоем площадки вне git. Рендер для
+проверок слоя не имеет и обязан проходить; применение к кластеру — нет: стенд
+с заглушками поднимается, поды готовы, а письма уходят на неразрешимый узел и
+ссылки в них ведут в никуда — молча.
+
+Открывается ручкой `global.kacho.siteLayer.enforced`, которую взводят рецепты
+применения. Судятся три величины, доезжающие до процесса службы доступа:
+узел почтовой полосы, адрес отправителя, внешний origin консоли. Узел судится
+раскрытым тем же `tpl`, что у читателя величины (страж почтовой полосы).
+Четвёртая — звено балансировки, которому раздача консоли верит заголовок PROXY
+(`uif.publicFront.clientAddress.proxyProtocol.trustedFrom`, kacho#3115); она
+судится, когда приём заголовка включён: заглушка в круге доверия значила бы
+«не верить никому», и все клиенты снова стали бы одним источником.
+Пятая — издатель платформы в семи местах (чеканка службы доступа, приём края
+и реестра; kacho#3113): из него служба выводит документ обнаружения, и
+заглушка в нём публиковала бы снаружи адреса в никуда. Сверх заглушки
+судится согласие шести мест потребителей с издателем чеканки — слой,
+заменивший одну копию и забывший другую, дал бы стенд, отвергающий каждый
+выданный им же токен.
+
+ЧЕГО СТРАЖ НЕ УТВЕРЖДАЕТ: что настоящая величина верна и узел отвечает — это
+рантайм и сквозная проба. Он утверждает только, что заглушка до кластера не
+доехала.
+
+Объект не производится: страж существует ради своего отказа.
+*/}}
+{{- if ((((.Values.global).kacho).siteLayer).enforced) }}
+{{- $id := (((.Values.global).kacho).identity) | default dict }}
+{{- $smtp := $id.smtp | default dict }}
+{{- $placeholderHost := "(?i)^(.*\\.)?(invalid|example|example\\.com|example\\.net|example\\.org)\\.?$" }}
+{{- $docAddress := "^(192\\.0\\.2|198\\.51\\.100|203\\.0\\.113)\\.[0-9]{1,3}$" }}
+{{- $hits := list }}
+
+{{- $uri := trim (tpl (toString ($smtp.connectionURI | default "")) .) }}
+{{- if ne $uri "" }}
+{{- $rest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $uri "" }}
+{{- $authority := (splitList "/" $rest) | first }}
+{{- $hostport := (splitList "@" $authority) | last }}
+{{- $host := (splitList ":" $hostport) | first }}
+{{- if or (regexMatch $placeholderHost $host) (regexMatch $docAddress $host) }}
+{{- $hits = append $hits (printf "global.kacho.identity.smtp.connectionURI (узел %q)" $host) }}
+{{- end }}
+{{- end }}
+
+{{- $from := trim (toString ($smtp.fromAddress | default "")) }}
+{{- if ne $from "" }}
+{{- $domain := (splitList "@" $from) | last }}
+{{- if regexMatch $placeholderHost $domain }}
+{{- $hits = append $hits (printf "global.kacho.identity.smtp.fromAddress (домен %q)" $domain) }}
+{{- end }}
+{{- end }}
+
+{{- $origin := trim (toString ($id.appBaseURL | default "")) }}
+{{- if ne $origin "" }}
+{{- $orest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $origin "" }}
+{{- $ohost := (splitList ":" ((splitList "/" $orest) | first)) | first }}
+{{- if or (regexMatch $placeholderHost $ohost) (regexMatch $docAddress $ohost) }}
+{{- $hits = append $hits (printf "global.kacho.identity.appBaseURL (узел %q)" $ohost) }}
+{{- end }}
+{{- end }}
+
+{{- $pp := ((((.Values.uif).publicFront).clientAddress).proxyProtocol) | default dict }}
+{{- if $pp.enabled }}
+{{- range ($pp.trustedFrom | default list) }}
+{{- $addr := (splitList "/" (toString .)) | first }}
+{{- if regexMatch $docAddress $addr }}
+{{- $hits = append $hits (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom (адрес %q)" (toString .)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /* ИЗДАТЕЛЬ ПЛАТФОРМЫ (kacho#3113). Профиль, чья консоль приходит слоем
+площадки, объявляет издателя заглушкой того же происхождения в семи местах:
+чеканка службы доступа и по три у края и реестра. Слой площадки заменяет их
+вместе с адресом консоли. Судится (а) заглушка в любом из семи и (б) согласие
+шести мест потребителей с издателем чеканки: слой, заменивший издателя у
+чеканки и забывший потребителя, дал бы стенд, где обнаружение отвечает, а
+край отвергает каждый выданный токен — немой отказ. Пустое место не судится:
+незаданное отвергает страж старта процесса, называя настройку. */}}
+{{- $ts := ((((.Values.kaname).config).authn).tokenSigning) | default dict }}
+{{- $minted := trim (toString ($ts.issuer | default "")) }}
+{{- $issuerPlaces := list }}
+{{- if $minted }}
+{{- $issuerPlaces = append $issuerPlaces (list "kaname.config.authn.tokenSigning.issuer" "value" $minted) }}
+{{- end }}
+{{- range $consumer := list "api-gateway" "registry" }}
+{{- $ta := (index $.Values $consumer | default dict).tokenAcceptance | default dict }}
+{{- range $knob := list "platformIssuer" "issuers" "issuerKeySets" }}
+{{- $v := trim (toString (index $ta $knob | default "")) }}
+{{- if $v }}
+{{- $kind := ternary "value" (ternary "list" "keyset" (eq $knob "issuers")) (eq $knob "platformIssuer") }}
+{{- $issuerPlaces = append $issuerPlaces (list (printf "%s.tokenAcceptance.%s" $consumer $knob) $kind $v) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $p := $issuerPlaces }}
+{{- $name := index $p 0 }}{{- $kind := index $p 1 }}{{- $val := index $p 2 }}
+{{- $names := list }}
+{{- range $item := splitList "," $val }}
+{{- $n := trim $item }}
+{{- if eq $kind "keyset" }}{{- $n = trim ((splitList "=" $n) | first) }}{{- end }}
+{{- if $n }}{{- $names = append $names $n }}{{- end }}
+{{- end }}
+{{- $placeholder := false }}
+{{- range $n := $names }}
+{{- $nrest := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" $n "" }}
+{{- $nhost := (splitList ":" ((splitList "/" $nrest) | first)) | first }}
+{{- if or (regexMatch $placeholderHost $nhost) (regexMatch $docAddress $nhost) }}{{- $placeholder = true }}{{- end }}
+{{- end }}
+{{- if $placeholder }}
+{{- $hits = append $hits (printf "%s (издатель платформы — заглушка, %q)" $name $val) }}
+{{- else if and $minted (ne $name "kaname.config.authn.tokenSigning.issuer") (not (has $minted $names)) }}
+{{- $hits = append $hits (printf "%s (не называет издателя чеканки %q, а %q)" $name $minted $val) }}
+{{- end }}
+{{- end }}
+
+{{- if $hits }}
+{{- fail (printf "kacho-umbrella: стенд применяется к кластеру (global.kacho.siteLayer.enforced), а слой площадки не заменил заглушки публичного профиля: %s. Координаты площадки приходят слоем вне git (`values.<стенд>-secrets.yaml`, последним в цепочке; `make stack-up` кладёт его сам, если файл на месте) — положите в него эти величины. Заглушка до кластера не доезжает: стенд поднялся бы, а письма уходили бы на неразрешимый узел молча (kacho#3040)" (join "; " $hits)) }}
+{{- end }}
+{{- end }}

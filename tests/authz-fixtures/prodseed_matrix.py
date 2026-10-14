@@ -95,7 +95,7 @@ from principal_pairings import unpaired_principals  # noqa: E402
 # Endpoints. Defaults match the port-forwards the newman drivers establish
 # (deploy/scripts/newman-{e2e,parallel}.sh); every one is env-overridable so the
 # same seeder works behind a different forward map without editing the file.
-INTERNAL = os.environ.get("INTERNAL_BASE_URL", "http://localhost:18081")
+INTERNAL = os.environ.get("INTERNAL_BASE_URL", "https://localhost:18081")
 PUBLIC = os.environ.get("BASE_URL", "http://localhost:18080")
 # ЗДЕСЬ СТОЯЛИ АДРЕС ВНУТРЕННЕГО СЛУШАТЕЛЯ СЛУЖБЫ ДОСТУПА И КЛИЕНТСКИЙ ЛИСТ К НЕМУ —
 # ими посев заводил людей хуком поставщика. Людей посев теперь заводит регистрацией
@@ -142,8 +142,23 @@ NLB_ZONE = os.environ.get("NLB_ZONE", "ru-central1-e")
 ALT_REGION = os.environ.get("SEED_ALT_REGION", "ru-central2")
 
 
+def _internal_tls_args():
+    """Аргументы curl внутреннего слушателя края — mTLS и только он (kacho#3131).
+
+    Лист операторской личности и УЦ установки — INTERNAL_REST_{CA,CERT,KEY}
+    (производитель: deploy/scripts/lib/internal-rest-client.sh). Материала нет —
+    отказ здесь, с именами переменных, а не запрос открытым текстом на TLS-порт.
+    """
+    ca, cert, key = (os.environ.get(k, "") for k in ("INTERNAL_REST_CA", "INTERNAL_REST_CERT", "INTERNAL_REST_KEY"))
+    if not (ca and cert and key):
+        raise RuntimeError("внутренний слушатель края: нет INTERNAL_REST_CA / INTERNAL_REST_CERT / INTERNAL_REST_KEY")
+    return ["--cacert", ca, "--cert", cert, "--key", key]
+
+
 def _curl(method, path, token, body=None, base=PUBLIC):
     args = ["curl", "-sS", "-m", "20", "-X", method, "-H", "Content-Type: application/json"]
+    if base == INTERNAL:
+        args += _internal_tls_args()
     if token:
         args += ["-H", f"Authorization: Bearer {token}"]
     if body is not None:
@@ -475,13 +490,13 @@ m.assert_bootstrap_accepted_by_the_edge(PUBLIC, boot)
 
 def _seed_bootstrap_root_cluster():
     """Deterministic system_admin + system_viewer @cluster for the bootstrap ROOT
-    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
+    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@example.test), mirroring
     dev-mode setup.sh 5a/5c. The bootstrap SA principal already holds system_admin
     @cluster via migration 0058 (deterministic), but the root USER's grant is
     seeded by the ≤180s RunBootstrapAdmin reconciler (racy on a fresh stand) and it
     never gets system_viewer. Best-effort: skip silently if the user is not yet
     provisioned (never fails the seed run)."""
-    email = "admin@prorobotech.ru"
+    email = "admin@example.test"
     sql = f"SELECT id FROM kaname.users WHERE external_id='{email}' LIMIT 1;"
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
             "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']

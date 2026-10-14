@@ -11,6 +11,7 @@ package geov1
 
 import (
 	context "context"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -22,18 +23,30 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ZoneService_Get_FullMethodName  = "/kacho.cloud.geo.v1.ZoneService/Get"
-	ZoneService_List_FullMethodName = "/kacho.cloud.geo.v1.ZoneService/List"
+	ZoneService_Get_FullMethodName    = "/kacho.cloud.geo.v1.ZoneService/Get"
+	ZoneService_List_FullMethodName   = "/kacho.cloud.geo.v1.ZoneService/List"
+	ZoneService_Create_FullMethodName = "/kacho.cloud.geo.v1.ZoneService/Create"
+	ZoneService_Update_FullMethodName = "/kacho.cloud.geo.v1.ZoneService/Update"
+	ZoneService_Delete_FullMethodName = "/kacho.cloud.geo.v1.ZoneService/Delete"
 )
 
 // ZoneServiceClient is the client API for ZoneService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// A set of methods to retrieve information about zones (public, read-only).
-// Admin CRUD over zones — see InternalZoneService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// ZoneService — the placement catalog of zones on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog), gated exactly like their InternalZoneService twins
+// (same permission name, `system_admin` @ `cluster`, same identity-assurance
+// floor). The public input carries NO infra° block: a zone created here gets
+// numericInfraId = 0 and empty infra; the infra° subfields stay editable through
+// InternalZoneService on the cluster-internal port only.
+//
+// Mutations complete synchronously: Operation with done=true in the response
+// itself (see RegionService).
 type ZoneServiceClient interface {
 	// Returns the information about the specified zone.
 	//
@@ -41,6 +54,15 @@ type ZoneServiceClient interface {
 	Get(ctx context.Context, in *GetZoneRequest, opts ...grpc.CallOption) (*Zone, error)
 	// Retrieves the list of zones.
 	List(ctx context.Context, in *ListZonesRequest, opts ...grpc.CallOption) (*ListZonesResponse, error)
+	// Creates a zone in an existing region. A missing region is refused in
+	// Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
+	// constraint"). Same gate as InternalZoneService.Create.
+	Create(ctx context.Context, in *CreatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Updates a zone (status only on this surface). Same gate as
+	// InternalZoneService.Update.
+	Update(ctx context.Context, in *UpdatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Deletes a zone. Same gate as InternalZoneService.Delete.
+	Delete(ctx context.Context, in *DeleteZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type zoneServiceClient struct {
@@ -71,14 +93,53 @@ func (c *zoneServiceClient) List(ctx context.Context, in *ListZonesRequest, opts
 	return out, nil
 }
 
+func (c *zoneServiceClient) Create(ctx context.Context, in *CreatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ZoneService_Create_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zoneServiceClient) Update(ctx context.Context, in *UpdatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ZoneService_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zoneServiceClient) Delete(ctx context.Context, in *DeleteZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ZoneService_Delete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZoneServiceServer is the server API for ZoneService service.
 // All implementations must embed UnimplementedZoneServiceServer
 // for forward compatibility.
 //
-// A set of methods to retrieve information about zones (public, read-only).
-// Admin CRUD over zones — see InternalZoneService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// ZoneService — the placement catalog of zones on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog), gated exactly like their InternalZoneService twins
+// (same permission name, `system_admin` @ `cluster`, same identity-assurance
+// floor). The public input carries NO infra° block: a zone created here gets
+// numericInfraId = 0 and empty infra; the infra° subfields stay editable through
+// InternalZoneService on the cluster-internal port only.
+//
+// Mutations complete synchronously: Operation with done=true in the response
+// itself (see RegionService).
 type ZoneServiceServer interface {
 	// Returns the information about the specified zone.
 	//
@@ -86,6 +147,15 @@ type ZoneServiceServer interface {
 	Get(context.Context, *GetZoneRequest) (*Zone, error)
 	// Retrieves the list of zones.
 	List(context.Context, *ListZonesRequest) (*ListZonesResponse, error)
+	// Creates a zone in an existing region. A missing region is refused in
+	// Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
+	// constraint"). Same gate as InternalZoneService.Create.
+	Create(context.Context, *CreatePublicZoneRequest) (*operation.Operation, error)
+	// Updates a zone (status only on this surface). Same gate as
+	// InternalZoneService.Update.
+	Update(context.Context, *UpdatePublicZoneRequest) (*operation.Operation, error)
+	// Deletes a zone. Same gate as InternalZoneService.Delete.
+	Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedZoneServiceServer()
 }
 
@@ -101,6 +171,15 @@ func (UnimplementedZoneServiceServer) Get(context.Context, *GetZoneRequest) (*Zo
 }
 func (UnimplementedZoneServiceServer) List(context.Context, *ListZonesRequest) (*ListZonesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedZoneServiceServer) Create(context.Context, *CreatePublicZoneRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedZoneServiceServer) Update(context.Context, *UpdatePublicZoneRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedZoneServiceServer) Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
 func (UnimplementedZoneServiceServer) mustEmbedUnimplementedZoneServiceServer() {}
 func (UnimplementedZoneServiceServer) testEmbeddedByValue()                     {}
@@ -159,6 +238,60 @@ func _ZoneService_List_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZoneService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePublicZoneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZoneServiceServer).Create(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZoneService_Create_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZoneServiceServer).Create(ctx, req.(*CreatePublicZoneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZoneService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePublicZoneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZoneServiceServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZoneService_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZoneServiceServer).Update(ctx, req.(*UpdatePublicZoneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZoneService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteZoneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZoneServiceServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZoneService_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZoneServiceServer).Delete(ctx, req.(*DeleteZoneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZoneService_ServiceDesc is the grpc.ServiceDesc for ZoneService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -173,6 +306,18 @@ var ZoneService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _ZoneService_List_Handler,
+		},
+		{
+			MethodName: "Create",
+			Handler:    _ZoneService_Create_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _ZoneService_Update_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _ZoneService_Delete_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

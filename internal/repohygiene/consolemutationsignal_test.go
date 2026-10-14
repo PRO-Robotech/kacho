@@ -33,7 +33,8 @@
 //	           заведён на механизм, — НАХОДКА. Иначе ведомость переживёт свой
 //	           предмет и станет описанием несуществующего долга.
 //	ПЕРЕПИСЬ   файлов прочитано · мест мутации найдено · файлов заведено ·
-//	           длина ведомости. «Ноль находок» обязано быть отличимо от «ноль
+//	           длина ведомости · места по форме вызова (`api.post(` и
+//	           `api.post<` — разные ключи, kacho#3096). «Ноль находок» обязано быть отличимо от «ноль
 //	           прочитанного».
 //
 // # Чего гейт НЕ держит, и это названо, а не умолчано
@@ -154,11 +155,21 @@ type consoleMutationCensus struct {
 	Wired     int // из них заведено на механизм
 	Ledgered  int // из них в ведомости
 	Transport int // файлов транспорта пропущено
+	// Forms — перепись мест по ФОРМЕ вызова: `api.post(` и `api.post<` — разные
+	// ключи (kacho#3096). Форма с параметром типа, выпавшая из признака, видна
+	// здесь нулём рядом с ненулевой соседкой, а не пропадает из суммы молча.
+	Forms map[string]int
 }
 
-// consoleMutationScan обходит дерево консоли и раскладывает файлы по трём
-// корзинам: заведено · в ведомости · находка.
-func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []string, c consoleMutationCensus) {
+// consoleSourceFile — не-тестовый исходник консоли: путь от корня консоли и текст.
+type consoleSourceFile struct {
+	Rel string
+	Src []byte
+}
+
+// consoleMutationSources — исходники консоли, которые судит гейт: состав берётся
+// у ИНДЕКСА, отбор — исполняемая часть приложений вне сквозных проб.
+func consoleMutationSources(t *testing.T) []consoleSourceFile {
 	t.Helper()
 
 	root := repoRoot(t)
@@ -166,13 +177,6 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 	if _, err := os.Stat(uiRoot); err != nil {
 		t.Fatalf("предпосылка гейта не выполняется: каталога консоли %s нет (%v)", consoleUIRoot, err)
 	}
-
-	ledger := make(map[string]bool, len(consoleMutationLedger))
-	for _, p := range consoleMutationLedger {
-		ledger[p] = true
-	}
-	// Файлы, ради которых ведомость заведена, — чтобы поймать записи без предмета.
-	ledgerHit := make(map[string]bool, len(consoleMutationLedger))
 
 	// Состав дерева берётся у ИНДЕКСА, а не с диска. Под `ui-future/` на всякой
 	// машине, где собирали фронтенд, лежат `node_modules` и сборочные каталоги;
@@ -183,6 +187,7 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 		t.Fatalf("состав дерева консоли взять неоткуда: %v", err)
 	}
 
+	var out []consoleSourceFile
 	for _, path := range tracked {
 		name := filepath.Base(path)
 		if strings.Contains(name, ".test.") || strings.HasSuffix(name, ".d.ts") {
@@ -202,11 +207,37 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 		if strings.HasPrefix(rel, "e2e/") {
 			continue
 		}
-
 		src, rerr := os.ReadFile(path)
 		if rerr != nil {
 			t.Fatalf("чтение %s: %v", rel, rerr)
 		}
+		out = append(out, consoleSourceFile{Rel: rel, Src: src})
+	}
+	return out
+}
+
+// consoleMutationScan обходит дерево консоли и судит его ведомостью гейта.
+func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []string, c consoleMutationCensus) {
+	t.Helper()
+	return consoleMutationJudge(t, consoleMutationSources(t), consoleMutationLedger)
+}
+
+// consoleMutationJudge раскладывает файлы по трём корзинам: заведено · в
+// ведомости · находка. Решение одно для дерева и для инъекции — инъекция зовёт
+// ЕГО, а не свою копию правил.
+func consoleMutationJudge(t *testing.T, files []consoleSourceFile, ledgerEntries []string) (findings []consoleMutationSite, stale []string, c consoleMutationCensus) {
+	t.Helper()
+	c.Forms = map[string]int{}
+
+	ledger := make(map[string]bool, len(ledgerEntries))
+	for _, p := range ledgerEntries {
+		ledger[p] = true
+	}
+	// Файлы, ради которых ведомость заведена, — чтобы поймать записи без предмета.
+	ledgerHit := make(map[string]bool, len(ledgerEntries))
+
+	for _, f := range files {
+		rel, src := f.Rel, f.Src
 		c.Files++
 
 		// Разбор — по маске: вызов внутри строки или комментария не считается.
@@ -216,6 +247,9 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 			continue
 		}
 		c.Sites += len(locs)
+		for _, loc := range locs {
+			c.Forms[consoleMutationForm(mask[loc[0]:loc[1]])]++
+		}
 
 		if strings.Contains("/"+rel, consoleMutationTransportDir) {
 			c.Transport++
@@ -249,19 +283,24 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 			findings = append(findings, consoleMutationSite{
 				File: rel,
 				Line: 1 + strings.Count(string(src[:loc[0]]), "\n"),
-				Text: strings.TrimSpace(string(mask[loc[0]:loc[1]])),
+				Text: consoleMutationForm(mask[loc[0]:loc[1]]),
 			})
 		}
 	}
 
 	// Записи ведомости, которым нечего исключать: файла нет либо он больше не мутирует.
-	for _, p := range consoleMutationLedger {
+	for _, p := range ledgerEntries {
 		if !ledgerHit[p] {
 			stale = append(stale, p+" — мутации в файле нет (снят или переписан); запись без предмета")
 		}
 	}
 	sort.Strings(stale)
 	return findings, stale, c
+}
+
+// consoleMutationForm — форма вызова без пробелов: `api.post(` либо `api.post<`.
+func consoleMutationForm(call []byte) string {
+	return strings.Join(strings.Fields(string(call)), "")
 }
 
 func TestConsoleMutationGoesThroughTheSignalMechanism(t *testing.T) {
@@ -271,6 +310,7 @@ func TestConsoleMutationGoesThroughTheSignalMechanism(t *testing.T) {
 	t.Logf("осмотрено: исходников %d · мест мутации %d · файлов-действий %d "+
 		"(заведено %d, в ведомости %d) · транспорта пропущено %d · ведомость %d",
 		c.Files, c.Sites, c.ActFiles, c.Wired, c.Ledgered, c.Transport, len(consoleMutationLedger))
+	t.Logf("перепись форм вызова: %s", consoleMutationFormsLine(c.Forms))
 
 	// Предпосылка: разбор обязан НАХОДИТЬ предмет. Ноль мест при непустом дереве —
 	// поломка разбора, а не чистота консоли, и молчаливый успех тут был бы худшим
@@ -298,6 +338,20 @@ func TestConsoleMutationGoesThroughTheSignalMechanism(t *testing.T) {
 		}
 		t.Fatal(b.String())
 	}
+}
+
+// consoleMutationFormsLine — перепись форм одной строкой, в порядке ключа.
+func consoleMutationFormsLine(forms map[string]int) string {
+	keys := make([]string, 0, len(forms))
+	for k := range forms {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+" "+strconv.Itoa(forms[k]))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // TestConsoleMutationLedgerHasSubject — ведомость истекает сама.

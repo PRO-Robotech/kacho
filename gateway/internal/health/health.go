@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -59,6 +60,19 @@ func HTTPHealthz(w http.ResponseWriter, _ *http.Request) {
 // пустое → готовность зависит только от собственной способности обслуживать
 // (всегда 200, backends лишь отражаются в теле).
 func HTTPReadyz(backends proxy.Backends, critical map[string]bool, logger *slog.Logger) http.HandlerFunc {
+	return newReadyz(backends, critical, logger, time.Now, notServingReminderWindow)
+}
+
+// notServingReminderWindow — как часто держащееся «бэкенд не готов» напоминает о
+// себе строкой журнала. Проба готовности ходит раз в 10 с, и строка на каждую
+// пробу давала 360 одинаковых строк в час на домен (kacho#3034); окно в 10 минут
+// оставляет 6 строк в час — состояние видно в журнале любого получаса, а смена
+// состояния не тонет в повторах. Ручкой не вынесено: величина не меняет ни
+// готовности, ни ответа, только плотность журнала.
+const notServingReminderWindow = 10 * time.Minute
+
+func newReadyz(backends proxy.Backends, critical map[string]bool, logger *slog.Logger, now func() time.Time, window time.Duration) http.HandlerFunc {
+	journal := newServingJournal(logger, now, window)
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -69,9 +83,7 @@ func HTTPReadyz(backends proxy.Backends, critical map[string]bool, logger *slog.
 			resp, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 			ok := err == nil && resp.Status == healthpb.HealthCheckResponse_SERVING
 			serving[domain] = ok
-			if !ok && logger != nil {
-				logger.Warn("backend not serving", "domain", domain, "error", err, "critical", critical[domain])
-			}
+			journal.observe(domain, ok, err, critical[domain])
 		}
 
 		backendStatus, criticalDown := EvaluateReadiness(serving, critical)
@@ -84,6 +96,79 @@ func HTTPReadyz(backends proxy.Backends, critical map[string]bool, logger *slog.
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(statusResponse{Status: "ok", Backends: backendStatus})
+	}
+}
+
+// servingJournal пишет в журнал СМЕНУ состояния домена, а не каждую пробу.
+//
+// Исходное состояние домена — «обслуживает»: первая проба в SERVING молчит,
+// первая в NOT_SERVING пишет переход. Пока NOT_SERVING держится, раз в окно
+// пишется напоминание ТЕМ ЖЕ текстом (`state_change=false`) со счётчиком проб,
+// за которые оно стоит, — так счёт строк `backend not serving` в час на домен
+// ограничен числом окон в часе плюс переходы. Возврат в SERVING — одна строка
+// уровня Info с числом проб, проведённых в NOT_SERVING.
+//
+// Пробы готовности могут идти конкурентно (несколько опрашивающих), поэтому
+// состояние под мьютексом; вызов журнала — тоже под ним, чтобы порядок строк
+// совпадал с порядком переходов.
+type servingJournal struct {
+	logger *slog.Logger
+	now    func() time.Time
+	window time.Duration
+
+	mu      sync.Mutex
+	domains map[string]*domainServing
+}
+
+type domainServing struct {
+	notServing bool
+	// outageProbes — проб в NOT_SERVING с последнего перехода в него.
+	outageProbes int
+	// sinceLine — проб в NOT_SERVING с последней записанной строки.
+	sinceLine int
+	since     time.Time // начало текущего NOT_SERVING
+	lastLine  time.Time
+}
+
+func newServingJournal(logger *slog.Logger, now func() time.Time, window time.Duration) *servingJournal {
+	return &servingJournal{logger: logger, now: now, window: window, domains: map[string]*domainServing{}}
+}
+
+func (j *servingJournal) observe(domain string, ok bool, err error, critical bool) {
+	if j.logger == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	d := j.domains[domain]
+	if d == nil {
+		d = &domainServing{}
+		j.domains[domain] = d
+	}
+	switch {
+	case ok && !d.notServing:
+		return
+	case ok && d.notServing:
+		j.logger.Info("backend serving again", "domain", domain, "critical", critical,
+			"not_serving_probes", d.outageProbes)
+		*d = domainServing{}
+	case !ok && !d.notServing:
+		t := j.now()
+		*d = domainServing{notServing: true, outageProbes: 1, since: t, lastLine: t}
+		j.logger.Warn("backend not serving", "domain", domain, "error", err, "critical", critical,
+			"state_change", true)
+	default: // NOT_SERVING holds
+		d.outageProbes++
+		d.sinceLine++
+		t := j.now()
+		if t.Sub(d.lastLine) < j.window {
+			return
+		}
+		j.logger.Warn("backend not serving", "domain", domain, "error", err, "critical", critical,
+			"state_change", false, "probes_since_last_line", d.sinceLine,
+			"not_serving_for", t.Sub(d.since).String())
+		d.sinceLine = 0
+		d.lastLine = t
 	}
 }
 

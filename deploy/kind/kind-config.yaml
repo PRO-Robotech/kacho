@@ -8,6 +8,16 @@ nodes:
       - containerPort: 80
         hostPort: 28080
         protocol: TCP
+      # TLS контроллера входа (консоль и край, kacho#3025). Порт хоста — не 443:
+      # он привилегированный и на машине разработчика бывает занят. Его
+      # называет происхождение консоли стенда (values.dev.yaml,
+      # `global.kacho.identity.appBaseURL`); расхождение двух мест ловит
+      # deploy/console_ingress_origin_is_served_over_tls_render_test.go.
+      # Кластер, созданный до этой строки, отображения не несёт — подъём
+      # стенда отказывает и называет причину (deploy/kind/assert-port-mappings.sh).
+      - containerPort: 443
+        hostPort: 28443
+        protocol: TCP
     # ПАТЧ ОСТАЁТСЯ НЕВЕРСИОНИРОВАННЫМ И В MAP-ФОРМЕ — ОСОЗНАННО.
     #
     # kind 0.32.0 (наш пин в .github/workflows/{e2e-newman,production-posture}.yml)

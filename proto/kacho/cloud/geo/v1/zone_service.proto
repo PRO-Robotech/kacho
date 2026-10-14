@@ -6,15 +6,29 @@ syntax = "proto3";
 package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "corelib/api/v1/operation.proto";
+import "corelib/operation/operation.proto";
+import "kacho/cloud/geo/v1/geo_common.proto";
 import "kacho/cloud/geo/v1/zone.proto";
+import "kacho/cloud/geo/v1/internal_catalog_service.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
-// A set of methods to retrieve information about zones (public, read-only).
-// Admin CRUD over zones — see InternalZoneService in
-// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// ZoneService — the placement catalog of zones on the PUBLIC surface.
+// Region/Zone is owned by kacho-geo (leaf platform-topology service).
+//
+// Reads (Get/List) are the ambient catalog every authenticated tenant reads.
+// Mutations (Create/Update/Delete) are the administrator's verbs (sub-phase
+// ADM-1, placement catalog), gated exactly like their InternalZoneService twins
+// (same permission name, `system_admin` @ `cluster`, same identity-assurance
+// floor). The public input carries NO infra° block: a zone created here gets
+// numericInfraId = 0 and empty infra; the infra° subfields stay editable through
+// InternalZoneService on the cluster-internal port only.
+//
+// Mutations complete synchronously: Operation with done=true in the response
+// itself (see RegionService).
 service ZoneService {
   // Returns the information about the specified zone.
   //
@@ -53,6 +67,82 @@ service ZoneService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+
+  // Creates a zone in an existing region. A missing region is refused in
+  // Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
+  // constraint"). Same gate as InternalZoneService.Create.
+  rpc Create (CreatePublicZoneRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { post: "/geo/v1/zones" body: "*" };
+    option (corelib.api.v1.operation) = {
+      metadata: "CreateZoneMetadata"
+      response: "Zone"
+    };
+    option (corelib.authz.v1.permission)        = "geo.zones.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+
+  // Updates a zone (status only on this surface). Same gate as
+  // InternalZoneService.Update.
+  rpc Update (UpdatePublicZoneRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { patch: "/geo/v1/zones/{zone_id}" body: "*" };
+    option (corelib.api.v1.operation) = {
+      metadata: "UpdateZoneMetadata"
+      response: "Zone"
+    };
+    option (corelib.authz.v1.permission)        = "geo.zones.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+
+  // Deletes a zone. Same gate as InternalZoneService.Delete.
+  rpc Delete (DeleteZoneRequest) returns (corelib.operation.Operation) {
+    option (google.api.http) = { delete: "/geo/v1/zones/{zone_id}" };
+    option (corelib.api.v1.operation) = {
+      metadata: "DeleteZoneMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (corelib.authz.v1.permission)        = "geo.zones.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (corelib.authz.v1.required_acr_min) = "1";
+  }
+}
+
+// CreatePublicZoneRequest — public Create input. Deliberately a separate message
+// from the internal CreateZoneRequest: it carries NO infra° block.
+message CreatePublicZoneRequest {
+  // Zone ID — admin-assigned immutable slug PK (e.g. "ru-central1-a");
+  // coupling id == regionId + "-" + <zoneSuffix>.
+  string id = 1;
+  // ID of the region the zone belongs to; immutable after create.
+  string region_id = 2;
+  // Optional; DEFAULT DOWN (fail-safe) if omitted → zone stays CLOSED.
+  GeoStatus status = 3;
+}
+
+// UpdatePublicZoneRequest — public Update input; no infra° block. Mutable
+// through the mask: `status`. `id`, `regionId`, `infra.numericInfraId` are
+// refused with their immutability text; any other path (every other `infra.*`
+// included) is refused as an unknown update_mask field.
+message UpdatePublicZoneRequest {
+  // ID of the zone to update.
+  string zone_id = 1;
+  // New administrative status (UP opens the zone for placement).
+  GeoStatus status = 2;
+  // Fields to update; empty = apply what the caller carried.
+  google.protobuf.FieldMask update_mask = 3;
 }
 
 message ListZonesRequest {

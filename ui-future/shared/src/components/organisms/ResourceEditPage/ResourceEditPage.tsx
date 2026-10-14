@@ -11,7 +11,7 @@ import { ResourceFormBody } from "@shared/components/organisms/form/ResourceForm
 import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api } from "@shared/api/client";
-import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { subjectNameOf, subjectOfSpec } from "@shared/lib/mutation-signal";
 import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
@@ -39,7 +39,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   // поля. У двухпроекционного ресурса (geo Region/Zone) это Internal: `status` и
   // infra° на публичной проекции отсутствуют, и форма, заполненная публичным
   // чтением, показала бы пустое поле там, где значение есть.
-  const readPath = uid ? editReadPath(spec, uid) : "";
+  const readPath = uid ? `${spec.apiPath}/${uid}` : "";
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "detail", uid, readPath],
     queryFn: () => api.get<Record<string, unknown>>(readPath),
@@ -120,7 +120,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
     verb: "update",
     subject: () => subjectOfSpec(spec, subjectNameOf(obj)),
     expectOperation: spec.mutationsReturnOperation !== false,
-    mutationFn: (item) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
+    mutationFn: (item) => api.update(`${spec.apiPath}/${uid}`, item),
     onSucceeded: () => {
       invalidate(spec.id, project?.id ?? null);
       void navigate(backHref);

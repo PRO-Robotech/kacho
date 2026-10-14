@@ -53,6 +53,7 @@ const SESSION_READER = "shared/src/api/login-lane.ts";
 /** Стражи и спрашивающие «есть ли сессия» — все обязаны звать единственного читателя. */
 const SESSION_ASKERS = [
   "shared/src/pages/auth/LoginPage.tsx",
+  "shared/src/pages/auth/RecoveryPage.tsx",
   "shared/src/pages/auth/AccountSettingsPage.tsx",
   "shared/src/contexts/AuthContext.tsx",
   "host/src/utils/session.ts",

@@ -30,11 +30,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // addressRefusalWant — отказ Р3 побайтово: значение службы (`kaname`
-// `loginlanehttp.writeRefusal`), без `metadata`.
-const addressRefusalWant = `{"code":7,"message":"email address is not verified","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
+// `loginlanehttp.writeRefusal`), без `metadata`; текст — Р3 с редакции 7
+// (approvedR3Text, kaname#526).
+const addressRefusalWant = `{"code":7,"message":"` + approvedR3Text + `","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
 
 // addressPlatformPaths — «путь платформы» преамбулы §4 приёмки: каждый из четырёх.
 var addressPlatformPaths = []struct{ method, path string }{
@@ -333,8 +336,14 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinates
 			closedVerbs = append(closedVerbs, rt.Path)
 		}
 	}
-	if len(openVerbs) != 6 || len(closedVerbs) != 9 || len(ceremony) != 3 {
-		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 9), координат церемонии %d (ожидалось 3)",
+	// Закрытых семнадцать: девять по приёмке F6b, два глагола входа ключом
+	// (Ф13, kacho#3037), заведение первого пароля (kaname#213, kacho#3056),
+	// три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) и два глагола
+	// смены адреса (приёмка F8-S6 Р1, kacho#3062) — перечень девяти
+	// открытых закрыт приёмкой F6b, и запись без решения до подтверждения
+	// адреса недоступна.
+	if len(openVerbs) != 6 || len(closedVerbs) != 17 || len(ceremony) != 3 {
+		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 17), координат церемонии %d (ожидалось 3)",
 			len(openVerbs), len(closedVerbs), len(ceremony))
 	}
 	for _, p := range append(append([]string{}, openNonVerbPaths...), openVerbs...) {
@@ -378,7 +387,7 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinates
 			t.Fatalf("закрытый глагол %s ретранслирован неподтверждённой сессии %d раз", p, rig.reached[p])
 		}
 	}
-	// Близнец: те же девять БЕЗ носителя — рубеж без носителя сессии не действует.
+	// Близнец: те же закрытые глаголы БЕЗ носителя — рубеж без носителя сессии не действует.
 	for _, p := range closedVerbs {
 		rec := rig.present(http.MethodPost, p, false)
 		if !notAddressRefusal(rec) || rig.reached[p] != 1 {
@@ -493,7 +502,7 @@ func TestOwnSessionAddressGate_F6b_07_CutoffIsDecidedBeforeTheAddress(t *testing
 	rig := newAddressRig(t, unverifiedOwnSession())
 	rig.cut.found, rig.cut.cutoff = true, ownAuthAt
 	rec := rig.present(http.MethodGet, "/iam/v1/projects", true)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 		t.Fatalf("отсечённая сессия обязана получить F4d-22, получено %d %s", rec.Code, rec.Body.String())
 	}
 	if !ourCarrierEnded(rec.Result()) {
@@ -533,16 +542,16 @@ func TestOwnSessionAddressGate_F6b_08_AddressIsDecidedBeforeTheFloor(t *testing.
 	}
 }
 
-// F6b-09 — служба не ответила о сессии: F4d-23, прохода «адрес неизвестен» нет.
+// F6b-09 — служба не ответила о сессии: ответ Р1 (KA1), прохода «адрес неизвестен» нет.
 func TestOwnSessionAddressGate_F6b_09_UnansweredSessionIsF4d23NotAPass(t *testing.T) {
 	rig := newAddressRig(t, unverifiedOwnSession())
 	rig.reader.err = errors.New("authority unavailable")
 	rec := rig.present(http.MethodGet, "/iam/v1/projects", true)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
-		t.Fatalf("служба не ответила: ожидался F4d-23, получено %d %s", rec.Code, rec.Body.String())
+	if !isCredentialStateUnknown(rec) {
+		t.Fatalf("служба не ответила: ожидался ответ Р1 приёмки KA1 (503, носитель цел), получено %d %s", rec.Code, rec.Body.String())
 	}
 	if ourCarrierEnded(rec.Result()) {
-		t.Fatal("F4d-23 носитель не гасит")
+		t.Fatal("ответ Р1 носитель не гасит")
 	}
 	if rig.next.served != 0 {
 		t.Fatalf("при неответе службы запрос дошёл до следующего звена %d раз", rig.next.served)
@@ -563,11 +572,11 @@ func TestOwnSessionAddressGate_F6b_11_VerificationVerbsAreRelayedAndReadTheCarri
 		if rec := rig.present(http.MethodPost, p, false); rec.Code != http.StatusOK || rig.reached[p] != 2 {
 			t.Fatalf("(б) %s: %d, ретранслирован %d", p, rec.Code, rig.reached[p])
 		}
-		// (в) носитель при службе, не ответившей о сессии, — F4d-23 края.
+		// (в) носитель при службе, не ответившей о сессии, — ответ Р1 края (KA1).
 		rig.reader.err = errors.New("authority unavailable")
 		rec := rig.present(http.MethodPost, p, true)
-		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) || rig.reached[p] != 2 {
-			t.Fatalf("(в) %s: ожидался F4d-23 без ретрансляции, получено %d %s, ретранслирован %d", p, rec.Code, rec.Body.String(), rig.reached[p])
+		if !isCredentialStateUnknown(rec) || rig.reached[p] != 2 {
+			t.Fatalf("(в) %s: ожидался ответ Р1 без ретрансляции, получено %d %s, ретранслирован %d", p, rec.Code, rec.Body.String(), rig.reached[p])
 		}
 	}
 	// Близнец: регистрация в случае (в) ретранслируется — носителя она не читает.

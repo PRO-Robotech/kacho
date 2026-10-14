@@ -18,7 +18,9 @@ Region и Zone — глобальный cluster-scoped каталог: они н
   с синглтоном `cluster:cluster_root`.
 - **Отношение объявляется в proto и больше нигде.** Каждый admin-RPC несёт
   `required_relation = "system_admin"` рядом со своим `permission`
-  (`proto/kacho/cloud/geo/v1/internal_catalog_service.proto`); тапл
+  (`proto/kacho/cloud/geo/v1/internal_catalog_service.proto`; публичные
+  административные глаголы ADM-1 — `region_service.proto`/`zone_service.proto`, то же
+  право и тот же порог); тапл
   `cluster:cluster_root#system_admin` сидит bootstrap kaname. Своей рукописной
   карты RPC→объект у geo нет: контур решения о доступе собирает носитель
   (`corelib/servicehost`) по дескриптору (`corelib/servicecontract`), который geo заполняет в

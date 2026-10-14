@@ -278,6 +278,17 @@ export function userUnblockPath(userId: string): string {
   return `${IAM.users}/${encodeURIComponent(userId)}:unblock`;
 }
 
+// ====== Сброс второго фактора распорядителем (UserService.ResetSecondFactor) ======
+//
+// Снимает у человека второй фактор и запасные коды и завершает все его сессии
+// одной операцией службы (приёмка F8r, S1; kacho#3063). Право — у администратора
+// облака, и решает его край: консоль пункт не прячет и не выключает (Р3).
+// Путь строится здесь по той же причине, что у запрета участия: перепись
+// глаголов консоли сверяет его с `google.api.http` контракта.
+export function userResetSecondFactorPath(userId: string): string {
+  return `${IAM.users}/${encodeURIComponent(userId)}:resetSecondFactor`;
+}
+
 // ====== Исключение человека из аккаунта (UserService.RemoveFromAccount) ======
 //
 // ЭТО НЕ ЗАПРЕТ И НЕ УДАЛЕНИЕ, и путать их дорого. Запрет выше пишется в

@@ -4,10 +4,10 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -38,7 +38,7 @@ func registryMuxAddrs() map[string]string {
 // Недостижимый backend 127.0.0.1:1 дает downstream gRPC-ошибку, не 404. 404
 // означает, что public registry handler не зарегистрирован.
 func TestRegistry_PublicRoutesRegistered(t *testing.T) {
-	h, err := NewMux(context.Background(), registryMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), registryMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestRegistry_PublicRoutesRegistered(t *testing.T) {
 // недостижимый backend дает downstream-ошибку (НЕ route-level 404). 404 здесь
 // значит, что Internal* handler не зарегистрирован — admin-tooling сломан.
 func TestRegistry_InternalService_InternalListenerServes(t *testing.T) {
-	h, err := NewMux(context.Background(), registryMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), registryMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRegistry_InternalService_InternalListenerServes(t *testing.T) {
 // external endpoint. isInternalPath должен ловить Internal*Service
 // default-route (зеркалит gRPC HasInternalSuffix-блок).
 func TestRegistry_InternalService_ExternalListenerRejected(t *testing.T) {
-	h, err := NewMux(context.Background(), registryMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), registryMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRegistry_InternalGuard_NoInternalAddr(t *testing.T) {
 	addrs := registryMuxAddrs()
 	addrs["registryInternal"] = "" // internal backend absent
 
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

@@ -53,6 +53,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/e2e/ka1stand"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
@@ -156,7 +157,8 @@ func TestE2E_Revocation_RevokedToken_RejectedOnDefaultStand(t *testing.T) {
 	assert.False(t, h.reached.Load(),
 		"a token the provider reports as no longer live must not reach a backend")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "token revoked")
+	// Единый отказ края (приёмка KA1, Р2): «отозван» неотличим от прочих причин.
+	assert.Equal(t, ka1stand.RefusalChallenge, rec.Header().Get("WWW-Authenticate"))
 }
 
 // The same question on the gRPC surface. A gap on either surface makes the other

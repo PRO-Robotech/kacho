@@ -36,6 +36,7 @@ import {
 } from "./fixtures";
 import { issuingDocuments, substituteDocumentReads, type IssuedCall, type IssuingDocuments } from "./issuing-document";
 import { awaitLetter, conditionNotCreated, stationMailbox, type Letter, type Mailbox } from "./mail-receiver";
+import { EDGE_AUTHN_FAILED, bodyOf } from "./producer-answers";
 
 /**
  * Дальше входа — только с подтверждённым адресом почты: консоль (приёмка F6b, S2).
@@ -372,7 +373,6 @@ const PROJECTS = "/iam/v1/projects";
 const ACCOUNTS = "/iam/v1/accounts";
 const NETWORKS = "/vpc/v1/networks";
 const CHECK_CODE_TEXT = "Проверьте код или отправьте новое письмо.";
-const SESSION_ENDED_TEXT = "session ended; sign in again";
 
 /** Пути, чьи ответы снимаются до страницы: глаголы полосы и запрос письма. */
 const ANSWERED_PATHS: readonly string[] = [...LANE_VERBS, VERIFY_EMAIL];
@@ -426,7 +426,9 @@ async function expectAddressRefusal(res: APIResponse, where: string): Promise<Ed
   ).toEqual({
     status: 403,
     code: 7,
-    message: "email address is not verified",
+    // Текст службы с kaname#526 называет шаг, снимающий отказ; край произносит
+    // ту же причину своей копией, побайтово равной (#3069).
+    message: `email address is not verified: confirm it with the code from the letter (POST ${VERIFY_EMAIL_CONFIRM})`,
     reason: "EMAIL_NOT_VERIFIED",
     domain: "iam.kaname.cloud",
     challenge: false,
@@ -435,26 +437,37 @@ async function expectAddressRefusal(res: APIResponse, where: string): Promise<Ed
   return a;
 }
 
-/** Отказ F4d-22: `401`, текст отсечки, вызов края и ГАСЯЩЕЕ печенье носителя. */
+/**
+ * Отказ F4d-22 в форме приёмки KA1 (Р2): `401`, тело и вызов — побайтово те
+ * единственные, что край пишет на любую причину непринятия удостоверения
+ * (причины в ответе нет), и ГАСЯЩЕЕ печенье носителя полосы сессии.
+ */
 async function expectSessionEnded(res: APIResponse, where: string): Promise<void> {
   const a = await edgeAnswerOf(res);
   const carrierEnded = headerValues(a, "set-cookie").some(
     (v) => v.startsWith(`${SESSION_COOKIE}=;`) && /max-age=0/i.test(v),
   );
+  const canon = bodyOf(EDGE_AUTHN_FAILED);
   expect(
     {
       status: a.status,
       code: a.code,
       message: a.message,
+      reason: a.reason,
+      domain: a.domain,
       challenge: headerValues(a, "www-authenticate").join(" · "),
+      body: a.text,
       carrierEnded,
     },
     `${where}: ответ края ${a.status} ${a.text.slice(0, 300)}; set-cookie: ${headerValues(a, "set-cookie").join(" | ")}`,
   ).toEqual({
-    status: 401,
-    code: 16,
-    message: SESSION_ENDED_TEXT,
-    challenge: `Bearer error="invalid_token", error_description="${SESSION_ENDED_TEXT}"`,
+    status: EDGE_AUTHN_FAILED.status,
+    code: canon.code,
+    message: canon.message,
+    reason: "AUTHN_REQUIRED",
+    domain: "kaname.cloud.iam.v1",
+    challenge: EDGE_AUTHN_FAILED.headers["WWW-Authenticate"],
+    body: EDGE_AUTHN_FAILED.body,
     carrierEnded: true,
   });
 }
@@ -652,19 +665,20 @@ test("F6b-16 · подтверждённая сессия на тех же ад�
     const from = census.calls.length;
     const seen = visited.length;
     await page.goto(address, { waitUntil: "domcontentloaded" });
+    // Каркас рисуется только после ответа стража «подтверждён».
+    await expectShell(page, `адрес ${address} у подтверждённой сессии не отрисован в каркасе`);
+    if (address === "/такого-адреса-нет") {
+      await expectAddress(page, "/dashboard", "неведомый адрес у подтверждённой сессии не увёл на /dashboard");
+    }
     if (address === "/recovery") {
-      // Страница неведомого адреса стоит за стражем: она отрисована — страж пропустил.
+      // Приёмка F8-S3, §3.1 (F8S3-02): экран восстановления стоит за стражем, и
+      // подтверждённой сессии формы не показывает — уводит документом на адрес
+      // возврата, а без него на корень, то есть на панель.
+      await expectAddress(page, "/dashboard", "адрес /recovery у подтверждённой сессии не увёл на /dashboard");
       await expect(
-        page.getByRole("heading", { name: "Такого адреса здесь нет" }),
-        "адрес /recovery у подтверждённой сессии не ответил названной страницей",
-      ).toBeVisible({ timeout: 30_000 });
-      expect(addressOf(page), "названная страница увела со своего адреса").toBe("/recovery");
-    } else {
-      // Каркас рисуется только после ответа стража «подтверждён».
-      await expectShell(page, `адрес ${address} у подтверждённой сессии не отрисован в каркасе`);
-      if (address === "/такого-адреса-нет") {
-        await expectAddress(page, "/dashboard", "неведомый адрес у подтверждённой сессии не увёл на /dashboard");
-      }
+        page.getByRole("textbox", { name: "Адрес почты" }),
+        "подтверждённой сессии показана форма восстановления доступа",
+      ).toHaveCount(0);
     }
     const detour = [
       ...visited.slice(seen).filter((a) => a.startsWith("/verification")),
@@ -1257,6 +1271,14 @@ test("F6b-30 · сессия снята подтверждением в друг
   try {
     for (const verb of [VERIFY_EMAIL_CONFIRM, VERIFY_EMAIL]) {
       const which = verb === VERIFY_EMAIL_CONFIRM ? "а · «Подтвердить»" : "б · «Отправить новое письмо»";
+      // Вариант «а» кончается живым каркасом на /dashboard: он дочитывает
+      // платформу, и после снятых cookie его чтения получают 401, а каркас сам
+      // уходит документом на /login?returnTo=%2Fdashboard. Этот уход отменяет
+      // переход пробы на /login ниже — page.goto падает с net::ERR_ABORTED
+      // (PR #3195, прогон 38365111739). Поэтому страница уводится на пустой
+      // документ ДО снятия cookie, как в F6b-36: у прежнего документа нет ни
+      // чтений, ни ухода. Ждётся событие перехода, а не время.
+      await page.goto("about:blank");
       await page.context().clearCookies();
       // Дано: сессия S1 у посева, S2 — вход браузера; S1 предъявила код.
       const held = await heldUnconfirmed(testInfo, verb === VERIFY_EMAIL_CONFIRM ? "F6b-30-a" : "F6b-30-b");

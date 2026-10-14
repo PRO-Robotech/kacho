@@ -78,14 +78,32 @@ compute:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
+  # Порт сбора величин края — только пространству сборщика управляемого
+  # кластера (kacho#3111), а не пространству релиза, которое называет слой
+  # values.dev-prod.yaml для стенда kind.
+  networkPolicy:
+    metricsScrapeFrom:
+      namespace: monitoring
 
 kaname:
+  # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА — ССЫЛКОЙ НА СЕКРЕТ (kacho#2878, kacho#3040).
+  # Слой values.dev.yaml объявляет адрес величиной — человека фикстур проб
+  # стенда разработки. Здесь он стал бы учёткой входа управляемого стенда в
+  # публичном файле. Адрес лежит в секрете `stand-cloud-admin` (ключ `email`),
+  # его заводит оператор площадки; `email` очищается, иначе рендер отказывает
+  # (две формы одного предмета).
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        secretName: stand-cloud-admin
+        emailKey: email
+        email: ""
   image:
     repository: docker.io/prorobotech/kaname
     # Здесь стоял `main-a1b28f4c` — коммит, которого НЕТ ни в одном из двух
     # репозиториев (оба отвечают 422), и манифеста у тега тоже нет. Тег службы
     # доступа выводится из коммита ЕЁ ствола, а не этого дерева.
-    tag: main-0dd03218
+    tag: 296-3d5b02ed
     pullPolicy: IfNotPresent
   config:
     authn:
@@ -98,6 +116,17 @@ kaname:
         # не протекает, держит deploy/registration_source_window_stands_test.go.
         sourceAttempts: 50
         sourceWindow: 15m
+      # КЛЮЧИ ДОСТУПА: «НИКОГО», ЯВНО (kacho#3068). Слой `values.dev.yaml` под
+      # нами берёт происхождение из консоли посадки (`originFromConsole`) — это
+      # условие сквозных проб стенда разработки. Здесь адрес консоли
+      # унаследован от стенда разработки и площадке не принадлежит —
+      # унаследованное включение объявило бы привязку к чужому происхождению.
+      # Включение ключей доступа на этой площадке — отдельное решение о её
+      # происхождении. Обе ручки снимаются вместе: перечень рядом с
+      # `originFromConsole: true` — два объявления одного перечня, рендер отказывает.
+      accessKeys:
+        originFromConsole: false
+        origins: []
 
 kacho-nlb:
   image:
@@ -157,3 +186,33 @@ registry:
       username: ""
       password: ""
       htpasswd: ""
+
+# ─── ПАРОЛИ БАЗ НЕ НАСЛЕДУЮТСЯ ИЗ СЛОЯ РАЗРАБОТКИ (kacho#3040) ──────────────
+#
+# Слой values.dev.yaml несёт заглушки паролей баз литералом — законно на машине
+# разработчика и находка здесь: репозиторий публичен, а этот стенд доступен не
+# только автору. Пустая величина отдаёт пароль чарту базы: на первом подъёме он
+# порождается случайным, на последующих — читается из уже заведённого секрета
+# (`lookup`), поэтому не меняется от выкатки к выкатке. Держит
+# TestStacksOutsideTheDeveloperMachineCarryNoPasswordLiteral.
+pg-vpc:
+  auth:
+    password: ""
+pg-compute:
+  auth:
+    password: ""
+pg-iam:
+  auth:
+    password: ""
+pg-geo:
+  auth:
+    password: ""
+pg-nlb:
+  auth:
+    password: ""
+pg-storage:
+  auth:
+    password: ""
+pg-registry:
+  auth:
+    password: ""

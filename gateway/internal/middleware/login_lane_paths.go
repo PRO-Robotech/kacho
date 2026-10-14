@@ -8,9 +8,13 @@
 //   - глаголы полосы формы (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3,
 //     регистрация Ф4 (kacho#2699), два глагола восстановления доступа Ф5
 //     (kacho#2701), шесть глаголов второго фактора Ф12 (приёмка Ф12 Р4,
-//     kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b Р5,
-//     kacho#2900) — пятнадцать путей, тот же перечень, что служба объявляет у
-//     своего слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
+//     kacho#1281), два глагола подтверждения адреса почты (приёмка F6b Р5,
+//     kacho#2900), два глагола входа ключом доступа (приёмка Ф13 Р1, Ф13-28,
+//     kacho#3037), заведение первого пароля из живой сессии (kaname#213,
+//     kacho#3056), три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) и
+//     два глагола смены адреса почты (приёмка F8-S6 Р1, kacho#3062) —
+//     двадцать три пути, тот же перечень, что служба объявляет у своего
+//     слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
 //   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
 //     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
 //     авторизации, обмен кода и метаданные обнаружения — три записи; цель —
@@ -27,7 +31,7 @@
 //   - ветка полосы сессии (`tryOwnSession`, Р7): на этих путях «сессии нет»
 //     РЕТРАНСЛИРУЕТСЯ службе, а не отвергается; отсечка отвергается как всюду;
 //     недоступность службы ретранслируется ровно на записях, которые это
-//     разрешают (`relayWhenUnanswered`), на остальных — F4d-23; сессия с
+//     разрешают (`relayWhenUnanswered`), на остальных — ответ Р1 (KA1); сессия с
 //     неподтверждённым адресом почты доходит ровно до записей, которые это
 //     объявили (`openBeforeAddressConfirmation`, приёмка F6b Р5), на остальных —
 //     отказ адреса;
@@ -78,8 +82,10 @@
 // Не приставка: `/iam/v1/auth/` уже однажды была приставкой, и всякий новый
 // маршрут под ней наследовал освобождение, никем не решённое (`authz_util.go`).
 // Параметры запроса (`?form=<вид>`, строка запроса церемонии) к пути не
-// относятся. Путь завершения восстановления — подпуть пути запроса кода, и
-// точное совпадение здесь несущее: приставочное не различало бы два глагола. У
+// относятся. Путь завершения восстановления — подпуть пути запроса кода, как и
+// оба снятия сессий — подпути их перечня, предъявление кода смены адреса —
+// подпуть запроса смены, и точное совпадение здесь несущее:
+// приставочное не различало бы глаголы. У
 // навигации церемонии соседи по имени — четыре глагола проверки доступа
 // `/iam/v1/authorize:*`: суффикс `:verb` образует другой путь, и его обслуживает
 // транскодер REST→gRPC.
@@ -103,7 +109,7 @@ const (
 	// чтение состояния на корне семейства, церемония повышения своим подпутём.
 	// Те же полоса, признак формы и ретрансляция, что у четырёх глаголов Ф3;
 	// исход «сессии нет» ретранслируется — судит служба (401 у всех шести).
-	// Недоступность службы — F4d-23 на крае, как на смене пароля: все шесть
+	// Недоступность службы — ответ Р1 (KA1) на крае, как на смене пароля: все шесть
 	// читают сессию носителя (Ф12 Р4, Ф12-38).
 	LoginLanePathSecondFactor            = "/iam/v1/auth/second-factor"
 	LoginLanePathSecondFactorEnroll      = "/iam/v1/auth/second-factor/enroll"
@@ -116,6 +122,36 @@ const (
 	// до подтверждения, оба читают носитель.
 	LoginLanePathVerifyEmail        = "/iam/v1/auth/verify-email"
 	LoginLanePathVerifyEmailConfirm = "/iam/v1/auth/verify-email/confirm"
+	// Вход ключом доступа (приёмка Ф13 Р1, Ф13-28; kacho#3037): форма запроса
+	// выдаёт испытание, не назвав человека; форма подтверждения принимает
+	// утверждение и выдаёт сессию — той же формой ответа, что вход паролем.
+	// Ни один носитель не читает: на полосе сессии оба ведут себя как вход
+	// паролем (Р7) — «сессии нет» ретранслируется, отсечка — отказ края.
+	LoginLanePathAccessKeyBegin = "/iam/v1/auth/access-key/begin"
+	LoginLanePathAccessKeyLogin = "/iam/v1/auth/access-key/login"
+	// Заведение первого пароля из живой сессии (kaname#213, приёмка службы
+	// first-password-from-a-live-session; kacho#3056): подпуть семейства
+	// пароля, точным совпадением отличён от смены пароля. Читает носитель
+	// сессии — решения записи парой со сменой пароля (Ф3-20 «д»).
+	LoginLanePathPasswordEnroll = "/iam/v1/auth/password/enroll" // #nosec G101 -- путь глагола заведения пароля, а не удостоверение
+	// Свои сессии (приёмка F8-S5 Р1; глаголы службы kaname#634, kacho#3061):
+	// перечень своих живых сессий, снятие одной по номеру и снятие всех,
+	// кроме текущей. Снятия — подпути перечня, различены точным совпадением.
+	// Все три читают носитель живой сессии: недоступность службы — ответ Р1
+	// (KA1) на крае, до подтверждения адреса — отказ адреса (служба держит то
+	// же, OS Р8).
+	LoginLanePathSessions          = "/iam/v1/auth/sessions"
+	LoginLanePathSessionsEnd       = "/iam/v1/auth/sessions/end"
+	LoginLanePathSessionsEndOthers = "/iam/v1/auth/sessions/end-others"
+	// Смена адреса почты (приёмка F8-S6 Р1; глаголы службы kaname#635, приёмка
+	// службы email-change Р1; kacho#3062): запрос смены с новым адресом и
+	// предъявление кода, пришедшего на новый адрес. Оба читают носитель живой
+	// сессии: недоступность службы — ответ Р1 (KA1) на крае, до подтверждения
+	// адреса — отказ адреса (служба держит то же, EC Р2). Предъявление с
+	// ответом 2xx — исход смены: реплика, его ретранслировавшая, гасит кеш
+	// решений сразу (F8-S6 Р2, `flushesDecisionCacheOnSuccess`).
+	LoginLanePathEmailChange        = "/iam/v1/auth/email-change"
+	LoginLanePathEmailChangeConfirm = "/iam/v1/auth/email-change/confirm"
 )
 
 // Координаты церемонии авторизации (замысел LINE-A-1 §5.1). Навигация — бэрый
@@ -169,10 +205,10 @@ func RelayTargets() []RelayTarget {
 // M1) — там координата церемонии получает ответ, которым слушатель отвечает на
 // путь, которого у него нет (`handler.MountLoginLaneRoutes`).
 //
-// Форма — нет, и это решение kacho#2849 с именем потребителя: у пятнадцати
-// глаголов формы на внутреннем слушателе есть потребитель — операторская
+// Форма — нет, и это решение kacho#2849 с именем потребителя: у двадцати трёх
+// глагола формы на внутреннем слушателе есть потребитель — операторская
 // консоль посадки Б (docs/architecture/admin-api-door-on-external-stand.md;
-// консоль «одна на обе посадки», ui-future/shared/src/lib/admin-plane-posture.ts).
+// консоль «одна на обе посадки»).
 // У профиля консоли ОДИН узел края, `host.upstreams.apiGateway`, и раздача шлёт
 // через него и admin-плоскость, и `/iam/v1/`; операторская консоль смотрит им на
 // `internal-rest`, и без глаголов формы там оператор не войдёт. Прочие
@@ -211,19 +247,21 @@ type LoginLaneRoute struct {
 	// удалось). Критерий один — читает ли глагол носитель:
 	//
 	//   - true — ретранслировать, служба ответит своим 503. Глагол носителя не
-	//     читает (вход, признак формы — Ф3 Р7; регистрация; запрос и предъявление
+	//     читает (вход, признак формы — Ф3 Р7; вход ключом доступа — Ф13-28; регистрация; запрос и предъявление
 	//     кода восстановления ключуются адресом и кодом; навигация церемонии —
 	//     вопрос о сессии решает сама церемония своим швом; обмен кода — решает
 	//     по коду и удостоверению клиента, замысел LINE-A-1 §5.1б п. 4; чтение
 	//     обнаружения — публичный документ, не читающий ничего) либо
 	//     сессию оканчивает (выход — Ф3-17);
-	//   - нулевое значение — отказ F4d-23 на крае, носитель цел. Глагол читает
-	//     сессию носителя (смена пароля — Ф3-20 «д»; шесть глаголов второго
-	//     фактора, включая чтение состояния, — Ф12 Р4; два глагола
-	//     подтверждения адреса — Р6 службы), и запрос с носителем, чью отсечку
+	//   - нулевое значение — ответ Р1 (KA1) на крае, носитель цел. Глагол читает
+	//     сессию носителя (смена пароля — Ф3-20 «д»; заведение первого пароля —
+	//     kaname#213; шесть глаголов второго фактора, включая чтение состояния, —
+	//     Ф12 Р4; два глагола подтверждения адреса — Р6 службы; три глагола своих
+	//     сессий — приёмка F8-S5 Р1; два глагола смены адреса — приёмка F8-S6
+	//     Р1), и запрос с носителем, чью отсечку
 	//     установить не удалось, до него не доходит.
 	//
-	// Отказ — умолчание: глагол, дописанный без решения, получает F4d-23.
+	// Отказ — умолчание: глагол, дописанный без решения, получает ответ Р1 (KA1).
 	// Поле не экспортируется: решение принадлежит полосе сессии, и прочие
 	// читатели объявления его не видят.
 	relayWhenUnanswered bool
@@ -247,13 +285,34 @@ type LoginLaneRoute struct {
 	// адресу, и человек с неподтверждённой сессией к нему не зовётся.
 	//
 	// Отказ — умолчание, как у `relayWhenUnanswered`: запись, дописанная без
-	// решения, до подтверждения адреса недоступна.
+	// решения, до подтверждения адреса недоступна. Так стоят и два глагола
+	// входа ключом (Ф13): перечень девяти закрыт приёмкой F6b, решения Ф13 о
+	// неподтверждённой сессии нет, и сходство с `login` здесь не наследуется. Так
+	// стоит и заведение первого пароля: служба держит то же (положение
+	// подтверждения — отказ, A7 Р2). Так стоят и три глагола своих сессий:
+	// закрыты решением приёмки F8-S5 Р1, служба держит то же (OS Р8). Так стоят
+	// и два глагола смены адреса: закрыты решением приёмки F8-S6 Р1, служба
+	// держит то же (EC Р2).
 	openBeforeAddressConfirmation bool
 	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
 	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
 	// удостоверение клиента этой схемы (`CarriesClientBasic`). Умолчание —
 	// снятие: запись, дописанная без решения, `Authorization` не несёт.
 	carriesClientBasic bool
+	// flushesDecisionCacheOnSuccess — ответ службы 2xx на этой записи есть
+	// исход, после которого вердикты, закешированные краем, могли устареть, и
+	// реплика, его ретранслировавшая, гасит кеш решений СРАЗУ (приёмка F8-S6
+	// Р2) — тем же `Invalidate`, что самосброс по полному имени метода
+	// (`subjectChangingFQNs`, `authz.go`). Место отдельное, потому что путь
+	// полосы формы ретранслируется сырым HTTP и имени метода не несёт.
+	//
+	// Истина ровно у предъявления кода смены адреса: служба исходом смены пишет
+	// строку очереди смены субъекта (`op` = `user_email_change`, EC Р8 п. 8),
+	// и соседние реплики сходятся по ней, а обслужившая без этой записи
+	// отвечала бы по вердикту, записанному до смены, дольше соседних. Запрос
+	// смены исхода не несёт и кеш не гасит. Умолчание — не гасить: запись,
+	// дописанная без решения, кеш не трогает.
+	flushesDecisionCacheOnSuccess bool
 }
 
 // CarriesClientBasic — оставляет ли ретранслятор на этой записи удостоверение
@@ -264,8 +323,10 @@ type LoginLaneRoute struct {
 // `StripCredentialAndIdentityHeadersKeepingClientBasic`).
 func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b
-// и координаты церемонии; читатели по нему не ветвятся.
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b,
+// Ф13, заведение первого пароля, свои сессии (F8-S5), смена адреса (F8-S6) и
+// координаты церемонии;
+// читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "logout", Path: LoginLanePathLogout, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
@@ -282,6 +343,14 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "step-up", Path: LoginLanePathStepUp, Target: RelayTargetForm},
 	{Verb: "verify-email", Path: LoginLanePathVerifyEmail, Target: RelayTargetForm, openBeforeAddressConfirmation: true},
 	{Verb: "verify-email-confirm", Path: LoginLanePathVerifyEmailConfirm, Target: RelayTargetForm, openBeforeAddressConfirmation: true},
+	{Verb: "access-key-begin", Path: LoginLanePathAccessKeyBegin, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "access-key-login", Path: LoginLanePathAccessKeyLogin, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "password-enroll", Path: LoginLanePathPasswordEnroll, Target: RelayTargetForm},
+	{Verb: "sessions", Path: LoginLanePathSessions, Target: RelayTargetForm},
+	{Verb: "sessions-end", Path: LoginLanePathSessionsEnd, Target: RelayTargetForm},
+	{Verb: "sessions-end-others", Path: LoginLanePathSessionsEndOthers, Target: RelayTargetForm},
+	{Verb: "email-change", Path: LoginLanePathEmailChange, Target: RelayTargetForm},
+	{Verb: "email-change-confirm", Path: LoginLanePathEmailChangeConfirm, Target: RelayTargetForm, flushesDecisionCacheOnSuccess: true},
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
@@ -312,7 +381,7 @@ func LoginLaneRouteFor(path string) (LoginLaneRoute, bool) {
 
 // loginLaneRelaysWhenUnanswered — ретранслирует ли полоса сессии запрос на этот
 // путь, когда служба не ответила краю. Путь вне перечня — false: на путях
-// платформы недоступность всегда F4d-23.
+// платформы недоступность всегда ответ Р1 (KA1).
 func loginLaneRelaysWhenUnanswered(path string) bool {
 	for _, rt := range loginLaneRoutes {
 		if rt.Path == path {
@@ -329,6 +398,18 @@ func loginLaneOpenBeforeAddressConfirmation(path string) bool {
 	for _, rt := range loginLaneRoutes {
 		if rt.Path == path {
 			return rt.openBeforeAddressConfirmation
+		}
+	}
+	return false
+}
+
+// loginLaneFlushesDecisionCacheOnSuccess — гасит ли ответ 2xx на этот путь кеш
+// решений реплики (приёмка F8-S6 Р2). Путь вне перечня — false: решение не
+// наследуется ни приставкой, ни соседом.
+func loginLaneFlushesDecisionCacheOnSuccess(path string) bool {
+	for _, rt := range loginLaneRoutes {
+		if rt.Path == path {
+			return rt.flushesDecisionCacheOnSuccess
 		}
 	}
 	return false

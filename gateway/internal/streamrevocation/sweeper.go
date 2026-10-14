@@ -186,6 +186,19 @@ const (
 	// смешанная величина не даёт принять ни одного решения. Лечатся они, к тому
 	// же, разными раскатами.
 	verdictLivenessUnsupported
+	// verdictCutoffMisaddressed — вопрос об отсечке не предложен, потому что
+	// спрошен НЕ ТОТ СЛУШАТЕЛЬ: службы отзыва на нём нет вовсе (kacho#2741).
+	//
+	// Исход полосы тот же, что у окна раската, — путь запроса в этом диагнозе
+	// проходит так же громко (auth_session_cutoff.go), и перепрос, закрывающий
+	// поток там, где запрос его пропускает, разошёлся бы с ним молча. Держится
+	// ВРОЗЬ ради подсказки дежурному: окно раската сходится само, а неверный
+	// адрес раскатом не лечится никогда — слитые, они вели бы дежурного ждать
+	// раската, который не наступит.
+	verdictCutoffMisaddressed
+	// verdictLivenessMisaddressed — то же различение у вопроса о живости
+	// базового удостоверения.
+	verdictLivenessMisaddressed
 )
 
 // Config — что приносит композиционный корень края.
@@ -319,7 +332,7 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 	}
 
 	var closed, asked, unanswered, unaskable, unsupported, livenessUnsupported int
-	var addressUnverified, presentedMissing int
+	var addressUnverified, presentedMissing, cutoffMisaddressed, livenessMisaddressed int
 	closeAll := func(streams []subscriptionstream.OpenStream) {
 		for _, st := range streams {
 			st.Close()
@@ -346,6 +359,12 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		case verdictLivenessUnsupported:
 			asked++
 			livenessUnsupported += len(streams)
+		case verdictCutoffMisaddressed:
+			asked++
+			cutoffMisaddressed += len(streams)
+		case verdictLivenessMisaddressed:
+			asked++
+			livenessMisaddressed += len(streams)
 		case verdictUnanswered:
 			unanswered++
 		case verdictUnaskable:
@@ -362,7 +381,8 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		s.lastGood = s.cfg.Now()
 	}
 
-	if closed > 0 || unaskable > 0 || unsupported > 0 || livenessUnsupported > 0 {
+	if closed > 0 || unaskable > 0 || unsupported > 0 || livenessUnsupported > 0 ||
+		cutoffMisaddressed > 0 || livenessMisaddressed > 0 {
 		s.cfg.Logger.Info("subscription credential recheck",
 			"streams", len(open), "credentials", len(byCred),
 			"streams_closed", closed,
@@ -376,7 +396,11 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 			"streams_unaskable", unaskable,
 			"credentials_unanswered", unanswered,
 			"streams_cutoff_unsupported", unsupported,
-			"streams_liveness_unsupported", livenessUnsupported)
+			"streams_liveness_unsupported", livenessUnsupported,
+			// Неверный адрес — отдельной величиной от окна раската того же
+			// вопроса (kacho#2741): действие дежурного у них противоположное.
+			"streams_cutoff_misaddressed", cutoffMisaddressed,
+			"streams_liveness_misaddressed", livenessMisaddressed)
 	}
 
 	if unaskable > 0 {
@@ -407,6 +431,18 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 			"streams_liveness_unsupported", livenessUnsupported,
 			"predicate", "исчезает, когда служба прав докатится до того же дерева")
 	}
+	if cutoffMisaddressed > 0 {
+		s.cfg.Logger.Error("session revocation not enforced on open subscription streams: "+
+			"the asked listener does not serve the session revocation service (misaddressed)",
+			"streams_cutoff_misaddressed", cutoffMisaddressed,
+			"predicate", middleware.MisaddressedListenerPredicate)
+	}
+	if livenessMisaddressed > 0 {
+		s.cfg.Logger.Error("basic credential revocation not enforced on open subscription streams: "+
+			"the asked listener does not serve the identity service (misaddressed)",
+			"streams_liveness_misaddressed", livenessMisaddressed,
+			"predicate", middleware.MisaddressedListenerPredicate)
+	}
 	if unanswered > 0 {
 		s.cfg.Logger.Warn("subscription credential recheck unanswered",
 			"credentials_unanswered", unanswered,
@@ -433,6 +469,11 @@ func (s *Sweeper) ask(ctx context.Context, c principalmeta.Credential) verdict {
 	case c.BasicCredentialID != "":
 		live, err := s.cfg.Authority.IsBasicCredentialLive(ctx, c.BasicCredentialID)
 		switch {
+		// Неверный адрес ПЕРВЫМ: адаптер несёт в нём и признак «вопрос не
+		// предложен», и проверка окна раската первой поглотила бы его.
+		case errors.Is(err, ErrBasicCredentialLivenessUnsupported) &&
+			errors.Is(err, middleware.ErrIntrospectionMisconfigured):
+			return verdictLivenessMisaddressed
 		case errors.Is(err, ErrBasicCredentialLivenessUnsupported):
 			return verdictLivenessUnsupported
 		case err != nil:
@@ -502,7 +543,7 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 	sess, found, err := s.cfg.Authority.ResolveHumanSession(ctx, bearer)
 	switch {
 	case err != nil:
-		// Включая «метода нет»: путь запроса отказывает и на нём (F4d-23), годность
+		// Включая «метода нет»: путь запроса отказывает и на нём (ответ Р1 приёмки KA1), годность
 		// носителя не подтверждена ничем.
 		return verdictUnanswered
 	case !found:
@@ -511,7 +552,10 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 		return verdictRevoked
 	}
 
-	cut := s.cutoffVerdict(ctx, c)
+	// Момент — из ОТВЕТА О СЕССИИ, тем же вопросом и в том же разрешении, что
+	// на пути запроса (kacho#2690): отсечка датируется в разрешении хранилища,
+	// и момент из довода свежести (секунды) закрывал бы годную сессию.
+	cut := s.cutoffVerdict(ctx, c.UserID, sess.AuthenticatedAt)
 	switch cut {
 	case verdictRevoked, verdictUnanswered:
 		return cut
@@ -523,10 +567,23 @@ func (s *Sweeper) askSession(ctx context.Context, c principalmeta.Credential) ve
 	return cut
 }
 
-// cutoffVerdict — отсечка субъекта против момента аутентификации потока.
-func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential) verdict {
-	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, c.UserID)
+// cutoffVerdict — отсечка субъекта против момента аутентификации сессии потока.
+//
+// authenticatedAt — момент из ответа службы о сессии по носителю, а не из
+// заголовков открытия: сравниваемая пара та же, что у пути запроса.
+func (s *Sweeper) cutoffVerdict(ctx context.Context, userID string, authenticatedAt time.Time) verdict {
+	// Учётная запись потока на этой полосе — сессия человека; субъект вопроса
+	// собирает тот же единственный конструктор, что у полосы личности.
+	cs, ok := middleware.NewCutoffSubject("user", userID)
+	if !ok {
+		return verdictUnanswered
+	}
+	cutoff, found, err := s.cfg.Authority.SessionCutoffOf(ctx, cs)
 	switch {
+	// Неверный адрес ПЕРВЫМ — по тому же доводу, что у вопроса о живости.
+	case errors.Is(err, middleware.ErrSessionCutoffUnsupported) &&
+		errors.Is(err, middleware.ErrIntrospectionMisconfigured):
+		return verdictCutoffMisaddressed
 	case errors.Is(err, middleware.ErrSessionCutoffUnsupported):
 		return verdictUnsupported
 	case err != nil:
@@ -535,12 +592,12 @@ func (s *Sweeper) cutoffVerdict(ctx context.Context, c principalmeta.Credential)
 		// Пустой ответ означает ПУСТО. Человек, которого никто не отзывал,
 		// продолжает читать свой поток.
 		return verdictLive
-	case c.AuthenticatedAt.IsZero():
+	case authenticatedAt.IsZero():
 		// Отсечка есть, а сравнивать не с чем: провайдер момента не назвал.
 		// Пропустить — значит дать обходить отзыв ОТСУТСТВИЕМ поля в чужом
 		// ответе. Та же посадка принята полосой запроса.
 		return verdictRevoked
-	case c.AuthenticatedAt.After(cutoff):
+	case authenticatedAt.After(cutoff):
 		// Отсечка действует ВПЕРЁД и включает свой момент: сессия,
 		// аутентифицировавшаяся РОВНО в него, недействительна. Иначе
 		// принудительный выход, совпавший по метке со входом, не подействовал

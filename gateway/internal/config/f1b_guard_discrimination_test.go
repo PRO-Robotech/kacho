@@ -124,6 +124,49 @@ func f1bGuardCases() []f1bGuardCase {
 			LiteralAnchor: "declares no issuer element",
 		},
 		{
+			// Канон издателя (приёмка KA1, Р5): элемент перечня, не являющийся
+			// абсолютным http(s)-URL, записи иметь не может.
+			Name: "элемент перечня издателей — не абсолютный http(s)-URL",
+			Cfg: func() config.Config {
+				c := f1bBase("production")
+				c.TokenIssuers = "issuer.example.test/realm"
+				return c
+			}(),
+			Discriminator: "an issuer of another form has no record",
+		},
+		{
+			Name: "ключ привязки источников — не абсолютный http(s)-URL",
+			Cfg: func() config.Config {
+				c := f1bBase("production")
+				c.TokenIssuers = f1bLegacy
+				c.TokenIssuerKeySets = "issuer.example.test/realm=" + f1bLegKS
+				return c
+			}(),
+			Discriminator: "a record keyed by it would never be selected",
+		},
+		{
+			Name: "наш издатель — не абсолютный http(s)-URL",
+			Cfg: func() config.Config {
+				c := f1bBase("production")
+				c.TokenIssuers = f1bLegacy
+				c.TokenIssuerKeySets = f1bLegacy + "=" + f1bLegKS
+				c.PlatformTokenIssuer = "kaname.kacho.local"
+				return c
+			}(),
+			Discriminator: "our own minting is stamped with a URL",
+		},
+		{
+			// Два написания одного издателя в каноне — тот же отказ «один
+			// издатель, одна запись», что и буквальный повтор.
+			Name: "издатель объявлен дважды В ПЕРЕЧНЕ в разных формах",
+			Cfg: func() config.Config {
+				c := f1bBase("production")
+				c.TokenIssuers = "https://issuer.example.test/realm,HTTPS://ISSUER.example.test/realm/"
+				return c
+			}(),
+			Discriminator: "are the same issuer in canonical form",
+		},
+		{
 			Name: "издатель объявлен дважды В ПЕРЕЧНЕ",
 			Cfg: func() config.Config {
 				c := f1bBase("production")

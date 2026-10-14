@@ -14,8 +14,8 @@ import (
 
 // Поле `code` в теле отказа края — это код gRPC (`google.rpc.Status.code`), а
 // НЕ номер HTTP-статуса. Так объявлено у каждого соседнего писателя отказа:
-// 401 несёт 16 (`writeHTTPUnauthorized`, `writeHTTPUnauth` — там это записано
-// комментарием дословно), 403 несёт 7, а отказ слоя прав при недоступном
+// 401 несёт 16 (единственный писатель отказа аутентификации —
+// `authnrefusal.WriteHTTP`), 403 несёт 7, а отказ слоя прав при недоступном
 // источнике вердикта несёт 14 (`authz.go`, ветвь `outcomeError`).
 //
 // ПОЧЕМУ ЭТО НЕ ПЕДАНТИЗМ. Клиент машинно ключуется на `code`, а не на прозу
@@ -50,7 +50,7 @@ func TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus(t *testing.T) {
 
 	t.Run("unavailable", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		writeHTTPServiceUnavailable(rec, revocationUnavailableReason)
+		writeHTTPServiceUnavailable(rec, credentialStateUnknownReason)
 
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("HTTP-статус: получено %d, ожидалось %d", rec.Code, http.StatusServiceUnavailable)
@@ -64,7 +64,7 @@ func TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus(t *testing.T) {
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: сосед, у которого поле уже верно.
 	t.Run("unauthenticated control", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		writeHTTPUnauthorized(rec, "token validation failed")
+		writeAuthnRefusal(rec)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("HTTP-статус: получено %d, ожидалось %d", rec.Code, http.StatusUnauthorized)

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { Link } from "react-router";
-import { Alert, Button, Checkbox, Form, Input, Spin } from "antd";
+import { Alert, Button, Checkbox, Form, Input, Space, Spin, Typography } from "antd";
 import {
   type LaneRefusal,
   laneRefusalOf,
@@ -17,8 +17,9 @@ import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/mo
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
+import { AccessKeySignInButton, useAccessKeySignIn } from "./access-key";
 import { CeremonyScreen } from "./CeremonyScreen";
-import { registrationAddress } from "./ceremony-addresses";
+import { recoveryAddress, registrationAddress } from "./ceremony-addresses";
 import { useReturnTo } from "./use-return-to";
 
 // Экран входа — церемонию ведёт консоль своими глаголами (приёмка F8, S1).
@@ -39,11 +40,31 @@ import { useReturnTo } from "./use-return-to";
 //   • после входа уводит документ на адрес возврата, только своего
 //     происхождения (F8-13): перезагрузка документа нужна, чтобы каждый модуль
 //     прочёл новую личность, а не держал прежнюю;
-//   • пути на восстановление доступа НЕ предлагает: его на посадке нет до S3, и
-//     обещание пути, которого нет, хуже его отсутствия (Р4, F8-39).
+//   • предлагает путь на восстановление доступа — ссылкой «Не получается
+//     войти?» с тем же адресом возврата и без адреса почты (приёмка F8-S3, Р4,
+//     F8S3-03): путь обещается ровно тогда, когда экран восстановления есть;
+//   • к отказу `16` называет следующий шаг — проверить ввод или восстановить
+//     доступ, — одним текстом на все причины (#2953): причин отказа экран не
+//     различает (Р4);
+//   • у флажка второго фактора говорит, когда его отмечать: код без заведённого
+//     фактора служба отвергает тем же отказом, что неверный пароль (#2953);
+//   • рядом с формой пароля — кнопка входа ключом доступа (приёмка F8-S4, Р1),
+//     если у браузера есть интерфейс ключей (Р7). Испытание она просит только
+//     нажатием (Р2); пока идёт одна попытка входа, вторая — другим способом —
+//     закрыта: две выдачи сессии подряд человеку не нужны. Попытку ведёт
+//     `access-key/use-access-key-sign-in.ts`.
 //
 // Своего правила пароля, формы кода или адреса здесь нет (Р2): незаполненное
 // поле называет служба.
+
+/**
+ * Когда отмечать флажок второго фактора (#2953): код без заведённого фактора
+ * служба отвергает тем же отказом, что неверный пароль, и попытка засчитывается.
+ * Различить «фактор есть» до входа экран не вправе — он говорит человеку, когда
+ * флажок нужен.
+ */
+export const SECOND_FACTOR_TOGGLE_HINT =
+  "Отмечайте, только если заводили второй фактор в параметрах учётной записи.";
 
 /** Вводы формы входа, которые служба может назвать отказом (таблица полей — в клиенте полосы). */
 type LoginField = Extract<RefusalInput, "email" | "password" | "code" | "method">;
@@ -71,6 +92,8 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
   const [lockedFor, setLockedFor] = useState<number | null>(null);
+  const signedIn = useCallback(() => leave(returnTo), [leave, returnTo]);
+  const keySignIn = useAccessKeySignIn({ onSignedIn: signedIn, onStart: () => setRefusal(null), blocked: busy });
 
   const askSession = useCallback(
     (isCancelled: () => boolean = () => false) =>
@@ -103,9 +126,10 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   }, [lockedFor]);
 
   const onSubmit = async () => {
-    if (busy || lockedFor !== null) return;
+    if (busy || lockedFor !== null || keySignIn.busy) return;
     setBusy(true);
     setRefusal(null);
+    keySignIn.clear();
     try {
       await loginLane.login(holder, { email, password, secondFactor: withFactor ? factor : undefined });
       leave(returnTo);
@@ -140,7 +164,12 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   return (
     <CeremonyScreen
       title="Вход в консоль"
-      footer={<Link to={registrationAddress(returnTo)}>Завести учётную запись</Link>}
+      footer={
+        <Space direction="vertical" size={8}>
+          <Link to={recoveryAddress(returnTo)}>Не получается войти?</Link>
+          <Link to={registrationAddress(returnTo)}>Завести учётную запись</Link>
+        </Space>
+      }
     >
       {sessionUnknown && (
         <div style={{ marginBottom: 16 }}>
@@ -180,9 +209,16 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
           <FieldError id={fieldErrorId(inputId("password"))} message={fieldError("password") ?? undefined} />
         </Form.Item>
         <Form.Item label="Второй фактор">
-          <Checkbox checked={withFactor} onChange={(e) => setWithFactor(e.target.checked)}>
+          <Checkbox
+            checked={withFactor}
+            onChange={(e) => setWithFactor(e.target.checked)}
+            aria-describedby={`${id}-factor-hint`}
+          >
             Подтвердить вторым фактором
           </Checkbox>
+          <Typography.Paragraph id={`${id}-factor-hint`} type="secondary" style={{ margin: "4px 0 0" }}>
+            {SECOND_FACTOR_TOGGLE_HINT}
+          </Typography.Paragraph>
         </Form.Item>
         {withFactor && (
           <SecondFactorCodeField
@@ -194,13 +230,14 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
         )}
         {refusal && (marked === null || (!withFactor && (marked === "code" || marked === "method"))) && (
           <div style={{ marginBottom: 16 }}>
-            <LaneRefusalAlert refusal={refusal} />
+            <LaneRefusalAlert refusal={refusal} context="sign-in" />
           </div>
         )}
-        <Button type="primary" htmlType="submit" block loading={busy} disabled={lockedFor !== null}>
+        <Button type="primary" htmlType="submit" block loading={busy} disabled={lockedFor !== null || keySignIn.busy}>
           Войти
         </Button>
       </FormGrid>
+      <AccessKeySignInButton signIn={keySignIn} blocked={busy} />
     </CeremonyScreen>
   );
 }

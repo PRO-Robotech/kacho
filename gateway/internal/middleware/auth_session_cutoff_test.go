@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 )
 
 // cutoffLookup — SubjectLookuper, резолвящий ровно названного субъекта.
@@ -32,9 +34,9 @@ type fakeCutoff struct {
 	forID  string
 }
 
-func (f *fakeCutoff) SessionCutoffOf(_ context.Context, userID string) (time.Time, bool, error) {
+func (f *fakeCutoff) SessionCutoffOf(_ context.Context, subject CutoffSubject) (time.Time, bool, error) {
 	f.asked++
-	f.forID = userID
+	f.forID = subject.UserID()
 	return f.cutoff, f.found, f.err
 }
 
@@ -184,8 +186,10 @@ func TestCookieLane_UnansweredAuthorityRefusesButKeepsCarrier(t *testing.T) {
 
 	res, served := runCookieLane(t, time.Now(), cut)
 
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("молчащий СВОЙ авторитет обязан давать отказ: получено %d", res.StatusCode)
+	// Ответ Р1 приёмки KA1: 503, а не 401 — наша неисправность не посылает
+	// человека на вход.
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("молчащий СВОЙ авторитет обязан давать ответ Р1 (503): получено %d", res.StatusCode)
 	}
 	if served {
 		t.Fatal("запрос прошёл при неотвеченном вопросе об отзыве")
@@ -267,7 +271,7 @@ func TestCookieLane_RefusalMessageNamesOwnSessionOnly(t *testing.T) {
 	body, _ := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 
-	if !strings.Contains(string(body), sessionCutoffDenyDescription) {
+	if !strings.Contains(string(body), authnrefusal.Message) {
 		t.Fatalf("отказ не назвал состояние собственной сессии вызывающего: %s", string(body))
 	}
 	for _, leak := range []string{"usr-1", "a@example.com"} {

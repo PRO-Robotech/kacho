@@ -334,6 +334,12 @@ func judgeCoverage(rest map[string][]string, declared map[string]bool) (missing,
 var producedOutsideThisTree = map[string]string{
 	"MEMBERSHIP_CARRIES_RIGHTS": "PRO-Robotech/kaname",
 	"QUOTA_RATE_EXCEEDED":       "PRO-Robotech/kaname",
+	// Отказ «нечего сбрасывать» сброса второго фактора распорядителем (приёмка
+	// F8r, Р6, kacho#3063): служба отвечает им на `UserService/ResetSecondFactor`
+	// цели без фактора, край пересылает дословно, консоль называет по-русски.
+	// Тот же токен производит церемония повышения — там его разбирает окно
+	// повышения своим путём (`laneRefusalOf`), а не этот словарь.
+	"SECOND_FACTOR_NOT_ENROLLED": "PRO-Robotech/kaname",
 	// REFERENCE_IN_USE снят из ведомости: токен ВЕРНУЛСЯ в это дерево. Платформа
 	// производит его на отказах снятия своих ресурсов (`pkg/refusal`, задача
 	// продукта #1297) — тем же именем, каким его производит служба доступа,
@@ -360,6 +366,29 @@ var producedOutsideThisTree = map[string]string{
 	"PEER_UNAVAILABLE":       "PRO-Robotech/corelib",
 	"QUOTA_AUTHORITY_ABSENT": "PRO-Robotech/corelib",
 	"RESOURCE_NOT_FOUND":     "PRO-Robotech/corelib",
+}
+
+// ledgerWithoutVerdict — записи ведомости внешних производителей, по токену
+// которых у консоли НЕТ вердикта.
+//
+// Ведомость освобождает вердикт от требования «производитель в этом дереве», и
+// только. Она не заменяет сам вердикт: токен, который доезжает до арендатора
+// из другого репозитория, обязан быть РАЗОБРАН консолью так же, как свой. Без
+// этой оси запись ведомости переживала бы снятие вердикта молча — равенство
+// множеств выше внешних токенов не видит вовсе (их нет в переписи дерева), и
+// снятая запись словаря не давала бы ни красного, ни зелёного.
+//
+// Каждая находка называет токен и его производителя: читателю нужно знать, что
+// именно вернуть в словарь консоли.
+func ledgerWithoutVerdict(declared map[string]bool, external map[string]string) []string {
+	var out []string
+	for tok, producer := range external {
+		if !declared[tok] {
+			out = append(out, tok+" (производитель — "+producer+")")
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // judgeCoverageWithExternal — та же оценка, но ведомость внешних производителей
@@ -479,6 +508,16 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 		sort.Strings(outside)
 		t.Logf("вердикт консоли законен без производителя в дереве (производитель — "+
 			"другой репозиторий) — %d: %s", len(outside), strings.Join(outside, " "))
+	}
+
+	// ВЕДОМОСТЬ НЕ ЗАМЕНЯЕТ ВЕРДИКТА: внешний токен без записи словаря доезжает
+	// до арендатора прозой производителя, а равенство множеств ниже его не видит.
+	if unjudged := ledgerWithoutVerdict(declared, producedOutsideThisTree); len(unjudged) > 0 {
+		t.Errorf("ведомость внешних производителей называет токен, по которому у консоли НЕТ вердикта — %d:\n\t%s\n\n"+
+			"Запись ведомости освобождает вердикт от производителя в этом дереве, но не заменяет его: "+
+			"отказ доезжает до арендатора из другого репозитория и показывается прозой производителя. "+
+			"Верните запись в REFUSALS (%s) либо снимите токен из ведомости вместе с его потребителем.",
+			len(unjudged), strings.Join(unjudged, "\n\t"), consoleRefusalDictRel)
 	}
 
 	missing, orphan := judgeCoverage(rest, declared)

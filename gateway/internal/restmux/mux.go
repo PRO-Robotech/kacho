@@ -55,8 +55,14 @@
 // вопрос «есть ли здесь административный путь». Это existence-hiding без
 // содержания; см. external_refusal_shape_test.go.
 //
-// Корневой `http.Handler` (диспетчер) экспонируется как `http.Handler`
+// Корневой `http.Handler` (диспетчер) экспонируется как `*Mux`
 // и передается в `httpMux.Handle("/", restHandler)` в `cmd/api-gateway/main.go`.
+//
+// Укрытие в диспетчере стоит ПОСЛЕДНИМ звеном цепочки края, и слои перед ним
+// (аутентификация, ступень подтверждения, права) отвечали бы на внутренний путь
+// раньше него. Поэтому то же решение «маршрута нет» корень принимает ещё раз —
+// сторожем маршрута снаружи аутентификации (`Mux.ExternalRouteGate`); укрытие
+// здесь остаётся эшелоном на случай сборки без сторожа.
 //
 // # Активные сервисы
 //
@@ -113,6 +119,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"strings"
 
@@ -220,8 +227,18 @@ func principalHeaderMatcher(key string) (string, bool) {
 
 // principalMetadata — grpc-gateway WithMetadata annotator: собирает outgoing
 // gRPC-metadata из gateway-выставленных headers (см. buildPrincipalMetadata).
-func principalMetadata(_ context.Context, r *http.Request) metadata.MD {
-	return buildPrincipalMetadata(r)
+//
+// Номер записи сессии добавляется ТОЛЬКО к вызову службы доступа (kacho#3136):
+// адресата аннотатор знает по имени метода, которое библиотека моста кладёт в
+// контекст ДО вызова аннотаторов (`runtime.RPCMethod`). Метода в контексте нет
+// или адресат иной — номера нет: решение «по умолчанию не уходит», а не
+// «снять у перечисленных».
+func principalMetadata(ctx context.Context, r *http.Request) metadata.MD {
+	md := buildPrincipalMetadata(r)
+	if method, ok := runtime.RPCMethod(ctx); ok && isAccessServiceMethod(method) {
+		md = metadata.Join(md, principalmeta.SessionRecordMetadata(r))
+	}
+	return md
 }
 
 // isInternalRoute решает, какой sub-mux обрабатывает запрос.
@@ -301,8 +318,10 @@ func isInternalPath(path string) bool {
 // NewMux создает grpc-gateway split-mux (public + internal) и регистрирует
 // активные публичные сервисы плюс OperationService (через OpsProxy).
 //
-// Возвращает `http.Handler`-диспетчер, который на каждый request выбирает
-// public или internal sub-mux на основании `isInternalRoute(r.Method, r.URL.Path)`.
+// Возвращает *Mux: его ServeHTTP — диспетчер, который на каждый request выбирает
+// public или internal sub-mux на основании `isInternalRoute(r.Method, r.URL.Path)`,
+// а ExternalRouteGate — сторож маршрута внешнего слушателя, который корень ставит
+// снаружи аутентификации (external_route_gate.go, kacho#3053).
 //
 // addrs — карта domain → адрес gRPC backend:
 //
@@ -347,7 +366,15 @@ func NewMux(
 	addrs map[string]string,
 	conns map[string]*grpc.ClientConn,
 	dialOpts map[string]grpc.DialOption,
-) (http.Handler, error) {
+	backendBudget time.Duration,
+) (*Mux, error) {
+	// Бюджет вызова моста к бэкенду — ручка KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
+	// (приёмка KA1, Р4). Без него зависший бэкенд держит запрос, пока его держит
+	// клиент: сервер края ответ не ограничивает (WriteTimeout не задан
+	// намеренно — потоки). Умолчания нет.
+	if backendBudget <= 0 {
+		return nil, fmt.Errorf("REST bridge: backend call budget (KACHO_API_GATEWAY_BACKEND_CALL_BUDGET) must be positive, got %s", backendBudget)
+	}
 	// Boot-guard: таблица внутренних REST-маршрутов строится из proto-дескрипторов
 	// (internal_routes.go). Пустая таблица означала бы, что дескрипторы не
 	// слинкованы, и admin-поверхности молча уехали бы на публичный mux —
@@ -410,6 +437,18 @@ func NewMux(
 		runtime.WithIncomingHeaderMatcher(principalHeaderMatcher),
 		runtime.WithMetadata(principalMetadata),
 	)
+	// Таблица маршрутов внешнего слушателя для сторожа маршрута
+	// (external_route_gate.go). Опции — те же, что у publicMux: ответ на промах
+	// обязан быть побайтно тем, что publicMux отвечает на маршрут, которого у
+	// него нет. Регистрируется тем же циклом ниже как НЕ-internalMux, поэтому
+	// административных служб на ней нет by construction — ровно как на publicMux.
+	var routeTable *runtime.ServeMux
+	routeTable = runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, publicMarshaler),
+		runtime.WithIncomingHeaderMatcher(principalHeaderMatcher),
+		runtime.WithMetadata(principalMetadata),
+		runtime.WithMiddlewares(forwardMatchedRoute(&routeTable)),
+	)
 
 	// optsFor returns the dial-options for one backend-key: that backend's
 	// per-edge transport credentials (mTLS client-cert + ServerName when the edge
@@ -421,11 +460,17 @@ func NewMux(
 		if !ok {
 			transport = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		return []grpc.DialOption{
+		return append([]grpc.DialOption{
 			transport,
 			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
 			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
-		}
+			// Каждый УНАРНЫЙ вызов моста ограничен бюджетом; потоковые — нет:
+			// поток живёт по своему сроку (приёмка KA1, KA1-24).
+			grpc.WithChainUnaryInterceptor(backendBudgetInterceptor(backendBudget)),
+		},
+			// Адрес источника к службе не уезжает (kacho#3028, круг 5): мост
+			// кладёт `x-forwarded-for` = заголовок клиента + адрес пира.
+			principalmeta.ForwardedAddressStripDialOptions()...)
 	}
 
 	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса
@@ -468,7 +513,11 @@ func NewMux(
 	//     отказ внешнему вызывающему был неотличим от промаха, его обязан
 	//     произвести ТОТ ЖЕ производитель, что и обычный промах, — а не вторая
 	//     функция с похожим смыслом.
-	muxes := []*runtime.ServeMux{publicMux, internalMux}
+	//
+	// Третий — таблица маршрутов сторожа: её обработчики не исполняются (см.
+	// forwardMatchedRoute), а набор маршрутов совпадает с publicMux, потому что
+	// собран ЭТИМ ЖЕ циклом.
+	muxes := []*runtime.ServeMux{publicMux, internalMux, routeTable}
 
 	for _, mux := range muxes {
 		// --- vpc: Network + Subnet + Address + RouteTable + SecurityGroup + Gateway ---
@@ -681,12 +730,16 @@ func NewMux(
 			}
 		}
 
-		// --- geo.v1: Region + Zone (public read-only) ---
+		// --- geo.v1: Region + Zone (public) ---
 		// Geography (Region/Zone) — отдельный leaf-сервис kacho-geo.
-		// RegionService/ZoneService — public read под /geo/v1/regions,
-		// /geo/v1/zones. Регистрируется условно по geoAddr (graceful: kacho-geo
-		// может быть еще не задеплоен — симметрично lbAddr/iamAddr выше).
-		// Geography обслуживается ИСКЛЮЧИТЕЛЬНО geo.v1.
+		// RegionService/ZoneService под /geo/v1/regions, /geo/v1/zones: чтение
+		// справочника (GET) и административные глаголы каталога (POST/PATCH/DELETE,
+		// ADM-1) — на ОБОИХ mux этого цикла. Мутации гейтит каталог прав
+		// (`system_admin` @ cluster, тот же порог, что у внутреннего близнеца), а
+		// не слушатель: граница проходит по праву вызывающего; инфраструктурного
+		// блока публичный вход не несёт. Регистрируется условно по geoAddr
+		// (graceful: kacho-geo может быть еще не задеплоен — симметрично
+		// lbAddr/iamAddr выше). Geography обслуживается ИСКЛЮЧИТЕЛЬНО geo.v1.
 		if geoAddr != "" {
 			if err := geopb.RegisterRegionServiceHandlerFromEndpoint(ctx, mux, geoAddr, optsFor("geo")); err != nil {
 				return nil, fmt.Errorf("register geo RegionService: %w", err)
@@ -697,13 +750,14 @@ func NewMux(
 		}
 
 		// --- geo admin (InternalRegionService/InternalZoneService) — kacho-only, internal-port (9091) ---
-		// Admin-CRUD справочников Region/Zone (POST/PATCH/DELETE на /geo/v1/regions,
-		// /geo/v1/zones). Доступен ТОЛЬКО через cluster-internal REST listener для
-		// UI/admin-tooling. На external TLS endpoint admin Region/Zone-
-		// функции не светятся: gRPC-роутер блокирует Internal*-сервисы через
-		// HasInternalSuffix, а authz-каталог гейтит эти RPC relation `system_admin`
-		// на cluster-singleton. Мутации Region/Zone — это catalog-паттерн (sync-ответ
-		// ресурсом, НЕ Operation; как InternalDiskType).
+		// Полная плоскость администрирования каталога: мутации С инфраструктурным
+		// блоком (infra°) и полная проекция GetInternal — на самоописываемом
+		// сегменте /geo/v1/internal/{regions,zones}. Доступна ТОЛЬКО через
+		// cluster-internal REST listener: на external TLS endpoint эти пути — 404
+		// (диспетчер классифицирует по принадлежности RPC Internal*-сервису,
+		// gRPC-роутер блокирует их через HasInternalSuffix), а каталог прав гейтит
+		// их `system_admin` на cluster-singleton. Мутации отвечают синхронно
+		// завершённым Operation (done=true в самом ответе).
 		if mux == internalMux && geoInternalAddr != "" {
 			if err := geopb.RegisterInternalRegionServiceHandlerFromEndpoint(ctx, mux, geoInternalAddr, optsFor("geoInternal")); err != nil {
 				return nil, fmt.Errorf("register geo InternalRegionService: %w", err)
@@ -803,6 +857,14 @@ func NewMux(
 			if err := iampb.RegisterAccessKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccessKeyService: %w", err)
 			}
+			// ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец InternalClusterService:
+			// администраторы кластера под /iam/v1/cluster и /iam/v1/cluster/admins.
+			// Обе стороны исполняют одни и те же экземпляры сценариев службы, гейт —
+			// system_admin на cluster:cluster_root по каталогу прав. Внутренний
+			// близнец остаётся в блоке iamInternalAddr ниже (запрет #6).
+			if err := iampb.RegisterClusterServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam ClusterService: %w", err)
+			}
 			// AuthorizeService — tenant FGA check (POST /iam/v1/authorize:check).
 			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AuthorizeService: %w", err)
@@ -900,13 +962,18 @@ func NewMux(
 			// ServiceAccount, and its catalog permission is `<exempt>`. The authz
 			// middleware admits an `<exempt>` Internal* RPC that arrives on the
 			// cluster-internal listener WITHOUT extracting a principal
-			// (phaseInternalOriginExempt), and this internal REST listener is plain
-			// HTTP/1.1 — no TLS, no client cert (cmd/api-gateway/main.go). A REST route
-			// would therefore be a CREDENTIAL-FREE control-plane takeover: any pod that
-			// can reach the `internal-rest` Service port, or anyone holding a
-			// port-forward, could POST an empty body and get a cluster-admin token.
-			// Network position is not a credential (security.md — "internal = trusted"
-			// is a forbidden assumption).
+			// (phaseInternalOriginExempt). This internal REST listener is mutual TLS
+			// (kacho#3131, serveInternalREST in cmd/api-gateway/edge_listener.go):
+			// the client leaf must chain to the installation CA and carry a URI-SAN
+			// from KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the
+			// TRANSPORT only — the circle is the edge's operator identity, not the
+			// mint's allow-list, and authz on this listener is unchanged. A REST route
+			// would therefore hand a cluster-admin token, for an empty body and with
+			// no principal checked, to any holder of a leaf in the listener's circle:
+			// the mint's door would widen from kaname's explicit SAN allow-list to
+			// whatever the edge's circle happens to contain. A transport credential
+			// for one surface is not an authorization for another (security.md —
+			// "internal = trusted" is a forbidden assumption).
 			//
 			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kaname
 			// :9091, where authzguard.CallerPolicy checks the caller's verified
@@ -1048,5 +1115,20 @@ func NewMux(
 		publicMux.ServeHTTP(w, r)
 	})
 
-	return dispatcher, nil
+	return &Mux{dispatch: dispatcher, public: publicMux, routes: routeTable}, nil
+}
+
+// backendBudgetInterceptor ограничивает унарный вызов моста бюджетом. Исход
+// истечения — DEADLINE_EXCEEDED (код 4), а не UNAVAILABLE: исход вызова бэкенда
+// при истечении срока неизвестен (мутация могла быть закоммичена), и
+// UNAVAILABLE предлагал бы повтор как безопасный. Статус 504 край производит
+// своей таблицей (runtime.HTTPStatusFromCode). `WithTimeout` берёт меньший из
+// двух сроков — более ранний срок, пришедший с запросом, остаётся в силе.
+func backendBudgetInterceptor(budget time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx, cancel := context.WithTimeout(ctx, budget)
+		defer cancel()
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }

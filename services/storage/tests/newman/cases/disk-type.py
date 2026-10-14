@@ -166,32 +166,30 @@ CASES.append(Case(
 # proto-дескрипторов, и все три админ-метода на внешнем слушателе отбиваются маршрутом.
 # Публичное чтение того же пути при этом сохранено — путь один, методы разные.
 #
-# Ожидание сужено соответственно: 401/403/404 и НИКОГДА 200. Не строгий 404, потому что
-# authz-прослойка обёрнута СНАРУЖИ диспетчера — аутентифицированный не-админ получит 403,
-# неаутентифицированный 401, и до 404-гейта они не доходят. 400/405/501 стали
-# недостижимы: валидация тела за отбитым маршрутом не выполняется.
+# Ожидание — ОДИН исход, промах маршрута края «метода нет»: 501 / code 12 /
+# `Method Not Allowed` / пустые details, тело целиком (`assert_edge_route_miss`).
+# Сторож маршрута внешнего слушателя (kacho#3053) решает «обслуживается ли пара
+# (метод, путь)» РАНЬШЕ аутентификации и прав по таблице публичных маршрутов, собранной
+# тем же циклом, что publicMux. Коллекция и элемент diskTypes публично существуют под
+# GET, поэтому POST/PATCH/DELETE на них — «путь есть, метода нет», одинаково для любого
+# вызывающего и одинаково с методом, которого нет нигде. Прежний допуск
+# [401, 403, 404, 405, 501] держался на том, что слои входа и прав отвечали раньше
+# маршрута; сторож это снял, и 401/403 на этом месте теперь — регресс: внутренний
+# метод снова назван снаружи. Строгий исход сохраняет и то, ради чего кейс заведён:
+# 200 (мутация) по-прежнему красный.
 #
 # Тело запроса остаётся non-destructive (пустой id на создании, несуществующая цель на
 # изменении и удалении): прежняя форма слала валидное тело и на успехе МУТИРОВАЛА посев.
 # Это свойство кейса сохраняем независимо от того, отбивает ли маршрут — проверка не
 # должна разрушать стенд, даже когда она красная.
-# Набор отказов включает 405/501 — это ФОРМА ОТКАЗА ВНЕШНЕГО ЛИСТЕНЕРА, а не послабление.
 #
-# Запрос, классифицированный как internal, но пришедший на внешний листенер, отдаётся
-# publicMux'у, и ответ производит сам grpc-gateway — ровно как если бы админской
-# поверхности не существовало вовсе: 404 там, где путь неизвестен, и 501/405 там, где путь
-# ПУБЛИЧНО существует под другим методом. Коллекция diskTypes — как раз этот случай:
-# публичное чтение живёт на том же пути, что админский CRUD. Отдельный `http.NotFound`
-# здесь стоял раньше и был снят намеренно: он отличался Content-Type и телом, то есть сам
-# отвечал на вопрос «есть ли тут админский путь» (см. gateway/internal/restmux/mux.go и
-# external_refusal_shape_test.go).
-#
-# Утверждение при этом НЕ ослаблено: все пять кодов — отказы, 200 по-прежнему запрещён,
-# и именно 200 (мутация) — то, что кейс существует ловить. Эталон набора — geo
-# `admin-not-on-public.py`, где стоит [403, 404, 405, 501] и суита зелёная.
+# Отдельный `http.NotFound` в диспетчере стоял раньше и был снят намеренно: он отличался
+# Content-Type и телом, то есть сам отвечал на вопрос «есть ли тут админский путь» (см.
+# gateway/internal/restmux/mux.go и external_refusal_shape_test.go). По той же причине
+# тело утверждается целиком.
 CASES.append(Case(
     id="DT-CR-NEG-EXTERNAL-ABSENT",
-    title="POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
+    title="POST /storage/v1/diskTypes empty-id на external → 501/12 промах маршрута края «метода нет» (admin Create Internal-only, ban #6) — НИКОГДА 200-mutation",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
     # verifies CS1-S2-04 (INV-7a). Non-destructive: пустой id не даёт вставки даже
     #   в том случае, если маршрут вдруг окажется забриджен на внешний край.
@@ -215,13 +213,12 @@ CASES.append(Case(
     # недопустимым (ban #6), а не «тоже отказ»: пинить его зелёным утверждением
     # значило бы отчитываться об успехе на своей находке.
     steps=[Step(name="cr-external", method="POST", path=DT, body={"id": ""},
-                test_script=[
-                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
+                test_script=[*assert_edge_route_miss("method")])],
 ))
 
 CASES.append(Case(
     id="DT-UPD-NEG-EXTERNAL-ABSENT",
-    title="PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 401/403/404/405/501 — НИКОГДА 200/мутация каталога",
+    title="PATCH /storage/v1/diskTypes/<nonexistent> на external → 501/12 промах маршрута края «метода нет» (admin Update Internal-only) — НИКОГДА 200/мутация каталога",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
     # verifies CS1-S2-04 (INV-7a). Non-destructive: цель run-scoped и заведомо
     #   несуществующая — каталог не мутируется даже если маршрут когда-нибудь
@@ -229,18 +226,18 @@ CASES.append(Case(
     #   подъёма стенда, и литерал был бы утверждением о посеве, которого нет.
     steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 body={"name": "block-hacked"},
-                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
+                test_script=[*assert_edge_route_miss("method")])],
 ))
 
 CASES.append(Case(
     id="DT-DEL-NEG-EXTERNAL-ABSENT",
-    title="DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 401/403/404/405/501 — НИКОГДА 200/удаление класса",
+    title="DELETE /storage/v1/diskTypes/<nonexistent> на external → 501/12 промах маршрута края «метода нет» (admin Delete Internal-only) — НИКОГДА 200/удаление класса",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
     # verifies CS1-S2-04 (INV-7a). Non-destructive: цель run-scoped и заведомо
     #   несуществующая. Прежняя форма называла класс каталога поимённо и на успехе
     #   УДАЛЯЛА его — проверка, разрушающая стенд, недопустима и в красном виде.
     steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
-                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
+                test_script=[*assert_edge_route_miss("method")])],
 ))
 
 # ---------------------------------------------------------------------------

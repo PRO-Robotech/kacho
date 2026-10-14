@@ -6,12 +6,9 @@
 //
 // # Предмет
 //
-// Посадка, у внешнего origin которой доменного имени нет (браузер приходит на
-// голый IP-литерал), чартом выразима. Так стояла консоль управляемого кластера
-// a8f60d, пока площадка не получила имя `console.in-cloud.io` (kacho#3024);
-// сегодня такой посадки в таблице стендов нет ни одной, но выразимость — свойство
-// чарта, а не стенда. Два стандарта делают такую посадку особой, и оба — факт о
-// браузере, а не наш выбор:
+// Консоль площадки без доменного имени стоит на голом IP-литерале (так стоял
+// управляемый стенд a8f60d до kacho#3024). Два стандарта делают такую посадку
+// особой, и оба — факт о браузере, а не наш выбор:
 //
 //   - RFC 6265 §5.1.3 (domain matching) объявляет совпадение с IP-литералом
 //     ЛОЖНЫМ всегда, а §5.3 п.6 отбрасывает печенье, чей `Domain` не совпал, —
@@ -28,21 +25,16 @@
 //
 // # Что утверждается
 //
-// По каждой цепочке deploy/stacks.txt: хост внешнего origin посадки (консоль —
+// По каждой цепочке deploy/stacks.txt и по фикстуре посадки без имени
+// (`domainlessFixtureStack` на адресе документации): хост внешнего origin посадки (консоль —
 // `appBaseURL`, а пусто — `<appSubdomain>.<domain>`, тот же вывод, что у
 // шаблона) есть IP-литерал ⇒ в настройках службы `authn.login.cookie-domain`
 // равен `none` (host-only) и ни одно происхождение `authn.access-keys.origins`
 // не стоит на IP-литерале. Посадка с доменным именем здесь не судится: печенье
 // на ней судит deploy/own_session_cookie_domain_test.go.
 //
-// Прежде перепись требовала встретить в дереве ОБЕ посадки — односторонняя
-// ничего не утверждает о различии. С именем у a8f60d IP-посадки в дереве не
-// осталось, и требование стало бы требованием держать стенд без имени ради
-// пробы. Утверждение о различии держит теперь пара на ОДНОЙ цепочке — дерево как
-// есть против подмены одного узла личности
-// (TestIdentityDomainlessGate_TheSameChainWithItsNameIsNotJudged); перепись
-// судит каждую IP-посадку, какая появится в таблице, печатает обе колонки и
-// падает на пустом обходе. Способность упасть и смолчать — настоящим входом,
+// Перепись обязана встретить ОБЕ посадки: односторонняя ничего не утверждает о
+// различии. Способность упасть и смолчать — настоящим входом,
 // identity_domainless_landing_injection_test.go.
 package deploy_test
 
@@ -146,6 +138,21 @@ func judgeOurDomainlessLanding(stack, host string, cfg map[string]any) (domainle
 	return true, findings
 }
 
+// ФИКСТУРА ПОСАДКИ БЕЗ ИМЕНИ. Управляемый стенд a8f60d стоял на IP-литерале и
+// был единственной такой цепочкой; с kacho#3024 у него доменное имя, и цепочек
+// без имени в таблице не осталось. Утверждение о выразимости посадки без имени
+// от этого не снято: оно судится ФИКСТУРОЙ — профилями того же стенда с
+// происхождением на адресе документации (RFC 5737), то есть ровно той
+// посадкой, что стояла бы на площадке без имени. Адрес стенда сюда не
+// копируется.
+const (
+	domainlessFixtureStack  = "a8f60d"
+	domainlessFixtureOrigin = "https://192.0.2.10"
+)
+
+// domainlessFixtureSet — установка, переводящая фикстурную цепочку на IP-литерал.
+var domainlessFixtureSet = "global.kacho.identity.appBaseURL=" + domainlessFixtureOrigin
+
 func TestIdentity_LandingWithoutADomainNameIsExpressible(t *testing.T) {
 	stacks := deployStacks(t)
 	names := make([]string, 0, len(stacks))
@@ -171,9 +178,30 @@ func TestIdentity_LandingWithoutADomainNameIsExpressible(t *testing.T) {
 			withDomain++
 		}
 	}
-	t.Logf("перепись: стеков осмотрено %d · без доменного имени %d · с доменным именем %d",
+	// Фикстура посадки без имени — последней, тем же адъюдикатором.
+	chain, ok := stacks[domainlessFixtureStack]
+	if !ok {
+		t.Fatalf("цепочки %q нет в таблице стеков — фикстуре посадки без имени не на чем стоять", domainlessFixtureStack)
+	}
+	fixtureID := identityOfStack(t, chain)
+	fixtureID["appBaseURL"] = domainlessFixtureOrigin
+	out, err := renderStackSubchart(t, domainlessFixtureStack, stackIdentityValues(t, chain), domainlessFixtureSet)
+	if err != nil {
+		t.Fatalf("фикстура %s: рендер подчарта службы отказал: %v\n%s", domainlessFixtureStack, err, out)
+	}
+	isIP, findings := judgeOurDomainlessLanding(domainlessFixtureStack+"+без-имени", externalOriginHost(t, fixtureID), kanameServiceConfig(t, out))
+	for _, f := range findings {
+		t.Error(f)
+	}
+	if isIP {
+		domainless++
+	} else {
+		withDomain++
+	}
+	t.Logf("перепись: стеков осмотрено %d (+ фикстура без имени) · без доменного имени %d · с доменным именем %d",
 		len(names), domainless, withDomain)
-	if len(names) == 0 {
-		t.Fatalf("перепись пуста: таблица стендов не дала ни одной цепочки — судить нечего, и это отказ")
+	if domainless == 0 || withDomain == 0 {
+		t.Fatalf("перепись односторонняя (без имени %d, с именем %d) — утверждение о "+
+			"РАЗЛИЧИИ посадок не проверено ни на одной паре", domainless, withDomain)
 	}
 }

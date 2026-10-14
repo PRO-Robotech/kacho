@@ -311,8 +311,8 @@ Seed зеркалит kacho-vpc geography.
 - Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-CAT-03 — DiskType/Zone — read-only (нет Create/Update/Delete на публичном API)            [P2]
-POST на `/compute/v1/machineTypes` → 404/405/501. Admin-CRUD — только через `Internal*` сервисы (порт 9091).
-- Validated-by: `DT-CR-NEG-NOT-ALLOWED`, `ZONE-CR-NEG-NOT-ALLOWED`
+Мутация на публичный адрес каталога (`POST` на коллекцию, существующую публично только под чтением) → промах маршрута края «метода нет»: `501` / code 12, тело ровно `{"code":12,"message":"Method Not Allowed","details":[]}`, до аутентификации и прав (kacho#3053). Admin-CRUD — только через `Internal*` сервисы на внутреннем слушателе.
+- Validated-by: у владельцев каталога — `DT-{CR,UPD,DEL}-NEG-EXTERNAL-ABSENT` (`services/storage/`), `ANP-ZON-CR-NOT-PUBLIC` (`services/geo/`). Для `POST /compute/v1/machineTypes` держателя в наборе compute нет; прежние ссылки `DT-CR-NEG-NOT-ALLOWED`/`ZONE-CR-NEG-NOT-ALLOWED` указывали на кейсы, которых в дереве нет.
 - Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются; запрет #6 воркспейса остаётся нормой у владельца.
 
 ### REQ-OPS-01 — Disk.Create с unknown type_id (или без type_id) → `NotFound`/default network-ssd   [P1]
@@ -329,6 +329,6 @@ POST на `/compute/v1/machineTypes` → 404/405/501. Admin-CRUD — тольк�
 - Validated-by: `*-CR-SEC-{SQLI,UNION,XSS,CMD,PATH,LONGPAYLOAD}`, `*-LST-SEC-FILTER-SQLI`
 - Agent-check: параметризованные запросы (sqlc + pgx) `internal/repo/`; `mapRepoErr` не протекает SQLSTATE; нет `fmt.Errorf("%v", pgErr)` в публичных текстах.
 
-### REQ-SEC-02 — HTTP method semantics: PUT/DELETE на коллекционный endpoint → 404/405/501; malformed JSON → 400/415   [P3]
-- Validated-by: `*-METHOD-{PUT-NOT-ALLOWED,DELETE-LIST}`, `*-CR-VAL-{MALFORMED-JSON,EMPTY-BODY}`
+### REQ-SEC-02 — HTTP method semantics: PUT/DELETE на коллекционный endpoint → 501 / code 12 (промах маршрута края «метода нет», тело целиком); malformed JSON → 400/415   [P3]
+- Validated-by: `*-CR-VAL-{MALFORMED-JSON,EMPTY-BODY}`. Половина о методе держателя в наборе compute не имеет (`*-METHOD-*` генератор compute не заводит); тот же исход края держат `*-METHOD-{PUT-NOT-ALLOWED,DELETE-LIST}` наборов vpc и nlb (общий блок `http_method_not_allowed_block`).
 - Agent-check: grpc-gateway routing (`google.api.http` annotations) — других методов нет.

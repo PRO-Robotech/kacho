@@ -10,6 +10,7 @@ jest.unstable_mockModule("@shared/pages/auth/address-confirmation-exit", () => (
   leaveToAddressConfirmation: leave,
 }));
 
+const { EDGE_AUTHN_FAILED, EDGE_CREDENTIAL_STATE_UNKNOWN, responseOf } = await import("@shared/test/edge-answers");
 const client = await import("./client");
 const { api, ApiError } = client;
 const { setStepUpRequester } = await import("./step-up");
@@ -52,8 +53,6 @@ function answered(status: number, body: string, headers: Record<string, string> 
   } as unknown as Response);
 }
 
-const ENDED = { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' };
-const ENDED_BODY = '{"code":16,"message":"session ended; sign in again"}';
 
 describe("клиент API модулей: действие на отказ", () => {
   const original = globalThis.fetch;
@@ -62,16 +61,32 @@ describe("клиент API модулей: действие на отказ", ()
     setStepUpRequester(null);
   });
 
-  it("Р10 · «сессия кончилась» отдаётся как есть: повтора с текущим носителем нет", async () => {
+  it("Р10 · отказ края в удостоверении (KA1, Р2) отдаётся как есть: повтора с текущим носителем нет", async () => {
     // Повтор (условие C18 редакции 6) невыполним — ответ края гасит носитель.
     // Перевыпуск упорядочивает транспорт вкладки (`carrier-order.ts`).
     let n = 0;
     globalThis.fetch = () => {
       n += 1;
-      return answered(401, ENDED_BODY, ENDED);
+      return responseOf(EDGE_AUTHN_FAILED);
     };
-    await expect(api.get("/vpc/v1/networks")).rejects.toBeInstanceOf(ApiError);
+    const refused = await api.get("/vpc/v1/networks").catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ApiError);
+    expect((refused as InstanceType<typeof ApiError>).status).toBe(401);
     expect(n).toBe(1);
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it("KA1 Р1 · авторитет края не ответил (503) — отказ отдаётся как есть, повтора нет, никуда не уводит", async () => {
+    let n = 0;
+    globalThis.fetch = () => {
+      n += 1;
+      return responseOf(EDGE_CREDENTIAL_STATE_UNKNOWN);
+    };
+    const refused = await api.get("/vpc/v1/networks").catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ApiError);
+    expect((refused as InstanceType<typeof ApiError>).status).toBe(503);
+    expect(n).toBe(1);
+    expect(leave).not.toHaveBeenCalled();
   });
 
   it("C2 · свежесть службы на запросе платформы — повышение «свежесть», а не пол", async () => {

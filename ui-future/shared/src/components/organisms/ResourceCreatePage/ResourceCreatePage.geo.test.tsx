@@ -1,10 +1,9 @@
-// End-to-end behaviour of the create page for a resource with an admin plane,
-// driven through the real API client (fetch is the only thing stubbed).
+// End-to-end behaviour of the create page for a geo catalog resource, driven
+// through the real API client (fetch is the only thing stubbed).
 //
 // Three things this pins, each of which was wrong or missing before:
-//   * the POST goes to the internal admin path. The public geo path serves
-//     reads only — a POST there is not routed to anything, so the previous
-//     wiring sent every Create into the void.
+//   * the POST goes to the public geo path (#3094): RegionService.Create lives
+//     there (#3092), and the internal plane is not served by the external edge.
 //   * a done Operation carrying an error is a failure. Its metadata already
 //     holds the id that was allocated before the failure, so reading the id
 //     without the error reports a resource that does not exist.
@@ -130,15 +129,15 @@ describe("ResourceCreatePage — Region", () => {
     expect(screen.queryByRole("button", { name: "Создать регион" })).not.toBeInTheDocument();
   });
 
-  it("posts to the internal admin path, not the read-only public one", async () => {
+  it("posts to the public RegionService path, not an internal one (#3094)", async () => {
     stubFetch({ id: "opr-1", done: true }, { id: "opr-1", done: true });
     renderCreate();
     await submit();
 
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     const post = calls.find((c) => c.method === "POST")!;
-    expect(post.url).toBe("/geo/v1/internal/regions");
-    expect(post.url).not.toBe("/geo/v1/regions");
+    expect(post.url).toBe("/geo/v1/regions");
+    expect(calls.filter((c) => c.url.includes("/internal"))).toEqual([]);
   });
 
   it("seeds the create body closed to placement, matching the service default", async () => {

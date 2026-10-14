@@ -25340,7 +25340,7 @@
       ]
     },
     {
-      "name": "SUB-METHOD-PUT-NOT-ALLOWED — PUT on List endpoint → 403/404/405/501",
+      "name": "SUB-METHOD-PUT-NOT-ALLOWED — PUT on List endpoint → 501/12 edge route miss (method)",
       "description": "class:VAL | class:NEG | priority:P3",
       "item": [
         {
@@ -25380,7 +25380,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('not allowed (403/404/405/501)', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -25389,7 +25397,7 @@
       ]
     },
     {
-      "name": "SUB-METHOD-DELETE-LIST — DELETE on List endpoint (no id) → 403/404/405/501",
+      "name": "SUB-METHOD-DELETE-LIST — DELETE on List endpoint (no id) → 501/12 edge route miss (method)",
       "description": "class:VAL | class:NEG | priority:P3",
       "item": [
         {
@@ -25420,7 +25428,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('not allowed (403/404/405/501)', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }

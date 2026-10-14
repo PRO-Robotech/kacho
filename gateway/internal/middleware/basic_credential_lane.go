@@ -102,6 +102,12 @@ type BasicCredentialLane struct {
 	authority basicCredentialAuthority
 	now       func() time.Time
 	logger    *slog.Logger
+	// budget — бюджет ОДНОГО вызова к авторитету: ручка
+	// KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET (приёмка KA1, Р4). Названный бюджет
+	// обязателен — неотвечающий сосед без него вешает горутину навсегда, — и
+	// приходит величиной профиля, а не константой: та же ручка ограничивает
+	// прочие вопросы края тому же соседу.
+	budget time.Duration
 
 	// cache — ЕДИНЫЙ ограниченный примитив (internal/lrucache), тот же, что у
 	// кэшей решения, интроспекции, повтора и сессии: логика вытеснения написана
@@ -154,8 +160,8 @@ type BasicCredentialLane struct {
 const basicCredentialCacheMaxEntries = 10000
 
 // NewBasicCredentialLane конструирует полосу.
-func NewBasicCredentialLane(a basicCredentialAuthority) *BasicCredentialLane {
-	l := &BasicCredentialLane{authority: a, now: time.Now}
+func NewBasicCredentialLane(a basicCredentialAuthority, budget time.Duration) *BasicCredentialLane {
+	l := &BasicCredentialLane{authority: a, now: time.Now, budget: budget}
 	// Часы читаются ЧЕРЕЗ ПОЛЕ: WithClock подменяет их после конструирования, а
 	// снимок значения в этот момент оставил бы кэш на настоящих часах — и пробы
 	// истечения окна утверждали бы о другом кэше.
@@ -211,7 +217,13 @@ func (l *BasicCredentialLane) Verify(ctx context.Context, presented string) (Bas
 		return v, nil
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, BasicCredentialCallBudget)
+	if l.budget <= 0 {
+		// Полоса собрана без бюджета: спросить авторитета в пределе нечем, и
+		// ждать его без предела — не решение. Неспособность установить состояние,
+		// а не отказ в удостоверении.
+		return BasicVerifiedCredential{}, ErrCredentialStateUnknown
+	}
+	callCtx, cancel := context.WithTimeout(ctx, l.budget)
 	defer cancel()
 
 	resp, rerr := l.authority.Resolve(callCtx, presented)
@@ -261,10 +273,6 @@ func isCredentialRefusal(err error) bool {
 	}
 	return st.Code() == codes.Unauthenticated
 }
-
-// BasicCredentialCallBudget — бюджет одного вызова к авторитету. Названный
-// бюджет обязателен: неотвечающий сосед без него вешает горутину навсегда.
-const BasicCredentialCallBudget = time.Second
 
 func (l *BasicCredentialLane) lookup(key string) (BasicVerifiedCredential, bool) {
 	return l.cache.Get(key)

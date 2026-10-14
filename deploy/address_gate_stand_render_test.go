@@ -483,8 +483,14 @@ func TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane(t *testing.T) {
 		{"якорь наполовину: ключ без имени", "a8f60d",
 			[]string{"global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"},
 			"объявлен наполовину"},
+		// Боевой профиль объявляет узел заглушкой (kacho#3020), поэтому
+		// «полосы нет» здесь — снятые три величины полосы, а не профиль как есть.
+		// Отказ «якорь без полосы» стоит в страже раньше отказа боевого режима
+		// без узла и обязан называть более узкую причину.
 		{"якорь без полосы", addrGateProdStack,
-			[]string{"global.kacho.identity.smtp.trustAnchorSecret.name=kacho-mailpit-tls", "global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"},
+			[]string{"global.kacho.identity.smtp.connectionURI=", "global.kacho.identity.smtp.fromAddress=",
+				"global.kacho.identity.smtp.fromName=",
+				"global.kacho.identity.smtp.trustAnchorSecret.name=kacho-mailpit-tls", "global.kacho.identity.smtp.trustAnchorSecret.key=ca.crt"},
 			"узел полосы НЕ задан"},
 	}
 	for _, c := range cases {

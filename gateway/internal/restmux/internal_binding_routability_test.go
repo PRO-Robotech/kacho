@@ -33,13 +33,13 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
@@ -87,7 +87,7 @@ func routingRefusal(code int) bool {
 // маршрута.
 func servedOnInternalOrigin(t *testing.T, addrs map[string]string, subject []publicBinding) (missing []publicBinding, routed int) {
 	t.Helper()
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

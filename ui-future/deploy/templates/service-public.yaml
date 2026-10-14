@@ -1,0 +1,59 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+Внешний вход консоли (kacho#3024): 443 → TLS раздачи, 80 → переадресация на
+https. Внутреннего порта раздачи здесь НЕТ намеренно: открытый http наружу не
+публикуется ни одним портом. Разбор — values.yaml, блок `publicFront`.
+*/}}
+{{- if .Values.publicFront.enabled }}
+{{- include "ui.publicFrontGuard" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.publicFrontServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+  {{- $ann := deepCopy (.Values.publicFront.service.annotations | default dict) }}
+  {{- if include "ui.publicFrontProxyProtocol" . }}
+  {{- /* Совпадение ключей разными значениями рендер уже отверг
+         (ui.publicFrontProxyProtocol), поэтому порядок слияния исхода не меняет. */}}
+  {{- $ann = merge $ann (deepCopy .Values.publicFront.clientAddress.proxyProtocol.serviceAnnotations) }}
+  {{- else if eq (include "ui.publicFrontServiceType" .) "LoadBalancer" }}
+  {{- /* Причина выключенного приёма — объявлением на объекте: её читает
+         рендер-гейт п. 7 (deploy/console_public_front_render_test.go). */}}
+  {{- $_ := set $ann "kacho.cloud/client-address-proxy-protocol-disabled-because" (toString .Values.publicFront.clientAddress.proxyProtocol.disabledBecause) }}
+  {{- end }}
+  {{- with $ann }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ include "ui.publicFrontServiceType" . }}
+  {{- if eq (include "ui.publicFrontServiceType" .) "LoadBalancer" }}
+  # Адрес клиента обязан дойти до раздачи (kacho#3028). При `Cluster` kube-proxy
+  # подменяет адрес источника адресом узла: раздача и край видят вместо клиентов
+  # адреса узлов, и ограничение частоты входа «на источник» у службы доступа
+  # становится общим на всех — исчерпав его, один клиент отказывает во входе
+  # остальным. `Local` доставляет пакет только на узел с подом раздачи и адреса
+  # не трогает; узлы без пода балансировщик площадки снимает по своей проверке
+  # живости (порт узла на них не отвечает). Ручки здесь нет намеренно: законного
+  # значения, кроме `Local`, у входа, считающего клиентов по адресу, нет.
+  # `Local` сохраняет адрес только за звеном, которое пакет не проксирует;
+  # балансировщик, соединяющийся со своего адреса, доносит клиента заголовком
+  # PROXY (`publicFront.clientAddress.proxyProtocol`, kacho#3115).
+  externalTrafficPolicy: Local
+  {{- end }}
+  selector:
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: https
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: redirect
+{{- end }}

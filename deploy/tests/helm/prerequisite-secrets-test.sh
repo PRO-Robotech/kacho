@@ -92,7 +92,7 @@ provisioned_by() {
   local body deps d
   body="$(target_body "$1")"
   # `dev-prod-up: dev-up` — цель исполняет рецепты своих make-предусловий.
-  deps="$(printf '%s\n' "$body" | head -1 | sed -E 's/^[^:]*:[[:space:]]*//')"
+  deps="$(printf '%s\n' "$body" | sed -n 1p | sed -E 's/^[^:]*:[[:space:]]*//')"
   for d in $deps; do body="$body"$'\n'"$(target_body "$d")"; done
   [[ "$body" == *"$SECRETS_SH"* ]] || return 0
   # Скрипт заводит ровно те секреты, которые в нём создаются `create secret generic`.
@@ -150,7 +150,7 @@ self_test() {
   helm_try kacho-umbrella "$UMBRELLA" $ARGS_DEV_PROD
   render_or_fatal "стек dev-prod (самопроверка)"
   prov="$(provisioned_by dev-prod-up)"
-  local carried; carried="$(printf '%s\n' "$prov" | sed '/^$/d' | head -1)"
+  local carried; carried="$(printf '%s\n' "$prov" | sed '/^$/d' | sed -n 1p)"
   [ -n "$carried" ] || fatal "цель dev-prod-up не заводит ни одного секрета скриптом — носителю самопроверки ссылаться не на что"
   {
     printf '%s\n' "$HELM_OUT"

@@ -35,6 +35,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/operations"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -67,7 +68,7 @@ func TestAuth_HybridMTLS_VerifiedCert_PrincipalFromSPIFFE_NoJWT(t *testing.T) {
 	lookup := &countingLookup{} // must NOT be called
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", lookup, authTestLogger(),
-	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"), linktls.Anchor{})
 
 	ctx := peerCtxWithVerifiedCert(t,
 		"spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage")
@@ -102,7 +103,7 @@ func TestAuth_HybridMTLS_NoCert_ValidJWT_StillWorks(t *testing.T) {
 	}}
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeDev, secret, lookup, authTestLogger(),
-	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"), linktls.Anchor{})
 
 	jwt := makeDevJWT(t, secret, "zit-12345")
 	ctx := metadata.NewIncomingContext(context.Background(),
@@ -127,7 +128,7 @@ func TestAuth_HybridMTLS_NoCert_ValidJWT_StillWorks(t *testing.T) {
 func TestAuth_HybridMTLS_NoCert_NoJWT_ProtectedRPC_Unauthenticated(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", &fakeLookup{}, authTestLogger(),
-	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"), linktls.Anchor{})
 
 	called := false
 	handler := func(_ context.Context, _ any) (any, error) {
@@ -149,7 +150,7 @@ func TestAuth_HybridMTLS_NoCert_NoJWT_ProtectedRPC_Unauthenticated(t *testing.T)
 func TestAuth_HybridMTLS_SpoofedPrincipalHeader_NotTrusted(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", &fakeLookup{}, authTestLogger(),
-	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"), linktls.Anchor{})
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"x-kacho-principal-type", "user",

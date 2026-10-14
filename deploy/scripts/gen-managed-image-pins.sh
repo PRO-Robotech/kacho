@@ -89,6 +89,11 @@ usage() {
   cat <<'EOF'
 gen-managed-image-pins.sh [--profile <путь от deploy/>] [--ref <git-ref>] [--branch <имя>]
                           [--check] [--self-test]
+gen-managed-image-pins.sh --tag-of <образ>[,<образ>…] [--ref <git-ref>] [--branch <имя>]
+    печатает «образ<TAB>тег» — тег, под которым CI публикует образ для коммита
+    ветки (тот же вывод, что у пинов профиля). Читатель — deploy/scripts/stand-ns.sh
+    (стенд проб в своём пространстве имён, kacho#3102): правило формы тега живёт
+    здесь одно.
 EOF
 }
 
@@ -99,6 +104,7 @@ while [ $# -gt 0 ]; do
     --branch)  BRANCH="${2:?--branch требует значения}"; shift 2 ;;
     --check)     MODE="check"; shift ;;
     --self-test) MODE="self-test"; shift ;;
+    --tag-of)    MODE="tag-of"; TAG_OF="${2:?--tag-of требует значения}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "неизвестный аргумент: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -618,8 +624,8 @@ case "$MODE" in
     [ -f "$PROFILE" ] || { echo "ОТКАЗ: профиль $PROFILE не найден" >&2; exit 2; }
     check_profile "$PROFILE"; exit $?
     ;;
-  write)
-    [ -f "$PROFILE" ] || { echo "ОТКАЗ: профиль $PROFILE не найден" >&2; exit 2; }
+  write|tag-of)
+    [ "$MODE" = tag-of ] || [ -f "$PROFILE" ] || { echo "ОТКАЗ: профиль $PROFILE не найден" >&2; exit 2; }
     sha="$(git -C "$REPO_ROOT" rev-parse --verify "${REF}^{commit}" 2>/dev/null)" || {
       echo "ОТКАЗ: ссылка «$REF» не разрешается в коммит этого дерева." >&2
       echo "       Пин, выведенный из неразрешимой ссылки, назвал бы образ, которого нет." >&2
@@ -646,6 +652,12 @@ case "$MODE" in
       echo "       Образы с тегом «$BRANCH-…» публикует сборка этой ветки; для стороннего" >&2
       echo "       коммита такого образа нет." >&2
       exit 2
+    fi
+    if [ "$MODE" = tag-of ]; then
+      for img in ${TAG_OF//,/ }; do
+        printf '%s\t%s\n' "$img" "$(want_tag "$img" "$BRANCH" "$sha")"
+      done
+      exit 0
     fi
     rewrite_profile "$PROFILE" "$BRANCH" "$sha" || { echo "ОТКАЗ: переписать $PROFILE не удалось" >&2; exit 2; }
     check_profile "$PROFILE"; exit $?

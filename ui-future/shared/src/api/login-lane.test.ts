@@ -3,6 +3,7 @@
 
 import { jest } from "@jest/globals";
 import { requestBody, requestUrl } from "@shared/test/fetch-capture";
+import { EDGE_AUTHN_FAILED, EDGE_CREDENTIAL_STATE_UNKNOWN, laneAnswerOf } from "@shared/test/edge-answers";
 import { SIGNED_IN, installLane, refusal, type LaneAnswer } from "@shared/test/lane-fake";
 import { FormTokenHolder, LaneRefusal, loginLane, refusalOf, sessionIdentity } from "./login-lane";
 import { requestStepUp, setStepUpRequester, type StepUpRequest } from "./step-up";
@@ -11,8 +12,9 @@ import { requestStepUp, setStepUpRequester, type StepUpRequest } from "./step-up
 // Здесь закреплено то, что экраны получают от него готовым, и потому видят
 // только исходом: разбор отказа, выбор действия на отказ, судьба признака
 // формы и три исхода вопроса «есть ли сессия». Сеть — дублёр полосы с телами
-// и заголовками её производителей (`kaname` `loginlanehttp.writeRefusal`, край
-// `writeHTTPUnauthorized` и вызов пола RFC 9470).
+// и заголовками её производителей (`kaname` `loginlanehttp.writeRefusal`, край —
+// отказ в удостоверении и ответ на молчание авторитета, `@shared/test/edge-answers`
+// (приёмка KA1, Р2 и Р1), и вызов пола RFC 9470).
 
 /** Ответ так, как его видит `fetch`: статус, заголовки, текст тела. */
 function answer(status: number, headers: Record<string, string> = {}): Response {
@@ -24,12 +26,11 @@ function answer(status: number, headers: Record<string, string> = {}): Response 
   } as unknown as Response;
 }
 
-/** Отказ края на глаголе с носителем, когда служба ему не ответила (F4d-23): тело без `details`. */
-const EDGE_SESSION_ENDED: LaneAnswer = {
-  status: 401,
-  body: { code: 16, message: "session ended; sign in again" },
-  headers: { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' },
-};
+/** Край отверг носитель (KA1, Р2): один отказ на все причины, вызов `invalid_token`, причины нет. */
+const EDGE_REFUSED: LaneAnswer = laneAnswerOf(EDGE_AUTHN_FAILED);
+
+/** Край не получил ответа своего авторитета (KA1, Р1): `503`, без вызова, носитель цел. */
+const EDGE_UNANSWERED: LaneAnswer = laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN);
 
 /** Вызов пола края RFC 9470. */
 const EDGE_FLOOR: LaneAnswer = {
@@ -103,11 +104,12 @@ afterEach(() => {
 
 describe("разбор отказа полосы — один на все глаголы (C3, C4, C11)", () => {
   it("C3 · тело без `details` и тело с пустым `details` — один и тот же отказ", () => {
-    const bare = refusalOf(answer(401), '{"code":16,"message":"session ended; sign in again"}');
-    const empty = refusalOf(answer(401), '{"code":16,"message":"session ended; sign in again","details":[]}');
+    // Без `details` отвечает край на молчание своего авторитета (KA1, Р1).
+    const bare = refusalOf(answer(503), EDGE_CREDENTIAL_STATE_UNKNOWN.text);
+    const empty = refusalOf(answer(503), '{"code":14,"message":"credential state could not be established","details":[]}');
     expect([bare.code, bare.message, bare.reason, bare.field]).toEqual([
-      16,
-      "session ended; sign in again",
+      14,
+      "credential state could not be established",
       null,
       null,
     ]);
@@ -158,8 +160,12 @@ describe("разбор отказа полосы — один на все гла
   });
 
   it("C2 · вызов края несёт свой машинный признак — и он доходит до отказа", () => {
-    const ended = refusalOf(answer(401, EDGE_SESSION_ENDED.headers), JSON.stringify(EDGE_SESSION_ENDED.body));
+    // `realm` стоит в вызове ПЕРЕД `error` (KA1, Р2) — признак берётся и после него.
+    const ended = refusalOf(answer(401, EDGE_REFUSED.headers), EDGE_AUTHN_FAILED.text);
     expect(ended.challenge).toBe("invalid_token");
+    expect(ended.reason).toBe("AUTHN_REQUIRED");
+    const unanswered = refusalOf(answer(503, EDGE_UNANSWERED.headers), EDGE_CREDENTIAL_STATE_UNKNOWN.text);
+    expect(unanswered.challenge).toBeNull();
     const floor = refusalOf(answer(401, EDGE_FLOOR.headers), JSON.stringify(EDGE_FLOOR.body));
     expect(floor.challenge).toBe("insufficient_user_authentication");
     const service = refusalOf(answer(401), '{"code":16,"message":"authentication failed","details":[]}');
@@ -196,8 +202,9 @@ describe("действие на отказ выбирает машинный п�
   });
 
   it("C2 · тот же статус 401 без признака пола — показать дословно: ни повышения, ни повтора", async () => {
-    // Три смысла 401/16: служба без заголовка, край «сессия кончилась», край пол.
-    for (const refused of [refusal(401, 16, "authentication failed"), EDGE_SESSION_ENDED]) {
+    // Три смысла 401/16: служба без заголовка, край — отказ в удостоверении, край
+    // пол. Ответ края на молчание авторитета (`503`) — тоже отказ без признака.
+    for (const refused of [refusal(401, 16, "authentication failed"), EDGE_REFUSED, EDGE_UNANSWERED]) {
       lane = installLane({ "POST /iam/v1/auth/password": refused });
       const asked = jest.fn(() => Promise.resolve());
       setStepUpRequester(asked);
@@ -369,7 +376,8 @@ describe("«есть ли сессия» — три исхода по ТИПУ, 
   it("C6 · край не ответил по существу — «не спросили», а не «вы вышли»", async () => {
     for (const refused of [
       refusal(503, 14, "unavailable"),
-      refusal(401, 16, "session ended; sign in again"),
+      EDGE_REFUSED,
+      EDGE_UNANSWERED,
       { status: 200, body: "не json" } as LaneAnswer,
     ]) {
       lane = installLane({ "GET /iam/v1/auth/me": refused });
@@ -392,18 +400,33 @@ describe("«есть ли сессия» — три исхода по ТИПУ, 
     // недоступности носитель цел. Второй вопрос уходит уже без погашенного
     // носителя, и ответ на него решает.
     lane = installLane({
-      "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? EDGE_SESSION_ENDED : { status: 200, body: { user: null } }),
+      "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? EDGE_REFUSED : { status: 200, body: { user: null } }),
     });
     expect(await sessionIdentity()).toEqual({ kind: "absent" });
     expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(2);
   });
 
-  it("F8-12 · край отвечает «сессия кончилась» и на второй вопрос — «не спросили», и третьего вопроса нет", async () => {
-    lane = installLane({ "GET /iam/v1/auth/me": EDGE_SESSION_ENDED });
+  it("F8-12 · край отвергает носитель и на второй вопрос — «не спросили», и третьего вопроса нет", async () => {
+    lane = installLane({ "GET /iam/v1/auth/me": EDGE_REFUSED });
     const who = await sessionIdentity();
     expect(who.kind).toBe("unknown");
-    expect(who.kind === "unknown" ? who.refusal.message : "").toBe("session ended; sign in again");
+    expect(who.kind === "unknown" ? who.refusal.message : "").toBe("authentication failed");
     expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(2);
+  });
+
+  it("KA1 Р1 · авторитет края не ответил о сессии — «не спросили» с первого вопроса, второго нет", async () => {
+    // Носитель цел: край не отверг его, а не смог установить его состояние, и
+    // отвечает `503` без вызова. Повтор вопроса — ответ на ОТКАЗ в носителе
+    // (`invalid_token`); здесь его нет, и экран входа сессию не теряет.
+    lane = installLane({ "GET /iam/v1/auth/me": EDGE_UNANSWERED });
+    const who = await sessionIdentity();
+    expect(who.kind).toBe("unknown");
+    expect(who.kind === "unknown" ? [who.refusal.status, who.refusal.code, who.refusal.message] : []).toEqual([
+      503,
+      14,
+      "credential state could not be established",
+    ]);
+    expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(1);
   });
 
   it("C8 · поля подтверждённости нет в ответе — признака нет, «не подтверждён» не выдумывается", async () => {
@@ -433,5 +456,187 @@ describe("повышение — единственный полёт (C19)", () 
     finish();
     expect(await Promise.all([first, second])).toEqual([true, true]);
     expect(ceremonies).toBe(1);
+  });
+});
+
+// ═══ Свои сессии (приёмка F8-S5, Р2, Р4; приёмка службы OS, Р1, Р4, Р5, Р7) ════
+
+describe("F8-S5 · три глагола своих сессий в клиенте полосы", () => {
+  it("F8-S5 Р1 · пути — точные, как их объявляет служба и ретранслирует край", async () => {
+    const { LOGIN_LANE } = await import("./login-lane");
+    expect([LOGIN_LANE.sessions, LOGIN_LANE.sessionsEnd, LOGIN_LANE.sessionsEndOthers]).toEqual([
+      "/iam/v1/auth/sessions",
+      "/iam/v1/auth/sessions/end",
+      "/iam/v1/auth/sessions/end-others",
+    ]);
+  });
+
+  it("F8-S5 Р4 · перечень: GET без признака формы, страница дочитывается курсором; отсутствующее поле — отсутствует", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/sessions": (call) =>
+        call.query === "?pageToken=c%2F1"
+          ? { status: 200, body: { sessions: [], nextPageToken: "" } }
+          : {
+              status: 200,
+              body: {
+                sessions: [
+                  {
+                    id: "hss-0000000000000000a",
+                    current: true,
+                    authenticatedAt: "2026-10-07T09:00:00Z",
+                    lastPresentedAt: "2026-10-07T09:00:00Z",
+                    expiresAt: "2026-10-08T09:00:00Z",
+                  },
+                ],
+                nextPageToken: "c/1",
+              },
+            },
+    });
+    const first = await loginLane.sessions();
+    expect(first.nextPageToken).toBe("c/1");
+    expect(first.sessions).toHaveLength(1);
+    expect(first.sessions[0].current).toBe(true);
+    expect("userAgent" in first.sessions[0]).toBe(false);
+    const next = await loginLane.sessions(first.nextPageToken);
+    expect(next).toEqual({ sessions: [], nextPageToken: "" });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/sessions",
+      "GET /iam/v1/auth/sessions?pageToken=c%2F1",
+    ]);
+  });
+
+  it("F8-S5 Р4 · оба снимающих глагола берут признак ОДНОГО вида session-end; тела закрыты", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/sessions/end": { status: 200, body: { ended: true } },
+      "POST /iam/v1/auth/sessions/end-others": { status: 200, body: { ended: 3 } },
+    });
+    const holder = new FormTokenHolder("session-end");
+    expect(await loginLane.endSession(holder, "hss-0000000000000000a")).toEqual({ ended: true });
+    expect(await loginLane.endOtherSessions(holder)).toEqual({ ended: 3 });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/csrf?form=session-end",
+      "POST /iam/v1/auth/sessions/end",
+      "GET /iam/v1/auth/csrf?form=session-end",
+      "POST /iam/v1/auth/sessions/end-others",
+    ]);
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end")[0].body).toEqual({
+      sessionId: "hss-0000000000000000a",
+      csrfToken: "tok-session-end-1",
+    });
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end-others")[0].body).toEqual({ csrfToken: "tok-session-end-2" });
+  });
+
+  it("F8-S5 Р5 · SESSION_NOT_FRESH на снятии: повышение «свежесть» и ОДИН повтор; близнец без отказа — повышения нет", async () => {
+    const asked: StepUpRequest[] = [];
+    setStepUpRequester((r) => {
+      asked.push(r);
+      return Promise.resolve();
+    });
+    lane = installLane({
+      "POST /iam/v1/auth/sessions/end": (_c, nth) =>
+        nth === 1
+          ? refusal(403, 7, "re-authentication required: present a credential again", "SESSION_NOT_FRESH")
+          : { status: 200, body: { ended: true } },
+    });
+    expect(await loginLane.endSession(new FormTokenHolder("session-end"), "hss-0000000000000000a")).toEqual({
+      ended: true,
+    });
+    expect(asked).toEqual([{ cause: "freshness" }]);
+    expect(lane.of("POST", "/iam/v1/auth/sessions/end")).toHaveLength(2);
+  });
+
+  it("F8-S5 Р3 · глаголы своих сессий носителя не ставят и контекста формы не меняют", async () => {
+    const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE } = await import("./login-lane");
+    for (const path of [LOGIN_LANE.sessions, LOGIN_LANE.sessionsEnd, LOGIN_LANE.sessionsEndOthers]) {
+      expect([path, SETS_CARRIER.has(path), CHANGES_FORM_CONTEXT.has(path)]).toEqual([path, false, false]);
+    }
+  });
+});
+
+describe("F8-S6 · смена адреса почты в клиенте полосы", () => {
+  it("F8-S6 Р5 · пути — точные, как их объявляет служба и ретранслирует край", async () => {
+    const { LOGIN_LANE } = await import("./login-lane");
+    const lanePaths = LOGIN_LANE as Record<string, string>;
+    expect([lanePaths.emailChange, lanePaths.emailChangeConfirm]).toEqual([
+      "/iam/v1/auth/email-change",
+      "/iam/v1/auth/email-change/confirm",
+    ]);
+  });
+
+  it("F8-S6 Р5 · числа перечней: путей 23, ставящих носитель 11, предъявление — среди них, запрос — нет", async () => {
+    // База — перечни после записей своих сессий (F8-S5): путей 21, ставящих
+    // носитель 10. Смена добавляет два пути и одно предъявление (EC Р8 п. 3).
+    const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE } = await import("./login-lane");
+    const paths = Object.values(LOGIN_LANE).filter((p) => p.startsWith("/iam"));
+    expect({
+      lane: paths.length,
+      setsCarrier: SETS_CARRIER.size,
+      request: [SETS_CARRIER.has("/iam/v1/auth/email-change"), CHANGES_FORM_CONTEXT.has("/iam/v1/auth/email-change")],
+      confirm: [
+        SETS_CARRIER.has("/iam/v1/auth/email-change/confirm"),
+        CHANGES_FORM_CONTEXT.has("/iam/v1/auth/email-change/confirm"),
+      ],
+    }).toEqual({ lane: 23, setsCarrier: 11, request: [false, false], confirm: [true, false] });
+  });
+
+  it("F8-S6 Р1 · запрос смены: признак вида email-change, тело ровно {newEmail, csrfToken}, срок — из Retry-After", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/email-change": { status: 200, body: {}, headers: { "Retry-After": "60" } },
+    });
+    const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
+      .requestEmailChange;
+    expect(typeof change).toBe("function");
+    expect(await change(new FormTokenHolder("email-change"), "n@kacho.local")).toEqual({
+      retryAfterSeconds: 60,
+    });
+    expect(lane.calls.map((c) => `${c.method} ${c.path}${c.query}`)).toEqual([
+      "GET /iam/v1/auth/csrf?form=email-change",
+      "POST /iam/v1/auth/email-change",
+    ]);
+    expect(lane.of("POST", "/iam/v1/auth/email-change")[0].body).toEqual({
+      newEmail: "n@kacho.local",
+      csrfToken: "tok-email-change-1",
+    });
+  });
+
+  it("F8-S6 Р1 · предъявление: признак вида email-change-confirm, тело ровно {code, csrfToken}, код — как введён", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/email-change/confirm": { status: 200, body: { session: { emailVerified: true } } },
+    });
+    const confirm = (loginLane as unknown as Record<string, (h: FormTokenHolder, c: string) => Promise<unknown>>)
+      .confirmEmailChange;
+    expect(typeof confirm).toBe("function");
+    await confirm(new FormTokenHolder("email-change-confirm"), " abcde-fghjk ");
+    expect(lane.of("POST", "/iam/v1/auth/email-change/confirm")[0].body).toEqual({
+      code: " abcde-fghjk ",
+      csrfToken: "tok-email-change-confirm-1",
+    });
+  });
+
+  it("F8-S6 Р4 · отказ поля newEmail отмечает ввод newEmail; пустой код — ввод code", () => {
+    const field = (message: string) =>
+      refusalOf(answer(400), JSON.stringify({ code: 3, message, details: [] })).field as string | null;
+    expect([field("Illegal argument newEmail: invalid format"), field("Illegal argument code: required")]).toEqual([
+      "newEmail",
+      "code",
+    ]);
+  });
+
+  it("F8-S6 Р4 · SESSION_NOT_FRESH на запросе смены: повышение «свежесть» и ОДИН повтор", async () => {
+    const asked: StepUpRequest[] = [];
+    setStepUpRequester((r) => {
+      asked.push(r);
+      return Promise.resolve();
+    });
+    lane = installLane({
+      "POST /iam/v1/auth/email-change": (_c, nth) =>
+        nth === 1 ? NOT_FRESH : { status: 200, body: {}, headers: { "Retry-After": "60" } },
+    });
+    const change = (loginLane as unknown as Record<string, (h: FormTokenHolder, e: string) => Promise<unknown>>)
+      .requestEmailChange;
+    expect(typeof change).toBe("function");
+    await change(new FormTokenHolder("email-change"), "n@kacho.local");
+    expect(asked).toEqual([{ cause: "freshness" }]);
+    expect(lane.of("POST", "/iam/v1/auth/email-change")).toHaveLength(2);
   });
 });

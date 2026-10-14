@@ -100,18 +100,21 @@ Internal-периметр **не считается доверенным** — d
 ```mermaid
 flowchart LR
   subgraph public["public :9090"]
-    pub["RegionService / ZoneService<br/>(read-only)"]
+    pub["RegionService / ZoneService<br/>(чтение + admin без infra)"]
   end
   subgraph internal["internal :9091 (mTLS)"]
-    int["InternalRegionService / InternalZoneService<br/>(admin CRUD)"]
+    int["InternalRegionService / InternalZoneService<br/>(admin с infra, GetInternal)"]
   end
-  pub -->|"authN (edge)"| iam["kaname"]
+  pub -->|"Check viewer / system_admin"| iam["kaname"]
   int -->|"Check system_admin"| iam
 ```
 
 - **Public (`:9090`)** — цепочка интерсепторов: извлечение principal → authz-Check.
   Четыре read-RPC (`RegionService.Get/List`, `ZoneService.Get/List`) несут в proto
   `permission = "<exempt>"` — с них снята **проверка области по проекту**, и только она.
+  Административные глаголы `RegionService`/`ZoneService` `Create/Update/Delete` (ADM-1)
+  проверяются, как и их внутренние близнецы: `system_admin` на кластере, тот же порог
+  подтверждения личности.
 - **Internal (`:9091`)** — mTLS + извлечение identity из client-cert → trusted-principal
   (anti-spoof) → authz-Check. Admin-RPC требуют `system_admin`.
 - **Production-режим** (`KACHO_GEO_AUTH_MODE=production`) обязывает проверенный транспорт на
@@ -133,7 +136,7 @@ Region и Zone — **admin-curated глобальный справочник о�
 | Проверка области по проекту (per-RPC Check шлюза) | **снята** — это и есть исключение |
 | Аутентификация | **остаётся обязательной**: неаутентифицированный вызывающий получает `UNAUTHENTICATED` |
 | Инфра-чувствительная проекция | **не на этой поверхности** — сырой `status` и инфра-поля живут в `InternalRegion` / `InternalZone` на internal-listener'е |
-| Admin-CRUD | **не затронут** — `InternalRegionService` / `InternalZoneService` требуют `system_admin` |
+| Admin-CRUD | **не затронут** — публичные `Create/Update/Delete` и `InternalRegionService` / `InternalZoneService` требуют `system_admin` |
 
 Раскрывать на публичной поверхности нечего: она отдаёт tenant-facing проекцию справочника, а
 «как разложено по железу» остаётся на internal-listener'е (две проекции ресурса —

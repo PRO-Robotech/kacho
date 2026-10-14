@@ -11,14 +11,15 @@ import dedent from 'ts-dedent'
 # Region
 
 **Region** — верхнеуровневый элемент топологии платформы Kachō: географический регион, внутри
-которого живут зоны доступности ([Zone](/api/zone)). Это глобальный cluster-scoped read-only
+которого живут зоны доступности ([Zone](/api/zone)). Это глобальный cluster-scoped
 справочник: регион **не принадлежит** проекту или аккаунту, он описывает саму инфраструктуру.
 Consumer-сервисы (Compute, VPC и др.) ссылаются на регион по id и валидируют его через
 `RegionService.Get`.
 
 Идентификатор региона **назначается администратором** явно (`ru-central1`) и **неизменяем**
-после создания (immutable PK). Наполняет справочник администратор через `InternalRegionService`
-(cluster-internal); публичный API только читает.
+после создания (immutable PK). Наполняет справочник администратор кластера (право
+`system_admin`) — публичными глаголами `RegionService` ниже либо, вместе с инфраструктурным
+блоком, через `InternalRegionService` на cluster-internal listener.
 
 Идентичность у региона **одна** — этот идентификатор. Отдельного человекочитаемого имени у
 региона нет: слаг пишет человек, и он читаем сам по себе, а второе поле того же назначения
@@ -48,9 +49,12 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 ## Методы
 
-Чтение (`Get` / `List`) — публичные, на listener `:9090`. Администрирование
-(`Create` / `Update` / `Delete`) — `InternalRegionService` на cluster-internal listener
-`:9091`, синхронное (catalog-паттерн, возвращает ресурс, не `Operation`).
+Чтение (`Get` / `List`) и администрирование (`Create` / `Update` / `Delete`) — публичный
+`RegionService` на listener `:9090`. Мутации возвращают `Operation`, уже завершённую в самом
+ответе (`done = true`; `response` — публичный Region, у удаления — `Empty`; отказ хранилища — в
+`error`). Публичный вход инфраструктурного блока не несёт: регион, созданный здесь, получает
+`numericInfraId = 0` («не назначен»), а поскольку поле неизменяемо после создания, назначить его
+можно только внутренним созданием (`InternalRegionService`, cluster-internal `:9091`).
 
 ### Get — получить регион
 
@@ -105,64 +109,68 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 </ApiOperation>
 
-### Create — создать регион (admin, internal)
+### Create — создать регион (admin)
 
-<ApiOperation method="POST" endpoint="/geo/v1/internal/regions">
+<ApiOperation method="POST" endpoint="/geo/v1/regions">
 
-Создаёт регион с **явно заданным** администратором id. Синхронная операция: ответ — сам
-ресурс. Доступна только на cluster-internal listener (`InternalRegionService`, требует
-отношение `system_admin`).
+Создаёт регион с **явно заданным** администратором id. Требует отношение `system_admin` на
+кластере. Тело — `id`, `countryCode`, `status`; без `status` регион создаётся закрытым для
+размещения (`DOWN`), и `metadata.warnings` об этом говорит.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X POST 'http://localhost:19091/geo/v1/internal/regions' \\
+    curl -X POST 'http://localhost:18080/geo/v1/regions' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "id": "ru-central2" }'
+      -d '{ "id": "ru-central2", "countryCode": "RU", "status": "UP" }'
   `}
 </CodeBlock>
 
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "ru-central2",
-      "createdAt": "2026-06-24T10:10:00Z"
+      "id": "geo...",
+      "done": true,
+      "metadata": { "@type": "type.googleapis.com/kacho.cloud.geo.v1.CreateRegionMetadata", "regionId": "ru-central2" },
+      "response": { "@type": "type.googleapis.com/kacho.cloud.geo.v1.Region", "id": "ru-central2", "countryCode": "RU", "openForPlacement": true, "createdAt": "2026-06-24T10:10:00Z" }
     }
   `}
 </CodeBlock>
 
 </ApiOperation>
 
-### Update — изменить регион (admin, internal)
+### Update — изменить регион (admin)
 
-<ApiOperation method="PATCH" endpoint="/geo/v1/internal/regions/{id}">
+<ApiOperation method="PATCH" endpoint="/geo/v1/regions/{id}">
 
-Меняет изменяемые поля региона — `countryCode` и `status` (последний живёт только на админской
-проекции). Идентификатор изменить нельзя (immutable PK), а **переименовать регион нечем**:
-имени у него нет, идентификатор и есть имя. Синхронная internal-операция.
+Меняет изменяемые поля региона — `countryCode` и `status`. Идентификатор изменить нельзя
+(immutable PK), а **переименовать регион нечем**: имени у него нет, идентификатор и есть имя.
+Путь маски `infra.numericInfraId` отвергается текстом неизменяемости, любой другой путь `infra.*`
+— как неизвестное поле маски.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X PATCH 'http://localhost:19091/geo/v1/internal/regions/ru-central2' \\
+    curl -X PATCH 'http://localhost:18080/geo/v1/regions/ru-central2' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "countryCode": "RU" }'
+      -d '{ "status": "DOWN", "updateMask": "status" }'
   `}
 </CodeBlock>
 
 </ApiOperation>
 
-### Delete — удалить регион (admin, internal)
+### Delete — удалить регион (admin)
 
-<ApiOperation method="DELETE" endpoint="/geo/v1/internal/regions/{id}">
+<ApiOperation method="DELETE" endpoint="/geo/v1/regions/{id}">
 
-Удаляет регион. Если к региону привязана хотя бы одна [Zone](/api/zone), удаление блокируется
-(`FAILED_PRECONDITION`) внешним ключом `ON DELETE RESTRICT` — сначала удаляются зоны.
-Синхронная internal-операция.
+Удаляет регион. Если к региону привязана хотя бы одна [Zone](/api/zone), удаление
+отвергается хранилищем (внешний ключ `ON DELETE RESTRICT`): операция приходит с
+`error.code = 9` (`FAILED_PRECONDITION`) и текстом `region <id> is not empty` — сначала удаляются
+зоны.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X DELETE 'http://localhost:19091/geo/v1/internal/regions/ru-central2' \\
+    curl -X DELETE 'http://localhost:18080/geo/v1/regions/ru-central2' \\
       -H 'Authorization: Bearer <admin-JWT>'
   `}
 </CodeBlock>
@@ -174,17 +182,20 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 <table>
   <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
   <tbody>
-    <tr><td>Get/Delete несуществующего региона</td><td><code>NOT_FOUND</code></td><td><code>"Region &lt;id&gt; not found"</code></td></tr>
-    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td><code>"Region &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
-    <tr><td><strong>Delete региона, к которому привязаны зоны</strong></td><td><code>FAILED_PRECONDITION</code></td><td>FK <code>Zone.regionId → Region.id ON DELETE RESTRICT</code> блокирует удаление; сначала удалить зоны</td></tr>
+    <tr><td>Get несуществующего региона</td><td><code>NOT_FOUND</code></td><td><code>"Region &lt;id&gt; not found"</code> (HTTP 404)</td></tr>
+    <tr><td>Update/Delete несуществующего региона</td><td><code>NOT_FOUND</code> в <code>Operation.error</code></td><td><code>"Region &lt;id&gt; not found"</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code> в <code>Operation.error</code></td><td><code>"Region &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
+    <tr><td><strong>Delete региона, к которому привязаны зоны</strong></td><td><code>FAILED_PRECONDITION</code> в <code>Operation.error</code></td><td><code>"region &lt;id&gt; is not empty"</code>: FK <code>Zone.regionId → Region.id ON DELETE RESTRICT</code>; сначала удалить зоны</td></tr>
+    <tr><td>Неверная форма id или <code>countryCode</code></td><td><code>INVALID_ARGUMENT</code> (HTTP 400, синхронно)</td><td><code>"invalid region id '&lt;X&gt;'"</code>, <code>"countryCode must be an ISO-3166 alpha-2 code"</code></td></tr>
     <tr><td>Попытка изменить <code>id</code></td><td>—</td><td><code>id</code> — immutable PK; задаётся только при Create, не меняется</td></tr>
     <tr><td>Read без аутентификации</td><td><code>UNAUTHENTICATED</code></td><td>Чтение каталога грант не требует, но требует валидного принципала</td></tr>
-    <tr><td>admin CRUD без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+    <tr><td>Create/Update/Delete без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code> (HTTP 403)</td><td>Authz-Check не прошёл; регион не тронут</td></tr>
   </tbody>
 </table>
 
 :::warning Internal-поверхность
-`Create` / `Update` / `Delete` обслуживаются `InternalRegionService` на cluster-internal
-listener (`:9091`) и **не публикуются** на external endpoint. Их REST-проекция доступна только
-на internal mux `api-gateway`.
+Полная плоскость администрирования — мутации с инфраструктурным блоком `infra` и проекция
+`GetInternal` — обслуживается `InternalRegionService` на cluster-internal listener (`:9091`)
+по путям `/geo/v1/internal/regions…` и **не публикуется** на external endpoint: там эти пути
+отвечают `404`. Право и порог подтверждения личности у внутренних и публичных мутаций одни и те же.
 :::

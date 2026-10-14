@@ -8,8 +8,12 @@ import (
 
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -20,6 +24,8 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 
 	"github.com/PRO-Robotech/corelib/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/pkg/proxycircle"
 )
 
 // Config хранит конфигурацию api-gateway.
@@ -68,10 +74,24 @@ type Config struct {
 	// admin-UI / port-forward / cluster-internal tooling reach it via the
 	// dedicated `internal-rest` Service port. Empty → the internal REST listener
 	// is disabled (Internal* REST unreachable via the gateway entirely).
-	InternalRESTAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_ADDR"  default:":8081"`
-	TLSCertFile      string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
-	TLSKeyFile       string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
-	VPCAddr          string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
+	//
+	// Транспорт слушателя — mTLS и только он (kacho#3131): серверный лист
+	// (InternalRESTCertFile/KeyFile), клиентский лист обязателен, цепочка — к УЦ
+	// установки (MTLSCAFile), имя листа — в круге InternalRESTClientSANs. Что
+	// чего-то из этого нет, — отказ старта на ЛЮБОЙ метке KACHO_APP_ENV
+	// (InternalRESTListenerTLS); открытого текста у слушателя нет ни в одном
+	// профиле.
+	InternalRESTAddr     string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_ADDR"  default:":8081"`
+	InternalRESTCertFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE" default:""`
+	InternalRESTKeyFile  string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"  default:""`
+	// InternalRESTClientSANs — круг клиентов внутреннего слушателя: URI-имена
+	// (spiffe://…) клиентских листов через запятую. Умолчания НЕТ: лист УЦ
+	// установки есть у каждой службы и у самого края, и «любой лист УЦ» не
+	// сужал бы ничего; круг производит чарт края (internalRest.clientSANs).
+	InternalRESTClientSANs string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS" default:""`
+	TLSCertFile            string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
+	TLSKeyFile             string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
+	VPCAddr                string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
 	// VPCInternalAddr — admin-only internal-port (9091) of vpc backend.
 	// Routes AddressPool RESTful endpoints (kacho-only admin).
 	VPCInternalAddr string `envconfig:"KACHO_API_GATEWAY_VPC_INTERNAL_GRPC" default:"vpc.kacho.svc:9091"`
@@ -184,6 +204,19 @@ type Config struct {
 	// которому дольше своего предела ничего не шло. Кадр заодно мешает
 	// буферизации ответа промежуточным звеном.
 	SubscriptionHeartbeat time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT" default:"20s"`
+
+	// IdentityCallBudgetRaw / BackendCallBudgetRaw — объявленные профилем
+	// значения бюджетов вызовов края к соседям, КАК ЕСТЬ (callbudget.go). Тег
+	// объявляет ручку загрузчику; разбор и суждение — в loadCallBudgets, которая
+	// спрашивает окружение ещё и о том, объявлена ли переменная вообще: тег не
+	// различает «переменной нет» и «переменная пуста», а отказ в старте обязан
+	// их различать. Умолчания нет.
+	IdentityCallBudgetRaw string `envconfig:"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET"`
+	BackendCallBudgetRaw  string `envconfig:"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET"`
+	// IdentityCallBudget / BackendCallBudget — разобранные величины; Load
+	// возвращает конфигурацию только с обеими строго положительными.
+	IdentityCallBudget time.Duration `ignored:"true"`
+	BackendCallBudget  time.Duration `ignored:"true"`
 
 	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
 	//
@@ -663,6 +696,43 @@ type Config struct {
 	// AuthZTrustedXForwardedFor is true.
 	AuthZTrustedProxyCount int `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT" default:"1"`
 
+	// AuthZTrustedProxyCIDRs — КРУГ ДОВЕРЕННЫХ ЗВЕНЬЕВ (kacho#3028): сети через
+	// запятую, из которых край принимает заголовки пересылки. Число прыжков
+	// говорит, СКОЛЬКО звеньев стоит перед краем, но не КТО они: без круга
+	// заголовок любого пира, дошедшего до края напрямую, сдвигал `client_ip` и
+	// ключ ограничения частоты входа у службы доступа. Пир вне круга —
+	// источник сам. Умолчания у ручки НЕТ: сеть, где живёт раздача, — свойство
+	// кластера, и объявляет её профиль развёртывания. Разбор и отказ старта —
+	// TrustedProxyCircle.
+	AuthZTrustedProxyCIDRs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS" default:""`
+
+	// AuthZTrustedProxyPeers — ЗВЕНЬЯ ФРОНТА ПОИМЁННО (kacho#3028, круг 3):
+	// имена безголовых служб через запятую, чьи поды край признаёт звеньями.
+	// Сеть круга выделяет «под кластера», а не «раздачу консоли» — сеть подов
+	// общая; звено — адрес пода, выбранного службой фронта метками. Объявляется
+	// ВМЕСТЕ с кругом: сеть без имён — доверие всей сети подов, имена без сети
+	// — доверие, которому нечем исполниться. Разбор и отказ старта —
+	// TrustedProxyPeers.
+	AuthZTrustedProxyPeers string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS" default:""`
+	// AuthZTrustedProxyPeersRefresh — период разрешения имён звеньев; ответ
+	// действует не дольше трёх периодов (gateway/internal/frontpeers).
+	AuthZTrustedProxyPeersRefresh time.Duration `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS_REFRESH" default:"5s"`
+
+	// AuthZTrustedProxySANs — ИМЕНА ЗВЕНЬЕВ В СЕРТИФИКАТЕ (kacho#3028, C4):
+	// имена SPIFFE либо DNS через запятую, которые звено фронта несёт в
+	// клиентском сертификате, проверенном якорем установки на внешнем
+	// TLS-слушателе. Адрес пода — не личность: под с теми же метками попадает
+	// в службу фронта, а адрес ушедшего пода выдаётся другому; имя в
+	// сертификате выдаёт только тот, кто выпускает сертификаты звеньям.
+	// Объявляется вместе с кругом и звеньями поимённо и при слушателе, который
+	// сертификат проверяет. Разбор и отказ старта — TrustedProxyLinkSANs.
+	AuthZTrustedProxySANs string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS" default:""`
+
+	// AuthZTrustedProxyCAFile — ЯКОРЬ ЗВЕНЬЕВ (kacho#3028, круг 5): файл PEM с
+	// корнями удостоверяющего центра, который выпускает сертификаты ТОЛЬКО
+	// звеньям фронта. Разбор и отказ старта — TrustedProxyLinkAnchor.
+	AuthZTrustedProxyCAFile string `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE" default:""`
+
 	// SubjectChangePollInterval — how often the subject-change watcher polls
 	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
@@ -703,15 +773,225 @@ type Config struct {
 	MTLSStorageServerName  string `envconfig:"KACHO_API_GATEWAY_MTLS_STORAGE_SERVER_NAME"  default:""`
 
 	// Hybrid external listener: when true, the external TLS listener
-	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven and the internal CA
-	// (MTLSCAFile) as ClientCAs — an OPTIONAL client cert. A browser (no cert)
-	// handshakes and takes the JWT path; a client presenting a valid Kachō cert
-	// is verified so the AuthInterceptor can derive a principal from its SPIFFE
-	// SAN (no JWT required). Default false ⇒ ClientAuth stays NoClientCert,
-	// behaviour unchanged. Internal service listeners are NOT affected by this
-	// flag (they stay strict RequireAndVerifyClientCert).
+	// (TLSListenAddr) runs with tls.VerifyClientCertIfGiven — an OPTIONAL
+	// client cert verified against the installation CA (MTLSCAFile) and the
+	// front-link anchor (see ExternalListenerClientAuth). A browser (no cert)
+	// handshakes and takes the token path. A verified cert is not an identity on
+	// the external listener: it names a front link to the client-address
+	// operator and, on the HTTP path, is compared with a bound token's cnf — no cert alone becomes
+	// a principal there (kacho#3028, rows 30 and 33). Default false ⇒
+	// ClientAuth stays NoClientCert. Internal service listeners are NOT affected
+	// by this flag (they stay strict RequireAndVerifyClientCert).
 	HybridMTLSExternal bool `envconfig:"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL" default:"false"`
 }
+
+// TrustedProxyCIDRsKnob — имя ручки круга доверенных звеньев; его называют
+// отказы старта.
+const TrustedProxyCIDRsKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS"
+
+// TrustedProxyCircle — разобранный круг доверенных звеньев адреса клиента.
+//
+// Пустой круг — «никому»: заголовок пересылки не принимается ни от одного
+// пира, источник — сам TCP-пир. Это умолчание ручки, а не противоречие с
+// включённым доверием: стенду, которому круг НУЖЕН (консоль за раздачей),
+// его объявляет профиль развёртывания, и судит это рендер его цепочки
+// (deploy/edge_client_address_circle_render_test.go), а не старт края.
+//
+// Отказ старта — то, что отвергает pkg/proxycircle: неразборная запись (молча
+// выпав из круга, она превратила бы своё звено в «чужого») и сеть, задевающая
+// адрес вне частных диапазонов (доверие заголовку от пира снаружи кластера).
+// При выключенном доверии (флагом или нулём прыжков) круг не читается вовсе,
+// но разбирается всё равно: негодная запись — ошибка настройки при любом флаге.
+func (c Config) TrustedProxyCircle() ([]netip.Prefix, error) {
+	circle, err := proxycircle.Parse(c.AuthZTrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyCIDRsKnob, err)
+	}
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
+		return nil, nil
+	}
+	return circle, nil
+}
+
+// TrustedProxyPeersKnob — имя ручки звеньев фронта поимённо; его называют
+// отказы старта.
+const TrustedProxyPeersKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS"
+
+// TrustedProxyPeersRefreshKnob — имя ручки периода разрешения звеньев.
+const TrustedProxyPeersRefreshKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS_REFRESH"
+
+// TrustedProxyPeers — разобранные звенья фронта поимённо (kacho#3028, круг 3).
+//
+// Отказ старта:
+//   - запись, которую отвергает pkg/proxycircle.ParsePeers (адрес вместо
+//     имени — сужение обходится; не имя службы) — при любом флаге доверия;
+//   - при включённом доверии: сеть круга без звеньев (доверие всей сети
+//     подов), звенья без сети (доверию нечем исполниться), неположительный
+//     период разрешения (перечень не обновлялся бы).
+//
+// Ни сети, ни звеньев — «никому», законно. При выключенном доверии пара не
+// судится, и звеньев нет.
+func (c Config) TrustedProxyPeers() ([]string, error) {
+	peers, err := proxycircle.ParsePeers(c.AuthZTrustedProxyPeers)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyPeersKnob, err)
+	}
+	circle, err := c.TrustedProxyCircle()
+	if err != nil {
+		return nil, err
+	}
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
+		return nil, nil
+	}
+	switch {
+	case len(circle) > 0 && len(peers) == 0:
+		return nil, fmt.Errorf("%s: сеть круга %s=%q объявлена без звеньев фронта поимённо — заголовку адреса "+
+			"доверяла бы вся сеть подов кластера", TrustedProxyPeersKnob, TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCIDRs)
+	case len(circle) == 0 && len(peers) > 0:
+		return nil, fmt.Errorf("%s пуст, а звенья фронта поимённо объявлены (%s=%q) — доверию нечем исполниться",
+			TrustedProxyCIDRsKnob, TrustedProxyPeersKnob, c.AuthZTrustedProxyPeers)
+	case len(peers) > 0 && c.AuthZTrustedProxyPeersRefresh <= 0:
+		return nil, fmt.Errorf("%s=%v не положителен — перечень звеньев не обновлялся бы",
+			TrustedProxyPeersRefreshKnob, c.AuthZTrustedProxyPeersRefresh)
+	}
+	return peers, nil
+}
+
+// TrustedProxySANsKnob — имя ручки имён звеньев в сертификате; его называют
+// отказы старта.
+const TrustedProxySANsKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS"
+
+// TrustedProxyLinkSANs — разобранные имена звеньев в сертификате (kacho#3028, C4).
+//
+// Отказ старта:
+//   - запись, которую отвергает pkg/proxycircle.ParseLinkSANs (подстановочный
+//     знак, адрес, чужая схема, SPIFFE без пути), — при любом флаге доверия;
+//   - при включённом доверии: круг без имён (доверие адресу — его не
+//     спасает ни сеть, ни перечень поимённо), имена без круга (тройка
+//     объявляется целиком), имена без механизма их предъявить — внешнего
+//     TLS-слушателя (TLSEnabled), необязательного клиентского сертификата на
+//     нём (HybridMTLSEnabled) и якоря (MTLSCAFile): без любого из трёх имя
+//     звена не дойдёт до края ни разу.
+//
+// Ни круга, ни имён — «никому», законно (боевой профиль это отвергает
+// отдельно, в сборке оператора адреса). При выключенном доверии тройка не
+// судится, и имён нет.
+func (c Config) TrustedProxyLinkSANs() ([]string, error) {
+	sans, err := proxycircle.ParseLinkSANs(c.AuthZTrustedProxySANs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxySANsKnob, err)
+	}
+	circle, err := c.TrustedProxyCircle()
+	if err != nil {
+		return nil, err
+	}
+	if !c.AuthZTrustedXForwardedFor || c.AuthZTrustedProxyCount <= 0 {
+		return nil, nil
+	}
+	switch {
+	case len(circle) > 0 && len(sans) == 0:
+		return nil, fmt.Errorf("%s пуст при объявленном круге %s=%q — звено узнавалось бы по адресу пода, а адрес "+
+			"получает и под с теми же метками, и под, которому выдали адрес ушедшего звена", TrustedProxySANsKnob,
+			TrustedProxyCIDRsKnob, c.AuthZTrustedProxyCIDRs)
+	case len(circle) == 0 && len(sans) > 0:
+		return nil, fmt.Errorf("%s=%q объявлен без круга %s и звеньев поимённо — объявляются вместе",
+			TrustedProxySANsKnob, c.AuthZTrustedProxySANs, TrustedProxyCIDRsKnob)
+	case len(sans) > 0 && strings.TrimSpace(c.AuthZTrustedProxyCAFile) == "":
+		return nil, fmt.Errorf("%s объявлен без якоря звеньев %s — имя звена читалось бы в листе якоря установки, "+
+			"а там его выдаёт себе всякий, кто заводит запрос на сертификат в любом пространстве имён",
+			TrustedProxySANsKnob, TrustedProxyCAFileKnob)
+	case len(sans) > 0 && (!c.TLSEnabled() || !c.HybridMTLSEnabled() || c.MTLSCAFile == ""):
+		return nil, fmt.Errorf("%s объявлен, а сертификат звена проверять нечем: нужен внешний TLS-слушатель "+
+			"(KACHO_API_GATEWAY_TLS_LISTEN_ADDR/_CERT_FILE/_KEY_FILE), необязательный клиентский сертификат на нём "+
+			"(KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL) и якорь (KACHO_API_GATEWAY_MTLS_CA_FILE)", TrustedProxySANsKnob)
+	}
+	return sans, nil
+}
+
+// TrustedProxyCAFileKnob — имя ручки якоря звеньев; его называют отказы старта.
+const TrustedProxyCAFileKnob = "KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE"
+
+// TrustedProxyLinkAnchor — корни ЯКОРЯ ЗВЕНЬЕВ (kacho#3028, круг 5).
+//
+// Канал, который закрывает якорь, — «кто выпускает лист». Якорь установки
+// (MTLSCAFile) выпускает листы кластерным выпускающим: лист с именем звена
+// получает всякий, кто вправе завести запрос на сертификат в ЛЮБОМ
+// пространстве имён. Якорь звеньев — отдельный удостоверяющий центр, который
+// выпускает только в пространстве имён края; имя звена читается только в его
+// листе (linktls.Anchor).
+//
+// Пусто — якоря нет (законно, если и имён звеньев нет: TrustedProxyLinkSANs
+// требует их вместе). Отказ старта — при любом флаге доверия:
+//   - файл не читается либо не несёт ни одного сертификата;
+//   - сертификат файла — не удостоверяющий центр (корнем цепочки он не
+//     бывает: якорь не признал бы ни одного звена, молча);
+//   - корень файла совпадает с корнем якоря установки — ровно тот канал,
+//     который якорь закрывает.
+func (c Config) TrustedProxyLinkAnchor() ([]*x509.Certificate, error) {
+	path := strings.TrimSpace(c.AuthZTrustedProxyCAFile)
+	if path == "" {
+		return nil, nil
+	}
+	roots, err := readPEMCertificates(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TrustedProxyCAFileKnob, err)
+	}
+	for _, r := range roots {
+		if !r.IsCA {
+			return nil, fmt.Errorf("%s=%q: сертификат %q — не удостоверяющий центр: корнем цепочки звена он не бывает",
+				TrustedProxyCAFileKnob, path, r.Subject.String())
+		}
+	}
+	if inst := strings.TrimSpace(c.MTLSCAFile); inst != "" {
+		installation, ierr := readPEMCertificates(inst)
+		if ierr != nil {
+			return nil, fmt.Errorf("%s: якорь установки для сверки: %w", TrustedProxyCAFileKnob, ierr)
+		}
+		for _, r := range roots {
+			for _, i := range installation {
+				if r.Equal(i) {
+					return nil, fmt.Errorf("%s=%q совпадает с якорем установки KACHO_API_GATEWAY_MTLS_CA_FILE=%q "+
+						"(корень %q): лист с именем звена выдал бы себе всякий, кто заводит запрос на сертификат "+
+						"в любом пространстве имён — якорь звеньев обязан быть отдельным удостоверяющим центром",
+						TrustedProxyCAFileKnob, path, inst, r.Subject.String())
+				}
+			}
+		}
+	}
+	return roots, nil
+}
+
+// readPEMCertificates — все сертификаты файла PEM; ни одного — ошибка.
+func readPEMCertificates(path string) ([]*x509.Certificate, error) {
+	raw, err := os.ReadFile(path) // #nosec G304 -- путь — ручка посадки края (якорь звеньев либо установки), а не ввод запроса
+	if err != nil {
+		return nil, fmt.Errorf("файл %q не читается: %w", path, err)
+	}
+	var out []*x509.Certificate
+	for {
+		var block *pem.Block
+		block, raw = pem.Decode(raw)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, perr := x509.ParseCertificate(block.Bytes)
+		if perr != nil {
+			return nil, fmt.Errorf("файл %q: сертификат не разбирается: %w", path, perr)
+		}
+		out = append(out, cert)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("файл %q не несёт ни одного сертификата", path)
+	}
+	return out, nil
+}
+
+// ProductionPosture — боевой ли профиль: послабление терпят только явные метки
+// разработки (dev, local, test), пустая и всякая иная метка — боевая.
+func (c Config) ProductionPosture() bool { return c.isProductionPosture() }
 
 // DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.
 //
@@ -735,6 +1015,108 @@ func (c Config) AdvertisedEndpoint() string {
 	return c.AdvertisedEndpointAddr
 }
 
+// Ручки транспорта внутреннего REST-слушателя (kacho#3131). Объявлены один
+// раз: их называют отказы старта, чарт края и пробы.
+const (
+	InternalRESTCertKnob       = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE"
+	InternalRESTKeyKnob        = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"
+	InternalRESTClientSANsKnob = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS"
+	internalRESTCAKnob         = "KACHO_API_GATEWAY_MTLS_CA_FILE"
+)
+
+// InternalRESTClientCircle — разобранный круг клиентов внутреннего слушателя.
+// Пустой круг — ошибка, а не «всем»: слушатель отдаёт Internal* REST, и
+// неназванный круг значил бы «любой лист УЦ установки». Запись — URI-имя
+// spiffe://…: имя листа, по которому круг судит, — URI-SAN, и запись другой
+// формы не совпала бы ни с одним листом молча.
+//
+// Предикат «круг сужен» читается здесь и только здесь: его зовут страж старта
+// (InternalRESTListenerTLS), проверка рукопожатия и журнал старта края.
+func (c Config) InternalRESTClientCircle() ([]string, error) {
+	var circle []string
+	for _, raw := range strings.Split(c.InternalRESTClientSANs, ",") {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		u, err := url.Parse(v)
+		if err != nil || u.Scheme != "spiffe" || u.Host == "" || u.Path == "" {
+			return nil, fmt.Errorf("%s: запись %q — не URI-имя spiffe://<домен>/<путь>", InternalRESTClientSANsKnob, v)
+		}
+		circle = append(circle, u.String())
+	}
+	if len(circle) == 0 {
+		return nil, fmt.Errorf("%s пуст: круг клиентов внутреннего REST-слушателя не назван — «любой лист УЦ установки» не сужает ничего", InternalRESTClientSANsKnob)
+	}
+	return circle, nil
+}
+
+// InternalRESTListenerTLS — страж старта и транспорт внутреннего REST-слушателя
+// (kacho#3131). Слушатель не объявлен (InternalRESTAddr пуст) — (nil, nil).
+// Объявлен — mTLS и только он, на ЛЮБОЙ метке KACHO_APP_ENV:
+//   - серверный лист и ключ (InternalRESTCertFile/KeyFile) — свои, не лист
+//     внешнего слушателя;
+//   - клиентский лист обязателен (RequireAndVerifyClientCert), цепочка — к УЦ
+//     установки (MTLSCAFile) и ни к какому другому корню: якоря звеньев фронта
+//     здесь нет;
+//   - URI-имя листа — в круге InternalRESTClientCircle.
+//
+// Чего-то нет — отказ с именем ручки; открытого текста у слушателя нет. server
+// собирает серверную часть (корень передаёт edgeTLSConfig — ALPN тот же, что у
+// внешнего слушателя).
+//
+// mTLS здесь — аутентификация ТРАНСПОРТА: лист из круга принципалом не
+// становится, проверка прав на слушателе остаётся прежней.
+func (c Config) InternalRESTListenerTLS(server func(tls.Certificate) *tls.Config) (*tls.Config, error) {
+	if c.InternalRESTAddr == "" {
+		return nil, nil
+	}
+	for _, k := range []struct{ val, knob string }{
+		{c.InternalRESTCertFile, InternalRESTCertKnob},
+		{c.InternalRESTKeyFile, InternalRESTKeyKnob},
+		{c.MTLSCAFile, internalRESTCAKnob},
+	} {
+		if k.val == "" {
+			return nil, fmt.Errorf("внутренний REST-слушатель %s объявлен без mTLS: %s не задан", c.InternalRESTAddr, k.knob)
+		}
+	}
+	circle, err := c.InternalRESTClientCircle()
+	if err != nil {
+		return nil, err
+	}
+	cert, err := tls.LoadX509KeyPair(c.InternalRESTCertFile, c.InternalRESTKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", InternalRESTCertKnob, InternalRESTKeyKnob, err)
+	}
+	caPEM, err := os.ReadFile(c.MTLSCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", internalRESTCAKnob, err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("%s %q: сертификатов не разобрано", internalRESTCAKnob, c.MTLSCAFile)
+	}
+	inCircle := make(map[string]struct{}, len(circle))
+	for _, s := range circle {
+		inCircle[s] = struct{}{}
+	}
+	cfg := server(cert)
+	cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	cfg.ClientCAs = pool
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
+			return errors.New("внутренний REST-слушатель: клиентский лист не проверен")
+		}
+		for _, u := range cs.VerifiedChains[0][0].URIs {
+			if _, ok := inCircle[u.String()]; ok {
+				return nil
+			}
+		}
+		return errors.New("внутренний REST-слушатель: имя клиентского листа вне круга " + InternalRESTClientSANsKnob)
+	}
+	return cfg, nil
+}
+
 // HybridMTLSEnabled reports whether the external TLS listener should accept an
 // optional client cert. When false (default) the listener stays NoClientCert
 // (JWT-only authN).
@@ -745,10 +1127,19 @@ func (c Config) HybridMTLSEnabled() bool {
 // ExternalListenerClientAuth applies the hybrid client-auth policy to the
 // external listener's *tls.Config and returns it. When hybrid is disabled it is a
 // no-op (ClientAuth stays NoClientCert). When enabled it sets
-// tls.VerifyClientCertIfGiven with the internal CA (MTLSCAFile) as ClientCAs, so
-// a browser without a cert still handshakes (JWT path) while a client that DOES
-// present a cert has it verified against the trust anchor — the AuthInterceptor
-// then derives the principal from the verified cert's SPIFFE SAN.
+// tls.VerifyClientCertIfGiven with a client-CA pool of TWO anchors — the
+// installation CA (MTLSCAFile) and the front-link anchor
+// (TrustedProxyLinkAnchor) — so a browser without a cert still handshakes
+// (token path) while a presented cert must chain to one of them.
+//
+// A verified cert is NOT an identity on this listener (kacho#3028, channel
+// census rows 30 and 33). Its readers are: the client-address operator, which
+// reads only a leaf chaining to the front-link anchor (linktls.Anchor.Issued);
+// and the token-binding check of the HTTP path, which compares the leaf with the token's cnf
+// thumbprint. The cert-principal lane of the AuthInterceptor recognises no one
+// on the external gRPC: the root's server credentials (linktls.ServerCredentials)
+// hand the TLS state as linktls.AuthInfo, not credentials.TLSInfo. Held by
+// TestExternalGRPC_NoClientCertificateBecomesAPrincipalWithoutAToken.
 //
 // Fail-fast: hybrid enabled with no readable CA file is an error (a listener that
 // cannot verify any client cert would silently degrade every cert client to the
@@ -772,6 +1163,16 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, fmt.Errorf("hybrid client-CA %q: no certificates parsed", c.MTLSCAFile)
+	}
+	// Якорь звеньев фронта (kacho#3028, круг 5) — второй корень пула: без него
+	// лист звена рукопожатие не проходит. Что лист этого корня — звено, а не
+	// личность, решают читатели цепочки (linktls.Anchor), а не пул.
+	links, err := c.TrustedProxyLinkAnchor()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range links {
+		pool.AddCert(r)
 	}
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool
@@ -1009,6 +1410,9 @@ func hostFromAddr(addr string) string {
 func Load() (Config, error) {
 	var cfg Config
 	if err := corecfg.Load(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadCallBudgets(&cfg, os.LookupEnv); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

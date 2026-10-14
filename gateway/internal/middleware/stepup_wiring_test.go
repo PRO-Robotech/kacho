@@ -14,6 +14,7 @@ package middleware_test
 // fire on any request.
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,7 @@ func buildStepUpMiddleware(t *testing.T, verifier *middleware.JWTVerifier) *midd
 	require.NoError(t, err)
 
 	mw, err := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
+		Revocation:       middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", nil, slog.New(slog.NewJSONHandler(io.Discard, nil))),
 		Verifier:         verifier,
 		DPoP:             dpop,
 		StepUp:           middleware.NewStepUpGate(time.Now),

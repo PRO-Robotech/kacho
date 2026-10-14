@@ -137,10 +137,10 @@ var dsNotAResourceRead = map[string]string{
 //
 // Ни одно имя не найдено в реестре — сервис не представлен (находка 2).
 var tfDataSources = map[string][]string{
-	// geo — ось размещения. Её читает КАЖДЫЙ размещаемый ресурс: без источника идентификатор
-	// зоны попадает в конфигурацию литералом.
-	"RegionService": {"kacho_geo_region", "kacho_geo_regions"},
-	"ZoneService":   {"kacho_geo_zone", "kacho_geo_zones"},
+	// geo (RegionService/ZoneService) здесь БОЛЬШЕ НЕ стоит: с административными глаголами
+	// каталога (ADM-1, kacho#3092) оба сервиса стали создающими, и их перепись ведёт гейт
+	// ресурсов (terraformresourceparity_test.go, осознанное отсутствие с причиной). Источники
+	// данных оси размещения в провайдере остаются — их держит реестр провайдера.
 
 	// каталоги форм — их называют при создании машины и тома.
 	"MachineTypeService": {"kacho_compute_machine_type", "kacho_compute_machine_types"},

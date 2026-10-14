@@ -12,11 +12,16 @@
 |---|---|
 | адреса церемоний и как консоль отвечает на каждый — одно объявление | `ceremony-addresses.ts` (`CEREMONY_ROUTING`) |
 | вход, регистрация, выход | `LoginPage.tsx`, `RegistrationPage.tsx`, `LogoutPage.tsx` (+ `use-logout.ts`) |
-| адрес, которого консоль пока не ведёт | `CeremonyAddressNotServedPage.tsx` |
+| восстановление доступа (`/recovery`) — экран за стражем, ссылка «Не получается войти?» на экране входа | `RecoveryPage.tsx` |
+| отказ полосы на экране и следующий шаг к нему | `shared/src/components/molecules/auth/LaneRefusalAlert/` |
 | страж над каркасом: дальше входа — только с подтверждённым адресом | `AddressConfirmationGate.tsx` (+ `address-state.ts`, `use-address-state.ts`, `AddressStateUnknownPage.tsx`) |
 | экран подтверждения адреса почты (`/verification`) | `VerificationPage.tsx` |
 | уход на экран подтверждения по отказу края `EMAIL_NOT_VERIFIED` | `address-confirmation-exit.ts` |
-| параметры учётной записи (`/settings`) | `AccountSettingsPage.tsx` |
+| параметры учётной записи (`/settings`): пароль, первый пароль, второй фактор | `AccountSettingsPage.tsx` |
+| свои сессии на `/settings` — перечень, выход из выбранной и из всех, кроме этой (раздел «Сессии») | `own-sessions/OwnSessionsSection.tsx` |
+| ключи доступа на `/settings` — перечень, заведение, снятие (глаголы Ф7 клиентом платформы) | `access-key/AccessKeysSection.tsx`, `shared/src/api/access-keys.ts` |
+| вход ключом доступа на `/login` | `access-key/use-access-key-sign-in.ts`, `access-key/AccessKeySignInButton.tsx` |
+| кодек церемонии ключа — вход и заведение | `shared/src/api/access-key.ts` |
 | клиент глаголов полосы формы и единственный читатель «есть ли сессия» | `shared/src/api/login-lane.ts` |
 | разбор тела отказа — один у экранов и у сквозного набора | `shared/src/api/rpc-status.ts` |
 | что делать на отказ — одно решение по машинным признакам | `shared/src/api/refusal-action.ts` |
@@ -29,9 +34,10 @@
 ## Адреса
 
 Маршрут получают все шесть: `/login`, `/registration`, `/logout`, `/settings`,
-`/recovery`, `/verification`. Консоль ведёт пять; `/recovery` отвечает
-страницей «такого адреса здесь нет» — восстановление доступа ждёт своей
-под-фазы, и экран входа пути на него не обещает. `/verification` — экран
+`/recovery`, `/verification`, и все шесть консоль ведёт. `/recovery` — экран
+восстановления доступа (приёмка `docs/specs/sub-phase-F8-S3-console-access-recovery-screen-acceptance.md`
+в воркспейсе): вне каркаса, за стражем подтверждённости; экран входа ведёт на
+него ссылкой «Не получается войти?». `/verification` — экран
 подтверждения адреса почты (приёмка `docs/specs/sub-phase-F6b-console-and-edge-confirmed-address-gate-acceptance.md`
 в воркспейсе). `/error` и `/consent` маршрутов не получают: это адреса чужих
 потоков.
@@ -50,6 +56,57 @@
 запросе платформы уводит на экран подтверждения
 (`address-confirmation-exit.ts`, действие `confirm-address`). Рубеж — на крае и у
 службы; страж нужен человеку, а не вместо рубежа.
+
+## Свои сессии на `/settings`
+
+Раздел «Сессии» — после «Второго фактора» (приёмка `docs/specs/sub-phase-F8-S5-console-and-edge-own-sessions-acceptance.md`
+в воркспейсе). Три обращения — глаголы полосы формы, клиент `shared/src/api/login-lane.ts`:
+
+| обращение | когда | признак формы |
+|---|---|---|
+| `GET /iam/v1/auth/sessions` (`?pageToken=` на «Показать ещё») | при открытии экрана и после каждой попытки снятия | нет |
+| `POST /iam/v1/auth/sessions/end` с `{sessionId, csrfToken}` | «Выйти» у строки, кроме текущей | `session-end` |
+| `POST /iam/v1/auth/sessions/end-others` с `{csrfToken}` | «Выйти на всех, кроме этой» — доступна всегда | `session-end` |
+
+Описание клиента показывается как прислано, без разбора; ключа нет — «Устройство не
+названо». У текущей строки — «Эта сессия» и нет «Выйти»: текущая завершается выходом.
+Исход — строкой: «Сессия завершена», «Завершено сессий: N», «Других сессий не было».
+
+Действие на отказ — из закрытого перечня `refusal-action.ts`, своих ветвей у раздела нет:
+
+| отказ | действие | что видит человек |
+|---|---|---|
+| `403` `SESSION_NOT_FRESH` | `step-up-freshness` | окно повышения, после него — один повтор и исход снятия |
+| `404` `SESSION_NOT_FOUND` | `show` | текст дословно; перечень перечитан — строки уже нет |
+| `400` `SESSION_IS_CURRENT` | `show` | текст дословно |
+| `403` `FORM_TOKEN_REJECTED` | `fresh-form-token` | текст; повторяет человек |
+| `401` на пути полосы | `show` | текст дословно; на вход ведёт следующий запрос платформы (`sign-in`) |
+| ответ края о недоступности службы | `show` | текст края дословно; сессия не гасится |
+
+## Смена адреса почты на `/settings`
+
+Действие раздела «Учётная запись» (приёмка `docs/specs/sub-phase-F8-S6-console-and-edge-email-change-acceptance.md`
+в воркспейсе), код — `email-change/`. Два глагола полосы формы, клиент `shared/src/api/login-lane.ts`:
+
+| обращение | когда | признак формы |
+|---|---|---|
+| `POST /iam/v1/auth/email-change` с `{newEmail, csrfToken}` | «Отправить код»; «Отправить снова» — тем же адресом по концу отсчёта | `email-change` |
+| `POST /iam/v1/auth/email-change/confirm` с `{code, csrfToken}` | «Подтвердить» — код как введён, в том числе пустым | `email-change-confirm` |
+
+Состояний три: покой («Сменить адрес»), форма («Новый адрес»), код (строка «Письмо с кодом
+отправлено на N, если этот адрес может быть использован», «Код из письма», отсчёт по
+`Retry-After`). «Отмена» глаголов не зовёт. Признаки формы добываются, когда форма открыта.
+Предъявление ставит носитель (`SETS_CARRIER`); после успеха экран заново спрашивает «кто я».
+
+| отказ | что видит человек |
+|---|---|
+| `400` о поле `newEmail` либо `code` | текст службы у поля; состояние сохраняется |
+| `403` `SESSION_NOT_FRESH` | окно повышения и один повтор (`step-up-freshness`) |
+| `401` с вызовом `insufficient_user_authentication`, любой из двух путей | окно повышения вторым фактором и один повтор (`step-up-floor`); повышение не состоялось — «Подтверждение личности не состоялось: смена адреса требует второго фактора» и «Повторить с подтверждением» (тот же глагол с тем же вводом, снова через повышение); состояние и ввод сохранены, «кто я» не спрашивается |
+| `401` без такого вызова на предъявлении | один вопрос «кто я»: человек есть — «Код не подошёл», поле кода пусто; сессии нет — экран входа |
+| `409` `EMAIL_IN_USE` | «Этот адрес уже используется», назад к форме |
+| `429` `TOO_MANY_ATTEMPTS` | «Слишком много попыток», отсчёт; отправка выключена до его конца |
+| ответ края на молчание службы, `503` службы | текст дословно; сессия и носитель не тронуты |
 
 ## Чего консоль не делает
 
@@ -70,7 +127,8 @@
 ## Чем удержано
 
 - браузерные пробы — `ui-future/e2e/specs/identity-ceremony.spec.ts`,
-  `ui-future/e2e/specs/account-settings.spec.ts` и
+  `ui-future/e2e/specs/account-settings.spec.ts`, `ui-future/e2e/specs/own-sessions.spec.ts`,
+  `ui-future/e2e/specs/email-change.spec.ts` и
   `ui-future/e2e/specs/address-confirmation.spec.ts` (имя теста начинается с ID
   сценария приёмки);
 - адрес возврата читает один узел — `useReturnTo` —

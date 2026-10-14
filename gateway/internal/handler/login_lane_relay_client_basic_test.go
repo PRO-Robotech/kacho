@@ -115,7 +115,7 @@ func newProdEdge(t *testing.T, own *fakeOwn) *prodEdge {
 		t.Fatalf("полоса прав: %v", err)
 	}
 	a := middleware.NewAuthInterceptor(middleware.AuthModeProductionStrict, "", nil, logger).
-		WithBasicCredentialLane(middleware.NewBasicCredentialLane(e.authority).WithLogger(logger)).
+		WithBasicCredentialLane(middleware.NewBasicCredentialLane(e.authority, time.Second).WithLogger(logger)).
 		WithVerifier(e.verifier).
 		WithHumanSession(own).
 		WithSessionCutoffCheck(&fakeCut{}, time.Hour)

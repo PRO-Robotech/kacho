@@ -30,9 +30,12 @@
     правами базы, ручной запуск), голова не из этого репозитория, ветка вне
     правила — на этой редакции правило равно фильтру `workflow_run.branches`:
     ствол `main` и ничего больше; собственное событие процесса вне перечня и
-    собственный `push` в ссылку вне правила (см. «Собственные события»);
+    собственный `push` в ссылку вне правила (см. «Собственные события»). Ветки
+    вне правила представлены у ОБОИХ правил ветки по классам имён: ветка-номер,
+    ветка-номер с сутью, ветка эпика, ветка линии `release/<предмет>`;
   * ЗАКОННЫЕ (публикация есть): `push` этого репозитория в `main`; собственный
-    `push` в ствол и метки версии; ручной запуск. Без них гейт молчал
+    `push` в ствол и метки версии; ручной запуск, в том числе на ветке каждого
+    из классов имён выше. Без них гейт молчал
     бы на процессе, который не публикует НИЧЕГО, — запрет без положительного
     контроля.
 
@@ -57,7 +60,15 @@
 ПЕРВЫМ — до него нет ни одного шага (выкачка и чужое действие меняют машину, шаг
 `run:` — окружение решения через `GITHUB_ENV`, а гейт таких шагов не исполняет);
 сам он секретов не читает; задание и процесс не дают секретов всем шагам сразу.
-Окружение шага решения в исполнении гейта — `env` процесса, задания и шага.
+Окружение шага решения в исполнении гейта — `env` процесса, задания и шага и
+поверх них переменные площадки (`GITHUB_*`, `RUNNER_*`, `CI`, файл события по
+`GITHUB_EVENT_PATH`), выведенные из события сцены; рабочий каталог — пустой
+каталог задания (решение стоит до выкачки). Имена `GITHUB_*` и `RUNNER_*` запись
+`env` не перекрывает (так документирует площадка), поэтому такая запись в
+окружении решения — находка места проверки. Значения, которых сцена не знает (кто
+запустил, номер прогона, имя процесса), — постоянные заглушки: решение,
+опирающееся на них, гейт не судит. Полного равенства окружения площадке гейт не
+утверждает — он исполняет перечисленное.
 
 СОБСТВЕННЫЕ СОБЫТИЯ ПРОЦЕССА — ПЕРЕЧНЕМ. Законные: `push` в ссылку правила этого
 файла (ствол `main`, метка версии `v<число>.<число>.<число>`) и ручной
@@ -99,6 +110,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -465,6 +477,7 @@ def _wr(event, branch, repo, conclusion="success"):
         "event_name": "workflow_run",
         "repository": THIS_REPO,
         "ref": "refs/heads/main",
+        "sha": "1" * 40,
         "ref_name": "main",
         "event": {"workflow_run": {
             "event": event, "head_branch": branch, "head_sha": "0" * 40,
@@ -481,7 +494,7 @@ def _own(event, ref, head_repo=None):
     """Собственное событие процесса: ссылка и (для запроса) репозиторий головы."""
     ev = {} if head_repo is None else {
         "pull_request": {"head": {"repo": {"full_name": head_repo}}}}
-    return {"event_name": event, "repository": THIS_REPO, "ref": ref,
+    return {"event_name": event, "repository": THIS_REPO, "ref": ref, "sha": "1" * 40,
             "ref_name": ref.split("/", 2)[-1], "event": ev}
 
 
@@ -531,6 +544,14 @@ SCENES = [
           _wr("push", "2942", THIS_REPO), False, True),
     Scene("workflow_run ← push, ветка-номер с сутью вне правила 2942-x",
           _wr("push", "2942-x", THIS_REPO), False, True),
+    # Классы имён веток (kacho#2971): ветка эпика — номер корня релиза, ветка
+    # линии — `release/<предмет>`. Эпик представлен измеренным именем ветки эпика
+    # на origin; порчу, называющую поимённо ДРУГОЙ номер, сцена не видит — её
+    # держит только форма «ветка-номер», если порча записана формой.
+    Scene("workflow_run ← push, ветка эпика вне правила 1266",
+          _wr("push", "1266", THIS_REPO), False, True),
+    Scene("workflow_run ← push, ветка линии вне правила release/platform",
+          _wr("push", "release/platform", THIS_REPO), False, True),
     # ── собственные события процесса ──
     # Чужие: событие вне перечня разрешённых. Решение обязано отказать им ЯВНО, а
     # не пропустить как «не workflow_run»: запрос из ветки этого репозитория и
@@ -560,17 +581,39 @@ SCENES = [
           _own("push", "refs/heads/KAC-1"), False, True),
     Scene("собственный push, ветка вне правила KAC-1/x",
           _own("push", "refs/heads/KAC-1/x"), False, True),
+    Scene("собственный push, ветка-номер вне правила 2942",
+          _own("push", "refs/heads/2942"), False, True),
+    Scene("собственный push, ветка-номер с сутью вне правила 2942-x",
+          _own("push", "refs/heads/2942-x"), False, True),
+    Scene("собственный push, ветка эпика вне правила 1266",
+          _own("push", "refs/heads/1266"), False, True),
+    Scene("собственный push, ветка линии вне правила release/platform",
+          _own("push", "refs/heads/release/platform"), False, True),
     Scene("собственный push, метка вне правила v1.2",
           _own("push", "refs/tags/v1.2"), False, True),
     Scene("собственный push, метка вне правила v1.2.3-rc",
           _own("push", "refs/tags/v1.2.3-rc"), False, True),
     Scene("собственный push, метка вне правила v1x2x3",
           _own("push", "refs/tags/v1x2x3"), False, True),
+    # Якорь начала правила метки: ссылка, в которой форма метки стоит не с начала
+    # (kacho#2961). У правил ветки такие сцены свои: feature/main, x/refs/heads/main.
+    Scene("собственный push, метка внутри ветки x/refs/tags/v1.2.3",
+          _own("push", "refs/heads/x/refs/tags/v1.2.3"), False, True),
     # Законные.
     Scene("собственный push в main", _own("push", "refs/heads/main"), True),
     Scene("собственный push метки v1.2.3", _own("push", "refs/tags/v1.2.3"), True),
     Scene("собственный workflow_dispatch на ветке feature/x",
           _own("workflow_dispatch", "refs/heads/feature/x"), True),
+    # Законные близнецы классов имён (kacho#2971): ручной запуск судит право
+    # запустившего, и на ветке любого класса он публикует.
+    Scene("собственный workflow_dispatch на ветке-номере 2942",
+          _own("workflow_dispatch", "refs/heads/2942"), True),
+    Scene("собственный workflow_dispatch на ветке-номере с сутью 2942-x",
+          _own("workflow_dispatch", "refs/heads/2942-x"), True),
+    Scene("собственный workflow_dispatch на ветке эпика 1266",
+          _own("workflow_dispatch", "refs/heads/1266"), True),
+    Scene("собственный workflow_dispatch на ветке линии release/platform",
+          _own("workflow_dispatch", "refs/heads/release/platform"), True),
 ]
 
 
@@ -626,27 +669,105 @@ def shell_argv(shell: str, script: str) -> list[str] | None:
     return [a.replace("{0}", script) for a in argv]
 
 
+# Переменные, которые площадка даёт КАЖДОМУ шагу. Имена `GITHUB_*` и `RUNNER_*`
+# записью `env` не перекрываются (документировано площадкой): их значение — её, а
+# запись такого имени в окружении решения — находка «место проверки», потому что
+# читающий файл увидит одно значение, а шаг получит другое. `CI` перекрывается.
+PLATFORM_PREFIXES = ("GITHUB_", "RUNNER_")
+
+
+def platform_env(github: dict, work: Path) -> dict[str, str]:
+    """Окружение площадки для шага решения в сцене: значения, выводимые из события
+    сцены, — из него; значения, которых сцена не знает (кто запустил, номер
+    прогона), — постоянные заглушки. Решение, опирающееся на них, гейт не судит:
+    это граница, названная в шапке."""
+    ev = github.get("event") or {}
+    pr = ev.get("pull_request") or {}
+    ref = str(github.get("ref") or "")
+    repo = str(github.get("repository") or "")
+    for sub in ("ws", "tmp", "home"):
+        (work / sub).mkdir(exist_ok=True)
+    event_file = work / "event.json"
+    event_file.write_text(json.dumps(ev))
+    files = {}
+    for name in ("GITHUB_OUTPUT", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_STEP_SUMMARY",
+                 "GITHUB_STATE"):
+        f = work / name.lower()
+        f.write_text("")
+        files[name] = str(f)
+    return {
+        "CI": "true",
+        "HOME": str(work / "home"),
+        "GITHUB_ACTIONS": "true",
+        "GITHUB_ACTION": DECISION_ID,
+        "GITHUB_ACTOR": "actor",
+        "GITHUB_TRIGGERING_ACTOR": "actor",
+        "GITHUB_API_URL": "https://api.github.com",
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_GRAPHQL_URL": "https://api.github.com/graphql",
+        "GITHUB_EVENT_NAME": str(github.get("event_name") or ""),
+        "GITHUB_EVENT_PATH": str(event_file),
+        "GITHUB_REF": ref,
+        "GITHUB_REF_NAME": str(github.get("ref_name") or ""),
+        "GITHUB_REF_TYPE": "tag" if ref.startswith("refs/tags/") else "branch",
+        "GITHUB_HEAD_REF": str((pr.get("head") or {}).get("ref") or ""),
+        "GITHUB_BASE_REF": str((pr.get("base") or {}).get("ref") or ""),
+        "GITHUB_REPOSITORY": repo,
+        "GITHUB_REPOSITORY_OWNER": repo.split("/", 1)[0],
+        "GITHUB_SHA": str(github.get("sha") or ""),
+        "GITHUB_WORKFLOW": "workflow",
+        "GITHUB_JOB": "job",
+        "GITHUB_RUN_ID": "1",
+        "GITHUB_RUN_NUMBER": "1",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_WORKSPACE": str(work / "ws"),
+        "RUNNER_OS": "Linux",
+        "RUNNER_ARCH": "X64",
+        "RUNNER_TEMP": str(work / "tmp"),
+        "RUNNER_ENVIRONMENT": "github-hosted",
+        **files,
+    }
+
+
+def decision_env_overrides(step: dict, job: dict, doc: dict) -> list[str]:
+    """Имена окружения площадки, которые запись `env` процесса, задания или шага
+    решения пытается перекрыть."""
+    out = []
+    for level, holder in (("процесс", doc), ("задание", job), ("шаг", step)):
+        for k in (holder.get("env") or {}):
+            if str(k).startswith(PLATFORM_PREFIXES):
+                out.append(f"{k} ({level})")
+    return out
+
+
 def _run_decision(step: dict, ctx: Ctx, job: dict, doc: dict) -> tuple[int, dict]:
-    # окружение шага у площадки: процесс, затем задание, затем шаг
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
-    for holder in (doc, job, step):
-        for k, v in (holder.get("env") or {}).items():
-            env[str(k)] = interpolate(str(v), ctx)
     script = interpolate(str(step.get("run", "")), ctx)
     shell, _ = decision_shell(step, job, doc)
     with tempfile.TemporaryDirectory() as d:
-        body = Path(d) / "step.sh"
+        work = Path(d)
+        body = work / "step.sh"
         body.write_text(script)
         argv = shell_argv(shell, str(body))
         if argv is None:
             # Худший случай для слоя 2: выход с кодом 0 и без ответа.
             return 0, {}
-        out = Path(d) / "out"
-        out.write_text("")
-        env["GITHUB_OUTPUT"] = str(out)
-        p = subprocess.run(argv, env=env, capture_output=True, text=True)
+        # окружение шага у площадки: процесс, затем задание, затем шаг; поверх —
+        # переменные площадки, которых запись не перекрывает. PATH — хоста: без
+        # него оболочке нечем исполнять сценарий.
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        for holder in (doc, job, step):
+            for k, v in (holder.get("env") or {}).items():
+                env[str(k)] = interpolate(str(v), ctx)
+        plat = platform_env(ctx.github, work)
+        env.update({k: v for k, v in plat.items() if k.startswith(PLATFORM_PREFIXES)})
+        env.setdefault("CI", plat["CI"])
+        env.setdefault("HOME", plat["HOME"])
+        # рабочий каталог шага — каталог задания; решение стоит первым, до
+        # выкачки, поэтому он пуст
+        p = subprocess.run(argv, env=env, capture_output=True, text=True,
+                           cwd=plat["GITHUB_WORKSPACE"])
         outputs = {}
-        for line in out.read_text().splitlines():
+        for line in Path(plat["GITHUB_OUTPUT"]).read_text().splitlines():
             if "=" in line:
                 k, v = line.split("=", 1)
                 outputs[k] = v
@@ -775,6 +896,10 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
                                     f"оболочкой '{shell}' ({source}) — гейт исполняет только "
                                     f"bash и sh, отказ решения не доказан; судится худший "
                                     f"случай: выход с кодом 0 без ответа")
+                for name in decision_env_overrides(steps[di], job, doc):
+                    findings.append(f"{where}: место проверки: окружение шага решения "
+                                    f"№{di + 1} перекрывает имя площадки {name} — площадка "
+                                    f"его не перекрывает, шаг получит её значение")
                 if refs_secrets(steps[di]):
                     findings.append(f"{where}: место проверки: шаг решения №{di + 1} сам "
                                     f"читает секреты")
@@ -1213,6 +1338,93 @@ def self_test(root: Path) -> int:
            mutate("  FALLBACK_NS: local\n", f"  FALLBACK_NS: local\n  THIS_REPO: {FOREIGN_REPO}\n",
                   mutate(this_repo, "")), 1,
            ["слой 2", "push, голова чужого репозитория"])
+
+    # Окружение площадки (kacho#2961, класс 1): площадка даёт каждому шагу свои
+    # переменные (`GITHUB_*`, `RUNNER_*`, `CI`, файл события) и исполняет шаг в
+    # рабочем каталоге задания, который до выкачки пуст. Порча, опирающаяся на это
+    # окружение, обязана краснеть; запись, опирающаяся на него законно, — молчать.
+    plat_case = 'case "${EVENT_NAME:-}" in'
+    plat_branch = 'elif ! [[ "${RUN_BRANCH:-}" =~ ^main$ ]]; then'
+    plat_head = 'set -euo pipefail\n          why=""\n'
+    plat_publish = ('set -euo pipefail\n          {cond} && {{ echo "publish=true" >> '
+                    '"$GITHUB_OUTPUT"; exit 0; }}\n          why=""\n')
+    expect("слой 2: ветка взята из окружения площадки, а не из головы",
+           mutate(plat_branch, 'elif ! [[ "${GITHUB_REF_NAME:-}" =~ ^main$ ]]; then'), 1,
+           ["слой 2", "push, ветка вне правила feature/x"], "слой 2")
+    expect("слой 2: решение доверяет признаку площадки",
+           mutate(plat_head, plat_publish.format(cond='[ "${GITHUB_ACTIONS:-}" = true ]')), 1,
+           ["слой 2", "pull_request, голова чужого репозитория"], "слой 2")
+    expect("слой 2: решение доверяет признаку CI",
+           mutate(plat_head, plat_publish.format(cond='[ "${CI:-}" = true ]')), 1,
+           ["слой 2", "pull_request, голова чужого репозитория"], "слой 2")
+    expect("слой 2: решение зависит от рабочего каталога (до выкачки он пуст)",
+           mutate(plat_head, plat_publish.format(cond="[ ! -e .git ]")), 1,
+           ["слой 2", "pull_request, голова чужого репозитория"], "слой 2")
+    expect("слой 2: решение по файлу события — запрет одного вместо разрешения push",
+           mutate('if [ "${RUN_EVENT:-}" != "push" ]; then',
+                  'if grep -q \'"event": "pull_request"\' "${GITHUB_EVENT_PATH:-/nonexistent}"; then'),
+           1, ["слой 2", "pull_request_target"], "слой 2")
+    expect("место проверки: окружение решения перекрывает имя площадки",
+           mutate("          RUN_EVENT: ${{ github.event.workflow_run.event }}\n",
+                  "          RUN_EVENT: ${{ github.event.workflow_run.event }}\n"
+                  "          GITHUB_REF_NAME: main\n"), 1,
+           ["место проверки", "GITHUB_REF_NAME"], "место проверки")
+    expect("законный близнец: событие процесса из окружения площадки",
+           mutate(plat_case, 'case "${GITHUB_EVENT_NAME:-}" in'), 0)
+    expect("законный близнец: репозиторий сравнения из окружения площадки",
+           mutate('[ "$RUN_REPO" != "$THIS_REPO" ]', '[ "$RUN_REPO" != "$GITHUB_REPOSITORY" ]'), 0)
+    expect("законный близнец: ссылка собственного push из окружения площадки",
+           mutate(plat_head, 'set -euo pipefail\n          OWN_REF="$GITHUB_REF"\n          why=""\n',
+                  mutate("          OWN_REF: ${{ github.ref }}\n", "")), 0)
+    expect("законный близнец: событие исходного прогона из файла события",
+           mutate('if [ "${RUN_EVENT:-}" != "push" ]; then',
+                  'if ! grep -q \'"event": "push"\' "${GITHUB_EVENT_PATH:-/nonexistent}"; then'), 0)
+    expect("законный близнец: признак площадки проверен, но права не даёт",
+           mutate(plat_head, 'set -euo pipefail\n          [ "${GITHUB_ACTIONS:-}" = true ] || '
+                  'exit 1\n          why=""\n'), 0)
+
+    # Якорение правил ссылок (kacho#2961, класс 2): у КАЖДОГО правила ссылки оба
+    # якоря держатся своей сценой, а не одним правилом ветки.
+    tag_rule = "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    expect("слой 2: правило метки без якоря начала",
+           mutate(tag_rule, tag_rule[1:]), 1,
+           ["слой 2", "метка внутри ветки x/refs/tags/v1.2.3"], "слой 2")
+    expect("законный близнец: правило метки с якорями вокруг группы",
+           mutate(tag_rule, "^(" + tag_rule[1:-1] + ")$"), 0)
+    expect("законный близнец: правило ветки собственного push с якорями вокруг группы",
+           mutate("^refs/heads/main$", "^(refs/heads/main)$"), 0)
+    expect("законный близнец: правило ветки исходного прогона с якорями вокруг группы",
+           mutate("^main$", "^(main)$"), 0)
+
+    # Классы имён веток (kacho#2971): ветки-номера, ветки эпиков, ветки линий.
+    # Порча, расширяющая право на класс, краснеет слоем 2 у ОБОИХ правил ветки —
+    # головы исходного прогона и собственного push; законный близнец того же
+    # класса (ручной запуск на такой ветке) молчит — это проверяет контроль.
+    wr_rule, own_rule = "^main$", "^refs/heads/main$"
+    branch_classes = [
+        ("ветки-номера", "[0-9]+", "ветка-номер вне правила 2942"),
+        ("ветки-номера с сутью", "[0-9]+-[^/]+", "ветка-номер с сутью вне правила 2942-x"),
+        ("ветку эпика поимённо", "1266", "ветка эпика вне правила 1266"),
+        ("ветки линий", "release/[^/]+", "ветка линии вне правила release/platform"),
+    ]
+    for cls, rx, scene in branch_classes:
+        expect(f"слой 2: правило ветки исходного прогона расширено на {cls}",
+               mutate(wr_rule, f"^(main|{rx})$"), 1,
+               ["слой 2", f"workflow_run ← push, {scene}"], "слой 2")
+        expect(f"слой 2: правило собственного push расширено на {cls}",
+               mutate(own_rule, f"^refs/heads/(main|{rx})$"), 1,
+               ["слой 2", f"собственный push, {scene}"], "слой 2")
+    lawful_dispatch = [sc.name for sc in SCENES
+                       if sc.lawful and sc.github.get("event_name") == "workflow_dispatch"]
+    for twin in ("ветке-номере 2942", "ветке-номере с сутью 2942-x", "ветке эпика 1266",
+                 "ветке линии release/platform"):
+        probes += 1
+        name = f"собственный workflow_dispatch на {twin}"
+        if name in lawful_dispatch:
+            print(f"✓ законный близнец класса: сцена [{name}] законная")
+        else:
+            print(f"✗ законный близнец класса: сцены [{name}] нет среди законных")
+            fails += 1
 
     # ── триггеры: событие вне перечня в `on:` ──
     expect("триггеры: процесс поднимается запросом",

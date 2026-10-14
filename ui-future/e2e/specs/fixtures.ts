@@ -1,13 +1,18 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, test as base, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { expect, test as base, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
-import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
+import { mayRecord, noteRefusal, recordableAttempt } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
+import { OUTSIDE_TEST, isRegistration, noteRegistration } from "./registration-budget.ts";
+import { attachSourceAxisRecords } from "./source-axis-records";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
+import { removeTenant, type TenantRecord } from "./tenant-removal";
+import { beginSeedTraces, settleSeedTraces } from "./seed-trace";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -68,9 +73,21 @@ import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
  * останется без этой фикстуры.
  */
 export const test = base.extend<
-  { sourceAxisLedger: void; issuanceLedger: void },
-  { issuanceGuardedBrowser: void; standCookieCarrier: void }
+  { seedTraces: void; sourceAxisLedger: void; issuanceLedger: void; tenantRemoval: void },
+  { issuanceGuardedBrowser: void; standCookieCarrier: void; registrationWatchedBrowser: void }
 >({
+  // СЧЁТ РЕГИСТРАЦИЙ ИСТОЧНИКА (kacho#2909) — в каждом контексте браузера, который
+  // заводит набор: штатном и заведённом пробой самой. Каждая регистрация
+  // списывается с окна источника стенда, а источник у набора один; запись
+  // сдаётся вложением пробы (`sourceAxisLedger` ниже), судит
+  // `scripts/registration-budget.ts`. Правило счёта — `specs/registration-budget.ts`.
+  registrationWatchedBrowser: [
+    async ({ browser }, use) => {
+      watchRegistrationsInBrowser(browser);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
   // ПЕЧЕНЬЕ СТЕНДА ПО HTTP (#1274) — в каждом контексте браузера, который заводит
   // набор: `page.request` контекста носит Secure-печенье службы в происхождение
   // стенда. Без этого на стенде по http обращения `page.request` уходят без
@@ -95,6 +112,21 @@ export const test = base.extend<
     },
     { scope: "worker", auto: true },
   ],
+  // ТРАССА ПОСЕВА (kacho#3200) — вложение «trace» упавшей пробы, которая
+  // страницы не берёт: её обращения идут контекстом посева, и запись пишется
+  // ему. Разбор — после уборки арендаторов (объявлено раньше неё), поэтому и её
+  // посевы в записи. Устройство — `specs/seed-trace.ts`.
+  seedTraces: [
+    async ({ browserName: _browser }, use, testInfo) => {
+      beginSeedTraces(testInfo.testId);
+      try {
+        await use();
+      } finally {
+        await settleSeedTraces(testInfo);
+      }
+    },
+    { auto: true, timeout: 60_000 },
+  ],
   issuanceLedger: [
     async ({ browser }, use) => {
       // Пришедшее до начала пробы — не её, но потеряться не вправе: называется ею.
@@ -105,19 +137,47 @@ export const test = base.extend<
     },
     { auto: true },
   ],
-  // Запись отказов полосы сдаётся В КАЖДОЙ пробе — и в той, что не берёт
-  // `page`: её контексты и её посев тратят ту же ось (F8-41). Разбор идёт
-  // последним, после разбора страницы, поэтому запись к нему полна.
+  // СНЯТИЕ АРЕНДАТОРОВ ПРОБЫ (kacho#3106) — разбором пробы, то есть и на её
+  // падении: каждый арендатор, заведённый `registerAndSignIn`, уходит со стенда
+  // вместе с ресурсами, которые проба завела в его проекте. Порядок —
+  // обратный заведению. Провал уборки роняет пробу своим текстом и не прячет
+  // её собственного провала. Путь снятия — `specs/tenant-removal.ts`. Бюджет
+  // времени — свой: уборка не съедает предел, объявленный пробой.
+  tenantRemoval: [
+    async ({ browserName: _browser }, use, testInfo) => {
+      tenantsOfTest.delete(testInfo.testId);
+      await use();
+      const tenants = tenantsOfTest.get(testInfo.testId) ?? [];
+      tenantsOfTest.delete(testInfo.testId);
+      if (tenants.length === 0) return;
+      const failures: string[] = [];
+      for (const tenant of [...tenants].reverse()) {
+        try {
+          await removeTenant(tenant, testInfo);
+        } catch (e) {
+          failures.push(e instanceof Error ? e.message : String(e));
+        }
+      }
+      testInfo.annotations.push({
+        type: "уборка арендаторов",
+        description: `заведено ${tenants.length} · снято ${tenants.length - failures.length}`,
+      });
+      if (failures.length > 0) {
+        throw new Error(
+          `арендатор пробы остался на стенде (${failures.length} из ${tenants.length}):\n` + failures.join("\n"),
+        );
+      }
+    },
+    { auto: true, timeout: 180_000 },
+  ],
+  // Запись полосы (доли F8-41 и S4) и счёт регистраций (kacho#2909) сдаются В
+  // КАЖДОЙ пробе — и в той, что не берёт `page`: её контексты и её посев тратят
+  // то же окно. Разбор идёт последним, после разбора страницы, поэтому запись к
+  // нему полна.
   sourceAxisLedger: [
     async ({ browserName: _browser }, use, testInfo) => {
       await use();
-      const refusals = takeRefusals(testInfo.testId);
-      if (refusals.length > 0) {
-        await testInfo.attach(BUDGET_ATTACHMENT, {
-          body: JSON.stringify({ scenario: testInfo.title, refusals }),
-          contentType: "application/json",
-        });
-      }
+      await attachSourceAxisRecords(testInfo);
     },
     { auto: true },
   ],
@@ -154,6 +214,69 @@ export const test = base.extend<
   },
 });
 
+/** Арендаторы, заведённые пробой, по пробе — их снимает разбор `tenantRemoval`. */
+const tenantsOfTest = new Map<string, TenantRecord[]>();
+
+/**
+ * Человек `email`, заведённый пробой самостоятельной регистрацией (личный аккаунт
+ * и проект по умолчанию у него есть), снимается разбором пробы тем же путём, что
+ * арендатор `registerAndSignIn` (kacho#3106). Зовут его `registerAndSignIn` и
+ * пробы, заводящие человека посевом. Возвращает запись — проект в неё
+ * дописывает тот, кто его прочитал.
+ */
+export function removedAfterTest(email: string): TenantRecord {
+  const record: TenantRecord = { email, projectId: "", resources: [] };
+  const id = currentTestId();
+  tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
+  return record;
+}
+
+/**
+ * Ресурс платформы по адресу `address` снимается разбором пробы вместе с
+ * арендатором, записанным в ней последним (kacho#3106): непустой проект служба
+ * доступа не снимает, а каскада через границу службы нет (ban #4). Зовёт его
+ * `createdResourceId` для каждого проверенного ресурса и пробы, заводящие ресурс
+ * мимо него. В пробе без записанного арендатора вызов ничего не
+ * записывает: снимать ресурс там некому, и это прежнее поведение, а не новое.
+ */
+export function removedWithTenant(address: string): void {
+  const tenants = tenantsOfTest.get(currentTestId());
+  if (!tenants || tenants.length === 0) return;
+  tenants[tenants.length - 1].resources.push(address);
+}
+
+const REGISTRATION_WATCHED = Symbol("kacho.registration-watched-browser");
+
+/** Проба, за которой пишется обращение; вне пробы — отдельный ключ, отдаваемый следующей. */
+function currentTestId(): string {
+  try {
+    return base.info().testId;
+  } catch {
+    return OUTSIDE_TEST;
+  }
+}
+
+/**
+ * Каждый контекст этого браузера считает отправленные регистрации (kacho#2909).
+ * Заменяется `newContext` ЭКЗЕМПЛЯРА — через него идут и штатная фабрика
+ * контекста, и `browser.newPage`, и контексты, заведённые пробой. Считается
+ * ОТПРАВЛЕННОЕ (`request`), а не отвеченное: служба списывает окно до решения,
+ * а ответ подставленный пробой лишь завышает счёт — сторона ошибки безопасная.
+ */
+export function watchRegistrationsInBrowser(browser: Browser): void {
+  const own = browser as Browser & { [REGISTRATION_WATCHED]?: true };
+  if (own[REGISTRATION_WATCHED]) return;
+  own[REGISTRATION_WATCHED] = true;
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (options) => {
+    const context = await newContext(options);
+    context.on("request", (req) => {
+      if (isRegistration(req.method(), new URL(req.url()).pathname)) noteRegistration(currentTestId());
+    });
+    return context;
+  };
+}
+
 /**
  * Записывать отказы `401` полосы формы, полученные страницами контекста, за
  * пробой `testId` (приёмка F8, F8-41). Контекст страницы пробы записывает
@@ -163,15 +286,16 @@ export const test = base.extend<
 export function watchRefusals(context: BrowserContext, testId: string) {
   const pending: Array<Promise<void>> = [];
   context.on("response", (res) => {
-    if (res.status() !== 401) return;
     const path = new URL(res.url()).pathname;
-    if (!path.startsWith("/iam/v1/auth/")) return;
+    // Отказ `401` полосы (F8-41) и выдача испытания входа ключом (доля S4,
+    // приёмка F8-S4, Р8): остальные ответы тела не читаются.
+    if (!mayRecord(path, res.status())) return;
     pending.push(
       res
         .text()
         .catch(() => "")
         .then((text) => {
-          const r = recordableRefusal(path, res.status(), text);
+          const r = recordableAttempt(path, res.status(), text);
           if (r) noteRefusal(testId, r);
         }),
     );
@@ -241,16 +365,9 @@ export interface Tenant {
  */
 export const STREAM_PATH = "/subscription/v1/events";
 
-/** Пароль арендатора набора; тот же у посева «Дано» (`ceremony-seed.ts`). */
-export const E2E_PASSWORD = "Kacho-E2E-2026!x";
-
-/** Имя носителя сессии нашей службы — то, что браузер держит после входа. */
-export const SESSION_COOKIE = "kaname_session";
-
-/** уникальное имя прогона — из времени; коллизия по UNIQUE(name) иначе даёт 409 */
-export function runTag(): string {
-  return Date.now().toString(36) + Math.trunc(performance.now()).toString(36);
-}
+// Пароль арендатора, носитель сессии и метка прогона — в листе без зависимостей
+// (`run-identity.ts`, почему — там же); фикстуры отдают их прежними именами.
+export { E2E_PASSWORD, SESSION_COOKIE, runTag };
 
 /** register проводит регистрацию до РАБОЧЕЙ СЕССИИ с подтверждённым адресом и
  * отдаёт почту арендатора.
@@ -534,6 +651,10 @@ export async function identityRefusalOnPage(page: Page): Promise<string> {
 export async function registerAndSignIn(page: Page): Promise<Tenant> {
   const email = await register(page);
 
+  // Арендатор записан к снятию СРАЗУ после регистрации, до чтения проекта: проба,
+  // упавшая на нём, человека уже завела, и убрать его обязан разбор (kacho#3106).
+  const record = removedAfterTest(email);
+
   // Проект арендатора заводится сам; без него адресовать модули нечем.
   //
   // Идентификатор берётся ИЗ ТОГО ЖЕ ЧТЕНИЯ, на котором опрос сошёлся:
@@ -559,6 +680,7 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
     )
     .not.toBe("");
 
+  record.projectId = projectId;
   return { email, projectId };
 }
 
@@ -669,6 +791,7 @@ export async function createdResourceId(
     })
     .toBe(200);
 
+  removedWithTenant(addressOf(id));
   return id;
 }
 

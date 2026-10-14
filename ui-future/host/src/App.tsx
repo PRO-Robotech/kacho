@@ -6,9 +6,9 @@ import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBou
 import { buildTheme } from "@shared/lib/theme";
 import { AccountSettingsPage } from "@shared/pages/auth/AccountSettingsPage";
 import { AddressConfirmationGate } from "@shared/pages/auth/AddressConfirmationGate";
-import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddressNotServedPage";
 import { LoginPage } from "@shared/pages/auth/LoginPage";
 import { LogoutPage } from "@shared/pages/auth/LogoutPage";
+import { RecoveryPage } from "@shared/pages/auth/RecoveryPage";
 import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
 import { VerificationPage } from "@shared/pages/auth/VerificationPage";
 import {
@@ -88,16 +88,28 @@ const App: FC = () => {
  * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
  *
  * Экраны вида `screen` открыты и до подтверждения адреса почты (приёмка F6b,
- * Р7); страница неведомого адреса — нет: она стоит за тем же стражем, что
- * каркас, и неподтверждённую сессию уводит на экран подтверждения.
+ * Р7); экраны вида `guarded-screen` — нет: они стоят за тем же стражем, что
+ * каркас, и неподтверждённую сессию уводят на экран подтверждения (экран
+ * восстановления доступа — приёмка F8-S3, Р1).
  */
 function ceremonyElement(serving: CeremonyServing) {
-  if (serving.kind !== "screen") {
-    return (
-      <AddressConfirmationGate>
-        <CeremonyAddressNotServedPage />
-      </AddressConfirmationGate>
-    );
+  if (serving.kind === "in-shell") {
+    throw new Error(`экран «${serving.screen}» живёт в каркасе, а не вне его`);
+  }
+  if (serving.kind === "guarded-screen") {
+    const guarded = serving.screen;
+    switch (guarded) {
+      case "recovery":
+        return (
+          <AddressConfirmationGate>
+            <RecoveryPage />
+          </AddressConfirmationGate>
+        );
+      default: {
+        const unhandled: never = guarded;
+        throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);
+      }
+    }
   }
   const screen = serving.screen;
   switch (screen) {
@@ -122,9 +134,9 @@ function ceremonyElement(serving: CeremonyServing) {
  * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
  * разделов, и рейл с ними обещал бы то, чего он получить не может. Адреса
  * церемоний объявлены одним местом (`ceremony-addresses.ts`) и получают маршрут
- * ВСЕ шесть (приёмка F8, Р3): пять консоль ведёт — вход, регистрация, выход,
- * подтверждение адреса почты (приёмка F6b, Р8) и параметры учётной записи, —
- * восстановление доступа отвечает названной страницей, а не переводом на панель.
+ * ВСЕ шесть (приёмка F8, Р3), и все шесть консоль ведёт — вход, регистрация,
+ * выход, подтверждение адреса почты (приёмка F6b, Р8), восстановление доступа
+ * (приёмка F8-S3) и параметры учётной записи.
  * Параметры учётной записи (`/settings`) живут в каркасе: их открывает вошедший
  * человек, и рейл ему нужен.
  *

@@ -7,7 +7,7 @@
 //
 // # Почему перечень ПРОПУСКА, а не перечень отказа
 //
-// Отказ F4d-23 полагается глаголу, который читает носитель: он меняет либо
+// Отказ ответ Р1 (KA1) полагается глаголу, который читает носитель: он меняет либо
 // читает состояние ПОД сессией, чью отсечку установить не удалось (Ф3 Р7 о
 // смене пароля; Ф12 Р4 о шести глаголах второго фактора: «чтение состояния
 // сюда же — оно читает эту сессию»). Ретрансляция полагается глаголу, который
@@ -16,7 +16,7 @@
 // и выходу, который сессию оканчивает (Ф3-17). Прежняя форма была перечнем
 // исключений — «отказ только на смене пароля», — и шесть глаголов Ф12, дописанные
 // в объявление, молча попали в «ретранслировать». Отказ — умолчание: глагол,
-// дописанный без решения, получает F4d-23 (синтетика ниже).
+// дописанный без решения, получает ответ Р1 (KA1) (синтетика ниже).
 //
 // Все пробы идут ЧЕРЕЗ ЦЕПОЧКУ `AuthInterceptor.HTTP(mux)` с маршрутами,
 // зарегистрированными по объявлению, — как у соседних проб полосы.
@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -53,10 +54,14 @@ import (
 //     месте был бы вторым решением о том же предмете;
 //   - discovery — метаданные обнаружения (kacho#2721): публичный документ, ни
 //     носителя, ни удостоверения не читает; недоступность службы отвечает её
-//     своим 503, как у двух соседних координат.
+//     своим 503, как у двух соседних координат;
+//   - access-key-begin, access-key-login — вход ключом доступа (приёмка Ф13
+//     Ф13-28 «И», kacho#3037): «недоступность службы на обоих глаголах даёт ТОТ
+//     ЖЕ исход, что у POST /iam/v1/auth/login» — носителя ни один не читает,
+//     критерий Ф3 Р7 применён без изменений.
 //
 // Смена пароля и шесть глаголов второго фактора в перечне отсутствуют: Ф3 Р7
-// (смена пароля — F4d-23) и Ф12 Р4 («недоступность службы и отсечка на всех
+// (смена пароля — ответ Р1 (KA1)) и Ф12 Р4 («недоступность службы и отсечка на всех
 // шести — как на смене пароля»).
 var unansweredPassVerbs = map[string]bool{
 	"login":             true,
@@ -68,6 +73,8 @@ var unansweredPassVerbs = map[string]bool{
 	"authorize":         true,
 	"token":             true,
 	"discovery":         true,
+	"access-key-begin":  true,
+	"access-key-login":  true,
 }
 
 // secondFactorPaths — шесть глаголов Ф12 Р4.
@@ -105,7 +112,8 @@ type cutoffBook struct {
 	asked   int
 }
 
-func (c *cutoffBook) SessionCutoffOf(_ context.Context, userID string) (time.Time, bool, error) {
+func (c *cutoffBook) SessionCutoffOf(_ context.Context, subject CutoffSubject) (time.Time, bool, error) {
+	userID := subject.UserID()
 	c.asked++
 	if c.err != nil {
 		return time.Time{}, false, c.err
@@ -170,7 +178,8 @@ func formChain(t *testing.T, book *carrierBook, cut *cutoffBook) (http.Handler, 
 
 func formVerbRequest(path, carrier string, foreign bool) *http.Request {
 	method := http.MethodPost
-	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize || path == CeremonyPathDiscovery {
+	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize || path == CeremonyPathDiscovery ||
+		path == ownSessionsWant["sessions"] {
 		method = http.MethodGet
 	}
 	req := withOurCarrier(httptest.NewRequest(method, path, strings.NewReader(`{}`)), carrier)
@@ -224,26 +233,28 @@ func runFormVerb(chain http.Handler, relay *countingNext, req *http.Request) lan
 	return out
 }
 
-// denyBody — тело F4d-22, произведённое цепочкой на носителе `B`: эталон, с
-// которым F4d-23 обязан совпасть побайтово (тот же код и тот же текст).
+// denyBody — тело F4d-22, произведённое цепочкой на носителе `B`: эталон отказа
+// с гашением носителя.
 func denyBody(t *testing.T) string {
 	t.Helper()
 	book, cut := f12Books()
 	chain, _ := formChain(t, book, cut)
 	rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, platformPath, nil), carrierB))
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), authnrefusal.Message) {
 		t.Fatalf("эталон F4d-22 не получен: %d %s", rec.Code, rec.Body.String())
 	}
 	return rec.Body.String()
 }
 
-func expectRefusedKept(t *testing.T, where string, got laneOutcome, deny string) {
+// expectRefusedKept — ответ Р1 приёмки KA1 (заменил F4d-23): 503 эталонным телом,
+// носитель цел, до службы не дошло.
+func expectRefusedKept(t *testing.T, where string, got laneOutcome) {
 	t.Helper()
-	if got.code != http.StatusUnauthorized || got.body != deny {
-		t.Errorf("%s: ожидался F4d-23 — 401 текстом отказа по отсечке; получено %d %q", where, got.code, got.body)
+	if got.code != http.StatusServiceUnavailable || got.body != credentialStateUnknownBody() {
+		t.Errorf("%s: ожидался ответ Р1 — 503 %q; получено %d %q", where, credentialStateUnknownBody(), got.code, got.body)
 	}
 	if got.setCookie != "" {
-		t.Errorf("%s: на F4d-23 носитель обязан остаться целым, Set-Cookie: %q", where, got.setCookie)
+		t.Errorf("%s: на ответе Р1 носитель обязан остаться целым, Set-Cookie: %q", where, got.setCookie)
 	}
 	if got.relayed != 0 {
 		t.Errorf("%s: ретранслировано %d, ожидалось 0 — запрос с носителем, чью отсечку установить не удалось, до службы не доходит", where, got.relayed)
@@ -262,7 +273,7 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 		relayedAsA want = iota // ретранслировано, личность `A` выставлена
 		relayedAnonymous
 		refusedEnded // F4d-22, носитель гасится
-		refusedKept  // F4d-23, носитель цел
+		refusedKept  // ответ Р1 (KA1), носитель цел
 	)
 	// cutoffAsked — задан ли вопрос об отсечке. Порядок вопросов несущий:
 	// отсечку спрашивают только о сессии, которую `Resolve` назвал, — не
@@ -312,7 +323,7 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 					t.Errorf("%s: ожидался F4d-22 с гашением носителя и ретранслировано 0; получено %d %q, Set-Cookie %q, ретранслировано %d", where, got.code, got.body, got.setCookie, got.relayed)
 				}
 			case refusedKept:
-				expectRefusedKept(t, where, got, deny)
+				expectRefusedKept(t, where, got)
 			}
 
 			// Чужие заголовки: исход побайтово равен исходу без них, и до
@@ -344,7 +355,7 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 	}
 
 	// Положительный контроль различимости (Ф12-38 «And», Ф3-17): при тех же
-	// дублёрах выход ретранслируется, смена пароля получает F4d-23.
+	// дублёрах выход ретранслируется, смена пароля получает ответ Р1 (KA1).
 	for _, mode := range unansweredModes {
 		book, cut := f12Books()
 		mode.set(book, cut)
@@ -353,7 +364,7 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 		if logout.relayed != 1 {
 			t.Errorf("%s: выход обязан ретранслироваться (Ф3-17), ретранслировано %d, получено %d %q", mode.name, logout.relayed, logout.code, logout.body)
 		}
-		expectRefusedKept(t, mode.name+" · смена пароля", runFormVerb(chain, relay, formVerbRequest(LoginLanePathPassword, carrierA, false)), deny)
+		expectRefusedKept(t, mode.name+" · смена пароля", runFormVerb(chain, relay, formVerbRequest(LoginLanePathPassword, carrierA, false)))
 	}
 
 	keys := make([]string, 0, len(relayedTotal))
@@ -368,10 +379,9 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Отказ — умолчание: на КАЖДОМ глаголе объявления при недоступности службы
-// F4d-23, кроме закрытого перечня пропуска.
+// ответ Р1 (KA1), кроме закрытого перечня пропуска.
 
 func TestOwnSessionLane_UnansweredServiceRefusesEveryFormVerbOutsideThePassList(t *testing.T) {
-	deny := denyBody(t)
 	routes := LoginLaneRoutes()
 
 	// Перечень пропуска не несёт мёртвых записей: каждое имя — глагол объявления.
@@ -393,7 +403,7 @@ func TestOwnSessionLane_UnansweredServiceRefusesEveryFormVerbOutsideThePassList(
 		for _, rt := range routes {
 			got := runFormVerb(chain, relay, formVerbRequest(rt.Path, carrierA, false))
 			relayed += got.relayed
-			if got.code == http.StatusUnauthorized && got.body == deny && got.setCookie == "" && got.relayed == 0 {
+			if got.code == http.StatusServiceUnavailable && got.body == credentialStateUnknownBody() && got.setCookie == "" && got.relayed == 0 {
 				refused++
 			}
 			where := mode.name + " · " + rt.Verb
@@ -403,15 +413,15 @@ func TestOwnSessionLane_UnansweredServiceRefusesEveryFormVerbOutsideThePassList(
 				}
 				continue
 			}
-			expectRefusedKept(t, where, got, deny)
+			expectRefusedKept(t, where, got)
 		}
-		t.Logf("перепись: %s — глаголов формы %d · ретранслировано %d (по перечню %d) · отказов F4d-23 %d (по перечню %d)",
+		t.Logf("перепись: %s — глаголов формы %d · ретранслировано %d (по перечню %d) · ответов Р1 %d (по перечню %d)",
 			mode.name, len(routes), relayed, len(unansweredPassVerbs), refused, len(routes)-len(unansweredPassVerbs))
 	}
 }
 
 // Глагол, дописанный в объявление без решения о недоступности, получает
-// F4d-23. Законный близнец — тот же путь при ответившей службе и носителе без
+// ответ Р1 (KA1). Законный близнец — тот же путь при ответившей службе и носителе без
 // сессии: ретранслируется, то есть путь действительно стоит в объявлении и
 // отказ на недоступности — не отказ пути платформы.
 func TestOwnSessionLane_UnansweredServiceRefusesAFormVerbAddedWithoutADecision(t *testing.T) {
@@ -422,7 +432,6 @@ func TestOwnSessionLane_UnansweredServiceRefusesAFormVerbAddedWithoutADecision(t
 	saved := loginLaneRoutes
 	loginLaneRoutes = append(append([]LoginLaneRoute(nil), saved...), LoginLaneRoute{Verb: "future-verb", Path: futurePath})
 	t.Cleanup(func() { loginLaneRoutes = saved })
-	deny := denyBody(t)
 
 	book, cut := f12Books()
 	chain, relay := formChain(t, book, cut)
@@ -435,6 +444,6 @@ func TestOwnSessionLane_UnansweredServiceRefusesAFormVerbAddedWithoutADecision(t
 		book, cut := f12Books()
 		mode.set(book, cut)
 		chain, relay := formChain(t, book, cut)
-		expectRefusedKept(t, mode.name+" · глагол без решения", runFormVerb(chain, relay, formVerbRequest(futurePath, carrierA, false)), deny)
+		expectRefusedKept(t, mode.name+" · глагол без решения", runFormVerb(chain, relay, formVerbRequest(futurePath, carrierA, false)))
 	}
 }

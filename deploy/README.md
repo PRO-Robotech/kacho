@@ -92,7 +92,7 @@ newman-job ~7 мин → ~3 мин.
 сама цель `preflight`: харнесс доходит до каждого листенера через
 `kubectl port-forward`, включая объявленный внешний TLS. Запись полезна только
 тому, кто хочет постучать в Ingress руками, — и даже тогда kind публикует
-node:80 на 28080 хоста (443 не публикуется вовсе), а тот Ingress ходит по GRPCS,
+node:80 на 28080 хоста и node:443 на 28443 (`kind/kind-config.yaml`), а тот Ingress ходит по GRPCS,
 поэтому REST через него отвечает 502 — кроме трёх точных координат церемонии
 (`/iam/v1/authorize`, `/iam/v1/token`, `/.well-known/oauth-authorization-server`),
 которые он ведёт к тому же слушателю по HTTPS. Прежняя редакция требовала четыре имени, из
@@ -111,6 +111,39 @@ Postgres использует `emptyDir` — данные не сохраняю�
 > `values.dev.yaml`, ни цели в `Makefile`. Имена здесь не воспроизводятся: адрес в
 > обратных кавычках читается как живое утверждение, а учётные данные к
 > несуществующему UI — приглашение искать то, чего нет.
+
+## Администратор облака стенда
+
+Подъём стенда `own` (`make own-up`) заводит первого администратора облака шагом
+`bootstrap-cloud-admin` (kacho#2878): человек регистрируется на внешнем слушателе
+края тем же путём, что в консоли, подтверждает адрес кодом из письма приёмника
+стенда, а право `system_admin` на кластере ему выдаёт посев бутстрапа службы
+доступа (переменная `KANAME_BOOTSTRAP_ROOT_EMAIL` приходит ссылкой на секрет).
+Прямой записи в базу нет.
+
+Адрес и пароль лежат только в объекте Secret кластера; профиль называет его имя
+(`kaname.platform.iam.bootstrapRootAdmin.secretName`, у стенда `own` —
+`stand-cloud-admin`, ключи `email` и `password`). На kind секрет чеканит
+`scripts/stack-secrets.sh` при первом подъёме, на площадке его заводит оператор.
+Ни в дереве, ни в журнале подъёма величин нет. Оператор стенда берёт их сам:
+
+```bash
+kubectl -n kacho get secret stand-cloud-admin -o jsonpath='{.data.email}' | base64 -d
+kubectl -n kacho get secret stand-cloud-admin -o jsonpath='{.data.password}' | base64 -d
+```
+
+и входит паролем в консоль. Раздел «Система» ходит к админ-API внутреннего
+слушателя края (`docs/architecture/admin-api-door-on-external-stand.md`); на kind
+это `kubectl -n kacho port-forward svc/api-gateway 8081`. Внутренний слушатель —
+только mTLS: клиентский лист операторской личности лежит в секрете
+`kacho-internal-rest-operator-client-tls` (`ca.crt`, `tls.crt`, `tls.key`;
+`deploy/scripts/lib/internal-rest-client.sh` достаёт его для инструментов), и
+адрес проброса — `https://localhost:8081`.
+
+Шаг идемпотентен: повторный подъём входит тем же паролем, второго человека не
+заводит, секрет не перечеканивает. Владелец аккаунта, заведённый обычной
+регистрацией, на тех же путях получает отказ — это доказывает
+`bash scripts/bootstrap-cloud-admin.sh --prove-twin`.
 
 ## IAM stack (KAC-105, sub-phase 2.0; полоса личности — своя, с #2735)
 

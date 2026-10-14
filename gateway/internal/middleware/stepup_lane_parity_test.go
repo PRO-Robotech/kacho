@@ -135,7 +135,7 @@ func newLaneRig(t *testing.T) *laneRig {
 		// Читатель НАШЕЙ сессии (Ф3 Р7) — единственный читатель носителя
 		// браузерной сессии на этом крае.
 		WithHumanSession(fakeOwnSession{}).
-		WithBasicCredentialLane(middleware.NewBasicCredentialLane(authority)).
+		WithBasicCredentialLane(middleware.NewBasicCredentialLane(authority, time.Second)).
 		WithStepUp(
 			middleware.NewStepUpGate(nil),
 			middleware.NewCatalogPermissionLookup(catalog),

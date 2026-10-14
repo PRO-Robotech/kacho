@@ -950,16 +950,38 @@ var errNoSignInList = errors.New("перечень способов входа �
 // замыканий в его теле — это не его значение):
 //
 //	return nil                                   — полоса не поднята, способов нет;
-//	return []assurance.Method{assurance.MethodX, …} — голый литерал перечня, ровно один.
+//	return []assurance.Method{assurance.MethodX, …} — голый литерал перечня;
+//	return v                                     — переменная перечня (ниже).
 //
-// Иное — отказ errNoSignInList с координатой возврата: перечень, собранный
-// помощником, срезом или переменной, — не тот, что написан в литерале (круг 3:
-// разбор собирал постоянные В ЛЮБОМ месте тела, и помощник, отдававший из
-// перечня первый способ, читался перечнем целиком).
+// Перечней на все возвраты — ровно один. Переменная перечня — локальная
+// переменная производителя, которую пишут ТОЛЬКО три формы (kacho#3032: пин
+// kaname 2cf9c852 дописывает ключ доступа под условием, Ф13):
+//
+//	v := []assurance.Method{…}                  — объявление голым литералом, одно;
+//	v = append(v, assurance.MethodY, …)          — дописывание постоянных словаря;
+//	return v                                     — возврат.
+//
+// Литерал объявления — нижняя граница значения: дописывание только добавляет, а
+// исполнится ли оно, разбор, не исполняющий ветвей, не знает. Поэтому
+// провязанными ДОСТОВЕРНО считаются способы литерала, дописанные называются
+// отдельно и уровня не поднимают («неизвестно» может отнять достижимость, но не
+// добавить её).
+//
+// Иное — отказ errNoSignInList с координатой: перечень, собранный помощником,
+// срезом, псевдонимом, замыканием или переменной, заведённой не литералом, — не
+// тот, что написан в литерале (круг 3: разбор собирал постоянные В ЛЮБОМ месте
+// тела, и помощник, отдававший из перечня первый способ, читался перечнем целиком).
 func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, string, error) {
+	certain, _, where, err := ownSignInMethods(root, vocab)
+	return certain, where, err
+}
+
+// ownSignInMethods — перечень производителя: способы, провязанные достоверно,
+// дописанные к ним и координата литерала.
+func ownSignInMethods(root goPackageSource, vocab map[string]string) (certain, maybe []string, listAt string, err error) {
 	laneWiringSignInArg, err := laneWiringSignInIndex(root)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	var producers []string
 	for _, rel := range root.sortedFiles() {
@@ -987,7 +1009,7 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		})
 	}
 	if len(producers) != 1 || producers[0] == "" {
-		return nil, "", fmt.Errorf("%w: вызовов %s с методом-производителем способов найдено %d (%v), ждали ровно один",
+		return nil, nil, "", fmt.Errorf("%w: вызовов %s с методом-производителем способов найдено %d (%v), ждали ровно один",
 			errNoSignInList, laneWiringObserver, len(producers), producers)
 	}
 	producer := producers[0]
@@ -1004,13 +1026,19 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		}
 	}
 	if len(found) != 1 {
-		return nil, "", fmt.Errorf("%w: метод %s объявлен %d раз (%v)", errNoSignInList, producer, len(found), where)
+		return nil, nil, "", fmt.Errorf("%w: метод %s объявлен %d раз (%v)", errNoSignInList, producer, len(found), where)
 	}
 
 	assurancePath := productModuleprefix + kanameModulePart + "/" + kanameAssurancePackage
 	var lists []*ast.CompositeLit
 	var odd []*ast.ReturnStmt
+	var grown []ast.Expr
+	listVars := map[*types.Var]bool{}
+	var varErr error
 	ast.Inspect(found[0].Body, func(n ast.Node) bool {
+		if varErr != nil {
+			return false
+		}
 		switch n := n.(type) {
 		case *ast.FuncLit:
 			return false
@@ -1019,16 +1047,32 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 			case len(n.Results) == 1 && root.isPredeclared(n.Results[0], "nil"):
 			case len(n.Results) == 1 && isMethodListLiteral(root, n.Results[0], assurancePath):
 				lists = append(lists, n.Results[0].(*ast.CompositeLit))
+			case len(n.Results) == 1 && root.localVar(found[0], n.Results[0]) != nil:
+				v := root.localVar(found[0], n.Results[0])
+				if listVars[v] {
+					break
+				}
+				listVars[v] = true
+				lit, appended, err := root.methodListVar(found[0], v, assurancePath)
+				if err != nil {
+					varErr = err
+					return false
+				}
+				lists = append(lists, lit)
+				grown = append(grown, appended...)
 			default:
 				odd = append(odd, n)
 			}
 		}
 		return true
 	})
+	if varErr != nil {
+		return nil, nil, "", varErr
+	}
 	if len(odd) > 0 {
-		return nil, "", fmt.Errorf("%w: %s: %s возвращает `%s` — не голый литерал `[]assurance.Method{…}` и не `nil`: "+
-			"самоотчёт получает значение, которое разбор литерала не видит", errNoSignInList, root.coordinate(odd[0]),
-			producer, root.text(odd[0]))
+		return nil, nil, "", fmt.Errorf("%w: %s: %s возвращает `%s` — не голый литерал `[]assurance.Method{…}`, не `nil` "+
+			"и не переменная перечня: самоотчёт получает значение, которое разбор литерала не видит", errNoSignInList,
+			root.coordinate(odd[0]), producer, root.text(odd[0]))
 	}
 	if len(lists) != 1 {
 		at := where[0]
@@ -1039,20 +1083,51 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		if len(each) > 0 {
 			at = each[0]
 		}
-		return nil, "", fmt.Errorf("%w: %s: %s возвращает перечней %d (%s), ждали ровно один — какой из них получает "+
+		return nil, nil, "", fmt.Errorf("%w: %s: %s возвращает перечней %d (%s), ждали ровно один — какой из них получает "+
 			"самоотчёт, решает ход исполнения, а не литерал", errNoSignInList, at, producer, len(lists),
 			strings.Join(each, ", "))
 	}
 	list := lists[0]
 	at := root.coordinate(list)
 
+	seen, err := root.vocabularyNames(list.Elts, at, assurancePath, vocab)
+	if err != nil {
+		return nil, nil, at, err
+	}
+	// Пустой литерал — не «служба не провязала ничего»: ветка «полоса не поднята»
+	// возвращает nil рядом с перечнем, а не вместо него.
+	if len(seen) == 0 {
+		return nil, nil, at, fmt.Errorf("%w: %s не называет ни одной постоянной словаря службы", errNoSignInList, at)
+	}
+	added, err := root.vocabularyNames(grown, at, assurancePath, vocab)
+	if err != nil {
+		return nil, nil, at, err
+	}
+	for m := range added {
+		if !seen[m] {
+			maybe = append(maybe, m)
+		}
+	}
+	sort.Strings(maybe)
+	certain = make([]string, 0, len(seen))
+	for m := range seen {
+		certain = append(certain, m)
+	}
+	sort.Strings(certain)
+	return certain, maybe, at, nil
+}
+
+// vocabularyNames — имена словаря службы у элементов перечня; элемент, который не
+// постоянная словаря, — отказ с его координатой.
+func (s goPackageSource) vocabularyNames(elts []ast.Expr, at, assurancePath string, vocab map[string]string,
+) (map[string]bool, error) {
 	seen := map[string]bool{}
 	var unknown []string
-	for _, el := range list.Elts {
+	for _, el := range elts {
 		sel, ok := el.(*ast.SelectorExpr)
-		if !ok || !root.importOf(sel.X, assurancePath) {
-			return nil, at, fmt.Errorf("%w: %s: элемент перечня `%s` — не постоянная словаря службы", errNoSignInList,
-				root.coordinate(el), root.text(el))
+		if !ok || !s.importOf(sel.X, assurancePath) {
+			return nil, fmt.Errorf("%w: %s: элемент перечня `%s` — не постоянная словаря службы", errNoSignInList,
+				s.coordinate(el), s.text(el))
 		}
 		name, ok := vocab[sel.Sel.Name]
 		if !ok {
@@ -1062,19 +1137,105 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		seen[name] = true
 	}
 	if len(unknown) > 0 {
-		return nil, at, fmt.Errorf("%w: %s называет постоянные вне словаря службы: %v", errNoSignInList, at, unknown)
+		return nil, fmt.Errorf("%w: %s называет постоянные вне словаря службы: %v", errNoSignInList, at, unknown)
 	}
-	// Пустой литерал — не «служба не провязала ничего»: ветка «полоса не поднята»
-	// возвращает nil рядом с перечнем, а не вместо него.
-	if len(seen) == 0 {
-		return nil, at, fmt.Errorf("%w: %s не называет ни одной постоянной словаря службы", errNoSignInList, at)
+	return seen, nil
+}
+
+// localVar — переменная, объявленная в теле fd, которую называет выражение e;
+// nil — e не такое имя.
+func (s goPackageSource) localVar(fd *ast.FuncDecl, e ast.Expr) *types.Var {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return nil
 	}
-	out := make([]string, 0, len(seen))
-	for m := range seen {
-		out = append(out, m)
+	v, ok := s.info.Uses[id].(*types.Var)
+	if !ok || v.Pos() < fd.Body.Pos() || v.Pos() >= fd.Body.End() {
+		return nil
 	}
-	sort.Strings(out)
-	return out, at, nil
+	return v
+}
+
+// methodListVar — переменная перечня v в теле производителя: литерал её
+// объявления и элементы, которые к ней дописаны. Каждое упоминание v обязано
+// стоять в одной из трёх форм (ownWiredMethods); иное — отказ с координатой
+// упоминания, потому что значение тогда меняется мимо разбора.
+func (s goPackageSource) methodListVar(fd *ast.FuncDecl, v *types.Var, assurancePath string,
+) (*ast.CompositeLit, []ast.Expr, error) {
+	names := func(id *ast.Ident) bool { return s.info.Uses[id] == v || s.info.Defs[id] == v }
+	isV := func(e ast.Expr) bool { id, ok := e.(*ast.Ident); return ok && names(id) }
+
+	lawful := map[*ast.Ident]bool{}
+	var lit *ast.CompositeLit
+	var appended []ast.Expr
+	var refusal error
+	var stack []ast.Node
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		if refusal != nil {
+			return false
+		}
+		stack = append(stack, n)
+		inClosure := false
+		for _, a := range stack {
+			if _, ok := a.(*ast.FuncLit); ok {
+				inClosure = true
+			}
+		}
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			if inClosure || len(n.Lhs) != 1 || len(n.Rhs) != 1 || !isV(n.Lhs[0]) {
+				break
+			}
+			switch n.Tok {
+			case token.DEFINE:
+				if !isMethodListLiteral(s, n.Rhs[0], assurancePath) {
+					refusal = fmt.Errorf("%w: %s: переменная перечня `%s` заведена не голым литералом "+
+						"`[]assurance.Method{…}`: `%s`", errNoSignInList, s.coordinate(n), v.Name(), s.text(n))
+					return false
+				}
+				lit = n.Rhs[0].(*ast.CompositeLit)
+				lawful[n.Lhs[0].(*ast.Ident)] = true
+			case token.ASSIGN:
+				call, ok := n.Rhs[0].(*ast.CallExpr)
+				if !ok || !s.isPredeclared(call.Fun, "append") || call.Ellipsis.IsValid() || len(call.Args) < 2 ||
+					!isV(call.Args[0]) {
+					break
+				}
+				lawful[n.Lhs[0].(*ast.Ident)] = true
+				lawful[call.Args[0].(*ast.Ident)] = true
+				appended = append(appended, call.Args[1:]...)
+			}
+		case *ast.ReturnStmt:
+			if !inClosure && len(n.Results) == 1 && isV(n.Results[0]) {
+				lawful[n.Results[0].(*ast.Ident)] = true
+			}
+		}
+		return true
+	})
+	if refusal != nil {
+		return nil, nil, refusal
+	}
+	var outside []*ast.Ident
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && names(id) && !lawful[id] {
+			outside = append(outside, id)
+		}
+		return true
+	})
+	if len(outside) > 0 {
+		return nil, nil, fmt.Errorf("%w: %s: переменная перечня `%s` упомянута вне формы перечня (объявление "+
+			"литералом, `= append(%s, …)`, `return %s`) — значение меняется мимо разбора", errNoSignInList,
+			s.coordinate(outside[0]), v.Name(), v.Name(), v.Name())
+	}
+	if lit == nil {
+		return nil, nil, fmt.Errorf("%w: %s: переменная перечня `%s` заведена не голым литералом `[]assurance.Method{…}`",
+			errNoSignInList, s.coordinate(posNode(v.Pos())), v.Name())
+	}
+	return lit, appended, nil
 }
 
 // isMethodListLiteral — `[]<импорт пакета правила>.Method{…}`.
@@ -2165,6 +2326,9 @@ type secondFactorSides struct {
 	First       []string // способы, которыми сессия выдаётся
 	Second      []string // способы, поднимающие сессию до «2»
 	Drivable    []string // способы, которые консоль ведёт на этой посадке
+	// Appended — способы, которые сторона службы дописывает к перечню под
+	// условием: провязанными достоверно они не считаются и уровня не поднимают.
+	Appended []string
 	// Floors и Usable — вердикт посадки: какие полы достижимы и какими способами
 	// до «2» поднимают обе стороны сразу. Считает его строитель сторон посадки
 	// правилом этой посадки (own — правило службы у пина).
@@ -2234,7 +2398,7 @@ func judgeSecondFactorReach(s secondFactorSides, byFloor map[string][]string) (c
 func ownSecondFactorSides(pin string, root goPackageSource, vocab map[string]string, rule ownRule,
 	console string,
 ) (secondFactorSides, error) {
-	wired, where, err := ownWiredMethods(root, vocab)
+	wired, appended, where, err := ownSignInMethods(root, vocab)
 	if err != nil {
 		return secondFactorSides{}, fmt.Errorf("корень службы доступа у пина %s: %w", pin, err)
 	}
@@ -2249,6 +2413,7 @@ func ownSecondFactorSides(pin string, root goPackageSource, vocab map[string]str
 		First:       rule.signIn(wired),
 		Second:      rule.lifting(wired, wired, 2),
 		Drivable:    drivable,
+		Appended:    appended,
 		Floors:      rule.floors(wired, drivable),
 		Usable:      rule.lifting(wired, drivable, 2),
 	}, nil
@@ -2359,6 +2524,10 @@ func TestIdentity_SecondFactorReachesTheBrowser(t *testing.T) {
 			len(sides.Second), strings.Join(sides.Second, " "), sides.ServiceFrom,
 			len(sides.Drivable), strings.Join(sides.Drivable, " "), sides.ConsoleFrom,
 			len(usable), strings.Join(usable, " "))
+		if len(sides.Appended) > 0 {
+			t.Logf("посадка %s: дописаны под условием и не засчитаны %d (%s)", landing, len(sides.Appended),
+				strings.Join(sides.Appended, " "))
+		}
 		for _, c := range census {
 			t.Logf("перепись каталога: %s", c)
 		}

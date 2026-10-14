@@ -165,6 +165,20 @@ MAILBOX_PORT="${MAILBOX_PORT:-18025}"
 MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
 kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pp-mailbox.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$MAILBOX_PORT|приёмник писем стенда, чтение (:8025)|/tmp/e2e-pp-mailbox.log")
 
+# ─── ВНУТРЕННИЙ REST-СЛУШАТЕЛЬ КРАЯ: mTLS И ТОЛЬКО ОН (kacho#3131) ──────────
+#
+# {{internalBaseUrl}} — https: слушатель требует лист операторской личности
+# (kacho-internal-rest-operator-client-tls) и проверяется по УЦ установки, без
+# ослабления. Лист — списком по адресу внутреннего слушателя, а не глобальным
+# флагом. Посев (setup.sh) получает тот же материал через INTERNAL_REST_*.
+# Секрета нет — прогон отказывает здесь: открытым текстом слушатель не отвечает.
+# shellcheck source=deploy/scripts/lib/internal-rest-client.sh
+. "$SCRIPT_DIR/lib/internal-rest-client.sh"
+IR_DIR="$(mktemp -d)"; TMP_DIRS+=("$IR_DIR")
+internal_rest_client_leaf "$NS" "$IR_DIR" \
+  || { echo "[parallel] FATAL: секрета $INTERNAL_REST_OPERATOR_SECRET нет — внутренний слушатель края недостижим" >&2; exit 1; }
+internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
+
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ, А НЕ ВЫПИСЫВАЕТСЯ ────
 #
 # Кейсы `kaname-own-rest-front` спрашивают СОБСТВЕННУЮ поверхность службы, а не
@@ -424,7 +438,7 @@ if [ "$SEED" = "true" ]; then
     echo "[parallel] посев расширен по факту о стенде: суиты «$SERVICES» → посев «$SEED_SERVICES»"
   fi
 
-  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
       PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
       MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
@@ -567,12 +581,13 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
     ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
         --env-var "baseUrl=http://localhost:$GW_PORT" \
-        --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+        --env-var "internalBaseUrl=https://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
         --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
         ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+        "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
         "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!

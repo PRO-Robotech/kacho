@@ -261,8 +261,9 @@ spec:
               containerPort: {{ .Values.ports.internalRest }}
             {{- end }}
             # Слушатель полосы входа паролем (Ф3, kacho#1269): по нему край
-            # ретранслирует четыре глагола формы. Порт объявляется ПРОФИЛЕМ,
-            # умолчания нет; незаданный порт — отказ старта с именем ручки.
+            # ретранслирует глаголы формы — перечень объявляет служба (kaname,
+            # `loginlanehttp.Paths()`). Порт объявляется ПРОФИЛЕМ, умолчания
+            # нет; незаданный порт — отказ старта с именем ручки.
             {{- if .Values.ports.loginLane }}
             - name: http-login-lane
               containerPort: {{ .Values.ports.loginLane }}
@@ -660,6 +661,29 @@ spec:
                   name: {{ .signingKeySecretName }}
                   key: {{ .signingKeySecretKey | default "private_key_pem" }}
                   optional: true
+            {{- end }}
+            {{- end }}
+            {{- /* ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА (kacho#2878) — адрес ссылкой на
+            секрет (обязательной) либо величиной `email` для стенда, чей
+            человек — фикстура; обе формы сразу — отказ, как и литерал той же
+            переменной в карте `env`: два места об одном предмете. */}}
+            {{- with ((.Values.platform).iam).bootstrapRootAdmin }}
+            {{- if or .secretName .email }}
+            {{- if and .secretName .email }}
+            {{- fail (printf "kaname: первый администратор облака объявлен дважды — секретом (platform.iam.bootstrapRootAdmin.secretName = %q) и величиной (.email). Оставьте одну форму" .secretName) }}
+            {{- end }}
+            {{- if hasKey ($.Values.env | default dict) "KANAME_BOOTSTRAP_ROOT_EMAIL" }}
+            {{- fail "kaname: KANAME_BOOTSTRAP_ROOT_EMAIL объявлена дважды — ручкой platform.iam.bootstrapRootAdmin и литералом карты env. Адрес первого администратора облака задаётся одним местом; оставьте ручку" }}
+            {{- end }}
+            - name: KANAME_BOOTSTRAP_ROOT_EMAIL
+              {{- if .secretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName | quote }}
+                  key: {{ .emailKey | default "email" | quote }}
+              {{- else }}
+              value: {{ .email | quote }}
+              {{- end }}
             {{- end }}
             {{- end }}
             {{- range $k, $v := .Values.env }}

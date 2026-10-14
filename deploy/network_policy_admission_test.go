@@ -332,11 +332,13 @@ func parsePolicy(d map[string]any) (npPolicy, error) {
 		return p, fmt.Errorf("политика %s: цель: %w", p.name, err)
 	}
 	p.target = sel
-	types, hasTypes := spec["policyTypes"].([]any)
-	if !hasTypes {
-		// Умолчание API: Ingress всегда, Egress — если правила исхода названы.
+	types, _ := spec["policyTypes"].([]any)
+	if len(types) == 0 {
+		// Умолчание API (defaults.go сервера): поле опущено ЛИБО пусто —
+		// Ingress всегда, Egress — если список правил исхода непуст.
 		p.ingress = true
-		_, p.egress = spec["egress"]
+		egress, _ := spec["egress"].([]any)
+		p.egress = len(egress) > 0
 	}
 	for _, t := range types {
 		switch t {
@@ -360,6 +362,7 @@ func parsePolicy(d map[string]any) (npPolicy, error) {
 
 type npServicePort struct {
 	port   int
+	name   string // имя порта службы — по нему бэкенд входа называет порт
 	target any
 }
 
@@ -541,18 +544,12 @@ type npVerdict struct {
 	findings                                             []string
 }
 
-// judgeNetworkPolicies — обе половины по документам одного рендера.
-//
-// Ошибка — отказ, а не находка: документ, которого судья не умеет прочесть,
-// сужал бы перепись молча.
-func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
-	var (
-		v        npVerdict
-		works    []npWorkload
-		services = map[string]npService{}
-		maps     = map[string]map[string]any{}
-		policies []npPolicy
-	)
+// npIndexDocs — рабочие объекты, службы с селектором, карты настроек и
+// политики сети пространства ns из документов одного рендера.
+func npIndexDocs(ns string, docs []map[string]any) (works []npWorkload, services map[string]npService,
+	maps map[string]map[string]any, policies []npPolicy, err error) {
+	services = map[string]npService{}
+	maps = map[string]map[string]any{}
 	for _, d := range docs {
 		md, _ := d["metadata"].(map[string]any)
 		if docNS, ok := md["namespace"].(string); ok && docNS != "" && docNS != ns {
@@ -577,13 +574,14 @@ func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
 				if target == nil {
 					target = num
 				}
-				s.ports = append(s.ports, npServicePort{port: num, target: target})
+				pname, _ := pm["name"].(string)
+				s.ports = append(s.ports, npServicePort{port: num, name: pname, target: target})
 			}
 			services[name] = s
 		case "NetworkPolicy":
-			p, err := parsePolicy(d)
-			if err != nil {
-				return v, err
+			p, perr := parsePolicy(d)
+			if perr != nil {
+				return nil, nil, nil, nil, perr
 			}
 			policies = append(policies, p)
 		default:
@@ -596,6 +594,19 @@ func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
 			works = append(works, npWorkload{kind: fmt.Sprint(d["kind"]), name: name,
 				labels: stringMap(tm["labels"]), spec: spec})
 		}
+	}
+	return works, services, maps, policies, nil
+}
+
+// judgeNetworkPolicies — обе половины по документам одного рендера.
+//
+// Ошибка — отказ, а не находка: документ, которого судья не умеет прочесть,
+// сужал бы перепись молча.
+func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
+	var v npVerdict
+	works, services, maps, policies, err := npIndexDocs(ns, docs)
+	if err != nil {
+		return v, err
 	}
 	if len(works) == 0 {
 		return v, fmt.Errorf("в рендере ни одного рабочего объекта — судить нечего, это не «чисто»")
@@ -644,26 +655,7 @@ func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
 
 	// (Б) Достижимость.
 	for _, w := range works {
-		corpus := append([]any{w.spec}, configSources(w.spec, maps)...)
-		seen := map[npHostPort]bool{}
-		for _, c := range corpus {
-			npWalkStrings(c, func(s string) {
-				for _, hp := range dialTargets(s, ns) {
-					seen[hp] = true
-				}
-			})
-		}
-		dials := make([]npHostPort, 0, len(seen))
-		for hp := range seen {
-			dials = append(dials, hp)
-		}
-		sort.Slice(dials, func(i, j int) bool {
-			if dials[i].host != dials[j].host {
-				return dials[i].host < dials[j].host
-			}
-			return dials[i].port < dials[j].port
-		})
-		for _, hp := range dials {
+		for _, hp := range npDialsOf(w, ns, maps) {
 			svc, ok := services[hp.host]
 			if !ok {
 				continue
@@ -739,6 +731,32 @@ func judgeNetworkPolicies(ns string, docs []map[string]any) (npVerdict, error) {
 	}
 	sort.Strings(v.findings)
 	return v, nil
+}
+
+// npDialsOf — адреса `служба:порт` пространства ns, названные в настройках
+// рабочего объекта (спецификация пода и карты, которые он получает), в
+// устойчивом порядке.
+func npDialsOf(w npWorkload, ns string, maps map[string]map[string]any) []npHostPort {
+	corpus := append([]any{w.spec}, configSources(w.spec, maps)...)
+	seen := map[npHostPort]bool{}
+	for _, c := range corpus {
+		npWalkStrings(c, func(s string) {
+			for _, hp := range dialTargets(s, ns) {
+				seen[hp] = true
+			}
+		})
+	}
+	dials := make([]npHostPort, 0, len(seen))
+	for hp := range seen {
+		dials = append(dials, hp)
+	}
+	sort.Slice(dials, func(i, j int) bool {
+		if dials[i].host != dials[j].host {
+			return dials[i].host < dials[j].host
+		}
+		return dials[i].port < dials[j].port
+	})
+	return dials
 }
 
 func orDashNP(s string) string {

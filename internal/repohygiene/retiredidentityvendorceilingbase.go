@@ -73,8 +73,10 @@ package repohygiene
 // на базе. Байты раскладываются по категориям ТЕМ ЖЕ классификатором
 // (`vendorTreeCorpus.add`), что читает дерево изменения, поэтому неизменённый
 // файл на обоих концах — одно и то же. Служба доступа и фундамент на базе
-// читаются по пину `go.mod` БАЗЫ: пин тот же — дерево то же, пин другой — модуль
-// этой версии из кэша модулей.
+// читаются по ФАКТИЧЕСКОМУ ИСТОЧНИКУ в `go.mod` БАЗЫ — пину и директиве
+// `replace` (`vendorSource`, #3002): источник тот же — дерево то же, другой —
+// модуль источника базы из кэша модулей. Подмена локальным каталогом на базе —
+// ОТКАЗ: каталог go.mod не закрепляет, и дерево базы не восстановимо.
 //
 // Символическая ссылка среди расходящихся путей базы — ОТКАЗ: читатель дерева
 // изменения её разыменовывает, а объект базы — это текст ссылки, и сравнение
@@ -457,6 +459,59 @@ func vendorGoModPins(gomod []byte) (map[string]string, error) {
 	return pins, nil
 }
 
+// vendorSource — то, что сборка ФАКТИЧЕСКИ подставляет на место модуля: пин
+// требования и директива `replace`, если она его касается. Одинаковый пин при
+// разной подмене — разные деревья: `go list -m` читает дерево изменения по
+// подмене, и база, взятая равной голове по одному пину, прятала бы рост в
+// подменённой копии (#3002).
+type vendorSource struct {
+	// Pin — версия требования.
+	Pin string
+	// Replaced — директива `replace` касается модуля (всех версий либо его пина).
+	Replaced bool
+	// Path, Version — цель подмены. Version пуста у подмены локальным каталогом:
+	// такое дерево go.mod не закрепляет, и восстановить его на базе нечем.
+	Path, Version string
+}
+
+func (s vendorSource) String() string {
+	switch {
+	case !s.Replaced:
+		return "пин " + s.Pin
+	case s.Version == "":
+		return fmt.Sprintf("пин %s, подмена каталогом %s", s.Pin, s.Path)
+	default:
+		return fmt.Sprintf("пин %s, подмена %s@%s", s.Pin, s.Path, s.Version)
+	}
+}
+
+// vendorGoModSources — фактический источник каждого требования: пин и
+// подмена, разобранные тем же парсером, что [vendorGoModPins]. Подмена с
+// версией слева касается только этой версии требования, без версии — всех.
+func vendorGoModSources(gomod []byte) (map[string]vendorSource, error) {
+	pins, err := vendorGoModPins(gomod)
+	if err != nil {
+		return nil, err
+	}
+	f, err := modfile.Parse("go.mod", gomod, nil)
+	if err != nil {
+		return nil, fmt.Errorf("разбор go.mod: %w", err)
+	}
+	out := make(map[string]vendorSource, len(pins))
+	for module, pin := range pins {
+		out[module] = vendorSource{Pin: pin}
+	}
+	for _, r := range f.Replace {
+		src, ok := out[r.Old.Path]
+		if !ok || (r.Old.Version != "" && r.Old.Version != src.Pin) {
+			continue
+		}
+		src.Replaced, src.Path, src.Version = true, r.New.Path, r.New.Version
+		out[r.Old.Path] = src
+	}
+	return out, nil
+}
+
 // vendorModuleDirAt — каталог модуля нужной версии в кэше модулей.
 func vendorModuleDirAt(root, module, version string) (string, error) {
 	cmd := exec.Command("go", "mod", "download", "-json", module+"@"+version) // #nosec G204 -- модуль из закрытого перечня
@@ -535,11 +590,11 @@ func retiredVendorBaseCorpora(
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: go.mod базы не читается: %w", errVendorBase, err)
 	}
-	basePins, err := vendorGoModPins(baseGoMod)
+	baseSources, err := vendorGoModSources(baseGoMod)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 	}
-	headPins, err := vendorGoModPins(headGoMod)
+	headSources, err := vendorGoModSources(headGoMod)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 	}
@@ -548,21 +603,32 @@ func retiredVendorBaseCorpora(
 		if !ok {
 			continue
 		}
-		was, now := basePins[module], headPins[module]
-		switch was {
-		case "":
+		was, now := baseSources[module], headSources[module]
+		switch {
+		case was.Pin == "":
 			return nil, nil, fmt.Errorf("%w: на базе ребра %s нет — дерево %s сравнить не с чем",
 				errVendorBase, module, tree)
-		case now:
+		case was.Replaced && was.Version == "":
+			// Каталог подмены go.mod не закрепляет: одна и та же строка на
+			// обоих концах не значит одно и то же дерево, а прочитать каталог
+			// на ревизии базы нечем.
+			return nil, nil, fmt.Errorf("%w: на базе ребро %s подменено локальным каталогом %s — "+
+				"дерево %s на базе не восстановимо, и «то же дерево» было бы догадкой",
+				errVendorBase, module, was.Path, tree)
+		case was == now:
 			base[tree] = head[tree]
-			hows = append(hows, fmt.Sprintf("%s: пин тот же %s", tree, now))
+			hows = append(hows, fmt.Sprintf("%s: источник тот же (%s)", tree, now))
 		default:
-			c, err := fetch(module, was)
+			from, version := module, was.Pin
+			if was.Replaced {
+				from, version = was.Path, was.Version
+			}
+			c, err := fetch(from, version)
 			if err != nil {
 				return nil, nil, err
 			}
 			base[tree] = c
-			hows = append(hows, fmt.Sprintf("%s: пин базы %s, изменения %s", tree, was, now))
+			hows = append(hows, fmt.Sprintf("%s: источник базы %s, изменения %s", tree, was, now))
 		}
 	}
 	return base, hows, nil

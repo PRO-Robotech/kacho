@@ -39,6 +39,13 @@
 #         2 — вызван неверно либо нет jq.
 # «Спросить не удалось» и «подов края ноль» готовностью не являются НИКОГДА.
 #
+# ДОРОГА ВОПРОСА — EDGE_READY_VIA (kacho#3102). Умолчание `proxy` — прокси
+# API-сервера, как выше. На управляемом кластере прокси API-сервера до адресов
+# подов не доходит (замер на внешнем кластере: `504 Gateway Timeout` у пода
+# РАБОЧЕГО стенда так же, как у тестового), и вопрос там задаётся `port-forward`:
+# проброс к тому же порту `cmux` того же пода через кубелет. Предмет вопроса и
+# исходы те же; меняется только дорога, и выбирает её вызывающий, знающий кластер.
+#
 # Проба: deploy/tests/helm/edge-ready-before-seed-test.sh.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -59,6 +66,36 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 kc() { kubectl -n "$ns" "$@" --request-timeout=10s; }
+
+VIA="${EDGE_READY_VIA:-proxy}"
+case "$VIA" in proxy | port-forward) ;; *) echo "wait-edge-ready: EDGE_READY_VIA=$VIA — допустимы proxy и port-forward" >&2; exit 2 ;; esac
+
+# ask_ready ПОД ПОРТ — ответ /readyz пода; код 0 — ответ 200.
+ask_ready() {
+  if [ "$VIA" = proxy ]; then
+    kc get --raw "/api/v1/namespaces/$ns/pods/$1:$2/proxy/readyz" 2>&1
+    return
+  fi
+  local log pf lp code rc=1
+  log="$(mktemp)"
+  kubectl -n "$ns" port-forward "pod/$1" ":$2" >"$log" 2>&1 &
+  pf=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    lp="$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) .*/\1/p' "$log" | head -1)"
+    [ -n "$lp" ] && break
+    sleep 0.5
+  done
+  if [ -z "$lp" ]; then
+    first_line "$(cat "$log")"
+  else
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://127.0.0.1:$lp/readyz" || true)"
+    echo "HTTP $code"
+    [ "$code" = 200 ] && rc=0
+  fi
+  kill "$pf" 2>/dev/null; wait "$pf" 2>/dev/null
+  rm -f "$log"
+  return "$rc"
+}
 first_line() { printf '%s\n' "$1" | sed -n '1p'; }
 
 # opros → 0, если на этом опросе край готов; иначе причина — в $why.
@@ -97,7 +134,7 @@ opros() {
       bad="${bad:+$bad; }$name: у пода нет порта cmux — спрашивать /readyz некуда"
       continue
     fi
-    if ! answer="$(kc get --raw "/api/v1/namespaces/$ns/pods/$name:$port/proxy/readyz" 2>&1)"; then
+    if ! answer="$(ask_ready "$name" "$port")"; then
       bad="${bad:+$bad; }$name: /readyz не 200 — $(first_line "$answer")"
     fi
   done <<<"$edge"

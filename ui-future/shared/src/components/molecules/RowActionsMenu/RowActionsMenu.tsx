@@ -16,7 +16,7 @@ import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
 import { RowVerbDialog } from "@shared/components/molecules/RowActionsMenu/RowVerbDialog";
 import { useSelfUserId } from "@shared/contexts/AuthContext";
 import { useContext } from "@shared/lib/context-store";
-import { getByPath, mutationBasePath, REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
   spec: ResourceSpec;
@@ -237,9 +237,8 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const name = getByPath<string>(row, "name") ?? id;
   const drillTarget = spec.childRoute ? spec.childRoute.replace(":id", id) : `${basePath}/${id}`;
   const drillIsChild = !!spec.childRoute;
-  // Удаление/перемещение адресуют admin-плоскость, если она есть: DELETE по
-  // публичному пути geo Region/Zone не смаршрутизирован.
-  const editPath = `${mutationBasePath(spec)}/${id}`;
+  // Удаление/перемещение адресуют путь ресурса (#3094).
+  const editPath = `${spec.apiPath}/${id}`;
 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(row, "default_for_network"));
   const showDelete = spec.ops.delete && !isDefaultSg;

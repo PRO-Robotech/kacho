@@ -27,7 +27,7 @@ const covered = (address: string, prefixes: string[]) => prefixes.some((p) => ad
 function specAddresses(): string[] {
   const out = new Set<string>();
   for (const spec of ROUTED_SPECS) {
-    for (const p of [spec.apiPath, spec.admin?.basePath, spec.internalGetPath]) {
+    for (const p of [spec.apiPath, spec.internalGetPath]) {
       if (p) out.add(p);
     }
   }

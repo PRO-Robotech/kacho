@@ -271,3 +271,27 @@ SPDX-License-Identifier: BUSL-1.1
 {{- if and (ne $anchorOnly "") (not $uriSet) }}
 {{- fail (printf "kacho-umbrella: якорь почтового узла объявлен (`global.kacho.identity.smtp.trustAnchorSecret.name` = %q), а узел полосы НЕ задан — проверять нечего. Обе половины объявляются вместе" $anchorOnly) }}
 {{- end }}
+
+{{/* ── (9) БОЕВОЙ РЕЖИМ СЛУЖБЫ ДОСТУПА БЕЗ ПОЧТОВОГО УЗЛА (kacho#3020) ────
+     С kaname#475 почтовый узел — условие боевого старта службы: в режимах
+     production и production-strict (Mode.IsProduction процесса) без
+     `invite-mail.relay` и `invite-mail.from` процесс в старте отказывает. Код
+     подтверждения адреса и код восстановления доступа уходят только письмом, и
+     без узла дальше входа не прошёл бы ни один человек. Здесь отказ наступает
+     раньше — при рендере, по объявлению профиля, и называет снятый ключ.
+
+     Режим берётся ТЕМ ЖЕ определением, что пишет `authn.mode` в карту службы
+     (`kaname.authMode` подчарта, умолчание production), — второго вывода
+     режима здесь не заводится. Стоит ПОСЛЕДНИМ: отказы выше называют более
+     узкую причину (половина пары, якорь без полосы) и обязаны срабатывать
+     первыми. Вне боевого режима пустой узел законен, и процесс его так и
+     читает. */}}
+{{- $kanameMode := default "production" (include "kaname.authMode" (dict "Values" (.Values.kaname | default dict))) }}
+{{- if has $kanameMode (list "production" "production-strict") }}
+{{- if not $uriSet }}
+{{- fail (printf "kacho-umbrella: служба доступа поднимается в боевом режиме %q, а почтовый узел НЕ задан (`global.kacho.identity.smtp.connectionURI` пуст). Процесс в этом режиме без узла в старте отказывает (invite-mail.relay, kaname#475): коды подтверждения адреса и восстановления доступа уходят только письмом. Объяви узел в профиле; боевой профиль чарта несёт заглушку, которую заменяет ставящий" $kanameMode) }}
+{{- end }}
+{{- if not $fromSet }}
+{{- fail (printf "kacho-umbrella: служба доступа поднимается в боевом режиме %q, а адрес отправителя НЕ задан (`global.kacho.identity.smtp.fromAddress` пуст). Процесс в этом режиме без него в старте отказывает (invite-mail.from, kaname#475)" $kanameMode) }}
+{{- end }}
+{{- end }}

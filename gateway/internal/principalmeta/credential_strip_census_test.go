@@ -104,6 +104,9 @@ var credentialReaderCensus = map[string]credentialReaderGroup{
 	// след: перечень перестал бы сходиться с деревом, и следующий читатель искал
 	// бы координату, которой нет.
 	"terraform/internal/client/client.go": groupWritesOutgoing,
+	// Харнесс приёмки KA1: ставит удостоверение в СВОИ пробные запросы к краю
+	// (Bearer, DPoP) — клиент, а не читатель.
+	"gateway/internal/e2e/ka1stand/stand.go": groupWritesOutgoing,
 
 	"gateway/internal/handler/logout_handler.go":          groupReadsAtTheEdge,
 	"gateway/internal/middleware/auth.go":                 groupReadsAtTheEdge,

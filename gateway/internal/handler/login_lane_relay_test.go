@@ -47,7 +47,7 @@ type fakeCut struct {
 	err    error
 }
 
-func (f *fakeCut) SessionCutoffOf(context.Context, string) (time.Time, bool, error) {
+func (f *fakeCut) SessionCutoffOf(context.Context, middleware.CutoffSubject) (time.Time, bool, error) {
 	return f.cutoff, f.found, f.err
 }
 
@@ -267,10 +267,13 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 	if stub.count() != 3 {
 		t.Fatalf("ретранслировано %d, ожидалось 3", stub.count())
 	}
-	// Тот же дублёр на смене пароля → F4d-23 на крае, ретранслировано 0 сверх.
+	// Тот же дублёр на смене пароля → ответ Р1 приёмки KA1 на крае (503, носитель
+	// цел; заменил F4d-23), ретранслировано 0 сверх.
 	rec := httptest.NewRecorder()
 	chain.ServeHTTP(rec, formRequest(http.MethodPost, middleware.LoginLanePathPassword, `{}`))
-	if rec.Code != http.StatusUnauthorized || stub.count() != 3 {
+	if rec.Code != http.StatusServiceUnavailable || stub.count() != 3 ||
+		!strings.Contains(rec.Body.String(), "credential state could not be established") ||
+		len(rec.Result().Header["Set-Cookie"]) != 0 {
 		t.Fatalf("смена пароля при недоступном Resolve: %d, ретранслировано %d", rec.Code, stub.count())
 	}
 
@@ -327,5 +330,208 @@ func TestLoginLaneRelay_F3_51_ServiceResponsePassesThroughUnchanged(t *testing.T
 	// Личность на «сессии нет» полоса не выставляла — и в запросе её нет.
 	if left := kachoHeaders(stub.last().header); len(left) != 0 {
 		t.Fatalf("заголовки пространства на входе: %v", left)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F8-S5-09 — три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061)
+// ретранслируются на слушатель формы с описанием клиента.
+
+// ownSessionsPaths — три пути Р1 приёмки F8-S5, выписанные ДОСЛОВНО по её
+// таблице, а не взятые из объявления края: проба сверяет край с решением.
+var ownSessionsPaths = map[string]string{
+	"sessions":            "/iam/v1/auth/sessions",
+	"sessions-end":        "/iam/v1/auth/sessions/end",
+	"sessions-end-others": "/iam/v1/auth/sessions/end-others",
+}
+
+// ownSessionsRequest — запрос консоли на глагол своих сессий: носитель сессии,
+// описание клиента и всё, что ретранслятор обязан снять, — удостоверение в
+// обеих формах имени и заголовки пространства `x-kacho-*`, включая
+// подсемейство `x-kacho-token-` (номер записи сессии, идентификатор
+// предъявленного).
+func ownSessionsRequest(method, path, userAgent string) *http.Request {
+	body := ""
+	if method == http.MethodPost {
+		body = `{"id":"s-other","csrfToken":"x"}`
+	}
+	req := formRequest(method, path, body)
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	} else {
+		req.Header.Del("User-Agent")
+	}
+	req.Header.Set(principalmeta.BridgePrefix+"authorization", "Bearer must-not-cross-either")
+	req.Header.Set(principalmeta.HeaderTokenSessionID, "sess-record-7")
+	req.Header.Set(principalmeta.HeaderTokenJti, "jti-forged")
+	return req
+}
+
+func TestLoginLaneRelay_F8_S5_09_OwnSessionVerbsReachTheFormTargetWithTheClientDescription(t *testing.T) {
+	stub := &formListenerStub{status: http.StatusOK, body: `{}`}
+	srv := privateloopback.NewServer(t, stub)
+	t.Cleanup(srv.Close)
+	chain, relays := chainWithRelays(t, &fakeOwn{found: true, sess: liveSession()}, &fakeCut{}, srv.URL)
+	form := relays[middleware.RelayTargetForm]
+
+	serveOne := func(req *http.Request) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		chain.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// (а) перечень: GET с описанием клиента и носителем сессии.
+	rec := serveOne(ownSessionsRequest(http.MethodGet, ownSessionsPaths["sessions"], "f8-s5-09"))
+	if rec.Code != http.StatusOK || stub.count() != 1 {
+		t.Fatalf("F8-S5-09 (а): %d %q, принято целью %d — путь обязан ретранслироваться на слушатель формы", rec.Code, rec.Body.String(), stub.count())
+	}
+	got := stub.last()
+	if got.method != http.MethodGet || got.path != ownSessionsPaths["sessions"] {
+		t.Fatalf("F8-S5-09 (а): цель приняла %s %s", got.method, got.path)
+	}
+	if ua := got.header.Values("User-Agent"); len(ua) != 1 || ua[0] != "f8-s5-09" {
+		t.Errorf("F8-S5-09 (а): описание клиента не дошло дословно — цель получила User-Agent %q", ua)
+	}
+	if c := got.header.Get("Cookie"); !strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") {
+		t.Errorf("F8-S5-09 (а): носитель сессии не дошёл до цели: Cookie %q", c)
+	}
+	for name := range got.header {
+		if l := strings.ToLower(name); l == "authorization" || l == strings.ToLower(principalmeta.BridgePrefix+"authorization") {
+			t.Errorf("F8-S5-09 (а): удостоверение уехало на слушатель формы под именем %q", name)
+		}
+	}
+	if left := kachoHeaders(got.header); len(left) != 0 {
+		t.Errorf("F8-S5-09 (а): на слушатель формы уехали заголовки пространства x-kacho-: %v", left)
+	}
+
+	// (б), (в) снятие одной и снятие прочих — POST, приняты целью формы.
+	for _, verb := range []string{"sessions-end", "sessions-end-others"} {
+		before := stub.count()
+		rec := serveOne(ownSessionsRequest(http.MethodPost, ownSessionsPaths[verb], "f8-s5-09"))
+		if rec.Code != http.StatusOK || stub.count() != before+1 {
+			t.Errorf("F8-S5-09 %s: %d %q, принято целью %d (ожидался 1)", verb, rec.Code, rec.Body.String(), stub.count()-before)
+			continue
+		}
+		if got := stub.last(); got.method != http.MethodPost || got.path != ownSessionsPaths[verb] || got.body != `{"id":"s-other","csrfToken":"x"}` {
+			t.Errorf("F8-S5-09 %s: цель приняла %s %s %q — метод, путь и тело обязаны доехать как есть", verb, got.method, got.path, got.body)
+		}
+	}
+	stats := form.Stats()
+	for verb := range ownSessionsPaths {
+		if stats.Relayed[verb] != 1 {
+			t.Errorf("F8-S5-09: клетка ретрансляции %q = %d, ожидался 1 (%v)", verb, stats.Relayed[verb], stats.Relayed)
+		}
+	}
+
+	// (г) путь вне перечня — цель не вызвана, край отвечает как на неизвестный
+	// путь. Близнец — (а): различие одно, путь. Точность держит мультиплексор,
+	// собранный монтажом объявления; ретранслятор — второй рубеж.
+	before := stub.count()
+	rec = serveOne(ownSessionsRequest(http.MethodGet, "/iam/v1/auth/sessions/other", "f8-s5-09"))
+	unknown := serveOne(ownSessionsRequest(http.MethodGet, "/iam/v1/auth/no-such-verb", "f8-s5-09"))
+	if stub.count() != before {
+		t.Fatalf("F8-S5-09 (г): путь вне перечня дошёл до цели формы (%d обращений)", stub.count()-before)
+	}
+	if rec.Code != http.StatusNotFound || rec.Code != unknown.Code || rec.Body.String() != unknown.Body.String() {
+		t.Errorf("F8-S5-09 (г): ответ %d %q, на неизвестный путь край отвечает %d %q — обязаны совпасть",
+			rec.Code, rec.Body.String(), unknown.Code, unknown.Body.String())
+	}
+	direct := httptest.NewRecorder()
+	form.ServeHTTP(direct, ownSessionsRequest(http.MethodGet, "/iam/v1/auth/sessions/other", "f8-s5-09"))
+	if direct.Code != http.StatusNotFound || stub.count() != before {
+		t.Errorf("F8-S5-09 (г): ретранслятор формы напрямую ответил %d и довёз до цели %d — второй рубеж обязан отказать", direct.Code, stub.count()-before)
+	}
+
+	// Близнец без описания клиента: край не подставляет своё (имя HTTP-библиотеки
+	// края служба записала бы описанием клиента сессии).
+	rec = serveOne(ownSessionsRequest(http.MethodGet, ownSessionsPaths["sessions"], ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("F8-S5-09 близнец без User-Agent: %d %q", rec.Code, rec.Body.String())
+	}
+	if ua := stub.last().header.Get("User-Agent"); ua != "" {
+		t.Errorf("F8-S5-09 близнец без User-Agent: цель получила описание клиента %q, которого клиент не присылал", ua)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F8S6-10 — два глагола смены адреса почты (приёмка F8-S6 Р1, kacho#3062)
+// ретранслируются на слушатель формы; путь без записи отвечает краем 404.
+
+// emailChangePaths — два пути Р1 приёмки F8-S6, выписанные ДОСЛОВНО по её
+// решению, а не взятые из объявления края.
+var emailChangePaths = map[string]string{
+	"email-change":         "/iam/v1/auth/email-change",
+	"email-change-confirm": "/iam/v1/auth/email-change/confirm",
+}
+
+func TestLoginLaneRelay_F8S6_10_EmailChangeVerbsReachTheFormTargetPathWithoutRecordIsNot(t *testing.T) {
+	stub := &formListenerStub{status: http.StatusOK, body: `{}`}
+	srv := privateloopback.NewServer(t, stub)
+	t.Cleanup(srv.Close)
+	chain, relays := chainWithRelays(t, &fakeOwn{found: true, sess: liveSession()}, &fakeCut{}, srv.URL)
+	form := relays[middleware.RelayTargetForm]
+
+	serveOne := func(req *http.Request) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		chain.ServeHTTP(rec, req)
+		return rec
+	}
+	bodies := map[string]string{
+		"email-change":         `{"newEmail":"new@example.test","csrfToken":"x"}`,
+		"email-change-confirm": `{"code":"123456","csrfToken":"x"}`,
+	}
+
+	for verb, path := range emailChangePaths {
+		before := stub.count()
+		req := ownSessionsRequest(http.MethodPost, path, "f8s6-10")
+		req.Body = io.NopCloser(strings.NewReader(bodies[verb]))
+		req.ContentLength = int64(len(bodies[verb]))
+		rec := serveOne(req)
+		if rec.Code != http.StatusOK || stub.count() != before+1 {
+			t.Errorf("F8S6-10 %s: %d %q, принято целью %d (ожидался 1) — путь обязан ретранслироваться на слушатель формы",
+				verb, rec.Code, rec.Body.String(), stub.count()-before)
+			continue
+		}
+		got := stub.last()
+		if got.method != http.MethodPost || got.path != path || got.body != bodies[verb] {
+			t.Errorf("F8S6-10 %s: цель приняла %s %s %q — метод, путь и тело обязаны доехать как есть", verb, got.method, got.path, got.body)
+		}
+		if c := got.header.Get("Cookie"); !strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") {
+			t.Errorf("F8S6-10 %s: носитель сессии не дошёл до цели: Cookie %q", verb, c)
+		}
+		for name := range got.header {
+			if l := strings.ToLower(name); l == "authorization" || l == strings.ToLower(principalmeta.BridgePrefix+"authorization") {
+				t.Errorf("F8S6-10 %s: удостоверение уехало на слушатель формы под именем %q", verb, name)
+			}
+		}
+		if left := kachoHeaders(got.header); len(left) != 0 {
+			t.Errorf("F8S6-10 %s: на слушатель формы уехали заголовки пространства x-kacho-: %v", verb, left)
+		}
+	}
+	stats := form.Stats()
+	for verb := range emailChangePaths {
+		if stats.Relayed[verb] != 1 {
+			t.Errorf("F8S6-10: клетка ретрансляции %q = %d, ожидался 1 (%v)", verb, stats.Relayed[verb], stats.Relayed)
+		}
+	}
+
+	// Путь без записи — цель не вызвана, край отвечает как на неизвестный путь.
+	// Близнец — записи выше: различие одно, путь.
+	before := stub.count()
+	unknown := serveOne(ownSessionsRequest(http.MethodPost, "/iam/v1/auth/no-such-verb", "f8s6-10"))
+	for _, p := range []string{"/iam/v1/auth/email-change/other", "/iam/v1/auth/email-change/confirm/", "/iam/v1/auth/email-changex"} {
+		rec := serveOne(ownSessionsRequest(http.MethodPost, p, "f8s6-10"))
+		if rec.Code != http.StatusNotFound || rec.Code != unknown.Code || rec.Body.String() != unknown.Body.String() {
+			t.Errorf("F8S6-10 %s: ответ %d %q, на неизвестный путь край отвечает %d %q — обязаны совпасть",
+				p, rec.Code, rec.Body.String(), unknown.Code, unknown.Body.String())
+		}
+		direct := httptest.NewRecorder()
+		form.ServeHTTP(direct, ownSessionsRequest(http.MethodPost, p, "f8s6-10"))
+		if direct.Code != http.StatusNotFound {
+			t.Errorf("F8S6-10 %s: ретранслятор формы напрямую ответил %d — второй рубеж обязан отказать", p, direct.Code)
+		}
+	}
+	if stub.count() != before {
+		t.Fatalf("F8S6-10: путь без записи дошёл до цели формы (%d обращений)", stub.count()-before)
 	}
 }

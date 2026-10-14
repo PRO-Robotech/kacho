@@ -45,7 +45,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
-import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { resourceIsMoveCapable } from "@shared/components/molecules/RowActionsMenu";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
@@ -210,9 +210,8 @@ export function ResourceDetailPage({
   const name = data ? (getByPath<string>(data, "name") ?? "") : "";
   const statusValue = data ? getByPath<string>(data, "status") : undefined;
   const resourceId = data ? (getByPath<string>(data, "id") ?? uid ?? "") : (uid ?? "");
-  // Мутации адресуют admin-плоскость ресурса, если она у него есть (см.
-  // mutationBasePath); чтение выше по-прежнему идёт с публичного пути.
-  const editPath = `${mutationBasePath(spec)}/${resourceId}`;
+  // Мутации адресуют тот же путь, с которого ресурс читается (#3094).
+  const editPath = `${spec.apiPath}/${resourceId}`;
   // Путь списка операций — из перечня подмаршрутов ствола; `null` = вкладки нет.
   const operationsPath = operationsListPath(spec.apiPath, resourceId);
 

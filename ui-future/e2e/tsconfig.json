@@ -75,10 +75,12 @@
     "specs/**/*.ts",
     "specs-awaiting-journal-owner/**/*.ts",
     "preconditions/**/*.ts",
+    "measurements/**/*.ts",
     "scripts/**/*.ts",
     "playwright.config.ts",
     "remote-browser-policy.ts",
     "host-mapping.ts",
-    "stand-secure-origin.ts"
+    "stand-secure-origin.ts",
+    "stand-tls-trust.ts"
   ]
 }

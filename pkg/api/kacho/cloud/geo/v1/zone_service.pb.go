@@ -10,10 +10,13 @@
 package geov1
 
 import (
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -25,6 +28,139 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// CreatePublicZoneRequest — public Create input. Deliberately a separate message
+// from the internal CreateZoneRequest: it carries NO infra° block.
+type CreatePublicZoneRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Zone ID — admin-assigned immutable slug PK (e.g. "ru-central1-a");
+	// coupling id == regionId + "-" + <zoneSuffix>.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// ID of the region the zone belongs to; immutable after create.
+	RegionId string `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Optional; DEFAULT DOWN (fail-safe) if omitted → zone stays CLOSED.
+	Status        GeoStatus `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePublicZoneRequest) Reset() {
+	*x = CreatePublicZoneRequest{}
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePublicZoneRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePublicZoneRequest) ProtoMessage() {}
+
+func (x *CreatePublicZoneRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePublicZoneRequest.ProtoReflect.Descriptor instead.
+func (*CreatePublicZoneRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreatePublicZoneRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *CreatePublicZoneRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *CreatePublicZoneRequest) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+// UpdatePublicZoneRequest — public Update input; no infra° block. Mutable
+// through the mask: `status`. `id`, `regionId`, `infra.numericInfraId` are
+// refused with their immutability text; any other path (every other `infra.*`
+// included) is refused as an unknown update_mask field.
+type UpdatePublicZoneRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the zone to update.
+	ZoneId string `protobuf:"bytes,1,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
+	// New administrative status (UP opens the zone for placement).
+	Status GeoStatus `protobuf:"varint,2,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	// Fields to update; empty = apply what the caller carried.
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,3,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdatePublicZoneRequest) Reset() {
+	*x = UpdatePublicZoneRequest{}
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdatePublicZoneRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdatePublicZoneRequest) ProtoMessage() {}
+
+func (x *UpdatePublicZoneRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdatePublicZoneRequest.ProtoReflect.Descriptor instead.
+func (*UpdatePublicZoneRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *UpdatePublicZoneRequest) GetZoneId() string {
+	if x != nil {
+		return x.ZoneId
+	}
+	return ""
+}
+
+func (x *UpdatePublicZoneRequest) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+func (x *UpdatePublicZoneRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
 
 type ListZonesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -48,7 +184,7 @@ type ListZonesRequest struct {
 
 func (x *ListZonesRequest) Reset() {
 	*x = ListZonesRequest{}
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[0]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -60,7 +196,7 @@ func (x *ListZonesRequest) String() string {
 func (*ListZonesRequest) ProtoMessage() {}
 
 func (x *ListZonesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[0]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -73,7 +209,7 @@ func (x *ListZonesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListZonesRequest.ProtoReflect.Descriptor instead.
 func (*ListZonesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{0}
+	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListZonesRequest) GetPageSize() int64 {
@@ -118,7 +254,7 @@ type ListZonesResponse struct {
 
 func (x *ListZonesResponse) Reset() {
 	*x = ListZonesResponse{}
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -130,7 +266,7 @@ func (x *ListZonesResponse) String() string {
 func (*ListZonesResponse) ProtoMessage() {}
 
 func (x *ListZonesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -143,7 +279,7 @@ func (x *ListZonesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListZonesResponse.ProtoReflect.Descriptor instead.
 func (*ListZonesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListZonesResponse) GetZones() []*Zone {
@@ -170,7 +306,7 @@ type GetZoneRequest struct {
 
 func (x *GetZoneRequest) Reset() {
 	*x = GetZoneRequest{}
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +318,7 @@ func (x *GetZoneRequest) String() string {
 func (*GetZoneRequest) ProtoMessage() {}
 
 func (x *GetZoneRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_geo_v1_zone_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +331,7 @@ func (x *GetZoneRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetZoneRequest.ProtoReflect.Descriptor instead.
 func (*GetZoneRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetZoneRequest) GetZoneId() string {
@@ -209,7 +345,16 @@ var File_kacho_cloud_geo_v1_zone_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a$corelib/authz/v1/authz_options.proto\"\x99\x01\n" +
+	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a1kacho/cloud/geo/v1/internal_catalog_service.proto\x1a$corelib/authz/v1/authz_options.proto\"}\n" +
+	"\x17CreatePublicZoneRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x125\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\"\xa6\x01\n" +
+	"\x17UpdatePublicZoneRequest\x12\x17\n" +
+	"\azone_id\x18\x01 \x01(\tR\x06zoneId\x125\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x12;\n" +
+	"\vupdate_mask\x18\x03 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"\x99\x01\n" +
 	"\x10ListZonesRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -220,12 +365,21 @@ const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\x05zones\x18\x01 \x03(\v2\x18.kacho.cloud.geo.v1.ZoneR\x05zones\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\")\n" +
 	"\x0eGetZoneRequest\x12\x17\n" +
-	"\azone_id\x18\x01 \x01(\tR\x06zoneId2\xc2\x02\n" +
+	"\azone_id\x18\x01 \x01(\tR\x06zoneId2\xb4\a\n" +
 	"\vZoneService\x12\x94\x01\n" +
 	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"O\x8a\xb5\x18\rgeo.zones.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12\x9b\x01\n" +
 	"\x04List\x12$.kacho.cloud.geo.v1.ListZonesRequest\x1a%.kacho.cloud.geo.v1.ListZonesResponse\"F\x8a\xb5\x18\x0egeo.zones.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zonesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zones\x12\xc4\x01\n" +
+	"\x06Create\x12+.kacho.cloud.geo.v1.CreatePublicZoneRequest\x1a\x1c.corelib.operation.Operation\"o\x8a\xb5\x18\x10geo.zones.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
+	"\x12CreateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02\x12:\x01*\"\r/geo/v1/zones\x12\xce\x01\n" +
+	"\x06Update\x12+.kacho.cloud.geo.v1.UpdatePublicZoneRequest\x1a\x1c.corelib.operation.Operation\"y\x8a\xb5\x18\x10geo.zones.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
+	"\x12UpdateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/geo/v1/zones/{zone_id}\x12\xd7\x01\n" +
+	"\x06Delete\x12%.kacho.cloud.geo.v1.DeleteZoneRequest\x1a\x1c.corelib.operation.Operation\"\x87\x01\x8a\xb5\x18\x10geo.zones.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*+\n" +
+	"\x12DeleteZoneMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x19*\x17/geo/v1/zones/{zone_id}B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_zone_service_proto_rawDescOnce sync.Once
@@ -239,24 +393,39 @@ func file_kacho_cloud_geo_v1_zone_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_geo_v1_zone_service_proto_rawDescData
 }
 
-var file_kacho_cloud_geo_v1_zone_service_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_kacho_cloud_geo_v1_zone_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_kacho_cloud_geo_v1_zone_service_proto_goTypes = []any{
-	(*ListZonesRequest)(nil),  // 0: kacho.cloud.geo.v1.ListZonesRequest
-	(*ListZonesResponse)(nil), // 1: kacho.cloud.geo.v1.ListZonesResponse
-	(*GetZoneRequest)(nil),    // 2: kacho.cloud.geo.v1.GetZoneRequest
-	(*Zone)(nil),              // 3: kacho.cloud.geo.v1.Zone
+	(*CreatePublicZoneRequest)(nil), // 0: kacho.cloud.geo.v1.CreatePublicZoneRequest
+	(*UpdatePublicZoneRequest)(nil), // 1: kacho.cloud.geo.v1.UpdatePublicZoneRequest
+	(*ListZonesRequest)(nil),        // 2: kacho.cloud.geo.v1.ListZonesRequest
+	(*ListZonesResponse)(nil),       // 3: kacho.cloud.geo.v1.ListZonesResponse
+	(*GetZoneRequest)(nil),          // 4: kacho.cloud.geo.v1.GetZoneRequest
+	(GeoStatus)(0),                  // 5: kacho.cloud.geo.v1.GeoStatus
+	(*fieldmaskpb.FieldMask)(nil),   // 6: google.protobuf.FieldMask
+	(*Zone)(nil),                    // 7: kacho.cloud.geo.v1.Zone
+	(*DeleteZoneRequest)(nil),       // 8: kacho.cloud.geo.v1.DeleteZoneRequest
+	(*operation.Operation)(nil),     // 9: corelib.operation.Operation
 }
 var file_kacho_cloud_geo_v1_zone_service_proto_depIdxs = []int32{
-	3, // 0: kacho.cloud.geo.v1.ListZonesResponse.zones:type_name -> kacho.cloud.geo.v1.Zone
-	2, // 1: kacho.cloud.geo.v1.ZoneService.Get:input_type -> kacho.cloud.geo.v1.GetZoneRequest
-	0, // 2: kacho.cloud.geo.v1.ZoneService.List:input_type -> kacho.cloud.geo.v1.ListZonesRequest
-	3, // 3: kacho.cloud.geo.v1.ZoneService.Get:output_type -> kacho.cloud.geo.v1.Zone
-	1, // 4: kacho.cloud.geo.v1.ZoneService.List:output_type -> kacho.cloud.geo.v1.ListZonesResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 0: kacho.cloud.geo.v1.CreatePublicZoneRequest.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	5, // 1: kacho.cloud.geo.v1.UpdatePublicZoneRequest.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	6, // 2: kacho.cloud.geo.v1.UpdatePublicZoneRequest.update_mask:type_name -> google.protobuf.FieldMask
+	7, // 3: kacho.cloud.geo.v1.ListZonesResponse.zones:type_name -> kacho.cloud.geo.v1.Zone
+	4, // 4: kacho.cloud.geo.v1.ZoneService.Get:input_type -> kacho.cloud.geo.v1.GetZoneRequest
+	2, // 5: kacho.cloud.geo.v1.ZoneService.List:input_type -> kacho.cloud.geo.v1.ListZonesRequest
+	0, // 6: kacho.cloud.geo.v1.ZoneService.Create:input_type -> kacho.cloud.geo.v1.CreatePublicZoneRequest
+	1, // 7: kacho.cloud.geo.v1.ZoneService.Update:input_type -> kacho.cloud.geo.v1.UpdatePublicZoneRequest
+	8, // 8: kacho.cloud.geo.v1.ZoneService.Delete:input_type -> kacho.cloud.geo.v1.DeleteZoneRequest
+	7, // 9: kacho.cloud.geo.v1.ZoneService.Get:output_type -> kacho.cloud.geo.v1.Zone
+	3, // 10: kacho.cloud.geo.v1.ZoneService.List:output_type -> kacho.cloud.geo.v1.ListZonesResponse
+	9, // 11: kacho.cloud.geo.v1.ZoneService.Create:output_type -> corelib.operation.Operation
+	9, // 12: kacho.cloud.geo.v1.ZoneService.Update:output_type -> corelib.operation.Operation
+	9, // 13: kacho.cloud.geo.v1.ZoneService.Delete:output_type -> corelib.operation.Operation
+	9, // [9:14] is the sub-list for method output_type
+	4, // [4:9] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_geo_v1_zone_service_proto_init() }
@@ -264,14 +433,16 @@ func file_kacho_cloud_geo_v1_zone_service_proto_init() {
 	if File_kacho_cloud_geo_v1_zone_service_proto != nil {
 		return
 	}
+	file_kacho_cloud_geo_v1_geo_common_proto_init()
 	file_kacho_cloud_geo_v1_zone_proto_init()
+	file_kacho_cloud_geo_v1_internal_catalog_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_geo_v1_zone_service_proto_rawDesc), len(file_kacho_cloud_geo_v1_zone_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

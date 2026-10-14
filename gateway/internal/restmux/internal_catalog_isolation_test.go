@@ -4,11 +4,11 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
@@ -66,7 +66,7 @@ var diskTypeAdminRoutes = []struct{ method, path string }{
 // заменено на то, ради чего 404 писался: ответ производит тот же производитель и
 // СОВПАДАЕТ с ответом на неподдерживаемый метод того же пути.
 func TestExternalListener_RejectsDiskTypeAdminRoutes(t *testing.T) {
-	h, err := NewMux(context.Background(), catalogMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), catalogMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestExternalListener_RejectsDiskTypeAdminRoutes(t *testing.T) {
 // РАЗЛИЧАЕТ, а этот тест — что запрос вообще не ДОШЁЛ.
 func TestExternalListener_DiskTypeAdminNeverReachesTheAdminBackend(t *testing.T) {
 	addrs, adminLiteral := splitAddrs(t)
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestExternalListener_DiskTypeAdminNeverReachesTheAdminBackend(t *testing.T)
 // ВНУТРЕННЕМ листенере обязаны остаться достижимыми (маршрут найден — не 404):
 // иначе admin-tooling / UI / port-forward сломаны.
 func TestInternalListener_ServesDiskTypeAdminRoutes(t *testing.T) {
-	h, err := NewMux(context.Background(), catalogMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), catalogMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestInternalListener_ServesDiskTypeAdminRoutes(t *testing.T) {
 // классификация ушла на путь целиком, GET уехал бы на internal-mux и внешние
 // клиенты потеряли бы публичный каталог.
 func TestExternalListener_DiskTypePublicReadsStillServed(t *testing.T) {
-	h, err := NewMux(context.Background(), catalogMuxAddrs(), nil, nil)
+	h, err := NewMux(t.Context(), catalogMuxAddrs(), nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

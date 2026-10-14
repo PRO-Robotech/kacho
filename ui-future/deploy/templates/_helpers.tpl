@@ -130,6 +130,230 @@
 {{- default .Values.port .Values.host.port -}}
 {{- end -}}
 
+{{/*
+─── ВНЕШНИЙ ВХОД КОНСОЛИ (publicFront, kacho#3024) ───────────────────────────
+
+`ui.publicFrontOrigin` — происхождение консоли, ПРОВЕРЕННОЕ на то, что этот вход
+способен его обслужить: схема `https`, без пути и порта, отличного от 443, а
+хост — среди имён сертификата, когда сертификат заводит чарт. Величина одна —
+`global.kacho.identity.appBaseURL`, её же служба доступа читает как адрес
+консоли. Любое несоответствие — отказ рендера с именем ручки: вход, чьё
+происхождение браузер не примет защищённым, вернул бы ровно тот отказ формы,
+ради которого вход заведён.
+
+`ui.publicFrontOriginHost` — хост того же происхождения после проверок схемы,
+пути и порта, без проверки покрытия сертификатом: из него выводятся имена
+сертификата (`namesFromOrigin`), и проверка покрытия сама на нём стоит.
+*/}}
+{{- define "ui.publicFrontOriginHost" -}}
+{{- $id := ((.Values.global).kacho).identity | default dict -}}
+{{- $origin := trimSuffix "/" ($id.appBaseURL | default "") -}}
+{{- if not $origin -}}
+{{- fail "uif.publicFront.enabled: global.kacho.identity.appBaseURL пуст — вход не знает происхождения, на которое переадресовывать и которое покрывать сертификатом" -}}
+{{- end -}}
+{{- $u := urlParse $origin -}}
+{{- if ne $u.scheme "https" -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q не по https — Secure-печенье формы с него браузер не хранит (kacho#3024)" $origin) -}}
+{{- end -}}
+{{- if or $u.path $u.query $u.fragment -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q несёт путь или запрос — происхождение это схема, хост и порт" $origin) -}}
+{{- end -}}
+{{- $host := $u.host -}}
+{{- if regexMatch ":[0-9]+$" $host -}}
+{{- $port := regexFind "[0-9]+$" $host -}}
+{{- if and (ne $port "443") (ne (include "ui.publicFrontServiceType" .) "ClusterIP") -}}
+{{- fail (printf "uif.publicFront.enabled: происхождение консоли %q называет порт, отличный от 443, а вход публикует TLS на 443 (порт проброса допустим только у входа, который площадка не публикует: publicFront.service.type=ClusterIP)" $origin) -}}
+{{- end -}}
+{{- $host = trimSuffix (printf ":%s" $port) $host -}}
+{{- end -}}
+{{- $host -}}
+{{- end -}}
+
+{{/*
+`ui.publicFrontCertNames` — имена сертификата входа: объявленные плюс, при
+`namesFromOrigin`, хост происхождения консоли (IP-литерал — в ipAddresses,
+имя — в dnsNames). Печатает YAML-словарь `{dns: [...], ip: [...]}`.
+*/}}
+{{- define "ui.publicFrontCertNames" -}}
+{{- $c := .Values.publicFront.tls.certificate -}}
+{{- $dns := $c.dnsNames | default list -}}
+{{- $ip := $c.ipAddresses | default list -}}
+{{- if $c.namesFromOrigin -}}
+{{- $host := include "ui.publicFrontOriginHost" . -}}
+{{- if or (regexMatch "^[0-9.]+$" $host) (hasPrefix "[" $host) -}}
+{{- $ip = append $ip (trimSuffix "]" (trimPrefix "[" $host)) | uniq -}}
+{{- else -}}
+{{- $dns = append $dns $host | uniq -}}
+{{- end -}}
+{{- end -}}
+{{- dict "dns" $dns "ip" $ip | toYaml -}}
+{{- end -}}
+
+{{- define "ui.publicFrontOrigin" -}}
+{{- $pf := .Values.publicFront -}}
+{{- $host := include "ui.publicFrontOriginHost" . -}}
+{{- if $pf.tls.certificate.create -}}
+{{- $n := include "ui.publicFrontCertNames" . | fromYaml -}}
+{{- $names := concat ($n.dns | default list) ($n.ip | default list) -}}
+{{- if not (has (trimSuffix "]" (trimPrefix "[" $host)) $names) -}}
+{{- fail (printf "uif.publicFront.tls.certificate: хост происхождения консоли %q не назван ни в dnsNames, ни в ipAddresses — браузер отвергнет сертификат" $host) -}}
+{{- end -}}
+{{- end -}}
+{{- printf "https://%s" $host -}}
+{{- end -}}
+
+{{/* Имена объектов поставщика входа (publicFront.acme). */}}
+{{- define "ui.publicFrontIssuerName" -}}
+{{- printf "%s-public-acme" (include "ui.hostName" .) -}}
+{{- end -}}
+
+{{- define "ui.publicFrontAcmeSolverName" -}}
+{{- printf "%s-acme-solver" (include "ui.hostName" .) -}}
+{{- end -}}
+
+{{/* Порт пода решателя http01 — задан cert-manager, ручкой не является. */}}
+{{- define "ui.acmeSolverPort" -}}8089{{- end -}}
+
+{{- /* Петлевые слушатели за маршрутизатором порта redirect (kacho#3115,
+       ui.publicFrontProxyProtocol): звену балансировки — с приёмом заголовка
+       PROXY, прочим соединениям — без него. Только 127.0.0.1: снаружи пода
+       они недостижимы. */}}
+{{- define "ui.redirectRouteProxiedPort" -}}8082{{- end -}}
+{{- define "ui.redirectRoutePlainPort" -}}8083{{- end -}}
+
+{{/* `ui.publicFrontGuard` — отказ рендера на неполном блоке; печатает пусто. */}}
+{{- define "ui.publicFrontGuard" -}}
+{{- if not (and (gt (int .Values.tlsReload.intervalSeconds) 0) (le (int .Values.tlsReload.intervalSeconds) 3600)) -}}
+{{- fail "uif.tlsReload.intervalSeconds вне (0, 3600] — продлённый сертификат раздача не перечитала бы вовремя" -}}
+{{- end -}}
+{{- $pf := .Values.publicFront -}}
+{{- if $pf.enabled -}}
+{{- if not $pf.tls.secretName -}}
+{{- fail "uif.publicFront.tls.secretName пуст — вход без сертификата TLS не завершает" -}}
+{{- end -}}
+{{- if $pf.tls.certificate.create -}}
+{{- if not (or $pf.tls.certificate.dnsNames $pf.tls.certificate.ipAddresses $pf.tls.certificate.namesFromOrigin) -}}
+{{- fail "uif.publicFront.tls.certificate: ни dnsNames, ни ipAddresses, ни namesFromOrigin не объявлены — сертификату нечего удостоверять" -}}
+{{- end -}}
+{{- end -}}
+{{- $acme := $pf.acme | default dict -}}
+{{- if $acme.enabled -}}
+{{- if not $pf.tls.certificate.create -}}
+{{- fail "uif.publicFront.acme.enabled: поставщик из релиза выписывает лист, который заводит чарт, — tls.certificate.create обязан быть true" -}}
+{{- end -}}
+{{- if $pf.tls.certificate.issuerRef.name -}}
+{{- fail "uif.publicFront.acme.enabled вместе с tls.certificate.issuerRef.name — у листа входа два поставщика; поставщик из релиза исключает внешний" -}}
+{{- end -}}
+{{- if not (hasPrefix "https://" ($acme.server | default "")) -}}
+{{- fail "uif.publicFront.acme.server: каталог ACME обязан быть объявлен адресом по https" -}}
+{{- end -}}
+{{- else if and $pf.tls.certificate.create (not $pf.tls.certificate.issuerRef.name) -}}
+{{- fail "uif.publicFront.tls.certificate.issuerRef.name пуст — сертификат некому выписать (либо acme.enabled: true — поставщик из релиза, либо certificate.create: false и секрет заводит оператор)" -}}
+{{- end -}}
+{{- if eq (int $pf.httpsPort) (int $pf.redirectPort) -}}
+{{- fail "uif.publicFront: httpsPort и redirectPort совпадают" -}}
+{{- end -}}
+{{- if or (eq (int $pf.httpsPort) (int (include "ui.hostPort" .))) (eq (int $pf.redirectPort) (int (include "ui.hostPort" .))) -}}
+{{- fail "uif.publicFront: httpsPort/redirectPort совпадает с внутренним портом раздачи" -}}
+{{- end -}}
+{{- $_ := include "ui.publicFrontOrigin" . -}}
+{{- $_ := include "ui.publicFrontProxyProtocol" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- /*
+ui.publicFrontProxyProtocol — адрес клиента от балансировщика площадки заголовком
+PROXY (kacho#3115); печатает "true", когда приём включён, иначе пусто.
+
+Действует ТОЛЬКО у входа, который публикует площадка (`service.type:
+LoadBalancer`): вход, который пробрасывает к себе пользующийся (`ClusterIP`,
+стенд проб), заголовка не получает, и слушатель, ждущий его, отверг бы каждое
+соединение.
+
+Включённый приём требует вместе, и рендер отказывает на любой недостающей:
+  - `trustedFrom` — звено балансировки, от которого заголовку верят; пусто
+    значило бы «верить никому» молча (адрес — снова балансировщик), а запись
+    шире одного адреса (/32, /128) — верить и соседям звена: порт https раздачи
+    доступен подам и узлам кластера, и каждый хост в доверенной подсети заявил
+    бы чужой источник. Заглушку слоя площадки (адрес документации) судит
+    общий страж слоя — templates/site-layer-guard.yaml умбреллы, а не этот;
+  - `serviceAnnotations` — просьба к балансировщику слать заголовок. Слушатель,
+    ждущий заголовка, без отправителя принял бы первую строку клиента за адрес;
+    поэтому просьба объявлена здесь же, а не рядом в `service.annotations`, —
+    одно включение, а не два;
+  - ни один ключ `serviceAnnotations` не переобъявлен в `service.annotations`
+    другим значением: иначе одно из двух мест молча перебило бы другое, и
+    значение «не слать заголовок» при включённом приёме дало бы клиенту самому
+    написать строку PROXY с любым адресом.
+
+Порт redirect заголовка от КАЖДОГО соединения не ждёт: соединение изнутри
+кластера к внешнему адресу входа (ipMode VIP) замыкается на под, минуя
+балансировщик, — без заголовка; так приходит и проверка достижимости вызова
+ACME HTTP-01, которую делает выпускающий сертификат. Порт redirect слушает
+маршрутизатор (`stream` в nginx.conf, configmap-nginx.yaml): соединение от
+адреса `trustedFrom` — на петлевой слушатель с приёмом заголовка
+(`ui.redirectRouteProxiedPort`), прочие — на петлевой без него
+(`ui.redirectRoutePlainPort`). Петлевые порты не совпадают ни с одним портом
+раздачи — рендер отказывает.
+
+Выключенный приём у входа LoadBalancer требует ПРИЧИНЫ (`disabledBecause`):
+пустая строка — это «забыли», и проверка не отличила бы её от «здесь намеренно
+нет». Причина выходит аннотацией Service, её читает рендер-гейт
+(deploy/console_public_front_render_test.go, п. 7).
+*/}}
+{{- define "ui.publicFrontProxyProtocol" -}}
+{{- $pf := .Values.publicFront -}}
+{{- $pp := (($pf.clientAddress | default dict).proxyProtocol) | default dict -}}
+{{- if and $pf.enabled (not $pp.enabled) (eq (include "ui.publicFrontServiceType" .) "LoadBalancer") (not (trim (toString ($pp.disabledBecause | default "")))) -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol: приём заголовка PROXY выключен у входа LoadBalancer без причины (disabledBecause пуст) — за балансировщиком, соединяющимся со своего адреса, все клиенты стали бы одним источником (kacho#3115). Включите приём либо назовите причину" -}}
+{{- end -}}
+{{- if and $pf.enabled $pp.enabled (eq (include "ui.publicFrontServiceType" .) "LoadBalancer") -}}
+{{- $from := $pp.trustedFrom | default list -}}
+{{- if not $from -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol.trustedFrom пуст при включённом приёме заголовка PROXY — звено балансировки не названо, и адрес клиента снова был бы адресом балансировщика (kacho#3115)" -}}
+{{- end -}}
+{{- range $from -}}
+{{- $e := toString . -}}
+{{- $ok := false -}}
+{{- if regexMatch `^([0-9]{1,3}\.){3}[0-9]{1,3}(/32)?$` $e -}}{{- $ok = true -}}{{- end -}}
+{{- if regexMatch `^[0-9a-fA-F:]*:[0-9a-fA-F:]*(/128)?$` $e -}}{{- $ok = true -}}{{- end -}}
+{{- if not $ok -}}
+{{- fail (printf "uif.publicFront.clientAddress.proxyProtocol.trustedFrom: запись %q шире одного адреса звена балансировки (/32, /128) либо не адрес — хост кластера, дошедший до порта https, заявил бы чужой источник (kacho#3115)" $e) -}}
+{{- end -}}
+{{- end -}}
+{{- range $p := list (include "ui.hostPort" .) $pf.httpsPort $pf.redirectPort -}}
+{{- if has (int $p) (list (int (include "ui.redirectRouteProxiedPort" $)) (int (include "ui.redirectRoutePlainPort" $))) -}}
+{{- fail (printf "uif.publicFront: порт %v раздачи совпадает с петлевым портом маршрутизатора порта redirect (%s, %s) — nginx не поднял бы оба слушателя (kacho#3115)" $p (include "ui.redirectRouteProxiedPort" $) (include "ui.redirectRoutePlainPort" $)) -}}
+{{- end -}}
+{{- end -}}
+{{- if not $pp.serviceAnnotations -}}
+{{- fail "uif.publicFront.clientAddress.proxyProtocol.serviceAnnotations пуст при включённом приёме заголовка PROXY — балансировщик площадки не попрошен слать заголовок, и слушатель принял бы первую строку клиента за адрес (kacho#3115)" -}}
+{{- end -}}
+{{- $own := $pf.service.annotations | default dict -}}
+{{- range $k, $v := $pp.serviceAnnotations -}}
+{{- if and (hasKey $own $k) (ne (toString (get $own $k)) (toString $v)) -}}
+{{- fail (printf "uif.publicFront: аннотация %q объявлена дважды разными значениями — %q в clientAddress.proxyProtocol.serviceAnnotations и %q в service.annotations; просьба к балансировщику слать заголовок PROXY объявляется ОДНИМ местом (kacho#3115)" $k (toString $v) (toString (get $own $k))) -}}
+{{- end -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- /*
+ui.publicFrontServiceType — кто публикует вход (values.yaml, `publicFront.service.type`).
+Закрытый перечень: значение вне него — отказ рендера, а не тихий LoadBalancer.
+*/}}
+{{- define "ui.publicFrontServiceType" -}}
+{{- $t := .Values.publicFront.service.type | default "LoadBalancer" -}}
+{{- if not (has $t (list "LoadBalancer" "ClusterIP")) -}}
+{{- fail (printf "uif.publicFront.service.type=%q: допустимы LoadBalancer (вход публикует площадка) и ClusterIP (вход пробрасывает пользующийся)" $t) -}}
+{{- end -}}
+{{- $t -}}
+{{- end -}}
+{{- define "ui.publicFrontServiceName" -}}
+{{- .Values.publicFront.service.name | default (printf "%s-public" (include "ui.hostName" .)) -}}
+{{- end -}}
+
 {{- define "ui.hostReplicas" -}}
 {{- default .Values.replicas .Values.host.replicas -}}
 {{- end -}}
@@ -330,4 +554,34 @@ app.kubernetes.io/component: storage-remote
 {{- else }}
 {{- toYaml .Values.resources }}
 {{- end }}
+{{- end -}}
+
+{{- /*
+ЗВЕНО ФРОНТА К КРАЮ (kacho#3028). Раздача — звено фронта края: адрес клиента
+край принимает от неё, только если она предъявила лист якоря звеньев с именем
+звена (gateway/internal/linktls). Поэтому каждая полоса к краю идёт по TLS на
+внешний слушатель края и несёт клиентский лист; лист края проверяется его
+удостоверяющим центром и именем (имя — хост адреса края из
+`host.upstreams.apiGateway`, одна величина на адрес и на имя).
+*/ -}}
+{{- define "ui.edgeLinkDir" -}}/etc/console-edge-link{{- end -}}
+{{- define "ui.edgeCADir" -}}/etc/console-edge-ca{{- end -}}
+{{- define "ui.edgeServerName" -}}
+{{- $up := required "host.upstreams.apiGateway обязателен" .Values.host.upstreams.apiGateway -}}
+{{- $host := regexReplaceAll ":[0-9]+$" $up "" -}}
+{{- if eq $host $up -}}
+{{- fail (printf "host.upstreams.apiGateway=%q без порта: полоса к краю идёт на его TLS-слушатель, порт обязателен" $up) -}}
+{{- end -}}
+{{- $host -}}
+{{- end -}}
+{{- define "ui.edgeLinkTLS" -}}
+proxy_ssl_certificate {{ include "ui.edgeLinkDir" . }}/tls.crt;
+proxy_ssl_certificate_key {{ include "ui.edgeLinkDir" . }}/tls.key;
+proxy_ssl_trusted_certificate {{ include "ui.edgeCADir" . }}/ca.crt;
+proxy_ssl_verify on;
+proxy_ssl_verify_depth 2;
+proxy_ssl_name {{ include "ui.edgeServerName" . }};
+proxy_ssl_server_name on;
+proxy_ssl_protocols TLSv1.2 TLSv1.3;
+proxy_ssl_session_reuse on;
 {{- end -}}

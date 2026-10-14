@@ -43,6 +43,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -60,6 +61,8 @@ import (
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 )
 
@@ -302,6 +305,22 @@ func (m *AuthzMiddleware) MaybeFlushOnMutation(fqn string, httpStatus int) {
 	m.cfg.Logger.Info("authz decision-cache flushed on grant mutation", "fqn", fqn)
 }
 
+// maybeFlushOnLoginLaneOutcome гасит кеш решений, когда ретранслированный путь
+// полосы формы объявлен исходом (`flushesDecisionCacheOnSuccess`, приёмка F8-S6
+// Р2) и служба ответила 2xx. Путь полосы имени метода не несёт, поэтому
+// решение берётся из объявления путей, а не из `subjectChangingFQNs`; сброс —
+// тот же `Invalidate`, что у самосброса по имени метода.
+func (m *AuthzMiddleware) maybeFlushOnLoginLaneOutcome(path string, httpStatus int) {
+	if m.cache == nil || httpStatus < 200 || httpStatus >= 300 {
+		return
+	}
+	if !loginLaneFlushesDecisionCacheOnSuccess(path) {
+		return
+	}
+	m.cache.Invalidate()
+	m.cfg.Logger.Info("authz decision-cache flushed on login lane outcome", "path", path)
+}
+
 // InvalidateCache flushes the whole authz decision cache. Used by the
 // subject-change watcher to converge this replica after a grant change
 // observed on another replica. No-op when authz is disabled (cache is nil).
@@ -372,6 +391,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: req,
 			GRPCPeer: peerAddr(ctx),
+			GRPCLink: linktls.PeerState(ctx),
 			GRPCMeta: incomingMD(ctx),
 		})
 		switch decision.outcome {
@@ -408,7 +428,7 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return nil, status.Error(codes.Unavailable, "authz service unavailable")
+			return nil, status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(ctx, req)
 		}
@@ -428,6 +448,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			FQN:      fqn,
 			ProtoReq: nil, // stream requests aren't materialised yet
 			GRPCPeer: peerAddr(ss.Context()),
+			GRPCLink: linktls.PeerState(ss.Context()),
 			GRPCMeta: incomingMD(ss.Context()),
 			Stream:   true,
 		})
@@ -460,7 +481,7 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
-			return status.Error(codes.Unavailable, "authz service unavailable")
+			return status.Error(codes.Unavailable, authzUndecidedText)
 		default:
 			return handler(srv, ss)
 		}
@@ -484,7 +505,13 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			// живости. Полоса нужна ровно затем, чтобы путь, которому в списке не
 			// место, был виден, а не растворялся в тишине (#798).
 			m.metrics.RecordPublicPath()
-			next.ServeHTTP(w, r)
+			if !loginLaneFlushesDecisionCacheOnSuccess(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rw := newResponseWriter(w)
+			next.ServeHTTP(rw, r)
+			m.maybeFlushOnLoginLaneOutcome(r.URL.Path, rw.statusCode)
 			return
 		}
 		// ЗДЕСЬ СТОЯЛ отказ «требуется сменить пароль» (Ф3 Р8 прежних редакций):
@@ -515,9 +542,9 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			}
 			writeHTTPDeny(w, decision.descriptor, decision.reasons, challenge)
 		case outcomeUnauthenticated:
-			// No credentials → 401 Unauthorized + code 16,
-			// not 403 Forbidden + code 7.
-			writeHTTPUnauth(w, decision.descriptor, decision.reasons)
+			// No credentials → 401 Unauthorized + code 16, not 403 Forbidden +
+			// code 7 — the edge's one authentication refusal (KA1 Р2).
+			writeAuthnRefusal(w)
 		case outcomeInvalidArgument:
 			// Request rejected on its own shape (malformed resource id, ambiguous
 			// scope) → 400 + code 3, Check not run.
@@ -540,7 +567,7 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			m.metrics.RecordErrorRefused()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"code":14,"message":"authz service unavailable"}`))
+			_, _ = w.Write([]byte(authzUndecidedBody))
 		default:
 			next.ServeHTTP(w, r)
 		}
@@ -554,6 +581,11 @@ type decisionRequest struct {
 	ProtoReq any
 	HTTPReq  *http.Request
 	GRPCPeer string
+	// GRPCLink — состояние TLS соединения с пиром (nil — не TLS); по нему
+	// оператор адреса узнаёт звено фронта (kacho#3028, C4). Берётся из
+	// linktls.PeerState: состояние, которое внешний сервер края кладёт своим
+	// типом, а не credentials.TLSInfo (linktls.AuthInfo).
+	GRPCLink *tls.ConnectionState
 	GRPCMeta metadata.MD
 	// Stream marks the stream-interceptor lane, where the client request message
 	// is not read before the RPC is gated (ProtoReq is therefore nil). Set ONLY
@@ -605,9 +637,10 @@ const (
 	// with the deny reason `email_not_verified` (приёмка F6b, Р3а; Р4а службы):
 	// the caller is a person whose email address is not verified, and the owner
 	// says so about EVERY object, before evaluating any relation. Rendered as the
-	// owner's own refusal value — HTTP 403 / gRPC PermissionDenied, text
-	// `email address is not verified`, ErrorInfo EMAIL_NOT_VERIFIED — the same
-	// bytes the session lane's address gate writes (address_refusal.go).
+	// owner's own refusal value — HTTP 403 / gRPC PermissionDenied, the fixed
+	// text that names the confirmation step (addressRefusalText), ErrorInfo
+	// EMAIL_NOT_VERIFIED — the same bytes the session lane's address gate
+	// writes (address_refusal.go).
 	//
 	// It takes precedence over hide-existence ON PURPOSE: the reason is about the
 	// caller, not the object, and the owner gives it for existing and
@@ -631,7 +664,9 @@ type decision struct {
 func (d decision) gRPCStatus() *status.Status {
 	switch d.outcome {
 	case outcomeUnauthenticated:
-		return buildGRPCUnauthStatus(d.descriptor, d.reasons)
+		// Единый отказ края (приёмка KA1, Р2): ни глагола, ни причины в ответе —
+		// они в журнале решения.
+		return authnrefusal.Status()
 	case outcomeInvalidArgument:
 		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:
@@ -737,12 +772,12 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 // independently 404s these on the external listener.
 //
 // SECURITY — be exact about what this phase is: it admits the request WITHOUT
-// EXTRACTING A PRINCIPAL, and the listener it trusts is plain HTTP/1.1 with no
-// TLS and no client certificate (cmd/api-gateway/main.go). The only thing it
-// verifies is WHERE the connection arrived — i.e. NETWORK POSITION, which is not
-// a credential ("internal = trusted" is a forbidden premise, security.md). Any
-// RPC routed through this phase is effectively callable by anything that can
-// reach the `internal-rest` Service port or hold a port-forward.
+// EXTRACTING A PRINCIPAL. What it checks is the connection's listener mark; the
+// listener itself is mutual-TLS only (kacho#3131, cmd/api-gateway/edge_listener.go
+// serveInternalREST): a client leaf of the installation CA whose URI-SAN is in
+// KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the TRANSPORT,
+// not a principal: any RPC routed through this phase is callable by every holder
+// of a leaf in that circle without any relation being checked.
 //
 // Therefore: an RPC that MINTS CREDENTIALS or GRANTS PRIVILEGE must never be
 // registered on the REST mux at all — no route, rather than an exempt route.
@@ -1192,7 +1227,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	if dr.HTTPReq != nil {
 		contextMap = m.cfg.Context.BuildHTTP(verified, dr.HTTPReq, subj)
 	} else if dr.GRPCMeta != nil || dr.GRPCPeer != "" {
-		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), grpcMetaForwardedFor(dr.GRPCMeta), subj)
+		contextMap = m.cfg.Context.BuildPeerAddr(verified, peerAddrToAddr(dr.GRPCPeer), dr.GRPCLink, dr.GRPCMeta, subj)
 	} else {
 		contextMap = m.cfg.Context.BuildHTTP(verified, nil, subj)
 	}
@@ -1313,3 +1348,13 @@ func denyDecision(fqn string, entry CatalogEntry, descriptor permissionDeniedDes
 		entry:      entry,
 	}
 }
+
+// authzUndecidedText — отказ, когда решение о правах не получено (источник
+// вердикта не ответил): `UNAVAILABLE` / `503`, повторить. Текст называет
+// исход, а не часть края, которая лежит: имя внутренней службы наружу — карта
+// топологии для того, кто изучает поверхность, и ничего не даёт арендатору
+// (kacho#3029; гейт `TestEdgeRefusalNamesNoInternalService`).
+const authzUndecidedText = "authorization could not be decided; try again later"
+
+// authzUndecidedBody — тот же отказ на REST в форме `google.rpc.Status`.
+const authzUndecidedBody = `{"code":14,"message":"` + authzUndecidedText + `","details":[]}`

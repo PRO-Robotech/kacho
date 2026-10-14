@@ -43,17 +43,24 @@ global:
     # ─── СЛУЖБА ЛИЧНОСТИ: АДРЕСА СТЕНДА, А НЕ БОЕВЫЕ ─────────────────────────
     #
     # Умолчание происхождения консоли собирается из `domain: api.kacho.cloud` и
-    # даёт `https://app.api.kacho.cloud`. На этом стенде такого имени нет,
-    # слушателя на 443 тоже нет (kind отображает ТОЛЬКО 80 → 28080). Пока это
-    # не объявлено, служба доступа уводит браузер на боевое имя: оно не
+    # даёт `https://app.api.kacho.cloud`. На этом стенде такого имени нет. Пока
+    # это не объявлено, служба доступа уводит браузер на боевое имя: оно не
     # разрешается, и ни одна проба консоли до продукта не доходит (прогон
     # 32599157014 — 66 из 66).
+    #
+    # ПРОИСХОЖДЕНИЕ ПО TLS, И НА СТЕНДЕ ТОЖЕ (kacho#3025). Печенье формы и
+    # носитель сессии выдаются с `Secure`; с `http`-происхождения под именем,
+    # отличным от `localhost`, браузер их не хранит, и регистрация из консоли
+    # получала `403 FORM_TOKEN_REJECTED`. TLS завершает контроллер входа
+    # (лист — `uif.ingress` ниже), а порт — тот, на который kind отображает
+    # порт TLS узла (deploy/kind/kind-config.yaml: 443 → 28443). Сходимость
+    # объявления, листа и отображения держит
+    # deploy/console_ingress_origin_is_served_over_tls_render_test.go.
     identity:
-      appBaseURL: "http://console.kacho.local:28080"
-      # Cookie сессии обязана быть принята браузером на `console.kacho.local`:
-      # родительский домен принимается, чужой (`api.kacho.cloud`) отвергается
-      # целиком, и сессия не держится вовсе.
-      cookieDomain: "kacho.local"
+      appBaseURL: "https://console.kacho.local:28443"
+      # `rp.id` ключей доступа обязан быть родительским для хоста консоли.
+      # Домен печенья сессии объявляется не здесь, а там, где его читают:
+      # `kaname.config.authn.login.cookieDomain` (kacho#2997).
       webauthnRpId: "kacho.local"
       # ─── ПОЧТОВАЯ ПОЛОСА СТЕНДА ─────────────────────────────────────────
       #
@@ -110,7 +117,7 @@ global:
       # (mail_receiver_core_test.go), — то есть не построение, а проверка.
       smtp:
         connectionURI: 'smtp://{{ .Release.Name }}-mailpit:1025/'
-        fromAddress: "noreply@kacho.cloud"
+        fromAddress: "noreply@mail.kacho.test"
         fromName: "Kacho Cloud"
         # Якорь листа приёмника у НАШЕГО отправителя (служба доступа): `ca.crt`
         # секрета, который выпускает шаблон приёмника (`mailpit.tlsSecretName`).
@@ -150,6 +157,16 @@ mailpit:
   enabled: true
 
 api-gateway:
+  # Политика входа к поду края выключена здесь, как у соседей (стенд
+  # разработчика, отладка пробросом и с соседних подов). Без неё доверие
+  # заголовку адреса было бы доверием любому поду кластера, поэтому круг
+  # доверенных звеньев ПУСТ — «никому»: источник — сам TCP-пир (kacho#3028).
+  # Профиль, включающий политику, объявляет круг заново (values.a8f60d.yaml).
+  networkPolicy:
+    enabled: false
+  clientAddress:
+    trustedProxyCIDRs: []
+    trustedPeers: []
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) — ОБЪЯВЛЕНО ЯВНО ────────
@@ -195,9 +212,17 @@ api-gateway:
     # выпущен внутренним CA, которому процесс по умолчанию не доверяет. Своего
     # якоря боевой слой values.dev-prod.yaml не объявляет и наследует этот; путь
     # монтирования — умолчание чарта края.
+    #
+    # Якорь — `ca.crt` листа самой службы доступа, а не секрет корня (kacho#3054):
+    # его кладёт cert-manager вместе с листом, и он всегда от корня, выпустившего
+    # предъявляемый лист. Секрет корня в ns релиза есть не у каждой цепочки,
+    # наследующей этот слой: где корень рождается в ns cert-manager (a8f60d), в ns
+    # релиза был бы лишь его копией, которую никто не держит в согласии с корнем,
+    # и опору на неё отвергает страж templates/clusterissuer.yaml. Тот же якорь у
+    # хопа отзыва ниже и у боевых цепочек (values.prod.yaml).
     issuerKeySetsCa:
-      secretName: kacho-internal-ca-root
-      key: tls.crt
+      secretName: kaname-server-tls
+      key: ca.crt
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -240,6 +265,16 @@ api-gateway:
   # — a cross-cutting, domain-LESS deployment-env label, NOT the per-domain
   # KACHO_<DOMAIN>_<NAME> scheme.
   appEnv: dev
+  # ИМЕНА ПРОБРОСА на серверном листе внутреннего REST-слушателя (kacho#3131):
+  # IP 127.0.0.1 и `localhost`. Потребители слушателя на стенде ходят на
+  # https://127.0.0.1 / https://localhost пробросом порта
+  # (deploy/scripts/bootstrap-cloud-admin.sh, deploy/scripts/newman-e2e.sh,
+  # tests/authz-fixtures/verified_human.py) и сверяют имя листа; без этих имён — отказ рукопожатия.
+  # Проверку не ослабляет: сверка имени и УЦ — прежние. Только стенд — боевой
+  # профиль (values.prod.yaml) их не несёт; обе стороны судит
+  # gateway/deploy/internal_rest_mtls_render_test.go.
+  internalRest:
+    loopbackSAN: true
   # mTLS: backend-dial client to every backend (cert + per-edge env). Hybrid
   # external listener (cert-or-JWT). Cert config (issuer/spiffe/secret) — chart values.
   mtls:
@@ -1266,20 +1301,33 @@ kaname:
       # ни у одной (`authn.access-keys.*`, KANAME_AUTHN__ACCESS_KEYS__*). Стоят
       # здесь, в корне цепочки, по доводу окна свежести выше.
       #
-      # Перечень происхождений ПУСТ — «никого», и это факт о посадке, а не
-      # пропуск: консоль этой цепочки отвечает по `http` (`appBaseURL` в `global`
-      # выше; у `a8f60d` — на голом IP-литерале), а схема `http` у службы допустима
-      # только для `localhost` — браузер отдаёт ключ лишь в защищённом контексте.
-      # Объявить это происхождение значило бы уронить старт; объявить чужое —
-      # принять величину, которой ни одна церемония не выполнит. Служба стартует и
-      # отвергает всякий ключ; вход — паролем.
+      # Перечень происхождений — ПРОИСХОЖДЕНИЕ КОНСОЛИ ЭТОЙ ЦЕПОЧКИ, выведенное
+      # чартом из того же узла, что адрес консоли (`originFromConsole: true` →
+      # `appBaseURL` в `global` выше, kacho#3025), а не литерал рядом с ним: смена
+      # адреса консоли меняет и перечень, второго места об одном предмете нет
+      # (kacho#3068). Консоль цепочки отвечает по https на хосте под именем
+      # доверяющей стороны (`webauthnRpId` узла `identity` выше), то есть в защищённом
+      # контексте, где браузер ключ отдаёт.
+      #
+      # Основание включения — решение владельца 2026-10-07: замена поставщика
+      # личности включена и ею пользуются, а ключи доступа проверяются сквозной
+      # пробой (приёмка F8-S4, §4 П4). Стенд сквозных проб консоли поднимается
+      # ровно `make dev-up` без накладок (console-e2e.yml, «стенд (dev-up,
+      # полный)»), поэтому условие пробы живёт в этом слое, а не в накладке
+      # конвейера: стенд CI и стенд разработчика остаются одним стендом.
+      #
+      # Слой служит основанием и управляемым стендам (`a8f60d`, `prorobotech` —
+      # deploy/stacks.txt). Их перечень остаётся «никого» и снят там явно
+      # (`originFromConsole: false`, `origins: []`): включение ключей доступа на
+      # управляемой площадке — решение о её происхождении, а не наследство слоя
+      # разработки.
       #
       # Имя доверяющей стороны обязано быть доменным и при «никого» (страж его
       # судит безусловно). Здесь его нет: чарт берёт `webauthnRpId` узла
       # `identity` выше — одно имя на обоих читателей (kacho#2905).
       # Перечень алгоритмов — весь словарь проверяющего: ES256, EdDSA, RS256.
       accessKeys:
-        origins: []
+        originFromConsole: true
         algorithms: [-7, -8, -257]
 
       # ─── КЛЮЧА ПОСАДКИ ЛИЧНОСТИ У СЛУЖБЫ НЕТ (kacho#2818) ──────────────────
@@ -1305,13 +1353,19 @@ kaname:
     # ListObjects to resolve the caller's allowed-id set; without this the RPC
     # returns Unimplemented and the handler-side scope-filter fails 503.
     KACHO_AUTHZ_LISTOBJECTS: "on"
-    # Bug B fix: bootstrap cluster-admin. kaname's startup reconciler grants
-    # `system_admin@cluster_root` to this user and enqueues the FGA tuple
-    # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
-    # backdoor that bypassed the drainer). The user row is mirrored on first
-    # fixture upsert; the reconciler retries until the grant commits. The
-    # authz-fixtures bootstrap user is admin@prorobotech.ru.
-    KANAME_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
+    # Адрес первого администратора облака (KANAME_BOOTSTRAP_ROOT_EMAIL) —
+    # не здесь: его объявляет ручка чарта `platform.iam.bootstrapRootAdmin`
+    # (ниже, kacho#2878), родовой проброс той же переменной рендер отвергает.
+  # Первый администратор облака стенда разработки — человек фикстур проб
+  # (tests/authz-fixtures, prodseed_matrix.py: адрес задан там же). Посев
+  # бутстрапа службы выдаёт ему `system_admin` на кластере, как только
+  # фикстура его заводит; повторяется до выдачи. Домен зарезервирован для проб
+  # (RFC 6761): адрес не учётка ни на одном узле, а слой доезжает и до
+  # управляемых стендов — там его замещает ссылка на секрет (kacho#3040).
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        email: "admin@example.test"
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
 #
@@ -1586,3 +1640,21 @@ pg-registry:
 # нужно помнить.
 uif:
   enabled: true
+  # Вход консоли — контроллер на узле kind, по TLS (kacho#3025). Лист выпускает
+  # корневой самоподписанный поставщик стенда (`mtls.internalCA.rootIssuerName`),
+  # а НЕ внутренний удостоверяющий центр: доверие человека к листу консоли не
+  # должно становиться доверием ко всем листам служб внутри кластера. Лист
+  # самоподписан и браузеру не знаком; пробы доверяют ровно его ключу
+  # (ui-future/e2e/playwright.config.ts, `KACHO_CONSOLE_CA`), человек — принятием
+  # листа в браузере. Секрет `uif-console-tls` несёт лист в `ca.crt`.
+  ingress:
+    tls:
+      - hosts:
+          - console.kacho.local
+        secretName: uif-console-tls
+    certificate:
+      create: true
+      issuerRef:
+        name: kacho-selfsigned
+        kind: ClusterIssuer
+        group: cert-manager.io

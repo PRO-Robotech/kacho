@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Alert, Button, Form, Input, Spin, Typography } from "antd";
 import {
+  LANE_REASON,
   type LaneRefusal,
   laneRefusalOf,
   loginLane,
@@ -18,15 +19,20 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
+import { Toaster } from "@shared/components/molecules/Toaster";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
+import { AccessKeysSection } from "./access-key";
+import { EmailChangeAction } from "./email-change";
+import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 
-// Параметры учётной записи на `/settings` — смена пароля и второй фактор, не
-// покидая консоли (приёмка F8, S2).
+// Параметры учётной записи на `/settings` — адрес почты, пароль, второй фактор,
+// свои сессии и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмки
+// F8-S5 и F8-S6).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЭКРАН ДЕЛАЕТ
@@ -35,10 +41,22 @@ import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 //     сессии; действия «подтвердить адрес» здесь нет: экран открыт только
 //     подтверждённому адресу (страж каркаса, приёмка F6b, Р7), а
 //     неподтверждённому подтверждение предлагает экран `/verification`
-//     (F8-17, приёмка F6b, §3.3);
+//     (F8-17, приёмка F6b, §3.3). Действие раздела — смена адреса
+//     (`email-change/`, приёмка F8-S6): покой, форма, код; после успеха экран
+//     заново спрашивает «кто я», и новый адрес называет край;
 //   • смена пароля глаголом службы; отказ — дословно, носитель консоль не
 //     трогает ни на успехе (его перевыпускает служба), ни на отказе края
 //     (F8-23…F8-25);
+//   • первый пароль — форма «Завести пароль», которую выбирает ЧЕЛОВЕК
+//     действием «У меня нет пароля — завести» (Р13): ни один ответ службы не
+//     говорит браузеру, есть ли у человека пароль (N31), и догадка консоли
+//     была бы суждением, которого Р2 не разрешает. По умолчанию раздел
+//     показывает смену; отказ «пароль уже есть» назван дословно и возвращает к
+//     смене (F8-62…F8-66);
+//   • свои сессии — раздел `own-sessions/OwnSessionsSection.tsx` после второго
+//     фактора: перечень, выход из выбранной и из всех, кроме этой (F8-S5);
+//   • ключи доступа — раздел `access-key/AccessKeysSection.tsx` над глаголами
+//     Ф7 (Р11, F8-48…F8-61, F8-69…F8-71);
 //   • второй фактор: состояние — чтением глагола; заведение → материал →
 //     подтверждение первым кодом → запасные коды, показанные один раз; снятие и
 //     перечеканка — с подтверждением кодом (F8-26…F8-32).
@@ -84,7 +102,7 @@ function markedBy(inputId: string, error: string | null) {
 
 // ─── пароль ──────────────────────────────────────────────────────────────────
 
-function PasswordSection() {
+function ChangePasswordForm({ onSubmitted }: { onSubmitted: () => void }) {
   const id = useId();
   const holder = useFormToken("password");
   const [current, setCurrent] = useState("");
@@ -95,6 +113,7 @@ function PasswordSection() {
 
   const onSubmit = async () => {
     if (busy) return;
+    onSubmitted();
     setBusy(true);
     setRefusal(null);
     setChanged(false);
@@ -115,44 +134,166 @@ function PasswordSection() {
   const nextId = `${id}-next`;
 
   return (
+    <FormGrid onSubmit={() => void onSubmit()}>
+      <Form.Item label="Текущий пароль" htmlFor={currentId}>
+        <Input
+          id={currentId}
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          {...markedBy(currentId, errorOf("currentPassword"))}
+        />
+        <FieldError id={fieldErrorId(currentId)} message={errorOf("currentPassword") ?? undefined} />
+      </Form.Item>
+      <Form.Item label="Новый пароль" htmlFor={nextId}>
+        <Input
+          id={nextId}
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          {...markedBy(nextId, errorOf("newPassword"))}
+        />
+        <FieldError id={fieldErrorId(nextId)} message={errorOf("newPassword") ?? undefined} />
+      </Form.Item>
+      {refusal && marked === null && (
+        <div style={{ marginBottom: 12 }}>
+          <LaneRefusalAlert refusal={refusal} />
+        </div>
+      )}
+      {changed && (
+        <p role="status" style={{ margin: "0 0 12px" }}>
+          Пароль сменён.
+        </p>
+      )}
+      <Button type="primary" htmlType="submit" loading={busy}>
+        Сменить пароль
+      </Button>
+    </FormGrid>
+  );
+}
+
+/**
+ * Заведение первого пароля (Р13). Признак вида `password-enroll` добывается при
+ * открытии ЭТОЙ формы, а не экрана: человеку с паролем она не нужна, и экран
+ * параметров не просит признак, которым не воспользуется.
+ */
+function EnrollPasswordForm({
+  onEnrolled,
+  onAlreadySet,
+  onCancel,
+}: {
+  onEnrolled: () => void;
+  onAlreadySet: (refusal: LaneRefusal) => void;
+  onCancel: () => void;
+}) {
+  const id = useId();
+  const holder = useFormToken("password-enroll");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
+
+  const onSubmit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setRefusal(null);
+    try {
+      await loginLane.enrollPassword(holder, { newPassword: next });
+      onEnrolled();
+      return;
+    } catch (err) {
+      const r = asRefusal(err);
+      // «Пароль уже есть» — путь к смене: раздел возвращается к форме смены и
+      // называет отказ службы там дословно (F8-63).
+      if (r.reason === LANE_REASON.passwordAlreadySet) {
+        onAlreadySet(r);
+        return;
+      }
+      setRefusal(r);
+    }
+    setBusy(false);
+  };
+
+  const nextId = `${id}-next`;
+  const nextError = refusal?.field === "newPassword" ? refusal.message : null;
+
+  return (
+    <FormGrid onSubmit={() => void onSubmit()}>
+      <Form.Item label="Новый пароль" htmlFor={nextId}>
+        <Input
+          id={nextId}
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          {...markedBy(nextId, nextError)}
+        />
+        <FieldError id={fieldErrorId(nextId)} message={nextError ?? undefined} />
+      </Form.Item>
+      {refusal && nextError === null && (
+        <div style={{ marginBottom: 12 }}>
+          <LaneRefusalAlert refusal={refusal} />
+        </div>
+      )}
+      <Button type="primary" htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
+        Завести пароль
+      </Button>
+      <Button onClick={onCancel} disabled={busy}>
+        Отменить
+      </Button>
+    </FormGrid>
+  );
+}
+
+function PasswordSection() {
+  const [mode, setMode] = useState<"смена" | "заведение">("смена");
+  const [enrolled, setEnrolled] = useState(false);
+  const [alreadySet, setAlreadySet] = useState<LaneRefusal | null>(null);
+  const clearNotices = () => {
+    setEnrolled(false);
+    setAlreadySet(null);
+  };
+
+  return (
     <Section title="Пароль">
-      <FormGrid onSubmit={() => void onSubmit()}>
-        <Form.Item label="Текущий пароль" htmlFor={currentId}>
-          <Input
-            id={currentId}
-            type="password"
-            autoComplete="current-password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            {...markedBy(currentId, errorOf("currentPassword"))}
-          />
-          <FieldError id={fieldErrorId(currentId)} message={errorOf("currentPassword") ?? undefined} />
-        </Form.Item>
-        <Form.Item label="Новый пароль" htmlFor={nextId}>
-          <Input
-            id={nextId}
-            type="password"
-            autoComplete="new-password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            {...markedBy(nextId, errorOf("newPassword"))}
-          />
-          <FieldError id={fieldErrorId(nextId)} message={errorOf("newPassword") ?? undefined} />
-        </Form.Item>
-        {refusal && marked === null && (
-          <div style={{ marginBottom: 12 }}>
-            <LaneRefusalAlert refusal={refusal} />
-          </div>
-        )}
-        {changed && (
-          <p role="status" style={{ margin: "0 0 12px" }}>
-            Пароль сменён.
-          </p>
-        )}
-        <Button type="primary" htmlType="submit" loading={busy}>
-          Сменить пароль
-        </Button>
-      </FormGrid>
+      {mode === "заведение" ? (
+        <EnrollPasswordForm
+          onEnrolled={() => {
+            setEnrolled(true);
+            setMode("смена");
+          }}
+          onAlreadySet={(r) => {
+            setAlreadySet(r);
+            setMode("смена");
+          }}
+          onCancel={() => setMode("смена")}
+        />
+      ) : (
+        <>
+          {alreadySet && (
+            <div style={{ marginBottom: 12 }}>
+              <LaneRefusalAlert refusal={alreadySet} />
+            </div>
+          )}
+          {enrolled && (
+            <p role="status" style={{ margin: "0 0 12px" }}>
+              Пароль заведён.
+            </p>
+          )}
+          <ChangePasswordForm onSubmitted={clearNotices} />
+          <Button
+            type="link"
+            style={{ paddingLeft: 0, marginTop: 8 }}
+            onClick={() => {
+              clearNotices();
+              setMode("заведение");
+            }}
+          >
+            У меня нет пароля — завести
+          </Button>
+        </>
+      )}
     </Section>
   );
 }
@@ -385,7 +526,7 @@ function SecondFactorSection() {
 
 // ─── страница ────────────────────────────────────────────────────────────────
 
-export function AccountSettingsPage() {
+export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } = {}) {
   const [who, setWho] = useState<SessionAnswer | undefined>(undefined);
   // Каждый вопрос «кто вошёл» — свой номер: эффект задаёт вопрос и принимает
   // ответ только на него, а «Проверить снова» сбрасывает показанное и заводит
@@ -404,6 +545,11 @@ export function AccountSettingsPage() {
       cancelled = true;
     };
   }, [asked]);
+  // Переспросить «кто я», НЕ сбрасывая показанного: разделы экрана остаются на
+  // месте, меняется только ответ края (смена адреса, F8-S6, Р3).
+  const reread = useCallback(async () => {
+    setWho(await sessionIdentity());
+  }, []);
 
   return (
     // Шапка стоит, содержимое прокручивается под ней — одной областью
@@ -411,7 +557,10 @@ export function AccountSettingsPage() {
     <PageFrame head={<PageHead title="Параметры учётной записи" />}>
       {/* Окно повышения живёт рядом с экраном, который его спрашивает: шаги
           свежести зовут его отсюда (`requestStepUp`). */}
-      <StepUpModal />
+      <StepUpModal leave={leave} />
+      {/* Показ сигналов об исходе действий экрана (раздел ключей доступа):
+          каркас его не несёт, а очередь без показа глотает сигнал молча. */}
+      <Toaster />
       {who === undefined && <Spin />}
       {who?.kind === "absent" && (
         <Typography.Paragraph>
@@ -433,9 +582,14 @@ export function AccountSettingsPage() {
             {typeof who.session?.emailVerified === "boolean" && (
               <BoolFact value={who.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
             )}
+            <div>
+              <EmailChangeAction onChanged={reread} leave={leave} />
+            </div>
           </Section>
           <PasswordSection />
           <SecondFactorSection />
+          <OwnSessionsSection />
+          <AccessKeysSection userId={who.user.id} />
         </>
       )}
     </PageFrame>

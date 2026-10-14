@@ -54,8 +54,9 @@ import (
 // менялся.
 //
 // Полоса формы входа — предмет ПОСАДКИ, и посадка у службы одна — `own`
-// (kaname#363): четыре глагола формы край ретранслирует на слушатель полосы
-// службы (gateway/cmd/api-gateway/main.go, ветка
+// (kaname#363): глаголы формы (перечень — LoginLaneRoutes в
+// gateway/internal/middleware/login_lane_paths.go) край ретранслирует
+// на слушатель полосы службы (gateway/cmd/api-gateway/main.go, ветка
 // `identityLane == identityposture.Own`; держит
 // TestOwnLane_F3_45_TheLoginLaneRelayIsWiredUnderTheOwnPostureOnly). Чьё печенье
 // край при этом ЧИТАЕТ, решает та же посадка: под `own` — только наше
@@ -148,7 +149,7 @@ func judgeLoginConsole(facts []loginConsoleFacts) ([]string, loginConsoleCensus)
 			if strings.TrimSpace(f.LaneURL) == "" {
 				findings = append(findings, fmt.Sprintf(
 					"%s: посадка %q, а слитый стек НЕ объявляет %s — краю некуда ретранслировать "+
-						"четыре глагола формы, и человек получает 503 на каждом запросе, "+
+						"глаголы формы, и человек получает 503 на каждом запросе, "+
 						"неотличимо от «служба лежит»",
 					f.Stack, posture, strings.Join(laneURLPath, ".")))
 			}

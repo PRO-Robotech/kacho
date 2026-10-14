@@ -24,6 +24,7 @@ func TestKeyForms_Consistent(t *testing.T) {
 		{principalmeta.HeaderTokenACR, principalmeta.HeaderGRPCMetaTokenACR, principalmeta.MetaTokenACR},
 		{principalmeta.HeaderTokenJti, principalmeta.HeaderGRPCMetaTokenJti, principalmeta.MetaTokenJti},
 		{principalmeta.HeaderTokenScope, principalmeta.HeaderGRPCMetaTokenScope, principalmeta.MetaTokenScope},
+		{principalmeta.HeaderTokenSessionID, principalmeta.HeaderGRPCMetaTokenSessionID, principalmeta.MetaTokenSessionID},
 	}
 	for _, c := range cases {
 		// Grpc-Metadata- prefix.

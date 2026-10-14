@@ -23,6 +23,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/safeconv"
+	"github.com/PRO-Robotech/kacho/gateway/internal/authnrefusal"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
@@ -288,8 +289,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(principalmeta.HeaderPrincipalID) == "" &&
 			r.Header.Get(principalmeta.HeaderGRPCMetaPrincipalID) == "" {
 			h.refusedAuthN.Add(1)
-			writeRefusal(w, refusal{status: http.StatusUnauthorized, code: 16,
-				msg: "subscription requires an authenticated caller"})
+			// Единый отказ края (приёмка KA1, Р2) — тот же, что у слоя
+			// аутентификации; «нужен названный вызывающий» — в счётчике выше.
+			authnrefusal.WriteHTTP(w)
 			return
 		}
 		h.refusedSubjectKind.Add(1)
@@ -550,7 +552,9 @@ func (h *Handler) ownerRefusal(err error, owner string) refusal {
 		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "internal error"}
 	case codes.Unavailable:
 		h.log.Warn("subscription owner is unavailable", "owner", owner)
-		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "subscription backend unavailable"}
+		// Текст не называет ни владельца, ни часть края (kacho#3029): действие
+		// арендатора на `503` одно — повторить; владелец — в журнале.
+		return refusal{status: httpStatus, code: statusCodeNumber(st.Code()), msg: "the subscription stream could not be opened; try again later"}
 	case codes.Unimplemented:
 		// Владелец объявлен посадкой, но глагола не служит. Это состояние
 		// посадки, а не вина вызывающего, — и оно обязано быть громким, иначе

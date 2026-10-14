@@ -754,7 +754,7 @@
       ]
     },
     {
-      "name": "SDT-CR-ANON — [catalog-mutate] Create diskType (admin-каталог) субъектом anon → UNAUTH",
+      "name": "SDT-CR-ANON — [catalog-mutate] Create diskType (admin-каталог) субъектом anon → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -804,9 +804,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-ANON] UNAUTH: status 401', () => pm.expect(pm.response.code, pm.response.text()).to.equal(401));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-ANON] UNAUTH: grpc code 16 (UNAUTHENTICATED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(16));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -815,7 +821,7 @@
       ]
     },
     {
-      "name": "SDT-CR-NOB — [catalog-mutate] Create diskType (admin-каталог) субъектом no-bind → DENY",
+      "name": "SDT-CR-NOB — [catalog-mutate] Create diskType (admin-каталог) субъектом no-bind → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -873,10 +879,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-NOB] DENY: status 403', () => pm.expect(pm.response.code, pm.response.text()).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[SDT-CR-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -885,7 +896,7 @@
       ]
     },
     {
-      "name": "SDT-CR-PA1 — [catalog-mutate] Create diskType (admin-каталог) субъектом proj-adm → DENY",
+      "name": "SDT-CR-PA1 — [catalog-mutate] Create diskType (admin-каталог) субъектом proj-adm → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -943,10 +954,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-PA1] DENY: status 403', () => pm.expect(pm.response.code, pm.response.text()).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[SDT-CR-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -955,7 +971,7 @@
       ]
     },
     {
-      "name": "SDT-CR-AAA — [catalog-mutate] Create diskType (admin-каталог) субъектом acct-adm-a → DENY",
+      "name": "SDT-CR-AAA — [catalog-mutate] Create diskType (admin-каталог) субъектом acct-adm-a → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -1013,10 +1029,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-AAA] DENY: status 403', () => pm.expect(pm.response.code, pm.response.text()).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[SDT-CR-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -1025,7 +1046,7 @@
       ]
     },
     {
-      "name": "SDT-CR-AAB — [catalog-mutate] Create diskType (admin-каталог) субъектом acct-adm-b → DENY",
+      "name": "SDT-CR-AAB — [catalog-mutate] Create diskType (admin-каталог) субъектом acct-adm-b → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -1083,10 +1104,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-AAB] DENY: status 403', () => pm.expect(pm.response.code, pm.response.text()).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-AAB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[SDT-CR-AAB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }
@@ -1095,7 +1121,7 @@
       ]
     },
     {
-      "name": "SDT-CR-INV — [catalog-mutate] Create diskType (admin-каталог) субъектом invitee → DENY",
+      "name": "SDT-CR-INV — [catalog-mutate] Create diskType (admin-каталог) субъектом invitee → NOROUTE",
       "description": "class:AUTHZ | class:SEC | class:CATALOG | class:NEG | priority:P0",
       "item": [
         {
@@ -1153,10 +1179,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[SDT-CR-INV] DENY: status 403', () => pm.expect(pm.response.code, pm.response.text()).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[SDT-CR-INV] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[SDT-CR-INV] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('status 501', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(501));",
+                  "pm.test('grpc code 12 (UNIMPLEMENTED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(12);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (method)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 12, message: 'Method Not Allowed', details: []});",
+                  "});"
                 ]
               }
             }

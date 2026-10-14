@@ -275,7 +275,7 @@ func buildStreamRevocationSweeper(
 	}
 	return streamrevocation.New(streamrevocation.Config{
 		Streams:    streams,
-		Authority:  clients.NewSessionRevocationsAdapter(iamInternal),
+		Authority:  clients.NewSessionRevocationsAdapter(iamInternal, cfg.IdentityCallBudget),
 		OurTokens:  ourTokens,
 		Interval:   interval,
 		StaleAfter: staleAfter,

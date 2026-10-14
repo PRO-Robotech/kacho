@@ -11,10 +11,12 @@ import {
   type BrowserContext,
   type TestInfo,
 } from "@playwright/test";
-import { noteRefusal, recordableRefusal } from "./ceremony-budget";
-import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
+import { noteRefusal, recordableAttempt } from "./ceremony-budget";
+import { isRegistration, noteRegistration } from "./registration-budget.ts";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./run-identity";
 import { awaitLetter, stationMailbox } from "./mail-receiver";
 import { carryStandCookies } from "../stand-secure-origin.ts";
+import { traceSeed } from "./seed-trace";
 
 /**
  * Посев «Дано» сценариев церемонии — глаголами НАШЕЙ службы, отдельным
@@ -53,11 +55,16 @@ export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
 export type FormKind =
+  | "email-change"
+  | "email-change-confirm"
   | "login"
   | "logout"
   | "password"
+  | "recovery"
+  | "recovery-complete"
   | "register"
   | "second-factor"
+  | "session-end"
   | "step-up"
   | "verify-email-confirm";
 
@@ -67,6 +74,12 @@ export const LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  // Заведение первого пароля (Р13). Путь — отдельный, а не продолжение `password`:
+  // перехват ответов (`captureAnswers`) сверяет адрес целиком, и глагол, не
+  // названный здесь, в `LANE_VERBS` не входит — его ответ перехват пропускает.
+  passwordEnroll: "/iam/v1/auth/password/enroll",
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
   confirm: "/iam/v1/auth/second-factor/confirm",
@@ -74,10 +87,19 @@ export const LANE = {
   backupCodes: "/iam/v1/auth/second-factor/backup-codes",
   stepUp: "/iam/v1/auth/step-up",
   verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
+  // Свои сессии (приёмка F8-S5, Р1; службы — OS, Р1): перечень и два снимающих
+  // глагола под живой сессией; признак у снимающих — один вид `session-end`.
+  sessions: "/iam/v1/auth/sessions",
+  sessionsEnd: "/iam/v1/auth/sessions/end",
+  sessionsEndOthers: "/iam/v1/auth/sessions/end-others",
+  // Смена адреса почты (приёмка F8-S6, Р5; службы — EC, Р1): запрос кода на новый
+  // адрес и предъявление кода — оба под живой сессией, у каждого свой вид признака.
+  emailChange: "/iam/v1/auth/email-change",
+  emailChangeConfirm: "/iam/v1/auth/email-change/confirm",
 } as const;
 
 /** Ответ края о сессии — не глагол полосы, а вопрос «кто я»; посев задаёт его своим носителем. */
-const SESSION_IDENTITY = "/iam/v1/auth/me";
+export const SESSION_IDENTITY = "/iam/v1/auth/me";
 
 /** Одно обращение посева и ответ на него — в порядке выпуска. */
 export interface IssuedCall {
@@ -95,6 +117,12 @@ export interface Seed {
   formToken(kind: FormKind): Promise<string>;
   /** Отправка формы глагола с признаком её вида. Исход НЕ утверждается — это делает вызывающий. */
   submit(path: string, kind: FormKind, body: Record<string, unknown>): Promise<APIResponse>;
+  /**
+   * То же, что `submit`, и длительность ОДНОГО обращения глагола: признак формы
+   * берётся до отсчёта, отсчёт кончается полученным телом. Нужна измерительным
+   * пробам (`measurements/`, форма Ф1-48): в замер не попадает чужое обращение.
+   */
+  submitTimed(path: string, kind: FormKind, body: Record<string, unknown>): Promise<{ res: APIResponse; ms: number }>;
   /** Чтение глагола без тела. */
   read(path: string): Promise<APIResponse>;
   /** Значение носителя сессии у посева либо пустая строка. */
@@ -108,10 +136,13 @@ export function seedAddress(scenario: string): string {
 }
 
 async function record(issued: IssuedCall[], method: "GET" | "POST", path: string, res: APIResponse) {
+  // Регистрация посева списывает то же окно источника, что и регистрация экраном
+  // (kacho#2909): она идёт в счёт сторожа за текущей пробой.
+  if (isRegistration(method, new URL(path, "http://seed.invalid").pathname)) noteRegistration(test.info().testId);
   const text = await res.text();
   // Отказ посева тратит ту же ось источника, что и отказ страницы: он идёт в
   // запись сторожа бюджета (F8-41) за текущей пробой.
-  const refused = recordableRefusal(new URL(path, "http://seed.invalid").pathname, res.status(), text);
+  const refused = recordableAttempt(new URL(path, "http://seed.invalid").pathname, res.status(), text);
   if (refused) noteRefusal(test.info().testId, refused);
   let body: unknown = text;
   try {
@@ -124,6 +155,12 @@ async function record(issued: IssuedCall[], method: "GET" | "POST", path: string
 
 /** Печенье в той форме, в какой его отдают и принимают контексты playwright. */
 export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
+
+/** Величины контекста посева сверх умолчаний. */
+export interface SeedOptions {
+  /** Заголовок `User-Agent` каждого обращения посева. */
+  userAgent?: string;
+}
 
 /**
  * Свой контекст запросов посева — к тому же стенду, с тем же отношением к
@@ -140,17 +177,27 @@ export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
  * печенья остаются такими, какими их выдала служба, поэтому `transferSession`
  * по-прежнему переносит носитель как выдан.
  */
-export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = []): Promise<Seed> {
+export async function newSeed(
+  testInfo: TestInfo,
+  carrying: readonly Cookie[] = [],
+  opts: SeedOptions = {},
+): Promise<Seed> {
   const use = testInfo.project.use;
   const api = await request.newContext({
     baseURL: use.baseURL,
     ignoreHTTPSErrors: use.ignoreHTTPSErrors,
+    // Описание клиента посева (приёмка F8-S5, «Дано B»): служба пишет его в запись
+    // сессии, выданной глаголом этого контекста, и перечень своих сессий называет
+    // его как прислано. Не названо — у контекста описание по умолчанию.
+    ...(opts.userAgent === undefined ? {} : { userAgent: opts.userAgent }),
     extraHTTPHeaders: { Accept: "application/json" },
     // Носитель, переданный ЯВНО: контекст начинает с тех печений, что названы, и
     // ни с какими другими — общей банки с браузером у него нет.
     storageState: { cookies: [...carrying], origins: [] },
   });
   carryStandCookies(api, async () => (await api.storageState()).cookies, use.baseURL);
+  // Запись посева — вложение «trace» упавшей пробы без страницы (kacho#3200).
+  const close = await traceSeed(api, testInfo);
   const issued: IssuedCall[] = [];
   const seed: Seed = {
     api,
@@ -177,6 +224,15 @@ export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = 
       await record(issued, "POST", path, res);
       return res;
     },
+    async submitTimed(path, kind, body) {
+      const csrfToken = await seed.formToken(kind);
+      const t0 = performance.now();
+      const res = await api.post(path, { data: { ...body, csrfToken } });
+      await res.body();
+      const ms = performance.now() - t0;
+      await record(issued, "POST", path, res);
+      return { res, ms };
+    },
     async read(path) {
       const res = await api.get(path);
       await record(issued, "GET", path, res);
@@ -186,7 +242,7 @@ export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = 
       const state = await api.storageState();
       return state.cookies.find((c) => c.name === SESSION_COOKIE)?.value ?? "";
     },
-    dispose: () => api.dispose(),
+    dispose: close,
   };
   return seed;
 }

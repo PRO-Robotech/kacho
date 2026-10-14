@@ -46,9 +46,11 @@ func vendorModuleDir(t *testing.T, repo, module string) string {
 }
 
 // TestRetiredIdentityVendorBindingsStayUnderTheirCeiling — гейт убывающего
-// потолка: привязок к снимаемому издателю личности в каждом из трёх деревьев
-// продукта не больше, чем в том же дереве на БАЗЕ изменения. Числа в дереве нет:
-// потолок — число базы, посчитанное тем же прибором.
+// потолка: ни в одном из трёх деревьев продукта изменение не ДОБАВЛЯЕТ привязки
+// к снимаемому издателю личности, которой в том же дереве на БАЗЕ нет ни на
+// прежнем, ни на новом месте (#3002) — убыль той же правки прирост не прощает.
+// Числа в дереве нет: потолок — число базы, посчитанное тем же прибором, и он
+// печатается рядом с числом изменения.
 func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 	t.Parallel()
 
@@ -83,8 +85,8 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 	for _, name := range retiredVendorTrees {
 		d := v.Deltas[name]
 		t.Logf("перепись %s: %s", name, v.Census[name])
-		t.Logf("разность %s с базой: на базе %d · в изменении %d · прирост %d · убыль %d",
-			name, d.Base, d.Head, len(d.Added), len(d.Removed))
+		t.Logf("разность %s с базой: на базе %d · в изменении %d · прирост %d · убыль %d · перенесено %d",
+			name, d.Base, d.Head, len(d.Added), len(d.Removed), d.Moved)
 		if coords := vendorCoords(v.Bindings, name); !red[name] && len(coords) > 0 {
 			t.Logf("адреса %s (строк · файл), все %d, по пути:\n  %s",
 				name, len(coords), strings.Join(coords, "\n  "))

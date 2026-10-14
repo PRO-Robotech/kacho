@@ -754,8 +754,8 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 - Проверка: параметризованные запросы (pgx) во всех `internal/repo/kacho/pg/*.go`; `serviceerr.MapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).
 
 ### REQ-SEC-02 — HTTP-метод/Content-Type robustness [P3]
-`PUT`/`HEAD`/`DELETE` на List-endpoint → `405` или `404` (не 500). `POST` без `Content-Type` → `400`/`415`/`200` (lenient).
-- Validated-by: `*-METHOD-PUT-NOT-ALLOWED`, `*-METHOD-DELETE-LIST`, `*-METHOD-NOT-ALLOWED`, `*-HEADERS-MISSING-CT`
+`PUT`/`DELETE` на List-endpoint (адрес публично есть под `GET`/`POST`) → промах маршрута края «метода нет»: `501` / code 12, тело ровно `{"code":12,"message":"Method Not Allowed","details":[]}`, одинаково любому вызывающему, до аутентификации и прав (kacho#3053); `200` — красный. `HEAD` и кейс `*-METHOD-NOT-ALLOWED` держателя в наборе не имеют и требованием не утверждаются. `POST` без `Content-Type` → `400`/`415`/`200` (lenient).
+- Validated-by: `*-METHOD-PUT-NOT-ALLOWED`, `*-METHOD-DELETE-LIST` (общий блок `http_method_not_allowed_block`), `*-HEADERS-MISSING-CT`
 - Проверка: api-gateway routing (grpc-gateway mux).
 
 ---

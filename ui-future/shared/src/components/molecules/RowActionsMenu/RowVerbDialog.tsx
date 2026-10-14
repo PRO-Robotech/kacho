@@ -37,8 +37,10 @@ export function RowVerbDialog({ state, resourceId, projectId, onClose }: Props) 
 
   const mutation = useSignalledMutation({
     signal: {
-      succeeded: `${state.progressTitle}: готово`,
-      failed: (reason) => `${state.progressTitle}: ${reason}`,
+      // Свои слова исхода — когда пункт их назвал (`succeededText`/`failedText`),
+      // иначе общая форма. Одно место на оба вида, чтобы они не разошлись.
+      succeeded: state.succeededText ?? `${state.progressTitle}: готово`,
+      failed: (reason) => `${state.failedText ?? state.progressTitle}: ${reason}`,
     },
     // Глаголы Kachō отвечают `Operation` (ban #9). Ответ без операции — не
     // «выполнено синхронно», а нарушение контракта: подтверждать нечем.

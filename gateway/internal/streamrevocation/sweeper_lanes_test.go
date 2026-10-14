@@ -120,13 +120,16 @@ func TestLiveCredentialLeavesTheStreamOpen(t *testing.T) {
 func TestSessionCutoffClosesTheBrowserStream(t *testing.T) {
 	s := newStand(t, nil)
 	// Сессия жива и адрес подтверждён: предмет пробы — отсечка, а не отметка.
-	s.human.put("brw-cutoff", "usr00000000000000003", true)
+	// Момент аутентификации называет ОТВЕТ СЛУЖБЫ о сессии по носителю — его и
+	// сравнивает перепрос (kacho#2690), — а не заголовок открытия.
+	authAt := time.Date(2026, 8, 29, 11, 0, 0, 0, time.UTC)
+	s.human.putAt("brw-cutoff", "usr00000000000000003", authAt)
 
-	authAt := time.Now().Add(-time.Hour).Truncate(time.Second)
 	done := s.openStream(t, map[string]string{
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000003",
-		// `jti` НЕ ставится: браузерная сессия его не несёт.
+		// `jti` НЕ ставится: браузерная сессия его не несёт. Довод свежести
+		// полоса ставит в секундах — так же, как здесь.
 		principalmeta.HeaderTokenMfaAt: itoa(authAt.Unix()),
 	}, principalmeta.PresentedSession("brw-cutoff"))
 

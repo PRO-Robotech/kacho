@@ -23,6 +23,7 @@ package middleware_test
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -83,9 +84,10 @@ func buildProductionAuthNChain(t *testing.T, fix *jwksFixture, checker *fakeChec
 	require.NoError(t, err)
 
 	dpopMW, err := middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
-		Verifier: stepUpVerifier(t, fix),
-		DPoP:     dpopValidator,
-		StepUp:   middleware.NewStepUpGate(time.Now),
+		Revocation: middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", nil, slog.New(slog.NewJSONHandler(io.Discard, nil))),
+		Verifier:   stepUpVerifier(t, fix),
+		DPoP:       dpopValidator,
+		StepUp:     middleware.NewStepUpGate(time.Now),
 
 		PermissionLookup: middleware.NewCatalogPermissionLookup(catalog),
 		RestRouter:       middleware.NewRestRouter(),

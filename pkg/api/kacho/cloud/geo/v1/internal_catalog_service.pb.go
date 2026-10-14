@@ -101,7 +101,8 @@ func (x *CreateRegionRequest) GetInfra() *RegionInfra {
 	return nil
 }
 
-// CreateRegionMetadata — operation.metadata for InternalRegionService.Create.
+// CreateRegionMetadata — operation.metadata for InternalRegionService.Create and
+// for the public RegionService.Create (one metadata shape for both paths).
 type CreateRegionMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Region that is being created.
@@ -234,7 +235,8 @@ func (x *UpdateRegionRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 	return nil
 }
 
-// UpdateRegionMetadata — operation.metadata for InternalRegionService.Update.
+// UpdateRegionMetadata — operation.metadata for InternalRegionService.Update and
+// RegionService.Update.
 type UpdateRegionMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RegionId      string                 `protobuf:"bytes,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
@@ -323,7 +325,8 @@ func (x *DeleteRegionRequest) GetRegionId() string {
 	return ""
 }
 
-// DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete.
+// DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete and
+// RegionService.Delete.
 type DeleteRegionMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RegionId      string                 `protobuf:"bytes,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
@@ -484,7 +487,8 @@ func (x *CreateZoneRequest) GetInfra() *ZoneInfra {
 	return nil
 }
 
-// CreateZoneMetadata — operation.metadata for InternalZoneService.Create.
+// CreateZoneMetadata — operation.metadata for InternalZoneService.Create and
+// ZoneService.Create.
 type CreateZoneMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Zone that is being created.
@@ -607,7 +611,8 @@ func (x *UpdateZoneRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 	return nil
 }
 
-// UpdateZoneMetadata — operation.metadata for InternalZoneService.Update.
+// UpdateZoneMetadata — operation.metadata for InternalZoneService.Update and
+// ZoneService.Update.
 type UpdateZoneMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ZoneId        string                 `protobuf:"bytes,1,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
@@ -696,7 +701,8 @@ func (x *DeleteZoneRequest) GetZoneId() string {
 	return ""
 }
 
-// DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete.
+// DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete and
+// ZoneService.Delete.
 type DeleteZoneMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ZoneId        string                 `protobuf:"bytes,1,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`

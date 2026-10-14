@@ -66,7 +66,7 @@ func TestCreate_freshDOWN_warnsLoud(t *testing.T) {
 	if err != nil {
 		t.Fatalf("metadata: %v", err)
 	}
-	want := "region eu-west1 created but CLOSED to placement (status DOWN); no tenant can place here — Internal Update status=UP to open"
+	want := "region eu-west1 created but CLOSED to placement (status DOWN); no tenant can place here until an administrator updates its status to UP"
 	if len(meta.GetWarnings()) != 1 || meta.GetWarnings()[0] != want {
 		t.Fatalf("warnings = %v, want [%q]", meta.GetWarnings(), want)
 	}

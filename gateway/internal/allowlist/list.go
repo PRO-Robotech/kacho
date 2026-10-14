@@ -218,15 +218,24 @@ var AllowedMethods = map[string]struct{}{
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.
 
-	// geo.v1 — RegionService (read-only справочник).
+	// geo.v1 — RegionService: справочник (Get/List) и административные глаголы
+	// каталога (Create/Update/Delete — ADM-1, право system_admin @ cluster, тот же
+	// порог подтверждения, что у внутреннего близнеца; вход без infra°).
 	// Geography живет в leaf-сервисе kacho-geo; теперь единственный owner.
-	"/kacho.cloud.geo.v1.RegionService/Get":  {},
-	"/kacho.cloud.geo.v1.RegionService/List": {},
-	// geo.v1 — ZoneService (read-only справочник)
-	"/kacho.cloud.geo.v1.ZoneService/Get":  {},
-	"/kacho.cloud.geo.v1.ZoneService/List": {},
+	"/kacho.cloud.geo.v1.RegionService/Get":    {},
+	"/kacho.cloud.geo.v1.RegionService/List":   {},
+	"/kacho.cloud.geo.v1.RegionService/Create": {},
+	"/kacho.cloud.geo.v1.RegionService/Update": {},
+	"/kacho.cloud.geo.v1.RegionService/Delete": {},
+	// geo.v1 — ZoneService: то же для зон.
+	"/kacho.cloud.geo.v1.ZoneService/Get":    {},
+	"/kacho.cloud.geo.v1.ZoneService/List":   {},
+	"/kacho.cloud.geo.v1.ZoneService/Create": {},
+	"/kacho.cloud.geo.v1.ZoneService/Update": {},
+	"/kacho.cloud.geo.v1.ZoneService/Delete": {},
 	// geo.v1 — InternalRegionService / InternalZoneService.* — НЕ в allowlist
-	// (admin-CRUD на :9091; HasInternalSuffix блокирует автоматически, запрет #6).
+	// (полная плоскость с infra° и GetInternal на :9091; HasInternalSuffix
+	// блокирует автоматически, запрет #6).
 
 	// iam.v1 — AccountService
 	"/kaname.cloud.iam.v1.AccountService/Get":  {},
@@ -270,8 +279,16 @@ var AllowedMethods = map[string]struct{}{
 	// заблокированного без пути снятия.
 	"/kaname.cloud.iam.v1.UserService/Block":   {}, // identity_suspender on iam_user, acr 2
 	"/kaname.cloud.iam.v1.UserService/Unblock": {}, // identity_suspender on iam_user, acr 2
-	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
-	// публичный путь появления пользователя; Create по-прежнему только internal.
+	// Приглашение по адресу почты (REST POST /iam/v1/users:invite). Глагол не
+	// единственный: тот же поток приглашения обслуживает и
+	// `MembershipService.Create` (ниже), и на одну пару «человек × аккаунт» оба
+	// дают одну строку членства. Человек появляется на платформе приглашением
+	// любым из двух глаголов с неизвестным адресом либо самостоятельной
+	// регистрацией на полосе входа (`/iam/v1/auth/register`, она идёт мимо этого
+	// списка — middleware/login_lane_paths.go); служебный
+	// `InternalUserService.UpsertFromIdentity` — только на кластерном слушателе.
+	// `UserService.Create` по-прежнему только internal. Полный перечень
+	// производителей строки человека — шапка `Membership` в контракте службы.
 	"/kaname.cloud.iam.v1.UserService/Invite": {},
 	// Исключение человека из аккаунта (REST POST
 	// /iam/v1/users/{user_id}:removeFromAccount) — ПАРА к приглашению выше, и
@@ -293,6 +310,14 @@ var AllowedMethods = map[string]struct{}{
 	// снятие требует кода. Тот же круг держателей и тот же порог, что у
 	// Block/Unblock: `identity_suspender` on iam_user, acr 2.
 	"/kaname.cloud.iam.v1.UserService/ResetSecondFactor": {},
+	// Сброс ключей доступа человека администратором облака (REST POST
+	// /iam/v1/users/{user_id}:resetAccessKeys; приёмка службы
+	// cloud-administrator-resets-login-methods Р1, Р2; PRO-Robotech/kacho#2702):
+	// снимает все ключи человека и завершает все его сессии; пароль не трогает
+	// (Р8). Публичный по решению Р1 «Отвергнуто» (а): администратор облака зовёт
+	// его через край, как Block. Тот же круг и порог, что у ResetSecondFactor:
+	// `identity_suspender` on iam_user, acr 2.
+	"/kaname.cloud.iam.v1.UserService/ResetAccessKeys": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
@@ -328,6 +353,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.SAKeyService/Issue":  {},
 	"/kaname.cloud.iam.v1.SAKeyService/List":   {},
 	"/kaname.cloud.iam.v1.SAKeyService/Revoke": {},
+	// iam.v1 — ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец
+	// InternalClusterService: администраторы кластера на публичной поверхности
+	// под /iam/v1/cluster…. Гейт — system_admin на cluster:cluster_root
+	// (не выполним подстановочным знаком), мутации — с полом подтверждения 2.
+	// Внутренний близнец остаётся на :9091 и в перечень НЕ входит (запрет #6).
+	"/kaname.cloud.iam.v1.ClusterService/Get":         {}, // sync read (REST GET /iam/v1/cluster)
+	"/kaname.cloud.iam.v1.ClusterService/ListAdmins":  {}, // sync read (REST GET /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/GrantAdmin":  {}, // Operation (REST POST /iam/v1/cluster/admins)
+	"/kaname.cloud.iam.v1.ClusterService/RevokeAdmin": {}, // Operation (REST DELETE /iam/v1/cluster/admins/{subject_id})
 	// iam.v1 — AuthorizeService (REST /iam/v1/authorize:* и /iam/v1/me) —
 	// tenant-facing запросы к модели прав: предпросмотр разрешений в консоли и
 	// самоописание вызывающего. Публичный сервис, не Internal*.
@@ -348,12 +382,21 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.GroupService/ListOperations": {},
 
 	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях и
-	// заведение членства (REST POST /iam/v1/memberships, kaname#181): ввод
-	// ЗАРЕГИСТРИРОВАВШЕГОСЯ человека в аккаунт по адресу почты — вторая дверь к
-	// допуску рядом с приглашением, и порог у неё тот же (`editor` на аккаунте,
-	// acr 2). Здесь стояло «только два чтения: глаголов изменения у ресурса на
-	// этой поверхности нет» — верно до Ф4 и неверно после: утверждение пережило
-	// свой предмет, и оно снято, а не оставлено.
+	// заведение членства (REST POST /iam/v1/memberships, kaname#181). Create —
+	// один глагол на оба случая, ветвь решает адрес почты, а не вызывающий:
+	// с НЕИЗВЕСТНЫМ адресом он заводит человека в состоянии «приглашён» и
+	// членство PENDING с письмом приглашения — то есть это приглашение, тот же
+	// поток, что у `UserService.Invite`; с ИЗВЕСТНЫМ адресом (человек
+	// зарегистрировался сам либо уже приглашён) второй строки человека не
+	// заводит и добавляет ему членство в названном аккаунте — отказа на
+	// зарегистрированном адресе нет. Порог тот же, что у Invite (`editor` на
+	// аккаунте, acr 2): к допуску ведут два глагола, но дверь одна по силе.
+	// Семантику держит шапка `Membership` в контракте службы (kaname#505).
+	//
+	// Здесь стояло «только два чтения: глаголов изменения у ресурса на этой
+	// поверхности нет» — верно до Ф4 и неверно после; затем «ввод
+	// зарегистрировавшегося человека — вторая дверь к допуску», что называло
+	// одну ветвь Create из двух. Оба утверждения пережили свой предмет и сняты.
 	"/kaname.cloud.iam.v1.MembershipService/Get":    {},
 	"/kaname.cloud.iam.v1.MembershipService/List":   {},
 	"/kaname.cloud.iam.v1.MembershipService/Create": {},

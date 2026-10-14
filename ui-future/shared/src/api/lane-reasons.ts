@@ -20,4 +20,10 @@ export const LANE_REASON = {
   emailNotVerified: "EMAIL_NOT_VERIFIED",
   emailAlreadyVerified: "EMAIL_ALREADY_VERIFIED",
   inviteNotValid: "INVITE_NOT_VALID",
+  // Первый пароль у человека, у которого пароль уже есть (приёмка F8, ред. 12,
+  // Р13): раздел «Пароль» возвращается к форме смены.
+  passwordAlreadySet: "PASSWORD_ALREADY_SET",
+  // Новый адрес заняли между запросом смены и предъявлением кода (приёмка F8-S6,
+  // Р4; службы — EC Р5): раздел называет это и возвращается к форме адреса.
+  emailInUse: "EMAIL_IN_USE",
 } as const;

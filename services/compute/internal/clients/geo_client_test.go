@@ -23,6 +23,11 @@ import (
 // fakeGeoZoneClient — in-memory geov1.ZoneServiceClient для unit-теста geo-client'а.
 // getFn полностью контролирует ответ Get (found / not-found / down).
 type fakeGeoZoneClient struct {
+	// Встроенный интерфейс закрывает административные глаголы ZoneService
+	// (Create/Update/Delete, ADM-1): клиент потребителя их не зовёт, и вызов
+	// незаданного метода упал бы паникой на nil — то есть громко, а не молча.
+	geov1.ZoneServiceClient
+
 	getFn func(ctx context.Context, in *geov1.GetZoneRequest) (*geov1.Zone, error)
 }
 

@@ -5,7 +5,12 @@
 // Header: кнопка «Добавить admin» → GrantAdminModal.
 // Per-row action «Отозвать» → Popconfirm → clusterApi.revokeAdmin → poll Op.
 //
-// Backend guards (proto-доку см. internal_cluster_service.proto):
+// Все вызовы — публичная ClusterService (kaname#661, край #3093): экран работает
+// на любой посадке края, и его кнопки от посадки не зависят (#3094). Выдача и
+// снятие несут пол уровня «2»: на сессии «1» общий клиент открывает окно
+// подтверждения и повторяет действие один раз — как у соседних экранов.
+//
+// Backend guards (proto-доку см. cluster_service.proto службы доступа):
 //   D-5 — нельзя revoke самого себя (server returns FailedPrecondition).
 //   D-6 — нельзя revoke последнего admin'а (FailedPrecondition).
 // UI дублирует guards на клиенте через `disabled` + tooltip, чтобы не отправлять
@@ -152,45 +157,46 @@ export default function ClusterAdminsPage() {
       width: 180,
       render: (v?: string) => fmtTs(v),
     },
-    {
-      title: "",
-      key: "actions",
-      width: 60,
-      render: (_v, row) => {
-        const isSelf = row.subject_id === currentUserId;
-        const isLast = adminsCount === 1;
-        const disabled = isSelf || isLast;
-        const tooltip = isSelf ? "Нельзя отозвать самого себя" : isLast ? "Нельзя отозвать последнего администратора" : "";
-        const button = (
-          <Button
-            size="small"
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            disabled={disabled}
-            loading={revokingId === row.subject_id}
-            data-testid={`cluster-admins-revoke-${row.subject_id}`}
-          />
-        );
-        if (disabled) {
-          return <Tooltip title={tooltip}>{button}</Tooltip>;
-        }
-        return (
-          <Popconfirm
-            title="Отозвать права администратора?"
-            description={`Снять права администратора кластера у «${row.subject_email || row.subject_id}»?`}
-            okText="Отозвать"
-            okButtonProps={{ danger: true }}
-            cancelText="Отмена"
-            onConfirm={() => void handleRevoke(row)}
-            icon={<ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />}
-          >
-            {button}
-          </Popconfirm>
-        );
-      },
-    },
   ];
+  // Столбец отзыва: отзыв — публичная ClusterService/RevokeAdmin (#3094).
+  columns.push({
+    title: "",
+    key: "actions",
+    width: 60,
+    render: (_v, row) => {
+      const isSelf = row.subject_id === currentUserId;
+      const isLast = adminsCount === 1;
+      const disabled = isSelf || isLast;
+      const tooltip = isSelf ? "Нельзя отозвать самого себя" : isLast ? "Нельзя отозвать последнего администратора" : "";
+      const button = (
+        <Button
+          size="small"
+          type="text"
+          danger
+          icon={<DeleteOutlined />}
+          disabled={disabled}
+          loading={revokingId === row.subject_id}
+          data-testid={`cluster-admins-revoke-${row.subject_id}`}
+        />
+      );
+      if (disabled) {
+        return <Tooltip title={tooltip}>{button}</Tooltip>;
+      }
+      return (
+        <Popconfirm
+          title="Отозвать права администратора?"
+          description={`Снять права администратора кластера у «${row.subject_email || row.subject_id}»?`}
+          okText="Отозвать"
+          okButtonProps={{ danger: true }}
+          cancelText="Отмена"
+          onConfirm={() => void handleRevoke(row)}
+          icon={<ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />}
+        >
+          {button}
+        </Popconfirm>
+      );
+    },
+  });
 
   if (isForbidden) {
     return (
@@ -222,7 +228,7 @@ export default function ClusterAdminsPage() {
           onClick={() => setGrantOpen(true)}
           data-testid="cluster-admins-grant-button"
         >
-          Добавить администратора (устаревший путь)
+          Добавить администратора
         </Button>
         <Button
           icon={<UserAddOutlined />}
@@ -244,10 +250,9 @@ export default function ClusterAdminsPage() {
         </Button>
       </Space>
 
-      {/* KAC item #5: cluster-admin grants теперь видимы и через AccessBindings
-          page (resource_type=cluster). Legacy форма "Добавить admin" продолжает
-          работать (POST /iam/v1/internal/cluster/admins), но новый unified
-          flow — это POST /iam/v1/accessBindings с resource_type=cluster. */}
+      {/* Права администратора кластера видны и выдаются двумя путями:
+          ClusterService/GrantAdmin (кнопка «Добавить администратора») и
+          привязкой доступа с resource_type=cluster. Оба — публичные. */}
       <Alert
         type="info"
         showIcon
@@ -256,9 +261,8 @@ export default function ClusterAdminsPage() {
           <>
             Права администратора кластера видны и на странице <Link to="/iam/access-bindings">Привязки доступа</Link>{" "}
             (фильтр <code>resource_type=cluster</code>, <code>resource_id=cluster_root</code>). Выдать их можно и
-            кнопкой
-            &quot;Добавить администратора (устаревший путь)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), и
-            через &quot;Выдать через привязку доступа&quot; — оба пути идемпотентны.
+            кнопкой &quot;Добавить администратора&quot;, и через &quot;Выдать через привязку доступа&quot; — оба пути
+            идемпотентны.
           </>
         }
         data-testid="cluster-admins-unified-flow-note"

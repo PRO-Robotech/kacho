@@ -127,6 +127,26 @@ func sensitiveACR2FQNs() []string {
 		// же доводу: человек, которому хватило бы пароля для сброса чужого
 		// фактора, получил бы через дешёвую дверь больше, чем отзыв одного токена.
 		"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
+		// ResetAccessKeys (приёмка службы cloud-administrator-resets-login-methods
+		// Р2, PRO-Robotech/kacho#2702) — четвёртый читатель того же отношения:
+		// снимает все ключи доступа человека и завершает все его сессии. Порог
+		// тот же, что у ResetSecondFactor, по тому же доводу.
+		"kaname.cloud.iam.v1.UserService/ResetAccessKeys",
+		// Ключ доступа (PRO-Robotech/kaname#747, Р1, Р3): ключ даёт «2» одним
+		// предъявлением, поэтому заводится и снимается только сессией, уже
+		// достигшей «2». Пол заведения не ниже пола выпуска личного токена
+		// (UserTokenService/Issue выше) — иначе способ, дающий «2», заводился бы
+		// через более дешёвую дверь, чем токен. Для машинного вызывающего пол
+		// инертен так же, как у пар выше.
+		"kaname.cloud.iam.v1.AccessKeyService/BeginRegistration",
+		"kaname.cloud.iam.v1.AccessKeyService/FinishRegistration",
+		"kaname.cloud.iam.v1.AccessKeyService/Revoke",
+		// Необратимое снятие субъекта (PRO-Robotech/kaname#720, Р12). Прежнее
+		// решение B3 «удаление субъекта — рутинное» отозвано службой: снятие
+		// человека или сервисного аккаунта необратимо и не дешевле обратимых
+		// соседей — Block/Unblock и Disable/Enable уже требуют «2».
+		"kaname.cloud.iam.v1.UserService/Delete",
+		"kaname.cloud.iam.v1.ServiceAccountService/Delete",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
@@ -166,9 +186,13 @@ func sensitiveACR2FQNs() []string {
 		// E — role policy mutation (2)
 		"kaname.cloud.iam.v1.RoleService/Update",
 		"kaname.cloud.iam.v1.RoleService/Delete",
-		// G — cluster-admin grant (2)
+		// G — cluster-admin grant (4): внутренний близнец и публичный
+		// (kaname#661, kacho#3093). Порог принадлежит ДЕЙСТВИЮ, а не адресу:
+		// публичный близнец на «1» был бы дешёвым обходом ступени внутреннего.
 		"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin",
 		"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin",
+		"kaname.cloud.iam.v1.ClusterService/GrantAdmin",
+		"kaname.cloud.iam.v1.ClusterService/RevokeAdmin",
 		// H — tenancy-root destroy (2)
 		"kaname.cloud.iam.v1.AccountService/Delete",
 		"kaname.cloud.iam.v1.ProjectService/Delete",
@@ -278,7 +302,11 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	fqns := sensitiveACR2FQNs()
 	require.Empty(t, repeatedFQNs(fqns), "the sensitive list must name each FQN once")
 	require.Len(t, fqns, len(sensitive), "the sensitive list and its set must be the same size")
-	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
+	// 33 → 38: подъём пина на kaname@68541f0d (kacho#3193) привёз ПЯТЬ записей в
+	// полосу «чувствительное» контрактом службы — три глагола ключа доступа
+	// (kaname#747) и необратимое снятие человека и сервисного аккаунта
+	// (kaname#720). Число ЗАМЕРЕНО прогоном после регенерации каталога.
+	require.Len(t, sensitive, 38, "the acceptance-doc sensitive set must contain exactly 38 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -299,7 +327,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 30, "exactly 30 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 38, "exactly 38 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -317,9 +345,9 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 		"kaname.cloud.iam.v1.AccessBindingService/ListByScope",
 		"kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 		"kaname.cloud.iam.v1.AccessBindingService/ListBySubject",
-		// B3 subject-delete → routine
-		"kaname.cloud.iam.v1.ServiceAccountService/Delete",
-		"kaname.cloud.iam.v1.UserService/Delete",
+		// B3 «удаление субъекта — рутинное» отозвано службой (kaname#720, Р12):
+		// UserService/Delete и ServiceAccountService/Delete перенесены в
+		// положительное утверждение «2» перечнем sensitiveACR2FQNs выше.
 		// B5 non-iam Internal*-admin (sample) → routine
 		"kacho.cloud.geo.v1.InternalRegionService/Create",
 		"kacho.cloud.vpc.v1.InternalAddressPoolService/Create",
@@ -327,6 +355,8 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 		// B4 cluster reads → routine
 		"kaname.cloud.iam.v1.InternalClusterService/Get",
 		"kaname.cloud.iam.v1.InternalClusterService/ListAdmins",
+		"kaname.cloud.iam.v1.ClusterService/Get",
+		"kaname.cloud.iam.v1.ClusterService/ListAdmins",
 		// interactive-login client READS (IAM-INT-1 scenario 23, negative pair).
 		// These two exist in this list precisely because the generator stamps
 		// "2" when proto omits required_acr_min: if the declaration were ever
@@ -728,7 +758,24 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
 	// утверждения этой пробы после регенерации каталога. Сумма сходится
 	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
-	assert.Equal(t, 30, n2, "sensitive count")
+	//
+	// Подъём пина на kaname@8b0379e2 (kacho#3093) привёз ЧЕТЫРЕ записи
+	// публичного близнеца `ClusterService` (kaname#661) с порогами внутреннего
+	// близнеца дословно: GrantAdmin/RevokeAdmin — в полосу «чувствительное»,
+	// Get/ListAdmins — в «рутину». Полоса «без порога» не сдвинулась. Числа
+	// ЗАМЕРЕНЫ прогоном после регенерации: 30→32, 289→291, 348→352.
+	//
+	// Подъём пина на kaname@9351ab09 (kacho#3126) привёз ОДНУ запись —
+	// `UserService/ResetAccessKeys` (kaname#638) в полосу «чувствительное»
+	// контрактом службы, как ResetSecondFactor. Полосы «рутина» и «без порога»
+	// не сдвинулись. Числа ЗАМЕРЕНЫ прогоном после регенерации: 32→33, 358→359.
+	//
+	// Подъём пина на kaname@68541f0d (kacho#3193) перевёл ПЯТЬ записей из
+	// «рутины» в «чувствительное» контрактом службы: три глагола ключа доступа
+	// (kaname#747, Р1, Р3) и снятие человека и сервисного аккаунта (kaname#720,
+	// Р12). Записи не заводились и не снимались: полоса «без порога» и итог не
+	// сдвинулись. Числа ЗАМЕРЕНЫ прогоном после регенерации: 33→38, 297→292.
+	assert.Equal(t, 38, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -835,9 +882,25 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// оставшийся от снятого поставщика (kaname#564). Запись была освобождённой
 	// (INTERNAL_LISTENER) и без порога, поэтому сдвинулась только полоса «без
 	// порога». Числа ЗАМЕРЕНЫ прогоном после регенерации: 30→29, 349→348.
-	assert.Equal(t, 289, n1, "routine count")
+	//
+	// ADM-1 geo (kacho#3092) добавила ШЕСТЬ записей публичных
+	// `RegionService`/`ZoneService` `Create/Update/Delete`, все рутинные:
+	// порог принадлежит действию, а не адресу, и равен порогу внутреннего
+	// близнеца («1») — равенство держит проба пары записей
+	// (TestPermissionCatalog_ADM1GEO15_PublicGeoAdminEqualsInternalTwin), а не
+	// это число. Внутренние шесть остаются — прирост, а не замена. Полосы
+	// «чувствительное» и «без порога» не двигаются. Числа ЗАМЕРЕНЫ прогоном
+	// после регенерации: 289→295, 348→354.
+	//
+	// Сведение полос geo (kacho#3092) и публичного близнеца `ClusterService`
+	// (kacho#3093): числа выше у каждой полосы мерились от своей базы, и ни одно
+	// из них не верно для сведённого дерева. Каталог регенерирован тем же
+	// генератором на сведённом дереве (358 записей, совпал с вшитым байт в байт);
+	// числа ниже напечатали упавшие утверждения этой пробы: рутина 297, всего 358.
+	// После подъёма пина kacho#3193 — 292 (пять записей ушли в «чувствительное»).
+	assert.Equal(t, 292, n1, "routine count")
 	assert.Equal(t, 29, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 348, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 359, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

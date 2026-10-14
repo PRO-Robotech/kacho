@@ -104,6 +104,7 @@ DECLARED="
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
+.github/scripts/console-cloud-admin.sh
 .github/scripts/console-run-category.py
 .github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh
@@ -148,6 +149,7 @@ deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
+deploy/scripts/stand-mailbox-door.py
 deploy/scripts/stand-provenance.sh
 deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
@@ -156,6 +158,7 @@ deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
+deploy/tests/helm/networkpolicy-edge-metrics-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh

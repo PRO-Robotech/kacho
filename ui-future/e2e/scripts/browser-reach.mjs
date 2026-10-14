@@ -19,6 +19,7 @@
  */
 import { chromium } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { standTlsTrustArgs } from "../stand-tls-trust.ts";
 
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
@@ -38,8 +39,11 @@ function probeOS() {
   }
 }
 
+// Лист консоли своего стенда самоподписан: доверие ровно его ключу (kacho#3025),
+// тем же решением, что у конфигурации проб, — иначе шаг доступности судил бы
+// другим браузером, чем пробы.
 const launch = {
-  args,
+  args: [...args, ...standTlsTrustArgs(process.env.KACHO_CONSOLE_CA)],
   ...(process.env.KACHO_CHROMIUM ? { executablePath: process.env.KACHO_CHROMIUM } : {}),
 };
 

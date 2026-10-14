@@ -112,6 +112,18 @@ SPECS_GLOB = "*.spec.ts"
 PRECONDITION_PROJECT = "precondition"
 PRECONDITIONS_GLOB = "*.precondition.ts"
 
+
+def is_condition_project(name: str) -> bool:
+    """Проект условий — `precondition` либо `precondition:<предмет>`.
+
+    Второе имя — условие ЧАСТИ набора (kacho#3057, F8-S4 §4 П4): от него зависит
+    только проект этой части, и несозданное условие не тратит бюджет ранней
+    остановки пробами, которые его ждут. Сверка — по точному имени либо имени
+    с разделителем, а не по началу слова: иначе проект проб с похожим именем
+    ушёл бы в условия, и его красное стало бы «не выполнилось».
+    """
+    return name == PRECONDITION_PROJECT or name.startswith(PRECONDITION_PROJECT + ":")
+
 # УСЛОВИЕ ПРОБЫ, НЕ СОЗДАННОЕ ЕЁ ФИКСТУРОЙ (приёмка F6b, F6b-32; kacho#2901).
 #
 # Фикстура регистрации набора читает письмо у приёмника стенда. Письма нет в
@@ -302,8 +314,8 @@ def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None =
     records = outcomes(report)
     # Записи УСЛОВИЙ отделяются от записей проб по имени проекта: условие — не
     # проба о продукте, и ни в счёт проб, ни в перепись трассы оно не входит.
-    conditions = [r for r in records if r.project == PRECONDITION_PROJECT]
-    got = [r for r in records if r.project != PRECONDITION_PROJECT]
+    conditions = [r for r in records if is_condition_project(r.project)]
+    got = [r for r in records if not is_condition_project(r.project)]
     started = [g for g in got if g.runs > 0]
     not_started = [g for g in got if g.runs == 0]
     declared_conditions, condition_files = (
@@ -1043,6 +1055,59 @@ def self_test() -> int:
             "объявленное условие, выпавшее из отчёта, ловится",
             got == RC_RED and "условий объявлено 1, в отчёте 0" in joined,
             f"{RC_RED} + «условий объявлено 1, в отчёте 0»", got))
+
+        # ─── УСЛОВИЕ ЧАСТИ НАБОРА — СВОЙ ПРОЕКТ УСЛОВИЯ (kacho#3057, F8-S4 §4 П4) ───
+        #
+        # Условие, без которого не исполнима лишь ЧАСТЬ набора (происхождение
+        # браузера в перечне ключа доступа), заводится вторым проектом условий,
+        # и от него зависит только проект этой части. Прежде такое условие
+        # наступало внутри проб, и каждая их фикстура тратила бюджет ранней
+        # остановки: пять проб ключа исчерпали его, и 218 проб, к ключам
+        # отношения не имеющих, не стартовали вовсе. Проект условия узнаётся по
+        # ИМЕНИ: `precondition` либо `precondition:<предмет>`.
+        part = root / "preconditions-part"
+        part.mkdir()
+        (part / "landing.precondition.ts").write_text(
+            'test("условие", async () => {});\n', encoding="utf-8")
+        (part / "key-origin.precondition.ts").write_text(
+            'test("условие ключа", async () => {});\n', encoding="utf-8")
+        key_cond = PRECONDITION_PROJECT + ":access-key-origin"
+
+        # ИНЪЕКЦИЯ: условие части не создано, её пробы не стартовали, остальные
+        # прошли — третья категория с числом сценариев части, а не красное.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _spec("условие ключа", "failed", "условие не создано: ORIGIN_NOT_ALLOWED",
+                             trace=False, project=key_cond),
+                       _spec("F8S4-01 а", "skipped", runs=0, project="probes:access-key"),
+                       _spec("F8S4-02 б", "skipped", runs=0, project="probes:access-key"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, part)
+        joined = "\n".join(log)
+        cases.append((
+            "несозданное условие ЧАСТИ набора — третья категория, остальные пробы исполнены",
+            got == RC_UNMET and "сценариев без вердикта 2 из 3" in joined
+            and "условий прогона 2, создано 1" in joined,
+            f"{RC_UNMET} + «сценариев без вердикта 2 из 3» + «условий прогона 2, создано 1»", got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: та же запись под именем БЕЗ разделителя — это проект
+        # проб, а не условия. Узнаётся не по началу слова, а по точному имени
+        # либо имени с предметом: иначе проба `preconditionless` ушла бы в условия.
+        rep.write_text(
+            _report_of(_condition("passed"),
+                       _spec("условие ключа", "failed", "условие не создано: ORIGIN_NOT_ALLOWED",
+                             trace=False, project=PRECONDITION_PROJECT + "less"),
+                       _spec("F8S4-01 а", "skipped", runs=0, project="probes:access-key"),
+                       _spec("F8S4-02 б", "skipped", runs=0, project="probes:access-key"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs, part)
+        cases.append((
+            "проект без разделителя условием не считается — красное",
+            got == RC_RED, RC_RED, got))
 
         # ─── ТРЕТЬЯ КАТЕГОРИЯ: УСЛОВИЕ ПРОБЫ НЕ СОЗДАНО ЕЁ ФИКСТУРОЙ (F6b-32) ───
         letter = ("условие не создано: письмо подтверждения не дошло до приёмника: "

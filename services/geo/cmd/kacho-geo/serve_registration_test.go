@@ -7,8 +7,9 @@ package main
 // (CLAUDE.md Запреты #6: Internal.* НЕ публикуется на внешнем endpoint).
 //
 // SECURITY: admin-CRUD InternalRegionService/InternalZoneService должны жить ТОЛЬКО
-// на cluster-internal листенере (:9091); публичный (:9090) несёт лишь read-only
-// RegionService/ZoneService. Регрессия «Register…Internal…(grpcSrv)» (админ уехал
+// на cluster-internal листенере (:9091); публичный (:9090) несёт лишь
+// RegionService/ZoneService (справочник и административные глаголы каталога без
+// infra°, ADM-1). Регрессия «Register…Internal…(grpcSrv)» (админ уехал
 // на public) свела бы defense-in-depth к единственному authz-Check. Прежде этот
 // инвариант не был под тестом (2-й аудит finding «no test proves Internal admin
 // services are unreachable on the public listener»). Тест строит два реальных
@@ -38,7 +39,7 @@ const (
 
 // TestRegisterServices_InternalAdminNotOnPublic — фактическая регистрация через
 // registerPublic/registerInternal: Internal* admin-CRUD присутствует ТОЛЬКО на internal-сервере;
-// public несёт только read-only Region/Zone; OperationService — на обоих.
+// public несёт только публичные Region/Zone; OperationService — на обоих.
 func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 	publicSrv := grpc.NewServer()
 	internalSrv := grpc.NewServer()
@@ -55,7 +56,7 @@ func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 	pub := publicSrv.GetServiceInfo()
 	intr := internalSrv.GetServiceInfo()
 
-	// (1) public — только read-only + OperationService, БЕЗ Internal* admin.
+	// (1) public — только публичные Region/Zone + OperationService, БЕЗ Internal* admin.
 	for _, s := range []string{svcRegion, svcZone, svcOperation} {
 		if _, ok := pub[s]; !ok {
 			t.Errorf("public listener: ожидался сервис %s, не зарегистрирован", s)
@@ -74,18 +75,18 @@ func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 		}
 	}
 
-	// (3) публичные read-only сервисы НЕ дублируются на internal (admin-CRUD идёт
-	// через Internal*, а не через RegionService/ZoneService на :9091).
+	// (3) публичные сервисы НЕ дублируются на internal (на :9091 администрирование
+	// идёт через Internal*, а не через RegionService/ZoneService).
 	for _, s := range []string{svcRegion, svcZone} {
 		if _, ok := intr[s]; ok {
-			t.Errorf("internal listener: неожиданно зарегистрирован public read-only %s", s)
+			t.Errorf("internal listener: неожиданно зарегистрирован публичный %s", s)
 		}
 	}
 }
 
 // TestRegisterServices_MethodsPresent — sanity: у Internal* на internal-сервере
 // действительно есть admin-методы Create/Update/Delete (регистрация не «пустой»
-// сервис), а на public их нет вовсе.
+// сервис).
 func TestRegisterServices_MethodsPresent(t *testing.T) {
 	publicSrv := grpc.NewServer()
 	internalSrv := grpc.NewServer()

@@ -54,6 +54,30 @@ describe("экран регистрации", () => {
     expect(leave).not.toHaveBeenCalled();
   });
 
+  it("#2953 · отказ регистрации называет следующий шаг — войти или восстановить доступ — одним текстом на любую причину", async () => {
+    const hints: string[] = [];
+    for (const reason of ["REGISTRATION_REFUSED", undefined]) {
+      lane = installLane({ "POST /iam/v1/auth/register": refusal(400, 9, "registration refused", reason) });
+      const { unmount } = render(
+        <MemoryRouter initialEntries={["/registration?returnTo=%2Fdashboard"]}>
+          <RegistrationPage leave={jest.fn()} />
+        </MemoryRouter>,
+      );
+      fireEvent.change(email(), { target: { value: "taken@kacho.local" } });
+      fireEvent.click(submit());
+      expect((await screen.findByRole("alert")).textContent).toBe("registration refused");
+      const step = screen.getByTestId("refusal-next-step");
+      hints.push(step.textContent ?? "");
+      expect(step.textContent).toMatch(/войдите/);
+      expect(step.textContent).toMatch(/восстановите доступ/);
+      expect(step.textContent).not.toMatch(/занят|уже существует|потол|лимит/i);
+      unmount();
+      lane.restore();
+      lane = null;
+    }
+    expect(hints[0]).toBe(hints[1]);
+  });
+
   it("F8-16 · правило пароля судит служба: отмечено поле, которое она назвала", async () => {
     const message = "Illegal argument password: shorter than the declared minimum length";
     lane = installLane({ "POST /iam/v1/auth/register": refusal(400, 3, message) });

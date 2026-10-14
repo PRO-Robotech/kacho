@@ -34,7 +34,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "test-results/**", "playwright-report/**", "results.json"],
+    ignores: ["node_modules/**", "test-results/**", "playwright-report/**", "results.json", "results-measure.json"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

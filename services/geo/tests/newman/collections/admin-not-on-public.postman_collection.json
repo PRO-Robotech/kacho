@@ -41,7 +41,7 @@
   ],
   "item": [
     {
-      "name": "ANP-REG-CR-NOT-PUBLIC — InternalRegionService.Create is NOT on the public endpoint (POST /geo/v1/regions on baseUrl rejected; accepted on internal /geo/v1/internal/regions)",
+      "name": "ANP-REG-CR-NOT-PUBLIC — InternalRegionService.Create is NOT on the public endpoint (POST /geo/v1/internal/regions on baseUrl → 404; accepted on internal)",
       "description": "class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -55,13 +55,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions",
+              "raw": "{{baseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             }
@@ -72,15 +73,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('public endpoint rejects Internal Create (routing-miss, not 200)', () => {",
-                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([403, 404, 405, 501]);",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
                   "});"
                 ]
               }
@@ -196,7 +196,7 @@
       ]
     },
     {
-      "name": "ANP-ZON-CR-NOT-PUBLIC — InternalZoneService.Create is NOT on the public endpoint (POST /geo/v1/zones on baseUrl rejected; accepted on internal /geo/v1/internal/zones)",
+      "name": "ANP-ZON-CR-NOT-PUBLIC — InternalZoneService.Create is NOT on the public endpoint (POST /geo/v1/internal/zones on baseUrl → 404; accepted on internal)",
       "description": "class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -317,13 +317,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones",
+              "raw": "{{baseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             }
@@ -334,15 +335,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('public endpoint rejects Internal Create (routing-miss, not 200)', () => {",
-                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([403, 404, 405, 501]);",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-                  "  if (pm.response.code !== 403) return;",
-                  "  const types = [];",
-                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
                   "});"
                 ]
               }

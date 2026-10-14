@@ -28,10 +28,15 @@ const matchReadFrameSize = 16 << 10
 // SETTINGS клиента (не подтверждение) он отвечает пустым SETTINGS — клиенты
 // gRPC не шлют заголовков, пока не получат SETTINGS сервера.
 //
-// Решением и записанными байтами повторяет
-// cmux.HTTP2MatchHeaderFieldSendSettings (TestMatcherAgreesWithCmux), но
-// ресурсы соединения до аутентификации ограничены явно: кадр читается не
-// длиннее matchReadFrameSize, соединение — не дальше MatchHeaderBudget.
+// Повторяет cmux.HTTP2MatchHeaderFieldSendSettings решением и записанными
+// байтами (TestMatcherAgreesWithCmux) с двумя отличиями — оба про память,
+// которую соединение занимает ДО аутентификации:
+//   - кадр длиннее matchReadFrameSize матчер не читает, а решает «не совпало»;
+//     у cmux буфер кадра выделяется по длине из его заголовка — до 16 МиБ на
+//     соединение, приславшее один заголовок кадра;
+//   - соединение читается не дальше MatchHeaderBudget: у cmux каждый
+//     прочитанный байт остаётся в буфере мультиплексора, а блок заголовков
+//     ничем не ограничен.
 func MatchHeaderFieldSendSettings(name, value string) func(io.Writer, io.Reader) bool {
 	return func(w io.Writer, r io.Reader) bool {
 		return matchField(w, &io.LimitedReader{R: r, N: MatchHeaderBudget}, name, value)

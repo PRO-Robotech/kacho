@@ -21,6 +21,9 @@
 package deploy_test
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -294,4 +297,57 @@ func TestOffConsolePathWithoutSubjectIsAFinding(t *testing.T) {
 	if len(deadPaths) != 2 {
 		t.Errorf("на пустой популяции находок %d из 2 — пустой вход стал всеразрешением", len(deadPaths))
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ВЕДОМОСТЬ НЕ ЗАМЕНЯЕТ ВЕРДИКТА (приёмка F8r, F8r-22, kacho#3063).
+//
+// Вход — НАСТОЯЩИЙ словарь консоли, прочитанный из дерева, и настоящая ведомость:
+// инъекция снимает одну запись словаря В КОПИИ ТЕКСТА (дерево не трогается) и
+// требует, чтобы гейт назвал снятый токен. Контроль — тот же словарь без
+// инъекции: на нём гейт обязан молчать по этому токену, иначе красное пришло бы
+// не от снятия, а от соседа.
+func TestLedgerTokenWithoutConsoleVerdictIsNamed(t *testing.T) {
+	const token = "SECOND_FACTOR_NOT_ENROLLED"
+	root := repoRootFromTest(t)
+	body, err := os.ReadFile(filepath.Join(root, consoleRefusalDictRel)) // #nosec G304 -- координата словаря объявлена в соседнем файле
+	if err != nil {
+		t.Fatalf("словарь вердиктов консоли не читается: %v", err)
+	}
+	text := string(body)
+
+	t.Run("F8r-22 · токен в ведомости с производителем службы доступа", func(t *testing.T) {
+		if got := producedOutsideThisTree[token]; got != "PRO-Robotech/kaname" {
+			t.Errorf("ведомость называет производителя %s как %q, ожидался PRO-Robotech/kaname", token, got)
+		}
+	})
+
+	t.Run("F8r-22 · контроль: на словаре дерева токен разобран", func(t *testing.T) {
+		declared, ok := parseVerdictDict(text)
+		if !ok {
+			t.Fatal("объявление словаря не распознано на тексте дерева — перепись беспредметна")
+		}
+		for _, f := range ledgerWithoutVerdict(declared, producedOutsideThisTree) {
+			if strings.HasPrefix(f, token+" ") {
+				t.Errorf("у консоли нет вердикта по %s: %s", token, f)
+			}
+		}
+	})
+
+	t.Run("F8r-22 · инъекция: запись словаря снята — гейт называет токен", func(t *testing.T) {
+		entry := regexp.MustCompile(`(?m)^  ` + token + `: \{[\s\S]*?^  \},\n`)
+		if !entry.MatchString(text) {
+			t.Fatalf("инъекция не нашла записи %s в словаре консоли — снимать нечего, и молчание "+
+				"гейта ниже ничего бы не доказало", token)
+		}
+		declared, ok := parseVerdictDict(entry.ReplaceAllString(text, ""))
+		if !ok {
+			t.Fatal("после снятия одной записи объявление словаря перестало распознаваться — инъекция сломала разбор")
+		}
+		found := ledgerWithoutVerdict(declared, producedOutsideThisTree)
+		if len(found) != 1 || !strings.HasPrefix(found[0], token+" ") {
+			t.Errorf("снятая запись %s НЕ НАЗВАНА (находки: %v) — внешний токен доезжал бы до "+
+				"арендатора прозой производителя, а гейт молчал бы", token, found)
+		}
+	})
 }

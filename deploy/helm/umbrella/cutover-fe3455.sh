@@ -178,14 +178,26 @@ for f in $FE_LAYERS; do
 done
 log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 
+# ── 1b. placeholders of the public profile never reach the cluster (kacho#3040) ─
+#
+# The public profile carries the site coordinates (mail relay, sender address,
+# console origin) as reserved-name placeholders; the real ones come from the
+# credentials layer above. The flag makes the chart refuse to render while any
+# placeholder is left (templates/site-layer-guard.yaml) — here, at the preflight
+# render below, before anything is applied. The same flag is raised by
+# `make stack-up`; CI renders do not raise it and pass on the placeholders.
+FE_ARGS+=(--set global.kacho.siteLayer.enforced=true)
+
 # ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
 #
 # Why this gate exists. Until 2026-08-11 the whole identity-provider overlay lived
 # in the one gitignored file, so the PRODUCTION POSTURE of the identity providers
 # was invisible to git, to review and to every gate — their "no findings" over
 # that layer meant "nothing read". The provider is gone (#1276), and with it its
-# posture layer and its own credentials: the one coordinate the layer still
-# carries is OUR mail relay address.
+# posture layer and its own credentials: the coordinates the layer still
+# carries are OUR mail relay address and the sender address (the public profile
+# holds reserved-name placeholders for both, and the chart refuses to apply a
+# placeholder — kacho#3040).
 #
 # A convention alone would not hold that split: the easiest way to change the
 # live cluster is still to edit the file nobody sees. So the split is CHECKED
@@ -211,6 +223,7 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # list and that declaration name different coordinates.
 CRED_PATHS='
 global.kacho.identity.smtp.connectionURI
+global.kacho.identity.smtp.fromAddress
 '
 stray="$(CRED_PATHS="$CRED_PATHS" python3 - "$CHART_DIR/$CREDS_LAYER" <<'PY'
 import os, sys, yaml

@@ -40,7 +40,13 @@ import (
 // Значение отказа адреса (приёмка F6b, Р3) — побайтово то, что служба пишет
 // на своей полосе формы (`writeRefusal`) и на своих слушателях (`RefusalStatus`).
 const (
-	addressRefusalText   = "email address is not verified"
+	// addressRefusalText — состояние и шаг, который его снимает: путь глагола
+	// подтверждения кодом полосы формы, открытого до подтверждения
+	// (`LoginLanePathVerifyEmailConfirm`, Р5). Текст службы (`admission`
+	// `TextNotVerified`, kaname#526) лежит в её внутреннем пакете, и край
+	// произносит его своей копией; совпадение держат дословные пробы обеих
+	// сторон (address_refusal_step_test.go и admission_526_test.go службы).
+	addressRefusalText   = "email address is not verified: confirm it with the code from the letter (POST " + LoginLanePathVerifyEmailConfirm + ")"
 	addressRefusalReason = "EMAIL_NOT_VERIFIED"
 	addressRefusalDomain = "iam.kaname.cloud"
 	// addressRefusalDenyReason — причина в ответе решения службы

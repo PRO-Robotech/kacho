@@ -23,7 +23,9 @@ package main
 // файл закрывает один сервис, гейт — тех, кого ещё не написали.
 
 import (
+	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"testing"
 
@@ -36,6 +38,8 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 
 	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
@@ -118,19 +122,9 @@ func TestDescribeProbeCanFail(t *testing.T) {
 	}
 }
 
-// TestGeoServesNoGatedMutation — САМОИСТЕЧЕНИЕ изъятия по загрузочному гейту.
-//
-// Дескриптор объявляет гейт мутаций неприменимым, и вторая половина причины —
-// «отвергать нечего»: все мутации geo живут на `Internal*`-службах, которые под
-// гейт не подпадают. Утверждение проверяемое, и проверяется оно ТЕМ ЖЕ
-// предикатом, которым гейт исполняется (`servicehost.IsGatedMutation`), а не его
-// копией: копия разошлась бы с оригиналом молча и ровно там, где расхождение
-// незаметно.
-//
-// Появится у geo тенантское `Create` — проба покраснеет и назовёт метод. Это и
-// есть предикат снятия изъятия, и он внешний: состояние дерева, а не память
-// автора.
-func TestGeoServesNoGatedMutation(t *testing.T) {
+// servedMethods — полные имена методов, которые geo служит на обоих своих
+// слушателях, собранные теми же регистраторами, что зовёт serve.go.
+func servedMethods() []string {
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
 	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_geo"))
@@ -148,22 +142,97 @@ func TestGeoServesNoGatedMutation(t *testing.T) {
 			}
 		}
 	}
-	if len(served) == 0 {
-		t.Fatal("ни один метод не зарегистрирован — «гейтируемых мутаций нет» было бы верно " +
-			"и на пустом наборе, то есть проба не отличала бы исправное от сломанного")
+	sort.Strings(served)
+	return served
+}
+
+// judgeBootGateExemption — судья изъятия загрузочного гейта мутаций по ЕДИНСТВЕННОМУ
+// его предмету: «доставлять нечего». Гейт отвергает создание, пока не поднят путь
+// доставки намерений владельцу прав; у процесса, который ничего не эмитит, этого
+// пути нет, и гейт стоял бы проводкой без предмета (конструктор дескриптора такой
+// гейт отвергает сам). Значит изъятие законно ровно пока ось эмиссии
+// неприменима или пуста — объявленная непустая эмиссия делает его ложным, и
+// судья называет ось.
+func judgeBootGateExemption(s servicecontract.Spec) error {
+	if _, exempt := s.BootGate.NotApplicableBecause(); !exempt {
+		return nil // гейт объявлен значением — изымать нечего
 	}
+	if emits, ok := s.Emits.Get(); ok && len(emits) > 0 {
+		return fmt.Errorf("Emits: процесс объявляет эмиссию (%d отношений), а загрузочный гейт "+
+			"мутаций изъят как «доставлять нечего» — изъятие пережило свой предмет, гейт обязан прийти",
+			len(emits))
+	}
+	return nil
+}
+
+// TestGeoBootGateExemptionRestsOnNoEmission — САМОИСТЕЧЕНИЕ изъятия по
+// загрузочному гейту (приёмка ADM-1 geo, §Р8).
+//
+// Прежде изъятие стояло на двух предметах, и второй — «отвергать нечего: все
+// мутации на Internal*-службах» — истёк вместе с публичными
+// `RegionService/Create` и `ZoneService/Create`. Гейт при этом НЕ приносится:
+// смысл его — не принимать создание, пока не поднят путь доставки намерений
+// владельцу прав, а у geo доставлять нечего (ось эмиссии неприменима). Поэтому
+// проба судит дескриптор, собранный боевой конфигурацией, по оставшемуся
+// предмету — и падает с именем оси, если эмиссия у geo появится.
+//
+// Рядом — предмет перехода: среди служимых методов гейтируемые ЕСТЬ, и они
+// названы счётом, чтобы «изъятие по эмиссии» не читалось как «гейтировать
+// нечего». Предикат — тот же, которым гейт исполняется (servicehost.IsGatedMutation).
+func TestGeoBootGateExemptionRestsOnNoEmission(t *testing.T) {
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	s := desc.Spec()
+	because, exempt := s.BootGate.NotApplicableBecause()
+	if !exempt {
+		t.Fatal("загрузочный гейт мутаций geo объявлен значением, а не изъятием — предмет этой пробы снят, " +
+			"перепишите её вместе с решением")
+	}
+	if _, emitsExempt := s.Emits.NotApplicableBecause(); !emitsExempt {
+		t.Fatal("ось эмиссии geo объявлена не изъятием — изъятие гейта мутаций держится только на ней")
+	}
+	if err := judgeBootGateExemption(s); err != nil {
+		t.Fatalf("изъятие гейта мутаций geo ложно: %v", err)
+	}
+	if strings.Contains(because, "Internal") {
+		t.Fatalf("причина изъятия по-прежнему опирается на «мутации только на Internal*-службах», а это "+
+			"ложно с публичными глаголами каталога: %q", because)
+	}
+
 	var gated []string
-	for _, m := range served {
+	for _, m := range servedMethods() {
 		if servicehost.IsGatedMutation(m) {
 			gated = append(gated, m)
 		}
 	}
-	if len(gated) != 0 {
-		t.Fatalf("geo служит гейтируемую мутацию: %v.\nИзъятие BootGate в describe() пережило свой "+
-			"предмет: оно обосновано тем, что отвергать нечего. Принесите гейт либо перепишите причину",
-			gated)
+	want := []string{"/kacho.cloud.geo.v1.RegionService/Create", "/kacho.cloud.geo.v1.ZoneService/Create"}
+	if strings.Join(gated, ",") != strings.Join(want, ",") {
+		t.Fatalf("гейтируемые мутации geo = %v, ожидались %v", gated, want)
 	}
-	t.Logf("осмотрено служимых методов: %d, гейтируемых мутаций среди них: 0", len(served))
+	t.Logf("гейтируемых мутаций среди служимых методов: %d (%v); изъятие стоит на оси эмиссии: неприменима",
+		len(gated), gated)
+}
+
+// TestGeoBootGateExemptionProbeCanFail — контроль того, что судья выше СПОСОБЕН
+// упасть: та же служба с объявленной непустой эмиссией и изъятым гейтом
+// отвергается с именем оси. Законный близнец — боевой дескриптор geo — проходит
+// молча (утверждается в пробе выше).
+func TestGeoBootGateExemptionProbeCanFail(t *testing.T) {
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	s := desc.Spec()
+	s.Emits = servicecontract.Value([]proxytuple.Relation{proxytuple.RelationOwner})
+	err = judgeBootGateExemption(s)
+	if err == nil {
+		t.Fatal("судья принял изъятие гейта у процесса с непустой эмиссией — проба выше вакуумна")
+	}
+	if !strings.HasPrefix(err.Error(), "Emits:") {
+		t.Fatalf("отказ не называет оси: %v", err)
+	}
 }
 
 // TestGeoServesNoServerStream — САМОИСТЕЧЕНИЕ изъятия по сроку жизни подписки.

@@ -6,7 +6,11 @@
 #
 # Накладывается ТРЕТЬИМ, поверх values.dev.yaml + values.dev-prod.yaml:
 #
-#   make -C deploy stack-up STACK=a8f60d
+#   STAND_KUBECONFIG=<файл профиля площадки> make -C deploy stack-up STACK=a8f60d
+#
+# Ставится ТОЛЬКО в контекст -client этого файла, явным --context; активный
+# контекст файла выбором не является (deploy/Makefile, CLIENT_CONTEXT_STACKS;
+# deploy/scripts/client-context.sh).
 #
 # Цепочка здесь НАМЕРЕННО не выписана: она объявлена один раз в
 # deploy/stacks.txt, и цель читает её оттуда. Команду, набранную в
@@ -22,8 +26,12 @@
 #
 #  1. cert-manager УЖЕ установлен оператором (ns beget-cert-manager) — свой не
 #     ставим. Корневой сертификат при этом рождается в пространстве ресурсов
-#     cert-manager, а поды монтируют его из СВОЕГО: секрет kacho-internal-ca-root
-#     копируется в ns kacho отдельным шагом.
+#     cert-manager, а не в ns kacho. Копии корня в ns kacho НЕТ и не должно
+#     быть: её не производит чарт, и после перевыпуска корня она устаревала
+#     молча (kacho#3054). Якорь каждого хопа к соседу — `ca.crt` секрета листа
+#     соседа (api-gateway.tokenAcceptance слоя values.dev.yaml); опору на копию отвергает
+#     страж templates/clusterissuer.yaml, ссылку мимо стража — предполёт
+#     deploy/scripts/stack-secrets.sh.
 #  2. IngressClass в кластере НЕТ ни одного (есть GatewayClass envoy-gateway) —
 #     контроллер ingress-nginx поднимать бессмысленно, объекты Ingress инертны.
 #     Внешний доступ — Service типа LoadBalancer с аннотациями lb.beget.com/*.
@@ -35,12 +43,10 @@
 #  4. Узлов 4 по 1500m/3Gi, и 84%% процессора уже заняты компонентами самого
 #     кластера — потолки здесь ниже, чем на стенде разработчика. Это решение о
 #     РАЗМЕРЕ, а не о посадке: посадка остаётся production.
-#  5. Имя у стенда есть: `console.in-cloud.io`, запись DNS указывает на адрес
-#     LoadBalancer площадки (решение владельца, kacho#3024). Публичный TLS —
-#     сертификат Let's Encrypt (ACME, проверка http01), снаружи его держит
-#     TLS-фронт `console-edge`. Фронт и всё, что к нему относится, стоят на
-#     кластере ВНЕ чарта — перечень и следствие см. «ВНЕШНИЙ ORIGIN КОНСОЛИ»
-#     ниже; там же блок службы личности.
+#  5. У стенда есть доменное имя (решение владельца, kacho#3024): консоль
+#     отвечает по https на этом имени, TLS завершает сама раздача консоли —
+#     см. «ВНЕШНИЙ ORIGIN КОНСОЛИ». Само имя — координата площадки и приходит
+#     слоем площадки (см. «СЛОЙ ПЛОЩАДКИ» ниже).
 #
 # ── ОБРАЗЫ ПРОДУКТА: ПИНЫ ПОРОЖДАЮТСЯ, ПРАВИТСЯ ПОРОЖДАЮЩИЙ ────────────────
 #
@@ -62,7 +68,7 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main ba01514b98bb870841adbce431a5b1c9ceec86f0
+# порождено-от: 1266 0f1b467da88a7b82db2ac8d60a0e94f324daca25
 #
 # ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
 # собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
@@ -84,55 +90,76 @@ mtls:
     caNamespace: beget-cert-manager
 ingress-nginx:
   enabled: false
-# ─── ВНЕШНИЙ ORIGIN КОНСОЛИ: `https://console.in-cloud.io` ───────────────────
+# ─── ВНЕШНИЙ ORIGIN КОНСОЛИ: ДОМЕННОЕ ИМЯ, TLS НА САМОЙ РАЗДАЧЕ ────────────
 #
-# Консоль этого кластера отвечает по `https://console.in-cloud.io`. Имя
-# разрешается в адрес Service типа LoadBalancer от площадки (см. п.2 шапки:
-# IngressClass в кластере нет ни одного, объекты Ingress инертны); публичный
-# сертификат — Let's Encrypt, выпуск ACME с проверкой http01.
+# Консоль этого кластера доступна по доменному имени стенда — Service типа
+# LoadBalancer с адресом от площадки (см. п.2 шапки: IngressClass в кластере нет
+# ни одного, объекты Ingress инертны). TLS пользовательского края завершает сама
+# раздача консоли (`uif.publicFront` ниже): порт 443 — консоль под TLS, порт 80 —
+# только переадресация на https и вызов решателя ACME.
 #
-# ЧТО СТОИТ НА КЛАСТЕРЕ ВНЕ ЧАРТА. Цепочка доставки внешнего TLS применена
-# руками оператора и релизу helm не принадлежит: `helm upgrade` её не создаёт,
-# не обновляет и не удаляет, а `make -C deploy stack-up STACK=a8f60d` не трогает
-# вовсе. Это:
-#   · Deployment `console-edge` — TLS-фронт, завершает внешний TLS и отдаёт
-#     запрос консоли;
-#   · ClusterIssuer `letsencrypt-staging` и `letsencrypt-prod` — ACME-выпуск;
-#   · Certificate `console-in-cloud-io` — сертификат имени `console.in-cloud.io`;
-#   · Service `console-acme-solver` — путь проверки http01 к решателю;
-#   · правка Service `kacho-console-lb`: селектор переведён на фронт и добавлен
-#     порт 443 (сам Service тоже заведён вне чарта, `kubectl apply`).
-# Значит подъём этого стенда с нуля одной целью `stack-up` даёт консоль без
-# внешнего TLS и без имени: профиль объявляет origin, который поднимается не
-# им. Закрепление этой цепочки в чарте — предмет kacho#3024; до тех пор перечень
-# выше — полный состав того, что оператор восстанавливает руками.
+# ЗАЧЕМ (kacho#3024). Служба доступа выдаёт печенье формы и сессии с `Secure`,
+# браузер с открытого http-происхождения его не хранит — законная регистрация
+# по http получала `403 FORM_TOKEN_REJECTED`. Чинится посадка, а не защита:
+# `Secure` и проверка токена формы остаются как есть.
 #
-# ЧТО ОБЪЯВЛЯЕТ БЛОК НИЖЕ. Конфигурацию службы личности процесс ЧИТАЕТ (второй
-# `--config`), поэтому молчание профиля означало бы наследование адресов стенда
-# разработки из values.dev.yaml — `http://console.kacho.local:28080` и
-# `kacho.local`: имя вне kind не разрешается. Из узла читаются две величины:
-#   · `appBaseURL` — происхождение консоли; из него же выводится адрес экрана
-#     входа в письмах (`<origin>/login`, charts/kaname/templates/_helpers.tpl);
-#   · `webauthnRpId` — имя доверяющей стороны ключей доступа. Ключи доступа на
-#     стенде при этом ВЫКЛЮЧЕНЫ: перечень происхождений пуст
-#     (`kaname.config.authn.accessKeys.origins: []`, слой values.dev.yaml),
-#     и служба отвергает всякую церемонию ключа. Имя объявлено затем, чтобы оно
-#     не наследовалось чужим (`kacho.local`); включение ключей — отдельное
-#     решение.
-# Вход на этом стенде идёт паролем. Печенье сессии выдаётся без `Domain`
-# (`kaname.config.authn.login.cookieDomain: none`, слой values.dev.yaml) —
-# host-only на имени консоли.
+# ВСЁ ИЗ РЕЛИЗА. Service балансировщика, сертификат, поставщик ACME, Service
+# решателя и настройка раздачи рендерит чарт консоли. Прежде их держали
+# объекты, заведённые рукой мимо чарта: снятие релиза их не снимало, а прокси
+# держал адрес снятого Service раздачи до ручного перезапуска. Имя Service
+# балансировщика — прежнее, площадка держит за ним адрес; приём живых объектов
+# во владение релиза и снятие ручных — шаг выкатки (kacho#3067), а не дерева.
 #
-# `domainless: false` — у origin есть доменное имя. Прежде здесь стояла посадка
-# на голом IP-литерале (`domainless: true`); ни одна из ручек `domainless` и
-# `cookieDomain` узла `global.kacho.identity` шаблонами чарта не читается, их
-# величины здесь повторяют то, что применено на кластере.
+# ЧТО ЧИНИТСЯ ЭТИМ БЛОКОМ. Ствол монтирует нашу конфигурацию службы личности
+# вторым `--config`, то есть она ЧИТАЕТСЯ процессом. Промолчи профиль — он
+# унаследовал бы адреса стенда разработки из values.dev.yaml
+# (`https://console.kacho.local:28443` и `kacho.local`). Это имя вне kind не
+# разрешается: браузер уходил бы на чужой адрес, а печенье сессии выписывалось
+# бы на чужой домен.
+#
+# ПЕЧЕНЬЕ — ТОЛЬКО НА ХОСТ. `kaname.config.authn.login.cookieDomain: none`
+# приходит слоем под нами (values.dev.yaml) и здесь не переобъявляется: печенье
+# сессии не выписывается на родительский домен, соседние хосты зоны его не
+# получают. Посадка без имени (IP-литерал) этим же профилем выразима — её
+# судит deploy/identity_domainless_landing_is_expressible_test.go.
+#
+# КЛЮЧИ ДОСТУПА. `webauthnRpId` здесь пуст, и это не формальность: его
+# объявляет слой под нами (values.dev.yaml, `kacho.local`), и унаследованное
+# имя чужой посадки ушло бы в настройки службы. RP ID — то же имя стенда, то
+# есть координата площадки; профиль дерева его не несёт.
+#
+# ─── СЛОЙ ПЛОЩАДКИ: КООРДИНАТЫ ЗДЕСЬ — ЗАГЛУШКИ (kacho#3040) ───────────────
+#
+# Узел почтовой полосы с учёткой отправителя, адрес отправителя и внешний
+# origin консоли — координаты ПЛОЩАДКИ, а репозиторий публичен. Здесь они
+# стояли значениями; теперь здесь заглушки зарезервированных имён (RFC 2606) и
+# адреса документации (RFC 5737), а настоящие лежат в слое площадки вне git —
+# `values.a8f60d-secrets.yaml` рядом с этим файлом (шаблон игнорирования
+# `**/values.*-secrets.yaml`). `make stack-up STACK=a8f60d` кладёт его
+# последним и взводит `global.kacho.siteLayer.enforced`: стенд, у которого
+# слоя нет, в рендере ОТКАЗЫВАЕТ (templates/site-layer-guard.yaml), а не
+# поднимается с неразрешимым узлом. Слой несёт ровно эти величины:
+#
+#   global.kacho.identity.smtp.connectionURI  (схема smtps, учётка, узел, порт)
+#   global.kacho.identity.smtp.fromAddress
+#   global.kacho.identity.appBaseURL          (https://<имя стенда>)
+#   издатель платформы в семи местах          (то же происхождение, что appBaseURL;
+#                                             kacho#3113, «ИЗДАТЕЛЬ ПЛАТФОРМЫ» ниже):
+#     kaname.config.authn.tokenSigning.issuer
+#     {api-gateway,registry}.tokenAcceptance.{issuers,issuerKeySets,platformIssuer}
+#   uif.publicFront.clientAddress.proxyProtocol.trustedFrom
+#                                             (адрес звена балансировки, kacho#3115;
+#                                             судится, когда приём включён)
+#
+# Значения, стоявшие здесь прежде, остаются в истории публичного репозитория:
+# снятие из файла раскрытое не отзывает. Пароля в ней не было никогда — он
+# приходит секретом `kaname-mail-credential`.
 global:
   kacho:
     identity:
       smtp:
-        connectionURI: "smtps://info%40prorobotech.ru@smtp.yandex.ru:465/"
-        fromAddress: "info@prorobotech.ru"
+        connectionURI: "smtps://sender%40mail.a8f60d.invalid@relay.a8f60d.invalid:465/"
+        fromAddress: "sender@mail.a8f60d.invalid"
         fromName: "Kacho Cloud"
         credentialSecret:
           name: kaname-mail-credential
@@ -145,10 +172,12 @@ global:
         trustAnchorSecret:
           name: ""
           key: ""
-      appBaseURL: "https://console.in-cloud.io"
-      domainless: false
-      cookieDomain: ""
-      webauthnRpId: "console.in-cloud.io"
+      # Заглушка зарезервированным именем (RFC 2606) по https: у стенда есть
+      # имя, и вход завершает TLS на нём. Из этой же величины выводятся
+      # переадресация порта 80 и имя сертификата входа (`namesFromOrigin`) —
+      # слой площадки заменяет её одну, второй копии имени в дереве нет.
+      appBaseURL: "https://console.a8f60d.invalid"
+      webauthnRpId: ""
 # ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
 #
 # Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
@@ -172,6 +201,15 @@ global:
 # у pg-geo его нет и не должно быть — geo_outbox курсорный, без дренажа
 # (deploy/tests/helm/outbox-autovacuum-naptime-test.sh, NON_QUEUE_INSTANCES).
 pg-vpc:
+  # ПАРОЛЬ БАЗЫ НЕ НАСЛЕДУЕТСЯ ИЗ СЛОЯ РАЗРАБОТКИ (kacho#3040). Слой
+  # values.dev.yaml несёт заглушку разработки литералом — законно на машине
+  # разработчика и находка здесь: репозиторий публичен, а этот стенд доступен не
+  # только автору. Пустая величина отдаёт пароль чарту базы: на первом подъёме
+  # он порождается случайным, на последующих — читается из уже заведённого
+  # секрета (`lookup`), поэтому не меняется от выкатки к выкатке. Держит
+  # TestStacksOutsideTheDeveloperMachineCarryNoPasswordLiteral.
+  auth:
+    password: ""
   primary:
     persistence:
       enabled: false
@@ -206,6 +244,8 @@ pg-vpc:
     persistence:
       enabled: false
 pg-compute:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -224,6 +264,8 @@ pg-compute:
     persistence:
       enabled: false
 pg-iam:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -252,6 +294,8 @@ pg-iam:
     persistence:
       enabled: false
 pg-geo:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -270,6 +314,8 @@ pg-geo:
     persistence:
       enabled: false
 pg-nlb:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -288,6 +334,8 @@ pg-nlb:
     persistence:
       enabled: false
 pg-storage:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -298,6 +346,8 @@ pg-storage:
     persistence:
       enabled: false
 pg-registry:
+  auth:
+    password: ""   # не наследуется из слоя разработки — см. pg-vpc выше
   primary:
     persistence:
       enabled: false
@@ -341,34 +391,47 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-ba01514b
+  image: docker.io/prorobotech/kacho-vpc:1266-0f1b467d
 compute:
   autoscaling:
     maxReplicas: 2
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-ba01514b
+  image: docker.io/prorobotech/kacho-compute:1266-0f1b467d
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-ba01514b
+    tag: 1266-0f1b467d
     pullPolicy: IfNotPresent
-# ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
+# ── ИЗДАТЕЛЬ ПЛАТФОРМЫ — НА ПРОИСХОЖДЕНИИ КОНСОЛИ СТЕНДА (kacho#3113) ──────
 #
-# Накладка описывает образы и размеры, а приём identity-JWT берёт у слоя под
-# собой. Сказано это здесь потому, что поиск по ОДНОМУ файлу профиля даёт ноль
-# попаданий, и ноль читается как «забыли»: по такому чтению уже заводилась
-# задача о том, что реестр не поднимется, при исправной цепочке.
+# Документ обнаружения сервера авторизации (RFC 8414, путь
+# /.well-known/oauth-authorization-server на внешнем входе консоли) служба
+# доступа выводит из ОДНОЙ величины — издателя своей чеканки: issuer,
+# authorization_endpoint и token_endpoint стоят на его происхождении. Слой
+# values.dev-prod.yaml называет издателем имя разработки, которое вне кластера
+# не разрешается; унаследованное, оно публиковало бы снаружи адреса в никуда,
+# а токены этого стенда несли бы `iss` стенда разработки.
 #
-# Строка ниже машинная: проверка требует, чтобы названный слой действительно
-# объявлял приём и стоял в цепочке ПЕРЕД этим файлом. Наследование, потерявшее
-# предмет, роняет TestProfilesSilentAboutTokenAcceptanceSayWhyTheyAreSilent.
-# приём токена наследуется от: values.dev-prod.yaml
+# Поэтому издатель объявлен здесь — в семи местах, где его называют чеканка
+# (kaname ниже) и оба потребителя (реестр ниже, край ниже), — ЗАГЛУШКОЙ того
+# же происхождения, что global.kacho.identity.appBaseURL. Настоящее приходит
+# слоем площадки вне git вместе с адресом консоли; страж слоя
+# (templates/site-layer-guard.yaml) не пускает к кластеру ни оставленную
+# заглушку издателя, ни разошедшиеся копии. Издатель ОБЪЯВЛЯЕТСЯ, а не
+# выводится из адреса консоли шаблоном: адрес, производный от адреса соседа,
+# держит контроль на чужой величине (hard-no-derived-security-address).
+# Согласие семи мест между собой судит deploy/own_minting_census_test.go,
+# согласие с происхождением консоли —
+# helm/umbrella/identity_issuer_origin_test.go.
+#
+# Остальной приём (адрес отзыва, его удостоверение, тип токена) наследуется у
+# values.dev-prod.yaml: helm складывает карты по ключам.
 registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-ba01514b
+    tag: 1266-0f1b467d
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -395,55 +458,104 @@ registry:
     storage:
       persistence: false
     resources: *id002
+  # Авторитет отзыва — тем же значением, что у слоя values.dev-prod.yaml и у
+  # края ниже: одна платформа, один авторитет (gateway/deploy,
+  # TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform).
+  tokenAcceptance:
+    issuers: "https://console.a8f60d.invalid"
+    issuerKeySets: "https://console.a8f60d.invalid=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    platformIssuer: "https://console.a8f60d.invalid"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-ba01514b
+  image: docker.io/prorobotech/kacho-api-gateway:1266-0f1b467d
+  # АДРЕС КЛИЕНТА ЗА РАЗДАЧЕЙ КОНСОЛИ (kacho#3028). Консоль этого кластера
+  # отдаёт наружу раздача (`uif.publicFront`), и адрес клиента к краю несёт
+  # она — `X-Forwarded-For` своим TCP-пиром. Слой `values.dev.yaml` объявляет
+  # пустой круг и выключает политику входа края; здесь обе вещи возвращаются
+  # ВМЕСТЕ: без круга все клиенты за раздачей — один источник для ограничения
+  # частоты входа, а круг без политики — доверие заголовку от любого пода.
+  # Политика пускает к порту пересылки края только раздачу консоли
+  # (templates/networkpolicy-api-gateway.yaml). Сеть подов этого кластера не
+  # измерена, поэтому сеть — частные диапазоны, а до звена круг сужает ИМЯ:
+  # заголовок принимается только от адресов подов раздачи, которые выбирает
+  # безголовая служба звена (templates/service-api-gateway-front-links.yaml).
+  networkPolicy:
+    enabled: true
+    # Порт сбора величин края — только пространству сборщика (kacho#3111).
+    # Слой values.dev-prod.yaml называет им пространство релиза (сборщик стенда
+    # kind — проба в нём); здесь рабочий стенд, и пространство релиза — сам
+    # продукт, а не сборщик: имя — пространство сборщика площадки.
+    metricsScrapeFrom:
+      namespace: monitoring
+  clientAddress:
+    trustedProxyCIDRs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - fc00::/7
+    trustedPeers:
+      - api-gateway-front-console
+  # Издатель платформы — см. «ИЗДАТЕЛЬ ПЛАТФОРМЫ» над реестром (kacho#3113).
+  # Авторитет отзыва, его якорь и удостоверение края к нему — теми же
+  # значениями, что у слоя values.dev-prod.yaml: профиль, объявляющий краю приём
+  # нашего издателя, объявляет приём ЦЕЛИКОМ, с которым процесс поднимется
+  # (gateway/deploy/f1b_token_acceptance_declared_test.go). Величины не меняются.
+  tokenAcceptance:
+    issuers: "https://console.a8f60d.invalid"
+    issuerKeySets: "https://console.a8f60d.invalid=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    platformIssuer: "https://console.a8f60d.invalid"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationCa:
+      secretName: kaname-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/platform-revocation-ca
+    revocationClientCert:
+      certFile: /etc/api-gateway/mtls/tls.crt
+      keyFile: /etc/api-gateway/mtls/tls.key
 kaname:
-  # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО И ПРЕДЕЛ ПАМЯТИ — ОДНА АРИФМЕТИКА, И У НЕЁ ДВА ПОЛА
-  # (Ф3-42, ID-PW-1 PWV-15.7; #2735, #3012).
-  #
-  # Пол ёмкости задаёт продукт, а не стенд. Секрет клиента церемонии OAuth сверяет
-  # тот же проверяющий, что и пароль на входе, и церемонии отведено не больше
-  # половины его мест: ёмкость меньше двух под церемонией — отказ старта
-  # («…leaves no share for the ceremony beside the sign-in lane; declare a
-  # capacity of at least 2»). Правило — `NewClientSecrets` в
-  # internal/ceremonyport/client_secrets.go модуля PRO-Robotech/kaname (пин
-  # `main-0dd03218`, он же в go.mod); церемония собирается при поднятом
-  # токен-эндпоинте, то есть в боевой посадке всегда. Отсюда ёмкость 2 — минимум,
-  # а не запас: одно место у входа людей, одно у церемонии.
-  #
-  # Пол предела выводится из ёмкости. Страж старта сверяет бюджет полосы с
-  # пределом СРЕДЫ: ёмкость × память одной проверки на потолке формата + резерв ≤
-  # предел контейнера (`ValidateMemoryBudget` в
-  # internal/apps/kaname/config/login_lane.go того же модуля). Память одной
-  # проверки — 134217728 Б (её читает у пиненного модуля
-  # deploy/own_lane_memory_budget_test.go), резерв процесса сверх проверок —
-  # 268435456 Б из слоя `values.dev.yaml`:
-  #
-  #   бюджет 2 × 134217728 + 268435456 = 536870912 Б = 512Mi ≤ предел 512Mi
-  #
-  # Равенство — не опечатка: 512Mi есть наименьший предел, при котором ёмкость 2
-  # проходит страж. Запрос памяти чарт выводит из предела (kacho#2727), поэтому
-  # под требует от узла 512Mi.
-  #
-  # Поэтому разметка размеров здесь СВОЯ, а не общий якорь `*id002` (448Mi = 469762048 Б,
-  # п. 4 шапки): в 448Mi помещается только ёмкость 1, а её отвергает пол
-  # церемонии. Прежняя редакция сужала ёмкость до 1 как «левый рычаг» арифметики
-  # бюджета — она писалась до того, как пин принёс церемонию, и под с ней на
-  # пине `main-0dd03218` отказывал в старте (#3012). Якорь не поднимается: он
-  # общий с соседями, и правка раздала бы память всем сразу. Остальные поля
-  # совпадают с якорем побайтно.
-  #
-  # Влезание проверено на кластере, а не выведено (#3012, перекатка через
-  # `--set` теми же числами): под с запросом 512Mi при maxSurge 1 размещался на
-  # двух узлах из четырёх. Это свойство занятости узлов на день замера, а не
-  # гарантия профиля.
+  # Предел службы доступа ВЫВЕДЕН из общего якоря `*id002` (448Mi), как и у
+  # базы iam выше: коридор ёмкости проверяющего задают ДВА правила пина, и при
+  # 448Mi он пуст — см. «ЁМКОСТЬ ПРОВЕРЯЮЩЕГО» ниже. Запрос не меняется: место
+  # на узле планировщик считает по запросу, предел растёт на 64Mi.
   resources:
     requests:
       cpu: 10m
       memory: 64Mi
     limits:
       memory: 512Mi
+  # ПЕРВЫЙ АДМИНИСТРАТОР ОБЛАКА — ССЫЛКОЙ НА СЕКРЕТ (kacho#2878, kacho#3040).
+  # Слой values.dev.yaml объявляет адрес величиной — человека фикстур проб
+  # стенда разработки. Здесь он стал бы учёткой входа управляемого стенда в
+  # публичном файле. Адрес лежит в секрете `stand-cloud-admin` (ключ `email`),
+  # его заводит оператор площадки; `email` очищается, иначе рендер отказывает
+  # (две формы одного предмета).
+  platform:
+    iam:
+      bootstrapRootAdmin:
+        secretName: stand-cloud-admin
+        emailKey: email
+        email: ""
+  # ЁМКОСТЬ ПРОВЕРЯЮЩЕГО ПОЛОСЫ ВХОДА — КОРИДОР ДВУХ ПРАВИЛ ПИНА
+  # (Ф3-42, ID-PW-1 PWV-15.7; kacho#2735, kacho#3022).
+  #
+  # Снизу — пол доли церемонии: проверяющий общий у полосы входа и у сверки
+  # секрета клиента, церемонии отдаётся половина ёмкости, и при пустой доле
+  # служба отказывает в старте («declare a capacity of at least 2»). Пол читает у
+  # пиненного модуля deploy/verifier_capacity_floor_test.go.
+  #
+  # Сверху — бюджет полосы против предела СРЕДЫ: ёмкость × память одной проверки
+  # на потолке формата + резерв ≤ предел контейнера. Память одной проверки —
+  # 134217728 Б (её читает у пина deploy/own_lane_memory_budget_test.go), резерв
+  # процесса — 268435456 Б из слоя `values.dev.yaml`.
+  #
+  # При пределе общего якоря 448Mi (469762048 Б) коридор пуст: потолок
+  # ⌊(469762048 − 268435456) / 134217728⌋ = 1, пол — 2. Прежде здесь стояла
+  # ёмкость 1 — служба проходила рендер, все пробы каталога и ложилась стражем
+  # церемонии. Поэтому предел поднят до 512Mi (выше), и ёмкость — пол:
+  #
+  #   бюджет 2 × 134217728 + 268435456 = 536870912 Б ≤ 536870912 Б (512Mi)
   config:
     authn:
       login:
@@ -456,53 +568,154 @@ kaname:
         # не протекает, держит deploy/registration_source_window_stands_test.go.
         sourceAttempts: 50
         sourceWindow: 15m
+      # КЛЮЧИ ДОСТУПА: «НИКОГО», ЯВНО (kacho#3068). Слой `values.dev.yaml` под
+      # нами берёт происхождение из консоли посадки (`originFromConsole`) — это
+      # условие сквозных проб стенда разработки. Здесь адрес консоли —
+      # координата площадки из слоя вне git, и унаследованное включение
+      # объявило бы привязку, которую этот профиль не судил.
+      # Включение ключей доступа на этой площадке — отдельное решение о её
+      # происхождении. Обе ручки снимаются вместе: перечень рядом с
+      # `originFromConsole: true` — два объявления одного перечня, рендер отказывает.
+      accessKeys:
+        originFromConsole: false
+        origins: []
+      # СВОЯ ЧЕКАНКА И ТОКЕН-ЭНДПОИНТ — ЦЕЛИКОМ (kacho#3113). Издатель чеканки —
+      # см. «ИЗДАТЕЛЬ ПЛАТФОРМЫ» над реестром: из него служба выводит все адреса
+      # документа обнаружения. Остальные величины — ТЕМИ ЖЕ значениями, что у
+      # слоя values.dev-prod.yaml, и повторены здесь не по выбору: профиль,
+      # объявляющий краю приём нашего издателя, называет в том же файле и выпуск
+      # предъявителя (gateway/deploy/f1b_token_acceptance_declared_test.go), а
+      # профиль, поднимающий токен-эндпоинт, объявляет все его величины и свою
+      # чеканку (deploy/client_token_declaration_test.go), а профиль со своей
+      # чеканкой — читателя предъявленного (deploy/presented_credential_declaration_test.go).
+      # Величины не меняются.
+      presentedCredential:
+        enabled: true
+        audience: "https://api.kacho.cloud"
+        revocationCacheTtl: "30s"
+      tokenSigning:
+        enabled: true
+        issuer: "https://console.a8f60d.invalid"
+        algorithm: ES256
+        allowedAlgorithms: "ES256,RS256"
+        keySetPath: /.well-known/kaname/jwks.json
+      clientToken:
+        enabled: true
+        allowedAudiences: "https://api.kacho.cloud,registry.in-cloud.io"
+        defaultAudience: "registry.in-cloud.io"
+        tokenTtl: "15m"
+        bodyCeiling: 65536
+        inFlightCeiling: 12
+        exchangesPerClientPerSec: 5
+        failedProofsPerSource: 50
+        failedProofWindow: 15m
+        authorizePerSourcePerSec: 10
+        authorizeInFlightCeiling: 12
   image:
     repository: docker.io/prorobotech/kaname
     # ЕДИНСТВЕННЫЙ образ профиля, чей тег НЕ выводится из записи «порождено-от»
     # выше: его собирает конвейер PRO-Robotech/kaname, и коммит её ствола в этом
     # дереве не разрешается. Здесь стоял `main-7bb0a6e1` — коммит ЭТОГО дерева,
     # применённый к чужому образу: выглядит выведенным, манифеста нет (404).
-    # Остальные пины профиля (выведенные из записи «порождено-от») достижимы,
+    # Остальные пины профиля выводятся из записи «порождено-от» и достижимы,
     # поэтому расхождение не видно ни по одному из них. Здесь стояло
     # «девятнадцать» — число дня записи, пережившее свой предмет: перечень
     # модулей консоли с тех пор сузился, а число при пинах не считалось.
-    tag: main-0dd03218
+    tag: 296-3d5b02ed
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-ba01514b
+  image: docker.io/prorobotech/kacho-geo:1266-0f1b467d
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-ba01514b
+    tag: 1266-0f1b467d
     pullPolicy: IfNotPresent
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+  # Контроллер входа здесь вне зонта (`ingress-nginx.enabled: false`): полос края
+  # на хосте консоли зонт не рендерит, и вход пути потока объявляет сам чарт
+  # консоли (values.yaml зонта, `uif.subscriptionStream.ingress`).
+  subscriptionStream:
+    ingress:
+      enabled: true
+  # Внешний вход консоли под TLS (kacho#3024) — см. «ВНЕШНИЙ ORIGIN КОНСОЛИ»
+  # выше. Имя секрета листа нейтральное, не производное от имени стенда.
+  # Поставщик — Issuer ACME этого же релиза (публичный каталог, рабочий, не
+  # пробный); имя сертификата — хост `appBaseURL`.
+  publicFront:
+    enabled: true
+    service:
+      name: kacho-console-lb
+      # Балансировщик площадки (пункт 2 шапки) — аннотациями объекта, и они
+      # обязаны жить В ПРОФИЛЕ (kacho#3064). Прежде их нёс только объект,
+      # заведённый рукой до того, как вход стал частью релиза; принятие его во
+      # владение их сохраняет, а переустановка с нуля (kacho#3065) завела бы
+      # объект без них — тип балансировщика решала бы площадка, а не профиль.
+      annotations:
+        lb.beget.com/type: external
+        lb.beget.com/algorithm: round_robin
+        lb.beget.com/healthcheck-interval-seconds: "10"
+        lb.beget.com/healthcheck-timeout-seconds: "5"
+    # АДРЕС КЛИЕНТА ОТ БАЛАНСИРОВЩИКА ПЛОЩАДКИ (kacho#3115). Замер #3028:
+    # балансировщик соединяется с раздачей со своего адреса, и `Local` на Service
+    # клиента не сохраняет — за входом один источник, лимиты «на источник» общие.
+    # Площадка передаёт адрес клиента заголовком PROXY v2 по аннотации объекта;
+    # просьба и приём включаются ОДНОЙ ручкой (ui.publicFrontProxyProtocol).
+    # Звено балансировки, от которого заголовку верят, — координата площадки:
+    # здесь заглушка адресом документации (RFC 5737), настоящее — в слое
+    # площадки вне git; на стенде со слоем площадки заглушка рендер не проходит
+    # (templates/site-layer-guard.yaml).
+    #
+    # ПРИЁМ ВКЛЮЧЁН. Соединение изнутри кластера к внешнему адресу входа
+    # (status.loadBalancer.ingress[].ipMode = VIP) замыкается на под, минуя
+    # балансировщик, — без заголовка; так приходит и проверка достижимости
+    # вызова ACME HTTP-01, которую делает выпускающий сертификат. Поэтому порт
+    # redirect слушает маршрутизатор чарта по адресу пира: звену балансировки —
+    # приём заголовка, прочим — без него, и продление сертификата входа не
+    # встаёт. Порт https ждёт заголовок от каждого соединения: изнутри
+    # кластера к нему по внешнему адресу не ходит никто (издатель и ключи
+    # платформы края и реестра читаются по внутреннему адресу службы доступа).
+    clientAddress:
+      proxyProtocol:
+        enabled: true
+        trustedFrom:
+          - 192.0.2.1/32
+        serviceAnnotations:
+          lb.beget.com/proxy-protocol: v2
+    tls:
+      secretName: console-public-tls
+      certificate:
+        create: true
+        namesFromOrigin: true
+    acme:
+      enabled: true
+      server: "https://acme-v02.api.letsencrypt.org/directory"
+  image: docker.io/prorobotech/kacho-ui-future-host:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-vpc:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-compute:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-storage:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-nlb:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-registry:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-iam:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-ba01514b98bb870841adbce431a5b1c9ceec86f0
+    image: docker.io/prorobotech/kacho-ui-future-system:1266-0f1b467da88a7b82db2ac8d60a0e94f324daca25
     resources: *id002

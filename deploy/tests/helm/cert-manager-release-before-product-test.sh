@@ -94,7 +94,7 @@ CHART="$DEPLOY_ROOT/${CHART_REL#./}"
 require_file_present "$CHART" "архив чарта cert-manager (CERT_MANAGER_CHART)"
 
 REAL_HELM="$(command -v helm)"
-CHART_VERSION="$("$REAL_HELM" show chart "$CHART" 2>/dev/null | sed -n 's/^version: *//p' | head -1)"
+CHART_VERSION="$("$REAL_HELM" show chart "$CHART" 2>/dev/null | sed -n 's/^version: *//p' | sed -n 1p)"
 [ -n "$CHART_VERSION" ] || fatal "версия чарта cert-manager не прочиталась из $CHART — сравнивать не с чем"
 
 TMP="$(mktemp -d)" || fatal "не создан временный каталог — подставные kubectl/helm положить некуда"
@@ -263,7 +263,7 @@ print("OWNUP|" + order("own-up", "kacho-umbrella"))
 PY
 )" || fatal "разбор Makefile не состоялся (python3 отказал)"
 
-field() { printf '%s\n' "$static_out" | sed -n "s/^$1|//p" | head -1; }
+field() { printf '%s\n' "$static_out" | sed -n "s/^$1|//p" | sed -n 1p; }
 
 case "$(field UNREAD)" in "") ;; *) fatal "Makefile не прочитан: $(field UNREAD)";; esac
 [ "${static_out}" != "" ] && [ "$(field TARGETS)" -gt 0 ] 2>/dev/null \

@@ -713,6 +713,43 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
         "});",
     ]
 
+# Промах маршрута внешнего слушателя — ОДИН производитель, ДВЕ формы.
+#
+# Сторож маршрута края (kacho#3053) решает «обслуживается ли эта координата»
+# РАНЬШЕ аутентификации, ступени подтверждения и прав, по таблице публичных
+# маршрутов, собранной тем же циклом, что publicMux. Ответ на промах производит
+# сам grpc-gateway, и форм у него ровно две:
+#   * "path"   — пути нет ни в одном публичном шаблоне: 404, code 5, `Not Found`;
+#   * "method" — путь совпал с публичным шаблоном, метод — нет: 501, code 12,
+#                `Method Not Allowed`.
+# Обе — с пустыми details и одинаковы для любого вызывающего (с сессией, без
+# неё, посторонний) и для внутреннего пути и пути, которого нет нигде.
+#
+# Поэтому утверждается ВСЁ тело целиком, а не часть: добавка в ответ — имя
+# метода, право, причина — снова отличила бы внутреннее от несуществующего, а
+# 401/403 на этом месте значили бы, что слой аутентификации или прав снова
+# отвечает раньше маршрута. Допуск вида oneOf([401, 403, 404, 405, 501]) это
+# различие стирал by construction.
+EDGE_ROUTE_MISS = {
+    "path": (404, 5, "NOT_FOUND", "Not Found"),
+    "method": (501, 12, "UNIMPLEMENTED", "Method Not Allowed"),
+}
+
+
+def assert_edge_route_miss(kind: str) -> List[str]:
+    if kind not in EDGE_ROUTE_MISS:
+        raise ValueError(f"assert_edge_route_miss: kind {kind!r} not in {sorted(EDGE_ROUTE_MISS)}")
+    status, code, code_name, message = EDGE_ROUTE_MISS[kind]
+    return [
+        *assert_status(status),
+        *assert_grpc_code(code, code_name),
+        f"pm.test({js_str(f'body is exactly the edge route miss ({kind})')}, () => {{",
+        "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+        f"  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({{code: {code}, message: {js_str(message)}, details: []}});",
+        "});",
+    ]
+
+
 _REFUSAL_VAR_RE = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
 
@@ -1544,35 +1581,34 @@ def load_cases_module(path, injected: Dict, before=None, stem_dashes_to_undersco
 def http_method_not_allowed_block(case_cls, step_cls, prefix: str, base_path: str) -> list:
     """HTTP-глаголы, которых у списочного адреса нет: PUT и DELETE без id.
 
-    ПРИНЯТА ВЕРСИЯ БОЛЬШИНСТВА (две копии против одной) — и она же строго лучше.
-    Порождаемые утверждения у обеих ПОБАЙТОВО одни; расходились ЗАГОЛОВКИ, и
-    заголовок меньшинства («→ 405 или 404») противоречил собственному
-    утверждению шага, принимающему ещё 403 и 501. Заголовок кейса доезжает до
-    коллекции именем папки — то есть читатель отчёта видел обещание, которого
-    проба не проверяла.
+    Исход ОДИН — промах маршрута края «метода нет» (`assert_edge_route_miss("method")`):
+    501, code 12, `Method Not Allowed`, пустые details, тело целиком. Сторож маршрута
+    внешнего слушателя (kacho#3053) решает «есть ли пара (метод, путь)» РАНЬШЕ
+    аутентификации и прав; списочный адрес публично существует под GET/POST, поэтому
+    PUT и DELETE на нём — «путь есть, метода нет», одинаково для любого вызывающего.
 
-    403 в перечне — не послабление, а задокументированная полоса: край решает
-    доступ ДО маршрутизации глагола, поэтому отказ по правам приходит раньше
-    отказа по методу (`testing.md` §e2e-инварианты, «authz-first толерантность»).
-    Все четыре кода означают «глагол не выполнен», и отрицание сохраняется.
+    Прежний перечень 403/404/405/501 держался на том, что край решал доступ ДО
+    маршрутизации глагола, и отказ по правам приходил раньше отказа по методу. Сторож
+    этот порядок снял: 403 здесь теперь значил бы, что слой прав снова отвечает раньше
+    маршрута, а 404/405 краем на этой паре не производятся вовсе. Отрицание сохраняется:
+    200 по-прежнему красный.
     """
-    check = ("pm.test('not allowed (403/404/405/501)', "
-             "() => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));")
+    check = assert_edge_route_miss("method")
     return [
         case_cls(
             id=f"{prefix}-METHOD-PUT-NOT-ALLOWED",
-            title="PUT on List endpoint → 403/404/405/501",
+            title="PUT on List endpoint → 501/12 edge route miss (method)",
             classes=["VAL", "NEG"], priority="P3",
             steps=[step_cls(name="put-list", method="PUT", path=base_path,
                             body={"projectId": "{{_suiteProjectId}}"},
-                            test_script=[check])],
+                            test_script=list(check))],
         ),
         case_cls(
             id=f"{prefix}-METHOD-DELETE-LIST",
-            title="DELETE on List endpoint (no id) → 403/404/405/501",
+            title="DELETE on List endpoint (no id) → 501/12 edge route miss (method)",
             classes=["VAL", "NEG"], priority="P3",
             steps=[step_cls(name="del-list", method="DELETE", path=base_path,
-                            test_script=[check])],
+                            test_script=list(check))],
         ),
     ]
 

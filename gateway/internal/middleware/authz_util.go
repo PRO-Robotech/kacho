@@ -80,25 +80,6 @@ func incomingMD(ctx context.Context) metadata.MD {
 	return md
 }
 
-// grpcMetaForwardedFor extracts the X-Forwarded-For from grpc-gateway-
-// rewritten metadata. Empty when absent.
-func grpcMetaForwardedFor(md metadata.MD) string {
-	if md == nil {
-		return ""
-	}
-	// grpc-gateway rewrites incoming HTTP headers to `grpcgateway-<lower>`.
-	if v := md.Get("grpcgateway-x-forwarded-for"); len(v) > 0 {
-		return v[0]
-	}
-	if v := md.Get("x-forwarded-for"); len(v) > 0 {
-		return v[0]
-	}
-	if v := md.Get("grpcgateway-x-real-ip"); len(v) > 0 {
-		return v[0]
-	}
-	return ""
-}
-
 // verifiedTokenFromCtxOrHTTP — the authN layer stores the credential's own
 // context in the request headers (X-Kacho-Token-Acr / Jti / Scope / Exp / Amr /
 // Mfa-At) and in the gRPC metadata after it ran. We reconstruct a VerifiedToken

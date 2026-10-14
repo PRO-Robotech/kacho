@@ -262,6 +262,12 @@ func (c *IAMAuthorizeClient) Check(ctx context.Context, in AuthorizeCheckInput) 
 	return AuthorizeCheckResult{}, lastErr
 }
 
+// Conn — соединение, которым клиент задаёт вопрос о праве. Отдаётся готовности
+// края (`/readyz`): решение идёт этим соединением, а не соединениями карты
+// бэкендов, и только его состояние говорит, примет ли край решение сейчас
+// (kacho#3200).
+func (c *IAMAuthorizeClient) Conn() *grpc.ClientConn { return c.conn }
+
 // Close releases the gRPC connection.
 func (c *IAMAuthorizeClient) Close() error {
 	if c.conn == nil {

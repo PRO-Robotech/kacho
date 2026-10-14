@@ -9,8 +9,37 @@ metadata:
     {{- include "ui.labels" . | nindent 4 }}
 data:
   default.conf.template: |
+    {{- include "ui.publicFrontGuard" . }}
+    {{- $proxied := include "ui.publicFrontProxyProtocol" . }}
     server {
         listen {{ include "ui.hostPort" . }};
+        {{- if .Values.publicFront.enabled }}
+        # TLS пользовательского края (kacho#3024): тот же серверный блок, что и
+        # внутренний порт, — второй копии маршрутов консоли нет и разойтись нечему.
+        listen {{ .Values.publicFront.httpsPort }} ssl{{ if $proxied }} proxy_protocol{{ end }};
+        {{- if $proxied }}
+        # АДРЕС КЛИЕНТА ОТ БАЛАНСИРОВЩИКА ПЛОЩАДКИ (kacho#3115). Балансировщик
+        # соединяется со своего адреса и называет клиента заголовком PROXY.
+        # Заголовку верят ТОЛЬКО от звена балансировки: порт https доступен
+        # подам кластера, и заголовок от них адреса не меняет — `$remote_addr`
+        # остаётся их TCP-пиром. Внутренний порт заголовка не ждёт (пробы
+        # готовности приходят от узла без него), и `real_ip_header` на нём
+        # ничего не делает: адреса из заголовка у такого соединения нет.
+        # Полосы к краю пишут `X-Forwarded-For` из `$remote_addr` уже ПОСЛЕ
+        # этой замены; `$proxy_protocol_addr` в заголовок не подставляется.
+        real_ip_header proxy_protocol;
+        {{- range .Values.publicFront.clientAddress.proxyProtocol.trustedFrom }}
+        set_real_ip_from {{ . }};
+        {{- end }}
+        {{- end }}
+        ssl_certificate /etc/console-tls/tls.crt;
+        ssl_certificate_key /etc/console-tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers off;
+        ssl_session_cache shared:console_tls:10m;
+        ssl_session_timeout 1d;
+        ssl_session_tickets off;
+        {{- end }}
         server_name _;
 
         resolver ${KUBE_DNS_SERVER} valid=10s ipv6=off;
@@ -19,6 +48,13 @@ data:
         index index.html;
         {{- include "ui.securityHeaders" . | nindent 8 }}
 
+        # АДРЕС КЛИЕНТА К КРАЮ (kacho#3028). Раздача — доверенное звено края:
+        # край берёт адрес клиента из `X-Forwarded-For`, только если пир — она.
+        # Поэтому заголовок она ПИШЕТ сама адресом своего TCP-пира, а не
+        # дописывает его к пришедшему от клиента (`$proxy_add_x_forwarded_for`):
+        # заявление клиента о себе дальше раздачи не уходит, и ни одному звену
+        # за ней не нужно угадывать, какая запись цепочки настоящая.
+        #
         # Путь ассетов модуля обязан лежать ВНЕ пространства маршрутов консоли:
         # суффикс `-remote` — то, что его оттуда выводит. Здесь стоял
         # `/dashboard/`, и он заслонял маршрут, на который оболочка уводит с
@@ -31,7 +67,7 @@ data:
             proxy_pass http://$dashboard_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -44,7 +80,7 @@ data:
             proxy_pass http://$vpc_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -57,7 +93,7 @@ data:
             proxy_pass http://$iam_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -70,7 +106,7 @@ data:
             proxy_pass http://$nlb_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -83,7 +119,7 @@ data:
             proxy_pass http://$registry_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -96,7 +132,7 @@ data:
             proxy_pass http://$system_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -109,7 +145,7 @@ data:
             proxy_pass http://$compute_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -122,7 +158,7 @@ data:
             proxy_pass http://$storage_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 30s;
@@ -131,10 +167,11 @@ data:
 
         location ~ ^/(vpc|compute|storage|geo|nlb|registry|operations)/ {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
             proxy_read_timeout 30s;
@@ -143,10 +180,31 @@ data:
 
         location ~ ^/iam/v1/ {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $http_x_request_id;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        # ОБЪЯВЛЕНИЕ ЦЕРЕМОНИИ OAUTH (RFC 8414) — координата, которую объявляет
+        # край (kacho#3060). Без этого блока адрес доставался общему
+        # `location /`, и клиент церемонии получал оболочку консоли с кодом `200`
+        # вместо документа. ТОЧНОЕ совпадение: соседи —
+        # `/.well-known/openid-configuration`, форма с хвостом, всё прочее под
+        # `/.well-known/` — краю не достаются (запрет #6: наружу ровно один
+        # адрес). Те же заголовки и лист звена, что у соседних полос.
+        location = /.well-known/oauth-authorization-server {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
             proxy_read_timeout 30s;
@@ -166,10 +224,11 @@ data:
         # один адрес и не может открыть второго (запрет #6).
         location = /subscription/v1/events {
             set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
-            proxy_pass http://$api_gw_upstream;
+            proxy_pass https://$api_gw_upstream;
+            {{- include "ui.edgeLinkTLS" . | nindent 12 }}
             proxy_http_version 1.1;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Request-ID $http_x_request_id;
 
@@ -204,11 +263,52 @@ data:
         # возврат такой полосы на цепочке посадки own — находка рендер-гейта
         # deploy/tests/helm/console-serves-identity-flows-test.sh.
 
+        # ТОЧКА ЖИВОСТИ — СЛУЖЕБНАЯ, А НЕ ЧАСТЬ КОНСОЛИ (kacho#3030). На неё
+        # смотрят пробы кластера, и только они: внутренний порт `http`. Внешний
+        # вход слушает ЭТИМ ЖЕ серверным блоком (второй копии маршрутов нет),
+        # поэтому на его порту точка отказывает — тем же `404`, что любой адрес,
+        # которого у раздачи нет. Отказ стоит ДО ответа: директивы `return`
+        # исполняются по порядку, и первая исполненная завершает обработку.
         location = /healthz {
+            {{- if .Values.publicFront.enabled }}
+            if ($server_port = {{ .Values.publicFront.httpsPort }}) { return 404; }
+            {{- end }}
             access_log off;
             add_header Content-Type text/plain;
             {{- include "ui.securityHeaders" . | nindent 12 }}
             return 200 "ok\n";
+        }
+
+        # Точки живости МОДУЛЕЙ полоса ассетов отдавала бы наружу: она срезает
+        # префикс `/<модуль>-remote/` и ведёт адрес к серверу модуля, у которого
+        # `/healthz` свой. Модуль проба кластера опрашивает напрямую, на его
+        # поде, — через оболочку этот адрес не нужен никому и закрыт на любом
+        # порту. Точное совпадение выигрывает у префикса `^~` по порядку
+        # разрешения; новая полоса модуля без своей строки здесь — находка
+        # ui-future/deploy/console_health_point_external_test.go.
+        location = /dashboard-remote/healthz {
+            return 404;
+        }
+        location = /vpc-remote/healthz {
+            return 404;
+        }
+        location = /iam-remote/healthz {
+            return 404;
+        }
+        location = /nlb-remote/healthz {
+            return 404;
+        }
+        location = /registry-remote/healthz {
+            return 404;
+        }
+        location = /system-remote/healthz {
+            return 404;
+        }
+        location = /compute-remote/healthz {
+            return 404;
+        }
+        location = /storage-remote/healthz {
+            return 404;
         }
 
         location = /index.html {
@@ -238,6 +338,119 @@ data:
         gzip_types text/plain text/css application/javascript application/json image/svg+xml;
         gzip_min_length 1024;
     }
+    {{- if .Values.publicFront.enabled }}
+
+    # Порт 80 балансировщика. НЕ обслуживает ничего: ни консоль, ни края, ни
+    # формы — только переадресация на объявленное происхождение. Хост ответа
+    # берётся из объявления, а не из заголовка `Host` запроса: отражать чужой
+    # заголовок в `Location` значило бы уводить браузер туда, куда скажет
+    # запрос. `308`, а не `301`: метод и тело сохраняются, и форма, отправленная
+    # по http, уходит на https, а не теряется превращением в GET.
+    server {
+        {{- if $proxied }}
+        # Порт 80 балансировщика тоже получает заголовок PROXY (kacho#3115), но
+        # не от каждого соединения: соединение изнутри кластера к внешнему
+        # адресу входа (ipMode VIP) приходит на под без него — так приходит и
+        # проверка вызова ACME HTTP-01. Порт redirect слушает маршрутизатор
+        # (nginx.conf ниже): звено балансировки он ведёт сюда с заголовком,
+        # прочих — без. Адресу из заголовка верят только от петли — туда
+        # заголовок приводит лишь маршрутизатор.
+        listen 127.0.0.1:{{ include "ui.redirectRouteProxiedPort" . }} proxy_protocol;
+        listen 127.0.0.1:{{ include "ui.redirectRoutePlainPort" . }};
+        real_ip_header proxy_protocol;
+        set_real_ip_from 127.0.0.1;
+        {{- else }}
+        listen {{ .Values.publicFront.redirectPort }};
+        {{- end }}
+        server_name _;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+        {{- if (.Values.publicFront.acme).enabled }}
+
+        # ВЫЗОВ РЕШАТЕЛЯ ACME (kacho#3024). Подтверждение владения http01 ACME
+        # спрашивает по http на порту 80 — то есть ЗДЕСЬ, до переадресации:
+        # иначе вызов уходил бы на https и получал оболочку консоли, и лист не
+        # выпускался и не продлевался. Только этот сервер, только GET (и HEAD), и
+        # только на Service решателя этого релиза; на TLS-порту консоли путь
+        # обслуживает оболочка, на край он не ведёт.
+        resolver ${KUBE_DNS_SERVER} valid=10s ipv6=off;
+        location ^~ /.well-known/acme-challenge/ {
+            limit_except GET {
+                deny all;
+            }
+            set $acme_solver "${KACHO_UI_ACME_SOLVER_UPSTREAM}";
+            proxy_pass http://$acme_solver;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 10s;
+            proxy_send_timeout 10s;
+        }
+        {{- end }}
+        location / {
+            return 308 {{ include "ui.publicFrontOrigin" . }}$request_uri;
+        }
+    }
+    {{- end }}
+  {{- if $proxied }}
+  # ГЛАВНАЯ НАСТРОЙКА nginx (kacho#3115) — только при приёме заголовка PROXY:
+  # маршрутизатор порта redirect живёт в контексте `stream`, а его объявляет
+  # только главный файл. Файловая система контейнера только для чтения, и
+  # дописать блок в файл образа (20-envsubst-on-templates.sh) нельзя — файл
+  # монтируется отсюда (deployment-host.yaml). Всё, кроме `stream`, —
+  # настройка образа nginx-unprivileged как есть.
+  nginx.conf: |
+    worker_processes  auto;
+
+    error_log  /var/log/nginx/error.log notice;
+    pid        /tmp/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        proxy_temp_path /tmp/proxy_temp;
+        client_body_temp_path /tmp/client_temp;
+        fastcgi_temp_path /tmp/fastcgi_temp;
+        uwsgi_temp_path /tmp/uwsgi_temp;
+        scgi_temp_path /tmp/scgi_temp;
+
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log  /var/log/nginx/access.log  main;
+
+        sendfile        on;
+
+        keepalive_timeout  65;
+
+        include /etc/nginx/conf.d/*.conf;
+    }
+
+    # МАРШРУТИЗАТОР ПОРТА REDIRECT. Решает по адресу TCP-пира, ждать ли
+    # заголовка PROXY: звено балансировки (тот же круг, что у порта https) —
+    # на петлевой слушатель с приёмом, прочие — на петлевой без него. Сам
+    # заголовка не ждёт и своего не дописывает: байты соединения уходят как есть.
+    stream {
+        geo $remote_addr $kacho_redirect_route {
+            default 127.0.0.1:{{ include "ui.redirectRoutePlainPort" . }};
+            {{- range .Values.publicFront.clientAddress.proxyProtocol.trustedFrom }}
+            {{ . }} 127.0.0.1:{{ include "ui.redirectRouteProxiedPort" $ }};
+            {{- end }}
+        }
+
+        server {
+            listen {{ .Values.publicFront.redirectPort }};
+            proxy_pass $kacho_redirect_route;
+            proxy_connect_timeout 2s;
+        }
+    }
+  {{- end }}
   resolver-from-resolvconf.envsh: |
     # Sourced (.envsh) до nginx 20-envsubst: экспортирует адрес кластерного DNS из
     # /etc/resolv.conf в KUBE_DNS_SERVER, чтобы envsubst подставил его в
@@ -250,6 +463,47 @@ data:
     fi
     export KUBE_DNS_SERVER="$ns"
     echo "[05-resolver] KUBE_DNS_SERVER=$ns exported for envsubst"
+  tls-reload.sh: |
+    # Исполняется до nginx (docker-entrypoint.d) и оставляет в фоне сторожа:
+    # cert-manager продлевает сертификат В СЕКРЕТЕ, kubelet меняет файлы тома на
+    # месте, а nginx держит в памяти лист, прочитанный при старте. Без сторожа
+    # под отдавал бы прежний лист до истечения. Сторож сверяет отпечаток файлов
+    # и на расхождении просит nginx перечитать настройку (`-s reload`:
+    # соединения не рвутся). Проверка конфигурации — ДО перечтения: битая пара в
+    # секрете не должна гасить раздачу, она остаётся на прежнем листе и говорит
+    # об этом в журнал.
+    #
+    # Сторожит ВСЕ листы раздачи: лист звена к краю (kacho#3028, всегда) — с
+    # истёкшим листом край отказал бы в рукопожатии каждой полосе к нему, — и
+    # лист пользовательского края (kacho#3024), когда раздача завершает TLS сама.
+    set -eu
+    files="{{ include "ui.edgeLinkDir" . }}/tls.crt {{ include "ui.edgeLinkDir" . }}/tls.key {{ include "ui.edgeCADir" . }}/ca.crt"
+    {{- if .Values.publicFront.enabled }}
+    files="$files /etc/console-tls/tls.crt /etc/console-tls/tls.key"
+    {{- end }}
+    every={{ int .Values.tlsReload.intervalSeconds }}
+    for f in $files; do
+      if [ ! -s "$f" ]; then
+        echo "[06-tls-reload] FATAL: $f пуст или отсутствует — TLS раздачи не собирается" >&2
+        exit 1
+      fi
+    done
+    (
+      # shellcheck disable=SC2086 # перечень файлов — слова по построению
+      seen="$(cat $files | cksum)"
+      while sleep "$every"; do
+        # shellcheck disable=SC2086
+        now="$(cat $files 2>/dev/null | cksum)" || continue
+        [ "$now" = "$seen" ] && continue
+        if nginx -t -q 2>/dev/null && nginx -s reload; then
+          seen="$now"
+          echo "[06-tls-reload] сертификат раздачи сменился — nginx перечитал настройку"
+        else
+          echo "[06-tls-reload] сертификат сменился, но конфигурация не прошла проверку — остаёмся на прежнем листе" >&2
+        fi
+      done
+    ) &
+    echo "[06-tls-reload] сторож сертификатов запущен, период ${every}s: $files"
 ---
 apiVersion: v1
 kind: ConfigMap

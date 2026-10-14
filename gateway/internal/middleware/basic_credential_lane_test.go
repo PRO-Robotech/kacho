@@ -68,7 +68,7 @@ func (f *fakeAuthority) callCount() int {
 
 func newLane(t *testing.T, auth *fakeAuthority, now func() time.Time) *middleware.BasicCredentialLane {
 	t.Helper()
-	return middleware.NewBasicCredentialLane(auth).WithClock(now)
+	return middleware.NewBasicCredentialLane(auth, time.Second).WithClock(now)
 }
 
 func mintFor(t *testing.T, auth *fakeAuthority, credID string) string {

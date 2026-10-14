@@ -7,10 +7,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ И ПОЧЕМУ ОДНИМ МЕСТОМ
 //
-// Служба объявляет пятнадцать глаголов `/iam/v1/auth/*` одним перечнем, край их
+// Служба объявляет глаголы `/iam/v1/auth/*` одним перечнем, край их
 // ретранслирует, раздача уводит `^/iam/v1/` на край безусловно. Консоль зовёт
 // их отсюда и ни откуда больше: экраны входа, регистрации, выхода, параметров
-// учётной записи, подтверждения адреса почты и окно повышения уровня. Второй клиент тех же глаголов
+// учётной записи, подтверждения адреса почты, восстановления доступа и окно
+// повышения уровня. Второй клиент тех же глаголов
 // разошёлся бы с первым молча — ровно так расходились две копии окна повышения.
 //
 // ЧЕГО КОНСОЛЬ НЕ ДЕЛАЕТ (Р2). Правило пароля, занятость адреса, годность кода
@@ -45,6 +46,9 @@ export const LOGIN_LANE = {
   logout: "/iam/v1/auth/logout",
   register: "/iam/v1/auth/register",
   password: "/iam/v1/auth/password",
+  // Первый пароль из живой сессии (служба — приёмка FP; экран — приёмка F8,
+  // ред. 12, Р13): у человека без пароля; носителя не ставит (её Р5).
+  passwordEnroll: "/iam/v1/auth/password/enroll",
   secondFactor: "/iam/v1/auth/second-factor",
   enroll: "/iam/v1/auth/second-factor/enroll",
   confirm: "/iam/v1/auth/second-factor/confirm",
@@ -55,6 +59,28 @@ export const LOGIN_LANE = {
   // предъявление кода — оба под сессией человека, адреса в теле нет.
   verifyEmail: "/iam/v1/auth/verify-email",
   verifyEmailConfirm: "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа без пароля (приёмка Ф13, Р1; экран — приёмка F8-S4):
+  // выдача испытания и предъявление утверждения — оба без сессии, у каждого
+  // свой вид признака формы.
+  accessKeyBegin: "/iam/v1/auth/access-key/begin",
+  accessKeyLogin: "/iam/v1/auth/access-key/login",
+  // Восстановление доступа (приёмка Ф5 службы; экран — приёмка F8-S3): запрос
+  // кода на адрес почты и предъявление кода с новым паролем — оба без сессии, у
+  // каждого свой вид признака формы.
+  recovery: "/iam/v1/auth/recovery",
+  recoveryComplete: "/iam/v1/auth/recovery/complete",
+  // Свои сессии (приёмка службы OS, Р1; экран — приёмка F8-S5, Р2): перечень и
+  // два снимающих глагола — все под живой сессией; признак у снимающих — один
+  // вид `session-end`, перечень признака не берёт. Носителя не ставят и
+  // контекста формы не меняют (OS Р6) — в перечнях упорядочения их нет.
+  sessions: "/iam/v1/auth/sessions",
+  sessionsEnd: "/iam/v1/auth/sessions/end",
+  sessionsEndOthers: "/iam/v1/auth/sessions/end-others",
+  // Смена адреса почты (служба — приёмка EC, Р1; экран — приёмка F8-S6, Р5):
+  // запрос кода на новый адрес и предъявление кода — оба под живой сессией, у
+  // каждого свой вид признака. Носитель ставит только предъявление (EC Р8 п. 3).
+  emailChange: "/iam/v1/auth/email-change",
+  emailChangeConfirm: "/iam/v1/auth/email-change/confirm",
 } as const;
 
 /** Маршрут края «кто за этой сессией». Глаголом полосы не является. */
@@ -65,11 +91,19 @@ export type FormKind =
   | "login"
   | "logout"
   | "password"
+  | "password-enroll"
   | "register"
   | "second-factor"
   | "step-up"
   | "verify-email"
-  | "verify-email-confirm";
+  | "verify-email-confirm"
+  | "access-key-begin"
+  | "access-key-login"
+  | "recovery"
+  | "recovery-complete"
+  | "session-end"
+  | "email-change"
+  | "email-change-confirm";
 
 /** Способ предъявления второго фактора: код из приложения либо запасной код. */
 export type CodeMethod = SecondFactorMethod;
@@ -156,6 +190,7 @@ const REFUSAL_FIELD_INPUT: Readonly<Record<string, RefusalInput | null>> = {
   password: "password",
   currentPassword: "currentPassword",
   newPassword: "newPassword",
+  newEmail: "newEmail",
   code: "code",
   method: "method",
   "secondFactor.code": "code",
@@ -164,7 +199,7 @@ const REFUSAL_FIELD_INPUT: Readonly<Record<string, RefusalInput | null>> = {
 };
 
 /** Ввод экрана церемонии, который служба может назвать отказом. */
-export type RefusalInput = "email" | "password" | "currentPassword" | "newPassword" | "code" | "method";
+export type RefusalInput = "email" | "password" | "currentPassword" | "newPassword" | "newEmail" | "code" | "method";
 
 const FIELD_REFUSAL = /^Illegal argument (\S+): /;
 
@@ -232,6 +267,13 @@ function wwwAuthenticateOf(res: Response): string | null {
   return res.headers?.get?.("WWW-Authenticate") ?? null;
 }
 
+/**
+ * Текст, которым консоль называет ответ, не несущий ни отказа службы, ни того,
+ * что глагол обещал: тело отказа не пришло, либо ответ успеха не той формы.
+ * Причины консоль не знает и не выдумывает.
+ */
+export const NOT_BY_SUBSTANCE_TEXT = "Служба не ответила по существу";
+
 /** Отказ из ответа. Разбор один — на все глаголы и на окно повышения. */
 export function refusalOf(res: Response, text: string): LaneRefusal {
   const status = parseRpcStatus(text);
@@ -250,7 +292,7 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
   // Тела отказа служба не прислала — ответила раздача либо промежуточный узел.
   // Причины консоль не знает и не выдумывает; код ответа остаётся в `status`
   // для того, кто чинит, а не в тексте для того, кто читает экран.
-  return new LaneRefusal(res.status, null, "Служба не ответила по существу", null, null, retryAfterOf(res), www);
+  return new LaneRefusal(res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, retryAfterOf(res), www);
 }
 
 /** Ответ глагола: статус, заголовки и тело — как их прислали. */
@@ -404,10 +446,11 @@ export class FormTokenHolder {
 
 /**
  * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
- * закрыт, девять (приёмка F8, Р10, N17; предъявление кода подтверждения адреса —
- * приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель). Пять переписывают
- * дайджест той же записи — прежний носитель с этого момента негоден; четыре
- * заводят новую запись.
+ * закрыт, одиннадцать (приёмка F8, Р10, N17; предъявление кода подтверждения
+ * адреса — приёмка F6b, Р6 и Р10 службы: успех несёт новый носитель; вход ключом
+ * доступа — приёмка F8-S4, Р6; предъявление кода смены адреса — приёмка F8-S6,
+ * Р5, EC Р8 п. 3). Шесть переписывают дайджест той же записи — прежний
+ * носитель с этого момента негоден; пять заводят новую запись.
  * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
  * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
  * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
@@ -424,13 +467,20 @@ export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/second-factor/backup-codes",
   "/iam/v1/auth/step-up",
   "/iam/v1/auth/verify-email/confirm",
+  // Вход ключом доступа выдаёт сессию той же операцией, что вход паролем (Ф13
+  // Р4; приёмка F8-S4, Р6). Испытание входа носителя не ставит — его здесь нет.
+  "/iam/v1/auth/access-key/login",
+  // Предъявление кода смены адреса перевыпускает носитель той же сессии (EC Р8
+  // п. 3; F8-S6, Р5). Запрос кода носителя не ставит — его здесь нет.
+  "/iam/v1/auth/email-change/confirm",
 ]);
 
 /** Глаголы, меняющие контекст формы (`SetCookie kaname_form` у службы). */
-const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
+export const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
   "/iam/v1/auth/register",
   "/iam/v1/auth/recovery/complete",
+  "/iam/v1/auth/access-key/login",
 ]);
 
 function noteAnswered(path: string) {
@@ -505,6 +555,18 @@ export const loginLane = {
       true,
     );
   },
+  /**
+   * Первый пароль человеку без пароля (приёмка F8, ред. 12, Р13). Тело — РОВНО
+   * `{newPassword, csrfToken}`: текущего пароля у такого человека нет. Правило
+   * пароля и «пароль уже есть» судит служба, консоль — нет. Глагол требует
+   * свежего предъявления, поэтому отказ свежести ведёт к повышению и одному
+   * повтору тем же паролем. Носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-67): членство в них — равенство пути
+   * целиком, а `/iam/v1/auth/password` — лишь начало этой строки.
+   */
+  enrollPassword(holder: FormTokenHolder, form: { newPassword: string }) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.passwordEnroll, { newPassword: form.newPassword }, true);
+  },
   secondFactorState() {
     return exchange<SecondFactorState>("GET", LOGIN_LANE.secondFactor);
   },
@@ -542,7 +604,203 @@ export const loginLane = {
   confirmAddress(holder: FormTokenHolder, code: string) {
     return submit<{ session: LaneSession }>(holder, LOGIN_LANE.verifyEmailConfirm, { code }, false);
   },
+  /**
+   * Выдача испытания входа ключом (Ф13 Р1, Р9). Тело — только признак формы
+   * вида `access-key-begin`. Ответ отдаётся КАК ПРИСЛАН: его разбор в параметры
+   * церемонии браузера — дело кодека (`access-key.ts`), который ничего не
+   * подставляет. Глагол носителя не ставит и контекста формы не меняет — в
+   * перечнях упорядочения его нет (F8-S4, Р6).
+   */
+  accessKeyBegin(holder: FormTokenHolder) {
+    return submit<unknown>(holder, LOGIN_LANE.accessKeyBegin, {}, false);
+  },
+  /**
+   * Предъявление утверждения браузера (Ф13 Р1, Р4). `credential` — закрытая
+   * проекция ответа браузера (`assertionBodyOf`), признак — вида
+   * `access-key-login`. Успех выдаёт сессию той же операцией, что вход паролем.
+   */
+  accessKeyLogin(holder: FormTokenHolder, credential: Record<string, unknown>) {
+    return submit<SignedIn>(holder, LOGIN_LANE.accessKeyLogin, { credential }, false);
+  },
+  /**
+   * Запрос кода восстановления на адрес почты (Ф5; приёмка F8-S3, Р3). Тело —
+   * РОВНО `{email, csrfToken}`: разбор службы строгий. Ответ `200` с телом
+   * `{nextStep}` — побайтово одним на любой исход, заведён адрес или нет, — и
+   * экран его не различает (Р2). Носителя не ставит и контекста формы не меняет
+   * — в перечнях упорядочения его нет (Р7).
+   */
+  requestRecovery(holder: FormTokenHolder, form: { email: string }) {
+    return submit<{ nextStep?: string }>(holder, LOGIN_LANE.recovery, { email: form.email }, false);
+  },
+  /**
+   * Предъявление кода с новым паролем (Ф5; приёмка F8-S3, Р3, Р5). Тело — РОВНО
+   * `{email, code, newPassword, csrfToken}`, поля `secondFactor` нет: лишнее поле
+   * служба отвергла бы `400`. Код и пароль уходят как введены — своего суждения о
+   * содержимом консоль не выносит. Успех отвечает как вход: сессия и новый
+   * контекст формы.
+   */
+  completeRecovery(holder: FormTokenHolder, form: { email: string; code: string; newPassword: string }) {
+    return submit<SignedIn>(
+      holder,
+      LOGIN_LANE.recoveryComplete,
+      { email: form.email, code: form.code, newPassword: form.newPassword },
+      false,
+    );
+  },
+  /**
+   * Запрос смены адреса почты (EC, Р1; F8-S6, Р3). Тело — РОВНО `{newEmail,
+   * csrfToken}`: адрес уходит как введён, своего суждения о его форме и
+   * занятости консоль не выносит (Р2; EC Р4 — ответ на занятый побайтово тот же,
+   * что на свободный). Срок до следующего запроса — ТОЛЬКО заголовок
+   * `Retry-After` ответа. Глагол требует свежего предъявления: отказ свежести
+   * ведёт к повышению и ОДНОМУ повтору (F8-S6, Р4).
+   */
+  requestEmailChange(holder: FormTokenHolder, newEmail: string) {
+    return submit<EmailChangeRequested>(holder, LOGIN_LANE.emailChange, { newEmail }, true, false, ({ res }) => ({
+      retryAfterSeconds: retryAfterOf(res),
+    }));
+  },
+  /**
+   * Предъявление кода смены (EC, Р1). Тело — РОВНО `{code, csrfToken}`; код
+   * уходит как введён, в том числе пустым: отказ о пустом коде называет служба
+   * (F8-S6, Р3, F8S6-12). Успех перевыпускает носитель (`SETS_CARRIER`).
+   */
+  confirmEmailChange(holder: FormTokenHolder, code: string) {
+    return submit<{ session: LaneSession }>(holder, LOGIN_LANE.emailChangeConfirm, { code }, true);
+  },
+  /**
+   * Перечень своих живых сессий (OS, Р4; F8-S5, Р2) — страница за страницей
+   * тем же путём; порядок — порядок службы, консоль его не переставляет.
+   * Признака формы чтение не берёт.
+   */
+  sessions(pageToken = "") {
+    const path =
+      pageToken === "" ? LOGIN_LANE.sessions : `${LOGIN_LANE.sessions}?pageToken=${encodeURIComponent(pageToken)}`;
+    return exchange<OwnSessionsPage>("GET", path, undefined, ownSessionsPageOf);
+  },
+  /**
+   * Выход из выбранной сессии (OS, Р5). Тело — РОВНО `{sessionId, csrfToken}`.
+   * Глагол требует свежего предъявления: отказ свежести ведёт к повышению и
+   * ОДНОМУ повтору (F8-S5, Р5; условие C2).
+   */
+  endSession(holder: FormTokenHolder, sessionId: string) {
+    return submit<SessionEnded>(
+      holder,
+      LOGIN_LANE.sessionsEnd,
+      { sessionId },
+      true,
+      false,
+      endedOf((n): n is true => n === true),
+    );
+  },
+  /** Выход из всех своих сессий, кроме текущей (OS, Р7). Тело — РОВНО `{csrfToken}`. */
+  endOtherSessions(holder: FormTokenHolder) {
+    return submit<OtherSessionsEnded>(
+      holder,
+      LOGIN_LANE.sessionsEndOthers,
+      {},
+      true,
+      false,
+      endedOf((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0),
+    );
+  },
 };
+
+/**
+ * Запись своей сессии — в форме перечня службы (приёмка OS, Р4). Набор ключей
+ * закрыт; поле, которого ответ не нёс, ОТСУТСТВУЕТ. `userAgent` — описание
+ * клиента КАК ПРИСЛАНО (F8-S5, Р3): консоль его не разбирает; нет ключа — клиент
+ * не назвался либо запись старше поля, и у обоих один смысл — «не названо».
+ */
+export interface OwnSession {
+  id: string;
+  /** `true` ровно у записи носителя запроса. */
+  current: boolean;
+  authenticatedAt?: string;
+  lastPresentedAt?: string;
+  expiresAt?: string;
+  userAgent?: string;
+}
+
+/** Страница перечня своих сессий; `nextPageToken` пуст ⇔ страница последняя. */
+export interface OwnSessionsPage {
+  sessions: OwnSession[];
+  nextPageToken: string;
+}
+
+/** Исход снятия выбранной сессии (OS, Р5). */
+export interface SessionEnded {
+  ended: true;
+}
+
+/** Исход «все, кроме этой» (OS, Р7): число снятых записей. */
+export interface OtherSessionsEnded {
+  ended: number;
+}
+
+/**
+ * Читатель исхода снятия: `{ended}` той формы, что обещал глагол. Иная форма —
+ * отказ «не по существу»: исход, которого служба не назвала, консоль не
+ * выдумывает (ни «снято», ни «снято ноль»).
+ */
+function endedOf<T extends boolean | number>(valid: (n: unknown) => n is T): Reader<{ ended: T }> {
+  return (answered) => {
+    let ended: unknown;
+    try {
+      ended = bodyOf<{ ended?: unknown } | null>(answered)?.ended;
+    } catch {
+      ended = undefined;
+    }
+    if (!valid(ended)) throw new LaneRefusal(answered.res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, null);
+    return { ended };
+  };
+}
+
+function optionalText(o: Record<string, unknown>, key: string): string | undefined {
+  return typeof o[key] === "string" ? o[key] : undefined;
+}
+
+/**
+ * Разбор страницы перечня. Элемент без `id` перечнем не показывается: снимать
+ * его нечем, а выдумывать идентификатор консоль не вправе. Ответ не той формы
+ * — отказ «не по существу», а не пустой перечень: пустой перечень сказал бы
+ * человеку «сессий нет», чего служба не говорила.
+ */
+function ownSessionsPageOf({ res, text }: Answered): OwnSessionsPage {
+  let raw: unknown;
+  try {
+    raw = text ? JSON.parse(text) : null;
+  } catch {
+    raw = undefined;
+  }
+  const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!body || !Array.isArray(body.sessions)) {
+    throw new LaneRefusal(res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, null);
+  }
+  const sessions: OwnSession[] = [];
+  for (const item of body.sessions as unknown[]) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const id = displayText(o.id);
+    if (id === "") continue;
+    const s: OwnSession = { id, current: o.current === true };
+    const authenticatedAt = optionalText(o, "authenticatedAt");
+    const lastPresentedAt = optionalText(o, "lastPresentedAt");
+    const expiresAt = optionalText(o, "expiresAt");
+    const userAgent = optionalText(o, "userAgent");
+    if (authenticatedAt !== undefined) s.authenticatedAt = authenticatedAt;
+    if (lastPresentedAt !== undefined) s.lastPresentedAt = lastPresentedAt;
+    if (expiresAt !== undefined) s.expiresAt = expiresAt;
+    if (userAgent !== undefined) s.userAgent = userAgent;
+    sessions.push(s);
+  }
+  return { sessions, nextPageToken: typeof body.nextPageToken === "string" ? body.nextPageToken : "" };
+}
+
+/** Исход запроса смены адреса: срок до следующего запроса — из ответа службы, либо `null`. */
+export interface EmailChangeRequested {
+  retryAfterSeconds: number | null;
+}
 
 /** Исход запроса письма: срок до следующего — из ответа службы, либо `null`. */
 export interface AddressConfirmationRequested {
@@ -581,16 +839,17 @@ export interface SessionIdentity {
  *                 иначе терял бы экран, на котором работал.
  *
  * НЕГОДНЫЙ НОСИТЕЛЬ КРАЙ ОТВЕЧАЕТ НЕ `{"user":null}`. «Кто я» у края — точка
- * предъявления носителя: негодный он отвергает `401` с вызовом
- * `error="invalid_token"` и гасит печенье. Тем же текстом и тем же вызовом край
- * отвечает, когда не ответил его авторитет (F4d-23), — но носитель тогда цел.
- * Текстом эти два случая неразличимы намеренно (иначе текст стал бы оракулом
- * исправности соседа); различаются они ПОВЕДЕНИЕМ, и консоль спрашивает ОДИН
- * раз снова: погашенный носитель второй вопрос уже не несёт, и край отвечает
- * `{"user":null}` — сессии нет; цел — отвечает тем же отказом, и это
+ * предъявления носителя: негодный он отвергает ОДНИМ отказом `401` на все
+ * причины, с вызовом `error="invalid_token"` (приёмка KA1, Р2), и гасит печенье.
+ * Консоль спрашивает ОДИН раз снова: погашенный носитель второй вопрос уже не
+ * несёт, и край отвечает `{"user":null}` — сессии нет; отвечает тем же отказом —
  * `unknown`. Третьего вопроса нет. Прежде первый такой отказ читался как
  * `unknown`, и экран входа при подменённом носителе показывал отказ края и
  * «Проверить снова» вместо формы (прогон F8-12 на посадке `own` @9038186d0d5).
+ *
+ * НЕ ОТВЕТИЛ АВТОРИТЕТ КРАЯ — НЕ ОТКАЗ. Тогда край отвечает `503` без вызова и
+ * без печенья (приёмка KA1, Р1): носитель цел, и это `unknown` с первого
+ * вопроса — повторять нечего, и на вход консоль не уводит.
  */
 export type SessionAnswer = SessionIdentity | { kind: "absent" } | { kind: "unknown"; refusal: LaneRefusal };
 

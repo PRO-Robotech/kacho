@@ -32,13 +32,13 @@
 package restmux
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/corelib/contractroot"
 
@@ -131,7 +131,7 @@ func publicBindingsFromDescriptors() []publicBinding {
 // нет — внешнее это fail-closed умолчание) и возвращает биндинги без маршрута.
 func unrouted(t *testing.T, addrs map[string]string, subject []publicBinding) []publicBinding {
 	t.Helper()
-	h, err := NewMux(context.Background(), addrs, nil, nil)
+	h, err := NewMux(t.Context(), addrs, nil, nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}

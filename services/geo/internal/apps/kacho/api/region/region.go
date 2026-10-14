@@ -5,9 +5,12 @@
 //
 // Use-case слой чистой архитектуры: импортирует domain + порт Repo + corelib
 // operations, не тянет pgx/transport. Публичные RegionService.Get/List —
-// read-only (sync), возвращают LEAN public-проекцию. Admin CRUD идёт через
-// InternalRegionService на :9091 и возвращает синхронно-завершённый
-// Operation{done:true} (config-INSERT, без саги — module-geo rule 4): мутация
+// read-only (sync), возвращают LEAN public-проекцию. Admin CRUD обслуживают две
+// поверхности одними и теми же методами: публичный RegionService (без infra°,
+// право system_admin @ cluster — ADM-1) и InternalRegionService на :9091. Оба
+// возвращают синхронно-завершённый Operation{done:true} (config-INSERT, без саги
+// — module-geo rule 4). Known-set маски у региона на обеих поверхностях один:
+// изменяемых подполей infra° у региона нет (numericInfraId неизменяем). Мутация
 // пишет строку, финализирует операцию done=true и отдаёт её сразу
 // (response=public Region либо Empty для Delete, либо error). GetInternal
 // возвращает FULL Internal-проекцию (status + infra°) синхронно.
@@ -357,7 +360,7 @@ func closedWarnings(r *domain.Region) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"region %s created but CLOSED to placement (status DOWN); no tenant can place here — Internal Update status=UP to open",
+		"region %s created but CLOSED to placement (status DOWN); no tenant can place here until an administrator updates its status to UP",
 		r.ID)}
 }
 

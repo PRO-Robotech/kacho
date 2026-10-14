@@ -167,6 +167,7 @@ func recheckProbeConfig() config.Config {
 	return config.Config{
 		IntrospectionCacheTTLSeconds: 5,
 		SubscriptionStreamBudget:     90 * time.Second,
+		IdentityCallBudget:           time.Second,
 	}
 }
 

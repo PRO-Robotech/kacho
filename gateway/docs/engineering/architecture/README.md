@@ -13,7 +13,14 @@ admin-поверхности. Здесь — ключевые проектные
 **TLS-листенер** (advertised для клиентов) — за ним тот же `cmux`-раскол.
 
 Третий листенер — **cluster-internal REST** (`KACHO_API_GATEWAY_INTERNAL_REST_ADDR`, дефолт
-`:8081`): на нём и только на нём резолвятся `Internal*`-пути доменов. Собственного
+`:8081`): на нём и только на нём резолвятся `Internal*`-пути доменов. Транспорт — только mTLS
+(kacho#3131): свой серверный лист (`KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE` / `_KEY_FILE`),
+клиентский лист обязателен, цепочка — к УЦ установки (`KACHO_API_GATEWAY_MTLS_CA_FILE`), URI-имя
+листа — в круге `KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS`. Страж старта
+`validateProductionInternalListener` отказывает без материала на любой метке `KACHO_APP_ENV`;
+сборка — `serveInternalREST` (`tls.NewListener` внешней обёрткой над меткой «внутренний»).
+Самоотчёт — строка журнала старта `api-gateway internal admin REST started` (`transport=mtls`,
+размер круга). Собственного
 cluster-internal **gRPC**-листенера край не поднимает — принимать на нём нечего с тех пор, как
 снята единственная подававшаяся там служба (см. раздел про инвалидацию ниже).
 
@@ -75,7 +82,11 @@ subject + poll-watcher + TTL-backstop), subject-cache, idempotency-store
 
 `/healthz` — liveness, всегда `200`. `/readyz` опрашивает backends и возвращает
 `503` только при недоступности **критичного** backend (`iam` — он фронтит
-AuthN/AuthZ на каждом запросе). Недоступность некритичного backend
+AuthN/AuthZ на каждом запросе). Критично и соединение, которым край задаёт вопрос о
+праве (`iamAuthorize`): оно своё, не из карты backends, и пока оно не обслуживает,
+решение о праве не принимается — на закрытом исходе это `503` на запросе, поэтому и
+`/readyz` отвечает `503` (kacho#3200). На открытом исходе оно лишь видно в теле.
+Недоступность некритичного backend
 (vpc/compute/geo/nlb) деградирует один домен, но не выводит всю реплику из
 rotation, чтобы одно-доменный сбой не амплифицировался в полный отказ edge.
 
@@ -87,7 +98,10 @@ rotation, чтобы одно-доменный сбой не амплифици�
 
 - **самосброс реплики, обслужившей мутацию** — реплика, через которую прошёл меняющий права
   вызов, сбрасывает свой кэш немедленно (`gateway/internal/middleware/authz.go`, набор
-  `subjectChangingFQNs`). Это самый частый случай: «сменил права и тут же проверил»;
+  `subjectChangingFQNs`). Это самый частый случай: «сменил права и тут же проверил».
+  Путь полосы формы имени метода не несёт, поэтому исход смены адреса почты
+  (`/iam/v1/auth/email-change/confirm` с ответом 2xx, приёмка F8-S6 Р2) гасит кэш по
+  решению записи объявления путей (`login_lane_paths.go`, `flushesDecisionCacheOnSuccess`);
 - **опрос журнала** — `gateway/internal/watcher/subject_change_watcher.go` зовёт
   `kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
   `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`. Непустая

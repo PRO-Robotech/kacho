@@ -10,7 +10,7 @@ import { Alert } from "antd";
 import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { api } from "@shared/api/client";
-import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
@@ -94,9 +94,8 @@ export function InlineResourceCreateForm({
   const { data: op } = useOperation(pendingOpId);
 
   const mutation = useMutation({
-    // Создание уходит на admin-плоскость, если она у ресурса есть: POST по
-    // публичному пути каталога размещения не смаршрутизирован (#2692).
-    mutationFn: (item: unknown) => api.create(mutationBasePath(spec), item),
+    // Создание — на путь ресурса: тот же, с которого он читается (#3094).
+    mutationFn: (item: unknown) => api.create(spec.apiPath, item),
     onSuccess: (resp) => {
       // Исходов ТРИ, а не два. Ответ без операции у ресурса, который её
       // объявил, — не «выполнено синхронно», а нарушение контракта:

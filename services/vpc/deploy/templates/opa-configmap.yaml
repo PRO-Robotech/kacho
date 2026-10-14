@@ -10,7 +10,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.name }}-opa-config
-  namespace: kacho
+  namespace: {{ .Release.Namespace }}
 data:
   config.yaml: |
     services:

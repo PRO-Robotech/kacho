@@ -92,9 +92,10 @@ func allocatedBy(f func()) uint64 {
 	return b.TotalAlloc - a.TotalAlloc
 }
 
-// Предмет: память, которую матчер выделяет на кадр, ограничена
-// matchReadFrameSize. Тот же вход через матчер cmux — положительный контроль
-// замера: без него «мало» значило бы «не меряли».
+// Предмет: заголовок длинного кадра до HEADERS не выделяет буфер по своей
+// длине. Входом служит только заголовок — тела нет, как у соединения, которое
+// заявило кадр и замолчало. Сравнение с cmux показывает, что замер способен
+// увидеть выделение (иначе «мало» значило бы «не меряли»).
 func TestMatcherDoesNotAllocateByAnnouncedFrameLength(t *testing.T) {
 	const announced = 1<<20 - 1
 	in := cat([]byte(clientPreface), settings,
@@ -140,7 +141,8 @@ func (e *endlessContinuation) Read(p []byte) (int, error) {
 	return e.buf.Read(p)
 }
 
-// Предмет: матчер читает соединение не дальше MatchHeaderBudget.
+// Предмет: матчер читает соединение не дальше бюджета, даже когда блок
+// заголовков не кончается. Без бюджета он читал бы, пока соединение шлёт.
 func TestMatcherStopsAtTheHeaderBudget(t *testing.T) {
 	head := cat([]byte(clientPreface), settings, streamFrame(frameHeaders, 0, headerBlock(":method", "POST")...))
 	src := &countingReader{r: io.MultiReader(bytes.NewReader(head), io.LimitReader(&endlessContinuation{}, 64*MatchHeaderBudget))}

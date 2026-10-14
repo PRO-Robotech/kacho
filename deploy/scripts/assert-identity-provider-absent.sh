@@ -277,6 +277,9 @@ pod/provider-session-0'
   }
   cat >"$fake_bin/kind" <<'FAKE_KIND'
 #!/usr/bin/env bash
+# Стенд вне kind: движок такого кластера не знает. Вызов на этой ветке — уже
+# находка: адрес стенда вне kind берётся из объявления, а не у kind.
+[ "${FAKE_OFF_KIND:-0}" = 1 ] && { echo "self-test kind: стенд вне kind, а kind позван: $*" >&2; exit 97; }
 [ "$1 $2" = "get kubeconfig" ] && { echo "    server: https://self-test.invalid:6443"; exit 0; }
 echo "self-test kind: неожиданный вызов: $*" >&2; exit 97
 FAKE_KIND
@@ -285,8 +288,8 @@ FAKE_KIND
 # Двойник отвечает только на вызовы ветки посадки own; любой другой вызов —
 # отказ с кодом 97, чтобы половина, ушедшая мимо этой ветки, не нашла кластера.
 case "$*" in
-  "config current-context") echo "kind-$CLUSTER_NAME"; exit 0 ;;
-  "config view --minify "*) echo "https://self-test.invalid:6443"; exit 0 ;;
+  "config current-context") echo "${FAKE_CTX:-kind-$CLUSTER_NAME}"; exit 0 ;;
+  "config view --minify "*) echo "${FAKE_SERVER:-https://self-test.invalid:6443}"; exit 0 ;;
   *" logs deploy/kaname")
     [ "${FAKE_IAM:-own}" = none ] && exit 0
     echo "{\"msg\":\"boot security posture\",\"identity_provider\":\"${FAKE_IAM:-own}\"}"; exit 0 ;;
@@ -340,6 +343,27 @@ FAKE_KUBECTL
     empty read external 1 'посадка личности не own'
   FAKE_IAM=none expect_half "посадка службы не прочитана — не «разная», а непрочитанная" \
     empty read own 1 'посадка НЕ ПРОЧИТАНА'
+
+  # ── ЦЕЛЬ ВНЕ kind (kacho#2879): кластер пинится по адресу apiserver'а из
+  # объявления стенда, а не по имени kind. Подменён один факт против близнеца
+  # «объявленный кластер совпал»: адрес активного кластера.
+  STAND_APISERVER=https://managed.invalid:443 FAKE_OFF_KIND=1 FAKE_CTX=managed-operator \
+    FAKE_SERVER=https://managed.invalid:443 expect_half \
+    "стенд вне kind, активный кластер совпал с объявленным — полный вердикт части D" \
+    empty read own 0 'поставщика на стенде нет'
+  STAND_APISERVER=https://managed.invalid:443 FAKE_OFF_KIND=1 FAKE_CTX=managed-operator \
+    FAKE_SERVER=https://other.invalid:443 expect_half \
+    "стенд вне kind, активный кластер НЕ объявленный — «условие не создано» с обоими адресами" \
+    empty read own 2 'объявлен https://managed.invalid:443, активный контекст «managed-operator» ведёт в https://other.invalid:443'
+  STAND_APISERVER=https://managed.invalid:443 FAKE_OFF_KIND=1 FAKE_CTX=managed-operator \
+    FAKE_SERVER=https://other.invalid:443 expect_half \
+    "стенд вне kind, активный кластер не объявленный — суждения о посадке нет" \
+    empty read own 2 'УСЛОВИЕ НЕ СОЗДАНО'
+  # kind-ветка прежняя: контекст с именем kind-<кластер>, ведущий в другой
+  # кластер, — отказ, как и до правки.
+  FAKE_SERVER=https://other.invalid:443 expect_half \
+    "kind: контекст по имени тот, а адрес другой — отказ, как прежде" \
+    empty read own 2 'ведёт НЕ в этот кластер'
   rm -rf "$fake_bin"
 
   echo
@@ -353,33 +377,11 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 command -v kubectl >/dev/null 2>&1 || { echo "FATAL: нужен kubectl"; exit 2; }
 
-# ЦЕЛЬ ПИНИТСЯ ПО КЛАСТЕРУ, А НЕ ПО ИМЕНИ КОНТЕКСТА. Одноимённый контекст уже
-# однажды вёл в другой кластер: имя выбирает автор kubeconfig, совпадение имён
-# ничего не доказывает.
-# ИМЯ КЛАСТЕРА БЕРЁТСЯ ИЗ ОКРУЖЕНИЯ, А НЕ ВЫПИСЫВАЕТСЯ. Шарды сквозных проб
-# поднимают каждый свой кластер (`kacho-iam`, `kacho-vpc`, …), и выписанное имя
-# делает пробу неисполнимой на всех, кроме одного: она честно отказывается
-# судить и роняет подъём. Умолчание совпадает с объявлением сборки, поэтому
-# одиночный стенд ведёт себя как прежде.
-CLUSTER_NAME="${CLUSTER_NAME:-kacho}"
-ctx="$(kubectl config current-context 2>/dev/null)"
-case "$ctx" in
-  "kind-$CLUSTER_NAME") ;;
-  *) echo "ABORT: активный kube-контекст '$ctx' — не kind-$CLUSTER_NAME."; exit 2 ;;
-esac
-want_srv="$(kind get kubeconfig --name "$CLUSTER_NAME" 2>/dev/null | sed -n 's/^ *server: *//p' | head -1)"
-have_srv="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
-if [ -z "$want_srv" ]; then
-  echo "ABORT: kind не знает кластера '$CLUSTER_NAME' — сверить адрес apiserver'а НЕ С ЧЕМ,"
-  echo "       а «не с чем сверить» означает «не проверили», а не «всё хорошо»."
-  exit 2
-fi
-if [ "$want_srv" != "$have_srv" ]; then
-  echo "ABORT: контекст называется kind-'$CLUSTER_NAME', но ведёт НЕ в этот кластер."
-  echo "       активный → $have_srv"
-  echo "       kind-$CLUSTER_NAME на самом деле → $want_srv"
-  exit 2
-fi
+# ЦЕЛЬ ПИНИТСЯ ПО КЛАСТЕРУ, А НЕ ПО ИМЕНИ КОНТЕКСТА — владельцем пина
+# stand-cluster-pin.sh: стенд kind сверяется с адресом, который выдаёт движок,
+# стенд вне kind — с объявлением STAND_APISERVER (kacho#2879). Несовпадение —
+# «условие не создано», код 2, а не вердикт о чужом кластере.
+bash "$(dirname "${BASH_SOURCE[0]}")/stand-cluster-pin.sh" || exit 2
 
 
 echo "=== D. посадка личности own на живом стенде: поставщика нет ==="

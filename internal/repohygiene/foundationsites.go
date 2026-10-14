@@ -139,6 +139,12 @@ func DiscoverServerSites(root string, dirs []string, markers []string,
 				if wrapperOwns(rel, wrappers) {
 					return nil
 				}
+				// Пакет-харнесс проб — не слушатель продукта: его серверы — дублёры
+				// соседей (testharness.go; свойство держит
+				// TestHarnessPackagesAreImportedOnlyByTests).
+				if IsTestHarnessPath(rel) {
+					return nil
+				}
 				// ParseComments не запрашиваем: упоминание точки входа в
 				// объяснении местом сборки не является.
 				f, perr := parser.ParseFile(fset, abs, body, parser.SkipObjectResolution)

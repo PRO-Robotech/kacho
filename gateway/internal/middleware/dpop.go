@@ -26,10 +26,10 @@
 //     to equal `base64url(SHA-256(accessToken.Raw))`. An issuer emits `ath` for
 //     DPoP-protected resources; absence is permitted (legacy clients).
 //
-// Errors are mapped to RFC 6750 challenge headers by the calling middleware:
-//
-//	WWW-Authenticate: DPoP error="invalid_dpop_proof",
-//	    error_description="<sentinel-derived text>"
+// The calling middleware logs the sentinel and answers every failure with the
+// edge's one authentication refusal (authnrefusal, acceptance KA1 Р2): the
+// reason never reaches the wire, so a failed proof is indistinguishable from any
+// other refused credential.
 package middleware
 
 import (

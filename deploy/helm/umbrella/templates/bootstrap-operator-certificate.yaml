@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: BUSL-1.1
 {{- /*
   ─── bootstrap-operator client identity (internal-CA leaf, client auth only) ───
+  (The api-gateway internal REST operator identity — kacho#3131 — is a
+  different door and lives in its own file,
+  templates/internal-rest-operator-certificate.yaml: this file renders the mint
+  identity ONLY, so `--show-only` of it yields exactly one URI-SAN — kacho#3143.)
 
   A DEDICATED operator identity for the cluster-admin token mint
   (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kaname :9091).

@@ -51,33 +51,6 @@ REG = "/registry/v1/registries"
 OP_ENVELOPE = "^(rop|reo)[a-z0-9]+$"
 
 
-def _assert_403_means_uncatalogued():
-    """Различитель для проб «маршрута нет»: отказ по правам ≠ отсутствие маршрута.
-
-    Проба «такого маршрута не существует» проходит через authz-слой края ПЕРВЫМ, и
-    у него на несуществующую пару (метод, путь) нет записи в каталоге прав → отказ
-    fail-closed 403. Тот же 403 отдаётся и на ЖИВОМ маршруте, на который у
-    вызывающего нет права. Кейс, довольный «любым не-200», эти два исхода не
-    различает — и остался бы зелёным ровно тогда, когда маршрут по недосмотру
-    появился на публичном крае, а конкретный актор просто не имел на него прав.
-
-    Различие наблюдаемо: отказ по КАТАЛОГУ несёт нарушение типа `authz.catalog`
-    (левый токен причины «catalog: no entry for method»), тогда как решение по
-    конкретному объекту несёт `authz.no_path` / иной тип отношения. Требуем первое.
-    Коды, отличные от 403 (404/405/501 маршрутизатора, 400 транскодера), уже сами по
-    себе означают «не обслуживается» — для них различать нечего.
-    """
-    return [
-        "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
-        "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
-        "  if (pm.response.code !== 403) return;",
-        "  const types = [];",
-        "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
-        "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
-        "});",
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Self-contained setup / cleanup helpers (idempotent, {{runId}}-isolated)
 # ---------------------------------------------------------------------------
@@ -322,9 +295,11 @@ CASES.append(Case(
 
 # REG-1-04 (negative): id immutable — операции смены нет. (b) id в update_mask → sync
 # 400 "id is immutable after Registry.Create". (a) :rename-verb на Registry НЕ
-# зарегистрирован → маршрут не резолвится. Набор кодов терпим (400/403/404/405/501 —
-# край отвечает с разных слоёв), но 403 обязан быть отказом ПО КАТАЛОГУ, а не решением
-# о правах на живой маршрут — см. _assert_403_means_uncatalogued.
+# зарегистрирован → маршрут не резолвится. Исход один: сторож маршрута внешнего
+# слушателя (kacho#3053) решает «есть ли маршрут» раньше аутентификации и прав, путь
+# совпадает с публичным шаблоном реестра под другим методом — промах края «метода нет»
+# 501 / code 12 / `Method Not Allowed`, тело целиком (`assert_edge_route_miss`). Прежний
+# допуск 400/403/404/405/501 держался на том, что слои отвечали раньше маршрута.
 CASES.append(Case(
     id="REG-RD-F1-NEG-ID-IMMUTABLE",  # verifies REG-1-04
     title="Update updateMask=id → 400 (id immutable); POST :rename → route absent (no id-rename)",
@@ -342,10 +317,7 @@ CASES.append(Case(
         # it reached anything — a body here would only suggest that the edge weighed
         # the payload, which it never does.
         Step(name="post-rename-absent", method="POST", path=REG + "/{{rdRegId}}:rename",
-             test_script=[
-                 "pm.test('no :rename verb on Registry (never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
-                 *_assert_403_means_uncatalogued(),
-             ]),
+             test_script=[*assert_edge_route_miss("method")]),
     ],
 ))
 

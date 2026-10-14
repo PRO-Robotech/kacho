@@ -326,6 +326,15 @@ was *already* inline-provisioned; the missing piece was the peer-visibility retr
   on either answer. The case now states the single real outcome — `403`, code 7 — and thereby guards
   what actually matters here: the edge's fail-closed default for a path matching no method
   (security.md #4). A 200 on an unrouted path is now a failure, which is the point.
+- **operation / authz-deny** — edge route gate (kacho#3053): the external listener now decides
+  "is there a route" before authentication and authorization, so a path with no public route gets the
+  grpc-gateway miss — `404`, code 5, body exactly `{"code":5,"message":"Not Found","details":[]}` — for
+  every caller, the same answer an internal path gets. `OP-LST-NEG-UNROUTED-FAIL-CLOSED` moves from
+  `403`/7 to that exact miss (still fail-closed: never 200, never 5xx). `AZD-OP-LIST-STRANGER-FILTERS-SCOPE`
+  waited on a scope-filtered list that never existed in the contract; it is replaced by
+  `AZD-OP-LIST-STRANGER-UNROUTED`: a stranger with a session and an anonymous caller both get the same exact
+  miss as the owner (a 403 would mean the authorization layer answers before the route again; a 401 for the
+  anonymous caller would mean authentication stands in front of the gate again).
 - **targets** `TGT-RM-STATE-PHASE-B-RUNNER`: single racey read → bounded self-poll for the async
   drain runner (absent/DRAINING/INACTIVE), still reds if the row stays ACTIVE past budget.
 

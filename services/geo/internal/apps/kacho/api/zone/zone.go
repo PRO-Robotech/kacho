@@ -5,10 +5,11 @@
 //
 // Use-case слой чистой архитектуры: импортирует domain + порт Repo + corelib
 // operations, не тянет pgx/transport. Публичные ZoneService.Get/List — read-only
-// (sync), LEAN public-проекция. Admin CRUD идёт через InternalZoneService на
-// :9091 и возвращает синхронно-завершённый Operation{done:true} (config-INSERT,
-// module-geo rule 4). GetInternal возвращает FULL Internal-проекцию (status +
-// infra°) синхронно.
+// (sync), LEAN public-проекция. Admin CRUD обслуживают ДВЕ поверхности одними и
+// теми же методами: публичный ZoneService (без infra°, право system_admin @
+// cluster — ADM-1) и InternalZoneService на :9091 (с infra°). Оба возвращают
+// синхронно-завершённый Operation{done:true} (config-INSERT, module-geo rule 4).
+// GetInternal возвращает FULL Internal-проекцию (status + infra°) синхронно.
 package zone
 
 import (
@@ -104,6 +105,16 @@ var zoneUpdatable = map[string]struct{}{
 	"infra.underlay_anchor":      {},
 	"infra.capacityHint":         {},
 	"infra.capacity_hint":        {},
+}
+
+// zonePublicUpdatable — known-set маски ПУБЛИЧНОЙ правки (ZoneService.Update):
+// единственное изменяемое поле — `status`. Подполя infra° сюда не входят и не
+// могут: публичный вход блока infra° не несёт вовсе (security.md two-projection),
+// поэтому путь маски, назвавший их, — неизвестное поле этой поверхности и
+// отвергается общей проверкой маски с именем пути. Неизменяемые пути (id,
+// regionId, infra.numericInfraId) по-прежнему отвергаются раньше, своим текстом.
+var zonePublicUpdatable = map[string]struct{}{
+	"status": {},
 }
 
 // UseCase — бизнес-логика Zone поверх Reader/Writer, LRO-стека и errStatus.
@@ -226,10 +237,29 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	return syncop.Commit(ctx, u.ops, op, meta, resp)
 }
 
-// Update — admin partial-смена зоны (status/infra-subset). Immutable-поля
-// (id, regionId, infra.numericInfraId) в update_mask → синхронный InvalidArgument
-// ДО UpdateMask. not-found → op.error.
+// Update — admin partial-смена зоны с внутренней поверхности (status/infra-subset).
+// Immutable-поля (id, regionId, infra.numericInfraId) в update_mask → синхронный
+// InvalidArgument ДО UpdateMask. not-found → op.error.
 func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Operation, error) {
+	return u.update(ctx, in, zoneUpdatable)
+}
+
+// PublicUpdateInput — вход публичной правки (ZoneService.Update): без infra°.
+type PublicUpdateInput struct {
+	ID     string
+	Mask   []string
+	Status domain.GeoStatus
+}
+
+// UpdatePublic — правка зоны с публичной поверхности. Тот же путь записи, что у
+// внутренней правки (одни тексты, одна полоса, одна строка аудита), и отличие
+// ровно одно — known-set маски (zonePublicUpdatable): infra° публичной маской
+// недостижим.
+func (u *UseCase) UpdatePublic(ctx context.Context, in PublicUpdateInput) (*operations.Operation, error) {
+	return u.update(ctx, UpdateInput{ID: in.ID, Mask: in.Mask, Status: in.Status}, zonePublicUpdatable)
+}
+
+func (u *UseCase) update(ctx context.Context, in UpdateInput, known map[string]struct{}) (*operations.Operation, error) {
 	if err := domain.ValidateID("zone", in.ID); err != nil {
 		return nil, invalidArg(err.Error())
 	}
@@ -243,7 +273,7 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 			return nil, invalidArg("numericInfraId is immutable after Zone.Create")
 		}
 	}
-	if err := validate.UpdateMask("update_mask", in.Mask, zoneUpdatable); err != nil {
+	if err := validate.UpdateMask("update_mask", in.Mask, known); err != nil {
 		return nil, err
 	}
 	p, err := u.buildUpdateParams(in)
@@ -371,7 +401,7 @@ func closedWarnings(z *domain.Zone) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"zone %s created but CLOSED to placement (status DOWN); no tenant can place here — Internal Update status=UP to open",
+		"zone %s created but CLOSED to placement (status DOWN); no tenant can place here until an administrator updates its status to UP",
 		z.ID)}
 }
 

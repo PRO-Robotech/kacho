@@ -1,0 +1,4046 @@
+{
+  "info": {
+    "_postman_id": "98b1e420-7ebf-5353-967d-2571bdbd515a",
+    "name": "kacho-geo / newman / public-catalog",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
+          "}",
+          "const __jwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__jwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __jwt});",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "ADM-1-GEO-01 — POST /geo/v1/regions: tenant → 403 and no region; admin → 200 Operation done, region readable by tenant",
+      "description": "class:CRUD | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "tenant-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c1-{{runId}}\", \"status\": \"UP\", \"countryCode\": \"RU\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-get-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c1-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c1-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c1-{{runId}}\", \"status\": \"UP\", \"countryCode\": \"RU\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});",
+                  "pm.test('metadata.regionId and response.id name the region', () => {",
+                  "  const j = pm.response.json(); const want = 'adm1g-c1-' + pm.environment.get('runId');",
+                  "  pm.expect(j.metadata.regionId, JSON.stringify(j.metadata)).to.eql(want);",
+                  "  pm.expect((j.response || {}).id, JSON.stringify(j.response)).to.eql(want);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-get-rgf1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c1-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c1-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('countryCode RU', () => pm.expect(j.countryCode).to.eql('RU'));",
+                  "pm.test('openForPlacement true', () => pm.expect(j.openForPlacement).to.eql(true));",
+                  "pm.test('createdAt non-empty', () => pm.expect(String(j.createdAt || '')).to.not.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c1-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c1-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-02 — POST /geo/v1/zones: tenant → 403 and no zone; admin → 200 Operation done, zone open NONE",
+      "description": "class:CRUD | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "admin-create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c2-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c2-{{runId}}-a\", \"regionId\": \"adm1g-c2-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c2-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c2-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c2-{{runId}}-a\", \"regionId\": \"adm1g-c2-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});",
+                  "pm.test('response.id names the zone', () => pm.expect((pm.response.json().response || {}).id).to.eql('adm1g-c2-' + pm.environment.get('runId') + '-a'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-get-zone-rgf2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c2-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c2-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('regionId', () => pm.expect(j.regionId).to.eql('adm1g-c2-' + pm.environment.get('runId')));",
+                  "pm.test('openForPlacement true', () => pm.expect(j.openForPlacement).to.eql(true));",
+                  "pm.test('placementBlockedReason NONE', () => pm.expect(j.placementBlockedReason).to.eql('NONE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c2-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c2-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c2-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c2-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-03 — PATCH /geo/v1/regions/{id} status: tenant → 403 unchanged; admin DOWN → zone REGION_DOWN; UP → NONE",
+      "description": "class:CRUD | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c3-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c3-{{runId}}-a\", \"regionId\": \"adm1g-c3-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-patch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c3-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c3-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-unchanged",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c3-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c3-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('openForPlacement still true', () => pm.expect(pm.response.json().openForPlacement).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-patch-down",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c3-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c3-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});",
+                  "pm.test('response.openForPlacement false', () => pm.expect((pm.response.json().response || {}).openForPlacement).to.not.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-region-down",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c3-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c3-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('zone closed', () => pm.expect(j.openForPlacement).to.not.eql(true));",
+                  "pm.test('reason REGION_DOWN', () => pm.expect(j.placementBlockedReason).to.eql('REGION_DOWN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-patch-up",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c3-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c3-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"UP\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-none",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c3-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c3-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('reason NONE again', () => pm.expect(pm.response.json().placementBlockedReason).to.eql('NONE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c3-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c3-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c3-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c3-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-04 — PATCH /geo/v1/zones/{id} status: tenant → 403 still NONE; admin DOWN → ZONE_DOWN",
+      "description": "class:CRUD | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c4-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c4-{{runId}}-a\", \"regionId\": \"adm1g-c4-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-patch-zone",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c4-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c4-{{runId}}-a"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-still-none",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c4-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c4-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('reason NONE', () => pm.expect(pm.response.json().placementBlockedReason).to.eql('NONE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-patch-zone",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c4-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c4-{{runId}}-a"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-down",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c4-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c4-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('zone closed', () => pm.expect(j.openForPlacement).to.not.eql(true));",
+                  "pm.test('reason ZONE_DOWN', () => pm.expect(j.placementBlockedReason).to.eql('ZONE_DOWN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c4-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c4-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c4-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c4-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-05 — DELETE zone/region: tenant → 403 zone stays; admin → done; reads → 404 verbatim",
+      "description": "class:CRUD | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c5-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-c5-{{runId}}-a\", \"regionId\": \"adm1g-c5-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-delete-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c5-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c5-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-stays",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c5-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c5-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-delete-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c5-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c5-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-delete-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c5-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c5-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-gone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-c5-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-c5-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('verbatim NotFound text', () => pm.expect(pm.response.json().message).to.eql('Zone adm1g-c5-' + pm.environment.get('runId') + '-a not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-gone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-c5-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-c5-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-06 — DELETE region with a zone → Operation.error 9 'region <id> is not empty', region stays; without zones → deleted",
+      "description": "class:NEG | class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-ne-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-ne-{{runId}}-a\", \"regionId\": \"adm1g-ne-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-non-empty",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-ne-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-ne-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id)', () => {",
+                  "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+                  "});",
+                  "pm.test('operation is done (syncop finalises the failure too)', () => {",
+                  "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation REJECTED — result.error code 9 (FAILED_PRECONDITION)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+                  "    JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(9);",
+                  "});",
+                  "pm.test('Operation.error.message is the owner verbatim tone', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.error || {}).message, JSON.stringify(j.error)).to.eql('region adm1g-ne-' + pm.environment.get('runId') + ' is not empty');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-stays",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-ne-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-ne-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-ne-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-ne-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-ne-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-ne-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-gone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-ne-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-ne-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-07 — POST /geo/v1/regions twice with the same id → second Operation.error 6 'Region <id> already exists'",
+      "description": "class:NEG | class:IDM | priority:P1",
+      "item": [
+        {
+          "name": "create-first",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-dup-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-dup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-dup-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id)', () => {",
+                  "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+                  "});",
+                  "pm.test('operation is done (syncop finalises the failure too)', () => {",
+                  "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation REJECTED — result.error code 6 (ALREADY_EXISTS)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+                  "    JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(6);",
+                  "});",
+                  "pm.test('Operation.error.message is the owner verbatim tone', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.error || {}).message, JSON.stringify(j.error)).to.eql('Region adm1g-dup-' + pm.environment.get('runId') + ' already exists');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-dup-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-dup-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-08 — POST /geo/v1/regions with id 'Bad_Id' → sync 400 INVALID_ARGUMENT \"invalid region id 'Bad_Id'\"",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "create-malformed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"Bad_Id\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('invalid region id \\'Bad_Id\\'');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-09 — POST /geo/v1/zones in a missing region → Operation.error 9 'violates a reference constraint'; twin passes once the region exists",
+      "description": "class:NEG | class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "create-zone-ghost",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-gh-{{runId}}-a\", \"regionId\": \"adm1g-gh-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id)', () => {",
+                  "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+                  "});",
+                  "pm.test('operation is done (syncop finalises the failure too)', () => {",
+                  "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation REJECTED — result.error code 9 (FAILED_PRECONDITION)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+                  "    JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(9);",
+                  "});",
+                  "pm.test('Operation.error.message is the owner verbatim tone', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.error || {}).message, JSON.stringify(j.error)).to.eql('Zone adm1g-gh-' + pm.environment.get('runId') + '-a violates a reference constraint');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-gh-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-gh-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-gh-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone-twin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-gh-{{runId}}-a\", \"regionId\": \"adm1g-gh-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-gh-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-gh-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-gh-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-gh-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-10 — PATCH a missing region → Operation.error 5 'Region <id> not found'; twin on an existing region passes",
+      "description": "class:NEG | class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "patch-missing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-none-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-none-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"UP\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id)', () => {",
+                  "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+                  "});",
+                  "pm.test('operation is done (syncop finalises the failure too)', () => {",
+                  "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation REJECTED — result.error code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+                  "    JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(5);",
+                  "});",
+                  "pm.test('Operation.error.message is the owner verbatim tone', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.error || {}).message, JSON.stringify(j.error)).to.eql('Region adm1g-none-' + pm.environment.get('runId') + ' not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-twin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-some-{{runId}}\", \"status\": \"DOWN\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "patch-existing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-some-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-some-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"UP\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-some-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-some-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-12 — POST /geo/v1/internal/{regions,zones} on the external listener → 404 edge route miss; on the internal listener → accepted",
+      "description": "class:NEG | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "ext-internal-regions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/internal/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ext-internal-zones",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/internal/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('body is exactly the edge route miss (path)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  pm.expect(j, JSON.stringify(pm.response.text())).to.eql({code: 5, message: 'Not Found', details: []});",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "int-create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-int-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "int-cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/adm1g-int-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "adm1g-int-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-13 — public Create response and Get bodies carry no infra/status; internal GetInternal → status DOWN, numericInfraId 0/absent",
+      "description": "class:CONF | class:SEC | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-pj-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});",
+                  "pm.test('public body carries no infra/status', () => {",
+                  "  const o = pm.response.json().response || {};",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('infra');",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('status');",
+                  "});",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json().response;",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-pj-{{runId}}-a\", \"regionId\": \"adm1g-pj-{{runId}}\", \"status\": \"DOWN\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});",
+                  "pm.test('public body carries no infra/status', () => {",
+                  "  const o = pm.response.json().response || {};",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('infra');",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('status');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-pj-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-pj-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('public body carries no infra/status', () => {",
+                  "  const o = pm.response.json() || {};",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('infra');",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('status');",
+                  "});",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json();",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-pj-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-pj-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('public body carries no infra/status', () => {",
+                  "  const o = pm.response.json() || {};",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('infra');",
+                  "  pm.expect(Object.keys(o), JSON.stringify(o)).to.not.include('status');",
+                  "});",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json();",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "int-get-zone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/adm1g-pj-{{runId}}-a",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones",
+                "adm1g-pj-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('raw status DOWN on the internal projection', () => pm.expect(j.status).to.eql('DOWN'));",
+                  "pm.test('numericInfraId absent or 0 (public create assigns none)', () => {",
+                  "  const v = (j.infra || {}).numericInfraId;",
+                  "  pm.expect(v === undefined || String(v) === '0', JSON.stringify(j.infra)).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/adm1g-pj-{{runId}}-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "adm1g-pj-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-pj-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-pj-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADM-1-GEO-16 — anonymous POST/PATCH/DELETE on public geo admin paths → 401; tenant → 403; admin → accepted",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "anon-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-an-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "anon-patch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/ru-central1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "ru-central1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "anon-delete-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/ru-central1-a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "ru-central1-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tenant-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-an-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"adm1g-an-{{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/adm1g-an-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "adm1g-an-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

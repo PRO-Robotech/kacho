@@ -48,14 +48,19 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
+	"github.com/PRO-Robotech/kacho/gateway/internal/e2e/ka1stand"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 )
 
+// f6bAddressRefusalText — текст отказа Р3 с редакции 7 приёмки F6b
+// (kaname#526): состояние и шаг, который его снимает, побайтово.
+const f6bAddressRefusalText = "email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)"
+
 // f6bAddressRefusal — отказ адреса побайтово: значение службы
 // (`loginlanehttp.writeRefusal` у kaname), без `metadata` (приёмка F6b, Р3).
-const f6bAddressRefusal = `{"code":7,"message":"email address is not verified","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
+const f6bAddressRefusal = `{"code":7,"message":"` + f6bAddressRefusalText + `","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"EMAIL_NOT_VERIFIED","domain":"iam.kaname.cloud"}]}`
 
 const (
 	f6bProject        = "prj00000000000000f6b"
@@ -156,7 +161,7 @@ func newF6bStand(t *testing.T) *f6bStand {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	st.auth = middleware.NewAuthInterceptor(middleware.AuthModeProduction, "", nil, logger).
 		WithHumanSession(st.session).
-		WithBasicCredentialLane(middleware.NewBasicCredentialLane(st.basic)).
+		WithBasicCredentialLane(middleware.NewBasicCredentialLane(st.basic, time.Second)).
 		WithVerifier(verifier).
 		WithRevocationCheck(recordCheck, time.Hour).
 		WithPlatformRevocationCheck(ourCheck, time.Hour)
@@ -387,7 +392,7 @@ func TestF6b45_DecisionRefusalWithTheServiceReasonIsTheAddressRefusalOnEveryObje
 	} {
 		got := st.callGRPC(t, call.method, token, call.in)
 		require.Equal(t, codes.PermissionDenied, got.Code(), "%s: %v", call.method, got.Err())
-		require.Equal(t, "email address is not verified", got.Message(), call.method)
+		require.Equal(t, f6bAddressRefusalText, got.Message(), call.method)
 		info := errorInfoOf(got)
 		require.NotNil(t, info, "%s: отказ адреса без ErrorInfo", call.method)
 		require.Equal(t, "EMAIL_NOT_VERIFIED", info.GetReason(), call.method)
@@ -452,11 +457,12 @@ func TestF6b35_CredentialRefusedOnPresentationGoesNoFurtherOnBothSurfaces(t *tes
 	require.NoError(t, err)
 	l2 := st.callREST(t, http.MethodGet, "/iam/v1/projects", "", withBearer(secret))
 	require.Equal(t, http.StatusUnauthorized, l2.code)
-	require.Equal(t, `{"code":16,"message":"credential refused"}`, l2.body)
-	require.Equal(t, `Bearer error="invalid_token", error_description="credential refused"`, l2.header.Get("WWW-Authenticate"))
+	// Единый отказ края (приёмка KA1, Р2) — тот же, что у любой причины.
+	require.Equal(t, ka1stand.RefusalBody, strings.TrimSpace(l2.body))
+	require.Equal(t, ka1stand.RefusalChallenge, l2.header.Get("WWW-Authenticate"))
 	l2n := st.callGRPC(t, "/kaname.cloud.iam.v1.ProjectService/List", secret, &iamv1.ListProjectsRequest{})
 	require.Equal(t, codes.Unauthenticated, l2n.Code())
-	require.Equal(t, "credential refused", l2n.Message(), "у базового секрета один текст на обеих поверхностях")
+	require.Equal(t, ka1stand.RefusalText, l2n.Message(), "один текст отказа на обеих поверхностях")
 
 	// Л3 — наш токен человека: сверка нашего авторитета отвечает «не действует»
 	// (`{"active": false}`, Р5а службы).
@@ -466,8 +472,8 @@ func TestF6b35_CredentialRefusedOnPresentationGoesNoFurtherOnBothSurfaces(t *tes
 	})
 	l3 := st.callREST(t, http.MethodGet, "/iam/v1/projects", "", withBearer(refused))
 	require.Equal(t, http.StatusUnauthorized, l3.code)
-	require.Equal(t, `{"code":16,"message":"token revoked"}`, l3.body)
-	require.Equal(t, `Bearer error="invalid_token", error_description="token revoked"`, l3.header.Get("WWW-Authenticate"))
+	require.Equal(t, ka1stand.RefusalBody, strings.TrimSpace(l3.body))
+	require.Equal(t, ka1stand.RefusalChallenge, l3.header.Get("WWW-Authenticate"))
 	l3n := st.callGRPC(t, "/kaname.cloud.iam.v1.ProjectService/List", refused, &iamv1.ListProjectsRequest{})
 	require.Equal(t, codes.Unauthenticated, l3n.Code())
 	require.Equal(t, "authentication failed", l3n.Message(),

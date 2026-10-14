@@ -3,6 +3,7 @@
 
 import { expect, type Route } from "@playwright/test";
 import { identityRefusalFromText, identityRefusalOnPage, register, registerThroughScreen, test } from "./fixtures";
+import { EDGE_CREDENTIAL_STATE_UNKNOWN } from "./producer-answers";
 
 /**
  * ОТКАЗ РЕГИСТРАЦИИ НАЗЫВАЕТСЯ СВОИМ ТЕКСТОМ, А НЕ НАШИМ СИМПТОМОМ.
@@ -251,13 +252,13 @@ test.describe("отказ регистрации назван своим тек�
     expect(identityRefusalFromText("Сети · Ничего не найдено"), "проза отказом не является").toBe("");
     expect(identityRefusalFromText('{"message":"registration refused","details":[]}'), "без кода — не отказ").toBe("");
     expect(identityRefusalFromText('{"user":{},"session":{}}'), "ответ успеха — не отказ").toBe("");
-    // Отказ края на глаголе с носителем приходит БЕЗ `details` (F4d-23) — это тот
-    // же отказ, что с пустым `details` у службы (условие C3); `details` не
-    // массивом — не отказ.
+    // Ответ края на молчание авторитета приходит БЕЗ `details` (приёмка KA1, Р1) —
+    // это тот же отказ, что с пустым `details` у службы (условие C3); `details`
+    // не массивом — не отказ.
     expect(
-      identityRefusalFromText('{"code":16,"message":"session ended; sign in again"}'),
+      identityRefusalFromText(EDGE_CREDENTIAL_STATE_UNKNOWN.body),
       "отказ края без details — отказ",
-    ).toBe("16 · session ended; sign in again");
+    ).toBe("14 · credential state could not be established");
     expect(identityRefusalFromText('{"code":16,"message":"x","details":{}}'), "details не массивом — не отказ").toBe(
       "",
     );
