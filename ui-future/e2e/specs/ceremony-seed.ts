@@ -55,6 +55,8 @@ export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
 export type FormKind =
+  | "access-key-begin"
+  | "access-key-login"
   | "email-change"
   | "email-change-confirm"
   | "login"
