@@ -19,9 +19,14 @@ public-vs-internal.
   объявляющий другого. Отзыв
   наших токенов читается у нас на пути запроса, и недоступность авторитета там
   даёт отказ. Плюс sender-constrained токены
-  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); печенье НАШЕЙ сессии для SPA;
-  HMAC-токены для локальной разработки. Невалидный токен → `401`, никогда не
-  понижается до anonymous. В `production-strict` анонимный доступ запрещен.
+  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); печенье НАШЕЙ сессии для SPA.
+  Токенов с симметричной подписью процесс не принимает: заданный
+  `KACHO_API_GATEWAY_AUTHN_DEV_SECRET` — отказ старта при любой метке окружения,
+  и чарт такой ручки не предлагает. Невалидный токен → `401`, никогда не
+  понижается до anonymous. В обоих боевых режимах (`production`, `production-strict`)
+  запрос без удостоверения → `401`, кроме методов публичного перечня; `production-strict`
+  отличается только тем, что слой подтверждения владения (DPoP, когда он включён) сам
+  отказывает такому запросу. Анонимный проход без удостоверения есть только в `dev`.
 - **AuthZ.** Каждый RPC проходит per-RPC проверку прав (`AuthorizeService.Check`
   в iam) на основе встроенного permission-каталога; deny-by-default, fail-closed.
   Вердикт складывает база iam — внешнего движка отношений в пути решения нет
@@ -101,12 +106,12 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 |---|---|---|
 | `KACHO_API_GATEWAY_LISTEN_ADDR` | `:8080` | cmux listener (gRPC + REST) |
 | `KACHO_API_GATEWAY_TLS_LISTEN_ADDR` | — | внешний TLS listener (пусто — выключен) |
-| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc:9090` | backend iam |
+| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc:9090` | backend iam; чарт выписывает `kaname.kacho.svc:9090` — службы `iam` чарт kaname не заводит. Он же — адрес `AuthorizeService`, пока не задан `KACHO_API_GATEWAY_IAM_AUTHORIZE_URL` (публичный порт `:9090`, не internal `:9091`) |
 | `KACHO_API_GATEWAY_VPC_GRPC` | `vpc.kacho.svc:9090` | backend vpc |
 | `KACHO_API_GATEWAY_COMPUTE_GRPC` | `compute.kacho.svc:9090` | backend compute |
 | `KACHO_API_GATEWAY_GEO_GRPC` | `kacho-geo.kacho.svc:9090` | backend geo |
 | `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc:9090` | backend nlb |
-| `KACHO_API_GATEWAY_AUTHN_MODE` | `dev` | `dev` / `production` / `production-strict` |
+| `KACHO_API_GATEWAY_AUTHN_MODE` | `production` | `dev` / `production` / `production-strict` |
 | `KACHO_API_GATEWAY_AUTHZ_ENABLED` | `false` | per-RPC authz-middleware |
 | `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; **обязателен** — не объявлен либо вырожден ⇒ отказ в старте |
 | `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS` | пусто | привязка «издатель=адрес его набора ключей»; адрес объявляется, не выводится |
