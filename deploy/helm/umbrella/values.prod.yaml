@@ -858,7 +858,11 @@ kaname:
         enabled: true
         issuer: "https://kaname.kacho.local"
         algorithm: ES256
-        allowedAlgorithms: "ES256,RS256"
+        # Ровно алгоритм чеканки: второго производителя под нашим издателем нет
+        # (прежний издатель снят), лишний элемент расширяет принимаемое (kacho#3181).
+        allowedAlgorithms: "ES256"
+        # Срок ключа подписи объявляет профиль: у подчарта умолчания нет (kacho#3181).
+        keyLifetime: 2160h
         keySetPath: /.well-known/kaname/jwks.json
       # ТОКЕН-ЭНДПОИНТ ПЛАТФОРМЫ (F2, задача #898)
       #
