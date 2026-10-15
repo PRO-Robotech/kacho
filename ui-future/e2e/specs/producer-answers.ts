@@ -7,6 +7,7 @@ import {
   EDGE_CREDENTIAL_STATE_UNKNOWN as EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE,
   type EdgeAnswer,
 } from "../../shared/src/test/edge-answers";
+import { noteSubstituted } from "./ceremony-budget";
 import { CONDITION_NOT_CREATED } from "./mail-receiver";
 
 /**
@@ -220,6 +221,7 @@ export const EDGE_AUTHN_FAILED = edgeAnswer(EDGE_AUTHN_FAILED_SOURCE);
 
 /** Ответить подставленным ответом производителя — телом и заголовками. */
 export function fulfillWith(route: Route, answer: ProducerAnswer): Promise<void> {
+  noteSubstituted(route.request());
   return route.fulfill({ status: answer.status, headers: answer.headers, body: answer.body });
 }
 

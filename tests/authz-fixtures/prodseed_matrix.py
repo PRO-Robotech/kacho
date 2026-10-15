@@ -210,8 +210,9 @@ def human(email, kind=vh.KIND_VERIFIED):
     """Завести человека шагами Р17; место заведения — строка ВЫЗЫВАЮЩЕГО.
 
     Вид объявлен здесь, у места заведения: по умолчанию Ф-п (подтверждённый).
-    Вид Ф-н посев наборов не заводит — его заводит только проба посева,
-    утверждающая положение подтверждения (F6b-47, F6b-49).
+    Ф-н посев наборов заводит одного — близнеца набора края
+    `iam-step-up-access-key-begin` (приёмка F8-S7, F8-S7-80); прочие Ф-н заводит
+    проба посева, утверждающая положение подтверждения (F6b-47, F6b-49).
     """
     place = f"{os.path.basename(__file__)}:{inspect.stack()[1].lineno}"
     h = vh.enroll(EDGE, MAILBOX, email, HUMAN_PASSWORD, kind, clock=_now, sleep=time.sleep, place=place)
@@ -867,6 +868,16 @@ def seed() -> dict:
     _assert_not_cloud_admin(h_plain.user_id)
     tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
 
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-step-up-access-key-begin` (kacho#3230; приёмка F8-S7
+    # воркспейса, F8-S7-80, DoD §8 п.3). Пара отличается ОДНИМ фактом — подтверждён ли
+    # адрес: Ф-п без ключа получает от службы отказ `ACCESS_KEY_NOT_REGISTERED`
+    # (край его ретранслирует), Ф-н — отказ положения края. Предъявитель — носитель
+    # сессии `kaname_session`, а не токен: полоса формы читает только сессию.
+    # Свои люди, а не матричные: ключа доступа ни один набор им не заводит, и
+    # исход «ключей ноль» не зависит от чужих наборов.
+    h_stepup_p = human(f"prodseed-stepup-p-{RID}@example.com")
+    h_stepup_n = human(f"prodseed-stepup-n-{RID}@example.com", vh.KIND_UNVERIFIED)
+
     fixtures = {
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
@@ -883,6 +894,12 @@ def seed() -> dict:
         "cloudAdminHumanUserId": h_cloud_admin.user_id,
         "jwtPlainHuman": tok_plain_human,
         "plainHumanUserId": h_plain.user_id,
+        # Люди набора `iam-step-up-access-key-begin` (kacho#3230, F8-S7-80): носители
+        # сессии — Ф-п без ключа и Ф-н. Идентификаторы — для переписи людей (F6b-51).
+        "stepUpVerifiedHumanSession": h_stepup_p.bearer,
+        "stepUpVerifiedHumanUserId": h_stepup_p.user_id,
+        "stepUpUnverifiedHumanSession": h_stepup_n.bearer,
+        "stepUpUnverifiedHumanUserId": h_stepup_n.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

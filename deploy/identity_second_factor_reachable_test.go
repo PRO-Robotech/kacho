@@ -1997,6 +1997,7 @@ func presentationsCarryTheirMethod(src goPackageSource, vocab map[string]string)
 
 	byMethod := map[string][]*ast.FuncDecl{}
 	constructors := 0
+	var projections []projection
 	for _, rel := range src.sortedFiles() {
 		for _, decl := range src.files[rel].Decls {
 			fd, ok := decl.(*ast.FuncDecl)
@@ -2013,12 +2014,16 @@ func presentationsCarryTheirMethod(src goPackageSource, vocab map[string]string)
 			if !mentions {
 				continue
 			}
-			constructors++
 			res := fd.Type.Results.List
 			if len(res) != 1 || len(res[0].Names) > 1 || !isPresentation(res[0].Type) {
 				return src.notInterpretable(fd, "%s возвращает не одно предъявление: `%s` — толкование не знает, "+
 					"что в нём собрано", fd.Name.Name, src.text(fd.Type))
 			}
+			if param := methodParam(src, fd, ptype); param != nil {
+				projections = append(projections, projection{fd, param})
+				continue
+			}
+			constructors++
 			method, err := constructedMethod(src, fd, isPresentation, vocab)
 			if err != nil {
 				return err
@@ -2055,7 +2060,180 @@ func presentationsCarryTheirMethod(src goPackageSource, vocab map[string]string)
 				"предъявляет, а гейт считал бы предъявленным", errRuleNotInterpretable, m, src.coordinate(elt))
 		}
 	}
+	// Проекции судятся после конструкторов: ветка проекции ссылается на
+	// конструктор, и способ, который он собирает, уже толкован.
+	ctorMethod := map[string]string{}
+	for m, fds := range byMethod {
+		ctorMethod[fds[0].Name.Name] = m
+	}
+	for _, pr := range projections {
+		if err := projectionCarriesItsMethod(src, pr.fd, pr.param, ptype, isPresentation, vocab, ctorMethod,
+			map[*ast.FuncDecl]bool{}); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// projection — экспортированная функция над способом, возвращающая
+// предъявление: `func <Имя>(m Method) Presentation`.
+type projection struct {
+	fd    *ast.FuncDecl
+	param *types.Var
+}
+
+// methodParam — единственный параметр функции, если он типа способа (типа поля
+// `method` у предъявления); иначе nil — функция толкуется как конструктор.
+func methodParam(src goPackageSource, fd *ast.FuncDecl, ptype *types.TypeName) *types.Var {
+	st, ok := ptype.Type().Underlying().(*types.Struct)
+	if !ok {
+		return nil
+	}
+	var mtype types.Type
+	for i := 0; i < st.NumFields(); i++ {
+		if st.Field(i).Name() == "method" {
+			mtype = st.Field(i).Type()
+		}
+	}
+	params := fd.Type.Params.List
+	if mtype == nil || len(params) != 1 || len(params[0].Names) != 1 {
+		return nil
+	}
+	v, ok := src.info.Defs[params[0].Names[0]].(*types.Var)
+	if !ok || !types.Identical(v.Type(), mtype) {
+		return nil
+	}
+	return v
+}
+
+// projectionCarriesItsMethod — проекция способа (kaname#827: худшее
+// предъявление способа для вида `assurance` церемонии) отдаёт предъявление ТОГО
+// способа, который ей передан.
+//
+// Гейт считает предъявление способа предъявлением этого способа; проекция,
+// собирающая под параметром другой способ, дала бы службе иной уровень, чем
+// гейту, — тот же дефект круга 3, что у конструктора. Толкуется тело вида
+//
+//	if m == MethodX { return <Конструктор способа X>(…) }   // ноль и больше
+//	return Presentation{method: m, <флаги>…}   либо   return <проекция>(m)
+//
+// где <проекция> — функция пакета той же формы. Иная форма — отказ с координатой.
+func projectionCarriesItsMethod(src goPackageSource, fd *ast.FuncDecl, param *types.Var, ptype *types.TypeName,
+	isPresentation func(ast.Expr) bool, vocab, ctorMethod map[string]string, seen map[*ast.FuncDecl]bool,
+) error {
+	if seen[fd] {
+		return src.notInterpretable(fd, "проекция способа %s зовёт себя по кругу — толкование не знает, что она "+
+			"собирает", fd.Name.Name)
+	}
+	seen[fd] = true
+	isParam := func(e ast.Expr) bool {
+		id, ok := e.(*ast.Ident)
+		return ok && src.info.Uses[id] == param
+	}
+	foreign := func(n ast.Node) error {
+		return src.notInterpretable(n, "проекция способа %s собирает не свой способ: предъявление обязано нести "+
+			"способ, переданный параметром `%s`", fd.Name.Name, param.Name())
+	}
+	if fd.Body == nil || len(fd.Body.List) == 0 {
+		return src.notInterpretable(fd, "проекция способа %s без тела — толкование не знает, что она собирает",
+			fd.Name.Name)
+	}
+	stmts := fd.Body.List
+	for _, st := range stmts[:len(stmts)-1] {
+		branch, ok := st.(*ast.IfStmt)
+		if !ok || branch.Init != nil || branch.Else != nil || len(branch.Body.List) != 1 {
+			return src.notInterpretable(st, "проекция способа %s несёт шаг не вида `if %s == MethodX { return … }`",
+				fd.Name.Name, param.Name())
+		}
+		cond, ok := branch.Cond.(*ast.BinaryExpr)
+		if !ok || cond.Op != token.EQL {
+			return src.notInterpretable(branch.Cond, "условие ветки проекции %s не вида `%s == MethodX`",
+				fd.Name.Name, param.Name())
+		}
+		konst := cond.Y
+		if !isParam(cond.X) {
+			konst = cond.X
+			if !isParam(cond.Y) {
+				return src.notInterpretable(branch.Cond, "условие ветки проекции %s не спрашивает параметр `%s`",
+					fd.Name.Name, param.Name())
+			}
+		}
+		kid, ok := konst.(*ast.Ident)
+		if !ok || vocab[kid.Name] == "" || !src.isPackageObject(kid, kid.Name) {
+			return src.notInterpretable(konst, "условие ветки проекции %s сравнивает не с постоянной словаря",
+				fd.Name.Name)
+		}
+		ret, ok := branch.Body.List[0].(*ast.ReturnStmt)
+		var call *ast.CallExpr
+		if ok && len(ret.Results) == 1 {
+			call, _ = ret.Results[0].(*ast.CallExpr)
+		}
+		var callee *ast.Ident
+		if call != nil {
+			callee, _ = call.Fun.(*ast.Ident)
+		}
+		if callee == nil || !src.isPackageObject(callee, callee.Name) {
+			return src.notInterpretable(branch.Body.List[0], "ветка способа %s проекции %s не возвращает вызов "+
+				"конструктора предъявления", kid.Name, fd.Name.Name)
+		}
+		got, isCtor := ctorMethod[callee.Name]
+		if !isCtor {
+			return src.notInterpretable(ret, "ветка способа %s проекции %s зовёт %s — это не конструктор "+
+				"предъявления", kid.Name, fd.Name.Name, callee.Name)
+		}
+		if got != vocab[kid.Name] {
+			return src.notInterpretable(ret, "ветка способа %s проекции %s собирает способ %s", kid.Name,
+				fd.Name.Name, got)
+		}
+	}
+	last := stmts[len(stmts)-1]
+	ret, ok := last.(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 {
+		return src.notInterpretable(last, "проекция способа %s кончается не возвратом предъявления", fd.Name.Name)
+	}
+	switch e := ret.Results[0].(type) {
+	case *ast.CompositeLit:
+		if !isPresentation(e.Type) {
+			return foreign(ret)
+		}
+		carried := false
+		for _, el := range e.Elts {
+			kv, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				return foreign(ret)
+			}
+			if isIdent(kv.Key, "method") {
+				if !isParam(kv.Value) {
+					return foreign(ret)
+				}
+				carried = true
+			}
+		}
+		if !carried {
+			return foreign(ret)
+		}
+		return nil
+	case *ast.CallExpr:
+		callee, ok := e.Fun.(*ast.Ident)
+		if !ok || len(e.Args) != 1 || !isParam(e.Args[0]) || !src.isPackageObject(callee, callee.Name) {
+			return foreign(ret)
+		}
+		next, err := src.funcDecl("", callee.Name)
+		if err != nil {
+			return err
+		}
+		res := next.Type.Results
+		if res == nil || len(res.List) != 1 || len(res.List[0].Names) > 1 || !isPresentation(res.List[0].Type) {
+			return foreign(ret)
+		}
+		nextParam := methodParam(src, next, ptype)
+		if nextParam == nil {
+			return foreign(ret)
+		}
+		return projectionCarriesItsMethod(src, next, nextParam, ptype, isPresentation, vocab, ctorMethod, seen)
+	default:
+		return foreign(ret)
+	}
 }
 
 // constructedMethod — способ, который собирает конструктор

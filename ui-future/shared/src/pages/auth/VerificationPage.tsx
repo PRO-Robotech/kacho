@@ -3,9 +3,16 @@
 
 import { useEffect, useId, useState } from "react";
 import { Alert, Button, Form, Input, Space, Typography } from "antd";
-import { type LaneRefusal, laneRefusalOf, loginLane, sessionIdentity, UNKNOWN_SESSION_TEXT } from "@shared/api/login-lane";
+import {
+  LANE_REASON,
+  type LaneRefusal,
+  laneRefusalOf,
+  loginLane,
+  sessionIdentity,
+  UNKNOWN_SESSION_TEXT,
+} from "@shared/api/login-lane";
 import { refusalActionOf } from "@shared/api/refusal-action";
-import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
+import { INVITE_NOT_VALID_STEP, LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { ADDRESS_STATE_NOT_NAMED_TEXT, AddressStateUnknownPage, SessionPending } from "./AddressStateUnknownPage";
@@ -196,6 +203,12 @@ function ConfirmationScreen({
             message={refusalTextOf(outcome.refusal)}
             description={outcome.checkCode ? CHECK_CODE_TEXT : undefined}
           />
+          {/* Истёкшее приглашение лечит распорядитель аккаунта, а не новое письмо (#3185). */}
+          {outcome.refusal.reason === LANE_REASON.inviteNotValid && (
+            <Typography.Paragraph data-testid="refusal-next-step" style={{ margin: "8px 0 0" }}>
+              {INVITE_NOT_VALID_STEP}
+            </Typography.Paragraph>
+          )}
         </div>
       )}
       {outcome?.kind === "sent" && (

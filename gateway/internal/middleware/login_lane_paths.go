@@ -11,9 +11,10 @@
 //     kacho#1281), два глагола подтверждения адреса почты (приёмка F6b Р5,
 //     kacho#2900), два глагола входа ключом доступа (приёмка Ф13 Р1, Ф13-28,
 //     kacho#3037), заведение первого пароля из живой сессии (kaname#213,
-//     kacho#3056), три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) и
-//     два глагола смены адреса почты (приёмка F8-S6 Р1, kacho#3062) —
-//     двадцать три пути, тот же перечень, что служба объявляет у своего
+//     kacho#3056), три глагола своих сессий (приёмка F8-S5 Р1, kacho#3061),
+//     два глагола смены адреса почты (приёмка F8-S6 Р1, kacho#3062) и выдача
+//     испытания повышения ключом доступа (приёмка F8-S7 Р10, kacho#3230) —
+//     двадцать четыре пути, тот же перечень, что служба объявляет у своего
 //     слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
 //   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
 //     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
@@ -123,6 +124,13 @@ const (
 	LoginLanePathSecondFactorRemove      = "/iam/v1/auth/second-factor/remove"
 	LoginLanePathSecondFactorBackupCodes = "/iam/v1/auth/second-factor/backup-codes"
 	LoginLanePathStepUp                  = "/iam/v1/auth/step-up"
+	// Выдача испытания повышения ключом доступа (приёмка F8-S7 Р10; служба —
+	// приёмка SUA Р2, kaname#827; kacho#3230): подпуть церемонии повышения,
+	// точным совпадением отличён от неё. Читает носитель живой сессии, как
+	// `step-up`, и решения записи — парой с ним: недоступность службы — ответ
+	// Р1 (KA1) на крае, до подтверждения адреса — отказ адреса (служба держит
+	// то же, SUA Р2 `PathRefusedInVerification`).
+	LoginLanePathStepUpAccessKeyBegin = "/iam/v1/auth/step-up/access-key/begin"
 	// Подтверждение адреса почты (приёмка F6b Р5; Р6 службы): запрос письма с
 	// кодом и предъявление кода — два глагола под сессией человека, оба доступны
 	// до подтверждения, оба читают носитель.
@@ -211,8 +219,8 @@ func RelayTargets() []RelayTarget {
 // M1) — там координата церемонии получает ответ, которым слушатель отвечает на
 // путь, которого у него нет (`handler.MountLoginLaneRoutes`).
 //
-// Форма — нет, и это решение kacho#2849 с именем потребителя: у двадцати трёх
-// глагола формы на внутреннем слушателе есть потребитель — операторская
+// Форма — нет, и это решение kacho#2849 с именем потребителя: у двадцати четырёх
+// глаголов формы на внутреннем слушателе есть потребитель — операторская
 // консоль посадки Б (docs/architecture/admin-api-door-on-external-stand.md;
 // консоль «одна на обе посадки»).
 // У профиля консоли ОДИН узел края, `host.upstreams.apiGateway`, и раздача шлёт
@@ -264,7 +272,7 @@ type LoginLaneRoute struct {
 	//     kaname#213; шесть глаголов второго фактора, включая чтение состояния, —
 	//     Ф12 Р4; два глагола подтверждения адреса — Р6 службы; три глагола своих
 	//     сессий — приёмка F8-S5 Р1; два глагола смены адреса — приёмка F8-S6
-	//     Р1), и запрос с носителем, чью отсечку
+	//     Р1; выдача испытания повышения ключом — приёмка F8-S7 Р10), и запрос с носителем, чью отсечку
 	//     установить не удалось, до него не доходит.
 	//
 	// Отказ — умолчание: глагол, дописанный без решения, получает ответ Р1 (KA1).
@@ -298,7 +306,9 @@ type LoginLaneRoute struct {
 	// подтверждения — отказ, A7 Р2). Так стоят и три глагола своих сессий:
 	// закрыты решением приёмки F8-S5 Р1, служба держит то же (OS Р8). Так стоят
 	// и два глагола смены адреса: закрыты решением приёмки F8-S6 Р1, служба
-	// держит то же (EC Р2).
+	// держит то же (EC Р2). Так стоит и выдача испытания повышения ключом:
+	// закрыта решением приёмки F8-S7 Р10 парой со `step-up`, служба держит то
+	// же (SUA Р2).
 	openBeforeAddressConfirmation bool
 	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
 	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
@@ -330,8 +340,8 @@ type LoginLaneRoute struct {
 func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
 // loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12, F6b,
-// Ф13, заведение первого пароля, свои сессии (F8-S5), смена адреса (F8-S6) и
-// координаты церемонии;
+// Ф13, заведение первого пароля, свои сессии (F8-S5), смена адреса (F8-S6),
+// выдача испытания повышения ключом (F8-S7) и координаты церемонии;
 // читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
@@ -357,6 +367,7 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "sessions-end-others", Path: LoginLanePathSessionsEndOthers, Target: RelayTargetForm},
 	{Verb: "email-change", Path: LoginLanePathEmailChange, Target: RelayTargetForm},
 	{Verb: "email-change-confirm", Path: LoginLanePathEmailChangeConfirm, Target: RelayTargetForm, flushesDecisionCacheOnSuccess: true},
+	{Verb: "step-up-access-key-begin", Path: LoginLanePathStepUpAccessKeyBegin, Target: RelayTargetForm},
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},

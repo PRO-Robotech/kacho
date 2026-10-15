@@ -65,12 +65,20 @@ describe("экран восстановления доступа", () => {
     expect(lane.calls.filter((c) => c.method === "POST")).toEqual([]);
   });
 
-  it("F8S3-02 · у подтверждённой сессии формы нет — документ уходит на адрес возврата", async () => {
-    lane = installLane({ "GET /iam/v1/auth/me": SIGNED_IN });
+  it("#3210 · у живой сессии формы нет, и шаг назван: «Выйти и восстановить доступ» либо вернуться — молчаливого ухода нет", async () => {
+    lane = installLane({ "GET /iam/v1/auth/me": SIGNED_IN, "POST /iam/v1/auth/logout": { status: 200, body: {} } });
     const { leave } = renderAt("/recovery?returnTo=/dashboard");
-    await waitFor(() => expect(leave).toHaveBeenCalledWith("/dashboard"));
+    const out = await screen.findByRole("button", { name: "Выйти и восстановить доступ" });
     expect(screen.queryByLabelText("Адрес почты")).toBeNull();
+    expect(leave).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Вернуться в консоль" })).toHaveAttribute("href", "/dashboard");
     expect(lane.of("POST", "/iam/v1/auth/recovery")).toEqual([]);
+
+    // Выход — тем же действием, что у консоли один, и уход ДОКУМЕНТОМ обратно на
+    // экран восстановления: новая сессия не ляжет поверх прежней во вкладке.
+    fireEvent.click(out);
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/recovery?returnTo=%2Fdashboard"));
+    expect(lane.of("POST", "/iam/v1/auth/logout")).toHaveLength(1);
   });
 
   it("F8S3-04 · запрос кода — признак своего вида, тело ровно {email, csrfToken}, ступень 2 с одним текстом", async () => {
@@ -82,7 +90,7 @@ describe("экран восстановления доступа", () => {
     ]);
     expect(lane.of("GET", "/iam/v1/auth/csrf").map((c) => c.query)).toContain("?form=recovery");
     expect(RECOVERY_CODE_SENT_TEXT).toBe(
-      "Если адрес заведён и подтверждён, на него отправлено письмо с кодом восстановления. Код действует " +
+      "Если по этому адресу можно восстановить доступ, на него придёт письмо с кодом восстановления. Код действует " +
         "ограниченное время и применяется один раз. Введите код из последнего письма и новый пароль.",
     );
     // Введённый адрес — только для чтения: адрес завершения — значение ступени 1.

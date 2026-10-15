@@ -1,14 +1,19 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, Spin, Tag, Typography } from "antd";
 import { type LaneRefusal, laneRefusalOf, loginLane, type OwnSession } from "@shared/api/login-lane";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
+import { type Column, ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { useFormToken } from "@shared/hooks/use-form-token";
-import { formatDateTime } from "@shared/lib/datetime";
+import { useAnnounce } from "../security/announcer";
+import { DangerDialog } from "../security/DangerDialog";
+import { Moment } from "../security/moment";
+import { SecuritySection } from "../security/SecuritySection";
 
-// Раздел «Сессии» экрана параметров учётной записи (приёмка F8-S5, Р2–Р5).
+// Раздел «Активные сессии» экрана «Безопасность» (приёмка F8-S5, Р2–Р5; вид —
+// приёмка F8-S7, Р3, Р6, Р8).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО РАЗДЕЛ ДЕЛАЕТ
@@ -16,19 +21,20 @@ import { formatDateTime } from "@shared/lib/datetime";
 //   • при открытии — ОДНО чтение перечня своих живых сессий; порядок строк —
 //     порядок службы, консоль его не переставляет; непустой `nextPageToken` —
 //     «Показать ещё», дочитывающее следующую страницу тем же путём;
-//   • строка — описание клиента КАК ПРИСЛАНО (Р3: разбора в «браузер» и
-//     «систему» нет; ключа нет — «Устройство не названо»; длинное значение
-//     переносится, а не обрезается консолью), моменты входа, последнего
+//   • перечень — ОБЩЕЙ таблицей (F8-S7, Р3; поведение F8-S5 без изменения):
+//     описание клиента КАК ПРИСЛАНО (Р3 F8-S5: разбора в «браузер» и «систему»
+//     нет; ключа нет — «Устройство не названо»), моменты входа, последнего
 //     предъявления способа и срока — в часовом поясе браузера;
 //   • текущая — пометкой «Эта сессия» и БЕЗ «Выйти»: текущая завершается
 //     выходом, который у консоли уже есть (служба на её снятие отвечает
 //     `SESSION_IS_CURRENT`);
-//   • «Выйти» у прочих строк и «Выйти на всех, кроме этой» под перечнем —
-//     доступна всегда, в том числе при единственной сессии.
+//   • «Выйти на всех, кроме этой» — опасное действие: диалог называет
+//     последствие (F8-S7, Р6). Других сессий нет — кнопки нет, а раздел так и
+//     говорит (Р8).
 //
-// После КАЖДОЙ попытки снятия — исход строкой и перечитывание перечня: строка,
-// снятая где-то ещё, уходит из перечня тем же ответом, которым служба
-// отказала (`SESSION_NOT_FOUND`).
+// После КАЖДОЙ попытки снятия — исход областью `role="status"` экрана и
+// перечитывание перечня: строка, снятая где-то ещё, уходит из перечня тем же
+// ответом, которым служба отказала (`SESSION_NOT_FOUND`).
 //
 // ОТКАЗЫ — действием существующего перечня (Р5, условие C2): несвежая сессия —
 // повышение и ОДИН повтор (клиент полосы, `submit`); прочее — текст дословно.
@@ -44,55 +50,31 @@ function outcomeText(ended: true | number): string {
   return `Завершено сессий: ${ended}`;
 }
 
-function SessionRow({
-  session,
-  busy,
-  disabled,
-  onEnd,
-}: {
-  session: OwnSession;
-  busy: boolean;
-  disabled: boolean;
-  onEnd: () => void;
-}) {
-  const moments: Array<[string, string | undefined]> = [
-    ["Вход", session.authenticatedAt],
-    ["Последнее предъявление способа входа", session.lastPresentedAt],
-    ["Действует до", session.expiresAt],
-  ];
-  return (
-    <li style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 0" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Typography.Text strong style={{ display: "block", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-          {session.userAgent === undefined ? "Устройство не названо" : session.userAgent}
-        </Typography.Text>
-        {session.current && <Tag color="blue">Эта сессия</Tag>}
-        {moments
-          .filter(([, at]) => at !== undefined)
-          .map(([label, at]) => (
-            <Typography.Text key={label} type="secondary" style={{ display: "block" }}>
-              {label}: {formatDateTime(at)}
-            </Typography.Text>
-          ))}
-      </div>
-      {!session.current && (
-        <Button loading={busy} disabled={disabled} onClick={onEnd}>
-          Выйти
-        </Button>
-      )}
-    </li>
-  );
+/** Тексты раздела (F8-S7, Р6, Р8). */
+export const OWN_SESSIONS_TEXT = {
+  noOthers: "Других активных сессий нет.",
+  endOthersConsequence: "Все другие устройства выйдут из учётной записи.",
+} as const;
+
+function deviceOf(session: OwnSession): string {
+  return session.userAgent === undefined ? "Устройство не названо" : session.userAgent;
 }
 
-export function OwnSessionsSection() {
-  const titleId = useId();
+const at = (iso: string | undefined) => (iso === undefined ? null : <Moment at={iso} />);
+
+export function OwnSessionsSection({ onCount }: { onCount?: (n: number) => void } = {}) {
   const holder = useFormToken("session-end");
+  const announce = useAnnounce();
   const [rows, setRows] = useState<OwnSession[] | null>(null);
   const [nextPageToken, setNextPageToken] = useState("");
   const [listRefusal, setListRefusal] = useState<LaneRefusal | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    if (rows !== null && nextPageToken === "") onCount?.(rows.length);
+  }, [rows, nextPageToken, onCount]);
 
   /** Перечитать перечень с первой страницы: снятие меняет его целиком. */
   const reload = useCallback(async () => {
@@ -142,11 +124,10 @@ export function OwnSessionsSection() {
   const run = async (key: string, step: () => Promise<{ ended: true | number }>) => {
     if (busy !== null) return;
     setBusy(key);
-    setOutcome(null);
     setRefusal(null);
     try {
       const { ended } = await step();
-      setOutcome(outcomeText(ended));
+      announce(outcomeText(ended));
     } catch (e) {
       setRefusal(laneRefusalOf(e));
     }
@@ -154,11 +135,43 @@ export function OwnSessionsSection() {
     setBusy(null);
   };
 
+  const columns: Column<OwnSession>[] = [
+    {
+      header: "Устройство",
+      multiline: true,
+      cell: (s) => (
+        <>
+          <Typography.Text strong style={{ display: "block", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+            {deviceOf(s)}
+          </Typography.Text>
+          {s.current && <Tag color="blue">Эта сессия</Tag>}
+        </>
+      ),
+    },
+    { header: "Вход", cell: (s) => at(s.authenticatedAt), width: 180 },
+    { header: "Последнее предъявление способа входа", cell: (s) => at(s.lastPresentedAt), width: 200 },
+    { header: "Действует до", cell: (s) => at(s.expiresAt) },
+    {
+      header: "",
+      cell: (s) =>
+        s.current ? null : (
+          <Button
+            size="small"
+            loading={busy === s.id}
+            disabled={busy !== null && busy !== s.id}
+            aria-label={`Выйти из сессии «${deviceOf(s)}»`}
+            onClick={() => void run(s.id, () => loginLane.endSession(holder, s.id))}
+          >
+            Выйти
+          </Button>
+        ),
+    },
+  ];
+
+  const others = rows?.some((s) => !s.current) ?? false;
+
   return (
-    <section aria-labelledby={titleId} style={{ maxWidth: 720, marginBottom: 32 }}>
-      <Typography.Title level={4} id={titleId} style={{ marginTop: 0 }}>
-        Сессии
-      </Typography.Title>
+    <SecuritySection section="sessions">
       {rows === null && listRefusal === null && <Spin />}
       {listRefusal && (
         <div style={{ marginBottom: 12 }}>
@@ -173,24 +186,12 @@ export function OwnSessionsSection() {
           <LaneRefusalAlert refusal={refusal} />
         </div>
       )}
-      {outcome && (
-        <p role="status" style={{ margin: "0 0 12px" }}>
-          {outcome}
-        </p>
-      )}
       {rows && (
         <>
-          <ul aria-label="Свои сессии" style={{ listStyle: "none", padding: 0, margin: "0 0 12px" }}>
-            {rows.map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                busy={busy === s.id}
-                disabled={busy !== null && busy !== s.id}
-                onEnd={() => void run(s.id, () => loginLane.endSession(holder, s.id))}
-              />
-            ))}
-          </ul>
+          <div style={{ marginBottom: 12 }}>
+            <ResourceTable rows={rows} columns={columns} rowKey={(s) => s.id} complete={false} fill={false} />
+          </div>
+          {!others && nextPageToken === "" && <Typography.Paragraph>{OWN_SESSIONS_TEXT.noOthers}</Typography.Paragraph>}
           {nextPageToken !== "" && (
             <Button
               loading={busy === "more"}
@@ -201,15 +202,30 @@ export function OwnSessionsSection() {
               Показать ещё
             </Button>
           )}
-          <Button
-            loading={busy === "others"}
-            disabled={busy !== null && busy !== "others"}
-            onClick={() => void run("others", () => loginLane.endOtherSessions(holder))}
-          >
-            Выйти на всех, кроме этой
-          </Button>
+          {(others || nextPageToken !== "") && (
+            <Button
+              loading={busy === "others"}
+              disabled={busy !== null && busy !== "others"}
+              onClick={() => setAsking(true)}
+            >
+              Выйти на всех, кроме этой
+            </Button>
+          )}
         </>
       )}
-    </section>
+      <DangerDialog
+        open={asking}
+        title="Выйти на всех, кроме этой?"
+        consequences={[OWN_SESSIONS_TEXT.endOthersConsequence]}
+        confirmText="Выйти"
+        onCancel={() => setAsking(false)}
+        onConfirm={() => {
+          // Диалог закрывается ДО глагола: окно подтверждения, если служба его
+          // спросит, встаёт одно.
+          setAsking(false);
+          void run("others", () => loginLane.endOtherSessions(holder));
+        }}
+      />
+    </SecuritySection>
   );
 }

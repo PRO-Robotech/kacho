@@ -169,9 +169,13 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 `emailVerified`, место заведения и слоты окружения (F6b-51). Самопроверка без стенда —
 `python3 verified_human.py --self-test`.
 
-Людей посева восемь: владельцы аккаунтов A и B, субъекты выдач NOB, INV, PA1,
-неприкосновенный субъект, субъект личного токена и цель выдачи администратора облака
-набора `cluster_admin` (слоты `clusterTargetUserId`, `clusterTargetEmail`). Все — Ф-п.
+Людей посева двенадцать: владельцы аккаунтов A и B, субъекты выдач NOB, INV, PA1,
+неприкосновенный субъект, субъект личного токена, цель выдачи администратора облака
+набора `cluster_admin` (слоты `clusterTargetUserId`, `clusterTargetEmail`), два человека
+набора `iam-account-id-at-create` (администратор облака и человек без роли) и два человека
+набора края `iam-step-up-access-key-begin` (F8-S7-80; слоты носителей сессии
+`stepUpVerifiedHumanSession`, `stepUpUnverifiedHumanSession`). Ф-н среди них один —
+второй из последней пары; прочие одиннадцать — Ф-п.
 
 ### Прочее
 

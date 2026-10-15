@@ -10,18 +10,20 @@ import { FieldError, fieldErrorId } from "@shared/components/organisms/form/Fiel
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { CeremonyScreen } from "./CeremonyScreen";
-import { loginAddress } from "./ceremony-addresses";
+import { loginAddress, recoveryAddress } from "./ceremony-addresses";
+import { useLogout } from "./use-logout";
 import { useReturnTo } from "./use-return-to";
 
-// Экран восстановления доступа — `/recovery`, вне каркаса, за стражем
-// подтверждённости (приёмка F8-S3; глаголы — приёмка Ф5 службы).
+// Экран восстановления доступа — `/recovery`, вне каркаса, открыт и до
+// подтверждения адреса (приёмка F8-S3, #3210; глаголы — приёмка Ф5 службы).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЭКРАН ДЕЛАЕТ И ЧЕГО НЕ ДЕЛАЕТ
 //
-//   • сначала спрашивает, есть ли сессия, — тем же решением, что экран входа:
-//     у человека с живой сессией формы нет, документ уходит на адрес возврата
-//     (F8S3-02); узнать не удалось — форма есть, и рядом это названо;
+//   • сначала спрашивает, есть ли сессия: у человека с живой сессией —
+//     подтверждённой или нет — формы нет, и назван шаг «Выйти и восстановить
+//     доступ» либо возврат в консоль (#3210; молчаливого ухода нет); узнать не
+//     удалось — форма есть, и рядом это названо;
 //   • ступень 1 — адрес почты и «Отправить код». Ответ службы — `200 {nextStep}`, побайтово один на ЛЮБОЙ
 //     исход (адрес заведён или нет, подтверждён или нет, окно писем полно или
 //     нет), и экран показывает ОДИН текст, зависящий только от того, что ответ
@@ -52,9 +54,14 @@ function leaveDocument(to: string) {
 const TITLE = "Восстановление доступа";
 const CODE_FORM = "Смена пароля по коду";
 
-/** Текст ступени 2 — один на любой ответ запроса кода (приёмка F8-S3, Р2, Т-код). */
+/**
+ * Текст ступени 2 — один на любой ответ запроса кода (приёмка F8-S3, Р2, Т-код).
+ * Условие названо так же, как его называет служба («если этот адрес может
+ * восстановить доступ»): код выдаётся и на неподтверждённый адрес (#3184), и
+ * текст «если адрес подтверждён» закрывал бы путь, который служба исполняет.
+ */
 export const RECOVERY_CODE_SENT_TEXT =
-  "Если адрес заведён и подтверждён, на него отправлено письмо с кодом восстановления. Код действует " +
+  "Если по этому адресу можно восстановить доступ, на него придёт письмо с кодом восстановления. Код действует " +
   "ограниченное время и применяется один раз. Введите код из последнего письма и новый пароль.";
 
 /** Вводы экрана, которые служба может назвать отказом (таблица полей — в клиенте полосы). */
@@ -74,12 +81,41 @@ interface Waiting {
   seconds: number;
 }
 
+/**
+ * Живая сессия на `/recovery` (#3210). Завершение восстановления отвечает как
+ * вход — выдаёт НОВУЮ сессию, и подменять ею живую во вкладке молча нельзя.
+ * Поэтому формы здесь нет, а шаг назван: выйти — тем же действием выхода, что у
+ * консоли один (`useLogout`), — и вернуться ДОКУМЕНТОМ на этот же экран; либо
+ * вернуться в консоль. Молчаливого увода нет. Так и неподтверждённая сессия
+ * получает путь к восстановлению: служба объявляет его доступным в положении
+ * подтверждения адреса.
+ */
+function SignedInStep({ returnTo, leave }: { returnTo: string; leave: (to: string) => void }) {
+  const { logout, busy, refusal } = useLogout(() => leave(recoveryAddress(returnTo)));
+  return (
+    <CeremonyScreen title={TITLE} footer={<Link to={returnTo}>Вернуться в консоль</Link>}>
+      <Typography.Paragraph>
+        В этом браузере уже выполнен вход. Восстановление доступа завершается новым входом, поэтому сначала выйдите —
+        форма восстановления откроется сразу после выхода.
+      </Typography.Paragraph>
+      {refusal && (
+        <div style={{ marginBottom: 16 }}>
+          <LaneRefusalAlert refusal={refusal} />
+        </div>
+      )}
+      <Button type="primary" block loading={busy} onClick={() => void logout()}>
+        Выйти и восстановить доступ
+      </Button>
+    </CeremonyScreen>
+  );
+}
+
 export function RecoveryPage({ leave = leaveDocument }: { leave?: (to: string) => void }) {
   const id = useId();
   const returnTo = useReturnTo();
   const requestHolder = useFormToken("recovery");
   const completeHolder = useFormToken("recovery-complete");
-  const [phase, setPhase] = useState<"проверка сессии" | "форма">("проверка сессии");
+  const [phase, setPhase] = useState<"проверка сессии" | "сессия жива" | "форма">("проверка сессии");
   const [sessionUnknown, setSessionUnknown] = useState<LaneRefusal | null>(null);
   const [stage, setStage] = useState<"адрес" | "код">("адрес");
   const [email, setEmail] = useState("");
@@ -94,13 +130,13 @@ export function RecoveryPage({ leave = leaveDocument }: { leave?: (to: string) =
       sessionIdentity().then((who) => {
         if (isCancelled()) return;
         if (who.kind === "present") {
-          leave(returnTo);
+          setPhase("сессия жива");
           return;
         }
         setSessionUnknown(who.kind === "unknown" ? who.refusal : null);
         setPhase("форма");
       }),
-    [leave, returnTo],
+    [],
   );
 
   useEffect(() => {
@@ -159,6 +195,10 @@ export function RecoveryPage({ leave = leaveDocument }: { leave?: (to: string) =
     }
     setBusy(null);
   };
+
+  if (phase === "сессия жива") {
+    return <SignedInStep returnTo={returnTo} leave={leave} />;
+  }
 
   if (phase === "проверка сессии") {
     return (

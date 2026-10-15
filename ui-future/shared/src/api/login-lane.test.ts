@@ -567,7 +567,11 @@ describe("F8-S6 · смена адреса почты в клиенте поло
     // База — перечни после записей своих сессий (F8-S5): путей 21, ставящих
     // носитель 10. Смена добавляет два пути и одно предъявление (EC Р8 п. 3).
     const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE } = await import("./login-lane");
-    const paths = Object.values(LOGIN_LANE).filter((p) => p.startsWith("/iam"));
+    // Путь испытания повышения ключом — позднейшей приёмки (F8-S7), его держит
+    // проба ниже; база F8-S6 его не считает.
+    const paths = Object.values(LOGIN_LANE).filter(
+      (p) => p.startsWith("/iam") && p !== "/iam/v1/auth/step-up/access-key/begin",
+    );
     expect({
       lane: paths.length,
       setsCarrier: SETS_CARRIER.size,
@@ -577,6 +581,62 @@ describe("F8-S6 · смена адреса почты в клиенте поло
         CHANGES_FORM_CONTEXT.has("/iam/v1/auth/email-change/confirm"),
       ],
     }).toEqual({ lane: 23, setsCarrier: 11, request: [false, false], confirm: [true, false] });
+  });
+
+  it("F8-S7 Р5 · испытание повышения ключом: путь 24-й, носителя не ставит, контекста не меняет; тело — только признак", async () => {
+    const { SETS_CARRIER, CHANGES_FORM_CONTEXT, LOGIN_LANE, FormTokenHolder, loginLane } = await import("./login-lane");
+    const path = "/iam/v1/auth/step-up/access-key/begin";
+    expect({
+      lane: Object.values(LOGIN_LANE).filter((p) => p.startsWith("/iam")).length,
+      path: LOGIN_LANE.stepUpAccessKeyBegin,
+      ordered: [SETS_CARRIER.has(path), CHANGES_FORM_CONTEXT.has(path)],
+    }).toEqual({ lane: 24, path, ordered: [false, false] });
+    lane = installLane({ [`POST ${path}`]: { status: 200, body: { publicKey: { challenge: "Yw", rpId: "r" } } } });
+    await loginLane.stepUpAccessKeyBegin(new FormTokenHolder("step-up-access-key-begin"));
+    expect(lane.of("POST", path)[0].body).toEqual({ csrfToken: "tok-step-up-access-key-begin-1" });
+  });
+
+  it("F8-S7 Р5 · повышение ключом: тело ровно {method: webauthn, credential, csrfToken}", async () => {
+    const { FormTokenHolder, loginLane } = await import("./login-lane");
+    lane = installLane({ "POST /iam/v1/auth/step-up": { status: 200, body: { session: {}, assurance: {} } } });
+    const credential = { id: "Y3JlZA", rawId: "Y3JlZA", type: "public-key", response: {} };
+    await loginLane.stepUp(new FormTokenHolder("step-up"), { method: "webauthn", credential });
+    expect(lane.of("POST", "/iam/v1/auth/step-up")[0].body).toEqual({
+      method: "webauthn",
+      credential,
+      csrfToken: "tok-step-up-1",
+    });
+  });
+
+  it("SUA Р6 · чтение состояния: моменты, доступность ключей и перечень способов — как названы; чужое имя способа не берётся", async () => {
+    const { loginLane } = await import("./login-lane");
+    lane = installLane({
+      "GET /iam/v1/auth/second-factor": {
+        status: 200,
+        body: {
+          totp: { enrolled: true, confirmedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:05:00Z" },
+          backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:06:00Z" },
+          accessKeys: { available: false },
+          stepUpMethods: ["lookup_secret", "passkey", "totp"],
+        },
+      },
+    });
+    expect(await loginLane.secondFactorState()).toEqual({
+      totp: { enrolled: true, confirmedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:05:00Z" },
+      backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:06:00Z" },
+      accessKeys: { available: false },
+      stepUpMethods: ["lookup_secret", "totp"],
+    });
+  });
+
+  it("Ф12 Р4 · чтение прежней формы: ключей SUA нет — их нет и в состоянии; ответ без totp — отказ «не по существу»", async () => {
+    const { loginLane } = await import("./login-lane");
+    lane = installLane({
+      "GET /iam/v1/auth/second-factor": (_c, nth) =>
+        nth === 1 ? { status: 200, body: { totp: { enrolled: false } } } : { status: 200, body: {} },
+    });
+    expect(await loginLane.secondFactorState()).toEqual({ totp: { enrolled: false } });
+    await expect(loginLane.secondFactorState()).rejects.toMatchObject({ message: "Служба не ответила по существу" });
   });
 
   it("F8-S6 Р1 · запрос смены: признак вида email-change, тело ровно {newEmail, csrfToken}, срок — из Retry-After", async () => {

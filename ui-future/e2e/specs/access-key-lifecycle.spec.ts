@@ -111,16 +111,26 @@ const keysPath = (userId: string) => `/iam/v1/users/${userId}/accessKeys`;
 
 function keysScreen(page: Page) {
   const region = page.getByRole("region", { name: "Ключи доступа" });
-  const list = region.getByRole("list", { name: "Заведённые ключи" });
+  // Перечень — общей таблицей раздела, добавление — окном (приёмка F8-S7, Р3).
+  // Строка данных — строка с клеткой и БЕЗ заголовка колонки: у колонки действий
+  // заголовок пуст, и такой `th` браузер называет клеткой (`cell`) — по одному
+  // признаку «есть клетка» строка шапки считалась строкой перечня (+1).
+  const rows = region
+    .getByRole("table")
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") })
+    .filter({ hasNot: page.getByRole("columnheader") });
+  const adding = page.getByRole("dialog", { name: "Добавить ключ доступа" });
   return {
-    heading: page.getByRole("heading", { name: "Параметры учётной записи" }),
+    heading: page.getByRole("heading", { level: 1, name: "Безопасность", exact: true }),
     region,
-    list,
-    item: (name: string) => list.getByRole("listitem").filter({ hasText: name }),
-    name: region.getByLabel("Имя", { exact: true }),
-    description: region.getByLabel("Описание", { exact: true }),
-    add: region.getByRole("button", { name: /Добавить ключ доступа$/ }),
-    empty: region.getByText("Ключей доступа нет", { exact: true }),
+    rows,
+    item: (name: string) => rows.filter({ hasText: name }),
+    add: region.getByRole("button", { name: "Добавить ключ доступа", exact: true }),
+    name: adding.getByLabel("Имя", { exact: true }),
+    description: adding.getByLabel("Описание", { exact: true }),
+    submit: adding.getByRole("button", { name: "Добавить", exact: true }),
+    empty: region.getByText("Ключей доступа нет. Входите и подтверждайте действия без пароля и кода.", { exact: true }),
   };
 }
 
@@ -275,9 +285,10 @@ async function enrolOnSettings(w: Walker, auth: PageAuthenticator, name: string)
   page.on("response", onListing);
   const begun = answerTo(page, "POST", `${keysPath(userId)}:beginRegistration`);
   const finished = answerTo(page, "POST", keysPath(userId));
+  await s.add.click();
   await s.name.fill(name);
   await s.description.fill("Сквозной путь");
-  await s.add.click();
+  await s.submit.click();
   const challenge = await begun;
   expect(challenge.status(), `выдача испытания регистрации: ${await challenge.text()}`).toBe(200);
   await rpCondition(challenge, testInfo);
@@ -358,7 +369,7 @@ async function signInWithKey(w: Walker) {
 async function revokeOnSettings(w: Walker, name: string, id: string) {
   const { page, userId } = w;
   const s = await keysShown(page);
-  await s.item(name).getByRole("button", { name: /Удалить$/ }).click();
+  await s.item(name).getByRole("button", { name: `Удалить ключ доступа «${name}»`, exact: true }).click();
   const dialog = page.getByRole("dialog").filter({ hasText: name });
   await expect(dialog, "диалог удаления не назвал ключ").toBeVisible();
   const removed = answerTo(page, "DELETE", `${keysPath(userId)}/${id}`);
