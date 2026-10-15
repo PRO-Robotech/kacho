@@ -204,6 +204,22 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	_, err := a.revocation.Introspect(ctx, vt.JTI, vt.Raw)
 	switch {
 	case err == nil:
+		// Запись по идентификатору токена жива — это ответ о ТОКЕНЕ. Об ЛИЧНОСТИ
+		// она молчит: блокировка, принудительный выход и удаление пишут отсечку
+		// субъекта, а не строку на каждый выданный токен (kacho#3171). Токен
+		// нашей чеканки о ней спрашивает авторитет нашей чеканки; токен другого
+		// принятого издателя — здесь, тем же читателем и тем же сравнением, что
+		// у браузерной сессии, с моментом выдачи токена вместо момента
+		// аутентификации сессии.
+		switch a.bearerCutoffCheck(ctx, vt, route) {
+		case sessionCutoffEnded:
+			a.bearerLane.record(presentedSourceRecord, presentedOutcomeRevoked)
+			return revocationRevoked
+		case sessionCutoffUnanswered:
+			a.bearerLane.record(presentedSourceRecord, presentedOutcomeUnanswered)
+			return revocationUnanswerable
+		case sessionCutoffNotAsked, sessionCutoffLive, sessionCutoffUnsupported:
+		}
 		a.bearerLane.record(presentedSourceRecord, presentedOutcomeLive)
 		return revocationLive
 
@@ -240,6 +256,45 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		}
 		return revocationUnanswerable
 	}
+}
+
+// bearerCutoffCheck — отсечка субъекта для токена записи, которую наш
+// авторитет не чеканил (kacho#3171).
+//
+// Субъект — тот, кого назовёт личностью полоса предъявителя: утверждения
+// принципала токена, а без них — резолв по `sub` (тот же читатель, что
+// провяжет личность дальше; его ответ кэширован). Не человек либо не
+// резолвится — вопроса об отсечке нет: служебная учётка отсечки людей не
+// несёт, а нерезолвимый субъект отвергает сама полоса предъявителя.
+//
+// Момент сравнения — `iat` токена: отсечка недействительным объявляет то, что
+// выдано не позже неё. Токен без `iat` при стоящей отсечке отвергается — тот же
+// довод, что у сессии без момента аутентификации (sessionCutoffCheck).
+func (a *AuthInterceptor) bearerCutoffCheck(ctx context.Context, vt *VerifiedToken, route string) sessionCutoffVerdict {
+	if a.sessionCutoff == nil {
+		return sessionCutoffNotAsked
+	}
+	subj, ok := a.bearerCutoffSubject(ctx, vt)
+	if !ok {
+		return sessionCutoffNotAsked
+	}
+	return a.sessionCutoffCheck(ctx, subj, vt.IssuedAt, route, cutoffLaneBearer)
+}
+
+// bearerCutoffSubject — личность токена в той же очерёдности, что у полосы
+// предъявителя: утверждения принципала, затем резолв по `sub`.
+func (a *AuthInterceptor) bearerCutoffSubject(ctx context.Context, vt *VerifiedToken) (Subject, bool) {
+	if pType, pID, display, err := principalFromVerifiedToken(vt); err == nil {
+		return Subject{Type: pType, ID: pID, DisplayName: display}, true
+	}
+	if vt.Subject == "" || a.subjectLookup == nil {
+		return Subject{}, false
+	}
+	subj, err := a.subjectLookup.LookupByExternalID(ctx, vt.Subject)
+	if err != nil {
+		return Subject{}, false
+	}
+	return subj, true
 }
 
 // writeHTTPServiceUnavailable answers a request the gateway cannot serve because a

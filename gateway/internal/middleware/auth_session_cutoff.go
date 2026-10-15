@@ -172,9 +172,13 @@ func (a *AuthInterceptor) WithSessionCutoffCheck(r SessionCutoffReader, reportIn
 // и разошёлся бы молча (§1.2 приёмки Ф3: такое расхождение у полосы токенов
 // уже есть).
 //
-// route — только контекст журнала; вердикта он не меняет.
+// Второй вызывающий — полоса предъявителя для токена записи, которую наш
+// авторитет не чеканил (kacho#3171, bearerCutoffCheck): сравнение то же, момент —
+// выдача токена. Второго сравнения не заводится, по тому же доводу.
+//
+// route и lane — только контекст журнала; вердикта они не меняют.
 func (a *AuthInterceptor) sessionCutoffCheck(
-	ctx context.Context, subj Subject, authenticatedAt time.Time, route string,
+	ctx context.Context, subj Subject, authenticatedAt time.Time, route, lane string,
 ) sessionCutoffVerdict {
 	if a.sessionCutoff == nil {
 		return sessionCutoffNotAsked
@@ -198,9 +202,9 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// как у неответа: запрос не обслуживается, носитель цел (это наша
 		// неисправность, а не отзыв); доклад — в своей клетке.
 		if report, total, represents := a.sessionCutoffMisaddressed.observe(); report {
-			a.logger.Error("session revocation check misaddressed; refusing browser session: "+
+			a.logger.Error("subject cutoff check misaddressed; refusing: "+
 				"the asked listener does not serve the identity service",
-				"err", err, "route", route,
+				"err", err, "route", route, "lane", lane,
 				"session_cutoff_misaddressed_total", total,
 				"occurrences_since_last_report", represents,
 				"predicate", MisaddressedListenerPredicate)
@@ -212,9 +216,9 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// своим счётчиком, чтобы застрявшее расхождение версий не оставило
 		// полосу без проверки молча.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			a.logger.Error("session revocation not enforced on the browser lane: "+
+			a.logger.Error("subject cutoff not enforced: "+
 				"the authority does not offer this question (image skew)", "err", err,
-				"route", route,
+				"route", route, "lane", lane,
 				"session_cutoff_unsupported_total", total,
 				"occurrences_since_last_report", represents,
 				"predicate", "исчезает, когда служба прав докатится до того же дерева")
@@ -227,8 +231,8 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// исполняем — ровно тот класс, где контроль действует на выдаче и не
 		// действует на предъявлении.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			a.logger.Error("session revocation check unanswered; refusing browser session",
-				"err", err, "route", route,
+			a.logger.Error("subject cutoff check unanswered; refusing",
+				"err", err, "route", route, "lane", lane,
 				"session_cutoff_failures_total", total,
 				"occurrences_since_last_report", represents)
 		}
@@ -248,8 +252,8 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// Носителя при этом гасим: состояние определённое (отсечка есть, доказать
 		// её непревышение нечем), и стоящий отказ здесь был бы таким же тупиком.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			a.logger.Error("browser session carries no authentication instant while a cutoff stands",
-				"route", route,
+			a.logger.Error("credential carries no authentication instant while a subject cutoff stands",
+				"route", route, "lane", lane,
 				"session_cutoff_failures_total", total,
 				"occurrences_since_last_report", represents)
 		}
@@ -264,3 +268,9 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 	}
 	return sessionCutoffEnded
 }
+
+// Полосы, спрашивающие отсечку субъекта, — контекст журнала sessionCutoffCheck.
+const (
+	cutoffLaneSession = "own_session"
+	cutoffLaneBearer  = "bearer_record"
+)
