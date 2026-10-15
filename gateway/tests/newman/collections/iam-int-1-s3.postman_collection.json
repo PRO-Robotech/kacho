@@ -162,13 +162,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -763,10 +763,8 @@
                   "});",
                   "let __j; try { __j = JSON.parse(pm.environment.get('s3RefSessionBody') || ''); } catch (e) { __j = {}; }",
                   "const __ch = String(pm.environment.get('s3RefSessionChallenge') || '');",
-                  "pm.test('24.2: the session refusal is code 16 with the floor text of the edge', () => {",
-                  "  pm.expect(__j.code, JSON.stringify(__j)).to.eql(16);",
-                  "  pm.expect(__j.message, JSON.stringify(__j)).to.eql('authentication level is insufficient: step up with a second factor, or present a credential of another kind');",
-                  "});",
+                  "pm.test('24.2: the session refusal is code 16 (UNAUTHENTICATED)', () =>",
+                  "  pm.expect(__j.code, JSON.stringify(__j)).to.eql(16));",
                   "pm.test('24.2: the session challenge names insufficient_user_authentication and acr_values=\"2\"', () => {",
                   "  pm.expect(__ch).to.include('error=\"insufficient_user_authentication\"');",
                   "  pm.expect(__ch).to.include('acr_values=\"2\"');",
@@ -836,12 +834,11 @@
                   "  pm.expect(pm.environment.get('s3RefBasicChallenge')).to.eql(pm.environment.get('s3RefTamperedChallenge'));",
                   "});",
                   "let __b; try { __b = JSON.parse(pm.environment.get('s3RefBasicBody') || ''); } catch (e) { __b = {}; }",
-                  "pm.test('24.5: the single refusal of the basic lane is code 16 \"credential refused\"', () => {",
-                  "  pm.expect({code: __b.code, message: __b.message}, JSON.stringify(__b)).to.eql({'code': 16, 'message': 'credential refused'});",
-                  "});",
+                  "pm.test('24.5: the single refusal of the basic lane is code 16 (UNAUTHENTICATED)', () =>",
+                  "  pm.expect(__b.code, JSON.stringify(__b)).to.eql(16));",
                   "pm.test('24.5: its challenge is invalid_token and carries no step-up call', () => {",
                   "  const __c = String(pm.environment.get('s3RefBasicChallenge') || '');",
-                  "  pm.expect(__c).to.eql('Bearer error=\"invalid_token\", error_description=\"credential refused\"');",
+                  "  pm.expect(__c).to.include('error=\"invalid_token\"');",
                   "  pm.expect(__c).to.not.include('insufficient_user_authentication');",
                   "  pm.expect(__c).to.not.include('acr_values');",
                   "});"
@@ -950,13 +947,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -1180,13 +1177,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -1347,13 +1344,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -1457,6 +1454,70 @@
           ]
         },
         {
+          "name": "25.2-delete-tampered-basic",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/groups/{{s3g25bId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "groups",
+                "{{s3g25bId}}"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// SEED-SLOT GUARD — s3BasicTampered is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('s3BasicTampered') || pm.variables.get('s3BasicTampered'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BasicTampered is set (seed slot) — носитель гейта S3 — посев tests/authz-fixtures/seed_ceremony.py (kacho#3159)', () => {",
+                  "    pm.expect.fail('s3BasicTampered is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __c = pm.environment.get('s3BasicTampered') || '';",
+                  "pm.request.headers.remove('Authorization');",
+                  "pm.request.headers.remove('Cookie');",
+                  "if (__c) pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __c});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('25.2-delete-tampered-basic: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.environment.set('s3Ref25TamperedBody', pm.response.text());",
+                  "pm.environment.set('s3Ref25TamperedChallenge', String(pm.response.headers.get('WWW-Authenticate') || ''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "25.2-same-single-refusal",
           "request": {
             "method": "GET",
@@ -1509,11 +1570,12 @@
                   "});",
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('25.2: the refused request did not reach the owner — the group is still there', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('s3g25bId')));",
-                  "let __b; try { __b = JSON.parse(pm.environment.get('s3Ref25Basic' + 'Body') || ''); } catch (e) { __b = {}; }",
-                  "pm.test('25.2: the basic credential of the raised human gets the single refusal of its lane', () => {",
-                  "  pm.expect({code: __b.code, message: __b.message}, JSON.stringify(__b)).to.eql({'code': 16, 'message': 'credential refused'});",
-                  "  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.eql('Bearer error=\"invalid_token\", error_description=\"credential refused\"');",
-                  "});"
+                  "pm.test('25.2: the basic credential of the raised human gets byte-for-byte the single refusal of its lane (as a tampered secret of the same mark)', () => {",
+                  "  pm.expect(pm.environment.get('s3Ref25BasicBody')).to.eql(pm.environment.get('s3Ref25TamperedBody'));",
+                  "  pm.expect(pm.environment.get('s3Ref25BasicChallenge')).to.eql(pm.environment.get('s3Ref25TamperedChallenge'));",
+                  "});",
+                  "pm.test('25.2: the second factor of the human does not raise the basic credential — no step-up call', () =>",
+                  "  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.not.include('insufficient_user_authentication'));"
                 ]
               }
             }
@@ -1619,13 +1681,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -1821,13 +1883,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "// per-step auth: bearer from env 's3BearerL1'",
+                  "const __t = pm.environment.get('s3BearerL1') || pm.variables.get('s3BearerL1') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: s3BearerL1 is set (subject under test)', () => {",
+                  "    pm.expect.fail('s3BearerL1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",

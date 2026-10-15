@@ -24,14 +24,19 @@ permission_catalog.json`). Группа заводится в аккаунте �
 выдал ДО заведения второго фактора и после заведения подтвердил их уровень, поэтому
 сценарий 24 судит носителя человека без фактора, а 25 — того же человека с фактором.
 
-ТЕКСТ ОТКАЗА ПО ПОЛУ. Одобренная редакция выписывает тело
-`{"code":16,"message":"insufficient_user_authentication"}`; край после решения
-PRO-Robotech/kaname#511 называет в тексте следующий шаг, а машинный признак держит
-в вызове `WWW-Authenticate`. Утверждается текст производителя
-(`stepUpDenyMessage`, gateway/internal/middleware/auth_stepup.go) — так же, как в
-пробе консоли стадии (ui-future/e2e/specs/interactive-login-s3.spec.ts); расхождение
-с редакцией возвращено вопросом к приёмке в PRO-Robotech/kacho#2571. Клауза 24.2
-судит РАВЕНСТВО отказов двух носителей побайтово — от текста она не зависит.
+ДОСЛОВНЫЕ ТЕКСТЫ ДВУХ ОТКАЗОВ НЕ УТВЕРЖДАЮТСЯ — ОНИ СПОРНЫ МЕЖДУ РЕШЕНИЯМИ. Одобренная
+редакция выписывает тело отказа по полу `{"code":16,"message":"insufficient_user_
+authentication"}` (24.2) и текст единого отказа полосы базового удостоверения
+`credential refused` с `error_description` (24.5). Край отвечает по позднейшим решениям:
+текст отказа по полу называет следующий шаг (PRO-Robotech/kaname#511), а единый отказ
+`401` — один на все причины и все полосы, без `error_description` (решение Р2 приёмки
+KA1, `docs/specs/sub-phase-KA1-edge-refusals-and-call-budgets-acceptance.md` воркспейса,
+которая сама называет текст 24.5 переписываемым). Пока редакции не сведены, кейс держит
+то, в чём сходятся оба документа и край: код `16`, признаки вызова (`error=
+"insufficient_user_authentication"`, `acr_values="2"` у повышения; `error="invalid_token"`
+без повышения у базового удостоверения) и побайтовое РАВЕНСТВО отказов, ради которого
+сценарии и написаны (24.2, 24.3, 25.2). Расхождение текстов возвращено вопросом к
+приёмке (PRO-Robotech/kacho#2571).
 
 Coverage:
   IAM-INT-1-24-STEPUP-REFUSAL-EVERY-CLASS — 24.1 все три носителя «1» на пол «2» → 401, группа
@@ -61,13 +66,6 @@ CASES = []
 
 GROUPS = "/iam/v1/groups"
 SESSION_COOKIE = "kaname_session"
-
-# Текст отказа по полу — производитель `stepUpDenyMessage` (см. шапку).
-STEP_UP_MESSAGE = ("authentication level is insufficient: step up with a second factor, "
-                   "or present a credential of another kind")
-# Единый отказ полосы базового удостоверения — клауза 24.5 дословно.
-BASIC_REFUSAL_BODY = {"code": 16, "message": "credential refused"}
-BASIC_REFUSAL_CHALLENGE = 'Bearer error="invalid_token", error_description="credential refused"'
 
 _SEED_WHY = "носитель гейта S3 — посев tests/authz-fixtures/seed_ceremony.py (kacho#3159)"
 
@@ -109,7 +107,9 @@ def _create_group(slot, carrier_kind, carrier_var):
                 f"pm.test('the Operation names the group id', () => pm.expect(String(pm.environment.get({js_str(slot + 'Id')}) || '')).to.match(/^[a-z0-9-]+$/));",
             ],
         ),
-        poll_operation("opId", auth="jwtBootstrap", name=f"poll-create-{slot}"),
+        # Операцию человека читает он сам: чужая операция неотличима от несуществующей
+        # (у служебной учётки кластера тоже). Чтение операции пола не несёт.
+        poll_operation("opId", auth="s3BearerL1", name=f"poll-create-{slot}"),
     ]
 
 
@@ -160,7 +160,7 @@ def _floor2_passes(name, slot, kind, var):
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        poll_operation("opId", auth="jwtBootstrap", name=f"poll-{name}"),
+        poll_operation("opId", auth="s3BearerL1", name=f"poll-{name}"),
         Step(
             name=f"{name}-gone",
             method="GET",
@@ -174,10 +174,8 @@ def _floor2_passes(name, slot, kind, var):
 _STEP_UP_SHAPE = [
     "let __j; try { __j = JSON.parse(pm.environment.get('s3RefSessionBody') || ''); } catch (e) { __j = {}; }",
     "const __ch = String(pm.environment.get('s3RefSessionChallenge') || '');",
-    "pm.test('24.2: the session refusal is code 16 with the floor text of the edge', () => {",
-    "  pm.expect(__j.code, JSON.stringify(__j)).to.eql(16);",
-    f"  pm.expect(__j.message, JSON.stringify(__j)).to.eql({js_str(STEP_UP_MESSAGE)});",
-    "});",
+    "pm.test('24.2: the session refusal is code 16 (UNAUTHENTICATED)', () =>",
+    "  pm.expect(__j.code, JSON.stringify(__j)).to.eql(16));",
     "pm.test('24.2: the session challenge names insufficient_user_authentication and acr_values=\"2\"', () => {",
     "  pm.expect(__ch).to.include('error=\"insufficient_user_authentication\"');",
     "  pm.expect(__ch).to.include('acr_values=\"2\"');",
@@ -194,12 +192,11 @@ _BASIC_SHAPE = [
     "  pm.expect(pm.environment.get('s3RefBasicChallenge')).to.eql(pm.environment.get('s3RefTamperedChallenge'));",
     "});",
     "let __b; try { __b = JSON.parse(pm.environment.get('s3RefBasicBody') || ''); } catch (e) { __b = {}; }",
-    "pm.test('24.5: the single refusal of the basic lane is code 16 \"credential refused\"', () => {",
-    f"  pm.expect({{code: __b.code, message: __b.message}}, JSON.stringify(__b)).to.eql({BASIC_REFUSAL_BODY});",
-    "});",
+    "pm.test('24.5: the single refusal of the basic lane is code 16 (UNAUTHENTICATED)', () =>",
+    "  pm.expect(__b.code, JSON.stringify(__b)).to.eql(16));",
     "pm.test('24.5: its challenge is invalid_token and carries no step-up call', () => {",
     "  const __c = String(pm.environment.get('s3RefBasicChallenge') || '');",
-    f"  pm.expect(__c).to.eql({js_str(BASIC_REFUSAL_CHALLENGE)});",
+    "  pm.expect(__c).to.include('error=\"invalid_token\"');",
     "  pm.expect(__c).to.not.include('insufficient_user_authentication');",
     "  pm.expect(__c).to.not.include('acr_values');",
     "});",
@@ -260,6 +257,7 @@ CASES.append(Case(
         *_create_group("s3g25b", "session", "s3SessionL1"),
         # 25.2 — третий класс на тот же глагол: единый отказ полосы.
         _floor2_refused("25.2-delete-basic", "s3g25b", "basic", "s3Basic", "s3Ref25Basic"),
+        _floor2_refused("25.2-delete-tampered-basic", "s3g25b", "basic", "s3BasicTampered", "s3Ref25Tampered"),
         Step(
             name="25.2-same-single-refusal",
             method="GET",
@@ -270,11 +268,12 @@ CASES.append(Case(
                 *assert_status(200),
                 "pm.test('25.2: the refused request did not reach the owner — the group is still there', () =>"
                 " pm.expect(pm.response.json().id).to.eql(pm.environment.get('s3g25bId')));",
-                "let __b; try { __b = JSON.parse(pm.environment.get('s3Ref25Basic' + 'Body') || ''); } catch (e) { __b = {}; }",
-                "pm.test('25.2: the basic credential of the raised human gets the single refusal of its lane', () => {",
-                f"  pm.expect({{code: __b.code, message: __b.message}}, JSON.stringify(__b)).to.eql({BASIC_REFUSAL_BODY});",
-                f"  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.eql({js_str(BASIC_REFUSAL_CHALLENGE)});",
+                "pm.test('25.2: the basic credential of the raised human gets byte-for-byte the single refusal of its lane (as a tampered secret of the same mark)', () => {",
+                "  pm.expect(pm.environment.get('s3Ref25BasicBody')).to.eql(pm.environment.get('s3Ref25TamperedBody'));",
+                "  pm.expect(pm.environment.get('s3Ref25BasicChallenge')).to.eql(pm.environment.get('s3Ref25TamperedChallenge'));",
                 "});",
+                "pm.test('25.2: the second factor of the human does not raise the basic credential — no step-up call', () =>",
+                "  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.not.include('insufficient_user_authentication'));",
             ],
         ),
         # 25.1 — сессия и предъявитель «2»: 200, операция без ошибки, группы нет.
