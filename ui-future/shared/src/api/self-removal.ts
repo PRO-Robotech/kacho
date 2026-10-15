@@ -72,7 +72,7 @@ export async function removeSelf(userId: string): Promise<void> {
     if (e instanceof ApiError) throw new SelfRemovalRefused(codeOf(e), e.message);
     throw e;
   }
-  const id = operationIdOf(answer as Parameters<typeof operationIdOf>[0]);
+  const id = operationIdOf(answer);
   if (!id) throw new SelfRemovalUnknown();
   for (let polled = 0; polled < MAX_POLLS; polled++) {
     if (polled > 0) await pause(POLL_PAUSE_MS);
