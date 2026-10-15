@@ -4,6 +4,7 @@
 package deploy_test
 
 import (
+	"html"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -501,4 +502,75 @@ func TestProfilesJustifyNoValueByTheWithdrawnExternalLanding(t *testing.T) {
 		t.Fatalf("прочитано строк комментариев %d, причин ведомости %d — «находок нет» беспредметно", read, reasons)
 	}
 	t.Logf("перепись: строк комментариев прочитано %d · причин ведомости %d · обоснований снятой посадкой %d", read, reasons, findings)
+}
+
+// freshGatedRow узнаёт строку таблицы путей полосы: метод и путь первой ячейки.
+var freshGatedRow = regexp.MustCompile(`^\s*<tr><td><code>((?:GET|POST|PUT|PATCH|DELETE) [^<]+)</code></td>(.*)$`)
+
+// freshWord — слово «свежий» в любой форме, но не «освежает»: граница слова в
+// RE2 латинская, поэтому слева — не кириллическая буква.
+var freshWord = regexp.MustCompile(`(^|[^а-яёА-ЯЁ])свеж`)
+
+// TestSelfServiceFreshnessCommentNamesEveryGatedPath — комментарий окна
+// свежести в боевом профиле зонта называет РОВНО те пути, которым служба
+// требует свежей сессии (kaname#734).
+//
+// # Откуда перечень
+//
+// Не из этого файла: из таблицы путей полосы `docs/content/api/auth-lane.mdx`
+// ПИНЕННОГО модуля службы (go.mod). Путь под окном — строка, где колонка
+// предъявления говорит «да, свежая» либо описание говорит «из свежей сессии».
+// Оператор, меняющий окно, меняет защиту каждого такого глагола, и комментарий
+// обязан их назвать — все и только их: лишний путь обещает защиту, которой нет.
+func TestSelfServiceFreshnessCommentNamesEveryGatedPath(t *testing.T) {
+	doc := readChartText(t, filepath.Join(kanameModuleDir(t, ".."), "docs", "content", "api", "auth-lane.mdx"))
+	gated := map[string]bool{}
+	rows := 0
+	for _, line := range strings.Split(doc, "\n") {
+		m := freshGatedRow.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		rows++
+		if freshWord.MatchString(m[2]) {
+			gated[html.UnescapeString(m[1])] = true
+		}
+	}
+	if rows == 0 || len(gated) == 0 {
+		t.Fatalf("таблица путей пиненной службы: строк %d, под окном свежести %d — сверять не с чем", rows, len(gated))
+	}
+
+	// Комментарий окна — сплошной блок строк `#` непосредственно над ключом.
+	lines := strings.Split(readFile(t, "deploy/helm/umbrella/values.prod.yaml"), "\n")
+	at := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "selfServiceFreshness:") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatal("values.prod.yaml: ключа `selfServiceFreshness` нет — комментарию не над чем стоять")
+	}
+	var block []string
+	for i := at - 1; i >= 0 && strings.HasPrefix(strings.TrimSpace(lines[i]), "#"); i-- {
+		block = append(block, lines[i])
+	}
+	comment := strings.Join(block, "\n")
+
+	named := map[string]bool{}
+	for _, m := range regexp.MustCompile("`((?:GET|POST|PUT|PATCH|DELETE) /[^`]+)`").FindAllStringSubmatch(comment, -1) {
+		named[m[1]] = true
+	}
+	for path := range gated {
+		if !named[path] {
+			t.Errorf("values.prod.yaml: комментарий окна свежести не называет `%s`, а служба требует там свежей сессии — оператор, меняющий окно, не знает, что меняет его защиту", path)
+		}
+	}
+	for path := range named {
+		if !gated[path] {
+			t.Errorf("values.prod.yaml: комментарий окна свежести называет `%s`, а таблица службы свежести там не требует — обещана защита, которой нет", path)
+		}
+	}
+	t.Logf("перепись: строк таблицы путей %d · под окном свежести %d · названо комментарием %d", rows, len(gated), len(named))
 }
