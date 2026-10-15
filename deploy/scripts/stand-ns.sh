@@ -56,7 +56,9 @@
 #                 письмо пробы читается из ящика стенда, и наружу оно не уходит
 #                 (kacho#3065 — цепочка a8f60d объявляет ретранслятор площадки);
 #                 плоскости данных хранилища нет — вид пуст, кластера блочного
-#                 хранения у стенда нет (kacho#3222);
+#                 хранения у стенда нет (kacho#3222); окно источника полосы входа —
+#                 окно стенда наборов конвейера, выведенное из его цепочки: пробы
+#                 консоли регистрируют людей с одного источника (kacho#3223);
 #   перенос       пост-обработчик рендера (tools/standns): адреса соседей,
 #                 издатели и корень внутреннего CA — в пространство стенда.
 #
@@ -740,12 +742,51 @@ registry:
 EOF
 }
 
+# SUITE_STACK — стек стенда наборов конвейера (`make dev-up`, тот же состав, что
+# умолчание подъёма здесь). Окно источника стенда проб выводится из его цепочки.
+SUITE_STACK=dev-prod
+
+# suite_source_attempts — счёт окна источника полосы входа
+# (kaname.config.authn.login.sourceAttempts) в слитых значениях цепочки стенда
+# наборов конвейера; не выведен — код 2, «не прочитал» не равно «величины нет».
+suite_source_attempts() {
+  local files f layers=("$UMBRELLA/values.yaml")
+  files="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --chain "$SUITE_STACK" ' ')" && [ -n "$files" ] || {
+    warn "цепочка стенда наборов «$SUITE_STACK» не прочитана"; return 2; }
+  for f in $files; do layers+=("$UMBRELLA/$f"); done
+  python3 - "${layers[@]}" <<'PY'
+import sys, yaml
+def merge(dst, src):
+    for k, v in (src or {}).items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+tree = {}
+try:
+    for f in sys.argv[1:]:
+        merge(tree, yaml.safe_load(open(f)) or {})
+except Exception as e:
+    print("stand-ns: слои цепочки стенда наборов не прочитаны: %s" % e, file=sys.stderr)
+    sys.exit(2)
+cur = tree
+for k in ("kaname", "config", "authn", "login", "sourceAttempts"):
+    cur = cur.get(k) if isinstance(cur, dict) else None
+if type(cur) is not int or cur <= 0:
+    print("stand-ns: окно источника стенда наборов не объявлено целым счётом: %r" % (cur,), file=sys.stderr)
+    sys.exit(2)
+print(cur)
+PY
+}
+
 # stand_overlay NS CA_NS PERSIST PORT [ISSUER] — ISSUER непуст, когда издатель
 # цепочки — заглушка площадки (chain_issuer_placeholder): тогда он равен
 # происхождению консоли стенда во всех семи местах.
 stand_overlay() {
   local ns="$1" cans="$2" persist="$3" port="$4" issuer="${5:-}"
   local host; host="$(ns_host "$ns")"
+  local attempts; attempts="$(suite_source_attempts)" || return 2
   local signing=""
   [ -z "$issuer" ] || signing="
       # Издатель чеканки — происхождение консоли стенда (kacho#3113, issuer_overlay).
@@ -781,6 +822,17 @@ global:
 kaname:
   config:
     authn:
+      # Окно источника стенда проб — окно стенда наборов конвейера (цепочка
+      # $SUITE_STACK, kacho#3223), выведенное из неё, а не выписанное: сквозные
+      # пробы консоли гоняются здесь тем же бегуном с ОДНОГО источника, и каждая
+      # регистрация списывается с этого окна (kaname#456). На величине продукта
+      # набор обрывался ранней остановкой на регистрации сверх окна. Срок окна —
+      # продукта: меняется один факт, счёт. Рубеж перебора паролей площадки это
+      # не трогает: слой ставится только в пространство стенда проб (вход —
+      # пробросом, ClusterIP, срок ≤ $TTL_MAX_HOURS ч), а таблица стеков стоит на
+      # величине продукта (deploy/registration_source_window_stands_test.go).
+      login:
+        sourceAttempts: $attempts
       # Ключи доступа стенда проб — происхождение ЕГО консоли (appBaseURL выше),
       # выведенное чартом («originFromConsole»), а не выписанное второй строкой
       # рядом с адресом: два объявления одного адреса расходились бы молча.
