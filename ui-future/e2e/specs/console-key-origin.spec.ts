@@ -1,8 +1,18 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type APIResponse, type Page, type Response, type TestInfo } from "@playwright/test";
-import { pageAuthenticator, raiseSeedToLevelTwo, submitRegistration } from "./access-key-seed";
+import {
+  expect,
+  type APIResponse,
+  type Page,
+  type Response,
+  type TestInfo,
+} from "@playwright/test";
+import {
+  pageAuthenticator,
+  raiseSeedToLevelTwo,
+  submitRegistration,
+} from "./access-key-seed";
 import { ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import {
@@ -69,7 +79,8 @@ interface Refusal {
 
 function consoleOrigin(testInfo: TestInfo): string {
   const base = testInfo.project.use.baseURL;
-  if (!base) throw new Error("у проекта нет baseURL — происхождение консоли не названо");
+  if (!base)
+    throw new Error("у проекта нет baseURL — происхождение консоли не названо");
   return new URL(base).origin;
 }
 
@@ -85,14 +96,20 @@ async function seededHuman(seed: Seed, scenario: string): Promise<string> {
   await raiseSeedToLevelTwo(seed);
   const me = await seed.read(SESSION_IDENTITY);
   expect(me.status(), `посев: ответ края о сессии — ${me.status()}`).toBe(200);
-  const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;
+  const who = lastIssued(seed, SESSION_IDENTITY).body as {
+    user?: { id?: unknown };
+  } | null;
   const userId = typeof who?.user?.id === "string" ? who.user.id : "";
   expect(userId, "посев: край не назвал человека сессии").not.toBe("");
   return userId;
 }
 
 /** Отказ «происхождение не в перечне» — красное о стенде, с адресом консоли в тексте. */
-function originRefusalMessage(what: string, origin: string, text: string): string {
+function originRefusalMessage(
+  what: string,
+  origin: string,
+  text: string,
+): string {
   return (
     `${what}: служба отвергла происхождение консоли ${origin} — перечень происхождений ключей доступа стенда ` +
     `(authn.access-keys.origins) его не содержит, хотя консоль предлагает завести ключ. Ответ: ${text.slice(0, 300)}`
@@ -100,32 +117,61 @@ function originRefusalMessage(what: string, origin: string, text: string): strin
 }
 
 /** Ключи человека по ответу края. */
-async function listedKeys(seed: Seed, userId: string): Promise<Array<{ id: string; name: string }>> {
+async function listedKeys(
+  seed: Seed,
+  userId: string,
+): Promise<Array<{ id: string; name: string }>> {
   const res = await seed.read(keysOf(userId));
   const text = await res.text();
-  expect(res.status(), `перечень ключей: ${res.status()} ${text.slice(0, 300)}`).toBe(200);
-  return ((JSON.parse(text) as { accessKeys?: Array<{ id?: unknown; name?: unknown }> }).accessKeys ?? []).map((k) => ({
+  expect(
+    res.status(),
+    `перечень ключей: ${res.status()} ${text.slice(0, 300)}`,
+  ).toBe(200);
+  return (
+    (
+      JSON.parse(text) as {
+        accessKeys?: Array<{ id?: unknown; name?: unknown }>;
+      }
+    ).accessKeys ?? []
+  ).map((k) => ({
     id: String(k.id ?? ""),
     name: String(k.name ?? ""),
   }));
 }
 
 /** Снять ключи человека и дождаться исхода каждой операции. */
-async function revokeAll(seed: Seed, userId: string, ids: string[]): Promise<void> {
+async function revokeAll(
+  seed: Seed,
+  userId: string,
+  ids: string[],
+): Promise<void> {
   for (const id of ids) {
-    const op = await acceptedOperation(await seed.api.delete(`${keysOf(userId)}/${id}`), `снятие ключа ${id}`);
+    const op = await acceptedOperation(
+      await seed.api.delete(`${keysOf(userId)}/${id}`),
+      `снятие ключа ${id}`,
+    );
     await operationSucceeded(readerOf(seed), op, `снятие ключа ${id}`);
   }
 }
 
 /** Ответ на обращение страницы к пути и методу — ждать ставится ДО действия. */
 function answerTo(page: Page, method: string, path: string): Promise<Response> {
-  return page.waitForResponse((r) => r.request().method() === method && new URL(r.url()).pathname === path);
+  return page.waitForResponse(
+    (r) =>
+      r.request().method() === method && new URL(r.url()).pathname === path,
+  );
 }
 
 /** Регистрация глаголами края с заданным происхождением; исход — как ответил край. */
-async function registerWith(seed: Seed, origin: string, name: string): Promise<{ res: APIResponse; text: string }> {
-  const { response } = await submitRegistration(seed, origin, { userVerification: true, name });
+async function registerWith(
+  seed: Seed,
+  origin: string,
+  name: string,
+): Promise<{ res: APIResponse; text: string }> {
+  const { response } = await submitRegistration(seed, origin, {
+    userVerification: true,
+    name,
+  });
   return { res: response, text: await response.text() };
 }
 
@@ -145,16 +191,29 @@ test("KO-01 · ключ доступа заводится экраном /settin
 
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
     const region = page.getByRole("region", { name: "Ключи доступа" });
-    await expect(region, "консоль не показала раздел «Ключи доступа» на /settings").toBeVisible({ timeout: 30_000 });
+    await expect(
+      region,
+      "консоль не показала раздел «Ключи доступа» на /settings",
+    ).toBeVisible({ timeout: 30_000 });
 
+    // Добавление — окном «Добавить ключ доступа» раздела (приёмка F8-S7, Р3):
+    // имя вводится в окне, церемонию выпускает «Добавить» окна.
+    const adding = page.getByRole("dialog", { name: "Добавить ключ доступа" });
     const begun = answerTo(page, "POST", `${keysOf(userId)}:beginRegistration`);
     const finished = answerTo(page, "POST", keysOf(userId));
-    await region.getByLabel("Имя", { exact: true }).fill("key-ko-01");
-    await region.getByRole("button", { name: /Добавить ключ доступа$/ }).click();
+    await region
+      .getByRole("button", { name: "Добавить ключ доступа", exact: true })
+      .click();
+    await adding.getByLabel("Имя", { exact: true }).fill("key-ko-01");
+    await adding.getByRole("button", { name: "Добавить", exact: true }).click();
 
     const challenge = await begun;
-    expect(challenge.status(), `выдача испытания регистрации: ${await challenge.text()}`).toBe(200);
-    const rpId = ((await challenge.json()) as { rp?: { id?: string } }).rp?.id ?? "";
+    expect(
+      challenge.status(),
+      `выдача испытания регистрации: ${await challenge.text()}`,
+    ).toBe(200);
+    const rpId =
+      ((await challenge.json()) as { rp?: { id?: string } }).rp?.id ?? "";
     const host = new URL(origin).hostname;
     expect(
       host === rpId || host.endsWith(`.${rpId}`),
@@ -163,24 +222,41 @@ test("KO-01 · ключ доступа заводится экраном /settin
 
     const accepted = await finished;
     const text = await accepted.text();
-    expect(text.includes(ORIGIN_NOT_ALLOWED), originRefusalMessage("приём результата церемонии", origin, text)).toBe(
-      false,
-    );
-    expect(accepted.status(), `приём результата отвергнут: ${text.slice(0, 300)}`).toBe(200);
+    expect(
+      text.includes(ORIGIN_NOT_ALLOWED),
+      originRefusalMessage("приём результата церемонии", origin, text),
+    ).toBe(false);
+    expect(
+      accepted.status(),
+      `приём результата отвергнут: ${text.slice(0, 300)}`,
+    ).toBe(200);
 
     // Происхождение подписал браузер консоли — это и есть «настоящий Origin».
-    const sent = JSON.parse(accepted.request().postData() ?? "{}") as { credential?: { clientDataJson?: string } };
-    const clientData = JSON.parse(Buffer.from(sent.credential?.clientDataJson ?? "", "base64").toString("utf8")) as {
+    const sent = JSON.parse(accepted.request().postData() ?? "{}") as {
+      credential?: { clientDataJson?: string };
+    };
+    const clientData = JSON.parse(
+      Buffer.from(sent.credential?.clientDataJson ?? "", "base64").toString(
+        "utf8",
+      ),
+    ) as {
       origin?: string;
     };
-    expect(clientData.origin, "клиентские данные браузера несут не происхождение консоли").toBe(origin);
+    expect(
+      clientData.origin,
+      "клиентские данные браузера несут не происхождение консоли",
+    ).toBe(origin);
 
     const op = JSON.parse(text) as { id?: string; done?: boolean };
     expect(op.id ?? "", "ответ приёма результата — не Operation").not.toBe("");
     await operationSucceeded(readerOf(seed), op, "регистрация ключа экраном");
 
     await expect(
-      region.getByRole("list", { name: "Заведённые ключи" }).getByRole("listitem").filter({ hasText: "key-ko-01" }),
+      region
+        .getByRole("table")
+        .getByRole("row")
+        .filter({ has: page.getByRole("cell") })
+        .filter({ hasText: "key-ko-01" }),
       "раздел не показал заведённый ключ",
     ).toBeVisible({ timeout: 30_000 });
     expect(
@@ -189,7 +265,12 @@ test("KO-01 · ключ доступа заводится экраном /settin
     ).toEqual(["key-ko-01"]);
   } finally {
     try {
-      if (userId) await revokeAll(seed, userId, (await listedKeys(seed, userId)).map((k) => k.id));
+      if (userId)
+        await revokeAll(
+          seed,
+          userId,
+          (await listedKeys(seed, userId)).map((k) => k.id),
+        );
     } finally {
       await seed.dispose();
     }
@@ -208,21 +289,42 @@ test("KO-02 · регистрация с происхождением вне п�
     userId = await seededHuman(seed, "KO-02");
 
     const own = await registerWith(seed, origin, "key-ko-02-own");
-    expect(own.text.includes(ORIGIN_NOT_ALLOWED), originRefusalMessage("положительный контроль", origin, own.text)).toBe(
-      false,
+    expect(
+      own.text.includes(ORIGIN_NOT_ALLOWED),
+      originRefusalMessage("положительный контроль", origin, own.text),
+    ).toBe(false);
+    const op = await acceptedOperation(
+      own.res,
+      "положительный контроль: регистрация с происхождением консоли",
     );
-    const op = await acceptedOperation(own.res, "положительный контроль: регистрация с происхождением консоли");
-    await operationSucceeded(readerOf(seed), op, "положительный контроль: регистрация с происхождением консоли");
+    await operationSucceeded(
+      readerOf(seed),
+      op,
+      "положительный контроль: регистрация с происхождением консоли",
+    );
 
-    const foreign = await registerWith(seed, FOREIGN_ORIGIN, "key-ko-02-foreign");
-    expect(foreign.res.status(), `регистрация с происхождением ${FOREIGN_ORIGIN}: ${foreign.text.slice(0, 300)}`).toBe(
-      400,
+    const foreign = await registerWith(
+      seed,
+      FOREIGN_ORIGIN,
+      "key-ko-02-foreign",
     );
+    expect(
+      foreign.res.status(),
+      `регистрация с происхождением ${FOREIGN_ORIGIN}: ${foreign.text.slice(0, 300)}`,
+    ).toBe(400);
     const body = JSON.parse(foreign.text) as Refusal;
     expect(
-      { code: body.code, message: body.message, reasons: (body.details ?? []).map((d) => d.reason) },
+      {
+        code: body.code,
+        message: body.message,
+        reasons: (body.details ?? []).map((d) => d.reason),
+      },
       `регистрация с происхождением ${FOREIGN_ORIGIN}: отказ не назвал причину`,
-    ).toEqual({ code: 3, message: ORIGIN_NOT_IN_LIST, reasons: [ORIGIN_NOT_ALLOWED] });
+    ).toEqual({
+      code: 3,
+      message: ORIGIN_NOT_IN_LIST,
+      reasons: [ORIGIN_NOT_ALLOWED],
+    });
 
     expect(
       (await listedKeys(seed, userId)).map((k) => k.name),
@@ -230,7 +332,12 @@ test("KO-02 · регистрация с происхождением вне п�
     ).toEqual(["key-ko-02-own"]);
   } finally {
     try {
-      if (userId) await revokeAll(seed, userId, (await listedKeys(seed, userId)).map((k) => k.id));
+      if (userId)
+        await revokeAll(
+          seed,
+          userId,
+          (await listedKeys(seed, userId)).map((k) => k.id),
+        );
     } finally {
       await seed.dispose();
     }
