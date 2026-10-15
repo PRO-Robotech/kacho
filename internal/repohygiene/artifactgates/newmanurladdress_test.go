@@ -144,6 +144,7 @@ func urlAddressFindings(rel string, body []byte, census *urlAddressCensus) ([]st
 // TestNewmanSentAddressIsTheWrittenOne — гейт по дереву: каждый запрос каждой
 // отслеживаемой коллекции отправляется по адресу, который написан в `raw`.
 func TestNewmanSentAddressIsTheWrittenOne(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 	var rels []string
 	for rel := range tt.files {

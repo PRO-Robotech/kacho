@@ -13,6 +13,7 @@ import (
 // координатой; та же строка, разложенная в `query`, и та же строка в сегменте
 // пути — законные близнецы, молчат.
 func TestNewmanSentAddressInjection_QueryOnlyInRawIsFound(t *testing.T) {
+	t.Parallel()
 	const head = `{"item":[{"name":"case","item":[{"name":"csrf","request":{"method":"GET","url":`
 	const tail = `}}]}]}`
 	cases := []struct {
