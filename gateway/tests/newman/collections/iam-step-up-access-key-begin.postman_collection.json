@@ -60,6 +60,12 @@
                 "v1",
                 "auth",
                 "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "step-up-access-key-begin"
+                }
               ]
             }
           },
@@ -228,6 +234,12 @@
                 "v1",
                 "auth",
                 "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "step-up"
+                }
               ]
             }
           },
@@ -373,6 +385,12 @@
                 "v1",
                 "auth",
                 "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "step-up-access-key-begin"
+                }
               ]
             }
           },

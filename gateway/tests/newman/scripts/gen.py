@@ -616,6 +616,19 @@ def _form_raw(pairs: List[Tuple[str, str]]) -> str:
                     for k, v in pairs)
 
 
+def _query_pairs(path):
+    """Строка запроса пути шага — парами `{key, value}` в написанном виде."""
+    if "?" not in path:
+        return []
+    pairs = []
+    for part in path.split("?", 1)[1].split("&"):
+        if not part:
+            continue
+        key, eq, value = part.partition("=")
+        pairs.append({"key": key, "value": value} if eq else {"key": key, "value": None})
+    return pairs
+
+
 def _gateway_item_hook(step, item):
     """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
 
@@ -625,6 +638,14 @@ def _gateway_item_hook(step, item):
     """
     if step.insecure_tls:
         item["protocolProfileBehavior"] = {"strictSSL": False}
+    # Строку запроса сегменты пути у края не несут (`path_segments` ниже), а
+    # прогонщик собирает адрес из разобранных полей и `raw` при объекте не
+    # читает: без `query` запрос ушёл бы без неё (kacho#3230 — `csrf?form=…`
+    # приходил к службе голым). Пары — дословно как написаны, без раскодирования:
+    # подстановки `{{…}}` и `%`-коды доезжают тем же текстом, что в `raw`.
+    query = _query_pairs(step.path)
+    if query:
+        item["request"]["url"]["query"] = query
     if step.form is not None:
         if step.body is not None:
             raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "
