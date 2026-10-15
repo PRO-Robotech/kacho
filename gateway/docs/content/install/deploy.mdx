@@ -72,7 +72,7 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
 flowchart LR
   cli["Внешние клиенты"] -->|"TLS :443 → cmux"| agw["api-gateway"]
   ui["UI / admin-tooling"] -->|"cluster-internal REST :8081"| agw
-  agw -->|"backends :9090 / :9091"| dom["домены (iam/vpc/compute/geo/nlb/registry)"]
+  agw -->|"backends :9090 / :9091"| dom["домены (iam/vpc/compute/storage/geo/nlb/registry)"]
   agw -->|"PollSubjectChanges (курсор)"| dom
 ```
 
