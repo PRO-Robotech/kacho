@@ -39,9 +39,10 @@ import (
 
 // oneStream — реестр из одного открытого потока с заданным удостоверением.
 type oneStream struct {
-	mu     sync.Mutex
-	cred   principalmeta.Credential
-	closed int
+	mu       sync.Mutex
+	cred     principalmeta.Credential
+	closed   int
+	closeAll int // вызовы CloseAll — исход fail-closed, отдельно от закрытия по вердикту
 }
 
 func (o *oneStream) OpenStreams() []subscriptionstream.OpenStream {
@@ -60,7 +61,14 @@ func (o *oneStream) CloseAll() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.closed++
+	o.closeAll++
 	return 1
+}
+
+func (o *oneStream) closeAllCount() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.closeAll
 }
 
 func (o *oneStream) closedCount() int {
@@ -156,6 +164,71 @@ func TestSweeperTellsMisaddressedFromRolloutWindow(t *testing.T) {
 			}
 			if sclosed != 0 {
 				t.Errorf("окно раската закрыло поток: закрытий %d", sclosed)
+			}
+		})
+	}
+}
+
+// kacho#3191, GSR-3191-1: «перепрос подтверждённым не считается» — и при
+// неверном адресе службы доступа срок неподтверждённого чтения идёт, как при
+// молчащем авторитете: держать потоки дольше StaleAfter без подтверждённого
+// чтения отзыва край не вправе (fail-closed, CloseAll). Законный близнец —
+// окно раската того же вопроса: авторитет ответил, чтение подтверждено,
+// CloseAll не наступает никогда. Близнецы меняют один факт — слушатель.
+func TestSweeperMisaddressedPastStaleAfterClosesEveryStream(t *testing.T) {
+	type lane struct {
+		name        string
+		cred        principalmeta.Credential
+		wrong, skew func(*grpc.Server)
+	}
+	lanes := []lane{
+		{
+			name:  "liveness",
+			cred:  principalmeta.Credential{BasicCredentialID: "bas-00000000000003191"},
+			wrong: func(*grpc.Server) {},
+			skew:  func(s *grpc.Server) { iamv1.RegisterInternalIAMServiceServer(s, bareServices{}) },
+		},
+		{
+			name: "cutoff",
+			cred: principalmeta.Credential{
+				UserID:    "usr-00000000000002741",
+				Presented: principalmeta.PresentedSession("s-2741"),
+			},
+			wrong: func(s *grpc.Server) { iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{}) },
+			skew: func(s *grpc.Server) {
+				iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})
+				iamv1.RegisterInternalSessionRevocationsServiceServer(s, bareServices{})
+			},
+		},
+	}
+	for _, l := range lanes {
+		t.Run(l.name, func(t *testing.T) {
+			run := func(register func(*grpc.Server)) int {
+				ad := adapterTo(t, register)
+				reg := &oneStream{cred: l.cred}
+				now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+				sw, err := streamrevocation.New(streamrevocation.Config{
+					Streams:    reg,
+					Authority:  ad,
+					Interval:   time.Minute,
+					StaleAfter: 10 * time.Minute,
+					Now:        func() time.Time { return now },
+					Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < 12; i++ {
+					sw.Sweep(context.Background())
+					now = now.Add(time.Minute)
+				}
+				return reg.closeAllCount()
+			}
+			if got := run(l.skew); got != 0 {
+				t.Errorf("окно раската (авторитет ответил) сработало fail-closed: CloseAll %d", got)
+			}
+			if got := run(l.wrong); got == 0 {
+				t.Errorf("неверный адрес дольше StaleAfter не закрыл потоки (CloseAll 0): перепрос засчитан подтверждённым")
 			}
 		})
 	}
