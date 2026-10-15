@@ -1280,7 +1280,7 @@ func main() {
 	// cmux split is needed. Empty addr → disabled (Internal* REST unreachable via gateway).
 	//
 	// Transport (kacho#3131): mutual TLS only — a client leaf chaining to the
-	// installation CA whose URI-SAN is in KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS.
+	// operator anchor (kacho#3189) whose URI-SAN is in KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS.
 	// validateProductionInternalListener refuses to start a declared listener
 	// without that material at ANY KACHO_APP_ENV; there is no plaintext mode.
 	// mTLS authenticates the transport only — authz on this listener is unchanged.

@@ -22,6 +22,10 @@ import (
 //     с URI-именем ИЗ круга, который край получает в KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS:
 //     две записи одного имени (шаблон умбреллы и умолчание чарта края) иначе
 //     разошлись бы молча — и оператор получил бы отказ рукопожатия;
+//   - P8 (kacho#3189): лист оператора выпускает НАМЕСПЕЙСНЫЙ Issuer якоря
+//     оператора, а не кластерный выпускающий установки, и край получает в
+//     KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE ca.crt секрета ЭТОГО якоря:
+//     имя из круга в листе общего якоря оператора не узнаёт;
 //   - боевые цепочки (prod, fe3455) — без имён проброса (IP-SAN 127.0.0.1,
 //     DNS localhost) на листе слушателя: адрес проброса — удобство стенда, а не
 //     имя сервиса;
@@ -40,6 +44,7 @@ const (
 	irServerCert   = "api-gateway-internal-rest-tls"
 	irOperatorCert = "kacho-internal-rest-operator-client-tls"
 	irCircleKnob   = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS"
+	irAnchorKnob   = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE"
 )
 
 // irProductionChains — цепочки, чей профиль боевой: IP-SAN 127.0.0.1 на листе
@@ -52,6 +57,12 @@ type irChainFacts struct {
 	serverCert   map[string]any
 	operatorURIs []string
 	tlsSecret    string
+	// operatorIssuer — issuerRef листа оператора (kind/name);
+	// issuers — намеспейсные Issuer рендера типа ca: имя → секрет центра;
+	// anchorSecret — секрет, чей ca.crt край читает по irAnchorKnob.
+	operatorIssuer [2]string
+	issuers        map[string]string
+	anchorSecret   string
 }
 
 func irFacts(docs []map[string]any) irChainFacts {
@@ -61,7 +72,14 @@ func irFacts(docs []map[string]any) irChainFacts {
 		switch {
 		case kind == "Certificate" && name == irServerCert:
 			f.serverCert = ka1Sub(d, "spec")
+		case kind == "Issuer" && ka1Sub(ka1Sub(d, "spec"), "ca") != nil:
+			if f.issuers == nil {
+				f.issuers = map[string]string{}
+			}
+			f.issuers[name] = ka1Str(ka1Sub(ka1Sub(d, "spec"), "ca"), "secretName")
 		case kind == "Certificate" && name == irOperatorCert:
+			ref := ka1Sub(ka1Sub(d, "spec"), "issuerRef")
+			f.operatorIssuer = [2]string{ka1Str(ref, "kind"), ka1Str(ref, "name")}
 			for _, u := range ka1Slice(ka1Sub(d, "spec"), "uris") {
 				if s, ok := u.(string); ok {
 					f.operatorURIs = append(f.operatorURIs, s)
@@ -70,8 +88,29 @@ func irFacts(docs []map[string]any) irChainFacts {
 		}
 	}
 	if pod, ok := edgePod(docs); ok {
+		volSecret := map[string]string{}
+		for _, v := range ka1Slice(pod, "volumes") {
+			vm, _ := v.(map[string]any)
+			if s := ka1Sub(vm, "secret"); s != nil {
+				volSecret[ka1Str(vm, "name")] = ka1Str(s, "secretName")
+			}
+		}
 		for _, c := range ka1Slice(pod, "containers") {
 			cm, _ := c.(map[string]any)
+			anchorPath := ""
+			for _, e := range ka1Slice(cm, "env") {
+				em, _ := e.(map[string]any)
+				if ka1Str(em, "name") == irAnchorKnob {
+					anchorPath = ka1Str(em, "value")
+				}
+			}
+			for _, m := range ka1Slice(cm, "volumeMounts") {
+				mm, _ := m.(map[string]any)
+				mp := strings.TrimSuffix(ka1Str(mm, "mountPath"), "/") + "/"
+				if anchorPath != "" && strings.HasPrefix(anchorPath, mp) {
+					f.anchorSecret = volSecret[ka1Str(mm, "name")]
+				}
+			}
 			for _, e := range ka1Slice(cm, "env") {
 				em, _ := e.(map[string]any)
 				switch ka1Str(em, "name") {
@@ -135,6 +174,15 @@ func irJudge(name string, f irChainFacts) []string {
 	}
 	if len(f.operatorURIs) == 0 {
 		out = append(out, fmt.Sprintf("%s: Certificate %s в рендере нет — оператору нечем войти", name, irOperatorCert))
+	} else {
+		switch secret, ok := f.issuers[f.operatorIssuer[1]]; {
+		case f.operatorIssuer[0] != "Issuer" || !ok:
+			out = append(out, fmt.Sprintf("%s: лист оператора выпускает %s %q, а не намеспейсный Issuer якоря оператора", name, f.operatorIssuer[0], f.operatorIssuer[1]))
+		case f.anchorSecret == "":
+			out = append(out, fmt.Sprintf("%s: %s не отрисован либо не указывает в смонтированный секрет — краю нечем судить круг", name, irAnchorKnob))
+		case f.anchorSecret != secret:
+			out = append(out, fmt.Sprintf("%s: %s читает секрет %q, а лист оператора выпущен центром %q", name, irAnchorKnob, f.anchorSecret, secret))
+		}
 	}
 	for _, u := range f.operatorURIs {
 		if len(f.circle) == 0 {
@@ -190,11 +238,14 @@ func TestInternalRESTRenderJudgeInjection(t *testing.T) {
 	op := "spiffe://kacho.cloud/ns/kacho/sa/kacho-internal-rest-operator"
 	good := func() irChainFacts {
 		return irChainFacts{
-			listener:     true,
-			circle:       []string{op},
-			serverCert:   map[string]any{"secretName": irServerCert},
-			operatorURIs: []string{op},
-			tlsSecret:    "api-gateway-tls",
+			listener:       true,
+			circle:         []string{op},
+			serverCert:     map[string]any{"secretName": irServerCert},
+			operatorURIs:   []string{op},
+			tlsSecret:      "api-gateway-tls",
+			operatorIssuer: [2]string{"Issuer", "op-ca"},
+			issuers:        map[string]string{"op-ca": "op-ca"},
+			anchorSecret:   "op-ca",
 		}
 	}
 	if got := irJudge("prod", good()); len(got) != 0 {
@@ -229,6 +280,9 @@ func TestInternalRESTRenderJudgeInjection(t *testing.T) {
 		{"пустой круг", func(f *irChainFacts) { f.circle = nil }, irCircleKnob + " пуст"},
 		{"нет операторской личности", func(f *irChainFacts) { f.operatorURIs = nil }, "оператору нечем войти"},
 		{"оператор вне круга", func(f *irChainFacts) { f.circle = []string{"spiffe://kacho.cloud/ns/kacho/sa/other"} }, "вне круга"},
+		{"лист оператора — кластерный выпускающий", func(f *irChainFacts) { f.operatorIssuer = [2]string{"ClusterIssuer", "kacho-internal-ca"} }, "а не намеспейсный Issuer"},
+		{"якорь оператора не отрисован", func(f *irChainFacts) { f.anchorSecret = "" }, irAnchorKnob + " не отрисован"},
+		{"якорь оператора — другой центр", func(f *irChainFacts) { f.anchorSecret = "kacho-internal-ca" }, "выпущен центром"},
 	}
 	for _, c := range cases {
 		f := good()
