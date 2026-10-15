@@ -303,7 +303,7 @@ def run_ceremony(boot: str) -> dict:
                          clock=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                          sleep=time.sleep, place="prodseed_all.py:run_ceremony")
 
-    values = sc.seed(stand, lane, enroll_human, rid)
+    values = sc.seed(stand, lane, enroll_human, lambda: sc.password_login(lane, email, password), rid)
     log(f"гейт S3: ключей окружения набора края записано {len(values)} из {len(sc.MINTED_KEYS)}")
     return values
 

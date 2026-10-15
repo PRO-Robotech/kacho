@@ -36,10 +36,14 @@ seed_ceremony.py`); отличие одно: там церемония идёт 
   5. ВСЕ ТРИ носителя доходят до принципала — `GET /iam/v1/me` каждым: субъект —
      `user:<тот же человек>`;
   6. второй фактор — заведение и подтверждение кодом по времени (RFC 6238):
-     сессия перевыпускается уровнем «2», церемония под ней даёт предъявителя
-     уровня «2»; оба доходят до того же принципала;
-  7. носители уровня «1», выданные ДО заведения фактора, после него живы и по-прежнему
-     уровня «1» — иначе сценарий 24 судил бы мёртвого носителя.
+     сессия перевыпускается уровнем «2» (носитель сессии «1» при этом снимается —
+     служба меняет отпечаток носителя у той же сессии), церемония под ней даёт
+     предъявителя уровня «2»; оба доходят до того же принципала;
+  7. носители уровня «1» для сценария 24 после заведения фактора: подписанный
+     предъявитель шага 4 и базовое удостоверение живы и по-прежнему уровня «1»;
+     сессия «1» — вход тем же паролем без кода (вход одним паролем при заведённом
+     факторе проходит уровнем «1», сценарий 21). Вердикт края зависит от
+     предъявленного УРОВНЯ, а не от того, заведён ли фактор (Р3 редакции 2).
 
 ЧТО ПИШЕТСЯ — ключи `MINTED_KEYS` в окружение набора края (`gateway/tests/newman`).
 Сценарии 24 и 25 читают их и только их.
@@ -93,6 +97,7 @@ WHO_AM_I = "/iam/v1/me"
 SECOND_FACTOR_FORM = "second-factor"
 SF_ENROLL = "/iam/v1/auth/second-factor/enroll"
 SF_CONFIRM = "/iam/v1/auth/second-factor/confirm"
+LOGIN = "/iam/v1/auth/login"
 REDIRECT = "https://api.kacho.local/auth/callback"
 SECRET_METHOD = "client_secret_basic"
 TOTP_STEP_S = 30
@@ -338,7 +343,18 @@ def level2_session(lane, session: str, clock=time.time) -> str:
     return raised
 
 
-def seed(stand: Stand, lane, enroll_human, suffix: str, clock=time.time, sleep=time.sleep) -> dict:
+def password_login(lane, email: str, password: str) -> str:
+    """Вход паролем без кода: носитель сессии из `Set-Cookie`."""
+    token, ctx = vh.form_token(lane, "login")
+    code, sc, text = lane.ask("POST", LOGIN, body={"email": email, "password": password, "csrfToken": token},
+                              cookies={vh.FORM_COOKIE: ctx})
+    session = vh.cookie_value(sc, vh.SESSION_COOKIE)
+    if code != 200 or not session:
+        raise Finding(f"вход паролем: ждали 200 с носителем {vh.SESSION_COOKIE}, получили {code} {vh.message_of(text)}")
+    return session
+
+
+def seed(stand: Stand, lane, enroll_human, login, suffix: str, clock=time.time, sleep=time.sleep) -> dict:
     """Семь шагов; результат — значения `MINTED_KEYS`. Секреты в журнал не уезжают."""
     rid, cid, csec = create_client(stand, f"s3-gate-{suffix}")
     say("  ok   1 клиент церемонии заведён на внутреннем слушателе края (способ секретом)")
@@ -361,11 +377,13 @@ def seed(stand: Stand, lane, enroll_human, suffix: str, clock=time.time, sleep=t
         reaches(stand, "сессия браузера уровня «2»", h.user_id, session=session2)
         reaches(stand, "подписанный предъявитель уровня «2»", h.user_id, bearer=bearer2)
         say("  ok   6 второй фактор поднял сессию до «2»; оба носителя «2» доходят до принципала")
-        if session_level(stand, h.bearer, "сессия «1» после заведения фактора") != "1":
-            raise Finding("сессия, выданная до заведения фактора, после него — не уровня «1»")
-        reaches(stand, "сессия «1» после заведения фактора", h.user_id, session=h.bearer)
+        session1 = login()
+        if session_level(stand, session1, "вход паролем при заведённом факторе") != "1":
+            raise Finding("вход одним паролем при заведённом факторе — не уровня «1»")
+        reaches(stand, "сессия «1» после заведения фактора", h.user_id, session=session1)
         reaches(stand, "предъявитель «1» после заведения фактора", h.user_id, bearer=bearer1)
-        say("  ok   7 носители «1», выданные до фактора, живы и по-прежнему уровня «1»")
+        reaches(stand, "базовое удостоверение после заведения фактора", h.user_id, bearer=basic)
+        say("  ok   7 носители «1» после фактора: сессия входа паролем, предъявитель и базовое — уровня «1», живы")
     except BaseException:
         # Снятие и на падении: клиент — единственное, что посев заводит вне человека.
         rc = delete_client(stand, rid)
@@ -374,7 +392,7 @@ def seed(stand: Stand, lane, enroll_human, suffix: str, clock=time.time, sleep=t
     say("ГЕЙТ S3: классов носителей уровня «1» предъявлено 3 из 3, уровня «2» — 2 из 2; "
         "все доходят до одного принципала")
     return {"s3UserId": h.user_id, "s3Email": h.email, "s3AccountId": account,
-            "s3SessionL1": h.bearer, "s3BearerL1": bearer1, "s3Basic": basic, "s3BasicTampered": tamper(basic),
+            "s3SessionL1": session1, "s3BearerL1": bearer1, "s3Basic": basic, "s3BasicTampered": tamper(basic),
             "s3SessionL2": session2, "s3BearerL2": bearer2}
 
 
@@ -442,13 +460,17 @@ class _World:
                 level = "1"
             return 200, {}, json.dumps({"access_token": _fake_jwt({"acr": level, "sub": self.USER})})
         if path == WHO_AM_I:
+            # Не снисходительнее края: снятый носитель сессии (подтверждение фактора
+            # меняет его отпечаток) не доходит до принципала.
+            if headers.get("Cookie") and cookie not in self.sessions:
+                return 401, {}, json.dumps({"code": 16, "message": "session is not live"})
             user = self.USER
             if self.breaks == "basic-other-user" and auth.startswith("Bearer kacho_uoc1"):
                 user = "usr-other"
             return 200, {}, json.dumps({"subject": "user:" + user, "userId": user})
         if path == vh.ME:
             level = self.sessions.get(cookie, "")
-            if self.breaks == "l1-raised" and cookie == "sess-1" and "sess-2" in self.sessions:
+            if self.breaks == "l1-raised" and cookie == "sess-p":
                 level = "2"
             return 200, {}, json.dumps({"session": {"assuranceLevel": level}})
         return 404, {}, "{}"
@@ -461,8 +483,14 @@ class _World:
         if path == SF_ENROLL:
             return 200, [], json.dumps({"secret": "JBSWY3DPEHPK3PXP"})
         if path == SF_CONFIRM:
+            self.sessions.pop("sess-1", None)
             self.sessions["sess-2"] = "2"
             return 200, [f"{vh.SESSION_COOKIE}=sess-2; Path=/"], json.dumps({"session": {"assuranceLevel": "2"}})
+        if path == LOGIN:
+            if self.breaks == "login-401":
+                return 401, [], json.dumps({"code": 16, "message": "invalid credentials"})
+            self.sessions["sess-p"] = "1"
+            return 200, [f"{vh.SESSION_COOKIE}=sess-p; Path=/"], json.dumps({"user": {"id": self.USER}})
         if path.startswith(vh.ACCOUNTS):
             return 200, [], json.dumps({"accounts": [{"id": "acc-1", "ownerUserId": self.USER}]})
         if path.startswith(vh.PROJECTS):
@@ -477,7 +505,8 @@ class _World:
 def _outcome(world: _World) -> tuple[str, dict]:
     stand = Stand("http://edge", "https://edge-internal", "boot", http=world.http)
     try:
-        return "ok", seed(stand, world, world.human, "st", clock=lambda: 0, sleep=lambda s: None)
+        return "ok", seed(stand, world, world.human, lambda: password_login(world, "s3@example.test", "pw"),
+                          "st", clock=lambda: 0, sleep=lambda s: None)
     except Finding as e:
         return f"finding: {e}", {}
     except Unmet as e:
@@ -506,7 +535,7 @@ def self_test() -> int:
     c("законный мир: уровни токенов по составу — «1» и «2»",
       token_claims(vals.get("s3BearerL1", "a.e30.c"))["acr"] == "1"
       and token_claims(vals.get("s3BearerL2", "a.e30.c"))["acr"] == "2", "")
-    for breaks, want in (("authorize-200", "finding"), ("token-acr-1", "finding"),
+    for breaks, want in (("authorize-200", "finding"), ("token-acr-1", "finding"), ("login-401", "finding"),
                          ("basic-other-user", "finding"), ("l1-raised", "finding"),
                          ("client-op-error", "finding"), ("internal-down", "unmet")):
         w = _World(breaks)
