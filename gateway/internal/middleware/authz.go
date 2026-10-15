@@ -170,6 +170,10 @@ type AuthzMiddleware struct {
 	allow   map[string]struct{}
 	metrics *AuthzMetrics
 	now     func() time.Time
+	// unrelayedReport — окно доклада об отказе пути полосы входа вне перечня
+	// ретрансляции (kacho#3178): путь выбирает вызывающий, и строка на каждый
+	// такой запрос отдала бы ему объём журнала края.
+	unrelayedReport *introspectionFailureReporter
 }
 
 // NewAuthzMiddleware constructs the middleware from cfg. Returns an error
@@ -236,11 +240,12 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	}
 
 	return &AuthzMiddleware{
-		cfg:     cfg,
-		cache:   newDecisionCache(cfg.CacheMaxEntries, cfg.CacheTTL, cfg.Now),
-		allow:   allow,
-		metrics: metrics,
-		now:     cfg.Now,
+		cfg:             cfg,
+		cache:           newDecisionCache(cfg.CacheMaxEntries, cfg.CacheTTL, cfg.Now),
+		allow:           allow,
+		metrics:         metrics,
+		now:             cfg.Now,
+		unrelayedReport: newIntrospectionFailureReporter(0, cfg.Now),
 	}, nil
 }
 
@@ -495,6 +500,21 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Путь полосы входа вне перечня ретрансляции (kacho#3178) — названный
+		// отказ края ДО каталога: одинаковый для анонимного и
+		// аутентифицированного и для любого такого пути. Без этой ветки ответ
+		// зависел бы от состояния аутентификации (промах каталога) и не
+		// называл бы причины.
+		if IsUnrelayedLoginLanePath(r.URL.Path) {
+			if report, total, represents := m.unrelayedReport.observe(); report {
+				m.cfg.Logger.Info("login lane: path is not in the relay declaration; refusing",
+					"path", r.URL.Path,
+					"login_lane_unrelayed_total", total,
+					"occurrences_since_last_report", represents)
+			}
+			writeLoginLaneUnrelayed(w)
+			return
+		}
 		// The DPoP middleware already short-circuits health/auth-flow URLs. We
 		// still guard here for completeness when this middleware is mounted
 		// without it (dev mode).
@@ -774,7 +794,7 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 // SECURITY — be exact about what this phase is: it admits the request WITHOUT
 // EXTRACTING A PRINCIPAL. What it checks is the connection's listener mark; the
 // listener itself is mutual-TLS only (kacho#3131, cmd/api-gateway/edge_listener.go
-// serveInternalREST): a client leaf of the installation CA whose URI-SAN is in
+// serveInternalREST): a client leaf of the operator anchor (kacho#3189) whose URI-SAN is in
 // KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the TRANSPORT,
 // not a principal: any RPC routed through this phase is callable by every holder
 // of a leaf in that circle without any relation being checked.
@@ -872,20 +892,16 @@ func (m *AuthzMiddleware) phaseCatalog(ctx context.Context, dr decisionRequest) 
 		}, true
 	}
 	if !found {
-		// Production policy: deny when catalog has no entry — every RPC must
-		// be classified. Dev / staging may surface this differently via the
-		// overrides file (explicit allow).
+		// Боевая политика: записи в каталоге нет — отказ, каждый RPC обязан
+		// быть классифицирован; файл послаблений проход не расширяет.
 		//
-		// Classify the denial reason based on authentication status
-		// so the caller (and observability) can distinguish:
-		//   - authenticated caller hitting an uncatalogued method →
-		//     PermissionDenied ("catalog: no entry for method") — 403
-		//   - unauthenticated caller hitting an uncatalogued method →
-		//     PermissionDenied ("catalog: no entry for method; unauthenticated")
-		// Both are code 7 (PermissionDenied) — we never reveal internal
-		// resource existence to unauthenticated callers, and we don't upgrade
-		// to Unauthenticated (16) for uncatalogued methods because the method
-		// itself is unknown/denied regardless of auth state.
+		// Отказ прав AUTHZ_DENIED при любом состоянии аутентификации (норма
+		// hard-catalog-complete: «отсутствие ⇒ AUTHZ_DENIED»): PermissionDenied(7)
+		// / 403. Причина в журнале различает аутентифицированного («catalog: no
+		// entry for method») и анонимного («…; unauthenticated»); наружу ни
+		// существование метода, ни его отсутствие не называются, и на
+		// Unauthenticated(16) промах не повышается — метода нет при любом
+		// состоянии аутентификации.
 		missVerified, _ := verifiedTokenFromCtxOrHTTP(ctx, dr.HTTPReq)
 		_, isAuthed := m.cfg.Subjects.Extract(missVerified)
 		missReason := "catalog: no entry for method"
@@ -1205,6 +1221,34 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 				invalidArgMessage: invalidResourceIDMessage(resourceID.String()),
 			}, true
 		}
+	}
+	// 5c. Пустое поле скоупа (kacho#3177). Запись каталога называет
+	// конкретное поле запроса, а запрос несёт его пустым либо не несёт вовсе:
+	// извлечение отдаёт тогда подстановочный знак (resource_extractor.go), и
+	// прежде он уходил в Check как `<тип>:*` и возвращался нехваткой права.
+	// Объект скоупа «любой» в Check не уходит — отказ формы запроса,
+	// InvalidArgument с текстом «<поле>: required» (норма api-resourceid-empty;
+	// тот же текст, что у required-check служб), и до Check. Пустоту
+	// спрашивают у самого запроса (ScopeFieldEmpty), а не выводят из
+	// подстановочного знака: его же извлечение отдаёт и там, где поля спросить
+	// нечем.
+	if isConcreteResourceScope(entry) && (resourceID.String() == "" || resourceID.IsWildcard()) &&
+		m.cfg.Resources.ScopeFieldEmpty(dr.HTTPReq, dr.ProtoReq, dr.FQN, entry) {
+		field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
+		m.metrics.RecordDeny()
+		m.cfg.Logger.Info("authz scope field is empty — refusing",
+			"fqn", dr.FQN,
+			"subject", subj.FGA,
+			"action", entry.Permission,
+			"field", field,
+		)
+		return resourceID, resourceType, descriptor, decision{
+			outcome:           outcomeInvalidArgument,
+			reasons:           []string{"request scope field is empty"},
+			descriptor:        descriptor,
+			entry:             entry,
+			invalidArgMessage: requiredScopeFieldMessage(field),
+		}, true
 	}
 	return resourceID, resourceType, descriptor, decision{}, false
 }

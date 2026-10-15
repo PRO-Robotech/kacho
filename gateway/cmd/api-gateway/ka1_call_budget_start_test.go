@@ -112,6 +112,8 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 	// Якорь звеньев фронта (kacho#3028, круг 5) — ОТДЕЛЬНЫЙ удостоверяющий
 	// центр: совпадение с якорем установки — отказ старта.
 	_, _, linkCA := ka1Material(t)
+	// Якорь оператора внутреннего слушателя (kacho#3189) — тоже отдельный центр.
+	_, _, operatorCA := ka1Material(t)
 	listen = ka1FreeAddr(t)
 	appEnv, authz := "dev", "false"
 	if mode != "dev" {
@@ -129,6 +131,7 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE":         cert,
 		"KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE":          key,
 		"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS":           "spiffe://kacho.test/ns/kacho/sa/kacho-internal-rest-operator",
+		"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE":        operatorCA,
 		"KACHO_API_GATEWAY_METRICS_ADDR":                        ka1FreeAddr(t),
 		"KACHO_API_GATEWAY_IDENTITY_PROVIDER":                   "own",
 		"KACHO_API_GATEWAY_TOKEN_AUDIENCE":                      "https://api.kacho.test",

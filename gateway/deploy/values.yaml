@@ -19,9 +19,11 @@ tlsPort: 8443
 # Транспорт — mTLS и только он (kacho#3131): слушатель объявляется лишь при
 # mtls.enable (там есть УЦ установки), предъявляет свой серверный лист
 # (internalRest.serverSecretName, templates/internal-rest-certificate.yaml),
-# требует клиентский лист УЦ установки с URI-именем из круга — операторская
-# личность (internalRest.operatorSaName; лист выпускает умбрелла,
-# templates/internal-rest-operator-certificate.yaml) плюс extraClientSANs. Без
+# требует клиентский лист ЯКОРЯ ОПЕРАТОРА (kacho#3189, internalRest.operatorAnchor:
+# отдельный центр, выпускающий только в пространстве релиза) с URI-именем из
+# круга — операторская личность (internalRest.operatorSaName; лист и якорь
+# выпускает умбрелла, templates/internal-rest-operator-certificate.yaml) плюс
+# extraClientSANs. Без
 # материала край не стартует (validateProductionInternalListener) на любой
 # метке KACHO_APP_ENV. mTLS — аутентификация транспорта; проверка прав на
 # слушателе прежняя.
@@ -31,6 +33,13 @@ internalRest:
   mountPath: /etc/api-gateway/internal-rest
   # Имя операторской личности в круге: spiffe://<trustDomain>/ns/<ns>/sa/<имя>.
   operatorSaName: kacho-internal-rest-operator
+  # Якорь оператора (kacho#3189): секрет удостоверяющего центра, выпускающего
+  # листы круга; край монтирует из него только ca.crt
+  # (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE). Совпадение с якорем
+  # установки либо звеньев — отказ старта.
+  operatorAnchor:
+    secretName: kacho-internal-rest-operator-ca
+    mountPath: /etc/api-gateway/internal-rest-operator-ca
   # Дополнительные URI-имена круга (spiffe://…). Пусто — в круге только оператор.
   extraClientSANs: []
   # Имена проброса на серверном листе — IP 127.0.0.1 и `localhost` — для
