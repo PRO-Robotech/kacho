@@ -3,7 +3,7 @@
 
 //go:build helmcharts
 
-// identity_mail_lane_judged_like_kaname_chart_render_test.go — почтовая полоса
+// mail_lane_judged_like_kaname_chart_render_test.go — почтовая полоса
 // службы доступа судится в зонте по тем же правилам, что в отдельном чарте
 // службы (kacho#3179).
 //
