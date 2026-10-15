@@ -110,7 +110,9 @@ func (h *SessionIdentityHandler) WithAdminChecker(a AdminChecker) *SessionIdenti
 
 // Register крепит handler на http.ServeMux. Должен вызываться ДО общего `/`.
 func (h *SessionIdentityHandler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(SessionIdentityPath, h.Me)
+	// Литерал, а не SessionIdentityPath: проба консоли api-path-surface.test.ts
+	// читает маршруты края по литералу в HandleFunc; константу читают прочие.
+	mux.HandleFunc("/iam/v1/auth/me", h.Me)
 }
 
 // Me — UI hook /me. Возвращает либо `{"user":null}` если не залогинен,
