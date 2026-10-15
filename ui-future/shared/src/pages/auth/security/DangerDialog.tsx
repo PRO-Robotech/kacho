@@ -63,7 +63,14 @@ export function DangerDialog({
       afterOpenChange={(isOpen) => {
         if (isOpen) cancelRef.current?.focus();
       }}
-      modalRender={(node) => <div onKeyDown={keepTabInside}>{node}</div>}
+      // Обёртка — не элемент управления: она лишь принимает всплывающие из окна
+      // нажатия Tab (роль `dialog` уже несёт окно antd внутри). Роль
+      // `presentation` говорит это вспомогательным технологиям и линту.
+      modalRender={(node) => (
+        <div role="presentation" onKeyDown={keepTabInside}>
+          {node}
+        </div>
+      )}
       footer={[
         <Button key="cancel" ref={cancelRef} onClick={onCancel} disabled={busy}>
           Отмена
