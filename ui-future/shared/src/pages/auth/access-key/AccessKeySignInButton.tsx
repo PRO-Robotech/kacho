@@ -25,7 +25,7 @@ export function AccessKeySignInButton({ signIn, blocked }: { signIn: AccessKeySi
       {failure && (
         <div style={{ marginBottom: 16 }}>
           {failure.kind === "service" ? (
-            <LaneRefusalAlert refusal={failure.refusal} />
+            <LaneRefusalAlert refusal={failure.refusal} context="access-key" />
           ) : (
             <Alert type="error" showIcon message={ACCESS_KEY_BROWSER_REFUSED} />
           )}

@@ -3,7 +3,7 @@
 
 import { expect, type Browser, type Page } from "@playwright/test";
 import { raiseAssurance } from "./assurance";
-import { apiCalls, register, tenantWithProject, test } from "./fixtures";
+import { apiCalls, register, runTag, tenantWithProject, test } from "./fixtures";
 
 /**
  * Страница пользователей: что на ней можно СДЕЛАТЬ и что на ней НАПИСАНО.
@@ -618,7 +618,7 @@ test("iam: карточка сотрудника называет членств
 
   // ПРЕДМЕТ, часть 3 — состояние названо СЛЕДСТВИЕМ.
   await expect(
-    membership.getByText(/Состоит в аккаунте|Приглашён, ещё не входил/).first(),
+    membership.getByText(/Состоит в аккаунте|Приглашён, адрес почты не подтверждён/).first(),
     "состояние членства не названо словами предмета: «Да» не сообщает ни что " +
       "человек состоит, ни что он приглашён",
   ).toBeVisible({ timeout: 60_000 });
@@ -989,4 +989,38 @@ test("iam: исключение из аккаунта предлагается �
   // Уходим не подтвердив — см. «чего эта проба намеренно не делает» выше.
   await dialog.getByRole("button", { name: "Отмена" }).first().click();
   await expect(dialog, "окно подтверждения не закрылось по отказу").toBeHidden({ timeout: 15_000 });
+});
+
+test("iam: членство PENDING названо тем состоянием, которое держит служба, — адрес не подтверждён", async ({ page }) => {
+  // verifies #3208 — PENDING держится до подтверждения адреса; «ещё не входил» служба не знает.
+  test.setTimeout(240_000);
+  // Распорядитель заводится `register`, как приглашающий `secondAccountMembership`:
+  // разбор арендатора поднимает уровень сам и на заведённом втором факторе
+  // отказывает (SECOND_FACTOR_ALREADY_ENROLLED); пространство стенда проб
+  // снимается целиком.
+  await register(page);
+  const account = await onlyAccount(page);
+  const invitee = `e2e-w8b-pending-${runTag()}@kacho.local`;
+
+  await raiseAssurance(page);
+  const invited = await page.request.post("/iam/v1/users:invite", { data: { accountId: account.id, email: invitee } });
+  expect(invited.status(), `приглашение не прошло: ${await invited.text()}`).toBe(200);
+
+  await page.goto("/iam/users", { waitUntil: "domcontentloaded" });
+  await chooseAccountScope(page, account.label);
+  const row = rowOf(page, invitee);
+  await expect(row, `строки приглашённого (${invitee}) нет — условие пробы не создано`).toBeVisible({
+    timeout: 90_000,
+  });
+  await row.getByRole("link").first().click();
+
+  const membership = page
+    .locator("section")
+    .filter({ has: page.getByText("Членство в аккаунте", { exact: true }) })
+    .last();
+  await expect(
+    membership.getByText("Приглашён, адрес почты не подтверждён", { exact: true }),
+    "членство PENDING названо не тем состоянием, которое держит служба",
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(membership.getByText(/не входил/), "подпись утверждает факт входа, которого служба не держит").toHaveCount(0);
 });

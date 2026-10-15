@@ -216,6 +216,10 @@ describe("предъявление кода (Р9)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("invite is no longer valid; ask an account administrator to invite again");
     expect(alert).not.toHaveTextContent(CHECK_CODE);
+    // #3185: рядом с текстом службы — исполнимый шаг к распорядителю аккаунта.
+    expect(screen.getByTestId("refusal-next-step")).toHaveTextContent(
+      "Приглашение истекло или снято. Попросите владельца либо администратора аккаунта пригласить вас ещё раз",
+    );
     expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(1);
     expect(lane.of("POST", CONFIRM)).toHaveLength(1);
     await waitFor(() => expect(confirmButton()).toBeEnabled());
@@ -236,6 +240,7 @@ describe("предъявление кода (Р9)", () => {
     await heading();
     fireEvent.click(confirmButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("something new");
+    expect(screen.queryByTestId("refusal-next-step")).toBeNull();
     expect(lane.of("POST", CONFIRM)).toHaveLength(1);
     expect(leave).not.toHaveBeenCalled();
   });

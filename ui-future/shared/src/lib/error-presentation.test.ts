@@ -295,6 +295,35 @@ describe("полоса отказа читается по признаку, а �
     expect(p.devDetail).toContain("доступ к iam.limits.list закрыт");
   });
 
+  it("#3209 · AUTHZ_DENIED называет того, кто выдаёт право ЗДЕСЬ: в проекте — его владельца и администраторов", () => {
+    const denied = () =>
+      presentError(
+        new ApiError(403, 7, refusalDetails("AUTHZ_DENIED", "kaname.cloud.iam.v1", {
+          action: "vpc.networks.create",
+          resource: "project:prj-1",
+        }), "permission denied"),
+      ).subTitle ?? "";
+    const at = (path: string) => window.history.pushState(null, "", path);
+    try {
+      at("/projects/prj-1/vpc/networks");
+      const inProject = denied();
+      expect(inProject).toContain("владелец или администратор проекта");
+      expect(inProject).not.toContain("администраторам платформы");
+
+      // Раздел платформы — прежний текст: там он верен.
+      at("/system/regions");
+      expect(denied()).toContain("администраторам платформы");
+
+      // Вне проекта и вне раздела платформы — общий шаг, верный для любого места.
+      at("/iam/users");
+      const elsewhere = denied();
+      expect(elsewhere).not.toContain("администраторам платформы");
+      expect(elsewhere).toContain("привязкой роли");
+    } finally {
+      at("/");
+    }
+  });
+
   it("403 БЕЗ признака и с осмысленным текстом показывается дословно — контроль", () => {
     // Парный положительный: без него утверждение выше зеленело бы и на подмене
     // ЛЮБОГО отказа общей фразой, то есть на потере настоящей причины.
