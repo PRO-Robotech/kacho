@@ -66,10 +66,15 @@ type SessionIdentityHandler struct {
 	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). nil → маршрут
 	// отвечает анонимом и не ищет другого носителя.
 	humanSession HumanSessionReader
+	// cutoffMisaddressed — окно доклада о неверном адресе службы отзыва на /me
+	// (kacho#3191): консоль спрашивает /me на каждой странице, и строка на
+	// каждый запрос утопила бы первый доклад; форма та же, что у
+	// sessionCutoffMisaddressed пути запроса.
+	cutoffMisaddressed *introspectionFailureReporter
 }
 
 func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
-	return &SessionIdentityHandler{logger: logger}
+	return &SessionIdentityHandler{logger: logger, cutoffMisaddressed: newIntrospectionFailureReporter(0, nil)}
 }
 
 // WithSessionCutoff — подключает читателя НАШЕЙ отсечки отзыва.
@@ -221,8 +226,13 @@ func (h *SessionIdentityHandler) sessionRevoked(
 		// Неверная настройка адреса (kacho#3191) — ПЕРВОЙ, до окна раската,
 		// чей признак адаптер ставит ей тоже: исход закрытый, как на пути
 		// запроса (auth_session_cutoff.go), — полосы одного механизма.
-		h.logger.Error("/me: session revocation check misaddressed; answering anonymous",
-			"err", err.Error(), "predicate", MisaddressedListenerPredicate)
+		if report, total, represents := h.cutoffMisaddressed.observe(); report {
+			h.logger.Error("/me: session revocation check misaddressed; answering anonymous",
+				"err", err.Error(),
+				"me_session_cutoff_misaddressed_total", total,
+				"occurrences_since_last_report", represents,
+				"predicate", MisaddressedListenerPredicate)
+		}
 		return true
 	}
 	if errors.Is(err, ErrSessionCutoffUnsupported) {

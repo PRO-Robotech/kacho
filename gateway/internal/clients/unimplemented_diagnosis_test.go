@@ -4,6 +4,7 @@
 package clients_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -185,5 +186,30 @@ func TestMisaddressedCutoffAnswersMeAnonymous(t *testing.T) {
 	}
 	if got := me(false); strings.Contains(got, "usr-00000000000002741") {
 		t.Fatalf("неверная настройка адреса службы доступа: /me назвал личность мягким проходом: %q", got)
+	}
+}
+
+// /me при неверном адресе докладывает окном (sessionCutoffMisaddressed пути
+// запроса — та же форма): консоль спрашивает /me на каждой странице, и строка
+// Error на каждый запрос утопила бы первый доклад. Первый — всегда.
+func TestMisaddressedCutoffOnMeIsReportedOncePerWindow(t *testing.T) {
+	ad := adapterTo(t, func(s *grpc.Server) {
+		iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})
+	})
+	var buf bytes.Buffer
+	mux := http.NewServeMux()
+	middleware.NewSessionIdentityHandler(slog.New(slog.NewTextHandler(&buf, nil))).
+		WithHumanSession(ad).WithSessionCutoff(ad).Register(mux)
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
+		req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s-2741",
+			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		mux.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	if got := strings.Count(buf.String(), "/me: session revocation check misaddressed"); got != 1 {
+		t.Fatalf("строк доклада на 5 запросов /me в одном окне: %d\n%s", got, buf.String())
+	}
+	if !strings.Contains(buf.String(), "me_session_cutoff_misaddressed_total=1") {
+		t.Errorf("первый доклад не называет итог:\n%s", buf.String())
 	}
 }
