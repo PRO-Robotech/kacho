@@ -3,6 +3,7 @@
 
 import { expect, type Page } from "@playwright/test";
 import { authenticatorWithKey, pageAuthenticator, presentAccessKey } from "./access-key-seed";
+import { noteSubstituted } from "./ceremony-budget";
 import { LANE, codeOutsideWindow, totpCode } from "./ceremony-seed";
 import { ceremonyCensus, test } from "./fixtures";
 import { SESSION_NOT_FRESH, fulfillWith, laneTooManyAttempts } from "./producer-answers";
@@ -334,14 +335,18 @@ test("F8-S7-31 · ключ отвергнут службой: тот же тек
     page.context(),
     async (h) => {
       await authenticatorWithKey(page, h.key!);
+      // Ответ сочинён пробой целиком: службы он не касается и ось источника не
+      // тратит (`noteSubstituted`) — в счёт оси идёт только настоящий отказ.
       await page.route(
         LANE.stepUp,
-        (route) =>
-          route.fulfill({
+        (route) => {
+          noteSubstituted(route.request());
+          return route.fulfill({
             status: 401,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code: 16, message: "authentication failed", details: [] }),
-          }),
+          });
+        },
         { times: 1 },
       );
       const census = ceremonyCensus(page.context());
