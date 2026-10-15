@@ -170,6 +170,10 @@ type AuthzMiddleware struct {
 	allow   map[string]struct{}
 	metrics *AuthzMetrics
 	now     func() time.Time
+	// unrelayedReport — окно доклада об отказе пути полосы входа вне перечня
+	// ретрансляции (kacho#3178): путь выбирает вызывающий, и строка на каждый
+	// такой запрос отдала бы ему объём журнала края.
+	unrelayedReport *introspectionFailureReporter
 }
 
 // NewAuthzMiddleware constructs the middleware from cfg. Returns an error
@@ -236,11 +240,12 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	}
 
 	return &AuthzMiddleware{
-		cfg:     cfg,
-		cache:   newDecisionCache(cfg.CacheMaxEntries, cfg.CacheTTL, cfg.Now),
-		allow:   allow,
-		metrics: metrics,
-		now:     cfg.Now,
+		cfg:             cfg,
+		cache:           newDecisionCache(cfg.CacheMaxEntries, cfg.CacheTTL, cfg.Now),
+		allow:           allow,
+		metrics:         metrics,
+		now:             cfg.Now,
+		unrelayedReport: newIntrospectionFailureReporter(0, cfg.Now),
 	}, nil
 }
 
@@ -501,8 +506,12 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		// зависел бы от состояния аутентификации (промах каталога) и не
 		// называл бы причины.
 		if IsUnrelayedLoginLanePath(r.URL.Path) {
-			m.cfg.Logger.Info("login lane: path is not in the relay declaration; refusing",
-				"path", r.URL.Path)
+			if report, total, represents := m.unrelayedReport.observe(); report {
+				m.cfg.Logger.Info("login lane: path is not in the relay declaration; refusing",
+					"path", r.URL.Path,
+					"login_lane_unrelayed_total", total,
+					"occurrences_since_last_report", represents)
+			}
 			writeLoginLaneUnrelayed(w)
 			return
 		}
