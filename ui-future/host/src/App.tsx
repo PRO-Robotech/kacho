@@ -18,7 +18,7 @@ import {
   type CeremonyServing,
 } from "@shared/pages/auth/ceremony-addresses";
 import { HostShell } from "./components";
-import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
+import { ModulePlaceholderPage, NotFoundPage, ReachabilityPage } from "./pages";
 import {
   ComputeRemote,
   DashboardRemote,
@@ -184,7 +184,7 @@ const ShellRoutes: FC<{
           <Route path="/system/*" element={<SystemRemote context={context} />} />
           <Route path={ACCOUNT_SETTINGS_ADDRESS} element={<AccountSettingsPage />} />
           <Route path="/dev/reachability" element={<ReachabilityPage />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       )}
     </HostShell>

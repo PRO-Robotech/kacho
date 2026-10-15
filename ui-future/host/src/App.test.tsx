@@ -213,8 +213,19 @@ describe("App", () => {
     expect(literals).toEqual([]);
   });
 
-  it("радиус правки: адрес вне шести церемоний по-прежнему уходит на панель", async () => {
+  it("#3199 · неизвестный адрес — страница «не найдено» в каркасе, адрес в строке не подменён", async () => {
     window.history.pushState(null, "", "/error");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Страница не найдена" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/error");
+    expect(screen.queryByRole("heading", { name: "Сервисы облака" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Перейти к сервисам облака" })).toHaveAttribute("href", "/dashboard");
+  });
+
+  it("#3199 · близнец: корень консоли по-прежнему ведёт на панель", async () => {
+    window.history.pushState(null, "", "/");
 
     render(<App />);
 
