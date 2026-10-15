@@ -639,7 +639,7 @@ def _request_filter(doc: dict) -> dict:
 
 def _request_workflows_independently(workflows: dict[str, object]) -> int:
     """Процессов на запросе, посчитанных мимо `declare`: `on` называет
-    `pull_request`. Фильтр ветки в дереве у всех один — {main, [0-9]+}, его
+    `pull_request`. Фильтр ветки в дереве у всех один — {main, [0-9]+, [0-9]+-*}, его
     держит `assert-review-trigger-scope.py`, ось 1."""
     n = 0
     for doc in workflows.values():
