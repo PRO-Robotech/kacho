@@ -225,10 +225,23 @@ const tenantsOfTest = new Map<string, TenantRecord[]>();
  * дописывает тот, кто его прочитал.
  */
 export function removedAfterTest(email: string): TenantRecord {
-  const record: TenantRecord = { email, projectId: "", resources: [] };
+  const record: TenantRecord = { email, projectId: "", resources: [], backupCodes: [] };
   const id = currentTestId();
   tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
   return record;
+}
+
+/**
+ * Второй фактор арендатора `email` заведён самой пробой (`raiseAssurance`):
+ * разбор поднимает уровень его запасным кодом, а не заводит фактор второй раз
+ * (kacho#3247). Человек, не записанный к снятию в этой пробе, — без записи:
+ * снимать его некому, и коды держать незачем.
+ */
+export function factorEnrolledByTest(email: string, backupCodes: readonly string[]): void {
+  const key = email.toLowerCase();
+  for (const tenant of tenantsOfTest.get(currentTestId()) ?? []) {
+    if (tenant.email.toLowerCase() === key) tenant.backupCodes = [...backupCodes];
+  }
 }
 
 /**
