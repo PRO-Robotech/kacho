@@ -87,10 +87,11 @@ spec:
               value: ":{{ .Values.port }}"
             # Dedicated cluster-internal admin REST listener — the ONLY listener
             # that serves Internal* REST (ban #6). NEVER targeted by the ingress.
-            # Empty → the internal REST listener is disabled. Transport — mTLS
-            # only (kacho#3131): own server leaf, client leaf required, chain to
-            # the installation CA (KACHO_API_GATEWAY_MTLS_CA_FILE), URI-SAN in
-            # the client circle. Without mtls.enable the listener is not declared.
+            # Пусто — внутренний REST-слушатель выключен. Транспорт — только mTLS
+            # (kacho#3131): свой серверный лист, клиентский лист обязателен,
+            # цепочка — к якорю оператора (kacho#3189, отдельный центр умбреллы,
+            # templates/internal-rest-operator-certificate.yaml), URI-имя — в
+            # круге. Без mtls.enable слушатель не объявляется.
             {{- if include "api-gateway.internalRestEnabled" . }}
             - name: KACHO_API_GATEWAY_INTERNAL_REST_ADDR
               value: ":{{ .Values.internalRestPort }}"
@@ -100,6 +101,8 @@ spec:
               value: {{ printf "%s/tls.key" .Values.internalRest.mountPath | quote }}
             - name: KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS
               value: {{ include "api-gateway.internalRestClientSANs" . | quote }}
+            - name: KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE
+              value: {{ printf "%s/ca.crt" (trimSuffix "/" .Values.internalRest.operatorAnchor.mountPath) | quote }}
             {{- else }}
             - name: KACHO_API_GATEWAY_INTERNAL_REST_ADDR
               value: ""
@@ -531,6 +534,10 @@ spec:
             - name: internal-rest-tls
               mountPath: {{ .Values.internalRest.mountPath | quote }}
               readOnly: true
+            # Якорь оператора (kacho#3189) — только ca.crt (ключа центра в поде нет).
+            - name: internal-rest-operator-ca
+              mountPath: {{ .Values.internalRest.operatorAnchor.mountPath | quote }}
+              readOnly: true
             {{- end }}
             {{- if .Values.clientAddress.trustedPeers }}
             # Якорь звеньев фронта — только ca.crt (ключа центра в поде края нет).
@@ -605,6 +612,12 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
+        - name: internal-rest-operator-ca
+          secret:
+            secretName: {{ required "api-gateway.internalRest.operatorAnchor.secretName обязателен: из него край читает якорь оператора" .Values.internalRest.operatorAnchor.secretName | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- end }}
         {{- if .Values.clientAddress.trustedPeers }}
         - name: front-link-ca

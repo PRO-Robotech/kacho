@@ -4,12 +4,19 @@
 # values.prod.yaml — Kachō umbrella PRODUCTION profile (fail-closed).
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# This is the documented production values profile. The chart DEFAULT
-# (values.yaml) and the dev/CI profile (values.dev.yaml) intentionally run
-# `mode: dev` (anonymous → full access) + `ssl-mode: disable` + mTLS toggles
-# that the dev stand flips on/off for black-box REST (api-gateway#71 /
-# deploy#80). A bare `helm install` of the umbrella therefore lands on the
-# insecure dev posture. PRODUCTION DEPLOYMENTS MUST pass this file explicitly:
+# This is the documented production values profile.
+#
+# Умолчание чарта: authMode=production
+#
+# Посадка умолчания — боевая у КАЖДОГО подчарта, у которого есть ручка
+# `authMode` (край, kaname и службы); dev-посадки умолчание не несёт (kacho#3180,
+# проба prod_header_default_posture_test.go сверяет строку выше со всеми
+# подчартами). Но умолчание — не рабочий профиль: голый `helm install` зонта
+# отказывает уже в рендере (нет удостоверений хранилища образов и ручек, у
+# которых умолчания нет), а mTLS и ssl-mode в умолчании не включены, и боевые
+# стражи служб отказали бы в старте. Профиль dev/CI (values.dev.yaml) понижает
+# посадку части служб до `authMode: dev` — это его объявление, а не умолчание.
+# PRODUCTION DEPLOYMENTS MUST pass this file explicitly:
 #
 #   make -C deploy stack-up STACK=prod
 #
@@ -30,7 +37,7 @@
 # security posture (auth mode, DB ssl-mode, mTLS), reusing the EXISTING SEC-F
 # cert-manager internal-CA wiring (no new PKI is introduced here).
 #
-# ─── What this profile flips (vs the dev/insecure default) ──────────────────
+# ─── What this profile sets on top of the default ──────────────────────────
 #   1. AuthN mode → production / production-strict on every service that has a
 #      mode knob (api-gateway, kaname, kacho-vpc, kacho-nlb, kacho-geo,
 #      kacho-storage, kacho-registry). kacho-compute has no `mode` knob: it is a
@@ -851,7 +858,11 @@ kaname:
         enabled: true
         issuer: "https://kaname.kacho.local"
         algorithm: ES256
-        allowedAlgorithms: "ES256,RS256"
+        # Ровно алгоритм чеканки: второго производителя под нашим издателем нет
+        # (прежний издатель снят), лишний элемент расширяет принимаемое (kacho#3181).
+        allowedAlgorithms: "ES256"
+        # Срок ключа подписи объявляет профиль: у подчарта умолчания нет (kacho#3181).
+        keyLifetime: 2160h
         keySetPath: /.well-known/kaname/jwks.json
       # ТОКЕН-ЭНДПОИНТ ПЛАТФОРМЫ (F2, задача #898)
       #

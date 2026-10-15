@@ -5,8 +5,8 @@
 # internal-rest-client.sh — клиентский материал ВНУТРЕННЕГО REST-слушателя края
 # (Internal* REST, Service-порт `internal-rest`, kacho#3131).
 #
-# Слушатель — mTLS и только он: клиентский лист обязателен, цепочка — к УЦ
-# установки, URI-имя листа — в круге края (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS).
+# Слушатель — mTLS и только он: клиентский лист обязателен, цепочка — к якорю
+# оператора (kacho#3189), URI-имя листа — в круге края (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS).
 # Лист этого круга — операторская личность `kacho-internal-rest-operator`;
 # его выпускает умбрелла (templates/internal-rest-operator-certificate.yaml) в
 # секрет ниже, и никакой под его не монтирует — инструменты оператора берут
@@ -17,7 +17,11 @@
 # оболочка (curl), и python (tests/authz-fixtures/verified_human.py
 # internal_rest_tls_context):
 #
-#   INTERNAL_REST_CA    — УЦ установки (проверка серверного листа слушателя);
+#   INTERNAL_REST_CA    — УЦ установки (проверка серверного листа слушателя):
+#                         ca.crt СЕРВЕРНОГО секрета слушателя, а не секрета
+#                         оператора — лист оператора выпускает отдельный якорь
+#                         оператора (kacho#3189), и ca.crt его секрета серверный
+#                         лист не проверяет;
 #   INTERNAL_REST_CERT  — лист оператора;
 #   INTERNAL_REST_KEY   — его ключ.
 #
@@ -35,20 +39,27 @@
 # не ослабляется: УЦ и сверка имени — прежние.
 
 INTERNAL_REST_OPERATOR_SECRET="${INTERNAL_REST_OPERATOR_SECRET:-kacho-internal-rest-operator-client-tls}"
+# Серверный секрет слушателя (api-gateway.internalRest.serverSecretName): его
+# ca.crt — центр, выпустивший серверный лист, им клиент проверяет сервер.
+INTERNAL_REST_SERVER_SECRET="${INTERNAL_REST_SERVER_SECRET:-api-gateway-internal-rest-tls}"
 
-# internal_rest_client_leaf <namespace> <каталог> — пишет ca.crt, tls.crt,
-# tls.key из секрета оператора и экспортирует INTERNAL_REST_{CA,CERT,KEY}.
-# 0 — материал есть; 1 — секрета нет (слушатель недостижим, это не «пойти
-# открытым текстом»).
+# internal_rest_client_leaf <namespace> <каталог> — пишет tls.crt, tls.key из
+# секрета оператора и ca.crt из серверного секрета слушателя, экспортирует
+# INTERNAL_REST_{CA,CERT,KEY}. 0 — материал есть; 1 — секрета нет (слушатель
+# недостижим, это не «пойти открытым текстом»).
 internal_rest_client_leaf() {
   local ns="$1" dir="$2" k
   kubectl -n "$ns" get secret "$INTERNAL_REST_OPERATOR_SECRET" >/dev/null 2>&1 || return 1
+  kubectl -n "$ns" get secret "$INTERNAL_REST_SERVER_SECRET" >/dev/null 2>&1 || return 1
   mkdir -p "$dir"
-  for k in ca.crt tls.crt tls.key; do
+  for k in tls.crt tls.key; do
     kubectl -n "$ns" get secret "$INTERNAL_REST_OPERATOR_SECRET" \
       -o jsonpath="{.data.${k//./\\.}}" | base64 -d > "$dir/$k" || return 1
     [ -s "$dir/$k" ] || return 1
   done
+  kubectl -n "$ns" get secret "$INTERNAL_REST_SERVER_SECRET" \
+    -o jsonpath='{.data.ca\.crt}' | base64 -d > "$dir/ca.crt" || return 1
+  [ -s "$dir/ca.crt" ] || return 1
   chmod 600 "$dir"/ca.crt "$dir"/tls.crt "$dir"/tls.key
   export INTERNAL_REST_CA="$dir/ca.crt" INTERNAL_REST_CERT="$dir/tls.crt" INTERNAL_REST_KEY="$dir/tls.key"
   return 0
