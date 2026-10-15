@@ -70,7 +70,14 @@ set -uo pipefail
 # исполняемая суита без каталога — прогон, который нечем разобрать (это и
 # говорит .github/scripts/check-newman-suite-gates.py).
 SERVICES="${SERVICES:-vpc compute nlb storage registry geo api-gateway}"
-NS="${SETUP_NS:-kacho}"
+# Пространство имён стенда — из ОДНОГО места, того же, что у посева
+# (tests/authz-fixtures/stand-ns.sh, задача #2882): SETUP_NS либо KACHO_NAMESPACE,
+# заданные по-разному, — отказ до первого обращения к кластеру. Ответ уходит дальше
+# обеими переменными, и посев приходит к тому же пространству, что и пробросы.
+# shellcheck source=tests/authz-fixtures/stand-ns.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/authz-fixtures/stand-ns.sh"
+stand_ns_resolve || exit 1
+NS="$STAND_NS"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # The api-gateway's EXTERNAL TLS listener (:8443, advertised as api.kacho.local:443).

@@ -97,7 +97,18 @@ import jwt as pyjwt
 IAM_INTERNAL_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
 BOOTSTRAP_OPERATOR_SECRET = os.environ.get(
     "BOOTSTRAP_OPERATOR_SECRET", "kacho-bootstrap-operator-client-tls")
-BOOTSTRAP_OPERATOR_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
+# Пространство имён стенда — из ОДНОГО места (`stand_ns.py`, задача #2882): обе
+# переменные, SETUP_NS и KACHO_NAMESPACE, читаются там; расхождение — отказ здесь,
+# при импорте, то есть до первого обращения к кластеру.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stand_ns  # noqa: E402
+
+STAND_NS = stand_ns.resolve()
+
+# Файл матрицы, который читают расширения служб (prodseed_<svc>_ext.py). Умолчание —
+# общий /tmp/matrix.json, куда пишет prodseed_all.py; prodrun.sh передаёт свой кэш
+# этой переменной, чтобы расширение читало ту матрицу, что посеял ИМЕННО он.
+MATRIX_JSON = os.environ.get("MATRIX_JSON", "/tmp/matrix.json")
 _OPERATOR_CERT_DIR = os.environ.get("BOOTSTRAP_OPERATOR_CERT_DIR", "/tmp/kacho-bootstrap-operator")
 BOOTSTRAP_MINT_MTLS_CERT = os.environ.get(
     "BOOTSTRAP_MINT_MTLS_CERT", os.path.join(_OPERATOR_CERT_DIR, "client.crt"))
@@ -117,6 +128,19 @@ IAM_INTERNAL_MTLS_CERT = os.environ.get(
     "IAM_INTERNAL_GRPC_MTLS_CERT", os.path.join(_GATEWAY_CERT_DIR, "client.crt"))
 IAM_INTERNAL_MTLS_KEY = os.environ.get(
     "IAM_INTERNAL_GRPC_MTLS_KEY", os.path.join(_GATEWAY_CERT_DIR, "client.key"))
+
+# Материал, переданный ЯВНО (путь задан переменной), — решение вызывающего, и посев
+# его не подменяет повторным извлечением из кластера (задача #2882): иначе файл,
+# который вызывающий положил сам, молча переписывался листом того пространства,
+# куда посев сходил по своему умолчанию.
+_EXPLICIT_MATERIAL_VARS = ("BOOTSTRAP_MINT_MTLS_CERT", "BOOTSTRAP_MINT_MTLS_KEY",
+                           "IAM_INTERNAL_GRPC_MTLS_CERT", "IAM_INTERNAL_GRPC_MTLS_KEY",
+                           "IAM_SERVER_CA_FILE")
+
+
+def _explicit_material(*paths: str) -> bool:
+    given = {os.path.abspath(os.environ[v]) for v in _EXPLICIT_MATERIAL_VARS if os.environ.get(v)}
+    return any(os.path.abspath(p) in given for p in paths)
 
 
 # ── HTTP helpers ────────────────────────────────────────────────────────────
@@ -179,7 +203,8 @@ def ensure_client_cert(secret: str, cert_path: str, key_path: str,
     persistent, NON-transient failure that a retry only repeats (the same trap
     prodrun.sh documents for the gateway cert). If kubectl or the Secret is
     unavailable (CI without cluster access, pre-extracted material), leave whatever
-    is on disk alone and let the caller's existence check decide.
+    is on disk alone and let the caller's existence check decide. Material whose path
+    the caller set EXPLICITLY (`_EXPLICIT_MATERIAL_VARS`) is never re-extracted.
 
     The material is written 0600 OUTSIDE the repository (default /tmp/…): the seed
     borrows the cluster's own leaf for the length of the run, it never carries key
@@ -187,7 +212,9 @@ def ensure_client_cert(secret: str, cert_path: str, key_path: str,
 
     Returns True when the on-disk pair is usable (freshly written or pre-existing).
     """
-    ns = namespace or BOOTSTRAP_OPERATOR_NS
+    ns = namespace or STAND_NS
+    if _explicit_material(cert_path, key_path):
+        return all(os.path.exists(p) and os.path.getsize(p) > 0 for p in (cert_path, key_path))
     if shutil.which("kubectl"):
         probe = subprocess.run(
             ["kubectl", "-n", ns, "get", "secret", secret],
@@ -263,7 +290,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     as setup.sh's grpcurl calls.
 
     Overrides: BOOTSTRAP_MINT_MTLS_CERT / _KEY (paths), IAM_INTERNAL_GRPC (addr),
-    BOOTSTRAP_OPERATOR_SECRET + KACHO_NAMESPACE (where to pull the material from).
+    BOOTSTRAP_OPERATOR_SECRET + the stand namespace (`stand_ns.py`) to pull the material from.
     """
     # NO REQUEST FIELDS, AND NO TTL PARAMETER.
     #
@@ -294,7 +321,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
             raise RuntimeError(
                 f"bootstrap-operator client {what} missing at {path}. MintBootstrapToken is "
                 f"gated on the caller's client certificate; provision it with "
-                f"`kubectl -n {BOOTSTRAP_OPERATOR_NS} get secret {BOOTSTRAP_OPERATOR_SECRET}` "
+                f"`kubectl -n {STAND_NS} get secret {BOOTSTRAP_OPERATOR_SECRET}` "
                 f"(issued by the umbrella when mtls.enabled) or point "
                 f"BOOTSTRAP_MINT_MTLS_CERT/_KEY at it.")
     if not shutil.which("grpcurl"):
@@ -457,8 +484,8 @@ def ensure_iam_server_ca(namespace: str | None = None) -> bool:
     перевыпускает корень, поэтому лежащий с прошлого стенда не годится и повтор
     его не чинит. Материал ПУБЛИЧНЫЙ (только `ca.crt`), пишется 0600 вне дерева.
     """
-    ns = namespace or BOOTSTRAP_OPERATOR_NS
-    if shutil.which("kubectl"):
+    ns = namespace or STAND_NS
+    if not _explicit_material(IAM_SERVER_CA_FILE) and shutil.which("kubectl"):
         out = subprocess.run(
             ["kubectl", "-n", ns, "get", "secret", IAM_SERVER_SECRET,
              "-o", r"jsonpath={.data.ca\.crt}"],

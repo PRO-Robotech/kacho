@@ -69,7 +69,14 @@ sys.path.insert(0, str(HERE))
 # and reds wholesale under production authN.
 ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "api-gateway")
 
-NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
+# Пространство имён стенда — из одного места (`stand_ns.py`, задача #2882); расхождение
+# SETUP_NS и KACHO_NAMESPACE — отказ при импорте, до первого обращения к кластеру.
+import stand_ns  # noqa: E402
+
+NS = stand_ns.resolve()
+# Шаги, которые посев порождает сам (матрица, расширения служб), получают ответ обеими
+# переменными — им не приходится разрешать заново из того, что осталось у вызывающего.
+os.environ["SETUP_NS"] = os.environ["KACHO_NAMESPACE"] = NS
 
 
 def log(msg: str) -> None:
