@@ -57,9 +57,34 @@ Deployment + its supporting ConfigMap / RBAC / Service objects.
 
 ## Sealed-secret integration (operator setup)
 
-For production deployments, the 32-byte AES-GCM key
-(`KANAME_JWKS_ENC_KEY`, default Secret name `kaname-jwks-enc-key`) must
-be provisioned BEFORE first-deploy of this chart. Two supported patterns:
+For production deployments, TWO wrapping keys must be provisioned BEFORE
+first-deploy of this chart — each is a start condition, and a missing one costs a
+failed rollout:
+
+| variable | Secret / key (default) | values knob | wraps |
+|---|---|---|---|
+| `KANAME_JWKS_ENC_KEY` | `kaname-jwks-enc-key` · `kaname-jwks-enc-key/enc_key` | `platform.iam.jwks.encKeySecretName` / `encKeySecretKey` | the private half of the token signing key |
+| `KANAME_SECOND_FACTOR_ENC_KEY` | `kaname-second-factor-enc-key` · `kaname-second-factor-enc-key/enc_key` | `platform.iam.secondFactor.encKeySecretName` / `encKeySecretKey` | the per-user second-factor secrets |
+
+Both values are 32-byte AES-GCM keys in hex (a comma-separated list: the first
+wraps, all open). They are SEPARATE keys on purpose: changing one must not stop
+the other. Everything below about the first key — encoding, survival across
+re-deploys, the change procedure — holds for the second one too; the second
+one's stored secrets are re-wrapped by `kaname second-factor-key rewrap` before
+a previous key leaves the list.
+
+**What an absent key looks like.** This sub-chart references both Secrets with
+`optional: true`, so a missing Secret or key does not stop the container before
+start: the service's own start guard refuses and NAMES the missing knob. The
+standalone kaname chart references one Secret carrying both keys without
+`optional`, so there the kubelet stops the container before start and names
+the Secret and key instead. Both installations refuse to start; the difference
+is where the refusal is named, and it is a decision of each chart, not drift
+(kacho#3181). The proof for this sub-chart is the guard refusing, not a pod
+that is merely absent.
+
+Two supported patterns for the first key (the second one is provisioned the
+same way under its own Secret name):
 
 > [!important] THE VALUE IS HEX — 64 hexadecimal characters, nothing else.
 > `authn.jwks-encryption-key-hex` decodes what it is given as hex and demands

@@ -597,7 +597,7 @@ kaname:
         enabled: true
         issuer: "https://console.a8f60d.invalid"
         algorithm: ES256
-        allowedAlgorithms: "ES256,RS256"
+        allowedAlgorithms: "ES256"   # ровно алгоритм чеканки (kacho#3181)
         keySetPath: /.well-known/kaname/jwks.json
       clientToken:
         enabled: true

@@ -964,7 +964,7 @@ func NewMux(
 			// cluster-internal listener WITHOUT extracting a principal
 			// (phaseInternalOriginExempt). This internal REST listener is mutual TLS
 			// (kacho#3131, serveInternalREST in cmd/api-gateway/edge_listener.go):
-			// the client leaf must chain to the installation CA and carry a URI-SAN
+			// the client leaf must chain to the operator anchor (kacho#3189), URI-SAN
 			// from KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. That authenticates the
 			// TRANSPORT only — the circle is the edge's operator identity, not the
 			// mint's allow-list, and authz on this listener is unchanged. A REST route

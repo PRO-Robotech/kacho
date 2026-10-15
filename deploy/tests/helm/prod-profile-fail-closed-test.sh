@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: BUSL-1.1
 # values.prod.yaml is the documented PRODUCTION profile and MUST be fail-closed.
 #
-# Background: the chart DEFAULT (values.yaml) + the dev/CI profile
-# (values.dev.yaml) deliberately run `mode: dev` (anonymous → full access) +
-# `ssl-mode: disable`. A bare `helm install` therefore lands on the insecure dev
-# posture (P0 audit finding). values.prod.yaml is the hardened profile production
+# Background: the dev/CI profile (values.dev.yaml) lowers part of the services
+# to `authMode: dev` + `ssl-mode: disable`. Умолчание чарта — authMode=production
+# у каждого подчарта с этой ручкой (kacho#3180; держит
+# helm/umbrella/prod_header_default_posture_test.go), но рабочим профилем оно не
+# является: голый рендер отказывает. values.prod.yaml is the hardened profile production
 # rollouts pass explicitly. This guard renders it via `helm template` and asserts
 # the security floor for EVERY service:
 #   - auth mode is production / production-strict (NEVER dev) on every service

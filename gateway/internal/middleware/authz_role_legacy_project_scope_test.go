@@ -346,13 +346,15 @@ func TestAuthz_GRPC_ProjectIdBearingMessage_OnUnrelatedFQN_KeepsCatalogScope(t *
 	const otherEntry = `{"fqn":"kaname.cloud.iam.v1.RoleService/CreateLike","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
 	mw := buildAuthzMiddleware(t, buildCatalog(t, otherEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_attacker", "user"),
-		&iamv1.CreateRoleRequest{Name: "reader", ProjectId: "prj_attacker"},
+		// Поле скоупа записи (account_id) названо: пустое ушло бы отказом формы
+		// запроса до Check (kacho#3177), и проба не дошла бы до своего предмета.
+		&iamv1.CreateRoleRequest{Name: "reader", AccountId: "acc00000000000003177", ProjectId: "prj_attacker"},
 		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/CreateLike"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
 	in := checker.lastInput.Load()
 	require.NotNil(t, in)
-	assert.Equal(t, "account:*", in.ResourceType+":"+in.ResourceID,
+	assert.Equal(t, "account:acc00000000000003177", in.ResourceType+":"+in.ResourceID,
 		"project_id must not re-scope an FQN that does not declare the legacy pair")
 }

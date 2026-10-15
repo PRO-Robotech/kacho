@@ -91,6 +91,12 @@
 // транскодер REST→gRPC.
 package middleware
 
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+)
+
 // Пути глаголов. Написание подпутём, а не суффиксом `:verb`, взято у
 // существующего маршрута «кто я» того же семейства (Р2).
 const (
@@ -354,6 +360,41 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
+}
+
+// LoginLanePathPrefix — приставка путей полосы входа (kacho#3178): путь под
+// ней, которого нет в перечне и который не /me, край не ретранслирует и
+// отвечает названным отказом (IsUnrelayedLoginLanePath).
+const LoginLanePathPrefix = "/iam/v1/auth/"
+
+// LoginLaneUnrelayedMessage — фиксированный текст отказа края на путь полосы
+// входа вне перечня ретрансляции (kacho#3178). Один на любой такой путь: без
+// эха пути — опечатка и «эта версия края путь не несёт» не различаются, и
+// край не перечисляет пути службы, которых не ретранслирует.
+const LoginLaneUnrelayedMessage = "login lane path is not relayed by this edge"
+
+// IsUnrelayedLoginLanePath — путь под приставкой полосы входа, которого нет в
+// перечне ретрансляции и который не /me (свой обработчик края). Перечень не
+// расширяется до приставки: такой путь до службы не доходит никогда.
+func IsUnrelayedLoginLanePath(path string) bool {
+	return strings.HasPrefix(path, LoginLanePathPrefix) && path != SessionIdentityPath && !IsLoginLanePath(path)
+}
+
+// SessionIdentityPath — путь /me края (SessionIdentityHandler): под приставкой
+// полосы входа, но обслуживается краем, а не ретрансляцией.
+const SessionIdentityPath = "/iam/v1/auth/me"
+
+// writeLoginLaneUnrelayed — отказ края на путь полосы входа вне перечня
+// (kacho#3178): 404, тело {code:5, message} с фиксированным текстом, без
+// Set-Cookie. В журнал — путь без строки запроса (она может нести state
+// церемонии).
+func writeLoginLaneUnrelayed(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}{Code: 5, Message: LoginLaneUnrelayedMessage})
 }
 
 // LoginLaneRoutes отдаёт КОПИЮ перечня записей объявления.

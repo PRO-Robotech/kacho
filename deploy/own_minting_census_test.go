@@ -111,13 +111,15 @@ type mintingKnob struct {
 // старта службы: пустая величина здесь означает НЕ «взять разумное», а «не
 // сужаем», и каждая из трёх невидима на положительном пути.
 //
-// keySetPath и keyLifetime сюда НЕ входят: у обеих встроенное умолчание процесса
-// непусто и годно, поэтому требование к профилю было бы требованием без
-// предмета. Так же рассуждает и проба боевого профиля отдельного чарта.
+// keySetPath сюда НЕ входит: у него встроенное умолчание подчарта непусто и
+// годно. keyLifetime — входит (kacho#3181): умолчания у срока ключа нет ни у
+// процесса, ни в базовых значениях чарта службы, и подчарт зонта его больше не
+// подставляет — срок объявляет профиль, как в боевом профиле отдельного чарта.
 var mintingRequiredWhenOn = []mintingKnob{
 	{"издатель", []string{"kaname", "config", "authn", "tokenSigning", "issuer"}},
 	{"подпись", []string{"kaname", "config", "authn", "tokenSigning", "algorithm"}},
 	{"допустимые подписи приёма", []string{"kaname", "config", "authn", "tokenSigning", "allowedAlgorithms"}},
+	{"срок ключа подписи", []string{"kaname", "config", "authn", "tokenSigning", "keyLifetime"}},
 }
 
 // mintingDependents — возможности, которые чеканкой ДЕРЖАТСЯ: подпись
@@ -412,6 +414,8 @@ func judgeStackMinting(stack string, merged map[string]any, excused map[string]s
 		}
 	}
 
+	v.findings = append(v.findings, judgeAcceptsOnlyWhatItSigns(stack, merged)...)
+
 	if v.issuer == "" {
 		return v // об издателе уже сказано выше; согласие потребителей судить не с чем
 	}
@@ -419,6 +423,36 @@ func judgeStackMinting(stack string, merged map[string]any, excused map[string]s
 		v.findings = append(v.findings, judgeConsumerAgreement(stack, c, merged, v.issuer)...)
 	}
 	return v
+}
+
+// judgeAcceptsOnlyWhatItSigns — перечень допустимых подписей приёма состоит
+// ровно из алгоритма чеканки (kacho#3181).
+//
+// Читатель предъявленного удостоверения проверяет токены СВОЕГО издателя
+// ключами СВОЕЙ ключницы, а ключница порождает ключи одного алгоритма —
+// объявленного. Второй элемент перечня производителя не имеет: прежний
+// издатель, ради которого его добавляли, со стенда снят. Лишний элемент
+// расширяет принимаемое, ничего не давая, — так же решил боевой профиль
+// отдельного чарта службы.
+func judgeAcceptsOnlyWhatItSigns(stack string, merged map[string]any) []string {
+	ts := []string{"kaname", "config", "authn", "tokenSigning"}
+	alg := strings.TrimSpace(asString(lookupAny(merged, append(ts, "algorithm")...)))
+	list := strings.TrimSpace(asString(lookupAny(merged, append(ts, "allowedAlgorithms")...)))
+	if alg == "" || list == "" {
+		return nil // о пустых величинах уже сказано перечнем обязательных
+	}
+	var extra []string
+	for _, a := range strings.Split(list, ",") {
+		if a = strings.TrimSpace(a); a != "" && a != alg {
+			extra = append(extra, a)
+		}
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("стенд %s: допустимые подписи приёма (%q) шире алгоритма чеканки "+
+		"(%s) на %s — производителя у лишнего элемента нет, и он расширяет принимаемое, "+
+		"ничего не давая", stack, list, alg, strings.Join(extra, ","))}
 }
 
 // judgeConsumerAgreement — потребитель обязан назвать НАШЕГО издателя тремя
