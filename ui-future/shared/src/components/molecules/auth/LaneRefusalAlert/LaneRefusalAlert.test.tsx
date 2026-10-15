@@ -24,7 +24,14 @@ import {
 const of = (status: number, code: number | null, message: string, retryAfterSeconds: number | null = null) =>
   new LaneRefusal(status, code, message, null, null, retryAfterSeconds);
 
-const CONTEXTS: Array<RefusalContext | undefined> = [undefined, "sign-in", "registration", "recovery"];
+const CONTEXTS: Array<RefusalContext | undefined> = [
+  undefined,
+  "sign-in",
+  "registration",
+  "recovery",
+  "verification",
+  "access-key",
+];
 
 /** Слова, которыми подсказка назвала бы класс отказа, — их в ней быть не должно. */
 const CLASS_WORDS = /неверн|не найден|не заведён|нет такого|заблокир|занят|уже существует|лимит|потол/i;
@@ -57,6 +64,24 @@ describe("подсказка следующего шага к отказу по�
     expect(registration).toMatch(/завёл не вы/);
     // Повтор позже — шаг прочих случаев того же отказа, и он идёт ПОСЛЕ пути восстановления.
     expect(registration.indexOf("восстановите доступ")).toBeLessThan(registration.indexOf("ещё раз позже"));
+  });
+
+  it("#3185 · истёкшее приглашение — шаг к распорядителю аккаунта, а не новый код; на восстановлении и подтверждении одинаково", () => {
+    const invite = new LaneRefusal(400, 9, "invite is no longer valid", "INVITE_NOT_VALID", null, null);
+    const recovery = refusalHint(invite, "recovery");
+    expect(recovery).toBe(
+      "Приглашение истекло или снято. Попросите владельца либо администратора аккаунта пригласить вас ещё раз — " +
+        "после нового приглашения подойдёт тот же код.",
+    );
+    expect(refusalHint(invite, "verification")).toBe(recovery);
+    expect(recovery).not.toMatch(/администратор облака|Отправьте код ещё раз/);
+  });
+
+  it("#3185 · отказ входа ключом не просит «проверить введённое» — называет пароль и восстановление", () => {
+    const hint = refusalHint(of(401, 16, "authentication failed"), "access-key") ?? "";
+    expect(hint).not.toMatch(/введённые данные/);
+    expect(hint).toMatch(/паролем/);
+    expect(hint).toMatch(/Не получается войти\?/);
   });
 
   it("#2953 · подсказка — функция ТОЛЬКО кода и экрана: текст отказа её не меняет", () => {
