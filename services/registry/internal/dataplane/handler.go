@@ -36,7 +36,7 @@ type Handler struct {
 	service    string // service-audience для WWW-Authenticate
 	// anonSubjectID — the anonymous principal id (kaname AnonymousClientID, the `sub`
 	// of the anonymous token the /iam/token shim mints) this data-plane resolves to the
-	// FGA wildcard `user:*` (RG-1 D-7). Empty → anon pull DISABLED
+	// system class `system_class:anonymous` (RG-1 D-7; приёмка kaname SC-39). Empty → anon pull DISABLED
 	// (secure-by-default): a token, if any, resolves as an ordinary principal. Set via
 	// WithAnonymousSubject from the composition root.
 	anonSubjectID string
@@ -83,7 +83,7 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 
 // WithAnonymousSubject configures the anonymous principal id (kaname
 // AnonymousClientID, the `sub` of the anonymous token the /iam/token shim mints) this
-// data-plane resolves to the FGA wildcard `user:*` — a VALID anon Bearer thus reads
+// data-plane resolves to the system class `system_class:anonymous` — a VALID anon Bearer thus reads
 // only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
 // Empty (the default) leaves anonymous pull DISABLED (secure-by-default: an anon token,
 // if any, resolves as an ordinary principal and is denied on PUBLIC-only grants).
@@ -148,8 +148,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ok=false + invalidToken=false — токена нет/не Bearer; ok=false + invalidToken=true
 // — токен есть, но не прошёл JWKS-верификацию (challenge с error="invalid_token").
 // verifier==nil → breakglass bypass. subject — сырой `sub` (Kachō principal id ЛИБО
-// configured anonymous principal id): маппинг в FGA-subject (в т.ч. anon → wildcard
-// "user:*", RG-1 D-7) делает fgaSubject в ServeHTTP. No-Bearer → 401 challenge —
+// configured anonymous principal id): маппинг в FGA-subject (в т.ч. anon → класс
+// "system_class:anonymous", RG-1 D-7) делает fgaSubject в ServeHTTP. No-Bearer → 401 challenge —
 // анонимность требует ВАЛИДНОГО anon-Bearer (issued IAM /token без Basic-creds), не
 // отсутствия токена.
 func (h *Handler) authenticate(r *http.Request) (subject string, invalidToken bool, ok bool) {
