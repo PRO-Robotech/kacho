@@ -69,6 +69,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -150,6 +153,9 @@
                 }
               }
             }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
           },
           "event": [
             {
@@ -243,6 +249,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -323,6 +332,9 @@
               }
             }
           },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -393,6 +405,9 @@
                 }
               ]
             }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
           },
           "event": [
             {
@@ -475,6 +490,9 @@
                 }
               }
             }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
           },
           "event": [
             {

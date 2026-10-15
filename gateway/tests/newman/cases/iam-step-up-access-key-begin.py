@@ -41,7 +41,10 @@ DoD приёмки). Отказ службы на Ф-п — и есть поло
 
 ПЕЧЕНЬЯ НЕСУТСЯ ЯВНО: признак формы и его печенье `kaname_form` захватываются
 шагом выдачи признака и кладутся заголовком `Cookie` следующим шагом вместе с
-носителем сессии. `Authorization` у шагов снят: предъявитель здесь — сессия, и
+носителем сессии. Банка печений прогонщика у каждого шага снята
+(`explicit_cookies`): служба выдаёт `kaname_form` только запросу, который его
+не несёт, и печенье Ф-п из общей банки, уехав в выдачу признака Ф-н, сняло бы
+выдачу печенья второму человеку (kacho#3230). `Authorization` у шагов снят: предъявитель здесь — сессия, и
 только она.
 
 Техники: классы эквивалентности (адрес подтверждён / не подтверждён; ключей
@@ -103,6 +106,7 @@ def _csrf_step(name, form, session_var, token_var, cookie_var):
         method="GET",
         path=f"{CSRF}?form={form}",
         auth="anonymous",
+        explicit_cookies=True,
         pre_script=[
             *_slot_guard(session_var, "session bearer of the step-up human"),
             # Прежние значения не переживают шаг: признак чужого шага не уйдёт дальше.
@@ -136,6 +140,7 @@ def _post_step(name, path, session_var, token_var, cookie_var, test_script):
         method="POST",
         path=path,
         auth="anonymous",
+        explicit_cookies=True,
         body={"csrfToken": "{{" + token_var + "}}"},
         pre_script=[
             *_slot_guard(session_var, "session bearer of the step-up human"),
