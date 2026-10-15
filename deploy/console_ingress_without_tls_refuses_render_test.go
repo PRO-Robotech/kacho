@@ -12,9 +12,9 @@
 // регистрация получала 403 FORM_TOKEN_REJECTED: искали неисправную форму, а
 // неисправен транспорт. Причину называл лишь комментарий в values.
 //
-// Условие отказа — TLS нет НИГДЕ: вход консоли включён, его перечень `tls` пуст,
-// и собственная TLS-раздача консоли (`publicFront`) не включена. Каждая из двух
-// форм TLS — законный близнец; вход выключен — тоже законно (это не вход).
+// Условие отказа — вход консоли включён и его перечень `tls` пуст; собственная
+// TLS-раздача консоли (`publicFront`) от отказа не освобождает. Законные
+// близнецы — вход с TLS и раздача при выключенном входе.
 package deploy_test
 
 import (
@@ -58,5 +58,23 @@ func TestConsoleOwnTLSFrontWithoutIngressRenders(t *testing.T) {
 		`uif.publicFront={"enabled":true,"tls":{"secretName":"console-tls","certificate":{"create":false}}}`)
 	if err != nil && strings.Contains(out, consoleNoTLSRefusal) {
 		t.Fatalf("собственная TLS-раздача консоли названа «без TLS»:\n%s", out)
+	}
+}
+
+// Собственная TLS-раздача консоли не освобождает ВХОД консоли: вход подчарта
+// рендерится по `ingress.enabled` независимо от publicFront, и при пустом `tls`
+// наружу выходит обычный http (ревью security-auditor волны 3245, находка 1).
+// Близнец — TestConsoleOwnTLSFrontWithoutIngressRenders (вход выключен).
+func TestConsoleOwnTLSFrontDoesNotExemptAPlaintextIngress(t *testing.T) {
+	out, err := renderProdConsole(t,
+		`uif.ingress={"enabled":true,"tls":[]}`,
+		`global.kacho.identity.appBaseURL="https://console.example.test"`,
+		`uif.publicFront={"enabled":true,"tls":{"secretName":"console-tls","certificate":{"create":false}},"clientAddress":{"proxyProtocol":{"enabled":false,"disabledBecause":"probe"}}}`)
+	if err == nil {
+		t.Fatal("вход консоли без TLS рендерится, потому что включена собственная раздача — " +
+			"вход от неё не зависит и выходит наружу обычным http")
+	}
+	if !strings.Contains(out, consoleNoTLSRefusal) {
+		t.Fatalf("рендер отказал не по причине входа без TLS (ждали %q):\n%s", consoleNoTLSRefusal, out)
 	}
 }
