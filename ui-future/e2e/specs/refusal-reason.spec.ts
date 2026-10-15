@@ -122,6 +122,31 @@ test("AUTHZ_DENIED объясняется по признаку — даже к�
   expect(shown, "внутреннее имя проверки показано арендатору").not.toContain("vpc.networks.create");
 });
 
+test("AUTHZ_DENIED на ресурсе проекта называет того, кто выдаёт право в проекте, а не администратора платформы", async ({
+  page,
+}) => {
+  // verifies #3209 — право в проекте выдаёт привязкой владелец или администратор проекта либо аккаунта.
+  const { projectId } = await registerAndSignIn(page);
+  await refuseCreate(
+    page,
+    403,
+    refusalBody(7, "AUTHZ_DENIED", "kaname.cloud.iam.v1", "permission denied", {
+      action: "vpc.networks.create",
+      resource: `project:${projectId}`,
+    }),
+  );
+  await submitNetworkForm(page, projectId, `net-authz-project-${runTag()}`);
+
+  const message = refusal(page);
+  await expect(message, "отказ в правах не показан человеку вовсе").toBeVisible({ timeout: 20_000 });
+  await expect(message, "отказ в проекте не называет того, кто выдаёт право в проекте").toContainText(
+    "владелец или администратор проекта",
+  );
+  await expect(message, "отказ в проекте отправляет к администраторам платформы").not.toContainText(
+    "администраторам платформы",
+  );
+});
+
 test("отказ БЕЗ признака показывается дословно — контроль к утверждению выше", async ({ page }) => {
   // verifies #1736
   //
