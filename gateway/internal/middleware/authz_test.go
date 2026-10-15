@@ -155,10 +155,7 @@ func TestAuthz_GRPC_CatalogMiss_Denies(t *testing.T) {
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
-	// Промах каталога у аутентифицированного — «метода нет у этой версии
-	// края» (kacho#3177), отказ остаётся отказом.
-	assert.Equal(t, codes.NotFound, st.Code())
-	assert.Equal(t, "unknown method: /kacho.cloud.unknown.v1.X/Y", st.Message())
+	assert.Equal(t, codes.PermissionDenied, st.Code())
 	assert.Zero(t, checker.calls.Load())
 }
 
@@ -658,10 +655,10 @@ func TestAuthz_DefaultPublicAllowlist_NoOperationV1FQN(t *testing.T) {
 	}
 }
 
-// TestAuthz_GRPC_CatalogMiss_AuthenticatedReason — аутентифицированный на
-// методе вне каталога получает «метода нет» (kacho#3177): NotFound без причин
-// отказа прав, а не PermissionDenied, — и не классифицируется как анонимный
-// (анонимному остаётся прежний отказ, см. соседнюю пробу).
+// TestAuthz_GRPC_CatalogMiss_AuthenticatedReason проверяет, что authenticated
+// caller на uncatalogued метод получает PermissionDenied с PreconditionFailure
+// violation, description которого НЕ содержит "unauthenticated". Это
+// подтверждает, что authenticated caller не классифицируется как анонимный.
 func TestAuthz_GRPC_CatalogMiss_AuthenticatedReason(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, createEntry), checker)
@@ -670,8 +667,13 @@ func TestAuthz_GRPC_CatalogMiss_AuthenticatedReason(t *testing.T) {
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code())
-	assert.Empty(t, st.Details(), "промах каталога у аутентифицированного не несёт причин отказа прав")
+	assert.Equal(t, codes.PermissionDenied, st.Code())
+	// Детали ошибки — PreconditionFailure violations с описанием причины.
+	allDescs := collectViolationDescriptions(t, st)
+	for _, d := range allDescs {
+		assert.NotContains(t, d, "unauthenticated",
+			"authenticated caller on catalog-miss violation description must NOT contain 'unauthenticated': %s", d)
+	}
 	assert.Zero(t, checker.calls.Load())
 }
 

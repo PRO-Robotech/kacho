@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,11 +23,11 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// kacho#3177 — три причины, которые край отвечал одним 403 «permission
-// denied», различимы по коду: промах каталога (у этой версии края нет записи о
-// методе), запрос без обязательного поля скоупа и настоящая нехватка права.
-// Три близнеца на одном методе меняют ровно один факт каждый; Check не
-// зовётся ни на промахе, ни на пустом поле.
+// kacho#3177 — запрос без обязательного поля скоупа отличим от нехватки права:
+// отказ формы запроса (INVALID_ARGUMENT) до Check. Промах каталога остаётся
+// отказом прав AUTHZ_DENIED (норма hard-catalog-complete: «отсутствие ⇒
+// AUTHZ_DENIED»), Check на нём не зовётся. Три близнеца на одном методе меняют
+// ровно один факт каждый.
 
 const distinctInviteEntry = `{"fqn":"kaname.cloud.iam.v1.UserService/Invite","permission":"iam.users.invite","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1"}`
 
@@ -42,7 +43,7 @@ func inviteCall(t *testing.T, mw *middleware.AuthzMiddleware, req *iamv1.InviteU
 	return st
 }
 
-func TestAuthz_ThreeRefusalsAreDistinguishableByCode(t *testing.T) {
+func TestAuthz_EmptyScopeFieldIsDistinguishableFromDenial(t *testing.T) {
 	// Близнец: метод в каталоге, поле скоупа есть, права нет — прежний 403.
 	deny := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	st := inviteCall(t, buildAuthzMiddleware(t, buildCatalog(t, distinctInviteEntry), deny),
@@ -50,13 +51,13 @@ func TestAuthz_ThreeRefusalsAreDistinguishableByCode(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, st.Code(), "нехватка права: %v", st)
 	assert.Equal(t, "permission denied: iam.users.invite", st.Message())
 
-	// Промах каталога — NotFound «unknown method», до Check.
+	// Промах каталога — отказ прав AUTHZ_DENIED (hard-catalog-complete), до Check.
 	miss := &fakeChecker{allowed: true}
 	st = inviteCall(t, buildAuthzMiddleware(t, buildCatalog(t, acbGetEntry), miss),
 		&iamv1.InviteUserRequest{AccountId: "acc00000000000003177"})
-	assert.Equal(t, codes.NotFound, st.Code(), "промах каталога: %v", st)
-	assert.Equal(t, "unknown method: "+inviteMethod, st.Message())
-	assert.Empty(t, st.Details(), "промах каталога не несёт причин отказа прав")
+	assert.Equal(t, codes.PermissionDenied, st.Code(), "промах каталога: %v", st)
+	assert.Equal(t, "permission denied", st.Message())
+	assert.Equal(t, "AUTHZ_DENIED", errorInfoReason(t, st))
 	assert.Zero(t, miss.calls.Load())
 
 	// Пустое поле скоупа — InvalidArgument с фиксированным текстом, до Check.
@@ -68,8 +69,9 @@ func TestAuthz_ThreeRefusalsAreDistinguishableByCode(t *testing.T) {
 	assert.Zero(t, empty.calls.Load(), "пустой объект скоупа не уходит в Check")
 }
 
-// REST: промах каталога — 404 {code:5, message:"unknown method: /<fqn>"}.
-func TestAuthz_HTTP_CatalogMissIsUnknownMethod(t *testing.T) {
+// REST: промах каталога — 403 {code:7, message:"permission denied"} с причиной
+// AUTHZ_DENIED (hard-catalog-complete).
+func TestAuthz_HTTP_CatalogMissIsDenied(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
 		"POST /iam/v1/users:invite": "kaname.cloud.iam.v1.UserService/Invite",
@@ -86,11 +88,13 @@ func TestAuthz_HTTP_CatalogMissIsUnknownMethod(t *testing.T) {
 	r.Header.Set("X-Kacho-Token-Acr", "2")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	raw := w.Body.String()
 	var body map[string]any
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
-	assert.Equal(t, float64(5), body["code"])
-	assert.Equal(t, "unknown method: "+inviteMethod, body["message"])
+	require.NoError(t, json.Unmarshal([]byte(raw), &body))
+	assert.Equal(t, float64(7), body["code"])
+	assert.Equal(t, "permission denied", body["message"])
+	assert.Contains(t, raw, `"reason":"AUTHZ_DENIED"`)
 	assert.Zero(t, checker.calls.Load())
 }
 
@@ -127,4 +131,15 @@ func TestAuthz_HTTP_InviteWithoutAccountIdIsInvalidArgument(t *testing.T) {
 	w, checker = call(`{"accountId":"acc00000000000003177","email":"a@example.test"}`)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, int64(1), checker.calls.Load())
+}
+
+// errorInfoReason — причина ErrorInfo отказа (пусто, если ErrorInfo нет).
+func errorInfoReason(t *testing.T, st *status.Status) string {
+	t.Helper()
+	for _, d := range st.Details() {
+		if ei, ok := d.(*errdetails.ErrorInfo); ok {
+			return ei.GetReason()
+		}
+	}
+	return ""
 }
