@@ -146,6 +146,14 @@ describe("карточка сотрудника: членство в текущ�
     expect(screen.queryByText(/Состоит в аккаунте/)).toBeNull();
   });
 
+  it("#3208 · PENDING называет состояние, которое держит служба, — адрес не подтверждён, а не «не входил»", async () => {
+    serve([wireMembership(CURRENT, "PENDING", "Ромашка")]);
+    await mount();
+
+    expect(await screen.findByText("Приглашён, адрес почты не подтверждён")).toBeInTheDocument();
+    expect(screen.queryByText(/не входил/)).toBeNull();
+  });
+
   it("спрашивает членство у текущего аккаунта: он в пути, человек — в фильтре", async () => {
     // verifies #1085 — чтение сужается аккаунтом В ЗАПРОСЕ, а не проверкой после.
     serve([wireMembership(CURRENT, "ACTIVE", "Ромашка")]);
