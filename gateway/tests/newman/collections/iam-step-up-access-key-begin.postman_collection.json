@@ -1,0 +1,527 @@
+{
+  "info": {
+    "_postman_id": "452073d9-9a51-5bcf-9a30-8d0e4177c1a2",
+    "name": "kacho-api-gateway / newman / iam-step-up-access-key-begin",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "F8-S7-80-IAM-STEPUP-AKBEGIN-NEG-NO-KEY — F8-S7-80: verified human without an access key — POST /iam/v1/auth/step-up/access-key/begin through the edge → the service refusal relayed unchanged: 400 FAILED_PRECONDITION (9), ACCESS_KEY_NOT_REGISTERED",
+      "description": "class:NEG | class:CONF | class:STATE | priority:P0",
+      "item": [
+        {
+          "name": "csrf-begin-verified",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=step-up-access-key-begin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpVerifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpVerifiedHumanSession') || pm.variables.get('stepUpVerifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpVerifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpVerifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('f8s780PToken', '');",
+                  "pm.environment.set('f8s780PForm', '');",
+                  "const __cookie = ((pm.environment.get('stepUpVerifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpVerifiedHumanSession') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf step-up-access-key-begin: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf step-up-access-key-begin: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('f8s780PToken', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf step-up-access-key-begin: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('f8s780PForm', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "begin-verified-no-key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/step-up/access-key/begin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "step-up",
+                "access-key",
+                "begin"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"csrfToken\": \"{{f8s780PToken}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpVerifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpVerifiedHumanSession') || pm.variables.get('stepUpVerifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpVerifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpVerifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('f8s780PToken')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('stepUpVerifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpVerifiedHumanSession') + '; ' : '') + (pm.environment.get('f8s780PForm') ? 'kaname_form' + '=' + pm.environment.get('f8s780PForm') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('begin-verified-no-key: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('error message exactly equals \"no access key is registered: register an access key first\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"no access key is registered: register an access key first\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason ACCESS_KEY_NOT_REGISTERED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('ACCESS_KEY_NOT_REGISTERED');",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('body keys are exactly code, message, details', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('no kaname_session cookie is issued on a refusal', () => pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session=')).length, JSON.stringify(pm.response.headers.all())).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "F8-S7-80-IAM-STEPUP-AKBEGIN-AUTHZ-UNVERIFIED — F8-S7-80 twin: human with an unverified address — the same request → 403 PERMISSION_DENIED (7), EMAIL_NOT_VERIFIED; body byte-equal to the edge answer on POST /iam/v1/auth/step-up",
+      "description": "class:AUTHZ | class:NEG | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "csrf-step-up-unverified",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=step-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpUnverifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpUnverifiedHumanSession') || pm.variables.get('stepUpUnverifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpUnverifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpUnverifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('f8s780NStepUpToken', '');",
+                  "pm.environment.set('f8s780NStepUpForm', '');",
+                  "const __cookie = ((pm.environment.get('stepUpUnverifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpUnverifiedHumanSession') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf step-up: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf step-up: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('f8s780NStepUpToken', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf step-up: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('f8s780NStepUpForm', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "step-up-unverified",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/step-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "step-up"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"csrfToken\": \"{{f8s780NStepUpToken}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpUnverifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpUnverifiedHumanSession') || pm.variables.get('stepUpUnverifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpUnverifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpUnverifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('f8s780NStepUpToken')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('stepUpUnverifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpUnverifiedHumanSession') + '; ' : '') + (pm.environment.get('f8s780NStepUpForm') ? 'kaname_form' + '=' + pm.environment.get('f8s780NStepUpForm') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('step-up-unverified: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.environment.set('f8s780NStepUpBody', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "csrf-begin-unverified",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=step-up-access-key-begin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpUnverifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpUnverifiedHumanSession') || pm.variables.get('stepUpUnverifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpUnverifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpUnverifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('f8s780NToken', '');",
+                  "pm.environment.set('f8s780NForm', '');",
+                  "const __cookie = ((pm.environment.get('stepUpUnverifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpUnverifiedHumanSession') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf step-up-access-key-begin: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf step-up-access-key-begin: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('f8s780NToken', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf step-up-access-key-begin: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('f8s780NForm', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "begin-unverified",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/step-up/access-key/begin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "step-up",
+                "access-key",
+                "begin"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"csrfToken\": \"{{f8s780NToken}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — stepUpUnverifiedHumanSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('stepUpUnverifiedHumanSession') || pm.variables.get('stepUpUnverifiedHumanSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: stepUpUnverifiedHumanSession is set (seed slot) — session bearer of the step-up human seeded by prodseed_matrix.py (F8-S7-80)', () => {",
+                  "    pm.expect.fail('stepUpUnverifiedHumanSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('f8s780NToken')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('stepUpUnverifiedHumanSession') ? 'kaname_session' + '=' + pm.environment.get('stepUpUnverifiedHumanSession') + '; ' : '') + (pm.environment.get('f8s780NForm') ? 'kaname_form' + '=' + pm.environment.get('f8s780NForm') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('begin-unverified: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('error message exactly equals \"email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason EMAIL_NOT_VERIFIED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('EMAIL_NOT_VERIFIED');",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('body keys are exactly code, message, details', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('no kaname_session cookie is issued on a refusal', () => pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session=')).length, JSON.stringify(pm.response.headers.all())).to.eql(0));",
+                  "pm.test('body is byte-equal to the edge answer on POST /iam/v1/auth/step-up in the same state', () => {",
+                  "  const ref = pm.environment.get('f8s780NStepUpBody') || '';",
+                  "  pm.expect(ref, 'reference step-up body was not captured').to.not.be.empty;",
+                  "  pm.expect(pm.response.text()).to.eql(ref);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
