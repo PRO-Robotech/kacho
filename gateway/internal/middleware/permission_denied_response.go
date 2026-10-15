@@ -419,7 +419,7 @@ func requiredScopeFieldMessage(field string) string {
 // (gateway/internal/proxy refuseRoute): скрытый и несуществующий методы по
 // ответу неразличимы.
 func unknownMethodMessage(fqn string) string {
-	return "unknown method: /" + fqn
+	return "unknown method: /" + strings.TrimPrefix(fqn, "/")
 }
 
 // writeHTTPUnknownMethod — REST-плечо промаха каталога: 404, тело

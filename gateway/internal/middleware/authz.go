@@ -502,6 +502,17 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Путь полосы входа вне перечня ретрансляции (kacho#3178) — названный
+		// отказ края ДО каталога: одинаковый для анонимного и
+		// аутентифицированного и для любого такого пути. Без этой ветки ответ
+		// зависел бы от состояния аутентификации (промах каталога) и не
+		// называл бы причины.
+		if IsUnrelayedLoginLanePath(r.URL.Path) {
+			m.cfg.Logger.Info("login lane: path is not in the relay declaration; refusing",
+				"path", r.URL.Path)
+			writeLoginLaneUnrelayed(w)
+			return
+		}
 		// The DPoP middleware already short-circuits health/auth-flow URLs. We
 		// still guard here for completeness when this middleware is mounted
 		// without it (dev mode).
