@@ -34,7 +34,7 @@ TLS-листенер; соединения, принятые на внешнем
 REST-запрос проходит (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(dev-HMAC / сессия платформы) → DPoP/JWT(по издателю) →
+RequestID → Recovery → AuthN(сессия платформы) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 

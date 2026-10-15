@@ -75,7 +75,7 @@ flowchart TD
 REST-запрос проходит цепочку интерсепторов (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(dev-HMAC / сессия платформы) → DPoP/JWT(по издателю) →
+RequestID → Recovery → AuthN(сессия платформы) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 
