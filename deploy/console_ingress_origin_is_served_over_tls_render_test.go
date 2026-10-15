@@ -359,9 +359,6 @@ func TestConsoleIngressTLSJudgement_CanFailAndStaysSilent(t *testing.T) {
 		want string
 	}{
 		{"происхождение по http", func() ingressTLSRender { r := render(); r.Origin = "http://" + u.Host; return r }(), kindConfigPath, "не https"},
-		// Запись снимается вместе с листом: лист без записи отвергает сам рендер
-		// (templates/certificate-ingress.yaml), и до суда такой вход не дошёл бы.
-		{"запись tls снята", render("uif.ingress.tls=null", "uif.ingress.certificate.create=false"), kindConfigPath, "без записи tls"},
 		{"сертификат не заводится", render("uif.ingress.certificate.create=false"), kindConfigPath, "не производит ни один"},
 		{"порт не отображён туда", render(), moved, "никто не слушает"},
 		// Имя субъекта снимается с листа рендера: ручки, которая убрала бы его из
@@ -374,6 +371,16 @@ func TestConsoleIngressTLSJudgement_CanFailAndStaysSilent(t *testing.T) {
 			return r
 		}(), kindConfigPath, "пустым именем субъекта"},
 	}
+	// Запись tls снята целиком: до суда такой вход не доходит — зонт отказывает
+	// в рендере и называет причину (kacho#3183, console-edge-lanes-ingress.yaml).
+	// Суд «без записи tls» остаётся вторым рубежом для входа, которому запись
+	// не дошла иным путём.
+	t.Run("запись tls снята", func(t *testing.T) {
+		out, err := renderStack(t, stacks["dev"], "uif.ingress.tls=null", "uif.ingress.certificate.create=false")
+		if err == nil || !strings.Contains(out, consoleNoTLSRefusal) {
+			t.Fatalf("вход консоли без записи tls не отвергнут рендером с названной причиной: %v\n%s", err, out)
+		}
+	})
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f, _ := judgeConsoleIngressTLS(t, []ingressTLSRender{c.r}, c.kind)

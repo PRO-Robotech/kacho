@@ -44,6 +44,10 @@ uif:
   image: registry.example.com/kacho-ui-future-host:v0.1.0
   ingress:
     host: console.example.com
+    tls:
+      - hosts:
+          - console.example.com
+        secretName: console-example-tls
 ```
 
 A remote's image, when empty, is derived from the host image by replacing

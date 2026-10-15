@@ -69,7 +69,14 @@ func unappliedLeaves(t *testing.T, example string) []string {
 	if err := os.WriteFile(f, []byte(example), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := helmRenderFiles([]string{filepath.Join(umbrellaDir, "values.prod.yaml"), f},
+	// Основа под примером несёт TLS входа консоли: без него зонт консоль не
+	// рендерит (kacho#3183), а пример вправе о TLS молчать — тогда его
+	// величины судятся поверх законной основы.
+	base := filepath.Join(t.TempDir(), "console-tls-base.yaml")
+	if err := os.WriteFile(base, []byte("uif:\n  ingress:\n    tls:\n      - hosts: [console.example.test]\n        secretName: console-probe-tls\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := helmRenderFiles([]string{filepath.Join(umbrellaDir, "values.prod.yaml"), base, f},
 		`uif.enabled=true`)
 	if err != nil {
 		t.Fatalf("зонт с примером README не рендерится: %v\n%s", err, out)
