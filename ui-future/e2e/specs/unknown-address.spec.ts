@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Page } from "@playwright/test";
-import { runTag, test } from "./fixtures";
+import { register, runTag, test } from "./fixtures";
 
 /**
  * Неизвестный адрес консоли (#3199): замыкающее правило маршрута показывает
  * «Страница не найдена» и не подменяет адрес в строке браузера; корень по-прежнему
- * ведёт на панель. Проба анонимна: страж подтверждённости пропускает к каркасу и
- * без сессии, а утверждение — о маршрутизации, не о правах.
+ * ведёт на панель. Проба идёт с сессией заведённого человека, как на адресе
+ * находки: без сессии первое чтение каркаса получает `401`, и уход на вход
+ * (`redirectToLogin`) отменяет переход пробы (`net::ERR_ABORTED`, t3184-w8b-2) —
+ * утверждение о маршрутизации стало бы функцией гонки.
  */
 
 function pathOf(page: Page): string {
@@ -17,7 +19,8 @@ function pathOf(page: Page): string {
 
 test("неизвестный адрес консоли показывает «Страница не найдена», а не дашборд", async ({ page }) => {
   // verifies #3199 — замыкающее правило маршрута не выдаёт опечатку за успех.
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
+  await register(page);
   const unknown = `/no-such-page-${runTag()}`;
   await page.goto(unknown, { waitUntil: "domcontentloaded" });
   await expect(
