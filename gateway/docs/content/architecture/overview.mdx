@@ -120,7 +120,7 @@ stale-доступ ограниченным во времени.
     <tr><td>JWKS</td><td>Публичные ключи проверки подписи JWT — по одной записи на объявленного издателя</td><td>TTL (<code>KACHO&#95;JWKS&#95;CACHE&#95;TTL&#95;SECONDS</code>, дефолт 300 с)</td></tr>
     <tr><td>Introspection</td><td>Результат OAuth2-интроспекции токена</td><td>TTL + размер (дефолт 5 с / 10000)</td></tr>
     <tr><td>DPoP-replay</td><td><code>jti</code> уже виденных proof (anti-replay)</td><td>LRU + TTL ≥ 2× окна свежести proof</td></tr>
-    <tr><td>Authz-decision</td><td>Решения <code>Check</code> (allow/deny)</td><td>TTL + размер + самосброс на реплике мутации + опрос журнала смены субъекта</td></tr>
+    <tr><td>Authz-decision</td><td>Только положительные решения <code>Check</code> (<code>allow</code>); <code>deny</code> не кэшируется, свежая выдача видна со следующего вызова</td><td>TTL + размер + самосброс на реплике мутации + опрос журнала смены субъекта</td></tr>
     <tr><td>Subject-cache</td><td>Резолв subject/identity</td><td>Ограничен по размеру</td></tr>
     <tr><td>Idempotency-store</td><td>Ответы по idempotency-key</td><td>Ограничен; ключ привязан к principal + метод + путь</td></tr>
   </tbody>
