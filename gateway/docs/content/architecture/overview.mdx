@@ -93,8 +93,9 @@ gRPC-metadata. Подробнее — [Аутентификация](/architectu
 
 ## Маршрутизация и public-vs-internal
 
-gRPC-трафик идёт через transparent-proxy: `Resolver` парсит `kacho.cloud.<domain>.v1.*`,
-сверяется с allowlist и возвращает нужный backend. Deny-by-default: неизвестный метод и любой
+gRPC-трафик идёт через transparent-proxy: `Resolver` парсит полный метод одного из трёх корней
+контракта (`kacho.cloud.<domain>.v1.*`, `kaname.cloud.iam.v1.*`, `corelib.<package>.*` — разбор
+на [странице маршрутизации](/architecture/routing)), сверяется с allowlist и возвращает нужный backend. Deny-by-default: неизвестный метод и любой
 `*InternalService.*` (по `HasInternalSuffix`) не маршрутизируются — выглядят как несуществующие.
 REST построен на split-mux: один набор handler'ов на двух grpc-gateway `ServeMux` (различие
 только в JSON-маршалинге public-vs-internal); диспетчер по пути выбирает mux и `404`-ит

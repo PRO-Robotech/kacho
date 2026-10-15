@@ -18,10 +18,13 @@ type Backends map[string]*grpc.ClientConn
 // MethodResolver — re-export of local proxy MethodResolver type signature.
 type MethodResolver = methodResolverInternal
 
-// RoutableDomain reports which Backends key a fullMethod needs in order to be
-// routed at all, i.e. the `<domain>` segment of
-// "/kacho.cloud.<domain>.<...>/<Method>". ok=false means the path is not shaped
-// like something this gateway routes, whatever the backend map contains.
+// RoutableDomain сообщает ключ Backends, без которого fullMethod не
+// маршрутизируется вовсе: сегмент `<domain>` облачной формы
+// "/<корень>.cloud.<domain>.<...>/<Method>" (корни — ContractRoots, выведенные
+// из словаря `corelib/contractroot`) либо второй сегмент формы фундамента
+// "/corelib.<пакет>.<...>/<Method>"
+// (FoundationRoots). ok=false — путь не той формы, какую край маршрутизирует,
+// что бы ни лежало в карте бэкендов.
 //
 // Exported because being IN the allowlist and being ROUTABLE are two different
 // facts, and until this existed only the first one was checkable from outside.
@@ -36,7 +39,7 @@ func RoutableDomain(fullMethod string) (string, bool) {
 	if !hasContractRoot(fullMethod) {
 		return "", false
 	}
-	// fullMethod = "/kacho.cloud.<domain>.<...>/<Method>"
+	// fullMethod = "/<корень>.cloud.<domain>.<...>/<Method>" либо "/corelib.<пакет>.<...>/<Method>"
 	parts := strings.SplitN(fullMethod, "/", 3)
 	if len(parts) < 3 || parts[1] == "" {
 		return "", false
@@ -60,7 +63,8 @@ func RoutableDomain(fullMethod string) (string, bool) {
 // Resolver builds a MethodResolver for the unknown-service handler installed
 // on the gRPC server. Behaviour:
 //
-//  1. /kacho.cloud.<rest>   — passes through the allowlist + backend lookup.
+//  1. метод с корнем контракта (`kacho.cloud.`, `kaname.cloud.`, `corelib.`) —
+//     проходит allowlist и поиск бэкенда.
 //  2. anything else (blocked / Internal* / unknown method) — returns ok=false,
 //     which Handler (shimproxy.go) maps to codes.NotFound, NOT Unimplemented.
 //     NotFound is load-bearing: it makes Internal* and unknown methods
@@ -84,8 +88,9 @@ func RoutableDomain(fullMethod string) (string, bool) {
 // from. Changing the message in one place without the other reintroduces the
 // difference.
 //
-// Маршрутизируются только нативные kacho.cloud.* сервисы; backends не
-// expose'ят посторонних сервисов.
+// Маршрутизируются только службы с объявленным корнем контракта (`kacho.cloud.*`,
+// `kaname.cloud.*`, `corelib.*` — contract_roots.go); посторонних служб бэкенды
+// не выставляют.
 func Resolver(backends Backends) MethodResolver {
 	return func(fullMethod string) (string, grpc.ClientConnInterface, bool) {
 		method := fullMethod
@@ -107,8 +112,9 @@ func Resolver(backends Backends) MethodResolver {
 	}
 }
 
-// NewServer creates a gRPC server whose UnknownServiceHandler routes
-// kacho.cloud.* traffic to the appropriate backend.
+// NewServer создаёт gRPC-сервер, чей UnknownServiceHandler направляет трафик
+// служб с объявленным корнем контракта (`kacho.cloud.*`, `kaname.cloud.*`,
+// `corelib.*`) в бэкенд их домена.
 //
 // Native services registered on this server (Health, OperationService) take
 // precedence over the unknown-service handler, as per gRPC dispatch
