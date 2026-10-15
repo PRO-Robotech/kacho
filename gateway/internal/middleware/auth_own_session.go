@@ -121,7 +121,7 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 			return r, false, false
 		}
 		a.sessionLane.recordNoSession()
-		EndSessionCarriers(w)
+		EndSessionCarriers(w, a.sessionCookieDomain)
 		writeAuthnRefusal(w)
 		return r, false, true
 	}
@@ -131,7 +131,7 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 	case sessionCutoffEnded:
 		// На ЛЮБОМ пути, включая глаголы формы (Ф3-51).
 		a.sessionLane.recordCutoffDenied()
-		EndSessionCarriers(w)
+		EndSessionCarriers(w, a.sessionCookieDomain)
 		writeAuthnRefusal(w)
 		return r, false, true
 	case sessionCutoffUnanswered:

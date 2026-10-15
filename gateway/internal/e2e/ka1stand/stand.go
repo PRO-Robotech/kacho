@@ -810,7 +810,7 @@ func MarshalStatus(t *testing.T, st *status.Status) []byte {
 // CarrierEndingLines — набор Set-Cookie, который производит SessionCarrierEndings().
 func CarrierEndingLines() []string {
 	var out []string
-	for _, c := range middleware.SessionCarrierEndings() {
+	for _, c := range middleware.SessionCarrierEndings("") {
 		out = append(out, c.String())
 	}
 	return out

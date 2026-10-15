@@ -17,6 +17,8 @@ func TestMain(m *testing.M) {
 	for k, v := range map[string]string{
 		config.KnobIdentityCallBudget: "1s",
 		config.KnobBackendCallBudget:  "30s",
+		// Домен печенья сессии (kacho#3174): умолчания в загрузчике нет.
+		config.KnobSessionCookieDomain: config.SessionCookieDomainNone,
 	} {
 		if _, ok := os.LookupEnv(k); !ok {
 			_ = os.Setenv(k, v)

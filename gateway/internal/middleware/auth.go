@@ -186,6 +186,10 @@ type AuthInterceptor struct {
 	// в процессе ЕДИНСТВЕННЫЙ: чужой снят вместе с переходным режимом двух носителей
 	// (#2792), и край читает только нашу сессию.
 	humanSession HumanSessionReader
+	// sessionCookieDomain — домен печенья нашей сессии, с которым его выдаёт
+	// служба (`authn.login.cookie-domain`); пусто — только на хост. Гашение края
+	// идёт с ним же (kacho#3174, session_carrier_names.go).
+	sessionCookieDomain string
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts

@@ -140,6 +140,19 @@ callBudgets:
   identity: 1s
   backend: 30s
 
+# sessionCarrier — печенье нашей сессии, которое край гасит на отказе полосы
+# личности (по отсечке, «сессии нет»; kacho#3174).
+#
+#   · cookieDomain — домен, с которым печенье выдаёт служба доступа: ТО ЖЕ
+#     значение, что `kaname.config.authn.login.cookieDomain` того же стенда,
+#     тем же словарём (`none` — только на хост, иначе имя домена). Браузер
+#     сопоставляет гашение с печеньем по имени, пути и домену: гашение не тем
+#     доменом печенье не удаляет, и отказ по отсечке остаётся стоящим. Умолчания
+#     в процессе нет. Согласие двух величин на каждом стенде таблицы держит
+#     gateway/deploy/session_cookie_domain_render_test.go.
+sessionCarrier:
+  cookieDomain: none
+
 # Проекция потока изменений в браузер — ЕДИНСТВЕННАЯ ручка `/subscription/v1/events`
 # (kacho#1020). Разбор решения и цена отвергнутых способов —
 # gateway/docs/engineering/architecture/subscription-stream-projection.md.

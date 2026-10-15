@@ -192,6 +192,11 @@ func main() {
 		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget)
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
+	// Гашение носителя на отказе полосы — с тем доменом, с каким печенье выдаёт
+	// служба (kacho#3174): иначе браузер гашение не сопоставит и отказ останется
+	// стоящим. Ручка названа здесь — место сборки показывает, чем звено
+	// настраивается.
+	authInterceptor = authInterceptor.WithSessionCookieDomain(cfg.SessionCookieDomain)
 
 	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
 	// входа и церемония авторизации принадлежат той чеканке, которая личность

@@ -22,7 +22,7 @@ func TestEdgeKnowsExactlyOneSessionCarrierOurs(t *testing.T) {
 		t.Fatalf("перечень носителей сессии края = %q, ожидался ровно наш %q: имя без "+
 			"читателя гасится у клиента без основания", names, OurSessionCarrierName)
 	}
-	endings := SessionCarrierEndings()
+	endings := SessionCarrierEndings("")
 	if len(endings) != 1 || endings[0].Name != OurSessionCarrierName {
 		got := make([]string, 0, len(endings))
 		for _, c := range endings {

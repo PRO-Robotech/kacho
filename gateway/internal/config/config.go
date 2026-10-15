@@ -226,6 +226,12 @@ type Config struct {
 	IdentityCallBudget time.Duration `ignored:"true"`
 	BackendCallBudget  time.Duration `ignored:"true"`
 
+	// SessionCookieDomainRaw — домен печенья нашей сессии, КАК ЕСТЬ
+	// (session_cookie_domain.go, kacho#3174); SessionCookieDomain — разобранный:
+	// пусто — только на хост. Умолчания нет.
+	SessionCookieDomainRaw string `envconfig:"KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN"`
+	SessionCookieDomain    string `ignored:"true"`
+
 	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
 	//
 	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
@@ -1489,6 +1495,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if err := loadCallBudgets(&cfg, os.LookupEnv); err != nil {
+		return Config{}, err
+	}
+	if err := loadSessionCookieDomain(&cfg, os.LookupEnv); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
