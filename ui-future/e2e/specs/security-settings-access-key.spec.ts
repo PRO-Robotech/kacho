@@ -522,14 +522,23 @@ test("F8-S7-70 · клавиатура: каждое действие дости
     const links = await s.nav.getByRole("link").count();
     const stops: string[] = [];
     await page.locator("body").focus();
+    // Обход кончается, когда фокус вернулся на УЖЕ посещённый элемент. Узнаётся
+    // он по самому узлу документа (равенство ссылок на странице), а не по тексту:
+    // у кнопок без текста подпись одна, и обход по ней обрывался на второй такой.
+    await page.evaluate(() => {
+      (window as unknown as { tabStopsSeen: Element[] }).tabStopsSeen = [];
+    });
     for (let i = 0; i < actions + links + 40; i++) {
       await page.keyboard.press("Tab");
       const what = await page.evaluate(() => {
         const a = document.activeElement;
         if (!a || a === document.body) return "";
-        return `${a.tagName.toLowerCase()}:${a.getAttribute("role") ?? ""}:${(a.textContent ?? "").trim().slice(0, 40)}`;
+        const seen = (window as unknown as { tabStopsSeen: Element[] }).tabStopsSeen;
+        if (seen.includes(a)) return "";
+        seen.push(a);
+        return `${a.tagName.toLowerCase()}:${a.getAttribute("role") ?? ""}`;
       });
-      if (what === "" || stops.includes(what)) break;
+      if (what === "") break;
       stops.push(what);
     }
     const passive = stops.filter((x) => !/^(button|a|input|select|textarea)/.test(x));
