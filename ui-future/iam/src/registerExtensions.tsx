@@ -283,7 +283,10 @@ type PrivilegesMode =
   | { kind: "resource"; resourceType: "account" | "project" | "cluster"; resourceId: string };
 
 // Цвет тега типа субъекта — единая палитра со страницей «Привязки доступа».
-function subjectColor(t: string): string {
+// Системный класс — свой цвет в любом написании вида: провод и проекция пишут
+// его по-разному, а человек обязан узнать класс одним цветом.
+export function subjectColor(t: string): string {
+  if (isSystemClassSubjectType(t)) return "cyan";
   switch (t) {
     case "user":
       return "blue";
@@ -498,7 +501,13 @@ function SubjectPrivilegesResourceTable({
                 {human}
               </Typography.Text>
             )}
-            <CopyableMonoId id={row.subject_id} />
+            {/* Класс — субъект без записи (SC-53): подписью, как в перечне, а не
+                идентификатором к копированию — тот выдавал бы его за запись. */}
+            {isSystemClassSubjectType(row.subject_type) ? (
+              <span data-testid="subject-system-class">{systemClassLabel(row.subject_id)}</span>
+            ) : (
+              <CopyableMonoId id={row.subject_id} />
+            )}
           </span>
         );
       },

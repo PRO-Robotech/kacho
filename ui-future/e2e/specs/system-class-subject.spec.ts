@@ -41,6 +41,8 @@ const WRITE_ROLE = "vpc.network.edit";
 const OBJ_TYPE = "vpc.network";
 const OBJ_ID = "enp00000000000000001";
 const GRANT_PATH = "/iam/v1/accessBindings";
+/** Перечень выдач аккаунта — тот, что читает страница «Привязки доступа». */
+const LIST_BY_ACCOUNT = /\/iam\/v1\/accounts\/[^/]+\/accessBindings(\?|$)/;
 
 const visibleOptions = (page: Page) => page.locator(".ant-select-dropdown:visible .ant-select-item-option");
 
@@ -251,4 +253,70 @@ test("SC-53: класс в перечне выдач показан подпис
 
   // Системная выдача `acbc5d32d66fc8dc4952` арендатору не видна (решение 5).
   await expect(table.getByText("платформенная"), "системной выдачи в перечне арендатора нет").toHaveCount(0);
+
+  // Положительный близнец отрицания выше — ровно один факт: признак `system` у
+  // той же строки. Ответ края берётся настоящий, меняется только этот признак;
+  // на том же адресе метка ОБЯЗАНА появиться. Без близнеца отрицание зеленело бы
+  // и тогда, когда метку перечень не рисует вовсе.
+  await page.route(LIST_BY_ACCOUNT, async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as { access_bindings?: Array<Record<string, unknown>> };
+    for (const b of body.access_bindings ?? []) {
+      const subjects = (b.subjects ?? []) as Array<{ id?: string }>;
+      if (subjects.some((s) => s.id === "authenticated")) b.system = true;
+    }
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const markedRow = table.locator("tr").filter({ has: table.getByText(AUTHENTICATED_LABEL, { exact: true }) });
+  await expect(
+    markedRow.getByText("платформенная", { exact: true }),
+    "строка с признаком system помечена «платформенная» — метка перечнем рисуется",
+  ).toBeVisible({ timeout: 45_000 });
+  await page.unroute(LIST_BY_ACCOUNT);
+});
+
+test("SC-54: выдачу классу снимают из перечня — строка уходит, край получил отзыв этой выдачи", async ({ page }) => {
+  // verifies #3238
+  test.setTimeout(240_000);
+  const tenant = await grantingTenant(page);
+  const created = await page.request.post(GRANT_PATH, {
+    data: {
+      subjects: [{ type: "SUBJECT_TYPE_SYSTEM_CLASS", id: "authenticated" }],
+      roleId: "rolfe683216e63311d3f",
+      scopeType: "iam.project",
+      scopeId: tenant.projectId,
+      target: { resources: { resources: [{ type: OBJ_TYPE, id: OBJ_ID }] } },
+    },
+  });
+  expect(created.status(), `Дано SC-01: выдача классу не заведена: ${await created.text()}`).toBe(200);
+
+  await page.goto("/iam/access-bindings", { waitUntil: "domcontentloaded" });
+  const table = page.getByTestId("access-bindings-table");
+  await expect(table, "перечень выдач не отрисовался").toBeVisible({ timeout: 45_000 });
+  const classCell = table.getByText(AUTHENTICATED_LABEL, { exact: true });
+  // Положительный контроль: снимаемая выдача в перечне есть — исчезновение ниже
+  // говорит об отзыве, а не о строке, которой не было.
+  await expect(classCell.first(), "выдача классу показана в перечне до отзыва").toBeVisible({ timeout: 45_000 });
+  await expect(classCell, "в перечне ровно одна выдача классу — отзывается именно она").toHaveCount(1);
+
+  const row = table.locator("tr").filter({ has: classCell });
+  await row.getByRole("button", { name: "Действия" }).first().click();
+  await page.getByRole("menuitem", { name: /Удалить/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog, "диалог отзыва выдачи открылся").toBeVisible();
+
+  const revoked = page.waitForResponse(
+    (r) => r.request().method() === "DELETE" && new URL(r.url()).pathname.startsWith(`${GRANT_PATH}/`),
+  );
+  await dialog.getByRole("button", { name: "Удалить", exact: true }).click();
+  const res = await revoked;
+  expect(res.status(), `край принял отзыв выдачи классу: ${await res.text()}`).toBe(200);
+
+  await expect(classCell, "отозванной выдачи классу в перечне активных нет").toHaveCount(0, { timeout: 45_000 });
+  // То же после перечитывания с края: строку убрал ответ края, а не только
+  // локальное состояние страницы.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(table, "перечень выдач после перечитывания отрисовался").toBeVisible({ timeout: 45_000 });
+  await expect(classCell, "после перечитывания отозванной выдачи нет").toHaveCount(0);
 });

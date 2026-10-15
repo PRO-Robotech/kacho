@@ -955,7 +955,7 @@ export const iamApi = {
    * KAC item #1: GET /iam/v1/accounts/{account_id}/accessBindings — все
    * AccessBinding'и видимые админу в account'е (включает project-scoped + account-scoped).
    * Опциональные фильтры:
-   *   - subject_type_filter — "user" | "service_account" | "group"
+   *   - subject_type_filter — "user" | "service_account" | "group" | "system_class"
    *   - include_revoked — "true" / "false" (default false)
    *   - page_size / page_token — opaque cursor pagination.
    */

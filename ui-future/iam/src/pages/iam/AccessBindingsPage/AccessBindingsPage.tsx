@@ -188,6 +188,7 @@ export function AccessBindingsPage() {
               { value: "user", label: "Пользователь" },
               { value: "service_account", label: "Сервисный аккаунт" },
               { value: "group", label: "Группа" },
+              { value: "system_class", label: "Системный класс" },
             ]}
             style={{ width: 190 }}
             data-testid="access-bindings-subject-filter"
