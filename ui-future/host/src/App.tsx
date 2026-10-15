@@ -88,28 +88,12 @@ const App: FC = () => {
  * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
  *
  * Экраны вида `screen` открыты и до подтверждения адреса почты (приёмка F6b,
- * Р7); экраны вида `guarded-screen` — нет: они стоят за тем же стражем, что
- * каркас, и неподтверждённую сессию уводят на экран подтверждения (экран
- * восстановления доступа — приёмка F8-S3, Р1).
+ * Р7; экран восстановления доступа — #3210): страж стоит над каркасом, а не
+ * над ними.
  */
 function ceremonyElement(serving: CeremonyServing) {
   if (serving.kind === "in-shell") {
     throw new Error(`экран «${serving.screen}» живёт в каркасе, а не вне его`);
-  }
-  if (serving.kind === "guarded-screen") {
-    const guarded = serving.screen;
-    switch (guarded) {
-      case "recovery":
-        return (
-          <AddressConfirmationGate>
-            <RecoveryPage />
-          </AddressConfirmationGate>
-        );
-      default: {
-        const unhandled: never = guarded;
-        throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);
-      }
-    }
   }
   const screen = serving.screen;
   switch (screen) {
@@ -121,6 +105,8 @@ function ceremonyElement(serving: CeremonyServing) {
       return <LogoutPage />;
     case "verification":
       return <VerificationPage />;
+    case "recovery":
+      return <RecoveryPage />;
     default: {
       const unhandled: never = screen;
       throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);

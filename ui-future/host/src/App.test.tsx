@@ -262,7 +262,6 @@ describe("F6b · страж над каркасом консоли", () => {
     ["/iam/", "/verification?returnTo=%2Fiam%2F"],
     ["/system/", "/verification?returnTo=%2Fsystem%2F"],
     ["/settings", "/verification?returnTo=%2Fsettings"],
-    ["/recovery", "/verification?returnTo=%2Frecovery"],
     ["/no-such-address", "/verification?returnTo=%2Fno-such-address"],
   ];
 
@@ -295,41 +294,35 @@ describe("F6b · страж над каркасом консоли", () => {
     expect(network.mock.calls.map(([input]) => urlOf(input))).toContain("/iam/v1/accounts");
   });
 
-  it("F6b-16 · близнец: /recovery у подтверждённой сессии формы не показывает — экран уводит на адрес возврата", async () => {
-    // Приёмка F8-S3, §3.1: ветвь `/recovery` F6b-16 переписана — названной
-    // страницы больше нет, подтверждённая сессия формы восстановления не видит
-    // (F8S3-02; уход документа держит RecoveryPage.test.tsx).
+  it("F6b-16 · близнец: /recovery у подтверждённой сессии формы не показывает — назван шаг «Выйти» (#3210)", async () => {
     window.history.pushState(null, "", "/recovery");
-    const network = stubConsole(true);
+    stubConsole(true);
 
     render(<App />);
 
-    await waitFor(() =>
-      expect(network.mock.calls.filter(([input]) => urlOf(input) === "/iam/v1/auth/me").length).toBeGreaterThanOrEqual(
-        2,
-      ),
-    );
+    expect(await screen.findByRole("button", { name: "Выйти и восстановить доступ" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Адрес почты")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Такого адреса здесь нет" })).toBeNull();
+    expect(window.location.pathname).toBe("/recovery");
   });
 });
 
 // ─── приёмка F8-S3 · F8S3-19 · маршрут восстановления доступа ────────────────
 describe("F8S3-19 · /recovery — экран за стражем; вида «не ведёт» нет", () => {
   it("F8S3-19 · /recovery отдаёт экран восстановления, и ни один из шести адресов не отвечает названной страницей", () => {
-    expect(CEREMONY_ROUTING["/recovery"]).toEqual({ kind: "guarded-screen", screen: "recovery" });
+    expect(CEREMONY_ROUTING["/recovery"]).toEqual({ kind: "screen", screen: "recovery" });
     // Видов решения ровно три, и каждый ведёт экран: вида «не ведёт» нет. У
     // каждого адреса — названный экран, то есть ни один не отвечает страницей
     // «такого адреса здесь нет».
     const kinds = new Set(CEREMONY_ADDRESSES.map((a) => CEREMONY_ROUTING[a].kind as string));
-    expect([...kinds].sort()).toEqual(["guarded-screen", "in-shell", "screen"]);
+    expect([...kinds].sort()).toEqual(["in-shell", "screen"]);
     expect(CEREMONY_ADDRESSES.filter((a) => !("screen" in CEREMONY_ROUTING[a]))).toEqual([]);
   });
 
-  it("F8S3-19 · до подтверждения открыты ровно четыре адреса, /recovery среди них нет", () => {
+  it("#3210 · до подтверждения открыты пять адресов — восстановление доступа среди них", () => {
     expect([...OPEN_BEFORE_ADDRESS_CONFIRMATION].sort()).toEqual([
       "/login",
       "/logout",
+      "/recovery",
       "/registration",
       "/verification",
     ]);
@@ -359,7 +352,7 @@ describe("F8S3-19 · /recovery — экран за стражем; вида «н
     expect(naming).toEqual([]);
   });
 
-  it("F8S3-19 · без сессии страж пропускает к экрану; неподтверждённую уводит на подтверждение", async () => {
+  it("F8S3-19 · без сессии — форма; неподтверждённая сессия — экран с шагом «Выйти» (#3210)", async () => {
     window.history.pushState(null, "", "/recovery");
     stubConsole(null);
     const { unmount } = render(<App />);
@@ -367,10 +360,12 @@ describe("F8S3-19 · /recovery — экран за стражем; вида «н
     expect(window.location.pathname).toBe("/recovery");
     unmount();
 
+    // #3210: восстановление доступно в положении подтверждения — неподтверждённая
+    // сессия получает экран с названным шагом «Выйти», а не уход на подтверждение.
     window.history.pushState(null, "", "/recovery");
     stubConsole(false);
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Подтвердите адрес почты" })).toBeInTheDocument();
-    expect(`${window.location.pathname}${window.location.search}`).toBe("/verification?returnTo=%2Frecovery");
+    expect(await screen.findByRole("button", { name: "Выйти и восстановить доступ" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/recovery");
   });
 });
