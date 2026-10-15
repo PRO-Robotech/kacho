@@ -80,8 +80,12 @@ backends:
   storageInternal: kacho-storage.kacho.svc:9091
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
-# Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
-# Используется TLS-only клиентами.
+# ИСТОЧНИК СЕКРЕТА ОДИН (kacho#3219): Certificate этого чарта
+# (templates/certificate.yaml), выпускаемый при `mtls.serverSecretName` равном
+# `tls.secretName`. cert-manager кладёт в секрет tls.crt, tls.key И ca.crt, а
+# ca.crt этого же секрета читает консоль (ui-future `host.edgeLink.caSecretName`),
+# чтобы проверить край. Секрет, заведённый вручную, обязан нести все три ключа:
+# секрет из одной пары --cert/--key ca.crt не несёт, и звено консоли к краю не поднимется.
 tls:
   enabled: true
   secretName: api-gateway-tls

@@ -85,7 +85,15 @@ assert "контроль" GREEN ""
 echo "=== инъекции: возвращённый дефект — находка с именем ручки ==="
 assert "адрес отправителя снят"        RED "fromAddress"     --set global.kacho.identity.smtp.fromAddress=
 assert "узел снят, отправитель остался" RED "connectionURI"  --set global.kacho.identity.smtp.connectionURI=
-assert "имя отправителя снято"          RED "fromName"       --set global.kacho.identity.smtp.fromName=
+# Имя отправителя необязательно (kacho#3179, как в отдельном чарте службы);
+# отвергается имя без узла — величину некуда применить.
+assert "имя отправителя без узла"       RED "fromName"       --set global.kacho.identity.smtp.connectionURI= \
+  --set global.kacho.identity.smtp.fromAddress=
+assert "голая форма с удостоверением"   RED "host[:port]"    \
+  --set 'global.kacho.identity.smtp.connectionURI=user@kacho-umbrella-mailpit:1025'
+assert "ручка посадки вне словаря"      RED "tlsMode"        \
+  --set 'global.kacho.identity.smtp.connectionURI=kacho-umbrella-mailpit:1025' \
+  --set global.kacho.identity.smtp.tlsMode=plain
 assert "шифрование снято"               RED "disable_starttls" \
   --set 'global.kacho.identity.smtp.connectionURI=smtp://mailhog.kacho.svc:1025/?disable_starttls=true'
 assert "проверка сертификата снята"     RED "skip_ssl_verify" \
@@ -178,6 +186,9 @@ assert "имя пользователя и объявленный источни
   --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud@kacho-umbrella-mailpit:1025/' \
   --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
   --set global.kacho.identity.smtp.credentialSecret.key=password
+assert "имя отправителя снято"          GREEN "" --set global.kacho.identity.smtp.fromName=
+assert "голая форма host:port"          GREEN "" \
+  --set 'global.kacho.identity.smtp.connectionURI=kacho-umbrella-mailpit:1025'
 assert "неявный TLS вместо STARTTLS"    GREEN "" \
   --set 'global.kacho.identity.smtp.connectionURI=smtps://kacho-umbrella-mailpit:465/'
 assert "приёмник выключен, полосы нет"  GREEN "" \
@@ -196,8 +207,8 @@ assert "внешний ретранслятор"           GREEN "" \
   --set global.kacho.identity.smtp.trustAnchorSecret.key=
 
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 23 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 7 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$red" -ge 25 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 9 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: страж почтовой полосы способен упасть и способен смолчать" \
               || echo "ИТОГ: ОТКАЗ"
 exit "$rc"
