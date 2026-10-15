@@ -89,7 +89,15 @@ function sessionsSection(page: Page) {
       await endOthers.click();
       await page.getByRole("dialog").getByRole("button", { name: "Выйти", exact: true }).click();
     },
-    status: page.getByRole("status").filter({ hasText: /\S/ }),
+    /**
+     * Исход действия — та живая область экрана, что его объявила. Областей
+     * `role="status"` на экране две, и предметы у них разные: исход действия
+     * экрана (`SecurityAnnouncer`) и остаток запасных кодов окна подтверждения
+     * (`StepUpModal`, после повышения запасным кодом). Привязка к тексту исхода,
+     * а не к «любой непустой области»; `toBeVisible` строгий — область с этим
+     * исходом ровно одна, исход не звучит дважды.
+     */
+    announced: (text: string) => page.getByRole("status").filter({ hasText: text }),
     refusal: region.getByRole("alert"),
   };
 }
@@ -322,7 +330,7 @@ test("F8-S5-02 · выход из выбранной: та сессия уход
     expect(await res.json()).toEqual({ ended: true });
     expect(JSON.parse(res.request().postData() ?? "{}")).toMatchObject({ sessionId: idA });
     expect(Object.keys(JSON.parse(res.request().postData() ?? "{}")).sort()).toEqual(["csrfToken", "sessionId"]);
-    await expect(s.status, "раздел не назвал исход снятия").toContainText("Сессия завершена");
+    await expect(s.announced("Сессия завершена"), "раздел не назвал исход снятия").toBeVisible();
     const after = (await (await reread).json()) as { sessions?: ListedSession[] };
     expect((after.sessions ?? []).map((r) => r.userAgent)).toEqual([g.agentB]);
     await expect(s.rows).toHaveCount(1);
@@ -356,7 +364,7 @@ test("F8-S5-03 · выход на всех, кроме этой: прочие у
       const [res] = await Promise.all([lanePostAnswer(page, END_OTHERS), s.confirmEndOthers()]);
       expect(res.status(), `«все, кроме этой» не прошло: ${await res.text()}`).toBe(200);
       expect(await res.json()).toEqual({ ended: 2 });
-      await expect(s.status).toContainText("Завершено сессий: 2");
+      await expect(s.announced("Завершено сессий: 2")).toBeVisible();
       const after = (await (await reread).json()) as { sessions?: ListedSession[] };
       expect((after.sessions ?? []).map((r) => [r.userAgent, r.current])).toEqual([[g.agentB, true]]);
       await expect(s.rows).toHaveCount(1);
@@ -432,7 +440,7 @@ test("F8-S5-05 · несвежая сессия: повышение и ровн�
     expect(again.status(), `повтор снятия после повышения не прошёл: ${await again.text()}`).toBe(200);
     expect(await again.json()).toEqual({ ended: true });
     await expect(dialog).toBeHidden();
-    await expect(s.status).toContainText("Сессия завершена");
+    await expect(s.announced("Сессия завершена")).toBeVisible();
     expect(
       census.matching("POST", END).map((c) => c.outcome),
       `обращений к снятию — ровно два:\n${census.describe()}`,
@@ -531,7 +539,7 @@ test("F8-S5-11 · раздел достижим с клавиатуры", async 
     const [res] = await Promise.all([lanePostAnswer(page, END), page.keyboard.press("Enter")]);
     expect(res.status(), `снятие с клавиатуры не прошло: ${await res.text()}`).toBe(200);
     expect(await res.json()).toEqual({ ended: true });
-    await expect(s.status).toContainText("Сессия завершена");
+    await expect(s.announced("Сессия завершена")).toBeVisible();
     expectSectionCensusClean(census);
   });
 });

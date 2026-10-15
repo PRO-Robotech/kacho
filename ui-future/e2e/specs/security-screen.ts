@@ -81,7 +81,13 @@ export function securityScreen(page: Page) {
     backup: section("Запасные коды"),
     sessions: section("Активные сессии"),
     keyDelete: (name: string) => keys.getByRole("button", { name: `Удалить ключ доступа «${name}»`, exact: true }),
-    status: page.getByRole("status"),
+    /**
+     * Исход действия экрана — живая область, объявившая этот текст. Областей
+     * `role="status"` на экране две, предметы разные: исход действия
+     * (`SecurityAnnouncer`) и остаток запасных кодов окна подтверждения
+     * (`StepUpModal`). Строгий `toBeVisible` даёт «ровно одна».
+     */
+    announced: (text: string) => page.getByRole("status").filter({ hasText: text }),
     alert: page.getByRole("alert"),
   };
 }

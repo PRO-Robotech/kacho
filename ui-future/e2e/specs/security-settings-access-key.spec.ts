@@ -294,7 +294,7 @@ test("F8-S7-26 · только ключ, отказ свежести: окно �
       await expect(w.signInAgain, "«Войти заново» не показан — у человека есть прямой путь").toHaveCount(0);
       await w.keyButton.click();
       await expect(w.dialog, "окно закрыто").toBeHidden();
-      await expect(s.status, "сессии завершены").toContainText("Завершено сессий: 1");
+      await expect(s.announced("Завершено сессий: 1"), "сессии завершены").toBeVisible();
     },
     { before: async (h) => anotherSession(testInfo, h.human) },
   );
@@ -449,9 +449,11 @@ test("F8-S7-50 · ключи выключены на установке: сос�
     await expect(s.summary).toContainText("Выключены на установке");
     expect(census.calls.filter((c) => c.path.endsWith(":beginRegistration")), "обращений BeginRegistration — 0").toHaveLength(0);
     await s.keyDelete(h.keyName).click();
-    await expect(s.status).toContainText(
-      "Удалить ключ сейчас нельзя: нужен второй фактор, а ключи на этой установке выключены. Попросите администратора установки сбросить ваши ключи доступа.",
-    );
+    await expect(
+      s.announced(
+        "Удалить ключ сейчас нельзя: нужен второй фактор, а ключи на этой установке выключены. Попросите администратора установки сбросить ваши ключи доступа.",
+      ),
+    ).toBeVisible();
     expect(census.matching("DELETE", DELETE_KEY(h)), "обращений Revoke — 0").toHaveLength(0);
     await expect(stepUpWindow(page).keyButton, "окна подтверждения нет").toHaveCount(0);
   });
@@ -580,7 +582,7 @@ test("F8-S7-71 · экранный диктор: «Ключ доступа «<и
       await expect(page.locator(`#${by}`), `aria-labelledby раздела «${name}» — на его заголовок`).toHaveText(name);
     }
     await deleteKey(page, s, h);
-    await expect(s.status, "область role=status").toContainText(`Ключ доступа «${h.keyName}» удалён`);
+    await expect(s.announced(`Ключ доступа «${h.keyName}» удалён`), "область role=status").toBeVisible();
     await expect(s.keyDelete(h.keyName), "ключа в таблице нет").toHaveCount(0);
   });
 });
