@@ -4,6 +4,7 @@
 import { useRef, type ReactNode } from "react";
 import { Button, Modal, Typography } from "antd";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
+import { keepTabInside } from "./keep-tab-inside";
 
 // Опасное действие экрана «Безопасность» — диалог, называющий последствие
 // словами (приёмка F8-S7, Р6).
@@ -12,8 +13,10 @@ import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 //     «Удалить», «Выпустить», «Выйти»);
 //   • фокус при открытии — на «Отмена»: Enter, нажатый по привычке, ничего не
 //     выпускает; отмена ничего не выпускает тоже (F8-60);
-//   • диалог держит фокус внутри, закрывается по Esc и возвращает фокус на
-//     вызвавший элемент (Р9) — это поведение окна antd, а не своё;
+//   • диалог закрывается по Esc и возвращает фокус на вызвавший элемент (Р9)
+//     — это поведение окна antd; фокус внутри держит обход Tab, замкнутый
+//     самим диалогом (`keepTabInside`): ловушка antd с последнего действия
+//     окна выпускала фокус из страницы;
 //   • диалог уходит сразу, без анимации: глагол выпускается после закрытия, и
 //     окно подтверждения действия не встаёт рядом с ещё видимым диалогом.
 //
@@ -60,6 +63,7 @@ export function DangerDialog({
       afterOpenChange={(isOpen) => {
         if (isOpen) cancelRef.current?.focus();
       }}
+      modalRender={(node) => <div onKeyDown={keepTabInside}>{node}</div>}
       footer={[
         <Button key="cancel" ref={cancelRef} onClick={onCancel} disabled={busy}>
           Отмена

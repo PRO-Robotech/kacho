@@ -99,7 +99,18 @@ export async function openSecurity(page: Page): Promise<SecurityScreen> {
   await expect
     .poll(
       async () => {
-        if (await s.heading.isVisible()) return "отрисован";
+        // Шапка «Безопасность» рисуется ДО ответа «кто вошёл»; разделы и
+        // навигация «Разделы страницы» — вместе, после него. Готов экран, когда
+        // видна навигация: по одной шапке проба читала разделы пустой страницы
+        // (F8-S7-01 — «Array []», F8-S7-70 — обход Tab из нуля действий).
+        if (await s.nav.isVisible()) return "отрисован";
+        if (await s.heading.isVisible()) {
+          if (await page.getByText("Параметры безопасности доступны после входа.").isVisible())
+            return "экран «Безопасность» без сессии: «Параметры безопасности доступны после входа»";
+          if (await page.getByRole("button", { name: "Проверить снова", exact: true }).isVisible())
+            return `край не ответил «кто вошёл»: ${(await s.alert.first().textContent())?.trim() ?? ""}`;
+          return "шапка отрисована, разделов ещё нет";
+        }
         const now = new URL(page.url()).pathname;
         if (now !== "/settings") return `страница уведена на ${now}`;
         if (await s.oldHeading.isVisible()) return "на /settings прежний экран «Параметры учётной записи» — экрана «Безопасность» нет";

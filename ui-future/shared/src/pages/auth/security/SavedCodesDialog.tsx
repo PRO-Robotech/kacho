@@ -12,6 +12,10 @@ import { Alert, Button, Checkbox, Modal } from "antd";
 // сохранил коды»: человек, закрывший окно не глядя, остался бы без способа
 // войти при утрате приложения. Коды живут в состоянии окна и уходят вместе с
 // ним — ни в адрес, ни в хранилище браузера, ни в журнал.
+//
+// Закрытое окно снимается из документа (`destroyOnHidden`): окно antd без него
+// держит последнее содержимое скрытым — коды оставались на странице после
+// «Готово» (сквозная проба F8-S7-41 на стенде).
 
 /** Имя файла кодов — без адреса и имени человека: файл может лечь куда угодно. */
 const CODES_FILE = "kacho-backup-codes.txt";
@@ -59,6 +63,7 @@ export function SavedCodesDialog({
       closable={false}
       keyboard={false}
       mask={{ closable: false }}
+      destroyOnHidden
       afterOpenChange={(isOpen) => {
         if (!isOpen) {
           setSaved(false);

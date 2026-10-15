@@ -887,6 +887,7 @@ export function antdStub(): Record<string, unknown> {
     onOk,
     onCancel,
     okButtonProps,
+    modalRender,
     className,
     style,
     ...rest
@@ -924,12 +925,20 @@ export function antdStub(): Record<string, unknown> {
         : footer === null
           ? null
           : [footer as React.ReactNode];
-    return React.createElement(
-      "div",
-      { className, style, role: "dialog", ...domAttrs(rest) },
+    // Содержимое окна (заголовок, тело, кнопки) настоящее окно отдаёт в
+    // `modalRender` и рисует ВНУТРИ `role="dialog"` — заменитель тоже: обёртка,
+    // замыкающая обход Tab, иначе была бы непроверяема.
+    const content = React.createElement(
+      React.Fragment,
+      null,
       React.createElement("div", null, title as React.ReactNode),
       children,
       defaultFooter === null ? null : React.createElement("div", null, ...defaultFooter),
+    );
+    return React.createElement(
+      "div",
+      { className, style, role: "dialog", ...domAttrs(rest) },
+      typeof modalRender === "function" ? (modalRender as (node: React.ReactNode) => React.ReactNode)(content) : content,
     );
   };
   const Modal = Object.assign(ModalRoot, {

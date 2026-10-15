@@ -484,7 +484,12 @@ test("F8-S7-60 · ключи общей таблицей с датами; сво
     async () => {
       const s = await openSecurity(page);
       const table = s.keys.getByRole("table");
-      await expect(table.getByRole("columnheader"), "колонки таблицы ключей (Р3)").toHaveText([
+      // Колонки — дословно и по порядку (Р3); колонка действия заголовка не несёт.
+      // Пустой заголовок таблица выпускает без `scope`, и доступная роль такой
+      // клетки — `cell`, а не `columnheader`: строка заголовка читается целиком,
+      // в порядке документа — три названные колонки и пустая последней.
+      const head = table.getByRole("row").first();
+      await expect(head.getByRole("columnheader").or(head.getByRole("cell")), "колонки таблицы ключей (Р3)").toHaveText([
         "Имя",
         "Добавлен",
         "Последнее использование",
