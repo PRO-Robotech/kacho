@@ -260,7 +260,11 @@ host:
   #   secretName   — лист звена (tls.crt/tls.key); выпускает его умбрелла
   #                  выпускающим якоря звеньев (templates/api-gateway-front-link-pki.yaml);
   #   caSecretName — секрет, из которого берётся ТОЛЬКО ca.crt: удостоверяющий
-  #                  центр серверного листа края (им раздача проверяет край);
+  #                  центр серверного листа края (им раздача проверяет край).
+  #                  Это секрет серверного листа края, и источник у него один
+  #                  — Certificate чарта края (`api-gateway.mtls.serverSecretName`,
+  #                  kacho#3219); ключа ca.crt нет — под раздачи не стартует,
+  #                  отката на системные корни нет;
   #   продление листа — сторож `tlsReload` (ниже).
   edgeLink:
     secretName: api-gateway-front-console-link
