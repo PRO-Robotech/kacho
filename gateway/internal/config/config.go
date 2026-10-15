@@ -237,7 +237,14 @@ type Config struct {
 	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
 	// потолок потоков владельца, иначе исчерпание наступает у владельца — то
 	// есть у всех арендаторов сразу, а не у того, кто его вызвал.
-	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"64"`
+	//
+	// Умолчание — та же величина, что `subscriptionStream.maxStreams` профиля
+	// чарта, и она равна потолку потоков владельца (`subscription.maxStreams`
+	// его чарта): процесс без ручки не создаёт больше, чем примет владелец.
+	// Здесь стояло 64 — вчетверо больше (kacho#3214). Согласие умолчания,
+	// профиля, страницы конфигурации и потолков владельцев держит
+	// subscription_stream_ceiling_test.go.
+	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"16"`
 
 	// SubscriptionMaxStreamsPerSubject — потолок потоков ОДНОГО субъекта.
 	//
@@ -245,7 +252,12 @@ type Config struct {
 	// него один субъект занимает потолок реплики целиком, и остальные получают
 	// отказ, не имея ни одного собственного потока. Консоль открывает поток на
 	// вкладку, поэтому случай не умозрительный.
-	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"8"`
+	//
+	// Умолчание — та же величина, что `subscriptionStream.maxStreamsPerSubject`
+	// профиля чарта: владельцы × 2 вкладки (расчёт — у профиля). Здесь стояло
+	// 8 — на шести владельцах это отказ одному арендатору на второй вкладке
+	// при штатной работе (kacho#3214).
+	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"12"`
 
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
