@@ -42,7 +42,9 @@ import {
 } from "@shared/components/organisms/form/NlbVipSourceField";
 import { stripFormOnlyKeys } from "@shared/lib/update-mask";
 import {
+  isSystemClassSubjectType,
   roleIsSystem,
+  systemClassLabel,
   targetKind,
   targetResources,
   userBlockPath,
@@ -494,11 +496,18 @@ function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
   if (list.length === 0) return IAM_DASH;
   const first = list[0];
   const spec = subjectSpecId(String(first.type ?? ""));
-  const firstNode = spec ? (
+  // Класс — субъект без страницы: показывается подписью, ссылки у него нет
+  // (SC-53). Голый идентификатор с копированием выдавал бы его за запись.
+  const firstNode = isSystemClassSubjectType(String(first.type ?? "")) ? (
+    <span data-testid="subject-system-class">{systemClassLabel(String(first.id ?? ""))}</span>
+  ) : spec ? (
     <IamRefLink specId={spec} refId={first.id} nameField={spec === "users" ? "email" : "name"} />
   ) : (
     <CopyableId id={String(first.id ?? "")} />
   );
+  // Системную выдачу заводит платформа, а не арендатор: это говорится меткой
+  // рядом с субъектом, иначе она читалась бы как чья-то выдача.
+  const platform = row.system === true;
   return (
     <span
       style={{
@@ -510,6 +519,7 @@ function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
     >
       {firstNode}
       {list.length > 1 && <Tag title={`Ещё ${list.length - 1} субъект(ов)`}>+{list.length - 1}</Tag>}
+      {platform && <Tag title="Выдачу завела платформа, а не арендатор">платформенная</Tag>}
     </span>
   );
 }

@@ -34,8 +34,10 @@ import { getByPath } from "@shared/lib/resource-registry";
 import {
   iamApi,
   IAM,
+  isSystemClassSubjectType,
   roleIsSystem,
   roleDefinitionTier,
+  systemClassLabel,
   targetKind,
   targetResources,
   type AccessBinding,
@@ -232,6 +234,14 @@ function subjectsView(data: Record<string, unknown>): ReactNode {
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
       {list.map((s, i) => {
         const spec = subjectSpecId(String(s.type ?? ""));
+        // Класс — именем, без ссылки: страницы у него нет (SC-53).
+        if (isSystemClassSubjectType(String(s.type ?? ""))) {
+          return (
+            <span key={i} data-testid="subject-system-class">
+              {systemClassLabel(String(s.id ?? ""))}
+            </span>
+          );
+        }
         return spec ? (
           <IamRefLink key={i} specId={spec} refId={s.id} nameField={spec === "users" ? "email" : "name"} />
         ) : (
