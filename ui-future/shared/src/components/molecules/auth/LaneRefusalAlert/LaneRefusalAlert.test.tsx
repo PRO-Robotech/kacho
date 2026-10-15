@@ -50,6 +50,15 @@ describe("подсказка следующего шага к отказу по�
     expect(refusalHint(of(401, 16, "authentication failed"), "recovery")).toMatch(/код/);
   });
 
+  it("#3184 · отказ регистрации называет владельцу ящика восстановление по адресу, а не только повтор формы", () => {
+    const registration = refusalHint(of(400, 9, "registration refused"), "registration") ?? "";
+    expect(registration).toMatch(/восстановите доступ по нему/);
+    // Путь владельца ящика, на чей адрес учётную запись завёл другой, — назван.
+    expect(registration).toMatch(/завёл не вы/);
+    // Повтор позже — шаг прочих случаев того же отказа, и он идёт ПОСЛЕ пути восстановления.
+    expect(registration.indexOf("восстановите доступ")).toBeLessThan(registration.indexOf("ещё раз позже"));
+  });
+
   it("#2953 · подсказка — функция ТОЛЬКО кода и экрана: текст отказа её не меняет", () => {
     // Неразличимость: два разных текста под одним кодом дают одну подсказку.
     for (const context of CONTEXTS) {
