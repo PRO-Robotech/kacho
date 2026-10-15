@@ -30,7 +30,7 @@ import { AccessKeysSection } from "./access-key";
 import { EmailChangeAction } from "./email-change";
 import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
-import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "./self-removal";
+import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "@shared/api/self-removal";
 
 // Параметры учётной записи на `/settings` — адрес почты, пароль, второй фактор,
 // свои сессии и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмки

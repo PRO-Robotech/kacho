@@ -5,7 +5,8 @@ import { api, ApiError } from "@shared/api/client";
 import type { Operation } from "@shared/api/types";
 import { operationIdOf } from "@shared/lib/operation-outcome";
 
-// Удаление своей личности — `DELETE /iam/v1/users/{user_id}` (#3186; kaname
+// Клиент удаления своей личности — транспорт, как `access-keys.ts`; исход
+// человеку называет экран параметров. `DELETE /iam/v1/users/{user_id}` (#3186; kaname
 // `docs/content/api/user.mdx`, «Delete — удалить личность»).
 //
 // Что держит служба и чего НЕ делает консоль:
