@@ -784,9 +784,17 @@ test("параметры учётной записи · на экране 1280×
       "условие пробы не создано: кнопка «Подтвердить» видна без прокрутки — прокрутку этим экраном не проверить",
     ).toBe(false);
     const headBefore = await s.heading.boundingBox();
+    const before = await s.factor.confirm.boundingBox();
+    expect(before, "кнопка «Подтвердить» не отрисована — довести до вида нечего").not.toBeNull();
 
+    // Колесо крутят ровно на расстояние до кнопки (её середина — в середину
+    // экрана), как человек, который ищет её глазами. Постоянный шаг связывал бы
+    // пробу с высотой того, что стоит НИЖЕ кнопки: раздел, добавленный под
+    // фактором, уводил кнопку за верхний край, и проба краснела при живой
+    // прокрутке. Дефект #1274 этим не маскируется: нет прокрутки — кнопка стоит.
+    const delta = Math.ceil((before?.y ?? 0) + (before?.height ?? 0) / 2 - viewport.height / 2);
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-    await page.mouse.wheel(0, 2000);
+    await page.mouse.wheel(0, delta);
     await expect
       .poll(inView, { message: "колесо мыши не довело кнопку «Подтвердить» до вида", timeout: 10_000 })
       .toBe(true);
