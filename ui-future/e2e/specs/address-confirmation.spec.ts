@@ -674,7 +674,12 @@ test("F6b-16 · подтверждённая сессия на тех же ад�
     // Каркас рисуется только после ответа стража «подтверждён».
     await expectShell(page, `адрес ${address} у подтверждённой сессии не отрисован в каркасе`);
     if (address === "/такого-адреса-нет") {
-      await expectAddress(page, "/dashboard", "неведомый адрес у подтверждённой сессии не увёл на /dashboard");
+      // #3199: неведомый адрес — страница «не найдено» в каркасе, адрес не подменён.
+      await expect(
+        page.getByRole("heading", { name: "Страница не найдена" }),
+        "неведомый адрес у подтверждённой сессии не назван страницей «не найдено»",
+      ).toBeVisible({ timeout: 30_000 });
+      expect(decodeURIComponent(new URL(page.url()).pathname), "адрес неведомой страницы подменён").toBe(address);
     }
     const detour = [
       ...visited.slice(seen).filter((a) => a.startsWith("/verification")),
