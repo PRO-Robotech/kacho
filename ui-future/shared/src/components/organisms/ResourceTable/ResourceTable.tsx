@@ -158,6 +158,8 @@ export function ResourceTable<T extends object>({
       // и предел берётся из неё, иначе содержимое растянуло бы столбец шире
       // объявленного — и закрепление разъехалось бы с тем, что показано.
       const clipWidth = width === undefined ? CELL_MAX_WIDTH : Math.max(width - CELL_INSET, 0);
+      const declared = width ?? c.width;
+      const headerClipWidth = declared === undefined ? CELL_MAX_WIDTH : Math.max(declared - CELL_INSET, 0);
       // Линия стоит на СТЫКЕ закрепления и прокручиваемой части: у левого
       // закрепления это его последняя колонка, у правого — сам столбец действий.
       const edge =
@@ -168,7 +170,15 @@ export function ResourceTable<T extends object>({
             : {};
 
       const col: ColumnType<T> = {
-        title: c.header,
+        // Заголовок — той же обрезкой и тем же пределом, что клетки колонки.
+        // Шапка не переносится (index.css), и без предела длина заголовка
+        // становилась шириной колонки поверх объявленной: «Последнее
+        // предъявление способа входа» при 200 объявленных раздвигал столбец до
+        // трёхсот, и таблица сессий переставала помещаться (kacho#3230).
+        // Предел — объявленная ширина колонки (закреплённая либо `width`
+        // объявления), без неё — общий предел клетки. Не поместившееся
+        // договаривает подсказка тем же обработчиком поверхности.
+        title: service ? c.header : <CellClip maxWidth={headerClipWidth}>{c.header}</CellClip>,
         key: String(idx),
         className: c.className,
         // Клетка идентичности — В ДВЕ СТРОКИ: под именем стоит идентификатор.
