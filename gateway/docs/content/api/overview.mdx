@@ -135,9 +135,9 @@ REST. `code` — числовой gRPC-код (REST мапит его на HTTP-
   <thead><tr><th>gRPC-код</th><th>HTTP</th><th>Когда (на уровне гейтвея)</th></tr></thead>
   <tbody>
     <tr><td><code>UNAUTHENTICATED</code></td><td>401</td><td>Нет / невалиден токен (AuthN не прошёл)</td></tr>
-    <tr><td><code>PERMISSION&#95;DENIED</code></td><td>403</td><td>AuthZ-Check отказал; либо промах по permission-каталогу</td></tr>
-    <tr><td><code>NOT&#95;FOUND</code></td><td>404</td><td><code>Internal&#42;</code>-путь на внешнем listener; несуществующий ресурс (от домена)</td></tr>
-    <tr><td><code>INVALID&#95;ARGUMENT</code></td><td>400</td><td>Формат/валидация (напр. неизвестный prefix Operation-id)</td></tr>
+    <tr><td><code>PERMISSION&#95;DENIED</code></td><td>403</td><td>AuthZ-Check отказал — у вызывающего нет права (<code>permission denied: &lt;право&gt;</code>); анонимному — и промах по permission-каталогу</td></tr>
+    <tr><td><code>NOT&#95;FOUND</code></td><td>404</td><td><code>Internal&#42;</code>-путь на внешнем listener; несуществующий ресурс (от домена); у этой версии края нет записи о методе в permission-каталоге — <code>unknown method: /&lt;метод&gt;</code> (аутентифицированному; добывать права бесполезно — нужна версия края, которая метод несёт)</td></tr>
+    <tr><td><code>INVALID&#95;ARGUMENT</code></td><td>400</td><td>Формат/валидация (напр. неизвестный prefix Operation-id); запрос без поля скоупа, которое метод требует, — <code>Illegal argument &lt;поле&gt;: required</code> (напр. <code>users:invite</code> без <code>accountId</code>), до проверки прав</td></tr>
     <tr><td><code>UNIMPLEMENTED</code></td><td>501</td><td>Метод не в allowlist — как несуществующий</td></tr>
     <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Backend домена / IAM недоступен (fail-closed)</td></tr>
     <tr><td><em>прочие</em></td><td>—</td><td>Проксируются как есть от доменного backend (его собственные коды/тексты)</td></tr>

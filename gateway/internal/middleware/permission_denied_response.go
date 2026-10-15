@@ -408,6 +408,31 @@ func scopeSourceConflictMessage(field string) string {
 		"in the request body for a request that has one, otherwise in the query string"
 }
 
+// requiredScopeFieldMessage — текст отказа на пустое поле скоупа (kacho#3177):
+// побайтово форма службы на тот же запрос, без значения (его нет).
+func requiredScopeFieldMessage(field string) string {
+	return "Illegal argument " + field + ": required"
+}
+
+// unknownMethodMessage — текст промаха каталога у аутентифицированного
+// (kacho#3177). Побайтово тот же, что у маршрута, который край не ведёт
+// (gateway/internal/proxy refuseRoute): скрытый и несуществующий методы по
+// ответу неразличимы.
+func unknownMethodMessage(fqn string) string {
+	return "unknown method: /" + fqn
+}
+
+// writeHTTPUnknownMethod — REST-плечо промаха каталога: 404, тело
+// {code:5, message}, без причин отказа прав.
+func writeHTTPUnknownMethod(w http.ResponseWriter, fqn string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"code":    5, // gRPC code NotFound
+		"message": unknownMethodMessage(fqn),
+	})
+}
+
 // buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
 // with the supplied flat message. No PreconditionFailure / ErrorInfo details —
 // the flat message IS the contract (mirrors corevalidate.ResourceID).

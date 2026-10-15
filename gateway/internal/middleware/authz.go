@@ -417,6 +417,10 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// Отказ адреса (приёмка F6b, Р3а): значение службы, раньше скрытия
 			// существования.
 			return nil, decision.gRPCStatus().Err()
+		case outcomeUnknownMethod:
+			// Промах каталога у аутентифицированного (kacho#3177): «метода нет у
+			// этой версии края», тем же ответом, что у неразрешённого маршрута.
+			return nil, decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -469,6 +473,9 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			return decision.gRPCStatus().Err()
 		case outcomeAddressNotVerified:
 			// Отказ адреса (приёмка F6b, Р3а).
+			return decision.gRPCStatus().Err()
+		case outcomeUnknownMethod:
+			// Промах каталога у аутентифицированного (kacho#3177).
 			return decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
@@ -556,6 +563,9 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			// Отказ адреса (приёмка F6b, Р3а): тот же ответ, что у рубежа полосы
 			// сессии, побайтово.
 			writeHTTPAddressRefusal(w)
+		case outcomeUnknownMethod:
+			// Промах каталога у аутентифицированного (kacho#3177) — 404 с кодом 5.
+			writeHTTPUnknownMethod(w, decision.descriptor.FQN)
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -647,6 +657,16 @@ const (
 	// nonexistent objects alike, so the answer is identical for both and is no
 	// existence oracle. Any other reason keeps the regular deny path unchanged.
 	outcomeAddressNotVerified
+	// outcomeUnknownMethod — промах каталога у АУТЕНТИФИЦИРОВАННОГО вызывающего
+	// (kacho#3177): у этой версии края нет записи о методе. Отказ остаётся
+	// отказом (deny-by-default, Check не зовётся); меняется только ответ —
+	// gRPC NotFound(5) / HTTP 404 «unknown method: /<fqn>», побайтово тот же
+	// текст, что у маршрута, который край не ведёт вовсе (proxy refuseRoute), —
+	// иначе по ответу отличались бы скрытые методы от несуществующих. От
+	// нехватки права (7/403) он отличим, причин отказа прав не несёт.
+	// Анонимному промах отвечается прежним отказом: различимость ему не
+	// расширяется.
+	outcomeUnknownMethod
 )
 
 type decision struct {
@@ -673,6 +693,8 @@ func (d decision) gRPCStatus() *status.Status {
 		return buildGRPCNotFoundStatus(d.descriptor)
 	case outcomeAddressNotVerified:
 		return addressRefusalStatus()
+	case outcomeUnknownMethod:
+		return status.New(codes.NotFound, unknownMethodMessage(d.descriptor.FQN))
 	default:
 		return buildGRPCDenyStatus(d.descriptor, d.reasons)
 	}
@@ -872,20 +894,17 @@ func (m *AuthzMiddleware) phaseCatalog(ctx context.Context, dr decisionRequest) 
 		}, true
 	}
 	if !found {
-		// Production policy: deny when catalog has no entry — every RPC must
-		// be classified. Dev / staging may surface this differently via the
-		// overrides file (explicit allow).
+		// Боевая политика: записи в каталоге нет — отказ, каждый RPC обязан
+		// быть классифицирован; файл послаблений проход не расширяет.
 		//
-		// Classify the denial reason based on authentication status
-		// so the caller (and observability) can distinguish:
-		//   - authenticated caller hitting an uncatalogued method →
-		//     PermissionDenied ("catalog: no entry for method") — 403
-		//   - unauthenticated caller hitting an uncatalogued method →
-		//     PermissionDenied ("catalog: no entry for method; unauthenticated")
-		// Both are code 7 (PermissionDenied) — we never reveal internal
-		// resource existence to unauthenticated callers, and we don't upgrade
-		// to Unauthenticated (16) for uncatalogued methods because the method
-		// itself is unknown/denied regardless of auth state.
+		// Ответ различается по аутентификации (kacho#3177):
+		//   - аутентифицированному — «метода нет у этой версии края»
+		//     (outcomeUnknownMethod: NotFound(5)/404, текст неразрешённого
+		//     маршрута), чтобы промах не читался нехваткой права;
+		//   - анонимному — прежний PermissionDenied(7) «catalog: no entry for
+		//     method; unauthenticated»: различимость анониму не расширяется, и
+		//     на Unauthenticated(16) промах не повышается — метода нет при
+		//     любом состоянии аутентификации.
 		missVerified, _ := verifiedTokenFromCtxOrHTTP(ctx, dr.HTTPReq)
 		_, isAuthed := m.cfg.Subjects.Extract(missVerified)
 		missReason := "catalog: no entry for method"
@@ -896,8 +915,12 @@ func (m *AuthzMiddleware) phaseCatalog(ctx context.Context, dr decisionRequest) 
 		m.cfg.Logger.Warn("authz catalog miss, denying",
 			"fqn", dr.FQN,
 			"authenticated", isAuthed)
+		outcome := outcomeDeny
+		if isAuthed {
+			outcome = outcomeUnknownMethod
+		}
 		return entry, decision{
-			outcome: outcomeDeny,
+			outcome: outcome,
 			reasons: []string{missReason},
 			descriptor: permissionDeniedDescriptor{
 				FQN: dr.FQN,
@@ -1205,6 +1228,33 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 				invalidArgMessage: invalidResourceIDMessage(resourceID.String()),
 			}, true
 		}
+	}
+	// 5c. Пустое поле скоупа (kacho#3177). Запись каталога называет
+	// конкретное поле запроса, а запрос несёт его пустым либо не несёт вовсе:
+	// извлечение отдаёт тогда подстановочный знак (resource_extractor.go), и
+	// прежде он уходил в Check как `<тип>:*` и возвращался нехваткой права.
+	// Объект скоупа «любой» в Check не уходит — отказ формы запроса,
+	// InvalidArgument с фиксированным текстом, тем же, что служба отвечает на
+	// тот же запрос, и до Check. Пустоту спрашивают у самого запроса
+	// (ScopeFieldEmpty), а не выводят из подстановочного знака: его же
+	// извлечение отдаёт и там, где поля спросить нечем.
+	if isConcreteResourceScope(entry) && (resourceID.String() == "" || resourceID.IsWildcard()) &&
+		m.cfg.Resources.ScopeFieldEmpty(dr.HTTPReq, dr.ProtoReq, dr.FQN, entry) {
+		field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
+		m.metrics.RecordDeny()
+		m.cfg.Logger.Info("authz scope field is empty — refusing",
+			"fqn", dr.FQN,
+			"subject", subj.FGA,
+			"action", entry.Permission,
+			"field", field,
+		)
+		return resourceID, resourceType, descriptor, decision{
+			outcome:           outcomeInvalidArgument,
+			reasons:           []string{"request scope field is empty"},
+			descriptor:        descriptor,
+			entry:             entry,
+			invalidArgMessage: requiredScopeFieldMessage(field),
+		}, true
 	}
 	return resourceID, resourceType, descriptor, decision{}, false
 }
