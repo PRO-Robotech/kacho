@@ -405,11 +405,21 @@ describe("второй фактор и запасные коды (F8-S7, Р2, Р
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("Сохраните запасные коды"));
     const saved = screen.getByRole("dialog");
     expect(within(saved).getAllByRole("listitem")).toHaveLength(10);
+    // Положительная сторона: окно несёт ровно выпущенные коды — иначе отсутствие
+    // их ниже было бы утверждением о ничём.
+    const list = within(saved).getByRole("list", { name: "Запасные коды" });
+    for (const c of fresh) expect(list).toHaveTextContent(c);
     expect(lane.of("POST", "/iam/v1/auth/second-factor/backup-codes")[0].body).toEqual({
       method: "totp",
       code: "123456",
       csrfToken: "tok-second-factor-1",
     });
+    // Показ один раз и на пути перевыпуска: после «Готово» ни одного из 10 новых
+    // кодов на странице нет (F8-S7-41, тот же признак, что F8-S7-40 у заведения).
+    fireEvent.click(within(saved).getByLabelText("Я сохранил коды"));
+    fireEvent.click(within(saved).getByRole("button", { name: "Готово" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    for (const c of fresh) expect(document.body).not.toHaveTextContent(c);
   });
 
   it("Р4 · остаток ≤ 2 — предупреждение «Запасные коды заканчиваются — выпустите новые»", async () => {
@@ -1051,6 +1061,30 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     fireEvent.click(within(dialog).getByRole("button", { name: "Удалить" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ключ доступа «key-71» удалён"));
     expect(keyItem(region, "key-71")).toBeUndefined();
+  });
+
+  it("F8-S7-60 · ключи общей таблицей: «Имя», «Добавлен», «Последнее использование» и колонка «Удалить»; своих <ul> — 0", async () => {
+    lane = installLane({
+      ...KEYS_BASE,
+      [`GET ${KEYS}`]: listOf(keyRecord("ak-1", "key-used", { lastUsedAt: "2026-10-09T11:00:00Z" })),
+    });
+    keys = installBrowserKeys(() => Promise.reject(new Error("не зовётся")));
+    renderPage();
+    const region = await keysRegion();
+    await waitFor(() => expect(keyItem(region, "key-used")).toBeDefined());
+    const table = within(region).getByRole("table");
+    // Колонки — дословно и по порядку (Р3); колонка действия заголовка не несёт.
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Имя",
+      "Добавлен",
+      "Последнее использование",
+      "",
+    ]);
+    const row = keyItem(region, "key-used")!;
+    expect(row).toHaveTextContent("7 окт. 2026");
+    expect(row).toHaveTextContent("9 окт. 2026");
+    expect(within(row).getByRole("button", { name: "Удалить ключ доступа «key-used»" })).toBeInTheDocument();
+    expect(region.querySelectorAll("ul")).toHaveLength(0);
   });
 
   it("F8-48 · ключ показан именем, описанием и моментом заведения; не использованный — «Ещё не использовался»", async () => {

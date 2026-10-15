@@ -180,11 +180,23 @@ test("F8-S7-41 · перевыпуск с предупреждением: отм
     await regenerate.click();
     const code = await nextStepCode(h.factor!.secret);
     await page.getByRole("dialog").getByLabel("Код из приложения", { exact: true }).fill(code);
+    const issuedNew = page.waitForResponse(
+      (r) => r.request().method() === "POST" && new URL(r.url()).pathname === LANE.backupCodes,
+    );
     await page.getByRole("dialog").getByRole("button", { name: "Выпустить", exact: true }).click();
+    const fresh = ((await (await issuedNew).json()) as { backupCodes?: unknown[] }).backupCodes?.map(String) ?? [];
+    expect(fresh, "перевыпуск выдал 10 кодов").toHaveLength(10);
     const saved = page.getByRole("dialog", { name: "Сохраните запасные коды" });
     await expect(saved.getByRole("listitem"), "окно «Сохраните запасные коды» с 10 новыми").toHaveCount(10);
+    for (const c of fresh) {
+      await expect(saved.getByText(c, { exact: true }), "новый код показан в окне").toHaveCount(1);
+    }
     await saved.getByRole("checkbox", { name: "Я сохранил коды", exact: true }).check();
     await saved.getByRole("button", { name: "Готово", exact: true }).click();
+    await expect(saved, "окно закрыто «Готово»").toHaveCount(0);
+    for (const c of fresh) {
+      await expect(page.getByText(c, { exact: true }), "новый запасной код на странице после «Готово»").toHaveCount(0);
+    }
     await expect(issued, "«Выпущены» сдвинуто").not.toHaveAttribute("title", issuedBefore ?? "");
   });
 });
