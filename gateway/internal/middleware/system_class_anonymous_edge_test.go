@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: BUSL-1.1
 
 package middleware_test
 
@@ -117,16 +117,23 @@ func newP3(t *testing.T, floor string, checker *tableChecker) *p3 {
 	t.Helper()
 	fix := newJWKSFixture(t, "RS256")
 	cat := buildCatalog(t, scRow(floor))
+	routes := &fakeRestRouter{m: map[string]string{
+		"GET /vpc/v1/networks/" + scObj1:      scFQN,
+		"GET /vpc/v1/networks/" + scObjAbsent: scFQN,
+	}}
+	// Слой аутентификации читает ТОТ ЖЕ каталог, что посредник прав (Р6; строка
+	// «слой аутентификации» таблицы производителей), — через ступень пола,
+	// провязанную так же, как в композиционном корне: поиск по каталогу и
+	// маршрутизатор REST. Без неё слой признака строки не видит и отвергает
+	// анонима везде — это его fail-closed исход, а не путь SC-30.
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeProduction, "secret", &fakeLookup{}, authTestLogger()).
-		WithVerifier(rs256Verifier(t, fix))
+		WithVerifier(rs256Verifier(t, fix)).
+		WithStepUp(middleware.NewStepUpGate(time.Now), middleware.NewCatalogPermissionLookup(cat), routes)
 	buf := &bytes.Buffer{}
 	now := &atomic.Int64{}
 	now.Store(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC).UnixNano())
 	mw := buildAuthzMiddleware(t, cat, checker, func(c *middleware.AuthzMiddlewareConfig) {
-		c.RestRouter = &fakeRestRouter{m: map[string]string{
-			"GET /vpc/v1/networks/" + scObj1:      scFQN,
-			"GET /vpc/v1/networks/" + scObjAbsent: scFQN,
-		}}
+		c.RestRouter = routes
 		c.Logger = slog.New(slog.NewTextHandler(&lockedWriter{w: buf}, &slog.HandlerOptions{Level: slog.LevelInfo}))
 		c.Now = func() time.Time { return time.Unix(0, now.Load()).UTC() }
 	})

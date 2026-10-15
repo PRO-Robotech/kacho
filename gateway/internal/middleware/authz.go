@@ -735,6 +735,17 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 	if handled {
 		return dec
 	}
+	// 4a. Класс `anonymous`: всякий не-разрешающий исход — прежний отказ без
+	// удостоверения, побайтово (Р7, anonymous_admission.go).
+	if subj.Kind == SubjectKindSystemClass {
+		return anonymousRefusal(m.decideForSubject(ctx, dr, entry, verified, subj))
+	}
+	return m.decideForSubject(ctx, dr, entry, verified, subj)
+}
+
+// decideForSubject — фазы после установления субъекта: полоса scope_filtered,
+// область ресурса, вопрос к модели.
+func (m *AuthzMiddleware) decideForSubject(ctx context.Context, dr decisionRequest, entry CatalogEntry, verified *VerifiedToken, subj ResolvedSubject) decision {
 	// 4b. Scope-filtered short-circuit — AFTER subject extraction, on purpose.
 	if dec, handled := m.phaseScopeFiltered(dr, entry); handled {
 		return dec
@@ -913,6 +924,14 @@ func (m *AuthzMiddleware) phaseCatalog(ctx context.Context, dr decisionRequest) 
 func (m *AuthzMiddleware) phaseSubject(ctx context.Context, dr decisionRequest, entry CatalogEntry) (*VerifiedToken, ResolvedSubject, decision, bool) {
 	verified, _ := verifiedTokenFromCtxOrHTTP(ctx, dr.HTTPReq)
 	subj, ok := m.cfg.Subjects.Extract(verified)
+	// Личности нет, но слой аутентификации пропустил запрос по строке,
+	// допускающей анонима, и строка ЭТОГО каталога допускает его тем же
+	// предикатом: вопрос к модели — от имени класса `anonymous` (Р3, Р6).
+	// Отметка без признака строки (каталоги разошлись при перечитывании) —
+	// прежний отказ.
+	if !ok && anonymousAdmitted(ctx) && entry.AdmitsAnonymous() {
+		return nil, anonymousSubject(), decision{}, false
+	}
 	if !ok {
 		// No authenticated subject (no JWT / invalid JWT) →
 		// Unauthenticated(16) / 401, not PermissionDenied(7) / 403.
