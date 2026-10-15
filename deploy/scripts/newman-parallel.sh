@@ -407,6 +407,18 @@ if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>
   MTLS_ENV+=(BOOTSTRAP_MINT_MTLS_CERT="$OP_DIR/client.crt" BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
 fi
 
+# seed_suites <суиты> — посев фикстур и правка окружений НАЗВАННЫХ суит. Один вызов
+# на весь прогон и перед каждой следующей суитой (SEED_PER_SUITE ниже) — одной формой.
+seed_suites() {
+  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
+      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
+      PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
+      MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
+      SERVICES="$1" \
+      PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
+      bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
+}
+
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
   # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets the seed
@@ -445,13 +457,7 @@ if [ "$SEED" = "true" ]; then
     echo "[parallel] посев расширен по факту о стенде: суиты «$SERVICES» → посев «$SEED_SERVICES»"
   fi
 
-  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
-      PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
-      MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
-      SERVICES="$SEED_SERVICES" \
-      PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
-      bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
+  seed_suites "$SEED_SERVICES"
   SEED_RC=$?
 
   # A FAILED SEED ABORTS THE RUN. It is not a red suite — it is not a result at all.
@@ -533,6 +539,33 @@ for svc in $SERVICES; do ( cd "$(suite_dir "$svc")" && python3 scripts/gen.py >/
 PHASE2="${PHASE2_SERVICES:-iam}"
 _in_phase2() { case " $PHASE2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
+# ПОСЕВ ПЕРЕД КАЖДОЙ СЛЕДУЮЩЕЙ СУИТОЙ (kacho#3211). Предъявители, которые кладёт
+# посев, — токены нашего издателя со сроком профиля (`clientToken.tokenTtl`, в цепочке
+# dev-prod — 15 минут). Шард из двух-трёх суит идёт дольше: на шарде compute-storage
+# набор storage получал `AUTHN_REQUIRED` около 1047-го запроса из 1170 коллекции image,
+# и остаток набора проверял отказ входа, а не свой предмет. Поэтому каждая суита,
+# кроме первой (её посев только что прошёл выше), получает СВЕЖИЙ посев своего
+# окружения прямо перед стартом. Посев ограничен самой суитой: окружения уже идущих
+# суит он не трогает. Отказ посева — прогон недействителен, как и у первого посева.
+# SEED_PER_SUITE=false возвращает прежний один посев на прогон.
+SEED_PER_SUITE="${SEED_PER_SUITE:-true}"
+SUITES_LAUNCHED=0
+reseed_before_suite() {  # <суита>
+  local svc="$1" rc
+  SUITES_LAUNCHED=$((SUITES_LAUNCHED + 1))
+  [ "$SEED" = "true" ] && [ "$SEED_PER_SUITE" = "true" ] && [ "$SUITES_LAUNCHED" -gt 1 ] || return 0
+  echo "[parallel] свежий посев перед суитой $svc (срок предъявителей короче шарда, kacho#3211)"
+  seed_suites "$svc"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo
+    echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев перед суитой $svc упал (rc=$rc) ====="
+    echo "Суита $svc и следующие НЕ запускались — результата по ним нет; причина — выше,"
+    echo "в выводе tests/authz-fixtures/setup.sh."
+    exit 2
+  fi
+}
+
 RC=0
 declare -A SUITE_PID
 WAVE_RUNNING=()   # pid'ы ТОЛЬКО запущенных суит (пробросы портов сюда не попадают)
@@ -573,6 +606,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     # коллекцией — то есть выглядел бы как «все суиты без отчёта», а не как зависший
     # планировщик. Ждём поимённо своих потомков и никого больше.
     _wave_wait_below "$WAVE_JOBS"
+    reseed_before_suite "$svc"
     d="$(suite_dir "$svc")"
     # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool — --jobs>1
     # transiently exhausts it → phantom (see nlb run.sh header). Force nlb serial.
