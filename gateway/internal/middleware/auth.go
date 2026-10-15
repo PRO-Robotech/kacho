@@ -176,6 +176,11 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
+	// sessionCutoffMisaddressed — своя клетка доклада о неверной настройке
+	// адреса службы доступа (kacho#3191): исход у неё закрытый, как у
+	// неответа, а действие дежурного — исправить адрес; слитая с окном раската
+	// либо с неответом величина не дала бы принять ни одного решения.
+	sessionCutoffMisaddressed *introspectionFailureReporter
 	// humanSession — читатель НАШЕЙ сессии по носителю `kaname_session` (посадка
 	// `own`, приёмка Ф3 Р7). nil → полосы браузерной сессии нет. Читатель сессии
 	// в процессе ЕДИНСТВЕННЫЙ: чужой снят вместе с переходным режимом двух носителей
@@ -268,6 +273,9 @@ func (a *AuthInterceptor) WithHumanSession(r HumanSessionReader) *AuthIntercepto
 	// отсечка): заводится здесь, если читатель отсечки ещё не завёл его.
 	if a.sessionCutoffFailures == nil {
 		a.sessionCutoffFailures = newIntrospectionFailureReporter(0, nil)
+	}
+	if a.sessionCutoffMisaddressed == nil {
+		a.sessionCutoffMisaddressed = newIntrospectionFailureReporter(0, nil)
 	}
 	// Полоса смонтирована — значит у неё есть и доклад об уровне вне оси
 	// сессии (Ф11-19). Своей ручки у состояния нет: оно свойство ответа службы.

@@ -31,8 +31,9 @@ import (
 // Пробы транспорта внутреннего REST-слушателя края (kacho#3131).
 //
 // Слушатель отдаёт Internal* REST (метка «внутренний»), поэтому его транспорт —
-// mTLS: клиентский лист обязателен, цепочка — к УЦ установки, имя листа — в
-// круге KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. Сборка — ТЕ ЖЕ функции,
+// mTLS: клиентский лист обязателен, цепочка — к ЯКОРЮ ОПЕРАТОРА
+// (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE, kacho#3189), а не к УЦ
+// установки, имя листа — в круге KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS. Сборка — ТЕ ЖЕ функции,
 // что зовёт корень: validateProductionInternalListener (страж старта и сборщик
 // транспорта) и serveInternalREST (дом слушателя), а не своя копия.
 //
@@ -51,9 +52,12 @@ const (
 
 type irPKI struct {
 	dir      string
-	caCert   *x509.Certificate
+	caCert   *x509.Certificate // УЦ установки: выпускает серверный лист слушателя
 	caKey    *ecdsa.PrivateKey
 	caFile   string
+	opCert   *x509.Certificate // якорь оператора: выпускает листы круга
+	opKey    *ecdsa.PrivateKey
+	opFile   string
 	certFile string // серверный лист слушателя
 	keyFile  string
 }
@@ -124,6 +128,9 @@ func newIRPKI(t *testing.T) *irPKI {
 	p := &irPKI{dir: dir, caCert: ca, caKey: caKey,
 		caFile: filepath.Join(dir, "ca.crt"), certFile: filepath.Join(dir, "tls.crt"), keyFile: filepath.Join(dir, "tls.key")}
 	irWritePEM(t, p.caFile, "CERTIFICATE", ca.Raw)
+	p.opCert, p.opKey = irNewCA(t, "kacho-internal-rest-operator-ca")
+	p.opFile = filepath.Join(dir, "operator-ca.crt")
+	irWritePEM(t, p.opFile, "CERTIFICATE", p.opCert.Raw)
 	srv := irLeaf(t, ca, caKey, x509.ExtKeyUsageServerAuth, "", []net.IP{net.ParseIP("127.0.0.1")})
 	irWritePEM(t, p.certFile, "CERTIFICATE", srv.Certificate[0])
 	kd, err := x509.MarshalECPrivateKey(srv.PrivateKey.(*ecdsa.PrivateKey))
@@ -134,11 +141,12 @@ func newIRPKI(t *testing.T) *irPKI {
 
 func (p *irPKI) cfg(addr string) config.Config {
 	return config.Config{
-		InternalRESTAddr:       addr,
-		InternalRESTCertFile:   p.certFile,
-		InternalRESTKeyFile:    p.keyFile,
-		MTLSCAFile:             p.caFile,
-		InternalRESTClientSANs: irOperatorSAN,
+		InternalRESTAddr:         addr,
+		InternalRESTCertFile:     p.certFile,
+		InternalRESTKeyFile:      p.keyFile,
+		MTLSCAFile:               p.caFile,
+		InternalRESTClientCAFile: p.opFile,
+		InternalRESTClientSANs:   irOperatorSAN,
 	}
 }
 
@@ -204,13 +212,13 @@ func TestInternalREST_RequestWithoutClientCertificateIsRefused(t *testing.T) {
 	}
 }
 
-// Законный близнец P1–P3: лист УЦ установки с именем из круга получает ответ
+// Законный близнец P1–P3: лист якоря оператора с именем из круга получает ответ
 // обработчика с меткой «внутренний». Без него отказ P1–P3 читался бы и как
 // «слушатель не поднялся».
 func TestInternalREST_OperatorLeafInTheCircleIsServedInternal(t *testing.T) {
 	p := newIRPKI(t)
 	addr := startInternalREST(t, p)
-	op := irLeaf(t, p.caCert, p.caKey, x509.ExtKeyUsageClientAuth, irOperatorSAN, nil)
+	op := irLeaf(t, p.opCert, p.opKey, x509.ExtKeyUsageClientAuth, irOperatorSAN, nil)
 
 	got, err := irGet(p.client(op), "https://"+addr+"/vpc/v1/addressPools")
 	require.NoError(t, err)
@@ -224,13 +232,13 @@ func TestInternalREST_OperatorLeafInTheCircleIsServedInternal(t *testing.T) {
 	require.Equal(t, "200 OK internal HTTP/2.0", got)
 }
 
-// P3: лист того же УЦ с именем ВНЕ круга — лист службы и лист самого края —
+// P3: лист того же якоря с именем ВНЕ круга — лист службы и лист самого края —
 // отказ. Меняется ровно один факт против близнеца: имя в листе.
 func TestInternalREST_LeafOutsideTheCircleIsRefused(t *testing.T) {
 	p := newIRPKI(t)
 	addr := startInternalREST(t, p)
 	for _, san := range []string{irVPCSAN, irEdgeSAN} {
-		leaf := irLeaf(t, p.caCert, p.caKey, x509.ExtKeyUsageClientAuth, san, nil)
+		leaf := irLeaf(t, p.opCert, p.opKey, x509.ExtKeyUsageClientAuth, san, nil)
 		got, err := irGet(p.client(leaf), "https://"+addr+"/vpc/v1/addressPools")
 		require.Errorf(t, err, "лист %s вне круга получил ответ обработчика: %q", san, got)
 	}
@@ -247,6 +255,18 @@ func TestInternalREST_LeafOfAForeignCAIsRefused(t *testing.T) {
 	require.Errorf(t, err, "лист чужого УЦ получил ответ обработчика: %q", got)
 }
 
+// P6 (kacho#3189): лист УЦ УСТАНОВКИ с именем из круга — отказ. Круг судится
+// отдельным якорем оператора так же, как звенья фронта — якорем звеньев: имя в
+// листе общего якоря установки лист оператора не делает. Меняется ровно один
+// факт против близнеца: выпускающий (якорь установки вместо якоря оператора).
+func TestInternalREST_CircleNameInAnInstallationLeafIsRefused(t *testing.T) {
+	p := newIRPKI(t)
+	addr := startInternalREST(t, p)
+	leaf := irLeaf(t, p.caCert, p.caKey, x509.ExtKeyUsageClientAuth, irOperatorSAN, nil)
+	got, err := irGet(p.client(leaf), "https://"+addr+"/vpc/v1/addressPools")
+	require.Errorf(t, err, "лист якоря установки с именем из круга получил ответ обработчика: %q", got)
+}
+
 // Страж старта: слушатель объявлен, а материала нет — отказ, и текст отказа
 // называет ручку. Ветки «отключить mTLS» у слушателя нет ни на какой метке
 // KACHO_APP_ENV, поэтому метка в пробе не участвует.
@@ -259,7 +279,12 @@ func TestInternalREST_StartGuardRefusesAListenerWithoutItsMaterial(t *testing.T)
 	}{
 		{"нет серверного листа", func(c *config.Config) { c.InternalRESTCertFile = "" }, config.InternalRESTCertKnob},
 		{"нет ключа", func(c *config.Config) { c.InternalRESTKeyFile = "" }, config.InternalRESTKeyKnob},
-		{"нет УЦ клиентов", func(c *config.Config) { c.MTLSCAFile = "" }, "KACHO_API_GATEWAY_MTLS_CA_FILE"},
+		{"нет якоря установки", func(c *config.Config) { c.MTLSCAFile = "" }, "KACHO_API_GATEWAY_MTLS_CA_FILE"},
+		{"нет якоря оператора", func(c *config.Config) { c.InternalRESTClientCAFile = "" }, config.InternalRESTClientCAKnob},
+		{"якорь оператора не читается", func(c *config.Config) { c.InternalRESTClientCAFile = filepath.Join(p.dir, "absent.crt") }, config.InternalRESTClientCAKnob},
+		{"якорь оператора — якорь установки", func(c *config.Config) { c.InternalRESTClientCAFile = p.caFile }, config.InternalRESTClientCAKnob},
+		{"якорь оператора — якорь звеньев", func(c *config.Config) { c.AuthZTrustedProxyCAFile = p.opFile }, config.InternalRESTClientCAKnob},
+		{"якорь оператора — не удостоверяющий центр", func(c *config.Config) { c.InternalRESTClientCAFile = p.certFile }, config.InternalRESTClientCAKnob},
 		{"пустой круг", func(c *config.Config) { c.InternalRESTClientSANs = "" }, config.InternalRESTClientSANsKnob},
 		{"круг из пробелов и запятых", func(c *config.Config) { c.InternalRESTClientSANs = " , ," }, config.InternalRESTClientSANsKnob},
 		{"имя круга не spiffe", func(c *config.Config) { c.InternalRESTClientSANs = "kacho-internal-rest-operator" }, config.InternalRESTClientSANsKnob},

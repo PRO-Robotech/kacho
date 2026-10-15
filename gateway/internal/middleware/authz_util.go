@@ -247,7 +247,7 @@ func (m *AuthzMiddleware) resolveRestFQN(r *http.Request) string {
 // отвергает отсечённый носитель до ретрансляции (Ф3-51, §1.8 приёмки).
 func isPublicHTTPPath(path string) bool {
 	switch path {
-	case "/healthz", "/readyz", "/oauth/logout", "/iam/v1/auth/me":
+	case "/healthz", "/readyz", "/oauth/logout", SessionIdentityPath:
 		return true
 	}
 	return IsLoginLanePath(path)

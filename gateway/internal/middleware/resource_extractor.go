@@ -245,6 +245,43 @@ func methodCarriesBody(method string) bool {
 	}
 }
 
+// ScopeFieldEmpty — назван ли в запросе конкретный скоуп записи пустым либо не
+// назван вовсе (kacho#3177). Отвечает «да» ТОЛЬКО там, где поле можно спросить
+// у самого запроса: REST — шаблон пути маршрута известен и поля не связывает, а
+// единственный источник, из которого маршрут его связывает, несёт пустое
+// значение без разногласия;
+// gRPC — сообщение протокола со строковым полем верхнего уровня под этим
+// именем, равным пустой строке. Вложенное поле, иной вид поля, запрос без
+// сообщения — «нет»: там прежний путь до Check, и ответ не меняется.
+func (e *ResourceExtractor) ScopeFieldEmpty(httpReq *http.Request, protoReq any, fqn string, entry CatalogEntry) bool {
+	field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
+	if field == "" || field == "*" || strings.Contains(field, ".") {
+		return false
+	}
+	switch {
+	case httpReq != nil:
+		// Без шаблона пути маршрута поле могло стоять в пути, и спросить о нём
+		// нечем — «нет».
+		tmpl, ok := e.httpFallbackPaths[fqn]
+		if !ok || tmpl == "" || strings.Contains(tmpl, "{"+field+"}") {
+			return false
+		}
+		v, conflict := httpScopeField(httpReq, field)
+		return !conflict && v == ""
+	case protoReq != nil:
+		msg, ok := protoMessageFromAny(protoReq)
+		if !ok {
+			return false
+		}
+		fd := msg.Descriptor().Fields().ByName(protoreflect.Name(field))
+		if fd == nil || fd.Kind() != protoreflect.StringKind || fd.IsList() || fd.IsMap() {
+			return false
+		}
+		return msg.Get(fd).String() == ""
+	}
+	return false
+}
+
 // wildcardIfEmpty renders "no scope named" as the FGA wildcard, which
 // AuthorizeService.Check refuses as an unscoped resource.
 func wildcardIfEmpty(id string) ResourceID {

@@ -17,7 +17,7 @@ var logWindowEventsDesc = prometheus.NewDesc(
 	"kacho_api_gateway_log_window_events_total",
 	"Events counted by the edge's rate-limited log reports since start, by window: "+
 		"revocation_record_failure, revocation_no_identifier, revocation_authority_failure, "+
-		"session_service_failure, own_assurance_off_axis, basic_assurance_unknown, "+
+		"session_service_failure, session_service_misaddressed, own_assurance_off_axis, basic_assurance_unknown, "+
 		"auth_methods_unusable (the authentication layer), auth_methods_unusable_dpop (the DPoP surface). "+
 		"The log line names the first event of a window; the growth of this cell shows whether the state persists.",
 	[]string{"window"}, nil)
@@ -51,6 +51,7 @@ const (
 	windowRevocationNoIdentifier     = "revocation_no_identifier"
 	windowAuthorityRevocationFailure = "revocation_authority_failure"
 	windowSessionServiceFailure      = "session_service_failure"
+	windowSessionServiceMisaddressed = "session_service_misaddressed"
 	windowOwnAssuranceOffAxis        = "own_assurance_off_axis"
 	windowBasicAssuranceUnknown      = "basic_assurance_unknown"
 	windowAuthMethodsUnusable        = "auth_methods_unusable"
@@ -74,6 +75,7 @@ func (c *logWindowCollector) Collect(ch chan<- prometheus.Metric) {
 		windowRevocationNoIdentifier:     s.Auth.RevocationNoIdentifier,
 		windowAuthorityRevocationFailure: s.Auth.AuthorityRevocationFailure,
 		windowSessionServiceFailure:      s.Auth.SessionServiceFailure,
+		windowSessionServiceMisaddressed: s.Auth.SessionServiceMisaddressed,
 		windowOwnAssuranceOffAxis:        s.Auth.OwnAssuranceOffAxis,
 		windowBasicAssuranceUnknown:      s.Auth.BasicAssuranceUnknown,
 		windowAuthMethodsUnusable:        s.Auth.AuthMethodsUnusable,

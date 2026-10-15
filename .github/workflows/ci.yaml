@@ -31,13 +31,18 @@ on:
   # Запрос задачи в волну фильтр не отличает от запроса волны в эпик: имена
   # веток одной формы.
   #
-  # ПОЧЕМУ ГЛОБ `'[0-9]+'`. В фильтре провайдера `[0-9]` — одна цифра, `+` —
-  # «один или больше предыдущего знака», и образец сопоставляется со ВСЕМ
-  # именем ветки: берутся имена из одних цифр и только они. `'[0-9]*'` шире —
-  # `*` берёт любой хвост, и `2564-line-b` стала бы линией. Перепись origin
-  # 2026-09-24 (`git ls-remote --heads origin`): веток 237, образцу отвечают 4 —
-  # эпик 2564, волна 2796, задачи 2817 и 2833; на этой переписи `[0-9]+` и
-  # `[0-9]*` захватывают одно и то же, и различие держит страж, а не перепись.
+  # ПОЧЕМУ ДВА ГЛОБА — `'[0-9]+'` И `'[0-9]+-*'`. В фильтре провайдера `[0-9]` —
+  # одна цифра, `+` — «один или больше предыдущего знака», `*` — любой хвост без
+  # косой черты, и образец сопоставляется со ВСЕМ именем ветки. Ветки линии
+  # названы двумя формами (правило имени ветки, PRO-Robotech/kacho-workspace#770):
+  # голым номером (`2796`) и номером с суффиксом (`3172-identity-own-2`). Пока здесь стоял один
+  # `'[0-9]+'`, запрос в ветку эпика второй формы приходил без единого контекста
+  # и судился лишь ручным прогоном (kacho#3233, 2026-10-15: 72 проверки — все от
+  # `workflow_dispatch`). `'[0-9]*'` вместо пары НЕ годится: он берёт и `2564x`,
+  # имя без дефиса после номера. Вторая форма берёт и ветку задачи
+  # (`3232-w8a-assembly`) — цена та же, что у первой (абзац выше): запрос в ветку
+  # задачи правило не заводит. Ветка полосы (`lane/…`, `tmp/…`) не отвечает ни
+  # одному: имя начинается не с цифры, а `*` косую черту не берёт.
   # Задачи и волны форму имени делят, и различить их фильтром нельзя. Запросов
   # в ветку задачи нет: из 929 запросов (`gh pr list --state all`) базу-номер
   # имеют два — #2854 в волну и #2834 в эпик, — и правило таких не заводит,
@@ -65,6 +70,7 @@ on:
     branches:
       - main
       - '[0-9]+'
+      - '[0-9]+-*'
   push:
     branches: [main]
   workflow_dispatch:
@@ -1606,7 +1612,7 @@ jobs:
 
       # ─── ЗАПРОС В ВЕТКУ ЛИНИИ ИДЁТ ТЕМ ЖЕ КОНВЕЙЕРОМ, ЧТО ЗАПРОС В СТВОЛ ───
       #
-      # Базы `pull_request` каждого процесса равны {main, [0-9]+}, `push` идёт
+      # Базы `pull_request` каждого процесса равны {main, [0-9]+, [0-9]+-*}, `push` идёт
       # только в ствол, файл, производящий обязательный контекст, идёт на
       # запросе, условие `if:` базы запроса не читает (довод — в шапке `on:`
       # выше, оси и граница — в шапке скрипта). `--self-test` идёт ПЕРВЫМ:
@@ -2617,15 +2623,19 @@ jobs:
       # поды рендера (#2941); боевой стек отдаёт службе доступа почтовый узел (#3020);
       # адрес первого администратора облака доезжает одной формой (#2878); звено
       # фронта предъявляет краю лист якоря звеньев, а край стартует на окружении
-      # рендера каждой цепочки, а у пары host+path входа ровно один объект (#3028).
+      # рендера каждой цепочки, а у пары host+path входа ровно один объект (#3028);
+      # цепочка, отрендеренная вне рабочего ns, держит оператора в круге края (#3151).
+      # консоль за входом без TLS не рендерится (#3183), пример README консоли
+      # применяется в зонте (#3218), источник ca.crt края у консоли один (#3219),
+      # почтовая полоса судится как в отдельном чарте службы (#3179).
       - name: пробы тега helmcharts — след поставщика, снятые ручки края, приёмник писем стенда, объекты поставщика, ёмкость узла ранера и политики сети (рендер умбреллы)
         # `id` обязателен: без него шаг не попадает в контекст `steps`, и перепись
         # исходов (последний шаг работы) не может отличить «исполнился» от «пропущен».
         id: umbrella-env-key
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         run: >-
-          go test -tags helmcharts ./deploy/ ./gateway/deploy/
-          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled|TestKA1_25_EveryStandDeclaresBothCallBudgets|TestKA1_25_Twin_RemovedKnobIsNamed|TestKA1_25_Twin_BrokenChainIsARedNamingTheStand|TestKA1_34_EdgeAndServiceAgreeOnTheIssuer|TestKA1_34_Twin_PathChangeIsFoundAndCanonicalFormIsSilent|TestKA1_34_Twin_FullPathNotKeyName|TestEveryProductionStackHandsTheAccessServiceItsMailRelay|TestMailLaneGuardRefusesAProductionStackWithoutTheRelay|TestBootstrapRootEmailReachesTheServiceAsASecretReference|TestBootstrapRootEmailDeclaredTwiceIsRefusedByRender|TestConsolePublicFrontTerminatesTLSAndServesNoPlainHTTP|TestConsolePublicFrontJudgement_CanFailAndStaysSilent|TestEveryStackTrustsTheClientAddressOnlyFromTheFront|TestEdgeAdmissionJudgement_CanFailAndStaysSilent|TestEdgeAdmissionRenderInjection_SubjectStand|TestEdgeAdmissionRenderInjection_IngressControllerFront|TestEdgeAdmissionRenderInjection_FrontRuleDroppedIsAnUnreachableDial|TestEdgeAdmissionRenderInjection_PolicyShape|TestUmbrellaRendersTheTreeNotAStaleArchive|TestPackagedAgainstTreeJudgement_CanFailAndStaysSilent|TestEveryStackFrontLinkPresentsTheLinkAnchorLeafToTheEdge|TestFrontLinkIdentityJudgeCatchesEachChannel|TestEveryStackDeclaresEachIngressHostPathOnce|TestIngressRouteOwnerJudgeCatchesASecondEntry|TestEveryStackEdgeStartsOnItsRenderedEnvironment|TestEdgeStartJudgeCatchesAWrongRenderedValue|TestEveryStackInternalRESTListenerIsMutualTLSWithItsOperatorInTheCircle|TestInternalRESTRenderJudgeInjection|TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders'
+          go test -tags helmcharts ./deploy/ ./gateway/deploy/ ./tools/standns/
+          -run 'TestNoStackRenderCarriesAVendorResidue|TestVendorResidueInjection_ReturnedIssuerRedsAndTwinIsSilent|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent|TestF6b54_ProdLandingCarriesNoReceiverAndFiveKnobsLiftNothing|TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor|TestF6b56_EveryStackRaisingTheReceiverAnchorsOnlyTheLaneThatNamesIt|TestF6b56_LaneGuardRefusesAnAnchorThatDoesNotMatchTheLane|TestNoStackRendersAnIdentityVendorObject|TestOwnRenderControl_RaisedVendorDependencyIsFound|TestOwnRenderInjection_VendorObjectOnEveryAxisIsFoundOnEveryChain|TestVendorWord_BrandNeedsALetterBoundaryAndMarksIgnoreCase|TestOwnRenderInjection_PostureKnobOffOwnIsFoundOnEveryChain|TestOwnRenderJudge_EmptyWalkAndEmptyRenderAreRefusals|TestOwnRenderJudge_MissingHalvesAreFindings|TestOwnRenderJudge_RetiredPostureKeysFollowThePin|TestRetiredSettingKeys_ReadsTheDeclarationAndRefusesAnUnknownForm|TestVendorDependencies_ReadsNameAliasAndRepository|TestEveryConveyorRaisedChainFitsItsRunnerByCPURequests|TestRunnerFitInjection_RaisedAppetiteOnARealChainIsFound|TestEveryStackNetworkPolicyAdmitsItsDialersAndNamesOnlyRenderedPods|TestNetworkPolicyAdmissionRenderInjection_EdgeLabelTheEdgeDoesNotCarry|TestNetworkPolicyAdmissionRenderInjection_NeighbourDroppedFromTheInternalRule|TestNetworkPolicyAdmissionRenderInjection_EdgePodLabelSpoiled|TestKA1_25_EveryStandDeclaresBothCallBudgets|TestKA1_25_Twin_RemovedKnobIsNamed|TestKA1_25_Twin_BrokenChainIsARedNamingTheStand|TestKA1_34_EdgeAndServiceAgreeOnTheIssuer|TestKA1_34_Twin_PathChangeIsFoundAndCanonicalFormIsSilent|TestKA1_34_Twin_FullPathNotKeyName|TestEveryProductionStackHandsTheAccessServiceItsMailRelay|TestMailLaneGuardRefusesAProductionStackWithoutTheRelay|TestBootstrapRootEmailReachesTheServiceAsASecretReference|TestBootstrapRootEmailDeclaredTwiceIsRefusedByRender|TestConsolePublicFrontTerminatesTLSAndServesNoPlainHTTP|TestConsolePublicFrontJudgement_CanFailAndStaysSilent|TestEveryStackTrustsTheClientAddressOnlyFromTheFront|TestEdgeAdmissionJudgement_CanFailAndStaysSilent|TestEdgeAdmissionRenderInjection_SubjectStand|TestEdgeAdmissionRenderInjection_IngressControllerFront|TestEdgeAdmissionRenderInjection_FrontRuleDroppedIsAnUnreachableDial|TestEdgeAdmissionRenderInjection_PolicyShape|TestUmbrellaRendersTheTreeNotAStaleArchive|TestPackagedAgainstTreeJudgement_CanFailAndStaysSilent|TestEveryStackFrontLinkPresentsTheLinkAnchorLeafToTheEdge|TestFrontLinkIdentityJudgeCatchesEachChannel|TestEveryStackDeclaresEachIngressHostPathOnce|TestIngressRouteOwnerJudgeCatchesASecondEntry|TestEveryStackEdgeStartsOnItsRenderedEnvironment|TestEdgeStartJudgeCatchesAWrongRenderedValue|TestEveryStackInternalRESTListenerIsMutualTLSWithItsOperatorInTheCircle|TestInternalRESTRenderJudgeInjection|TestSiteLayerGuardRefusesAnAppliedStandStillCarryingPlaceholders|TestEveryChainRenderedOutsideTheWorkingNamespaceKeepsTheOperatorInTheEdgeCircle|TestConsoleEdgeCA|TestConsoleIngressWithoutTLSRefusesRender|TestConsoleIngressWithTLSRenders|TestConsoleOwnTLSFront|TestConsoleReadmeExample|TestMailLane'
           -count=1 -v
 
       # Внешний вход консоли под TLS (kacho#3024): НАСТОЯЩАЯ раздача консоли —
@@ -2850,6 +2860,10 @@ jobs:
           # Та же голова, что и у checkout: иначе гейт судил бы один граф, а
           # читал другой.
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # БАЗА ЗАПРОСА — опорная линия наравне с накопительными: ветка эпика
+          # под образец опорных ссылок не попадает, и без неё у сборки волны в
+          # эпик вердикта не получала ни одна посадка (код 5, задача #3240).
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           # Вся логика — в скрипте: его можно прогнать локально тем же вызовом,
           # а его собственная проба (tools/carrydrift/drift-test.sh) судит судью

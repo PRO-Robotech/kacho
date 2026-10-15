@@ -115,6 +115,7 @@ function coseKeyOf(publicKey: KeyObject): Buffer {
 
 const FLAG_UP = 0x01;
 const FLAG_UV = 0x04;
+const FLAG_BE = 0x08;
 const FLAG_AT = 0x40;
 
 // ─── посев К ─────────────────────────────────────────────────────────────────
@@ -131,6 +132,12 @@ export interface SeededAccessKey {
   userHandle: Buffer;
   /** Проверяет ли аутентификатор пользователя (UV данных регистрации). */
   userVerification: boolean;
+  /**
+   * Допускает ли ключ резервное копирование (BE данных регистрации). Флаг
+   * постоянен на всю жизнь удостоверения, поэтому называется при заведении и
+   * повторяется в каждом утверждении.
+   */
+  backupEligible: boolean;
 }
 
 interface RegistrationChallenge {
@@ -155,10 +162,13 @@ export async function submitRegistration(
   origin: string,
   {
     userVerification,
+    backupEligible = false,
     name,
     description,
   }: {
     userVerification: boolean;
+    /** BE данных регистрации; не назван — `false` (N15). */
+    backupEligible?: boolean;
     /** Имя и описание ключа — их задаёт сценарий (посев К′ приёмки F8, группа L); не названы — не посылаются. */
     name?: string;
     description?: string;
@@ -190,8 +200,8 @@ export async function submitRegistration(
   idLength.writeUInt16BE(credentialId.length, 0);
   const authData = Buffer.concat([
     createHash("sha256").update(rpId).digest(),
-    // UP = 1, UV — как у аутентификатора страницы, BE = 0, BS = 0, AT = 1.
-    Buffer.from([FLAG_UP | (userVerification ? FLAG_UV : 0) | FLAG_AT]),
+    // UP = 1, UV — как у аутентификатора страницы, BE — как назван, BS = 0, AT = 1.
+    Buffer.from([FLAG_UP | (userVerification ? FLAG_UV : 0) | (backupEligible ? FLAG_BE : 0) | FLAG_AT]),
     counter,
     Buffer.alloc(16), // AAGUID: аттестация «none»
     idLength,
@@ -229,6 +239,7 @@ export async function submitRegistration(
       privateKey: privateKey.export({ format: "der", type: "pkcs8" }),
       userHandle,
       userVerification,
+      backupEligible,
     },
   };
 }
@@ -243,6 +254,8 @@ export async function seedAccessKey(
   baseURL: string | undefined,
   options: {
     userVerification: boolean;
+    /** BE данных регистрации; не назван — `false`. */
+    backupEligible?: boolean;
     /** Имя и описание ключа — их задаёт сценарий (посев К′ приёмки F8, группа L); не названы — не посылаются. */
     name?: string;
     description?: string;
@@ -527,7 +540,7 @@ export async function authenticatorWithKey(page: Page, key: SeededAccessKey, k =
       privateKey: key.privateKey.toString("base64"),
       userHandle: key.userHandle.toString("base64"),
       signCount: 100 * k,
-      backupEligibility: false,
+      backupEligibility: key.backupEligible,
       backupState: false,
     },
   });
