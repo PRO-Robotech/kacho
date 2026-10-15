@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -78,12 +79,13 @@ type Census struct {
 	IssuerRefs       int
 	CARootsRenamed   int
 	IngressesDropped int
+	OperatorLeaves   int // листов операторской личности, сверенных с кругом края
 }
 
 func (c Census) String() string {
 	return fmt.Sprintf("документов %d; адресов соседей перенесено %d; издателей CA переименовано %d, "+
-		"ссылок на них %d; корней CA %d; входов снято %d",
-		c.Documents, c.AddressRewrites, c.IssuersRenamed, c.IssuerRefs, c.CARootsRenamed, c.IngressesDropped)
+		"ссылок на них %d; корней CA %d; входов снято %d; листов оператора сверено с кругом края %d",
+		c.Documents, c.AddressRewrites, c.IssuersRenamed, c.IssuerRefs, c.CARootsRenamed, c.IngressesDropped, c.OperatorLeaves)
 }
 
 var dnsName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -116,28 +118,19 @@ func Relocate(in io.Reader, out io.Writer, opts Options) (Census, error) {
 	}
 	suffix := "-" + opts.Namespace
 
-	dec := yaml.NewDecoder(in)
-	var docs []*doc
-	for {
-		var n yaml.Node
-		err := dec.Decode(&n)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return census, fmt.Errorf("рендер не разбирается как YAML: %w", err)
-		}
-		if len(n.Content) == 0 || n.Content[0].Kind != yaml.MappingNode {
-			continue
-		}
-		d := &doc{node: &n, root: n.Content[0]}
-		d.kind = scalar(d.root, "kind")
-		meta := child(d.root, "metadata")
-		d.name = scalar(meta, "name")
-		d.ns = scalar(meta, "namespace")
-		docs = append(docs, d)
+	docs, err := parseDocs(in)
+	if err != nil {
+		return census, err
 	}
 	census.Documents = len(docs)
+
+	// Личность оператора внутреннего слушателя края — до переноса: перенос её
+	// не трогает, и стенд, в который оператор не войдёт, не поднимается.
+	opf := collectOperatorCircle(docs)
+	census.OperatorLeaves = opf.leaves
+	if found := judgeOperatorCircle(opf); len(found) > 0 {
+		return census, fmt.Errorf("личность оператора внутреннего слушателя края: %s", strings.Join(found, "; "))
+	}
 
 	// Проход 1: что переименовывается. Ссылка может стоять раньше объекта.
 	issuers := map[string]string{}
@@ -207,8 +200,33 @@ func Relocate(in io.Reader, out io.Writer, opts Options) (Census, error) {
 		}
 		_ = enc.Close()
 	}
-	_, err := out.Write(buf.Bytes())
+	_, err = out.Write(buf.Bytes())
 	return census, err
+}
+
+// parseDocs — поток манифестов, разобранный в документы-карты; пустые пропущены.
+func parseDocs(in io.Reader) ([]*doc, error) {
+	dec := yaml.NewDecoder(in)
+	var docs []*doc
+	for {
+		var n yaml.Node
+		err := dec.Decode(&n)
+		if errors.Is(err, io.EOF) {
+			return docs, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("рендер не разбирается как YAML: %w", err)
+		}
+		if len(n.Content) == 0 || n.Content[0].Kind != yaml.MappingNode {
+			continue
+		}
+		d := &doc{node: &n, root: n.Content[0]}
+		d.kind = scalar(d.root, "kind")
+		meta := child(d.root, "metadata")
+		d.name = scalar(meta, "name")
+		d.ns = scalar(meta, "namespace")
+		docs = append(docs, d)
+	}
 }
 
 // renameIssuerRefs — ссылки на переименованные издатели: карта `issuerRef`
