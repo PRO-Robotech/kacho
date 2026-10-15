@@ -75,7 +75,7 @@ export function SavedCodesDialog({
           Копировать
         </Button>,
         <Button key="download" onClick={() => codes && download(codes)}>
-          Скачать (.txt)
+          Скачать текстовым файлом
         </Button>,
         <Button key="done" type="primary" disabled={!saved} onClick={onDone}>
           Готово

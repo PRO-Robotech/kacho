@@ -143,7 +143,7 @@ test("F8-S7-40 · запасные коды показаны один раз: «
     const done = saved.getByRole("button", { name: "Готово", exact: true });
     await expect(done, "«Готово» недоступна без отметки").toBeDisabled();
     await expect(saved.getByRole("button", { name: "Копировать", exact: true }), "«Копировать» доступна").toBeEnabled();
-    await expect(saved.getByRole("button", { name: "Скачать (.txt)", exact: true }), "«Скачать (.txt)» доступна").toBeEnabled();
+    await expect(saved.getByRole("button", { name: "Скачать текстовым файлом", exact: true }), "«Скачать текстовым файлом» доступна").toBeEnabled();
     await saved.getByRole("checkbox", { name: "Я сохранил коды", exact: true }).check();
     await done.click();
     await page.reload({ waitUntil: "domcontentloaded" });

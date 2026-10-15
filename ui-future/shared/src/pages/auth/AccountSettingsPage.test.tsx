@@ -252,7 +252,7 @@ describe("второй фактор и запасные коды (F8-S7, Р2, Р
     for (const code of CODES) expect(list).toHaveTextContent(code);
     expect(within(saved).getByRole("button", { name: "Готово" })).toBeDisabled();
     expect(within(saved).getByRole("button", { name: "Копировать" })).toBeEnabled();
-    expect(within(saved).getByRole("button", { name: "Скачать (.txt)" })).toBeEnabled();
+    expect(within(saved).getByRole("button", { name: "Скачать текстовым файлом" })).toBeEnabled();
     fireEvent.click(within(saved).getByLabelText("Я сохранил коды"));
     fireEvent.click(within(saved).getByRole("button", { name: "Готово" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
