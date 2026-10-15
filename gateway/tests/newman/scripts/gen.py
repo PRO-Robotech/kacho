@@ -165,6 +165,11 @@ class Step:
     # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
     # молча перезаписало бы первое, поэтому пара — отказ генерации.
     form: Optional[List[Tuple[str, str]]] = None
+    # Банка печенья прогонщика снимается ЯВНО и только шагом, который это объявил:
+    # шаг, предъявляющий носителя заголовком, не должен получать печенье сессии,
+    # оставленное в банке ответом соседнего шага, — иначе край увидел бы второго
+    # носителя, и шаг судил бы не тот класс, что назвал.
+    no_cookie_jar: bool = False
 
 
 @dataclass
@@ -625,6 +630,8 @@ def _gateway_item_hook(step, item):
     """
     if step.insecure_tls:
         item["protocolProfileBehavior"] = {"strictSSL": False}
+    if step.no_cookie_jar:
+        item.setdefault("protocolProfileBehavior", {})["disableCookies"] = True
     if step.form is not None:
         if step.body is not None:
             raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "

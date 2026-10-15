@@ -99,6 +99,7 @@ def _create_group(slot, carrier_kind, carrier_var):
             body={"accountId": "{{s3AccountId}}", "name": f"s3-{slot}-{{{{runId}}}}",
                   "description": "носитель пола для IAM-INT-1-24/25"},
             pre_script=[*require_env_slot("s3AccountId", _SEED_WHY), *_carrier_pre(carrier_kind, carrier_var)],
+            no_cookie_jar=True,
             test_script=[
                 *assert_answered(f"заведение группы {slot}"),
                 *assert_status(200),
@@ -119,6 +120,7 @@ def _floor2_refused(name, slot, kind, var, save_as):
         method="DELETE",
         path=f"{GROUPS}/{{{{{slot}Id}}}}",
         pre_script=_carrier_pre(kind, var),
+        no_cookie_jar=True,
         test_script=[
             *assert_answered(name),
             *assert_status(401),
@@ -134,6 +136,7 @@ def _floor1_ok(name, slot, kind, var):
         method="GET",
         path=f"{GROUPS}/{{{{{slot}Id}}}}",
         pre_script=_carrier_pre(kind, var),
+        no_cookie_jar=True,
         test_script=[
             *assert_answered(name),
             *assert_status(200),
@@ -149,6 +152,7 @@ def _floor2_passes(name, slot, kind, var):
             method="DELETE",
             path=f"{GROUPS}/{{{{{slot}Id}}}}",
             pre_script=_carrier_pre(kind, var),
+        no_cookie_jar=True,
             test_script=[
                 *assert_answered(name),
                 *assert_status(200),
