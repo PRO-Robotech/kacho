@@ -13545,7 +13545,7 @@
       ]
     },
     {
-      "name": "NLB-CR-VAL-EMPTY-BODY — Create with empty body → 400 InvalidArgument «Illegal argument project_id: required» (scope field empty, before authz)",
+      "name": "NLB-CR-VAL-EMPTY-BODY — Create with empty body → 400 InvalidArgument «project_id: required» (scope field empty, before authz)",
       "description": "class:VAL | class:NEG | priority:P2",
       "item": [
         {
@@ -13592,7 +13592,7 @@
                   "});",
                   "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Illegal argument project_id: required');",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('project_id: required');",
                   "});"
                 ]
               }

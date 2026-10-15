@@ -65,7 +65,7 @@ func TestAuthz_EmptyScopeFieldIsDistinguishableFromDenial(t *testing.T) {
 	st = inviteCall(t, buildAuthzMiddleware(t, buildCatalog(t, distinctInviteEntry), empty),
 		&iamv1.InviteUserRequest{})
 	assert.Equal(t, codes.InvalidArgument, st.Code(), "пустой account_id: %v", st)
-	assert.Equal(t, "Illegal argument account_id: required", st.Message())
+	assert.Equal(t, "account_id: required", st.Message())
 	assert.Zero(t, empty.calls.Load(), "пустой объект скоупа не уходит в Check")
 }
 
@@ -125,7 +125,7 @@ func TestAuthz_HTTP_InviteWithoutAccountIdIsInvalidArgument(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 	assert.Equal(t, float64(3), body["code"])
-	assert.Equal(t, "Illegal argument account_id: required", body["message"])
+	assert.Equal(t, "account_id: required", body["message"])
 	assert.Zero(t, checker.calls.Load())
 
 	w, checker = call(`{"accountId":"acc00000000000003177","email":"a@example.test"}`)

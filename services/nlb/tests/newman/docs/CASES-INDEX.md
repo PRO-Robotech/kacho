@@ -42,7 +42,7 @@ existing pattern, no separate catalogue entry needed").
 - `*-CR-VAL-LABELS-UPPERCASE-KEY` — VAL/P1 — uppercase label key rejected
 - `*-CR-VAL-LABELS-INVALID-KEY-CHAR` — VAL/P1 — `!`/space in label key
 - `*-CR-VAL-DESC-OVER-256` — VAL,BVA/P2 — description >256 chars
-- `*-CR-VAL-EMPTY-BODY` — VAL,NEG/P2 — empty JSON body (no projectId) → 400 InvalidArgument «Illegal argument project_id: required» (край: пустое поле скоупа — отказ формы до проверки прав, kacho#3177)
+- `*-CR-VAL-EMPTY-BODY` — VAL,NEG/P2 — empty JSON body (no projectId) → 400 InvalidArgument «project_id: required» (край: пустое поле скоупа — отказ формы до проверки прав, kacho#3177)
 - `*-CR-VAL-MALFORMED-JSON` — VAL/P2 — invalid JSON syntax → 400/415
 
 ### Negative + cross-service NotFound

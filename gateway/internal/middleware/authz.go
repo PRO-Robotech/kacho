@@ -1218,10 +1218,11 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// извлечение отдаёт тогда подстановочный знак (resource_extractor.go), и
 	// прежде он уходил в Check как `<тип>:*` и возвращался нехваткой права.
 	// Объект скоупа «любой» в Check не уходит — отказ формы запроса,
-	// InvalidArgument с фиксированным текстом, тем же, что служба отвечает на
-	// тот же запрос, и до Check. Пустоту спрашивают у самого запроса
-	// (ScopeFieldEmpty), а не выводят из подстановочного знака: его же
-	// извлечение отдаёт и там, где поля спросить нечем.
+	// InvalidArgument с текстом «<поле>: required» (норма api-resourceid-empty;
+	// тот же текст, что у required-check служб), и до Check. Пустоту
+	// спрашивают у самого запроса (ScopeFieldEmpty), а не выводят из
+	// подстановочного знака: его же извлечение отдаёт и там, где поля спросить
+	// нечем.
 	if isConcreteResourceScope(entry) && (resourceID.String() == "" || resourceID.IsWildcard()) &&
 		m.cfg.Resources.ScopeFieldEmpty(dr.HTTPReq, dr.ProtoReq, dr.FQN, entry) {
 		field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
