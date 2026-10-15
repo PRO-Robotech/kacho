@@ -222,8 +222,11 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
         </Form.Item>
         {withFactor && (
           <SecondFactorCodeField
-            value={factor}
-            onChange={setFactor}
+            variant="sign-in"
+            method={factor.method}
+            onMethodChange={(method) => setFactor((f) => ({ ...f, method }))}
+            code={factor.code}
+            onCodeChange={(code) => setFactor((f) => ({ ...f, code }))}
             codeError={fieldError("code")}
             methodError={fieldError("method")}
           />

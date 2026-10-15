@@ -613,6 +613,10 @@ const (
 	pinnedLevelOfDoc = "// LevelOf — уровень сессии по множеству предъявленного в ней."
 	// pinnedTOTPConstructor — конструктор предъявления кода по времени у пина.
 	pinnedTOTPConstructor = "func TOTPPresented() Presentation { return Presentation{method: MethodTOTP} }"
+	// pinnedWorstProjection — проекция способа на его худшее предъявление у пина.
+	pinnedWorstProjection = "func WorstPresentation(m Method) Presentation { return worstPresentation(m) }"
+	// pinnedWorstKeyBranch — ветка ключа и хвост помощника худшего предъявления.
+	pinnedWorstKeyBranch = "return KeyAssertion(false, true)\n\t}\n\treturn Presentation{method: m}"
 )
 
 // beforeLevelOf — объявление уровня пакета, внесённое перед `LevelOf`.
@@ -699,6 +703,20 @@ func TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal(t 
 		{"экспортированный перечень предъявлений", pinnedLevelOfDoc,
 			beforeLevelOf("func PasswordAndCode() []Presentation { return []Presentation{PasswordPresented()} }"),
 			"func PasswordAndCode()", "PasswordAndCode возвращает не одно предъявление"},
+
+		// Проекция способа (kaname#827): экспортированная функция над способом
+		// возвращает предъявление ЕГО ЖЕ способа. Проекция, собирающая под
+		// параметром другой способ, дала бы службе иной уровень, чем гейту, —
+		// тот же дефект круга 3, что у конструктора.
+		{"проекция отдаёт другой способ вместо своего", pinnedWorstKeyBranch,
+			"return KeyAssertion(false, true)\n\t}\n\treturn Presentation{method: MethodTOTP}",
+			"return Presentation{method: MethodTOTP}", "собирает не свой способ"},
+		{"ветка проекции зовёт конструктор другого способа", pinnedWorstKeyBranch,
+			"return TOTPPresented()\n\t}\n\treturn Presentation{method: m}", "return TOTPPresented()",
+			"ветка способа MethodWebAuthn проекции worstPresentation собирает способ totp"},
+		{"проекция передаёт помощнику не свой способ", pinnedWorstProjection,
+			"func WorstPresentation(m Method) Presentation { return worstPresentation(MethodTOTP) }",
+			"return worstPresentation(MethodTOTP)", "собирает не свой способ"},
 	}
 	refused := 0
 	for _, c := range cases {
@@ -781,6 +799,8 @@ func TestIdentitySecondFactorInjection_EvaluatorSpelledOtherwiseIsTheSameRule(t 
 				"method: MethodTOTP} }"},
 		{"неэкспортированный помощник, собирающий предъявление", "конструктор собирает предъявление помощником",
 			pinnedLevelOfDoc, beforeLevelOf("func codeOf(m Method) Presentation { return bestPresentation(m) }")},
+		{"проекция собирает предъявление своего способа прямо", "проекция передаёт помощнику не свой способ",
+			pinnedWorstProjection, "func WorstPresentation(m Method) Presentation { return Presentation{method: m} }"},
 	}
 	for _, c := range twins {
 		src, _ := injectedWithCoordinate(t, assurance, c.old, c.repl, c.repl)

@@ -1321,7 +1321,7 @@ test("F8-35 · повышение уровня по вызову края идё
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
     await expect(dialog, "консоль не ответила на вызов края церемонией повышения").toBeVisible();
     await dialog.getByRole("radio", { name: "Запасной код" }).check();
-    await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(codes[0]);
+    await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(codes[0]);
     const replayed = page.waitForResponse(
       (r) =>
         new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` &&
@@ -1348,27 +1348,40 @@ test("F8-35 · повышение уровня по вызову края идё
 
 test("F8-36 · повышать нечем: назван отказ и путь, а не пустое окно", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-35: изменено только то, заведён ли второй фактор.
+  // Предмет прежний — окно не пустое, отказ и путь названы. Способы окно берёт у
+  // службы (`stepUpMethods`, приёмка F8-S7, Р5): у человека без фактора перечень
+  // пуст, и окно называет это до отправки — вариантов кода нет, глагол повышения
+  // не зовётся (отказ SECOND_FACTOR_NOT_ENROLLED судит модульная проба окна на
+  // чтении без перечня). Окно вызова края на УРОВЕНЬ пути «Войти заново» не
+  // несёт: уровень вход заново не поднимает (F8 Р12 в редакции F8-S7, §5).
   test.setTimeout(240_000);
   const human = await seeded(testInfo, "F8-36");
   await signInWithPasswordOnly(page, human);
   const groupId = await ownGroup(page);
+  const census = ceremonyCensus(page.context());
   await startGroupDeletion(page, groupId);
 
   const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("radio", { name: "Запасной код" }).check();
-  await dialog.getByRole("textbox", { name: "Код", exact: true }).fill("ABCDEFGHJK");
-  const [refused] = await Promise.all([
-    lanePost(page, LANE.stepUp),
-    dialog.getByRole("button", { name: "Подтвердить" }).click(),
-  ]);
-  expect(refused.status()).toBe(400);
-  const refusal = (await refused.json()) as { message: string; details: Array<{ reason?: string }> };
-  expect(refusal.details.map((d) => d.reason)).toContain("SECOND_FACTOR_NOT_ENROLLED");
-  await expect(dialog.getByRole("alert"), "окно не назвало отказ").toContainText(refusal.message);
-  await expect(dialog, "окно повышения закрылось молча").toBeVisible();
-  await dialog.getByRole("link", { name: "Настроить второй фактор" }).click();
+  await expect(dialog, "консоль не ответила на вызов края окном подтверждения").toBeVisible();
+  await expect(
+    dialog.getByText("Нет способа подтверждения", { exact: true }),
+    "окно не назвало, что подтвердить нечем",
+  ).toBeVisible();
+  await expect(dialog.getByRole("radio"), "окно предлагает способы, которых у человека нет").toHaveCount(0);
+  await expect(dialog.getByRole("textbox"), "окно предлагает ввести код, которого у человека нет").toHaveCount(0);
+  await expect(
+    dialog
+      .getByRole("button", { name: "Войти заново", exact: true })
+      .or(dialog.getByRole("link", { name: "Войти заново", exact: true })),
+    "окно вызова на уровень предлагает вход заново, а уровень он не поднимает",
+  ).toHaveCount(0);
+  expect(census.matching("POST", LANE.stepUp), census.describe()).toHaveLength(0);
+  await dialog.getByRole("link", { name: "Настроить второй фактор", exact: true }).click();
   await expectAddress(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
+  await expect(
+    page.getByRole("region", { name: "Второй фактор", exact: true }),
+    "экран заведения второго фактора не показал раздел «Второй фактор»",
+  ).toBeVisible({ timeout: 30_000 });
 });
 
 // ═══ S2 — второй путь посева переезжает на наши глаголы ═══════════════════════

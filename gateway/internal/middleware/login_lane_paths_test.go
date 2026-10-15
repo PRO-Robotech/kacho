@@ -9,14 +9,15 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — двадцать три пути одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — двадцать четыре пути одним объявлением):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
 // восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
 // kacho#1281), два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
 // службы), два глагола входа ключом доступа (приёмка Ф13 Р1, kacho#3037),
 // заведение первого пароля из живой сессии (kaname#213, kacho#3056), три
-// глагола своих сессий (приёмка F8-S5 Р1, kacho#3061) и два глагола смены
-// адреса почты (приёмка F8-S6 Р1, kacho#3062). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// глагола своих сессий (приёмка F8-S5 Р1, kacho#3061), два глагола смены
+// адреса почты (приёмка F8-S6 Р1, kacho#3062) и выдача испытания повышения
+// ключом доступа (приёмка F8-S7 Р10, kacho#3230). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -36,6 +37,9 @@ var loginLaneWant = map[string]string{
 	"second-factor-remove":       "/iam/v1/auth/second-factor/remove",
 	"second-factor-backup-codes": "/iam/v1/auth/second-factor/backup-codes",
 	"step-up":                    "/iam/v1/auth/step-up",
+	// Выдача испытания повышения ключом доступа (приёмка F8-S7 Р10; служба —
+	// SUA Р2): подпуть церемонии повышения, под живой сессией.
+	"step-up-access-key-begin": "/iam/v1/auth/step-up/access-key/begin",
 	// Подтверждение адреса почты (приёмка F6b, Р5): запрос письма и предъявление
 	// кода, оба под сессией человека.
 	"verify-email":         "/iam/v1/auth/verify-email",
@@ -80,7 +84,7 @@ const accessKeyFamily = "/iam/v1/auth/access-key/"
 
 // openBeforeAddressConfirmationWant — записи, доступные до подтверждения адреса
 // почты (приёмка F6b, Р5): ровно девять — шесть глаголов формы и три координаты
-// церемонии (на них отвечает служба протоколом). Прочие пятнадцать глаголов формы
+// церемонии (на них отвечает служба протоколом). Прочие шестнадцать глаголов формы
 // неподтверждённой сессии край отвергает значением Р3. Выписано ДОСЛОВНО по
 // приёмке — проба сверяет объявление с решением, а не с самим объявлением.
 var openBeforeAddressConfirmationWant = map[string]bool{
@@ -106,7 +110,7 @@ var openBeforeAddressConfirmationWant = map[string]bool{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant)+len(ceremonyWant) {
-		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b + Ф13 + F8-S5 + F8-S6) и координат церемонии %d (LINE-A-1 §5.1а)",
+		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12 + F6b + Ф13 + F8-S5 + F8-S6 + F8-S7) и координат церемонии %d (LINE-A-1 §5.1а)",
 			len(routes), len(loginLaneWant)+len(ceremonyWant), len(loginLaneWant), len(ceremonyWant))
 	}
 	for _, rt := range routes {
@@ -143,6 +147,8 @@ func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *test
 	// снята ровно из-за наследования освобождения).
 	for _, p := range []string{"/iam/v1/auth/login/", "/iam/v1/auth/loginx", "/iam/v1/auth", "/iam/v1/auth/csrf/x",
 		"/iam/v1/auth/second-factor/", "/iam/v1/auth/second-factor/enrollx", "/iam/v1/auth/step-up/x",
+		"/iam/v1/auth/step-up/access-key", "/iam/v1/auth/step-up/access-key/", "/iam/v1/auth/step-up/access-key/begin/",
+		"/iam/v1/auth/step-up/access-key/beginx", "/iam/v1/auth/step-up/access-key/login",
 		"/iam/v1/auth/password/", "/iam/v1/auth/password/enrollx", "/iam/v1/auth/password/enroll/",
 		"/iam/v1/auth/sessions/", "/iam/v1/auth/sessions/other", "/iam/v1/auth/sessions/end/", "/iam/v1/auth/sessions/endx",
 		"/iam/v1/auth/session", "/iam/v1/auth/sessions/end-others/",
@@ -206,7 +212,7 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 }
 
 // TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirmation —
-// объявление несёт 26 записей: 23 глагола формы с целью «слушатель формы» и 3
+// объявление несёт 27 записей: 24 глагола формы с целью «слушатель формы» и 3
 // координаты церемонии с целью «слушатель выдачи»; у каждой — решение «доступна
 // до подтверждения адреса», и доступных ровно девять (приёмка F6b, Р5, F6b-11).
 // Два глагола входа ключом (Ф13, kacho#3037) решения F6b не получили: перечень
@@ -216,7 +222,10 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 // служба держит то же — в положении подтверждения адреса отказ (A7 Р2). Так же
 // стоят три глагола своих сессий (приёмка F8-S5 Р1, F8-S5-09): закрыты до
 // подтверждения, как у службы (OS Р8). Так же стоят два глагола смены адреса
-// (приёмка F8-S6 Р1, F8S6-10): закрыты до подтверждения (EC Р2 службы).
+// (приёмка F8-S6 Р1, F8S6-10): закрыты до подтверждения (EC Р2 службы). Так
+// же стоит выдача испытания повышения ключом (приёмка F8-S7 Р10, F8-S7-80):
+// закрыта до подтверждения парой со `step-up` (SUA Р2 службы), и открытых
+// остаётся девять.
 //
 // Число записей в имени пробы не стоит: оно растёт с каждой записью
 // объявления, и имя, несущее число, лгало бы после следующей.
@@ -227,8 +236,8 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 // край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
 func TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirmation(t *testing.T) {
 	routes := LoginLaneRoutes()
-	if len(routes) != 26 || len(loginLaneWant) != 23 || len(ceremonyWant) != 3 {
-		t.Fatalf("записей объявлено %d, по приёмке — 26: глаголов формы 23 (%d выписано), координат церемонии 3 (%d выписано)",
+	if len(routes) != 27 || len(loginLaneWant) != 24 || len(ceremonyWant) != 3 {
+		t.Fatalf("записей объявлено %d, по приёмке — 27: глаголов формы 24 (%d выписано), координат церемонии 3 (%d выписано)",
 			len(routes), len(loginLaneWant), len(ceremonyWant))
 	}
 	open, form, issuance := 0, 0, 0
@@ -247,8 +256,8 @@ func TestLoginLanePaths_F6b_11_EveryRecordCountedAndNineOpenBeforeAddressConfirm
 			open++
 		}
 	}
-	if form != 23 || issuance != 3 {
-		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 23 и 3", form, issuance)
+	if form != 24 || issuance != 3 {
+		t.Errorf("записей со слушателем формы %d, со слушателем выдачи %d — по приёмке 24 и 3", form, issuance)
 	}
 	if open != 9 {
 		t.Fatalf("доступных до подтверждения адреса записей %d, по приёмке — 9", open)
@@ -339,6 +348,61 @@ func TestLoginLanePaths_F13_28_TwoAccessKeyVerbsAndNoThird(t *testing.T) {
 		}
 	}
 	t.Logf("перепись: записей объявления %d · семейства входа ключом %d (по приёмке %d)", len(LoginLaneRoutes()), family, len(want))
+}
+
+// TestLoginLanePaths_F8_S7_80_StepUpAccessKeyBeginPairsWithStepUp — запись
+// Р10 приёмки F8-S7 (kacho#3230; служба — SUA Р2, kaname#827) стоит в ТОМ ЖЕ
+// объявлении, что прочие глаголы формы, и каждое её решение — ПАРОЙ со
+// `step-up`, а не литералом: выдача испытания повышения — часть той же
+// церемонии под живой сессией. Цель — слушатель формы; путь освобождён от
+// каталога (Р8) и узнаётся веткой полосы сессии (Р7); недоступность службы —
+// как у `step-up` (ответ края KA1: носитель читается); до подтверждения адреса
+// — как у `step-up` (закрыта, служба держит то же — SUA Р2
+// `PathRefusedInVerification`); удостоверение клиента базовой схемой не
+// несётся; кеш решений исходом не гасится.
+//
+// Сверка значения с соседом, а не с литералом, держит пару в обе стороны:
+// решение `step-up`, переменённое одно, краснит пробу на расхождении. Литерал
+// стоит рядом ровно один — ожидание приёмки F8-S7 Р10 «закрыта», чтобы пара
+// не согласилась на открытие обеих.
+//
+// Статической сверки «край ↔ служба» здесь нет (перечень службы кодом не
+// читается, §8 инв. 7 Ф3): её держит сквозная проба края F8-S7-80.
+func TestLoginLanePaths_F8_S7_80_StepUpAccessKeyBeginPairsWithStepUp(t *testing.T) {
+	const verb, path = "step-up-access-key-begin", "/iam/v1/auth/step-up/access-key/begin"
+	if loginLaneWant[verb] != path {
+		t.Errorf("дословный перечень пробы: глагол %q на пути %q, по приёмке F8-S7 Р10 — %q", verb, loginLaneWant[verb], path)
+	}
+	rt, ok := LoginLaneRouteFor(path)
+	if !ok {
+		t.Fatalf("%s (%s) в объявлении края нет — путь судится как путь платформы и отвечает отказом каталога, служба его не получает", path, verb)
+	}
+	pair, ok := LoginLaneRouteFor(LoginLanePathStepUp)
+	if !ok {
+		t.Fatalf("пары нет: %s в объявлении края отсутствует", LoginLanePathStepUp)
+	}
+	if rt.Verb != verb {
+		t.Errorf("запись на пути %s названа %q, по приёмке — %q (значение метки ретрансляции)", path, rt.Verb, verb)
+	}
+	if rt.Target != RelayTargetForm || rt.Target != pair.Target {
+		t.Errorf("%s ретранслируется на цель %q, у %s — %q; по приёмке — слушатель формы", path, rt.Target, pair.Path, pair.Target)
+	}
+	if !IsLoginLanePath(path) || !isPublicHTTPPath(path) {
+		t.Errorf("%s: ветка полосы сессии узнаёт = %v, освобождён от каталога = %v — обязаны оба", path, IsLoginLanePath(path), isPublicHTTPPath(path))
+	}
+	if LoginLaneVerb(path) == LoginLaneVerb(LoginLanePathStepUp) {
+		t.Errorf("подпуть и церемония повышения получили одно имя %q — точное совпадение обязано их различать", LoginLaneVerb(path))
+	}
+	if got, want := loginLaneRelaysWhenUnanswered(path), loginLaneRelaysWhenUnanswered(LoginLanePathStepUp); got != want {
+		t.Errorf("%s: ретрансляция при неответе службы = %v, у %s — %v; запись обязана вести себя парой", path, got, LoginLanePathStepUp, want)
+	}
+	if got, want := loginLaneOpenBeforeAddressConfirmation(path), loginLaneOpenBeforeAddressConfirmation(LoginLanePathStepUp); got != want || got {
+		t.Errorf("%s: доступна до подтверждения адреса = %v, у %s — %v; по приёмке F8-S7 Р10 закрыта парой", path, got, LoginLanePathStepUp, want)
+	}
+	if rt.CarriesClientBasic() || rt.flushesDecisionCacheOnSuccess {
+		t.Errorf("%s: удостоверение клиента = %v, гашение кеша = %v — решений ни о том, ни о другом приёмка не давала", path, rt.CarriesClientBasic(), rt.flushesDecisionCacheOnSuccess)
+	}
+	t.Logf("перепись: записей объявления %d · запись %q на %s парой с %q", len(LoginLaneRoutes()), verb, path, pair.Verb)
 }
 
 // carriesClientBasicFor — решение ретранслятора об удостоверении клиента по пути

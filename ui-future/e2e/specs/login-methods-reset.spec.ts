@@ -74,7 +74,10 @@ const FORBIDDEN_EXPLANATION =
   "проекта, а действия над облаком — администратор облака.";
 const NOTHING_TO_RESET = "У пользователя не настроен второй фактор — сбрасывать нечего.";
 /** Состояние фактора на странице настроек учётной записи (Э-е). */
-const FACTOR_ON = "Второй фактор настроен";
+// Состояние кода на экране «Безопасность» (приёмка F8-S7, Р2, Р8): заведён —
+// строка «Приложение-аутентификатор» таблицы способов с «Настроено»; не заведён и
+// ключей нет — пустое состояние раздела «Второй фактор».
+const FACTOR_ON = "Настроено";
 const FACTOR_OFF = "Второй фактор не настроен";
 
 const resetPath = (userId: string) => `/iam/v1/users/${userId}:resetSecondFactor`;
@@ -168,15 +171,19 @@ async function sessionOf(page: Page, who: string): Promise<{ status: number; use
   };
 }
 
-/** Строка состояния фактора на странице настроек — то, что видит человек (Э-е). */
+/** Состояние фактора на экране «Безопасность» — то, что видит человек (Э-е). */
 async function expectFactorLine(page: Page, line: string, why: string): Promise<void> {
   await page.goto("/settings", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(line, { exact: false }).first(), why).toBeVisible({ timeout: 30_000 });
-  if (line === FACTOR_OFF) {
-    // Строка «настроен» — подстрока соседней, поэтому её отсутствие
-    // утверждается отдельно: иначе «не настроен» зеленело бы рядом с ней.
-    await expect(page.getByText(FACTOR_ON, { exact: false }), `${why}: рядом показано «${FACTOR_ON}»`).toHaveCount(0);
+  const factor = page.getByRole("region", { name: "Второй фактор" });
+  const totp = factor.getByRole("row", { name: /Приложение-аутентификатор/ });
+  if (line === FACTOR_ON) {
+    await expect(totp, why).toContainText(FACTOR_ON, { timeout: 30_000 });
+    return;
   }
+  await expect(factor.getByText(line, { exact: false }).first(), why).toBeVisible({ timeout: 30_000 });
+  // «Настроено» в таблице способов — отдельно: иначе «не настроен» зеленело бы
+  // рядом со строкой заведённого кода.
+  await expect(totp, `${why}: рядом показано «${FACTOR_ON}»`).toHaveCount(0);
 }
 
 /**
@@ -370,7 +377,7 @@ test("F8r-03 · сессия «1»: окно повышения и один по
       const stepUp = page.getByRole("dialog", { name: "Подтверждение действия" });
       await expect(stepUp, "край потребовал уровня «2», а окна повышения нет").toBeVisible({ timeout: 30_000 });
       await stepUp.getByRole("radio", { name: "Запасной код" }).check();
-      await stepUp.getByRole("textbox", { name: "Код", exact: true }).fill(admin.factor.backupCodes[0]);
+      await stepUp.getByRole("textbox", { name: "Запасной код", exact: true }).fill(admin.factor.backupCodes[0]);
       await stepUp.getByRole("button", { name: "Подтвердить" }).click();
       await expect(page.getByText(SUCCEEDED, { exact: true }), "исход сброса после повышения не назван").toBeVisible({
         timeout: 60_000,

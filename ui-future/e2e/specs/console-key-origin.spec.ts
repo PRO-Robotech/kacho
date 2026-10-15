@@ -147,10 +147,14 @@ test("KO-01 · ключ доступа заводится экраном /settin
     const region = page.getByRole("region", { name: "Ключи доступа" });
     await expect(region, "консоль не показала раздел «Ключи доступа» на /settings").toBeVisible({ timeout: 30_000 });
 
+    // Добавление — окном «Добавить ключ доступа» раздела (приёмка F8-S7, Р3):
+    // имя вводится в окне, церемонию выпускает «Добавить» окна.
+    const adding = page.getByRole("dialog", { name: "Добавить ключ доступа" });
     const begun = answerTo(page, "POST", `${keysOf(userId)}:beginRegistration`);
     const finished = answerTo(page, "POST", keysOf(userId));
-    await region.getByLabel("Имя", { exact: true }).fill("key-ko-01");
-    await region.getByRole("button", { name: /Добавить ключ доступа$/ }).click();
+    await region.getByRole("button", { name: "Добавить ключ доступа", exact: true }).click();
+    await adding.getByLabel("Имя", { exact: true }).fill("key-ko-01");
+    await adding.getByRole("button", { name: "Добавить", exact: true }).click();
 
     const challenge = await begun;
     expect(challenge.status(), `выдача испытания регистрации: ${await challenge.text()}`).toBe(200);
@@ -180,7 +184,11 @@ test("KO-01 · ключ доступа заводится экраном /settin
     await operationSucceeded(readerOf(seed), op, "регистрация ключа экраном");
 
     await expect(
-      region.getByRole("list", { name: "Заведённые ключи" }).getByRole("listitem").filter({ hasText: "key-ko-01" }),
+      region
+        .getByRole("table")
+        .getByRole("row")
+        .filter({ hasNot: page.getByRole("columnheader") })
+        .filter({ hasText: "key-ko-01" }),
       "раздел не показал заведённый ключ",
     ).toBeVisible({ timeout: 30_000 });
     expect(

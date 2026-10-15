@@ -287,6 +287,12 @@ const CARRIER_SIGN = {
   List: { props: ["dataSource", "renderItem", "header", "footer"] },
   // Подпись и величина показателя — ждёт возврата носителя.
   Statistic: { props: ["title", "value", "prefix", "suffix"] },
+  // Настоящий кладёт в дерево `<div class="ant-qrcode">` с `<canvas>`, и
+  // `value` уходит в пиксели холста, а не в узел дерева: ни текстом, ни
+  // атрибутом, ни ролью употребление с `value` от употребления без него не
+  // отличить. Заменитель рисует тот же холст и пропов не читает — признака по
+  // пропу нет, носитель здесь — само употребление вида.
+  QRCode: { props: [] },
   // ── Отличить НЕЧЕМ: заменитель этих видов и есть проходной элемент ────────
   // `Object.assign(Component, …)` — тот же `<div>{children}</div>`.
   App: { props: [] },
@@ -689,7 +695,11 @@ function implShapes(stubSource) {
   const shapeOf = (impl) => {
     if (impl === null) return { reads: new Set(), spread: false, parsed: false };
     const p0 = impl.parameters[0];
-    if (!p0 || !ts.isObjectBindingPattern(p0.name)) return { reads: new Set(), spread: false, parsed: false };
+    // Реализация без параметров (`QRCode: () => …`) разобрана ПОЛНОСТЬЮ: пропов
+    // она не принимает, значит не читает ни одного и остатка не сливает.
+    // Неразобранной остаётся лишь форма, чей первый параметр — не связывание.
+    if (!p0) return { reads: new Set(), spread: false, parsed: true };
+    if (!ts.isObjectBindingPattern(p0.name)) return { reads: new Set(), spread: false, parsed: false };
     const reads = new Set();
     let restName = null;
     for (const el of p0.name.elements) {

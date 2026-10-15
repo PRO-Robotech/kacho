@@ -4,7 +4,7 @@
 import { expect, test as base, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
-import { mayRecord, noteRefusal, recordableAttempt } from "./ceremony-budget";
+import { mayRecord, noteRefusal, recordableAttempt, wasSubstituted } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
 import { OUTSIDE_TEST, isRegistration, noteRegistration } from "./registration-budget.ts";
 import { attachSourceAxisRecords } from "./source-axis-records";
@@ -290,6 +290,8 @@ export function watchRefusals(context: BrowserContext, testId: string) {
     // Отказ `401` полосы (F8-41) и выдача испытания входа ключом (доля S4,
     // приёмка F8-S4, Р8): остальные ответы тела не читаются.
     if (!mayRecord(path, res.status())) return;
+    // Ответ, подставленный пробой целиком, службы не касался — ось он не тратит.
+    if (wasSubstituted(res.request())) return;
     pending.push(
       res
         .text()

@@ -30,14 +30,14 @@
 // и не пишет: их держит браузер, выдаёт и гасит служба.
 
 import { displayText } from "@shared/lib/display-text";
-import type { SecondFactorMethod } from "@shared/lib/step-up-methods";
+import { isStepUpFactor, type SecondFactorMethod, type StepUpFactor } from "@shared/lib/step-up-methods";
 import { orderedTransport } from "./carrier-order";
 import { formContextEpoch, noteFormContextChanged } from "./lane-epochs";
 import { refusalActionOf, type RefusalSigns } from "./refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
 import { acrFromChallenge, challengeError, requestFreshPresentation, requestStepUp } from "./step-up";
 
-export { LANE_REASON } from "./lane-reasons";
+export { CHALLENGE_REASON_PREFIX, LANE_REASON } from "./lane-reasons";
 
 /** Пути глаголов полосы — точные, как их объявляет служба. */
 export const LOGIN_LANE = {
@@ -55,6 +55,9 @@ export const LOGIN_LANE = {
   remove: "/iam/v1/auth/second-factor/remove",
   backupCodes: "/iam/v1/auth/second-factor/backup-codes",
   stepUp: "/iam/v1/auth/step-up",
+  // Испытание повышения ключом доступа (служба — приёмка SUA, Р2; экран —
+  // приёмка F8-S7, Р5, Р10): под живой сессией, свой вид признака формы.
+  stepUpAccessKeyBegin: "/iam/v1/auth/step-up/access-key/begin",
   // Подтверждение адреса почты (приёмка F6b, Р6 службы): запрос письма с кодом и
   // предъявление кода — оба под сессией человека, адреса в теле нет.
   verifyEmail: "/iam/v1/auth/verify-email",
@@ -95,6 +98,7 @@ export type FormKind =
   | "register"
   | "second-factor"
   | "step-up"
+  | "step-up-access-key-begin"
   | "verify-email"
   | "verify-email-confirm"
   | "access-key-begin"
@@ -150,10 +154,25 @@ export interface SignedIn {
   session: LaneSession;
 }
 
+/**
+ * Состояние способов второго фактора — в форме чтения службы (Ф12 Р4; моменты,
+ * доступность ключей и перечень способов — SUA Р6). Ключ, которого ответ не нёс,
+ * ОТСУТСТВУЕТ: у моментов отсутствие и есть смысл («не было»), у `accessKeys` и
+ * `stepUpMethods` — «служба этого не назвала», и экран тогда факта не рисует
+ * (`ui-no-field-without-source`).
+ */
 export interface SecondFactorState {
-  totp: { enrolled: boolean; confirmedAt?: string; pendingUntil?: string };
+  totp: { enrolled: boolean; confirmedAt?: string; pendingUntil?: string; lastUsedAt?: string };
   /** Только у заведённого. */
-  backupCodes?: { remaining: number; total: number };
+  backupCodes?: { remaining: number; total: number; issuedAt?: string; lastUsedAt?: string };
+  /** Включены ли ключи доступа на установке (SUA Р7). */
+  accessKeys?: { available: boolean };
+  /**
+   * Способы, которыми человек может подтвердить действие СЕЙЧАС (SUA Р6) —
+   * набор; порядок службы смысла не несёт, порядок показа — у окна. Имя вне
+   * словаря консоли в набор не попадает: предъявить его консоль не умеет.
+   */
+  stepUpMethods?: StepUpFactor[];
 }
 
 export interface Enrollment {
@@ -172,6 +191,12 @@ export interface Ceremony {
   session: LaneSession;
   assurance: LaneAssurance;
   backupCodesRemaining?: number;
+}
+
+/** Предъявление ключа доступа в церемонии повышения (SUA Р1): утверждение браузера. */
+export interface AccessKeyPresentation {
+  method: "webauthn";
+  credential: Record<string, unknown>;
 }
 
 /**
@@ -568,7 +593,7 @@ export const loginLane = {
     return submit<{ session: LaneSession }>(holder, LOGIN_LANE.passwordEnroll, { newPassword: form.newPassword }, true);
   },
   secondFactorState() {
-    return exchange<SecondFactorState>("GET", LOGIN_LANE.secondFactor);
+    return exchange<SecondFactorState>("GET", LOGIN_LANE.secondFactor, undefined, secondFactorStateOf);
   },
   enroll(holder: FormTokenHolder) {
     return submit<Enrollment>(holder, LOGIN_LANE.enroll, {}, true);
@@ -582,9 +607,27 @@ export const loginLane = {
   regenerateBackupCodes(holder: FormTokenHolder, factor: SecondFactorPresentation) {
     return submit<Confirmed>(holder, LOGIN_LANE.backupCodes, presentation(factor), true);
   },
-  stepUp(holder: FormTokenHolder, form: { method: "password"; password: string } | SecondFactorPresentation) {
-    const body = "password" in form ? { method: "password", password: form.password } : presentation(form);
+  stepUp(
+    holder: FormTokenHolder,
+    form: { method: "password"; password: string } | SecondFactorPresentation | AccessKeyPresentation,
+  ) {
+    const body =
+      "password" in form
+        ? { method: "password", password: form.password }
+        : "credential" in form
+          ? { method: "webauthn", credential: form.credential }
+          : presentation(form);
     return submit<Ceremony>(holder, LOGIN_LANE.stepUp, body, false);
+  },
+  /**
+   * Испытание повышения ключом (SUA Р2). Тело — только признак формы вида
+   * `step-up-access-key-begin`; ответ отдаётся КАК ПРИСЛАН — разбор в параметры
+   * церемонии браузера делает кодек (`assertionRequestOf`). Глагол повышения
+   * не просит (окно ждало бы само себя), носителя не ставит и контекста формы не
+   * меняет — в перечнях упорядочения его нет.
+   */
+  stepUpAccessKeyBegin(holder: FormTokenHolder) {
+    return submit<unknown>(holder, LOGIN_LANE.stepUpAccessKeyBegin, {}, false);
   },
   /**
    * Запрос письма с новым кодом (приёмка F6b, Р6 и Р9). Тело — только признак
@@ -758,6 +801,47 @@ function endedOf<T extends boolean | number>(valid: (n: unknown) => n is T): Rea
 
 function optionalText(o: Record<string, unknown>, key: string): string | undefined {
   return typeof o[key] === "string" ? o[key] : undefined;
+}
+
+function objectOf(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/**
+ * Разбор чтения состояния второго фактора. Ключ, которого ответ не нёс, не
+ * появляется; ключ не той формы — тоже: экран показывает только названное
+ * службой. Ответ без `totp` — не тот ответ, и он отказ «не по существу», а не
+ * «фактор не заведён»: этого служба не говорила.
+ */
+function secondFactorStateOf({ res, text }: Answered): SecondFactorState {
+  let raw: unknown;
+  try {
+    raw = text ? JSON.parse(text) : null;
+  } catch {
+    raw = undefined;
+  }
+  const body = objectOf(raw);
+  const totp = objectOf(body?.totp);
+  if (!body || !totp || typeof totp.enrolled !== "boolean") {
+    throw new LaneRefusal(res.status, null, NOT_BY_SUBSTANCE_TEXT, null, null, null);
+  }
+  const state: SecondFactorState = { totp: { enrolled: totp.enrolled } };
+  for (const k of ["confirmedAt", "pendingUntil", "lastUsedAt"] as const) {
+    const v = optionalText(totp, k);
+    if (v !== undefined) state.totp[k] = v;
+  }
+  const codes = objectOf(body.backupCodes);
+  if (codes && typeof codes.remaining === "number" && typeof codes.total === "number") {
+    state.backupCodes = { remaining: codes.remaining, total: codes.total };
+    for (const k of ["issuedAt", "lastUsedAt"] as const) {
+      const v = optionalText(codes, k);
+      if (v !== undefined) state.backupCodes[k] = v;
+    }
+  }
+  const keys = objectOf(body.accessKeys);
+  if (keys && typeof keys.available === "boolean") state.accessKeys = { available: keys.available };
+  if (Array.isArray(body.stepUpMethods)) state.stepUpMethods = body.stepUpMethods.filter(isStepUpFactor);
+  return state;
 }
 
 /**

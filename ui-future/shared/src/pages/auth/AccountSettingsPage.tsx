@@ -10,20 +10,16 @@ import {
   laneRefusalOf,
   loginLane,
   sessionIdentity,
-  type Enrollment,
-  type SecondFactorPresentation,
   type SecondFactorState,
   type SessionAnswer,
 } from "@shared/api/login-lane";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
-import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
-import { Toaster } from "@shared/components/molecules/Toaster";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
-import { FormGrid } from "@shared/components/organisms/form/FormGrid";
+import { FORM_LABEL_WIDTH, FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { AccessKeysSection } from "./access-key";
@@ -31,43 +27,44 @@ import { EmailChangeAction } from "./email-change";
 import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "@shared/api/self-removal";
+import { SecurityAnnouncer, useAnnounce } from "./security/announcer";
+import { SavedCodesDialog } from "./security/SavedCodesDialog";
+import { BackupCodesSection, SecondFactorSection } from "./security/SecondFactorSections";
+import { SecuritySection } from "./security/SecuritySection";
+import { NAVIGATED_SECTIONS, SECURITY_SECTION, goToSection } from "./security/sections";
+import { methodsInWords, useSecondFactorState } from "./security/use-second-factor";
 
-// Параметры учётной записи на `/settings` — адрес почты, пароль, второй фактор,
-// свои сессии и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмки
-// F8-S5 и F8-S6).
+// Экран «Безопасность» на `/settings` — один экран личного кабинета о защите
+// учётной записи (приёмка F8-S7, Р1; адрес — приёмка F8, Р1, новой ручки нет).
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ЧТО ЭКРАН ДЕЛАЕТ
+// РАЗДЕЛЫ — В ПОРЯДКЕ ЗАДАЧ ЧЕЛОВЕКА (Р1)
 //
-//   • учётная запись: адрес и признак его подтверждённости — из ответа края о
-//     сессии; действия «подтвердить адрес» здесь нет: экран открыт только
-//     подтверждённому адресу (страж каркаса, приёмка F6b, Р7), а
-//     неподтверждённому подтверждение предлагает экран `/verification`
-//     (F8-17, приёмка F6b, §3.3). Действие раздела — смена адреса
-//     (`email-change/`, приёмка F8-S6): покой, форма, код; после успеха экран
-//     заново спрашивает «кто я», и новый адрес называет край;
-//   • смена пароля глаголом службы; отказ — дословно, носитель консоль не
-//     трогает ни на успехе (его перевыпускает служба), ни на отказе края
-//     (F8-23…F8-25);
-//   • первый пароль — форма «Завести пароль», которую выбирает ЧЕЛОВЕК
-//     действием «У меня нет пароля — завести» (Р13): ни один ответ службы не
-//     говорит браузеру, есть ли у человека пароль (N31), и догадка консоли
-//     была бы суждением, которого Р2 не разрешает. По умолчанию раздел
-//     показывает смену; отказ «пароль уже есть» назван дословно и возвращает к
-//     смене (F8-62…F8-66);
-//   • свои сессии — раздел `own-sessions/OwnSessionsSection.tsx` после второго
-//     фактора: перечень, выход из выбранной и из всех, кроме этой (F8-S5);
-//   • ключи доступа — раздел `access-key/AccessKeysSection.tsx` над глаголами
-//     Ф7 (Р11, F8-48…F8-61, F8-69…F8-71);
-//   • второй фактор: состояние — чтением глагола; заведение → материал →
-//     подтверждение первым кодом → запасные коды, показанные один раз; снятие и
-//     перечеканка — с подтверждением кодом (F8-26…F8-32).
+//   1. Сводка — вход (адрес и его подтверждённость), чем подтверждаются
+//      действия, сколько активных сессий; без второго фактора — рекомендация и
+//      «Настроить»;
+//   2. Способ входа — адрес почты и его смена (F8-S6), пароль (F8 Р13 без
+//      изменения), вход ключом доступа;
+//   3. Второй фактор — таблица способов (Р2);
+//   4. Ключи доступа — таблица ключей (Р3, Р7);
+//   5. Запасные коды — остаток, даты, перевыпуск (Р4);
+//   6. Активные сессии — таблица своих сессий (F8-S5, вид — Р3);
+//   7. Удаление учётной записи (#3186) — необратимое, ниже задач Р1 и вне
+//      навигации.
 //
-// СВЕЖЕСТЬ. На глаголах, требующих свежего предъявления, служба отвечает
-// `SESSION_NOT_FRESH`. Клиент полосы открывает церемонию повышения и после неё
-// ПОВТОРЯЕТ тот же глагол (одно решение на отказ — `refusalActionOf`, условие
-// C2): человек возвращается туда, откуда его остановили, а не на панель
-// (F8-29). Повтор один — второй отказ показывается как есть.
+// Навигация «Разделы страницы» в шапке — ссылки на пять разделов 2–6: сводка
+// стоит первой под шапкой и видна без перехода. Прокрутка одна (`PageFrame`):
+// вкладок и отдельных адресов нет — они скрыли бы сводку и не дали увидеть все
+// способы разом.
+//
+// ОДНО ЧТЕНИЕ СОСТОЯНИЯ СПОСОБОВ на экран (`useSecondFactorState`): сводка,
+// разделы и диалоги говорят об одном ответе службы и разойтись не могут.
+//
+// СВЕЖЕСТЬ И УРОВЕНЬ. На глаголах, требующих свежего предъявления либо пола
+// «2», служба отвечает отказом, и клиент открывает окно подтверждения
+// (`StepUpModal`, F8-S7 Р5) и после него ПОВТОРЯЕТ тот же глагол (одно решение
+// на отказ — `refusalActionOf`, условие C2): человек возвращается туда, откуда
+// его остановили.
 //
 // «СПРОСИТЬ НЕ УДАЛОСЬ» — НЕ «ВЫ НЕ ВОШЛИ» (условие C6). Край не ответил о сессии
 // по существу — экран называет это и даёт спросить снова, а не рисует «доступны
@@ -75,17 +72,8 @@ import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "@shared/api/
 
 const asRefusal = laneRefusalOf;
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId();
-  return (
-    <section aria-labelledby={id} style={{ maxWidth: 720, marginBottom: 32 }}>
-      <Typography.Title level={4} id={id} style={{ marginTop: 0 }}>
-        {title}
-      </Typography.Title>
-      {children}
-    </section>
-  );
-}
+/** Рекомендация сводки без способов подтверждения (Р1). */
+export const SUMMARY_ADVICE = "Включите второй фактор: без него действия, меняющие доступ, недоступны";
 
 /**
  * Отметка поля, названного отказом службы: ввод ссылается на сообщение у поля
@@ -104,26 +92,24 @@ function markedBy(inputId: string, error: string | null) {
 
 // ─── пароль ──────────────────────────────────────────────────────────────────
 
-function ChangePasswordForm({ onSubmitted }: { onSubmitted: () => void }) {
+function ChangePasswordForm({ onSubmitted, onChanged }: { onSubmitted: () => void; onChanged: () => void }) {
   const id = useId();
   const holder = useFormToken("password");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
-  const [changed, setChanged] = useState(false);
 
   const onSubmit = async () => {
     if (busy) return;
     onSubmitted();
     setBusy(true);
     setRefusal(null);
-    setChanged(false);
     try {
       await loginLane.changePassword(holder, { currentPassword: current, newPassword: next });
       setCurrent("");
       setNext("");
-      setChanged(true);
+      onChanged();
     } catch (err) {
       setRefusal(asRefusal(err));
     }
@@ -163,11 +149,6 @@ function ChangePasswordForm({ onSubmitted }: { onSubmitted: () => void }) {
         <div style={{ marginBottom: 12 }}>
           <LaneRefusalAlert refusal={refusal} />
         </div>
-      )}
-      {changed && (
-        <p role="status" style={{ margin: "0 0 12px" }}>
-          Пароль сменён.
-        </p>
       )}
       <Button type="primary" htmlType="submit" loading={busy}>
         Сменить пароль
@@ -248,281 +229,273 @@ function EnrollPasswordForm({
   );
 }
 
-function PasswordSection() {
+/**
+ * Пароль — действие раздела «Способ входа»: формы смены и заведения открываются
+ * окном, а не стоят на экране (приёмка F8-S7, Р1, Р9: на экране — состояние и
+ * действия, ввод — в окне действия). Форма «завести пароль» по-прежнему
+ * выбирается человеком (F8, Р13 без изменения).
+ */
+function PasswordAction() {
+  const announce = useAnnounce();
+  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"смена" | "заведение">("смена");
-  const [enrolled, setEnrolled] = useState(false);
   const [alreadySet, setAlreadySet] = useState<LaneRefusal | null>(null);
-  const clearNotices = () => {
-    setEnrolled(false);
+  const close = () => {
+    setOpen(false);
+    setMode("смена");
     setAlreadySet(null);
   };
 
   return (
-    <Section title="Пароль">
-      {mode === "заведение" ? (
-        <EnrollPasswordForm
-          onEnrolled={() => {
-            setEnrolled(true);
-            setMode("смена");
-          }}
-          onAlreadySet={(r) => {
-            setAlreadySet(r);
-            setMode("смена");
-          }}
-          onCancel={() => setMode("смена")}
-        />
-      ) : (
-        <>
-          {alreadySet && (
-            <div style={{ marginBottom: 12 }}>
-              <LaneRefusalAlert refusal={alreadySet} />
-            </div>
-          )}
-          {enrolled && (
-            <p role="status" style={{ margin: "0 0 12px" }}>
-              Пароль заведён.
-            </p>
-          )}
-          <ChangePasswordForm onSubmitted={clearNotices} />
-          <Button
-            type="link"
-            style={{ paddingLeft: 0, marginTop: 8 }}
-            onClick={() => {
-              clearNotices();
-              setMode("заведение");
+    <>
+      <Button
+        onClick={() => {
+          setAlreadySet(null);
+          setMode("смена");
+          setOpen(true);
+        }}
+      >
+        Сменить пароль
+      </Button>
+      <Modal open={open} title="Пароль" onCancel={close} mask={{ closable: false }} footer={null}>
+        {mode === "заведение" ? (
+          <EnrollPasswordForm
+            onEnrolled={() => {
+              close();
+              announce("Пароль заведён.");
             }}
-          >
-            У меня нет пароля — завести
-          </Button>
-        </>
-      )}
-    </Section>
+            onAlreadySet={(r) => {
+              setAlreadySet(r);
+              setMode("смена");
+            }}
+            onCancel={() => setMode("смена")}
+          />
+        ) : (
+          <>
+            {alreadySet && (
+              <div style={{ marginBottom: 12 }}>
+                <LaneRefusalAlert refusal={alreadySet} />
+              </div>
+            )}
+            <ChangePasswordForm
+              onSubmitted={() => setAlreadySet(null)}
+              onChanged={() => {
+                close();
+                announce("Пароль сменён.");
+              }}
+            />
+            <Button
+              type="link"
+              style={{ paddingLeft: 0, marginTop: 8 }}
+              onClick={() => {
+                setAlreadySet(null);
+                setMode("заведение");
+              }}
+            >
+              У меня нет пароля — завести
+            </Button>
+          </>
+        )}
+      </Modal>
+    </>
   );
 }
 
-// ─── второй фактор ───────────────────────────────────────────────────────────
+// ─── сводка и способ входа ───────────────────────────────────────────────────
 
-type FactorView =
-  | { kind: "состояние" }
-  | { kind: "заведение"; enrollment: Enrollment; code: string }
-  | { kind: "коды"; codes: string[]; after: "подтверждение" | "перечеканка" }
-  | { kind: "снятие" | "перечеканка"; factor: SecondFactorPresentation };
-
-function stateLine(state: SecondFactorState): string {
-  if (state.totp.enrolled) {
-    const codes = state.backupCodes;
-    return codes
-      ? `Второй фактор настроен · запасных кодов осталось ${codes.remaining} из ${codes.total}`
-      : "Второй фактор настроен";
-  }
-  return state.totp.pendingUntil ? "Настройка второго фактора не завершена" : "Второй фактор не настроен";
+function FactLine({ children }: { children: ReactNode }) {
+  return <div style={{ marginBottom: 6 }}>{children}</div>;
 }
 
-function SecondFactorSection() {
-  const id = useId();
-  const holder = useFormToken("second-factor");
-  const [state, setState] = useState<SecondFactorState | null>(null);
-  const [unreadable, setUnreadable] = useState<LaneRefusal | null>(null);
-  const [stage, setStage] = useState<FactorView>({ kind: "состояние" });
-  const [busy, setBusy] = useState(false);
-  const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
-
-  const read = useCallback(async () => {
-    try {
-      setState(await loginLane.secondFactorState());
-      setUnreadable(null);
-    } catch (e) {
-      setUnreadable(asRefusal(e));
-    }
-  }, []);
-
-  // Первое чтение — при открытии экрана; дальше состояние перечитывает каждый
-  // шаг глагола (`run`), потому что каждый шаг его меняет.
-  useEffect(() => {
-    let cancelled = false;
-    loginLane.secondFactorState().then(
-      (s) => {
-        if (!cancelled) setState(s);
-      },
-      (e: unknown) => {
-        if (!cancelled) setUnreadable(asRefusal(e));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /** Шаг глагола: отказ показывается дословно, состояние перечитывается всегда. */
-  const run = async (step: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setRefusal(null);
-    try {
-      await step();
-    } catch (e) {
-      setRefusal(asRefusal(e));
-    }
-    await read();
-    setBusy(false);
-  };
-
-  const enroll = () =>
-    run(async () => {
-      const enrollment = await loginLane.enroll(holder);
-      setStage({ kind: "заведение", enrollment, code: "" });
-    });
-
-  const confirm = (code: string) =>
-    run(async () => {
-      const confirmed = await loginLane.confirm(holder, code);
-      setStage({ kind: "коды", codes: confirmed.backupCodes, after: "подтверждение" });
-    });
-
-  const remove = (factor: SecondFactorPresentation) =>
-    run(async () => {
-      await loginLane.remove(holder, factor);
-      setStage({ kind: "состояние" });
-    });
-
-  const regenerate = (factor: SecondFactorPresentation) =>
-    run(async () => {
-      const issued = await loginLane.regenerateBackupCodes(holder, factor);
-      setStage({ kind: "коды", codes: issued.backupCodes, after: "перечеканка" });
-    });
-
-  const codeError = refusal?.field === "code" ? refusal.message : null;
-  const methodError = refusal?.field === "method" ? refusal.message : null;
-
-  let body: ReactNode = null;
-  if (stage.kind === "заведение") {
-    const firstCodeId = `${id}-first-code`;
-    body = (
-      <FormGrid onSubmit={() => void confirm(stage.code)}>
-        <Typography.Paragraph>
-          Добавьте учётную запись в приложение-аутентификатор — секретом или адресом ниже, — и введите код, который оно
-          покажет.
-        </Typography.Paragraph>
-        <Form.Item label="Секрет">
-          <Typography.Text code copyable>
-            {stage.enrollment.secret}
-          </Typography.Text>
-        </Form.Item>
-        <Form.Item label="Адрес для приложения">
-          <Typography.Text code copyable style={{ wordBreak: "break-all" }}>
-            {stage.enrollment.otpauthUri}
-          </Typography.Text>
-        </Form.Item>
-        <Form.Item label="Первый код из приложения" htmlFor={firstCodeId}>
-          <Input
-            id={firstCodeId}
-            value={stage.code}
-            onChange={(e) => setStage({ ...stage, code: e.target.value })}
-            autoComplete="one-time-code"
-            inputMode="numeric"
-            {...markedBy(firstCodeId, codeError)}
-          />
-          <FieldError id={fieldErrorId(firstCodeId)} message={codeError ?? undefined} />
-        </Form.Item>
-        <Button type="primary" htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
-          Подтвердить
-        </Button>
-        <Button onClick={() => setStage({ kind: "состояние" })} disabled={busy}>
-          Отменить
-        </Button>
-      </FormGrid>
-    );
-  } else if (stage.kind === "коды") {
-    body = (
-      <>
-        <Alert
-          type="warning"
-          showIcon
-          message={
-            stage.after === "перечеканка"
-              ? "Прежние запасные коды больше недействительны. Новые показываются один раз — сохраните их сейчас."
-              : "Запасные коды показываются один раз — сохраните их сейчас."
-          }
-          style={{ marginBottom: 12 }}
-        />
-        <ul aria-label="Запасные коды" style={{ fontFamily: "monospace", columns: 2 }}>
-          {stage.codes.map((c) => (
-            <li key={c}>{c}</li>
-          ))}
-        </ul>
-        <Button onClick={() => setStage({ kind: "состояние" })}>Готово</Button>
-      </>
-    );
-  } else if (stage.kind === "снятие" || stage.kind === "перечеканка") {
-    const removing = stage.kind === "снятие";
-    body = (
-      <FormGrid onSubmit={() => void (removing ? remove(stage.factor) : regenerate(stage.factor))}>
-        <Typography.Paragraph>
-          {removing
-            ? "Подтвердите снятие вторым фактором."
-            : "Подтвердите выпуск новых запасных кодов вторым фактором — прежние перестанут действовать."}
-        </Typography.Paragraph>
-        <SecondFactorCodeField
-          value={stage.factor}
-          onChange={(factor) => setStage({ kind: stage.kind, factor })}
-          codeError={codeError}
-          methodError={methodError}
-        />
-        <Button type="primary" danger={removing} htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
-          {removing ? "Снять" : "Выпустить коды"}
-        </Button>
-        <Button onClick={() => setStage({ kind: "состояние" })} disabled={busy}>
-          Отменить
-        </Button>
-      </FormGrid>
-    );
-  } else if (state) {
-    body = state.totp.enrolled ? (
-      <>
-        <Button
-          onClick={() => {
-            setRefusal(null);
-            setStage({ kind: "снятие", factor: EMPTY_PRESENTATION });
-          }}
-          style={{ marginRight: 8 }}
-        >
-          Снять второй фактор
-        </Button>
-        <Button
-          onClick={() => {
-            setRefusal(null);
-            setStage({ kind: "перечеканка", factor: EMPTY_PRESENTATION });
-          }}
-        >
-          Выпустить новые запасные коды
-        </Button>
-      </>
-    ) : (
-      <Button type="primary" loading={busy} onClick={() => void enroll()}>
-        Настроить второй фактор
-      </Button>
-    );
-  }
-
+function SummarySection({
+  email,
+  emailVerified,
+  state,
+  sessions,
+}: {
+  email: string;
+  emailVerified: boolean | undefined;
+  state: SecondFactorState | null;
+  sessions: number | null;
+}) {
+  const methods = state?.stepUpMethods;
   return (
-    <Section title="Второй фактор">
-      {state === null && unreadable === null && <Spin />}
-      {unreadable && (
-        <div style={{ marginBottom: 12 }}>
-          <LaneRefusalAlert refusal={unreadable} />
-          <Button onClick={() => void read()} style={{ marginTop: 8 }}>
-            Прочитать снова
+    <SecuritySection section="summary">
+      <FactLine>
+        {`Вход: ${email}`}{" "}
+        {typeof emailVerified === "boolean" && (
+          <BoolFact
+            value={emailVerified}
+            yes="Адрес подтверждён"
+            no="Адрес не подтверждён"
+            yesTone="good"
+            noTone="attention"
+          />
+        )}
+      </FactLine>
+      {methods !== undefined && <FactLine>{`Подтверждение действий: ${methodsInWords(methods)}`}</FactLine>}
+      {state?.accessKeys?.available === false && <FactLine>Вход ключом доступа: Выключены на установке</FactLine>}
+      {sessions !== null && <FactLine>{`Активные сессии: ${sessions}`}</FactLine>}
+      {methods !== undefined && methods.length === 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 8,
+            padding: "8px 12px",
+            border: "1px solid var(--status-warn-fg)",
+            borderRadius: 6,
+          }}
+        >
+          <span>{SUMMARY_ADVICE}</span>
+          <Button size="small" type="primary" onClick={() => goToSection("secondFactor")}>
+            Настроить
           </Button>
         </div>
       )}
-      {state && <Typography.Paragraph>{stateLine(state)}</Typography.Paragraph>}
-      {refusal && codeError === null && methodError === null && (
-        <div style={{ marginBottom: 12 }}>
-          <LaneRefusalAlert refusal={refusal} />
+    </SecuritySection>
+  );
+}
+
+/** Строка раздела «Способ входа»: имя слева колонкой формы, факт и действие справа (канон формы). */
+function SignInRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 16, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ flex: `0 0 ${FORM_LABEL_WIDTH}px`, color: "var(--kc-text-secondary)" }}>{label}</div>
+      <div style={{ flex: "1 1 280px", minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+function SignInSection({
+  email,
+  emailVerified,
+  state,
+  keysCount,
+  onChanged,
+  leave,
+}: {
+  email: string;
+  emailVerified: boolean | undefined;
+  state: SecondFactorState | null;
+  keysCount: number | null;
+  onChanged: () => Promise<void>;
+  leave?: (to: string) => void;
+}) {
+  const off = state?.accessKeys?.available === false;
+  return (
+    <SecuritySection section="signIn">
+      <SignInRow label="Адрес почты">
+        <div>{email}</div>
+        {typeof emailVerified === "boolean" && (
+          <BoolFact value={emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
+        )}
+        <div>
+          <EmailChangeAction onChanged={onChanged} leave={leave} />
         </div>
+      </SignInRow>
+      <SignInRow label="Пароль">
+        <PasswordAction />
+      </SignInRow>
+      {(off || keysCount !== null) && (
+        <SignInRow label="Вход ключом доступа">
+          {off ? (
+            "Выключены на установке"
+          ) : (
+            <BoolFact
+              value={(keysCount ?? 0) > 0}
+              yes={`Доступен · ключей: ${keysCount ?? 0}`}
+              no="Не настроен"
+              yesTone="good"
+            />
+          )}
+        </SignInRow>
       )}
-      {body}
-    </Section>
+    </SecuritySection>
+  );
+}
+
+function SectionsNav() {
+  return (
+    <nav aria-label="Разделы страницы" style={{ marginBottom: 12 }}>
+      <ul style={{ display: "flex", flexWrap: "wrap", gap: 16, listStyle: "none", margin: 0, padding: 0 }}>
+        {NAVIGATED_SECTIONS.map((key) => (
+          <li key={key}>
+            <a
+              href={`#${SECURITY_SECTION[key].id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                goToSection(key);
+              }}
+            >
+              {SECURITY_SECTION[key].title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+function SecurityScreen({
+  who,
+  reread,
+  leave,
+}: {
+  who: Extract<SessionAnswer, { kind: "present" }>;
+  reread: () => Promise<void>;
+  leave?: (to: string) => void;
+}) {
+  const factor = useSecondFactorState();
+  const factorHolder = useFormToken("second-factor");
+  const [keysCount, setKeysCount] = useState<number | null>(null);
+  const [sessions, setSessions] = useState<number | null>(null);
+  const [addKey, setAddKey] = useState(0);
+  const [codes, setCodes] = useState<{ codes: string[]; regenerated: boolean } | null>(null);
+  const showCodes = useCallback((c: string[], regenerated: boolean) => setCodes({ codes: c, regenerated }), []);
+  const emailVerified = who.session?.emailVerified;
+  const { reread: rereadFactor } = factor;
+  const keysChanged = useCallback(() => void rereadFactor(), [rereadFactor]);
+
+  return (
+    <>
+      <SummarySection email={who.user.email} emailVerified={emailVerified} state={factor.state} sessions={sessions} />
+      <SignInSection
+        email={who.user.email}
+        emailVerified={emailVerified}
+        state={factor.state}
+        keysCount={keysCount}
+        onChanged={reread}
+        leave={leave}
+      />
+      <SecondFactorSection
+        read={factor}
+        holder={factorHolder}
+        keysCount={keysCount}
+        onAddKey={() => {
+          goToSection("accessKeys");
+          setAddKey((n) => n + 1);
+        }}
+        showCodes={showCodes}
+      />
+      <AccessKeysSection
+        userId={who.user.id}
+        factor={factor.state}
+        onCount={setKeysCount}
+        addRequested={addKey}
+        onChanged={keysChanged}
+      />
+      <BackupCodesSection read={factor} holder={factorHolder} showCodes={showCodes} />
+      <OwnSessionsSection onCount={setSessions} />
+      <DeleteSelfSection user={who.user} leave={leave ?? ((to) => window.location.replace(to))} />
+      <SavedCodesDialog
+        codes={codes?.codes ?? null}
+        regenerated={codes?.regenerated ?? false}
+        onDone={() => setCodes(null)}
+      />
+    </>
   );
 }
 
@@ -576,7 +549,7 @@ function DeleteSelfSection({
   };
 
   return (
-    <Section title="Удаление учётной записи">
+    <SecuritySection section="deleteSelf">
       <Typography.Paragraph>
         Учётная запись удаляется во всех аккаунтах сразу и навсегда: вместе с ней уходят сессии, способы входа, ключи
         доступа и членства. Удалить её можно, когда не осталось аккаунтов, которыми вы владеете.
@@ -620,7 +593,7 @@ function DeleteSelfSection({
           </Form.Item>
         </Form>
       </Modal>
-    </Section>
+    </SecuritySection>
   );
 }
 
@@ -654,45 +627,34 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
   return (
     // Шапка стоит, содержимое прокручивается под ней — одной областью
     // (`PageFrame`): рабочая область каркаса сама не прокручивается.
-    <PageFrame head={<PageHead title="Параметры учётной записи" />}>
-      {/* Окно повышения живёт рядом с экраном, который его спрашивает: шаги
-          свежести зовут его отсюда (`requestStepUp`). */}
-      <StepUpModal leave={leave} />
-      {/* Показ сигналов об исходе действий экрана (раздел ключей доступа):
-          каркас его не несёт, а очередь без показа глотает сигнал молча. */}
-      <Toaster />
-      {who === undefined && <Spin />}
-      {who?.kind === "absent" && (
-        <Typography.Paragraph>
-          Параметры доступны после входа. <Link to={loginAddress(ACCOUNT_SETTINGS_ADDRESS)}>Войти</Link>
-        </Typography.Paragraph>
-      )}
-      {who?.kind === "unknown" && (
-        <div style={{ maxWidth: 720, marginBottom: 12 }}>
-          <LaneRefusalAlert refusal={who.refusal} />
-          <Button onClick={askAgain} style={{ marginTop: 8 }}>
-            Проверить снова
-          </Button>
-        </div>
-      )}
-      {who?.kind === "present" && (
+    <PageFrame
+      head={
         <>
-          <Section title="Учётная запись">
-            <Typography.Paragraph style={{ marginBottom: 4 }}>{who.user.email}</Typography.Paragraph>
-            {typeof who.session?.emailVerified === "boolean" && (
-              <BoolFact value={who.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
-            )}
-            <div>
-              <EmailChangeAction onChanged={reread} leave={leave} />
-            </div>
-          </Section>
-          <PasswordSection />
-          <SecondFactorSection />
-          <OwnSessionsSection />
-          <AccessKeysSection userId={who.user.id} />
-          <DeleteSelfSection user={who.user} leave={leave ?? ((to) => window.location.replace(to))} />
+          <PageHead title="Безопасность" level={1} divider={who?.kind !== "present"} />
+          {who?.kind === "present" && <SectionsNav />}
         </>
-      )}
+      }
+    >
+      <SecurityAnnouncer>
+        {/* Окно подтверждения живёт рядом с экраном, который его спрашивает:
+            шаги свежести и уровня зовут его отсюда (`requestStepUp`). */}
+        <StepUpModal leave={leave} />
+        {who === undefined && <Spin />}
+        {who?.kind === "absent" && (
+          <Typography.Paragraph>
+            Параметры безопасности доступны после входа. <Link to={loginAddress(ACCOUNT_SETTINGS_ADDRESS)}>Войти</Link>
+          </Typography.Paragraph>
+        )}
+        {who?.kind === "unknown" && (
+          <div style={{ maxWidth: 720, marginBottom: 12 }}>
+            <LaneRefusalAlert refusal={who.refusal} />
+            <Button onClick={askAgain} style={{ marginTop: 8 }}>
+              Проверить снова
+            </Button>
+          </div>
+        )}
+        {who?.kind === "present" && <SecurityScreen who={who} reread={reread} leave={leave} />}
+      </SecurityAnnouncer>
     </PageFrame>
   );
 }

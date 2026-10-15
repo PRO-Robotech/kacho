@@ -184,12 +184,12 @@ describe("App", () => {
     },
   );
 
-  it("F8-01 · /settings — экран параметров учётной записи внутри каркаса", async () => {
+  it("F8-01 · /settings — экран «Безопасность» внутри каркаса (F8-S7, Р1)", async () => {
     window.history.pushState(null, "", "/settings");
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Безопасность" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/settings");
     expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
   });
@@ -299,7 +299,7 @@ describe("F6b · страж над каркасом консоли", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Безопасность" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/settings");
     expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
     expect(network.mock.calls.map(([input]) => urlOf(input))).toContain("/iam/v1/accounts");

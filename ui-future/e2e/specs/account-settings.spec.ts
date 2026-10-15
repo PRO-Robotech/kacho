@@ -30,8 +30,11 @@ import {
 } from "./producer-answers";
 
 /**
- * Параметры учётной записи на `/settings` — смена пароля и второй фактор
- * (приёмка F8, S2, группы G и H).
+ * Экран «Безопасность» на `/settings` — смена пароля и второй фактор (приёмка
+ * F8, S2, группы G и H; вид экрана — приёмка F8-S7: пароль — окном «Пароль»
+ * раздела «Способ входа», заведение кода — окном с QR-кодом, снятие и
+ * перевыпуск — диалогами с подтверждением кодом, коды — окном «Сохраните
+ * запасные коды»).
  *
  * Экран ведёт церемонии своими глаголами, не покидая консоли. Каждое «Тогда»
  * утверждается наблюдаемым: переписью обращений страницы, текстом экрана,
@@ -50,11 +53,19 @@ import {
 // ─── экран ───────────────────────────────────────────────────────────────────
 
 function settingsScreen(page: Page) {
-  const password = page.getByRole("region", { name: "Пароль" });
+  const signIn = page.getByRole("region", { name: "Способ входа" });
+  const password = page.getByRole("dialog", { name: "Пароль" });
   const factor = page.getByRole("region", { name: "Второй фактор" });
+  const backup = page.getByRole("region", { name: "Запасные коды" });
+  const enroll = page.getByRole("dialog", { name: "Настроить приложение-аутентификатор" });
+  // Диалог опасного действия — ОДИН открытый на странице: «Отключить» и
+  // «Выпустить новые коды» (F8-S7, Р6).
+  const dialog = page.getByRole("dialog");
   return {
-    heading: page.getByRole("heading", { name: "Параметры учётной записи" }),
+    heading: page.getByRole("heading", { level: 1, name: "Безопасность", exact: true }),
     password: {
+      /** Окно «Пароль» открывается действием раздела «Способ входа» (F8-S7, Р1). */
+      open: () => signIn.getByRole("button", { name: "Сменить пароль", exact: true }).click(),
       region: password,
       current: password.getByLabel("Текущий пароль"),
       next: password.getByLabel("Новый пароль"),
@@ -63,16 +74,20 @@ function settingsScreen(page: Page) {
     },
     factor: {
       region: factor,
-      enroll: factor.getByRole("button", { name: "Настроить второй фактор" }),
-      firstCode: factor.getByRole("textbox", { name: "Первый код из приложения" }),
-      confirm: factor.getByRole("button", { name: "Подтвердить", exact: true }),
-      remove: factor.getByRole("button", { name: "Снять второй фактор" }),
-      regenerate: factor.getByRole("button", { name: "Выпустить новые запасные коды" }),
-      backupMethod: factor.getByRole("radio", { name: "Запасной код" }),
-      code: factor.getByRole("textbox", { name: "Код", exact: true }),
-      removeConfirm: factor.getByRole("button", { name: "Снять", exact: true }),
-      regenerateConfirm: factor.getByRole("button", { name: "Выпустить коды", exact: true }),
-      refusal: factor.getByRole("alert"),
+      enroll: factor.getByRole("button", { name: "Настроить приложение-аутентификатор", exact: true }),
+      enrollDialog: enroll,
+      firstCode: enroll.getByRole("textbox", { name: "Код из приложения" }),
+      confirm: enroll.getByRole("button", { name: "Подтвердить", exact: true }),
+      enrollRefusal: enroll.getByRole("alert"),
+      totpRow: factor.getByRole("row", { name: /Приложение-аутентификатор/ }),
+      remove: factor.getByRole("button", { name: "Отключить", exact: true }),
+      regenerate: backup.getByRole("button", { name: "Выпустить новые коды", exact: true }),
+      backupMethod: dialog.getByRole("radio", { name: "Запасной код" }),
+      code: dialog.getByRole("textbox", { name: "Запасной код", exact: true }),
+      removeConfirm: dialog.getByRole("button", { name: "Отключить", exact: true }),
+      regenerateConfirm: dialog.getByRole("button", { name: "Выпустить", exact: true }),
+      refusal: dialog.getByRole("alert"),
+      saved: page.getByRole("dialog", { name: "Сохраните запасные коды" }),
     },
   };
 }
@@ -87,7 +102,7 @@ async function openSettings(page: Page) {
         const now = new URL(page.url()).pathname;
         return now === "/settings" ? "ещё не отрисован" : `страница уведена на ${now}`;
       },
-      { message: "экран параметров учётной записи на /settings не отрисован консолью", timeout: 30_000 },
+      { message: "экран «Безопасность» на /settings не отрисован консолью", timeout: 30_000 },
     )
     .toBe("отрисован");
   return s;
@@ -317,6 +332,7 @@ test("F8-23 · смена пароля внутри сессии проходи�
     const s = await openSettings(page);
     const before = await bearerOf(page.context());
     const next = `${human.password}-nov`;
+    await s.password.open();
     await s.password.current.fill(human.password);
     await s.password.next.fill(next);
     const [res] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
@@ -353,6 +369,7 @@ test("F8-46 · чтение, бывшее в полёте при смене па
     const s = await openSettings(page);
     const before = await held.built(page.context());
 
+    await s.password.open();
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [changed] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
@@ -419,6 +436,7 @@ test("F8-24 · текущий пароль неверен: отказ назва
   await withHuman(testInfo, "F8-24", page.context(), async (_seed, human) => {
     const s = await openSettings(page);
     const before = await bearerOf(page.context());
+    await s.password.open();
     await s.password.current.fill(`${human.password}-ne-tot`);
     await s.password.next.fill(`${human.password}-nov`);
     const [res] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
@@ -448,12 +466,13 @@ test("F8-25 · служба молчит на глаголе с носителе
   await withHuman(testInfo, "F8-25", page.context(), async (_seed, human) => {
     const s = await openSettings(page);
     const before = await bearerOf(page.context());
+    await s.password.open();
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [res] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
     expect(res.status()).toBe(EDGE_CREDENTIAL_STATE_UNKNOWN.status);
     await expect(s.password.refusal, "ответ края не назван на экране").toContainText(ended.message);
-    expect(new URL(page.url()).pathname, "консоль ушла с экрана параметров").toBe("/settings");
+    expect(new URL(page.url()).pathname, "консоль ушла с экрана «Безопасность»").toBe("/settings");
     expect(await bearerOf(page.context()), "консоль погасила носитель сессии").toBe(before);
   });
 });
@@ -474,6 +493,7 @@ test("F8-63 · человек с паролем выбрал заведение:
     const census = ceremonyCensus(page.context());
     const s = await openSettings(page);
     const before = await bearerOf(page.context());
+    await s.password.open();
     const enroll = s.password.region.getByRole("button", { name: "У меня нет пароля — завести" });
     await expect(enroll, "раздел «Пароль» не предлагает завести пароль (Р13)").toBeVisible();
     const issued = page.waitForResponse((r) => {
@@ -561,16 +581,18 @@ test("F8-27 · заведение второго фактора доводитс
     const [enrolled] = await Promise.all([lanePost(page, LANE.enroll), s.factor.enroll.click()]);
     expect(enrolled.status(), `заведение не прошло: ${await enrolled.text()}`).toBe(200);
     const { secret } = (await enrolled.json()) as { secret: string };
-    await expect(s.factor.region, "материал заведения из ответа не показан").toContainText(secret);
+    await expect(s.factor.enrollDialog, "материал заведения из ответа не показан").toContainText(secret);
 
     await s.factor.firstCode.fill(totpCode(secret, Date.now()));
     const [confirmed] = await Promise.all([lanePost(page, LANE.confirm), s.factor.confirm.click()]);
     expect(confirmed.status(), `подтверждение не прошло: ${await confirmed.text()}`).toBe(200);
     const { backupCodes } = (await confirmed.json()) as { backupCodes: string[] };
-    for (const code of backupCodes) await expect(s.factor.region).toContainText(code);
-    await expect(s.factor.region, "не предупреждено, что коды показаны один раз").toContainText(
+    for (const code of backupCodes) await expect(s.factor.saved).toContainText(code);
+    await expect(s.factor.saved, "не предупреждено, что коды показаны один раз").toContainText(
       "показываются один раз",
     );
+    await s.factor.saved.getByRole("checkbox", { name: "Я сохранил коды", exact: true }).check();
+    await s.factor.saved.getByRole("button", { name: "Готово", exact: true }).click();
 
     const posts = census.calls.filter((c) => c.method === "POST").map((c) => c.path);
     expect(posts.indexOf(LANE.enroll), `заведение не предшествует подтверждению:\n${census.describe()}`).toBeLessThan(
@@ -580,7 +602,7 @@ test("F8-27 · заведение второго фактора доводитс
     await expect
       .poll(() => census.matching("GET", LANE.secondFactor).length, { message: "состояние не перечитано" })
       .toBeGreaterThanOrEqual(2);
-    await expect(s.factor.region).toContainText("Второй фактор настроен");
+    await expect(s.factor.totpRow, "в таблице способов — «Настроено»").toContainText("Настроено");
   });
 });
 
@@ -596,8 +618,8 @@ test("F8-28 · неверный первый код: заведение не з�
     const [refused] = await Promise.all([lanePost(page, LANE.confirm), s.factor.confirm.click()]);
     expect(refused.status()).toBe(401);
     const refusal = (await refused.json()) as { code: number; message: string };
-    await expect(s.factor.refusal, "отказ не назван дословно").toHaveText(refusal.message);
-    await expect(s.factor.region.getByRole("list", { name: "Запасные коды" })).toHaveCount(0);
+    await expect(s.factor.enrollRefusal, "отказ не назван дословно").toHaveText(refusal.message);
+    await expect(page.getByRole("list", { name: "Запасные коды" })).toHaveCount(0);
     const state = await seed.read(LANE.secondFactor);
     expect(state.status()).toBe(200);
     expect(
@@ -608,50 +630,63 @@ test("F8-28 · неверный первый код: заведение не з�
 });
 
 test("F8-29 · сессия не свежа: консоль ведёт повышение и возвращает на тот же шаг", async ({ page }, testInfo) => {
-  // verifies #1274 — близнец F8-27: изменена только свежесть предъявления в
-  // сессии. Окна свежести проба не пересиживает — ответ на ПЕРВОЕ заведение
-  // подставляется побайтово (Р9, ось 3а); повышение и повтор идут по-настоящему.
-  // Ответ производителя — телом и заголовками (`producer-answers.ts`, условие C20).
+  // verifies #1274 — окна свежести проба не пересиживает: ответ на ПЕРВЫЙ
+  // перевыпуск кодов подставляется побайтово (Р9, ось 3а); повышение и повтор
+  // идут по-настоящему. Ответ производителя — телом и заголовками
+  // (`producer-answers.ts`, условие C20).
+  //
+  // Предмет — прежний: отказ свежести ведёт в окно подтверждения, и после него
+  // тот же шаг повторяется сам. Шаг и способ подтверждения сменились вместе с
+  // окном (приёмка F8-S7, §5: окно предлагает способы `stepUpMethods`, пароля в
+  // нём нет): человек с кодом подтверждает запасным кодом, а шаг — перевыпуск
+  // кодов, у которого есть и подтверждение кодом в диалоге, и свежесть.
   let substituted = false;
   await page.route(
-    (u) => u.pathname === LANE.enroll,
+    (u) => u.pathname === LANE.backupCodes,
     async (route) => {
       if (route.request().method() !== "POST" || substituted) return route.continue();
       substituted = true;
       await fulfillWith(route, SESSION_NOT_FRESH);
     },
   );
-  await withHuman(testInfo, "F8-29", page.context(), async (_seed, human) => {
-    const census = ceremonyCensus(page.context());
-    const s = await openSettings(page);
-    const [refused] = await Promise.all([lanePost(page, LANE.enroll), s.factor.enroll.click()]);
-    expect(refused.status()).toBe(403);
+  await withHuman(
+    testInfo,
+    "F8-29",
+    page.context(),
+    async (_seed, _human, factor) => {
+      const census = ceremonyCensus(page.context());
+      const s = await openSettings(page);
+      await s.factor.regenerate.click();
+      await s.factor.backupMethod.check();
+      await s.factor.code.fill(factor!.backupCodes[0]);
+      const [refused] = await Promise.all([lanePost(page, LANE.backupCodes), s.factor.regenerateConfirm.click()]);
+      expect(refused.status()).toBe(403);
 
-    const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
-    await expect(dialog, "консоль не открыла церемонию повышения на SESSION_NOT_FRESH").toBeVisible();
-    // Ветвь пароля: подпись переключателя — «Паролем», поле — «Пароль»; одно
-    // имя на обоих сделало бы выбор поля неоднозначным.
-    await dialog.getByRole("radio", { name: "Паролем" }).check();
-    await dialog.getByLabel("Пароль", { exact: true }).fill(human.password);
-    // Ожидание повтора ставится ДО нажатия: повтор уходит сразу за ответом
-    // повышения, и ожидание, поставленное после, могло бы его пропустить.
-    const retried = lanePost(page, LANE.enroll);
-    const [raised] = await Promise.all([
-      lanePost(page, LANE.stepUp),
-      dialog.getByRole("button", { name: "Подтвердить" }).click(),
-    ]);
-    expect(raised.status(), `повышение паролем не прошло: ${await raised.text()}`).toBe(200);
+      const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
+      await expect(dialog, "консоль не открыла церемонию повышения на SESSION_NOT_FRESH").toBeVisible();
+      await dialog.getByRole("radio", { name: "Запасной код", exact: true }).check();
+      await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(factor!.backupCodes[1]);
+      // Ожидание повтора ставится ДО нажатия: повтор уходит сразу за ответом
+      // повышения, и ожидание, поставленное после, могло бы его пропустить.
+      const retried = lanePost(page, LANE.backupCodes);
+      const [raised] = await Promise.all([
+        lanePost(page, LANE.stepUp),
+        dialog.getByRole("button", { name: "Подтвердить", exact: true }).click(),
+      ]);
+      expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
 
-    // Тот же шаг: заведение повторено само, и его материал на экране.
-    const again = await retried;
-    await expect(dialog).toBeHidden();
-    expect(again.status(), `повтор заведения после повышения не прошёл: ${await again.text()}`).toBe(200);
-    const { secret } = (await again.json()) as { secret: string };
-    await expect(s.factor.region, "человек не возвращён на шаг заведения").toContainText(secret);
-    expect(new URL(page.url()).pathname, "после повышения человека увели с экрана параметров").toBe("/settings");
-    expectContains(census, "POST", LANE.stepUp);
-    expect(substituted).toBe(true);
-  });
+      // Тот же шаг: перевыпуск повторён сам, и его коды на экране.
+      const again = await retried;
+      await expect(dialog).toBeHidden();
+      expect(again.status(), `повтор перевыпуска после повышения не прошёл: ${await again.text()}`).toBe(200);
+      const { backupCodes } = (await again.json()) as { backupCodes: string[] };
+      await expect(s.factor.saved, "человек не возвращён на шаг перевыпуска").toContainText(backupCodes[0]);
+      expect(new URL(page.url()).pathname, "после повышения человека увели с экрана «Безопасность»").toBe("/settings");
+      expectContains(census, "POST", LANE.stepUp);
+      expect(substituted).toBe(true);
+    },
+    { secondFactor: true },
+  );
 });
 
 test("F8-30 · снятие второго фактора с подтверждением запасным кодом", async ({ page }, testInfo) => {
@@ -669,6 +704,7 @@ test("F8-30 · снятие второго фактора с подтвержд�
       expect(res.status(), `снятие не прошло: ${await res.text()}`).toBe(200);
       expect(methodOf(res), "форма назвала не тот способ").toBe("lookup_secret");
       await expect(s.factor.region).toContainText("Второй фактор не настроен");
+      await expect(s.factor.removeConfirm, "диалог закрыт исходом").toHaveCount(0);
     },
     { secondFactor: true },
   );
@@ -689,8 +725,8 @@ test("F8-31 · перечеканка запасных кодов", async ({ pag
       expect(res.status(), `перечеканка не прошла: ${await res.text()}`).toBe(200);
       expect(methodOf(res), "форма назвала не тот способ").toBe("lookup_secret");
       const { backupCodes } = (await res.json()) as { backupCodes: string[] };
-      for (const code of backupCodes) await expect(s.factor.region).toContainText(code);
-      await expect(s.factor.region, "не предупреждено, что прежний набор недействителен").toContainText(
+      for (const code of backupCodes) await expect(s.factor.saved).toContainText(code);
+      await expect(s.factor.saved, "не предупреждено, что прежний набор недействителен").toContainText(
         "Прежние запасные коды больше недействительны",
       );
     },
@@ -761,42 +797,44 @@ function visibleScrollAreas(page: Page): Promise<number> {
   });
 }
 
-test("параметры учётной записи · на экране 1280×720 кнопку подтверждения фактора доводит до вида колесо мыши, шапка стоит", async ({
+test("экран «Безопасность» · на экране 1280×720 последний раздел доводит до вида колесо мыши, шапка стоит", async ({
   page,
 }, testInfo) => {
-  // verifies #1274 — прокрутки у страницы не было: поле первого кода и кнопка
-  // «Подтвердить» стояли ниже края экрана, и колесо их не двигало. F8-27 этого не
-  // видит: щелчок пробы сам прокручивает контейнер скриптом, а человек так не может.
+  // verifies #1274 — прокрутки у страницы не было: нижние разделы стояли ниже
+  // края экрана, и колесо их не двигало. Предмет — прежний (прокрутка одна,
+  // колесом, шапка стоит); стадия заведения кода, на которой его судили прежде,
+  // ушла в окно (приёмка F8-S7, Р2), и низом экрана теперь служит последний раздел
+  // — «Удаление учётной записи» (#3186, под разделами Р1). Щелчок пробы прокрутил
+  // бы контейнер скриптом, а человек так не может, — поэтому колесо.
   await page.setViewportSize({ width: 1280, height: 720 });
   await withHuman(testInfo, "F8-scroll", page.context(), async () => {
     const s = await openSettings(page);
-    const [enrolled] = await Promise.all([lanePost(page, LANE.enroll), s.factor.enroll.click()]);
-    expect(enrolled.status(), `заведение не прошло: ${await enrolled.text()}`).toBe(200);
-    await expect(s.factor.firstCode, "стадия подтверждения не отрисована").toBeAttached();
+    const last = page.getByRole("heading", { level: 2, name: "Удаление учётной записи", exact: true });
+    await expect(last, "последний раздел не отрисован").toBeAttached();
 
     const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
     const inView = async () => {
-      const box = await s.factor.confirm.boundingBox();
+      const box = await last.boundingBox();
       return box !== null && box.y >= 0 && box.y + box.height <= viewport.height;
     };
     expect(
       await inView(),
-      "условие пробы не создано: кнопка «Подтвердить» видна без прокрутки — прокрутку этим экраном не проверить",
+      "условие пробы не создано: последний раздел виден без прокрутки — прокрутку этим экраном не проверить",
     ).toBe(false);
     const headBefore = await s.heading.boundingBox();
-    const before = await s.factor.confirm.boundingBox();
-    expect(before, "кнопка «Подтвердить» не отрисована — довести до вида нечего").not.toBeNull();
+    const before = await last.boundingBox();
+    expect(before, "последний раздел не отрисован — довести до вида нечего").not.toBeNull();
 
-    // Колесо крутят ровно на расстояние до кнопки (её середина — в середину
-    // экрана), как человек, который ищет её глазами. Постоянный шаг связывал бы
-    // пробу с высотой того, что стоит НИЖЕ кнопки: раздел, добавленный под
-    // фактором, уводил кнопку за верхний край, и проба краснела при живой
-    // прокрутке. Дефект #1274 этим не маскируется: нет прокрутки — кнопка стоит.
+    // Колесо крутят ровно на расстояние до раздела (его заголовок — в середину
+    // экрана), как человек, который ищет его глазами. Постоянный шаг связывал бы
+    // пробу с высотой того, что стоит НИЖЕ: длинный раздел под целью уводил её
+    // заголовок за верхний край, и проба краснела при живой прокрутке. Дефект
+    // #1274 этим не маскируется: нет прокрутки — раздел стоит.
     const delta = Math.ceil((before?.y ?? 0) + (before?.height ?? 0) / 2 - viewport.height / 2);
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
     await page.mouse.wheel(0, delta);
     await expect
-      .poll(inView, { message: "колесо мыши не довело кнопку «Подтвердить» до вида", timeout: 10_000 })
+      .poll(inView, { message: "колесо мыши не довело последний раздел до вида", timeout: 10_000 })
       .toBe(true);
 
     const headAfter = await s.heading.boundingBox();

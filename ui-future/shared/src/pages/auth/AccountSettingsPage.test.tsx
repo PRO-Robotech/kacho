@@ -7,7 +7,9 @@ import { MemoryRouter } from "react-router";
 import { EDGE_CREDENTIAL_STATE_UNKNOWN, laneAnswerOf } from "@shared/test/edge-answers";
 import { SESSION, SIGNED_IN, installLane, refusal, type LaneAnswer } from "@shared/test/lane-fake";
 
-// Параметры учётной записи (приёмка F8, S2): смена пароля и второй фактор
+// Экран «Безопасность» на `/settings` (приёмка F8-S7; прежде — параметры
+// учётной записи, приёмка F8, S2): разделы, сводка, таблица способов второго
+// фактора, заведение с QR-кодом, опасные действия с последствием словами —
 // глаголами службы, не покидая консоли.
 
 const { AccountSettingsPage } = await import("./AccountSettingsPage");
@@ -17,6 +19,23 @@ const PENDING: LaneAnswer = { status: 200, body: { totp: { enrolled: false, pend
 const ENROLLED: LaneAnswer = {
   status: 200,
   body: { totp: { enrolled: true, confirmedAt: "2026-09-23T12:00:00Z" }, backupCodes: { remaining: 10, total: 10 } },
+};
+/** Ответ формы SUA (Р6): моменты, доступность ключей и способы подтверждения. */
+function suaState(over: Record<string, unknown> = {}): LaneAnswer {
+  return {
+    status: 200,
+    body: {
+      totp: { enrolled: true, confirmedAt: "2026-10-14T18:04:00Z" },
+      backupCodes: { remaining: 10, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
+      accessKeys: { available: true },
+      stepUpMethods: ["lookup_secret", "totp"],
+      ...over,
+    },
+  };
+}
+const SUA_NOTHING: LaneAnswer = {
+  status: 200,
+  body: { totp: { enrolled: false }, accessKeys: { available: true }, stepUpMethods: [] },
 };
 const ENROLLMENT: LaneAnswer = {
   status: 200,
@@ -31,6 +50,16 @@ const CONFIRMED: LaneAnswer = {
     assurance: { level: "2", level2Reachable: true, missingForLevel2: [] },
   },
 };
+const KEYS_EMPTY: LaneAnswer = { status: 200, body: {} };
+const ONE_SESSION: LaneAnswer = {
+  status: 200,
+  body: { sessions: [{ id: "hss-1", current: true, userAgent: "этот браузер" }], nextPageToken: "" },
+};
+/** Чтения экрана, о которых проба не говорит: перечень ключей и сессий. */
+const SCREEN_READS = {
+  "GET /iam/v1/users/usr-1/accessKeys": KEYS_EMPTY,
+  "GET /iam/v1/auth/sessions": ONE_SESSION,
+} as const;
 
 function renderPage() {
   render(
@@ -43,58 +72,159 @@ function renderPage() {
 let lane: ReturnType<typeof installLane> | null = null;
 afterEach(() => lane?.restore());
 
-describe("параметры учётной записи", () => {
-  it("F8-17 · адрес и признак его подтверждённости — из ответа края; действия «подтвердить» нет", async () => {
-    lane = installLane({ "GET /iam/v1/auth/me": SIGNED_IN, "GET /iam/v1/auth/second-factor": NOT_ENROLLED });
+const region = (name: string) => screen.findByRole("region", { name });
+
+describe("экран «Безопасность» (F8-S7, Р1)", () => {
+  it("F8-S7-01 · заголовок «Безопасность», разделы в порядке задач, навигация на пять разделов переводит фокус", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState(),
+      ...SCREEN_READS,
+    });
     renderPage();
-    const account = await screen.findByRole("region", { name: "Учётная запись" });
-    expect(account).toHaveTextContent("a@kacho.local");
-    expect(account).toHaveTextContent("Адрес не подтверждён");
-    // Единственное действие раздела — смена адреса (приёмка F8-S6, Р3, покой);
-    // «подтвердить» среди действий нет.
+    expect(await screen.findByRole("heading", { level: 1, name: "Безопасность" })).toBeInTheDocument();
+    await region("Активные сессии");
+    const titles = screen
+      .getAllByRole("region")
+      .map((r) => document.getElementById(r.getAttribute("aria-labelledby") ?? "")?.textContent);
+    expect(titles).toEqual([
+      "Сводка",
+      "Способ входа",
+      "Второй фактор",
+      "Ключи доступа",
+      "Запасные коды",
+      "Активные сессии",
+      "Удаление учётной записи",
+    ]);
+    const nav = screen.getByRole("navigation", { name: "Разделы страницы" });
     expect(
-      within(account)
-        .getAllByRole("button")
-        .map((b) => b.textContent),
-    ).toEqual(["Сменить адрес"]);
-    expect(within(account).queryByRole("button", { name: /подтвердить/i })).toBeNull();
+      within(nav)
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual(["Способ входа", "Второй фактор", "Ключи доступа", "Запасные коды", "Активные сессии"]);
+    fireEvent.click(within(nav).getByRole("link", { name: "Ключи доступа" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Ключи доступа" })).toHaveFocus();
   });
 
-  it("F8-23 · смена пароля зовёт наш глагол с признаком своего вида", async () => {
+  it("F8-S7-02 · без способов подтверждения: «не настроено», рекомендация и «Настроить» к разделу второго фактора", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": SUA_NOTHING,
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const summary = await region("Сводка");
+    await waitFor(() => expect(summary).toHaveTextContent("Подтверждение действий: не настроено"));
+    expect(summary).toHaveTextContent("Включите второй фактор: без него действия, меняющие доступ, недоступны");
+    expect(summary).toHaveTextContent("Вход: a@kacho.local");
+    await waitFor(() => expect(summary).toHaveTextContent("Активные сессии: 1"));
+    fireEvent.click(within(summary).getByRole("button", { name: "Настроить" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Второй фактор" })).toHaveFocus();
+  });
+
+  it("F8-S7-02 · близнец: способы есть — названы словами, рекомендации нет", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState({ stepUpMethods: ["lookup_secret", "totp", "webauthn"] }),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const summary = await region("Сводка");
+    await waitFor(() =>
+      expect(summary).toHaveTextContent("Подтверждение действий: ключ доступа, код из приложения, запасной код"),
+    );
+    expect(summary).not.toHaveTextContent("Включите второй фактор");
+  });
+
+  it("служба способов не называет (ответ прежней формы): строки «Подтверждение действий» и рекомендации нет", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
-      "POST /iam/v1/auth/password": { status: 200, body: { session: SESSION } },
+      ...SCREEN_READS,
     });
     renderPage();
-    const password = await screen.findByRole("region", { name: "Пароль" });
-    fireEvent.change(within(password).getByLabelText("Текущий пароль"), { target: { value: "old" } });
-    fireEvent.change(within(password).getByLabelText("Новый пароль"), { target: { value: "new-one" } });
-    fireEvent.click(within(password).getByRole("button", { name: "Сменить пароль" }));
-    expect(await within(password).findByRole("status")).toHaveTextContent("Пароль сменён.");
-    expect(lane.of("POST", "/iam/v1/auth/password")[0].body).toEqual({
-      currentPassword: "old",
-      newPassword: "new-one",
-      csrfToken: "tok-password-1",
-    });
+    const summary = await region("Сводка");
+    await waitFor(() => expect(summary).toHaveTextContent("Активные сессии: 1"));
+    expect(summary).not.toHaveTextContent("Подтверждение действий");
+    expect(summary).not.toHaveTextContent("Включите второй фактор");
   });
+});
 
-  it("F8-25 · служба молчит краю на глаголе с носителем (KA1, Р1): ответ назван, повторить можно, экран на месте", async () => {
+describe("второй фактор и запасные коды (F8-S7, Р2, Р4, Р6, Р8)", () => {
+  it("F8-S7-10 · таблица способов: состояние, «Добавлен», «Последнее использование» из ответа службы", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
-      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
-      "POST /iam/v1/auth/password": laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN),
+      "GET /iam/v1/auth/second-factor": suaState({
+        totp: { enrolled: true, confirmedAt: "2026-10-14T18:04:00Z", lastUsedAt: "2026-10-15T09:30:00Z" },
+        backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T18:04:00Z", lastUsedAt: "2026-10-15T09:31:00Z" },
+      }),
+      ...SCREEN_READS,
     });
     renderPage();
-    const password = await screen.findByRole("region", { name: "Пароль" });
-    fireEvent.click(within(password).getByRole("button", { name: "Сменить пароль" }));
-    const alert = await within(password).findByRole("alert");
-    expect(alert).toHaveTextContent("credential state could not be established");
-    expect(alert).toHaveTextContent("Отправьте форму ещё раз.");
-    expect(lane.of("POST", "/iam/v1/auth/password")).toHaveLength(1);
+    const factor = await region("Второй фактор");
+    const totp = await within(factor).findByRole("row", { name: /Приложение-аутентификатор/ });
+    expect(totp).toHaveTextContent("Настроено");
+    expect(totp).toHaveTextContent(/14 окт\. 2026/);
+    expect(totp).toHaveTextContent(/15 окт\. 2026/);
+    expect(within(factor).getByRole("row", { name: /Ключи доступа/ })).toHaveTextContent("Нет");
+    const codes = within(factor).getByRole("row", { name: /Запасные коды/ });
+    expect(codes).toHaveTextContent("Осталось 9 из 10");
+    expect(codes).not.toHaveTextContent("Ещё не использовались");
   });
 
-  it("F8-26/F8-27 · заведение: материал из ответа, подтверждение, коды один раз, состояние перечитано", async () => {
+  it("F8-S7-11 · предъявлений не было: «Ещё не использовалось» у кода и «Ещё не использовались» у кодов; прочерков нет", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState(),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    expect(await within(factor).findByRole("row", { name: /Приложение-аутентификатор/ })).toHaveTextContent(
+      "Ещё не использовалось",
+    );
+    expect(within(factor).getByRole("row", { name: /Запасные коды/ })).toHaveTextContent("Ещё не использовались");
+    expect(within(factor).queryByText(/^[—–-]$/)).toBeNull();
+  });
+
+  it("ответ прежней формы: «Ещё не использовалось» не выдумывается — моментов служба не называла", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    const totp = await within(factor).findByRole("row", { name: /Приложение-аутентификатор/ });
+    expect(totp).toHaveTextContent("Настроено");
+    expect(factor).not.toHaveTextContent("Ещё не использ");
+  });
+
+  it("F8-S7-61 · ничего не заведено: пустые состояния с действием на пустом ответе", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": SUA_NOTHING,
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    expect(
+      await within(factor).findByText("Второй фактор не настроен. Он нужен для действий, меняющих доступ."),
+    ).toBeInTheDocument();
+    expect(within(factor).getByRole("button", { name: "Настроить приложение-аутентификатор" })).toBeInTheDocument();
+    const keys = await region("Ключи доступа");
+    expect(
+      await within(keys).findByText("Ключей доступа нет. Входите и подтверждайте действия без пароля и кода."),
+    ).toBeInTheDocument();
+    expect(await region("Запасные коды")).toHaveTextContent(
+      "Запасные коды появятся после настройки приложения-аутентификатора.",
+    );
+    const sessions = await region("Активные сессии");
+    expect(await within(sessions).findByText("Других активных сессий нет.")).toBeInTheDocument();
+    expect(within(sessions).queryByRole("button", { name: "Выйти на всех, кроме этой" })).toBeNull();
+  });
+
+  it("F8-26/F8-27/F8-S7-12/F8-S7-40 · заведение: QR-код и секрет в окне, подтверждение, коды один раз, «Готово» после отметки", async () => {
     let enrolled = false;
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
@@ -104,18 +234,34 @@ describe("параметры учётной записи", () => {
         enrolled = true;
         return CONFIRMED;
       },
+      ...SCREEN_READS,
     });
     renderPage();
-    const factor = await screen.findByRole("region", { name: "Второй фактор" });
-    expect(await within(factor).findByText("Второй фактор не настроен")).toBeInTheDocument();
-    fireEvent.click(within(factor).getByRole("button", { name: "Настроить второй фактор" }));
-    expect(await within(factor).findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
-    fireEvent.change(within(factor).getByLabelText("Первый код из приложения"), { target: { value: "123456" } });
-    fireEvent.click(within(factor).getByRole("button", { name: "Подтвердить" }));
-    const list = await within(factor).findByRole("list", { name: "Запасные коды" });
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Настроить приложение-аутентификатор" }));
+    const enroll = await screen.findByRole("dialog");
+    expect(enroll).toHaveTextContent("Настроить приложение-аутентификатор");
+    expect(within(enroll).getByRole("img", { name: "QR-код для приложения-аутентификатора" })).toBeInTheDocument();
+    expect(within(enroll).getByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    // Адрес с секретом в разметку не попадает: QR-код рисуется на холсте.
+    expect(enroll.innerHTML).not.toContain("otpauth://");
+    fireEvent.change(within(enroll).getByLabelText("Код из приложения"), { target: { value: "123456" } });
+    fireEvent.click(within(enroll).getByRole("button", { name: "Подтвердить" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("Сохраните запасные коды"));
+    const saved = screen.getByRole("dialog");
+    const list = within(saved).getByRole("list", { name: "Запасные коды" });
     for (const code of CODES) expect(list).toHaveTextContent(code);
-    expect(factor).toHaveTextContent("показываются один раз");
-    await waitFor(() => expect(factor).toHaveTextContent("Второй фактор настроен"));
+    expect(within(saved).getByRole("button", { name: "Готово" })).toBeDisabled();
+    expect(within(saved).getByRole("button", { name: "Копировать" })).toBeEnabled();
+    expect(within(saved).getByRole("button", { name: "Скачать текстовым файлом" })).toBeEnabled();
+    fireEvent.click(within(saved).getByLabelText("Я сохранил коды"));
+    fireEvent.click(within(saved).getByRole("button", { name: "Готово" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    for (const code of CODES) expect(document.body).not.toHaveTextContent(code);
+    expect(await within(factor).findByRole("row", { name: /Приложение-аутентификатор/ })).toHaveTextContent(
+      "Настроено",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Приложение-аутентификатор настроено");
     // Признак — на ОДНУ отправку (условие C12): заведение унесло первый,
     // подтверждение несёт второй, добытый за ответом заведения.
     expect(lane.of("POST", "/iam/v1/auth/second-factor/enroll")[0].body).toEqual({ csrfToken: "tok-second-factor-1" });
@@ -131,18 +277,24 @@ describe("параметры учётной записи", () => {
       "GET /iam/v1/auth/second-factor": (_c, nth) => (nth === 1 ? NOT_ENROLLED : PENDING),
       "POST /iam/v1/auth/second-factor/enroll": ENROLLMENT,
       "POST /iam/v1/auth/second-factor/confirm": refusal(401, 16, "authentication failed"),
+      ...SCREEN_READS,
     });
     renderPage();
-    const factor = await screen.findByRole("region", { name: "Второй фактор" });
-    fireEvent.click(await within(factor).findByRole("button", { name: "Настроить второй фактор" }));
-    fireEvent.change(await within(factor).findByLabelText("Первый код из приложения"), { target: { value: "000000" } });
-    fireEvent.click(within(factor).getByRole("button", { name: "Подтвердить" }));
-    expect((await within(factor).findByRole("alert")).textContent).toBe("authentication failed");
-    expect(within(factor).queryByRole("list", { name: "Запасные коды" })).toBeNull();
-    await waitFor(() => expect(factor).toHaveTextContent("Настройка второго фактора не завершена"));
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Настроить приложение-аутентификатор" }));
+    const enroll = await screen.findByRole("dialog");
+    fireEvent.change(within(enroll).getByLabelText("Код из приложения"), { target: { value: "000000" } });
+    fireEvent.click(within(enroll).getByRole("button", { name: "Подтвердить" }));
+    expect(await within(enroll).findByRole("alert")).toHaveTextContent("authentication failed");
+    expect(screen.queryByRole("list", { name: "Запасные коды" })).toBeNull();
+    await waitFor(() =>
+      expect(within(factor).getByRole("row", { name: /Приложение-аутентификатор/ })).toHaveTextContent(
+        "Настройка не завершена",
+      ),
+    );
   });
 
-  it("F8-29 · свежесть: повышение и возврат на ТОТ ЖЕ шаг — заведение повторено само", async () => {
+  it("F8-29 · свежесть: окно подтверждения и возврат на ТОТ ЖЕ шаг — заведение повторено само", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
@@ -157,20 +309,52 @@ describe("параметры учётной записи", () => {
           assurance: { level: "1", level2Reachable: true, missingForLevel2: ["second-factor"] },
         },
       },
+      ...SCREEN_READS,
     });
     renderPage();
-    const factor = await screen.findByRole("region", { name: "Второй фактор" });
-    fireEvent.click(await within(factor).findByRole("button", { name: "Настроить второй фактор" }));
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Настроить приложение-аутентификатор" }));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Пароль"), { target: { value: "p" } });
+    fireEvent.change(await within(dialog).findByLabelText("Код из приложения"), { target: { value: "123456" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
-    expect(await within(factor).findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    expect(await screen.findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
     expect(lane.of("POST", "/iam/v1/auth/second-factor/enroll")).toHaveLength(2);
-    expect(lane.of("POST", "/iam/v1/auth/step-up")[0].body).toMatchObject({ method: "password", password: "p" });
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lane.of("POST", "/iam/v1/auth/step-up")[0].body).toMatchObject({ method: "totp", code: "123456" });
   });
 
-  it("F8-32 · снятие того, чего нет: текст службы назван", async () => {
+  it("F8-S7-42 · «Отключить»: последствие словами, последний способ «2» — вторая фраза, фокус на «Отмена», код в диалоге", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState(),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Отключить" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Коды из приложения и запасные коды перестанут работать.");
+    expect(dialog).toHaveTextContent(
+      "Действия, требующие второго фактора, станут недоступны, пока вы не настроите его снова.",
+    );
+    expect(within(dialog).getByRole("radio", { name: "Код из приложения" })).toHaveAttribute("aria-checked", "true");
+    expect(within(dialog).getByLabelText("Код из приложения")).toBeInTheDocument();
+  });
+
+  it("F8-S7-42 · близнец: ключ остаётся способом «2» — второй фразы нет", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState({ stepUpMethods: ["lookup_secret", "totp", "webauthn"] }),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Отключить" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Коды из приложения и запасные коды перестанут работать.");
+    expect(dialog).not.toHaveTextContent("станут недоступны");
+  });
+
+  it("F8-32 · снятие того, чего нет: текст службы назван в диалоге", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": (_c, nth) => (nth === 1 ? ENROLLED : NOT_ENROLLED),
@@ -180,26 +364,151 @@ describe("параметры учётной записи", () => {
         "second factor is not enrolled",
         "SECOND_FACTOR_NOT_ENROLLED",
       ),
+      ...SCREEN_READS,
     });
     renderPage();
-    const factor = await screen.findByRole("region", { name: "Второй фактор" });
-    fireEvent.click(await within(factor).findByRole("button", { name: "Снять второй фактор" }));
-    fireEvent.click(within(factor).getByLabelText("Запасной код"));
-    fireEvent.change(within(factor).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
-    fireEvent.click(within(factor).getByRole("button", { name: "Снять" }));
-    expect(await within(factor).findByRole("alert")).toHaveTextContent("second factor is not enrolled");
+    const factor = await region("Второй фактор");
+    fireEvent.click(await within(factor).findByRole("button", { name: "Отключить" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Запасной код" }));
+    fireEvent.change(within(dialog).getByLabelText("Запасной код"), { target: { value: "ABCDEFGHJK" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Отключить" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("second factor is not enrolled");
+    expect(lane.of("POST", "/iam/v1/auth/second-factor/remove")[0].body).toEqual({
+      method: "lookup_secret",
+      code: "ABCDEFGHJK",
+      csrfToken: "tok-second-factor-1",
+    });
+  });
+
+  it("F8-S7-41 · «Выпустить новые коды»: отмена ничего не выпускает; подтверждение кодом — 10 новых в окне один раз", async () => {
+    const fresh = Array.from({ length: 10 }, (_, i) => `NEWCODE00${i}`);
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState(),
+      "POST /iam/v1/auth/second-factor/backup-codes": { status: 200, body: { backupCodes: fresh, session: SESSION } },
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const codes = await region("Запасные коды");
+    expect(await within(codes).findByText("Осталось 10 из 10")).toBeInTheDocument();
+    expect(within(codes).getByRole("row", { name: /Выпущены/ })).toHaveTextContent(/14 окт\. 2026/);
+    fireEvent.click(within(codes).getByRole("button", { name: "Выпустить новые коды" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Прежние запасные коды перестанут работать сразу.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Отмена" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(lane.of("POST", "/iam/v1/auth/second-factor/backup-codes")).toHaveLength(0);
+    fireEvent.click(within(codes).getByRole("button", { name: "Выпустить новые коды" }));
+    dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Код из приложения"), { target: { value: "123456" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Выпустить" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("Сохраните запасные коды"));
+    const saved = screen.getByRole("dialog");
+    expect(within(saved).getAllByRole("listitem")).toHaveLength(10);
+    // Положительная сторона: окно несёт ровно выпущенные коды — иначе отсутствие
+    // их ниже было бы утверждением о ничём.
+    const list = within(saved).getByRole("list", { name: "Запасные коды" });
+    for (const c of fresh) expect(list).toHaveTextContent(c);
+    expect(lane.of("POST", "/iam/v1/auth/second-factor/backup-codes")[0].body).toEqual({
+      method: "totp",
+      code: "123456",
+      csrfToken: "tok-second-factor-1",
+    });
+    // Показ один раз и на пути перевыпуска: после «Готово» ни одного из 10 новых
+    // кодов на странице нет (F8-S7-41, тот же признак, что F8-S7-40 у заведения).
+    fireEvent.click(within(saved).getByLabelText("Я сохранил коды"));
+    fireEvent.click(within(saved).getByRole("button", { name: "Готово" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    for (const c of fresh) expect(document.body).not.toHaveTextContent(c);
+  });
+
+  it("Р4 · остаток ≤ 2 — предупреждение «Запасные коды заканчиваются — выпустите новые»", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState({
+        backupCodes: { remaining: 2, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
+      }),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const codes = await region("Запасные коды");
+    expect(await within(codes).findByText("Запасные коды заканчиваются — выпустите новые")).toBeInTheDocument();
+  });
+});
+
+describe("сессия края и способ входа (F8, C6, C8)", () => {
+  it("F8-17 · адрес и признак его подтверждённости — из ответа края; действия «подтвердить» нет", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const signIn = await region("Способ входа");
+    expect(signIn).toHaveTextContent("a@kacho.local");
+    expect(signIn).toHaveTextContent("Адрес не подтверждён");
+    expect(
+      within(signIn)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Сменить адрес", "Сменить пароль"]);
+    expect(within(signIn).queryByRole("button", { name: /подтвердить/i })).toBeNull();
+  });
+
+  it("F8-23 · смена пароля окном: наш глагол с признаком своего вида, исход — областью статуса экрана", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      "POST /iam/v1/auth/password": { status: 200, body: { session: SESSION } },
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const signIn = await region("Способ входа");
+    fireEvent.click(within(signIn).getByRole("button", { name: "Сменить пароль" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Текущий пароль"), { target: { value: "old" } });
+    fireEvent.change(within(dialog).getByLabelText("Новый пароль"), { target: { value: "new-one" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Сменить пароль" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Пароль сменён."));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lane.of("POST", "/iam/v1/auth/password")[0].body).toEqual({
+      currentPassword: "old",
+      newPassword: "new-one",
+      csrfToken: "tok-password-1",
+    });
+  });
+
+  it("F8-25 · служба молчит краю на глаголе с носителем (KA1, Р1): ответ назван, повторить можно, окно на месте", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      "POST /iam/v1/auth/password": laneAnswerOf(EDGE_CREDENTIAL_STATE_UNKNOWN),
+      ...SCREEN_READS,
+    });
+    renderPage();
+    const signIn = await region("Способ входа");
+    fireEvent.click(within(signIn).getByRole("button", { name: "Сменить пароль" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Сменить пароль" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("credential state could not be established");
+    expect(alert).toHaveTextContent("Отправьте форму ещё раз.");
+    expect(lane.of("POST", "/iam/v1/auth/password")).toHaveLength(1);
   });
 
   it("C6 · край не ответил о сессии — экран называет это и даёт спросить снова, а не зовёт входить", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? refusal(503, 14, "unavailable") : SIGNED_IN),
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      ...SCREEN_READS,
     });
     renderPage();
     expect(await screen.findByRole("alert")).toHaveTextContent("unavailable");
     expect(screen.queryByRole("link", { name: "Войти" })).toBeNull();
     expect(screen.queryByText(/доступны после входа/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Проверить снова" }));
-    expect(await screen.findByRole("region", { name: "Учётная запись" })).toHaveTextContent("a@kacho.local");
+    expect(await region("Способ входа")).toHaveTextContent("a@kacho.local");
   });
 
   it("C8 · поля подтверждённости в ответе края нет — признака нет, «не подтверждён» не выдумывается", async () => {
@@ -209,47 +518,21 @@ describe("параметры учётной записи", () => {
         body: { user: { id: "usr-1", email: "a@kacho.local", displayName: "a" }, session: { assuranceLevel: "1" } },
       },
       "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      ...SCREEN_READS,
     });
     renderPage();
-    const account = await screen.findByRole("region", { name: "Учётная запись" });
-    expect(account).toHaveTextContent("a@kacho.local");
-    expect(account).not.toHaveTextContent("подтверждён");
+    const signIn = await region("Способ входа");
+    expect(signIn).toHaveTextContent("a@kacho.local");
+    expect(signIn).not.toHaveTextContent("подтверждён");
   });
 
-  it("C16 · способ не выбран — в теле его нет, и названное службой поле способа отмечено у переключателя", async () => {
-    lane = installLane({
-      "GET /iam/v1/auth/me": SIGNED_IN,
-      "GET /iam/v1/auth/second-factor": ENROLLED,
-      "POST /iam/v1/auth/second-factor/remove": refusal(400, 3, "Illegal argument method: required"),
-    });
-    renderPage();
-    const factor = await screen.findByRole("region", { name: "Второй фактор" });
-    fireEvent.click(await within(factor).findByRole("button", { name: "Снять второй фактор" }));
-    // Переключатель открыт БЕЗ выбора: ни один способ не отмечен.
-    for (const label of ["Код из приложения", "Запасной код"]) {
-      expect(within(factor).getByLabelText<HTMLInputElement>(label).checked).toBe(false);
-    }
-    fireEvent.change(within(factor).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
-    fireEvent.click(within(factor).getByRole("button", { name: "Снять" }));
-    await waitFor(() =>
-      expect(within(factor).getByRole("radiogroup", { name: "Способ подтверждения" })).toHaveAttribute(
-        "aria-invalid",
-        "true",
-      ),
-    );
-    expect(lane.of("POST", "/iam/v1/auth/second-factor/remove")[0].body).toEqual({
-      code: "ABCDEFGHJK",
-      csrfToken: "tok-second-factor-1",
-    });
-    expect(within(factor).getByText("Illegal argument method: required")).toBeInTheDocument();
-  });
-
-  it("без сессии — путь ко входу с возвратом сюда, и ни одной формы", async () => {
+  it("без сессии — путь ко входу с возвратом сюда, и ни одного раздела", async () => {
     lane = installLane({});
     renderPage();
     const link = await screen.findByRole<HTMLAnchorElement>("link", { name: "Войти" });
     expect(new URL(link.href).searchParams.get("returnTo")).toBe("/settings");
-    expect(screen.queryByRole("region", { name: "Пароль" })).toBeNull();
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Разделы страницы" })).toBeNull();
   });
 });
 
@@ -381,23 +664,38 @@ afterEach(() => {
 const KEYS_BASE = {
   "GET /iam/v1/auth/me": SIGNED_IN,
   "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+  "GET /iam/v1/auth/sessions": ONE_SESSION,
 } as const;
+
+const NO_KEYS = "Ключей доступа нет. Входите и подтверждайте действия без пароля и кода.";
 
 async function keysRegion() {
   return screen.findByRole("region", { name: "Ключи доступа" });
 }
 
+/**
+ * Добавить ключ окном «Добавить ключ доступа». Окно открыто — повторное
+ * нажатие в разделе не нужно: заполняются его поля и «Добавить».
+ */
 function addKey(region: HTMLElement, name: string, description = "") {
-  fireEvent.change(within(region).getByLabelText("Имя"), { target: { value: name } });
-  fireEvent.change(within(region).getByLabelText("Описание"), { target: { value: description } });
-  fireEvent.click(within(region).getByRole("button", { name: "Добавить ключ доступа" }));
+  if (!screen.queryByRole("dialog")) {
+    fireEvent.click(within(region).getByRole("button", { name: "Добавить ключ доступа" }));
+  }
+  const dialog = screen.getByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText("Имя"), { target: { value: name } });
+  fireEvent.change(within(dialog).getByLabelText("Описание"), { target: { value: description } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Добавить" }));
 }
 
+/** Строка ключа в общей таблице раздела. */
 function keyItem(region: HTMLElement, name: string) {
-  return within(within(region).getByRole("list", { name: "Заведённые ключи" }))
-    .getAllByRole("listitem")
-    .find((li) => li.textContent?.includes(name));
+  return within(region)
+    .queryAllByRole("row")
+    .find((tr) => tr.querySelector("td") && tr.textContent?.includes(name));
 }
+
+const removeButton = (row: HTMLElement, name: string) =>
+  within(row).getByRole("button", { name: `Удалить ключ доступа «${name}»` });
 
 describe("ключи доступа на /settings (F8, S4, группа L)", () => {
   it("F8-55 · браузер получает испытание как есть, служба — ровно объявленные поля; раздел ждёт done и перечитывает перечень", async () => {
@@ -417,7 +715,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     keys = installBrowserKeys(() => Promise.resolve(credential));
     renderPage();
     const region = await keysRegion();
-    expect(await within(region).findByText("Ключей доступа нет")).toBeInTheDocument();
+    expect(await within(region).findByText(NO_KEYS)).toBeInTheDocument();
     addKey(region, "key-1", "Ноутбук");
     await waitFor(() => expect(keyItem(region, "key-1")).toBeDefined());
 
@@ -480,7 +778,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
         </MemoryRouter>,
       );
       const region = await keysRegion();
-      await within(region).findByText("Ключей доступа нет");
+      await within(region).findByText(NO_KEYS);
       addKey(region, "key-x");
       await waitFor(() => expect(lane!.of("POST", KEYS)).toHaveLength(1));
       expect(lane.of("POST", KEYS)[0].body).toEqual({
@@ -512,11 +810,11 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     );
     renderPage();
     const region = await keysRegion();
-    await within(region).findByText("Ключей доступа нет");
+    await within(region).findByText(NO_KEYS);
     addKey(region, "key-52");
     expect(await within(region).findByText("Добавление ключа прервано в браузере — повторите")).toBeInTheDocument();
     expect(lane.of("POST", KEYS)).toHaveLength(0);
-    expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Добавить" })).toBeEnabled();
     expect(region).not.toHaveTextContent("NotAllowedError");
     expect(region).not.toHaveTextContent("console.kacho.local");
     expect(journal.entries().filter((e) => e.includes("console.kacho.local") || e.includes("NotAllowedError"))).toEqual(
@@ -534,7 +832,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
       within(region).getByText("Этот браузер не работает с ключами доступа — добавьте ключ в другом браузере"),
     ).toBeInTheDocument();
     expect(within(region).queryByRole("button", { name: "Добавить ключ доступа" })).toBeNull();
-    expect(within(keyItem(region, "key-53")!).getByRole("button", { name: "Удалить" })).toBeInTheDocument();
+    expect(removeButton(keyItem(region, "key-53")!, "key-53")).toBeInTheDocument();
     expect(lane.of("POST", BEGIN_REGISTRATION)).toHaveLength(0);
   });
 
@@ -554,8 +852,12 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     await waitFor(() => expect(keyItem(region, "key-old")).toBeDefined());
     addKey(region, "key-54");
     expect(await within(region).findByText(ceiling)).toBeInTheDocument();
-    expect(within(region).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
+    expect(
+      within(region)
+        .getAllByRole("row")
+        .filter((tr) => tr.querySelector("td")),
+    ).toHaveLength(1);
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Добавить" })).toBeEnabled();
   });
 
   it("F8-70 · отказ формы имени: текст стоит у поля «Имя», общий invalid argument у поля не стоит, введённое сохранено", async () => {
@@ -569,7 +871,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     keys = installBrowserKeys(() => Promise.resolve(createdCredential(true).credential));
     renderPage();
     const region = await keysRegion();
-    await within(region).findByText("Ключей доступа нет");
+    await within(region).findByText(NO_KEYS);
     addKey(region, "Laptop", "Ноутбук");
     const name = within(region).getByLabelText("Имя");
     await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
@@ -580,7 +882,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     expect((name as HTMLInputElement).value).toBe("Laptop");
     expect(within(region).getByLabelText("Описание")).toHaveValue("Ноутбук");
     expect(lane.calls.filter((c) => c.path.startsWith("/operations/"))).toHaveLength(0);
-    expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeEnabled();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Добавить" })).toBeEnabled();
   });
 
   it("F8-71 · отказ состояния испытания: текст службы у раздела, поля не отмечены, новое нажатие — новое испытание", async () => {
@@ -594,12 +896,12 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     keys = installBrowserKeys(() => Promise.resolve(createdCredential(true).credential));
     renderPage();
     const region = await keysRegion();
-    await within(region).findByText("Ключей доступа нет");
+    await within(region).findByText(NO_KEYS);
     addKey(region, "key-71");
     expect(await within(region).findByText(expired)).toBeInTheDocument();
     expect(within(region).getByLabelText("Имя")).not.toHaveAttribute("aria-invalid");
     expect(lane.calls.filter((c) => c.path.startsWith("/operations/"))).toHaveLength(0);
-    fireEvent.click(within(region).getByRole("button", { name: "Добавить ключ доступа" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Добавить" }));
     await waitFor(() => expect(lane!.of("POST", BEGIN_REGISTRATION)).toHaveLength(2));
   });
 
@@ -618,12 +920,12 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await waitFor(() => expect(keyItem(region, "key-only")).toBeDefined());
-    fireEvent.click(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(removeButton(keyItem(region, "key-only")!, "key-only"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("key-only");
-    expect(dialog).toHaveTextContent("войти им больше будет нельзя");
+    expect(dialog).toHaveTextContent("Войти этим ключом будет нельзя.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Удалить" }));
-    expect(await within(region).findByText("Ключей доступа нет")).toBeInTheDocument();
+    expect(await within(region).findByText(NO_KEYS)).toBeInTheDocument();
     expect(lane.of("DELETE", `${KEYS}/ak-only`)).toHaveLength(1);
   });
 
@@ -633,7 +935,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await waitFor(() => expect(keyItem(region, "key-only")).toBeDefined());
-    fireEvent.click(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(removeButton(keyItem(region, "key-only")!, "key-only"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("key-only");
     fireEvent.click(within(dialog).getByRole("button", { name: "Отмена" }));
@@ -653,11 +955,11 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await waitFor(() => expect(keyItem(region, "key-only")).toBeDefined());
-    fireEvent.click(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(removeButton(keyItem(region, "key-only")!, "key-only"));
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Удалить" }));
     expect(await within(region).findByText(last)).toBeInTheDocument();
     expect(lane.calls.filter((c) => c.path.startsWith("/operations/"))).toHaveLength(0);
-    expect(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" })).toBeInTheDocument();
+    expect(removeButton(keyItem(region, "key-only")!, "key-only")).toBeInTheDocument();
   });
 
   it("F8-69 · последний способ входа при гонке: отказ из error операции дословно, перечень перечитан, ключ на месте", async () => {
@@ -672,11 +974,11 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     renderPage();
     const region = await keysRegion();
     await waitFor(() => expect(keyItem(region, "key-only")).toBeDefined());
-    fireEvent.click(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" }));
+    fireEvent.click(removeButton(keyItem(region, "key-only")!, "key-only"));
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Удалить" }));
     expect(await within(region).findByText(last)).toBeInTheDocument();
     await waitFor(() => expect(lane!.of("GET", KEYS)).toHaveLength(2));
-    expect(within(keyItem(region, "key-only")!).getByRole("button", { name: "Удалить" })).toBeInTheDocument();
+    expect(removeButton(keyItem(region, "key-only")!, "key-only")).toBeInTheDocument();
   });
 
   it("F8-61 · перечень дочитывается до конца: второе обращение несёт pageToken; без токена обращение одно", async () => {
@@ -707,6 +1009,85 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     expect(lane.of("GET", KEYS)).toHaveLength(1);
   });
 
+  it("F8-S7-50 · ключи выключены на установке: состояние раздела, добавления нет; «Удалить» без способов — сообщение, снятия нет", async () => {
+    lane = installLane({
+      ...KEYS_BASE,
+      "GET /iam/v1/auth/second-factor": {
+        status: 200,
+        body: { totp: { enrolled: false }, accessKeys: { available: false }, stepUpMethods: [] },
+      },
+      [`GET ${KEYS}`]: listOf(keyRecord("ak-1", "key-50")),
+    });
+    keys = installBrowserKeys(() => Promise.reject(new Error("не зовётся")));
+    renderPage();
+    const region = await keysRegion();
+    expect(
+      await within(region).findByText("Ключи доступа на этой установке выключены администратором"),
+    ).toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: "Добавить ключ доступа" })).toBeNull();
+    await waitFor(() => expect(keyItem(region, "key-50")).toBeDefined());
+    expect(await screen.findByRole("region", { name: "Сводка" })).toHaveTextContent("Выключены на установке");
+    fireEvent.click(removeButton(keyItem(region, "key-50")!, "key-50"));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Удалить ключ сейчас нельзя: нужен второй фактор, а ключи на этой установке выключены. Попросите администратора установки сбросить ваши ключи доступа.",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lane.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
+    expect(lane.of("POST", BEGIN_REGISTRATION)).toHaveLength(0);
+  });
+
+  it("F8-S7-71 · удаление: «Ключ доступа «<имя>» удалён» областью статуса экрана; последний способ «2» назван в диалоге", async () => {
+    let revoked = false;
+    lane = installLane({
+      ...KEYS_BASE,
+      "GET /iam/v1/auth/second-factor": {
+        status: 200,
+        body: { totp: { enrolled: false }, accessKeys: { available: true }, stepUpMethods: ["webauthn"] },
+      },
+      [`GET ${KEYS}`]: () => (revoked ? listOf() : listOf(keyRecord("ak-1", "key-71"))),
+      [`DELETE ${KEYS}/ak-1`]: OPERATION_PENDING,
+      "GET /operations/op-1": () => {
+        revoked = true;
+        return OPERATION_DONE;
+      },
+    });
+    keys = installBrowserKeys(() => Promise.reject(new Error("не зовётся")));
+    renderPage();
+    const region = await keysRegion();
+    await waitFor(() => expect(keyItem(region, "key-71")).toBeDefined());
+    fireEvent.click(removeButton(keyItem(region, "key-71")!, "key-71"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Войти этим ключом будет нельзя.");
+    expect(dialog).toHaveTextContent("Действия, требующие второго фактора, станут недоступны.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Удалить" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ключ доступа «key-71» удалён"));
+    expect(keyItem(region, "key-71")).toBeUndefined();
+  });
+
+  it("F8-S7-60 · ключи общей таблицей: «Имя», «Добавлен», «Последнее использование» и колонка «Удалить»; своих <ul> — 0", async () => {
+    lane = installLane({
+      ...KEYS_BASE,
+      [`GET ${KEYS}`]: listOf(keyRecord("ak-1", "key-used", { lastUsedAt: "2026-10-09T11:00:00Z" })),
+    });
+    keys = installBrowserKeys(() => Promise.reject(new Error("не зовётся")));
+    renderPage();
+    const region = await keysRegion();
+    await waitFor(() => expect(keyItem(region, "key-used")).toBeDefined());
+    const table = within(region).getByRole("table");
+    // Колонки — дословно и по порядку (Р3); колонка действия заголовка не несёт.
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Имя",
+      "Добавлен",
+      "Последнее использование",
+      "",
+    ]);
+    const row = keyItem(region, "key-used")!;
+    expect(row).toHaveTextContent("7 окт. 2026");
+    expect(row).toHaveTextContent("9 окт. 2026");
+    expect(within(row).getByRole("button", { name: "Удалить ключ доступа «key-used»" })).toBeInTheDocument();
+    expect(region.querySelectorAll("ul")).toHaveLength(0);
+  });
+
   it("F8-48 · ключ показан именем, описанием и моментом заведения; не использованный — «Ещё не использовался»", async () => {
     lane = installLane({
       ...KEYS_BASE,
@@ -721,7 +1102,7 @@ describe("ключи доступа на /settings (F8, S4, группа L)", ()
     await waitFor(() => expect(keyItem(region, "seed-f8-48")).toBeDefined());
     const fresh = keyItem(region, "seed-f8-48")!;
     expect(fresh).toHaveTextContent("Рабочий ноутбук");
-    expect(fresh).toHaveTextContent("07.10.2026");
+    expect(fresh).toHaveTextContent("7 окт. 2026");
     expect(fresh).toHaveTextContent("Ещё не использовался");
     expect(keyItem(region, "key-used")).not.toHaveTextContent("Ещё не использовался");
     expect(within(region).getByRole("button", { name: "Добавить ключ доступа" })).toBeInTheDocument();
@@ -735,28 +1116,44 @@ const PASSWORD_BASE = {
   "GET /iam/v1/auth/me": SIGNED_IN,
   "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
   [`GET ${KEYS}`]: listOf(),
+  "GET /iam/v1/auth/sessions": ONE_SESSION,
 } as const;
 
+/** Окно «Пароль» из раздела «Способ входа». */
+async function openPassword() {
+  const signIn = await screen.findByRole("region", { name: "Способ входа" });
+  fireEvent.click(within(signIn).getByRole("button", { name: "Сменить пароль" }));
+  return screen.findByRole("dialog");
+}
+
 async function openEnroll() {
-  const password = await screen.findByRole("region", { name: "Пароль" });
+  const password = await openPassword();
   fireEvent.click(within(password).getByRole("button", { name: "У меня нет пароля — завести" }));
   return password;
+}
+
+/** Окно подтверждения — поверх окна «Пароль»: два окна, нужное — по заголовку. */
+async function stepUpWindow() {
+  await waitFor(() =>
+    expect(screen.getAllByRole("dialog").some((d) => d.textContent?.includes("Подтверждение действия"))).toBe(true),
+  );
+  return screen.getAllByRole("dialog").find((d) => d.textContent?.includes("Подтверждение действия"))!;
 }
 
 describe("первый пароль на /settings (F8, S2, группа M)", () => {
   it("F8-62 · заведение первого пароля: форму выбрал человек, глагол получил ровно объявленное, затем снова смена", async () => {
     lane = installLane({ ...PASSWORD_BASE, [`POST ${ENROLL}`]: { status: 200, body: { session: SESSION } } });
     renderPage();
-    const password = await screen.findByRole("region", { name: "Пароль" });
+    const password = await openPassword();
     // До нажатия формы заведения нет: по умолчанию — смена (Р13).
     expect(within(password).getByLabelText("Текущий пароль")).toBeInTheDocument();
     expect(within(password).queryByRole("button", { name: "Завести пароль" })).toBeNull();
-    await openEnroll();
+    fireEvent.click(within(password).getByRole("button", { name: "У меня нет пароля — завести" }));
     expect(within(password).queryByLabelText("Текущий пароль")).toBeNull();
     fireEvent.change(within(password).getByLabelText("Новый пароль"), { target: { value: "first-password-62" } });
     fireEvent.click(within(password).getByRole("button", { name: "Завести пароль" }));
-    expect(await within(password).findByRole("status")).toHaveTextContent("Пароль заведён");
-    expect(within(password).getByLabelText("Текущий пароль")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Пароль заведён"));
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(lane.calls.some((c) => c.path === "/iam/v1/auth/csrf" && c.query === "?form=password-enroll")).toBe(true);
     expect(lane.of("POST", ENROLL)[0].body).toEqual({
       newPassword: "first-password-62",
@@ -776,11 +1173,12 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
     expect(within(password).getByRole("button", { name: "Сменить пароль" })).toBeInTheDocument();
   });
 
-  it("F8-64 · свежесть истекла: окно называет пароль, второй фактор и «Войти заново»; «Войти заново» — выход и вход с возвратом сюда", async () => {
+  it("F8-64/F8-S7-27 · свежесть истекла, способов нет: окно — «Нет способа подтверждения» и «Войти заново» с возвратом сюда", async () => {
     window.history.pushState({}, "", "/settings");
     const leave = jest.fn();
     lane = installLane({
       ...PASSWORD_BASE,
+      "GET /iam/v1/auth/second-factor": SUA_NOTHING,
       [`POST ${ENROLL}`]: refusal(
         403,
         7,
@@ -797,9 +1195,10 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
     const password = await openEnroll();
     fireEvent.change(within(password).getByLabelText("Новый пароль"), { target: { value: "first-password-64" } });
     fireEvent.click(within(password).getByRole("button", { name: "Завести пароль" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText("Паролем")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Вторым фактором")).toBeInTheDocument();
+    const dialog = await stepUpWindow();
+    expect(await within(dialog).findByText("Нет способа подтверждения")).toBeInTheDocument();
+    // Пароль окно подтверждения больше не предлагает (F8-S7, §5: окно — способы `stepUpMethods`).
+    expect(within(dialog).queryByLabelText("Пароль")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Войти заново" }));
     await waitFor(() => expect(leave).toHaveBeenCalledWith("/login?returnTo=%2Fsettings"));
     expect(lane.of("POST", "/iam/v1/auth/logout")).toHaveLength(1);
@@ -823,10 +1222,10 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
     const password = await openEnroll();
     fireEvent.change(within(password).getByLabelText("Новый пароль"), { target: { value: "first-password-64" } });
     fireEvent.click(within(password).getByRole("button", { name: "Завести пароль" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Пароль"), { target: { value: "seed-pass" } });
+    const dialog = await stepUpWindow();
+    fireEvent.change(await within(dialog).findByLabelText("Код из приложения"), { target: { value: "123456" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
-    expect(await within(password).findByRole("status")).toHaveTextContent("Пароль заведён");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Пароль заведён"));
     expect(lane.of("POST", ENROLL).map((c) => c.body)).toEqual([
       { newPassword: "first-password-64", csrfToken: "tok-password-enroll-1" },
       { newPassword: "first-password-64", csrfToken: "tok-password-enroll-2" },
@@ -886,7 +1285,7 @@ describe("первый пароль на /settings (F8, S2, группа M)", ()
   it("F8-68 · отрицательная сторона: под отказом смены пароля (code 16) подсказки экрана входа нет", async () => {
     lane = installLane({ ...PASSWORD_BASE, "POST /iam/v1/auth/password": refusal(401, 16, "authentication failed") });
     renderPage();
-    const password = await screen.findByRole("region", { name: "Пароль" });
+    const password = await openPassword();
     fireEvent.click(within(password).getByRole("button", { name: "Сменить пароль" }));
     expect(await within(password).findByRole("alert")).toHaveTextContent("authentication failed");
     expect(password).not.toHaveTextContent("Не получается войти?");
@@ -929,18 +1328,42 @@ const sessionsPage = (sessions: unknown[], nextPageToken = ""): LaneAnswer => ({
 const SESSIONS_BASE = {
   "GET /iam/v1/auth/me": SIGNED_IN,
   "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+  "GET /iam/v1/users/usr-1/accessKeys": KEYS_EMPTY,
 };
 
 async function sessionsRegion() {
-  return screen.findByRole("region", { name: "Сессии" });
+  return screen.findByRole("region", { name: "Активные сессии" });
+}
+
+/** Строки перечня — строки тела общей таблицы раздела (F8-S7, Р3). */
+function rowsIn(region: HTMLElement) {
+  return within(region)
+    .queryAllByRole("row")
+    .filter((tr) => tr.querySelector("td"));
+}
+
+async function findRows(region: HTMLElement) {
+  await waitFor(() => expect(rowsIn(region).length).toBeGreaterThan(0));
+  return rowsIn(region);
 }
 
 /** Строка перечня по описанию клиента — как прислано. */
 async function rowOf(region: HTMLElement, text: string) {
-  const items = await within(region).findAllByRole("listitem");
+  const items = await findRows(region);
   const row = items.find((li) => li.textContent?.includes(text));
   if (!row) throw new Error(`строки «${text}» в перечне нет: ${items.map((i) => i.textContent).join(" | ")}`);
   return row;
+}
+
+/** «Выйти» у строки — доступное имя называет сессию. */
+const endButton = (row: HTMLElement) => within(row).getByRole("button", { name: /^Выйти из сессии/ });
+
+/** «Выйти на всех, кроме этой» и подтверждение диалога (F8-S7, Р6). */
+function endOthers(region: HTMLElement) {
+  fireEvent.click(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" }));
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent("Все другие устройства выйдут из учётной записи.");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Выйти" }));
 }
 
 describe("свои сессии (F8-S5)", () => {
@@ -948,7 +1371,7 @@ describe("свои сессии (F8-S5)", () => {
     lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_A, ROW_B]) });
     renderPage();
     const region = await sessionsRegion();
-    const items = await within(region).findAllByRole("listitem");
+    const items = await findRows(region);
     expect(
       items.map((li) =>
         li.textContent?.includes(ROW_A.userAgent) ? "A" : li.textContent?.includes(ROW_B.userAgent) ? "B" : "?",
@@ -957,11 +1380,11 @@ describe("свои сессии (F8-S5)", () => {
     const a = await rowOf(region, ROW_A.userAgent);
     const b = await rowOf(region, ROW_B.userAgent);
     expect(within(b).getByText("Эта сессия")).toBeInTheDocument();
-    expect(within(b).queryByRole("button", { name: "Выйти" })).toBeNull();
+    expect(within(b).queryByRole("button", { name: /^Выйти/ })).toBeNull();
     expect(within(a).queryByText("Эта сессия")).toBeNull();
-    expect(within(a).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+    expect(endButton(a)).toBeInTheDocument();
     for (const label of ["Вход", "Последнее предъявление способа входа", "Действует до"]) {
-      expect(a).toHaveTextContent(label);
+      expect(within(region).getByRole("columnheader", { name: label })).toBeInTheDocument();
     }
     expect(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" })).toBeInTheDocument();
     expect(lane.of("GET", SESSIONS_PATH)).toHaveLength(1);
@@ -992,18 +1415,16 @@ describe("свои сессии (F8-S5)", () => {
     // Близнец (б) — (а): различие одно — ключа нет; у (а) «не названо» не пишется.
     expect(a).not.toHaveTextContent("Устройство не названо");
     fireEvent.click(within(region).getByRole("button", { name: "Показать ещё" }));
-    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(3));
-    const order = within(region)
-      .getAllByRole("listitem")
-      .map((li) =>
-        li.textContent?.includes(long)
-          ? "а"
-          : li.textContent?.includes("Устройство не названо")
-            ? "б"
-            : li.textContent?.includes("f8-s5-08-c")
-              ? "в"
-              : "?",
-      );
+    await waitFor(() => expect(rowsIn(region)).toHaveLength(3));
+    const order = rowsIn(region).map((li) =>
+      li.textContent?.includes(long)
+        ? "а"
+        : li.textContent?.includes("Устройство не названо")
+          ? "б"
+          : li.textContent?.includes("f8-s5-08-c")
+            ? "в"
+            : "?",
+    );
     expect(order).toEqual(["а", "б", "в"]);
     expect(within(region).queryByRole("button", { name: "Показать ещё" })).toBeNull();
     expect(lane.of("GET", SESSIONS_PATH).map((c) => c.query)).toEqual(["", "?pageToken=c1"]);
@@ -1021,9 +1442,9 @@ describe("свои сессии (F8-S5)", () => {
     });
     renderPage();
     const region = await sessionsRegion();
-    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
-    expect(await within(region).findByRole("status")).toHaveTextContent("Сессия завершена");
-    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    fireEvent.click(endButton(await rowOf(region, ROW_A.userAgent)));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Сессия завершена"));
+    await waitFor(() => expect(rowsIn(region)).toHaveLength(1));
     expect(lane.of("POST", END_PATH).map((c) => c.body)).toEqual([
       { sessionId: ROW_A.id, csrfToken: "tok-session-end-1" },
     ]);
@@ -1044,27 +1465,32 @@ describe("свои сессии (F8-S5)", () => {
     });
     renderPage();
     const region = await sessionsRegion();
-    await within(region).findAllByRole("listitem");
-    fireEvent.click(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" }));
-    expect(await within(region).findByRole("status")).toHaveTextContent("Завершено сессий: 2");
-    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    await findRows(region);
+    endOthers(region);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Завершено сессий: 2"));
+    await waitFor(() => expect(rowsIn(region)).toHaveLength(1));
     expect(lane.of("POST", END_OTHERS_PATH).map((c) => c.body)).toEqual([{ csrfToken: "tok-session-end-1" }]);
     expect(lane.of("GET", SESSIONS_PATH)).toHaveLength(2);
   });
 
-  it("F8-S5-04 · единственная сессия: кнопка доступна, «Других сессий не было»", async () => {
-    lane = installLane({
-      ...SESSIONS_BASE,
-      [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_B]),
-      [`POST ${END_OTHERS_PATH}`]: { status: 200, body: { ended: 0 } },
-    });
+  it("F8-S7-61 · единственная сессия: «Других активных сессий нет.», кнопки «Выйти на всех, кроме этой» нет (замена F8-S5-04)", async () => {
+    lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_B]) });
     renderPage();
     const region = await sessionsRegion();
-    await within(region).findAllByRole("listitem");
-    const button = within(region).getByRole("button", { name: "Выйти на всех, кроме этой" });
-    expect(button).not.toBeDisabled();
-    fireEvent.click(button);
-    expect(await within(region).findByRole("status")).toHaveTextContent("Других сессий не было");
+    await findRows(region);
+    expect(within(region).getByText("Других активных сессий нет.")).toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: "Выйти на всех, кроме этой" })).toBeNull();
+  });
+
+  it("F8-S7 Р6 · «Выйти на всех, кроме этой»: отмена диалога ничего не выпускает", async () => {
+    lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_A, ROW_B]) });
+    renderPage();
+    const region = await sessionsRegion();
+    await findRows(region);
+    fireEvent.click(within(region).getByRole("button", { name: "Выйти на всех, кроме этой" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Отмена" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(lane.of("POST", END_OTHERS_PATH)).toHaveLength(0);
   });
 
   it("F8-S5-05 · SESSION_NOT_FRESH: окно повышения и РОВНО один повтор снятия", async () => {
@@ -1085,11 +1511,11 @@ describe("свои сессии (F8-S5)", () => {
     });
     renderPage();
     const region = await sessionsRegion();
-    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    fireEvent.click(endButton(await rowOf(region, ROW_A.userAgent)));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Пароль"), { target: { value: "p" } });
+    fireEvent.change(await within(dialog).findByLabelText("Код из приложения"), { target: { value: "123456" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
-    expect(await within(region).findByRole("status")).toHaveTextContent("Сессия завершена");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Сессия завершена"));
     expect(lane.of("POST", END_PATH)).toHaveLength(2);
     expect(lane.of("POST", "/iam/v1/auth/step-up")).toHaveLength(1);
   });
@@ -1102,9 +1528,9 @@ describe("свои сессии (F8-S5)", () => {
     });
     renderPage();
     const region = await sessionsRegion();
-    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    fireEvent.click(endButton(await rowOf(region, ROW_A.userAgent)));
     expect((await within(region).findByRole("alert")).textContent).toContain("session not found");
-    await waitFor(() => expect(within(region).getAllByRole("listitem")).toHaveLength(1));
+    await waitFor(() => expect(rowsIn(region)).toHaveLength(1));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(lane.of("POST", END_PATH)).toHaveLength(1);
   });
@@ -1117,14 +1543,14 @@ describe("свои сессии (F8-S5)", () => {
     });
     renderPage();
     const region = await sessionsRegion();
-    fireEvent.click(within(await rowOf(region, ROW_A.userAgent)).getByRole("button", { name: "Выйти" }));
+    fireEvent.click(endButton(await rowOf(region, ROW_A.userAgent)));
     expect(await within(region).findByRole("alert")).toHaveTextContent("credential state could not be established");
     expect(lane.of("POST", END_PATH)).toHaveLength(1);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(within(region).queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("");
   });
 
-  it("F8-S5 Р2 · раздел — после «Второго фактора», перед «Ключами доступа»", async () => {
+  it("F8-S7 Р1 · раздел «Активные сессии» — последним, после «Запасных кодов» (замена F8-S5 Р2)", async () => {
     lane = installLane({ ...SESSIONS_BASE, [`GET ${SESSIONS_PATH}`]: sessionsPage([ROW_B]) });
     renderPage();
     await sessionsRegion();
@@ -1134,12 +1560,14 @@ describe("свои сессии (F8-S5)", () => {
         (r) =>
           r.getAttribute("aria-labelledby") && document.getElementById(r.getAttribute("aria-labelledby")!)?.textContent,
       );
-    const at = (t: string) => titles.indexOf(t);
-    expect(at("Сессии")).toBe(at("Второй фактор") + 1);
+    // Под разделами Р1 стоит только необратимое удаление учётной записи
+    // (#3186): из задач Р1 «Активные сессии» — последняя.
+    expect(titles.slice(titles.indexOf("Активные сессии"))).toEqual(["Активные сессии", "Удаление учётной записи"]);
+    expect(titles.indexOf("Активные сессии")).toBe(titles.indexOf("Запасные коды") + 1);
   });
 });
 
-// ═══ F8-S6 — смена адреса почты в разделе «Учётная запись» ═════════════════
+// ═══ F8-S6 — смена адреса почты в разделе «Способ входа» (F8-S7, Р1) ═══════
 //
 // Три состояния раздела (Р3) и отказы (Р4). Дублёр отвечает телами и
 // заголовками производителя: запрос смены — `200 {}` с `Retry-After`
@@ -1174,7 +1602,7 @@ function renderPageLeaving(leave: (to: string) => void) {
 }
 
 async function accountRegion() {
-  return screen.findByRole("region", { name: "Учётная запись" });
+  return screen.findByRole("region", { name: "Способ входа" });
 }
 
 /** Покой → форма → «Отправить код» с адресом `email`. */
@@ -1212,18 +1640,18 @@ const STEP_UP_DONE: LaneAnswer = {
 const STEP_UP_NOT_DONE = "Подтверждение личности не состоялось: смена адреса требует второго фактора";
 const RETRY_WITH_STEP_UP = "Повторить с подтверждением";
 
-/** Окно повышения: «Отменить». */
+/** Окно подтверждения: «Отмена». */
 async function cancelStepUp() {
   const dialog = await screen.findByRole("dialog");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Отменить" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Отмена" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 }
 
-/** Окно повышения: запасной код и «Подтвердить». */
+/** Окно подтверждения: запасной код и «Подтвердить». */
 async function stepUpWithBackupCode() {
   const dialog = await screen.findByRole("dialog");
-  fireEvent.click(within(dialog).getByLabelText("Запасной код"));
-  fireEvent.change(within(dialog).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
+  fireEvent.click(await within(dialog).findByRole("radio", { name: "Запасной код" }));
+  fireEvent.change(within(dialog).getByLabelText("Запасной код"), { target: { value: "ABCDEFGHJK" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить" }));
 }
 
