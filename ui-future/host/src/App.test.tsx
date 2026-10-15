@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { stubNetwork } from "@shared/test/network-stub";
 import ts from "typescript";
