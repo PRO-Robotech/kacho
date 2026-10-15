@@ -1544,3 +1544,68 @@ describe("смена адреса почты (F8-S6)", () => {
     expect(lane.of("POST", CHANGE_CONFIRM)).toHaveLength(0);
   });
 });
+
+// ─── #3186 · удаление своей личности ──────────────────────────────────────────
+//
+// Служба объявляет самоудаление (`DELETE /iam/v1/users/{user_id}`, уровень сессии
+// `2`, асинхронно; владеющему аккаунтом — `FAILED_PRECONDITION`). Экран ведёт к
+// нему: id — только из ответа «кто я», необратимое — подтверждением вводом адреса,
+// отказ «сперва аккаунты» — названным шагом, успех — уходом документом на вход.
+describe("#3186 · удаление своей учётной записи", () => {
+  function routes(operation: LaneAnswer): Record<string, LaneAnswer> {
+    return {
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+      "DELETE /iam/v1/users/usr-1": { status: 200, body: { id: "op-del-1", done: false } },
+      "GET /operations/op-del-1": operation,
+    };
+  }
+
+  async function confirmDeletion() {
+    const section = await screen.findByRole("region", { name: "Удаление учётной записи" });
+    fireEvent.click(within(section).getByRole("button", { name: "Удалить учётную запись" }));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "Удалить навсегда" });
+    // Необратимое не подтверждается одним щелчком: кнопка закрыта до ввода адреса.
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "другой@kacho.local" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "a@kacho.local" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+  }
+
+  it("удаление адресовано СВОЕЙ личности из ответа «кто я»; успех уводит документом на вход", async () => {
+    lane = installLane(routes({ status: 200, body: { id: "op-del-1", done: true } }));
+    const leave = jest.fn<(to: string) => void>();
+    render(
+      <MemoryRouter initialEntries={["/settings?userId=usr-чужой"]}>
+        <AccountSettingsPage leave={leave} />
+      </MemoryRouter>,
+    );
+    await confirmDeletion();
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/login"));
+    expect(lane.calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/iam/v1/users/usr-1"]);
+  });
+
+  it("владеющему аккаунтом служба отказывает — экран называет шаг «сперва аккаунты» и никуда не уводит", async () => {
+    lane = installLane(
+      routes({
+        status: 200,
+        body: { id: "op-del-1", done: true, error: { code: 9, message: "User usr-1 owns accounts and cannot be deleted" } },
+      }),
+    );
+    const leave = jest.fn<(to: string) => void>();
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <AccountSettingsPage leave={leave} />
+      </MemoryRouter>,
+    );
+    await confirmDeletion();
+    expect(await screen.findByTestId("self-removal-next-step")).toHaveTextContent(
+      "Сначала удалите аккаунты, которыми вы владеете",
+    );
+    expect(screen.getByText("User usr-1 owns accounts and cannot be deleted")).toBeInTheDocument();
+    expect(leave).not.toHaveBeenCalled();
+  });
+});

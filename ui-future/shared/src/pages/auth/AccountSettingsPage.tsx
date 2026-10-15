@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Alert, Button, Form, Input, Spin, Typography } from "antd";
+import { Alert, Button, Form, Input, Modal, Spin, Typography } from "antd";
 import {
   LANE_REASON,
   type LaneRefusal,
@@ -25,10 +25,12 @@ import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
+import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { AccessKeysSection } from "./access-key";
 import { EmailChangeAction } from "./email-change";
 import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
+import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "./self-removal";
 
 // Параметры учётной записи на `/settings` — адрес почты, пароль, второй фактор,
 // свои сессии и ключи доступа, не покидая консоли (приёмка F8, S2 и S4; приёмки
@@ -524,6 +526,104 @@ function SecondFactorSection() {
   );
 }
 
+// ─── удаление своей учётной записи (#3186) ────────────────────────────────────
+//
+// Служба объявляет самоудаление: личность стирается во всех аккаунтах сразу,
+// необратимо, после удаления аккаунтов, которыми человек владеет. Экран ведёт к
+// нему: необратимое подтверждается вводом своего адреса (не одним щелчком), id
+// личности — из ответа «кто я», уровень сессии поднимает окно повышения по
+// отказу края, отказ «сперва аккаунты» назван шагом, успех уводит ДОКУМЕНТОМ на
+// вход — каркас прежней сессии не остаётся во вкладке.
+
+/** Шаг к отказу «человек ещё владеет аккаунтом» — порядок службы: аккаунт, затем личность. */
+export const SELF_REMOVAL_OWNS_ACCOUNTS_STEP =
+  "Сначала удалите аккаунты, которыми вы владеете (раздел «Аккаунты»), — затем удалите учётную запись.";
+
+function DeleteSelfSection({
+  user,
+  leave,
+}: {
+  user: { id: string; email: string };
+  leave: (to: string) => void;
+}) {
+  const inputId = useId();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<{ text: string; step: string | null } | null>(null);
+  const matches = typed.trim().toLowerCase() === user.email.toLowerCase();
+
+  const remove = async () => {
+    if (busy || !matches) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      await removeSelf(user.id);
+      forgetPrincipalState();
+      leave(loginAddress());
+      return; // экран уходит — кнопка остаётся занятой, повтора нет
+    } catch (e) {
+      setOpen(false);
+      if (e instanceof SelfRemovalRefused) {
+        setFailure({ text: e.message, step: e.ownsAccounts ? SELF_REMOVAL_OWNS_ACCOUNTS_STEP : null });
+      } else if (e instanceof SelfRemovalUnknown) {
+        setFailure({ text: e.message, step: null });
+      } else {
+        setFailure({ text: "Запрос не дошёл до службы. Повторите удаление позже.", step: null });
+      }
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Section title="Удаление учётной записи">
+      <Typography.Paragraph>
+        Учётная запись удаляется во всех аккаунтах сразу и навсегда: вместе с ней уходят сессии, способы входа, ключи
+        доступа и членства. Удалить её можно, когда не осталось аккаунтов, которыми вы владеете.
+      </Typography.Paragraph>
+      {failure && (
+        <div style={{ marginBottom: 12 }}>
+          <Alert type="error" showIcon message={failure.text} />
+          {failure.step !== null && (
+            <Typography.Paragraph data-testid="self-removal-next-step" style={{ margin: "8px 0 0" }}>
+              {failure.step}
+            </Typography.Paragraph>
+          )}
+        </div>
+      )}
+      <Button
+        danger
+        onClick={() => {
+          setTyped("");
+          setOpen(true);
+        }}
+      >
+        Удалить учётную запись
+      </Button>
+      <Modal
+        open={open}
+        title="Удалить учётную запись навсегда?"
+        onCancel={() => setOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setOpen(false)}>
+            Отмена
+          </Button>,
+          <Button key="remove" danger type="primary" loading={busy} disabled={!matches} onClick={() => void remove()}>
+            Удалить навсегда
+          </Button>,
+        ]}
+      >
+        <Typography.Paragraph>Действие необратимо. Чтобы подтвердить, введите адрес почты учётной записи.</Typography.Paragraph>
+        <Form layout="vertical">
+          <Form.Item label="Адрес почты учётной записи" htmlFor={inputId}>
+            <Input id={inputId} autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </Section>
+  );
+}
+
 // ─── страница ────────────────────────────────────────────────────────────────
 
 export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } = {}) {
@@ -590,6 +690,7 @@ export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } 
           <SecondFactorSection />
           <OwnSessionsSection />
           <AccessKeysSection userId={who.user.id} />
+          <DeleteSelfSection user={who.user} leave={leave ?? ((to) => window.location.replace(to))} />
         </>
       )}
     </PageFrame>
