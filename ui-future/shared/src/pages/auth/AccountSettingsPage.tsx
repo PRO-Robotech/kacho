@@ -18,41 +18,21 @@ import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalA
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { PageFrame } from "@shared/components/organisms/PageFrame";
-import {
-  FieldError,
-  fieldErrorId,
-} from "@shared/components/organisms/form/FieldError";
-import {
-  FORM_LABEL_WIDTH,
-  FormGrid,
-} from "@shared/components/organisms/form/FormGrid";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
+import { FORM_LABEL_WIDTH, FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { AccessKeysSection } from "./access-key";
 import { EmailChangeAction } from "./email-change";
 import { OwnSessionsSection } from "./own-sessions";
 import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
-import {
-  removeSelf,
-  SelfRemovalRefused,
-  SelfRemovalUnknown,
-} from "@shared/api/self-removal";
+import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "@shared/api/self-removal";
 import { SecurityAnnouncer, useAnnounce } from "./security/announcer";
 import { SavedCodesDialog } from "./security/SavedCodesDialog";
-import {
-  BackupCodesSection,
-  SecondFactorSection,
-} from "./security/SecondFactorSections";
+import { BackupCodesSection, SecondFactorSection } from "./security/SecondFactorSections";
 import { SecuritySection } from "./security/SecuritySection";
-import {
-  NAVIGATED_SECTIONS,
-  SECURITY_SECTION,
-  goToSection,
-} from "./security/sections";
-import {
-  methodsInWords,
-  useSecondFactorState,
-} from "./security/use-second-factor";
+import { NAVIGATED_SECTIONS, SECURITY_SECTION, goToSection } from "./security/sections";
+import { methodsInWords, useSecondFactorState } from "./security/use-second-factor";
 
 // Экран «Безопасность» на `/settings` — один экран личного кабинета о защите
 // учётной записи (приёмка F8-S7, Р1; адрес — приёмка F8, Р1, новой ручки нет).
@@ -93,8 +73,7 @@ import {
 const asRefusal = laneRefusalOf;
 
 /** Рекомендация сводки без способов подтверждения (Р1). */
-export const SUMMARY_ADVICE =
-  "Включите второй фактор: без него действия, меняющие доступ, недоступны";
+export const SUMMARY_ADVICE = "Включите второй фактор: без него действия, меняющие доступ, недоступны";
 
 /**
  * Отметка поля, названного отказом службы: ввод ссылается на сообщение у поля
@@ -102,11 +81,7 @@ export const SUMMARY_ADVICE =
  */
 function markedBy(inputId: string, error: string | null) {
   return error
-    ? {
-        "aria-invalid": true as const,
-        "aria-describedby": fieldErrorId(inputId),
-        status: "error" as const,
-      }
+    ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId), status: "error" as const }
     : {};
 }
 
@@ -117,13 +92,7 @@ function markedBy(inputId: string, error: string | null) {
 
 // ─── пароль ──────────────────────────────────────────────────────────────────
 
-function ChangePasswordForm({
-  onSubmitted,
-  onChanged,
-}: {
-  onSubmitted: () => void;
-  onChanged: () => void;
-}) {
+function ChangePasswordForm({ onSubmitted, onChanged }: { onSubmitted: () => void; onChanged: () => void }) {
   const id = useId();
   const holder = useFormToken("password");
   const [current, setCurrent] = useState("");
@@ -137,10 +106,7 @@ function ChangePasswordForm({
     setBusy(true);
     setRefusal(null);
     try {
-      await loginLane.changePassword(holder, {
-        currentPassword: current,
-        newPassword: next,
-      });
+      await loginLane.changePassword(holder, { currentPassword: current, newPassword: next });
       setCurrent("");
       setNext("");
       onChanged();
@@ -150,12 +116,8 @@ function ChangePasswordForm({
     setBusy(false);
   };
 
-  const marked =
-    refusal?.field === "currentPassword" || refusal?.field === "newPassword"
-      ? refusal.field
-      : null;
-  const errorOf = (f: "currentPassword" | "newPassword") =>
-    marked === f ? refusal!.message : null;
+  const marked = refusal?.field === "currentPassword" || refusal?.field === "newPassword" ? refusal.field : null;
+  const errorOf = (f: "currentPassword" | "newPassword") => (marked === f ? refusal!.message : null);
   const currentId = `${id}-current`;
   const nextId = `${id}-next`;
 
@@ -170,10 +132,7 @@ function ChangePasswordForm({
           onChange={(e) => setCurrent(e.target.value)}
           {...markedBy(currentId, errorOf("currentPassword"))}
         />
-        <FieldError
-          id={fieldErrorId(currentId)}
-          message={errorOf("currentPassword") ?? undefined}
-        />
+        <FieldError id={fieldErrorId(currentId)} message={errorOf("currentPassword") ?? undefined} />
       </Form.Item>
       <Form.Item label="Новый пароль" htmlFor={nextId}>
         <Input
@@ -184,10 +143,7 @@ function ChangePasswordForm({
           onChange={(e) => setNext(e.target.value)}
           {...markedBy(nextId, errorOf("newPassword"))}
         />
-        <FieldError
-          id={fieldErrorId(nextId)}
-          message={errorOf("newPassword") ?? undefined}
-        />
+        <FieldError id={fieldErrorId(nextId)} message={errorOf("newPassword") ?? undefined} />
       </Form.Item>
       {refusal && marked === null && (
         <div style={{ marginBottom: 12 }}>
@@ -256,22 +212,14 @@ function EnrollPasswordForm({
           onChange={(e) => setNext(e.target.value)}
           {...markedBy(nextId, nextError)}
         />
-        <FieldError
-          id={fieldErrorId(nextId)}
-          message={nextError ?? undefined}
-        />
+        <FieldError id={fieldErrorId(nextId)} message={nextError ?? undefined} />
       </Form.Item>
       {refusal && nextError === null && (
         <div style={{ marginBottom: 12 }}>
           <LaneRefusalAlert refusal={refusal} />
         </div>
       )}
-      <Button
-        type="primary"
-        htmlType="submit"
-        loading={busy}
-        style={{ marginRight: 8 }}
-      >
+      <Button type="primary" htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
         Завести пароль
       </Button>
       <Button onClick={onCancel} disabled={busy}>
@@ -309,13 +257,7 @@ function PasswordAction() {
       >
         Сменить пароль
       </Button>
-      <Modal
-        open={open}
-        title="Пароль"
-        onCancel={close}
-        mask={{ closable: false }}
-        footer={null}
-      >
+      <Modal open={open} title="Пароль" onCancel={close} mask={{ closable: false }} footer={null}>
         {mode === "заведение" ? (
           <EnrollPasswordForm
             onEnrolled={() => {
@@ -391,15 +333,9 @@ function SummarySection({
           />
         )}
       </FactLine>
-      {methods !== undefined && (
-        <FactLine>{`Подтверждение действий: ${methodsInWords(methods)}`}</FactLine>
-      )}
-      {state?.accessKeys?.available === false && (
-        <FactLine>Вход ключом доступа: Выключены на установке</FactLine>
-      )}
-      {sessions !== null && (
-        <FactLine>{`Активные сессии: ${sessions}`}</FactLine>
-      )}
+      {methods !== undefined && <FactLine>{`Подтверждение действий: ${methodsInWords(methods)}`}</FactLine>}
+      {state?.accessKeys?.available === false && <FactLine>Вход ключом доступа: Выключены на установке</FactLine>}
+      {sessions !== null && <FactLine>{`Активные сессии: ${sessions}`}</FactLine>}
       {methods !== undefined && methods.length === 0 && (
         <div
           style={{
@@ -414,11 +350,7 @@ function SummarySection({
           }}
         >
           <span>{SUMMARY_ADVICE}</span>
-          <Button
-            size="small"
-            type="primary"
-            onClick={() => goToSection("secondFactor")}
-          >
+          <Button size="small" type="primary" onClick={() => goToSection("secondFactor")}>
             Настроить
           </Button>
         </div>
@@ -428,31 +360,10 @@ function SummarySection({
 }
 
 /** Строка раздела «Способ входа»: имя слева колонкой формы, факт и действие справа (канон формы). */
-function SignInRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function SignInRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 16,
-        alignItems: "baseline",
-        flexWrap: "wrap",
-        marginBottom: 12,
-      }}
-    >
-      <div
-        style={{
-          flex: `0 0 ${FORM_LABEL_WIDTH}px`,
-          color: "var(--kc-text-secondary)",
-        }}
-      >
-        {label}
-      </div>
+    <div style={{ display: "flex", gap: 16, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ flex: `0 0 ${FORM_LABEL_WIDTH}px`, color: "var(--kc-text-secondary)" }}>{label}</div>
       <div style={{ flex: "1 1 280px", minWidth: 0 }}>{children}</div>
     </div>
   );
@@ -479,11 +390,7 @@ function SignInSection({
       <SignInRow label="Адрес почты">
         <div>{email}</div>
         {typeof emailVerified === "boolean" && (
-          <BoolFact
-            value={emailVerified}
-            yes="Адрес подтверждён"
-            no="Адрес не подтверждён"
-          />
+          <BoolFact value={emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
         )}
         <div>
           <EmailChangeAction onChanged={onChanged} leave={leave} />
@@ -513,16 +420,7 @@ function SignInSection({
 function SectionsNav() {
   return (
     <nav aria-label="Разделы страницы" style={{ marginBottom: 12 }}>
-      <ul
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 16,
-          listStyle: "none",
-          margin: 0,
-          padding: 0,
-        }}
-      >
+      <ul style={{ display: "flex", flexWrap: "wrap", gap: 16, listStyle: "none", margin: 0, padding: 0 }}>
         {NAVIGATED_SECTIONS.map((key) => (
           <li key={key}>
             <a
@@ -555,26 +453,15 @@ function SecurityScreen({
   const [keysCount, setKeysCount] = useState<number | null>(null);
   const [sessions, setSessions] = useState<number | null>(null);
   const [addKey, setAddKey] = useState(0);
-  const [codes, setCodes] = useState<{
-    codes: string[];
-    regenerated: boolean;
-  } | null>(null);
-  const showCodes = useCallback(
-    (c: string[], regenerated: boolean) => setCodes({ codes: c, regenerated }),
-    [],
-  );
+  const [codes, setCodes] = useState<{ codes: string[]; regenerated: boolean } | null>(null);
+  const showCodes = useCallback((c: string[], regenerated: boolean) => setCodes({ codes: c, regenerated }), []);
   const emailVerified = who.session?.emailVerified;
   const { reread: rereadFactor } = factor;
   const keysChanged = useCallback(() => void rereadFactor(), [rereadFactor]);
 
   return (
     <>
-      <SummarySection
-        email={who.user.email}
-        emailVerified={emailVerified}
-        state={factor.state}
-        sessions={sessions}
-      />
+      <SummarySection email={who.user.email} emailVerified={emailVerified} state={factor.state} sessions={sessions} />
       <SignInSection
         email={who.user.email}
         emailVerified={emailVerified}
@@ -600,16 +487,9 @@ function SecurityScreen({
         addRequested={addKey}
         onChanged={keysChanged}
       />
-      <BackupCodesSection
-        read={factor}
-        holder={factorHolder}
-        showCodes={showCodes}
-      />
+      <BackupCodesSection read={factor} holder={factorHolder} showCodes={showCodes} />
       <OwnSessionsSection onCount={setSessions} />
-      <DeleteSelfSection
-        user={who.user}
-        leave={leave ?? ((to) => window.location.replace(to))}
-      />
+      <DeleteSelfSection user={who.user} leave={leave ?? ((to) => window.location.replace(to))} />
       <SavedCodesDialog
         codes={codes?.codes ?? null}
         regenerated={codes?.regenerated ?? false}
@@ -643,10 +523,7 @@ function DeleteSelfSection({
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<{
-    text: string;
-    step: string | null;
-  } | null>(null);
+  const [failure, setFailure] = useState<{ text: string; step: string | null } | null>(null);
   const matches = typed.trim().toLowerCase() === user.email.toLowerCase();
 
   const remove = async () => {
@@ -661,17 +538,11 @@ function DeleteSelfSection({
     } catch (e) {
       setOpen(false);
       if (e instanceof SelfRemovalRefused) {
-        setFailure({
-          text: e.message,
-          step: e.ownsAccounts ? SELF_REMOVAL_OWNS_ACCOUNTS_STEP : null,
-        });
+        setFailure({ text: e.message, step: e.ownsAccounts ? SELF_REMOVAL_OWNS_ACCOUNTS_STEP : null });
       } else if (e instanceof SelfRemovalUnknown) {
         setFailure({ text: e.message, step: null });
       } else {
-        setFailure({
-          text: "Запрос не дошёл до службы. Повторите удаление позже.",
-          step: null,
-        });
+        setFailure({ text: "Запрос не дошёл до службы. Повторите удаление позже.", step: null });
       }
     }
     setBusy(false);
@@ -680,18 +551,14 @@ function DeleteSelfSection({
   return (
     <SecuritySection section="deleteSelf">
       <Typography.Paragraph>
-        Учётная запись удаляется во всех аккаунтах сразу и навсегда: вместе с
-        ней уходят сессии, способы входа, ключи доступа и членства. Удалить её
-        можно, когда не осталось аккаунтов, которыми вы владеете.
+        Учётная запись удаляется во всех аккаунтах сразу и навсегда: вместе с ней уходят сессии, способы входа, ключи
+        доступа и членства. Удалить её можно, когда не осталось аккаунтов, которыми вы владеете.
       </Typography.Paragraph>
       {failure && (
         <div style={{ marginBottom: 12 }}>
           <Alert type="error" showIcon message={failure.text} />
           {failure.step !== null && (
-            <Typography.Paragraph
-              data-testid="self-removal-next-step"
-              style={{ margin: "8px 0 0" }}
-            >
+            <Typography.Paragraph data-testid="self-removal-next-step" style={{ margin: "8px 0 0" }}>
               {failure.step}
             </Typography.Paragraph>
           )}
@@ -714,30 +581,15 @@ function DeleteSelfSection({
           <Button key="cancel" onClick={() => setOpen(false)}>
             Отмена
           </Button>,
-          <Button
-            key="remove"
-            danger
-            type="primary"
-            loading={busy}
-            disabled={!matches}
-            onClick={() => void remove()}
-          >
+          <Button key="remove" danger type="primary" loading={busy} disabled={!matches} onClick={() => void remove()}>
             Удалить навсегда
           </Button>,
         ]}
       >
-        <Typography.Paragraph>
-          Действие необратимо. Чтобы подтвердить, введите адрес почты учётной
-          записи.
-        </Typography.Paragraph>
+        <Typography.Paragraph>Действие необратимо. Чтобы подтвердить, введите адрес почты учётной записи.</Typography.Paragraph>
         <Form layout="vertical">
           <Form.Item label="Адрес почты учётной записи" htmlFor={inputId}>
-            <Input
-              id={inputId}
-              autoComplete="off"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-            />
+            <Input id={inputId} autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
           </Form.Item>
         </Form>
       </Modal>
@@ -747,9 +599,7 @@ function DeleteSelfSection({
 
 // ─── страница ────────────────────────────────────────────────────────────────
 
-export function AccountSettingsPage({
-  leave,
-}: { leave?: (to: string) => void } = {}) {
+export function AccountSettingsPage({ leave }: { leave?: (to: string) => void } = {}) {
   const [who, setWho] = useState<SessionAnswer | undefined>(undefined);
   // Каждый вопрос «кто вошёл» — свой номер: эффект задаёт вопрос и принимает
   // ответ только на него, а «Проверить снова» сбрасывает показанное и заводит
@@ -780,11 +630,7 @@ export function AccountSettingsPage({
     <PageFrame
       head={
         <>
-          <PageHead
-            title="Безопасность"
-            level={1}
-            divider={who?.kind !== "present"}
-          />
+          <PageHead title="Безопасность" level={1} divider={who?.kind !== "present"} />
           {who?.kind === "present" && <SectionsNav />}
         </>
       }
@@ -796,8 +642,7 @@ export function AccountSettingsPage({
         {who === undefined && <Spin />}
         {who?.kind === "absent" && (
           <Typography.Paragraph>
-            Параметры безопасности доступны после входа.{" "}
-            <Link to={loginAddress(ACCOUNT_SETTINGS_ADDRESS)}>Войти</Link>
+            Параметры безопасности доступны после входа. <Link to={loginAddress(ACCOUNT_SETTINGS_ADDRESS)}>Войти</Link>
           </Typography.Paragraph>
         )}
         {who?.kind === "unknown" && (
@@ -808,9 +653,7 @@ export function AccountSettingsPage({
             </Button>
           </div>
         )}
-        {who?.kind === "present" && (
-          <SecurityScreen who={who} reread={reread} leave={leave} />
-        )}
+        {who?.kind === "present" && <SecurityScreen who={who} reread={reread} leave={leave} />}
       </SecurityAnnouncer>
     </PageFrame>
   );

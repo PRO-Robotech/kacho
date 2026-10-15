@@ -2,21 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createServer, type AddressInfo } from "node:net";
-import {
-  expect,
-  type Browser,
-  type BrowserContext,
-  type Locator,
-  type Page,
-  type TestInfo,
-} from "@playwright/test";
-import {
-  LANE_VERBS,
-  answerOnArrival,
-  captureAnswers,
-  lanePostAnswer,
-  type LaneAnswer,
-} from "./answer-on-arrival";
+import { expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { LANE_VERBS, answerOnArrival, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
 import {
   LANE,
@@ -43,21 +30,9 @@ import {
   type CeremonyCensus,
 } from "./fixtures";
 import { PROBE_FETCH } from "./issuance-guard.ts";
-import {
-  AUTHENTICATION_FAILED,
-  LOGIN_WITH_SECOND_FACTOR_FAILED,
-} from "./lane-texts";
-import {
-  LETTER_BUDGET_MS,
-  stationMailbox,
-  type Mailbox,
-} from "./mail-receiver";
-import {
-  LANE_UNAVAILABLE,
-  LOGOUT_UNAVAILABLE,
-  bodyOf,
-  fulfillWith,
-} from "./producer-answers";
+import { AUTHENTICATION_FAILED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "./lane-texts";
+import { LETTER_BUDGET_MS, stationMailbox, type Mailbox } from "./mail-receiver";
+import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
  * Церемонии личности ведёт КОНСОЛЬ — вход, регистрация, выход (приёмка F8, S1).
@@ -111,9 +86,7 @@ import {
 // закрытой (F8-10, посадка own @9038186d0d5: `ant-btn-loading` снят, значок —
 // в `motion-leave-active` пятнадцать секунд спустя).
 function submitOf(page: Page, form: string, label: string): Locator {
-  return page
-    .getByRole("form", { name: form })
-    .getByRole("button", { name: new RegExp(`${label}$`) });
+  return page.getByRole("form", { name: form }).getByRole("button", { name: new RegExp(`${label}$`) });
 }
 
 function loginScreen(page: Page) {
@@ -143,12 +116,7 @@ function pathOf(page: Page): string {
  * «страница уведена на /dashboard» — ровно то, что делает оболочка без маршрута
  * (замыкающее правило `*`), и это первое красное, которое обязана показать проба.
  */
-async function expectScreen(
-  page: Page,
-  path: string,
-  marker: Locator,
-  what: string,
-) {
+async function expectScreen(page: Page, path: string, marker: Locator, what: string) {
   await expect
     .poll(
       async () => {
@@ -178,9 +146,7 @@ function addressOf(page: Page): string {
  * консоль уводит, нет.
  */
 async function expectAddress(page: Page, address: string, why: string) {
-  await expect
-    .poll(() => addressOf(page), { message: why, timeout: 30_000 })
-    .toBe(address);
+  await expect.poll(() => addressOf(page), { message: why, timeout: 30_000 }).toBe(address);
 }
 
 /** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
@@ -189,9 +155,7 @@ function lanePost(page: Page, path: string): Promise<LaneAnswer> {
 }
 
 async function sessionHeld(context: BrowserContext): Promise<boolean> {
-  return (await context.cookies()).some(
-    (c) => c.name === SESSION_COOKIE && c.value !== "",
-  );
+  return (await context.cookies()).some((c) => c.name === SESSION_COOKIE && c.value !== "");
 }
 
 function expectNoProvider(census: CeremonyCensus) {
@@ -201,12 +165,7 @@ function expectNoProvider(census: CeremonyCensus) {
   ).toEqual([]);
 }
 
-function expectContains(
-  census: CeremonyCensus,
-  method: string,
-  path: string,
-  query?: string,
-) {
+function expectContains(census: CeremonyCensus, method: string, path: string, query?: string) {
   expect(
     census.matching(method, path, query).length,
     `перепись обращений страницы не содержит ${method} ${path}${query ?? ""}:\n${census.describe()}`,
@@ -219,11 +178,7 @@ function expectContains(
  * который до них дошёл. Неподтверждённого заводит посев П-н там, где сценарий
  * судит именно его (`address-confirmation.spec.ts`).
  */
-async function seeded(
-  testInfo: TestInfo,
-  scenario: string,
-  context?: BrowserContext,
-): Promise<SeededHuman> {
+async function seeded(testInfo: TestInfo, scenario: string, context?: BrowserContext): Promise<SeededHuman> {
   const seed = await newSeed(testInfo);
   try {
     const human = await seedConfirmedHuman(seed, seedAddress(scenario));
@@ -239,10 +194,7 @@ async function seeded(
  * подтверждения берётся только из письма, принятого после (`awaitLetter`).
  * Спрашивается до отправки формы регистрации.
  */
-async function lettersBefore(
-  mailbox: Mailbox,
-  email: string,
-): Promise<ReadonlySet<string>> {
+async function lettersBefore(mailbox: Mailbox, email: string): Promise<ReadonlySet<string>> {
   return new Set((await mailbox.letters(email)).map((l) => l.id));
 }
 
@@ -265,26 +217,17 @@ function loginRefusal(message: string) {
  * неразличимости, а не удобство: экран — функция ТОЛЬКО тела ответа, тело
  * утверждается побайтово, значит и экраны одной формы запроса побайтово равны.
  */
-async function expectAuthenticationFailedScreen(
-  page: Page,
-  res: LaneAnswer,
-  email: string,
-  message: string,
-) {
+async function expectAuthenticationFailedScreen(page: Page, res: LaneAnswer, email: string, message: string) {
   expect(res.status(), "отказ входа обязан быть 401").toBe(401);
-  expect(
-    await res.text(),
-    "тело отказа входа — побайтово одно на все причины своей формы запроса",
-  ).toBe(JSON.stringify(loginRefusal(message)));
+  expect(await res.text(), "тело отказа входа — побайтово одно на все причины своей формы запроса").toBe(
+    JSON.stringify(loginRefusal(message)),
+  );
   const s = loginScreen(page);
   await expect(s.refusal, "отказ не назван на экране").toHaveText(message);
   await expect(s.email, "введённый адрес потерян").toHaveValue(email);
   await expect(s.password).toBeVisible();
   expect(pathOf(page), "после отказа адрес страницы сменился").toBe("/login");
-  expect(
-    await sessionHeld(page.context()),
-    "после отказа у браузера появился носитель сессии",
-  ).toBe(false);
+  expect(await sessionHeld(page.context()), "после отказа у браузера появился носитель сессии").toBe(false);
 }
 
 // Ответы глаголов полосы снимаются ДО страницы: за ответами входа, регистрации и
@@ -296,9 +239,7 @@ test.beforeEach(async ({ page }) => {
 
 // ═══ S1 — группа A. Адрес церемонии принадлежит консоли ═══════════════════════
 
-test("F8-01 · экран входа отдаёт консоль, и чужой поставщик не зовётся", async ({
-  page,
-}) => {
+test("F8-01 · экран входа отдаёт консоль, и чужой поставщик не зовётся", async ({ page }) => {
   // verifies #2780 — у церемонии входа консоли не было ни одного свидетеля.
   const census = ceremonyCensus(page.context());
   await page.goto("/login", { waitUntil: "domcontentloaded" });
@@ -317,65 +258,37 @@ test("F8-01 · экран входа отдаёт консоль, и чужой 
 
 // ═══ S1 — группа B. Вход ══════════════════════════════════════════════════════
 
-test("F8-04 · вход паролем проходит целиком и уводит на адрес возврата", async ({
-  page,
-}, testInfo) => {
+test("F8-04 · вход паролем проходит целиком и уводит на адрес возврата", async ({ page }, testInfo) => {
   // verifies #2780 — первая красная проба приёмки (§10): перепись обращений входа.
   const human = await seeded(testInfo, "F8-04");
   const census = ceremonyCensus(page.context());
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(human.password);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status(), `вход не прошёл: ${await res.text()}`).toBe(200);
-  await expectAddress(
-    page,
-    "/dashboard",
-    "после входа консоль не увела на адрес возврата",
-  );
+  await expectAddress(page, "/dashboard", "после входа консоль не увела на адрес возврата");
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
-  expect(
-    await sessionHeld(page.context()),
-    "после входа у браузера нет носителя сессии",
-  ).toBe(true);
+  expect(await sessionHeld(page.context()), "после входа у браузера нет носителя сессии").toBe(true);
 });
 
-test("F8-05 · неверный пароль: назван один отказ, форма остаётся", async ({
-  page,
-}, testInfo) => {
+test("F8-05 · неверный пароль: назван один отказ, форма остаётся", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: изменено только значение пароля.
   const human = await seeded(testInfo, "F8-05");
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(`${human.password}-не-тот`);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
-  await expectAuthenticationFailedScreen(
-    page,
-    res,
-    human.email,
-    AUTHENTICATION_FAILED,
-  );
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  await expectAuthenticationFailedScreen(page, res, human.email, AUTHENTICATION_FAILED);
 });
 
-test("F8-06 · незаполненное поле названо службой по имени", async ({
-  page,
-}, testInfo) => {
+test("F8-06 · незаполненное поле названо службой по имени", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: пароль пуст. Консоль своего правила не
   // применяет (Р2): поле называет служба, экран отмечает названное.
   const human = await seeded(testInfo, "F8-06");
@@ -384,33 +297,16 @@ test("F8-06 · незаполненное поле названо службой
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status()).toBe(400);
-  expect(await res.json()).toEqual({
-    code: 3,
-    message: "Illegal argument password: required",
-    details: [],
-  });
-  await expect(
-    s.password,
-    "поле пароля, названное службой, не отмечено",
-  ).toHaveAttribute("aria-invalid", "true");
-  await expect(
-    s.email,
-    "отмечено поле, которого служба не называла",
-  ).not.toHaveAttribute("aria-invalid", "true");
-  await expect(
-    page.getByText("Illegal argument password: required"),
-  ).toBeVisible();
+  expect(await res.json()).toEqual({ code: 3, message: "Illegal argument password: required", details: [] });
+  await expect(s.password, "поле пароля, названное службой, не отмечено").toHaveAttribute("aria-invalid", "true");
+  await expect(s.email, "отмечено поле, которого служба не называла").not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Illegal argument password: required")).toBeVisible();
   expectContains(census, "POST", LANE.login);
 });
 
-test("F8-07 · признак формы не предъявлен: отказ назван, а не белый экран", async ({
-  page,
-}, testInfo) => {
+test("F8-07 · признак формы не предъявлен: отказ назван, а не белый экран", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: из тела формы изъят только признак формы.
   const human = await seeded(testInfo, "F8-07");
   await page.route(
@@ -418,10 +314,7 @@ test("F8-07 · признак формы не предъявлен: отказ �
     async (route) => {
       const req = route.request();
       if (req.method() !== "POST") return route.continue();
-      const body = JSON.parse(req.postData() ?? "{}") as Record<
-        string,
-        unknown
-      >;
+      const body = JSON.parse(req.postData() ?? "{}") as Record<string, unknown>;
       delete body.csrfToken;
       await route.continue({ postData: JSON.stringify(body) });
     },
@@ -431,27 +324,14 @@ test("F8-07 · признак формы не предъявлен: отказ �
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(human.password);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status()).toBe(400);
-  expect(await res.json()).toEqual({
-    code: 3,
-    message: "Illegal argument csrfToken: required",
-    details: [],
-  });
-  await expect(s.refusal, "отказ формы не назван на экране").toContainText(
-    "Illegal argument csrfToken: required",
-  );
-  await expect(s.email, "после отказа формы введённое потеряно").toHaveValue(
-    human.email,
-  );
+  expect(await res.json()).toEqual({ code: 3, message: "Illegal argument csrfToken: required", details: [] });
+  await expect(s.refusal, "отказ формы не назван на экране").toContainText("Illegal argument csrfToken: required");
+  await expect(s.email, "после отказа формы введённое потеряно").toHaveValue(human.email);
 });
 
-test("F8-08 · признак формы чужого вида отвергнут, и экран даёт повторить", async ({
-  page,
-}, testInfo) => {
+test("F8-08 · признак формы чужого вида отвергнут, и экран даёт повторить", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: признак добыт запросом другого вида (`logout`).
   const human = await seeded(testInfo, "F8-08");
   const census = ceremonyCensus(page.context());
@@ -466,29 +346,19 @@ test("F8-08 · признак формы чужого вида отвергну�
       await route.continue({ url: u.toString() });
     },
   );
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(human.password);
-  const [refused] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [refused] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(refused.status()).toBe(403);
-  expect(
-    (await refused.json()) as { code: number; message: string },
-  ).toMatchObject({
+  expect((await refused.json()) as { code: number; message: string }).toMatchObject({
     code: 7,
     message: "form token rejected",
   });
   await expect(s.refusal).toContainText("form token rejected");
-  expect(
-    substituted,
-    "подстановка вида признака не сработала — сценарий не создал своего условия",
-  ).toBe(true);
+  expect(substituted, "подстановка вида признака не сработала — сценарий не создал своего условия").toBe(true);
 
   // Экран добывает СВЕЖИЙ признак своего вида — второе обращение после отказа.
   await expect
@@ -497,29 +367,14 @@ test("F8-08 · признак формы чужого вида отвергну�
       timeout: 15_000,
     })
     .toBeGreaterThanOrEqual(2);
-  await expect(
-    s.email,
-    "введённый адрес потерян после отказа признака",
-  ).toHaveValue(human.email);
+  await expect(s.email, "введённый адрес потерян после отказа признака").toHaveValue(human.email);
 
-  const [accepted] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
-  expect(
-    accepted.status(),
-    `повторная отправка со свежим признаком не прошла: ${await accepted.text()}`,
-  ).toBe(200);
-  await expectAddress(
-    page,
-    "/dashboard",
-    "повторная отправка прошла, а перехода нет",
-  );
+  const [accepted] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  expect(accepted.status(), `повторная отправка со свежим признаком не прошла: ${await accepted.text()}`).toBe(200);
+  await expectAddress(page, "/dashboard", "повторная отправка прошла, а перехода нет");
 });
 
-test("F8-09 · потолок темпа: экран называет срок и не даёт бить в стену", async ({
-  page,
-}, testInfo) => {
+test("F8-09 · потолок темпа: экран называет срок и не даёт бить в стену", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-05: изменено только число подряд идущих неверных
   // предъявлений. Адрес у сценария СВОЙ: исчерпывается только его ось адреса,
   // вклад в общую ось источника — пять отказов, учтённых бюджетом Р7.
@@ -532,28 +387,14 @@ test("F8-09 · потолок темпа: экран называет срок �
   await s.email.fill(human.email);
   for (let attempt = 1; attempt <= 5; attempt++) {
     await s.password.fill(`${human.password}-${attempt}`);
-    const [res] = await Promise.all([
-      lanePost(page, LANE.login),
-      s.submit.click(),
-    ]);
-    expect(
-      res.status(),
-      `неверное предъявление ${attempt} из пяти не дало 401: ${await res.text()}`,
-    ).toBe(401);
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+    expect(res.status(), `неверное предъявление ${attempt} из пяти не дало 401: ${await res.text()}`).toBe(401);
     await expect(s.submit).toBeEnabled();
   }
   await s.password.fill(`${human.password}-6`);
-  const [limited] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
-  expect(
-    limited.status(),
-    `шестое обращение не упёрлось в потолок: ${await limited.text()}`,
-  ).toBe(429);
-  expect(
-    (await limited.json()) as { code: number; message: string },
-  ).toMatchObject({
+  const [limited] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  expect(limited.status(), `шестое обращение не упёрлось в потолок: ${await limited.text()}`).toBe(429);
+  expect((await limited.json()) as { code: number; message: string }).toMatchObject({
     code: 8,
     message: "too many attempts; try again later",
   });
@@ -561,14 +402,8 @@ test("F8-09 · потолок темпа: экран называет срок �
   expect(retryAfter, "отказ по частоте без Retry-After").toMatch(/^\d+$/);
 
   await expect(s.refusal).toContainText("too many attempts; try again later");
-  await expect(
-    s.refusal,
-    "экран не назвал срок из заголовка Retry-After",
-  ).toContainText(`через ${retryAfter} с`);
-  await expect(
-    s.submit,
-    "до истечения срока кнопка отправки доступна",
-  ).toBeDisabled();
+  await expect(s.refusal, "экран не назвал срок из заголовка Retry-After").toContainText(`через ${retryAfter} с`);
+  await expect(s.submit, "до истечения срока кнопка отправки доступна").toBeDisabled();
 
   // Отправка клавишей ввода — тот же путь, что у кнопки, и он тоже закрыт.
   //
@@ -578,23 +413,17 @@ test("F8-09 · потолок темпа: экран называет срок �
   // уходит лишь за ответом на неё — после барьера ниже, — и отрицание по одному
   // глаголу было бы истинно и на экране, отправляющем форму.
   const submitActs = () =>
-    census.matching("GET", LANE.csrf, "?form=login").length +
-    census.matching("POST", LANE.login).length;
+    census.matching("GET", LANE.csrf, "?form=login").length + census.matching("POST", LANE.login).length;
   const before = submitActs();
   await s.password.press("Enter");
   // Барьер порядка, а не пауза: ответ на вычисление в странице приходит ПОСЛЕ
   // событий, выпущенных её кодом раньше, — выдача признака, начатая
   // обработчиком отправки, была бы уже записана.
   await page.evaluate(() => undefined);
-  expect(
-    submitActs(),
-    `после отказа по частоте экран начал отправку снова:\n${census.describe()}`,
-  ).toBe(before);
+  expect(submitActs(), `после отказа по частоте экран начал отправку снова:\n${census.describe()}`).toBe(before);
 });
 
-test("F8-10 · служба не ответила: отказ назван, введённое цело", async ({
-  page,
-}, testInfo) => {
+test("F8-10 · служба не ответила: отказ назван, введённое цело", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: изменено только то, отвечает ли служба краю.
   // Условие создаётся подстановкой ответа производителя — телом и заголовками
   // (`producer-answers.ts`, условие C20): остановить службу проба не вправе, а
@@ -603,58 +432,31 @@ test("F8-10 · служба не ответила: отказ назван, вв
   const unavailable = bodyOf(LANE_UNAVAILABLE);
   await page.route(
     (u) => u.pathname === LANE.login,
-    (route) =>
-      route.request().method() === "POST"
-        ? fulfillWith(route, LANE_UNAVAILABLE)
-        : route.continue(),
+    (route) => (route.request().method() === "POST" ? fulfillWith(route, LANE_UNAVAILABLE) : route.continue()),
   );
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(human.password);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status()).toBe(503);
   await expect(s.refusal).toContainText(unavailable.message);
-  await expect(s.refusal, "экран не предложил повторить").toContainText(
-    "Отправьте форму ещё раз",
-  );
-  await expect(
-    s.submit,
-    "повторить нечем — кнопка отправки закрыта",
-  ).toBeEnabled();
+  await expect(s.refusal, "экран не предложил повторить").toContainText("Отправьте форму ещё раз");
+  await expect(s.submit, "повторить нечем — кнопка отправки закрыта").toBeEnabled();
   await expect(s.email, "введённый адрес потерян").toHaveValue(human.email);
-  expect(
-    await sessionHeld(page.context()),
-    "при отказе службы у браузера появился носитель",
-  ).toBe(false);
+  expect(await sessionHeld(page.context()), "при отказе службы у браузера появился носитель").toBe(false);
 });
 
-test("F8-11 · человек с живой сессией формы входа не видит", async ({
-  page,
-}, testInfo) => {
+test("F8-11 · человек с живой сессией формы входа не видит", async ({ page }, testInfo) => {
   // verifies #2780
   await seeded(testInfo, "F8-11", page.context());
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
-  await expectAddress(
-    page,
-    "/dashboard",
-    "человек с живой сессией не уведён с экрана входа на адрес возврата",
-  );
-  await expect(
-    loginScreen(page).email,
-    "форма входа показана человеку с живой сессией",
-  ).toHaveCount(0);
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
+  await expectAddress(page, "/dashboard", "человек с живой сессией не уведён с экрана входа на адрес возврата");
+  await expect(loginScreen(page).email, "форма входа показана человеку с живой сессией").toHaveCount(0);
 });
 
-test("F8-12 · негодный носитель даёт форму, а не круг переадресаций", async ({
-  page,
-}, testInfo) => {
+test("F8-12 · негодный носитель даёт форму, а не круг переадресаций", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-11: изменена только годность носителя. Срок
   // носителя проба не пересиживает — значение печенья подменяется (Р9, ось 5).
   const base = new URL(testInfo.project.use.baseURL ?? "");
@@ -680,26 +482,16 @@ test("F8-12 · негодный носитель даёт форму, а не к
   const addresses: string[] = [];
   const documents: string[] = [];
   page.on("framenavigated", (f) => {
-    if (f === page.mainFrame() && addresses.at(-1) !== f.url())
-      addresses.push(f.url());
+    if (f === page.mainFrame() && addresses.at(-1) !== f.url()) addresses.push(f.url());
   });
   page.on("request", (r) => {
-    if (r.isNavigationRequest() && r.frame() === page.mainFrame())
-      documents.push(r.url());
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) documents.push(r.url());
   });
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
-  expect(
-    addresses,
-    `адрес страницы менялся после загрузки экрана входа: ${addresses.join(" → ")}`,
-  ).toHaveLength(1);
-  expect(
-    documents,
-    `документ экрана входа загружался повторно: ${documents.join(" → ")}`,
-  ).toHaveLength(1);
+  expect(addresses, `адрес страницы менялся после загрузки экрана входа: ${addresses.join(" → ")}`).toHaveLength(1);
+  expect(documents, `документ экрана входа загружался повторно: ${documents.join(" → ")}`).toHaveLength(1);
   // Чем именно носитель негоден, экран не различает и различать не вправе.
   await expect(s.refusal).toHaveCount(0);
 });
@@ -718,26 +510,18 @@ async function loginLandsAt(
 ): Promise<void> {
   const use = testInfo.project.use;
   const origin = new URL(use.baseURL ?? "").origin;
-  const context = await browser.newContext({
-    baseURL: use.baseURL,
-    ignoreHTTPSErrors: use.ignoreHTTPSErrors,
-  });
+  const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
   // Контекст заведён пробой сама — его отказы полосы пишет она же (F8-41).
   const reading = watchRefusals(context, testInfo.testId);
   try {
     const page = await context.newPage();
     await captureAnswers(page, LANE_VERBS);
-    await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
-      waitUntil: "domcontentloaded",
-    });
+    await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
     const s = loginScreen(page);
     await expectScreen(page, "/login", s.submit, "экран входа");
     await s.email.fill(human.email);
     await s.password.fill(human.password);
-    const [res] = await Promise.all([
-      lanePost(page, LANE.login),
-      s.submit.click(),
-    ]);
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
     expect(res.status(), `вход не прошёл: ${await res.text()}`).toBe(200);
     await expect
       .poll(() => page.url(), {
@@ -745,25 +529,19 @@ async function loginLandsAt(
         timeout: 30_000,
       })
       .toBe(expected);
-    expect(
-      new URL(page.url()).origin,
-      `returnTo=${returnTo}: происхождение страницы после входа чужое`,
-    ).toBe(origin);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы после входа чужое`).toBe(origin);
   } finally {
     await reading.settled();
     await context.close();
   }
 }
 
-test("F8-13 · адрес возврата чужого происхождения отвергнут во всех четырёх формах", async ({
-  browser,
-}, testInfo) => {
+test("F8-13 · адрес возврата чужого происхождения отвергнут во всех четырёх формах", async ({ browser }, testInfo) => {
   // verifies #2780 — близнец F8-04: изменено только значение `returnTo`.
   test.setTimeout(180_000);
   const human = await seeded(testInfo, "F8-13");
   const origin = new URL(testInfo.project.use.baseURL ?? "").origin;
-  const landsAt = (returnTo: string, expected: string) =>
-    loginLandsAt(browser, testInfo, human, returnTo, expected);
+  const landsAt = (returnTo: string, expected: string) => loginLandsAt(browser, testInfo, human, returnTo, expected);
 
   // Корень консоли уводит на панель (`index` оболочки), поэтому отвергнутый
   // адрес возврата оканчивается ровно на `/dashboard` без строки запроса.
@@ -778,10 +556,7 @@ test("F8-13 · адрес возврата чужого происхождени
 
   // Положительный близнец: свой адрес возврата уводит ИМЕННО туда, со своей
   // строкой запроса, — отрицание не тождественно «всегда на корень».
-  await landsAt(
-    "/dashboard?f8-13=kontrol",
-    `${origin}/dashboard?f8-13=kontrol`,
-  );
+  await landsAt("/dashboard?f8-13=kontrol", `${origin}/dashboard?f8-13=kontrol`);
 });
 
 test("F8-13 · адрес возврата, который нормализация сводит к протокол-относительному, отвергнут", async ({
@@ -793,20 +568,8 @@ test("F8-13 · адрес возврата, который нормализац�
   test.setTimeout(120_000);
   const human = await seeded(testInfo, "F8-13-dot");
   const origin = new URL(testInfo.project.use.baseURL ?? "").origin;
-  await loginLandsAt(
-    browser,
-    testInfo,
-    human,
-    "/.//evil.example/dashboard",
-    `${origin}/dashboard`,
-  );
-  await loginLandsAt(
-    browser,
-    testInfo,
-    human,
-    "/./dashboard?f8-13=kontrol",
-    `${origin}/dashboard?f8-13=kontrol`,
-  );
+  await loginLandsAt(browser, testInfo, human, "/.//evil.example/dashboard", `${origin}/dashboard`);
+  await loginLandsAt(browser, testInfo, human, "/./dashboard?f8-13=kontrol", `${origin}/dashboard?f8-13=kontrol`);
 });
 
 test("F8-13 · отскок живой сессии и возврат после регистрации идут через тот же валидатор", async ({
@@ -825,16 +588,8 @@ test("F8-13 · отскок живой сессии и возврат после
   const origin = new URL(use.baseURL ?? "").origin;
   // [адрес возврата · где кончаются отскок и возврат · экран подтверждения после регистрации]
   const cases = [
-    [
-      "//evil.example/dashboard",
-      `${origin}/dashboard`,
-      `${origin}/verification`,
-    ],
-    [
-      "https://evil.example/dashboard",
-      `${origin}/dashboard`,
-      `${origin}/verification`,
-    ],
+    ["//evil.example/dashboard", `${origin}/dashboard`, `${origin}/verification`],
+    ["https://evil.example/dashboard", `${origin}/dashboard`, `${origin}/verification`],
     [
       "/dashboard?f8-13=otskok",
       `${origin}/dashboard?f8-13=otskok`,
@@ -847,18 +602,11 @@ test("F8-13 · отскок живой сессии и возврат после
   // своим таймаутом, то есть красным (`mail-receiver.ts`, `LETTER_BUDGET_MS`).
   test.setTimeout(180_000 + cases.length * 2 * LETTER_BUDGET_MS);
 
-  async function inFreshContext(
-    body: (page: Page) => Promise<void>,
-    withSession: boolean,
-  ) {
-    const context = await browser.newContext({
-      baseURL: use.baseURL,
-      ignoreHTTPSErrors: use.ignoreHTTPSErrors,
-    });
+  async function inFreshContext(body: (page: Page) => Promise<void>, withSession: boolean) {
+    const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
     const reading = watchRefusals(context, testInfo.testId);
     try {
-      if (withSession)
-        await seeded(testInfo, `F8-13-bounce-${runStamp()}`, context);
+      if (withSession) await seeded(testInfo, `F8-13-bounce-${runStamp()}`, context);
       const page = await context.newPage();
       await captureAnswers(page, LANE_VERBS);
       await body(page);
@@ -868,30 +616,17 @@ test("F8-13 · отскок живой сессии и возврат после
     }
   }
 
-  const expectLanded = async (
-    page: Page,
-    returnTo: string,
-    step: string,
-    expected: string,
-  ) => {
+  const expectLanded = async (page: Page, returnTo: string, step: string, expected: string) => {
     await expect
-      .poll(() => page.url(), {
-        message: `returnTo=${returnTo}, ${step}: консоль увела не туда`,
-        timeout: 30_000,
-      })
+      .poll(() => page.url(), { message: `returnTo=${returnTo}, ${step}: консоль увела не туда`, timeout: 30_000 })
       .toBe(expected);
-    expect(
-      new URL(page.url()).origin,
-      `returnTo=${returnTo}, ${step}: происхождение страницы чужое`,
-    ).toBe(origin);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}, ${step}: происхождение страницы чужое`).toBe(origin);
   };
 
   for (const [returnTo, expected, verification] of cases) {
     // Отскок: у браузера живая сессия, экран входа уводит сразу.
     await inFreshContext(async (page) => {
-      await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
-        waitUntil: "domcontentloaded",
-      });
+      await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
       await expectLanded(page, returnTo, "отскок с экрана входа", expected);
     }, true);
     // После регистрации: адрес возврата несёт экран регистрации, а до цели его
@@ -900,41 +635,21 @@ test("F8-13 · отскок живой сессии и возврат после
       const mailbox = stationMailbox();
       const email = seedAddress(`F8-13-reg-${runStamp()}`);
       const before = await lettersBefore(mailbox, email);
-      await page.goto(
-        `/registration?returnTo=${encodeURIComponent(returnTo)}`,
-        { waitUntil: "domcontentloaded" },
-      );
+      await page.goto(`/registration?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
       const s = registrationScreen(page);
       await expectScreen(page, "/registration", s.submit, "экран регистрации");
       await s.email.fill(email);
       await s.password.fill(SEED_PASSWORD);
-      const [res] = await Promise.all([
-        lanePost(page, LANE.register),
-        s.submit.click(),
-      ]);
-      expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(
-        200,
-      );
-      await expectLanded(
-        page,
-        returnTo,
-        "уход регистрации на экран подтверждения",
-        verification,
-      );
+      const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
+      expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
+      await expectLanded(page, returnTo, "уход регистрации на экран подтверждения", verification);
       await confirmAddressFromLetter(page, mailbox, email, before);
-      await expectLanded(
-        page,
-        returnTo,
-        "уход с экрана подтверждения по коду из письма",
-        expected,
-      );
+      await expectLanded(page, returnTo, "уход с экрана подтверждения по коду из письма", expected);
     }, false);
   }
 });
 
-test("F8-39 · на экране входа нет пути на подтверждение адреса", async ({
-  page,
-}) => {
+test("F8-39 · на экране входа нет пути на подтверждение адреса", async ({ page }) => {
   // verifies #2780 — держатель стороны «путь не обещается» решения Р4: пути,
   // которого на посадке нет, экран не обещает. Половина о `/recovery` обращена
   // приёмкой F8-S3 (§3.1): путь на восстановление есть, его держит F8S3-03.
@@ -942,23 +657,15 @@ test("F8-39 · на экране входа нет пути на подтвер�
   await expectScreen(page, "/login", loginScreen(page).submit, "экран входа");
   const destinations = await page
     .getByRole("link")
-    .evaluateAll((links) =>
-      links.map((a) => new URL((a as HTMLAnchorElement).href).pathname),
-    );
-  expect(
-    destinations,
-    "экран входа обещает подтверждение адреса",
-  ).not.toContain("/verification");
+    .evaluateAll((links) => links.map((a) => new URL((a as HTMLAnchorElement).href).pathname));
+  expect(destinations, "экран входа обещает подтверждение адреса").not.toContain("/verification");
   // Положительный близнец: предикат «перехода нет» умеет распознать переход.
-  expect(
-    destinations,
-    "перехода на регистрацию на экране нет — предикат ничего не распознаёт",
-  ).toContain("/registration");
+  expect(destinations, "перехода на регистрацию на экране нет — предикат ничего не распознаёт").toContain(
+    "/registration",
+  );
 });
 
-test("F8-40 · не заведённый адрес даёт побайтово тот же экран, что неверный пароль", async ({
-  page,
-}) => {
+test("F8-40 · не заведённый адрес даёт побайтово тот же экран, что неверный пароль", async ({ page }) => {
   // verifies #2780 — держатель стороны «причины неразличимы» решения Р4; близнец
   // F8-05, изменено только то, заведён ли адрес. Посев тривиален: его не делают.
   const email = seedAddress("F8-40-unknown");
@@ -967,23 +674,13 @@ test("F8-40 · не заведённый адрес даёт побайтово 
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
-  await expectAuthenticationFailedScreen(
-    page,
-    res,
-    email,
-    AUTHENTICATION_FAILED,
-  );
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  await expectAuthenticationFailedScreen(page, res, email, AUTHENTICATION_FAILED);
 });
 
 // ═══ S1 — группа C. Регистрация ═══════════════════════════════════════════════
 
-test("F8-14 · регистрация заводит человека и сразу даёт сессию", async ({
-  page,
-}) => {
+test("F8-14 · регистрация заводит человека и сразу даёт сессию", async ({ page }) => {
   // verifies #2780 — сессию регистрация даёт сразу, а уводит — на экран
   // подтверждения адреса, а не на панель: дальше него неподтверждённый не
   // проходит (приёмка F6b, §3.3; F6b-12).
@@ -994,25 +691,15 @@ test("F8-14 · регистрация заводит человека и сра�
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.register),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
   // Без адреса возврата регистрация уходит на корень, а корень неподтверждённой
   // сессии — экран подтверждения без адреса возврата (F6b-15).
-  await expectAddress(
-    page,
-    "/verification",
-    "после регистрации консоль не увела на экран подтверждения адреса",
-  );
+  await expectAddress(page, "/verification", "после регистрации консоль не увела на экран подтверждения адреса");
   expectContains(census, "GET", LANE.csrf, "?form=register");
   expectContains(census, "POST", LANE.register);
   expectNoProvider(census);
-  expect(
-    await sessionHeld(page.context()),
-    "после регистрации у браузера нет носителя сессии",
-  ).toBe(true);
+  expect(await sessionHeld(page.context()), "после регистрации у браузера нет носителя сессии").toBe(true);
   // Носитель — сессия ЭТОГО человека: край узнаёт его без второго ввода пароля.
   const me = await page.request.get("/iam/v1/auth/me");
   const view = (await me.json().catch(() => null)) as {
@@ -1020,18 +707,12 @@ test("F8-14 · регистрация заводит человека и сра�
     session?: { emailVerified?: unknown };
   } | null;
   expect(
-    {
-      status: me.status(),
-      email: view?.user?.email,
-      emailVerified: view?.session?.emailVerified,
-    },
+    { status: me.status(), email: view?.user?.email, emailVerified: view?.session?.emailVerified },
     `ответ края о сессии браузера после регистрации не называет заведённого человека: ${JSON.stringify(view)}`,
   ).toEqual({ status: 200, email, emailVerified: false });
 });
 
-test("F8-15 · занятый адрес: отказ дословно, и экран не говорит, занят ли адрес", async ({
-  page,
-}, testInfo) => {
+test("F8-15 · занятый адрес: отказ дословно, и экран не говорит, занят ли адрес", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-14: изменено только то, заведён ли адрес.
   const human = await seeded(testInfo, "F8-15");
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
@@ -1039,24 +720,16 @@ test("F8-15 · занятый адрес: отказ дословно, и экр
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
   await s.email.fill(human.email);
   await s.password.fill(SEED_PASSWORD);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.register),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status()).toBe(400);
   const refusal = (await res.json()) as { code: number; message: string };
   expect(refusal.code, "отказ регистрации — FAILED_PRECONDITION").toBe(9);
   // Дословно и БЕЗ добавки: ни слова о том, заведён ли адрес.
   await expect(s.refusal).toHaveText(refusal.message);
-  expect(
-    await sessionHeld(page.context()),
-    "при отказе регистрации у браузера появился носитель",
-  ).toBe(false);
+  expect(await sessionHeld(page.context()), "при отказе регистрации у браузера появился носитель").toBe(false);
 });
 
-test("F8-16 · пароль не отвечает правилу службы: поле названо ответом", async ({
-  page,
-}) => {
+test("F8-16 · пароль не отвечает правилу службы: поле названо ответом", async ({ page }) => {
   // verifies #2780 — близнец F8-14: изменено только значение пароля.
   const census = ceremonyCensus(page.context());
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
@@ -1064,18 +737,12 @@ test("F8-16 · пароль не отвечает правилу службы: �
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
   await s.email.fill(seedAddress("F8-16"));
   await s.password.fill("abc");
-  const [res] = await Promise.all([
-    lanePost(page, LANE.register),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status()).toBe(400);
   const refusal = (await res.json()) as { code: number; message: string };
   expect(refusal.code).toBe(3);
   expect(refusal.message).toMatch(/^Illegal argument password: /);
-  await expect(
-    s.password,
-    "поле пароля, названное службой, не отмечено",
-  ).toHaveAttribute("aria-invalid", "true");
+  await expect(s.password, "поле пароля, названное службой, не отмечено").toHaveAttribute("aria-invalid", "true");
   await expect(page.getByText(refusal.message)).toBeVisible();
   // Консоль своего правила не применяла: отказ пришёл от службы.
   expectContains(census, "POST", LANE.register);
@@ -1096,32 +763,18 @@ test("F8-17 · признак подтверждённости адреса по
   await expectScreen(page, "/registration", s.submit, "экран регистрации");
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.register),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
-  const registered = (await res.json()) as {
-    session?: { emailVerified?: unknown };
-  } | null;
+  const registered = (await res.json()) as { session?: { emailVerified?: unknown } } | null;
   expect(
     registered?.session?.emailVerified,
     `ответ регистрации не называет адрес неподтверждённым: ${JSON.stringify(registered)}`,
   ).toBe(false);
 
   // Адрес не подтверждён — консоль предлагает подтвердить именно его.
-  await expectAddress(
-    page,
-    "/verification",
-    "после регистрации консоль не предложила подтвердить адрес",
-  );
-  const confirmation = page.getByRole("form", {
-    name: "Подтверждение адреса почты",
-  });
-  await expect(
-    page.getByText(email, { exact: false }),
-    "экран подтверждения не называет адрес",
-  ).toBeVisible();
+  await expectAddress(page, "/verification", "после регистрации консоль не предложила подтвердить адрес");
+  const confirmation = page.getByRole("form", { name: "Подтверждение адреса почты" });
+  await expect(page.getByText(email, { exact: false }), "экран подтверждения не называет адрес").toBeVisible();
   await expect(
     confirmation.getByRole("textbox", { name: "Код из письма" }),
     "неподтверждённому адресу не предложено ввести код из письма",
@@ -1134,18 +787,10 @@ test("F8-17 · признак подтверждённости адреса по
   // Адрес подтверждён кодом из письма — признак из ответа края о сессии, и
   // действия подтверждения больше нет.
   await confirmAddressFromLetter(page, mailbox, email, before);
-  await expectAddress(
-    page,
-    "/dashboard",
-    "после подтверждения адреса консоль не увела на панель",
-  );
-  const me = page.waitForResponse(
-    (r) => new URL(r.url()).pathname === "/iam/v1/auth/me",
-  );
+  await expectAddress(page, "/dashboard", "после подтверждения адреса консоль не увела на панель");
+  const me = page.waitForResponse((r) => new URL(r.url()).pathname === "/iam/v1/auth/me");
   await page.reload({ waitUntil: "domcontentloaded" });
-  const body = (await (await me).json()) as {
-    session?: { emailVerified?: unknown };
-  } | null;
+  const body = (await (await me).json()) as { session?: { emailVerified?: unknown } } | null;
   expect(
     body?.session?.emailVerified,
     `ответ о сессии после подтверждения не называет адрес подтверждённым: ${JSON.stringify(body)}`,
@@ -1157,18 +802,14 @@ test("F8-17 · признак подтверждённости адреса по
   await expect(account).toContainText("Адрес подтверждён");
   await expect(account).not.toContainText("Адрес не подтверждён");
   await expect(
-    account
-      .getByRole("button", { name: /подтвердить/i })
-      .or(account.getByRole("link", { name: /подтвердить/i })),
+    account.getByRole("button", { name: /подтвердить/i }).or(account.getByRole("link", { name: /подтвердить/i })),
     "подтверждённому адресу предложено подтверждение",
   ).toHaveCount(0);
 });
 
 // ═══ S1 — группа D. Выход ═════════════════════════════════════════════════════
 
-test("F8-18 · выход гасит носитель и возвращает на экран входа", async ({
-  page,
-}, testInfo) => {
+test("F8-18 · выход гасит носитель и возвращает на экран входа", async ({ page }, testInfo) => {
   // verifies #2780
   await seeded(testInfo, "F8-18", page.context());
   const origin = new URL(testInfo.project.use.baseURL ?? "").origin;
@@ -1177,24 +818,14 @@ test("F8-18 · выход гасит носитель и возвращает н
   await page.getByRole("button", { name: "Учётная запись" }).click();
   const [res] = await Promise.all([
     lanePost(page, LANE.logout),
-    page
-      .getByRole("dialog", { name: "Учётная запись" })
-      .getByRole("button", { name: "Выйти" })
-      .click(),
+    page.getByRole("dialog", { name: "Учётная запись" }).getByRole("button", { name: "Выйти" }).click(),
   ]);
   expect(res.status(), `выход не прошёл: ${await res.text()}`).toBe(200);
-  await expectAddress(
-    page,
-    "/login",
-    "после выхода консоль не вернула на экран входа без адреса возврата",
-  );
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
   expectContains(census, "GET", LANE.csrf, "?form=logout");
   expectContains(census, "POST", LANE.logout);
   expectNoProvider(census);
-  expect(
-    await sessionHeld(page.context()),
-    "после выхода носитель сессии у браузера остался",
-  ).toBe(false);
+  expect(await sessionHeld(page.context()), "после выхода носитель сессии у браузера остался").toBe(false);
 
   // ── положительная сторона отрицания (Р6 п. 3): подсадка из кода страницы ──
   //
@@ -1219,12 +850,8 @@ test("F8-18 · выход гасит носитель и возвращает н
     // `fetch` окна, который судит страж мест выпуска (`issuance-guard.ts`).
     await page.evaluate(
       async ({ away, probeKey }) => {
-        const probeFetch = (window as unknown as Record<symbol, typeof fetch>)[
-          Symbol.for(probeKey)
-        ];
-        await probeFetch("/.ory/idp/public/sessions/whoami").catch(
-          () => undefined,
-        );
+        const probeFetch = (window as unknown as Record<symbol, typeof fetch>)[Symbol.for(probeKey)];
+        await probeFetch("/.ory/idp/public/sessions/whoami").catch(() => undefined);
         await probeFetch("/oauth2/auth").catch(() => undefined);
         window.open(`${away}/self-service/logout/browser`);
       },
@@ -1233,30 +860,19 @@ test("F8-18 · выход гасит носитель и возвращает н
     // Переход окна выпущен и остался без ответа — до ухода страницы: порядок
     // переписи тогда тот, в каком подсажено.
     await expect
-      .poll(
-        () =>
-          census.providerCalls().find((c) => c.origin === silentOrigin)
-            ?.outcome,
-        {
-          message: `обращение без ответа не записано как «ответа нет»:\n${census.describe()}`,
-          timeout: 15_000,
-        },
-      )
+      .poll(() => census.providerCalls().find((c) => c.origin === silentOrigin)?.outcome, {
+        message: `обращение без ответа не записано как «ответа нет»:\n${census.describe()}`,
+        timeout: 15_000,
+      })
       .toBe("ответа нет");
     await page.evaluate(() => {
       window.location.assign("/.ory/idp/public/self-service/login/browser");
     });
     await expect
-      .poll(
-        () =>
-          census
-            .providerCalls()
-            .map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`),
-        {
-          message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
-          timeout: 15_000,
-        },
-      )
+      .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
+        message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
+        timeout: 15_000,
+      })
       .toEqual([
         `GET ${origin}/.ory/idp/public/sessions/whoami запрос`,
         `GET ${origin}/oauth2/auth запрос`,
@@ -1286,23 +902,13 @@ test("F8-18 · после выхода следующий человек в эт
       async () => {
         const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
         if (!res.ok()) return "";
-        foreign = (
-          (await res.json()) as {
-            accounts?: Array<{ id: string; name?: string }>;
-          }
-        ).accounts?.[0];
+        foreign = ((await res.json()) as { accounts?: Array<{ id: string; name?: string }> }).accounts?.[0];
         return foreign?.id ?? "";
       },
-      {
-        message:
-          "у первого человека не появился аккаунт — условие сценария не создано",
-        timeout: 60_000,
-      },
+      { message: "у первого человека не появился аккаунт — условие сценария не создано", timeout: 60_000 },
     )
     .not.toBe("");
-  await page.goto(`/projects/${first.projectId}/dashboard`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(`/projects/${first.projectId}/dashboard`, { waitUntil: "domcontentloaded" });
   const stored = () =>
     page.evaluate(() => {
       try {
@@ -1312,15 +918,9 @@ test("F8-18 · после выхода следующий человек в эт
       }
     });
   await expect
-    .poll(stored, {
-      message:
-        "каркас не запомнил выбранный аккаунт — нечего проверять после выхода",
-      timeout: 30_000,
-    })
+    .poll(stored, { message: "каркас не запомнил выбранный аккаунт — нечего проверять после выхода", timeout: 30_000 })
     .toContain(foreign!.id);
-  await page.evaluate(() =>
-    window.localStorage.setItem("kacho-theme", "light"),
-  );
+  await page.evaluate(() => window.localStorage.setItem("kacho-theme", "light"));
 
   await page.getByRole("button", { name: "Учётная запись" }).click();
   // Нажатие ограничено сроком: закрой «Выйти» на панели проекта страница (так
@@ -1337,15 +937,8 @@ test("F8-18 · после выхода следующий человек в эт
   expect(out.status(), `выход не прошёл: ${await out.text()}`).toBe(200);
   // Адрес — целиком: вход с адресом возврата прежнего человека увёл бы второго
   // на его проект (условие C14).
-  await expectAddress(
-    page,
-    "/login",
-    "после выхода консоль не вернула на экран входа без адреса возврата",
-  );
-  expect(
-    await stored(),
-    "после выхода в браузере остались чужие аккаунт и проект",
-  ).not.toContain(foreign!.id);
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
+  expect(await stored(), "после выхода в браузере остались чужие аккаунт и проект").not.toContain(foreign!.id);
 
   // Второй человек входит в том же браузере.
   const second = await seeded(testInfo, "F8-18-second");
@@ -1353,27 +946,12 @@ test("F8-18 · после выхода следующий человек в эт
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(second.email);
   await s.password.fill(second.password);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
-  expect(
-    res.status(),
-    `вход второго человека не прошёл: ${await res.text()}`,
-  ).toBe(200);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  expect(res.status(), `вход второго человека не прошёл: ${await res.text()}`).toBe(200);
   // Вход без адреса возврата уводит на корень консоли, а корень — на панель.
-  await expectAddress(
-    page,
-    "/dashboard",
-    "после входа второго человека консоль не увела на панель",
-  );
-  await expect(
-    page.getByRole("navigation", { name: "Host navigation" }),
-  ).toBeVisible({ timeout: 30_000 });
-  expect(
-    await stored(),
-    "второму человеку применён чужой аккаунт",
-  ).not.toContain(foreign!.id);
+  await expectAddress(page, "/dashboard", "после входа второго человека консоль не увела на панель");
+  await expect(page.getByRole("navigation", { name: "Host navigation" })).toBeVisible({ timeout: 30_000 });
+  expect(await stored(), "второму человеку применён чужой аккаунт").not.toContain(foreign!.id);
   if (foreign!.name) {
     await expect(
       page.getByText(foreign!.name, { exact: true }),
@@ -1381,9 +959,7 @@ test("F8-18 · после выхода следующий человек в эт
     ).toHaveCount(0);
   }
   // Оставляемое — осталось: тема не привязана к человеку.
-  expect(
-    await page.evaluate(() => window.localStorage.getItem("kacho-theme")),
-  ).toBe("light");
+  expect(await page.evaluate(() => window.localStorage.getItem("kacho-theme"))).toBe("light");
 });
 
 /**
@@ -1415,24 +991,18 @@ async function holdFirstAnswer(page: Page, path: string) {
       await cdp.send("Fetch.continueResponse", { requestId });
     } catch {
       // Ответа нет (обрыв) — стадия ответа не наступила, отпускается запрос.
-      await cdp
-        .send("Fetch.continueRequest", { requestId })
-        .catch(() => undefined);
+      await cdp.send("Fetch.continueRequest", { requestId }).catch(() => undefined);
     }
   };
   cdp.on("Fetch.requestPaused", (event) => {
     if (held === null && event.request.method === "POST") {
       held = event.requestId;
-      first =
-        event.responseStatusCode ??
-        `ответа нет: ${event.responseErrorReason ?? "причина не названа"}`;
+      first = event.responseStatusCode ?? `ответа нет: ${event.responseErrorReason ?? "причина не названа"}`;
       return;
     }
     void pass(event.requestId);
   });
-  await cdp.send("Fetch.enable", {
-    patterns: [{ urlPattern: `*${path}`, requestStage: "Response" }],
-  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `*${path}`, requestStage: "Response" }] });
   return {
     /** Ответ службы первому глаголу: код, «ответа нет» либо «ждём», пока глагола не было. */
     first: () => first,
@@ -1478,8 +1048,7 @@ test("F8-18 · панель закрыта и открыта заново в п�
   await exitButton.click();
   await expect
     .poll(exit.first, {
-      message:
-        "служба не подтвердила первый выход — условие сценария не создано",
+      message: "служба не подтвердила первый выход — условие сценария не создано",
       timeout: 15_000,
     })
     .toBe(200);
@@ -1487,22 +1056,15 @@ test("F8-18 · панель закрыта и открыта заново в п�
   // Выход в полёте: сессию служба погасила, ответа вкладка ещё не получила.
   // Человек закрывает панель и открывает её снова.
   await page.keyboard.press("Escape");
-  await expect(
-    account,
-    "Escape не закрыл панель учётной записи в полёте выхода",
-  ).toHaveCount(0);
+  await expect(account, "Escape не закрыл панель учётной записи в полёте выхода").toHaveCount(0);
   await opener.click();
-  await expect(
-    account,
-    "панель учётной записи не открылась снова",
-  ).toBeVisible();
+  await expect(account, "панель учётной записи не открылась снова").toBeVisible();
   // Открытая заново панель добывает свой признак формы выхода. Нажатие ждёт его
   // исхода: без признака второй выход, будь он начат, ждал бы выдачи и мог не
   // успеть уйти на службу до ответа первому — и проба не увидела бы его.
   await expect
     .poll(() => logoutForms().filter((c) => c.outcome !== "ждём").length, {
-      message:
-        "открытая заново панель не получила исхода выдачи признака формы выхода",
+      message: "открытая заново панель не получила исхода выдачи признака формы выхода",
       timeout: 15_000,
     })
     .toBe(2);
@@ -1513,33 +1075,21 @@ test("F8-18 · панель закрыта и открыта заново в п�
   await exitButton.click();
 
   await exit.release();
-  await expectAddress(
-    page,
-    "/login",
-    "после выхода консоль не вернула на экран входа без адреса возврата",
-  );
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
   expect(
     census.matching("POST", LANE.logout).map(formatCall),
     `второе «Выйти» открытой заново панели начало второй выход рядом с подтверждённым первым:\n${census.describe()}`,
   ).toHaveLength(1);
-  expect(
-    await sessionHeld(page.context()),
-    "после выхода носитель сессии у браузера остался",
-  ).toBe(false);
+  expect(await sessionHeld(page.context()), "после выхода носитель сессии у браузера остался").toBe(false);
 });
 
-test("F8-19 · служба не подтвердила выход: экран не делает вид, что вышли", async ({
-  page,
-}, testInfo) => {
+test("F8-19 · служба не подтвердила выход: экран не делает вид, что вышли", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-18: изменено только то, отвечает ли служба краю.
   await seeded(testInfo, "F8-19", page.context());
   const unavailable = bodyOf(LOGOUT_UNAVAILABLE);
   await page.route(
     (u) => u.pathname === LANE.logout,
-    (route) =>
-      route.request().method() === "POST"
-        ? fulfillWith(route, LOGOUT_UNAVAILABLE)
-        : route.continue(),
+    (route) => (route.request().method() === "POST" ? fulfillWith(route, LOGOUT_UNAVAILABLE) : route.continue()),
   );
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Учётная запись" }).click();
@@ -1550,20 +1100,13 @@ test("F8-19 · служба не подтвердила выход: экран �
   ]);
   expect(res.status()).toBe(503);
   await expect(account.getByRole("alert")).toContainText(unavailable.message);
-  expect(pathOf(page), "экран сделал вид, что вышли: адрес сменился").toBe(
-    "/dashboard",
-  );
-  expect(
-    await sessionHeld(page.context()),
-    "носитель сессии погашен, хотя служба выхода не подтвердила",
-  ).toBe(true);
+  expect(pathOf(page), "экран сделал вид, что вышли: адрес сменился").toBe("/dashboard");
+  expect(await sessionHeld(page.context()), "носитель сессии погашен, хотя служба выхода не подтвердила").toBe(true);
 });
 
 // ═══ S1 — группа E. Посев набора переезжает на наши экраны ════════════════════
 
-test("F8-20 · «Дано» браузерного набора строится нашим экраном регистрации", async ({
-  page,
-}) => {
+test("F8-20 · «Дано» браузерного набора строится нашим экраном регистрации", async ({ page }) => {
   // verifies #2780 — фикстура набора заводит человека НАШИМ глаголом.
   const census = ceremonyCensus(page.context());
   await register(page);
@@ -1571,9 +1114,7 @@ test("F8-20 · «Дано» браузерного набора строится
   expectNoProvider(census);
 });
 
-test("F8-21 · фикстура, не дошедшая до сессии, падает текстом с экрана", async ({
-  page,
-}, testInfo) => {
+test("F8-21 · фикстура, не дошедшая до сессии, падает текстом с экрана", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-20: изменён только исход церемонии (адрес занят).
   const human = await seeded(testInfo, "F8-21");
   const failure = await register(page, human.email).then(
@@ -1581,26 +1122,17 @@ test("F8-21 · фикстура, не дошедшая до сессии, пад
     (e: unknown) => (e instanceof Error ? e.message : String(e)),
   );
   expect(failure, "фикстура дошла до сессии на занятом адресе").not.toBeNull();
-  expect(failure, "фикстура упала не текстом отказа с экрана").toContain(
-    "registration refused",
-  );
-  expect(
-    failure,
-    "в тексте падения не назван шаг, на котором поток остановился",
-  ).toMatch(/на шаге [^:]+:/);
+  expect(failure, "фикстура упала не текстом отказа с экрана").toContain("registration refused");
+  expect(failure, "в тексте падения не назван шаг, на котором поток остановился").toMatch(/на шаге [^:]+:/);
 });
 
 // ═══ S1 — группа F. Достижимость с клавиатуры ═════════════════════════════════
 
-test("F8-22 · церемония входа проходится с клавиатуры целиком", async ({
-  page,
-}, testInfo) => {
+test("F8-22 · церемония входа проходится с клавиатуры целиком", async ({ page }, testInfo) => {
   // verifies #2780
   const human = await seeded(testInfo, "F8-22");
   const census = ceremonyCensus(page.context());
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
 
@@ -1610,9 +1142,7 @@ test("F8-22 · церемония входа проходится с клави�
       if (await target.evaluate((el) => el === document.activeElement)) return;
       await page.keyboard.press("Tab");
     }
-    throw new Error(
-      `${what} недостижимо клавишей перехода за двадцать нажатий`,
-    );
+    throw new Error(`${what} недостижимо клавишей перехода за двадцать нажатий`);
   }
 
   await tabTo(s.email, "поле адреса");
@@ -1620,18 +1150,9 @@ test("F8-22 · церемония входа проходится с клави�
   await tabTo(s.password, "поле пароля");
   await page.keyboard.type(human.password);
   await tabTo(s.submit, "кнопка отправки");
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    page.keyboard.press("Enter"),
-  ]);
-  expect(res.status(), `вход с клавиатуры не прошёл: ${await res.text()}`).toBe(
-    200,
-  );
-  await expectAddress(
-    page,
-    "/dashboard",
-    "вход с клавиатуры прошёл, а перехода нет",
-  );
+  const [res] = await Promise.all([lanePost(page, LANE.login), page.keyboard.press("Enter")]);
+  expect(res.status(), `вход с клавиатуры не прошёл: ${await res.text()}`).toBe(200);
+  await expectAddress(page, "/dashboard", "вход с клавиатуры прошёл, а перехода нет");
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
@@ -1680,14 +1201,10 @@ function secondFactorOnLogin(page: Page) {
   };
 }
 
-test("F8-33 · вход человека с заведённым вторым фактором доходит до уровня 2", async ({
-  page,
-}, testInfo) => {
+test("F8-33 · вход человека с заведённым вторым фактором доходит до уровня 2", async ({ page }, testInfo) => {
   // verifies #1274
   await withSecondFactor(testInfo, "F8-33", async (human, codes) => {
-    await page.goto("/login?returnTo=/dashboard", {
-      waitUntil: "domcontentloaded",
-    });
+    await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
     const s = loginScreen(page);
     await expectScreen(page, "/login", s.submit, "экран входа");
     await s.email.fill(human.email);
@@ -1696,41 +1213,20 @@ test("F8-33 · вход человека с заведённым вторым ф
     await f.toggle.check();
     await f.backup.check();
     await f.code.fill(codes[0]);
-    const [res] = await Promise.all([
-      lanePost(page, LANE.login),
-      s.submit.click(),
-    ]);
-    const sent = JSON.parse(res.request().postData() ?? "{}") as {
-      secondFactor?: unknown;
-    };
-    expect(
-      sent.secondFactor,
-      "тело входа не несёт secondFactor запасным кодом",
-    ).toEqual({
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+    const sent = JSON.parse(res.request().postData() ?? "{}") as { secondFactor?: unknown };
+    expect(sent.secondFactor, "тело входа не несёт secondFactor запасным кодом").toEqual({
       method: "lookup_secret",
       code: codes[0],
     });
-    expect(
-      res.status(),
-      `вход со вторым фактором не прошёл: ${await res.text()}`,
-    ).toBe(200);
-    const body = (await res.json()) as {
-      session?: { assuranceLevel?: unknown };
-    };
-    expect(
-      String(body.session?.assuranceLevel),
-      "вход со вторым фактором не дал уровня 2",
-    ).toBe("2");
-    expect(
-      await sessionHeld(page.context()),
-      "после входа у браузера нет носителя сессии",
-    ).toBe(true);
+    expect(res.status(), `вход со вторым фактором не прошёл: ${await res.text()}`).toBe(200);
+    const body = (await res.json()) as { session?: { assuranceLevel?: unknown } };
+    expect(String(body.session?.assuranceLevel), "вход со вторым фактором не дал уровня 2").toBe("2");
+    expect(await sessionHeld(page.context()), "после входа у браузера нет носителя сессии").toBe(true);
   });
 });
 
-test("F8-34 · неверный код второго фактора: один текст отказа входа со вторым фактором", async ({
-  page,
-}, testInfo) => {
+test("F8-34 · неверный код второго фактора: один текст отказа входа со вторым фактором", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-33: изменено только значение запасного кода,
   // форма та же; значение выбрано построением — проба знает весь набор.
   await withSecondFactor(testInfo, "F8-34", async (human, codes) => {
@@ -1743,19 +1239,11 @@ test("F8-34 · неверный код второго фактора: один �
     await f.toggle.check();
     await f.backup.check();
     await f.code.fill(backupCodeOutside(codes));
-    const [res] = await Promise.all([
-      lanePost(page, LANE.login),
-      s.submit.click(),
-    ]);
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
     // Экран не сообщает, какая из двух величин не подошла: отказ — один на все
     // причины входа С полем `secondFactor` (неверный пароль, неверный код), и
     // экран — та же функция того же тела.
-    await expectAuthenticationFailedScreen(
-      page,
-      res,
-      human.email,
-      LOGIN_WITH_SECOND_FACTOR_FAILED,
-    );
+    await expectAuthenticationFailedScreen(page, res, human.email, LOGIN_WITH_SECOND_FACTOR_FAILED);
   });
 });
 
@@ -1770,71 +1258,38 @@ async function ownGroup(page: Page): Promise<string> {
       async () => {
         const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
         if (!res.ok()) return "";
-        accountId =
-          ((await res.json()) as { accounts?: Array<{ id: string }> })
-            .accounts?.[0]?.id ?? "";
+        accountId = ((await res.json()) as { accounts?: Array<{ id: string }> }).accounts?.[0]?.id ?? "";
         return accountId;
       },
-      {
-        message: "аккаунт человека не появился — предмет повышения не собран",
-        timeout: 60_000,
-      },
+      { message: "аккаунт человека не появился — предмет повышения не собран", timeout: 60_000 },
     )
     .not.toBe("");
   const created = await page.request.post("/iam/v1/groups", {
-    data: {
-      accountId,
-      name: `e2e-stepup-${Date.now().toString(36)}`,
-      description: "предмет повышения F8",
-    },
+    data: { accountId, name: `e2e-stepup-${Date.now().toString(36)}`, description: "предмет повышения F8" },
   });
-  expect(
-    created.status(),
-    `заведение группы не удалось: ${await created.text()}`,
-  ).toBe(200);
-  const groupId =
-    ((await created.json()) as { metadata?: { groupId?: string } }).metadata
-      ?.groupId ?? "";
+  expect(created.status(), `заведение группы не удалось: ${await created.text()}`).toBe(200);
+  const groupId = ((await created.json()) as { metadata?: { groupId?: string } }).metadata?.groupId ?? "";
   expect(groupId, "операция не назвала идентификатор группы").not.toBe("");
   await expect
-    .poll(
-      async () =>
-        (await page.request.get(`/iam/v1/groups/${groupId}`)).status(),
-      {
-        message:
-          "своя свежая группа не читается: право не материализовалось либо идентификатор — фантом",
-        timeout: 60_000,
-      },
-    )
+    .poll(async () => (await page.request.get(`/iam/v1/groups/${groupId}`)).status(), {
+      message: "своя свежая группа не читается: право не материализовалось либо идентификатор — фантом",
+      timeout: 60_000,
+    })
     .toBe(200);
   return groupId;
 }
 
 /** Войти экраном ОДНИМ паролем — сессия уровня 1. */
 async function signInWithPasswordOnly(page: Page, human: SeededHuman) {
-  await page.goto("/login?returnTo=/dashboard", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   await s.email.fill(human.email);
   await s.password.fill(human.password);
-  const [res] = await Promise.all([
-    lanePost(page, LANE.login),
-    s.submit.click(),
-  ]);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status(), `вход паролем не прошёл: ${await res.text()}`).toBe(200);
-  expect(
-    String(
-      ((await res.json()) as { session?: { assuranceLevel?: unknown } }).session
-        ?.assuranceLevel,
-    ),
-  ).toBe("1");
-  await expectAddress(
-    page,
-    "/dashboard",
-    "после входа консоль не увела на адрес возврата",
-  );
+  expect(String(((await res.json()) as { session?: { assuranceLevel?: unknown } }).session?.assuranceLevel)).toBe("1");
+  await expectAddress(page, "/dashboard", "после входа консоль не увела на адрес возврата");
 }
 
 /** Начать удаление группы с её карточки — действие, на котором край зовёт повышение. */
@@ -1844,27 +1299,17 @@ async function startGroupDeletion(page: Page, groupId: string) {
   // (`DetailOverviewActions`): меню на карточке группы нет вовсе, и проба,
   // искавшая его, ждала элемента, которого консоль не рисует.
   await page.getByRole("button", { name: "Удалить" }).click();
-  const deletion = page
-    .getByRole("dialog")
-    .filter({ has: page.getByRole("button", { name: "Удалить" }) });
+  const deletion = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Удалить" }) });
   const challenged = page.waitForResponse(
-    (r) =>
-      new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` &&
-      r.request().method() === "DELETE",
+    (r) => new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE",
   );
   await deletion.getByRole("button", { name: "Удалить" }).click();
   const res = await challenged;
-  expect(res.status(), "край не потребовал повышения на удалении группы").toBe(
-    401,
-  );
-  expect(res.headers()["www-authenticate"] ?? "").toContain(
-    "insufficient_user_authentication",
-  );
+  expect(res.status(), "край не потребовал повышения на удалении группы").toBe(401);
+  expect(res.headers()["www-authenticate"] ?? "").toContain("insufficient_user_authentication");
 }
 
-test("F8-35 · повышение уровня по вызову края идёт НАШИМ глаголом", async ({
-  page,
-}, testInfo) => {
+test("F8-35 · повышение уровня по вызову края идёт НАШИМ глаголом", async ({ page }, testInfo) => {
   // verifies #1274
   test.setTimeout(240_000);
   await withSecondFactor(testInfo, "F8-35", async (human, codes) => {
@@ -1874,14 +1319,9 @@ test("F8-35 · повышение уровня по вызову края идё
     await startGroupDeletion(page, groupId);
 
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
-    await expect(
-      dialog,
-      "консоль не ответила на вызов края церемонией повышения",
-    ).toBeVisible();
+    await expect(dialog, "консоль не ответила на вызов края церемонией повышения").toBeVisible();
     await dialog.getByRole("radio", { name: "Запасной код" }).check();
-    await dialog
-      .getByRole("textbox", { name: "Запасной код", exact: true })
-      .fill(codes[0]);
+    await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(codes[0]);
     const replayed = page.waitForResponse(
       (r) =>
         new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` &&
@@ -1892,36 +1332,21 @@ test("F8-35 · повышение уровня по вызову края идё
       lanePost(page, LANE.stepUp),
       dialog.getByRole("button", { name: "Подтвердить" }).click(),
     ]);
-    expect(
-      (JSON.parse(raised.request().postData() ?? "{}") as { method?: unknown })
-        .method,
-    ).toBe("lookup_secret");
-    expect(
-      raised.status(),
-      `повышение запасным кодом не прошло: ${await raised.text()}`,
-    ).toBe(200);
-    expect(
-      (await replayed).status(),
-      "исходное действие после повышения не повторено либо не прошло",
-    ).toBe(200);
+    expect((JSON.parse(raised.request().postData() ?? "{}") as { method?: unknown }).method).toBe("lookup_secret");
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
+    expect((await replayed).status(), "исходное действие после повышения не повторено либо не прошло").toBe(200);
     expectContains(census, "POST", LANE.stepUp);
     expectNoProvider(census);
     await expect
-      .poll(
-        async () =>
-          (await page.request.get(`/iam/v1/groups/${groupId}`)).status(),
-        {
-          message: "группа не удалена после повышения",
-          timeout: 60_000,
-        },
-      )
+      .poll(async () => (await page.request.get(`/iam/v1/groups/${groupId}`)).status(), {
+        message: "группа не удалена после повышения",
+        timeout: 60_000,
+      })
       .toBe(404);
   });
 });
 
-test("F8-36 · повышать нечем: назван отказ и путь, а не пустое окно", async ({
-  page,
-}, testInfo) => {
+test("F8-36 · повышать нечем: назван отказ и путь, а не пустое окно", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-35: изменено только то, заведён ли второй фактор.
   // Предмет прежний — окно не пустое, отказ и путь названы. Способы окно берёт у
   // службы (`stepUpMethods`, приёмка F8-S7, Р5): у человека без фактора перечень
@@ -1937,39 +1362,22 @@ test("F8-36 · повышать нечем: назван отказ и путь,
   await startGroupDeletion(page, groupId);
 
   const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
-  await expect(
-    dialog,
-    "консоль не ответила на вызов края окном подтверждения",
-  ).toBeVisible();
+  await expect(dialog, "консоль не ответила на вызов края окном подтверждения").toBeVisible();
   await expect(
     dialog.getByText("Нет способа подтверждения", { exact: true }),
     "окно не назвало, что подтвердить нечем",
   ).toBeVisible();
-  await expect(
-    dialog.getByRole("radio"),
-    "окно предлагает способы, которых у человека нет",
-  ).toHaveCount(0);
-  await expect(
-    dialog.getByRole("textbox"),
-    "окно предлагает ввести код, которого у человека нет",
-  ).toHaveCount(0);
+  await expect(dialog.getByRole("radio"), "окно предлагает способы, которых у человека нет").toHaveCount(0);
+  await expect(dialog.getByRole("textbox"), "окно предлагает ввести код, которого у человека нет").toHaveCount(0);
   await expect(
     dialog
       .getByRole("button", { name: "Войти заново", exact: true })
       .or(dialog.getByRole("link", { name: "Войти заново", exact: true })),
     "окно вызова на уровень предлагает вход заново, а уровень он не поднимает",
   ).toHaveCount(0);
-  expect(census.matching("POST", LANE.stepUp), census.describe()).toHaveLength(
-    0,
-  );
-  await dialog
-    .getByRole("link", { name: "Настроить второй фактор", exact: true })
-    .click();
-  await expectAddress(
-    page,
-    "/settings",
-    "путь на экран заведения второго фактора не привёл туда",
-  );
+  expect(census.matching("POST", LANE.stepUp), census.describe()).toHaveLength(0);
+  await dialog.getByRole("link", { name: "Настроить второй фактор", exact: true }).click();
+  await expectAddress(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
   await expect(
     page.getByRole("region", { name: "Второй фактор", exact: true }),
     "экран заведения второго фактора не показал раздел «Второй фактор»",
@@ -1978,42 +1386,24 @@ test("F8-36 · повышать нечем: назван отказ и путь,
 
 // ═══ S2 — второй путь посева переезжает на наши глаголы ═══════════════════════
 
-test("F8-43 · оснастка поднимает уровень НАШИМИ глаголами, одним предъявлением кода", async ({
-  page,
-}) => {
+test("F8-43 · оснастка поднимает уровень НАШИМИ глаголами, одним предъявлением кода", async ({ page }) => {
   // verifies #1274
   const registered = answerOnArrival(
     page,
-    (r) =>
-      new URL(r.url()).pathname === LANE.register &&
-      r.request().method() === "POST",
+    (r) => new URL(r.url()).pathname === LANE.register && r.request().method() === "POST",
   );
   await register(page);
-  const before = (await (await registered).json()) as {
-    session?: { assuranceLevel?: unknown };
-  };
-  expect(
-    String(before.session?.assuranceLevel),
-    "до подъёма уровень ответа регистрации не «1»",
-  ).toBe("1");
+  const before = (await (await registered).json()) as { session?: { assuranceLevel?: unknown } };
+  expect(String(before.session?.assuranceLevel), "до подъёма уровень ответа регистрации не «1»").toBe("1");
 
   const issued = await raiseAssurance(page);
   const posts = issued.filter((c) => c.method === "POST").map((c) => c.path);
-  expect(posts, "оснастка вела не заведение и подтверждение").toEqual([
-    LANE.enroll,
-    LANE.confirm,
-  ]);
-  expect(
-    posts,
-    "оснастка звала повышение: уровень поднимает само подтверждение",
-  ).not.toContain(LANE.stepUp);
+  expect(posts, "оснастка вела не заведение и подтверждение").toEqual([LANE.enroll, LANE.confirm]);
+  expect(posts, "оснастка звала повышение: уровень поднимает само подтверждение").not.toContain(LANE.stepUp);
   const confirm = issued.find((c) => c.path === LANE.confirm)!;
   expect(confirm.status).toBe(200);
   expect(
-    String(
-      (confirm.body as { session?: { assuranceLevel?: unknown } }).session
-        ?.assuranceLevel,
-    ),
+    String((confirm.body as { session?: { assuranceLevel?: unknown } }).session?.assuranceLevel),
     "после подтверждения уровень ответа не «2»",
   ).toBe("2");
 });
@@ -2045,16 +1435,10 @@ test("вход · на экране телефона в альбомной ор�
   await page.mouse.move(viewport.width / 2, viewport.height / 2);
   await page.mouse.wheel(0, 2000);
   await expect
-    .poll(inView(s.submit), {
-      message: "колесо мыши не довело кнопку входа до вида",
-      timeout: 10_000,
-    })
+    .poll(inView(s.submit), { message: "колесо мыши не довело кнопку входа до вида", timeout: 10_000 })
     .toBe(true);
   await page.mouse.wheel(0, -4000);
   await expect
-    .poll(inView(title), {
-      message: "обратное колесо не вернуло заголовок экрана в вид",
-      timeout: 10_000,
-    })
+    .poll(inView(title), { message: "обратное колесо не вернуло заголовок экрана в вид", timeout: 10_000 })
     .toBe(true);
 });
