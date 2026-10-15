@@ -54,11 +54,12 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
   <tbody>
     <tr><td>cmux (gRPC + REST)</td><td><code>LISTEN&#95;ADDR</code> · <code>:8080</code></td><td>Публичный вход: gRPC-proxy + REST-mux + health</td></tr>
     <tr><td>внешний TLS</td><td><code>TLS&#95;LISTEN&#95;ADDR</code> · <em>(пусто = выкл.)</em></td><td>Advertised TLS-периметр (тот же cmux-раскол)</td></tr>
-    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции); только mTLS — клиентский сертификат УЦ установки из круга <code>INTERNAL&#95;REST&#95;CLIENT&#95;SANS</code></td></tr>
+    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции); только mTLS — клиентский сертификат якоря оператора (<code>INTERNAL&#95;REST&#95;CLIENT&#95;CA&#95;FILE</code>) с именем из круга <code>INTERNAL&#95;REST&#95;CLIENT&#95;SANS</code></td></tr>
+    <tr><td>диагностика</td><td><code>METRICS&#95;ADDR</code> · <code>:9095</code></td><td>Cluster-internal <code>GET /metrics</code> для сбора величин; порт сбора чарта — <code>metricsScrape.port</code>. В Service чарта не выставлен, ingress на него не нацелен</td></tr>
   </tbody>
 </table>
 
-:::note Четвёртой строки здесь больше нет
+:::note Собственного internal gRPC-listener'а здесь нет
 Гейтвей поднимал ещё и собственный cluster-internal **gRPC**-listener — ради единственной службы
 сброса authz-кэша, которую вызывал `kaname`. Служба и listener сняты вместе: кэш решений
 гейтвей гасит сам, читая журнал смены субъекта у `kaname`. Порт под приём больше не
@@ -72,7 +73,7 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
 flowchart LR
   cli["Внешние клиенты"] -->|"TLS :443 → cmux"| agw["api-gateway"]
   ui["UI / admin-tooling"] -->|"cluster-internal REST :8081"| agw
-  agw -->|"backends :9090 / :9091"| dom["домены (iam/vpc/compute/geo/nlb/registry)"]
+  agw -->|"backends :9090 / :9091"| dom["домены (iam/vpc/compute/storage/geo/nlb/registry)"]
   agw -->|"PollSubjectChanges (курсор)"| dom
 ```
 
@@ -110,6 +111,7 @@ versioned-модулями из GitHub (`go.mod` без `replace`), build-contex
 
 :::tip Secure-by-default
 В production-окружении (`KACHO_APP_ENV=production`) гейтвей **откажется стартовать** при
-authz-disabled / fail-open / неproduction-режиме AuthN и при незащищённом internal listener без
-mTLS. Полный список ключей и режимов — [Конфигурация](/install/configuration).
+authz-disabled / fail-open / неproduction-режиме AuthN. Внутренний REST-listener, объявленный без
+mTLS, — отказ старта при любой метке окружения. Полный список ключей и режимов —
+[Конфигурация](/install/configuration).
 :::

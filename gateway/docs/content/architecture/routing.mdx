@@ -35,8 +35,8 @@ flowchart LR
   </tbody>
 </table>
 
-Allowlist активен для доменов: `iam`, `vpc`, `compute`, `geo`, `loadbalancer`, `registry` и
-`operation`. Каждый публичный RPC добавляется в него явно — это единственный источник истины по
+Allowlist активен для доменов: `iam`, `vpc`, `compute`, `storage`, `geo`, `loadbalancer`,
+`registry` и `operation`. Каждый публичный RPC добавляется в него явно — это единственный источник истины по
 публичной gRPC-поверхности (`internal/allowlist/list.go`).
 
 ## REST split-mux
@@ -94,6 +94,7 @@ flowchart TD
     <tr><td>geo</td><td><code>GEO&#95;GRPC</code></td><td><code>GEO&#95;INTERNAL&#95;GRPC</code></td></tr>
     <tr><td>nlb (loadbalancer)</td><td><code>NLB&#95;GRPC</code></td><td><code>NLB&#95;INTERNAL&#95;GRPC</code></td></tr>
     <tr><td>registry</td><td><code>REGISTRY&#95;GRPC</code></td><td><code>REGISTRY&#95;INTERNAL&#95;GRPC</code></td></tr>
+    <tr><td>storage</td><td><code>STORAGE&#95;GRPC</code></td><td><code>STORAGE&#95;INTERNAL&#95;GRPC</code></td></tr>
   </tbody>
 </table>
 
@@ -112,5 +113,6 @@ flowchart TD
 Server-reflection на этой поверхности **не подаётся**. Она освобождала бы и аутентификацию, и
 авторизацию на advertised-периметре, а разрешение символа идёт из глобального реестра
 дескрипторов — то есть короткий ответ `list` не ограничивает того, что вернёт `describe`.
-Схема остаётся доступной оператору на cluster-internal listener, где каждый вызов (включая
-стрим reflection) предъявляет проверенный клиентский сертификат из allow-list.
+Не подаётся она и ни на одном другом listener'е края: собственного internal gRPC-listener'а у
+края нет, а внутренний REST-listener gRPC не обслуживает (см.
+[Конфигурация](/install/configuration)).
