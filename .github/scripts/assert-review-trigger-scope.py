@@ -204,11 +204,17 @@ TRUNK = "main"
 # больше предыдущего знака», и образец сопоставляется со ВСЕМ именем ветки.
 # `'[0-9]*'` НЕ равносилен ему: `*` берёт любой хвост без косой черты.
 LINE_PATTERN = "[0-9]+"
+# LINE_TAIL_PATTERN — вторая форма ветки линии: номер, дефис и хвост без косой
+# черты (`3172-identity-own-2`). Без неё запрос в такую базу шёл без единого
+# контекста, и CI заводился только ручным прогоном (kacho#3233, 2026-10-15).
+# Ветка задачи (`<N>-<суть>`) ему отвечает так же — цена и перепись в шапке `on:`
+# у ci.yaml; ветка полосы (`lane/…`, `tmp/…`) — нет: имя начинается не с цифры.
+LINE_TAIL_PATTERN = "[0-9]+-*"
 
 # REVIEW_BASES — базы запроса, на которых файл ОБЯЗАН идти, и только они.
 # Файлы процессов несут их копиями (иначе фильтр провайдеру не объявить), и
 # разойтись копиям не даёт этот гейт.
-REVIEW_BASES = (TRUNK, LINE_PATTERN)
+REVIEW_BASES = (TRUNK, LINE_PATTERN, LINE_TAIL_PATTERN)
 
 REVIEW_EVENT = "pull_request"
 
@@ -1027,7 +1033,7 @@ NOT_REQUIRED_REL = f"{WORKFLOWS_DIR}/production-posture.yml"
 # прогон). Подпробы оси 3 ЗАМЕНЯЮТ строку `types`, а не дописывают вторую:
 # повтор ключа разбор отвергает, и подпроба мерила бы отказ дубля, а не ось 3.
 REVIEW_TYPES_LINE = "    types: [opened, synchronize, reopened, ready_for_review]\n"
-REVIEW_BRANCHES = "    branches:\n      - main\n      - '[0-9]+'\n"
+REVIEW_BRANCHES = "    branches:\n      - main\n      - '[0-9]+'\n      - '[0-9]+-*'\n"
 REVIEW_BLOCK = "  pull_request:\n" + REVIEW_TYPES_LINE + REVIEW_BRANCHES
 PUSH_BLOCK = "  push:\n    branches: [main]\n"
 JOBS_ANCHOR = "\njobs:\n"
@@ -1149,6 +1155,11 @@ def self_test(root: Path) -> int:
         _expect(len(got) == 1 and INJECT_REL in got[0] and "недостаёт {`[0-9]+`}" in got[0], str(got))
         _expect(c.review_at_line == c.on_review - 1, "перепись не назвала разрыв числом")
 
+    @case("ось 1: база линии формы номер-хвост снята — запрос в `3172-identity-own-2` без контекстов")
+    def _():
+        got, _c = run(lambda r: _inject(r, "      - '[0-9]+-*'\n", ""))
+        _expect(len(got) == 1 and INJECT_REL in got[0] and "недостаёт {`[0-9]+-*`}" in got[0], str(got))
+
     @case("ось 1: фильтр расширен до всех веток")
     def _():
         got, _c = run(lambda r: _inject(r, "      - '[0-9]+'\n", "      - '[0-9]+'\n      - '**'\n"))
@@ -1171,9 +1182,9 @@ def self_test(root: Path) -> int:
 
     @case("ось 1, близнец: то же множество потоком, в обратном порядке, в двойных кавычках, main дважды")
     def _():
-        for form in ("  pull_request:\n    branches: ['[0-9]+', main]\n",
-                     '  pull_request:\n    branches: ["[0-9]+", "main"]\n',
-                     "  pull_request:\n    branches:\n      - '[0-9]+'\n      - main\n      - main\n"):
+        for form in ("  pull_request:\n    branches: ['[0-9]+-*', '[0-9]+', main]\n",
+                     '  pull_request:\n    branches: ["[0-9]+", "[0-9]+-*", "main"]\n',
+                     "  pull_request:\n    branches:\n      - '[0-9]+-*'\n      - '[0-9]+'\n      - main\n      - main\n"):
             got, c = run(lambda r, f=form: _inject(r, REVIEW_BLOCK, f))
             _expect(not got, f"законная запись того же множества объявлена нарушением: {form!r}: {got}")
             _expect(c.on_review == c.review_at_line, f"перепись не сошлась на {form!r}")
@@ -1421,7 +1432,7 @@ def self_test(root: Path) -> int:
             return _inject(r, REVIEW_BLOCK, "  push:\n    branches: [&trunk main]\n"
                                             "  pull_request:\n    branches:\n      - *trunk\n")
         got, _c = run(edit)
-        _expect(len(got) == 1 and "недостаёт {`[0-9]+`}" in got[0] and "лишние" not in got[0], str(got))
+        _expect(len(got) == 1 and "недостаёт {`[0-9]+`, `[0-9]+-*`}" in got[0] and "лишние" not in got[0], str(got))
 
     # ── отказ на записи, которой провайдер не принимает ──
     job = ("  onlymain: &job\n    runs-on: ubuntu-latest\n    if: ${{ github.head_ref == 'lane' }}\n"
@@ -1468,7 +1479,7 @@ def self_test(root: Path) -> int:
     @case("событие: branches одиночным скаляром — множество из одного")
     def _():
         got, _c = run(extra={new_rel: "name: новый\non:\n  pull_request:\n    branches: main\n" + jobs_tail})
-        _expect(len(got) == 1 and "недостаёт {`[0-9]+`}" in got[0], str(got))
+        _expect(len(got) == 1 and "недостаёт {`[0-9]+`, `[0-9]+-*`}" in got[0], str(got))
 
     @case("событие, близнец: файл без запроса — не находка, но в переписи")
     def _():
@@ -1481,7 +1492,7 @@ def self_test(root: Path) -> int:
     def two_files(cond: str | None) -> dict[str, str]:
         """Два файла на запросе с базами линии; условие — только у первого."""
         def one(name: str, c: str | None) -> str:
-            return (f"name: {name}\non:\n  pull_request:\n    branches: [main, '[0-9]+']\njobs:\n  work:\n"
+            return (f"name: {name}\non:\n  pull_request:\n    branches: [main, '[0-9]+', '[0-9]+-*']\njobs:\n  work:\n"
                     f"    name: работа {name}\n" + (f"    if: {c}\n" if c is not None else "")
                     + "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n")
         return {f"{WORKFLOWS_DIR}/a.yml": one("a", cond), f"{WORKFLOWS_DIR}/b.yml": one("b", None)}
@@ -1522,7 +1533,7 @@ def self_test(root: Path) -> int:
     @case("исход 2: из двух файлов на запросе идёт один; близнец — оба")
     def _():
         refused(lambda: audit(ci_and_second("  workflow_dispatch:\n"), [ci_ctx]), "review-files-few", "найдено 1")
-        got, c = audit(ci_and_second(f"  {REVIEW_EVENT}:\n    branches: [main, '[0-9]+']\n"), [ci_ctx])
+        got, c = audit(ci_and_second(f"  {REVIEW_EVENT}:\n    branches: [main, '[0-9]+', '[0-9]+-*']\n"), [ci_ctx])
         _expect(not got and c.files == 2 and c.on_review == 2, f"близнец не чист: {got} {c}")
 
     @case("не исход 2: на запросе два файла, базы линии у одного — находка оси 1, а не отказ")
