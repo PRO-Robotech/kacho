@@ -15,6 +15,10 @@ export const SECURITY_SECTION = {
   accessKeys: { id: "security-access-keys", title: "Ключи доступа" },
   backupCodes: { id: "security-backup-codes", title: "Запасные коды" },
   sessions: { id: "security-sessions", title: "Активные сессии" },
+  // Удаление своей учётной записи (#3186) — последним, ниже задач Р1: оно
+  // необратимо и к защите учётной записи не относится, поэтому в навигацию
+  // «Разделы страницы» не входит.
+  deleteSelf: { id: "security-delete-self", title: "Удаление учётной записи" },
 } as const;
 
 export type SecuritySectionKey = keyof typeof SECURITY_SECTION;

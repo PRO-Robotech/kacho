@@ -80,6 +80,10 @@ export function AccountMembership({ userId }: { userId: string }) {
   // значений. Третьего у контракта нет, поэтому его появление означает не
   // «другое положение», а рассинхрон с краем: назвать его словом — соврать, а
   // прочерком — соврать иначе.
+  //
+  // `PENDING` служба держит до подтверждения адреса приглашённым, а не до его
+  // первого входа: вошедший и не подтвердивший адрес остаётся `PENDING` (#3208).
+  // Подпись называет ровно это состояние — о входе служба не говорит ничего.
   if (membership.state === "ACTIVE" || membership.state === "PENDING") {
     rows.push({
       label: "Состояние",
@@ -87,7 +91,7 @@ export function AccountMembership({ userId }: { userId: string }) {
         <BoolFact
           value={membership.state === "ACTIVE"}
           yes="Состоит в аккаунте"
-          no="Приглашён, ещё не входил"
+          no="Приглашён, адрес почты не подтверждён"
           yesTone="good"
           yesGlyph="check"
           noTone="attention"

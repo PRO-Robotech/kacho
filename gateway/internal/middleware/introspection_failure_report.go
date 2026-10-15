@@ -121,6 +121,9 @@ type LogWindows struct {
 	// SessionServiceFailure — служба доступа не ответила о сессии либо об
 	// отсечке на полосе браузерной сессии (sessionCutoffFailures).
 	SessionServiceFailure LogWindowTotal
+	// SessionServiceMisaddressed — вопрос об отсечке ушёл не тому слушателю
+	// (неверная настройка адреса, kacho#3191; sessionCutoffMisaddressed).
+	SessionServiceMisaddressed LogWindowTotal
 	// OwnAssuranceOffAxis — ответ о нашей сессии с уровнем вне оси сессии.
 	OwnAssuranceOffAxis LogWindowTotal
 	// BasicAssuranceUnknown — базовое удостоверение с уровнем вне оси каталога.
@@ -136,6 +139,7 @@ func (a *AuthInterceptor) LogWindows() LogWindows {
 		RevocationNoIdentifier:     logWindow(a.revocationSkips),
 		AuthorityRevocationFailure: logWindow(a.platformRevocationFailures),
 		SessionServiceFailure:      logWindow(a.sessionCutoffFailures),
+		SessionServiceMisaddressed: logWindow(a.sessionCutoffMisaddressed),
 		OwnAssuranceOffAxis:        logWindow(a.ownAssuranceOffAxis),
 		BasicAssuranceUnknown:      logWindow(a.basicAssuranceUnknown),
 		AuthMethodsUnusable:        logWindow(a.authMethodsUnusable),

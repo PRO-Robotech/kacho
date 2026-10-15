@@ -106,6 +106,36 @@ const FORBIDDEN_EXPLANATION =
   "Этот раздел доступен администраторам платформы. Если доступ нужен по работе — запросите его у администратора вашей организации.";
 
 /**
+ * Отказ в правах называет того, кто выдаёт право ТАМ, где человек упёрся (#3209).
+ *
+ * Право в Kachō выдаёт привязкой роли владелец или администратор аккаунта либо
+ * проекта; раздел платформы — администратор облака. Текст о «разделе для
+ * администраторов платформы» на ресурсе проекта посылал человека не к тому, кто
+ * может выдать право.
+ *
+ * Место берётся из адреса страницы, а не из ответа: признак отказа называет
+ * внутреннее имя проверки, а его консоль не показывает и на нём не ключуется.
+ * Перечня владельцев и администраторов экран не читает и не выводит — роль
+ * названа словами, смотрящий без прав не получает имён тех, кто их имеет.
+ */
+const FORBIDDEN_IN_PROJECT =
+  "Недостаточно прав в этом проекте. Право выдаёт привязкой роли владелец или администратор проекта либо " +
+  "его аккаунта — запросите доступ у них.";
+
+/** Отказ вне проекта и вне раздела платформы — шаг, верный для любого места. */
+const FORBIDDEN_ELSEWHERE =
+  "Недостаточно прав для этого действия. Право выдаёт привязкой роли владелец или администратор аккаунта либо " +
+  "проекта, а действия над облаком — администратор облака.";
+
+/** Объяснение отказа в правах — по месту, где он получен. */
+function forbiddenExplanation(): string {
+  const path = typeof window === "undefined" ? "" : window.location.pathname;
+  if (path.startsWith("/projects/")) return FORBIDDEN_IN_PROJECT;
+  if (path === "/system" || path.startsWith("/system/")) return FORBIDDEN_EXPLANATION;
+  return FORBIDDEN_ELSEWHERE;
+}
+
+/**
  * Учётные данные не приняты — край отвечает одним отказом для всех причин
  * (`authnrefusal.WriteHTTP`): `authentication failed` и один `ErrorInfo`
  * `AUTHN_REQUIRED`. Строка точна и вызывающему бесполезна: она не говорит ни
@@ -490,7 +520,9 @@ export function presentError(err: unknown): ErrorPresentation {
       return {
         status,
         title: verdict.title ?? TITLES[status],
-        subTitle: verdict.text,
+        // Объяснение отказа в правах зависит от места (#3209): запись словаря
+        // называет его константой, а слова выбираются здесь.
+        subTitle: verdict.text === FORBIDDEN_EXPLANATION ? forbiddenExplanation() : verdict.text,
         note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
         devDetail: devWithMessage,
         ambiguousNotFound,
@@ -506,7 +538,7 @@ export function presentError(err: unknown): ErrorPresentation {
     return {
       status,
       title: TITLES[status],
-      subTitle: hideToken ? FORBIDDEN_EXPLANATION : err.message,
+      subTitle: hideToken ? forbiddenExplanation() : err.message,
       note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
       devDetail: hideToken ? devWithMessage : dev,
       ambiguousNotFound,

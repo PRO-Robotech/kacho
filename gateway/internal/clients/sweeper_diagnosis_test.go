@@ -32,16 +32,17 @@ import (
 // подставные ошибки: иначе проба зеленела бы на перепросе, который различает
 // ошибку, не производимую ни одним адаптером.
 //
-// Исход полосы — поток жив в обоих диагнозах — утверждается тоже: на пути
-// запроса оба диагноза дают один ответ арендатору, и перепрос, закрывающий
-// поток по одному из них, разошёлся бы с путём запроса (полосы одного
-// механизма). Меняется ТОЛЬКО подсказка дежурному.
+// Исход полосы утверждается тоже (kacho#3191): неверная настройка адреса
+// исполняется ЗАКРЫТО — поток закрыт, как запрос на пути запроса не
+// обслуживается; окно раската — поток жив, громко. Полосы одного механизма
+// (запрос и перепрос) расходиться не вправе.
 
 // oneStream — реестр из одного открытого потока с заданным удостоверением.
 type oneStream struct {
-	mu     sync.Mutex
-	cred   principalmeta.Credential
-	closed int
+	mu       sync.Mutex
+	cred     principalmeta.Credential
+	closed   int
+	closeAll int // вызовы CloseAll — исход fail-closed, отдельно от закрытия по вердикту
 }
 
 func (o *oneStream) OpenStreams() []subscriptionstream.OpenStream {
@@ -60,7 +61,14 @@ func (o *oneStream) CloseAll() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.closed++
+	o.closeAll++
 	return 1
+}
+
+func (o *oneStream) closeAllCount() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.closeAll
 }
 
 func (o *oneStream) closedCount() int {
@@ -150,9 +158,77 @@ func TestSweeperTellsMisaddressedFromRolloutWindow(t *testing.T) {
 				t.Errorf("«спрошен не тот слушатель» назван окном раската — подсказка ведёт к раскату, который его не лечит:\n%s", wlog)
 			}
 
-			// Исход полосы от диагноза не зависит: поток жив в обоих.
-			if wclosed != 0 || sclosed != 0 {
-				t.Errorf("исход полосы зависит от диагноза: закрытий не тот слушатель %d · раскат %d", wclosed, sclosed)
+			// Исход полосы: неверная настройка — поток закрыт; раскат — жив.
+			if wclosed != 1 {
+				t.Errorf("неверная настройка адреса службы доступа не закрыла поток: закрытий %d", wclosed)
+			}
+			if sclosed != 0 {
+				t.Errorf("окно раската закрыло поток: закрытий %d", sclosed)
+			}
+		})
+	}
+}
+
+// kacho#3191, GSR-3191-1: «перепрос подтверждённым не считается» — и при
+// неверном адресе службы доступа срок неподтверждённого чтения идёт, как при
+// молчащем авторитете: держать потоки дольше StaleAfter без подтверждённого
+// чтения отзыва край не вправе (fail-closed, CloseAll). Законный близнец —
+// окно раската того же вопроса: авторитет ответил, чтение подтверждено,
+// CloseAll не наступает никогда. Близнецы меняют один факт — слушатель.
+func TestSweeperMisaddressedPastStaleAfterClosesEveryStream(t *testing.T) {
+	type lane struct {
+		name        string
+		cred        principalmeta.Credential
+		wrong, skew func(*grpc.Server)
+	}
+	lanes := []lane{
+		{
+			name:  "liveness",
+			cred:  principalmeta.Credential{BasicCredentialID: "bas-00000000000003191"},
+			wrong: func(*grpc.Server) {},
+			skew:  func(s *grpc.Server) { iamv1.RegisterInternalIAMServiceServer(s, bareServices{}) },
+		},
+		{
+			name: "cutoff",
+			cred: principalmeta.Credential{
+				UserID:    "usr-00000000000002741",
+				Presented: principalmeta.PresentedSession("s-2741"),
+			},
+			wrong: func(s *grpc.Server) { iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{}) },
+			skew: func(s *grpc.Server) {
+				iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})
+				iamv1.RegisterInternalSessionRevocationsServiceServer(s, bareServices{})
+			},
+		},
+	}
+	for _, l := range lanes {
+		t.Run(l.name, func(t *testing.T) {
+			run := func(register func(*grpc.Server)) int {
+				ad := adapterTo(t, register)
+				reg := &oneStream{cred: l.cred}
+				now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+				sw, err := streamrevocation.New(streamrevocation.Config{
+					Streams:    reg,
+					Authority:  ad,
+					Interval:   time.Minute,
+					StaleAfter: 10 * time.Minute,
+					Now:        func() time.Time { return now },
+					Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < 12; i++ {
+					sw.Sweep(context.Background())
+					now = now.Add(time.Minute)
+				}
+				return reg.closeAllCount()
+			}
+			if got := run(l.skew); got != 0 {
+				t.Errorf("окно раската (авторитет ответил) сработало fail-closed: CloseAll %d", got)
+			}
+			if got := run(l.wrong); got == 0 {
+				t.Errorf("неверный адрес дольше StaleAfter не закрыл потоки (CloseAll 0): перепрос засчитан подтверждённым")
 			}
 		})
 	}

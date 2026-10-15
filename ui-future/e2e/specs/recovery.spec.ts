@@ -70,7 +70,7 @@ const CODE_FORM = "Смена пароля по коду";
 
 /** Текст ступени 2 — один на любой ответ запроса (приёмка F8-S3, Р2, Т-код). */
 const T_CODE =
-  "Если адрес заведён и подтверждён, на него отправлено письмо с кодом восстановления. Код действует " +
+  "Если по этому адресу можно восстановить доступ, на него придёт письмо с кодом восстановления. Код действует " +
   "ограниченное время и применяется один раз. Введите код из последнего письма и новый пароль.";
 
 /** Новый пароль сценария: длина больше правила стенда (8), на адрес не похож. */
@@ -275,14 +275,19 @@ test("F8S3-01 · /recovery без сессии отдаёт экран восс�
   expectNoProvider(census);
 });
 
-test("F8S3-02 · подтверждённая сессия на /recovery формы не видит и уходит на адрес возврата", async ({
+test("F8S3-02 · подтверждённая сессия на /recovery формы не видит — назван шаг «Выйти», молчаливого ухода нет", async ({
   page,
 }, testInfo) => {
   // verifies #2952 — близнец F8S3-01: у браузера есть сессия подтверждённого человека.
+  // verifies #3210 — живая сессия получает названный шаг вместо молчаливого ухода на адрес возврата.
   await seeded(testInfo, "F8S3-02", page.context());
   const census = ceremonyCensus(page.context());
   await page.goto("/recovery?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
-  await expectAddress(page, "/dashboard", "подтверждённая сессия не уведена с /recovery на адрес возврата");
+  await expect(
+    page.getByRole("button", { name: /Выйти и восстановить доступ$/ }),
+    "живой сессии на /recovery не назван шаг «Выйти»",
+  ).toBeVisible({ timeout: 30_000 });
+  expect(pathOf(page), "подтверждённая сессия молча уведена с /recovery").toBe("/recovery");
   await expect(recoveryScreen(page).email, "подтверждённой сессии показана форма восстановления").toHaveCount(0);
   expect(countOf(census, "POST", LANE.recovery), `запрос кода у живой сессии:\n${census.describe()}`).toBe(0);
 });
