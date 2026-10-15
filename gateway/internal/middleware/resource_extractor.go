@@ -245,8 +245,6 @@ func methodCarriesBody(method string) bool {
 	}
 }
 
-// wildcardIfEmpty renders "no scope named" as the FGA wildcard, which
-// AuthorizeService.Check refuses as an unscoped resource.
 // ScopeFieldEmpty — назван ли в запросе конкретный скоуп записи пустым либо не
 // назван вовсе (kacho#3177). Отвечает «да» ТОЛЬКО там, где поле можно спросить
 // у самого запроса: REST — шаблон пути маршрута известен и поля не связывает, а
@@ -284,6 +282,8 @@ func (e *ResourceExtractor) ScopeFieldEmpty(httpReq *http.Request, protoReq any,
 	return false
 }
 
+// wildcardIfEmpty renders "no scope named" as the FGA wildcard, which
+// AuthorizeService.Check refuses as an unscoped resource.
 func wildcardIfEmpty(id string) ResourceID {
 	if id == "" {
 		return ResourceID("*")
