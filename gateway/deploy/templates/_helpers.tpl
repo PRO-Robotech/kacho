@@ -98,9 +98,14 @@ service.yaml и internal-rest-certificate.yaml — одним определен
 {{/*
 api-gateway.internalRestOperatorSAN — URI-имя операторской личности внутреннего
 слушателя. Тот же домен доверия, что у листа края (api-gateway.trustDomain),
-своё имя (internalRest.operatorSaName). Лист под этим именем выпускает
-умбрелла (templates/internal-rest-operator-certificate.yaml); совпадение двух
-написаний держит проба рендера gateway/deploy/internal_rest_mtls_render_test.go.
+своё имя (internalRest.operatorSaName). Написание ОДНО: лист под этим именем
+выпускает умбрелла (templates/internal-rest-operator-certificate.yaml), зовя
+этот же помощник над значениями чарта края, поэтому читать здесь можно только
+`.Values` и `.Release` (kacho#3151). Пространство личности — закреплённое
+mtls.spiffe.namespace, а не пространство релиза: стенд проб в своём
+пространстве несёт те же личности, что рабочий. Совпадение держат
+gateway/deploy/internal_rest_mtls_render_test.go и рендер каждой цепочки в
+тестовое пространство (tools/standns).
 */}}
 {{- define "api-gateway.internalRestOperatorSAN" -}}
 {{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}

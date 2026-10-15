@@ -966,6 +966,127 @@ case_two_lines_of_one_rank_stay_undecided() {
   rm -rf "$r"
 }
 
+# ── Общий граф для случаев 12г-12е: ЗАПРОС СБОРКИ В ВЕТКУ ЭПИКА ──────────────
+#
+# Раскладка kacho#3233 (2026-10-14): ветка эпика `<N>-<предмет>` открыта от
+# `main` и под образец `release/*`, `integration/*` не попадает; сборка волны
+# заведена от вершины эпика и сливает полосу. У посадки первый родитель —
+# вершина эпика, второй — полоса; на `main` и на образце родителей 0, и судья,
+# знавший опорой только `main`, выходил кодом 5 на КАЖДОЙ сборке в эпик:
+# «ни одна посадка прогона не получила вердикта» (задача #3240).
+#
+# Предмет — база запроса как опорная линия: её несёт событие
+# (`github.event.pull_request.base.ref`), судья получает её в `BASE_REF`.
+#
+# build_epic_pr <repo> <mode>; mode=clean — посадка ничего не портит,
+# mode=rollback — посадка возвращает общий файл к содержимому базы. Иных
+# различий у раскладок нет: отрицательный кейс меняет РОВНО ОДИН факт.
+# Печатает две ревизии через пробел: <база> <голова>.
+build_epic_pr() {
+  local r=$1 mode=$2
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b 3172-epic-x
+  echo "ЭПИК" > "$r/shared.txt"; commit "$r" "эпик правит общий файл"
+  local epic; epic=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "правка полосы" > "$r/other.txt"; commit "$r" "полоса правит своё"
+
+  git -C "$r" checkout -q -b 3232-wave "$epic"
+  git -C "$r" merge -q --no-ff --no-commit lane >/dev/null 2>&1
+  if [ "$mode" = rollback ]; then
+    echo "база" > "$r/shared.txt"        # ОТКАТ: посадка вернула содержимое базы
+  fi
+  commit "$r" "посадка полосы в сборку"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/3172-epic-x "$epic"
+  git -C "$r" update-ref refs/remotes/origin/3232-wave "$head"
+  git -C "$r" checkout -q --detach "$head"
+  git -C "$r" branch -q -D main lane 3172-epic-x 3232-wave >/dev/null 2>&1
+  echo "$base $head"
+}
+
+# Предпосылка раскладки: у посадки на `main` и на образце родителей НЕТ, а на
+# цепи эпика — ровно один, первый. Иначе случай проверял бы не то, что назван.
+epic_pr_premise() { # <repo> <head>
+  local r=$1 head=$2 p1 p2 narrow epic
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  narrow="$(git -C "$r" rev-list --first-parent refs/remotes/origin/main)"
+  epic="$(git -C "$r" rev-list --first-parent refs/remotes/origin/3172-epic-x)"
+  ! line_in "$narrow" "$p1" && ! line_in "$narrow" "$p2" \
+    && line_in "$epic" "$p1" && ! line_in "$epic" "$p2" \
+    && [ -z "$(git -C "$r" for-each-ref --format='%(refname)' \
+                'refs/remotes/origin/release/*' 'refs/remotes/origin/integration/*')" ]
+}
+
+# ── Случай 12г. Запрос в ветку эпика: чистая посадка ОБЯЗАНА получить вердикт ─
+case_epic_base_of_the_request_is_a_trunk_line() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local base head
+  read -r base head <<<"$(build_epic_pr "$r" clean)"
+  if ! epic_pr_premise "$r" "$head"; then
+    no "предпосылка случая 12г не выполнена: раскладка не та, что у запроса в эпик" ""
+    rm -rf "$r"; return
+  fi
+  local out rc
+  out=$(cd "$r" && BASE_REF=3172-epic-x HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ни одна посадка прогона не получила вердикта"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]] \
+     && any_line_matches "$out" 'сверено чисто 1' \
+     && any_line_matches "$out" 'сторона ствола не установлена 0' \
+     && [[ "$out" == *"база запроса refs/remotes/origin/3172-epic-x"* ]]; then
+    ok "посадка запроса в ветку эпика судится: база запроса взята опорной линией"
+  else
+    no "посадка запроса в ветку эпика вердикта не получила (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 12д. Близнец к 12г: откат ствола в запросе на эпик ОБЯЗАН быть назван
+# Отличается от 12г РОВНО ОДНИМ фактом — посадка возвращает общий файл к базе.
+# Он же отвечает, не ослеп ли судья ради того, чтобы перестать краснеть.
+case_rollback_in_a_request_to_the_epic_is_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local base head
+  read -r base head <<<"$(build_epic_pr "$r" rollback)"
+  if ! epic_pr_premise "$r" "$head"; then
+    no "предпосылка случая 12д не выполнена: раскладка не та, что у запроса в эпик" ""
+    rm -rf "$r"; return
+  fi
+  local out rc
+  out=$(cd "$r" && BASE_REF=3172-epic-x HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "откат ствола в запросе на ветку эпика назван, и координата напечатана"
+  else
+    no "откат в запросе на ветку эпика НЕ пойман (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 12е. Та же раскладка БЕЗ базы запроса — третья категория не снята ─
+# Базу несёт только событие запроса. Где её нет, опора прежняя, и судья обязан
+# по-прежнему сказать вслух, что вердикта нет, — а не выдумать опору сам.
+case_without_the_request_base_the_epic_stays_undecided() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local base head
+  read -r base head <<<"$(build_epic_pr "$r" clean)"
+  local out rc
+  out=$(cd "$r" && HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 5 ] && [[ "$out" == *"ни одна посадка прогона не получила вердикта"* ]]; then
+    ok "без базы запроса ветка эпика опорой не выдумана — отсутствие вердикта названо"
+  else
+    no "без базы запроса судья исход переменил (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 # ── Случай 10. Опорных линий НЕТ ВОВСЕ — обход пуст, и гейт падает ───────────
 # Близнец к случаю 9 и граница послабления, которое он вводит. Там граф не
 # отвечал на вопрос о КОНКРЕТНОЙ посадке; здесь спрашивать не у чего вообще:
@@ -1917,6 +2038,9 @@ case_rollback_on_a_line_named_outside_release_is_named
 case_line_catching_up_with_trunk_gets_a_verdict
 case_rollback_while_catching_up_with_trunk_is_named
 case_two_lines_of_one_rank_stay_undecided
+case_epic_base_of_the_request_is_a_trunk_line
+case_rollback_in_a_request_to_the_epic_is_named
+case_without_the_request_base_the_epic_stays_undecided
 case_declaration_outlives_the_push_that_used_it
 case_declaration_without_subject_anywhere_still_reds
 case_finding_outlives_the_push_that_found_it
