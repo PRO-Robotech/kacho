@@ -215,6 +215,14 @@ func (h *SessionIdentityHandler) sessionRevoked(
 		return false
 	}
 	cutoff, found, err := h.sessionCutoff.SessionCutoffOf(ctx, cs)
+	if errors.Is(err, ErrIntrospectionMisconfigured) {
+		// Неверная настройка адреса (kacho#3191) — ПЕРВОЙ, до окна раската,
+		// чей признак адаптер ставит ей тоже: исход закрытый, как на пути
+		// запроса (auth_session_cutoff.go), — полосы одного механизма.
+		h.logger.Error("/me: session revocation check misaddressed; answering anonymous",
+			"err", err.Error(), "predicate", MisaddressedListenerPredicate)
+		return true
+	}
 	if errors.Is(err, ErrSessionCutoffUnsupported) {
 		// Окно раската — та же посадка, что на полосе личности: проходим, громко.
 		h.logger.Error("/me: session revocation not enforced — the authority does not " +

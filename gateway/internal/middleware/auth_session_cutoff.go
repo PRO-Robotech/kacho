@@ -156,6 +156,7 @@ func (a *AuthInterceptor) WithSessionCutoffCheck(r SessionCutoffReader, reportIn
 	}
 	a.sessionCutoff = r
 	a.sessionCutoffFailures = newIntrospectionFailureReporter(reportInterval, nil)
+	a.sessionCutoffMisaddressed = newIntrospectionFailureReporter(reportInterval, nil)
 	return a
 }
 
@@ -188,26 +189,35 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 	}
 
 	cutoff, found, err := a.sessionCutoff.SessionCutoffOf(ctx, cs)
+	if errors.Is(err, ErrIntrospectionMisconfigured) {
+		// Неверная настройка адреса (kacho#3191) судится ПЕРВОЙ: адаптер ставит
+		// ей и признак «вопрос не предложен», и проверка окна раската ниже
+		// поглотила бы её мягким проходом. Неверный адрес раскатом не лечится
+		// никогда, и проход здесь значил бы «отзываем и свой же отзыв не
+		// исполняем» на всё время, пока адрес не исправят. Исход — закрытый,
+		// как у неответа: запрос не обслуживается, носитель цел (это наша
+		// неисправность, а не отзыв); доклад — в своей клетке.
+		if report, total, represents := a.sessionCutoffMisaddressed.observe(); report {
+			a.logger.Error("session revocation check misaddressed; refusing browser session: "+
+				"the asked listener does not serve the identity service",
+				"err", err, "route", route,
+				"session_cutoff_misaddressed_total", total,
+				"occurrences_since_last_report", represents,
+				"predicate", MisaddressedListenerPredicate)
+		}
+		return sessionCutoffUnanswered
+	}
 	if errors.Is(err, ErrSessionCutoffUnsupported) {
 		// Окно раската: край впереди службы прав. Проходим — но громко, и со
 		// своим счётчиком, чтобы застрявшее расхождение версий не оставило
 		// полосу без проверки молча.
 		if report, total, represents := a.sessionCutoffFailures.observe(); report {
-			// Подсказка называет ВЕРНОЕ действие (kacho#2741): адаптер различает
-			// «не тот слушатель» (настройка) и «глагола нет у сборки» (раскат).
-			msg, predicate := "session revocation not enforced on the browser lane: "+
-				"the authority does not offer this question (image skew)",
-				"исчезает, когда служба прав докатится до того же дерева"
-			if errors.Is(err, ErrIntrospectionMisconfigured) {
-				msg, predicate = "session revocation not enforced on the browser lane: "+
-					"the asked listener does not serve the identity service (misaddressed)",
-					MisaddressedListenerPredicate
-			}
-			a.logger.Error(msg, "err", err,
+			a.logger.Error("session revocation not enforced on the browser lane: "+
+				"the authority does not offer this question (image skew)", "err", err,
 				"route", route,
 				"session_cutoff_unsupported_total", total,
 				"occurrences_since_last_report", represents,
-				"predicate", predicate)
+				"predicate", "исчезает, когда служба прав докатится до того же дерева")
 		}
 		return sessionCutoffUnsupported
 	}

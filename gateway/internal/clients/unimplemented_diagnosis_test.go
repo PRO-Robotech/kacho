@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,12 +118,15 @@ func (humanOnly) Resolve(context.Context, *iamv1.ResolveHumanSessionRequest) (*i
 	}}, nil
 }
 
-// TestTenantAnswerIsTheSameForBothDiagnoses — п. 4: ответ, который видит
-// арендатор, от диагноза не зависит. Полоса сессии на крае при «вопрос об
-// отсечке не предложен» проходит громко в ОБОИХ диагнозах — побайтово тем же
-// ответом.
-func TestTenantAnswerIsTheSameForBothDiagnoses(t *testing.T) {
-	serve := func(withRevocations bool) (int, string) {
+// TestMisaddressedCutoffIsEnforcedClosed — kacho#3191: при доказанной неверной
+// настройке адреса службы доступа («спрошен не тот слушатель») отзыв сессии
+// исполняется ЗАКРЫТО: запрос не обслуживается (ответ Р1 KA1 «состояние
+// удостоверения неизвестно», носитель цел — это наша неисправность, а не
+// отзыв). Законный близнец — окно раската («глагола у сборки нет»): прежний
+// громкий проход. Меняется ровно один факт: зарегистрирована ли служба отзыва
+// на слушателе.
+func TestMisaddressedCutoffIsEnforcedClosed(t *testing.T) {
+	serve := func(withRevocations bool) *httptest.ResponseRecorder {
 		ad := adapterTo(t, func(s *grpc.Server) {
 			iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})
 			if withRevocations {
@@ -137,11 +141,49 @@ func TestTenantAnswerIsTheSameForBothDiagnoses(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s-2741",
 			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).ServeHTTP(rec, req)
-		return rec.Code, rec.Body.String()
+		return rec
 	}
-	wc, wb := serve(false)
-	sc, sb := serve(true)
-	if wc != sc || wb != sb || wc != http.StatusOK {
-		t.Fatalf("ответ арендатору зависит от диагноза: не тот слушатель %d %q · раскат %d %q", wc, wb, sc, sb)
+	skew := serve(true)
+	if skew.Code != http.StatusOK {
+		t.Fatalf("законный близнец (окно раската) не обслужен: %d %q", skew.Code, skew.Body.String())
+	}
+	wrong := serve(false)
+	if wrong.Code == http.StatusOK {
+		t.Fatalf("неверная настройка адреса службы доступа обслужена мягким проходом: %d %q", wrong.Code, wrong.Body.String())
+	}
+	if wrong.Code != http.StatusServiceUnavailable {
+		t.Errorf("неверная настройка: ждали ответ Р1 (503), получили %d %q", wrong.Code, wrong.Body.String())
+	}
+	if c := wrong.Header().Values("Set-Cookie"); len(c) != 0 {
+		t.Errorf("неверная настройка гасит носитель — это наша неисправность, не отзыв: %v", c)
+	}
+}
+
+// TestMisaddressedCutoffAnswersMeAnonymous — та же склейка на /me (третий
+// читатель отсечки, полоса одного механизма с путём запроса): при неверной
+// настройке /me отвечает анонимом, при окне раската — личностью.
+func TestMisaddressedCutoffAnswersMeAnonymous(t *testing.T) {
+	me := func(withRevocations bool) string {
+		ad := adapterTo(t, func(s *grpc.Server) {
+			iamv1.RegisterInternalHumanSessionServiceServer(s, humanOnly{})
+			if withRevocations {
+				iamv1.RegisterInternalSessionRevocationsServiceServer(s, bareServices{})
+			}
+		})
+		mux := http.NewServeMux()
+		middleware.NewSessionIdentityHandler(slog.New(slog.NewJSONHandler(io.Discard, nil))).
+			WithHumanSession(ad).WithSessionCutoff(ad).Register(mux)
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
+		req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s-2741",
+			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		mux.ServeHTTP(rec, req)
+		return rec.Body.String()
+	}
+	if got := me(true); !strings.Contains(got, "usr-00000000000002741") {
+		t.Fatalf("законный близнец (окно раската): /me не назвал личность: %q", got)
+	}
+	if got := me(false); strings.Contains(got, "usr-00000000000002741") {
+		t.Fatalf("неверная настройка адреса службы доступа: /me назвал личность мягким проходом: %q", got)
 	}
 }

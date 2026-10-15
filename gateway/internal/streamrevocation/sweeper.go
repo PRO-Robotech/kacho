@@ -189,12 +189,12 @@ const (
 	// verdictCutoffMisaddressed — вопрос об отсечке не предложен, потому что
 	// спрошен НЕ ТОТ СЛУШАТЕЛЬ: службы отзыва на нём нет вовсе (kacho#2741).
 	//
-	// Исход полосы тот же, что у окна раската, — путь запроса в этом диагнозе
-	// проходит так же громко (auth_session_cutoff.go), и перепрос, закрывающий
-	// поток там, где запрос его пропускает, разошёлся бы с ним молча. Держится
-	// ВРОЗЬ ради подсказки дежурному: окно раската сходится само, а неверный
-	// адрес раскатом не лечится никогда — слитые, они вели бы дежурного ждать
-	// раската, который не наступит.
+	// Исход ЗАКРЫТЫЙ (kacho#3191): поток закрываем, как путь запроса в этом
+	// диагнозе запрос не обслуживает (auth_session_cutoff.go), — полосы одного
+	// механизма не расходятся. Неверный адрес раскатом не лечится никогда, и
+	// проход значил бы «отзыв не исполняется» на всё время до исправления.
+	// Перепрос подтверждённым не считается. Держится ВРОЗЬ от окна раската ради
+	// подсказки дежурному: действия у них противоположные.
 	verdictCutoffMisaddressed
 	// verdictLivenessMisaddressed — то же различение у вопроса о живости
 	// базового удостоверения.
@@ -360,10 +360,10 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 			asked++
 			livenessUnsupported += len(streams)
 		case verdictCutoffMisaddressed:
-			asked++
+			closeAll(streams)
 			cutoffMisaddressed += len(streams)
 		case verdictLivenessMisaddressed:
-			asked++
+			closeAll(streams)
 			livenessMisaddressed += len(streams)
 		case verdictUnanswered:
 			unanswered++
@@ -432,14 +432,14 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 			"predicate", "исчезает, когда служба прав докатится до того же дерева")
 	}
 	if cutoffMisaddressed > 0 {
-		s.cfg.Logger.Error("session revocation not enforced on open subscription streams: "+
-			"the asked listener does not serve the session revocation service (misaddressed)",
+		s.cfg.Logger.Error("session revocation check misaddressed on open subscription streams; closed: "+
+			"the asked listener does not serve the session revocation service",
 			"streams_cutoff_misaddressed", cutoffMisaddressed,
 			"predicate", middleware.MisaddressedListenerPredicate)
 	}
 	if livenessMisaddressed > 0 {
-		s.cfg.Logger.Error("basic credential revocation not enforced on open subscription streams: "+
-			"the asked listener does not serve the identity service (misaddressed)",
+		s.cfg.Logger.Error("basic credential revocation check misaddressed on open subscription streams; closed: "+
+			"the asked listener does not serve the identity service",
 			"streams_liveness_misaddressed", livenessMisaddressed,
 			"predicate", middleware.MisaddressedListenerPredicate)
 	}
