@@ -57,7 +57,11 @@ type IAMSubjectClient struct {
 // gateway→iam edge (mTLS client-cert when KACHO_API_GATEWAY_MTLS_IAM_ENABLE=true,
 // assembled in cmd/api-gateway). nil ⇒ insecure (dev backward-compat). The
 // transport layer is orthogonal to the principal-metadata propagated on each RPC.
-func NewIAMSubjectClient(addr string, logger *slog.Logger, transportCreds grpc.DialOption) (*IAMSubjectClient, error) {
+//
+// extra — опции соединения сверх транспорта, которые ставит корень: учёт
+// причины отказа соседу (kacho#3221). Это соединение — своё у клиента, и учёт,
+// поставленный на соединения корня, его не покрывает.
+func NewIAMSubjectClient(addr string, logger *slog.Logger, transportCreds grpc.DialOption, extra ...grpc.DialOption) (*IAMSubjectClient, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("iam internal addr empty")
 	}
@@ -71,8 +75,7 @@ func NewIAMSubjectClient(addr string, logger *slog.Logger, transportCreds grpc.D
 		PermitWithoutStream: true,
 	}
 	conn, err := grpc.NewClient(addr,
-		transportCreds,
-		grpc.WithKeepaliveParams(kp),
+		append([]grpc.DialOption{transportCreds, grpc.WithKeepaliveParams(kp)}, extra...)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dial iam internal %s: %w", addr, err)

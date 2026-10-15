@@ -148,6 +148,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
 )
 
 // buildPrincipalMetadata собирает outgoing gRPC-metadata личности для
@@ -367,7 +368,12 @@ func NewMux(
 	conns map[string]*grpc.ClientConn,
 	dialOpts map[string]grpc.DialOption,
 	backendBudget time.Duration,
+	opts ...Option,
 ) (*Mux, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	// Бюджет вызова моста к бэкенду — ручка KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
 	// (приёмка KA1, Р4). Без него зависший бэкенд держит запрос, пока его держит
 	// клиент: сервер края ответ не ограничивает (WriteTimeout не задан
@@ -460,7 +466,7 @@ func NewMux(
 		if !ok {
 			transport = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		return append([]grpc.DialOption{
+		out := append([]grpc.DialOption{
 			transport,
 			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
 			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
@@ -471,6 +477,9 @@ func NewMux(
 			// Адрес источника к службе не уезжает (kacho#3028, круг 5): мост
 			// кладёт `x-forwarded-for` = заголовок клиента + адрес пира.
 			principalmeta.ForwardedAddressStripDialOptions()...)
+		// Причина отказа — на прибор под ключом адреса (kacho#3221). Учёт стоит
+		// ВНУТРИ бюджета: истечение срока он видит своей причиной.
+		return append(out, o.failures.DialOptions(backendKey)...)
 	}
 
 	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса
@@ -1116,6 +1125,21 @@ func NewMux(
 	})
 
 	return &Mux{dispatch: dispatcher, public: publicMux, routes: routeTable}, nil
+}
+
+// Option — необязательная провязка моста при сборке.
+type Option func(*options)
+
+type options struct {
+	failures *upstreamfailure.Tally
+}
+
+// WithUpstreamFailures ставит учёт причины отказа (kacho#3221) на каждое
+// соединение моста к бэкенду под его ключом адреса: неразрешённый адрес,
+// остановленная служба и исчерпанный бюджет отвечают вызывающему одинаковым
+// либо близким кодом, а на приборе различаются.
+func WithUpstreamFailures(t *upstreamfailure.Tally) Option {
+	return func(o *options) { o.failures = t }
 }
 
 // backendBudgetInterceptor ограничивает унарный вызов моста бюджетом. Исход
