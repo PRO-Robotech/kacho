@@ -54,7 +54,7 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
   <tbody>
     <tr><td>cmux (gRPC + REST)</td><td><code>LISTEN&#95;ADDR</code> · <code>:8080</code></td><td>Публичный вход: gRPC-proxy + REST-mux + health</td></tr>
     <tr><td>внешний TLS</td><td><code>TLS&#95;LISTEN&#95;ADDR</code> · <em>(пусто = выкл.)</em></td><td>Advertised TLS-периметр (тот же cmux-раскол)</td></tr>
-    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции); только mTLS — клиентский сертификат УЦ установки из круга <code>INTERNAL&#95;REST&#95;CLIENT&#95;SANS</code></td></tr>
+    <tr><td>internal REST</td><td><code>INTERNAL&#95;REST&#95;ADDR</code> · <code>:8081</code></td><td>Cluster-internal REST-mux (<code>Internal&#42;</code>-проекции); только mTLS — клиентский сертификат якоря оператора (<code>INTERNAL&#95;REST&#95;CLIENT&#95;CA&#95;FILE</code>) с именем из круга <code>INTERNAL&#95;REST&#95;CLIENT&#95;SANS</code></td></tr>
   </tbody>
 </table>
 
@@ -110,6 +110,7 @@ versioned-модулями из GitHub (`go.mod` без `replace`), build-contex
 
 :::tip Secure-by-default
 В production-окружении (`KACHO_APP_ENV=production`) гейтвей **откажется стартовать** при
-authz-disabled / fail-open / неproduction-режиме AuthN и при незащищённом internal listener без
-mTLS. Полный список ключей и режимов — [Конфигурация](/install/configuration).
+authz-disabled / fail-open / неproduction-режиме AuthN. Внутренний REST-listener, объявленный без
+mTLS, — отказ старта при любой метке окружения. Полный список ключей и режимов —
+[Конфигурация](/install/configuration).
 :::
