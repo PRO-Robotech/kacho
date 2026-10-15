@@ -13545,7 +13545,7 @@
       ]
     },
     {
-      "name": "NLB-CR-VAL-EMPTY-BODY — Create with empty body → PermissionDenied (authz-first: no project scope to authorize)",
+      "name": "NLB-CR-VAL-EMPTY-BODY — Create with empty body → 400 InvalidArgument «Illegal argument project_id: required» (scope field empty, before authz)",
       "description": "class:VAL | class:NEG | priority:P2",
       "item": [
         {
@@ -13585,10 +13585,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Illegal argument project_id: required');",
                   "});"
                 ]
               }

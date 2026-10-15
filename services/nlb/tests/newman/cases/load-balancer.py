@@ -1055,23 +1055,24 @@ CASES.append(Case(
     ],
 ))
 
-# Empty body carries no projectId. Create is authz-gated on the parent scope
-# `project:<projectId>` (permission_map Create → StaticExtractor objectTypeProject,
-# GetProjectId), and the authz interceptor runs BEFORE the handler's body
-# validation. With projectId empty the object id is empty → FormatObject rejects
-# it → the interceptor denies with PermissionDenied (code 7) before any
-# InvalidArgument could be produced. This is the convention-correct authz-first /
-# secure-by-default ordering, not a bug: a request with no project scope cannot
-# be authorized. Techniques: error-guessing (empty request), decision-table
-# (authz-scope-present × body-valid).
+# Пустое тело не несёт projectId. Create гейтится скоупом `project:<projectId>`
+# (запись каталога прав: поле запроса project_id), и край спрашивает пустоту
+# этого поля у самого запроса ДО проверки прав (kacho#3177): отказ формы
+# запроса — 400 INVALID_ARGUMENT (код 3) с фиксированным текстом края
+# «Illegal argument project_id: required». Прежде пустой скоуп уходил в Check
+# подстановочным знаком и возвращался нехваткой права (403/7), и отказ формы
+# был неотличим от отказа в правах. Положительный близнец — Create с полным
+# телом (NLB-CR-CRUD-OK). Techniques: error-guessing (empty request),
+# decision-table (scope-present × body-valid).
 CASES.append(Case(
     id="NLB-CR-VAL-EMPTY-BODY",
-    title="Create with empty body → PermissionDenied (authz-first: no project scope to authorize)",
+    title="Create with empty body → 400 InvalidArgument «Illegal argument project_id: required» (scope field empty, before authz)",
     classes=["VAL", "NEG"], priority="P2",
     steps=[
         Step(name="cr-empty-body", method="POST", path=_CREATE_BASE,
              body={},
-             test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_refusal_message("Illegal argument project_id: required")]),
     ],
 ))
 
