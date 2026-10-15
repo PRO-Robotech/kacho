@@ -112,7 +112,14 @@ const keysPath = (userId: string) => `/iam/v1/users/${userId}/accessKeys`;
 function keysScreen(page: Page) {
   const region = page.getByRole("region", { name: "Ключи доступа" });
   // Перечень — общей таблицей раздела, добавление — окном (приёмка F8-S7, Р3).
-  const rows = region.getByRole("table").getByRole("row").filter({ has: page.getByRole("cell") });
+  // Строка данных — строка с клеткой и БЕЗ заголовка колонки: у колонки действий
+  // заголовок пуст, и такой `th` браузер называет клеткой (`cell`) — по одному
+  // признаку «есть клетка» строка шапки считалась строкой перечня (+1).
+  const rows = region
+    .getByRole("table")
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") })
+    .filter({ hasNot: page.getByRole("columnheader") });
   const adding = page.getByRole("dialog", { name: "Добавить ключ доступа" });
   return {
     heading: page.getByRole("heading", { level: 1, name: "Безопасность", exact: true }),

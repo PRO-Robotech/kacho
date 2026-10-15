@@ -184,7 +184,11 @@ test("KO-01 · ключ доступа заводится экраном /settin
     await operationSucceeded(readerOf(seed), op, "регистрация ключа экраном");
 
     await expect(
-      region.getByRole("table").getByRole("row").filter({ has: page.getByRole("cell") }).filter({ hasText: "key-ko-01" }),
+      region
+        .getByRole("table")
+        .getByRole("row")
+        .filter({ hasNot: page.getByRole("columnheader") })
+        .filter({ hasText: "key-ko-01" }),
       "раздел не показал заведённый ключ",
     ).toBeVisible({ timeout: 30_000 });
     expect(

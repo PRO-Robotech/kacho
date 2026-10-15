@@ -68,7 +68,14 @@ function sessionsSection(page: Page) {
   // «Выйти на всех, кроме этой» — с диалогом последствия, исход — областью
   // `role="status"` экрана (приёмка F8-S7, Р3, Р6, Р9).
   const region = page.getByRole("region", { name: "Активные сессии" });
-  const rows = region.getByRole("table").getByRole("row").filter({ has: page.getByRole("cell") });
+  // Строка данных — строка с клеткой и БЕЗ заголовка колонки: у колонки действий
+  // заголовок пуст, и такой `th` браузер называет клеткой (`cell`) — по одному
+  // признаку «есть клетка» строка шапки считалась строкой перечня (+1).
+  const rows = region
+    .getByRole("table")
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") })
+    .filter({ hasNot: page.getByRole("columnheader") });
   const endOthers = region.getByRole("button", { name: "Выйти на всех, кроме этой" });
   return {
     region,
