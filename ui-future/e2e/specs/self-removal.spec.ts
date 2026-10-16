@@ -4,7 +4,7 @@
 import { expect } from "@playwright/test";
 import { raiseAssurance } from "./assurance";
 import { SESSION_IDENTITY } from "./ceremony-seed";
-import { register, test } from "./fixtures";
+import { registerAndSignIn, test } from "./fixtures";
 
 /**
  * Удаление своей личности из параметров учётной записи (#3186).
@@ -19,12 +19,12 @@ import { register, test } from "./fixtures";
 
 test("в параметрах учётной записи есть удаление своей личности, и оно идёт к службе своим id", async ({ page }) => {
   // verifies #3186 — самоудаление объявлено службой; консоль ведёт к нему и называет шаг «сперва аккаунты».
+  // verifies #3247 — арендатор, поднявший уровень сам, снимается разбором без отказа SECOND_FACTOR_ALREADY_ENROLLED.
   test.setTimeout(240_000);
-  // Человек заводится `register`, а не `registerAndSignIn`: разбор арендатора
-  // поднимает уровень сам и на уже заведённом втором факторе отказывает
-  // (SECOND_FACTOR_ALREADY_ENROLLED) — так же поступает приглашающий в
-  // `users.spec.ts`; пространство стенда проб снимается целиком.
-  await register(page);
+  // Человек заводится `registerAndSignIn` — разбор пробы снимает его со стенда.
+  // Уровень проба поднимает сама, до разбора: фактор, заведённый ею, разбор
+  // предъявляет запасным кодом, а не заводит второй раз (kacho#3247).
+  await registerAndSignIn(page);
   await raiseAssurance(page);
 
   await page.goto("/settings", { waitUntil: "domcontentloaded" });

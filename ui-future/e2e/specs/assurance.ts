@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Page } from "@playwright/test";
-import { LANE, SESSION_COOKIE, newSeed, seedSecondFactor, type IssuedCall } from "./ceremony-seed";
-import { test } from "./fixtures";
+import { LANE, SESSION_COOKIE, SESSION_IDENTITY, lastIssued, newSeed, seedSecondFactor, type IssuedCall } from "./ceremony-seed";
+import { factorEnrolledByTest, test } from "./fixtures";
 
 /**
  * Второй уровень уверенности: как его поднять и как его прочесть.
@@ -74,12 +74,23 @@ export async function raiseAssurance(page: Page): Promise<IssuedCall[]> {
     const factor = await seedSecondFactor(seed);
     expect(factor.assuranceLevel, "подтверждение второго фактора не подняло сессию до уровня 2").toBe("2");
 
+    // Фактор заведён — разбор пробы, снимающий арендатора, завести его второй
+    // раз не сможет (SECOND_FACTOR_ALREADY_ENROLLED, kacho#3247): запасные коды
+    // уходят в запись арендатора. Чей фактор — говорит край о сессии.
+    await seed.read(SESSION_IDENTITY);
+    const me = lastIssued(seed, SESSION_IDENTITY);
+    const email = String((me.body as { user?: { email?: unknown } } | null)?.user?.email ?? "");
+    expect(me.status, `«кто я» после подъёма уровня — ${JSON.stringify(me.body)}`).toBe(200);
+    expect(email, "«кто я» после подъёма уровня не назвал адрес человека").not.toBe("");
+    factorEnrolledByTest(email, factor.backupCodes);
+
     // Подтверждение перевыпустило носитель — браузер обязан получить новый.
     const raised = (await seed.api.storageState()).cookies.find((c) => c.name === SESSION_COOKIE);
     expect(raised?.value, "подтверждение не перевыпустило носитель").toBeTruthy();
     expect(raised?.value, "носитель после подтверждения тот же, что до него").not.toBe(own!.value);
     await browserContext.addCookies([raised!]);
-    return seed.issued.filter((c) => c.path !== `${LANE.csrf}?form=second-factor`);
+    // Признак формы и вопрос «кто я» — не глаголы подъёма: запись выпускающего их не несёт.
+    return seed.issued.filter((c) => c.path !== `${LANE.csrf}?form=second-factor` && c.path !== SESSION_IDENTITY);
   } finally {
     await seed.dispose();
   }
