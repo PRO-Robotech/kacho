@@ -116,6 +116,34 @@ func TestMRR_RedOnAWildcardSatisfiableRelation(t *testing.T) {
 	}
 }
 
+// TestMRR_RedOnASystemClassSatisfiableRelation — второй возврат во второй
+// законной форме записи: системный класс субъектов (PRO-Robotech/kaname#829)
+// заменил подстановку `user:*` в модели и так же отвечает «да» каждому вошедшему.
+// Распознаватель, знающий одну форму, на другой молчал бы.
+func TestMRR_RedOnASystemClassSatisfiableRelation(t *testing.T) {
+	t.Parallel()
+	model := strings.Replace(mrrModelLawful,
+		"define viewer: [user, service_account, group#member] or editor",
+		"define viewer: [user, service_account, system_class] or editor", 1)
+	got := mrrFindings(t, mrrCatalogWith("viewer", false), model)
+	if !mrrNames(got, "MembershipService/Get") || !strings.Contains(strings.Join(got, " "), "system_class") {
+		t.Fatalf("гейт не заметил отношение, которое системный класс выполняет за каждого вошедшего: %v", got)
+	}
+}
+
+// TestMRR_SilentOnASystemClassOnAnUnjudgedRelation — законный близнец: класс в
+// отношении, которого судимые записи не спрашивают, находкой не является.
+func TestMRR_SilentOnASystemClassOnAnUnjudgedRelation(t *testing.T) {
+	t.Parallel()
+	model := strings.Replace(mrrModelLawful,
+		"define system_admin: [user, service_account]",
+		"define system_admin: [user, service_account]\n    define reader: [system_class]", 1)
+	got := mrrFindings(t, mrrCatalogWith("viewer", false), model)
+	if len(got) != 0 {
+		t.Fatalf("гейт краснеет на классе в отношении, которого никто не спрашивает: %v", got)
+	}
+}
+
 // TestMRR_RedWhenTheVerbRelationIsSubstituted — ТРЕТИЙ возврат, и он
 // обязателен: подмена выглядит уместной (глагольное отношение на глагольном
 // чтении), проходит все прочие проверки каталога и ломает ровно адресата.

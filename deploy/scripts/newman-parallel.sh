@@ -400,6 +400,45 @@ if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>
   MTLS_ENV+=(BOOTSTRAP_MINT_MTLS_CERT="$OP_DIR/client.crt" BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
 fi
 
+# ─── ПРЕДЪЯВИТЕЛИ ФИКСТУРЫ ЖИВУТ МЕНЬШЕ ПРОГОНА (kacho#3238) ─────────────────
+#
+# Посев ниже идёт ОДИН раз на все суиты, а срок предъявителя назначает выдающий:
+# на стенде t3238-sc измерено `exp - iat` = 900 с. Посев длится около 4 минут,
+# суита vpc — около 14, суиты идут одна за другой (WAVE_JOBS=1). Всё, что
+# начиналось позже срока, отвечало сплошными 401 AUTHN_REQUIRED — вердиктом о
+# продукте там, где истёк срок фикстуры. Срок продукта здесь не трогается.
+#
+# Посев записывает РЕЦЕПТ каждого выданного предъявителя в файл состояния
+# (PRODSEED_TOKEN_STATE, 0600, временный каталог прогона — в нём приватные ключи
+# учёток, снимается вместе с прогоном), а tests/authz-fixtures/prodseed_refresh.py
+# выпускает те же предъявители заново тем же путём, что посев:
+#   • перед КАЖДОЙ суитой — принудительно (launch_wave ниже);
+#   • перед КАЖДОЙ коллекцией — по остатку срока у самих предъявителей окружения,
+#     если он меньше TOKEN_REFRESH_MARGIN_S (обёртка `newman` ниже).
+# Так суита любой длины не упирается в срок, пока ОДНА коллекция короче запаса
+# (самая длинная коллекция прогона 2026-10-16 шла 166 с; запас 600 с).
+# Перевыпуск отказал — коллекция или суита НЕ запускается, и это «не выполнилось»,
+# а не красное: прогон против просроченных предъявителей вердикта не даёт.
+TOKEN_REFRESH_MARGIN_S="${TOKEN_REFRESH_MARGIN_S:-600}"
+TOKEN_STATE_DIR="$(mktemp -d)"; TMP_DIRS+=("$TOKEN_STATE_DIR")
+PRODSEED_TOKEN_STATE="$TOKEN_STATE_DIR/token-recipes.json"
+# Корень удостоверяющего слушателя выдачи — в каталоге ЭТОГО прогона: посев и
+# перевыпуск проверяют лист одним корнем, а соседний посев против другого стенда
+# его не перепишет (общий /tmp/kaname-server-ca переписывался: CERTIFICATE_VERIFY_FAILED,
+# kacho#3238).
+SERVER_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$SERVER_CA_DIR")
+# Окружение посева — ОДНО объявление на посев и на перевыпуск: перевыпуск ходит
+# теми же пробросами и с тем же клиентским материалом.
+SEED_ENV=(BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT"
+          IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT"
+          PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token"
+          MAILBOX_URL="http://localhost:$MAILBOX_PORT"
+          SETUP_NS="$NS" KACHO_NAMESPACE="$NS" IAM_SERVER_CA_DIR="$SERVER_CA_DIR"
+          PRODSEED_TOKEN_STATE="$PRODSEED_TOKEN_STATE" TOKEN_REFRESH_MARGIN_S="$TOKEN_REFRESH_MARGIN_S"
+          ${MTLS_ENV[@]+"${MTLS_ENV[@]}"})
+REFRESH_CMD=(env "${SEED_ENV[@]}" python3 "$REPO_ROOT/tests/authz-fixtures/prodseed_refresh.py")
+NEWMAN_SHIM_DIR=""
+
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
   # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets the seed
@@ -438,12 +477,7 @@ if [ "$SEED" = "true" ]; then
     echo "[parallel] посев расширен по факту о стенде: суиты «$SERVICES» → посев «$SEED_SERVICES»"
   fi
 
-  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
-      PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
-      MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
-      SERVICES="$SEED_SERVICES" \
-      PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
+  env "${SEED_ENV[@]}" SERVICES="$SEED_SERVICES" PATCH_ENV=true \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
   SEED_RC=$?
 
@@ -509,7 +543,45 @@ if [ "$SEED" = "true" ]; then
   #
   # deploy/scripts/assert-posture-branches-can-be-taken.py keeps this shape from coming
   # back: a branch on the seed posture must be able to go both ways.
-  :
+
+  # Рецептов нет — перевыпускать нечем, и суиты дольше срока снова получили бы 401.
+  # Это отказ прогона, а не «перевыпуск не нужен».
+  if [ ! -s "$PRODSEED_TOKEN_STATE" ]; then
+    echo
+    echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев не записал рецептов перевыпуска ($PRODSEED_TOKEN_STATE) ====="
+    echo "Суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
+    exit 2
+  fi
+
+  # ОБЁРТКА newman: перед каждой коллекцией — перевыпуск по остатку срока. Ставится
+  # первой в PATH только суитам (launch_wave), прочие вызовы её не видят. Окружение
+  # коллекции — аргумент `-e`/`--environment` вызова, его же и перевыпускаем.
+  NEWMAN_SHIM_DIR="$(mktemp -d)"; TMP_DIRS+=("$NEWMAN_SHIM_DIR")
+  {
+    echo '#!/usr/bin/env bash'
+    echo '# Обёртка newman прогонщика deploy/scripts/newman-parallel.sh (kacho#3238).'
+    printf 'REFRESH=('; printf ' %q' "${REFRESH_CMD[@]}"; printf ' )\n'
+    printf 'REAL=%q\n' "$(command -v newman)"
+    cat <<'SHIM'
+envf=""; prev=""
+for a in "$@"; do
+  case "$prev" in -e|--environment) envf="$a" ;; esac
+  case "$a" in --environment=*) envf="${a#--environment=}" ;; esac
+  prev="$a"
+done
+if [ "${1:-}" = run ] && [ -n "$envf" ]; then
+  if ! "${REFRESH[@]}" --env "$envf"; then
+    echo "[newman] УСЛОВИЕ НЕ СОЗДАНО: предъявители фикстуры не перевыпущены — коллекция не запускается" >&2
+    exit 3
+  fi
+fi
+exec "$REAL" "$@"
+SHIM
+  } >"$NEWMAN_SHIM_DIR/newman"
+  chmod 700 "$NEWMAN_SHIM_DIR/newman"
+  echo "[parallel] предъявители фикстуры: перевыпуск перед каждой суитой и при остатке срока < ${TOKEN_REFRESH_MARGIN_S}с перед каждой коллекцией"
+else
+  echo "[parallel] SEED=$SEED: рецептов перевыпуска нет — предъявители окружений живут свой срок, суита дольше него получит 401"
 fi
 
 echo "[parallel] regenerating collections for: $SERVICES"
@@ -579,7 +651,18 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     # prod-scale materialization throughput is the separate tracked scalability epic.
     sjobs="$JOBS"; case "$svc" in nlb|iam|registry) sjobs=1 ;; esac
     mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
-    ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
+    # Перевыпуск предъявителей НЕПОСРЕДСТВЕННО перед суитой (kacho#3238). Отказал —
+    # суита не запускается: прежние отчёты снимаются (иначе гейт прочёл бы чужой
+    # прогон), код суиты 2 — «не выполнилась».
+    if [ -n "$NEWMAN_SHIM_DIR" ]; then
+      if ! "${REFRESH_CMD[@]}" --force --env "$d/environments/local.postman_environment.json"; then
+        rm -f "$d"/out/*.json "$d"/out/*.cli "$d"/out/*.rc "$d"/out/summary.txt 2>/dev/null
+        echo "[parallel] $svc НЕ ВЫПОЛНИЛАСЬ: предъявители фикстуры не перевыпущены" | tee "$d/out/suite.log"
+        echo 2 > "$d/out/suite.rc"
+        continue
+      fi
+    fi
+    ( cd "$d" && PATH="${NEWMAN_SHIM_DIR:+$NEWMAN_SHIM_DIR:}$PATH" ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=https://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \

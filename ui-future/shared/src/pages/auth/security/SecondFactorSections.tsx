@@ -313,8 +313,19 @@ const METHOD_COLUMNS: Column<MethodRow>[] = [
   { header: "", cell: (r) => r.action },
 ];
 
-function keysStateText(state: SecondFactorState, keysCount: number): string {
+/**
+ * Число заведённых ключей для таблицы способов: число — перечень прочитан;
+ * `"unread"` — чтение перечня отказано (отказ и «Прочитать снова» — в разделе
+ * «Ключи доступа»); `null` — ответа ещё нет.
+ */
+export type KeysCount = number | "unread" | null;
+
+/** Строка «Ключи доступа» на отказанном чтении: факт неизвестен и назван, а не «Нет». */
+export const KEYS_UNREAD_TEXT = "Перечень не прочитан";
+
+function keysStateText(state: SecondFactorState, keysCount: number | "unread"): string {
   if (state.accessKeys?.available === false) return "Выключены на установке";
+  if (keysCount === "unread") return KEYS_UNREAD_TEXT;
   return keysCount > 0 ? `Есть: ${keysCount}` : "Нет";
 }
 
@@ -328,8 +339,8 @@ export function SecondFactorSection({
   read: SecondFactorRead;
   /** Признак формы вида `second-factor` — один на экран: его делят оба раздела. */
   holder: FormTokenHolder;
-  /** Число заведённых ключей; `null` — перечень ещё не прочитан. */
-  keysCount: number | null;
+  /** Число заведённых ключей (`KeysCount`): отказ чтения перечня таблицу способов не прячет. */
+  keysCount: KeysCount;
   /** Открыть добавление ключа (раздел «Ключи доступа»). */
   onAddKey: () => void;
   showCodes: (codes: string[], regenerated: boolean) => void;
@@ -377,6 +388,7 @@ export function SecondFactorSection({
 
   let body: ReactNode = null;
   if (state && keysCount !== null) {
+    // Пустое состояние — только на пустом ОТВЕТЕ: непрочитанный перечень ключей пустым не считается.
     const nothing = !state.totp.enrolled && state.totp.pendingUntil === undefined && keysCount === 0;
     if (nothing) {
       // Пустое состояние — на пустом ответе: ни кода, ни ключей (Р8).

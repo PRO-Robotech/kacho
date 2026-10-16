@@ -364,8 +364,48 @@ async function fetchSections(load: (remote: string) => Promise<unknown>): Promis
   return withUnavailable(dedupeSections(loaded), down);
 }
 
+/**
+ * Сегменты модулей, у которых есть СВОЯ колонка разделов (второй уровень
+ * сайдбара), — до того, как их навигация приехала.
+ *
+ * Колонка рисуется по перечню секций, а перечень приезжает федерацией позже,
+ * чем страница модуля может отрисовать свой заголовок. Пока его нет, колонке не
+ * из чего строиться, — и без резерва содержимое страницы стояло на 238px левее,
+ * а с приездом навигации съезжало на место: заголовок формы сети в 86×83 против
+ * 324×83 у списка (console-e2e «поля страницы одни…», t3238-sc @63500f861).
+ *
+ * Перечень выводится из каталога модулей, а не выписывается: раздел модуля —
+ * его `section.segment`, у модуля без раздела в рейле — имя remote'а
+ * (администрирование: `/system/*`). Агрегатная навигация (`dashboard`) колонки
+ * своего сегмента не даёт: панель вне модуля пуста (`ModuleNav`).
+ */
+const PANEL_SEGMENTS: ReadonlySet<string> = new Set(
+  REMOTE_MODULES.filter((module) => module.remote !== "dashboard").map(
+    (module) => module.section?.segment ?? module.remote,
+  ),
+);
+
+/** Адрес принадлежит модулю со своей колонкой разделов — по адресу, без перечня секций. */
+export function addressHoldsPanel(pathname: string): boolean {
+  const inProject = pathname.match(/^\/projects\/[^/]+\/([^/]+)/);
+  const segment = inProject ? inProject[1] : (pathname.split("/").filter(Boolean)[0] ?? "");
+  return PANEL_SEGMENTS.has(segment);
+}
+
+/** Перечень секций и признак того, что загрузка ЗАВЕРШИЛАСЬ (успехом либо отказом). */
+export interface ModuleSectionsState {
+  sections: RailSection[];
+  settled: boolean;
+}
+
 export function useModuleSections(load: (remote: string) => Promise<unknown> = loadRemoteNavigation): RailSection[] {
-  const [sections, setSections] = useState<RailSection[]>([]);
+  return useModuleSectionsState(load).sections;
+}
+
+export function useModuleSectionsState(
+  load: (remote: string) => Promise<unknown> = loadRemoteNavigation,
+): ModuleSectionsState {
+  const [state, setState] = useState<ModuleSectionsState>({ sections: [], settled: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -373,20 +413,20 @@ export function useModuleSections(load: (remote: string) => Promise<unknown> = l
     const promise = isDefault ? (sectionsPromise ??= fetchSections(load)) : fetchSections(load);
     promise
       .then((next) => {
-        if (!cancelled) setSections(next);
+        if (!cancelled) setState({ sections: next, settled: true });
       })
       .catch(() => {
-        if (!cancelled) setSections(withUnavailable([], NAV_REMOTES));
+        if (!cancelled) setState({ sections: withUnavailable([], NAV_REMOTES), settled: true });
       });
     return () => {
       cancelled = true;
     };
     // Загрузчик читается ОДИН раз: зависимость от него перезапускала бы загрузку
-    // после каждого setSections (обёртка, созданная на рендере, каждый раз
+    // после каждого setState (обёртка, созданная на рендере, каждый раз
     // новая) — бесконечный цикл рендера, который выглядит как «прогон завис», а
     // не как падение.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return sections;
+  return state;
 }

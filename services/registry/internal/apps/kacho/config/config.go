@@ -419,10 +419,11 @@ type Config struct {
 
 	// AnonymousSubjectID — the anonymous principal id (kaname AnonymousClientID: the
 	// `sub` the /iam/token shim puts into the anonymous token it mints) the data-plane
-	// resolves to the FGA wildcard `user:*` for anonymous public pull (RG-1 D-7). A
-	// VALID anon Bearer whose sub equals this id reads only PUBLIC repos (repo
-	// `user:* v_get` tuple) and can never write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
-	// анонимный /token не сконфигурирован ⇒ никакой токен не резолвится в user:*).
+	// resolves to the system class `system_class:anonymous` for anonymous public pull
+	// (RG-1 D-7; приёмка kaname SC-39). A VALID anon Bearer whose sub equals this id
+	// reads only PUBLIC repos (публикация — выдача классу anonymous) and can never
+	// write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
+	// анонимный /token не сконфигурирован ⇒ никакой токен не резолвится в класс).
 	// MUST match kaname's configured AnonymousClientID and be a RESERVED id (no real
 	// principal shares it).
 	AnonymousSubjectID string `envconfig:"KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID" default:""`

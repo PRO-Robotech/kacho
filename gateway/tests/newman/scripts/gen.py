@@ -320,15 +320,29 @@ def assert_answered(label: str) -> List[str]:
     ]
 
 
-def assert_iam_operation_envelope() -> List[str]:
-    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+def assert_operation_envelope(prefix: str, domain: str) -> List[str]:
+    """Мутация домена `domain` отвечает конвертом Operation с id префикса `prefix`.
+
+    Префикс операции — свойство ДОМЕНА-владельца пути (таблица `gateway/internal/opsproxy`,
+    константы `PrefixOperation*` в corelib/ids), а не набора: край отдаёт операцию
+    того сервиса, к которому ушёл запрос. Префикс — ровно три строчные латинские
+    буквы или цифры; иное отвергается при генерации, а не на стенде.
+    """
+    if not re.fullmatch(r"[a-z0-9]{3}", prefix):
+        raise ValueError(f"operation prefix must be 3 lowercase chars, got {prefix!r}")
     return [
-        "pm.test('IAM Operation envelope returned', () => {",
+        f"pm.test({js_str(f'{domain} Operation envelope returned')}, () => {{",
         "  const j = pm.response.json();",
-        "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+        f"  pm.expect(j.id, {js_str(f'operation.id must start with {prefix}: ')} + JSON.stringify(j))"
+        f".to.match(/^{prefix}[a-z0-9]+$/);",
         "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
         "});",
     ]
+
+
+def assert_iam_operation_envelope() -> List[str]:
+    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+    return assert_operation_envelope("iop", "IAM")
 
 
 # МЕТКА ТРЕТЬЕГО ИСХОДА: «условие не создал ХАРНЕСС», а не «продукт неверен».
@@ -554,6 +568,7 @@ _INJECTED = {
     "assert_error_message_eql": assert_error_message_eql,
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
+    "assert_operation_envelope": assert_operation_envelope,
     "assert_answered": assert_answered,
     "assert_field_violation": assert_field_violation,
     "assert_created_at_seconds": assert_created_at_seconds,

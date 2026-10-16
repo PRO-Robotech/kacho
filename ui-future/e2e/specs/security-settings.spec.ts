@@ -4,7 +4,7 @@
 import { expect } from "@playwright/test";
 import { LANE, totpCode } from "./ceremony-seed";
 import { ceremonyCensus, test } from "./fixtures";
-import { SESSION_NOT_FRESH, fulfillWith } from "./producer-answers";
+import { EDGE_BACKEND_UNREACHABLE, SESSION_NOT_FRESH, fulfillWith } from "./producer-answers";
 import {
   anotherSession,
   nextStepCode,
@@ -43,6 +43,34 @@ test("F8-S7-11 · сразу после заведения: «Ещё не исп
       "Ещё не использовались",
     );
     await expect(s.secondFactor.getByText(/^[—–-]$/), "прочерков на месте факта нет (Р2)").toHaveCount(0);
+  });
+});
+
+/** Чтение перечня своих ключей — `GET /iam/v1/users/{id}/accessKeys` (Р3). */
+const isKeysList = (url: URL) => /^\/iam\/v1\/users\/[^/]+\/accessKeys$/.test(url.pathname);
+
+test("3238 · перечень ключей не прочитан: «Второй фактор» показывает способы и называет непрочитанный перечень", async ({
+  page,
+}, testInfo) => {
+  // verifies #3238 — находка console-e2e на 897e11c8f: край ответил 503 на перечень
+  // ключей, и раздел «Второй фактор» остался без таблицы способов, хотя состояние
+  // фактора прочитано (F8-S7-11 не нашла строку «Приложение-аутентификатор»).
+  await withSeeded(testInfo, "3238-keys", "С-к", page.context(), async () => {
+    await page.route(isKeysList, (route) =>
+      route.request().method() === "GET" ? fulfillWith(route, EDGE_BACKEND_UNREACHABLE) : route.continue(),
+    );
+    const s = await openSecurity(page);
+    // Условие создано: раздел ключей назвал отказ чтения.
+    await expect(s.keys.getByText("Перечень ключей не прочитан.", { exact: true }), "раздел ключей назвал отказ").toBeVisible();
+    const totp = s.secondFactor.getByRole("row", { name: /Приложение-аутентификатор/ });
+    const keys = s.secondFactor.getByRole("row", { name: /^Ключи доступа/ });
+    const codes = s.secondFactor.getByRole("row", { name: /Запасные коды/ });
+    await expect(totp, "строка «Приложение-аутентификатор» — состояние фактора прочитано").toBeVisible();
+    await expect(totp, "код настроен").toContainText("Настроено");
+    await expect(codes, "строка «Запасные коды»").toContainText("Осталось 10 из 10");
+    await expect(keys, "строка «Ключи доступа» называет, что перечень не прочитан, а не «Нет»").toContainText("Перечень не прочитан");
+    await expect(keys, "о непрочитанном перечне — не «Нет»").not.toContainText(/(^|\s)Нет(\s|$)/);
+    await expect(s.secondFactor.getByText("Второй фактор не настроен", { exact: false }), "приглашение «не настроен» — не на отказе").toHaveCount(0);
   });
 });
 
