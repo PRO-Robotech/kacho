@@ -248,6 +248,9 @@ def report_env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None 
 
 
 # ── per-service extension seeders ───────────────────────────────────────────
+# Рецепты перевыпуска, отданные расширениями (kacho#3238); см. prodseed_refresh.py.
+EXT_TOKEN_RECIPES: dict = {}
+
 def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
     """Run tests/authz-fixtures/prodseed_<svc>_ext.py, if one exists.
 
@@ -271,10 +274,14 @@ def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
         log(f"    WARN {ext.name} failed (rc={proc.returncode}): {proc.stderr.strip()[-400:]}")
         return {}
     try:
-        return json.loads(proc.stdout or "{}")
+        out = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
         log(f"    WARN {ext.name} produced non-JSON output")
         return {}
+    # Рецепты перевыпуска предъявителей расширения — посеву, а не окружению суиты.
+    import prodseed_refresh as refresh
+    EXT_TOKEN_RECIPES.update(out.pop(refresh.TOKEN_RECIPES_KEY, {}) or {})
+    return out
 
 
 _NLB_ID_KEYS = ("existingNetworkId", "existingSubnetId", "existingInstanceId",
@@ -585,6 +592,20 @@ def main() -> int:
     # the dev path leaves behind. Whether that is a hazard depends on what version
     # control does with those files, so it is MEASURED, never asserted.
     report_env_disposition([env_path(s) for s in services])
+    # РЕЦЕПТЫ ПЕРЕВЫПУСКА (kacho#3238). Посев один на все суиты, а срок предъявителя
+    # назначает выдающий и он короче прогона. Прогонщик (newman-parallel.sh) задаёт
+    # PRODSEED_TOKEN_STATE и перевыпускает по этому файлу перед суитой и коллекцией.
+    # В файле приватные ключи учёток — 0600, во временном каталоге прогонщика.
+    state = os.environ.get("PRODSEED_TOKEN_STATE", "")
+    if state:
+        import prodseed_refresh as refresh
+        recipes = refresh.recipes_for(pm.TOKEN_RECIPES, fixtures)
+        recipes.update(EXT_TOKEN_RECIPES)
+        refresh.write_state(state, recipes)
+        kinds = {}
+        for r in recipes.values():
+            kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+        log(f"рецепты перевыпуска: ключей {len(recipes)} {kinds} → PRODSEED_TOKEN_STATE")
     log("DONE")
     return 0
 

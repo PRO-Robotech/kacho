@@ -524,8 +524,12 @@ def exchange_at_platform(token_url: str, assertion: str, api_audience: str,
 # ── Composed one-shot helpers ───────────────────────────────────────────────
 def user_platform_token(base_url: str, admin_token: str, user_id: str,
                         created_by_user_id: str, token_url: str, api_audience: str,
-                        assertion_audience: str | None = None) -> str:
+                        assertion_audience: str | None = None,
+                        on_key=None) -> str:
     """Персональный токен пользователя → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
+
+    `on_key(client_id, private_key_pem)` — для посева, которому нужен перевыпуск
+    того же предъявителя без нового ключа (prodseed_refresh.py, kacho#3238).
 
     Полоса та же, что у `sa_platform_token`, и субъект — другой: человек, а не
     машина. Держать обе нужно именно поэтому — принципал у них разный, и краю
@@ -550,6 +554,8 @@ def user_platform_token(base_url: str, admin_token: str, user_id: str,
             f"{client_id!r} против keyId={registry_client_id!r}. Наш издатель "
             "разрешает клиента по строке реестра, поэтому первое имя не годится "
             "для обмена ни при каком входе")
+    if on_key is not None:
+        on_key(registry_client_id, key)
     assertion = sign_client_assertion(
         registry_client_id, key, registry_client_id,
         assertion_audience or PLATFORM_ASSERTION_AUDIENCE,
