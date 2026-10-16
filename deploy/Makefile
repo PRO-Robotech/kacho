@@ -1774,14 +1774,17 @@ helm-manifest-test: gate-self-test
 #
 # С NS — перекатка одной службы СВОЕГО стенда проб внешнего кластера на образы REF
 # (kacho#3260): kind и guard-kind-context не участвуют, кластер — контекст -client
-# (шапка scripts/stand-ns.sh). Без NS — локальный kind, как прежде.
-reload-svc: $(if $(NS),,guard-kind-context)
+# (шапка scripts/stand-ns.sh). Без NS — локальный kind, как прежде, и страж
+# зовётся ИЗ РЕЦЕПТА первой строкой ветки kind: условная зависимость
+# `$(if $(NS),,…)` гейту целей не видна, а ветка NS уходит в `exec` раньше стража.
+reload-svc:
 ifndef SVC
 	$(error SVC variable is required, e.g. make reload-svc SVC=compute)
 endif
 	@if [ -n "$(NS)" ]; then \
 		$(STAND_BRANCH_ENV)exec bash scripts/stand-ns.sh reload "$(NS)" "$(SVC)" "$(or $(REF),HEAD)"; \
 	fi; \
+	$(MAKE) --no-print-directory guard-kind-context || exit 1; \
 	if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
