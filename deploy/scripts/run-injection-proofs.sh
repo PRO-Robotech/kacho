@@ -115,6 +115,7 @@ deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/scripts/identity-provider-absent-cluster-half-inject.sh
+deploy/scripts/stand-pr-images-inject.sh
 deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
