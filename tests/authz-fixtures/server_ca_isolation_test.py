@@ -61,20 +61,25 @@ def probe(extra: dict[str, str]) -> dict:
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
-def self_signed_root() -> bytes:
-    import datetime
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, "ca-isolation-probe")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
-            .public_key(key.public_key()).serial_number(1)
-            .not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1))
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .sign(key, hashes.SHA256()))
-    return cert.public_bytes(serialization.Encoding.PEM)
+def self_signed_root(tmp: str) -> bytes:
+    """Самоподписанный корень бинарём openssl: сторонний модуль python пробе не нужен.
+
+    Без openssl проба не выносит вердикта — падает с причиной, а не зеленеет.
+    """
+    import shutil
+    tool = shutil.which("openssl")
+    if tool is None:
+        raise RuntimeError("нет openssl в PATH — корень пробы выпустить нечем, вердикта нет")
+    key, crt = os.path.join(tmp, "probe.key"), os.path.join(tmp, "probe.crt")
+    out = subprocess.run(
+        [tool, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+         "-nodes", "-keyout", key, "-out", crt, "-days", "1", "-subj", "/CN=ca-isolation-probe",
+         "-addext", "basicConstraints=critical,CA:TRUE"],
+        capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(f"openssl req упал: {out.stderr.strip()[-400:]}")
+    with open(crt, "rb") as fh:
+        return fh.read()
 
 
 def main() -> int:
@@ -99,7 +104,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ca-iso-") as tmp:
         root = os.path.join(tmp, "ca.crt")
         with open(root, "wb") as fh:
-            fh.write(self_signed_root())
+            fh.write(self_signed_root(tmp))
         ctx = m.platform_tls_context(ca_file=root)
         check("F1 проверка подписи у контекста обмена на месте",
               ctx.verify_mode == ssl.CERT_REQUIRED, str(ctx.verify_mode))
