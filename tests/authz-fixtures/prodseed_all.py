@@ -69,7 +69,8 @@ sys.path.insert(0, str(HERE))
 # and reds wholesale under production authN.
 ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "api-gateway")
 
-NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
+# То же правило, что mint_rs256.BOOTSTRAP_OPERATOR_NS (проба seed_namespace_test.py).
+NS = os.environ.get("KACHO_NAMESPACE") or os.environ.get("SETUP_NS") or "kacho"
 
 
 def log(msg: str) -> None:

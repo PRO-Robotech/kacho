@@ -97,7 +97,14 @@ import jwt as pyjwt
 IAM_INTERNAL_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
 BOOTSTRAP_OPERATOR_SECRET = os.environ.get(
     "BOOTSTRAP_OPERATOR_SECRET", "kacho-bootstrap-operator-client-tls")
-BOOTSTRAP_OPERATOR_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
+# Пространство стенда — ОДНО на весь посев и тем же правилом, что у prodseed_all.NS:
+# KACHO_NAMESPACE, иначе SETUP_NS (его передают прогонщики newman), иначе `kacho`.
+# Прежнее правило читало только KACHO_NAMESPACE (kacho#3246): прогон, назвавший стенд
+# одним SETUP_NS, освежал лист оператора из пространства `kacho` — рабочего стенда, —
+# и чеканка у своей службы отказывала «tls: unknown certificate authority»; а
+# prodseed_matrix тем же правилом шёл бы `kubectl exec` писать кортежи в базу ЧУЖОГО
+# стенда.
+BOOTSTRAP_OPERATOR_NS = os.environ.get("KACHO_NAMESPACE") or os.environ.get("SETUP_NS") or "kacho"
 _OPERATOR_CERT_DIR = os.environ.get("BOOTSTRAP_OPERATOR_CERT_DIR", "/tmp/kacho-bootstrap-operator")
 BOOTSTRAP_MINT_MTLS_CERT = os.environ.get(
     "BOOTSTRAP_MINT_MTLS_CERT", os.path.join(_OPERATOR_CERT_DIR, "client.crt"))
@@ -263,7 +270,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     as setup.sh's grpcurl calls.
 
     Overrides: BOOTSTRAP_MINT_MTLS_CERT / _KEY (paths), IAM_INTERNAL_GRPC (addr),
-    BOOTSTRAP_OPERATOR_SECRET + KACHO_NAMESPACE (where to pull the material from).
+    BOOTSTRAP_OPERATOR_SECRET + KACHO_NAMESPACE / SETUP_NS (where to pull the material from).
     """
     # NO REQUEST FIELDS, AND NO TTL PARAMETER.
     #

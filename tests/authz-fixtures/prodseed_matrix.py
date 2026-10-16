@@ -122,7 +122,9 @@ PLATFORM_TOKEN_URL = m.PLATFORM_TOKEN_URL
 # (deploy/scripts/newman-parallel.sh, MAILBOX_PORT) тем же порядком, что к краю.
 MAILBOX_URL = os.environ.get("MAILBOX_URL", "http://localhost:18025")
 PG_IAM_POD = os.environ.get("PG_IAM_POD", "kacho-umbrella-pg-iam-0")
-KACHO_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
+# Пространство стенда — правилом mint_rs256 (KACHO_NAMESPACE → SETUP_NS → kacho), а не
+# своим: два правила об одном разошлись бы, и `kubectl exec` ниже писал бы в чужой стенд.
+KACHO_NS = m.BOOTSTRAP_OPERATOR_NS
 
 ROLE_ADMIN = "rol21232f297a57a5a74"  # md5('admin')[:17] -> FGA admin
 ROLE_EDIT = "rolde95b43bceeb4b998"   # md5('edit')[:17]  -> FGA editor
