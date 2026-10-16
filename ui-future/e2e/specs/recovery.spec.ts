@@ -544,6 +544,13 @@ test("F8S3-13 · признак формы чужого вида отвергн�
     code: 7,
     message: "form token rejected",
   });
+  // Отказ назван экраном — и только тогда экран принимает повтор. Обращение за
+  // свежим признаком выпускается РАНЬШЕ, чем отказ показан: пока признак едет,
+  // кнопка занята, и нажатие, сделанное по одному обращению за признаком, экран
+  // поглощал без отправки (t3238-sc @63500f861: 1 из 15, повтор не ушёл за 90 с).
+  // Близнец F8-08 ждёт того же.
+  const s = recoveryScreen(page);
+  await expect(s.refusal, "отказ признака не назван экраном").toContainText("form token rejected");
   expect(substituted, "подстановка вида признака не сработала — условие не создано").toBe(true);
   await expect
     .poll(() => countOf(census, "GET", LANE.csrf, "?form=recovery-complete"), {
@@ -551,7 +558,6 @@ test("F8S3-13 · признак формы чужого вида отвергн�
       timeout: 15_000,
     })
     .toBeGreaterThanOrEqual(2);
-  const s = recoveryScreen(page);
   await expect(s.code, "код потерян после отказа признака").toHaveValue(letter.code);
   await expect(s.newPassword, "новый пароль потерян после отказа признака").toHaveValue(NEW_PASSWORD);
   const [accepted] = await Promise.all([lanePost(page, LANE.recoveryComplete), s.complete.click()]);

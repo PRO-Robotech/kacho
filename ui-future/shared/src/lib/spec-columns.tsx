@@ -195,15 +195,18 @@ function ResourceNameCell({
   row,
   opts,
   identityPath,
+  identityName,
 }: {
   spec: ResourceSpec;
   row: Record<string, unknown>;
   opts: FormatCellOpts;
   /** Поле, по которому ресурс узнают: обычно `name`, у пользователя — почта. */
   identityPath: string;
+  /** Текст ссылки, объявленный колонкой (`ResourceColumn.identityName`). */
+  identityName?: (row: Record<string, unknown>) => string;
 }): ReactNode {
   const idRaw = getByPath(row, "id");
-  const nameRaw = getByPath(row, identityPath);
+  const nameRaw = identityName ? identityName(row) : getByPath(row, identityPath);
   return (
     <ResourceLink
       specId={spec.id}
@@ -240,7 +243,9 @@ export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}):
     cell: (row) => {
       const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
       // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
-      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, identityPath: identityPath ?? "name" }) : inner;
+      return c.path === identityPath
+        ? ResourceNameCell({ spec, row, opts, identityPath: identityPath ?? "name", identityName: c.identityName })
+        : inner;
     },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));

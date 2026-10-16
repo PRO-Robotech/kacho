@@ -67,6 +67,12 @@ const (
 	// mrrWildcard — подстановочный субъект. Отношение, чей набор его принимает,
 	// означает «аутентифицирован», а не «авторизован».
 	mrrWildcard = "user:*"
+	// mrrSystemClass — тип системного класса субъектов (PRO-Robotech/kaname#829).
+	// Класс заменил подстановку в модели и так же означает «каждый вошедший»:
+	// отношение, принимающее его прямо, выполнимо системной выдачей классу
+	// `authenticated`. Распознаватель знает обе законные формы — забытая дала бы
+	// молчание, а не находку.
+	mrrSystemClass = "system_class"
 )
 
 // mrrSubjects — RPC, которые этот гейт судит. Перечень УЗКИЙ намеренно: граница
@@ -209,9 +215,9 @@ func SurveyMembershipReadRelation(tree *treecorpus.Tree) (MRRCensus, error) {
 		}
 		if c.WildcardSat[rel] {
 			c.Findings = append(c.Findings, fmt.Sprintf(
-				"%s: отношение %q выполнимо подстановочным кортежем %s — такая проверка "+
+				"%s: отношение %q выполнимо подстановочным кортежем %s либо классом %s — такая проверка "+
 					"отвечает «да» каждому аутентифицированному субъекту, то есть означает "+
-					"«аутентифицирован», а не «авторизован»", e.FQN, rel, mrrWildcard))
+					"«аутентифицирован», а не «авторизован»", e.FQN, rel, mrrWildcard, mrrSystemClass))
 		}
 		if !c.TierReaders[rel] {
 			c.Findings = append(c.Findings, fmt.Sprintf(
@@ -285,12 +291,27 @@ func mrrAcceptsWildcard(defs map[string]string, rel string, seen map[string]bool
 		return false
 	}
 	if i := strings.Index(def, "["); i >= 0 {
-		if j := strings.Index(def[i:], "]"); j >= 0 && strings.Contains(def[i:i+j], mrrWildcard) {
+		if j := strings.Index(def[i:], "]"); j >= 0 && mrrListAdmitsEveryone(def[i+1:i+j]) {
 			return true
 		}
 	}
 	for _, d := range mrrDisjuncts(def) {
 		if _, ok := defs[d]; ok && mrrAcceptsWildcard(defs, d, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// mrrListAdmitsEveryone — допускает ли перечень назначаемых типов субъекта, за
+// которым стоит каждый: подстановку `user:*` либо системный класс.
+func mrrListAdmitsEveryone(list string) bool {
+	if strings.Contains(list, mrrWildcard) {
+		return true
+	}
+	for _, tok := range strings.Split(list, ",") {
+		f := strings.Fields(strings.SplitN(strings.TrimSpace(tok), "#", 2)[0])
+		if len(f) > 0 && f[0] == mrrSystemClass {
 			return true
 		}
 	}

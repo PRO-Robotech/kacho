@@ -256,7 +256,11 @@ internal_rest_client_leaf "$NS" "$IR_DIR" \
 internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
 
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
+# Корень удостоверяющего слушателя выдачи — в каталоге этого прогона, а не в общем
+# /tmp/kaname-server-ca, который переписывают соседние посевы (kacho#3238).
+SERVER_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$SERVER_CA_DIR")
 env BASE_URL="http://localhost:$GW_PORT" \
+IAM_SERVER_CA_DIR="$SERVER_CA_DIR" \
 INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \

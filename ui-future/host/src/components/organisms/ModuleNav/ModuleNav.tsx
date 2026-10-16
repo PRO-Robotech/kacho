@@ -1,19 +1,35 @@
-import type { FC } from "react";
+import type { CSSProperties, FC } from "react";
 import type { HostContext } from "../../../utils";
 import {
   activeSection,
+  addressHoldsPanel,
   antdIconBySpec,
   fallbackIcon,
   iconByName,
   loadRemoteNavigation,
   remotePath,
   specIdFromPath,
-  useModuleSections,
+  useModuleSectionsState,
 } from "../../../lib/module-navigation";
 import { DOC_LINKS_BY_SPEC, MODULE_DOC_LINKS } from "../../../lib/doc-links";
 
 /** Ширина второго уровня. Как в эталоне: рейл 62 + панель 238. */
 export const MODULE_NAV_WIDTH = 238;
+
+/** Рамка колонки — одна у колонки и у её резерва: место, которое держит резерв, — место колонки. */
+const PANEL_FRAME: CSSProperties = {
+  width: MODULE_NAV_WIDTH,
+  minWidth: MODULE_NAV_WIDTH,
+  flexShrink: 0,
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+  // Фон рейла: два уровня навигации читаются одной тёмной полосой,
+  // разделённой внутри линией, а не двумя разными блоками с зазором.
+  background: "var(--kc-rail)",
+  borderRight: "1px solid var(--kc-border)",
+  padding: "20px 14px 14px",
+};
 
 /**
  * Второй уровень сайдбара — ТИПЫ РЕСУРСОВ активного модуля, списком и с подписями.
@@ -54,8 +70,19 @@ export const ModuleNav: FC<{
   loadNavigation = loadRemoteNavigation,
 }) => {
   const projectId = context?.project?.id ?? null;
-  const sections = useModuleSections(loadNavigation);
+  const { sections, settled } = useModuleSectionsState(loadNavigation);
   const section = activeSection(sections, currentPath);
+
+  // Навигация модулей ещё едет — колонка держит СВОЁ место, пустой. Без резерва
+  // страница модуля, успевшая отрисоваться раньше навигации, стояла на ширину
+  // колонки левее и съезжала с её приездом: заголовок формы — 86 против 324 у
+  // списка (console-e2e «поля страницы одни…»). Место держится лишь на адресе
+  // модуля со своей колонкой: на панели и вне модулей колонки нет и после.
+  if (!settled) {
+    return addressHoldsPanel(currentPath) ? (
+      <div aria-hidden="true" data-module-nav="reserved" style={{ ...PANEL_FRAME, padding: 0 }} />
+    ) : null;
+  }
 
   // Модуль не выбран (дашборд, поиск) — панели нет вовсе. Пустая колонка с
   // заголовком «ничего не выбрано» занимала бы 238px, ничего не сообщая.
@@ -72,22 +99,7 @@ export const ModuleNav: FC<{
     : (DOC_LINKS_BY_SPEC[specId] ?? MODULE_DOC_LINKS[section.segment] ?? []);
 
   return (
-    <nav
-      aria-label={`Ресурсы: ${section.label}`}
-      style={{
-        width: MODULE_NAV_WIDTH,
-        minWidth: MODULE_NAV_WIDTH,
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        // Фон рейла: два уровня навигации читаются одной тёмной полосой,
-        // разделённой внутри линией, а не двумя разными блоками с зазором.
-        background: "var(--kc-rail)",
-        borderRight: "1px solid var(--kc-border)",
-        padding: "20px 14px 14px",
-      }}
-    >
+    <nav aria-label={`Ресурсы: ${section.label}`} style={PANEL_FRAME}>
       {/* ЗДЕСЬ СТОЯЛО ИМЯ МОДУЛЯ прописными («VIRTUAL PRIVATE CLOUD») с линией
           под ним. Снято решением владельца: модуль назван уже дважды — иконкой
           рейла слева, которая подсвечена, и крошками в шапке, — а здесь имя

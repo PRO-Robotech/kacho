@@ -29,7 +29,7 @@ import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 import { removeSelf, SelfRemovalRefused, SelfRemovalUnknown } from "@shared/api/self-removal";
 import { SecurityAnnouncer, useAnnounce } from "./security/announcer";
 import { SavedCodesDialog } from "./security/SavedCodesDialog";
-import { BackupCodesSection, SecondFactorSection } from "./security/SecondFactorSections";
+import { BackupCodesSection, SecondFactorSection, type KeysCount } from "./security/SecondFactorSections";
 import { SecuritySection } from "./security/SecuritySection";
 import { NAVIGATED_SECTIONS, SECURITY_SECTION, goToSection } from "./security/sections";
 import { methodsInWords, useSecondFactorState } from "./security/use-second-factor";
@@ -380,7 +380,7 @@ function SignInSection({
   email: string;
   emailVerified: boolean | undefined;
   state: SecondFactorState | null;
-  keysCount: number | null;
+  keysCount: KeysCount;
   onChanged: () => Promise<void>;
   leave?: (to: string) => void;
 }) {
@@ -399,14 +399,14 @@ function SignInSection({
       <SignInRow label="Пароль">
         <PasswordAction />
       </SignInRow>
-      {(off || keysCount !== null) && (
+      {(off || typeof keysCount === "number") && (
         <SignInRow label="Вход ключом доступа">
           {off ? (
             "Выключены на установке"
           ) : (
             <BoolFact
-              value={(keysCount ?? 0) > 0}
-              yes={`Доступен · ключей: ${keysCount ?? 0}`}
+              value={(typeof keysCount === "number" ? keysCount : 0) > 0}
+              yes={`Доступен · ключей: ${typeof keysCount === "number" ? keysCount : 0}`}
               no="Не настроен"
               yesTone="good"
             />
@@ -450,7 +450,7 @@ function SecurityScreen({
 }) {
   const factor = useSecondFactorState();
   const factorHolder = useFormToken("second-factor");
-  const [keysCount, setKeysCount] = useState<number | null>(null);
+  const [keysCount, setKeysCount] = useState<KeysCount>(null);
   const [sessions, setSessions] = useState<number | null>(null);
   const [addKey, setAddKey] = useState(0);
   const [codes, setCodes] = useState<{ codes: string[]; regenerated: boolean } | null>(null);

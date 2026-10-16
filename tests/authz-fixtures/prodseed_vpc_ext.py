@@ -193,4 +193,7 @@ try:
 except eb.StageError as e:
     eb.log(f"УСЛОВИЕ НЕ СОЗДАНО {e} — apiTokenExpired окружению не отдан")
 
+# Рецепты перевыпуска своих предъявителей (kacho#3238) — посеву, не окружению:
+# prodseed_all.run_ext снимает этот ключ до записи окружения.
+out[pm.refresh.TOKEN_RECIPES_KEY] = pm.refresh.recipes_for(pm.TOKEN_RECIPES, out)
 print(json.dumps(out))

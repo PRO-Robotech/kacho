@@ -106,11 +106,22 @@ const FGARelationAdmin = "admin"
 // плана резолвят ОДНО решение). Зеркалит compute/vpc/storage create-child = editor@project.
 const FGARelationEditor = "editor"
 
-// FGASubjectPublicWildcard — FGA subject-строка анонимного/публичного принципала
-// ("user:*"). visibility=PUBLIC ⟺ существует tuple "user:* v_get registry_repository:
-// <reg>/<repo>" (D-7): анонимный pull резолвится в этот wildcard subject. Governance —
+// FGASubjectPublicWildcard — входное слово публикации публичного чтения ("user:*"):
+// visibility=PUBLIC ⟺ реестр регистрирует пару "user:* v_get registry_repository:
+// <reg>/<repo>" через InternalIAMService.RegisterResource (D-7). Governance —
 // register/unregister по ИТОГОВОМУ visibility overlay-строки (B01/B06/B12).
+//
+// Это ВХОД публикации, а не субъект вопроса: служба прав выводит из него выдачу
+// классу `anonymous` (приёмка kaname anonymous-and-authenticated-are-subject-classes.md,
+// SC-12; входное слово не меняется — «Что НЕ входит» п. 2). Говорящим подстановка
+// не бывает (Р3, SC-15) — плоскость данных спрашивает FGASubjectAnonymousClass.
 const FGASubjectPublicWildcard = FGASubjectTypeUser + ":*"
+
+// FGASubjectAnonymousClass — субъект вопроса к модели о вызывающем без личности:
+// системный класс `anonymous` (приёмка kaname anonymous-and-authenticated-are-subject-classes.md,
+// Р3, SC-39). Анонимный pull читает только то, что выдано этому классу
+// (публикация PUBLIC), и не пишет никогда: пишущего глагола класс не получает (Р4).
+const FGASubjectAnonymousClass = "system_class:anonymous"
 
 // FGA subject-type namespaces аутентифицированного principal (parity с kaname
 // FGA-моделью). Разделяемы обоими encoders (FGASubjectFromPrincipal — control-plane
@@ -293,20 +304,21 @@ func FGASubjectFromID(principalID string) string {
 // FGASubjectForPrincipalID — resolve a verified data-plane principal id to its FGA
 // subject, honoring the configured anonymous principal id (RG-1 D-7). When
 // anonPrincipalID is non-empty AND principalID equals it, the caller is the public
-// anonymous principal and resolves to FGASubjectPublicWildcard ("user:*"): a valid
-// anon Bearer thus reads only PUBLIC repos (via the repo's `user:* v_get` tuple) and
-// can NEVER write (no wildcard write relation exists) — B03 / B14. Every other
-// principalID resolves by id-prefix via FGASubjectFromID.
+// anonymous principal and resolves to FGASubjectAnonymousClass
+// ("system_class:anonymous"): a valid anon Bearer thus reads only PUBLIC repos (the
+// publication is a grant to that class) and can NEVER write (a class holds no write
+// verb) — B03 / B14. Every other principalID resolves by id-prefix via
+// FGASubjectFromID.
 //
 // anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
 // happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the wildcard. The anon principal id is deployment-configured (kaname
+// gaining the class. The anon principal id is deployment-configured (kaname
 // AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
 // then the access service mints a token with sub==anonPrincipalID only on the anonymous
 // flow of its /iam/token shim.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
-		return FGASubjectPublicWildcard
+		return FGASubjectAnonymousClass
 	}
 	return FGASubjectFromID(principalID)
 }
@@ -430,7 +442,8 @@ func UnregisterIntentForRepo(registryID, repo string) RegisterIntent {
 
 // FGARepoPublicGetTuple — public-read wildcard tuple репозитория
 // "user:* #v_get @registry_repository:<reg>/<repo>". Существование этого tuple ⟺
-// visibility=PUBLIC (D-7): анонимный (`user:*`) data-plane read проходит Check.
+// visibility=PUBLIC (D-7): служба прав выводит из него выдачу классу `anonymous`, и
+// анонимный data-plane read (`system_class:anonymous`) проходит Check.
 func FGARepoPublicGetTuple(registryID, repo string) FGATuple {
 	return FGATuple{
 		SubjectID: FGASubjectPublicWildcard,
