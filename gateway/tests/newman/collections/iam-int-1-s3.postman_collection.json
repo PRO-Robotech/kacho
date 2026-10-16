@@ -841,12 +841,12 @@
                   "  pm.expect(pm.environment.get('s3RefBasicChallenge')).to.eql(pm.environment.get('s3RefTamperedChallenge'));",
                   "});",
                   "let __b; try { __b = JSON.parse(pm.environment.get('s3RefBasicBody') || ''); } catch (e) { __b = {}; }",
-                  "pm.test('24.5: the single refusal of the basic lane is code 16 \"credential refused\"', () => {",
-                  "  pm.expect({code: __b.code, message: __b.message}, JSON.stringify(__b)).to.eql({'code': 16, 'message': 'credential refused'});",
+                  "pm.test('24.5: the single refusal of the basic lane is the single 401 of the edge (KA1 R2), whole body', () => {",
+                  "  pm.expect(__b, JSON.stringify(__b)).to.eql({\"code\": 16, \"message\": \"authentication failed\", \"details\": [{\"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\", \"reason\": \"AUTHN_REQUIRED\", \"domain\": \"kaname.cloud.iam.v1\"}]});",
                   "});",
-                  "pm.test('24.5: its challenge is invalid_token and carries no step-up call', () => {",
+                  "pm.test('24.5: its challenge is the single challenge of the edge and carries no step-up call', () => {",
                   "  const __c = String(pm.environment.get('s3RefBasicChallenge') || '');",
-                  "  pm.expect(__c).to.eql('Bearer error=\"invalid_token\", error_description=\"credential refused\"');",
+                  "  pm.expect(__c).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"');",
                   "  pm.expect(__c).to.not.include('insufficient_user_authentication');",
                   "  pm.expect(__c).to.not.include('acr_values');",
                   "});"
@@ -1531,8 +1531,8 @@
                   "pm.test('25.2: the refused request did not reach the owner — the group is still there', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('s3g25bId')));",
                   "let __b; try { __b = JSON.parse(pm.environment.get('s3Ref25Basic' + 'Body') || ''); } catch (e) { __b = {}; }",
                   "pm.test('25.2: the basic credential of the raised human gets the single refusal of its lane', () => {",
-                  "  pm.expect({code: __b.code, message: __b.message}, JSON.stringify(__b)).to.eql({'code': 16, 'message': 'credential refused'});",
-                  "  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.eql('Bearer error=\"invalid_token\", error_description=\"credential refused\"');",
+                  "  pm.expect(__b, JSON.stringify(__b)).to.eql({\"code\": 16, \"message\": \"authentication failed\", \"details\": [{\"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\", \"reason\": \"AUTHN_REQUIRED\", \"domain\": \"kaname.cloud.iam.v1\"}]});",
+                  "  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"');",
                   "});"
                 ]
               }

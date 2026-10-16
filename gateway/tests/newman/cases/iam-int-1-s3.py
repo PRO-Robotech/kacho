@@ -33,6 +33,15 @@ PRO-Robotech/kaname#511 называет в тексте следующий ша
 с редакцией возвращено вопросом к приёмке в PRO-Robotech/kacho#2571. Клауза 24.2
 судит РАВЕНСТВО отказов двух носителей побайтово — от текста она не зависит.
 
+ТЕКСТ ЕДИНОГО ОТКАЗА БАЗОВОЙ ПОЛОСЫ (24.5, 25.2). Клауза 24.5 выписывает тело
+`{"code":16,"message":"credential refused"}` и вызов с `error_description`. Эти литералы
+заменены позже одобренной приёмкой края KA1 (`docs/specs/sub-phase-KA1-edge-refusals-and-
+call-budgets-acceptance.md` воркспейса): Р6 называет эту приёмку и текст `credential refused`
+среди заменяемого, Р2 выписывает единый отказ `401` — тело с `ErrorInfo` `AUTHN_REQUIRED` и
+вызов `Bearer realm="kacho", error="invalid_token"` без `error_description`. Утверждается
+литерал Р2 целиком; производитель — `gateway/internal/authnrefusal` (PRO-Robotech/kacho#2958).
+Остаток клаузы 24.5 — вызова повышения в отказе нет — утверждается как есть.
+
 ОПРОС ОПЕРАЦИИ — НОСИТЕЛЕМ, КОТОРЫЙ ЕЁ СОЗДАЛ. Служба доступа отвечает «не найдено» на
 операцию, созданную не вызывающим (чужая операция неотличима от несуществующей). Поэтому
 каждая операция опрашивается тем же носителем человека, что подал мутацию, а не
@@ -54,6 +63,8 @@ Coverage:
 марки неотличима от отказа по полу).
 """
 
+import json
+
 ASSERTS_DOMAIN = "gateway"
 ASSERTS_REASON = (
     "предмет — вердикт края по полу ступени на трёх полосах, устанавливающих личность "
@@ -70,9 +81,12 @@ SESSION_COOKIE = "kaname_session"
 # Текст отказа по полу — производитель `stepUpDenyMessage` (см. шапку).
 STEP_UP_MESSAGE = ("authentication level is insufficient: step up with a second factor, "
                    "or present a credential of another kind")
-# Единый отказ полосы базового удостоверения — клауза 24.5 дословно.
-BASIC_REFUSAL_BODY = {"code": 16, "message": "credential refused"}
-BASIC_REFUSAL_CHALLENGE = 'Bearer error="invalid_token", error_description="credential refused"'
+# Единый отказ полосы базового удостоверения — Р2 приёмки KA1 дословно (заменяет литерал 24.5,
+# см. шапку); производитель — gateway/internal/authnrefusal.
+BASIC_REFUSAL_BODY = {"code": 16, "message": "authentication failed", "details": [
+    {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "AUTHN_REQUIRED",
+     "domain": "kaname.cloud.iam.v1"}]}
+BASIC_REFUSAL_CHALLENGE = 'Bearer realm="kacho", error="invalid_token"'
 
 _SEED_WHY = "носитель гейта S3 — посев tests/authz-fixtures/seed_ceremony.py (kacho#3159)"
 
@@ -213,10 +227,10 @@ _BASIC_SHAPE = [
     "  pm.expect(pm.environment.get('s3RefBasicChallenge')).to.eql(pm.environment.get('s3RefTamperedChallenge'));",
     "});",
     "let __b; try { __b = JSON.parse(pm.environment.get('s3RefBasicBody') || ''); } catch (e) { __b = {}; }",
-    "pm.test('24.5: the single refusal of the basic lane is code 16 \"credential refused\"', () => {",
-    f"  pm.expect({{code: __b.code, message: __b.message}}, JSON.stringify(__b)).to.eql({BASIC_REFUSAL_BODY});",
+    "pm.test('24.5: the single refusal of the basic lane is the single 401 of the edge (KA1 R2), whole body', () => {",
+    f"  pm.expect(__b, JSON.stringify(__b)).to.eql({json.dumps(BASIC_REFUSAL_BODY)});",
     "});",
-    "pm.test('24.5: its challenge is invalid_token and carries no step-up call', () => {",
+    "pm.test('24.5: its challenge is the single challenge of the edge and carries no step-up call', () => {",
     "  const __c = String(pm.environment.get('s3RefBasicChallenge') || '');",
     f"  pm.expect(__c).to.eql({js_str(BASIC_REFUSAL_CHALLENGE)});",
     "  pm.expect(__c).to.not.include('insufficient_user_authentication');",
@@ -291,7 +305,7 @@ CASES.append(Case(
                 " pm.expect(pm.response.json().id).to.eql(pm.environment.get('s3g25bId')));",
                 "let __b; try { __b = JSON.parse(pm.environment.get('s3Ref25Basic' + 'Body') || ''); } catch (e) { __b = {}; }",
                 "pm.test('25.2: the basic credential of the raised human gets the single refusal of its lane', () => {",
-                f"  pm.expect({{code: __b.code, message: __b.message}}, JSON.stringify(__b)).to.eql({BASIC_REFUSAL_BODY});",
+                f"  pm.expect(__b, JSON.stringify(__b)).to.eql({json.dumps(BASIC_REFUSAL_BODY)});",
                 f"  pm.expect(String(pm.environment.get('s3Ref25BasicChallenge') || '')).to.eql({js_str(BASIC_REFUSAL_CHALLENGE)});",
                 "});",
             ],
