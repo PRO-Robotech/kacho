@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { detailExtension } from "@shared/components/organisms/ResourceDetailExtensions";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { buildSpecColumns } from "@shared/lib/spec-columns";
 
 import "./registerExtensions";
 
@@ -22,11 +23,17 @@ function show(node: ReactNode) {
   );
 }
 
-const subjectColumn = REGISTRY["access-bindings"].columns.find((c) => c.header === "Субъект");
+// Ячейку берём так, как её рисует ПЕРЕЧЕНЬ: колонка «Субъект» у выдачи —
+// колонка идентичности, и `buildSpecColumns` рисует её ссылкой на карточку
+// выдачи, а собственный `render` колонки отбрасывает. Проба, звавшая `render`
+// напрямую, утверждала то, чего оператор не видит (kacho#3238, console-e2e
+// SC-53: на стенде в ячейке стоял голый `authenticated`).
+const listColumns = buildSpecColumns(REGISTRY["access-bindings"]);
+const subjectColumn = listColumns.find((c) => c.header === "Субъект");
 
 function showListCell(row: Record<string, unknown>) {
-  expect(subjectColumn?.render).toBeDefined();
-  return show(<div data-testid="cell">{subjectColumn!.render!(row)}</div>);
+  expect(subjectColumn).toBeDefined();
+  return show(<div data-testid="cell">{subjectColumn!.cell(row)}</div>);
 }
 
 const classRow = {
@@ -38,29 +45,35 @@ const classRow = {
 };
 
 describe("SC-53: перечень выдач", () => {
-  it("класс показан подписью и без ссылки", () => {
+  it("класс показан подписью класса, ссылка ячейки — только на карточку выдачи", () => {
     showListCell(classRow);
     const cell = screen.getByTestId("cell");
     expect(cell.textContent).toContain("Вошедшие (любой аутентифицированный)");
-    expect(cell.querySelector("a")).toBeNull();
-    expect(cell.textContent).not.toContain("платформенная");
+    expect(cell.textContent).not.toContain("authenticated");
+    const hrefs = Array.from(cell.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    // Страницы у класса нет — ни одна ссылка не ведёт на ресурс субъекта.
+    expect(hrefs).toEqual(["/iam/access-bindings/acb-1"]);
   });
 
-  it("близнец: человек показан ссылкой — отсутствие ссылки у класса не свойство ячейки вообще", () => {
-    showListCell({ id: "acb-2", subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }] });
-    expect(screen.getByTestId("cell").querySelector("a")).not.toBeNull();
+  it("близнец: у человека та же ячейка называет его идентификатор — подпись класса не свойство ячейки вообще", () => {
+    showListCell({
+      id: "acb-2",
+      subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }],
+      subject_type: "user",
+      subject_id: "usr-1",
+    });
+    const cell = screen.getByTestId("cell");
+    expect(cell.textContent).toContain("usr-1");
+    expect(cell.textContent).not.toContain("Вошедшие");
   });
 
-  it("системная выдача помечена «платформенная»", () => {
+  it("класс «аноним» — своей подписью", () => {
     showListCell({
       ...classRow,
       subjects: [{ type: "SUBJECT_TYPE_SYSTEM_CLASS", id: "anonymous" }],
-      system: true,
+      subject_id: "anonymous",
     });
-    const cell = screen.getByTestId("cell");
-    expect(cell.textContent).toContain("Аноним (без входа)");
-    expect(cell.textContent).toContain("платформенная");
-    expect(cell.querySelector("a")).toBeNull();
+    expect(screen.getByTestId("cell").textContent).toContain("Аноним (без входа)");
   });
 });
 

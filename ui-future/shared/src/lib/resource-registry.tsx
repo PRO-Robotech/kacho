@@ -474,54 +474,20 @@ function targetCell(row: Record<string, unknown>): ReactNode {
   return IAM_DASH;
 }
 
-// Subject type (UI-строка / enum-имя) → registry specId.
-function subjectSpecId(t: string): string | undefined {
-  if (t === "user" || t === "USER" || t === "SUBJECT_TYPE_USER") return "users";
-  if (t === "group" || t === "GROUP" || t === "SUBJECT_TYPE_GROUP") return "groups";
-  if (t === "service_account" || t === "SERVICE_ACCOUNT" || t === "SUBJECT_TYPE_SERVICE_ACCOUNT")
-    return "service-accounts";
-  return undefined;
-}
-
-// AccessBinding subjects (IAM-1 subjects[]) → первый как ref-ссылка + «+N».
-// Legacy single subject_type/subject_id — fallback.
-function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
+// Текст ссылки строки выдачи в перечне. Колонка «Субъект» — колонка
+// идентичности: `buildSpecColumns` рисует её ссылкой на карточку ВЫДАЧИ, и
+// собственного `render` у неё не бывает (внутрь ссылки — ничего кликабельного).
+// Прежний `render` со ссылкой на субъект и метками отбрасывался молча, поэтому
+// выдача системному классу стояла в перечне голым `authenticated` (kacho#3238,
+// console-e2e SC-53). Класс назван подписью; страницы у него нет, и ссылки на
+// субъект ячейка не несёт — только на карточку выдачи, как у любой строки.
+function accessBindingSubjectName(row: Record<string, unknown>): string {
   const subjects = row.subjects as Array<{ type?: string; id?: string }> | undefined;
-  const list =
-    Array.isArray(subjects) && subjects.length > 0
-      ? subjects
-      : row.subject_id
-        ? [{ type: displayText(row.subject_type), id: displayText(row.subject_id) }]
-        : [];
-  if (list.length === 0) return IAM_DASH;
-  const first = list[0];
-  const spec = subjectSpecId(String(first.type ?? ""));
-  // Класс — субъект без страницы: показывается подписью, ссылки у него нет
-  // (SC-53). Голый идентификатор с копированием выдавал бы его за запись.
-  const firstNode = isSystemClassSubjectType(String(first.type ?? "")) ? (
-    <span data-testid="subject-system-class">{systemClassLabel(String(first.id ?? ""))}</span>
-  ) : spec ? (
-    <IamRefLink specId={spec} refId={first.id} nameField={spec === "users" ? "email" : "name"} />
-  ) : (
-    <CopyableId id={String(first.id ?? "")} />
-  );
-  // Системную выдачу заводит платформа, а не арендатор: это говорится меткой
-  // рядом с субъектом, иначе она читалась бы как чья-то выдача.
-  const platform = row.system === true;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        flexWrap: "wrap",
-      }}
-    >
-      {firstNode}
-      {list.length > 1 && <Tag title={`Ещё ${list.length - 1} субъект(ов)`}>+{list.length - 1}</Tag>}
-      {platform && <Tag title="Выдачу завела платформа, а не арендатор">платформенная</Tag>}
-    </span>
-  );
+  const first = Array.isArray(subjects) && subjects.length > 0 ? subjects[0] : undefined;
+  const type = first ? String(first.type ?? "") : displayText(row.subject_type);
+  const id = first ? String(first.id ?? "") : displayText(row.subject_id);
+  if (isSystemClassSubjectType(type)) return systemClassLabel(id);
+  return displayText(row.subject_id) || id;
 }
 
 /**
@@ -1178,7 +1144,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // Legacy single subject_type/subject_id — fallback.
         header: "Субъект",
         path: "subject_id",
-        render: (row) => accessBindingSubjectsCell(row),
+        identityName: accessBindingSubjectName,
       },
       {
         header: "Роль",

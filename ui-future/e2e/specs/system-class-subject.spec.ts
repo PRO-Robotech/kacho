@@ -41,8 +41,17 @@ const WRITE_ROLE = "vpc.network.edit";
 const OBJ_TYPE = "vpc.network";
 const OBJ_ID = "enp00000000000000001";
 const GRANT_PATH = "/iam/v1/accessBindings";
-/** Перечень выдач аккаунта — тот, что читает страница «Привязки доступа». */
-const LIST_BY_ACCOUNT = /\/iam\/v1\/accounts\/[^/]+\/accessBindings(\?|$)/;
+/** Системная выдача платформы (SC-40): стоит на кластере, вне аккаунта арендатора. */
+const SYSTEM_BINDING_ID = "acbc5d32d66fc8dc4952";
+
+/**
+ * Кнопка отправки формы — по имени, которое видит человек. Подвал формы зовёт
+ * отправку обработчиком, и кнопка у настоящего antd — `type="button"`: образец
+ * `button[type=submit]` не находил её вовсе, и SC-50…52 падали на поиске кнопки,
+ * так и не дойдя до предмета (console-e2e, kacho#3238).
+ */
+const submitButton = (page: Page) =>
+  page.getByTestId("access-bindings-create-form").getByRole("button", { name: "Создать", exact: true });
 
 const visibleOptions = (page: Page) => page.locator(".ant-select-dropdown:visible .ant-select-item-option");
 
@@ -147,7 +156,7 @@ test("SC-50: «system_class» даёт два класса без поиска, 
   const answered = page.waitForResponse(
     (r) => r.request().method() === "POST" && new URL(r.url()).pathname === GRANT_PATH,
   );
-  await form.locator("button[type=submit]").click();
+  await submitButton(page).click();
   const res = await answered;
   const body = res.request().postDataJSON() as { subjects?: Array<{ type?: string; id?: string }> };
   expect(body.subjects, "форма отправила субъекта не тем видом").toEqual([
@@ -173,12 +182,12 @@ test("SC-51: при выдаче классу над кнопкой — пред
   const form = page.getByTestId("access-bindings-create-form");
   await form.getByText(ANONYMOUS_LABEL, { exact: true }).click();
   await expect(page.getByText(ANONYMOUS_WARNING), "предупреждение при выдаче анониму").toBeVisible();
-  await expect(form.locator("button[type=submit]"), "кнопка доступна").toBeEnabled();
+  await expect(submitButton(page), "кнопка доступна").toBeEnabled();
 
   await form.getByText(AUTHENTICATED_LABEL, { exact: true }).click();
   await expect(page.getByText(AUTHENTICATED_WARNING), "предупреждение при выдаче вошедшим").toBeVisible();
   await expect(page.getByText(ANONYMOUS_WARNING), "предупреждение анониму сменилось").toHaveCount(0);
-  await expect(form.locator("button[type=submit]"), "кнопка доступна").toBeEnabled();
+  await expect(submitButton(page), "кнопка доступна").toBeEnabled();
 });
 
 test("SC-52: отказ сервера на «всю область» анониму показан у поля цели дословно; перечень объектов — принят", async ({
@@ -199,7 +208,7 @@ test("SC-52: отказ сервера на «всю область» анони
   const refused = page.waitForResponse(
     (r) => r.request().method() === "POST" && new URL(r.url()).pathname === GRANT_PATH,
   );
-  await form.locator("button[type=submit]").click();
+  await submitButton(page).click();
   expect((await refused).status(), "сервер отверг выдачу анониму всей области").toBe(400);
   // Строка формы поля цели — БЛИЖАЙШИЙ объемлющий `.ant-form-item`: строки
   // вкладываются, и выбор по фильтру взял бы объемлющий блок (#636).
@@ -214,13 +223,13 @@ test("SC-52: отказ сервера на «всю область» анони
   const accepted = page.waitForResponse(
     (r) => r.request().method() === "POST" && new URL(r.url()).pathname === GRANT_PATH,
   );
-  await form.locator("button[type=submit]").click();
+  await submitButton(page).click();
   const res = await accepted;
   expect(res.status(), `выдача анониму названного объекта принята (SC-07): ${await res.text()}`).toBe(200);
   await expect(page.getByText(ANONYMOUS_ALL_IN_SCOPE_REFUSAL, { exact: true }), "текста отказа нет").toHaveCount(0);
 });
 
-test("SC-53: класс в перечне выдач показан подписью без ссылки; системной выдачи арендатор не видит", async ({
+test("SC-53: класс в перечне выдач показан подписью без ссылки на субъект; системной выдачи арендатор не видит", async ({
   page,
 }) => {
   // verifies #3238
@@ -245,35 +254,26 @@ test("SC-53: класс в перечне выдач показан подпис
   // Положительный контроль строки: выдача SC-01 в перечне есть.
   const classCell = table.getByText(AUTHENTICATED_LABEL, { exact: true }).first();
   await expect(classCell, "субъект-класс выдачи SC-01 показан подписью класса").toBeVisible({ timeout: 45_000 });
-  await expect(classCell.locator("xpath=ancestor-or-self::a"), "у класса нет страницы — ссылки нет").toHaveCount(0);
-  // Близнец ссылки: у той же строки роль — ссылка; отсутствие ссылки у класса
-  // не свойство строки вообще.
+  // У класса нет страницы: единственная ссылка ячейки ведёт на карточку самой
+  // выдачи — как у любой строки перечня, — а не на ресурс субъекта.
+  const classLink = classCell.locator("xpath=ancestor-or-self::a");
+  await expect(classLink, "ссылка ячейки класса — на карточку выдачи").toHaveAttribute(
+    "href",
+    /^\/iam\/access-bindings\/acb[0-9a-z]+$/,
+  );
+  // Близнец ссылки: у той же строки роль — ссылка на страницу роли; ссылка на
+  // ресурс у строки есть, у класса её нет не потому, что ссылок нет вообще.
   const row = table.locator("tr").filter({ has: classCell });
-  await expect(row.locator("a").first(), "у строки выдачи ссылки есть — роль").toBeVisible();
+  await expect(row.locator('a[href^="/iam/roles/"]').first(), "у строки выдачи роль — ссылкой").toBeVisible();
 
-  // Системная выдача `acbc5d32d66fc8dc4952` арендатору не видна (решение 5).
-  await expect(table.getByText("платформенная"), "системной выдачи в перечне арендатора нет").toHaveCount(0);
-
-  // Положительный близнец отрицания выше — ровно один факт: признак `system` у
-  // той же строки. Ответ края берётся настоящий, меняется только этот признак;
-  // на том же адресе метка ОБЯЗАНА появиться. Без близнеца отрицание зеленело бы
-  // и тогда, когда метку перечень не рисует вовсе.
-  await page.route(LIST_BY_ACCOUNT, async (route) => {
-    const res = await route.fetch();
-    const body = (await res.json()) as { access_bindings?: Array<Record<string, unknown>> };
-    for (const b of body.access_bindings ?? []) {
-      const subjects = (b.subjects ?? []) as Array<{ id?: string }>;
-      if (subjects.some((s) => s.id === "authenticated")) b.system = true;
-    }
-    await route.fulfill({ response: res, json: body });
-  });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const markedRow = table.locator("tr").filter({ has: table.getByText(AUTHENTICATED_LABEL, { exact: true }) });
+  // Системная выдача SC-40 стоит на кластере, вне аккаунта: в перечне арендатора
+  // её нет (решение Д5 приёмки — невидимость держит область, а не метка).
+  // Близнец — строка SC-01 выше: тот же перечень того же арендатора, иная
+  // область выдачи.
   await expect(
-    markedRow.getByText("платформенная", { exact: true }),
-    "строка с признаком system помечена «платформенная» — метка перечнем рисуется",
-  ).toBeVisible({ timeout: 45_000 });
-  await page.unroute(LIST_BY_ACCOUNT);
+    table.locator(`a[href="/iam/access-bindings/${SYSTEM_BINDING_ID}"]`),
+    "системной выдачи в перечне арендатора нет",
+  ).toHaveCount(0);
 });
 
 test("SC-54: выдачу классу снимают из перечня — строка уходит, край получил отзыв этой выдачи", async ({ page }) => {

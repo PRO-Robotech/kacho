@@ -922,13 +922,13 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
               required
               rules={[{ required: true, message: "Выберите класс" }]}
             >
-              <Radio.Group data-testid="access-bindings-subject-class">
-                {SYSTEM_CLASSES.map((c) => (
-                  <Radio key={c} value={c}>
-                    {systemClassLabel(c)}
-                  </Radio>
-                ))}
-              </Radio.Group>
+              {/* Варианты — пропом `options`, а не голыми `Radio`: так группа
+                  сама ведёт выбор, и тот же состав рисует заменитель antd в
+                  модульных пробах (гейт check-antd-double-draws-what-the-operator-sees). */}
+              <Radio.Group
+                data-testid="access-bindings-subject-class"
+                options={SYSTEM_CLASSES.map((c) => ({ value: c, label: systemClassLabel(c) }))}
+              />
             </Form.Item>
           ) : (
             <Form.Item
