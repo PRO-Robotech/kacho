@@ -3,7 +3,12 @@
 
 import { expect, type APIResponse, type Page, type Response, type TestInfo } from "@playwright/test";
 import { pageAuthenticator, raiseSeedToLevelTwo, submitRegistration } from "./access-key-seed";
-import { ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
+import {
+  ACCESS_KEYS_DISABLED,
+  KEYS_DISABLED_TEXT,
+  ORIGIN_NOT_ALLOWED,
+  ORIGIN_NOT_IN_LIST,
+} from "./access-key-texts";
 import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
 import {
   LANE,
@@ -301,7 +306,6 @@ test("KO-03 · раздел ключей согласован со службо�
       name: "Добавить ключ доступа",
       exact: true,
     });
-    const own = await registerWith(seed, origin, "key-ko-03");
     if (available === false) {
       await expect(
         s.keys,
@@ -315,13 +319,16 @@ test("KO-03 · раздел ключей согласован со службо�
         census.calls.filter((c) => c.path.endsWith(":beginRegistration")),
         "служба объявила «никого», а страница начала регистрацию ключа",
       ).toHaveLength(0);
+      // Служба исполняет объявление: выдачи испытания регистрации нет —
+      // отказ «ключи выключены» с признаком, а не ORIGIN_NOT_ALLOWED на приёме.
+      const begun = await seed.api.post(`${keysOf(userId)}:beginRegistration`, { data: {} });
+      const begunText = await begun.text();
+      expect(begun.status(), `служба объявила «никого», а выдача испытания регистрации: ${begunText.slice(0, 300)}`).toBe(400);
+      const refusal = JSON.parse(begunText) as Refusal;
       expect(
-        {
-          status: own.res.status(),
-          refused: own.text.includes(ORIGIN_NOT_ALLOWED),
-        },
-        `служба объявила «никого», а регистрацию с происхождением консоли ${origin} не отвергла: ${own.text.slice(0, 300)}`,
-      ).toEqual({ status: 400, refused: true });
+        { code: refusal.code, message: refusal.message, reasons: (refusal.details ?? []).map((d) => d.reason) },
+        "служба объявила «никого»: отказ выдачи испытания не назвал причину",
+      ).toEqual({ code: 9, message: KEYS_DISABLED_TEXT, reasons: [ACCESS_KEYS_DISABLED] });
     } else {
       await expect(
         add,
@@ -331,6 +338,7 @@ test("KO-03 · раздел ключей согласован со службо�
         s.keys,
         "служба объявила ключи доступными, а раздел пишет «выключены»",
       ).not.toContainText(KEYS_TURNED_OFF);
+      const own = await registerWith(seed, origin, "key-ko-03");
       expect(
         own.text.includes(ORIGIN_NOT_ALLOWED),
         originRefusalMessage(
