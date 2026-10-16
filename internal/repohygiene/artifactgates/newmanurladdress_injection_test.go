@@ -9,9 +9,10 @@ import (
 )
 
 // TestNewmanSentAddressInjection_QueryOnlyInRawIsFound — инъекция в обе
-// стороны: строка запроса только в `raw` (дефект kacho#3230) — находка с
-// координатой; та же строка, разложенная в `query`, и та же строка в сегменте
-// пути — законные близнецы, молчат.
+// стороны: строка запроса только в `raw` (дефект kacho#3230) и косая черта,
+// потерянная в сегментах (kacho#3257), — находки с координатой; та же строка,
+// разложенная в `query`, та же строка в сегменте пути и косая пустым
+// сегментом — законные близнецы, молчат.
 func TestNewmanSentAddressInjection_QueryOnlyInRawIsFound(t *testing.T) {
 	t.Parallel()
 	const head = `{"item":[{"name":"case","item":[{"name":"csrf","request":{"method":"GET","url":`
@@ -30,8 +31,16 @@ func TestNewmanSentAddressInjection_QueryOnlyInRawIsFound(t *testing.T) {
 			`"host":["{{baseUrl}}"],"path":["iam","v1","auth","csrf"],"query":[{"key":"form","value":"login"}]}`, 1},
 		{"адрес без строки запроса", `{"raw":"{{baseUrl}}/iam/v1/auth/csrf",` +
 			`"host":["{{baseUrl}}"],"path":["iam","v1","auth","csrf"]}`, 0},
-		{"хвостовая косая черта — вне предиката", `{"raw":"{{baseUrl}}/vpc/v1/networks/",` +
-			`"host":["{{baseUrl}}"],"path":["vpc","v1","networks"]}`, 0},
+		{"хвостовая косая черта потеряна в сегментах", `{"raw":"{{baseUrl}}/vpc/v1/networks/",` +
+			`"host":["{{baseUrl}}"],"path":["vpc","v1","networks"]}`, 1},
+		{"хвостовая косая черта — пустым последним сегментом", `{"raw":"{{baseUrl}}/vpc/v1/networks/",` +
+			`"host":["{{baseUrl}}"],"path":["vpc","v1","networks",""]}`, 0},
+		{"сдвоенная косая черта потеряна в сегментах", `{"raw":"{{baseUrl}}/vpc/v1//networks",` +
+			`"host":["{{baseUrl}}"],"path":["vpc","v1","networks"]}`, 1},
+		{"сдвоенная косая черта — пустым сегментом", `{"raw":"{{baseUrl}}/vpc/v1//networks",` +
+			`"host":["{{baseUrl}}"],"path":["vpc","v1","","networks"]}`, 0},
+		{"сегмент пути расходится с raw", `{"raw":"{{baseUrl}}/vpc/v1/networks",` +
+			`"host":["{{baseUrl}}"],"path":["vpc","v1","subnets"]}`, 1},
 		{"адрес строкой", `"{{baseUrl}}/iam/v1/auth/csrf?form=step-up"`, 0},
 	}
 	for _, c := range cases {

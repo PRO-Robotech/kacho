@@ -15827,7 +15827,8 @@
                 "vpc",
                 "v1",
                 "addresses",
-                "{{garbageVpcId}}"
+                "{{garbageVpcId}}",
+                ""
               ]
             }
           },

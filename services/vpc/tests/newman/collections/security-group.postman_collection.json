@@ -26205,7 +26205,8 @@
                 "vpc",
                 "v1",
                 "securityGroups",
-                "{{garbageVpcId}}"
+                "{{garbageVpcId}}",
+                ""
               ]
             }
           },

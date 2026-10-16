@@ -1111,7 +1111,8 @@
               "path": [
                 "vpc",
                 "v1",
-                "networks"
+                "networks",
+                ""
               ]
             }
           },
@@ -11585,7 +11586,8 @@
                 "vpc",
                 "v1",
                 "networks",
-                "{{garbageVpcId}}"
+                "{{garbageVpcId}}",
+                ""
               ]
             }
           },
