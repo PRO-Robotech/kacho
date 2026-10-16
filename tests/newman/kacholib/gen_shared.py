@@ -1469,8 +1469,23 @@ class Emit:
     path_segments: "Optional[Callable[[str], List[str]]]" = None
 
 
+def path_segments_as_sent(path: str) -> List[str]:
+    """Путь — в сегменты так, чтобы прогонщик собрал его обратно побайтово.
+
+    Прогонщик собирает путь как `/` + сегменты через `/` (postman-collection
+    `Url.getPath`), поэтому пустой сегмент — единственная запись хвостовой и
+    сдвоенной косой: `/vpc/v1/networks/` → `[vpc, v1, networks, ""]`. Отбрасывая
+    пустые сегменты, генератор отправлял `/vpc/v1/networks` — кейс о хвостовой
+    косой проверял другой адрес (kacho#3257). Снимается только ведущая косая:
+    её прогонщик дописывает сам.
+    """
+    if not path:
+        return []
+    return (path[1:] if path.startswith("/") else path).split("/")
+
+
 def _default_path_segments(path: str) -> List[str]:
-    return [p for p in path.strip("/").split("/") if p]
+    return path_segments_as_sent(path)
 
 
 def step_to_postman(emit: "Emit", step) -> Dict:

@@ -155,7 +155,7 @@ class World:
             "BOOTSTRAP_OPERATOR_CERT_DIR": str(run_dir / "operator"),
             "IAM_MTLS_CERT_DIR": str(run_dir / "iam-mtls"),
             "IAM_SERVER_CA_DIR": str(run_dir / "server-ca"),
-            "PRODRUN_CACHE_DIR": str(run_dir / "cache"),
+            "PRODRUN_DIR": str(run_dir / "cache"),
             "OUT_DIR": str(run_dir / "out"),
             "BASE_URL": "http://127.0.0.1:9",
             "POSTURE_PROBE_RETRY_DELAY": "0",

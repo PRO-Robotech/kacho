@@ -17246,7 +17246,8 @@
                 "vpc",
                 "v1",
                 "routeTables",
-                "{{garbageVpcId}}"
+                "{{garbageVpcId}}",
+                ""
               ]
             }
           },

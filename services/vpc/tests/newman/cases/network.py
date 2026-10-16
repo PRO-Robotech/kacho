@@ -851,7 +851,7 @@ CASES.extend(neg_invalid_types_block("NET", "/vpc/v1/networks", {"projectId": "{
 CASES.extend(http_method_not_allowed_block("NET", "/vpc/v1/networks"))
 CASES.extend(malformed_body_block("NET", "/vpc/v1/networks"))
 
-# AlreadyExists dup-name + update-mask partial + perf-baseline-get + list-total-size + headers/content-type
+# AlreadyExists dup-name + update-mask partial + list-total-size + headers/content-type
 CASES.append(alreadyexists_dup_name_for(
     "NET", "/vpc/v1/networks",
     refusal="Network with name {name} already exists",

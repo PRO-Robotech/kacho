@@ -87,6 +87,7 @@ sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
+    path_segments_as_sent,
     Run,
     assert_created_at_seconds,
     assert_field_violation,
@@ -704,7 +705,7 @@ _EMIT = Emit(
     pre_head=_gateway_pre_head,
     item_hook=_gateway_item_hook,
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
-    path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
+    path_segments=lambda path: path_segments_as_sent(path.split("?")[0]),
 )
 
 

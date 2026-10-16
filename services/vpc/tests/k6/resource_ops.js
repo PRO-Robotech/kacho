@@ -54,6 +54,39 @@ const BUDGET_MS  = parseInt(__ENV.BUDGET_MS || (OP.endsWith('_create') ? '200' :
 if (!TOKEN)   throw new Error('TOKEN обязателен: без него край ответит 401 и замер померит скорость отказа');
 if (!PROJECT) throw new Error('PROJECT_ID обязателен');
 
+// ПОЛОСЫ ЧТЕНИЯ ресурсов vpc: `<ресурс>_get` (по id) и `<ресурс>_list` (страница
+// проекта). Бюджет чтения этих путей прежде судил функциональный набор newman
+// (`*-GET-PERF-BASELINE`, `*-LST-PERF-BASELINE`) — без названной подачи, на
+// машине, загруженной параллельным прогоном, и вердикт набора зависел от
+// параллельности (kacho#3263). Здесь условия замера названы: подача TARGET_RPS,
+// длительность DURATION, порог p(99) < BUDGET_MS.
+//
+// Сеть ведут свои полосы (`net_get`, `net_get_cold`, `net_list`) — у неё есть
+// посевной объект и холодный пул. Остальным пяти объект чтения по id даёт
+// RESOURCE_ID: посева этих ресурсов в фикстуре нет, и подставленное наугад
+// значение мерило бы скорость отказа 404, а не чтения.
+const READ_LANES = {
+  subnet:      { path: '/vpc/v1/subnets',        list: 'subnets' },
+  address:     { path: '/vpc/v1/addresses',      list: 'addresses' },
+  gateway:     { path: '/vpc/v1/gateways',       list: 'gateways' },
+  route_table: { path: '/vpc/v1/routeTables',    list: 'routeTables' },
+  sg:          { path: '/vpc/v1/securityGroups', list: 'securityGroups' },
+};
+const READ_NET_PATH = '/vpc/v1/networks';
+const RESOURCE_ID   = __ENV.RESOURCE_ID || '';
+
+// readLane — полоса чтения по имени OP либо null, если OP не из них.
+function readLane(op) {
+  const m = /^(.+)_(get|list)$/.exec(op);
+  if (!m || !READ_LANES[m[1]]) return null;
+  return { lane: READ_LANES[m[1]], verb: m[2] };
+}
+
+const READ = readLane(OP);
+if (READ && READ.verb === 'get' && !RESOURCE_ID) {
+  throw new Error(`полосе ${OP} нужен RESOURCE_ID — без существующего объекта она мерит скорость отказа 404`);
+}
+
 const lat          = new Trend('op_latency_ms', true);
 const errRate      = new Rate('op_errors');
 const okCount      = new Counter('op_ok');
@@ -172,7 +205,7 @@ function request() {
       return { r: http.get(`${BASE}/vpc/v1/networks/${id}`, H), want: b => b.id === id };
     }
     case 'net_list':
-      return { r: http.get(`${BASE}/vpc/v1/networks?projectId=${PROJECT}&pageSize=${PAGE_SIZE}`, H),
+      return { r: http.get(`${BASE}${READ_NET_PATH}?projectId=${PROJECT}&pageSize=${PAGE_SIZE}`, H),
                want: b => Array.isArray(b.networks) && b.networks.length > 0 };
     case 'geo_get':   // контроль: та же дорога, БЕЗ проверки прав на уровне проекта
       return { r: http.get(`${BASE}/geo/v1/regions/${REGION}`, H), want: b => b.id === REGION };
@@ -206,7 +239,17 @@ function request() {
                                   zoneId: ZONE, ipv4CidrPrimary: cidr }), H),
                want: b => b.done === true && b.metadata && b.metadata.subnetId };
     }
-    default: throw new Error(`неизвестная полоса OP=${OP}`);
+    default: {
+      if (READ && READ.verb === 'get') {
+        return { r: http.get(`${BASE}${READ.lane.path}/${RESOURCE_ID}`, H), want: b => b.id === RESOURCE_ID };
+      }
+      if (READ && READ.verb === 'list') {
+        const key = READ.lane.list;
+        return { r: http.get(`${BASE}${READ.lane.path}?projectId=${PROJECT}&pageSize=${PAGE_SIZE}`, H),
+                 want: b => Array.isArray(b[key]) && b[key].length > 0 };
+      }
+      throw new Error(`неизвестная полоса OP=${OP}`);
+    }
   }
 }
 

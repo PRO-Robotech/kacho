@@ -16,8 +16,9 @@ import sys
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import prodseed_matrix as pm  # noqa: E402
+import matrix_handoff as mh  # noqa: E402
 
-MATRIX = json.loads(open(m.MATRIX_JSON).read())
+MATRIX = mh.read()   # матрица своего прогона (PRODSEED_MATRIX_PATH, #3264)
 pm.boot = m.mint_bootstrap()   # fresh bootstrap (cached one may be expired)
 boot = pm.boot
 # The suite project is handed down by prodseed_all.py (PRODSEED_PROJECT_ID) so the

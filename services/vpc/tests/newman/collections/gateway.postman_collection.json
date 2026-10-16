@@ -9437,7 +9437,8 @@
                 "vpc",
                 "v1",
                 "gateways",
-                "{{garbageVpcId}}"
+                "{{garbageVpcId}}",
+                ""
               ]
             }
           },

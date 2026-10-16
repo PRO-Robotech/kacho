@@ -105,10 +105,6 @@ import stand_ns  # noqa: E402
 
 STAND_NS = stand_ns.resolve()
 
-# Файл матрицы, который читают расширения служб (prodseed_<svc>_ext.py). Умолчание —
-# общий /tmp/matrix.json, куда пишет prodseed_all.py; prodrun.sh передаёт свой кэш
-# этой переменной, чтобы расширение читало ту матрицу, что посеял ИМЕННО он.
-MATRIX_JSON = os.environ.get("MATRIX_JSON", "/tmp/matrix.json")
 _OPERATOR_CERT_DIR = os.environ.get("BOOTSTRAP_OPERATOR_CERT_DIR", "/tmp/kacho-bootstrap-operator")
 BOOTSTRAP_MINT_MTLS_CERT = os.environ.get(
     "BOOTSTRAP_MINT_MTLS_CERT", os.path.join(_OPERATOR_CERT_DIR, "client.crt"))
