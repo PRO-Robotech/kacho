@@ -172,6 +172,11 @@ class Step:
     # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
     # молча перезаписало бы первое, поэтому пара — отказ генерации.
     form: Optional[List[Tuple[str, str]]] = None
+    # Банка печенья прогонщика снимается ЯВНО и только шагом, который это объявил:
+    # шаг, предъявляющий носителя заголовком, не должен получать печенье сессии,
+    # оставленное в банке ответом соседнего шага, — иначе край увидел бы второго
+    # носителя, и шаг судил бы не тот класс, что назвал.
+    no_cookie_jar: bool = False
 
 
 @dataclass
@@ -646,7 +651,9 @@ def _gateway_item_hook(step, item):
     behavior = {}
     if step.insecure_tls:
         behavior["strictSSL"] = False
-    if step.explicit_cookies:
+    # Два имени одного объявления пришли из двух полос волны (kacho#3230 и
+    # kacho#2571); оба снимают банку печений только у объявившего шага.
+    if step.explicit_cookies or step.no_cookie_jar:
         behavior["disableCookies"] = True
     if behavior:
         item["protocolProfileBehavior"] = behavior

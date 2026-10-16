@@ -16,7 +16,7 @@
 # ветка обслуживала стенд, которого не бывает. README объявил её удаление отдельным
 # шагом «вместе с текстом, чтобы описание и код не разъехались»; это он и есть.
 #
-# Окружение читает `prodseed_all.py` (INTERNAL_BASE_URL / IAM_INTERNAL_GRPC / SETUP_NS /
+# Окружение читает `prodseed_all.py` (INTERNAL_BASE_URL / IAM_INTERNAL_GRPC /
 # и прочее — значения по умолчанию объявлены там же). Здесь нужны три:
 #   BASE_URL           — адрес края (default http://localhost:18080). Он ЗДЕСЬ же и
 #                        экспортируется: этим адресом опознаётся посадка, и он обязан
@@ -29,6 +29,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Пространство имён стенда — из ОДНОГО места (stand-ns.sh, задача #2882), до первого
+# обращения к кластеру. SETUP_NS и KACHO_NAMESPACE, заданные по-разному, — отказ: какую
+# имели в виду, посев не угадывает. Ответ уходит дальше обеими переменными.
+# shellcheck source=tests/authz-fixtures/stand-ns.sh
+. "$SCRIPT_DIR/stand-ns.sh"
+stand_ns_resolve || exit 1
 
 OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/out}"
 
@@ -53,10 +60,10 @@ OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/out}"
 IAM_MTLS_DIR="${IAM_MTLS_CERT_DIR:-/tmp/iam-mtls}"
 if [ -z "${IAM_INTERNAL_GRPC_MTLS_CERT:-}" ] && [ -z "${IAM_INTERNAL_GRPC_MTLS_KEY:-}" ] \
    && command -v kubectl >/dev/null 2>&1 \
-   && kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls >/dev/null 2>&1; then
+   && kubectl -n "$STAND_NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
   mkdir -p "$IAM_MTLS_DIR"
-  if kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.crt" \
-     && kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.key" \
+  if kubectl -n "$STAND_NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.crt" \
+     && kubectl -n "$STAND_NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.key" \
      && [ -s "$IAM_MTLS_DIR/client.crt" ] && [ -s "$IAM_MTLS_DIR/client.key" ]; then
     chmod 600 "$IAM_MTLS_DIR/client.crt" "$IAM_MTLS_DIR/client.key"
     IAM_INTERNAL_GRPC_MTLS_CERT="$IAM_MTLS_DIR/client.crt"
@@ -74,7 +81,7 @@ if [ -z "${INTERNAL_REST_CERT:-}" ] && command -v kubectl >/dev/null 2>&1; then
   . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/scripts/lib/internal-rest-client.sh"
   SETUP_IR_DIR="$(mktemp -d)"
   trap 'rm -rf "$SETUP_IR_DIR"' EXIT
-  internal_rest_client_leaf "${SETUP_NS:-kacho}" "$SETUP_IR_DIR" \
+  internal_rest_client_leaf "$STAND_NS" "$SETUP_IR_DIR" \
     || echo "[setup] внутренний слушатель края: секрета операторской личности нет — Internal*-посев получит отказ рукопожатия" >&2
 fi
 
@@ -152,8 +159,6 @@ log() { echo "[setup] $*" >&2; }
 # gone. Setting the variable is REFUSED rather than ignored: a variable that is silently
 # ignored reads to whoever set it as "I forced it", and being wrong about that is exactly
 # the state this section exists to prevent.
-SETUP_NS="${SETUP_NS:-kacho}"
-
 if [ -n "${SEED_POSTURE:-}" ]; then
   echo "[setup] FATAL: SEED_POSTURE is gone — posture is no longer something a caller declares." >&2
   echo "[setup]        It existed so a runner without cluster read access could proceed; the" >&2

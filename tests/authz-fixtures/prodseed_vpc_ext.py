@@ -29,7 +29,7 @@
 него список отвечает отказом метода, и пообъектная фильтрация не проверяется
 вовсе. Оба субъекта — служебные учётки с токеном RS256.
 
-Читает /tmp/matrix.json (токен запуска + acctA), заводит ресурсы и выдачи и
+Читает файл матрицы `m.MATRIX_JSON` (умолчание /tmp/matrix.json; токен запуска + acctA), заводит ресурсы и выдачи и
 печатает на стандартный вывод ТОЛЬКО дополнительные фикстуры: list-filter и
 истёкший предъявитель `apiTokenExpired` (`expired_bearer.py`).
 """
@@ -44,7 +44,7 @@ import mint_rs256 as m  # noqa: E402
 import prodseed_matrix as pm  # noqa: E402  (reuse helpers: _curl,_await,make_sa,sa_token,etc.)
 import expired_bearer as eb  # noqa: E402
 
-MATRIX = json.loads(open("/tmp/matrix.json").read())
+MATRIX = json.loads(open(m.MATRIX_JSON).read())
 # Mint a FRESH bootstrap token — the cached jwtBootstrap has a 1h TTL and may have
 # expired since the matrix was seeded (silent code=16 "token validation failed").
 pm.boot = m.mint_bootstrap()   # rebind module-level boot for helper reuse

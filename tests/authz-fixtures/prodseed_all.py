@@ -56,8 +56,10 @@ import base64
 import json
 import os
 import pathlib
+import secrets
 import subprocess
 import sys
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -69,7 +71,14 @@ sys.path.insert(0, str(HERE))
 # and reds wholesale under production authN.
 ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "api-gateway")
 
-NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
+# Пространство имён стенда — из одного места (`stand_ns.py`, задача #2882); расхождение
+# SETUP_NS и KACHO_NAMESPACE — отказ при импорте, до первого обращения к кластеру.
+import stand_ns  # noqa: E402
+
+NS = stand_ns.resolve()
+# Шаги, которые посев порождает сам (матрица, расширения служб), получают ответ обеими
+# переменными — им не приходится разрешать заново из того, что осталось у вызывающего.
+os.environ["SETUP_NS"] = os.environ["KACHO_NAMESPACE"] = NS
 
 
 def log(msg: str) -> None:
@@ -275,6 +284,28 @@ def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
     except json.JSONDecodeError:
         log(f"    WARN {ext.name} produced non-JSON output")
         return {}
+
+
+def run_ceremony(boot: str) -> dict:
+    """Посев гейта S3 (`seed_ceremony.py`): человек, заведённый регистрацией, и три
+    класса его носителей — в окружение набора края. Секреты в журнал не уезжают:
+    объём записанного печатается числом ключей."""
+    import seed_ceremony as sc
+    import verified_human as vh
+    stand, lane, mailbox = sc.from_environment(boot)
+    rid = str(int(time.time()))[-6:]
+    email = f"s3-gate-{rid}-{secrets.token_hex(3)}@example.com"
+    password = f"Seed-{rid}-{secrets.token_urlsafe(18)}-9x"
+    log("гейт S3: один человек тремя классами носителей (seed_ceremony.py)")
+
+    def enroll_human():
+        return vh.enroll(lane, mailbox, email, password, vh.KIND_VERIFIED,
+                         clock=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                         sleep=time.sleep, place="prodseed_all.py:run_ceremony")
+
+    values = sc.seed(stand, lane, enroll_human, lambda: sc.password_login(lane, email, password), rid)
+    log(f"гейт S3: ключей окружения набора края записано {len(values)} из {len(sc.MINTED_KEYS)}")
+    return values
 
 
 _NLB_ID_KEYS = ("existingNetworkId", "existingSubnetId", "existingInstanceId",
@@ -575,6 +606,20 @@ def main() -> int:
             # whose ids straddle two zones — the exact incoherence seed-nlb-fixtures.sh's
             # own header documents. Dev parity too: setup.sh runs only the shell seeder.
             extra = dict(nlb_ids)
+        elif svc == "api-gateway":
+            # ГЕЙТ S3 интерактивного входа (kacho#3159): один человек тремя классами
+            # носителей. Его исходы не сводятся к «расширение не удалось»: «условие не
+            # создано» — 75, находка — 1, как у посева людей выше; сценарии 24 и 25
+            # набора края без этих носителей не исполнимы, и пустое окружение читалось
+            # бы как отказ продукта.
+            try:
+                extra = run_ceremony(boot)
+            except vh.Unmet as e:
+                log(f"гейт S3: {e}")
+                return vh.RC_UNMET
+            except vh.Finding as e:
+                log(f"гейт S3 — НАХОДКА: {e}")
+                return vh.RC_FINDING
         else:
             extra = run_ext(svc, proj, proj_cross)
         if extra:
