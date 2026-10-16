@@ -17,3 +17,14 @@ export const ORIGIN_NOT_IN_LIST = "credential origin is not in the declared list
 
 /** Причина отказа по происхождению в `ErrorInfo` тела. */
 export const ORIGIN_NOT_ALLOWED = "ORIGIN_NOT_ALLOWED";
+
+/**
+ * Отказ выдачи испытания на установке, объявившей «никого» (перечень
+ * происхождений пуст): текст и причина службы удостоверений (kaname,
+ * `webauthnverify.TextKeysDisabled` · `ReasonKeysDisabled`). Код — 9
+ * (FailedPrecondition). Утверждает его KO-03 (kacho#3229, п.4).
+ */
+export const KEYS_DISABLED_TEXT = "access keys are turned off on this installation";
+
+/** Причина того же отказа в `ErrorInfo` тела. */
+export const ACCESS_KEYS_DISABLED = "ACCESS_KEYS_DISABLED";
