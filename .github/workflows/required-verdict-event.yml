@@ -1,0 +1,118 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+# Сводный вердикт запроса ПО СОБЫТИЮ (kacho#3266) — вместо опроса на ранере.
+#
+# ПРЕДМЕТ
+#
+# Опрос (`required-verdict.yml`, `all-checks-green`) спрашивает набор проверок
+# каждые 20 секунд и держит слот всю жизнь набора: 105 ранер-часов за две недели,
+# ~40 минут на голову, — в организации с общим пределом в 20 одновременных
+# заданий, где задания стоят в очереди больше половины своей жизни. Набор
+# меняется ровно тогда, когда завершается процесс запроса, поэтому вердикт
+# пересчитывается по этому событию: одно чтение, секунды ранера, commit status.
+#
+# Решение — то же: `pr-verdict.py` над набором check-runs головы против
+# объявленного из процессов ревизии слияния. Ожидания здесь нет: «ещё идут» —
+# это pending, и следующее завершение поднимет свод снова.
+#
+# ПОЧЕМУ ОТДЕЛЬНЫЙ ФАЙЛ
+#
+# `workflow_run` в одном файле с `pull_request` сделал бы это задание джобой
+# процесса запроса: решатель объявил бы его проверкой головы и ждал бы его, а
+# на запросе оно всегда пропущено. Здесь триггер один, и решатель этот процесс
+# не объявляет (`pr_verdict_test.py`, `test_the_event_workflow_is_not_a_request_workflow`).
+# Его прогоны ложатся на вершину ветки по умолчанию, а не на голову запроса.
+#
+# БЕЗОПАСНОСТЬ: у задания statuses: write, а событие поднимает и прогон чужого
+# запроса. Поэтому (держит `assert-workflow-run-publish-guard.py`, единица
+# «право записи»):
+#
+#   У1 — выкачка только ветки по умолчанию и только каталога скриптов и карты
+#        выбора; артефакты исходного прогона не скачиваются; решатель и выбор
+#        затронутого — с базы. Из головы не исполняется ничего: её процессы
+#        скрипт читает через API как данные;
+#   У2 — поля события — только окружением шага, ни одного выражения в `run:`;
+#        голова сверяется с ^[0-9a-f]{40}$ скриптом;
+#   У3 — права перечислены явно: statuses: write, прочее — read либо нет;
+#   У4 — предел времени задания; размер и имена файлов головы — в скрипте;
+#   У5 — группа параллелизма verdict-<голова> общая с `verdict-open`; черновик и
+#        база читаются из запроса вживую;
+#   У6 — запрос ищется по голове через API, неоднозначность — pending;
+#   голова чужого репозитория — только pending.
+#
+# Работает ТОЛЬКО с ветки по умолчанию: площадка регистрирует `workflow_run` по
+# файлу ствола, поэтому процесс оживает посадкой в main.
+name: сводный вердикт по событию
+
+on:
+  workflow_run:
+    # Каждый процесс, идущий на запросе, кроме самого свода: процесс вне перечня,
+    # завершившись последним, оставил бы pending навсегда. Перечень сверяется с
+    # выводом из дерева в обе стороны (`pr_verdict_test.py`,
+    # `test_the_event_listens_to_every_request_workflow`).
+    workflows:
+      - ci
+      - console-e2e
+      - e2e-newman
+      - production-posture
+      - security-scan
+      - ui
+      - текст запроса
+    types: [completed]
+
+# Процессу — ничего; заданию — ровно то, что оно делает.
+permissions: {}
+
+jobs:
+  verdict-event:
+    name: сводный вердикт по событию
+    # Свод судит только прогоны запроса: push ствола набора запроса не имеет.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+      statuses: write
+    # Пересчёты одной головы — по одному; ждущий заменяется более поздним, а
+    # каждый читает набор вживую, поэтому последний видит последнее завершение.
+    concurrency:
+      group: verdict-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    steps:
+      # Ветка по умолчанию — ЯВНО: у прогона по событию умолчание выкачки и так она,
+      # но запись отличает выбор от забытого `ref` (`workflowrunsubject_test.go`), а
+      # голову с правом записи выкачивать нельзя (У1).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/scripts
+            .github/ci-paths.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # Решатель разбирает процессы PyYAML; в образе части ранеров модуля нет.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+
+      - name: модуль python решателя (pyyaml)
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: вердикт по событию
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CONTEXT: сводный вердикт (событие)
+          # Собственные джобы свода исключаются из набора: задание открытия и
+          # опрос переходного периода.
+          SELF_NAMES: |-
+            сводный вердикт: открытие
+            сводный вердикт (все проверки завершились и зелены)
+        run: .github/scripts/pr-verdict-event.sh

@@ -151,7 +151,9 @@ b7608fe9750; 98-байтное имя `terraform` на 1ad671ef764 показа�
 Вход — JSON от `repos/{repo}/commits/{sha}/check-runs` (или список его элементов)
 на stdin, каталог процессов (`--workflows`) и база запроса (`--base`). Имя
 собственной джобы (`--self-name`) исключается: она завершается последней by
-construction, и без исключения вердикт ждал бы сам себя вечно.
+construction, и без исключения вердикт ждал бы сам себя вечно. Ключ повторяется:
+у свода по событию (kacho#3266) собственных джоб две — задание открытия и опрос
+переходного периода, — и каждая обязана найтись ровно один раз.
 
 Сводка печатает перепись объявления (процессов прочитано, идут на запросе),
 число объявленных, появившихся и осмотренных, поимённо — не появившиеся и
@@ -318,11 +320,18 @@ def _latest_per_check(runs: list[dict]) -> tuple[list[dict], list[dict]]:
     return judged, superseded
 
 
-def decide(payload: object, declared: Declared, self_name: str = "",
+def _own_names(self_name: str | tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Собственные джобы свода: одна строкой либо несколько (свод по событию
+    исключает и задание открытия, и опрос переходного периода, kacho#3266)."""
+    return (self_name,) if isinstance(self_name, str) else tuple(self_name)
+
+
+def decide(payload: object, declared: Declared, self_name: str | tuple[str, ...] = "",
            gated: frozenset[str] = frozenset()) -> Verdict:
     """Вердикт по набору проверок против объявленного. Чистая функция: ни сети,
     ни времени, ни файлов."""
-    examined = [r for r in _runs(payload) if r.get("name") != self_name]
+    own_names = set(_own_names(self_name))
+    examined = [r for r in _runs(payload) if r.get("name") not in own_names]
     runs, set_aside = _latest_per_check(examined)
 
     pending = [r for r in runs if str(r.get("status")) in PENDING]
@@ -666,16 +675,20 @@ def _runs_on_request(doc: dict, base: str) -> bool:
     return selected
 
 
-def declare(workflows: dict[str, object], base: str, self_name: str) -> Declared:
+def declare(workflows: dict[str, object], base: str,
+            self_name: str | tuple[str, ...]) -> Declared:
     """Проверки, которые запрос в базу `base` обязан завести на голове. Чистая
-    функция над разобранными процессами: `{путь: документ}`."""
+    функция над разобранными процессами: `{путь: документ}`. Собственных джоб
+    может быть несколько — каждая обязана найтись ровно один раз."""
     checks: list[JobName] = []
     breaches: list[str] = []
-    on_request = own = 0
+    on_request = 0
+    names = _own_names(self_name)
+    own = {n: 0 for n in names}
     if not base:
         breaches.append("база запроса не передана — какие процессы запрос запускает, "
                         "не вычислено")
-    if not self_name:
+    if not names or any(not n for n in names):
         breaches.append("имя собственной джобы не передано — свод ждал бы сам себя")
     for path, doc in sorted(workflows.items()):
         if not isinstance(doc, dict):
@@ -707,13 +720,15 @@ def declare(workflows: dict[str, object], base: str, self_name: str) -> Declared
                     checks.append(n)
                     continue
                 shown = provider_cut(n.text)
-                if shown == self_name:
-                    own += 1
+                if shown in own:
+                    own[shown] += 1
                 else:
                     checks.append(JobName(n.where, shown, None))
-    if self_name and own != 1:
-        breaches.append(f"собственная джоба «{self_name}» найдена среди джоб запроса {own} "
-                        f"раз, а не один — исключать себя не из чего, и свод ждал бы сам себя")
+    for name, found in own.items():
+        if name and found != 1:
+            breaches.append(f"собственная джоба «{name}» найдена среди джоб запроса {found} "
+                            f"раз, а не один — исключать себя не из чего, и свод ждал бы сам "
+                            f"себя")
     if not checks:
         breaches.append("объявлено ноль проверок — это не «проверять нечего», а «никто не "
                         "смотрел»")
@@ -834,8 +849,9 @@ def draft_verdict(v: Verdict, drafted: Drafted) -> Verdict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--self-name", required=True,
-                    help="имя собственной джобы (исключается из счёта)")
+    ap.add_argument("--self-name", required=True, action="append",
+                    help="имя собственной джобы (исключается из счёта); повторяется — "
+                         "у свода по событию их две (kacho#3266)")
     ap.add_argument("--workflows", required=True, type=Path,
                     help="каталог процессов ревизии, которую исполнил запрос")
     ap.add_argument("--base", required=True, help="база запроса на слияние")
@@ -853,7 +869,7 @@ def main() -> int:
 
     root = args.workflows.resolve()
     docs, errors = load_workflows(root)
-    d = declare(docs, args.base, args.self_name)
+    d = declare(docs, args.base, tuple(args.self_name))
     refusals = (errors + [f"предпосылка ключа: {b}" for b in premise(docs).breaches]
                 + [f"объявление: {b}" for b in d.breaches])
     print(f"объявление: каталог {root}, процессов {d.workflows}, идут на запросе в "
@@ -875,7 +891,7 @@ def main() -> int:
             return 2
 
     try:
-        v = decide(payload, d, args.self_name, gated)
+        v = decide(payload, d, tuple(args.self_name), gated)
         if drafted is not None:
             v = draft_verdict(v, drafted)
     except ValueError as exc:

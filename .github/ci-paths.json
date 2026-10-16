@@ -9,6 +9,7 @@
  ],
  "always": [
   "required-verdict.yml:all-checks-green",
+  "required-verdict.yml:verdict-open",
   "review-text.yml:attribution",
   "ci.yaml:changes",
   "security-scan.yml:changes",

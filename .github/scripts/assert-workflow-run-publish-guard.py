@@ -114,6 +114,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -830,6 +831,245 @@ def simulate(job: dict, doc: dict, github: dict, *, bypass_job_if=False,
     return run
 
 
+# ───────────────── единица «право записи» (kacho#3266) ─────────────────
+#
+# Задание по `workflow_run`, которое секретов не читает, но держит ПРАВО ЗАПИСИ
+# встроенного токена (любая область `write`, `write-all` или права не объявлены
+# вовсе — тогда токен получает права по умолчанию из настройки репозитория).
+# Задания с секретами судят слои выше: они доказывают, что на событии запроса
+# задание не доходит до секретов вообще. Задание с правом записи, напротив, ИДЁТ
+# на событии запроса (свод по событию для того и заведён), поэтому судится иначе
+# — тем, что оно НЕ берёт из головы:
+#
+#   выкачка — только ветки по умолчанию: `ref` нет либо он равен
+#       `${{ github.event.repository.default_branch }}`, `repository` нет либо он
+#       этот репозиторий;
+#   артефакты исходного прогона не скачиваются (`download-artifact`);
+#   в тексте шага `run:` нет ни одного выражения `${{ … }}`: поля события —
+#       только окружением шага, иначе имя ветки чужого запроса становится кодом;
+#   права перечислены явно (не `write-all` и не умолчание);
+#   СЦЕНА ФОРКА — исходом: задание исполняется в сценах головы чужого и
+#       удалённого репозитория, шаги `run:` идут настоящей оболочкой с подставными
+#       `gh`, `curl`, `wget`, `git`, `python3`, `pip` первыми в PATH, выкачка
+#       кладёт `.github` дерева в каталог задания. Каждый поставленный статус
+#       обязан быть pending; статус, чьё состояние не прочитано, и сетевой вызов
+#       мимо `gh` — худший случай.
+#
+# Граница: шаги `uses:`, кроме выкачки, не исполняются; сцена своего запроса не
+# исполняется (её исход — вердикт, и судят его пробы скрипта).
+
+WRITE = "право записи"
+CHECKOUT = "actions/checkout"
+DEFAULT_BRANCH_REF = "${{ github.event.repository.default_branch }}"
+THIS_REPO_REF = "${{ github.repository }}"
+# Подставные инструменты: сетевые отказывают, установщики модулей молча успешны.
+STUB_NET = ("gh", "curl", "wget", "git")
+STUB_QUIET = ("python3", "python", "pip", "pip3")
+
+WRITE_FORK_SCENES = [
+    Scene("workflow_run ← pull_request, голова чужого репозитория",
+          _wr("pull_request", "2942-x", FOREIGN_REPO), False),
+    Scene("workflow_run ← pull_request, голова удалённого репозитория",
+          _wr("pull_request", "2942-x", None), False),
+]
+
+
+def effective_permissions(job: dict, doc: dict):
+    """Права токена задания и уровень, откуда они взяты: права задания ЗАМЕНЯЮТ
+    права процесса целиком."""
+    if "permissions" in job:
+        return job["permissions"], "задание"
+    if "permissions" in doc:
+        return doc["permissions"], "процесс"
+    return None, "нигде"
+
+
+def holds_write(perms) -> bool:
+    if perms is None:
+        return True  # права по умолчанию — настройка репозитория, вне дерева
+    if isinstance(perms, str):
+        return perms.strip() != "read-all"
+    if isinstance(perms, dict):
+        return any(str(v).strip() == "write" for v in perms.values())
+    return True
+
+
+def write_structure(job: dict, doc: dict, where: str) -> list[str]:
+    out = []
+    perms, level = effective_permissions(job, doc)
+    if perms is None:
+        out.append(f"{where}: {WRITE}: права не перечислены ни у задания, ни у процесса — "
+                   f"токен получает права по умолчанию")
+    elif not isinstance(perms, dict):
+        out.append(f"{where}: {WRITE}: права не перечислены — '{perms}' ({level})")
+    for i, st in enumerate(job.get("steps") or []):
+        label = f"шаг №{i + 1} «{_step_label(st)}»"
+        uses = str(st.get("uses") or "")
+        action = uses.split("@", 1)[0].strip().casefold()
+        if "download-artifact" in action:
+            out.append(f"{where}: {WRITE}: {label} скачивает артефакт исходного прогона "
+                       f"({uses}) — данные чужой головы с правом записи")
+        if action == CHECKOUT:
+            w = st.get("with") or {}
+            ref, repo = w.get("ref"), w.get("repository")
+            if ref is not None and str(ref).strip() != DEFAULT_BRANCH_REF:
+                out.append(f"{where}: {WRITE}: {label}: выкачка ссылки '{ref}' — не ветки по "
+                           f"умолчанию; код головы исполнялся бы с правом записи")
+            if repo is not None and str(repo).strip() != THIS_REPO_REF:
+                out.append(f"{where}: {WRITE}: {label}: выкачка: repository '{repo}' — не этот "
+                           f"репозиторий")
+        if "run" in st and "${{" in str(st.get("run")):
+            out.append(f"{where}: {WRITE}: {label}: выражение в тексте шага — поля события "
+                       f"подставляются в код; только окружением шага")
+    return out
+
+
+def _write_stubs(stubs: Path, log: Path) -> None:
+    stubs.mkdir()
+    rec = ("{ printf '%s' \"$(basename \"$0\")\"; for a in \"$@\"; do printf '\\037%s' \"$a\"; "
+           "done; printf '\\036'; } >> " + shlex.quote(str(log)) + "\n")
+    for tool in STUB_NET:
+        body = "#!/usr/bin/env bash\n" + rec
+        if tool == "gh":
+            body += 'case " $* " in *statuses/*) echo "{}"; exit 0 ;; esac\n'
+        body += 'echo "гейт: сети нет" >&2\nexit 1\n'
+        (stubs / tool).write_text(body)
+        (stubs / tool).chmod(0o700)
+    for tool in STUB_QUIET:
+        (stubs / tool).write_text("#!/usr/bin/env bash\n" + rec + "exit 0\n")
+        (stubs / tool).chmod(0o700)
+
+
+def _calls(log: Path) -> list[list[str]]:
+    if not log.exists():
+        return []
+    return [rec.split("\x1f") for rec in log.read_text().split("\x1e") if rec]
+
+
+STATE_FLAGS = ("-f", "-F", "--field", "--raw-field")
+
+
+def _status_state(args: list[str]) -> str | None:
+    """Состояние статуса из полей формы; передача файлом — не прочитано."""
+    if "--input" in args:
+        return None
+    for i, a in enumerate(args[:-1]):
+        if a in STATE_FLAGS and args[i + 1].startswith("state="):
+            return args[i + 1][len("state="):]
+        if a.startswith(tuple(f + "state=" for f in ("-f", "-F"))):
+            return a[3:]
+    return None
+
+
+_WRITE_RUNS: dict[str, list[list[str]]] = {}
+
+
+def simulate_write(job: dict, doc: dict, github: dict, scripts_root: Path) -> list[list[str]]:
+    """Исполнение задания в сцене с подставными инструментами; возвращает вызовы.
+    Исход — функция задания, окружения и умолчаний процесса, сцены и корня: в
+    самопроверке одно и то же задание судится в каждой порче соседнего процесса,
+    поэтому исход запоминается по этому ключу (корень — вместе с отпечатком его
+    скриптов: порча скрипта меняет ключ)."""
+    key = json.dumps([job, doc.get("env"), doc.get("defaults"), github, str(scripts_root),
+                      _scripts_print(scripts_root)], sort_keys=True, default=str)
+    if key not in _WRITE_RUNS:
+        _WRITE_RUNS[key] = _simulate_write(job, doc, github, scripts_root)
+    return _WRITE_RUNS[key]
+
+
+def _scripts_print(root: Path) -> list[tuple[str, int, int]]:
+    d = root / ".github" / "scripts"
+    if not d.is_dir():
+        return []
+    return sorted((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in d.iterdir() if f.is_file())
+
+
+def _simulate_write(job: dict, doc: dict, github: dict, scripts_root: Path) -> list[list[str]]:
+    ctx = Ctx(github=github, env={**(doc.get("env") or {}), **(job.get("env") or {})})
+    cond = job.get("if")
+    if cond is not None and not truthy(evaluate(cond, ctx)):
+        return []
+    with tempfile.TemporaryDirectory() as d:
+        work = Path(d)
+        plat = platform_env(github, work)
+        ws = Path(plat["GITHUB_WORKSPACE"])
+        log = work / "calls.log"
+        _write_stubs(work / "stubs", log)
+        for step in job.get("steps") or []:
+            sid = step.get("id")
+            sc = step.get("if")
+            if sc is None:
+                runs = not ctx.failed
+            else:
+                v = truthy(evaluate(sc, ctx))
+                runs = v if uses_status_func(sc) else (v and not ctx.failed)
+            if not runs:
+                if sid:
+                    ctx.steps[sid] = {"outputs": {}, "outcome": "skipped", "conclusion": "skipped"}
+                continue
+            if "uses" in step:
+                action = str(step["uses"]).split("@", 1)[0].strip().casefold()
+                # выкачка ветки по умолчанию — `.github` судимого корня; ссылкой, а не
+                # копией: сцен на прогон гейта сотни
+                if action == CHECKOUT and (scripts_root / ".github").is_dir() \
+                        and not (ws / ".github").exists():
+                    (ws / ".github").symlink_to((scripts_root / ".github").resolve())
+                if sid:
+                    ctx.steps[sid] = ANY
+                continue
+            shell, _ = decision_shell(step, job, doc)
+            with tempfile.NamedTemporaryFile("w", suffix=".sh", dir=work, delete=False) as fh:
+                fh.write(interpolate(str(step.get("run", "")), ctx))
+            argv = shell_argv(shell, fh.name)
+            if argv is None:
+                raise Unmeasured(f"шаг «{_step_label(step)}» исполняется оболочкой '{shell}' — "
+                                 f"гейт исполняет только bash и sh")
+            env = {"PATH": f"{work / 'stubs'}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}"}
+            for holder in (doc, job, step):
+                for k, v in (holder.get("env") or {}).items():
+                    env[str(k)] = interpolate(str(v), ctx)
+            env.update({k: v for k, v in plat.items() if k.startswith(PLATFORM_PREFIXES)})
+            env.setdefault("CI", plat["CI"])
+            env.setdefault("HOME", plat["HOME"])
+            Path(plat["GITHUB_OUTPUT"]).write_text("")
+            try:
+                rc = subprocess.run(argv, env=env, capture_output=True, text=True, cwd=ws,
+                                    timeout=120).returncode
+            except subprocess.TimeoutExpired as exc:
+                raise Unmeasured(f"шаг «{_step_label(step)}» не завершился за 120 с") from exc
+            outs = dict(ln.split("=", 1) for ln in
+                        Path(plat["GITHUB_OUTPUT"]).read_text().splitlines() if "=" in ln)
+            tolerated = rc != 0 and _continue_on_error(step, ctx)
+            if sid:
+                ctx.steps[sid] = {"outputs": outs, "outcome": "success" if rc == 0 else "failure",
+                                  "conclusion": "success" if rc == 0 or tolerated else "failure"}
+            if rc != 0 and not tolerated:
+                ctx.failed = True
+        return _calls(log)
+
+
+def judge_write(job: dict, doc: dict, where: str, scripts_root: Path, c: "Census") -> list[str]:
+    out = write_structure(job, doc, where)
+    for sc in WRITE_FORK_SCENES:
+        c.write_scenes += 1
+        for call in simulate_write(job, doc, sc.github, scripts_root):
+            tool, args = call[0], call[1:]
+            if tool in ("curl", "wget"):
+                out.append(f"{where}: [{sc.name}] {WRITE}: сетевой вызов мимо gh ({tool}) — "
+                           f"исход не судится, худший случай")
+                continue
+            if tool != "gh" or not any(re.search(r"(^|/)statuses/", a) for a in args):
+                continue
+            state = _status_state(args)
+            if state is None:
+                out.append(f"{where}: [{sc.name}] {WRITE}: состояние статуса не прочитано "
+                           f"(передано не полем формы) — худший случай")
+            elif state != "pending":
+                out.append(f"{where}: [{sc.name}] {WRITE}: поставлен статус '{state}' — на "
+                           f"голове чужого репозитория только pending")
+    return out
+
+
 @dataclass
 class Census:
     workflows: int = 0
@@ -837,6 +1077,8 @@ class Census:
     jobs: int = 0
     jobs_with_secrets: int = 0
     scenes: int = 0
+    jobs_with_write: int = 0
+    write_scenes: int = 0
 
 
 def concurrency_groups(job: dict, doc: dict, github: dict) -> list[tuple[str, str]]:
@@ -858,13 +1100,26 @@ def concurrency_groups(job: dict, doc: dict, github: dict) -> list[tuple[str, st
 LAYER3_ANSWERS = [("«нет»", (0, {"publish": "false"})), ("без ответа", (0, {}))]
 
 
-def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
-    """workflows: путь → текст. Возвращает находки и перепись."""
+_PARSED: dict[str, object] = {}
+
+
+def _parse(text: str) -> object:
+    """Разбор процесса по тексту, один раз на текст: самопроверка судит дерево
+    больше сотни раз, и порча меняет один файл из пятнадцати. Разобранное гейт
+    только читает."""
+    if text not in _PARSED:
+        _PARSED[text] = yaml.safe_load(text)
+    return _PARSED[text]
+
+
+def judge(workflows: dict[str, str], scripts_root: Path) -> tuple[list[str], Census]:
+    """workflows: путь → текст; scripts_root — корень, чей `.github` кладёт
+    выкачка в сценах единицы «право записи». Возвращает находки и перепись."""
     findings: list[str] = []
     c = Census(workflows=len(workflows))
     for path, text in sorted(workflows.items()):
         try:
-            doc = yaml.safe_load(text)
+            doc = _parse(text)
         except yaml.YAMLError as exc:
             raise Unmeasured(f"{path}: не разобран: {exc}") from exc
         if not isinstance(doc, dict) or "workflow_run" not in _triggers(doc):
@@ -876,6 +1131,9 @@ def judge(workflows: dict[str, str]) -> tuple[list[str], Census]:
             steps = job.get("steps") or []
             exposure = job_level_exposure(job, doc)
             if not exposure and not any(refs_secrets(s) for s in steps):
+                if holds_write(effective_permissions(job, doc)[0]):
+                    c.jobs_with_write += 1
+                    findings += judge_write(job, doc, f"{path}: jobs.{jname}", scripts_root, c)
                 continue
             c.jobs_with_secrets += 1
             consumer_with_secrets = True
@@ -977,20 +1235,22 @@ def tree_workflows(root: Path) -> dict[str, str]:
     return {p: (root / p).read_text() for p in files}
 
 
-def verdict(workflows: dict[str, str]) -> tuple[int, list[str], Census | None]:
+def verdict(workflows: dict[str, str], scripts_root: Path) -> tuple[int, list[str], Census | None]:
     try:
-        f, c = judge(workflows)
+        f, c = judge(workflows, scripts_root)
     except Unmeasured as exc:
         return 2, [f"НЕ ИЗМЕРЕНО: {exc}"], None
-    if c.workflows == 0 or c.jobs_with_secrets == 0:
+    if c.workflows == 0 or (c.jobs_with_secrets == 0 and c.jobs_with_write == 0):
         return 2, [f"судить нечего: процессов {c.workflows}, с workflow_run {c.consumers}, "
-                   f"заданий с секретами {c.jobs_with_secrets}"], c
+                   f"заданий с секретами {c.jobs_with_secrets}, с правом записи "
+                   f"{c.jobs_with_write}"], c
     return (1 if f else 0), f, c
 
 
 def _census_line(c: Census) -> str:
     return (f"перепись: процессов {c.workflows} · с workflow_run {c.consumers} · заданий "
-            f"{c.jobs} · с секретами {c.jobs_with_secrets} · сцен исполнено {c.scenes}")
+            f"{c.jobs} · с секретами {c.jobs_with_secrets} · сцен исполнено {c.scenes} · "
+            f"с правом записи {c.jobs_with_write} · сцен форка исполнено {c.write_scenes}")
 
 
 # ───────────────────────── самопроверка ─────────────────────────
@@ -998,7 +1258,8 @@ def _census_line(c: Census) -> str:
 DOCKER = ".github/workflows/docker-build.yml"
 
 
-LAYERS = ("слой 1", "слой 2", "слой 3", "место проверки", "триггеры", "параллельность")
+LAYERS = ("слой 1", "слой 2", "слой 3", "место проверки", "триггеры", "параллельность",
+          "право записи")
 
 
 def _parser_probes() -> list[tuple[str, str, bool]]:
@@ -1022,6 +1283,108 @@ def _parser_probes() -> list[tuple[str, str, bool]]:
     ]
 
 
+EVENT = ".github/workflows/required-verdict-event.yml"
+EVENT_SCRIPT = ".github/scripts/pr-verdict-event.sh"
+
+
+def _write_unit_probes(root: Path, real: dict[str, str], expect) -> None:
+    """Пять сцен единицы «право записи» настоящим входом — процессом свода по
+    событию и его скриптом из дерева — и законные близнецы той же формы."""
+    if EVENT not in real or not (root / EVENT_SCRIPT).is_file():
+        expect(f"право записи: предпосылка — {EVENT} и {EVENT_SCRIPT} в дереве", None, 0)
+        return
+    ev = real[EVENT]
+
+    def on_event(old: str, new: str) -> dict[str, str] | None:
+        if ev.count(old) != 1:
+            return None
+        return {**real, EVENT: ev.replace(old, new)}
+
+    expect("право записи: контроль — свод по событию как есть", dict(real), 0)
+
+    # (1) событие из форка → только pending: скрипт с порчей ставит success голове
+    # чужого репозитория
+    src = (root / EVENT_SCRIPT).read_text()
+    fork_line = "post pending \"$FORK_PENDING\""
+    with tempfile.TemporaryDirectory() as d:
+        alt = Path(d)
+        shutil.copytree(root / ".github", alt / ".github")
+        if src.count(fork_line) != 1:
+            expect("право записи (1): форк ставит не pending", None, 1)
+        else:
+            (alt / EVENT_SCRIPT).write_text(src.replace(fork_line, "post success \"$FORK_PENDING\""))
+            expect("право записи (1): событие из форка ставит success", dict(real), 1,
+                   ["право записи", "голова чужого репозитория", "'success'"], "право записи",
+                   scripts=alt)
+    # (2) выкачка ссылки головы
+    expect("право записи (2): выкачка ссылки головы",
+           on_event("          ref: ${{ github.event.repository.default_branch }}\n",
+                    "          ref: ${{ github.event.workflow_run.head_sha }}\n"), 1,
+           ["право записи", "выкачка", "head_sha"], "право записи")
+    expect("право записи (2): выкачка чужого репозитория",
+           on_event("          persist-credentials: false\n",
+                    "          persist-credentials: false\n"
+                    "          repository: ${{ github.event.workflow_run.head_repository.full_name }}\n"),
+           1, ["право записи", "выкачка", "repository"], "право записи")
+    # (3) артефакт исходного прогона
+    expect("право записи (3): download-artifact",
+           on_event("      - name: вердикт по событию\n",
+                    "      - uses: actions/download-artifact@v4\n"
+                    "      - name: вердикт по событию\n"), 1,
+           ["право записи", "download-artifact"], "право записи")
+    # (4) поле события подставлено в текст шага
+    expect("право записи (4): ${{ workflow_run.head_branch }} в run:",
+           on_event("        run: .github/scripts/pr-verdict-event.sh\n",
+                    "        run: echo \"${{ github.event.workflow_run.head_branch }}\" && "
+                    ".github/scripts/pr-verdict-event.sh\n"), 1,
+           ["право записи", "выражение в тексте шага"], "право записи")
+    # права: не объявлены и объявлены целиком
+    # права не объявлены ни у задания, ни у процесса — токен по умолчанию
+    bare = on_event("    permissions:\n      contents: read\n      checks: read\n"
+                    "      pull-requests: read\n      statuses: write\n", "")
+    if bare is not None and bare[EVENT].count("\npermissions: {}\n") == 1:
+        bare = {**bare, EVENT: bare[EVENT].replace("\npermissions: {}\n", "\n")}
+    else:
+        bare = None
+    expect("право записи: права не объявлены нигде", bare, 1,
+           ["право записи", "права не перечислены"], "право записи")
+    # близнец: права задания сняты, у процесса — пусто: права записи нет, единицы нет
+    expect("право записи: близнец — права процесса пусты, права задания сняты",
+           on_event("    permissions:\n      contents: read\n      checks: read\n"
+                    "      pull-requests: read\n      statuses: write\n", ""), 0)
+    expect("право записи: write-all",
+           on_event("    permissions:\n      contents: read\n      checks: read\n"
+                    "      pull-requests: read\n      statuses: write\n",
+                    "    permissions: write-all\n"), 1,
+           ["право записи", "write-all"], "право записи")
+    # (5) законный близнец: своё событие, выкачка ветки по умолчанию явно, поля
+    # события — через env
+    twin = (
+        "on:\n  workflow_run:\n    workflows: [ci]\n    types: [completed]\n"
+        "permissions: {}\n"
+        "jobs:\n  v:\n    runs-on: ubuntu-latest\n"
+        "    permissions:\n      statuses: write\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v7\n"
+        "        with:\n          ref: ${{ github.event.repository.default_branch }}\n"
+        "      - env:\n          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}\n"
+        "          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}\n"
+        "          REPO: ${{ github.repository }}\n"
+        "        run: |\n"
+        "          if [ \"$HEAD_REPO\" != \"$REPO\" ]; then\n"
+        "            gh api -X POST \"repos/$REPO/statuses/$HEAD_SHA\" -f state=pending\n"
+        "            exit 0\n"
+        "          fi\n"
+        "          gh api -X POST \"repos/$REPO/statuses/$HEAD_SHA\" -f state=success\n")
+    expect("право записи (5): законный близнец — ветка по умолчанию, поля через env",
+           {**real, ".github/workflows/twin-write.yml": twin}, 0)
+    # тот же близнец без охраны форка — краснеет: сцена форка его исполнила
+    expect("право записи (5'): близнец без охраны форка",
+           {**real, ".github/workflows/twin-write.yml": twin.replace(
+               "if [ \"$HEAD_REPO\" != \"$REPO\" ]", "if false")}, 1,
+           ["право записи", "голова чужого репозитория", "'success'"], "право записи")
+
+
 def self_test(root: Path) -> int:
     real = tree_workflows(root)
     if DOCKER not in real:
@@ -1037,16 +1400,18 @@ def self_test(root: Path) -> int:
             return None
         return src.replace(old, new)
 
-    def expect(name, text, code, must=(), only=None):
+    def expect(name, text, code, must=(), only=None, scripts=None):
         """`only` — слой, ЕДИНСТВЕННО вправе дать находки: порча роняет ровно свой
-        предмет, а не соседний."""
+        предмет, а не соседний. `scripts` — корень, откуда сцены единицы «право
+        записи» берут выкачанные скрипты (по умолчанию — дерево)."""
         nonlocal fails, probes
         probes += 1
         if text is None:
             print(f"✗ {name}: инъекция не легла — образец не найден ровно один раз")
             fails += 1
             return
-        got, f, _ = verdict({**real, DOCKER: text} if isinstance(text, str) else text)
+        got, f, _ = verdict({**real, DOCKER: text} if isinstance(text, str) else text,
+                            root if scripts is None else scripts)
         joined = "\n".join(f)
         miss = [m for m in must if m not in joined]
         alien = [x for x in LAYERS if only and x != only and x in joined]
@@ -1482,12 +1847,18 @@ def self_test(root: Path) -> int:
     expect("непонятое условие — не измерено, а не зелёное",
            mutate("github.event_name == 'workflow_dispatch' ||", "contains(github.ref, 'x') ||"), 2,
            ["НЕ ИЗМЕРЕНО"])
-    # законный близнец: workflow_run без секретов — молчание и учёт в переписи
+    # законный близнец: workflow_run без секретов и без права записи — молчание и
+    # учёт в переписи. Права объявлены: без них заданию достаётся токен с правами
+    # по умолчанию, и это уже единица «право записи» (ниже).
     twin = ("on:\n  workflow_run:\n    workflows: [x]\n    types: [completed]\n"
+            "permissions: {}\n"
             "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n")
     expect("законный близнец: workflow_run без секретов", {**real, ".github/workflows/twin.yml": twin}, 0)
-    expect("нет предмета: процессов workflow_run с секретами ноль",
+    expect("нет предмета: процессов workflow_run с секретами и с правом записи ноль",
            {".github/workflows/twin.yml": twin}, 2, ["судить нечего"])
+
+    # ── право записи: задание по workflow_run с любым write (kacho#3266) ──
+    _write_unit_probes(root, real, expect)
     print(f"самопроверка: подпроб {probes}, провалов {fails}")
     return 1 if fails else 0
 
@@ -1497,7 +1868,7 @@ def main() -> int:
                                text=True, check=True).stdout.strip())
     if "--self-test" in sys.argv:
         return self_test(root)
-    code, f, c = verdict(tree_workflows(root))
+    code, f, c = verdict(tree_workflows(root), root)
     if c:
         print(_census_line(c))
     for line in f:

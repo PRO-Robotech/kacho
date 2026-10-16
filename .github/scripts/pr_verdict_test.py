@@ -1202,3 +1202,76 @@ def test_a_matrix_without_dimensions_is_a_breach() -> None:
     twin = tree_workflows()
     twin[UI]["jobs"]["test"]["strategy"]["matrix"] = {"pkg": ["host"]}
     assert premise(twin).breaches == (), premise(twin).breaches
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# СВОД ПО СОБЫТИЮ (kacho#3266): исключает ОБЕ собственные джобы и слушает каждый
+# процесс запроса.
+# ─────────────────────────────────────────────────────────────────────────────
+
+OPEN = "сводный вердикт: открытие"
+EVENT_WORKFLOW = ".github/workflows/required-verdict-event.yml"
+VERDICT_WORKFLOW = ".github/workflows/required-verdict.yml"
+
+
+def test_several_own_jobs_are_excluded_and_each_is_found_once() -> None:
+    """Свод по событию судит набор, в котором есть и опрос переходного периода, и
+    задание открытия: обе — его собственные, ждать их значило бы сравнивать опрос
+    сам с собой. Каждое имя обязано найтись ровно один раз."""
+    d = tree_declared(self_name=(VERDICT, OPEN))
+    assert d.breaches == (), "\n".join(d.breaches)
+    literals = {c.text for c in d.checks if c.parts is None}
+    assert VERDICT not in literals and OPEN not in literals, literals
+    assert len(d.checks) == len(tree_declared().checks) - 1, "открытие не исключено"
+    v = decide([run(VERDICT, "in_progress", run_id=1, suite=1),
+                run(OPEN, "in_progress", run_id=2, suite=1)] + all_green(d), d, (VERDICT, OPEN))
+    assert v.state == GREEN, render(v)
+    for wrong in ((VERDICT, "не та джоба"), (VERDICT, "")):
+        assert any("собственн" in b for b in tree_declared(self_name=wrong).breaches), wrong
+
+
+def test_the_event_listens_to_every_request_workflow() -> None:
+    """`workflow_run.workflows` — перечень процессов, чьё завершение поднимает свод.
+    Процесс запроса вне перечня, завершившись последним, оставил бы pending
+    навсегда; имя в перечне без процесса — подписка ни на что. Перечень сверяется
+    с выводом из дерева в обе стороны по всем классам баз."""
+    wf = tree_workflows()
+    event = wf[EVENT_WORKFLOW]
+    on = event.get("on", event.get(True))
+    listened = set(on["workflow_run"]["workflows"])
+    assert on["workflow_run"]["types"] == ["completed"], on
+    expected: set[str] = set()
+    for base in ("main", LINE_BASE, f"{LINE_BASE}-x"):
+        for path, doc in wf.items():
+            if path == VERDICT_WORKFLOW or "pull_request" not in pr_verdict._triggers(doc):
+                continue
+            if pr_verdict._runs_on_request(doc, base):
+                expected.add(doc["name"])
+    print(f"свод по событию: слушает {len(listened)}, процессов запроса {len(expected)}")
+    assert expected, "процессов запроса ноль — сверять не с чем"
+    assert listened == expected, (sorted(listened - expected), sorted(expected - listened))
+
+
+def test_the_event_workflow_is_not_a_request_workflow() -> None:
+    """Процесс по событию не идёт на запросе: иначе свод объявил бы своё же
+    задание и ждал бы его."""
+    doc = tree_workflows()[EVENT_WORKFLOW]
+    assert set(pr_verdict._triggers(doc)) == {"workflow_run"}, pr_verdict._triggers(doc)
+
+
+def test_the_status_context_and_own_jobs_are_one_set_in_both_workflows() -> None:
+    """Имя контекста статуса записано дважды — в задании открытия и в задании
+    события; разойдясь, они вели бы ДВА контекста, и pending открытия не
+    сменился бы никогда. Собственные джобы события — ровно джобы свода."""
+    wf = tree_workflows()
+    open_job = wf[VERDICT_WORKFLOW]["jobs"]["verdict-open"]
+    event_job = wf[EVENT_WORKFLOW]["jobs"]["verdict-event"]
+    open_env = open_job["steps"][-1]["env"]
+    event_env = event_job["steps"][-1]["env"]
+    assert open_env["CONTEXT"] == event_env["CONTEXT"], (open_env["CONTEXT"], event_env["CONTEXT"])
+    own = {j["name"] for j in wf[VERDICT_WORKFLOW]["jobs"].values()}
+    assert set(event_env["SELF_NAMES"].splitlines()) == own == {VERDICT, OPEN}, own
+    assert open_job["concurrency"]["group"].removeprefix("verdict-") == \
+        "${{ github.event.pull_request.head.sha }}", open_job["concurrency"]
+    assert event_job["concurrency"]["group"].removeprefix("verdict-") == \
+        "${{ github.event.workflow_run.head_sha }}", event_job["concurrency"]
