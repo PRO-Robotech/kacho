@@ -250,9 +250,14 @@ describe("ResourceFormBody — подвал", () => {
   });
 
   it("пока запрос в полёте, отправку нельзя запустить второй раз", () => {
-    show([str({ name: "name", label: "поле имя" })], { submitting: true });
+    const { onSubmit } = show([str({ name: "name", label: "поле имя" })], { submitting: true });
 
-    expect(screen.getByRole("button", { name: "Создать сеть" })).toBeDisabled();
+    // Занятость — свойство нажатия, а не атрибута `disabled`: кнопка в ожидании
+    // остаётся в фокусе, объявляет себя недоступной и нажатия не пропускает.
+    const submit = screen.getByRole("button", { name: "Создать сеть" });
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });
 

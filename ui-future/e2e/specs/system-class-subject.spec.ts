@@ -8,7 +8,7 @@ import { scopeIsReady, tenantWithProject, test, type Tenant } from "./fixtures";
 /**
  * Стадия S4 приёмки «аноним и вошедший — системный класс субъекта» (дом приёмки
  * PRO-Robotech/kaname, docs/engineering/acceptance/anonymous-and-authenticated-are-subject-classes.md;
- * зеркало консоли — kacho#3238): SC-50…53, посев П5 — консоль на стенде, человек вошёл.
+ * зеркало консоли — kacho#3238): SC-50…54, посев П5 — консоль на стенде, человек вошёл.
  *
  * Утверждается ВИДИМОЕ клиенту: варианты выбора, тексты предупреждений, набор
  * предложенных ролей, текст отказа сервера у поля и показ класса в перечне.
@@ -217,6 +217,11 @@ test("SC-52: отказ сервера на «всю область» анони
     .locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-form-item ")][1]')
     .getByText(ANONYMOUS_ALL_IN_SCOPE_REFUSAL, { exact: true });
   await expect(atTarget, "текст отказа сервера показан у поля цели дословно").toBeVisible();
+  // После отказа кнопка обязана снова называться «Создать»: ответ пришёл, и
+  // ожидание закончено. Прежде у неё оставался значок загрузки, застрявший в
+  // анимации ухода, — кнопка называлась «loading Создать» и для читалки экрана
+  // так и висела в загрузке (console-e2e, kacho#3238).
+  await expect(submitButton(page), "после отказа кнопка отправки — снова «Создать», без признака загрузки").toBeEnabled();
 
   // Близнец — один факт: вид цели. Тот же класс, та же роль, названный объект.
   await nameOneObject(page);
@@ -263,7 +268,9 @@ test("SC-53: класс в перечне выдач показан подпис
   );
   // Близнец ссылки: у той же строки роль — ссылка на страницу роли; ссылка на
   // ресурс у строки есть, у класса её нет не потому, что ссылок нет вообще.
-  const row = table.locator("tr").filter({ has: classCell });
+  // Строка ищется ВНУТРИ себя: локатор в `has` отсчитывается от строки, и
+  // корень `table` там не найдётся никогда — так строка не находилась вовсе.
+  const row = table.locator("tr").filter({ has: page.getByText(AUTHENTICATED_LABEL, { exact: true }) });
   await expect(row.locator('a[href^="/iam/roles/"]').first(), "у строки выдачи роль — ссылкой").toBeVisible();
 
   // Системная выдача SC-40 стоит на кластере, вне аккаунта: в перечне арендатора
@@ -300,7 +307,7 @@ test("SC-54: выдачу классу снимают из перечня — с
   await expect(classCell.first(), "выдача классу показана в перечне до отзыва").toBeVisible({ timeout: 45_000 });
   await expect(classCell, "в перечне ровно одна выдача классу — отзывается именно она").toHaveCount(1);
 
-  const row = table.locator("tr").filter({ has: classCell });
+  const row = table.locator("tr").filter({ has: page.getByText(AUTHENTICATED_LABEL, { exact: true }) });
   await row.getByRole("button", { name: "Действия" }).first().click();
   await page.getByRole("menuitem", { name: /Удалить/ }).click();
   const dialog = page.getByRole("dialog");

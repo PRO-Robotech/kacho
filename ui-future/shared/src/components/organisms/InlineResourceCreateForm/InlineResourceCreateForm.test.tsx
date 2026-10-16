@@ -198,7 +198,12 @@ describe("InlineResourceCreateForm", () => {
 
     submit();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Создать" })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Создать" })).toHaveAttribute("aria-disabled", "true"),
+    );
+    // Второе нажатие в ожидании до края не доходит.
+    submit();
+    expect(create).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
     expect(toastSuccess).not.toHaveBeenCalled();
