@@ -20,13 +20,20 @@
   * SC-41 — права вошедших после переезда прежние; «Дано» — переезд применён на стенде:
     системная выдача `acbc5d32d66fc8dc4952` несёт субъекта `system_class/authenticated` (SC-40).
   * SC-18 (краевая половина) — принципал ДРУГОГО арендатора читает объект `acc-A`, выданный
-    классу `authenticated`, `200`; после отзыва опрос доходит до `403` /
-    `PERMISSION_DENIED` (у строки `NetworkService/Get` нет `hide_existence`).
+    классу `authenticated`, `200`; до выдачи и после отзыва постороннему отказ формой,
+    которую каталог прав края назначает методу: у `NetworkService/Get` скрытие
+    существования (чтение объекта отношением `v_get`), значит `404` / `NOT_FOUND`
+    с текстом владельца `Network <id> not found` и без данных объекта, а не `403`.
+    Ожидаемый код вычисляется из `gateway/internal/middleware/embed/permission_catalog.json`
+    тем же предикатом, что `CatalogEntry.HidesExistenceOnDeny`, а не выписывается.
 
 Классы свода: AUTHN, AUTHZ, CONF, NEG. Субъект «вошедший без выдач» — `jwtPureNoBindings`
 (никогда не грантуемый, testing-newman layer4a), принципал другого арендатора для SC-18 —
 он же: выдач в аккаунте A у него нет by construction.
 """
+
+import json
+from pathlib import Path
 
 ASSERTS_DOMAIN = "gateway"
 ASSERTS_REASON = (
@@ -221,11 +228,92 @@ def _delete(name, path, op_var, guard_var, auth="jwtAccountAdminA"):
 
 
 _NETWORK_GET = "/vpc/v1/networks/{{sc18NetId}}"
+_NETWORK_GET_FQN = "kacho.cloud.vpc.v1.NetworkService/Get"
+
+# Каталог прав края — тот же файл, что край встраивает (`embed`), а не копия; ищется
+# вверх от этого файла, как общий слой генератора.
+_CATALOG_REL = Path("gateway") / "internal" / "middleware" / "embed" / "permission_catalog.json"
+
+
+def _find_catalog():
+    for parent in Path(__file__).resolve().parents:
+        if (parent / _CATALOG_REL).is_file():
+            return parent / _CATALOG_REL
+    return None
+
+
+def _hides_existence_on_deny(catalog, fqn):
+    """Предикат края `CatalogEntry.HidesExistenceOnDeny` над строкой каталога.
+
+    Явный флаг `hide_existence` либо форма: unary `/Get`, отношение `v_get`,
+    пообъектная область (поле запроса задано, тип объекта не из запроса). Строки
+    нет — генерация падает: ждать отказа по методу вне каталога значило бы
+    утверждать исход, которого край не производит.
+    """
+    entries = {e["fqn"]: e for e in json.loads(catalog.read_text(encoding="utf-8"))}
+    if fqn not in entries:
+        raise SystemExit(f"{fqn}: строки нет в {catalog}")
+    e = entries[fqn]
+    if e.get("hide_existence"):
+        return True
+    se = e.get("scope_extractor") or {}
+    concrete = (not (se.get("object_type_from_request_field") or "").strip()
+                and (se.get("from_request_field") or "").strip() not in ("", "*", "subject", "resource"))
+    return fqn.endswith("/Get") and e.get("required_relation") == "v_get" and concrete
+
+
+# Форма отказа постороннему на чтение сети — (HTTP, gRPC, имя) из каталога по методу.
+# Каталога над файлом нет (копия набора вне дерева: гейт детерминизма генерации
+# копирует только каталог набора) — формы нет, и шаг отказа несёт утверждение,
+# которое падает всегда: такая коллекция зелёной не бывает. Отката на константу нет.
+_CATALOG = _find_catalog()
+if _CATALOG is None:
+    _DENY = None
+elif _hides_existence_on_deny(_CATALOG, _NETWORK_GET_FQN):
+    _DENY = (404, 5, "NOT_FOUND")
+else:
+    _DENY = (403, 7, "PERMISSION_DENIED")
+_DENY_LABEL = f"{_DENY[0]}/{_DENY[2]}" if _DENY else "форма каталога"
+
+
+def _outsider_refused(label):
+    """Отказ постороннему: статус, код, (при скрытии) текст владельца и ни байта объекта."""
+    if _DENY is None:
+        return [
+            f"pm.test({js_str(label + ': форма отказа не выведена — каталог прав края не найден при генерации')}, "
+            "() => pm.expect.fail('коллекция собрана без gateway/internal/middleware/embed/permission_catalog.json'));",
+        ]
+    http, code, name = _DENY
+    script = [
+        *assert_status(http),
+        f"pm.test({js_str(label + f': код отказа — {name} ({code})')}, () => {{",
+        f"  pm.expect(pm.response.json().code, pm.response.text()).to.eql({code});",
+        "});",
+    ]
+    if code == 5:
+        script += [
+            "pm.test('скрытие существования: текст равен отказу владельца «нет такой сети»', () => {",
+            "  pm.expect(pm.response.json().message, pm.response.text())"
+            ".to.eql('Network ' + pm.environment.get('sc18NetId') + ' not found');",
+            "});",
+        ]
+    script += [
+        "pm.test('в отказе нет данных объекта (ни полей сети, ни имени, ни проекта)', () => {",
+        "  const j = pm.response.json();",
+        "  ['id', 'name', 'projectId', 'createdAt', 'labels'].forEach(k => "
+        "pm.expect(j, 'ключ ' + k + ': ' + pm.response.text()).to.not.have.property(k));",
+        "  const t = pm.response.text();",
+        "  pm.expect(t.includes('sc18-net-' + pm.environment.get('runId')), 'имя сети в отказе: ' + t).to.eql(false);",
+        "  pm.expect(t.includes(pm.environment.get('sc18PrjId')), 'проект в отказе: ' + t).to.eql(false);",
+        "});",
+    ]
+    return script
+
 
 CASES.append(Case(
     id="SC18-EDGE-OTHER-TENANT-READS-CLASS-GRANT",
     title="SC-18 край: выдача authenticated на сеть acc-A → принципал вне acc-A читает её 200; "
-          "после отзыва опрос до 403/PERMISSION_DENIED",
+          f"до выдачи и после отзыва — отказ формой каталога ({_DENY_LABEL}), без данных объекта",
     classes=["AUTHZ", "CRUD", "STATE"],
     priority="P0",
     steps=[
@@ -238,12 +326,7 @@ CASES.append(Case(
         Step(
             name="sc18-precondition-outsider-denied",
             method="GET", path=_NETWORK_GET, mux="public", auth="jwtPureNoBindings",
-            test_script=[
-                *assert_status(403),
-                "pm.test('предпосылка: без выдачи посторонний не читает (PERMISSION_DENIED)', () => {",
-                "  pm.expect(pm.response.json().code, pm.response.text()).to.eql(7);",
-                "});",
-            ],
+            test_script=_outsider_refused("предпосылка: без выдачи посторонний не читает"),
         ),
         *_create("sc18-grant-authenticated", "/iam/v1/accessBindings",
                  {"subjects": [{"type": "SUBJECT_TYPE_SYSTEM_CLASS", "id": "authenticated"}],
@@ -265,15 +348,14 @@ CASES.append(Case(
             test_script=[
                 "if (pm.environment.get('_sc18Started') !== pm.info.requestName) { pm.environment.set('_sc18Count', '0'); pm.environment.set('_sc18Started', pm.info.requestName); }",
                 "const c = parseInt(pm.environment.get('_sc18Count') || '0', 10);",
-                "if (pm.response.code !== 403 && c < 150) {",
+                f"if (pm.response.code !== {_DENY[0] if _DENY else 0} && c < 150) {{",
                 "  pm.environment.set('_sc18Count', String(c + 1));",
                 "  const _w = Date.now(); while (Date.now() - _w < 200) void 0;",
                 "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_sc18Count'); pm.environment.unset('_sc18Started');",
-                *assert_status(403),
-                "pm.test('после отзыва — PERMISSION_DENIED', () => pm.expect(pm.response.json().code, pm.response.text()).to.eql(7));",
+                *_outsider_refused("после отзыва"),
             ],
         ),
         *_delete("sc18-cleanup-network", _NETWORK_GET, "sc18NetDelOpId", "sc18NetId"),
