@@ -154,7 +154,7 @@ resources:
         definition: '[user, service_account]'
         position: beforeTiers
     verbs:
-      - {name: get, subjects: ['user:*', user, service_account, 'group#member'], from: [owner, super_admin]}
+      - {name: get, subjects: [system_class, user, service_account, 'group#member'], from: [owner, super_admin]}
       - {name: list, from: [owner, super_admin]}
       - {name: update, from: [owner, super_admin]}
       - {name: delete, from: [owner, super_admin]}
