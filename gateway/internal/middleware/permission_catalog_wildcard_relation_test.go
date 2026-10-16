@@ -6,11 +6,12 @@ package middleware_test
 // permission_catalog_wildcard_relation_test.go — a relation that a wildcard tuple
 // satisfies narrows NOTHING, and every catalog row standing on one has to say why.
 //
-// The authorization model lets a relation be granted to `user:*`. The cluster
-// bootstrap uses that deliberately: it writes `cluster:<root>#viewer@user:*` so the
-// GLOBAL REFERENCE CATALOGUE — the regions, zones and disk types a tenant must be
-// able to read before it can place anything — is readable by anyone
-// authenticated. For that data it is the correct design.
+// Модель прав позволяет выдать отношение КАЖДОМУ субъекту сразу: классом
+// субъектов `system_class` (после PRO-Robotech/kaname#829), прежде — подстановкой
+// `user:*`. Системная выдача делает это намеренно: она пишет
+// `cluster:<root>#viewer@system_class:authenticated`, чтобы ГЛОБАЛЬНЫЙ
+// СПРАВОЧНИК — регионы, зоны и типы дисков, без которых арендатор ничего не
+// разместит, — читал любой вошедший. Для этих данных это верное устройство.
 //
 // The consequence is that a catalog row asking for `viewer` on `cluster` means
 // "authenticated", not "authorized". It costs a round-trip, reads in the catalog
@@ -23,7 +24,7 @@ package middleware_test
 // no longer qualifies fails it too, so the list cannot rot into a comment.
 //
 // The set of wildcard-satisfiable relations is COMPUTED FROM THE MODEL, not
-// listed: the day someone adds `user:*` to another relation, every catalog row
+// listed: the day someone adds the class or a wildcard to another relation, every catalog row
 // resting on it appears here without anyone remembering to update a literal.
 
 import (
@@ -103,7 +104,7 @@ func TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues(t *tes
 	// gate exists to catch elsewhere.
 	require.NotEmpty(t, wildcard, "no wildcard-satisfiable relation found — the model parse is broken, not the model")
 	require.Contains(t, wildcard, typeRelation{"cluster", "viewer"},
-		"cluster#viewer is granted to user:* by the cluster bootstrap; a parse that misses it misses everything")
+		"cluster#viewer выдан каждому вошедшему (system_class:authenticated) системной выдачей; разбор, его не видящий, не видит ничего")
 	require.Contains(t, wildcard, typeRelation{"registry_repository", "v_get"},
 		"registry_repository#v_get carries the anonymous public-read wildcard; a parse that misses it is "+
 			"mishandling the userset syntax (`group#member` is not a comment)")
@@ -232,7 +233,7 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	sat := map[typeRelation]struct{}{}
 	for typ, rels := range types {
 		for rel, expr := range rels {
-			if br := fgaBracketRe.FindStringSubmatch(expr); br != nil && fgaWildcardRe.MatchString(br[1]) {
+			if br := fgaBracketRe.FindStringSubmatch(expr); br != nil && bracketGrantsEverySubject(br[1]) {
 				sat[typeRelation{typ, rel}] = struct{}{}
 			}
 		}
@@ -273,6 +274,49 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 		}
 	}
 	return sat
+}
+
+// fgaSubjectClassType — тип КЛАССА субъектов модели (PRO-Robotech/kaname#829):
+// запись `system_class:authenticated` либо `system_class:anonymous` стоит за
+// каждого вошедшего либо каждого анонимного субъекта сразу.
+const fgaSubjectClassType = "system_class"
+
+// bracketGrantsEverySubject — выполнимо ли отношение с этим ограничением типов
+// за КАЖДОГО субъекта.
+//
+// Законных форм две, и распознаватель обязан знать обе: подстановка
+// `<тип>:*` (прежняя модель писала `user:*` на `cluster#viewer` и
+// `registry_repository#v_get`) и класс субъектов `system_class`, которым модель
+// после kaname#829 пишет то же самое. Знай гейт одну — на модели с другой он
+// вывел бы «выполнимых ноль», и строка каталога, ничего не сужающая, прошла бы
+// незамеченной. Класс узнаётся ЭЛЕМЕНТОМ списка, а не подстрокой: тип
+// `system_class_reader` классом не является.
+func bracketGrantsEverySubject(bracket string) bool {
+	if fgaWildcardRe.MatchString(bracket) {
+		return true
+	}
+	for _, tok := range strings.Split(bracket, ",") {
+		if f := strings.Fields(strings.TrimSpace(tok)); len(f) > 0 && f[0] == fgaSubjectClassType {
+			return true
+		}
+	}
+	return false
+}
+
+// TestBracketGrantsEverySubjectKnowsBothLawfulForms — распознаватель знает обе
+// формы «выполнимо за каждого» и молчит на законных близнецах; модель из пина
+// несёт одну форму, и забытая вторая на ней не видна.
+func TestBracketGrantsEverySubjectKnowsBothLawfulForms(t *testing.T) {
+	for bracket, want := range map[string]bool{
+		"user, service_account, system_class":               true,
+		"system_class, user, service_account, group#member": true,
+		"user, user:*, service_account":                     true,
+		"user, service_account, group#member":               false,
+		"user, service_account, system_class_reader":        false,
+		"user with mfa_fresh, service_account":              false,
+	} {
+		assert.Equal(t, want, bracketGrantsEverySubject(bracket), "ограничение типов [%s]", bracket)
+	}
 }
 
 func repoRootForWildcardGate(t *testing.T) string {
