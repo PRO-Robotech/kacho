@@ -187,6 +187,45 @@ describe("второй фактор и запасные коды (F8-S7, Р2, Р
     expect(within(factor).queryByText(/^[—–-]$/)).toBeNull();
   });
 
+  // kacho#3238: край отказал в перечне ключей (503 моста, прогон console-e2e на 897e11c8f) —
+  // раздел «Второй фактор» оставался вращающимся индикатором без таблицы способов.
+  const KEYS_REFUSED = refusal(503, 14, 'connection error: desc = "transport: Error while dialing"');
+
+  it("3238 · перечень ключей отказан: таблица способов на месте, строка ключей называет непрочитанный перечень", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": suaState(),
+      "GET /iam/v1/users/usr-1/accessKeys": KEYS_REFUSED,
+      "GET /iam/v1/auth/sessions": ONE_SESSION,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    const totp = await within(factor).findByRole("row", { name: /Приложение-аутентификатор/ });
+    expect(totp).toHaveTextContent("Настроено");
+    expect(totp).toHaveTextContent("Ещё не использовалось");
+    const keys = within(factor).getByRole("row", { name: /Ключи доступа/ });
+    expect(keys).toHaveTextContent("Перечень не прочитан");
+    expect(keys).not.toHaveTextContent(/(^|\s)Нет(\s|$)/);
+    expect(within(factor).getByRole("row", { name: /Запасные коды/ })).toHaveTextContent("Осталось 10 из 10");
+    // Строки «Вход ключом доступа» нет: число ключей неизвестно, «Не настроен» не выдумывается.
+    expect(await region("Способ входа")).not.toHaveTextContent("Вход ключом доступа");
+  });
+
+  it("3238 · близнец: ничего не заведено, перечень ключей отказан — приглашения «не настроен» нет, таблица называет отказ", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": SUA_NOTHING,
+      "GET /iam/v1/users/usr-1/accessKeys": KEYS_REFUSED,
+      "GET /iam/v1/auth/sessions": ONE_SESSION,
+    });
+    renderPage();
+    const factor = await region("Второй фактор");
+    const keys = await within(factor).findByRole("row", { name: /Ключи доступа/ });
+    expect(keys).toHaveTextContent("Перечень не прочитан");
+    expect(factor).not.toHaveTextContent("Второй фактор не настроен");
+    expect(within(factor).getByRole("row", { name: /Приложение-аутентификатор/ })).toHaveTextContent("Не настроено");
+  });
+
   it("ответ прежней формы: «Ещё не использовалось» не выдумывается — моментов служба не называла", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,

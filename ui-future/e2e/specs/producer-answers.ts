@@ -219,6 +219,24 @@ export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UN
 /** Край: удостоверение не принято (KA1, Р2) — один отказ на все причины. */
 export const EDGE_AUTHN_FAILED = edgeAnswer(EDGE_AUTHN_FAILED_SOURCE);
 
+/**
+ * Край: соединение моста со службой в отказе (`Unavailable` grpc-клиента моста),
+ * ответ — обработчик ошибок grpc-gateway по умолчанию (`runtime.DefaultHTTPErrorHandler`,
+ * своего у моста нет — gateway/internal/restmux/mux.go): `503`, тело `{code, message,
+ * details}`, `details` пуст. Текст — снятый с прогона console-e2e на 897e11c8f
+ * (kacho#3238), адрес службы заменён литералом документационного диапазона.
+ */
+export const EDGE_BACKEND_UNREACHABLE: ProducerAnswer = {
+  producer: "api-gateway restmux → runtime.DefaultHTTPErrorHandler на Unavailable соединения моста",
+  status: 503,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    code: 14,
+    message: 'connection error: desc = "transport: Error while dialing: dial tcp 192.0.2.1:9090: connect: connection refused"',
+    details: [],
+  }),
+};
+
 /** Ответить подставленным ответом производителя — телом и заголовками. */
 export function fulfillWith(route: Route, answer: ProducerAnswer): Promise<void> {
   noteSubstituted(route.request());
