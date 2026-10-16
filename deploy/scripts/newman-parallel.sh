@@ -422,13 +422,18 @@ fi
 TOKEN_REFRESH_MARGIN_S="${TOKEN_REFRESH_MARGIN_S:-600}"
 TOKEN_STATE_DIR="$(mktemp -d)"; TMP_DIRS+=("$TOKEN_STATE_DIR")
 PRODSEED_TOKEN_STATE="$TOKEN_STATE_DIR/token-recipes.json"
+# Корень удостоверяющего слушателя выдачи — в каталоге ЭТОГО прогона: посев и
+# перевыпуск проверяют лист одним корнем, а соседний посев против другого стенда
+# его не перепишет (общий /tmp/kaname-server-ca переписывался: CERTIFICATE_VERIFY_FAILED,
+# kacho#3238).
+SERVER_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$SERVER_CA_DIR")
 # Окружение посева — ОДНО объявление на посев и на перевыпуск: перевыпуск ходит
 # теми же пробросами и с тем же клиентским материалом.
 SEED_ENV=(BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT"
           IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT"
           PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token"
           MAILBOX_URL="http://localhost:$MAILBOX_PORT"
-          SETUP_NS="$NS" KACHO_NAMESPACE="$NS"
+          SETUP_NS="$NS" KACHO_NAMESPACE="$NS" IAM_SERVER_CA_DIR="$SERVER_CA_DIR"
           PRODSEED_TOKEN_STATE="$PRODSEED_TOKEN_STATE" TOKEN_REFRESH_MARGIN_S="$TOKEN_REFRESH_MARGIN_S"
           ${MTLS_ENV[@]+"${MTLS_ENV[@]}"})
 REFRESH_CMD=(env "${SEED_ENV[@]}" python3 "$REPO_ROOT/tests/authz-fixtures/prodseed_refresh.py")

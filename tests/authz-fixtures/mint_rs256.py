@@ -445,7 +445,22 @@ PLATFORM_TOKEN_URL = os.environ.get(
     "PLATFORM_TOKEN_URL", "https://127.0.0.1:19096/iam/v1/token")
 
 IAM_SERVER_SECRET = os.environ.get("IAM_SERVER_SECRET", "kaname-server-tls")
-_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR", "/tmp/kaname-server-ca")
+# Каталог корня — СВОЙ у процесса, если прогонщик не отдал свой (kacho#3238).
+# Общий литерал `/tmp/kaname-server-ca` переписывали друг другу посевы против
+# разных стендов на одной машине, и обмен честно отказывал чужому корню
+# (`CERTIFICATE_VERIFY_FAILED`). Прогонщик (deploy/scripts/newman-{parallel,e2e}.sh)
+# задаёт IAM_SERVER_CA_DIR каталогом своего прогона: посев и перевыпуск читают
+# один корень. Каталог по умолчанию снимается при выходе процесса.
+def _own_ca_dir() -> str:
+    import atexit
+    import tempfile
+    d = tempfile.mkdtemp(prefix="kaname-server-ca-")
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
+_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR") or (
+    "" if os.environ.get("IAM_SERVER_CA_FILE") else _own_ca_dir())
 IAM_SERVER_CA_FILE = os.environ.get(
     "IAM_SERVER_CA_FILE", os.path.join(_IAM_SERVER_CA_DIR, "ca.crt"))
 
@@ -465,9 +480,12 @@ def ensure_iam_server_ca(namespace: str | None = None) -> bool:
             capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
             os.makedirs(os.path.dirname(IAM_SERVER_CA_FILE), mode=0o700, exist_ok=True)
-            with open(IAM_SERVER_CA_FILE, "wb") as fh:
-                os.chmod(IAM_SERVER_CA_FILE, 0o600)
+            # Запись целиком через переименование: читатель не застанет файл полузаписанным.
+            tmp = f"{IAM_SERVER_CA_FILE}.{os.getpid()}.tmp"
+            with open(tmp, "wb") as fh:
+                os.chmod(tmp, 0o600)
                 fh.write(base64.b64decode(out.stdout.strip()))
+            os.replace(tmp, IAM_SERVER_CA_FILE)
     return os.path.exists(IAM_SERVER_CA_FILE)
 
 

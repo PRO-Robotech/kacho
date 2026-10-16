@@ -128,6 +128,9 @@ def ensure_certs() -> None:
             f"издателя (POST /iam/v1/token) идёт по TLS, и проверять подпись листа нечем; "
             f"ожидался секрет '{m.IAM_SERVER_SECRET}' в ns/{NS} либо IAM_SERVER_CA_FILE, "
             f"указывающий на заранее извлечённый корень.")
+    # Расширения посева — дочерние процессы и обменивают ключи у того же издателя:
+    # корень им отдаётся ЭТОТ, а не свой пустой каталог по умолчанию (kacho#3238).
+    os.environ["IAM_SERVER_CA_FILE"] = m.IAM_SERVER_CA_FILE
     log(f"client certs ready: operator={m.BOOTSTRAP_MINT_MTLS_CERT} gateway={m.IAM_INTERNAL_MTLS_CERT} "
         f"iam-ca={m.IAM_SERVER_CA_FILE}")
 
