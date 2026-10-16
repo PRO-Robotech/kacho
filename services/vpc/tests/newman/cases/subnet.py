@@ -1034,7 +1034,6 @@ for c in update_happy_per_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
      "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.210.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "v7", c))
 
-CASES.extend(perf_baseline_block("SUB", "/vpc/v1/subnets"))
 CASES.extend(verbatim_text_pack("SUB", "Subnet", "/vpc/v1/subnets"))
 CASES.extend(authz_caller_headers_block("SUB", "/vpc/v1/subnets"))
 
@@ -1064,10 +1063,6 @@ for c in update_mask_partial_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
      "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.214.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "v9p", c))
-CASES.append(_wrap_with_net("SUB", "v9pf",
-    perf_baseline_get_block("SUB", "/vpc/v1/subnets",
-        {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.215.0.0/24"})))
 CASES.extend(list_total_size_check_block("SUB", "/vpc/v1/subnets"))
 
 # SUB-CR-DHCP-IGNORED-VPC143 — retired 2026-07-28.

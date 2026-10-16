@@ -265,7 +265,6 @@ CASES.append(pagination_roundtrip("GW", "/vpc/v1/gateways"))
 
 CASES.extend(update_happy_per_field("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
     {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
-CASES.extend(perf_baseline_block("GW", "/vpc/v1/gateways"))
 CASES.extend(verbatim_text_pack("GW", "Gateway", "/vpc/v1/gateways"))
 CASES.extend(authz_caller_headers_block("GW", "/vpc/v1/gateways"))
 
@@ -282,8 +281,6 @@ CASES.extend(malformed_body_block("GW", "/vpc/v1/gateways"))
 # NB: имена Gateway НЕ уникальны — дубль-имя создается успешно;
 # поэтому generated alreadyexists_dup_name_for("GW", ...) здесь не применяется.
 CASES.extend(update_mask_partial_block("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
-CASES.append(perf_baseline_get_block("GW", "/vpc/v1/gateways",
     {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(list_total_size_check_block("GW", "/vpc/v1/gateways"))
 CASES.extend(headers_content_type_block("GW", "/vpc/v1/gateways",

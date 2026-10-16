@@ -838,9 +838,8 @@ CASES.append(idempotency_block(
     refusal="Network with name {name} already exists",
     name_template="net-idm-{{runId}}", body_extra={}))
 
-# Update happy / perf-baseline / conformance-text / authz-caller-headers
+# Update happy / conformance-text / authz-caller-headers
 CASES.extend(update_happy_per_field("NET", "/vpc/v1/networks", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
-CASES.extend(perf_baseline_block("NET", "/vpc/v1/networks"))
 CASES.extend(verbatim_text_pack("NET", "Network", "/vpc/v1/networks"))
 CASES.extend(authz_caller_headers_block("NET", "/vpc/v1/networks"))
 
@@ -858,7 +857,6 @@ CASES.append(alreadyexists_dup_name_for(
     refusal="Network with name {name} already exists",
     body_create={"projectId": "{{_suiteProjectId}}"}))
 CASES.extend(update_mask_partial_block("NET", "/vpc/v1/networks", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
-CASES.append(perf_baseline_get_block("NET", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
 CASES.extend(list_total_size_check_block("NET", "/vpc/v1/networks"))
 CASES.extend(headers_content_type_block("NET", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
 

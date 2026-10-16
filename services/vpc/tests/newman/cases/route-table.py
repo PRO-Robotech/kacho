@@ -302,7 +302,6 @@ for c in update_happy_per_field("RT", "/vpc/v1/routeTables", "/vpc/v1/routeTable
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []}):
     CASES.append(_rt_wrap("RT", "v7", c))
 
-CASES.extend(perf_baseline_block("RT", "/vpc/v1/routeTables"))
 CASES.extend(verbatim_text_pack("RT", "Route table", "/vpc/v1/routeTables"))
 CASES.extend(authz_caller_headers_block("RT", "/vpc/v1/routeTables"))
 
@@ -326,9 +325,6 @@ CASES.append(_rt_wrap("RT", "v9d",
 for c in update_mask_partial_block("RT", "/vpc/v1/routeTables", "/vpc/v1/routeTables",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []}):
     CASES.append(_rt_wrap("RT", "v9p", c))
-CASES.append(_rt_wrap("RT", "v9pf",
-    perf_baseline_get_block("RT", "/vpc/v1/routeTables",
-        {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []})))
 CASES.extend(list_total_size_check_block("RT", "/vpc/v1/routeTables"))
 
 # v10: RT-specific static_routes validation

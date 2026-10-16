@@ -134,6 +134,9 @@
 - **Priority**: P2
 - **Description**: добавить assert на response time (`pm.response.responseTime < 500`)
   для Get/List. Это дает регрессионный gate на perf.
+- **Исход**: снято (kacho#3258). Одиночный замер часами клиента через проброс порта
+  меряет среду, а не продукт, и порог на нём краснеет по жребию. Бюджет задержки
+  держит k6 — `services/vpc/tests/k6/resource_ops.js`, порог `p(99)`.
 
 ### REQ-010 — Newman в CI
 

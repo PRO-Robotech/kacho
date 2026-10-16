@@ -682,7 +682,6 @@ CASES.append(pagination_roundtrip("ADR", "/vpc/v1/addresses"))
 
 CASES.extend(update_happy_per_field("ADR", "/vpc/v1/addresses", "/vpc/v1/addresses",
     {"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
-CASES.extend(perf_baseline_block("ADR", "/vpc/v1/addresses"))
 CASES.extend(verbatim_text_pack("ADR", "Address", "/vpc/v1/addresses"))
 CASES.extend(authz_caller_headers_block("ADR", "/vpc/v1/addresses"))
 
@@ -702,8 +701,6 @@ CASES.append(alreadyexists_dup_name_for("ADR", "/vpc/v1/addresses",
     refusal="Address with name {name} already exists",
     body_create={"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
 CASES.extend(update_mask_partial_block("ADR", "/vpc/v1/addresses", "/vpc/v1/addresses",
-    {"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
-CASES.append(perf_baseline_get_block("ADR", "/vpc/v1/addresses",
     {"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
 CASES.extend(list_total_size_check_block("ADR", "/vpc/v1/addresses"))
 CASES.extend(headers_content_type_block("ADR", "/vpc/v1/addresses",
