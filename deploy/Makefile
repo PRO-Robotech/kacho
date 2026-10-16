@@ -1163,6 +1163,16 @@ stack-up:
 #   make stand-ns-down   NS=t<задача>-<коротко>
 #   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
 #   make stand-ns-census [EXPIRED=1]
+#   make reload-svc      NS=t<задача>-<коротко> SVC=<служба> [REF=<коммит>] [BRANCH=<ветка>]
+#
+# BRANCH (stand-ns-up, stand-ns-run, reload-svc) — ветка, сборкой которой
+# опубликованы образы REF; не задана — ветки-кандидатки выводятся из истории, и
+# выбирает реестр (kacho#3260): образ любой ревизии ветки запроса годится, если
+# сборка его опубликовала. Нет образа — отказ печатает команду сборки.
+#
+# reload-svc с NS — перекатка ОДНОЙ службы своего стенда на образы REF без
+# пересоздания стенда (`scripts/stand-ns.sh reload`); без NS — прежняя цель
+# локального kind.
 #
 # stand-ns-run — подъём → проброс → CMD (в окружении CONSOLE_BASE, EDGE_BASE и
 # файла проб стенда, из каталога DIR; умолчание — корень репозитория) → снятие
@@ -1194,9 +1204,13 @@ stack-up:
 # Устройство, правила имени и срока — шапка scripts/stand-ns.sh.
 NS ?=
 EXPIRED ?=
+BRANCH ?=
+# Ветка публикации образов доходит до скрипта переменной окружения; пустая — не
+# задаётся вовсе (ветки тогда выводятся из истории).
+STAND_BRANCH_ENV = $(if $(BRANCH),STAND_IMAGE_BRANCHES='$(subst ','\'',$(BRANCH))' ,)
 stand-ns-up:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
-	@bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"
+	@$(STAND_BRANCH_ENV)bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"
 
 stand-ns-down:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — снимать нечего"; exit 2; }
@@ -1206,7 +1220,7 @@ stand-ns-run:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
 	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
 	@cd "$(CURDIR)/../$(DIR)" || exit 2; \
-	bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	$(STAND_BRANCH_ENV)bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
 	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
 	code=$$?; \
 	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \
@@ -1757,11 +1771,21 @@ helm-manifest-test: gate-self-test
 # защищено: при живом kind-кластере и подменённом kubeconfig загрузка образа
 # проходит, а перезапуск прилетает соседнему кластеру — тот же near-miss, что
 # и у dev-up, только тише.
-reload-svc: guard-kind-context
+#
+# С NS — перекатка одной службы СВОЕГО стенда проб внешнего кластера на образы REF
+# (kacho#3260): kind и guard-kind-context не участвуют, кластер — контекст -client
+# (шапка scripts/stand-ns.sh). Без NS — локальный kind, как прежде, и страж
+# зовётся ИЗ РЕЦЕПТА первой строкой ветки kind: условная зависимость
+# `$(if $(NS),,…)` гейту целей не видна, а ветка NS уходит в `exec` раньше стража.
+reload-svc:
 ifndef SVC
 	$(error SVC variable is required, e.g. make reload-svc SVC=compute)
 endif
-	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
+	@if [ -n "$(NS)" ]; then \
+		$(STAND_BRANCH_ENV)exec bash scripts/stand-ns.sh reload "$(NS)" "$(SVC)" "$(or $(REF),HEAD)"; \
+	fi; \
+	$(MAKE) --no-print-directory guard-kind-context || exit 1; \
+	if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
 	. ./scripts/lib/product-names.sh; \
