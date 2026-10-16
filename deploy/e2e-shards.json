@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 69 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 70 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -175,15 +175,15 @@
     },
     {
       "id": "compute-storage",
-      "suites": ["compute", "storage"],
+      "suites": ["compute", "storage", "api-gateway"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
-      "why": "7+10 коллекций / 1392 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
+      "why": "7+10+9 коллекций / 1573 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят. api-gateway едет сюда же (kacho#3256): коллекция system_class_subject_check заводит и снимает сети в vpc (10 запросов) — предмет её выдача системному классу на сети, зарегистрированной владельцем, — измерено по адресам коллекции; прочие восемь коллекций суиты ходят только в iam и geo ядра. Здесь vpc уже поднят, поэтому переезд не добавляет стенду ни одного workload."
     },
     {
       "id": "edge",
-      "suites": ["geo", "registry", "api-gateway"],
+      "suites": ["geo", "registry"],
       "components": ["registry", "pg-registry"],
-      "why": "8+5+8 коллекций / 580 запросов. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam и geo, registry→registry). Самый лёгкий стенд."
+      "why": "8+5 коллекций / 479 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3256): её коллекция system_class_subject_check ходит в vpc, которого этот стенд не поднимает."
     }
   ]
 }
