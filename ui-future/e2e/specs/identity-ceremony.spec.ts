@@ -30,6 +30,7 @@ import {
   type CeremonyCensus,
 } from "./fixtures";
 import { PROBE_FETCH } from "./issuance-guard.ts";
+import { answerOfNextDocument, issuingDocuments } from "./issuing-document";
 import { AUTHENTICATION_FAILED, LOGIN_WITH_SECOND_FACTOR_FAILED } from "./lane-texts";
 import { LETTER_BUDGET_MS, stationMailbox, type Mailbox } from "./mail-receiver";
 import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
@@ -788,9 +789,15 @@ test("F8-17 · признак подтверждённости адреса по
   // действия подтверждения больше нет.
   await confirmAddressFromLetter(page, mailbox, email, before);
   await expectAddress(page, "/dashboard", "после подтверждения адреса консоль не увела на панель");
-  const me = page.waitForResponse((r) => new URL(r.url()).pathname === "/iam/v1/auth/me");
+  // Ответ о сессии — ПЕРЕЗАГРУЖЕННОГО документа: обращение о сессии выпускает и
+  // уходящая панель, и ожидание, не различающее документов, отдавало её ответ,
+  // тело которого браузер снял вместе с ней (t3238-sc @63500f861).
+  const documents = await issuingDocuments(page);
+  const me = await answerOfNextDocument(documents, { method: "GET", path: "/iam/v1/auth/me" });
   await page.reload({ waitUntil: "domcontentloaded" });
-  const body = (await (await me).json()) as { session?: { emailVerified?: unknown } } | null;
+  const answered = await me.answer;
+  expect(answered.status, `ответ о сессии после подтверждения: ${answered.body}`).toBe(200);
+  const body = JSON.parse(answered.body) as { session?: { emailVerified?: unknown } } | null;
   expect(
     body?.session?.emailVerified,
     `ответ о сессии после подтверждения не называет адрес подтверждённым: ${JSON.stringify(body)}`,
