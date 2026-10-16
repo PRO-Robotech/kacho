@@ -33,6 +33,11 @@ PRO-Robotech/kaname#511 называет в тексте следующий ша
 с редакцией возвращено вопросом к приёмке в PRO-Robotech/kacho#2571. Клауза 24.2
 судит РАВЕНСТВО отказов двух носителей побайтово — от текста она не зависит.
 
+ОПРОС ОПЕРАЦИИ — НОСИТЕЛЕМ, КОТОРЫЙ ЕЁ СОЗДАЛ. Служба доступа отвечает «не найдено» на
+операцию, созданную не вызывающим (чужая операция неотличима от несуществующей). Поэтому
+каждая операция опрашивается тем же носителем человека, что подал мутацию, а не
+бутстрапом.
+
 Coverage:
   IAM-INT-1-24-STEPUP-REFUSAL-EVERY-CLASS — 24.1 все три носителя «1» на пол «2» → 401, группа
                                             цела; 24.2 сессия и предъявитель — один и тот же отказ
@@ -89,6 +94,20 @@ def _carrier_pre(kind, var):
     return lines
 
 
+def _poll_as(name, kind, var):
+    """Опрос операции носителем, подавшим мутацию (см. шапку): тело опроса — общее
+    `poll_operation`, предъявление — `_carrier_pre`, банка печений снята."""
+    poll = poll_operation("opId", name=name)
+    return Step(
+        name=poll.name,
+        method=poll.method,
+        path=poll.path,
+        pre_script=[*_carrier_pre(kind, var), *poll.pre_script],
+        no_cookie_jar=True,
+        test_script=poll.test_script,
+    )
+
+
 def _create_group(slot, carrier_kind, carrier_var):
     """Группа в аккаунте человека — носитель пола; заводится глаголом пола «1»."""
     return [
@@ -109,7 +128,7 @@ def _create_group(slot, carrier_kind, carrier_var):
                 f"pm.test('the Operation names the group id', () => pm.expect(String(pm.environment.get({js_str(slot + 'Id')}) || '')).to.match(/^[a-z0-9-]+$/));",
             ],
         ),
-        poll_operation("opId", auth="jwtBootstrap", name=f"poll-create-{slot}"),
+        _poll_as(f"poll-create-{slot}", carrier_kind, carrier_var),
     ]
 
 
@@ -160,7 +179,7 @@ def _floor2_passes(name, slot, kind, var):
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        poll_operation("opId", auth="jwtBootstrap", name=f"poll-{name}"),
+        _poll_as(f"poll-{name}", kind, var),
         Step(
             name=f"{name}-gone",
             method="GET",
