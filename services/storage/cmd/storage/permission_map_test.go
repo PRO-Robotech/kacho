@@ -320,21 +320,22 @@ func TestPermissionMapObjectAndProjectScope(t *testing.T) {
 // # Что здесь на самом деле опасно
 //
 // Опасен не тип объекта, а ОТНОШЕНИЕ. `cluster.viewer` объявлен как
-// `[user, user:*, service_account] or …`, и бутстрап кластера НАМЕРЕННО пишет
-// `cluster:<root>#viewer@user:*`, чтобы глобальный справочник (регионы, зоны, типы
+// `[user, service_account, system_class] or …`, и системная выдача НАМЕРЕННО пишет
+// `cluster:<root>#viewer@system_class:authenticated` (PRO-Robotech/kaname#829),
+// чтобы глобальный справочник (регионы, зоны, типы
 // дисков) читал любой аутентифицированный субъект. Поэтому кластерный `viewer` на
 // RPC, отдающем данные конкретных тенантов, — не проверка, а её видимость:
 // пропускает всех. Ровно так перечисление привязок отдавало строки том↔машина для
 // любых названных машин, из чужих проектов и аккаунтов.
 //
 // Админ-отношения того же типа (`system_admin`, `editor`, `admin`) подстановкой
-// НЕ выполнимы: в их объявлении `user:*` нет. Кластерный синглтон для них — верный
+// НЕ выполнимы: в их объявлении класса субъектов нет. Кластерный синглтон для них — верный
 // предмет вопроса: администрируемая сущность одна на кластер, и спрашивать про неё
 // пообъектно не о чем.
 //
 // # Гейт проверяет СВОЮ предпосылку
 //
-// Разделение выше верно ровно до тех пор, пока `user:*` стоит там, где стоит
+// Разделение выше верно ровно до тех пор, пока класс стоит там, где стоит
 // сейчас. Модель — чужой файл, она меняется без нас, и молчаливое добавление
 // подстановки в админ-отношение обессмыслило бы всю проверку, оставив её зелёной.
 // Поэтому перечень выполнимых подстановкой отношений ВЫВОДИТСЯ ИЗ МОДЕЛИ, а не
@@ -387,7 +388,7 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 			seenWildcard++
 			if !clusterCatalog[fullMethod] {
 				t.Errorf("%s спрашивает на кластерном синглтоне отношение %q, выполнимое "+
-					"подстановкой `user:*`, — такая проверка пропускает КАЖДОГО "+
+					"за каждого субъекта (класс `system_class`), — такая проверка пропускает КАЖДОГО "+
 					"аутентифицированного субъекта. Это позволено только глобальному "+
 					"справочнику; RPC, отдающий тенантские строки, обязан быть пообъектным "+
 					"либо scope_filtered", fullMethod, entry.Relation)
@@ -415,7 +416,7 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 }
 
 // wildcardSatisfiableClusterRelations читает МОДЕЛЬ и отвечает, какие отношения
-// типа `cluster` выполнимы подстановкой `user:*`.
+// типа `cluster` выполнимы за каждого субъекта (`grantsEverySubject`).
 //
 // Читается именно объявление, а не память автора: подстановка, добавленная в
 // админ-отношение, обессмыслила бы разделение выше — и сделала бы это молча.
@@ -456,7 +457,7 @@ func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
 		if !found {
 			continue
 		}
-		if strings.Contains(body, "user:*") {
+		if grantsEverySubject(body) {
 			out[strings.TrimSpace(name)] = true
 		}
 	}
@@ -465,6 +466,38 @@ func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
 	}
 	t.Logf("предпосылка: прочитано отношений типа cluster — %d, выполнимых подстановкой — %d", scanned, len(out))
 	return out
+}
+
+// grantsEverySubject — допускает ли тело определения субъекта, за которым стоит
+// КАЖДЫЙ субъект: класс субъектов `system_class` либо прежнее подстановочное
+// `user:*`.
+//
+// Форм две, и обе законны для модели. Модель после классов субъектов
+// (PRO-Robotech/kaname#829) пишет на кластерном `viewer` класс — системная выдача
+// держится фактом `system_class:authenticated`; прежняя модель писала там
+// подстановку. Распознаватель, знающий одну форму, на другой молчал бы: гейт
+// вывел бы «выполнимых ноль» и перестал бы различать справочник и тенантские
+// данные, оставаясь зелёным там, где предпосылки уже нет.
+//
+// Читается ОГРАНИЧЕНИЕ ТИПОВ определения — список в квадратных скобках — по
+// элементам, а не подстрокой тела: имя отношения либо слово в его связке
+// (`or system_viewer`) субъектом не являются.
+func grantsEverySubject(body string) bool {
+	open := strings.Index(body, "[")
+	if open < 0 {
+		return false
+	}
+	end := strings.Index(body[open:], "]")
+	if end < 0 {
+		return false
+	}
+	for _, item := range strings.Split(body[open+1:open+end], ",") {
+		switch strings.TrimSpace(item) {
+		case "system_class", "user:*":
+			return true
+		}
+	}
+	return false
 }
 
 // keysOf — имена ключей для сообщения об изменившейся предпосылке.
@@ -502,7 +535,7 @@ func TestListAttachmentsIsScopeFiltered(t *testing.T) {
 	}
 	if e.Relation != "" {
 		t.Errorf("кластерное отношение %q здесь пропускало каждого аутентифицированного субъекта "+
-			"(`cluster:<root>#viewer@user:*` пишет бутстрап) — не восстанавливать", e.Relation)
+			"(`cluster:<root>#viewer@system_class:authenticated` пишет системная выдача) — не восстанавливать", e.Relation)
 	}
 	if e.Extract != nil {
 		t.Error("объекта, про который можно спросить заранее, у этого RPC нет")
@@ -708,4 +741,30 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 			"контроль не выполнен, и отрицание выше зеленело бы на пустоте", internal)
 	}
 	t.Logf("перепись: публичных служб %d, внутренних %d", len(public), len(internal))
+}
+
+// TestGrantsEverySubjectKnowsBothLawfulForms — распознаватель предпосылки гейта
+// кластерного синглтона знает ОБЕ законные формы «выполнимо за каждого» и молчит
+// на законном близнеце.
+//
+// Пробой на модели из пина это не заменяется: пин несёт одну форму, и
+// распознаватель, забывший вторую, на нём зеленеет. Близнецы меняют ровно один
+// факт — элемент ограничения типов; имя отношения в связке субъектом не
+// считается.
+func TestGrantsEverySubjectKnowsBothLawfulForms(t *testing.T) {
+	cases := []struct {
+		body string
+		want bool
+	}{
+		{" [user, service_account, system_class] or system_viewer or any_admin", true},
+		{" [user, user:*, service_account] or system_viewer or any_admin", true},
+		{" [user, service_account] or system_viewer or any_admin", false},
+		{" [user, service_account] or system_class_reader", false},
+		{" system_admin", false},
+	}
+	for _, c := range cases {
+		if got := grantsEverySubject(c.body); got != c.want {
+			t.Errorf("grantsEverySubject(%q) = %v, ожидалось %v", c.body, got, c.want)
+		}
+	}
 }
