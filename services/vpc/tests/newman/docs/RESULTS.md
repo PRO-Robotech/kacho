@@ -250,7 +250,7 @@ cluster-internal mux, возвращают ресурсы напрямую (не
 | Smoke | ✅ P0/P1 кейсы — фактический smoke |
 | Functional regression | ✅ полная suite |
 | Conformance | ✅ CONF class — тексты ошибок/коды/форматы + lifecycle |
-| Performance | ✅ `perf_baseline_block` (response_time < 500ms) |
+| Performance | → функциональный набор время не судит; бюджет чтения — k6 `resource_ops.js` (kacho#3263) |
 | Load/Stress/Soak/Spike | → перенесено в k6 (отдельный setup) |
 | Chaos | → backlog |
 | Security | ✅ `security_injection_block` (SQLi/XSS/cmd/path traversal × 7) |

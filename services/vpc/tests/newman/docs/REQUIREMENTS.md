@@ -132,8 +132,11 @@
 
 - **Type**: observability
 - **Priority**: P2
-- **Description**: добавить assert на response time (`pm.response.responseTime < 500`)
-  для Get/List. Это дает регрессионный gate на perf.
+- **Status**: снято с функционального набора (kacho#3263) — утверждение времени
+  ответа в кейсе судило загрузку машины прогона, и вердикт набора зависел от
+  параллельности. Бюджет Get/List шести ресурсов судит нагрузочный набор
+  `services/vpc/tests/k6/resource_ops.js` (порог p99 при названной подаче и
+  длительности).
 
 ### REQ-010 — Newman в CI
 

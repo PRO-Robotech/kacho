@@ -22,6 +22,14 @@
 > Величина вернётся вместе с исполнителем, который её производит, — до тех пор
 > утверждать о ней нечего.
 
+> Снят бюджет времени ответа (kacho#3263): `*-GET-PERF-BASELINE` и
+> `*-LST-PERF-BASELINE` шести ресурсов судили не поведение края, а загрузку
+> машины прогона — под параллельным прогоном волны они краснели при неизменном
+> продукте. Функциональный набор время ответа не судит (гейт
+> `TestNewmanFunctionalSuiteDoesNotJudgeResponseTime`); бюджет чтения этих путей
+> живёт в нагрузочном наборе `services/vpc/tests/k6/resource_ops.js`, полосы
+> `<ресурс>_get` и `<ресурс>_list` с порогом p99 при названной подаче.
+
 > v20: AddressPool split CIDR family (`cidr_blocks` → `v4_cidr_blocks`
 > + `v6_cidr_blocks`) — payload existing IPL-* кейсов обновлен под split-shape,
 > добавлено 18 новых case-id (16 IPL-* в `cases/internal-pool.py` + 2 ADR-* в
@@ -266,7 +274,6 @@
 | `*-GET-NEG-NF-INVALID-PREFIX` | NEG | P0 | 1 (ope) | Get opId без 3-char domain-prefix → 400 InvalidArgument 'unknown prefix' |
 | `*-GET-NEG-NF-VALID-PREFIX` | NEG | P1 | 1 (ope) | Get несуществующего opId с правильным префиксом → NotFound |
 | `*-GET-NEG-NOT-FOUND` | CONF,NEG | P0 | 2 (net,sub) | Get garbage → 404 |
-| `*-GET-PERF-BASELINE` | CRUD,PERF | P2 | 6 (add,gat,net,rou,sec,sub) | Get existing — response time < 300ms |
 | `*-GET-TRAILING-SLASH` | VAL | P3 | 5 (add,gat,net,rou,sec) | Get с trailing slash → 404 |
 | `*-GET-WITH-QUERY-PARAMS` | CRUD,VAL | P3 | 1 (gat) | Get Gateway с дополнительными query params → 200 (ignored) |
 
@@ -324,7 +331,6 @@
 | `*-LST-PAGE-TOKEN-GARBAGE` | PAGE,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | List с garbage page_token → InvalidArgument |
 | `*-LST-PAGESIZE-1001` | BVA,VAL | P1 | 5 (add,gat,net,rou,sec) | List с pageSize=1001 (over max) → 400 |
 | `*-LST-PAGESIZE-EXACTLY-1000` | BVA | P2 | 5 (add,gat,net,rou,sec) | List с pageSize=1000 (boundary max) → 200 |
-| `*-LST-PERF-BASELINE` | CRUD,PERF | P2 | 6 (add,gat,net,rou,sec,sub) | List response time < 500ms (perf baseline) |
 | `*-LST-SEC-FILTER-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security: SQL injection в filter → 200 и пустая страница, без 500 |
 | `*-LST-VAL-PROJECT-REQUIRED` | AUTHZ,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | List без projectId → InvalidArgument |
 
