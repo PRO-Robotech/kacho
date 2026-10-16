@@ -63,6 +63,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 
+import matrix_handoff  # noqa: E402  — импорт после провязки sys.path
+
 # Suites whose newman env this seed patches. Order is irrelevant (each patch is a
 # key-merge into its own file). Kept in step with deploy/scripts/newman-parallel.sh's
 # SERVICES list — a suite missing here silently keeps its committed placeholder tokens
@@ -248,13 +250,14 @@ def report_env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None 
 
 
 # ── per-service extension seeders ───────────────────────────────────────────
-def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
+def run_ext(svc: str, project_id: str, project_cross_id: str, matrix_path: pathlib.Path) -> dict:
     """Run tests/authz-fixtures/prodseed_<svc>_ext.py, if one exists.
 
     The extension seeders provision resource dependencies and object-scope FGA tuples
-    the public AccessBinding API cannot express. They read /tmp/matrix.json for the base
-    matrix and honour PRODSEED_PROJECT_ID / PRODSEED_PROJECT_CROSS_ID so their resources
-    land in the SAME project the suite env points at.
+    the public AccessBinding API cannot express. They read the base matrix of THIS run
+    from the path named by PRODSEED_MATRIX_PATH (`matrix_handoff`, #3264) and honour
+    PRODSEED_PROJECT_ID / PRODSEED_PROJECT_CROSS_ID so their resources land in the
+    SAME project the suite env points at.
     """
     ext = HERE / f"prodseed_{svc}_ext.py"
     if not ext.exists():
@@ -263,6 +266,7 @@ def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
     env = dict(os.environ)
     env["PRODSEED_PROJECT_ID"] = project_id
     env["PRODSEED_PROJECT_CROSS_ID"] = project_cross_id
+    env[matrix_handoff.ENV] = str(matrix_path)
     proc = subprocess.run([sys.executable, str(ext)], capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         # A failed extension is NOT fatal for the run: the base matrix is still valid and
@@ -549,8 +553,10 @@ def main() -> int:
     out_dir = pathlib.Path(os.environ.get("OUT_DIR", str(HERE / "out")))
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "authz-fixtures.json").write_text(json.dumps(fixtures, indent=2) + "\n")
-    # /tmp/matrix.json is the handoff the extension seeders (and prodrun.sh) read.
-    pathlib.Path("/tmp/matrix.json").write_text(json.dumps(fixtures))
+    # Передача матрицы расширениям — в каталоге СВОЕГО прогона, рядом с набором
+    # фикстур (#3264): общий файл машины подменял матрицу параллельным посевам.
+    matrix_path = out_dir / "matrix.json"
+    matrix_handoff.write(matrix_path, fixtures)
     log(f"matrix seeded: acctA={fixtures['accountAId']} projA1={fixtures['projectA1Id']}")
 
     if args.no_patch_env:
@@ -576,7 +582,7 @@ def main() -> int:
             # own header documents. Dev parity too: setup.sh runs only the shell seeder.
             extra = dict(nlb_ids)
         else:
-            extra = run_ext(svc, proj, proj_cross)
+            extra = run_ext(svc, proj, proj_cross, matrix_path)
         if extra:
             (out_dir / f"{svc}-fixtures.json").write_text(json.dumps(extra, indent=2) + "\n")
             patch(extra, [env_path(svc)])
