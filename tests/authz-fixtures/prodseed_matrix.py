@@ -91,6 +91,13 @@ import verified_human as vh  # noqa: E402
 # bootstrap Bearer at import time — a checker that cannot be imported without a
 # cluster cannot be self-tested, and this is the part that must be provable offline.
 from principal_pairings import unpaired_principals  # noqa: E402
+# Рецепты перевыпуска выданных предъявителей (kacho#3238): посев один на все суиты,
+# срок предъявителя короче прогона; рецепт позволяет выпустить тот же предъявитель
+# заново перед суитой и коллекцией. Значение → рецепт; выдача без рецепта
+# (`apiTokenExpired`) перевыпуску не подлежит по построению.
+import prodseed_refresh as refresh  # noqa: E402
+
+TOKEN_RECIPES: dict = {}
 
 # Endpoints. Defaults match the port-forwards the newman drivers establish
 # (deploy/scripts/newman-{e2e,parallel}.sh); every one is env-overridable so the
@@ -210,8 +217,9 @@ def human(email, kind=vh.KIND_VERIFIED):
     """Завести человека шагами Р17; место заведения — строка ВЫЗЫВАЮЩЕГО.
 
     Вид объявлен здесь, у места заведения: по умолчанию Ф-п (подтверждённый).
-    Вид Ф-н посев наборов не заводит — его заводит только проба посева,
-    утверждающая положение подтверждения (F6b-47, F6b-49).
+    Ф-н посев наборов заводит одного — близнеца набора края
+    `iam-step-up-access-key-begin` (приёмка F8-S7, F8-S7-80); прочие Ф-н заводит
+    проба посева, утверждающая положение подтверждения (F6b-47, F6b-49).
     """
     place = f"{os.path.basename(__file__)}:{inspect.stack()[1].lineno}"
     h = vh.enroll(EDGE, MAILBOX, email, HUMAN_PASSWORD, kind, clock=_now, sleep=time.sleep, place=place)
@@ -315,8 +323,10 @@ def sa_token_with_key(sva):
     assertion = m.sign_client_assertion(
         registry_client_id, key, registry_client_id, PLATFORM_ASSERT_AUD,
         token_type=m.CLIENT_ASSERTION_TOKEN_TYPE)
-    return (m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD),
-            registry_client_id)
+    token = m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD)
+    refresh.remember(TOKEN_RECIPES, token,
+                     {"kind": "key", "clientId": registry_client_id, "key": key})
+    return token, registry_client_id
 
 
 def sa_token(sva):
@@ -352,8 +362,12 @@ def user_platform_token(uid, created_by):
     машина. Разбор и проверка «одно имя, а не два» — в godoc
     `m.user_platform_token`.
     """
-    return m.user_platform_token(PUBLIC, boot, uid, created_by,
-                                 PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD)
+    got = {}
+    token = m.user_platform_token(PUBLIC, boot, uid, created_by,
+                                  PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD,
+                                  on_key=lambda cid, key: got.update(clientId=cid, key=key))
+    refresh.remember(TOKEN_RECIPES, token, {"kind": "key", **got})
+    return token
 
 
 CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
@@ -480,7 +494,7 @@ def subject(account_id, name, grants=()):
 
 
 # ── org structure ───────────────────────────────────────────────────────────
-boot = m.mint_bootstrap()
+boot = refresh.remember(TOKEN_RECIPES, m.mint_bootstrap(), {"kind": "bootstrap"})
 # Шаг, создающий ПРЕДМЕТ всего посева, несёт собственное утверждение: край
 # ПРИНЯЛ бутстрап-удостоверение. Без него отказ края проявляется через два-три
 # шага и обвиняет невиновного — то, что честно сделало своё дело при
@@ -809,6 +823,8 @@ def seed() -> dict:
     sva_apirev, _ = subject(acctA, f"ps-apitok-rev-{RID}", [(ROLE_EDIT, P, projA1)])
     tok_apirev, key_apirev = sa_token_with_key(sva_apirev)
     _curl("DELETE", f"/iam/v1/serviceAccounts/{sva_apirev}/keys/{key_apirev}", boot)
+    # Отозванный перевыпускается новым ключом с его снятием, а не обменом снятого.
+    refresh.remember(TOKEN_RECIPES, tok_apirev, {"kind": "revoked", "sva": sva_apirev})
 
     # ПРЕДЪЯВИТЕЛЬ НАШЕЙ ЧЕКАНКИ ДЛЯ СУИТЫ КРАЯ (#1014).
     #
@@ -867,6 +883,16 @@ def seed() -> dict:
     _assert_not_cloud_admin(h_plain.user_id)
     tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
 
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-step-up-access-key-begin` (kacho#3230; приёмка F8-S7
+    # воркспейса, F8-S7-80, DoD §8 п.3). Пара отличается ОДНИМ фактом — подтверждён ли
+    # адрес: Ф-п без ключа получает от службы отказ `ACCESS_KEY_NOT_REGISTERED`
+    # (край его ретранслирует), Ф-н — отказ положения края. Предъявитель — носитель
+    # сессии `kaname_session`, а не токен: полоса формы читает только сессию.
+    # Свои люди, а не матричные: ключа доступа ни один набор им не заводит, и
+    # исход «ключей ноль» не зависит от чужих наборов.
+    h_stepup_p = human(f"prodseed-stepup-p-{RID}@example.com")
+    h_stepup_n = human(f"prodseed-stepup-n-{RID}@example.com", vh.KIND_UNVERIFIED)
+
     fixtures = {
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
@@ -883,6 +909,12 @@ def seed() -> dict:
         "cloudAdminHumanUserId": h_cloud_admin.user_id,
         "jwtPlainHuman": tok_plain_human,
         "plainHumanUserId": h_plain.user_id,
+        # Люди набора `iam-step-up-access-key-begin` (kacho#3230, F8-S7-80): носители
+        # сессии — Ф-п без ключа и Ф-н. Идентификаторы — для переписи людей (F6b-51).
+        "stepUpVerifiedHumanSession": h_stepup_p.bearer,
+        "stepUpVerifiedHumanUserId": h_stepup_p.user_id,
+        "stepUpUnverifiedHumanSession": h_stepup_n.bearer,
+        "stepUpUnverifiedHumanUserId": h_stepup_n.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

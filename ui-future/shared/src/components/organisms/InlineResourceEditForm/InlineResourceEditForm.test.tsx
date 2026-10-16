@@ -157,7 +157,12 @@ describe("InlineResourceEditForm", () => {
     fireEvent.change(field("было"), { target: { value: "стало" } });
     save();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Сохранить" })).toHaveAttribute("aria-disabled", "true"),
+    );
+    // Второе нажатие в ожидании до края не доходит.
+    save();
+    expect(update).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     expect(toastSuccess).not.toHaveBeenCalled();
   });

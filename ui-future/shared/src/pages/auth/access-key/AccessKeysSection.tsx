@@ -3,19 +3,24 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Alert, Button, Form, Input, Modal, Spin, Typography } from "antd";
+import { KeyOutlined } from "@ant-design/icons";
 import { ApiError } from "@shared/api/client";
 import { AccessKeyEncodingError, registrationCredentialOf, registrationRequestOf } from "@shared/api/access-key";
 import { NOT_BY_SUBSTANCE_TEXT } from "@shared/api/login-lane";
+import type { SecondFactorState } from "@shared/api/login-lane";
+import { type Column, ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
-import { formatDateTime } from "@shared/lib/datetime";
 import {
   genderOfLabel,
   mutationFailureText,
   mutationSuccessText,
   type MutationSubject,
 } from "@shared/lib/mutation-signal";
-import { toast } from "@shared/lib/toast";
+import { useAnnounce } from "../security/announcer";
+import { DangerDialog } from "../security/DangerDialog";
+import { Moment } from "../security/moment";
+import { SecuritySection } from "../security/SecuritySection";
 import {
   AccessKeyOperationFailed,
   AccessKeyOperationUnknown,
@@ -23,31 +28,37 @@ import {
   type AccessKeyRecord,
 } from "@shared/api/access-keys";
 
-// Раздел «Ключи доступа» экрана параметров учётной записи (приёмка F8, ред. 12,
-// S4, группа L; Р11).
+// Раздел «Ключи доступа» экрана «Безопасность» (приёмка F8, ред. 12, S4,
+// группа L; Р11 в редакции приёмки F8-S7, Р3, Р6, Р7, Р8).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО РАЗДЕЛ ДЕЛАЕТ И ЧЕГО НЕ ДЕЛАЕТ
 //
-//   • перечень — глаголом Ф7, дочитанный до конца; ключ показан именем,
-//     описанием, моментом заведения и моментом последнего использования либо
-//     «Ещё не использовался» — пустое значение означает «не использовался» (Ф7);
-//   • заведение — выдача испытания → `navigator.credentials.create` над ним →
-//     приём результата → `done` операции → перечень перечитан. Параметры
-//     церемонии и результат переносит кодек (`api/access-key.ts`) без изменения;
+//   • перечень — глаголом Ф7, дочитанный до конца, — ОБЩЕЙ таблицей: «Имя» (с
+//     описанием второй строкой), «Добавлен», «Последнее использование» либо «Ещё
+//     не использовался» — пустое значение означает «не использовался» (Ф7), —
+//     и «Удалить» у каждого ключа (F8-S7, Р3). Своей разметки перечня нет;
+//   • заведение — окно «Добавить ключ доступа»: выдача испытания →
+//     `navigator.credentials.create` над ним → приём результата → `done`
+//     операции → перечень перечитан. Параметры церемонии и результат переносит
+//     кодек (`api/access-key.ts`) без изменения;
 //   • снятие — у КАЖДОГО ключа, и у последнего тоже: правило «последний способ
 //     входа» судит служба (Ф7-26), и раздел показывает её отказ дословно — из
 //     ответа снятия либо из `error` операции; ключ остаётся (F8-58, F8-69).
-//     Удаление спрашивает подтверждения диалогом, называющим ключ; отмена не
-//     выпускает ничего (F8-60);
+//     Удаление спрашивает подтверждения диалогом, называющим ключ и последствие
+//     (F8-S7, Р6); отмена не выпускает ничего (F8-60);
+//   • ключи ВЫКЛЮЧЕНЫ на установке (`accessKeys.available = false`, SUA Р7) —
+//     состоянием раздела, а не отказом в конце церемонии (F8-S7, Р7, kacho#3229
+//     п. 4): добавления нет, и выдачи испытания раздел не выпускает; заведённые
+//     ключи показаны с «Удалить». У человека, у которого подтвердить снятие
+//     нечем (`stepUpMethods` пуст), «Удалить» не ведёт в окно, замкнутое в круг,
+//     а называет путь — сброс ключей администратором;
 //   • имя и описание раздел НЕ проверяет: форму судит служба, и её нарушение
 //     поля стоит у поля (`BadRequest.fieldViolations`), остальное — у раздела
 //     (F8-70, F8-71); введённое при любом отказе сохранено.
 //
-// ИСХОД — ЕДИНЫМ МЕХАНИЗМОМ СИГНАЛА (решение владельца 2026-08-15: каждое
-// действие сообщает о выполнении или отказе). Тексты — `mutation-signal.ts`,
-// показ — уведомлением (`toast`; показ примонтирован экраном параметров) и,
-// поскольку отказ обязан стоять у поля либо у раздела (Р11), ещё и на месте.
+// ИСХОД — областью `role="status"` экрана (Р9), тексты — `mutation-signal.ts`;
+// отказ стоит у раздела (`role="alert"`).
 //
 // ОТКАЗ НАЗЫВАЕТ ШАГ И НЕ РАСКРЫВАЕТ КЛАСС. Текст службы — дословно; над ним
 // раздел называет свой шаг («Ключ не добавлен»). Отказ церемонии браузером — ОДИН
@@ -80,10 +91,26 @@ export function accessKeyCreationSupported(): boolean {
 
 type KeyField = "name" | "description";
 
-/** Подлежащее сигнала: ключ доступа по имени (пустое имя — по идентификатору). */
+/** Подлежащее сигнала: ключ доступа по имени в кавычках (пустое имя — по идентификатору). */
 const KEY_LABEL = "Ключ доступа";
 function keySubject(name: string): MutationSubject {
-  return { label: KEY_LABEL, gender: genderOfLabel(KEY_LABEL) ?? "m", name: name.trim() || null };
+  const n = name.trim();
+  return { label: KEY_LABEL, gender: genderOfLabel(KEY_LABEL) ?? "m", name: n ? `«${n}»` : null };
+}
+
+/** Тексты раздела (F8-S7, Р3, Р6, Р7, Р8) — дословно. */
+export const ACCESS_KEYS_TEXT = {
+  empty: "Ключей доступа нет. Входите и подтверждайте действия без пароля и кода.",
+  turnedOff: "Ключи доступа на этой установке выключены администратором",
+  removeConsequence: "Войти этим ключом будет нельзя.",
+  removeLastLevelTwo: "Действия, требующие второго фактора, станут недоступны.",
+  removeImpossible:
+    "Удалить ключ сейчас нельзя: нужен второй фактор, а ключи на этой установке выключены. Попросите администратора установки сбросить ваши ключи доступа.",
+} as const;
+
+/** Имя ключа на экране: имя, а без него — идентификатор. */
+function keyName(record: AccessKeyRecord): string {
+  return record.name || record.id;
 }
 
 /** Отказ шага раздела: текст для человека и — если служба назвала — поле. */
@@ -145,36 +172,69 @@ function RefusalNotice({ refusal }: { refusal: KeysRefusal }) {
   );
 }
 
-function KeyItem({ record, busy, onRemove }: { record: AccessKeyRecord; busy: boolean; onRemove: () => void }) {
-  return (
-    <li style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 0" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Typography.Text strong>{record.name || record.id}</Typography.Text>
-        {record.description ? <div>{record.description}</div> : null}
-        <Typography.Text type="secondary" style={{ display: "block" }}>
-          Заведён {formatDateTime(record.created_at)}
-        </Typography.Text>
-        <Typography.Text type="secondary" style={{ display: "block" }}>
-          {record.last_used_at
-            ? `Последнее использование ${formatDateTime(record.last_used_at)}`
-            : "Ещё не использовался"}
-        </Typography.Text>
-      </div>
-      <Button danger loading={busy} onClick={onRemove}>
+const KEY_COLUMNS = (onRemove: (r: AccessKeyRecord) => void, busy: string | null): Column<AccessKeyRecord>[] => [
+  {
+    header: "Имя",
+    cell: (r) => (
+      <>
+        <Typography.Text strong>{keyName(r)}</Typography.Text>
+        {r.description ? <div>{r.description}</div> : null}
+      </>
+    ),
+  },
+  { header: "Добавлен", cell: (r) => (r.created_at ? <Moment at={r.created_at} /> : null), width: 200 },
+  {
+    header: "Последнее использование",
+    cell: (r) => (r.last_used_at ? <Moment at={r.last_used_at} /> : "Ещё не использовался"),
+  },
+  {
+    header: "",
+    cell: (r) => (
+      <Button
+        size="small"
+        danger
+        loading={busy === r.id}
+        aria-label={`Удалить ключ доступа «${keyName(r)}»`}
+        onClick={() => onRemove(r)}
+      >
         Удалить
       </Button>
-    </li>
-  );
-}
+    ),
+  },
+];
 
-export function AccessKeysSection({ userId }: { userId: string }) {
+export function AccessKeysSection({
+  userId,
+  factor,
+  onCount,
+  addRequested = 0,
+  onChanged,
+}: {
+  userId: string;
+  /** Состояние способов (доступность ключей, способы подтверждения); `null` — ещё не прочитано. */
+  factor: SecondFactorState | null;
+  /**
+   * Число ключей в прочитанном перечне — для сводки и таблицы способов;
+   * `"unread"` — чтение перечня отказано, а прочитанного прежде нет.
+   */
+  onCount?: (n: number | "unread") => void;
+  /** Растёт — открыть добавление ключа (действие пустого состояния второго фактора). */
+  addRequested?: number;
+  /** Перечень изменился — способы подтверждения у службы тоже. */
+  onChanged?: () => void;
+}) {
   const id = useId();
+  const announce = useAnnounce();
   const [supported] = useState(accessKeyCreationSupported);
   const [keys, setKeys] = useState<AccessKeyRecord[] | null>(null);
   const [listRefusal, setListRefusal] = useState<KeysRefusal | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addOpenHere, setAddOpenHere] = useState(false);
+  // Просьба открыть добавление извне — числом: просьба открыта, пока её номер
+  // больше последнего закрытого.
+  const [addDismissed, setAddDismissed] = useState(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [adding, setAdding] = useState(false);
   const [addRefusal, setAddRefusal] = useState<KeysRefusal | null>(null);
   const [browserRefused, setBrowserRefused] = useState(false);
   const [asked, setAsked] = useState<AccessKeyRecord | null>(null);
@@ -182,6 +242,8 @@ export function AccessKeysSection({ userId }: { userId: string }) {
   const [removeRefusal, setRemoveRefusal] = useState<KeysRefusal | null>(null);
   // Уход с экрана посреди шага: исход не пишется, церемония браузера снята.
   const alive = useRef<AbortController | null>(null);
+  // Перечень хоть раз прочитан — отказ перечитывания число у соседей не снимает.
+  const readOnce = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -193,19 +255,28 @@ export function AccessKeysSection({ userId }: { userId: string }) {
   }, []);
 
   // Исход чтения перечня ложится в состояние только у живого раздела.
-  const applyRead = useCallback((read: KeysRead) => {
-    if (alive.current?.signal.aborted) return;
-    if ("keys" in read) {
-      setKeys(read.keys);
-      setListRefusal(null);
-    } else {
-      setListRefusal(read.refusal);
-    }
-  }, []);
+  const applyRead = useCallback(
+    (read: KeysRead) => {
+      if (alive.current?.signal.aborted) return;
+      if ("keys" in read) {
+        readOnce.current = true;
+        setKeys(read.keys);
+        setListRefusal(null);
+        onCount?.(read.keys.length);
+      } else {
+        setListRefusal(read.refusal);
+        // Прочитанное прежде остаётся в таблице раздела — и его число у соседей;
+        // перечня не было — соседи узнают отказ, а не ждут ответа, которого не будет.
+        if (!readOnce.current) onCount?.("unread");
+      }
+    },
+    [onCount],
+  );
 
   const reload = useCallback(async () => {
     applyRead(await readKeys(userId));
-  }, [userId, applyRead]);
+    onChanged?.();
+  }, [userId, applyRead, onChanged]);
 
   // Первое чтение — подпиской на ответ, а не вызовом, пишущим состояние из
   // эффекта: исход ложится, когда ответ пришёл, и не ложится вовсе, если
@@ -220,9 +291,18 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     };
   }, [userId, applyRead]);
 
+  const turnedOff = factor?.accessKeys?.available === false;
+  const canAdd = supported && !turnedOff;
+
+  const addOpen = canAdd && (addOpenHere || addRequested > addDismissed);
+  const setAddOpen = (open: boolean) => {
+    setAddOpenHere(open);
+    if (!open) setAddDismissed(addRequested);
+  };
+
   const add = async () => {
     const controller = alive.current;
-    if (!controller || adding || !supported) return;
+    if (!controller || adding || !canAdd) return;
     setAdding(true);
     setAddRefusal(null);
     setBrowserRefused(false);
@@ -234,14 +314,8 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     try {
       let publicKey: PublicKeyCredentialCreationOptions;
       const subject = keySubject(name);
-      const failed = (refusal: KeysRefusal) => {
-        toast.error(mutationFailureText("create", subject, refusal.text));
-        settle(() => setAddRefusal(refusal));
-      };
-      const refusedByBrowser = () => {
-        toast.error(mutationFailureText("create", subject, KEY_CEREMONY_BROWSER_REFUSED));
-        settle(() => setBrowserRefused(true));
-      };
+      const failed = (refusal: KeysRefusal) => settle(() => setAddRefusal(refusal));
+      const refusedByBrowser = () => settle(() => setBrowserRefused(true));
       try {
         publicKey = registrationRequestOf(await accessKeysClient.beginRegistration(userId));
       } catch (e) {
@@ -275,12 +349,27 @@ export function AccessKeysSection({ userId }: { userId: string }) {
       settle(() => {
         setName("");
         setDescription("");
+        setAddOpen(false);
       });
       await reload();
-      toast.success(mutationSuccessText("create", subject));
+      announce(mutationSuccessText("create", subject));
     } finally {
       settle(() => setAdding(false));
     }
+  };
+
+  /**
+   * «Удалить» у ключа. Ключи выключены и подтвердить снятие нечем — сообщение о
+   * пути вместо окна, замкнутого в круг (Р7): снятие держит пол «2», а «2» здесь
+   * даёт только код. Иначе — диалог с последствием (Р6).
+   */
+  const ask = (record: AccessKeyRecord) => {
+    setRemoveRefusal(null);
+    if (turnedOff && factor?.stepUpMethods !== undefined && factor.stepUpMethods.length === 0) {
+      announce(ACCESS_KEYS_TEXT.removeImpossible);
+      return;
+    }
+    setAsked(record);
   };
 
   const remove = async (record: AccessKeyRecord) => {
@@ -288,15 +377,15 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     if (!controller || removing !== null) return;
     setRemoving(record.id);
     setRemoveRefusal(null);
-    const subject = keySubject(record.name || record.id);
+    const subject = keySubject(keyName(record));
     try {
       await accessKeysClient.revoke(userId, record.id);
       await reload();
-      toast.success(mutationSuccessText("delete", subject));
+      announce(mutationSuccessText("delete", subject));
     } catch (e) {
-      const refusal = refusalOf(e, `Ключ «${record.name || record.id}» не удалён.`);
-      toast.error(mutationFailureText("delete", subject, refusal.text));
+      const refusal = refusalOf(e, `Ключ «${keyName(record)}» не удалён.`);
       if (!controller.signal.aborted) setRemoveRefusal(refusal);
+      announce(mutationFailureText("delete", subject, refusal.text));
       // Отказ операции (гонка двух снятий) — перечень перечитан; синхронный отказ
       // снятия — операции не было, и перечень прежний.
       if (e instanceof AccessKeyOperationFailed || e instanceof AccessKeyOperationUnknown) await reload();
@@ -310,13 +399,15 @@ export function AccessKeysSection({ userId }: { userId: string }) {
     error ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId), status: "error" as const } : {};
   const nameId = `${id}-name`;
   const descriptionId = `${id}-description`;
-  const sectionId = `${id}-title`;
+  // Единственный способ «2» — этот ключ: после снятия подтверждать действия нечем.
+  const lastLevelTwo =
+    factor?.stepUpMethods !== undefined &&
+    factor.stepUpMethods.length === 1 &&
+    factor.stepUpMethods[0] === "webauthn" &&
+    (keys?.length ?? 0) === 1;
 
   return (
-    <section aria-labelledby={sectionId} style={{ maxWidth: 720, marginBottom: 32 }}>
-      <Typography.Title level={4} id={sectionId} style={{ marginTop: 0 }}>
-        Ключи доступа
-      </Typography.Title>
+    <SecuritySection section="accessKeys">
       {keys === null && listRefusal === null && <Spin />}
       {listRefusal && (
         <div style={{ marginBottom: 12 }}>
@@ -324,25 +415,45 @@ export function AccessKeysSection({ userId }: { userId: string }) {
           <Button onClick={() => void reload()}>Прочитать снова</Button>
         </div>
       )}
-      {keys !== null && keys.length === 0 && <Typography.Paragraph>Ключей доступа нет</Typography.Paragraph>}
+      {turnedOff && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <KeyOutlined aria-hidden style={{ fontSize: 28, color: "var(--kc-text-tertiary)" }} />
+          <Typography.Paragraph style={{ margin: 0 }}>{ACCESS_KEYS_TEXT.turnedOff}</Typography.Paragraph>
+        </div>
+      )}
+      {keys !== null && keys.length === 0 && !turnedOff && (
+        <Typography.Paragraph>{ACCESS_KEYS_TEXT.empty}</Typography.Paragraph>
+      )}
       {keys !== null && keys.length > 0 && (
-        <ul aria-label="Заведённые ключи" style={{ listStyle: "none", padding: 0, margin: "0 0 16px" }}>
-          {keys.map((k) => (
-            <KeyItem
-              key={k.id}
-              record={k}
-              busy={removing === k.id}
-              onRemove={() => {
-                setRemoveRefusal(null);
-                setAsked(k);
-              }}
-            />
-          ))}
-        </ul>
+        <div style={{ marginBottom: 12 }}>
+          <ResourceTable rows={keys} columns={KEY_COLUMNS(ask, removing)} rowKey={(k) => k.id} complete fill={false} />
+        </div>
       )}
       {removeRefusal && <RefusalNotice refusal={removeRefusal} />}
-      {supported ? (
-        <FormGrid onSubmit={() => void add()}>
+      {keys !== null &&
+        !turnedOff &&
+        (supported ? (
+          <Button type={keys.length === 0 ? "primary" : "default"} onClick={() => setAddOpen(true)}>
+            Добавить ключ доступа
+          </Button>
+        ) : (
+          <Typography.Paragraph>{KEY_CEREMONY_UNSUPPORTED}</Typography.Paragraph>
+        ))}
+      <Modal
+        open={addOpen}
+        title="Добавить ключ доступа"
+        onCancel={() => setAddOpen(false)}
+        mask={{ closable: false }}
+        footer={[
+          <Button key="cancel" onClick={() => setAddOpen(false)} disabled={adding}>
+            Отмена
+          </Button>,
+          <Button key="ok" type="primary" loading={adding} onClick={() => void add()}>
+            Добавить
+          </Button>,
+        ]}
+      >
+        <FormGrid label="Добавить ключ доступа" onSubmit={() => void add()}>
           <Form.Item label="Имя" htmlFor={nameId}>
             <Input
               id={nameId}
@@ -367,28 +478,27 @@ export function AccessKeysSection({ userId }: { userId: string }) {
               <Alert type="warning" showIcon message={KEY_CEREMONY_BROWSER_REFUSED} />
             </div>
           )}
-          <Button type="primary" htmlType="submit" loading={adding}>
-            Добавить ключ доступа
-          </Button>
+          <button type="submit" hidden aria-hidden tabIndex={-1} />
         </FormGrid>
-      ) : (
-        <Typography.Paragraph>{KEY_CEREMONY_UNSUPPORTED}</Typography.Paragraph>
-      )}
-      <Modal
+      </Modal>
+      <DangerDialog
         open={asked !== null}
-        title={asked ? `Удалить ключ доступа «${asked.name || asked.id}»?` : undefined}
-        okText="Удалить"
-        okButtonProps={{ danger: true }}
-        cancelText="Отмена"
+        title={asked ? `Удалить ключ доступа «${keyName(asked)}»?` : ""}
+        consequences={
+          lastLevelTwo
+            ? [ACCESS_KEYS_TEXT.removeConsequence, ACCESS_KEYS_TEXT.removeLastLevelTwo]
+            : [ACCESS_KEYS_TEXT.removeConsequence]
+        }
+        confirmText="Удалить"
         onCancel={() => setAsked(null)}
-        onOk={() => {
+        onConfirm={() => {
           const record = asked;
+          // Диалог закрывается ДО глагола: окно подтверждения, если служба его
+          // спросит, встаёт одно, а не поверх этого диалога.
           setAsked(null);
           if (record) void remove(record);
         }}
-      >
-        <Typography.Paragraph>После удаления войти им больше будет нельзя.</Typography.Paragraph>
-      </Modal>
-    </section>
+      />
+    </SecuritySection>
   );
 }

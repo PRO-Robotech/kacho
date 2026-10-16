@@ -70,7 +70,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Input, Radio, Select, Space, Tag, Typography } from "antd";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { FormSection } from "@/components/organisms/form/FormSection";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -81,6 +81,12 @@ import {
   IAM,
   CLUSTER_SCOPE_ID,
   SUBJECT_TYPE_ENUM,
+  SYSTEM_CLASSES,
+  roleGrantsReadsOnly,
+  systemClassLabel,
+  targetFieldRefusal,
+  type Role,
+  type SystemClass,
   type AccessBindingScopeTier,
   type ResourceRef,
   type User,
@@ -106,14 +112,30 @@ function pluralRole(n: number): string {
   return "ролей";
 }
 
-export type SubjectType = "user" | "service_account" | "group";
+export type SubjectType = "user" | "service_account" | "group" | "system_class";
 // UI-уровень scope-измерения: GLOBAL / ACCOUNT / PROJECT. На проводе GLOBAL ≡ tier
 // CLUSTER.
 export type ScopeTier = "GLOBAL" | "ACCOUNT" | "PROJECT";
 // Back-compat alias для page/preset (deep-link сохраняет имена resource_type).
 export type ResourceType = "account" | "project" | "cluster";
 
-const SUBJECT_TYPES: SubjectType[] = ["user", "service_account", "group"];
+// Подпись вида — само значение вида, как у трёх прежних (решение 6 приёмки
+// kaname#829: «подпись вида — как консоль подписывает сегодня»).
+const SUBJECT_TYPES: SubjectType[] = ["user", "service_account", "group", "system_class"];
+
+/**
+ * Предупреждение над кнопкой выдачи классу (Р5, SC-51). Выдача классу открывает
+ * объекты за границу арендатора, и это говорится ДО отправки, а не узнаётся
+ * после. Кнопку предупреждение не запирает: выдача законна, она лишь широка.
+ */
+const SYSTEM_CLASS_WARNING: Record<SystemClass, string> = {
+  anonymous:
+    "Выдача анониму открывает выбранные объекты любому, кто обратится без входа, включая посторонних. " +
+    "Выдаются только роли чтения и только названные объекты.",
+  authenticated:
+    "Выдача вошедшим открывает выбранные объекты любому пользователю и сервисной учётке платформы, " +
+    "включая другие аккаунты. Выдаются только роли чтения.",
+};
 
 /**
  * Чем сужается КАЖДЫЙ список этой формы у своего владельца (#528).
@@ -139,6 +161,8 @@ const SUBJECT_SCOPE: Record<SubjectType, PickerScope> = {
   // `ToSQL`, то есть оператор доезжает до SQL, а не схлопывается в равенство.
   service_account: pickerScope({ serverSearchField: "name" }),
   group: pickerScope({ serverSearchField: "name" }),
+  // У класса поиска нет: значений два, и выбираются они переключателем.
+  system_class: pickerScope(undefined),
 };
 
 /** Якорь области: Account и Project владелец сужает тем же `name CONTAINS "…"`. */
@@ -394,6 +418,8 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
           value: g.id,
           label: `${g.name} · ${g.id}`,
         }));
+      case "system_class":
+        return [];
     }
   }, [subjectType, users.data, sas.data, groups.data]);
 
@@ -458,6 +484,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
 
   // Выбранное обязано пережить сужение — см. `keepChosenLabels`.
   const watchedSubjectId = Form.useWatch("subject_id", form) as string | undefined;
+  const watchedSubjectClass = Form.useWatch("subject_class", form) as SystemClass | undefined;
   const watchedSubjectIds = (Form.useWatch("subject_ids", form) as string[] | undefined) ?? [];
   const subjectLabelMemo = useRef(new Map<string, string>());
   const anchorLabelMemo = useRef(new Map<string, string>());
@@ -483,7 +510,29 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
     enabled: scopeSelected,
     staleTime: 0,
   });
-  const assignableRoles = useMemo<AssignableRole[]>(() => assignableQ.data?.roles ?? [], [assignableQ.data]);
+  const assignableAll = useMemo<AssignableRole[]>(() => assignableQ.data?.roles ?? [], [assignableQ.data]);
+
+  // ── Р4: классу — только роли чтения ──
+  // Ответ назначаемости глаголов роли не несёт, поэтому у выдачи классу каждая
+  // назначаемая роль читается по своему адресу, и предлагаются лишь те, чьи
+  // действующие глаголы — get и list. Роль, которую сервер отвергнет (SC-21),
+  // форма не предлагает; у выдачи человеку набор — ровно серверный, без чтений.
+  const isClassSubject = subjectType === "system_class";
+  const roleReads = useQueries({
+    queries: (isClassSubject ? assignableAll : []).map((r) => ({
+      queryKey: ["iam", "roles", "get", r.role_id],
+      queryFn: () => api.get<Role>(`${IAM.roles}/${r.role_id}`),
+      staleTime: 30_000,
+    })),
+  });
+  const roleReadsPending = roleReads.some((q) => q.isLoading);
+  // Подпись прочитанного — строкой: массив результатов новый на каждом
+  // рендере, и зависимость от него пересчитывала бы отбор без нужды.
+  const readOnlySignature = roleReads.map((q) => (roleGrantsReadsOnly(q.data) ? "r" : "-")).join("");
+  const assignableRoles = useMemo<AssignableRole[]>(() => {
+    if (!isClassSubject) return assignableAll;
+    return assignableAll.filter((_r, i) => readOnlySignature[i] === "r");
+  }, [isClassSubject, assignableAll, readOnlySignature]);
   const roleById = useMemo(() => {
     const m = new Map<string, AssignableRole>();
     for (const r of assignableRoles) m.set(r.role_id, r);
@@ -601,7 +650,10 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
   useEffect(() => {
     if (!scopeSelected) return;
     if (!assignableQ.isSuccess) return;
-    const pruneKey = `${watchedScope ?? ""}|${watchedAnchorId ?? ""}|${assignableRoles
+    // Пока глаголы ролей класса не прочитаны, отбор пуст не потому, что ролей
+    // нет, — снимать выбор по нему нельзя.
+    if (roleReadsPending) return;
+    const pruneKey = `${subjectType}|${watchedScope ?? ""}|${watchedAnchorId ?? ""}|${assignableRoles
       .map((r) => r.role_id)
       .sort()
       .join(",")}`;
@@ -614,7 +666,15 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       form.setFieldValue("role_ids", next);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignableQ.isSuccess, watchedScope, watchedAnchorId, assignableRoles, scopeSelected]);
+  }, [
+    assignableQ.isSuccess,
+    watchedScope,
+    watchedAnchorId,
+    assignableRoles,
+    scopeSelected,
+    roleReadsPending,
+    subjectType,
+  ]);
 
   // Дельта для подсказки (Добавить N · Отозвать M) — только reconcile.
   const addedCount = useMemo(
@@ -655,9 +715,12 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
 
     // thin binding несёт subjects[] (1..32). standalone → multi-subject из формы;
     // reconcile → один залоченный субъект.
+    // Класс — один субъект, выбранный переключателем (SC-50).
     const subjectIds = reconcile
       ? [v.subject_id as string].filter(Boolean)
-      : ((v.subject_ids as string[] | undefined) ?? []).filter(Boolean);
+      : subjectType === "system_class"
+        ? [v.subject_class as string].filter(Boolean)
+        : ((v.subject_ids as string[] | undefined) ?? []).filter(Boolean);
     const subjects: Subject[] = subjectIds.map((id) => ({
       // proto enum wire-form: enum-имя, не нижне-регистровая строка.
       type: SUBJECT_TYPE_ENUM[subjectType],
@@ -725,9 +788,18 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
 
     const failedAdd: { roleId: string; message: string }[] = [];
     const failedRemove: { roleId: string; message: string }[] = [];
+    // Отказ, который сервер отнёс к полю цели, показывается У ПОЛЯ цели и
+    // дословно (SC-52); общее сообщение его не повторяет.
+    const targetRefusals: string[] = [];
     results.forEach((res, i) => {
       if (res.status === "fulfilled") return;
       if (ops[i].kind === "add" && isAlreadyExistsError(res.reason)) return;
+      const atTarget = ops[i].kind === "add" ? targetFieldRefusal(res.reason) : null;
+      if (atTarget !== null) {
+        failedAdd.push({ roleId: ops[i].roleId, message: atTarget });
+        if (!targetRefusals.includes(atTarget)) targetRefusals.push(atTarget);
+        return;
+      }
       const entry = { roleId: ops[i].roleId, message: mapApiErrorToMessage(res.reason) };
       (ops[i].kind === "add" ? failedAdd : failedRemove).push(entry);
     });
@@ -754,11 +826,17 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
     }
     form.setFieldValue("role_ids", nextSelection);
 
+    if (targetRefusals.length > 0) {
+      form.setFields([{ name: "_target_kind", errors: targetRefusals }]);
+    }
+    const generalAdd = failedAdd.filter((f) => !targetRefusals.includes(f.message));
+    if (generalAdd.length + failedRemove.length === 0) return;
+
     const lines = [
-      ...failedAdd.map((f) => `Не добавлена ${displayName(f.roleId)}: ${f.message}`),
+      ...generalAdd.map((f) => `Не добавлена ${displayName(f.roleId)}: ${f.message}`),
       ...failedRemove.map((f) => `Не отозвана ${displayName(f.roleId)}: ${f.message}`),
     ].join("\n");
-    const totalFailed = failedAdd.length + failedRemove.length;
+    const totalFailed = generalAdd.length + failedRemove.length;
     setInlineError({
       type: "error",
       message: `Не удалось применить ${totalFailed} ${pluralRole(totalFailed)}:\n${lines}`,
@@ -797,9 +875,14 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
               data-testid="access-bindings-subject-type"
               options={SUBJECT_TYPES.map((t) => ({ value: t, label: t }))}
               onChange={(val) => {
-                setSubjectType(val as SubjectType);
+                const next = val as SubjectType;
+                setSubjectType(next);
                 form.setFieldValue("subject_id", undefined);
                 form.setFieldValue("subject_ids", []);
+                form.setFieldValue("subject_class", undefined);
+                // Классу «вся область» не выдаётся нигде, кроме кластера (Р5):
+                // начальным видом цели у класса стоит перечень объектов.
+                if (next === "system_class") form.setFieldValue("_target_kind", "resources");
               }}
             />
           </Form.Item>
@@ -830,6 +913,21 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                 // ложь: «нет совпадений» на месте «нет среди загруженных».
                 notFoundContent={subjectListLoading ? undefined : subjectScope.emptyText}
                 loading={subjectListLoading}
+              />
+            </Form.Item>
+          ) : subjectType === "system_class" ? (
+            <Form.Item
+              label="Класс"
+              name="subject_class"
+              required
+              rules={[{ required: true, message: "Выберите класс" }]}
+            >
+              {/* Варианты — пропом `options`, а не голыми `Radio`: так группа
+                  сама ведёт выбор, и тот же состав рисует заменитель antd в
+                  модульных пробах (гейт check-antd-double-draws-what-the-operator-sees). */}
+              <Radio.Group
+                data-testid="access-bindings-subject-class"
+                options={SYSTEM_CLASSES.map((c) => ({ value: c, label: systemClassLabel(c) }))}
               />
             </Form.Item>
           ) : (
@@ -1060,7 +1158,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                   <span className="ant-select-selection-item-content">{displayName(String(value))}</span>
                 </Tag>
               )}
-              loading={assignableQ.isLoading}
+              loading={assignableQ.isLoading || roleReadsPending}
               title={ROLE_SCOPE.notice}
               // Три состояния — три РАЗНЫХ факта, и прежняя редакция сводила два
               // последних в одно: «нет ролей, доступных для этой области» стояло
@@ -1068,10 +1166,12 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
               // одной загруженной меткой. Сервер этот список не сужает (см.
               // ROLE_SCOPE), поэтому пустота ввода честно называется областью.
               notFoundContent={
-                assignableQ.isLoading
+                assignableQ.isLoading || roleReadsPending
                   ? "Загрузка ролей…"
                   : assignableRoles.length === 0
-                    ? "Нет ролей, доступных для этой области"
+                    ? isClassSubject
+                      ? "Нет ролей только для чтения, доступных для этой области: классу выдаются только они"
+                      : "Нет ролей, доступных для этой области"
                     : ROLE_SCOPE.emptyText
               }
               style={{ width: "100%" }}
@@ -1116,6 +1216,16 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
             )}
           </Typography.Paragraph>
         </FormSection>
+
+        {subjectType === "system_class" && watchedSubjectClass && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            data-testid="access-bindings-class-warning"
+            message={SYSTEM_CLASS_WARNING[watchedSubjectClass]}
+          />
+        )}
 
         <FormFooter
           submitLabel={reconcile ? "Сохранить привилегии" : "Создать"}

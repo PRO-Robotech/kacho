@@ -68,6 +68,9 @@ const (
 	// Смена адреса почты (приёмка F8-S6 Р1, kacho#3062): два глагола той же полосы.
 	loginLaneVerbEmailChange        = "email-change"
 	loginLaneVerbEmailChangeConfirm = "email-change-confirm"
+	// Выдача испытания повышения ключом доступа (приёмка F8-S7 Р10, kacho#3230):
+	// пара к `step-up`, та же полоса.
+	loginLaneVerbStepUpAccessKeyBegin = "step-up-access-key-begin"
 	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1) и метаданные
 	// обнаружения (kacho#2721): ретранслируются на слушатель выдачи, клетки —
 	// те же.
@@ -97,6 +100,7 @@ func LoginLaneVerbLabels() []string {
 		loginLaneVerbPasswordEnroll,
 		loginLaneVerbSessions, loginLaneVerbSessionsEnd, loginLaneVerbSessionsEndOthers,
 		loginLaneVerbEmailChange, loginLaneVerbEmailChangeConfirm,
+		loginLaneVerbStepUpAccessKeyBegin,
 		loginLaneVerbAuthorize, loginLaneVerbToken, loginLaneVerbDiscovery,
 	}
 }
@@ -226,6 +230,7 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		loginLaneVerbSessionsEndOthers:       relayed[loginLaneVerbSessionsEndOthers],
 		loginLaneVerbEmailChange:             relayed[loginLaneVerbEmailChange],
 		loginLaneVerbEmailChangeConfirm:      relayed[loginLaneVerbEmailChangeConfirm],
+		loginLaneVerbStepUpAccessKeyBegin:    relayed[loginLaneVerbStepUpAccessKeyBegin],
 		loginLaneVerbAuthorize:               relayed[loginLaneVerbAuthorize],
 		loginLaneVerbToken:                   relayed[loginLaneVerbToken],
 		loginLaneVerbDiscovery:               relayed[loginLaneVerbDiscovery],

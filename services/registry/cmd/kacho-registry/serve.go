@@ -768,7 +768,7 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 	return dataplane.New(verifier, authorizer, backend, presence, forwarder, repoReg, regLookup, uploads, pushGrants,
 		cfg.TokenRealm, cfg.ServiceAud, logger).
 		// Anonymous public pull (RG-1 D-7): resolve the iam-issued anon principal id to
-		// the FGA wildcard user:*. Empty → anon disabled (secure-by-default).
+		// the system class system_class:anonymous. Empty → anon disabled (secure-by-default).
 		WithAnonymousSubject(cfg.AnonymousSubjectID), nil
 }
 

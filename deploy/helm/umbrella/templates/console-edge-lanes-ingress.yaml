@@ -44,6 +44,20 @@
 {{- $ingOn := or (not (hasKey $ing "enabled")) $ing.enabled }}
 {{- $lanesOn := and $uif.enabled $uing.enabled $tls.enabled $ingOn }}
 {{- $uifStreamEntry := dig "subscriptionStream" "ingress" "enabled" true $uif }}
+{{- /*
+КОНСОЛЬ БЕЗ TLS НЕ РЕНДЕРИТСЯ (kacho#3183). Печенье контекста формы и носитель
+сессии службы доступа — `Secure`, и браузер не хранит их на происхождении `http`:
+консоль за входом без TLS поднималась, а законная регистрация получала отказ
+формы, причину которого называл лишь комментарий в values. Условие отказа — вход
+консоли включён и его перечень `tls` пуст. Собственная TLS-раздача консоли
+(`uif.publicFront`) от отказа НЕ освобождает: вход подчарта рендерится по
+`ingress.enabled` независимо от неё, и при пустом `tls` он выходит наружу
+обычным http рядом с TLS-раздачей. Раздача без входа — это вход выключен, и
+отказа нет. Предохранитель `Secure` у печенья не снимается.
+*/ -}}
+{{- if and $uif.enabled $uing.enabled (empty $uing.tls) }}
+{{- fail "консоль выставлена входом без TLS (uif.ingress.enabled, uif.ingress.tls пуст): печенье формы службы доступа — Secure, браузер не хранит его на http, и регистрация получила бы отказ FORM_TOKEN_REJECTED. Объявите uif.ingress.tls (лист — uif.ingress.certificate) либо выключите вход (uif.ingress.enabled: false) и выставьте консоль собственной TLS-раздачей uif.publicFront; включённая раздача вход без TLS не прикрывает" }}
+{{- end }}
 {{- if and $lanesOn $uifStreamEntry }}
 {{- fail "путь потока изменений на хосте консоли ведут полосы края (console-edge-lanes-subscription-stream): uif.subscriptionStream.ingress.enabled обязан быть false — второй вход на ту же пару host+path контроллер отвергнет" }}
 {{- end }}

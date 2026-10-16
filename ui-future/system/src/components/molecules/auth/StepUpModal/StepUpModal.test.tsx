@@ -32,7 +32,7 @@ describe("StepUpModal модуля system — жизненный цикл", () =
     expect(dialog).toHaveTextContent("Подтверждение действия");
     // Уровень «2» поднимается только вторым фактором — окно так и говорит.
     expect(dialog).toHaveTextContent("подтверждается вторым фактором");
-    expect(screen.getByLabelText("Запасной код")).toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: "Запасной код" })).toBeInTheDocument();
   });
 
   it("просьба ждёт ответа человека — обещание само не разрешается", async () => {

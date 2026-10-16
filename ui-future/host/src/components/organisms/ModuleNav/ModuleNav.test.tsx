@@ -1,5 +1,13 @@
 import { render, screen, within } from "@testing-library/react";
 import { ModuleNav } from ".";
+import {
+  NAV_REMOTES,
+  addressHoldsPanel,
+  loadRemoteNavigation,
+  normalizeRemoteNavigation,
+  remotePath,
+} from "../../../lib/module-navigation";
+import { MODULE_NAV_WIDTH } from "./ModuleNav";
 
 // Второй уровень сайдбара — типы ресурсов активного модуля.
 //
@@ -122,5 +130,48 @@ describe("ModuleNav", () => {
   it("несуществующий раздел колонки не получает — контроль к утверждению выше", () => {
     const { container } = render(<ModuleNav context={ctx} currentPath="/такого-раздела-нет/что-то" />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  /*
+   * Навигация модулей приезжает федерацией ПОЗЖЕ, чем страница модуля может
+   * отрисовать заголовок. Колонка, которой пока не из чего строиться, не
+   * рисовалась вовсе — и страница стояла на её ширину левее, а с приездом
+   * навигации съезжала на место (console-e2e «поля страницы одни на списке,
+   * карточке и форме»: форма 86×83 против 324×83 у списка, t3238-sc @63500f861).
+   */
+  it("пока навигация модулей едет, колонка держит своё место на адресе модуля", () => {
+    const pending = () => new Promise<unknown>(() => undefined);
+    const { container } = render(
+      <ModuleNav context={ctx} currentPath="/projects/project-1/vpc/networks/create" loadNavigation={pending} />,
+    );
+
+    const reserved = container.firstElementChild as HTMLElement | null;
+    // Места нет — страница стоит левее и съедет с приездом навигации.
+    expect(reserved).not.toBeNull();
+    expect(reserved!.style.width).toBe(`${MODULE_NAV_WIDTH}px`);
+    expect(reserved!.style.minWidth).toBe(`${MODULE_NAV_WIDTH}px`);
+    // Резерв — место, а не перечень: имени и пунктов у него нет.
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("пока навигация едет, вне модуля места не держится — контроль к резерву выше", () => {
+    const pending = () => new Promise<unknown>(() => undefined);
+    const { container } = render(<ModuleNav context={ctx} currentPath="/dashboard" loadNavigation={pending} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("каждый пункт каждого раздела навигации стоит на адресе, где колонка держит место", async () => {
+    // Резерв судит адрес ДО перечня секций; перечень, приехав, рисует колонку.
+    // Пункт, чей адрес резерв не признал бы, — страница, съезжающая с приездом.
+    const loaded = await Promise.all(NAV_REMOTES.map((remote) => loadRemoteNavigation(remote)));
+    const addresses = loaded
+      .flatMap((nav) => normalizeRemoteNavigation(nav))
+      .flatMap((section) => section.items.map((item) => remotePath("project-1", item.path)));
+    // Положительный контроль: перечень непуст, иначе «ни одного непризнанного» — пустое.
+    expect(addresses.length).toBeGreaterThan(0);
+    expect(addresses.filter((address) => !addressHoldsPanel(address))).toEqual([]);
+    expect(addressHoldsPanel("/dashboard")).toBe(false);
+    expect(addressHoldsPanel("/projects/project-1/dashboard")).toBe(false);
   });
 });

@@ -435,6 +435,8 @@ func subjectKindString(k SubjectKind) string {
 		return "workload"
 	case SubjectKindExternal:
 		return "external"
+	case SubjectKindSystemClass:
+		return subjectPrefixSystemClass
 	default:
 		return ""
 	}

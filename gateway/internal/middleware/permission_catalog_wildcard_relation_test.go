@@ -6,11 +6,11 @@ package middleware_test
 // permission_catalog_wildcard_relation_test.go — a relation that a wildcard tuple
 // satisfies narrows NOTHING, and every catalog row standing on one has to say why.
 //
-// The authorization model lets a relation be granted to `user:*`. The cluster
-// bootstrap uses that deliberately: it writes `cluster:<root>#viewer@user:*` so the
-// GLOBAL REFERENCE CATALOGUE — the regions, zones and disk types a tenant must be
-// able to read before it can place anything — is readable by anyone
-// authenticated. For that data it is the correct design.
+// Модель прав позволяет выдать отношение каждому: подстановкой `user:*` либо, с
+// PRO-Robotech/kaname#829, системным классом `system_class:authenticated`. Бутстрап
+// кластера делает это намеренно — пишет `cluster:<root>#viewer@system_class:authenticated`,
+// чтобы ГЛОБАЛЬНЫЙ СПРАВОЧНИК (регионы, зоны, типы дисков, которые арендатор
+// читает до любого размещения) читал всякий вошедший. Для этих данных так и задумано.
 //
 // The consequence is that a catalog row asking for `viewer` on `cluster` means
 // "authenticated", not "authorized". It costs a round-trip, reads in the catalog
@@ -23,7 +23,7 @@ package middleware_test
 // no longer qualifies fails it too, so the list cannot rot into a comment.
 //
 // The set of wildcard-satisfiable relations is COMPUTED FROM THE MODEL, not
-// listed: the day someone adds `user:*` to another relation, every catalog row
+// listed: the day someone adds `user:*` or `system_class` to another relation, every catalog row
 // resting on it appears here without anyone remembering to update a literal.
 
 import (
@@ -103,10 +103,10 @@ func TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues(t *tes
 	// gate exists to catch elsewhere.
 	require.NotEmpty(t, wildcard, "no wildcard-satisfiable relation found — the model parse is broken, not the model")
 	require.Contains(t, wildcard, typeRelation{"cluster", "viewer"},
-		"cluster#viewer is granted to user:* by the cluster bootstrap; a parse that misses it misses everything")
+		"cluster#viewer is granted to system_class:authenticated by the cluster bootstrap; a parse that misses it misses everything")
 	require.Contains(t, wildcard, typeRelation{"registry_repository", "v_get"},
-		"registry_repository#v_get carries the anonymous public-read wildcard; a parse that misses it is "+
-			"mishandling the userset syntax (`group#member` is not a comment)")
+		"registry_repository#v_get carries the anonymous public-read class (system_class:anonymous); a parse "+
+			"that misses it is mishandling the userset syntax (`group#member` is not a comment)")
 
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -165,8 +165,33 @@ var (
 	fgaIdentRe    = regexp.MustCompile(`^\w+$`)
 )
 
+// fgaSystemClassType — тип системного класса субъектов в модели службы доступа
+// (PRO-Robotech/kaname#829, приёмка anonymous-and-authenticated-are-subject-classes).
+// Отношение, принимающее класс прямо, выполнимо «каждым вошедшим» так же, как
+// прежде подстановкой: класс выдаётся системной выдачей `system_class:authenticated`
+// (либо `system_class:anonymous`) и пропускает всякого принципала. Класс заменил
+// подстановку `user:*` в модели, поэтому распознаватель знает ОБЕ законные формы:
+// подстановку DSL допускает по-прежнему, и форма, которую он забыл, — молчание.
+const fgaSystemClassType = "system_class"
+
+// bracketAdmitsEveryone — допускает ли перечень назначаемых типов отношения
+// субъекта, за которым стоит каждый: подстановку `<тип>:*` либо системный класс.
+func bracketAdmitsEveryone(list string) bool {
+	if fgaWildcardRe.MatchString(list) {
+		return true
+	}
+	for _, tok := range strings.Split(list, ",") {
+		f := strings.Fields(strings.SplitN(strings.TrimSpace(tok), "#", 2)[0])
+		if len(f) > 0 && f[0] == fgaSystemClassType {
+			return true
+		}
+	}
+	return false
+}
+
 // wildcardSatisfiableRelations reads the canonical authorization model and returns
-// every (type, relation) a `<subject>:*` tuple can satisfy — directly, or through
+// every (type, relation) a `<subject>:*` tuple or a system class tuple
+// (`system_class:<имя>`, см. fgaSystemClassType) can satisfy — directly, or through
 // a computed userset / tuple-to-userset that reaches one.
 //
 // Over-approximation is the safe direction here: a pair listed that turns out not
@@ -232,7 +257,7 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	sat := map[typeRelation]struct{}{}
 	for typ, rels := range types {
 		for rel, expr := range rels {
-			if br := fgaBracketRe.FindStringSubmatch(expr); br != nil && fgaWildcardRe.MatchString(br[1]) {
+			if br := fgaBracketRe.FindStringSubmatch(expr); br != nil && bracketAdmitsEveryone(br[1]) {
 				sat[typeRelation{typ, rel}] = struct{}{}
 			}
 		}

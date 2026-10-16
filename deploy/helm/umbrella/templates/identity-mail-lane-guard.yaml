@@ -84,8 +84,12 @@ SPDX-License-Identifier: BUSL-1.1
 {{- if and $fromSet (not $uriSet) }}
 {{- fail (printf "kacho-umbrella: адрес отправителя объявлен (global.kacho.identity.smtp.fromAddress = %q), но узел почтовой полосы НЕ задан (global.kacho.identity.smtp.connectionURI пуст). Письмо некуда отдать, и отказ был бы тихим: процесс стартует, отправка молча не состоится (решение Р4 приёмки ID-MAIL-1)" $from) }}
 {{- end }}
-{{- if and $laneDeclared (not $fromNameSet) }}
-{{- fail (printf "kacho-umbrella: почтовая полоса объявлена, но `global.kacho.identity.smtp.fromName` пуст. Величины три, и объявляются они вместе: умолчания у них нет намеренно (решение Р3 приёмки ID-MAIL-1)") }}
+{{/* ИМЯ ОТПРАВИТЕЛЯ НЕОБЯЗАТЕЛЬНО (kacho#3179) — как в отдельном чарте службы:
+     процесс пишет письмо и без отображаемого имени, и не объявленное имя до
+     карты настроек не доезжает. Отвергается лишь имя БЕЗ узла: величину некуда
+     применить — так же отказывает и сам процесс. */}}
+{{- if and $fromNameSet (not $uriSet) }}
+{{- fail (printf "kacho-umbrella: имя отправителя объявлено (global.kacho.identity.smtp.fromName = %q), но узел почтовой полосы НЕ задан (global.kacho.identity.smtp.connectionURI пуст): величину некуда применить" $fromName) }}
 {{- end }}
 
 {{/* ── (1а) ИСТОЧНИК УДОСТОВЕРЕНИЯ — САМ ПАРА, И ПОЛОВИНА ЕЁ ТАК ЖЕ ТИХА ────
@@ -148,14 +152,44 @@ SPDX-License-Identifier: BUSL-1.1
 {{/* ── (4) СХЕМА И УЗЕЛ ───────────────────────────────────────────────────
      `smtp://` — STARTTLS, `smtps://` — неявный TLS. Всё прочее до процесса
      доедет и будет отвергнуто им же, но уже молча и на первой отправке. */}}
+{{/* ДВЕ ФОРМЫ АДРЕСА, как у отдельного чарта службы (kacho#3179): форма URI
+     (`smtp://` — STARTTLS, `smtps://` — неявный TLS) и голая `host[:port]`, у
+     которой посадку называет ручка `global.kacho.identity.smtp.tlsMode` из
+     {starttls, implicit} (пусто — starttls, умолчание процесса). Незашифрованной
+     посадки нет ни в одной форме. У формы URI ручка, если задана, обязана
+     совпасть со схемой: два несогласных объявления одной посадки — отказ. */}}
+{{- $tlsMode := lower (trim (toString ($smtp.tlsMode | default ""))) }}
+{{- if not (has $tlsMode (list "" "starttls" "implicit" "tls")) }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.tlsMode` = %q вне словаря {starttls, implicit}: полоса до почтового узла шифруется на каждом стенде, незашифрованной посадки нет" $tlsMode) }}
+{{- end }}
+{{- $modeOfKnob := ternary "implicit" "starttls" (has $tlsMode (list "implicit" "tls")) }}
+{{- $bare := not (contains "://" $uri) }}
+{{- if $bare }}
+{{- if regexMatch "[@/?#]" $uri }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — голая форма адреса это host[:port]: имя пользователя живёт только в форме smtp://, путь и параметры голой форме не принадлежат (параметры disable_starttls и skip_ssl_verify не принимаются ни в одной форме)" (regexReplaceAll "^[^@]*@" $uri "***@")) }}
+{{- end }}
+{{- $bhost := regexReplaceAll ":[^:]*$" $uri "" }}
+{{- $bport := ternary (regexFind "[^:]*$" $uri) "587" (regexMatch ":[^:]*$" $uri) }}
+{{- if eq (trim $bhost) "" }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — порт есть, узла нет" $uri) }}
+{{- end }}
+{{- if or (not (regexMatch "^[0-9]{1,5}$" $bport)) (lt (atoi $bport) 1) (gt (atoi $bport) 65535) }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — порт %q не TCP-порт" $uri $bport) }}
+{{- end }}
+{{- else }}
 {{- if not (or (hasPrefix "smtp://" $uri) (hasPrefix "smtps://" $uri)) }}
-{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — схема не распознана. Ожидается `smtp://` (STARTTLS) либо `smtps://` (неявный TLS); всё прочее отвергнет сам процесс, но уже на первой отправке и молча" $uri) }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — схема не распознана. Ожидается `smtp://` (STARTTLS), `smtps://` (неявный TLS) либо голая форма host[:port] с ручкой tlsMode; всё прочее отвергнет сам процесс, но уже на первой отправке и молча" $uri) }}
+{{- end }}
+{{- $modeOfScheme := ternary "implicit" "starttls" (hasPrefix "smtps://" $uri) }}
+{{- if and (ne $tlsMode "") (ne $modeOfKnob $modeOfScheme) }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.tlsMode` = %q спорит со схемой адреса %q (посадка %s): у формы URI посадку называет схема, и ручка обязана совпасть" $tlsMode $uri $modeOfScheme) }}
+{{- end }}
 {{- end }}
 {{- $rest := trimPrefix "smtps://" (trimPrefix "smtp://" $uri) }}
 {{- $hostpart := (splitList "/" $rest) | first }}
 {{- $host := (splitList "@" $hostpart) | last }}
-{{- if eq (trim $host) "" }}
-{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — схема есть, узла нет. Вырожденное значение считается НЕЗАДАННЫМ, а не «непустым»: иначе страж зелен ровно там, где полоса не работает" $uri) }}
+{{- if eq (trim (regexReplaceAll ":[0-9]*$" $host "")) "" }}
+{{- fail (printf "kacho-umbrella: `global.kacho.identity.smtp.connectionURI` = %q — узла нет. Вырожденное значение считается НЕЗАДАННЫМ, а не «непустым»: иначе страж зелен ровно там, где полоса не работает" $uri) }}
 {{- end }}
 
 {{/* ── (4а) УДОСТОВЕРЕНИЕ В АДРЕСЕ — ОНО УЕХАЛО БЫ В КАРТУ НАСТРОЕК ─────────

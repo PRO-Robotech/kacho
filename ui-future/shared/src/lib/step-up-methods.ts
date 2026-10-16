@@ -28,11 +28,30 @@
 // Держит имя проба рядом — `step-up-methods.test.ts`.
 //
 // Словарь — словарь службы (`method` глаголов второго фактора и повышения):
-// `totp` — код из приложения, `lookup_secret` — запасной код. Пароль в перечне
-// НЕТ: он даёт свежесть предъявления, а уровня «2» не поднимает.
+// `totp` — код из приложения, `lookup_secret` — запасной код, `webauthn` —
+// ключ доступа (приёмка службы SUA, Р1; экран — приёмка F8-S7, Р5 и Р10).
+// Пароль в перечне НЕТ: он даёт свежесть предъявления, а уровня «2» не
+// поднимает.
+//
+// КОД И КЛЮЧ ПРЕДЪЯВЛЯЮТСЯ РАЗНОЙ ФОРМОЙ. Код — полем `code` (Ф12 Н12), ключ —
+// утверждением браузера над испытанием повышения (`credential`, SUA Р1, Р2).
+// Поэтому перечень кодов (`CODE_METHODS`) — отдельное объявление: поле
+// предъявления кода строит свой выбор из него, и ключа в выборе кода не бывает
+// by construction.
 
 /** Способы второго фактора, которыми НАША церемония повышения поднимает уровень до «2». */
-export const OWN_STEP_UP_METHODS = ["totp", "lookup_secret"] as const;
+export const OWN_STEP_UP_METHODS = ["totp", "lookup_secret", "webauthn"] as const;
 
-/** Способ второго фактора — значение поля `method` в теле глагола. */
-export type SecondFactorMethod = (typeof OWN_STEP_UP_METHODS)[number];
+/** Способ второго фактора — значение поля `method` в теле глагола повышения. */
+export type StepUpFactor = (typeof OWN_STEP_UP_METHODS)[number];
+
+/** Способы, предъявляемые КОДОМ, — поле `code` тела. */
+export const CODE_METHODS = ["totp", "lookup_secret"] as const satisfies readonly StepUpFactor[];
+
+/** Способ, предъявляемый кодом. */
+export type SecondFactorMethod = (typeof CODE_METHODS)[number];
+
+/** Способ из словаря службы — значение, пришедшее строкой. */
+export function isStepUpFactor(v: unknown): v is StepUpFactor {
+  return typeof v === "string" && (OWN_STEP_UP_METHODS as readonly string[]).includes(v);
+}

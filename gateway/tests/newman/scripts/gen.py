@@ -160,6 +160,13 @@ class Step:
     # предмет такой пробы — какие маршруты слушатель ОБСЛУЖИВАЕТ, а не чья
     # цепочка доверия у туннеля. Умолчание — строгая проверка.
     insecure_tls: bool = False
+    # Банка печений прогонщика снимается ЯВНО и только шагом, который несёт
+    # печенья сам (заголовок `Cookie` пред-скриптом). Умолчание newman — общая
+    # банка на весь прогон: печенье, выданное шагу ОДНОГО кейса, уезжает в
+    # запросы СЛЕДУЮЩИХ, и шаг другого человека предъявляет чужой контекст
+    # формы (kacho#3230: служба выдаёт `kaname_form` лишь запросу без него, и
+    # выдача признака второму человеку печенья не ставила).
+    explicit_cookies: bool = False
     # Тело `application/x-www-form-urlencoded` парами «имя, значение» — форма,
     # которой говорит координата выдачи края (`/iam/v1/token`, RFC 6749 §4.1.3).
     # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
@@ -313,15 +320,29 @@ def assert_answered(label: str) -> List[str]:
     ]
 
 
-def assert_iam_operation_envelope() -> List[str]:
-    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+def assert_operation_envelope(prefix: str, domain: str) -> List[str]:
+    """Мутация домена `domain` отвечает конвертом Operation с id префикса `prefix`.
+
+    Префикс операции — свойство ДОМЕНА-владельца пути (таблица `gateway/internal/opsproxy`,
+    константы `PrefixOperation*` в corelib/ids), а не набора: край отдаёт операцию
+    того сервиса, к которому ушёл запрос. Префикс — ровно три строчные латинские
+    буквы или цифры; иное отвергается при генерации, а не на стенде.
+    """
+    if not re.fullmatch(r"[a-z0-9]{3}", prefix):
+        raise ValueError(f"operation prefix must be 3 lowercase chars, got {prefix!r}")
     return [
-        "pm.test('IAM Operation envelope returned', () => {",
+        f"pm.test({js_str(f'{domain} Operation envelope returned')}, () => {{",
         "  const j = pm.response.json();",
-        "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+        f"  pm.expect(j.id, {js_str(f'operation.id must start with {prefix}: ')} + JSON.stringify(j))"
+        f".to.match(/^{prefix}[a-z0-9]+$/);",
         "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
         "});",
     ]
+
+
+def assert_iam_operation_envelope() -> List[str]:
+    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+    return assert_operation_envelope("iop", "IAM")
 
 
 # МЕТКА ТРЕТЬЕГО ИСХОДА: «условие не создал ХАРНЕСС», а не «продукт неверен».
@@ -547,6 +568,7 @@ _INJECTED = {
     "assert_error_message_eql": assert_error_message_eql,
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
+    "assert_operation_envelope": assert_operation_envelope,
     "assert_answered": assert_answered,
     "assert_field_violation": assert_field_violation,
     "assert_created_at_seconds": assert_created_at_seconds,
@@ -616,15 +638,41 @@ def _form_raw(pairs: List[Tuple[str, str]]) -> str:
                     for k, v in pairs)
 
 
+def _query_pairs(path):
+    """Строка запроса пути шага — парами `{key, value}` в написанном виде."""
+    if "?" not in path:
+        return []
+    pairs = []
+    for part in path.split("?", 1)[1].split("&"):
+        if not part:
+            continue
+        key, eq, value = part.partition("=")
+        pairs.append({"key": key, "value": value} if eq else {"key": key, "value": None})
+    return pairs
+
+
 def _gateway_item_hook(step, item):
     """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
 
     Шаг без этих полей эмитится байт в байт как прежде: ослабленная проверка
-    сертификата и тело формы появляются в элементе коллекции только там, где
+    сертификата, снятая банка печений и тело формы появляются в элементе коллекции только там, где
     кейс их назвал.
     """
+    behavior = {}
     if step.insecure_tls:
-        item["protocolProfileBehavior"] = {"strictSSL": False}
+        behavior["strictSSL"] = False
+    if step.explicit_cookies:
+        behavior["disableCookies"] = True
+    if behavior:
+        item["protocolProfileBehavior"] = behavior
+    # Строку запроса сегменты пути у края не несут (`path_segments` ниже), а
+    # прогонщик собирает адрес из разобранных полей и `raw` при объекте не
+    # читает: без `query` запрос ушёл бы без неё (kacho#3230 — `csrf?form=…`
+    # приходил к службе голым). Пары — дословно как написаны, без раскодирования:
+    # подстановки `{{…}}` и `%`-коды доезжают тем же текстом, что в `raw`.
+    query = _query_pairs(step.path)
+    if query:
+        item["request"]["url"]["query"] = query
     if step.form is not None:
         if step.body is not None:
             raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "

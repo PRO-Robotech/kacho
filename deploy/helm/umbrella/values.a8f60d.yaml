@@ -597,7 +597,7 @@ kaname:
         enabled: true
         issuer: "https://console.a8f60d.invalid"
         algorithm: ES256
-        allowedAlgorithms: "ES256,RS256"
+        allowedAlgorithms: "ES256"   # ровно алгоритм чеканки (kacho#3181)
         keySetPath: /.well-known/kaname/jwks.json
       clientToken:
         enabled: true
@@ -621,7 +621,7 @@ kaname:
     # поэтому расхождение не видно ни по одному из них. Здесь стояло
     # «девятнадцать» — число дня записи, пережившее свой предмет: перечень
     # модулей консоли с тех пор сузился, а число при пинах не считалось.
-    tag: 296-3d5b02ed
+    tag: 746-b20866a6
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
