@@ -1608,9 +1608,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('IAM Operation envelope returned', () => {",
+                  "pm.test('VPC Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.id, 'operation.id must start with enp: ' + JSON.stringify(j)).to.match(/^enp[a-z0-9]+$/);",
                   "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
                   "});",
                   "pm.environment.set('sc18NetOpId', '');",

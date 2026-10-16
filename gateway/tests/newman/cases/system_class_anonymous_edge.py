@@ -177,13 +177,24 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # SC-18 (край) — принципал другого арендатора читает объект, выданный классу.
 # ---------------------------------------------------------------------------
+# Префикс операции — по домену-владельцу пути (таблица `gateway/internal/opsproxy`):
+# создание проекта и выдачи — IAM (`iop`), создание сети — VPC (`enp`). Путь вне
+# таблицы роняет генерацию, а не утверждает чужой префикс на стенде.
+_OP_PREFIX_BY_PATH = {
+    "/iam/v1/projects": ("iop", "IAM"),
+    "/iam/v1/accessBindings": ("iop", "IAM"),
+    "/vpc/v1/networks": ("enp", "VPC"),
+}
+
+
 def _create(name, path, body, op_var, id_expr, id_var, auth="jwtAccountAdminA"):
+    prefix, domain = _OP_PREFIX_BY_PATH[path]
     return [
         Step(
             name=name, method="POST", path=path, body=body, mux="public", auth=auth,
             test_script=[
                 *assert_status(200),
-                *assert_iam_operation_envelope(),
+                *assert_operation_envelope(prefix, domain),
                 *save_from_response("j.id", op_var),
                 *save_from_response(id_expr, id_var),
             ],
