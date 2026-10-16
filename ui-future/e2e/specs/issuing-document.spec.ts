@@ -5,7 +5,12 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixtures";
-import { issuingDocuments, substituteDocumentReads, type IssuingDocuments } from "./issuing-document";
+import {
+  answerOfNextDocument,
+  issuingDocuments,
+  substituteDocumentReads,
+  type IssuingDocuments,
+} from "./issuing-document";
 
 // Держатель помощника `issuing-document.ts` — на странице, которая делает ровно
 // то, что список консоли в F6b-25: держит поток изменений, уходит документом, и
@@ -62,6 +67,17 @@ const READING_LIST_PAGE = `<!doctype html><script>
 void ${PROBE_FETCH}(${JSON.stringify(READ)} + "?from=list&" + location.search.slice(1)).then((r) => { document.title = "read " + r.status; });
 </script>`;
 
+// Панель: своё обращение о сессии ДОЖДАНО — и сразу перезагрузка, как у F8-17
+// после подтверждения адреса; перезагруженный документ выпускает своё.
+const RELOADING_PAGE = `<!doctype html><button id="go">go</button><script>
+const reloaded = sessionStorage.getItem("loaded") === "1";
+sessionStorage.setItem("loaded", "1");
+if (reloaded) void ${PROBE_FETCH}(${JSON.stringify(`${SESSION}?doc=next`)}).then(() => { document.title = "next"; });
+else document.title = "ready";
+document.getElementById("go").onclick = () =>
+  void ${PROBE_FETCH}(${JSON.stringify(`${SESSION}?doc=leaving`)}).then(() => location.reload());
+</script>`;
+
 async function withServer<T>(body: (origin: string) => Promise<T>): Promise<T> {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://loop");
@@ -72,7 +88,8 @@ async function withServer<T>(body: (origin: string) => Promise<T>): Promise<T> {
     }
     if (url.pathname === SESSION || url.pathname === READ) {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end("{}");
+      // Обращение о сессии называет документ, который его выпустил: по телу видно, чей ответ прочитан.
+      res.end(url.searchParams.has("doc") ? JSON.stringify({ doc: url.searchParams.get("doc") }) : "{}");
       return;
     }
     res.writeHead(200, { "content-type": "text/html" });
@@ -80,6 +97,7 @@ async function withServer<T>(body: (origin: string) => Promise<T>): Promise<T> {
     else if (url.pathname === "/dash") res.end(DASH_PAGE);
     else if (url.pathname === "/spa") res.end(ADDRESS_CHANGE_PAGE);
     else if (url.pathname === "/list" && url.searchParams.has("visit")) res.end(READING_LIST_PAGE);
+    else if (url.pathname === "/reloading") res.end(RELOADING_PAGE);
     else res.end(LIST_PAGE);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -213,5 +231,29 @@ test("F6b · подмена берёт чтения первого докуме�
       `подменено не только чтение первого документа списка; мимо подмены: ${reads.otherDocuments.join(" | ") || "нет"}`,
     ).toEqual(["?from=list&visit=1"]);
     expect(reads.unattributed, "чтения без записи о выпуске").toEqual([]);
+  });
+});
+
+test("F8-17 · ответ следующего документа — перезагруженного, а не уходящего, чей ответ пришёл первым", async ({
+  page,
+}) => {
+  // verifies #3238 — F8-17 на t3238-sc @63500f861: ожидание перед перезагрузкой отдало ответ уходящей панели, тело снято с ней.
+  await withServer(async (origin) => {
+    const documents = await issuingDocuments(page);
+    await page.goto(`${origin}/reloading`);
+    await expect(page, "панель не открылась").toHaveTitle("ready");
+    const next = await answerOfNextDocument(documents, { method: "GET", path: SESSION });
+    await page.click("#go");
+    await expect(page, "перезагруженный документ не выпустил своего обращения").toHaveTitle("next");
+    const got = await next.answer;
+
+    // Предпосылка: уходящий документ выпустил обращение о сессии ДО перехода, и
+    // ответ на него получен — иначе ловить «не тот документ» было бы не на чем.
+    expect(
+      documents.calls.filter((c) => c.path === SESSION).map((c) => new URL(c.url).search),
+      "обращения о сессии не два — уходящей панели и перезагруженного документа",
+    ).toEqual(["?doc=leaving", "?doc=next"]);
+    expect(got.status, "ответ следующего документа — не 200").toBe(200);
+    expect(JSON.parse(got.body), "прочитан ответ не перезагруженного документа").toEqual({ doc: "next" });
   });
 });

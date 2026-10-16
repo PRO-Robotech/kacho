@@ -87,6 +87,10 @@ const (
 	// SubjectKindExternal — diagnostic fallback (`external:<sub>`); fails
 	// FGA Check by construction.
 	SubjectKindExternal
+	// SubjectKindSystemClass — системный класс `system_class:anonymous`: вызывающий
+	// без личности на строке, допускающей анонима (anonymous_admission.go).
+	// Удостоверением не производится — только отметкой слоя аутентификации.
+	SubjectKindSystemClass
 )
 
 // ResolvedSubject — the output of SubjectExtractor.Extract.

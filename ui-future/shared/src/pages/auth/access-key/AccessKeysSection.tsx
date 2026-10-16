@@ -213,8 +213,11 @@ export function AccessKeysSection({
   userId: string;
   /** Состояние способов (доступность ключей, способы подтверждения); `null` — ещё не прочитано. */
   factor: SecondFactorState | null;
-  /** Число ключей в прочитанном перечне — для сводки и таблицы способов. */
-  onCount?: (n: number) => void;
+  /**
+   * Число ключей в прочитанном перечне — для сводки и таблицы способов;
+   * `"unread"` — чтение перечня отказано, а прочитанного прежде нет.
+   */
+  onCount?: (n: number | "unread") => void;
   /** Растёт — открыть добавление ключа (действие пустого состояния второго фактора). */
   addRequested?: number;
   /** Перечень изменился — способы подтверждения у службы тоже. */
@@ -239,6 +242,8 @@ export function AccessKeysSection({
   const [removeRefusal, setRemoveRefusal] = useState<KeysRefusal | null>(null);
   // Уход с экрана посреди шага: исход не пишется, церемония браузера снята.
   const alive = useRef<AbortController | null>(null);
+  // Перечень хоть раз прочитан — отказ перечитывания число у соседей не снимает.
+  const readOnce = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -254,11 +259,15 @@ export function AccessKeysSection({
     (read: KeysRead) => {
       if (alive.current?.signal.aborted) return;
       if ("keys" in read) {
+        readOnce.current = true;
         setKeys(read.keys);
         setListRefusal(null);
         onCount?.(read.keys.length);
       } else {
         setListRefusal(read.refusal);
+        // Прочитанное прежде остаётся в таблице раздела — и его число у соседей;
+        // перечня не было — соседи узнают отказ, а не ждут ответа, которого не будет.
+        if (!readOnce.current) onCount?.("unread");
       }
     },
     [onCount],

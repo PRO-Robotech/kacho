@@ -22,6 +22,33 @@ describe("DopplerButton", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("в ожидании повторного нажатия не принимает, по окончании — принимает снова", () => {
+    // Защиту от повторной отправки держит сама кнопка, а не `loading` antd:
+    // значок загрузки antd застревал в анимации ухода (kacho#3238), и кнопка
+    // перешла на свой значок. Второе нажатие во время ожидания создало бы
+    // второй ресурс; нажатие после ожидания обязано дойти — иначе форму после
+    // отказа сервера нельзя отправить заново.
+    const onClick = jest.fn();
+    const { rerender } = render(
+      <DopplerButton pulsing onClick={onClick}>
+        Создать
+      </DopplerButton>,
+    );
+    const busy = screen.getByRole("button");
+    fireEvent.click(busy);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect(busy.getAttribute("aria-disabled")).toBe("true");
+
+    // Ожидание кончилось — кнопка обязана снова называться ровно «Создать»:
+    // застрявший значок загрузки оставлял имя «loading Создать».
+    rerender(<DopplerButton onClick={onClick}>Создать</DopplerButton>);
+    fireEvent.click(buttonEl("Создать"));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(buttonEl("Создать").getAttribute("aria-busy")).toBeNull();
+    expect(buttonEl("Создать").getAttribute("aria-disabled")).toBeNull();
+  });
+
   it("в покое не пульсирует", () => {
     render(<DopplerButton>Создать</DopplerButton>);
     const el = buttonEl("Создать");
