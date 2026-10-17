@@ -95,3 +95,12 @@
 |---|---|---|---|
 | `F8-S7-80-IAM-STEPUP-AKBEGIN-NEG-NO-KEY` | NEG/CONF/STATE | P0 | F8-S7-80: verified human without an access key — POST /iam/v1/auth/step-up/access-key/begin through the edge → the service refusal relayed unchanged: 400 FAILED_PRECONDITION (9), ACCESS_KEY_NOT_REGISTERED |
 | `F8-S7-80-IAM-STEPUP-AKBEGIN-AUTHZ-UNVERIFIED` | AUTHZ/NEG/CONF | P0 | F8-S7-80 twin: human with an unverified address — the same request → 403 PERMISSION_DENIED (7), EMAIL_NOT_VERIFIED; body byte-equal to the edge answer on POST /iam/v1/auth/step-up |
+
+## `system_class_subject_check.py`
+
+| case-id | class | prio | проверка |
+|---|---|---|---|
+| `SC10-ANONYMOUS-DOES-NOT-INHERIT-AUTHENTICATED` | AUTHZ/NEG/CONF | P0 | SC-10: выдача authenticated на сеть платформы → Check анонима allowed=false, denyReasons пуст; близнецы человек и учётка allowed=true |
+| `SC11-SIGNED-IN-INHERITS-ANONYMOUS` | AUTHZ/NEG/CONF | P0 | SC-11: выдача anonymous на сеть платформы → человек и аноним allowed=true; группа без выдач allowed=false |
+| `SC16-EXPAND-ACCESS-DOES-NOT-LIST-CLASSES` | AUTHZ/CONF/STATE | P0 | SC-16: expandAccess на сеть платформы — человек прямой выдачи есть, элемента класса нет, truncated=false; перечень до и после выдачи authenticated побайтово один |
+| `SC18-OTHER-TENANT-SIGNED-IN-READS-NAMED-OBJECT` | AUTHZ/NEG/STATE | P0 | SC-18: выдача authenticated на сеть арендатора A → человек и учётка арендатора B allowed=true; соседняя сеть закрыта; после отзыва опрос доходит до allowed=false у обоих |

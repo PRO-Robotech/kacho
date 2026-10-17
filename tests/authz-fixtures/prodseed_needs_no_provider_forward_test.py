@@ -33,9 +33,8 @@
 
 СЕТИ ЗДЕСЬ НЕТ. Сокеты, процессы, HTTP и часы модуля подменены целиком; чеканка
 матрицы подменена двойником, который отвечает сразу. Судится ЛОГИКА предпосылок, а
-не доступность стенда: гейт исполним там, где кластера нет. Файл матрицы, который
-посев пишет в общий `/tmp`, уводится во временный каталог пробы — чужое имя в общем
-каталоге проба не трогает.
+не доступность стенда: гейт исполним там, где кластера нет. Матрицу посев кладёт в
+каталог своего прогона (`OUT_DIR`, #3264) — здесь это временный каталог пробы.
 
 КТО ЭТУ ПРОБУ ИСПОЛНЯЕТ: `.github/scripts/run-python-probes.py` — обходом дерева по
 образцу `tests/authz-fixtures/*_test.py`. По имени её не зовёт никто.
@@ -52,11 +51,6 @@ import prodseed_all as seed  # noqa: E402
 
 FAILURES: list[str] = []
 CHECKS = [0]
-
-# Файл-передача, который `main()` пишет в общий каталог. Имя берётся тем же
-# литералом, что у посева: разошлись — проба увидит запись в настоящий /tmp.
-SHARED_HANDOFF = "/tmp/matrix.json"
-
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ("" if ok else f": {detail}"))
@@ -133,16 +127,6 @@ class _Clock:
         self.now += s
 
 
-def _path_module(real_pathlib, redirect: pathlib.Path):
-    """`pathlib` модуля, у которого общий файл-передача уведён во временный каталог."""
-
-    def Path(*a):  # noqa: N802 — имя навязано подменяемым модулем
-        p = real_pathlib.Path(*a)
-        return redirect if str(p) == SHARED_HANDOFF else p
-
-    return types.SimpleNamespace(Path=Path)
-
-
 def run(*, matrix_fails: bool = False, certs_fail: bool = False) -> tuple[str, Dials, int]:
     """Зовёт НАСТОЯЩИЙ `prodseed_all.main()` в мире без сети и без kubectl.
 
@@ -164,12 +148,11 @@ def run(*, matrix_fails: bool = False, certs_fail: bool = False) -> tuple[str, D
         if certs_fail:
             raise SystemExit("[prodseed] FATAL: проба — клиентского сертификата нет")
 
-    import pathlib as real_pathlib
     import urllib as real_urllib
     import urllib.error  # noqa: F401 — нужен настоящий подмодуль для URLError
     import urllib.request  # noqa: F401
 
-    names = ("socket", "subprocess", "urllib", "time", "shutil", "pathlib", "ensure_certs")
+    names = ("socket", "subprocess", "urllib", "time", "shutil", "ensure_certs")
     saved = {n: getattr(seed, n) for n in names if hasattr(seed, n)}
     saved_matrix = sys.modules.get("prodseed_matrix")
     saved_argv = sys.argv
@@ -180,7 +163,6 @@ def run(*, matrix_fails: bool = False, certs_fail: bool = False) -> tuple[str, D
         seed.urllib = _urllib_module(d, real_urllib)
         seed.time = _Clock()
         seed.shutil = types.SimpleNamespace(which=lambda _name: None)  # kubectl нет вовсе
-        seed.pathlib = _path_module(real_pathlib, tmpdir / "matrix.json")
         seed.ensure_certs = fake_certs
         sys.modules["prodseed_matrix"] = types.SimpleNamespace(seed=fake_seed)
         sys.argv = ["prodseed_all.py", "--no-patch-env"]

@@ -478,6 +478,10 @@ const systemClassType = "system_class"
 
 // admitsEveryone — допускает ли объявление отношения субъекта, за которым стоит
 // каждый: подстановку `user:*` либо системный класс в перечне назначаемых типов.
+//
+// Класс читается ЭЛЕМЕНТОМ ограничения типов, а не подстрокой тела: имя
+// отношения в связке (`or system_class_reader`) субъектом не является. Обе
+// формы и законные близнецы держит TestAdmitsEveryoneKnowsBothLawfulForms.
 func admitsEveryone(body string) bool {
 	if strings.Contains(body, "user:*") {
 		return true
@@ -534,7 +538,7 @@ func TestListAttachmentsIsScopeFiltered(t *testing.T) {
 	}
 	if e.Relation != "" {
 		t.Errorf("кластерное отношение %q здесь пропускало каждого аутентифицированного субъекта "+
-			"(`cluster:<root>#viewer@user:*` пишет бутстрап) — не восстанавливать", e.Relation)
+			"(`cluster:<root>#viewer@system_class:authenticated` пишет системная выдача) — не восстанавливать", e.Relation)
 	}
 	if e.Extract != nil {
 		t.Error("объекта, про который можно спросить заранее, у этого RPC нет")
@@ -740,4 +744,30 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 			"контроль не выполнен, и отрицание выше зеленело бы на пустоте", internal)
 	}
 	t.Logf("перепись: публичных служб %d, внутренних %d", len(public), len(internal))
+}
+
+// TestAdmitsEveryoneKnowsBothLawfulForms — распознаватель предпосылки гейта
+// кластерного синглтона знает ОБЕ законные формы «выполнимо за каждого» и молчит
+// на законном близнеце.
+//
+// Пробой на модели из пина это не заменяется: пин несёт одну форму, и
+// распознаватель, забывший вторую, на нём зеленеет. Близнецы меняют ровно один
+// факт — элемент ограничения типов; имя отношения в связке субъектом не
+// считается.
+func TestAdmitsEveryoneKnowsBothLawfulForms(t *testing.T) {
+	cases := []struct {
+		body string
+		want bool
+	}{
+		{" [user, service_account, system_class] or system_viewer or any_admin", true},
+		{" [user, user:*, service_account] or system_viewer or any_admin", true},
+		{" [user, service_account] or system_viewer or any_admin", false},
+		{" [user, service_account] or system_class_reader", false},
+		{" system_admin", false},
+	}
+	for _, c := range cases {
+		if got := admitsEveryone(c.body); got != c.want {
+			t.Errorf("admitsEveryone(%q) = %v, ожидалось %v", c.body, got, c.want)
+		}
+	}
 }

@@ -4,12 +4,15 @@
 package deploy_test
 
 import (
+	"html"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/identityposture"
 )
 
 // login_lane_umbrella_test.go — umbrella-подчарт службы доступа ВЫРАЖАЕТ посадку
@@ -35,15 +38,15 @@ import (
 // то, что профиль ОБЪЯВЛЯЕТ, и ловит ровно «ключа нет вовсе». Тот же довод, что у
 // kaname_listener_knobs_test.go.
 //
-// # Граница названа вслух
+// # Причина у каждой записи
 //
-// Профилей с посадкой `own` на день заведения — ноль (перепись печатается).
-// Величины полосы стоят в боевом профиле на `external` по приёмке Ф3 (Р3, Р11,
-// Ф3-42): дословный перенос живёт в профилях обоих чартов, где его видит
-// читающий, и перевод на `own` не заводит полосу с нуля. Страж службы читает их
-// только под `own`, поэтому каждая запись ниже несёт ПРИЧИНУ — ведомость
-// сверяется по ключу, а не по блоку, и истекает с первым профилем на `own`: там
-// снятие ручки роняет старт, и причина «страж не читает» перестаёт быть верной.
+// Посадка у службы одна — `own` (kaname#363); прежнее `external` фундамент
+// снял (corelib#30). Величины полосы в боевом профиле — поэтому условие старта
+// каждого стенда цепочки, а стоят они там по приёмке Ф3 (Р3, Р11, Ф3-42):
+// дословный перенос живёт в профилях обоих чартов, где его видит читающий.
+// Каждая запись ведомости ниже несёт ПРИЧИНУ, и ведомость сверяется по ключу, а
+// не по блоку: ключ полосы, объявленный профилем без записи, — величина без
+// названной причины.
 
 // loginLaneConfigKeys — ключи блока `authn.login` в настройках службы и их имена
 // в значениях чарта (тот же перечень, что у собственного чарта службы).
@@ -110,13 +113,12 @@ var loginLaneEnv = []string{
 
 // loginLaneProdReason — одна причина на все записи боевого профиля, названная у
 // каждой (ведомость сверяется по ключу).
-const loginLaneProdReason = "величина ПОЛОСЫ ВХОДА ПАРОЛЕМ (Ф3, kacho#1269): страж службы читает её только " +
-	"под посадкой `own`, а боевой профиль стоит на `external`. Объявлена по приёмке Ф3 (Р3, Р11, Ф3-42): " +
-	"дословный перенос величин живёт в профилях обоих чартов, где его видит читающий, и перевод на `own` " +
-	"не заводит полосу с нуля. Запись истекает с первым профилем на `own`: там снятие ручки роняет СТАРТ"
+const loginLaneProdReason = "величина ПОЛОСЫ ВХОДА ПАРОЛЕМ (Ф3, kacho#1269): условие старта службы — посадка у неё " +
+	"одна, `own` (kaname#363), и незаданная величина роняет старт с именем ручки. Объявлена по приёмке Ф3 (Р3, Р11, " +
+	"Ф3-42): дословный перенос величин живёт в профилях обоих чартов, где его видит читающий"
 
-// loginLaneProdLedger — что боевой профиль umbrella объявляет намеренно при
-// посадке `external`, и почему у каждой записи.
+// loginLaneProdLedger — что боевой профиль umbrella объявляет как величину
+// полосы, и почему у каждой записи.
 var loginLaneProdLedger = map[string]string{
 	"ports.loginLane":              loginLaneProdReason,
 	"mtls.loginLane":               loginLaneProdReason,
@@ -124,10 +126,9 @@ var loginLaneProdLedger = map[string]string{
 }
 
 // registrationProdReason — та же причина для двух величин регистрации (Ф4).
-const registrationProdReason = "величина РЕГИСТРАЦИИ НАШЕЙ ПОЛОСОЙ (Ф4, kacho#2699): страж службы читает её " +
-	"только под посадкой `own`, а боевой профиль стоит на `external`. Объявлена по приёмке Ф4 (Р5, Ф4-18/19): " +
-	"перенос величины справочника (3 за 1 ч) живёт в профиле, где его видит читающий, и перевод на `own` не " +
-	"заводит полосу с нуля. Запись истекает с первым профилем на `own`: там снятие ручки роняет СТАРТ"
+const registrationProdReason = "величина РЕГИСТРАЦИИ НАШЕЙ ПОЛОСОЙ (Ф4, kacho#2699): условие старта службы — " +
+	"посадка у неё одна, `own` (kaname#363), и незаданная величина роняет старт с именем ручки. Объявлена по " +
+	"приёмке Ф4 (Р5, Ф4-18/19): перенос величины справочника (3 за 1 ч) живёт в профиле, где его видит читающий"
 
 func init() {
 	for _, k := range loginLaneConfigKeys {
@@ -259,9 +260,8 @@ func TestLoginLane_F3_45_UmbrellaSubchartExpressesTheLane(t *testing.T) {
 // TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason — каждый стенд
 // боевой посадки объявляет ручку транспорта слушателя формы и режим `mutual`
 // явно; боевой профиль объявляет адрес и величины полосы, и у каждой записи
-// названа причина, почему она стоит на `external`. Профили на `own`
-// пересчитываются: у них те же строки — условие старта, и ведомость к ним не
-// относится.
+// названа причина. Посадка службы одна — `own`, поэтому на каждом стенде те же
+// строки — условие старта.
 func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.T) {
 	chart := kanameSubchart(t)
 	chartDefaults := readYAML(t, filepath.Join(chart, "values.yaml"))
@@ -316,8 +316,8 @@ func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.
 		t.Fatal("ни один стенд не объявлен боевой посадкой — вердикт беспредметен")
 	}
 
-	// Боевой профиль платформы объявляет адрес и величины на `external` — с
-	// причиной у каждой записи ведомости.
+	// Боевой профиль платформы объявляет адрес и величины полосы — с причиной у
+	// каждой записи ведомости.
 	prod := readYAML(t, filepath.Join(umbrellaDir, "values.prod.yaml"))
 	declaredKeys := 0
 	for key, reason := range loginLaneProdLedger {
@@ -420,4 +420,157 @@ func TestLoginLane_F4_F5_UmbrellaSubchartExpressesRegistrationAndRecovery(t *tes
 	}
 	t.Logf("перепись: ключей блока registration объявлено %d · рендерится %d · целых через hasKey/int64 %d · recovery-code-ttl в блоке login %v",
 		len(registrationConfigKeys), len(registrationConfigKeys)-missing, len(registrationIntegerKeys), strings.Contains(login, "recovery-code-ttl:"))
+}
+
+// withdrawnLandingClaim узнаёт ОБОСНОВАНИЕ величины посадкой `external`: «на
+// `external`», «под `external`», «объявляет `external`». Упоминание снятого
+// значения как снятого («посадка `external` снята») — не обоснование и не
+// находка.
+var withdrawnLandingClaim = regexp.MustCompile("(?i)(^|[^а-яёa-z])(на|под|объявляет)\\s+`external`")
+
+// commentProse — проза комментариев файла профиля одной строкой: маркер `#` и
+// отступ сняты, строки сшиты пробелом. Фраза, перенесённая через строку
+// («… под» / «`external` …»), иначе ускользнула бы от построчного сравнения.
+func commentProse(text string) (prose string, lines int) {
+	var b strings.Builder
+	for _, line := range strings.Split(text, "\n") {
+		i := strings.Index(line, "#")
+		if i < 0 {
+			continue
+		}
+		lines++
+		b.WriteString(strings.TrimSpace(line[i+1:]))
+		b.WriteString(" ")
+	}
+	return b.String(), lines
+}
+
+// TestProfilesJustifyNoValueByTheWithdrawnExternalLanding — боевой профиль
+// зонта, базовый профиль края и причины ведомости этого файла не обосновывают
+// величину посадкой `external` (kacho#3165).
+//
+// # Предпосылка проверяется, а не предполагается
+//
+// Законное значение посадки решает общий словарь фундамента (пин — go.mod):
+// с corelib#30 это одно `own`, и `external` край и служба отвергают при старте.
+// Проба сначала спрашивает словарь: прими он `external` снова — обоснование
+// посадкой стало бы законным, и вердикт этой пробы беспредметным; тогда она
+// падает с этим именем, а не молчит.
+//
+// # Обе стороны
+//
+// Узнаватель доказывается на паре входов до обхода: обоснование краснит,
+// упоминание снятого значения как снятого — нет.
+func TestProfilesJustifyNoValueByTheWithdrawnExternalLanding(t *testing.T) {
+	if _, err := identityposture.Parse("identity-provider", "external"); err == nil {
+		t.Fatal("предпосылка: словарь фундамента принимает посадку `external` — обоснование ею законно, и вердикт этой пробы беспредметен")
+	}
+	if _, err := identityposture.Parse("identity-provider", "own"); err != nil {
+		t.Fatalf("предпосылка: словарь фундамента не принимает `own`: %v", err)
+	}
+	if !withdrawnLandingClaim.MatchString("страж её не читает: под `external` она не читается вовсе") {
+		t.Fatal("узнаватель молчит на обосновании посадкой `external` — проба слепа")
+	}
+	if withdrawnLandingClaim.MatchString("Прежняя посадка `external` снята фундаментом") {
+		t.Fatal("узнаватель краснит упоминание снятого значения как снятого — проба судит не предмет")
+	}
+
+	findings, read := 0, 0
+	// Два ОТДЕЛЬНЫХ файла, а не цепочка стенда: состав цепочек объявляет только
+	// stacks.txt, здесь же судится проза каждого файла по себе.
+	for _, rel := range []string{
+		"deploy/helm/umbrella/values.prod.yaml",
+		"gateway/deploy/values.yaml",
+	} {
+		prose, lines := commentProse(readFile(t, rel))
+		read += lines
+		for _, m := range withdrawnLandingClaim.FindAllStringIndex(prose, -1) {
+			findings++
+			lo, hi := max(0, m[0]-80), min(len(prose), m[1]+80)
+			t.Errorf("%s: величина обоснована снятой посадкой `external` — «…%s…»", rel, prose[lo:hi])
+		}
+	}
+	reasons := 0
+	for key, reason := range loginLaneProdLedger {
+		reasons++
+		if withdrawnLandingClaim.MatchString(reason) {
+			findings++
+			t.Errorf("ведомость: причина записи %s обоснована снятой посадкой `external`", key)
+		}
+	}
+	if read == 0 || reasons == 0 {
+		t.Fatalf("прочитано строк комментариев %d, причин ведомости %d — «находок нет» беспредметно", read, reasons)
+	}
+	t.Logf("перепись: строк комментариев прочитано %d · причин ведомости %d · обоснований снятой посадкой %d", read, reasons, findings)
+}
+
+// freshGatedRow узнаёт строку таблицы путей полосы: метод и путь первой ячейки.
+var freshGatedRow = regexp.MustCompile(`^\s*<tr><td><code>((?:GET|POST|PUT|PATCH|DELETE) [^<]+)</code></td>(.*)$`)
+
+// freshWord — слово «свежий» в любой форме, но не «освежает»: граница слова в
+// RE2 латинская, поэтому слева — не кириллическая буква.
+var freshWord = regexp.MustCompile(`(^|[^а-яёА-ЯЁ])свеж`)
+
+// TestSelfServiceFreshnessCommentNamesEveryGatedPath — комментарий окна
+// свежести в боевом профиле зонта называет РОВНО те пути, которым служба
+// требует свежей сессии (kaname#734).
+//
+// # Откуда перечень
+//
+// Не из этого файла: из таблицы путей полосы `docs/content/api/auth-lane.mdx`
+// ПИНЕННОГО модуля службы (go.mod). Путь под окном — строка, где колонка
+// предъявления говорит «да, свежая» либо описание говорит «из свежей сессии».
+// Оператор, меняющий окно, меняет защиту каждого такого глагола, и комментарий
+// обязан их назвать — все и только их: лишний путь обещает защиту, которой нет.
+func TestSelfServiceFreshnessCommentNamesEveryGatedPath(t *testing.T) {
+	doc := readChartText(t, filepath.Join(kanameModuleDir(t, ".."), "docs", "content", "api", "auth-lane.mdx"))
+	gated := map[string]bool{}
+	rows := 0
+	for _, line := range strings.Split(doc, "\n") {
+		m := freshGatedRow.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		rows++
+		if freshWord.MatchString(m[2]) {
+			gated[html.UnescapeString(m[1])] = true
+		}
+	}
+	if rows == 0 || len(gated) == 0 {
+		t.Fatalf("таблица путей пиненной службы: строк %d, под окном свежести %d — сверять не с чем", rows, len(gated))
+	}
+
+	// Комментарий окна — сплошной блок строк `#` непосредственно над ключом.
+	lines := strings.Split(readFile(t, "deploy/helm/umbrella/values.prod.yaml"), "\n")
+	at := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "selfServiceFreshness:") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatal("values.prod.yaml: ключа `selfServiceFreshness` нет — комментарию не над чем стоять")
+	}
+	var block []string
+	for i := at - 1; i >= 0 && strings.HasPrefix(strings.TrimSpace(lines[i]), "#"); i-- {
+		block = append(block, lines[i])
+	}
+	comment := strings.Join(block, "\n")
+
+	named := map[string]bool{}
+	for _, m := range regexp.MustCompile("`((?:GET|POST|PUT|PATCH|DELETE) /[^`]+)`").FindAllStringSubmatch(comment, -1) {
+		named[m[1]] = true
+	}
+	for path := range gated {
+		if !named[path] {
+			t.Errorf("values.prod.yaml: комментарий окна свежести не называет `%s`, а служба требует там свежей сессии — оператор, меняющий окно, не знает, что меняет его защиту", path)
+		}
+	}
+	for path := range named {
+		if !gated[path] {
+			t.Errorf("values.prod.yaml: комментарий окна свежести называет `%s`, а таблица службы свежести там не требует — обещана защита, которой нет", path)
+		}
+	}
+	t.Logf("перепись: строк таблицы путей %d · под окном свежести %d · названо комментарием %d", rows, len(gated), len(named))
 }

@@ -177,3 +177,84 @@ func TestRegistrationSourceWindow_EveryOtherStackKeepsTheProductCeiling(t *testi
 	t.Logf("перепись: стеков вне рецепта %s — %d, из них наследуют профиль стенда наборов — %d",
 		target, len(names), inheriting)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН (scripts/stand-ns.sh, kacho#3223)
+//
+// Стенд проб поднимает любую цепочку таблицы, и сквозные пробы консоли гоняются
+// на нём тем же бегуном с одного источника, что в конвейере. Цепочка `own` (и
+// любая на боевом слое) несёт величину продукта — 50 за окно, — и набор проб
+// консоли обрывался ранней остановкой на регистрации сверх неё (наблюдалось на
+// стенде t3128-final). Поэтому слой стенда проб объявляет окну источника ту же
+// величину, что у стенда наборов конвейера, ВЫВОДЯ её из его цепочки; срок окна
+// — продукта, меняется один факт, счёт.
+//
+// Таблица стеков при этом не меняется: величина живёт в слое, который ставится
+// только в пространство стенда проб (ClusterIP, без контроллера входа, срок ≤ 12
+// ч), и до управляемых стендов и боевой посадки не доходит — это держит
+// TestRegistrationSourceWindow_EveryOtherStackKeepsTheProductCeiling выше.
+
+// judgeProbeStandWindow — находки: цепочки, на которых окно источника стенда
+// проб со слоем стенда не равно окну стенда наборов конвейера.
+func judgeProbeStandWindow(t *testing.T, stacks map[string][]string, overlay map[string]any, suite sourceWindow) []string {
+	t.Helper()
+	var out []string
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		merged := chainWith(t, stacks[name], overlay)
+		a, _ := lookup(merged, "kaname", "config", "authn", "login", "sourceAttempts")
+		w, _ := lookup(merged, "kaname", "config", "authn", "login", "sourceWindow")
+		if a != suite.attempts || w != suite.window {
+			out = append(out, fmt.Sprintf("стек %s со слоем стенда проб: окно источника %v за %v, у стенда наборов "+
+				"конвейера %s — набор проб консоли упрётся в регистрацию сверх окна", name, a, w, suite))
+		}
+	}
+	return out
+}
+
+// suiteWindow — окно источника стенда наборов конвейера: одно на все стеки
+// рецепта, иначе «та же величина» не определена.
+func suiteWindow(t *testing.T, stacks map[string][]string) sourceWindow {
+	t.Helper()
+	target, suite := consoleSuiteStacks(t)
+	if len(suite) == 0 {
+		t.Fatalf("рецепт %s не передаёт helm ни одного стека — окна стенда наборов нет", target)
+	}
+	w := chainSourceWindow(t, suite[0], stacks[suite[0]])
+	for _, name := range suite[1:] {
+		if got := chainSourceWindow(t, name, stacks[name]); got != w {
+			t.Fatalf("стеки рецепта %s расходятся окном источника: %s у %s, %s у %s", target, w, suite[0], got, name)
+		}
+	}
+	return w
+}
+
+func TestRegistrationSourceWindow_ProbeStandCarriesTheSuiteCeiling(t *testing.T) {
+	stacks := deployStacks(t)
+	suite := suiteWindow(t, stacks)
+	product := chainSourceWindow(t, productStack, stacks[productStack])
+	if suite.window != product.window {
+		t.Fatalf("предпосылка: срок окна стенда наборов %s, у продукта %s", suite.window, product.window)
+	}
+	for _, f := range judgeProbeStandWindow(t, stacks, standOverlay(t), suite) {
+		t.Error(f)
+	}
+	t.Logf("перепись: стеков таблицы со слоем стенда проб — %d, окно стенда наборов %s, продукта %s",
+		len(stacks), suite, product)
+}
+
+// Близнец: без слоя стенда хотя бы один стек таблицы стоит на величине продукта —
+// иначе проба выше судила бы цепочки, где окно и так стенда наборов.
+func TestRegistrationSourceWindow_ProbeStandJudgeIsAbleToFail(t *testing.T) {
+	stacks := deployStacks(t)
+	suite := suiteWindow(t, stacks)
+	if f := judgeProbeStandWindow(t, stacks, nil, suite); len(f) == 0 {
+		t.Fatal("предпосылка пробы: без слоя стенда ни один стек не стоит на величине продукта — судить нечего")
+	} else {
+		t.Logf("без слоя стенда находок %d: %v", len(f), f)
+	}
+}
