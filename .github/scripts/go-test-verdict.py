@@ -111,6 +111,10 @@ class Run:
         # начатый и убитый на середине, попадает туда и делает «исполнено»
         # неотличимым от «начато». Опись шарда считает по ЭТОМУ множеству.
         self.pkg_done: set[str] = set()
+        # ПРОБЫ ВЕРХНЕГО УРОВНЯ С ТЕРМИНАЛЬНЫМ СОБЫТИЕМ, по пакету. Нужны части
+        # распиленного пакета (kacho#3277): свод сверяет «каждая проба ровно в одной
+        # части» по этому множеству, а не по счёту исполненных.
+        self.top_done: dict[str, set[str]] = {}
         # Сколько ушло ДО первой пробы. Это время сборки под -race и линковки —
         # цена, которую распил платит В КАЖДОМ шарде, поэтому её называет сам
         # шард, а не оценка со стороны.
@@ -160,6 +164,8 @@ def consume(stream, out, run: Run) -> None:
                 run.first_test_at = time.monotonic() - run.began
         if action in ("pass", "fail", "skip") and not test and pkg:
             run.pkg_done.add(pkg)
+        if action in ("pass", "fail", "skip") and test and "/" not in test and pkg:
+            run.top_done.setdefault(pkg, set()).add(test)
         if action == "output":
             text = ev.get("Output", "")
             out.write(text)
@@ -272,10 +278,11 @@ def run_stream(stream, out, watch: str, ledger: list[str],
 # так же, как пакет с пробами), а по коду возврата — тем менее. Второе место об
 # одном предмете здесь означало бы, что перепись шарда и его вердикт могут
 # разойтись молча.
-def census(run: Run, shard: str, assigned: list[str], rc: int) -> dict:
+def census(run: Run, shard: str, assigned: list[str], rc: int,
+           split_pkg: str = "", split_tests: list[str] | None = None) -> dict:
     assigned = sorted(set(assigned))
     seen = sorted(set(assigned) & run.pkg_done)
-    return {
+    doc = {
         "shard": shard,
         "assigned": assigned,
         "seen": seen,
@@ -293,6 +300,19 @@ def census(run: Run, shard: str, assigned: list[str], rc: int) -> dict:
         "seconds_to_first_test": run.first_test_at,
         "rc": rc,
     }
+    # ЧАСТЬ РАСПИЛЕННОГО ПАКЕТА: розданные пробы и пробы с терминальным событием.
+    # Несошедшееся здесь — находка части; задвоение МЕЖДУ частями видит только свод.
+    if split_pkg:
+        want = sorted(set(split_tests or []))
+        got = sorted(run.top_done.get(split_pkg, set()))
+        doc["split"] = {
+            "package": split_pkg,
+            "tests_assigned": want,
+            "tests_seen": got,
+            "tests_missing": sorted(set(want) - set(got)),
+            "tests_unexpected": sorted(set(got) - set(want)),
+        }
+    return doc
 
 
 # ─── самопроба ──────────────────────────────────────────────────────────────
@@ -509,6 +529,27 @@ def self_test() -> int:
     ok &= _check("пакет начат и убит → в исполненные НЕ попал",
                  d["seen"] == [GATE_PKG], d["seen"])
 
+    # Ось 10 — ЧАСТЬ РАСПИЛЕННОГО ПАКЕТА (kacho#3277): доля проб против исполненного.
+    # Подпроба («TestA/x») в долю не идёт — делится верхний уровень.
+    def _split_of(lines, tests):
+        buf = io.StringIO()
+        collected: list[Run] = []
+        code = run_stream(_stream(*lines), buf, DEFAULT_WATCH, [], collect=collected)
+        return census(collected[0], "часть", [GATE_PKG], code, GATE_PKG, tests)["split"]
+
+    part = (_pass_lines(GATE_PKG, "TestA") + _pass_lines(GATE_PKG, "TestA/sub")
+            + _pass_lines(GATE_PKG, "TestB") + [_ev(Action="pass", Package=GATE_PKG)])
+    sp = _split_of(part, ["TestA", "TestB"])
+    ok &= _check("контроль части: доля исполнена целиком, подпроба не в счёт",
+                 sp["tests_seen"] == ["TestA", "TestB"] and not sp["tests_missing"]
+                 and not sp["tests_unexpected"], sp["tests_seen"])
+    sp = _split_of(part, ["TestA", "TestB", "TestC"])
+    ok &= _check("проба доли без исхода → названа в tests_missing",
+                 sp["tests_missing"] == ["TestC"], sp["tests_missing"])
+    sp = _split_of(part, ["TestA"])
+    ok &= _check("исполнена проба вне доли → названа в tests_unexpected",
+                 sp["tests_unexpected"] == ["TestB"], sp["tests_unexpected"])
+
     print("самопроба:", "ПРОЙДЕНА" if ok else "ПРОВАЛЕНА")
     return 0 if ok else 1
 
@@ -524,6 +565,10 @@ def main() -> int:
                     help="идентификатор шарда; без него опись безадресна")
     ap.add_argument("--assigned", default="",
                     help="розданные шарду пакеты, через пробел или перевод строки")
+    ap.add_argument("--split-pkg", default="",
+                    help="распиленный пакет, чью долю проб гоняет эта часть (kacho#3277)")
+    ap.add_argument("--split-tests", default="",
+                    help="пробы верхнего уровня, розданные части, через пробел")
     args = ap.parse_args()
 
     if args.self_test:
@@ -551,6 +596,13 @@ def main() -> int:
             "вопрос «роздано = исполнено», то есть не является переписью\n")
         return 2
 
+    if bool(args.split_pkg) != bool(args.split_tests.split()):
+        sys.stderr.write(
+            "ОТКАЗ: --split-pkg и --split-tests подаются только вместе. Часть без "
+            "перечня проб не отвечает на «каждая проба ровно в одной части», а перечень "
+            "без пакета не к чему приложить\n")
+        return 2
+
     sys.stdout.reconfigure(line_buffering=True)
     collected: list[Run] = []
     rc = run_stream(sys.stdin, sys.stdout, args.watch, ledger, collect=collected)
@@ -558,7 +610,8 @@ def main() -> int:
     # ОПИСЬ ПИШЕТСЯ И НА КРАСНОМ. Иначе падение продукта приезжало бы в свод как
     # «шард не отчитался»: причина подменяется, а разбор начинается не с того места.
     if args.census_out and collected:
-        doc = census(collected[0], args.shard_id, args.assigned.split(), rc)
+        doc = census(collected[0], args.shard_id, args.assigned.split(), rc,
+                     args.split_pkg, args.split_tests.split())
         out = Path(args.census_out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n",
@@ -574,6 +627,18 @@ def main() -> int:
                 f"ОТКАЗ: роздано и не отчиталось {len(doc['missing'])}, отчиталось "
                 f"вне раздачи {len(doc['unexpected'])}. Пропуск не есть проход\n")
             rc = rc or 1
+        sp = doc.get("split")
+        if sp:
+            sys.stdout.write(
+                f"часть пакета {sp['package']}: проб роздано {len(sp['tests_assigned'])} · "
+                f"с исходом {len(sp['tests_seen'])} · без исхода {len(sp['tests_missing'])} · "
+                f"вне доли {len(sp['tests_unexpected'])}\n")
+            if sp["tests_missing"] or sp["tests_unexpected"]:
+                sys.stdout.write(
+                    f"ОТКАЗ: доля части разошлась с исполненным (без исхода: "
+                    f"{', '.join(sp['tests_missing'][:5]) or '—'}; вне доли: "
+                    f"{', '.join(sp['tests_unexpected'][:5]) or '—'})\n")
+                rc = rc or 1
     return rc
 
 

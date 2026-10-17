@@ -486,22 +486,38 @@ test: test-unit test-integration
 ## не отчиталось · время до первой пробы. Опись читает сводный вердикт
 ## (`.github/scripts/aggregate-unit-shards.py`); без неё «зелено» после распила —
 ## утверждение, которого не делает никто.
+##
+## Часть распиленного пакета (kacho#3277) — тот же `SHARD`: `unit-shards.py --shard-spec`
+## отдаёт пакет и долю его проб, цель гоняет её отбором `-run`, прогонщик пишет в опись
+## пробы с исходом, свод сверяет «каждая проба ровно в одной части».
+## UNIT_PLAN=<путь> — план (`unit-shards.py --census --out`): доля сужается ВЫБОРОМ
+## плана, пробы части берутся из него. Без плана — полный шард, перечень проб части
+## выводится здесь же.
 test-unit: $(HOOKS_NOTICE)
 	@set -o pipefail; \
 	pkgs='./...'; \
 	verdict_args=(); \
+	run_args=(); \
 	if [ -n "$(SHARD)" ]; then \
-	  pkgs=$$(python3 $(CURDIR)/.github/scripts/unit-shards.py --packages '$(SHARD)') || exit 1; \
+	  spec=$$(python3 $(CURDIR)/.github/scripts/unit-shards.py --shard-spec '$(SHARD)' $(if $(UNIT_PLAN),--plan '$(UNIT_PLAN)')) || exit 1; \
+	  eval "$$spec"; \
 	  if [ -z "$$pkgs" ]; then \
 	    echo "шард '$(SHARD)': пакетов ноль — это ОТКАЗ, а не «нечего гонять»:" >&2; \
 	    echo "пустой перечень дал бы зелёный прогон с нулём исполненных проб." >&2; \
 	    exit 1; fi; \
 	  echo "шард '$(SHARD)': пакетов $$(printf '%s\n' $$pkgs | wc -l)"; \
+	  if [ -n "$$split_pkg" ]; then \
+	    run_args=(-run "$$run"); \
+	    echo "часть пакета $$split_pkg: проб $$(printf '%s\n' $$split_tests | wc -l)"; \
+	  fi; \
 	  if [ -n "$(UNIT_CENSUS)" ]; then \
 	    verdict_args=(--census-out "$(UNIT_CENSUS)" --shard-id "$(SHARD)" --assigned "$$pkgs"); \
+	    if [ -n "$$split_pkg" ]; then \
+	      verdict_args+=(--split-pkg "$$split_pkg" --split-tests "$$split_tests"); \
+	    fi; \
 	  fi; \
 	fi; \
-	$(GO) test $$pkgs -race -short -count=1 -timeout $(UNIT_TIMEOUT) -json \
+	$(GO) test $$pkgs -race -short -count=1 -timeout $(UNIT_TIMEOUT) "$${run_args[@]}" -json \
 	  | python3 $(CURDIR)/.github/scripts/go-test-verdict.py "$${verdict_args[@]}"
 
 ## test-integration — интеграция. SVC=<сервис> для одного, иначе все по очереди.
