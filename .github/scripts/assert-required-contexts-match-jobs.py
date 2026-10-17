@@ -711,15 +711,15 @@ def self_test() -> int:
         real = repo_root() / UNIT_SHARDS_SCRIPT
         shutil.copy(real, root / UNIT_SHARDS_SCRIPT)
         for rel in ("services/vpc/x_test.go", "services/geo/y_test.go",
-                    "internal/repohygiene/z_test.go",
-                    "internal/repohygiene/testdata/ignored_test.go"):
+                    "internal/servicelayout/z_test.go",
+                    "internal/servicelayout/testdata/ignored_test.go"):
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_text("package p\n")
         subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(root), "add", UNIT_SHARDS_SCRIPT,
                         "services/vpc/x_test.go", "services/geo/y_test.go",
-                        "internal/repohygiene/z_test.go",
-                        "internal/repohygiene/testdata/ignored_test.go"], check=True)
+                        "internal/servicelayout/z_test.go",
+                        "internal/servicelayout/testdata/ignored_test.go"], check=True)
         got, src = derived_unit_shard_exclusions(root)
         check("имена собраны по шаблону job",
               got == ["юниты geo", "юниты internal", "юниты vpc"], got)
