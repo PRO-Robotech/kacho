@@ -14,11 +14,14 @@ package middleware_test
 // (класс B4: эскалация высшей привилегии). Здесь оба значения закреплены
 // ПОИМЁННО и РАВЕНСТВОМ, так что сдвиг любого из шестнадцати — вверх или вниз —
 // находка с его FQN. Утверждение «не "2"» для этого не годится: оно молча
-// пропускает сдвиг вниз на `"0"` или `""`, а оба законны и значат «пола нет».
+// пропускает сдвиг вниз на `""` (законное написание «пола нет») и на `"0"`.
 //
 // Каждая проба устроена как функция, ВОЗВРАЩАЮЩАЯ находки по переданному
 // каталогу: на вшитом каталоге находок ноль, на каталоге с одной правленой
-// записью — ровно находка с FQN этой записи. Инъекция роняет только свой
+// записью — сдвиг обнаружен с FQN этой записи. Путей обнаружения два: `"0"` у
+// строки без читающего отношения на конкретном объекте (все шестнадцать здесь
+// такие) сборка каталога отвергает сама, называя запись в тексте отказа; прочие
+// сдвиги сборка принимает, и их называет находка. Инъекция роняет только свой
 // предмет: правится одно значение одной записи, остальное — вшитый документ
 // байт в байт.
 
@@ -69,8 +72,20 @@ const (
 
 // catalogWithACR — вшитый каталог, в котором у ОДНОЙ записи `fqn` поле
 // `required_acr_min` заменено на `acr`; прочие поля и записи не тронуты (разбор
-// в обобщённые карты сохраняет и те ключи, которых нет в CatalogEntry).
+// в обобщённые карты сохраняет и те ключи, которых нет в CatalogEntry). Сборка
+// каталога обязана пройти: зовут его те, кому нужен исполнимый каталог.
 func catalogWithACR(t *testing.T, fqn, acr string) *middleware.PermissionCatalog {
+	t.Helper()
+	c, err := loadCatalogWithACR(t, fqn, acr)
+	require.NoError(t, err)
+	return c
+}
+
+// loadCatalogWithACR — та же инъекция, но отказ сборки каталога возвращается, а
+// не роняет пробу: часть сдвигов пола (`"0"` у строки без читающего отношения
+// на конкретном объекте) продукт отвергает уже при загрузке, и такой отказ —
+// тоже обнаружение сдвига.
+func loadCatalogWithACR(t *testing.T, fqn, acr string) (*middleware.PermissionCatalog, error) {
 	t.Helper()
 	var rows []map[string]any
 	require.NoError(t, json.Unmarshal(middleware.EmbeddedPermissionCatalogJSON(), &rows))
@@ -85,8 +100,7 @@ func catalogWithACR(t *testing.T, fqn, acr string) *middleware.PermissionCatalog
 	buf, err := json.Marshal(rows)
 	require.NoError(t, err)
 	c := middleware.NewPermissionCatalog()
-	require.NoError(t, c.LoadFromBytes(buf))
-	return c
+	return c, c.LoadFromBytes(buf)
 }
 
 // catalogFloorFindings — ADM-1-GEO-ACR-01: каждая из двенадцати мутаций geo
@@ -127,8 +141,11 @@ func TestPermissionCatalog_ADM1GEOACR01_GeoMutationAndClusterGrantFloorsAreNamed
 }
 
 // Инъекция в обе стороны по каждой из двенадцати записей geo (вверх — "2",
-// вниз — "0" и "") и по каждой из четырёх кластерных (вниз — "1"): находка
-// ровно одна и называет правленую запись.
+// вниз — "0" и "") и по каждой из четырёх кластерных (вниз — "1", "0", ""):
+// сдвиг обнаружен с FQN правленой записи одним из двух путей — сборка каталога
+// отвергла его и назвала запись в тексте отказа, либо сборка прошла, и
+// catalogFloorFindings дал ровно одну находку о ней. Ни отказа, ни находки —
+// красное: пустого срабатывания проба не прощает.
 func TestPermissionCatalog_ADM1GEOACR01_InjectedFloorShiftIsFoundWithItsFQN(t *testing.T) {
 	type shift struct{ fqn, acr string }
 	var shifts []shift
@@ -144,7 +161,12 @@ func TestPermissionCatalog_ADM1GEOACR01_InjectedFloorShiftIsFoundWithItsFQN(t *t
 	}
 	for _, s := range shifts {
 		t.Run(fmt.Sprintf("%s=%q", s.fqn, s.acr), func(t *testing.T) {
-			findings := catalogFloorFindings(catalogWithACR(t, s.fqn, s.acr))
+			c, err := loadCatalogWithACR(t, s.fqn, s.acr)
+			if err != nil {
+				assert.Contains(t, err.Error(), s.fqn+": required_acr_min", "отказ сборки каталога называет FQN и поле")
+				return
+			}
+			findings := catalogFloorFindings(c)
 			require.Len(t, findings, 1, "инъекция роняет ровно свой предмет: %v", findings)
 			assert.True(t, strings.HasPrefix(findings[0], s.fqn+": required_acr_min"), "находка называет FQN: %s", findings[0])
 		})
