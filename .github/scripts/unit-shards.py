@@ -127,6 +127,10 @@ ROOT_SHARD = "root"
 SPLIT_BY_TEST: dict[str, int] = {
     "internal/repohygiene": 8,
     "internal/repohygiene/artifactgates": 3,
+    # 214 с, из них одна проба сборки внешним потребителем (≈ 203 с): распил не
+    # ускоряет её, а выводит из шарда области с весом 37 объявлений, который
+    # отправлялся бы последним, — части идут первыми (`matrix_document`).
+    "internal/release": 2,
 }
 PART_LETTERS = "abcdefghijklmnopqrstuvwxyz"
 # Флаги перечня — те же, что у прогона (`-race`): кэш сборки общий, и перечень не
@@ -600,7 +604,8 @@ def run_regex(tests: list[str]) -> str:
 
 
 def matrix_document(shards: dict[str, list[str]],
-                    weights: dict[str, int] | None = None) -> dict:
+                    weights: dict[str, int] | None = None,
+                    first: dict[str, int] | None = None) -> dict:
     """Строка матрицы несёт ТОЛЬКО `id` области — не перечень пакетов.
 
     Перечень шард выводит сам, тем же `--packages` и тем же правилом. Это ВТОРОЕ
@@ -617,9 +622,26 @@ def matrix_document(shards: dict[str, list[str]],
     ранеров порядок строк и есть критический путь прогона. Без веса порядок
     остаётся детерминированным — по идентификатору, — потому что недетерминизм
     матрицы сделал бы неповторимым и разбор прогона.
+
+    ЧАСТИ РАСПИЛЕННЫХ ПАКЕТОВ — ПЕРВЫМИ (`first`, kacho#3277). Пакет распилен
+    потому, что он ЗАМЕРЕН самым долгим (`SPLIT_BY_TEST`), а число объявлений проб
+    его не видит: проба гейта дерева стоит под `-race` в разы дороже пробы службы, и
+    по весу части встали бы за `vpc` и `gateway`. Среди частей — по весу всего
+    пакета, затем по имени.
     """
-    order = sorted(shards, key=lambda sid: (-(weights or {}).get(sid, 0), sid))
+    first = first or {}
+    order = sorted(shards, key=lambda sid: (0 if sid in first else 1,
+                                            -(first.get(sid) or (weights or {}).get(sid, 0)),
+                                            sid))
     return {"shard": [{"id": sid} for sid in order]}
+
+
+def first_of(parts: dict[str, str], weights: dict[str, int]) -> dict[str, int]:
+    """Часть → вес ВСЕГО её пакета (сумма весов его частей)."""
+    total: dict[str, int] = {}
+    for sid, pkg in parts.items():
+        total[pkg] = total.get(pkg, 0) + weights.get(sid, 0)
+    return {sid: max(1, total[pkg]) for sid, pkg in parts.items()}
 
 
 # ─── самопроба ──────────────────────────────────────────────────────────────
@@ -841,6 +863,14 @@ def _self_test_split() -> bool:
         kept = [r["id"] for r in plan1["shards"] if r["id"].startswith("internal-repohygiene-")]
         ok &= _check("часть без проб в план не идёт", len(kept) == 1, f": {kept}")
 
+        # Порядок отправки: части распиленного пакета — первыми при любом весе.
+        w = {"vpc": 9000, "gateway": 8000}
+        rows = [r["id"] for r in matrix_document(
+            shards, w, first_of(split_parts(shards, MOD), {}))["shard"]]
+        ok &= _check("части распиленного отправляются первыми при меньшем весе",
+                     rows[:3] == parts, f": {rows[:4]}")
+        ok &= _check("порядок не меняет множество шардов", sorted(rows) == sorted(shards))
+
         # Отбор `-run`: ровно перечень, без префиксных совпадений.
         rx = re.compile(run_regex(["TestA", "TestB"]))
         ok &= _check("отбор `-run` ловит перечень и не ловит продолжение имени",
@@ -1059,7 +1089,10 @@ def main() -> int:
         if not rows:
             sys.stderr.write("ОТКАЗ: в плане ноль шардов — матрица была бы пустой\n")
             return 1
-        print("matrix=" + json.dumps(matrix_document(rows, order_weights(root)),
+        w = order_weights(root)
+        parts = {sid: pkg for pkg, info in (plan.get("split") or {}).items()
+                 for sid in info.get("parts") or [] if sid in rows}
+        print("matrix=" + json.dumps(matrix_document(rows, w, first_of(parts, w)),
                                      ensure_ascii=False))
         return 0
 
@@ -1105,8 +1138,10 @@ def main() -> int:
     if args.matrix:
         if findings:
             return _refuse(findings)
-        print("matrix=" + json.dumps(matrix_document(shards, weights),
-                                     ensure_ascii=False))
+        print("matrix=" + json.dumps(
+            matrix_document(shards, weights,
+                            first_of(split_parts(shards, module), weights)),
+            ensure_ascii=False))
         return 0
 
     # ВЫБОР: по путям из файла (локально, проба выбора) либо по событию запроса.
@@ -1159,7 +1194,8 @@ def main() -> int:
     print(f"  порядок отправки — самый тяжёлый первым; вес = объявлений проб "
           f"(решает ТОЛЬКО очередь, не раздачу)")
     for row in matrix_document({r["id"]: r["packages"] for r in plan["shards"]},
-                               weights)["shard"]:
+                               weights, first_of(split_parts(shards, module),
+                                                 weights))["shard"]:
         sid = row["id"]
         print(f"    {sid:34} пакетов {len(shards[sid]):4} · "
               f"объявлений проб {weights.get(sid, 0):5}")
