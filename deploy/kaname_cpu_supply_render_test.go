@@ -396,7 +396,7 @@ func withLimitRangeDefault(docs []map[string]any, def uint64) int {
 	return filled
 }
 
-func TestStandOverlayGivesKanameItsCPUFloorAndTheQuotaHoldsTheRollout(t *testing.T) {
+func TestStandOverlayGivesKanameItsCPUFloorAndTheNamespaceHoldsTheRollout(t *testing.T) {
 	overlay := standOverlayFile(t)
 	stacks := deployStacks(t)
 	names := make([]string, 0, len(stacks))
