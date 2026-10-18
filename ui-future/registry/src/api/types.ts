@@ -75,8 +75,9 @@ export interface Repository {
   // register-on-first-push, unregister-on-last-tag. Установка overlay AUTO-PROMOTE'ит
   // EPHEMERAL→DURABLE. Понижение через API не выразимо (снимается DeleteRepository).
   lifecycle?: "REPOSITORY_LIFECYCLE_UNSPECIFIED" | "DURABLE" | "EPHEMERAL" | string;
-  // Видимость репозитория (авторитетный per-repo гейт). Сидится из
-  // Registry.default_repository_visibility на create; any-path-to-PUBLIC admin-gated.
+  // Видимость репозитория (поштучная публикация; чтение без входа даёт и выдача
+  // роли registry.public.read классу на реестр, REG-PUB-1). Сидится из
+  // Registry.default_repository_visibility на create; перевод поля в PUBLIC — admin-gated.
   visibility?: "PRIVATE" | "PUBLIC" | string;
   // Число тегов образов в репозитории (output-only).
   tag_count?: number;

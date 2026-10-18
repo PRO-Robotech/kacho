@@ -1,6 +1,9 @@
-// VisibilityTag — видимость репозитория (авторитетный per-repo гейт) либо
+// VisibilityTag — видимость репозитория (его поштучная публикация) либо
 // Registry.default_repository_visibility (REG-1 F5). PRIVATE — доступ по правам;
-// PUBLIC — anonymous docker pull (any-path-to-PUBLIC admin-gated). Пусто → «—».
+// PUBLIC — anonymous docker pull, перевод поля в PUBLIC требует прав
+// администратора реестра. Чтение без входа даёт и выдача роли
+// `registry.public.read` классу на реестр (REG-PUB-1); тег её не показывает:
+// признака публичности у реестра нет. Пусто → «—».
 
 import { type FC } from "react";
 import { Tag, Tooltip, Typography } from "antd";
@@ -9,7 +12,7 @@ const VISIBILITY_META: Record<string, { label: string; color: string; hint: stri
   PRIVATE: {
     label: "Приватный",
     color: "default",
-    hint: "PRIVATE — доступ по правам (pull требует аутентификации и authz).",
+    hint: "PRIVATE — репозиторий сам не опубликован: доступ по правам, в том числе по роли публичного чтения, выданной на реестр.",
   },
   PUBLIC: {
     label: "Публичный",

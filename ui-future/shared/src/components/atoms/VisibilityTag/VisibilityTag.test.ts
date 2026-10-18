@@ -1,7 +1,7 @@
 import { visibilityLabel } from "./VisibilityTag";
 
 // Видимость репозитория / реестра-дефолта (REG-1 F5): PRIVATE (доступ по правам)
-// vs PUBLIC (anonymous pull, admin-gated). Пусто / мусор → «—».
+// vs PUBLIC (поштучная публикация, перевод поля — под admin реестра). Пусто / мусор → «—».
 describe("visibilityLabel", () => {
   it("PRIVATE → «Приватный»", () => {
     expect(visibilityLabel("PRIVATE")).toBe("Приватный");
