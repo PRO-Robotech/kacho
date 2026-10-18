@@ -41,6 +41,11 @@ func (c Config) Validate() error {
 	if err := c.ValidateQuotaAuthority(); err != nil {
 		return err
 	}
+	// Анонимный субъект судится тоже ДО аварийного освобождения: аварийный режим
+	// снимает вопрос о правах, а не о том, чей это идентификатор.
+	if _, err := c.AnonymousSubject(); err != nil {
+		return err
+	}
 
 	if c.AuthZBreakglass {
 		return nil

@@ -85,6 +85,31 @@ registry.laneServiceAud — имя службы реестра у докерно
 {{- end -}}
 
 {{/*
+registry.anonymousSubjectId — анонимный субъект плоскости данных (REG-PUB-1 Р9 п. 2).
+
+У значения ДВЕ стороны: служба доступа чеканит его в `sub` анонимного токена,
+реестр по нему узнаёт анонима и спрашивает модель от имени класса
+`system_class:anonymous`. Разойдись они — выдача классу принимается, а анонимное
+чтение не появляется: токен анонима читается как обычный принципал без выдач.
+
+Источник один — `global.kacho.registry.anonymousSubjectId`; его же читает подчарт
+службы доступа (`kaname.anonymousClientId`). Довод тот же, что у
+registry.laneServiceAud: `global` — единственное, что видно из обоих контекстов.
+
+Собственная ручка `anonymousSubjectId` — для одиночной установки чарта. Объявить
+обе и по-разному — отказ рендера с обеими величинами, а не тихий выбор одной.
+Не объявить ни одной — законно: поток выключен.
+*/}}
+{{- define "registry.anonymousSubjectId" -}}
+{{- $source := (((.Values.global).kacho).registry).anonymousSubjectId | default "" -}}
+{{- $own := .Values.anonymousSubjectId | default "" -}}
+{{- if and $source $own (ne $source $own) -}}
+{{- fail (printf "registry: анонимный субъект плоскости данных объявлен ДВАЖДЫ и по-разному — global.kacho.registry.anonymousSubjectId=%q против registry.anonymousSubjectId=%q. У значения две стороны (служба доступа чеканит его в sub анонимного токена, реестр по нему узнаёт анонима), и объявление у них одно: оставьте global.kacho.registry.anonymousSubjectId, а registry.anonymousSubjectId снимите — он для одиночной установки чарта, где второй стороны нет." $source $own) -}}
+{{- end -}}
+{{- $source | default $own -}}
+{{- end -}}
+
+{{/*
 registry.dbSslMode — режим TLS до Postgres, ОДНИМ написанием.
 
 Ключ звался в дереве двумя способами: `sslMode` у vpc/compute/iam/storage и

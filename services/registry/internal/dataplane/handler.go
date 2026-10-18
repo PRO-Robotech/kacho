@@ -81,14 +81,14 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 	}
 }
 
-// WithAnonymousSubject configures the anonymous principal id (kaname
-// AnonymousClientID, the `sub` of the anonymous token the /iam/token shim mints) this
-// data-plane resolves to the system class `system_class:anonymous` — a VALID anon Bearer thus reads
-// only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
-// Empty (the default) leaves anonymous pull DISABLED (secure-by-default: an anon token,
-// if any, resolves as an ordinary principal and is denied on PUBLIC-only grants).
-// Returns h for chaining from the composition root. Mirrors the WithClock-style
-// builder used elsewhere in Kachō — keeps the (already wide) New signature stable.
+// WithAnonymousSubject задаёт идентификатор анонимного принципала (`sub`
+// анонимного токена полосы `/iam/token` службы доступа), который плоскость данных
+// переводит в класс `system_class:anonymous`. Действительный анонимный токен
+// читает ровно выданное классу — поштучную публикацию (RG-1 D-7) и реестры,
+// открытые выдачей роли (REG-PUB-1), — и не пишет никогда (B03 / B14).
+// Пусто (умолчание) — анонимный поток выключен: анонимный токен, если он есть,
+// читается как обычный принципал без выдач.
+// Возвращает h для цепочки из композиционного корня: сигнатура New и так широка.
 func (h *Handler) WithAnonymousSubject(anonSubjectID string) *Handler {
 	h.anonSubjectID = anonSubjectID
 	return h
