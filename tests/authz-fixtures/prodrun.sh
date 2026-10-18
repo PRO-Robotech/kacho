@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # prodrun.sh — production-mode newman driver (#59).
-#   Seeds the RS256 SA-principal matrix ONCE (cached in /tmp/matrix.json), patches
-#   the target service's newman env with it, then runs the service suite.
+#   Seeds the RS256 SA-principal matrix ONCE (cached in the run directory, see
+#   PRODRUN_DIR below), patches the target service's newman env with it, then runs
+#   the service suite.
 #
 # Usage:
 #   prodrun.sh <service> [--reseed] [--service <collection>] [run.sh args...]
@@ -23,7 +24,26 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$ROOT/tests/authz-fixtures"
-CACHE=/tmp/matrix.json
+# Пространство имён стенда — из ОДНОГО места (stand-ns.sh, задача #2882), до первого
+# обращения к кластеру; расхождение SETUP_NS и KACHO_NAMESPACE — отказ. Ответ уходит
+# шагам посева обеими переменными.
+# shellcheck source=tests/authz-fixtures/stand-ns.sh
+. "$FIX/stand-ns.sh"
+stand_ns_resolve || exit 1
+
+# Каталог СВОЕГО прогона (#3264): матрица, кэш расширения и журнал посева живут в
+# нём, а не в общем каталоге машины — общий файл подменял матрицу двум посевам против
+# разных стендов, идущим параллельно. По умолчанию каталог — в рабочей копии и
+# различается по стенду (адреса края, kubeconfig и пространство имён стенда, #2882):
+# одна копия против двух стендов держит две матрицы. Явный PRODRUN_DIR берёт верх.
+STAND_KEY="$(printf '%s|%s|%s|%s' "${BASE_URL:-}" "${INTERNAL_BASE_URL:-}" "${KUBECONFIG:-}" "$STAND_NS" | sha256sum | cut -c1-12)"
+RUN_DIR="${PRODRUN_DIR:-$FIX/out/prodrun-$STAND_KEY}"
+mkdir -p "$RUN_DIR"
+CACHE="$RUN_DIR/matrix.json"
+# Путь матрицы называется расширениям (matrix_handoff.py): общего файла нет.
+export PRODSEED_MATRIX_PATH="$CACHE"
+# Каталог клиентского листа — тот же, что читают setup.sh и mint_rs256.py.
+IAM_MTLS_DIR="${IAM_MTLS_CERT_DIR:-/tmp/iam-mtls}"
 
 SVC="${1:?usage: prodrun.sh <service> [args]}"; shift || true
 
@@ -63,12 +83,15 @@ if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   # (LookupSubject). The bootstrap-token MINT deliberately does NOT accept it:
   # it admits only the dedicated operator SAN (secret kacho-bootstrap-operator-client-tls)
   # — mint_rs256.py pulls that one itself. Do not "fix" a mint 403 by pointing it here.
-  if command -v kubectl >/dev/null 2>&1; then
-    mkdir -p /tmp/iam-mtls
-    if kubectl -n kacho get secret api-gateway-client-tls >/dev/null 2>&1; then
-      kubectl -n kacho get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > /tmp/iam-mtls/client.crt 2>/dev/null
-      kubectl -n kacho get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > /tmp/iam-mtls/client.key 2>/dev/null
-      echo "[prodrun] refreshed /tmp/iam-mtls client-cert from api-gateway-client-tls (live CA)" >&2
+  # Material the caller passed EXPLICITLY (IAM_INTERNAL_GRPC_MTLS_CERT/_KEY) is the
+  # caller's decision and is not overwritten by a re-extraction (#2882).
+  if [[ -z "${IAM_INTERNAL_GRPC_MTLS_CERT:-}${IAM_INTERNAL_GRPC_MTLS_KEY:-}" ]] && command -v kubectl >/dev/null 2>&1; then
+    if kubectl -n "$STAND_NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
+      mkdir -p "$IAM_MTLS_DIR"
+      kubectl -n "$STAND_NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.crt" 2>/dev/null
+      kubectl -n "$STAND_NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.key" 2>/dev/null
+      chmod 600 "$IAM_MTLS_DIR/client.crt" "$IAM_MTLS_DIR/client.key"
+      echo "[prodrun] refreshed $IAM_MTLS_DIR client-cert from ns/$STAND_NS api-gateway-client-tls (live CA)" >&2
     fi
   fi
   # Bounded-retry: with the cert fresh, a residual failure is a genuine transient.
@@ -80,15 +103,15 @@ if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   # Exit 75 of the seed is "condition not created" (no letter / receiver unreadable).
   reseed_ok=0
   for attempt in 1 2 3; do
-    tmp="$(mktemp)"
-    if python3 "$FIX/prodseed_matrix.py" > "$tmp" 2>/tmp/prodseed-matrix.err && [[ -s "$tmp" ]]; then
+    tmp="$(mktemp "$RUN_DIR/matrix.XXXXXX")"
+    if python3 "$FIX/prodseed_matrix.py" > "$tmp" 2>"$RUN_DIR/prodseed-matrix.err" && [[ -s "$tmp" ]]; then
       mv "$tmp" "$CACHE"; reseed_ok=1; break
     fi
     echo "[prodrun] reseed attempt $attempt failed (provisioning EC?) — retrying in 8s" >&2
     rm -f "$tmp"; sleep 8
   done
-  [[ "$reseed_ok" == 1 ]] || { echo "[prodrun] FATAL: matrix reseed failed after 3 attempts" >&2; tail -3 /tmp/prodseed-matrix.err >&2; exit 1; }
-  rm -f /tmp/matrix-*-ext.json   # subject ids change on reseed → invalidate ext caches
+  [[ "$reseed_ok" == 1 ]] || { echo "[prodrun] FATAL: matrix reseed failed after 3 attempts" >&2; tail -3 "$RUN_DIR/prodseed-matrix.err" >&2; exit 1; }
+  rm -f "$RUN_DIR"/matrix-*-ext.json   # subject ids change on reseed → invalidate ext caches
   DID_RESEED=1
 fi
 
@@ -100,7 +123,7 @@ python3 "$FIX/patch-env.py" "$CACHE" "$ENVFILE" >&2
 # per-service extension seeder (resource deps + object-scope FGA grants the base
 # matrix cannot express). Emits extra fixtures on stdout; merged into the env.
 EXT="$FIX/prodseed_${SVC}_ext.py"
-EXTCACHE="/tmp/matrix-${SVC}-ext.json"
+EXTCACHE="$RUN_DIR/matrix-${SVC}-ext.json"
 if [[ -f "$EXT" ]]; then
   if [[ ! -s "$EXTCACHE" || "$RESEED" == 1 ]]; then
     echo "[prodrun] seeding $SVC extension -> $EXTCACHE" >&2

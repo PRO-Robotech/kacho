@@ -55,7 +55,7 @@ func realBackends(t *testing.T) (config.Config, proxy.Backends) {
 	t.Helper()
 	cfg, err := config.Load()
 	require.NoError(t, err, "config.Load")
-	backends, cleanup, err := dialBackends(cfg)
+	backends, cleanup, err := dialBackends(cfg, nil)
 	require.NoError(t, err, "dialBackends — гейт не может судить о карте, которой нет")
 	t.Cleanup(cleanup)
 	require.GreaterOrEqual(t, len(backends), minBackendKeys,

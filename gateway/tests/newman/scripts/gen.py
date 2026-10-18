@@ -87,6 +87,7 @@ sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
+    path_segments_as_sent,
     Run,
     assert_created_at_seconds,
     assert_field_violation,
@@ -172,6 +173,11 @@ class Step:
     # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
     # молча перезаписало бы первое, поэтому пара — отказ генерации.
     form: Optional[List[Tuple[str, str]]] = None
+    # Банка печенья прогонщика снимается ЯВНО и только шагом, который это объявил:
+    # шаг, предъявляющий носителя заголовком, не должен получать печенье сессии,
+    # оставленное в банке ответом соседнего шага, — иначе край увидел бы второго
+    # носителя, и шаг судил бы не тот класс, что назвал.
+    no_cookie_jar: bool = False
 
 
 @dataclass
@@ -661,7 +667,9 @@ def _gateway_item_hook(step, item):
     behavior = {}
     if step.insecure_tls:
         behavior["strictSSL"] = False
-    if step.explicit_cookies:
+    # Два имени одного объявления пришли из двух полос волны (kacho#3230 и
+    # kacho#2571); оба снимают банку печений только у объявившего шага.
+    if step.explicit_cookies or step.no_cookie_jar:
         behavior["disableCookies"] = True
     if behavior:
         item["protocolProfileBehavior"] = behavior
@@ -697,7 +705,7 @@ _EMIT = Emit(
     pre_head=_gateway_pre_head,
     item_hook=_gateway_item_hook,
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
-    path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
+    path_segments=lambda path: path_segments_as_sent(path.split("?")[0]),
 )
 
 

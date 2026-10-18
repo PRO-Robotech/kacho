@@ -169,9 +169,18 @@ func (q *Question) gate(ctx context.Context) error {
 
 // Authority — авторитет отзыва формы RFC 7662: «жив» / «отозван» по `jti`,
 // «молчит», UNAVAILABLE.
+//
+// Отсечку субъекта он исполняет так же, как служба доступа исполняет свою
+// отсечку отчеканенного (kaname `minted_token_revocations`: токен, отчеканенный
+// не позже отсечки, неактивен): блокировка, принудительный выход и удаление
+// пишут ОБЕ отсечки субъекта одной дверью (kaname `UpsertCutoff`), и авторитет
+// нашей чеканки отвечает о токене нашего издателя по ней. Отсечку он берёт у
+// дублёра службы стенда (`Identity.CutoffAtT0`), а не держит свою: одна отсечка
+// на субъекта — как у службы.
 type Authority struct {
-	url string
-	Q   *Question
+	url    string
+	Q      *Question
+	cutoff func() (time.Time, bool)
 }
 
 func newAuthority(t *testing.T) *Authority {
@@ -212,7 +221,14 @@ func newAuthorityServer(t *testing.T) (*Authority, *httptest.Server) {
 		}
 		_ = r.ParseForm()
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"active": JTIOf(r.Form.Get("token")) != JTIRevoked})
+		tok := r.Form.Get("token")
+		active := JTIOf(tok) != JTIRevoked
+		if a.cutoff != nil {
+			if before, ok := a.cutoff(); ok && !IssuedAtOf(tok).After(before) {
+				active = false
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"active": active})
 	}))
 	return a, srv
 }
@@ -457,6 +473,7 @@ func New(t *testing.T, opt Options) *Stand {
 		CertA:      NewCert(t, "ka1-a", false),
 		CertB:      NewCert(t, "ka1-b", false),
 	}
+	st.OurAuth.cutoff = func() (time.Time, bool) { return st.Ident.T0, st.Ident.CutoffAtT0.Load() }
 	st.BasicGood = st.Ident.mintBasic(t, BasicID, true)
 	st.BasicUnknownID = st.Ident.mintBasic(t, "bas-0000000000unknown", false)
 	// Неверный секрет к ИЗВЕСТНОМУ идентификатору: вторая чеканка того же
@@ -810,7 +827,7 @@ func MarshalStatus(t *testing.T, st *status.Status) []byte {
 // CarrierEndingLines — набор Set-Cookie, который производит SessionCarrierEndings().
 func CarrierEndingLines() []string {
 	var out []string
-	for _, c := range middleware.SessionCarrierEndings() {
+	for _, c := range middleware.SessionCarrierEndings("") {
 		out = append(out, c.String())
 	}
 	return out
@@ -927,6 +944,27 @@ func JTIOf(token string) string {
 	}
 	v, _ := m["jti"].(string)
 	return v
+}
+
+// IssuedAtOf — момент `iat` из тела JWT без проверки подписи; нуль — утверждения нет.
+func IssuedAtOf(token string) time.Time {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return time.Time{}
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}
+	}
+	var m map[string]any
+	if json.Unmarshal(payload, &m) != nil {
+		return time.Time{}
+	}
+	v, ok := m["iat"].(float64)
+	if !ok {
+		return time.Time{}
+	}
+	return time.Unix(int64(v), 0)
 }
 
 // EmptyMsg — пустое сообщение proto-подобной формы для пробных методов.

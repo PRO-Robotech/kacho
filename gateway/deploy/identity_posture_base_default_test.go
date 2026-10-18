@@ -42,6 +42,7 @@ func judgeBaseIdentityPosture(t *testing.T, raw string) error {
 	// предмет этой пробы — посадка, не бюджеты.
 	t.Setenv(config.KnobIdentityCallBudget, "1s")
 	t.Setenv(config.KnobBackendCallBudget, "30s")
+	t.Setenv(config.KnobSessionCookieDomain, config.SessionCookieDomainNone)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)

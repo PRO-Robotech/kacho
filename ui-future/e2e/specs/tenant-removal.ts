@@ -36,9 +36,13 @@ import { acceptedOperation, operationSucceeded, readerOf } from "./cloud-admin";
  *      заведения (подсеть раньше сети, репозиторий раньше реестра). Каскада
  *      через границу службы нет (ban #4): непустой проект служба доступа не
  *      снимает, и отказ называет это словами.
- *   3. Второй фактор — заводится здесь же: снятие проекта и аккаунта несёт пол
- *      уверенности «2», а вход паролем даёт «1». Это путь арендатора, а не
- *      послабление.
+ *   3. Второй фактор: снятие проекта и аккаунта несёт пол уверенности «2», а
+ *      вход паролем даёт «1». Фактора нет — он заводится здесь же. Фактор уже
+ *      заведён самой пробой (`raiseAssurance`) — второй раз его не завести
+ *      (служба отвечает `SECOND_FACTOR_ALREADY_ENROLLED`, kacho#3247), и уровень
+ *      поднимается повышением ЗАПАСНЫМ кодом, который проба записала при
+ *      заведении. Фактор, заведённый мимо записи, — отказ уборки с этим текстом,
+ *      а не догадка. Это путь арендатора, а не послабление.
  *   4. Проект → аккаунт → личность; исход каждой операции утверждается чтением
  *      (`done` без `error`). Снятие личности гасит сессии человека каскадом,
  *      поэтому её исход читается отказом края «кто я» на том же носителе — он
@@ -59,6 +63,73 @@ export interface TenantRecord {
   projectId: string;
   /** Адреса ресурсов в порядке заведения; снимаются в обратном. */
   resources: string[];
+  /**
+   * Неизрасходованные запасные коды второго фактора, который завела сама проба
+   * (`raiseAssurance`); пусто — проба фактора не заводила. Код одноразовый:
+   * уборка снимает с начала тот, который предъявила.
+   */
+  backupCodes: string[];
+}
+
+/** Ответ края о втором факторе человека — заведён ли одноразовый код. */
+interface SecondFactorView {
+  totp?: { enrolled?: unknown };
+}
+
+/**
+ * Поднять сессию уборки до «2». Фактора нет — заводится здесь же; заведён
+ * пробой — повышение её запасным кодом (заводить второй раз нечего: служба
+ * отвечает `SECOND_FACTOR_ALREADY_ENROLLED`, kacho#3247). Уровень утверждается
+ * ответом края о сессии, а не ответом глагола.
+ */
+async function raiseToTwo(
+  seed: Seed,
+  who: string,
+  tenant: TenantRecord,
+): Promise<void> {
+  const status = await seed.read(LANE.secondFactor);
+  const sf = lastIssued(seed, LANE.secondFactor)
+    .body as SecondFactorView | null;
+  expect(
+    status.status(),
+    `${who}: состояние второго фактора не прочитано — ${JSON.stringify(sf)}`,
+  ).toBe(200);
+
+  if (sf?.totp?.enrolled !== true) {
+    const factor = await seedSecondFactor(seed);
+    expect(
+      factor.assuranceLevel,
+      `${who}: подтверждение второго фактора обязано поднять сессию до «2»`,
+    ).toBe("2");
+    return;
+  }
+
+  const code = tenant.backupCodes.shift();
+  expect(
+    code,
+    `${who}: второй фактор арендатора заведён, а запасных кодов у уборки нет — ` +
+      "фактор заведён мимо записи пробы (`raiseAssurance` пишет их в запись арендатора)",
+  ).toBeTruthy();
+  const raised = await seed.submit(LANE.stepUp, "step-up", {
+    method: "lookup_secret",
+    code: code!,
+  });
+  expect(
+    raised.status(),
+    `${who}: повышение запасным кодом отвергнуто — ${JSON.stringify(lastIssued(seed, LANE.stepUp).body)}`,
+  ).toBe(200);
+  const me = await seed.read(SESSION_IDENTITY);
+  const view = lastIssued(seed, SESSION_IDENTITY).body as {
+    session?: { assuranceLevel?: unknown };
+  } | null;
+  expect(
+    me.status(),
+    `${who}: «кто я» после повышения — ${JSON.stringify(view)}`,
+  ).toBe(200);
+  expect(
+    String(view?.session?.assuranceLevel ?? ""),
+    `${who}: повышение запасным кодом обязано поднять сессию до «2»`,
+  ).toBe("2");
 }
 
 interface ProjectView {
@@ -175,11 +246,7 @@ export async function removeTenant(
       await removeAt(seed, address, `${who}: ресурс ${address}`);
     }
 
-    const factor = await seedSecondFactor(seed);
-    expect(
-      factor.assuranceLevel,
-      `${who}: подтверждение второго фактора обязано поднять сессию до «2»`,
-    ).toBe("2");
+    await raiseToTwo(seed, who, tenant);
 
     const accountId = await accountOf(seed, who, tenant.projectId);
     for (const projectId of await projectsOf(seed, who, accountId)) {

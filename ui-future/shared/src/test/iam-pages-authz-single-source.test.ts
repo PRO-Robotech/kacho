@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 /**
  * Управление доступом живёт РОВНО В ОДНОЙ поверхности консоли — в ремоуте iam.
@@ -112,11 +113,60 @@ function tsxFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-// stripComments — гейт судит по ОБЪЯВЛЕНИЯМ маршрутов, а не по прозе рядом:
-// пример в шапке компонента маршрутом не является.
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+// Снятие комментариев — общим разборщиком (`strip-comments.ts`): гейт судит по
+// ОБЪЯВЛЕНИЯМ маршрутов, а не по прозе рядом, — пример в шапке компонента
+// маршрутом не является. Своё регулярное выражение здесь принимало `/*` внутри
+// строки (путь со звёздочкой) за начало комментария и съедало разметку до
+// следующего `*/` вместе с нарушением (kacho#3248).
+
+// routesIntoIam — сколько объявлений маршрута `/iam` в исходнике после снятия комментариев.
+function routesIntoIam(src: string): number {
+  return [...stripComments(src).matchAll(/path="\/iam(?:\/|")/g)].length;
 }
+
+// leadsIntoIam — ведёт ли исходник переходом в `/iam` после снятия комментариев.
+function leadsIntoIam(src: string): boolean {
+  return /(?:navigate\(|to=|href=)["'`]\/iam(?:\/|["'`])/.test(stripComments(src));
+}
+
+describe("снятие комментариев гейтом не принимает литерал за комментарий (kacho#3248)", () => {
+  // Инъекция настоящим входом: путь со звёздочкой в строке, за ним — нарушение,
+  // и дальше обычный блочный комментарий. Разбор, принявший `/*` литерала за
+  // начало комментария, съедает всё до `*/` этого комментария вместе с
+  // нарушением, и гейт слеп к нему.
+  const routeAfterGlob = [
+    'const pattern = "/vpc/*";',
+    'export const R = <Route path="/iam/users" element={<X />} />;',
+    "/* обычный комментарий */",
+  ].join("\n");
+  const linkAfterGlob = [
+    "const pattern = `/vpc/*`;",
+    'export const L = <Link to="/iam/users">x</Link>;',
+    "/* обычный комментарий */",
+  ].join("\n");
+  const routeAfterSlashes = 'const sep = "//"; export const R = <Route path="/iam/users" element={<X />} />;';
+
+  it("маршрут /iam после пути со звёздочкой в строке виден гейту", () => {
+    expect(routesIntoIam(routeAfterGlob)).toBe(1);
+  });
+
+  it("переход в /iam после пути со звёздочкой в шаблоне виден гейту", () => {
+    expect(leadsIntoIam(linkAfterGlob)).toBe(true);
+  });
+
+  it("маршрут /iam после двух косых в строке виден гейту", () => {
+    expect(routesIntoIam(routeAfterSlashes)).toBe(1);
+  });
+
+  it("законный близнец — тот же исходник с маршрутом не в /iam — гейт молчит", () => {
+    expect(routesIntoIam(routeAfterGlob.replace('path="/iam/users"', 'path="/vpc/users"'))).toBe(0);
+    expect(leadsIntoIam(linkAfterGlob.replace('to="/iam/users"', 'to="/vpc/users"'))).toBe(false);
+  });
+
+  it("комментарий по-прежнему не свидетельствует: маршрут в комментарии гейт не видит", () => {
+    expect(routesIntoIam('/* <Route path="/iam/users" /> */\n// <Route path="/iam/x" />')).toBe(0);
+  });
+});
 
 describe("IAM management lives in exactly one console surface", () => {
   it("the iam remote implements every IAM management screen", () => {
@@ -134,14 +184,18 @@ describe("IAM management lives in exactly one console surface", () => {
 
   it("only the host routes /iam/*, and only into the remote", () => {
     const routing = new Map<string, number>();
+    let inspected = 0;
     for (const app of CONSOLE_APPS) {
-      const hits = tsxFiles(path.join(repoRoot, app, "src")).flatMap((f) =>
-        [...stripComments(readFileSync(f, "utf8")).matchAll(/path="\/iam(?:\/|")/g)].map(() =>
-          path.relative(repoRoot, f),
-        ),
-      );
-      if (hits.length > 0) routing.set(app, hits.length);
+      let hits = 0;
+      for (const f of tsxFiles(path.join(repoRoot, app, "src"))) {
+        inspected++;
+        hits += routesIntoIam(readFileSync(f, "utf8"));
+      }
+      if (hits > 0) routing.set(app, hits);
     }
+    process.stdout.write(`\n  маршруты /iam: приложений ${CONSOLE_APPS.length}, файлов .tsx осмотрено ${inspected}\n`);
+    // Пустой обход — не «нарушений нет», а «смотреть было нечего».
+    expect(inspected).toBeGreaterThan(0);
     expect([...routing.keys()]).toEqual(["host"]);
     const hostApp = readFileSync(path.join(repoRoot, "host/src/App.tsx"), "utf8");
     expect(hostApp).toMatch(/path="\/iam\/\*"\s+element=\{<IamRemote/);
@@ -156,15 +210,18 @@ describe("IAM management lives in exactly one console surface", () => {
     // `shared/` — библиотека, часть её экранов живёт в приложениях, которые
     // ремоут iam видят, поэтому её ссылки судить этим правилом нельзя.
     const offenders: string[] = [];
+    let inspected = 0;
     for (const app of CONSOLE_APPS) {
       if (app === "iam" || app === "host" || app === "shared") continue;
       for (const file of tsxFiles(path.join(repoRoot, app, "src"))) {
-        const src = stripComments(readFileSync(file, "utf8"));
-        if (/(?:navigate\(|to=|href=)["'`]\/iam(?:\/|["'`])/.test(src)) {
+        inspected++;
+        if (leadsIntoIam(readFileSync(file, "utf8"))) {
           offenders.push(path.relative(repoRoot, file));
         }
       }
     }
+    process.stdout.write(`\n  переходы в /iam: файлов .tsx осмотрено ${inspected}\n`);
+    expect(inspected).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
 

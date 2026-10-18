@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 70 коллекциях",
+    "      'services/*/tests/newman/collections' 'gateway/tests/newman/collections'   → 0 при 72 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -165,7 +165,7 @@
       "id": "vpc",
       "suites": ["vpc"],
       "components": ["vpc", "pg-vpc"],
-      "why": "21 коллекция / 3896 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
+      "why": "21 коллекция / 3851 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре (связка «сеть держит проект» ходит в iam ядра)."
     },
     {
       "id": "nlb",
@@ -177,13 +177,13 @@
       "id": "compute-storage",
       "suites": ["compute", "storage", "api-gateway"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
-      "why": "7+10+9 коллекций / 1532 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят. api-gateway едет сюда же (kacho#3238): коллекция system_class_anonymous_edge читает публичные каталоги compute (machineTypes, 4 запроса) и storage (diskTypes, 4) и заводит сеть в vpc (5) — измерено по адресам коллекции; прочие восемь коллекций суиты ходят только в iam и geo ядра. Здесь эти три компонента уже подняты, поэтому переезд не добавляет стенду ни одного workload, а шард edge, получив их, вырос бы до состава этого шарда плюс registry."
+      "why": "7+10+11 коллекций / 1639 запросов. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят. api-gateway едет сюда же (kacho#3238, kacho#3256): коллекция system_class_anonymous_edge читает публичные каталоги compute (machineTypes, 4 запроса) и storage (diskTypes, 4) и заводит сеть в vpc (5), коллекция system_class_subject_check заводит и снимает сети в vpc (10) — измерено по адресам коллекций; прочие девять коллекций суиты ходят только в iam и geo ядра. Здесь эти три компонента уже подняты, поэтому переезд не добавляет стенду ни одного workload, а шард edge, получив их, вырос бы до состава этого шарда плюс registry. Длительность это выдерживает: прогон e2e-newman 38916983089 (e9ce4ffb) — работа шарда 10 мин 58 с, шаг newman 4 мин 22 с из 75 (посев 72 с, compute 38 с, storage 106 с, api-gateway 15 с), самая долгая работа прогона — vpc, 12 мин 36 с; свежий посев перед storage и api-gateway (kacho#3211) — посевы одной суиты, каждый часть посева шарда."
     },
     {
       "id": "edge",
       "suites": ["geo", "registry"],
       "components": ["registry", "pg-registry"],
-      "why": "8+5 коллекций / 479 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238): её коллекция system_class_anonymous_edge ходит в compute, storage и vpc, которых этот стенд не поднимает."
+      "why": "8+5 коллекций / 479 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238, kacho#3256): её коллекции system_class_anonymous_edge и system_class_subject_check ходят в compute, storage и vpc, которых этот стенд не поднимает."
     }
   ]
 }

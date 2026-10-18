@@ -250,6 +250,12 @@ var (
 // форма, которую он забыл, — молчание.
 const fgaSystemClassType = "system_class"
 
+// Знай гейт одну форму субъекта «каждый» — на модели с другой он вывел бы
+// «выполнимых ноль», и строка каталога, ничего не сужающая, прошла бы
+// незамеченной. Класс узнаётся ЭЛЕМЕНТОМ списка, а не подстрокой: тип
+// `system_class_reader` классом не является. Обе формы и законные близнецы
+// держит TestBracketAdmitsEveryoneKnowsBothLawfulForms.
+
 // bracketHasWildcard — есть ли в перечне назначаемых типов подстановка `<тип>:*`.
 func bracketHasWildcard(list string) bool { return fgaWildcardRe.MatchString(list) }
 
@@ -455,6 +461,25 @@ func parseEveryoneModel(t *testing.T, raw string) everyoneModel {
 		m.sat[tr] = struct{}{}
 	}
 	return m
+}
+
+// TestBracketAdmitsEveryoneKnowsBothLawfulForms — распознаватель знает обе
+// формы «выполнимо за каждого», относит каждую к своей (подстановка либо класс)
+// и молчит на законных близнецах; модель из пина несёт одну форму, и забытая
+// вторая на ней не видна.
+func TestBracketAdmitsEveryoneKnowsBothLawfulForms(t *testing.T) {
+	type forms struct{ wildcard, class bool }
+	for bracket, want := range map[string]forms{
+		"user, service_account, system_class":               {class: true},
+		"system_class, user, service_account, group#member": {class: true},
+		"user, user:*, service_account":                     {wildcard: true},
+		"user, service_account, group#member":               {},
+		"user, service_account, system_class_reader":        {},
+		"user with mfa_fresh, service_account":              {},
+	} {
+		got := forms{wildcard: bracketHasWildcard(bracket), class: bracketHasClass(bracket)}
+		assert.Equal(t, want, got, "ограничение типов [%s]", bracket)
+	}
 }
 
 func repoRootForWildcardGate(t *testing.T) string {

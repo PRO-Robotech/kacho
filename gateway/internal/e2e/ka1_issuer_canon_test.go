@@ -104,6 +104,7 @@ func TestKA1_35_DeclarationFormsReachOurMintingLane(t *testing.T) {
 		"KACHO_API_GATEWAY_TOKEN_AUDIENCE":                "https://api.kacho.test",
 		"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET":          "1s",
 		"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET":           "30s",
+		"KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN":         "none",
 	}
 	for k, v := range env {
 		t.Setenv(k, v)
