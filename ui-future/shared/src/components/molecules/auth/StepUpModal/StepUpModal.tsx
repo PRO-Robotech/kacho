@@ -342,12 +342,9 @@ export function StepUpModal({ leave = (to) => window.location.replace(to) }: { l
   const none = methods !== null && methods.length === 0;
   const notEnrolled = notice?.kind === "refusal" && notice.refusal.reason === LANE_REASON.secondFactorNotEnrolled;
   const codeChosen = chosen !== null && chosen !== "webauthn";
-  // Кнопка, запертая частотой, монтируется заново. Значок ожидания antd уходит
-  // анимацией, и снимается он только её концом; отказ, пришедший раньше, чем
-  // анимация появления успела начаться, оставляет значок в дереве доступности
-  // навсегда — запертая кнопка звучит как «loading Подтвердить» (F8-S7-33,
-  // трасса console-e2e PR kacho#3265). Новый экземпляр рождается без значка.
-  const lockKey = locked ? "locked" : "open";
+  // Значок ожидания, оставшийся после быстрого отказа (F8-S7-33, kacho#3285),
+  // снимается правилом листа каркаса на всех кнопках консоли
+  // (`host/src/styles.css`), а не перемонтированием отдельных кнопок.
 
   return (
     <>
@@ -369,7 +366,7 @@ export function StepUpModal({ leave = (to) => window.location.replace(to) }: { l
           ...(codeChosen && !none
             ? [
                 <Button
-                  key={`ok-${lockKey}`}
+                  key="ok"
                   type="primary"
                   loading={submitting}
                   disabled={locked}
@@ -404,7 +401,6 @@ export function StepUpModal({ leave = (to) => window.location.replace(to) }: { l
           {keyOffered && (
             <div style={{ marginBottom: 12 }}>
               <Button
-                key={`key-${lockKey}`}
                 type={chosen === "webauthn" ? "primary" : "default"}
                 loading={submitting && chosen === "webauthn"}
                 disabled={locked || (submitting && chosen !== "webauthn")}
