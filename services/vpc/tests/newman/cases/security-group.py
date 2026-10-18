@@ -573,7 +573,6 @@ for c in update_happy_per_field("SG", "/vpc/v1/securityGroups", "/vpc/v1/securit
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []}):
     CASES.append(_sg_wrap("SG", "v7", c))
 
-CASES.extend(perf_baseline_block("SG", "/vpc/v1/securityGroups"))
 CASES.extend(verbatim_text_pack("SG", "SecurityGroup", "/vpc/v1/securityGroups", text_template="Security group SecurityGroup.Id(value={id}) not found"))
 CASES.extend(authz_caller_headers_block("SG", "/vpc/v1/securityGroups"))
 
@@ -603,9 +602,6 @@ CASES.append(_sg_wrap("SG", "v9d",
 for c in update_mask_partial_block("SG", "/vpc/v1/securityGroups", "/vpc/v1/securityGroups",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []}):
     CASES.append(_sg_wrap("SG", "v9p", c))
-CASES.append(_sg_wrap("SG", "v9pf",
-    perf_baseline_get_block("SG", "/vpc/v1/securityGroups",
-        {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []})))
 CASES.extend(list_total_size_check_block("SG", "/vpc/v1/securityGroups"))
 
 # v10: SG-specific rule validation

@@ -49,6 +49,8 @@ func TestMain(m *testing.M) {
 	for k, v := range map[string]string{
 		"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET": "1s",
 		"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET":  "30s",
+		// Домен печенья сессии (kacho#3174): умолчания нет, как у бюджетов.
+		"KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN": "none",
 	} {
 		if _, ok := os.LookupEnv(k); !ok {
 			_ = os.Setenv(k, v)
@@ -150,6 +152,7 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP":               "true",
 		"KACHO_API_GATEWAY_IDENTITY_CALL_BUDGET":                "1s",
 		"KACHO_API_GATEWAY_BACKEND_CALL_BUDGET":                 "30s",
+		"KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN":               "none",
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CIDRS":           "10.0.0.0/8",
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_PEERS":           "api-gateway-front-console",
 		// Имя звена в сертификате (kacho#3028, C4) проверяется внешним
@@ -288,4 +291,42 @@ func TestKA1_20_IdentityCallBudgetIsJudgedAtStart(t *testing.T) {
 // KA1-21 — страж старта: бюджет вызова моста к бэкенду.
 func TestKA1_21_BackendCallBudgetIsJudgedAtStart(t *testing.T) {
 	ka1StartGuard(t, "KACHO_API_GATEWAY_BACKEND_CALL_BUDGET", "30s")
+}
+
+// kacho#3174 — страж старта: домен печенья сессии. Умолчания нет: край без него
+// гасил бы печенье не тем доменом, с каким его выдала служба.
+func TestSessionCookieDomainIsJudgedAtStart(t *testing.T) {
+	const knob = "KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN"
+	for _, v := range []struct {
+		name, value, says string
+		set               bool
+	}{
+		{"не задана", "", "не объявлено", false},
+		{"пустая строка", "", "объявлено пусто", true},
+		{"адрес вместо домена", "https://kacho.example", "объявлено, но не годится", true},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			env, listen := ka1EdgeEnv(t, "production")
+			delete(env, knob)
+			if v.set {
+				env[knob] = v.value
+			}
+			got := ka1RunEdge(t, env, listen)
+			if !got.exited || got.code == 0 {
+				t.Fatalf("процесс обязан завершиться с ненулевым кодом до открытия слушателей; стартовал (/healthz %d)", got.healthz)
+			}
+			if !strings.Contains(got.journal, knob) || !strings.Contains(got.journal, v.says) {
+				t.Errorf("текст отказа обязан назвать %s и сказать «%s»:\n%s", knob, v.says, ka1Tail(got.journal))
+			}
+		})
+	}
+	for _, twin := range []string{"none", "kacho.example"} {
+		t.Run("близнец "+twin, func(t *testing.T) {
+			env, listen := ka1EdgeEnv(t, "production")
+			env[knob] = twin
+			if got := ka1RunEdge(t, env, listen); got.exited {
+				t.Fatalf("законное значение %q: процесс не стартовал (код %d):\n%s", twin, got.code, ka1Tail(got.journal))
+			}
+		})
+	}
 }

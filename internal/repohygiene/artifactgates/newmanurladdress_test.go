@@ -24,15 +24,17 @@ import (
 // запрос без неё — и отказ службы («form must be one of …») читается как отказ
 // по написанной форме, которой в запросе не было.
 //
-// Предикат — строка запроса адреса, собранного из разобранных полей так же, как
-// его собирает прогонщик, равна строке запроса `raw` дословно. Обход — все
+// Предикат — адрес, собранный из разобранных полей так же, как его собирает
+// прогонщик, равен `raw` побайтово: и строка запроса, и путь. Обход — все
 // отслеживаемые коллекции всех наборов; единица счёта — запрос (элемент с
 // `request`).
 //
-// Граница предиката названа: судится строка запроса, а не путь. Хвостовая косая
-// черта `raw` тоже не доезжает (общий разбор сегментов отбрасывает пустой
-// последний сегмент) — это отдельный класс со своим предметом, и этот гейт его
-// не судит.
+// Путь судится тем же предикатом (kacho#3257): общий разбор сегментов
+// отбрасывал пустой последний сегмент, и хвостовая косая черта `raw`
+// (`/vpc/v1/networks/`, `/v2/`) уходила адресом без неё — кейс о хвостовой
+// косой проверял другой адрес. Прогонщик собирает путь как `/` + сегменты
+// через `/` (postman-collection `Url.getPath`), поэтому пустой сегмент —
+// законная форма хвостовой и сдвоенной косой.
 
 // urlAddressCensus — объём осмотренного: «ноль находок» отличим от «ноль
 // прочитанного».
@@ -40,6 +42,7 @@ type urlAddressCensus struct {
 	collections int
 	requests    int
 	withQuery   int // запросов, чей `raw` несёт строку запроса
+	withSlash   int // запросов, чей путь в `raw` кончается косой чертой
 }
 
 // postmanURL — адрес элемента коллекции в объектной форме.
@@ -74,12 +77,12 @@ func (u postmanURL) sentAddress() string {
 	return b.String()
 }
 
-// queryOf — строка запроса адреса (после первого `?`), пусто — её нет.
-func queryOf(addr string) string {
+// pathOf — адрес без строки запроса (до первого `?`).
+func pathOf(addr string) string {
 	if i := strings.Index(addr, "?"); i >= 0 {
-		return addr[i+1:]
+		return addr[:i]
 	}
-	return ""
+	return addr
 }
 
 // urlAddressFindings — запросы коллекции, чей отправляемый адрес расходится с
@@ -119,6 +122,9 @@ func urlAddressFindings(rel string, body []byte, census *urlAddressCensus) ([]st
 				if strings.Contains(asString, "?") {
 					census.withQuery++
 				}
+				if strings.HasSuffix(pathOf(asString), "/") {
+					census.withSlash++
+				}
 				continue
 			}
 			var u postmanURL
@@ -128,7 +134,10 @@ func urlAddressFindings(rel string, body []byte, census *urlAddressCensus) ([]st
 			if strings.Contains(u.Raw, "?") {
 				census.withQuery++
 			}
-			if sent := u.sentAddress(); queryOf(sent) != queryOf(u.Raw) {
+			if strings.HasSuffix(pathOf(u.Raw), "/") {
+				census.withSlash++
+			}
+			if sent := u.sentAddress(); sent != u.Raw {
 				out = append(out, fmt.Sprintf("%s %s: написан %q, отправится %q", rel, where, u.Raw, sent))
 			}
 		}
@@ -166,8 +175,8 @@ func TestNewmanSentAddressIsTheWrittenOne(t *testing.T) {
 		}
 		findings = append(findings, got...)
 	}
-	t.Logf("перепись: коллекций %d · запросов %d · из них со строкой запроса %d · находок %d",
-		census.collections, census.requests, census.withQuery, len(findings))
+	t.Logf("перепись: коллекций %d · запросов %d · из них со строкой запроса %d · с хвостовой косой %d · "+
+		"находок %d", census.collections, census.requests, census.withQuery, census.withSlash, len(findings))
 	// Предпосылка обхода: пустой обход — не вердикт.
 	if census.collections == 0 || census.requests == 0 {
 		t.Fatalf("обход не нашёл ни одной коллекции с запросами (коллекций %d, запросов %d) — "+
@@ -175,6 +184,6 @@ func TestNewmanSentAddressIsTheWrittenOne(t *testing.T) {
 	}
 	for _, f := range findings {
 		t.Errorf("адрес запроса уйдёт не тем, что написан (строку запроса генератор обязан разложить в "+
-			"`url.query`): %s", f)
+			"`url.query`, путь — в сегменты без потери пустых): %s", f)
 	}
 }

@@ -38,7 +38,7 @@ func TestDialBackends_NativeHopCarriesNoSourceAddress(t *testing.T) {
 	go func() { _ = srv.Serve(l) }()
 	defer srv.Stop()
 
-	backends, closeAll, err := dialBackends(config.Config{GeoAddr: l.Addr().String(), ListenAddr: ":0"})
+	backends, closeAll, err := dialBackends(config.Config{GeoAddr: l.Addr().String(), ListenAddr: ":0"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,8 @@
 
 // Package proxy — local unknown-service proxy для api-gateway.
 //
-// Обслуживается только нативный `kacho.cloud.*` API.
+// Обслуживаются только службы с объявленным корнем контракта — `kacho.cloud.*`,
+// `kaname.cloud.*` и `corelib.*` (contract_roots.go).
 //
 //   - `MethodResolver` — тип-сигнатура resolver-функции, которую дергает
 //     UnknownServiceHandler (см. `Handler` ниже).

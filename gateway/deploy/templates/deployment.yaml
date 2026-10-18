@@ -193,6 +193,10 @@ spec:
               value: {{ required "callBudgets.identity: бюджет вызова края к службе доступа обязан быть объявлен" .Values.callBudgets.identity | quote }}
             - name: KACHO_API_GATEWAY_BACKEND_CALL_BUDGET
               value: {{ required "callBudgets.backend: бюджет вызова моста к бэкенду обязан быть объявлен" .Values.callBudgets.backend | quote }}
+            # Домен печенья сессии (kacho#3174) — то же значение, что
+            # `kaname.config.authn.login.cookieDomain`: умолчания в процессе нет.
+            - name: KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN
+              value: {{ required "sessionCarrier.cookieDomain: домен печенья сессии обязан быть объявлен (none — только на хост)" .Values.sessionCarrier.cookieDomain | quote }}
             {{- if .Values.tls.enabled }}
             - name: KACHO_API_GATEWAY_TLS_LISTEN_ADDR
               value: ":{{ .Values.tlsPort }}"

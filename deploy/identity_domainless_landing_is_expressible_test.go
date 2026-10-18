@@ -145,13 +145,28 @@ func judgeOurDomainlessLanding(stack, host string, cfg map[string]any) (domainle
 // происхождением на адресе документации (RFC 5737), то есть ровно той
 // посадкой, что стояла бы на площадке без имени. Адрес стенда сюда не
 // копируется.
+//
+// Фикстура — ЗАКОННАЯ посадка без имени, а не «стенд как есть на IP». Ключи
+// доступа на IP-литерале невыразимы (WebAuthn L3 §5.1.3), поэтому законная
+// посадка без имени объявляет их перечень «никого» сама, а не наследует
+// решение стенда о его происхождении: с kacho#3229 a8f60d берёт перечень из
+// своей консоли (`originFromConsole: true`), и близнец, привязанный к этому
+// решению, истёк бы вместе с ним — краснел бы на происхождении фикстуры, а не
+// на дефекте дерева. Цепочку таблицы стендов без имени с перечнем из консоли
+// по-прежнему ловит обход выше: он судит каждую цепочку как есть.
 const (
 	domainlessFixtureStack  = "a8f60d"
 	domainlessFixtureOrigin = "https://192.0.2.10"
 )
 
-// domainlessFixtureSet — установка, переводящая фикстурную цепочку на IP-литерал.
-var domainlessFixtureSet = "global.kacho.identity.appBaseURL=" + domainlessFixtureOrigin
+// domainlessFixtureSets — установки, переводящие фикстурную цепочку на
+// IP-литерал и объявляющие ключи доступа «никого», как обязана законная
+// посадка без имени.
+var domainlessFixtureSets = []string{
+	"global.kacho.identity.appBaseURL=" + domainlessFixtureOrigin,
+	"config.authn.accessKeys.originFromConsole=false",
+	"config.authn.accessKeys.origins={}",
+}
 
 func TestIdentity_LandingWithoutADomainNameIsExpressible(t *testing.T) {
 	stacks := deployStacks(t)
@@ -185,7 +200,7 @@ func TestIdentity_LandingWithoutADomainNameIsExpressible(t *testing.T) {
 	}
 	fixtureID := identityOfStack(t, chain)
 	fixtureID["appBaseURL"] = domainlessFixtureOrigin
-	out, err := renderStackSubchart(t, domainlessFixtureStack, stackIdentityValues(t, chain), domainlessFixtureSet)
+	out, err := renderStackSubchart(t, domainlessFixtureStack, stackIdentityValues(t, chain), domainlessFixtureSets...)
 	if err != nil {
 		t.Fatalf("фикстура %s: рендер подчарта службы отказал: %v\n%s", domainlessFixtureStack, err, out)
 	}

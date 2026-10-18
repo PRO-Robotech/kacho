@@ -176,6 +176,12 @@ const fgaSystemClassType = "system_class"
 
 // bracketAdmitsEveryone — допускает ли перечень назначаемых типов отношения
 // субъекта, за которым стоит каждый: подстановку `<тип>:*` либо системный класс.
+//
+// Знай гейт одну форму — на модели с другой он вывел бы «выполнимых ноль», и
+// строка каталога, ничего не сужающая, прошла бы незамеченной. Класс узнаётся
+// ЭЛЕМЕНТОМ списка, а не подстрокой: тип `system_class_reader` классом не
+// является. Обе формы и законные близнецы держит
+// TestBracketAdmitsEveryoneKnowsBothLawfulForms.
 func bracketAdmitsEveryone(list string) bool {
 	if fgaWildcardRe.MatchString(list) {
 		return true
@@ -298,6 +304,22 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 		}
 	}
 	return sat
+}
+
+// TestBracketAdmitsEveryoneKnowsBothLawfulForms — распознаватель знает обе
+// формы «выполнимо за каждого» и молчит на законных близнецах; модель из пина
+// несёт одну форму, и забытая вторая на ней не видна.
+func TestBracketAdmitsEveryoneKnowsBothLawfulForms(t *testing.T) {
+	for bracket, want := range map[string]bool{
+		"user, service_account, system_class":               true,
+		"system_class, user, service_account, group#member": true,
+		"user, user:*, service_account":                     true,
+		"user, service_account, group#member":               false,
+		"user, service_account, system_class_reader":        false,
+		"user with mfa_fresh, service_account":              false,
+	} {
+		assert.Equal(t, want, bracketAdmitsEveryone(bracket), "ограничение типов [%s]", bracket)
+	}
 }
 
 func repoRootForWildcardGate(t *testing.T) string {

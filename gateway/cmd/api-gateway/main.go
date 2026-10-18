@@ -46,6 +46,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
+	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
 )
 
 func main() {
@@ -104,7 +105,13 @@ func main() {
 	// present, else insecure — dev backward-compat). The "operation" self-loopback
 	// stays always-insecure (in-process re-entry). Fail-fast on misconfig
 	// (enabled edge w/o cert material) so the process never starts half-secured.
-	backends, closeBackends, err := dialBackends(cfg)
+	//
+	// Причина отказа соседу (kacho#3221) — ОДИН учёт на процесс, на каждом
+	// соединении к службе: мосту, маршрутизатору, полосе личности. Ответ
+	// вызывающему у неразрешённого адреса и у остановленной службы один (503),
+	// и различает их только клетка прибора.
+	upstreamFailures := upstreamfailure.NewTally(upstreamKeys(cfg))
+	backends, closeBackends, err := dialBackends(cfg, upstreamFailures)
 	if err != nil {
 		log.Fatalf("backend dial: %v", err)
 	}
@@ -126,7 +133,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("iam subject mTLS creds: %v", err)
 	}
-	iamSubjectClient, err := clients.NewIAMSubjectClient(cfg.IAMInternalAddr, logger, iamSubjectCreds)
+	iamSubjectClient, err := clients.NewIAMSubjectClient(cfg.IAMInternalAddr, logger, iamSubjectCreds,
+		upstreamFailures.DialOptions("iamInternal")...)
 	if err != nil {
 		log.Fatalf("iam subject client: %v", err)
 	}
@@ -184,6 +192,11 @@ func main() {
 		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget)
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
+	// Гашение носителя на отказе полосы — с тем доменом, с каким печенье выдаёт
+	// служба (kacho#3174): иначе браузер гашение не сопоставит и отказ останется
+	// стоящим. Ручка названа здесь — место сборки показывает, чем звено
+	// настраивается.
+	authInterceptor = authInterceptor.WithSessionCookieDomain(cfg.SessionCookieDomain)
 
 	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
 	// входа и церемония авторизации принадлежат той чеканке, которая личность
@@ -846,6 +859,9 @@ func main() {
 	// Клетки полосы предъявителя (kacho#2740): исход вопроса об отзыве по
 	// источнику — на приборе, а не только строкой журнала раз в окно.
 	diagMetrics.RegisterBearerLane(authInterceptor.BearerLane().Snapshot)
+	// Клетки причины отказа соседу (kacho#3221): адрес, служба или бюджет —
+	// на приборе, при одном и том же ответе вызывающему.
+	diagMetrics.RegisterUpstreamFailures(upstreamFailures.Snapshot)
 	// Клетки окон доклада (kacho#2740): итог каждого окна журнала — на приборе,
 	// а строка журнала раз в окно называет лишь первое событие окна.
 	diagMetrics.RegisterLogWindows(func() gwmetrics.LogWindowSources {
@@ -1084,7 +1100,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)
 	}
-	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget)
+	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget,
+		restmux.WithUpstreamFailures(upstreamFailures))
 	if err != nil {
 		log.Fatalf("rest mux: %v", err)
 	}

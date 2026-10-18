@@ -34,6 +34,11 @@ LICENSE
 # детерминированная часть подъёма стенда зависела от того, повезёт ли с сетью,
 # ВОСЕМЬ раз подряд, при полностью неизменном исходнике.
 deploy/helm/umbrella/charts/*.tgz
+# распаковка зависимостей `helm dep update` / `helm dependency build`: helm
+# кладёт архивы в tmpcharts-<pid>/ и снимает каталог сам, а при обрыве он
+# остаётся (deploy/.gitignore, та же строка). Ни один Dockerfile его не читает —
+# тот же класс, что архивы строкой выше (kacho#2868).
+deploy/helm/umbrella/tmpcharts-*
 deploy/helm/umbrella/Chart.lock
 deploy/helm/umbrella/values.image-ids.yaml
 # отпечаток последней материализации зависимостей (scripts/helm-umbrella-deps.sh):

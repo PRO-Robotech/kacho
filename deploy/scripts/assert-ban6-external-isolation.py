@@ -66,7 +66,9 @@ HTTP-ответа; kubectl-проброс при этом валится `broken
 REST») падал ровно по этой причине.
 
 Сертификат листенера подписан внутренним CA и несёт SAN
-`api-gateway.kacho.svc.cluster.local`, поэтому проба идёт с **полной проверкой
+`api-gateway.<ns>.svc.cluster.local`, где `<ns>` — пространство имён стенда
+(`--namespace`, умолчание `kacho`; стенд проб выпускает листы на СВОЁ
+пространство), поэтому проба идёт с **полной проверкой
 цепочки** (`-cacert` + `-authority`), а не с отключённой верификацией: доверие к
 внутреннему CA — часть постановки, а не то, что обходится флагом.
 
@@ -169,8 +171,13 @@ UNRESOLVED = "UNRESOLVED"  # ответа по существу не было �
 # засчитываться в первую пользу.
 INCONCLUSIVE = "INCONCLUSIVE"
 
-# Домен proto-пакета → cluster-internal gRPC-эндпоинт владельца (для встречного
-# контроля): (цель-проброса, порт, authority-для-TLS).
+# Носитель → cluster-internal gRPC-эндпоинт (для встречного контроля):
+# (цель-проброса `svc/<Service>`, порт). Адреса TLS (authority) здесь НЕТ: он
+# выводится из имени Service и пространства имён стенда (`svc_authority`), потому
+# что лист выпускается на пространство, в котором стоит стенд. Адрес, вписанный
+# литералом, держал пробу на одном пространстве: на стенде проб каждый вызов
+# отказывал проверкой листа («certificate is valid for …<ns стенда>…»), и гейт
+# выходил отказом харнесса, не измерив ничего.
 #
 # Домен без эндпоинта РОНЯЕТ прогон: «мы не знаем, где его слушают» — это не
 # повод засчитать изоляцию его методов.
@@ -195,14 +202,30 @@ INCONCLUSIVE = "INCONCLUSIVE"
 # монтировать службу. Носители домена ВЫВОДЯТСЯ из дерева
 # (`e2e-ban6-domains.py`, `hosts`), поэтому шестой носитель войдёт в перебор сам.
 INTERNAL_ENDPOINTS = {
-    "iam": ("svc/kaname-internal", 9091, "kaname-internal.kacho.svc.cluster.local"),
-    "geo": ("svc/kacho-geo-internal", 9091, "kacho-geo-internal.kacho.svc.cluster.local"),
-    "nlb": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
-    "registry": ("svc/registry-internal", 9091, "registry-internal.kacho.svc.cluster.local"),
-    "vpc": ("svc/vpc", 9091, "vpc.kacho.svc.cluster.local"),
-    "compute": ("svc/compute", 9091, "compute.kacho.svc.cluster.local"),
-    "storage": ("svc/kacho-storage", 9091, "kacho-storage.kacho.svc.cluster.local"),
+    "iam": ("svc/kaname-internal", 9091),
+    "geo": ("svc/kacho-geo-internal", 9091),
+    "nlb": ("svc/kacho-nlb-internal", 9091),
+    "registry": ("svc/registry-internal", 9091),
+    "vpc": ("svc/vpc", 9091),
+    "compute": ("svc/compute", 9091),
+    "storage": ("svc/kacho-storage", 9091),
 }
+
+# Внешний листенер края — тот же вывод адреса, что у носителей.
+GATEWAY_TARGET = "svc/api-gateway"
+
+
+def svc_authority(target: str, ns: str) -> str:
+    """Адрес TLS (authority) Service `svc/<имя>` в пространстве `ns`.
+
+    Один вывод на все восемь адресов (край и семь носителей): второго места, где
+    адрес пишется руками, нет, — иначе одно из них снова осталось бы прибитым к
+    одному пространству.
+    """
+    kind, _, name = target.partition("/")
+    if kind != "svc" or not name or not ns:
+        raise ValueError(f"адрес не выводится: цель «{target}», пространство «{ns}»")
+    return ".".join((name, ns, "svc", "cluster", "local"))
 
 # Вердикты встречного контроля (отдельные от вердиктов внешней пробы — вопрос
 # другой и порядок обработки на этом листенере другой, см. шапку).
@@ -624,9 +647,10 @@ def main(argv: list[str]) -> int:
               f"композиционным корнем — у ban #6 нет предмета; полноту охвата держит "
               f"assert-shard-coverage.py")
 
-    gw_authority = "api-gateway.kacho.svc.cluster.local"
+    gw_authority = svc_authority(GATEWAY_TARGET, ns)
+    print(f"АДРЕСА: пространство «{ns}», край — {gw_authority}")
     rc = 0
-    with PortForward(ns, "svc/api-gateway", 8443) as ext:
+    with PortForward(ns, GATEWAY_TARGET, 8443) as ext:
         addr = f"127.0.0.1:{ext.local}"
         # Не поднявшийся проброс — НАЗЫВАЕМАЯ причина, а не «листенер не ответил».
         if not ext.ready:
@@ -719,7 +743,8 @@ def main(argv: list[str]) -> int:
             method = f"{rep[0]}.{rep[1]}/{rep[2]}"
             why: list[str] = []
             for host in candidates:
-                target, port, authority = INTERNAL_ENDPOINTS[host]
+                target, port = INTERNAL_ENDPOINTS[host]
+                authority = svc_authority(target, ns)
                 # Заведомо ЧУЖОЙ Internal-метод — контроль предпосылки «до прав
                 # доходит только зарегистрированный метод». Берётся у домена,
                 # которого ЭТОТ НОСИТЕЛЬ не служит, а не просто у другого домена:
@@ -826,6 +851,63 @@ def main(argv: list[str]) -> int:
 
 
 # ─────────────────────────── самопроверка ────────────────────────────────────
+
+
+# Прежние восемь адресов (до вывода из пространства) — именами Service; в
+# пространстве `kacho` вывод обязан вернуть ровно их. Литералом адреса здесь не
+# пишутся: адрес собирается тем же способом, что у пробы, только из имён.
+_PRIOR_SERVICES = ("api-gateway", "kaname-internal", "kacho-geo-internal", "kacho-nlb-internal",
+                   "registry-internal", "vpc", "compute", "kacho-storage")
+
+
+def authority_mismatches(derive, ns: str) -> list[str]:
+    """Расхождения вывода `derive(target, ns)` с адресами пространства `ns`.
+
+    Ожидаемое для `ns` — имя Service, затем ИМЕННО это пространство. Сторона
+    «стенд проб» ловит вывод, глухой к пространству; сторона `kacho` — потерю или
+    подмену носителя (набор Service обязан совпасть с прежним).
+    """
+    targets = [GATEWAY_TARGET] + [t for t, _ in INTERNAL_ENDPOINTS.values()]
+    bad = []
+    for t in targets:
+        name = t.partition("/")[2]
+        want = ".".join((name, ns, "svc", "cluster", "local"))
+        got = derive(t, ns)
+        if got != want:
+            bad.append(f"{t}: {got} ≠ {want}")
+    if ns == "kacho" and sorted(t.partition("/")[2] for t in targets) != sorted(_PRIOR_SERVICES):
+        bad.append(f"набор Service {sorted(t.partition('/')[2] for t in targets)} ≠ прежнему {sorted(_PRIOR_SERVICES)}")
+    return bad
+
+
+def authority_self_test() -> int:
+    rc = 0
+    for ns in ("kacho", "t3258-w9"):
+        bad = authority_mismatches(svc_authority, ns)
+        n = 1 + len(INTERNAL_ENDPOINTS)
+        print(f"  пространство {ns}: адресов {n}, расхождений {len(bad)} — {'ПРОВАЛ' if bad or n != 8 else 'ОК'}")
+        for b in bad:
+            print(f"    {b}")
+        rc |= 1 if bad or n != 8 else 0
+    print(f"    пример: {svc_authority(GATEWAY_TARGET, 'kacho')} · {svc_authority(GATEWAY_TARGET, 't3258-w9')}")
+    # Инъекция: вывод, глухой к пространству (прежний дефект), обязан быть пойман
+    # на стороне стенда и НЕ пойман на стороне `kacho` — иначе проверка либо слепа,
+    # либо краснеет на законном близнеце.
+    deaf = lambda t, _ns: svc_authority(t, "kacho")  # noqa: E731
+    caught = bool(authority_mismatches(deaf, "t3258-w9"))
+    twin_quiet = not authority_mismatches(deaf, "kacho")
+    print(f"  инъекция «адрес не следует за пространством»: поймана на стенде — {'да' if caught else 'НЕТ'}; "
+          f"молчит в kacho — {'да' if twin_quiet else 'НЕТ'} — {'ОК' if caught and twin_quiet else 'ПРОВАЛ'}")
+    rc |= 0 if caught and twin_quiet else 1
+    # Инъекция: потерянный носитель — набор Service разошёлся с прежним.
+    saved = INTERNAL_ENDPOINTS.pop("storage")
+    try:
+        lost = bool(authority_mismatches(svc_authority, "kacho"))
+    finally:
+        INTERNAL_ENDPOINTS["storage"] = saved
+    print(f"  инъекция «носитель потерян»: поймана — {'да' if lost else 'НЕТ'} — {'ОК' if lost else 'ПРОВАЛ'}")
+    rc |= 0 if lost else 1
+    return rc
 
 
 def self_test() -> int:
@@ -949,6 +1031,9 @@ def self_test() -> int:
           f"{sentinel_bad} (предпосылка сорвана, домен не засчитывается) — "
           f"{'ОК' if ok else 'ПРОВАЛ'}")
     rc |= 0 if ok else 1
+
+    print("\nсамопроверка адресов TLS от пространства имён:")
+    rc |= authority_self_test()
 
     print("\nсамопроверка карты внутренних эндпоинтов:")
     # Домен без эндпоинта роняет прогон, поэтому карта обязана покрывать каждый
