@@ -57,7 +57,9 @@ set -uo pipefail
 # `timeout-minutes` в `required-verdict.yml` — срок плюс 10 мин на подготовку
 # (замер: от старта задания до этого шага 4–6 с). Согласованность обоих чисел и
 # нижнюю границу срока держит `internal/repohygiene`
-# `TestVerdictWaitDeadlineOutlivesTheMeasuredSet`.
+# `TestVerdictWaitDeadlineOutlivesTheMeasuredSet`. Ручки `VERDICT_*` в
+# объявлении процесса запрещены той же пробой: `:=` уступает окружению, и
+# действовало бы не сверенное здесь число (возврат приёмки kacho#3299).
 : "${VERDICT_DEADLINE:=10800}"
 : "${VERDICT_INTERVAL:=20}"
 : "${VERDICT_FETCH_CMD:=}"

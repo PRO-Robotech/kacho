@@ -14,7 +14,8 @@
 //	прежний предел (170 заходов по 21 с)  → отказ «не завершились»;
 //	нынешний предел (срок по часам)       → зелёный.
 //
-// И сверка чисел дерева: срок не ниже замера, задание живёт дольше срока — с
+// И сверка чисел дерева: срок не ниже замера, задание живёт дольше срока, ручек
+// `VERDICT_*` в объявлении процесса нет (иначе действует не сверенное число) — с
 // инъекцией в обе стороны.
 //
 // ПРЕДМЕТ 2 — ВЫТЕСНЕНИЕ. Прогон процесса с общей группой `concurrency` без
@@ -191,6 +192,7 @@ func deadlineFindings(script, workflow []byte) []string {
 	if err := yaml.Unmarshal(workflow, &doc); err != nil {
 		return append(out, "процесс свода не разобран: "+err.Error())
 	}
+	out = append(out, verdictKnobFindings(workflow)...)
 	job, ok := doc.Jobs["all-checks-green"]
 	switch {
 	case !ok:
@@ -201,6 +203,51 @@ func deadlineFindings(script, workflow []byte) []string {
 		out = append(out, fmt.Sprintf("timeout-minutes %d короче срока скрипта %d с плюс "+
 			"подготовка %d с — провайдер убьёт задание раньше, и причины не будет",
 			*job.TimeoutMinutes, deadline, setupReserveSeconds))
+	}
+	return out
+}
+
+// verdictKnobFindings — ручки `VERDICT_*` в ИСПОЛНЯЕМОЙ части объявления процесса
+// свода (kacho#3299, возврат приёмки). Ручка скрипта читается как
+// `: "${VERDICT_X:=умолчание}"`, и `:=` уступает окружению: строка
+// `VERDICT_DEADLINE: "600"` в env шага делает срок 10 мин, а сверка выше судит
+// умолчание. Выбран ЗАПРЕТ, а не вычисление действующего срока: ручки — шов проб
+// (шапка скрипта), боевое значение у каждой одно — умолчание скрипта; значение
+// окружения бывает выражением `${{ vars.… }}`, не вычислимым по дереву; и та же
+// дыра шире срока — `VERDICT_DECIDE_CMD` в окружении подменяет решатель, то есть
+// зелёный без чтения набора.
+//
+// Распознаватель — от класса, не от перечня мест: обходится ВЕСЬ разобранный
+// документ, и находка — ключ с префиксом либо скаляр, содержащий его. Так
+// покрыты env процесса, задания, шага и контейнера, присваивание перед вызовом в
+// `run:` и запись в `$GITHUB_ENV`; комментарий в разобранный документ не входит
+// и находкой не бывает. Обход, не прочитавший ни одного скаляра, — находка, а не
+// молчание.
+func verdictKnobFindings(workflow []byte) []string {
+	var root yaml.Node
+	if err := yaml.Unmarshal(workflow, &root); err != nil {
+		return []string{"процесс свода не разобран для обхода ручек: " + err.Error()}
+	}
+	var out []string
+	scalars := 0
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		if n.Kind == yaml.ScalarNode {
+			scalars++
+			if strings.Contains(n.Value, "VERDICT_") {
+				name := regexp.MustCompile(`VERDICT_[A-Z_]+`).FindString(n.Value)
+				out = append(out, fmt.Sprintf("ручка %s задана в объявлении процесса свода "+
+					"(стр. %d): окружение переопределяет умолчание скрипта `:=`, и действует не "+
+					"сверенное значение — ручки VERDICT_* только для проб", name, n.Line))
+			}
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(&root)
+	if scalars == 0 {
+		out = append(out, "обход ручек процесса свода не прочитал ни одного скаляра")
 	}
 	return out
 }
@@ -231,10 +278,33 @@ func TestVerdictWaitDeadlineOutlivesTheMeasuredSet(t *testing.T) {
 		t.Fatalf("предпосылка инъекций ложна: строка срока в скрипте или единственный " +
 			"timeout-minutes в процессе не найдены")
 	}
+	// Ручка в объявлении процесса — та строка, на которой приёмка нашла сверку
+	// слепой (X4), и ещё две законные формы записи окружения.
+	self := regexp.MustCompile(`(?m)^(\s+)SELF: .*$`)
+	jobs := regexp.MustCompile(`(?m)^jobs:$`)
+	run := regexp.MustCompile(`(?m)^(\s+run: )(\.github/scripts/pr-verdict-wait\.sh)$`)
+	if len(self.FindAll(workflow, -1)) != 1 || len(jobs.FindAll(workflow, -1)) != 1 ||
+		len(run.FindAll(workflow, -1)) != 1 {
+		t.Fatalf("предпосылка инъекций ручек ложна: строка SELF в env шага, ключ jobs " +
+			"или вызов скрипта в run: найдены не по одному разу")
+	}
+	stepEnv := self.ReplaceAll(workflow, []byte("$0\n${1}VERDICT_DEADLINE: \"600\""))
+	if got := deadlineFindings(script, self.ReplaceAll(workflow,
+		[]byte("$0\n${1}# VERDICT_DEADLINE: \"600\"\n${1}DEADLINE_NOTE: \"600\""))); len(got) != 0 {
+		t.Errorf("законный близнец (комментарий и чужой ключ на месте ручки) дал находки: %s",
+			strings.Join(got, "; "))
+	}
 	for _, c := range []struct {
 		name, want       string
 		script, workflow []byte
 	}{
+		{"срок в env шага", "ручка VERDICT_DEADLINE задана в объявлении процесса свода", script, stepEnv},
+		{"срок в env процесса", "ручка VERDICT_DEADLINE задана",
+			script, jobs.ReplaceAll(workflow, []byte("env:\n  VERDICT_DEADLINE: \"600\"\n\njobs:"))},
+		{"срок присваиванием в run", "ручка VERDICT_DEADLINE задана",
+			script, run.ReplaceAll(workflow, []byte("${1}VERDICT_DEADLINE=600 $2"))},
+		{"решатель подменён в env шага", "ручка VERDICT_DECIDE_CMD задана",
+			script, self.ReplaceAll(workflow, []byte("$0\n${1}VERDICT_DECIDE_CMD: /bin/true"))},
 		{"прежний предел заходами", "числом заходов",
 			deadline.ReplaceAll(script, []byte(`: "${VERDICT_ATTEMPTS:=170}"`)), workflow},
 		{"срок короче замера", "короче измеренного набора",
