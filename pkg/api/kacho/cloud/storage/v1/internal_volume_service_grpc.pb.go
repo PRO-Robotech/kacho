@@ -68,9 +68,10 @@ type InternalVolumeServiceClient interface {
 	// with that filter disabled.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
-	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
-	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
-	// check admitted everyone and returned the attachments of any named instance,
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which a system
+	// grant gives to the subject class `system_class:authenticated` so any
+	// authenticated tenant can read it — so the check admitted everyone and returned
+	// the attachments of any named instance,
 	// across projects and accounts. Volume attachments are not reference data.
 	ListAttachments(ctx context.Context, in *ListAttachmentsRequest, opts ...grpc.CallOption) (*ListAttachmentsResponse, error)
 	// GetInternal — full (infra) projection of a Volume, internal-only.
@@ -171,9 +172,10 @@ type InternalVolumeServiceServer interface {
 	// with that filter disabled.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
-	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
-	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
-	// check admitted everyone and returned the attachments of any named instance,
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which a system
+	// grant gives to the subject class `system_class:authenticated` so any
+	// authenticated tenant can read it — so the check admitted everyone and returned
+	// the attachments of any named instance,
 	// across projects and accounts. Volume attachments are not reference data.
 	ListAttachments(context.Context, *ListAttachmentsRequest) (*ListAttachmentsResponse, error)
 	// GetInternal — full (infra) projection of a Volume, internal-only.

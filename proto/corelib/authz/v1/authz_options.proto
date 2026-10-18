@@ -164,10 +164,11 @@ extend google.protobuf.MethodOptions {
 //
 // `required_relation` and `scope_extractor` MUST be omitted alongside it: naming a
 // relation the edge does not check is the defect this option exists to remove. In
-// particular `viewer` on the `cluster` singleton narrows NOTHING — the cluster
-// bootstrap deliberately grants that relation to `user:*` so the global reference
-// catalog (regions, zones, disk types) is readable by every tenant, so such an
-// entry means "authenticated", not "authorized".
+// particular `viewer` on the `cluster` singleton narrows NOTHING — a system grant
+// deliberately gives that relation to the subject class `system_class:authenticated`
+// (every principal with an identity) so the global reference catalog (regions,
+// zones, disk types) is readable by every tenant, so such an entry means
+// "authenticated", not "authorized".
 //
 // The owning service's per-RPC map carries the same axis
 // (`authz.RPCEntry.ScopeFiltered`). It is no longer a second declaration that
