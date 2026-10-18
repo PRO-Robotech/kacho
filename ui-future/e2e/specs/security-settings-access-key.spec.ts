@@ -360,6 +360,57 @@ test("F8-S7-31 · ключ отвергнут службой: тот же тек
   );
 });
 
+test("отказ ключом раньше анимации ожидания: кнопка снова зовётся «Подтвердить ключом доступа», новая попытка — новое испытание", async ({
+  page,
+}, testInfo) => {
+  // verifies #3285 — близнец F8-S7-31 при остановленных анимациях страницы.
+  //
+  // Находка: трасса console-e2e PR kacho#3279 (run 39113090563) — после отказа
+  // ключом окно звучит «loading Подтвердить ключом доступа», хотя ожидание снято
+  // (класса `ant-btn-loading` у кнопки нет). Значок ожидания antd уходит
+  // анимацией и снимается только её концом; отказ, пришедший раньше, чем
+  // анимация появления сдвинулась, оставляет уходу нечего анимировать — конец не
+  // наступает никогда. В конвейере это гонка с кадрами браузера; здесь её исход
+  // задан входом: часы анимаций документа стоят (`Animation.setPlaybackRate` = 0),
+  // и отказ всегда приходит раньше сдвига.
+  await withSeeded(
+    testInfo,
+    "3285-ak",
+    "С-ккл",
+    page.context(),
+    async (h) => {
+      await authenticatorWithKey(page, h.key!);
+      await page.route(
+        LANE.stepUp,
+        (route) => {
+          noteSubstituted(route.request());
+          return route.fulfill({
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: 16, message: "authentication failed", details: [] }),
+          });
+        },
+        { times: 1 },
+      );
+      const census = ceremonyCensus(page.context());
+      const { w } = await openStepUpOnDelete(page, h);
+      const clock = await page.context().newCDPSession(page);
+      await clock.send("Animation.enable");
+      await clock.send("Animation.setPlaybackRate", { playbackRate: 0 });
+      await w.keyButton.click();
+      await expect(w.alert, "тот же текст, что F8-S7-30").toHaveText("Подтверждение не прошло. Повторите или выберите другой способ.");
+      await expect(
+        w.dialog.getByRole("button", { name: "Подтвердить ключом доступа" }),
+        "ожидание снято — доступное имя кнопки без «loading»",
+      ).toHaveAccessibleName("Подтвердить ключом доступа");
+      await w.keyButton.click();
+      await expect.poll(() => census.matching("POST", STEP_UP_BEGIN).length, { message: "новая попытка выдаёт новое испытание" }).toBe(2);
+      await clock.send("Animation.setPlaybackRate", { playbackRate: 1 });
+    },
+    { level: "1" },
+  );
+});
+
 test("F8-S7-32 · отказ церемонии браузером: step-up не зовётся", async ({ page }, testInfo) => {
   // verifies #3230 — близнец F8-S7-21: у аутентификатора страницы ключа нет.
   await withSeeded(
