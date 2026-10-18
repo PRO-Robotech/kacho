@@ -1034,15 +1034,24 @@ jobs:
           # прогон набора. При фильтре выбор прогонщика (`--list` тем же
           # фильтром) пишется в `selection.json`: по нему гейт отчёта считает
           # объявленное, а не по всему дереву. Ноль выбранных — отказ здесь же.
+          #
+          # ЗНАЧЕНИЕ ВХОДА grep ПОПАДАЕТ В ЖУРНАЛ: playwright печатает фильтр в
+          # тексте отказа на невалидном выражении. Строка журнала, начатая с
+          # `::`, — команда раннера (поддельная аннотация, маска, переменная),
+          # поэтому два заслона: вход с управляющим символом (перевод строки,
+          # возврат каретки и прочие) отклоняется ДО прогонщика, а вызовы, которым
+          # фильтр передан, идут под `::stop-commands::` со случайным ключом —
+          # однострочный вход командой раннера не становится и там.
           narrow=()
+          pause=""
           if [ -n "$KACHO_PROBES_GREP" ]; then
-            narrow+=(--grep "$KACHO_PROBES_GREP")
-            if ! PLAYWRIGHT_JSON_OUTPUT_NAME=selection.json npx playwright test --list --reporter=json "${narrow[@]}" > /dev/null; then
-              # Значение входа в журнал не печатается: строка из входа, попав в
-              # вывод, читалась бы раннером как команда (`::…::`).
-              echo "::error::фильтр проб (вход grep) не выбрал ни одной пробы либо выбор не построен"
+            if [[ "$KACHO_PROBES_GREP" =~ [[:cntrl:]] ]]; then
+              # Отказ — простой строкой, без команды раннера: шаг краснеет кодом.
+              echo "ОТКАЗ: вход grep несёт управляющий символ (перевод строки, возврат каретки и подобные) — отклонён до прогонщика, значение не печатается" >&2
               exit 1
             fi
+            narrow+=(--grep "$KACHO_PROBES_GREP")
+            pause="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
           fi
           if [ -n "$KACHO_PROBES_REPEAT" ]; then
             if ! [[ "$KACHO_PROBES_REPEAT" =~ ^[1-9][0-9]*$ ]]; then
@@ -1051,7 +1060,23 @@ jobs:
             fi
             narrow+=(--repeat-each "$KACHO_PROBES_REPEAT")
           fi
-          npx playwright test ${narrow[@]+"${narrow[@]}"}
+          listed=0
+          ran=0
+          if [ -n "$pause" ]; then
+            echo "::stop-commands::$pause"
+            PLAYWRIGHT_JSON_OUTPUT_NAME=selection.json npx playwright test --list --reporter=json "${narrow[@]}" > /dev/null || listed=$?
+            if [ "$listed" -eq 0 ]; then
+              npx playwright test "${narrow[@]}" || ran=$?
+            fi
+            echo "::$pause::"
+            if [ "$listed" -ne 0 ]; then
+              echo "::error::фильтр проб (вход grep) не выбрал ни одной пробы либо выбор не построен"
+              exit 1
+            fi
+          else
+            npx playwright test ${narrow[@]+"${narrow[@]}"} || ran=$?
+          fi
+          exit "$ran"
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли
       # то, что запускалось»; этот гейт говорит ещё две вещи, о которых код

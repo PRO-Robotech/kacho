@@ -213,6 +213,15 @@ def walk_specs(node: dict) -> list[dict]:
     return out
 
 
+# Тяжесть исхода запуска для выбора ХУДШЕГО из повторов (#3289): прошла < иное
+# (пропуск) < отказ любого рода. Неизвестный исход — отказ, а не пропуск.
+_SEVERITY = {"passed": 0, "skipped": 1}
+
+
+def _severity(status: str) -> int:
+    return _SEVERITY.get(status, 2)
+
+
 def outcomes(report: dict) -> list[Probe]:
     """Записи проб: имя, исход, текст отказа, число запусков, имена вложений.
 
@@ -229,58 +238,68 @@ def outcomes(report: dict) -> list[Probe]:
     Вложения берутся из ТОГО ЖЕ запуска, чей исход попал в `status` (#1287):
     трасса принадлежит попытке, а не пробе, и при повторах их было бы несколько.
 
-    ПОВТОР (`--repeat-each`, #3289) кладёт в запись пробы по элементу `tests` на
-    каждый повтор (форма снята с playwright 1.56.1). Исход пробы — ХУДШИЙ из
-    стартовавших повторов: первый не прошедший со своим текстом и вложениями.
-    Прежнее «исход последнего элемента» читало упавший первый повтор при
-    прошедшем втором зелёным. Без повтора элемент один, и исход прежний.
+    ПРОБА — ГРУППА по ключу «проект:файл:строка:имя», а не запись `specs[]`
+    (#3289). Повтор (`--repeat-each`) отчёт playwright 1.56.1 кладёт ДВУМЯ
+    формами, и обе сняты настоящим прогонщиком (фикстуры
+    `console-probes-verdict-fixtures/`): каталог запуска совпал с корнем проб —
+    элементами `tests[]` одной записи; не совпал, как в конвейере, — ОТДЕЛЬНЫМИ
+    записями `specs[]` с теми же именем, файлом и строкой (слияние записей в
+    `reporters/json.js` сравнивает путь от корня с путём от корня, пересчитанным
+    ещё раз от каталога запуска). Запусков у пробы — сумма по группе, исход —
+    ХУДШИЙ из стартовавших повторов со своим текстом и вложениями. Чтение по
+    записи считало повтор второй пробой, а исход — по последнему элементу.
     """
-    res: list[Probe] = []
+    groups: dict[str, dict] = {}
     for spec in walk_specs(report):
         title = spec.get("title") or "(без имени)"
-        status = "не исполнена"
-        message = ""
-        started = 0
-        attached: tuple[str, ...] = ()
-        marks: tuple[tuple[str, str], ...] = ()
-        project = ""
-        settled = False
-        for t in spec.get("tests", []) or []:
-            project = t.get("projectName") or project
+        where = f"{spec.get('file') or ''}:{spec.get('line') or ''}"
+        for t in spec.get("tests", []) or [{}]:
+            project = t.get("projectName") or ""
+            key = f"{project}:{where}:{title}"
+            g = groups.setdefault(key, {
+                "title": title, "project": project, "status": "не исполнена",
+                "message": "", "runs": 0, "attached": (), "marks": (), "rank": -1,
+            })
             runs = t.get("results", []) or []
-            started += len(runs)
-            if settled:
+            g["runs"] += len(runs)
+            if not runs:
+                # Повтор не стартовал: его исход виден, только пока ни один
+                # другой повтор группы не стартовал.
+                if g["rank"] < 0 and t.get("status"):
+                    g["status"] = t["status"]
                 continue
-            if runs:
-                last = runs[-1]
-                status = last.get("status") or "не исполнена"
-                settled = status != "passed"
-                attached = tuple(
-                    (a or {}).get("name") or "" for a in (last.get("attachments") or [])
-                )
-                # Пометки — того же запуска; отчёт без них у запуска несёт их у
-                # пробы (форма снята с playwright 1.56.1: пометка из пробы
-                # приезжает в оба места).
-                marks = tuple(
-                    (str((a or {}).get("type") or ""), str((a or {}).get("description") or ""))
-                    for a in (last.get("annotations") or t.get("annotations") or [])
-                )
-                # САМЫЙ СОДЕРЖАТЕЛЬНЫЙ из доступных текстов, а не первый.
-                # Замерено (#1050): при снятии пробы по времени `error.message`
-                # несёт голое «Test timeout of Nms exceeded», а журнал ожидания
-                # с ИМЕНЕМ ЛОКАТОРА лежит во ВТОРОЙ записи `errors[]`. Взяв
-                # первую, гейт печатает диагноз, по которому ничего не
-                # разобрать, — то есть выполняет форму и не даёт содержания.
-                candidates = [(last.get("error") or {}).get("message") or ""]
-                candidates += [
-                    (e or {}).get("message") or "" for e in (last.get("errors") or [])
-                ]
-                message = max(candidates, key=len, default="")
-            elif t.get("status") and not started:
-                status = t["status"]
-        key = f"{project}:{spec.get('file') or ''}:{spec.get('line') or ''}:{title}"
-        res.append(Probe(title, status, message, started, attached, project, marks, key))
-    return res
+            last = runs[-1]
+            status = last.get("status") or "не исполнена"
+            if _severity(status) <= g["rank"]:
+                continue
+            g["rank"] = _severity(status)
+            g["status"] = status
+            g["attached"] = tuple(
+                (a or {}).get("name") or "" for a in (last.get("attachments") or [])
+            )
+            # Пометки — того же запуска; отчёт без них у запуска несёт их у
+            # пробы (форма снята с playwright 1.56.1: пометка из пробы
+            # приезжает в оба места).
+            g["marks"] = tuple(
+                (str((a or {}).get("type") or ""), str((a or {}).get("description") or ""))
+                for a in (last.get("annotations") or t.get("annotations") or [])
+            )
+            # САМЫЙ СОДЕРЖАТЕЛЬНЫЙ из доступных текстов, а не первый.
+            # Замерено (#1050): при снятии пробы по времени `error.message`
+            # несёт голое «Test timeout of Nms exceeded», а журнал ожидания
+            # с ИМЕНЕМ ЛОКАТОРА лежит во ВТОРОЙ записи `errors[]`. Взяв
+            # первую, гейт печатает диагноз, по которому ничего не
+            # разобрать, — то есть выполняет форму и не даёт содержания.
+            candidates = [(last.get("error") or {}).get("message") or ""]
+            candidates += [
+                (e or {}).get("message") or "" for e in (last.get("errors") or [])
+            ]
+            g["message"] = max(candidates, key=len, default="")
+    return [
+        Probe(g["title"], g["status"], g["message"], g["runs"], g["attached"],
+              g["project"], g["marks"], key)
+        for key, g in groups.items()
+    ]
 
 
 def fixture_unmet(g: Probe) -> str:
@@ -688,29 +707,35 @@ def _condition(status: str, message: str = "") -> dict:
     return _spec("условие прогона", status, message, trace=False, project=PRECONDITION_PROJECT)
 
 
-def _repeated(title: str, *statuses: str) -> dict:
-    """Запись пробы под `--repeat-each`: элемент `tests` на каждый повтор (форма
-    снята с playwright 1.56.1, #3289). Пустая строка исхода — повтор не стартовал."""
-    tests = []
-    for st in statuses:
-        t: dict = {"status": st or "skipped", "results": [], "projectName": "probes"}
-        if st:
-            res: dict = {"status": st, "error": {"message": "" if st == "passed" else "expect(received).toBe(expected)"}}
-            if st in TRACE_EXPECTED:
-                res["attachments"] = _trace_attachments()
-            t["results"] = [res]
-        tests.append(t)
-    return {"title": title, "tests": tests}
+# НАСТОЯЩИЕ отчёты playwright для суженного прогона и повтора (#3289): форма
+# повтора зависит от версии прогонщика и от каталога запуска, и придуманная
+# форма проверяла бы гейт против себя самой. Сняты `regen.sh` рядом с ними.
+FIXTURES = Path(__file__).resolve().parent / "console-probes-verdict-fixtures"
 
 
-def _listed(*titles: str, condition: bool = True) -> str:
-    """Выбор прогонщика (`--list --reporter=json`): записи без запусков; проект
-    условий входит в выбор и при фильтре (замерено на playwright 1.56.1)."""
-    specs = [_spec(t, "skipped", runs=0) for t in titles]
-    if condition:
-        specs.insert(0, _spec("условие прогона", "skipped", runs=0, trace=False,
-                              project=PRECONDITION_PROJECT))
-    return json.dumps({"suites": [{"title": "s", "specs": specs}]})
+def _fixture(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def _without(report: dict, title: str, keep: int = 0) -> dict:
+    """Тот же отчёт без записей `specs[]` пробы `title`, кроме первых `keep`:
+    инъекция роняет ТОЛЬКО свой предмет, остальной отчёт настоящий."""
+    def prune(node: dict) -> None:
+        kept: list[dict] = []
+        seen = 0
+        for spec in node.get("specs", []) or []:
+            if spec.get("title") == title:
+                seen += 1
+                if seen > keep:
+                    continue
+            kept.append(spec)
+        if "specs" in node:
+            node["specs"] = kept
+        for child in node.get("suites", []) or []:
+            prune(child)
+    out = json.loads(json.dumps(report))
+    prune(out)
+    return out
 
 
 def _report_of(*specs: dict, max_failures: int = 0) -> str:
@@ -1313,63 +1338,68 @@ def self_test() -> int:
             "пометка другого вида — красное",
             got == RC_RED, RC_RED, got))
 
-        # СУЖЕННЫЙ ПРОГОН (#3289). Выбор — одна проба «а» и условие, повтор 2.
+        # СУЖЕННЫЙ ПРОГОН И ПОВТОР (#3289) — на НАСТОЯЩИХ отчётах playwright 1.56.1.
+        # Набор фикстур: три пробы и условие; выбор фильтра — проба «а» и условие.
+        fx_specs, fx_pre = FIXTURES / "specs", FIXTURES / "preconditions"
         sel = root / "selection.json"
-        sel.write_text(_listed("а"), encoding="utf-8")
+        sel.write_text(json.dumps(_fixture("list-narrow")), encoding="utf-8")
 
-        # МОЛЧИТ: выбранная проба исполнена дважды и прошла оба раза.
-        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "passed")),
-                       encoding="utf-8")
-        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
-        joined = "\n".join(log)
-        cases.append(("суженный прогон с полным исполнением принят",
+        def judge(report: dict, repeat: int, selection: Path | None = sel) -> tuple[int, str]:
+            rep.write_text(json.dumps(report), encoding="utf-8")
+            code, lines = verdict(rep, fx_specs, fx_pre, selection=selection, repeat=repeat)
+            return code, "\n".join(lines)
+
+        # МОЛЧИТ: оба повтора выбранной пробы прошли — отчёт конвейерной формы,
+        # повтор отдельной записью `specs[]`.
+        got, joined = judge(_fixture("split-narrow-pass"), 2)
+        cases.append(("суженный прогон: оба повтора прошли (повтор — отдельной записью)",
                       got == RC_GREEN and "исполнено запусков 2" in joined, RC_GREEN, got))
 
-        # КРАСНЕЕТ: первый повтор упал, второй прошёл — худший исход, не последний.
-        rep.write_text(_report_of(_condition("passed"), _repeated("а", "failed", "passed")),
-                       encoding="utf-8")
-        got, _ = verdict(rep, specs, None, selection=sel, repeat=2)
-        cases.append(("упавший первый повтор не прячется за прошедшим вторым",
-                      got == RC_RED, RC_RED, got))
+        # КРАСНЕЕТ: первый повтор упал, второй прошёл — по ХУДШЕМУ исходу, а не по
+        # числу: недобора нет, трасса на месте.
+        for form in ("split", "merged"):
+            got, joined = judge(_fixture(f"{form}-narrow-flip"), 2)
+            cases.append((f"упавший первый повтор не прячется за прошедшим вторым ({form})",
+                          got == RC_RED and "проб не в состоянии «прошла»: 1." in joined
+                          and "без трассы 0" in joined and "повторов исполнено" not in joined
+                          and "объявлено проб" not in joined, RC_RED, got))
 
-        # КРАСНЕЕТ: повторов исполнено меньше заказанного.
-        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "")),
-                       encoding="utf-8")
-        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
-        cases.append(("недобор повторов ловится",
-                      got == RC_RED and "повторов исполнено 1 из 2" in "\n".join(log), RC_RED, got))
+        # КРАСНЕЕТ: исполнено повторов на один меньше заказанного.
+        got, joined = judge(_without(_fixture("split-narrow-pass"), "проба а", keep=1), 2)
+        cases.append(("недобор повторов (repeat − 1) ловится",
+                      got == RC_RED and "повторов исполнено 1 из 2: проба а" in joined, RC_RED, got))
 
-        # КРАСНЕЕТ: выбранная проба выпала из отчёта, а число совпало бы по дереву.
-        sel.write_text(_listed("а", "б"), encoding="utf-8")
-        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "passed")),
-                       encoding="utf-8")
-        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        # КРАСНЕЕТ: повторов больше, чем заказано входом.
+        got, joined = judge(_fixture("split-narrow-pass"), 1)
+        cases.append(("повторов сверх входа ловится",
+                      got == RC_RED and "повторов исполнено 2 из 1" in joined, RC_RED, got))
+
+        # КРАСНЕЕТ: выбранная проба выпала из отчёта целиком.
+        got, joined = judge(_without(_fixture("split-narrow-pass"), "проба а"), 2)
         cases.append(("выпавшая из выбора проба ловится поимённо",
-                      got == RC_RED and "выпала из отчёта" in "\n".join(log), RC_RED, got))
+                      got == RC_RED and "выпала из отчёта" in joined, RC_RED, got))
 
         # КРАСНЕЕТ: число сходится, а исполнена не та проба — сверка поимённая.
-        sel.write_text(_listed("а"), encoding="utf-8")
-        rep.write_text(_report_of(_condition("passed"), _repeated("б", "passed", "passed")),
-                       encoding="utf-8")
-        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        other = _without(_without(_fixture("split-full-pass"), "проба а"), "проба (в) со скобками")
+        got, joined = judge(other, 2)
         cases.append(("подмена выбранной пробы при равном числе ловится",
-                      got == RC_RED and "вне выбора фильтра" in "\n".join(log), RC_RED, got))
+                      got == RC_RED and "вне выбора фильтра" in joined, RC_RED, got))
 
-        # КРАСНЕЕТ: фильтр не выбрал ни одной пробы.
-        sel.write_text(_listed(condition=False), encoding="utf-8")
-        rep.write_text(_report_of(), encoding="utf-8")
-        got, _ = verdict(rep, specs, None, selection=sel, repeat=1)
+        # КРАСНЕЕТ: фильтр не выбрал ни одной пробы (в выборе одно условие).
+        sel.write_text(json.dumps(_without(_fixture("list-narrow"), "проба а")), encoding="utf-8")
+        got, _ = judge(_fixture("split-narrow-pass"), 2)
         cases.append(("пустой выбор фильтра — провал", got == RC_RED, RC_RED, got))
 
         # КРАСНЕЕТ: прогон сужен, а выбора прогонщика нет.
-        got, _ = verdict(rep, specs, None, selection=root / "нет.json", repeat=1)
+        got, _ = judge(_fixture("split-narrow-pass"), 2, selection=root / "нет.json")
         cases.append(("суженный прогон без выбора — провал", got == RC_RED, RC_RED, got))
 
-        # МОЛЧИТ: повтор без фильтра — набор по дереву, каждая проба дважды.
-        rep.write_text(_report_of(*(_repeated(t, "passed", "passed") for t in ("x", "y", "z"))),
-                       encoding="utf-8")
-        got, _ = verdict(rep, specs, repeat=2)
-        cases.append(("повтор полного набора принят", got == RC_GREEN, RC_GREEN, got))
+        # МОЛЧИТ: повтор без фильтра — набор по дереву фикстур, каждая проба
+        # дважды, в обеих формах отчёта.
+        for form in ("split", "merged"):
+            got, joined = judge(_fixture(f"{form}-full-pass"), 2, selection=None)
+            cases.append((f"повтор полного набора принят ({form})",
+                          got == RC_GREEN and "исполнены все 3 объявленных" in joined, RC_GREEN, got))
 
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"
