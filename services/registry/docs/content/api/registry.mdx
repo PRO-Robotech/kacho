@@ -60,19 +60,18 @@ namespace (имя, метки, статус), а сами образы живу�
 
 Признака «публичный» у реестра нет: ни поля, ни метода, ни флага. Кто читает реестр, решает
 только выдача роли. Чтобы реестр читали без входа, выдайте роль `registry.public.read`
-системному классу субъектов `anonymous` с целью «этот реестр»:
+системному классу субъектов `anonymous` с целью «этот реестр». Выдачу заводит служба доступа —
+метод `AccessBindingService.Create` (`POST /iam/v1/accessBindings`) — с телом:
 
-<CodeBlock language="bash">
+<CodeBlock language="json">
   {dedent`
-    curl -X POST 'http://localhost:18080/iam/v1/accessBindings' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -d '{
-        "subjects": [{"type": "SUBJECT_TYPE_SYSTEM_CLASS", "id": "anonymous"}],
-        "roleId": "rolb1325b011aa17211d",
-        "scopeType": "iam.project",
-        "scopeId": "<projectId реестра>",
-        "target": {"resources": {"resources": [{"type": "registry.registries", "id": "<registryId>"}]}}
-      }'
+    {
+      "subjects": [{"type": "SUBJECT_TYPE_SYSTEM_CLASS", "id": "anonymous"}],
+      "roleId": "rolb1325b011aa17211d",
+      "scopeType": "iam.project",
+      "scopeId": "<projectId реестра>",
+      "target": {"resources": {"resources": [{"type": "registry.registries", "id": "<registryId>"}]}}
+    }
   `}
 </CodeBlock>
 

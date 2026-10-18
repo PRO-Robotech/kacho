@@ -382,8 +382,8 @@ config:
       service: ""
       # `anonymousClientId` — `sub` анонимного токена (`anonymous-client-id`,
       # приёмка kaname SC-39; REG-PUB-1 Р9 п. 2). Как и `service`, объявляется
-      # посадкой ОДИН раз — `global.kacho.registry.anonymousSubjectId` — и
-      # приезжает отсюда (см. kaname.anonymousClientId); ключ ниже — для одиночной
+      # посадкой ОДИН раз — в узле платформы `global` рядом с адресатом полосы — и
+      # приезжает оттуда (см. kaname.anonymousClientId); ключ ниже — для одиночной
       # установки чарта. Пусто — ключа в настройках нет, анонимный поток выключен.
       anonymousClientId: ""
   repository:

@@ -140,10 +140,10 @@ kaname.anonymousClientId — `sub` анонимного токена докер�
 REG-PUB-1 Р9 п. 2).
 
 ВЫВОДИТСЯ ИЗ ТОГО ЖЕ ОБЪЯВЛЕНИЯ, ЧТО У РЕЕСТРА: служба доступа чеканит значение
-в `sub`, реестр по нему узнаёт анонима (`KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID`).
-Разойдись стороны — выдача классу `anonymous` принимается, а анонимное чтение не
-появляется. Источник один — `global.kacho.registry.anonymousSubjectId`; его же
-читает подчарт registry (`registry.anonymousSubjectId`).
+в `sub`, реестр по нему узнаёт анонима. Разойдись стороны — выдача классу
+`anonymous` принимается, а анонимное чтение не появляется. Источник один —
+ключ `registry.anonymousSubjectId` узла платформы в `global` (тот же узел, что у
+kaname.laneServiceAud); его же читает подчарт registry.
 
 Собственная ручка `config.apiServer.registryToken.anonymousClientId` — для
 одиночной установки чарта. Обе и по-разному — отказ рендера с обеими
@@ -154,7 +154,7 @@ REG-PUB-1 Р9 п. 2).
 {{- $source := (((.Values.global).kacho).registry).anonymousSubjectId | default "" -}}
 {{- $own := (((.Values.config).apiServer).registryToken).anonymousClientId | default "" -}}
 {{- if and $source $own (ne $source $own) -}}
-{{- fail (printf "kaname: анонимный субъект докерной полосы объявлен ДВАЖДЫ и по-разному — global.kacho.registry.anonymousSubjectId=%q против kaname.config.apiServer.registryToken.anonymousClientId=%q. У значения две стороны (iam чеканит его в sub анонимного токена, реестр по нему узнаёт анонима), и объявление у них одно: оставьте global.kacho.registry.anonymousSubjectId, а config.apiServer.registryToken.anonymousClientId снимите — он для одиночной установки чарта, где второй стороны нет." $source $own) -}}
+{{- fail (printf "kaname: анонимный субъект докерной полосы объявлен ДВАЖДЫ и по-разному — global.kacho.registry.anonymousSubjectId=%q против kaname.config.apiServer.registryToken.anonymousClientId=%q. У значения две стороны (iam чеканит его в sub анонимного токена, реестр по нему узнаёт анонима), и объявление у них одно: оставьте единый источник зонта, а config.apiServer.registryToken.anonymousClientId снимите — он для одиночной установки чарта, где второй стороны нет." $source $own) -}}
 {{- end -}}
 {{- $source | default $own -}}
 {{- end -}}
