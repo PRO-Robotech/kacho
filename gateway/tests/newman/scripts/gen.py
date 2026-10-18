@@ -499,6 +499,110 @@ def poll_operation(op_var: str = "opId", auth: str = "jwtBootstrap",
     )
 
 
+# ОКНО ДОСТАВКИ СНЯТИЯ РЕГИСТРАЦИИ: предел повторов удаления проекта и пауза между
+# ними. Значения — те же, что у кейса-образца `NET-PRJ-DL-NEG-NETWORK-HOLDS`
+# (services/vpc/tests/newman/cases/project-container.py): 20 повторов по 500 мс, 10 с.
+UNREG_WINDOW_BUDGET = 20
+UNREG_WINDOW_INTERVAL_MS = 500
+
+
+def delete_project_until_released(name: str, prj_var: str, op_var: str,
+                                  auth: str = "jwtAccountAdminA") -> List[Step]:
+    """Уборка проекта ПОСЛЕ снятия его ресурсов: удаление + опрос, повтор в окне доставки.
+
+    ЗАЧЕМ. Удаление сети отвечает `done` тем коммитом, что снимает строку сети (и её
+    служебные группу безопасности и таблицу маршрутизации) у владельца. Снятие их
+    регистрации у службы доступа идёт СЛЕДОМ, через исходящую очередь владельца.
+    Контракт `ProjectService.Delete` называет это окно прямо: «a removed one may still
+    be counted for a while». Удаление проекта сразу за `done` удаления сети поэтому
+    законно получает в операции `FAILED_PRECONDITION` «Project <id> is not empty
+    (vpc.network: 1, vpc.securityGroup: 1)» с `REFERENCE_IN_USE` (kacho#3300).
+
+    ЧЕМ ЖДЁТСЯ. Наблюдать доставку снятия через край нечем: строка учёта наружу не
+    видна. Наблюдатель один — исход самого удаления проекта. Поэтому опрос, получив
+    именно этот отказ (код 9, `REFERENCE_IN_USE`, текст начинается с
+    «Project <этот id> is not empty (»), с настоящей паузой возвращает прогон к ТОМУ
+    ЖЕ запросу удаления, не больше `UNREG_WINDOW_BUDGET` раз. Любой другой отказ
+    терминален с первого захода.
+
+    ПОЧЕМУ ЭТО НЕ МАСКА. По исчерпании предела утверждение «операция без ошибки»
+    исполняется на последнем ответе и падает с текстом отказа: проект, который не
+    освобождается никогда, остаётся красным. Число повторов печатается в журнал
+    прогона — им меряется окно.
+
+    Имя шага удаления берётся в момент исполнения (`pm.info.requestName`), а не
+    литералом: newman на неизвестное имя перехода завершает прогон.
+    """
+    step_var = "_prjDelStep"
+    reason = ("(j.error && j.error.code === 9 && (j.error.details || []).some("
+              "x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '')"
+              f".startsWith('Project ' + pm.environment.get({js_str(prj_var)}) + ' is not empty ('))")
+    return [
+        Step(
+            name=name, method="DELETE", path="/iam/v1/projects/{{" + prj_var + "}}", mux="public", auth=auth,
+            pre_script=[f"if (!pm.environment.get({js_str(prj_var)})) {{ pm.execution.skipRequest(); }}"],
+            test_script=[
+                "pm.test('уборка: снято (200) либо уже нет (404)', () => "
+                "pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                "if (pm.response.code === 200) {",
+                *["  " + s for s in save_from_response("j.id", op_var)],
+                "}",
+                f"pm.environment.set({js_str(step_var)}, pm.info.requestName);",
+            ],
+        ),
+        Step(
+            name=f"{name}-poll",
+            method="GET",
+            path="/operations/{{" + op_var + "}}",
+            auth=auth,
+            pre_script=[
+                "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
+                f"if (!pm.environment.get({js_str(op_var)})) {{ pm.execution.skipRequest(); }}",
+            ],
+            test_script=[
+                "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                "const j = pm.response.json();",
+                "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                "  pm.environment.set('_pollCount', '0');",
+                "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                "}",
+                "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                f"if (!j.done && pc < {POLL_CAP}) {{",
+                "  pm.environment.set('_pollCount', String(pc + 1));",
+                f"  const _ipd = Date.now(); while (Date.now() - _ipd < {POLL_DELAY_MS}) void 0;"
+                f"  /* real inter-poll delay: cap {POLL_CAP} x {POLL_DELAY_MS}ms budget (testing.md) */",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
+                "  return;",
+                "}",
+                "pm.environment.unset('_pollCount');",
+                "pm.environment.unset('_pollStarted');",
+                "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                "  pm.environment.set('_unregWait', '0');",
+                "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                "}",
+                "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                f"const _ustep = pm.environment.get({js_str(step_var)});",
+                f"if (j.done && {reason} && _ustep && _uw < {UNREG_WINDOW_BUDGET}) {{",
+                "  pm.environment.set('_unregWait', String(_uw + 1));",
+                f"  const _ud = Date.now(); while (Date.now() - _ud < {UNREG_WINDOW_INTERVAL_MS}) void 0;",
+                "  pm.execution.setNextRequest(_ustep);",
+                "  return;",
+                "}",
+                "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw"
+                f" + ' из {UNREG_WINDOW_BUDGET}');",
+                "pm.environment.unset('_unregWait');",
+                "pm.environment.unset('_unregStarted');",
+                f"pm.environment.unset({js_str(step_var)});",
+                "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                "pm.test('operation succeeded (no error)', () => {",
+                "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                "});",
+            ],
+        ),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Postman v2.1 serialization
 # ---------------------------------------------------------------------------
@@ -581,6 +685,7 @@ _INJECTED = {
     "require_env_url": require_env_url,
     "require_env_slot": require_env_slot,
     "poll_operation": poll_operation,
+    "delete_project_until_released": delete_project_until_released,
     "POLL_CAP": POLL_CAP,
     "POLL_DELAY_MS": POLL_DELAY_MS,
 }

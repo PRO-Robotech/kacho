@@ -359,6 +359,7 @@ CASES.append(Case(
             ],
         ),
         *_delete("sc18-cleanup-network", _NETWORK_GET, "sc18NetDelOpId", "sc18NetId"),
-        *_delete("sc18-cleanup-project", "/iam/v1/projects/{{sc18PrjId}}", "sc18PrjDelOpId", "sc18PrjId"),
+        # Проект — с ожиданием окна доставки снятия регистрации сети (kacho#3300).
+        *delete_project_until_released("sc18-cleanup-project", "sc18PrjId", "sc18PrjDelOpId"),
     ],
 ))
