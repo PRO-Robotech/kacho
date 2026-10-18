@@ -111,8 +111,10 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 	}{
 		{"A_live_session", &fakeOwn{found: true, sess: liveSession()}, false},
 		{"C_no_session", &fakeOwn{found: false}, false},
-		// Дублёр сказал бы «живая сессия» — вопроса ему без носителя быть не
-		// должно: личность на этом запросе взялась бы только из ниоткуда.
+		// Дублёр сказал бы «живая сессия»: если бы запрос без носителя доходил
+		// до вопроса, личность взялась бы из ниоткуда. Что вопроса службе нет,
+		// держит не эта проба, а TestOwnSessionLane_F3_10_ARequestWithoutOurCarrierStaysAnonymous
+		// в gateway/internal/middleware.
 		{"none_no_carrier", &fakeOwn{found: true, sess: liveSession()}, true},
 	} {
 		t.Run(carrier.name, func(t *testing.T) {
