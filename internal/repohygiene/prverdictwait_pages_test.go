@@ -162,6 +162,7 @@ func runWaitThroughForge(t *testing.T, f pagedForge, decide, fetchCmd string, at
 	script := filepath.Join(repoRoot(t), ".github", "scripts", "pr-verdict-wait.sh")
 	cmd := exec.Command("bash", providerShellFlags, script)
 	cmd.Dir = f.dir
+	nowCmd, runsCmd := verdictClocks(t, f.dir)
 	env := []string{}
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "PATH=") || strings.HasPrefix(kv, "VERDICT_") {
@@ -174,7 +175,10 @@ func runWaitThroughForge(t *testing.T, f pagedForge, decide, fetchCmd string, at
 		"REPO=owner/repo",
 		"SHA=deadbeef",
 		"SELF=сводный вердикт (все проверки завершились и зелены)",
-		"VERDICT_ATTEMPTS="+strconv.Itoa(attempts),
+		"VERDICT_DEADLINE="+strconv.Itoa(attempts*clockStep),
+		"VERDICT_NOW_CMD="+nowCmd,
+		"VERDICT_RUNS_CMD="+runsCmd,
+		"VERDICT_DISPLACED_PERIOD=0",
 		"VERDICT_INTERVAL=0",
 		"VERDICT_FETCH_CMD="+fetchCmd,
 		"VERDICT_DECIDE_CMD="+decide,
