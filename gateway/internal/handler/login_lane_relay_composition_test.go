@@ -17,7 +17,11 @@
 //     продолжением, и снимать их обязан ретранслятор. Чужого субъекта полоса на
 //     этом носителе перезаписывает своим — здесь подделка не видна;
 //   - `C`, сессии нет: полоса не пишет ничего, и присланное клиентом стерегут
-//     только вычистки — на входе полосы и в ретрансляторе.
+//     только вычистки — на входе полосы и в ретрансляторе;
+//   - без носителя (Ф13-28 «без носителя»): нашего печенья нет вовсе, вопроса о
+//     сессии полоса не задаёт, и удостоверение клиента — единственное, что
+//     могло бы сойти за носитель. Печенье формы остаётся: `Cookie` доезжает
+//     «где есть» — ровно присланным, без нашего носителя, которого не было.
 //
 // Клиент на обоих присылает чужого субъекта в обеих формах написания,
 // удостоверение и свою цепочку адресов.
@@ -102,9 +106,14 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 	for _, carrier := range []struct {
 		name string
 		own  *fakeOwn
+		// bare — запрос без нашего носителя: печенье сессии снято до цепочки.
+		bare bool
 	}{
-		{"A_live_session", &fakeOwn{found: true, sess: liveSession()}},
-		{"C_no_session", &fakeOwn{found: false}},
+		{"A_live_session", &fakeOwn{found: true, sess: liveSession()}, false},
+		{"C_no_session", &fakeOwn{found: false}, false},
+		// Дублёр сказал бы «живая сессия» — вопроса ему без носителя быть не
+		// должно: личность на этом запросе взялась бы только из ниоткуда.
+		{"none_no_carrier", &fakeOwn{found: true, sess: liveSession()}, true},
 	} {
 		t.Run(carrier.name, func(t *testing.T) {
 			stub := &formListenerStub{status: http.StatusOK, body: `{}`}
@@ -112,10 +121,13 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 			t.Cleanup(srv.Close)
 			chain, relays := chainWithRelays(t, carrier.own, &fakeCut{}, srv.URL)
 
-			var withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft int
+			var withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft, carrierLeft int
 			for _, rt := range routes {
 				before := stub.count()
 				req, body, contentType := forgedFormRequest(rt)
+				if carrier.bare {
+					withoutOurCarrier(req)
+				}
 				rec := httptest.NewRecorder()
 				chain.ServeHTTP(rec, onExternalListener(req))
 				if rec.Code != http.StatusOK || stub.count() != before+1 {
@@ -138,11 +150,18 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 					t.Errorf("%s: Content-Type: %q", rt.Verb, got.header.Get("Content-Type"))
 				}
 
-				// Cookie — есть, оба наших.
+				// Cookie — есть, оба наших; без носителя — ровно присланное, и
+				// носителя в нём нет: его не было в запросе.
 				c := got.header.Get("Cookie")
-				if strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") && strings.Contains(c, "kaname_form=ctx") {
+				switch {
+				case carrier.bare && c == "kaname_form=ctx" && len(got.header.Values("Cookie")) == 1:
 					withCookie++
-				} else {
+				case carrier.bare:
+					carrierLeft++
+					t.Errorf("%s: без носителя Cookie обязан доехать ровно присланным %q, получено %q", rt.Verb, "kaname_form=ctx", got.header.Values("Cookie"))
+				case strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") && strings.Contains(c, "kaname_form=ctx"):
+					withCookie++
+				default:
 					t.Errorf("%s: печенья не доехали: %q", rt.Verb, c)
 				}
 
@@ -184,8 +203,23 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 					t.Errorf("клетка ретрансляции %q у цели %q = %d, ожидалось 1", rt.Verb, rt.Target, stats.Relayed[rt.Verb])
 				}
 			}
-			t.Logf("перепись: путей объявления %d · дошло до службы %d · с печеньями %d · с одним X-Forwarded-For %d · с x-kacho- %d · с Authorization %d · с чужим субъектом %d",
-				len(routes), stub.count(), withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft)
+			if carrier.bare && withCookie != len(routes) {
+				t.Errorf("без носителя: Cookie ровно присланным доехал на %d путях из %d", withCookie, len(routes))
+			}
+			t.Logf("перепись: путей объявления %d · дошло до службы %d · с печеньями %d · с одним X-Forwarded-For %d · с x-kacho- %d · с Authorization %d · с чужим субъектом %d · с носителем, которого не было, %d",
+				len(routes), stub.count(), withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft, carrierLeft)
 		})
+	}
+}
+
+// withoutOurCarrier снимает с запроса наше печенье сессии, оставляя прочие
+// присланные: запрос «без носителя» отличается от близнеца ровно одним фактом.
+func withoutOurCarrier(req *http.Request) {
+	kept := req.Cookies()
+	req.Header.Del("Cookie")
+	for _, c := range kept {
+		if c.Name != middleware.OurSessionCarrierName {
+			req.AddCookie(c)
+		}
 	}
 }
