@@ -58,6 +58,13 @@
 | `IAM-AB-SIA-12-EDGE-LIST-BY-ACCOUNT` | NEG/VAL | P0 | IAM-AB-SIA-12: GET /accounts/not-an-id/accessBindings → sync 400 INVALID_ARGUMENT (3), "invalid resource id 'not-an-id'" from the edge; a well-formed absent account on the same route passes on to the permission check (403) |
 | `IAM-ID2-NEG-FORM-EDGE-ACCOUNT-ID` | NEG/VAL | P0 | Malformed account id is refused by the EDGE before the permission model: 400 for the rights holder and for a caller without a single grant, bodies equal; a well-formed absent account passes on to the model (403) |
 
+## `iam-int-1-s3.py`
+
+| case-id | class | prio | проверка |
+|---|---|---|---|
+| `IAM-INT-1-24-STEPUP-REFUSAL-EVERY-CLASS` | AUTHN/AUTHZ/CONF | P1 | IAM-INT-1-24: человек без второго фактора тремя классами носителей на пол «2» — один вердикт 401, до владельца не доходит ни один; на пол «1» — 200 всеми тремя |
+| `IAM-INT-1-25-STEPUP-PASS-RAISED-CLASSES` | AUTHN/AUTHZ/CONF | P1 | IAM-INT-1-25: тот же человек со вторым фактором — сессия и предъявитель «2» проходят пол «2»; базовое удостоверение получает тот же единый отказ, что в 24.3 |
+
 ## `iam-interactive-client.py`
 
 | case-id | class | prio | проверка |
