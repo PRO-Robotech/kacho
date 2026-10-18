@@ -74,6 +74,25 @@ on:
           конвейер поднимает свой стенд.
         required: false
         type: string
+      # Сужение и повтор (#3289): предикат вида «проба N из N подряд на стенде»
+      # иначе неисполним — шаг проб гонит набор целиком, повторов нет
+      # (`retries: 0`). Пустые — прогон набора, поведение прежнее. Вердикт
+      # суженного прогона — о выбранных пробах, не о наборе: гейт отчёта
+      # сверяет исполненное с выбором прогонщика и печатает это.
+      grep:
+        description: >-
+          Фильтр проб (`playwright test --grep`, регулярное выражение по
+          полному имени). Пусто — весь набор.
+        required: false
+        type: string
+      # Строка, а не `number`: у числового входа нет «пусто», а пустое здесь —
+      # «без повтора». Форму (целое больше нуля) проверяет шаг проб и гейт.
+      repeat:
+        description: >-
+          Повторов каждой выбранной пробы (`--repeat-each`), целое больше
+          нуля. Пусто — один прогон.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -987,6 +1006,10 @@ jobs:
           KACHO_CONSOLE_CA: ${{ steps.console.outputs.ca }}
           NODE_EXTRA_CA_CERTS: ${{ steps.console.outputs.ca }}
           CLOUD_ADMIN_SECRET: ${{ steps.cloud_admin.outputs.secret }}
+          # Входы ручного запуска (#3289) — ПЕРЕМЕННЫМИ, а не подстановкой в
+          # текст команды: значение входа не становится кодом шага.
+          KACHO_PROBES_GREP: ${{ inputs.grep }}
+          KACHO_PROBES_REPEAT: ${{ inputs.repeat }}
         run: |
           # Удостоверение администратора облака — из секрета, который завёл шаг
           # условия; величины маскируются в журнале до первого использования и
@@ -1007,7 +1030,28 @@ jobs:
           # потому что продукт такого человека действием не заводит (F8 N32).
           # Пишется только база стенда этого прогона.
           export KACHO_KANAME_STORE_EXEC="kubectl -n kacho exec -i statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kaname"
-          npx playwright test
+          # Сужение и повтор (#3289) — только заданные; пустые входы дают прежний
+          # прогон набора. При фильтре выбор прогонщика (`--list` тем же
+          # фильтром) пишется в `selection.json`: по нему гейт отчёта считает
+          # объявленное, а не по всему дереву. Ноль выбранных — отказ здесь же.
+          narrow=()
+          if [ -n "$KACHO_PROBES_GREP" ]; then
+            narrow+=(--grep "$KACHO_PROBES_GREP")
+            if ! PLAYWRIGHT_JSON_OUTPUT_NAME=selection.json npx playwright test --list --reporter=json "${narrow[@]}" > /dev/null; then
+              # Значение входа в журнал не печатается: строка из входа, попав в
+              # вывод, читалась бы раннером как команда (`::…::`).
+              echo "::error::фильтр проб (вход grep) не выбрал ни одной пробы либо выбор не построен"
+              exit 1
+            fi
+          fi
+          if [ -n "$KACHO_PROBES_REPEAT" ]; then
+            if ! [[ "$KACHO_PROBES_REPEAT" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::вход repeat — целое больше нуля либо пусто"
+              exit 1
+            fi
+            narrow+=(--repeat-each "$KACHO_PROBES_REPEAT")
+          fi
+          npx playwright test ${narrow[@]+"${narrow[@]}"}
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли
       # то, что запускалось»; этот гейт говорит ещё две вещи, о которых код
@@ -1040,6 +1084,11 @@ jobs:
       - name: гейт — исполнено всё объявленное, упавших нет, трасса на месте
         id: report-gate
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && steps.console.outcome == 'success' }}
+        # Сужение и повтор ручного запуска (#3289): гейт сверяет исполненное с
+        # выбором фильтра и числом повторов; пустые — сверка с деревом, как была.
+        env:
+          KACHO_PROBES_GREP: ${{ inputs.grep }}
+          KACHO_PROBES_REPEAT: ${{ inputs.repeat }}
         run: |
           set +e
           python3 .github/scripts/assert-console-probes-verdict.py

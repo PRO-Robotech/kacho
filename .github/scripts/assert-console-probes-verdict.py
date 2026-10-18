@@ -42,6 +42,14 @@
 было вовсе»: первое свойство прогона, второе отсутствие предмета, и различает
 их только ПАРА чисел.
 
+СУЖЕННЫЙ ПРОГОН (#3289). Ручной запуск конвейера с фильтром (`--grep`) и
+повтором (`--repeat-each`) исполняет выбор, а не набор: объявленным считается
+выбор самого прогонщика (`playwright test --list` с тем же фильтром), сверка с
+ним — поимённо и числом, у каждой пробы ровно столько запусков, сколько
+повторов, исход — худший из повторов. Вердикт печатается как вердикт о
+выбранных пробах, не о наборе. Входы — окружением `KACHO_PROBES_GREP`,
+`KACHO_PROBES_REPEAT`; пустые — прогон набора, поведение прежнее.
+
 Запуск:
     python3 .github/scripts/assert-console-probes-verdict.py            # вердикт
     python3 .github/scripts/assert-console-probes-verdict.py --self-test # инъекция
@@ -50,6 +58,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tempfile
@@ -94,6 +103,10 @@ RC_RED = 1
 RC_UNMET = 3
 
 SPECS_GLOB = "*.spec.ts"
+# Выбор прогонщика при суженном прогоне (#3289): `playwright test --list
+# --reporter=json` с фильтром ручного запуска. Пишет его шаг «прогон проб»
+# конвейера `console-e2e.yml` в каталог набора, рядом с `results.json`.
+SELECTION_FILE = "selection.json"
 
 # УСЛОВИЕ ПРОГОНА — СВОЙ ПРОЕКТ ПРОГОНЩИКА (#2780, приёмка F8 §4).
 #
@@ -179,6 +192,9 @@ class Probe(NamedTuple):
     project: str = ""
     # Пометки пробы (вид, текст) из того же запуска, что исход.
     annotations: tuple[tuple[str, str], ...] = ()
+    # Опознание записи — проект, файл, строка, имя (#3289). Им суженный прогон
+    # сверяется с выбором прогонщика поимённо, а не только числом.
+    key: str = ""
 
 
 def declared_probes(specs_dir: Path, glob: str = SPECS_GLOB) -> tuple[int, int]:
@@ -212,8 +228,12 @@ def outcomes(report: dict) -> list[Probe]:
 
     Вложения берутся из ТОГО ЖЕ запуска, чей исход попал в `status` (#1287):
     трасса принадлежит попытке, а не пробе, и при повторах их было бы несколько.
-    Повторов здесь нет (`retries: 0`), но привязка к последнему запуску делает
-    свойство верным и без этой оговорки.
+
+    ПОВТОР (`--repeat-each`, #3289) кладёт в запись пробы по элементу `tests` на
+    каждый повтор (форма снята с playwright 1.56.1). Исход пробы — ХУДШИЙ из
+    стартовавших повторов: первый не прошедший со своим текстом и вложениями.
+    Прежнее «исход последнего элемента» читало упавший первый повтор при
+    прошедшем втором зелёным. Без повтора элемент один, и исход прежний.
     """
     res: list[Probe] = []
     for spec in walk_specs(report):
@@ -224,13 +244,17 @@ def outcomes(report: dict) -> list[Probe]:
         attached: tuple[str, ...] = ()
         marks: tuple[tuple[str, str], ...] = ()
         project = ""
+        settled = False
         for t in spec.get("tests", []) or []:
             project = t.get("projectName") or project
             runs = t.get("results", []) or []
             started += len(runs)
+            if settled:
+                continue
             if runs:
                 last = runs[-1]
                 status = last.get("status") or "не исполнена"
+                settled = status != "passed"
                 attached = tuple(
                     (a or {}).get("name") or "" for a in (last.get("attachments") or [])
                 )
@@ -252,9 +276,10 @@ def outcomes(report: dict) -> list[Probe]:
                     (e or {}).get("message") or "" for e in (last.get("errors") or [])
                 ]
                 message = max(candidates, key=len, default="")
-            elif t.get("status"):
+            elif t.get("status") and not started:
                 status = t["status"]
-        res.append(Probe(title, status, message, started, attached, project, marks))
+        key = f"{project}:{spec.get('file') or ''}:{spec.get('line') or ''}:{title}"
+        res.append(Probe(title, status, message, started, attached, project, marks, key))
     return res
 
 
@@ -284,8 +309,19 @@ def unreached(message: str) -> bool:
     return any(tok in message for tok in _UNREACHED)
 
 
-def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None = None) -> tuple[int, list[str]]:
-    """Возвращает (код возврата, строки вывода)."""
+def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None = None,
+            selection: Path | None = None, repeat: int = 1) -> tuple[int, list[str]]:
+    """Возвращает (код возврата, строки вывода).
+
+    СУЖЕННЫЙ ПРОГОН (#3289): ручной запуск с фильтром исполняет не набор, а выбор.
+    Тогда `selection` — выбор прогонщика (`playwright test --list` с тем же
+    фильтром, отчёт json), и объявленным считается ОН: прогонщик выбирает из
+    того же дерева, что читает перепись, и выбор включает проекты условий, от
+    которых выбранные зависят. Сверка с выбором — поимённо и числом; выбор из
+    ноля проб — провал, а не «нечего проверять». `repeat` — повторов каждой
+    пробы (`--repeat-each`): исполнено обязано быть ровно столько. Вердикт
+    суженного прогона — о выбранных пробах, не о наборе, и так и печатается.
+    """
     log: list[str] = []
     declared, files = declared_probes(specs_dir)
     log.append(f"=== осмотрено: исходников проб {files}, объявлений в них {declared} ===")
@@ -312,6 +348,31 @@ def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None =
         return 1, log
 
     records = outcomes(report)
+    chosen: list[Probe] | None = None
+    if selection is not None:
+        if not selection.exists():
+            log.append(
+                f"ПРОВАЛ: прогон сужен фильтром, а выбора прогонщика нет ({selection}). "
+                "Без него объявленное не с чем сверить, и счёт по всему дереву назвал "
+                "бы суженный прогон недосчётом."
+            )
+            return RC_RED, log
+        try:
+            chosen = outcomes(json.loads(selection.read_text(encoding="utf-8")))
+        except json.JSONDecodeError as exc:
+            log.append(f"ПРОВАЛ: выбор прогонщика не разбирается ({exc}).")
+            return RC_RED, log
+        chosen_probes = [r for r in chosen if not is_condition_project(r.project)]
+        log.append(
+            f"=== СУЖЕННЫЙ прогон: выбрано фильтром проб {len(chosen_probes)}, условий "
+            f"{len(chosen) - len(chosen_probes)}; вердикт — о них, НЕ о наборе из {declared} ==="
+        )
+        if not chosen_probes:
+            log.append(
+                "ПРОВАЛ: фильтр не выбрал ни одной пробы. Ноль выбранных — не зелёное: "
+                "прогон не проверил ничего."
+            )
+            return RC_RED, log
     # Записи УСЛОВИЙ отделяются от записей проб по имени проекта: условие — не
     # проба о продукте, и ни в счёт проб, ни в перепись трассы оно не входит.
     conditions = [r for r in records if is_condition_project(r.project)]
@@ -321,6 +382,9 @@ def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None =
     declared_conditions, condition_files = (
         declared_probes(preconditions_dir, PRECONDITIONS_GLOB) if preconditions_dir else (0, 0)
     )
+    if chosen is not None:
+        declared = len([r for r in chosen if not is_condition_project(r.project)])
+        declared_conditions = len(chosen) - declared
     created = [c for c in conditions if c.status == "passed"]
     log.append(f"=== разобрано записей отчёта: {len(records)}, из них проб {len(got)} ===")
     log.append(f"=== исполнено проб {len(started)} из {declared} объявленных ===")
@@ -344,6 +408,27 @@ def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None =
             "Условие, выпавшее из прогона, уносит с собой различение «не выполнилось» и "
             "«красное»: зависящие от него пробы судили бы посадку, которой не спрашивали."
         )
+        rc = 1
+
+    if chosen is not None:
+        want = {r.key for r in chosen if not is_condition_project(r.project)}
+        have = {g.key for g in got}
+        for k in sorted(want - have):
+            log.append(f"ПРОВАЛ: выбранная фильтром проба выпала из отчёта: {k}")
+        for k in sorted(have - want):
+            log.append(f"ПРОВАЛ: в отчёте проба вне выбора фильтра: {k}")
+        if want != have:
+            rc = 1
+
+    if repeat > 1 or chosen is not None:
+        log.append(
+            f"=== исполнено запусков {sum(g.runs for g in got)} "
+            f"(проб {len(started)}, повтор {repeat}) ==="
+        )
+    short = [g for g in started if g.runs != repeat]
+    for g in short:
+        log.append(f"ПРОВАЛ: повторов исполнено {g.runs} из {repeat}: {g.title}")
+    if short:
         rc = 1
 
     bad = [g for g in got if g.status != "passed"]
@@ -521,7 +606,12 @@ def verdict(report_path: Path, specs_dir: Path, preconditions_dir: Path | None =
         )
         rc = 1
 
-    if rc == 0:
+    if rc == 0 and chosen is not None:
+        log.append(
+            f"✓ исполнены все {declared} выбранных фильтром проб, запусков "
+            f"{sum(g.runs for g in got)}, упавших и пропущенных нет — вердикт о выборе, не о наборе"
+        )
+    elif rc == 0:
         log.append(f"✓ исполнены все {declared} объявленных проб, упавших и пропущенных нет")
     return rc, log
 
@@ -596,6 +686,31 @@ def _condition(status: str, message: str = "") -> dict:
     """Запись условия прогона. Браузера условие не открывает, поэтому трассы у
     него нет by construction — и на падении тоже."""
     return _spec("условие прогона", status, message, trace=False, project=PRECONDITION_PROJECT)
+
+
+def _repeated(title: str, *statuses: str) -> dict:
+    """Запись пробы под `--repeat-each`: элемент `tests` на каждый повтор (форма
+    снята с playwright 1.56.1, #3289). Пустая строка исхода — повтор не стартовал."""
+    tests = []
+    for st in statuses:
+        t: dict = {"status": st or "skipped", "results": [], "projectName": "probes"}
+        if st:
+            res: dict = {"status": st, "error": {"message": "" if st == "passed" else "expect(received).toBe(expected)"}}
+            if st in TRACE_EXPECTED:
+                res["attachments"] = _trace_attachments()
+            t["results"] = [res]
+        tests.append(t)
+    return {"title": title, "tests": tests}
+
+
+def _listed(*titles: str, condition: bool = True) -> str:
+    """Выбор прогонщика (`--list --reporter=json`): записи без запусков; проект
+    условий входит в выбор и при фильтре (замерено на playwright 1.56.1)."""
+    specs = [_spec(t, "skipped", runs=0) for t in titles]
+    if condition:
+        specs.insert(0, _spec("условие прогона", "skipped", runs=0, trace=False,
+                              project=PRECONDITION_PROJECT))
+    return json.dumps({"suites": [{"title": "s", "specs": specs}]})
 
 
 def _report_of(*specs: dict, max_failures: int = 0) -> str:
@@ -1198,6 +1313,64 @@ def self_test() -> int:
             "пометка другого вида — красное",
             got == RC_RED, RC_RED, got))
 
+        # СУЖЕННЫЙ ПРОГОН (#3289). Выбор — одна проба «а» и условие, повтор 2.
+        sel = root / "selection.json"
+        sel.write_text(_listed("а"), encoding="utf-8")
+
+        # МОЛЧИТ: выбранная проба исполнена дважды и прошла оба раза.
+        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "passed")),
+                       encoding="utf-8")
+        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        joined = "\n".join(log)
+        cases.append(("суженный прогон с полным исполнением принят",
+                      got == RC_GREEN and "исполнено запусков 2" in joined, RC_GREEN, got))
+
+        # КРАСНЕЕТ: первый повтор упал, второй прошёл — худший исход, не последний.
+        rep.write_text(_report_of(_condition("passed"), _repeated("а", "failed", "passed")),
+                       encoding="utf-8")
+        got, _ = verdict(rep, specs, None, selection=sel, repeat=2)
+        cases.append(("упавший первый повтор не прячется за прошедшим вторым",
+                      got == RC_RED, RC_RED, got))
+
+        # КРАСНЕЕТ: повторов исполнено меньше заказанного.
+        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "")),
+                       encoding="utf-8")
+        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        cases.append(("недобор повторов ловится",
+                      got == RC_RED and "повторов исполнено 1 из 2" in "\n".join(log), RC_RED, got))
+
+        # КРАСНЕЕТ: выбранная проба выпала из отчёта, а число совпало бы по дереву.
+        sel.write_text(_listed("а", "б"), encoding="utf-8")
+        rep.write_text(_report_of(_condition("passed"), _repeated("а", "passed", "passed")),
+                       encoding="utf-8")
+        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        cases.append(("выпавшая из выбора проба ловится поимённо",
+                      got == RC_RED and "выпала из отчёта" in "\n".join(log), RC_RED, got))
+
+        # КРАСНЕЕТ: число сходится, а исполнена не та проба — сверка поимённая.
+        sel.write_text(_listed("а"), encoding="utf-8")
+        rep.write_text(_report_of(_condition("passed"), _repeated("б", "passed", "passed")),
+                       encoding="utf-8")
+        got, log = verdict(rep, specs, None, selection=sel, repeat=2)
+        cases.append(("подмена выбранной пробы при равном числе ловится",
+                      got == RC_RED and "вне выбора фильтра" in "\n".join(log), RC_RED, got))
+
+        # КРАСНЕЕТ: фильтр не выбрал ни одной пробы.
+        sel.write_text(_listed(condition=False), encoding="utf-8")
+        rep.write_text(_report_of(), encoding="utf-8")
+        got, _ = verdict(rep, specs, None, selection=sel, repeat=1)
+        cases.append(("пустой выбор фильтра — провал", got == RC_RED, RC_RED, got))
+
+        # КРАСНЕЕТ: прогон сужен, а выбора прогонщика нет.
+        got, _ = verdict(rep, specs, None, selection=root / "нет.json", repeat=1)
+        cases.append(("суженный прогон без выбора — провал", got == RC_RED, RC_RED, got))
+
+        # МОЛЧИТ: повтор без фильтра — набор по дереву, каждая проба дважды.
+        rep.write_text(_report_of(*(_repeated(t, "passed", "passed") for t in ("x", "y", "z"))),
+                       encoding="utf-8")
+        got, _ = verdict(rep, specs, repeat=2)
+        cases.append(("повтор полного набора принят", got == RC_GREEN, RC_GREEN, got))
+
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"
         empty.mkdir()
@@ -1238,9 +1411,21 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
+    # Сужение и повтор (#3289) приходят ОКРУЖЕНИЕМ от входов ручного запуска;
+    # пустые — прогон набора, вердикт прежний. Признак сужения — вход, а не
+    # наличие файла выбора: забытый файл не сузит полный прогон молча.
+    grep = os.environ.get("KACHO_PROBES_GREP", "")
+    raw = os.environ.get("KACHO_PROBES_REPEAT", "")
+    if raw and not re.fullmatch(r"[1-9][0-9]*", raw):
+        print(f"KACHO_PROBES_REPEAT={raw!r}: ожидалось целое больше нуля либо пусто",
+              file=sys.stderr)
+        return 2
+    repeat = int(raw) if raw else 1
+
     root = Path(__file__).resolve().parents[2]
     e2e = root / "ui-future" / "e2e"
-    rc, log = verdict(e2e / "results.json", e2e / "specs", e2e / "preconditions")
+    rc, log = verdict(e2e / "results.json", e2e / "specs", e2e / "preconditions",
+                      selection=(e2e / SELECTION_FILE) if grep else None, repeat=repeat)
     print("\n".join(log))
     return rc
 
