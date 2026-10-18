@@ -152,10 +152,9 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	}
 	sort.Strings(files)
 
-	filesRead, linesScanned, assertionsSeen := 0, 0, 0
-	linesMentioning, linesUnread := 0, 0
+	filesRead := 0
+	var total statusCensus
 	var findings []string
-
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
@@ -163,53 +162,19 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		}
 		filesRead++
 		rel, _ := filepath.Rel(root, f)
-		for i, raw := range strings.Split(string(b), "\n") {
-			linesScanned++
-			line := stripJSLineComment(raw)
-			if !reUnreadShape.MatchString(line) {
-				continue
-			}
-			linesMentioning++
-			var got []int
-			if m := reEql.FindStringSubmatch(line); m != nil {
-				n, _ := strconv.Atoi(m[1])
-				got = append(got, n)
-			}
-			if m := reOneOf.FindStringSubmatch(line); m != nil {
-				for _, part := range strings.Split(m[1], ",") {
-					if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
-						got = append(got, n)
-					}
-				}
-			}
-			if len(got) == 0 {
-				linesUnread++
-			}
-			for _, code := range got {
-				assertionsSeen++
-				if _, ok := producible[code]; ok {
-					continue
-				}
-				if _, ok := muxOwnStatuses[code]; ok {
-					continue
-				}
-				findings = append(findings, fmt.Sprintf(
-					"%s:%d — утверждение ждёт HTTP %d, а край его не производит: "+
-						"`runtime.HTTPStatusFromCode` не отдаёт этот код ни для одного кода gRPC, "+
-						"и мультиплексор сам его не выдаёт. Строгое равенство здесь красное всегда; "+
-						"внутри `oneOf` — допуск на исход, которого не бывает, и он не покраснеет "+
-						"никогда. Канон отображения — api-conventions.md §«gRPC-код → HTTP-статус».",
-					rel, i+1, code))
-			}
-		}
+		got, c := judgeStatusAssertions(rel, string(b), producible)
+		findings = append(findings, got...)
+		total.add(c)
 	}
-
+	assertionsSeen := total.seen
 	t.Logf("осмотрено: файлов кейсов %d, строк %d; строк, называющих код ответа, %d "+
 		"(из них ПРОЧИТАНО предикатом %d, НЕ прочитано %d — отрицательные сравнения, "+
 		"ветвления, списки с подстановкой); утверждений о коде ответа %d; "+
-		"производимых статусов %d (вычислено вызовом библиотеки, не выписано)",
-		filesRead, linesScanned, linesMentioning, linesMentioning-linesUnread, linesUnread,
-		assertionsSeen, len(producible))
+		"производимых статусов %d (вычислено вызовом библиотеки, не выписано); "+
+		"файлов, набирающих транспорт мимо края, %d — утверждений, отнесённых к его "+
+		"слушателю, %d (в таких файлах край судится по-прежнему: освобождён только код слушателя)",
+		filesRead, total.lines, total.mentioning, total.mentioning-total.unread, total.unread,
+		assertionsSeen, len(producible), total.transportFiles, total.viaTransport)
 
 	if filesRead == 0 {
 		t.Fatal("прочитано НОЛЬ файлов кейсов — гейт не проверен ни против чего. " +
@@ -222,6 +187,190 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	if len(findings) > 0 {
 		t.Fatalf("утверждений о непроизводимом коде: %d\n  %s",
 			len(findings), strings.Join(findings, "\n  "))
+	}
+}
+
+// transportOwnStatuses — коды, которые производит НЕ край, а слушатель транспорта,
+// который кейс набирает мимо края (`deploy/e2e-shards.json`, `optional_transports`:
+// адрес передаёт прогонщик через `--env-var`).
+//
+// ПРЕДПОСЫЛКА ГЕЙТА «каждое утверждение о коде — об ответе края» в наборе registry
+// ложна: плоскость данных реестра отвечает протоколом OCI distribution, и её
+// успешные коды (`201` — блоб или манифест принят, `202` — сеанс загрузки открыт)
+// край не производит никогда. Пока такие шаги утверждали только отказы (401, 404),
+// ложь предпосылки была невидима: эти коды край тоже производит.
+//
+// Освобождение — ПО ФАЙЛУ, набирающему транспорт, и ТОЛЬКО по кодам его слушателя:
+// шаг края в том же файле, ждущий 201, проходит молча — это объявленная слепая зона,
+// и её размер печатается числом («утверждений, отнесённых к слушателю»). Шаг,
+// ждущий кода, которого не производит НИ край, НИ слушатель, — находка и здесь.
+//
+// Производитель у записи — координата в нашем коде, и он проверяется отдельно
+// (TestTransportOwnStatusesStillHaveASubject): плоскость данных ретранслирует коды
+// хранилища через `httputil.ReverseProxy`; уйдёт ретрансляция — уйдёт и освобождение.
+var transportOwnStatuses = map[string]transportStatuses{
+	"registryDataPlaneBaseUrl": {
+		statuses: map[int]string{
+			201: "OCI distribution: блоб или манифест принят — код хранилища, ретранслируемый плоскостью данных",
+			202: "OCI distribution: сеанс загрузки блоба открыт — так же",
+		},
+		file:    "services/registry/internal/dataplane/proxy.go",
+		literal: "httputil.ReverseProxy",
+	},
+}
+
+type transportStatuses struct {
+	statuses      map[int]string
+	file, literal string
+}
+
+// statusCensus — объём осмотренного судом файла.
+type statusCensus struct {
+	lines, mentioning, unread, seen int
+	transportFiles, viaTransport    int
+}
+
+func (c *statusCensus) add(o statusCensus) {
+	c.lines += o.lines
+	c.mentioning += o.mentioning
+	c.unread += o.unread
+	c.seen += o.seen
+	c.transportFiles += o.transportFiles
+	c.viaTransport += o.viaTransport
+}
+
+// judgeStatusAssertions — суд одного файла кейсов: утверждения о коде, которого
+// не производит ни край, ни слушатель транспорта, набираемого этим файлом.
+func judgeStatusAssertions(rel, body string, producible map[int]codes.Code) ([]string, statusCensus) {
+	var c statusCensus
+	var findings []string
+	dialled := map[int]bool{}
+	for name, tr := range transportOwnStatuses {
+		if strings.Contains(body, name) {
+			c.transportFiles = 1
+			for code := range tr.statuses {
+				dialled[code] = true
+			}
+		}
+	}
+	for i, raw := range strings.Split(body, "\n") {
+		c.lines++
+		line := stripJSLineComment(raw)
+		if !reUnreadShape.MatchString(line) {
+			continue
+		}
+		c.mentioning++
+		var got []int
+		if m := reEql.FindStringSubmatch(line); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			got = append(got, n)
+		}
+		if m := reOneOf.FindStringSubmatch(line); m != nil {
+			for _, part := range strings.Split(m[1], ",") {
+				if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+					got = append(got, n)
+				}
+			}
+		}
+		if len(got) == 0 {
+			c.unread++
+		}
+		for _, code := range got {
+			c.seen++
+			if _, ok := producible[code]; ok {
+				continue
+			}
+			if _, ok := muxOwnStatuses[code]; ok {
+				continue
+			}
+			if dialled[code] {
+				c.viaTransport++
+				continue
+			}
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d — утверждение ждёт HTTP %d, а край его не производит: "+
+					"`runtime.HTTPStatusFromCode` не отдаёт этот код ни для одного кода gRPC, "+
+					"и мультиплексор сам его не выдаёт. Строгое равенство здесь красное всегда; "+
+					"внутри `oneOf` — допуск на исход, которого не бывает, и он не покраснеет "+
+					"никогда. Канон отображения — api-conventions.md §«gRPC-код → HTTP-статус».",
+				rel, i+1, code))
+		}
+	}
+	return findings, c
+}
+
+// TestStatusJudgeInjection_TransportFileMayAssertOnlyItsListenerStatus — суд
+// способен упасть и смолчать на синтетике, по одному факту на пару:
+//
+//	(а) файл без транспорта ждёт 201 — находка (край 201 не производит);
+//	(б) тот же файл, набирающий транспорт плоскости данных, — молчание, и
+//	    утверждение отнесено к слушателю;
+//	(в) файл с транспортом ждёт 207 — находка: освобождён код слушателя, а не всё.
+func TestStatusJudgeInjection_TransportFileMayAssertOnlyItsListenerStatus(t *testing.T) {
+	t.Parallel()
+	producible := producibleStatuses()
+	const step = "\"pm.test('s', () => pm.expect(pm.response.code).to.eql(%d));\"\n"
+	const dial = "DP = \"registryDataPlaneBaseUrl\"\n"
+
+	if got, _ := judgeStatusAssertions("a.py", fmt.Sprintf(step, 201), producible); len(got) != 1 {
+		t.Errorf("(а) 201 без транспорта не найден: находок %d", len(got))
+	}
+	got, c := judgeStatusAssertions("b.py", dial+fmt.Sprintf(step, 201), producible)
+	if len(got) != 0 || c.viaTransport != 1 || c.transportFiles != 1 {
+		t.Errorf("(б) 201 в файле транспорта: находок %d, отнесено к слушателю %d, файлов транспорта %d — "+
+			"ждали 0, 1, 1", len(got), c.viaTransport, c.transportFiles)
+	}
+	if got, _ := judgeStatusAssertions("c.py", dial+fmt.Sprintf(step, 207), producible); len(got) != 1 {
+		t.Errorf("(в) 207 в файле транспорта не найден: находок %d — освобождено больше, чем код слушателя", len(got))
+	}
+}
+
+// TestTransportOwnStatusesStillHaveASubject — освобождение по транспорту живёт,
+// пока живы транспорт, его производитель и хоть один файл, его набирающий.
+func TestTransportOwnStatusesStillHaveASubject(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	shards, err := os.ReadFile(filepath.Join(root, "deploy", "e2e-shards.json"))
+	if err != nil {
+		t.Fatalf("объявление транспортов не читается: %v", err)
+	}
+	cases, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman", "cases", "*.py"))
+	if err != nil || len(cases) == 0 {
+		t.Fatalf("обход кейсов пуст (%v) — освобождение не с чем сверить", err)
+	}
+	for name, tr := range transportOwnStatuses {
+		if !strings.Contains(string(shards), `"`+name+`"`) {
+			t.Errorf("%s: транспорта нет в deploy/e2e-shards.json — освобождение пережило свой предмет", name)
+		}
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tr.file)))
+		found := false
+		if err == nil {
+			for _, raw := range strings.Split(string(body), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(raw), "//") {
+					continue
+				}
+				if strings.Contains(raw, tr.literal) {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: в %s нет исполняемого %s — слушатель больше не ретранслирует коды, "+
+				"а освобождение продолжает их прощать", name, tr.file, tr.literal)
+		}
+		dialling := 0
+		for _, f := range cases {
+			b, err := os.ReadFile(f)
+			if err == nil && strings.Contains(string(b), name) {
+				dialling++
+			}
+		}
+		t.Logf("перепись: транспорт %s · кодов освобождено %d · файлов кейсов осмотрено %d, набирают его %d",
+			name, len(tr.statuses), len(cases), dialling)
+		if dialling == 0 {
+			t.Errorf("%s: ни один файл кейсов транспорт не набирает — освобождению нечего освобождать", name)
+		}
 	}
 }
 

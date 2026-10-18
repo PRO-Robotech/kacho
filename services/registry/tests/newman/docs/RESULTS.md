@@ -13,6 +13,20 @@
 | Control-plane authz | `cases/registry-authz.py` | 9 | all executed | 0 | **GREEN on fe3455** (3 viewer-tier cases fixture-gated → console-only SKIP, no green assertion) |
 | Data-plane OCI proxy + token-exchange | `scripts/dataplane-e2e.sh` | full handshake→push→pull→delete flow | all hard assertions | 0 | **ALL hard assertions GREEN on fe3455** |
 
+## Known failing — красные до доставки (REG-PUB-1, [`kacho#3274`](https://github.com/PRO-Robotech/kacho/issues/3274))
+
+Коллекция `registry-public-by-class` заведена ДО того, как стенд несёт её предмет, — это
+красные пробы строгого TDD, а не дефект продукта. Объявлены здесь, чтобы краснота читалась
+своей причиной, а не новой; запись истекает вместе с предусловием.
+
+| кейсы | красное до | предикат снятия |
+|---|---|---|
+| 02, 03, 11, 12, 17, 20, 22–24, 26, 30, 31 и всё, что выдаёт роль `registry.public.read` | роль в каталоге — вливание PR `kacho#3279` (`kacho#3251`) в ветку эпика | `git show <голова>:services/registry/manifest.yaml \| yq '.roles \| length'` → `1` |
+| 13, 14, 20–27, 29 (шаги анонимного токена) | анонимный поток плоскости данных: значение `global.kacho.registry.anonymousSubjectId` и образ службы доступа с ручкой `anonymous-client-id` (`kaname#871`) — подъём пина и тега | `git merge-base --is-ancestor 0b6b21cc9 <пин kaname>` → `0` и непустое значение в профиле стенда |
+
+До снятия обоих предусловий шаги посева называют отказ сами («условие сценария не создано»),
+а не роняют сценарий чужим текстом.
+
 ## ЗАКРЫТО 2026-08-01 — was «known failing» (RG-1 repository-overlay, prod-mode umbrella 2026-07-22)
 
 **Обе названные первопричины на этой ревизии устранены в коде.** Ниже — исторический
