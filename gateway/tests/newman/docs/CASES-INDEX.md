@@ -103,6 +103,19 @@
 | `F8-S7-80-IAM-STEPUP-AKBEGIN-NEG-NO-KEY` | NEG/CONF/STATE | P0 | F8-S7-80: verified human without an access key — POST /iam/v1/auth/step-up/access-key/begin through the edge → the service refusal relayed unchanged: 400 FAILED_PRECONDITION (9), ACCESS_KEY_NOT_REGISTERED |
 | `F8-S7-80-IAM-STEPUP-AKBEGIN-AUTHZ-UNVERIFIED` | AUTHZ/NEG/CONF | P0 | F8-S7-80 twin: human with an unverified address — the same request → 403 PERMISSION_DENIED (7), EMAIL_NOT_VERIFIED; body byte-equal to the edge answer on POST /iam/v1/auth/step-up |
 
+## `system_class_anonymous_edge.py`
+
+| case-id | class | prio | проверка |
+|---|---|---|---|
+| `SC36-ANON-REFUSED-MACHINE-TYPES` | AUTHN/AUTHZ/NEG | P0 | SC-36: /compute/v1/machineTypes — без Authorization 401/UNAUTHENTICATED, вошедший без выдач 200 |
+| `SC36-ANON-REFUSED-REGIONS` | AUTHN/AUTHZ/NEG | P0 | SC-36: /geo/v1/regions — без Authorization 401/UNAUTHENTICATED, вошедший без выдач 200 |
+| `SC36-ANON-REFUSED-ZONES` | AUTHN/AUTHZ/NEG | P0 | SC-36: /geo/v1/zones — без Authorization 401/UNAUTHENTICATED, вошедший без выдач 200 |
+| `SC36-ANON-REFUSED-DISK-TYPES` | AUTHN/AUTHZ/NEG | P0 | SC-36: /storage/v1/diskTypes — без Authorization 401/UNAUTHENTICATED, вошедший без выдач 200 |
+| `SC36-ANON-REFUSED-PERMISSION-CATALOG` | AUTHN/AUTHZ/NEG | P0 | SC-36: /iam/v1/permissionCatalog — без Authorization 401/UNAUTHENTICATED, вошедший без выдач 200 |
+| `SC36-ANON-REFUSAL-HIDES-EXISTENCE` | AUTHN/SEC/NEG | P0 | SC-36/Р7: GET региона, который есть, и правильной формы, которого нет, без Authorization — одно тело 401 побайтово |
+| `SC41-SIGNED-IN-RIGHTS-UNCHANGED-AFTER-MOVE` | AUTHZ/CONF/STATE | P0 | SC-41: системная выдача переехала на system_class/authenticated (Дано SC-40); вошедший без выдач читает /geo/v1/regions 200, без Authorization — 401 |
+| `SC18-EDGE-OTHER-TENANT-READS-CLASS-GRANT` | AUTHZ/CRUD/STATE | P0 | SC-18 край: выдача authenticated на сеть acc-A → принципал вне acc-A читает её 200; до выдачи и после отзыва — отказ формой каталога (404/NOT_FOUND), без данных объекта |
+
 ## `system_class_subject_check.py`
 
 | case-id | class | prio | проверка |
