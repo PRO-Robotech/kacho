@@ -1,0 +1,21 @@
+# Перечень исключений стража новых blob'ов хука отправки (#3286,
+# scripts/hooks/prepush-added-files.sh).
+#
+# Строка: `<вид> <шаблон пути> <довод>`; вид — size (снимает порог 1 МБ) либо
+# binary (снимает отказ бинарю). Шаблон — glob, `*` проходит и через `/`.
+# Довод обязателен: строка без него — отказ хука. Строка, под шаблон которой в
+# дереве судимой вершины не подпадает ни один файл, — тоже отказ: исключение
+# истекает вместе с предметом и «про запас» не заводится. Место в дереве —
+# условие строки: файлу, которому в дереве не место, строки нет, есть задача на
+# его снятие.
+#
+# Перепись дерева 2026-10-18 @a952484649: файлов 7121, бинарных либо больше
+# 1 МБ — 11 (NUL в первых 8000 Б либо размер > 1048576 Б). Десять — ниже.
+# Одиннадцатый — services/vpc/tests/k6/results/run-20260514-0226-k6node-10k.txt
+# (32,7 МБ, сырой вывод прогона k6): дереву не место, строки нет, снятие — #3288.
+# Опубликованный blob новым коммитом не судится; правка файла — отказ.
+size services/*/tests/newman/collections/*.postman_collection.json коллекция newman (1,2–2,8 МБ) — текст, порождаемый services/<svc>/tests/newman/scripts/gen.py из cases/; руками не правится
+binary deploy/helm/umbrella/charts/cert-manager-*.tgz вендоренный внешний чарт (#2256, #2349): сеть до чужого хоста снята с пути к вердикту; состав и сумму держит deploy/scripts/assert-vendored-external-charts.py, шаблон — тот же, что исключение в deploy/.gitignore
+binary deploy/helm/umbrella/charts/ingress-nginx-*.tgz вендоренный внешний чарт (#2256, #2349) — довод строкой выше
+binary deploy/helm/umbrella/charts/postgresql-*.tgz вендоренный внешний чарт (#2256, #2349) — довод строкой выше
+binary services/storage/tools/testdata/rg11-make/live-corpus.json.gz фикстура services/storage/tools/release_gates_rg11_make_test.go: читается через gzip.NewReader, сжатие — форма входа пробы
