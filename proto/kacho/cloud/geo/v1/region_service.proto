@@ -75,6 +75,8 @@ service RegionService {
 
   // Creates a region. Administrator's verb: the same permission, relation, scope
   // and identity-assurance floor as InternalRegionService.Create.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Create (CreatePublicRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/regions" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -92,6 +94,8 @@ service RegionService {
 
   // Updates a region (status, countryCode). Same gate as
   // InternalRegionService.Update.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Update (UpdatePublicRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/regions/{region_id}" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -110,6 +114,8 @@ service RegionService {
   // Deletes a region. A region that still has zones is refused in
   // Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
   // as InternalRegionService.Delete.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Delete (DeleteRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/regions/{region_id}" };
     option (corelib.api.v1.operation) = {

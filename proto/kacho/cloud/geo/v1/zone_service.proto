@@ -71,6 +71,8 @@ service ZoneService {
   // Creates a zone in an existing region. A missing region is refused in
   // Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
   // constraint"). Same gate as InternalZoneService.Create.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Create (CreatePublicZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/zones" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -88,6 +90,8 @@ service ZoneService {
 
   // Updates a zone (status only on this surface). Same gate as
   // InternalZoneService.Update.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Update (UpdatePublicZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/zones/{zone_id}" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -104,6 +108,8 @@ service ZoneService {
   }
 
   // Deletes a zone. Same gate as InternalZoneService.Delete.
+  // Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+  // кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Delete (DeleteZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/zones/{zone_id}" };
     option (corelib.api.v1.operation) = {
