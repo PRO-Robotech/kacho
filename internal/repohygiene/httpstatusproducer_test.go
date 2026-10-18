@@ -50,6 +50,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/codes"
 )
@@ -334,9 +335,20 @@ func TestTransportOwnStatusesStillHaveASubject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("объявление транспортов не читается: %v", err)
 	}
-	cases, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman", "cases", "*.py"))
-	if err != nil || len(cases) == 0 {
-		t.Fatalf("обход кейсов пуст (%v) — освобождение не с чем сверить", err)
+	// Состав — из индекса git, а не с диска: игнорируемое (распаковки, отчёты)
+	// лежит на любой машине, где поднимали стенд.
+	tracked, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".py")
+	if err != nil {
+		t.Fatalf("состав кейсов из индекса: %v", err)
+	}
+	var cases []string
+	for _, f := range tracked {
+		if strings.Contains(filepath.ToSlash(f), "/tests/newman/cases/") {
+			cases = append(cases, f)
+		}
+	}
+	if len(cases) == 0 {
+		t.Fatal("обход кейсов пуст — освобождение не с чем сверить")
 	}
 	for name, tr := range transportOwnStatuses {
 		if !strings.Contains(string(shards), `"`+name+`"`) {

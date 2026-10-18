@@ -397,6 +397,15 @@ var producedInAnotherRepository = map[string]string{
 	// SUA-21 её приёмки), край его проксирует без изменения. Предмет кейса — запись
 	// ретрансляции края, а не текст; текст владелец здесь произвести не может.
 	"gateway/tests/newman/collections/iam-step-up-access-key-begin.postman_collection.json::begin-verified-no-key": "PRO-Robotech/kaname",
+	// Выдача классу субъектов роли реестра (kacho#3274, сценарии REG-PUB-1-02 и
+	// REG-PUB-1-03 приёмки REG-PUB-1): отказы `Role <id> not found` и `Role <id>
+	// grants verbs beyond get and list; a system class subject accepts read-only
+	// roles` (SC-21) производит служба доступа (`access_binding/system_class_gates.go`,
+	// `domain/system_class.go`), край их проксирует. Предмет кейсов — что роль
+	// реестра доставлена и выдаётся классу только на чтение; текст владелец здесь
+	// произвести не может.
+	"services/registry/tests/newman/collections/registry-public-by-class.postman_collection.json::grant-unknown-role-refused": "PRO-Robotech/kaname",
+	"services/registry/tests/newman/collections/registry-public-by-class.postman_collection.json::grant-rol-reg-edit-refused": "PRO-Robotech/kaname",
 }
 
 // rpStepKey — ключ ведомости: коллекция и имя шага. Номер строки не годится —
