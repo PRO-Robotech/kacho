@@ -1091,11 +1091,13 @@ func main() {
 	// REST-доступ к ним — только для UI / admin-tooling через cluster-internal
 	// REST listener.
 	restAddrs := cfg.BackendAddrs()
-	// The REST-mux is a SEPARATE proxy-path from the gRPC routing — it dials each
-	// backend itself. It threads the SAME per-edge dial creds the gRPC routing /
-	// authz use (mTLS client-cert + per-backend ServerName when the edge is
-	// enabled, else insecure) so backends requiring a verified client-cert do not
-	// reset the UI REST calls. Fail-fast on misconfig — never start half-secured.
+	// Мост ходит к службам соединениями карты `backends` — ОДНИМ на ключ адреса,
+	// тем же, что опрашивает `/readyz` (kacho#3284): прежде он заводил своё на
+	// каждую службу контракта и мультиплексор, и после переката службы «готов»
+	// ничего не говорил о соединении, которым шёл глагол. Соединение, ведущее не
+	// по адресу ключа, — отказ сборки моста. Транспорт ниже — для ключа, которого
+	// в карте нет: те же creds ребра (mTLS client-cert + ServerName при включённом
+	// ребре), так что и свой путь моста не стартует наполовину защищённым.
 	restDialCreds, err := buildBackendDialCreds(cfg)
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)

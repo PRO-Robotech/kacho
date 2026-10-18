@@ -55,7 +55,7 @@ func TestRegistry_PublicRoutesRegistered(t *testing.T) {
 		{"GET", "/registry/v1/registries/reg-1/repositories/web/tags"},
 		{"DELETE", "/registry/v1/registries/reg-1/repositories/web/tags/v1"},
 		// Repository config-overlay (RG-1) — 6 public RPC на том же RegistryService.
-		// Регистрируются автоматически через RegisterRegistryServiceHandlerFromEndpoint
+		// Регистрируются автоматически через RegisterRegistryServiceHandlerClient
 		// (RG-1 добавляет методы к уже-зарегистрированному сервису → нового вызова
 		// регистрации не требуется). Пути с {repository=**} несут multi-segment repo-имя
 		// (напр. backend/api). Проверяем факт регистрации route на external listener.
