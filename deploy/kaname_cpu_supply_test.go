@@ -127,14 +127,182 @@ func kanameTwoCoresOnRunner(chainTotal, kanameNow, replicas, release, baseline, 
 }
 
 // judgeStandQuotaHoldsRollout — квота процессора пространства стенда держит
-// перекат: рядом со старыми подами встают новые, и на время переката запросов
-// вдвое больше.
-func judgeStandQuotaHoldsRollout(total, quota uint64) error {
-	if 2*total > quota {
-		return fmt.Errorf("квота пространства стенда %dm не держит перекат: запросы %dm, рядом со старыми подами "+
-			"встают новые — %dm; поды переката встанут в отказ квоты", quota, total, 2*total)
+// перекат: на время переката к запросам стенда добавляются поды, которые
+// развёртывания поднимают СВЕРХ реплик (maxSurge), а StatefulSet меняет поды
+// без прибавки. `surge` — эта прибавка (`rolloutSurgeMilli`).
+func judgeStandQuotaHoldsRollout(total, surge, quota uint64) error {
+	if total+surge > quota {
+		return fmt.Errorf("квота пространства стенда %dm не держит перекат: запросы %dm плюс поды сверх реплик "+
+			"%dm — %dm; поды переката встанут в отказ квоты", quota, total, surge, total+surge)
 	}
 	return nil
+}
+
+// surgePods — сколько подов развёртывание поднимает сверх реплик при перекате:
+// RollingUpdate с maxSurge числом либо процентом (вверх до целого, умолчание
+// 25 %), Recreate — ни одного.
+func surgePods(spec map[string]any, replicas uint64) (uint64, error) {
+	st, _ := spec["strategy"].(map[string]any)
+	if typ, _ := st["type"].(string); typ == "Recreate" {
+		return 0, nil
+	}
+	ru, _ := st["rollingUpdate"].(map[string]any)
+	v, ok := ru["maxSurge"]
+	if !ok || v == nil {
+		v = "25%"
+	}
+	switch x := v.(type) {
+	case int:
+		if x < 0 {
+			return 0, fmt.Errorf("maxSurge %d отрицателен", x)
+		}
+		return uint64(x), nil
+	case string:
+		pct, isPct := strings.CutSuffix(x, "%")
+		if !isPct {
+			return 0, fmt.Errorf("maxSurge %q не читается", x)
+		}
+		n, err := parseUintStrict(pct)
+		if err != nil {
+			return 0, fmt.Errorf("maxSurge %q: %w", x, err)
+		}
+		return (replicas*n + 99) / 100, nil
+	default:
+		return 0, fmt.Errorf("maxSurge %v (%T) не читается", v, v)
+	}
+}
+
+// rolloutSurgeMilli — прибавка запросов процессора на время переката: под
+// каждого развёртывания × его поды сверх реплик.
+func rolloutSurgeMilli(docs []map[string]any) (uint64, error) {
+	var sum uint64
+	for _, d := range docs {
+		if k, _ := d["kind"].(string); k != "Deployment" {
+			continue
+		}
+		md, _ := d["metadata"].(map[string]any)
+		spec, _ := d["spec"].(map[string]any)
+		replicas, err := declaredReplicas(spec)
+		if err != nil {
+			return 0, fmt.Errorf("Deployment/%v: %w", md["name"], err)
+		}
+		n, err := surgePods(spec, replicas)
+		if err != nil {
+			return 0, fmt.Errorf("Deployment/%v: %w", md["name"], err)
+		}
+		tpl, _ := spec["template"].(map[string]any)
+		ps, _ := tpl["spec"].(map[string]any)
+		per, err := podCPUMilli(ps)
+		if err != nil {
+			return 0, fmt.Errorf("Deployment/%v: %w", md["name"], err)
+		}
+		sum += n * per
+	}
+	return sum, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// П2′ — ПОРОГ ЗАПРОСА СЛОЯ СТЕНДА ПРОБ (решение диспетчера по kacho#3291)
+//
+// Стенд проб в своём пространстве общего кластера получает запрос 500m при
+// пределе 2: GOMAXPROCS 2 и мест вычисления 2 даёт предел, а запрос — лишь
+// гарантию на занятом узле. Два ядра запроса на каждое пространство кластер не
+// вмещает (с ними параллельных стендов 2 вместо 6). Поэтому П2 («запрос равен
+// пределу») на слое стенда заменено порогом: на гарантированной доле очередь
+// всей ёмкости проверяющего укладывается в срок операции церемонии.
+//
+//	срок D  = 2 × предел вызова соседа + C × стоимость проверки по часам
+//	          (`ceremonyOperationDeadline`, kaname cmd/kaname/ceremony.go;
+//	          предел вызова соседа — 3 с, cmd/kaname/client_token.go:56,
+//	          kaname @1c1870e70);
+//	очередь = C × процессорное время проверки / запрос;
+//	П2′     : очередь ≤ D, то есть запрос ≥ C × процессорное время / D.
+//
+// Стоимости — замер kaname#891 (машина разработки, медиана из 7) для класса
+// argon2id m=65536 КиБ t=3 p=4: 113 мс процессорного времени, 61 мс по часам на
+// двух ядрах. Калибровка на занятом узле даёт стоимость по часам не меньше,
+// срок от этого только растёт — 61 мс здесь нижняя оценка срока. Класс в
+// рендере другой — порог не выводится, и это отказ, а не молчание.
+//
+// Ёмкость C — большее из ёмкости цепочки и ёмкости боевой цепочки prod: стенд
+// проб не снисходительнее продукта, и подъём ёмкости стенда до боевой порог не
+// обходит.
+const (
+	ceremonyPeerTimeoutMilli = 3000
+	argon2CheckCPUMilli      = 113
+	argon2CheckWallMilli     = 61
+)
+
+// argon2MeasuredClass — класс, для которого стоимости измерены.
+var argon2MeasuredClass = map[string]string{
+	"hasher-format": "argon2id", "hasher-memory": "65536", "hasher-iterations": "3", "hasher-parallelism": "4",
+}
+
+// standCPUFloor — срок, очередь на данном запросе и порог запроса для ёмкости.
+type standCPUFloor struct {
+	Capacity                  uint64
+	DeadlineMilli, QueueMilli uint64
+	FloorMilli, RequestMilli  uint64
+}
+
+func (f standCPUFloor) String() string {
+	return fmt.Sprintf("срок D = 2 × %d мс + %d × %d мс = %d мс · очередь = %d × %d мс / %dm = %d мс · "+
+		"порог запроса = ⌈%d × %d мс / %d мс⌉ = %dm",
+		ceremonyPeerTimeoutMilli, f.Capacity, argon2CheckWallMilli, f.DeadlineMilli,
+		f.Capacity, argon2CheckCPUMilli, f.RequestMilli, f.QueueMilli,
+		f.Capacity, argon2CheckCPUMilli, f.DeadlineMilli, f.FloorMilli)
+}
+
+// judgeStandKanameCPU — П1, П3 и П2′ над блоком ресурсов контейнера службы под
+// слоем стенда; class — величины класса проверки из карты настроек рендера.
+func judgeStandKanameCPU(res map[string]any, capacity uint64, class map[string]string) (kanameCPUCensus, standCPUFloor, error) {
+	var c kanameCPUCensus
+	f := standCPUFloor{Capacity: capacity}
+	requests, _ := res["requests"].(map[string]any)
+	limits, _ := res["limits"].(map[string]any)
+	if v, ok := requests["cpu"]; ok && v != nil {
+		c.RequestRaw = fmt.Sprint(v)
+	}
+	if v, ok := limits["cpu"]; ok && v != nil {
+		c.LimitRaw = fmt.Sprint(v)
+	}
+	if c.LimitRaw == "" {
+		return c, f, fmt.Errorf("П1: предел процессора не объявлен — GOMAXPROCS равен числу процессоров узла, " +
+			"места вычисления проверяющего равны всей ёмкости, очереди проверок нет")
+	}
+	var err error
+	if c.LimitMilli, err = parseCPUMillis(c.LimitRaw); err != nil {
+		return c, f, fmt.Errorf("П1: предел процессора не читается: %w", err)
+	}
+	c.GOMAXPROCS = gomaxprocsUnderCPULimit(c.LimitMilli)
+	if c.LimitMilli%1000 != 0 || c.GOMAXPROCS*1000 != c.LimitMilli {
+		return c, f, fmt.Errorf("П3: предел %dm даёт GOMAXPROCS %d — мест вычисления больше процессоров, данных "+
+			"процессу; предел обязан быть целым числом процессоров не меньше двух", c.LimitMilli, c.GOMAXPROCS)
+	}
+	c.RequestMilli = c.LimitMilli
+	if c.RequestRaw != "" {
+		if c.RequestMilli, err = parseCPUMillis(c.RequestRaw); err != nil {
+			return c, f, fmt.Errorf("П2′: запрос процессора не читается: %w", err)
+		}
+	}
+	for k, want := range argon2MeasuredClass {
+		if class[k] != want {
+			return c, f, fmt.Errorf("П2′: класс проверки в рендере %s=%q, а стоимости измерены для %s=%q — "+
+				"порог запроса не выводится; перемерьте стоимость класса", k, class[k], k, want)
+		}
+	}
+	if capacity == 0 || c.RequestMilli == 0 {
+		return c, f, fmt.Errorf("П2′: ёмкость %d либо запрос %dm нулевые — очередь не считается", capacity, c.RequestMilli)
+	}
+	f.RequestMilli = c.RequestMilli
+	f.DeadlineMilli = 2*ceremonyPeerTimeoutMilli + capacity*argon2CheckWallMilli
+	f.QueueMilli = (capacity*argon2CheckCPUMilli*1000 + c.RequestMilli - 1) / c.RequestMilli
+	f.FloorMilli = (capacity*argon2CheckCPUMilli*1000 + f.DeadlineMilli - 1) / f.DeadlineMilli
+	if f.QueueMilli > f.DeadlineMilli {
+		return c, f, fmt.Errorf("П2′: на гарантированной доле %dm очередь всей ёмкости %d мс длиннее срока операции %d мс "+
+			"(%s)", c.RequestMilli, f.QueueMilli, f.DeadlineMilli, f)
+	}
+	return c, f, nil
 }
 
 func resourcesOf(req, lim map[string]any) map[string]any {
@@ -213,16 +381,82 @@ func TestKanameTwoCoresOnRunnerIsDecidedByTheNodeArithmetic(t *testing.T) {
 	}
 }
 
-// Квота 4 ядра (до kacho#3291) при запросах стенда 3770m перекат не держит;
-// 8 ядер — держит; близнец на границе (ровно вдвое) молчит.
-func TestStandQuotaJudgeFiresOnTheOldQuotaAndIsSilentOnTheTwin(t *testing.T) {
-	if err := judgeStandQuotaHoldsRollout(3770, 4000); err == nil {
-		t.Error("квота 4000m при запросах 3770m: мера смолчала, а перекат службы доступа в квоту не встаёт")
+// Квота держит перекат по модели «запросы + поды сверх реплик»: 2270m + 1470m
+// в 4000m молчит, а с двумя ядрами службы (3770m + 2970m) — краснеет; граница
+// молчит.
+func TestStandQuotaJudgeFiresOnTheOverflowAndIsSilentOnTheTwin(t *testing.T) {
+	if err := judgeStandQuotaHoldsRollout(3770, 2970, 4000); err == nil {
+		t.Error("квота 4000m при запросах 3770m и прибавке 2970m: мера смолчала")
 	}
-	if err := judgeStandQuotaHoldsRollout(3770, 8000); err != nil {
-		t.Errorf("квота 8000m при запросах 3770m отвергнута: %v", err)
+	if err := judgeStandQuotaHoldsRollout(2270, 1470, 4000); err != nil {
+		t.Errorf("квота 4000m при 2270m + 1470m отвергнута: %v", err)
 	}
-	if err := judgeStandQuotaHoldsRollout(4000, 8000); err != nil {
-		t.Errorf("граница (ровно вдвое) отвергнута: %v", err)
+	if err := judgeStandQuotaHoldsRollout(2000, 2000, 4000); err != nil {
+		t.Errorf("граница отвергнута: %v", err)
+	}
+}
+
+func TestSurgePodsReadsEveryLawfulForm(t *testing.T) {
+	cases := []struct {
+		spec     map[string]any
+		replicas uint64
+		want     uint64
+	}{
+		{map[string]any{}, 1, 1},
+		{map[string]any{}, 4, 1},
+		{map[string]any{}, 5, 2},
+		{map[string]any{"strategy": map[string]any{"type": "Recreate"}}, 3, 0},
+		{map[string]any{"strategy": map[string]any{"rollingUpdate": map[string]any{"maxSurge": 0}}}, 3, 0},
+		{map[string]any{"strategy": map[string]any{"rollingUpdate": map[string]any{"maxSurge": "100%"}}}, 3, 3},
+	}
+	for _, c := range cases {
+		got, err := surgePods(c.spec, c.replicas)
+		if err != nil || got != c.want {
+			t.Errorf("%v × %d: %d (%v), ожидалось %d", c.spec, c.replicas, got, err, c.want)
+		}
+	}
+	if _, err := surgePods(map[string]any{"strategy": map[string]any{"rollingUpdate": map[string]any{"maxSurge": "one"}}}, 1); err == nil {
+		t.Error("нечитаемый maxSurge принят")
+	}
+}
+
+// П2′: решение диспетчера — 100m краснеет, 500m молчит (ёмкость 8 боевой
+// цепочки); П1 и П3 на слое стенда судятся, как на боевых цепочках; класс
+// проверки, для которого стоимость не измерена, — отказ.
+func TestStandKanameCPUFloorFiresAt100mAndIsSilentAt500m(t *testing.T) {
+	lim := map[string]any{"cpu": "2"}
+	_, f, err := judgeStandKanameCPU(resourcesOf(map[string]any{"cpu": "500m"}, lim), 8, argon2MeasuredClass)
+	if err != nil {
+		t.Fatalf("500m при ёмкости 8 отвергнут: %v", err)
+	}
+	if f.DeadlineMilli != 6488 || f.QueueMilli != 1808 || f.FloorMilli != 140 {
+		t.Errorf("числа порога разошлись с расчётом (D 6488, очередь 1808, порог 140): %s", f)
+	}
+	t.Logf("500m: %s", f)
+	_, f, err = judgeStandKanameCPU(resourcesOf(map[string]any{"cpu": "100m"}, lim), 8, argon2MeasuredClass)
+	if err == nil || !strings.HasPrefix(err.Error(), "П2′:") {
+		t.Errorf("100m при ёмкости 8: мера смолчала либо назвала не то условие: %v (%s)", err, f)
+	}
+	t.Logf("100m: %v", err)
+	for _, c := range []struct {
+		name string
+		res  map[string]any
+		want string
+	}{
+		{"предел снят", resourcesOf(map[string]any{"cpu": "500m"}, nil), "П1:"},
+		{"предел 1500m", resourcesOf(map[string]any{"cpu": "500m"}, map[string]any{"cpu": "1500m"}), "П3:"},
+		{"предел 1", resourcesOf(map[string]any{"cpu": "500m"}, map[string]any{"cpu": "1"}), "П3:"},
+	} {
+		if _, _, err := judgeStandKanameCPU(c.res, 8, argon2MeasuredClass); err == nil || !strings.HasPrefix(err.Error(), c.want) {
+			t.Errorf("%s: %v, ожидалось %s", c.name, err, c.want)
+		}
+	}
+	other := map[string]string{}
+	for k, v := range argon2MeasuredClass {
+		other[k] = v
+	}
+	other["hasher-iterations"] = "4"
+	if _, _, err := judgeStandKanameCPU(resourcesOf(map[string]any{"cpu": "500m"}, lim), 8, other); err == nil {
+		t.Error("класс t=4 без замера стоимости принят — порог выведен из чужих чисел")
 	}
 }

@@ -17,13 +17,14 @@
 //	    которую конвейер поднимает на kind и чей узел ранера двух ядер не
 //	    вмещает по арифметике (освобождение печатается обеими суммами);
 //	(2) слой стенда проб (scripts/stand-ns.sh, stand_overlay) поверх каждой
-//	    цепочки, которую он поднимает, даёт службе П1–П3 — пространство
-//	    кластера два ядра вмещает; цепочка, рендер которой под слоем отказывает
-//	    (боевая без приёмника писем), называется с первой строкой отказа, а
-//	    цепочка стенда наборов обязана рендериться;
+//	    цепочки, которую он поднимает, даёт службе П1, П3 и П2′ (порог запроса,
+//	    при котором очередь всей ёмкости укладывается в срок операции, —
+//	    kaname_cpu_supply_test.go); цепочка, рендер которой под слоем
+//	    отказывает (боевая без приёмника писем), называется с первой строкой
+//	    отказа, а цепочка стенда наборов обязана рендериться;
 //	(3) квота пространства стенда проб (ns_objects) по процессору держит перекат
-//	    цепочки стенда наборов под этим слоем: не меньше двух её сумм запросов
-//	    с умолчанием LimitRange для контейнеров без запроса.
+//	    цепочки стенда наборов под этим слоем: запросы с умолчанием LimitRange
+//	    для контейнеров без запроса плюс поды развёртываний сверх реплик.
 package deploy_test
 
 import (
@@ -85,6 +86,63 @@ func kanameLine(t *testing.T, what string, r renderCPU) cpuLine {
 	}
 	t.Fatalf("%s: в переписи запросов нет строки Deployment/kaname (строк %d)", what, len(r.Lines))
 	return cpuLine{}
+}
+
+// kanameLoginClass — величины полосы входа из карты настроек службы в рендере:
+// ёмкость проверяющего и класс проверки. Нет карты либо величины — отказ.
+func kanameLoginClass(t *testing.T, what string, docs []map[string]any) (uint64, map[string]string) {
+	t.Helper()
+	keys := []string{"verifier-capacity", "hasher-format", "hasher-memory", "hasher-iterations", "hasher-parallelism"}
+	for _, d := range docs {
+		if k, _ := d["kind"].(string); k != "ConfigMap" {
+			continue
+		}
+		md, _ := d["metadata"].(map[string]any)
+		if n, _ := md["name"].(string); n != "kaname-config" {
+			continue
+		}
+		data, _ := d["data"].(map[string]any)
+		raw, _ := data["config.yaml"].(string)
+		var tree map[string]any
+		if err := yaml.Unmarshal([]byte(raw), &tree); err != nil {
+			t.Fatalf("%s: карта настроек службы не разбирается: %v", what, err)
+		}
+		found := map[string]string{}
+		var walk func(any)
+		walk = func(n any) {
+			switch x := n.(type) {
+			case map[string]any:
+				for k, v := range x {
+					for _, want := range keys {
+						if k == want {
+							if prev, seen := found[k]; seen && prev != fmt.Sprint(v) {
+								t.Fatalf("%s: величина %s объявлена дважды по-разному (%s и %v)", what, k, prev, v)
+							}
+							found[k] = fmt.Sprint(v)
+						}
+					}
+					walk(v)
+				}
+			case []any:
+				for _, v := range x {
+					walk(v)
+				}
+			}
+		}
+		walk(tree)
+		for _, k := range keys {
+			if _, ok := found[k]; !ok {
+				t.Fatalf("%s: в карте настроек службы нет величины %s — порог не выводится", what, k)
+			}
+		}
+		capacity, err := parseUintStrict(found["verifier-capacity"])
+		if err != nil {
+			t.Fatalf("%s: ёмкость проверяющего не читается: %v", what, err)
+		}
+		return capacity, found
+	}
+	t.Fatalf("%s: карты настроек kaname-config в рендере нет", what)
+	return 0, nil
 }
 
 // kindRaisedChains — цепочка → ноги конвейера, поднимающие её на kind, с
@@ -202,6 +260,13 @@ func standOverlayFile(t *testing.T) string {
 // вызывающий называет, а не роняет пробу.
 func renderChainUnderStandOverlay(t *testing.T, chain []string, overlay string) (string, string, error) {
 	t.Helper()
+	return renderChainUnderStandOverlayWith(t, chain, []string{overlay})
+}
+
+// renderChainUnderStandOverlayWith — то же с несколькими слоями поверх цепочки
+// (слой стенда, затем инъекция), в порядке наложения.
+func renderChainUnderStandOverlayWith(t *testing.T, chain, overlays []string) (string, string, error) {
+	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Fatalf("helm не в PATH — рендерная проба под тегом helmcharts обязана исполняться, а не пропускаться")
 	}
@@ -209,7 +274,10 @@ func renderChainUnderStandOverlay(t *testing.T, chain []string, overlay string) 
 	for _, p := range chain {
 		args = append(args, "-f", filepath.Join(umbrellaDir, p))
 	}
-	args = append(args, "-f", overlay, "--set", "cert-manager.enabled=false")
+	for _, o := range overlays {
+		args = append(args, "-f", o)
+	}
+	args = append(args, "--set", "cert-manager.enabled=false")
 	var so, se bytes.Buffer
 	cmd := exec.Command("helm", args...)
 	cmd.Stdout, cmd.Stderr = &so, &se
@@ -328,7 +396,7 @@ func withLimitRangeDefault(docs []map[string]any, def uint64) int {
 	return filled
 }
 
-func TestStandOverlayGivesKanameTwoWholeCoresAndTheQuotaHoldsTheRollout(t *testing.T) {
+func TestStandOverlayGivesKanameItsCPUFloorAndTheQuotaHoldsTheRollout(t *testing.T) {
 	overlay := standOverlayFile(t)
 	stacks := deployStacks(t)
 	names := make([]string, 0, len(stacks))
@@ -353,6 +421,12 @@ func TestStandOverlayGivesKanameTwoWholeCoresAndTheQuotaHoldsTheRollout(t *testi
 		t.Fatalf("цепочки стенда наборов %q в таблице стендов нет", suite)
 	}
 
+	prodChain, ok := stacks["prod"]
+	if !ok {
+		t.Fatal("боевой цепочки prod в таблице стендов нет — ёмкость продукта для порога не прочитать")
+	}
+	prodCapacity, _ := kanameLoginClass(t, "цепочка prod", renderDocBodies(t, "цепочка prod", renderChainCached(t, prodChain)))
+
 	var (
 		suiteDocs []map[string]any
 		refused   []string
@@ -369,13 +443,16 @@ func TestStandOverlayGivesKanameTwoWholeCoresAndTheQuotaHoldsTheRollout(t *testi
 			continue
 		}
 		docs := renderDocBodies(t, what, out)
-		census, verdict := judgeKanameCPUSupply(kanameServiceResources(t, what, docs))
+		own, class := kanameLoginClass(t, what, docs)
+		capacity := max(own, prodCapacity)
+		census, floor, verdict := judgeStandKanameCPU(kanameServiceResources(t, what, docs), capacity, class)
 		if verdict != nil {
 			t.Errorf("%s: %v (%s)", what, verdict, census)
 			continue
 		}
 		judged++
-		t.Logf("%s: %s — П1–П3 выполнены", what, census)
+		t.Logf("%s: %s · ёмкость max(цепочка %d, prod %d) = %d · %s — П1, П3, П2′ выполнены",
+			what, census, own, prodCapacity, capacity, floor)
 		if name == suite {
 			suiteDocs = docs
 		}
@@ -394,9 +471,14 @@ func TestStandOverlayGivesKanameTwoWholeCoresAndTheQuotaHoldsTheRollout(t *testi
 		t.Fatalf("запросы цепочки %s под слоем не вычислены: %v", suite, err)
 	}
 	line := kanameLine(t, "цепочка "+suite+" под слоем стенда проб", cpu)
+	surge, err := rolloutSurgeMilli(suiteDocs)
+	if err != nil {
+		t.Fatalf("прибавка переката цепочки %s не вычислена: %v", suite, err)
+	}
 	t.Logf("стенд проб на цепочке %s: запросы %dm (служба доступа %dm, контейнеров с умолчанием LimitRange %d × %dm), "+
-		"с перекатом %dm, квота %dm", suite, cpu.Total(), line.total(), filled, def, 2*cpu.Total(), quota)
-	if err := judgeStandQuotaHoldsRollout(cpu.Total(), quota); err != nil {
+		"поды развёртываний сверх реплик %dm, с перекатом %dm, квота %dm", suite, cpu.Total(), line.total(), filled, def,
+		surge, cpu.Total()+surge, quota)
+	if err := judgeStandQuotaHoldsRollout(cpu.Total(), surge, quota); err != nil {
 		t.Errorf("цепочка %s: %v", suite, err)
 	}
 }
@@ -439,4 +521,52 @@ func TestKanameCPUSupplyRenderInjection(t *testing.T) {
 	if census, err := judge("kaname.resources.requests.cpu=4", "kaname.resources.limits.cpu=4"); err != nil || census.GOMAXPROCS != 4 {
 		t.Errorf("законный близнец 4/4 отвергнут или прочитан не так: %v (%s)", err, census)
 	}
+}
+
+// Инъекция П2′ настоящим входом: цепочка стенда наборов под слоем стенда проб
+// с ОДНИМ фактом поверх — запрос 100m краснеет, поставляемые 500m молчат.
+func TestStandOverlayFloorRenderInjection(t *testing.T) {
+	stacks := deployStacks(t)
+	script, err := os.ReadFile(standNsScript)
+	if err != nil {
+		t.Fatalf("скрипт стенда %s не читается: %v", standNsScript, err)
+	}
+	m := suiteStackLine.FindStringSubmatch(string(script))
+	if m == nil {
+		t.Fatalf("в %s нет строки SUITE_STACK=", standNsScript)
+	}
+	chain, ok := stacks[m[1]]
+	if !ok {
+		t.Fatalf("цепочки стенда наборов %q в таблице нет", m[1])
+	}
+	prodCapacity, _ := kanameLoginClass(t, "цепочка prod", renderDocBodies(t, "цепочка prod", renderChainCached(t, stacks["prod"])))
+	overlay := standOverlayFile(t)
+	judge := func(extra string) (standCPUFloor, error) {
+		args := []string{}
+		if extra != "" {
+			p := filepath.Join(t.TempDir(), "inject.yaml")
+			if err := os.WriteFile(p, []byte(extra), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			args = append(args, p)
+		}
+		out, stderr, err := renderChainUnderStandOverlayWith(t, chain, append([]string{overlay}, args...))
+		if err != nil {
+			t.Fatalf("рендер инъекции не выполнен (%v):\n%s", err, stderr)
+		}
+		docs := renderDocBodies(t, "инъекция", out)
+		own, class := kanameLoginClass(t, "инъекция", docs)
+		_, f, verr := judgeStandKanameCPU(kanameServiceResources(t, "инъекция", docs), max(own, prodCapacity), class)
+		return f, verr
+	}
+	if f, err := judge(""); err != nil {
+		t.Fatalf("контроль (поставляемый слой) красен — вердикт инъекции недействителен: %v", err)
+	} else {
+		t.Logf("контроль: %s", f)
+	}
+	f, err := judge("kaname:\n  resources:\n    requests:\n      cpu: 100m\n")
+	if err == nil || !strings.HasPrefix(err.Error(), "П2′:") {
+		t.Errorf("запрос 100m под слоем стенда: мера смолчала либо назвала не то условие: %v (%s)", err, f)
+	}
+	t.Logf("инъекция 100m: %v", err)
 }
