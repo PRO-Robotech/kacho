@@ -1,0 +1,129 @@
+{
+  "config": {
+    "configFile": "/fixture/playwright.config.ts",
+    "rootDir": "/fixture/specs",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 5,
+    "metadata": {},
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/fixture/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "precondition",
+        "name": "precondition",
+        "testDir": "/fixture/preconditions",
+        "testIgnore": [],
+        "testMatch": [
+          "*.precondition.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/fixture/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "probes",
+        "name": "probes",
+        "testDir": "/fixture/specs",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.56.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "../preconditions/run.precondition.ts",
+      "file": "../preconditions/run.precondition.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "условие прогона",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "precondition",
+              "projectName": "precondition",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "5d5cb0f9d74905ba5355-e3c7d37ca47b658d06c7",
+          "file": "../preconditions/run.precondition.ts",
+          "line": 6,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "probes.spec.ts",
+      "file": "probes.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "проба а",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "probes",
+              "projectName": "probes",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b0fac6ee778142831391-1544bc92f723959db24f",
+          "file": "probes.spec.ts",
+          "line": 9,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-18T17:44:09.300Z",
+    "duration": 10.015999999999963,
+    "expected": 0,
+    "skipped": 2,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
