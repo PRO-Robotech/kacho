@@ -128,7 +128,7 @@ BASE_URL="${BASE_URL:-http://localhost:28080}"
 # the public {{baseUrl}}. Default mirrors the BASE_URL host with the internal port
 # so an operator running `make seed-nlb` after a `port-forward svc/api-gateway
 # 28081:8081` gets external-pool provisioning out of the box; the umbrella
-# (newman-e2e.sh) overrides it to the port it forwards (:18081).
+# (newman-e2e.sh) overrides it to the port it forwards (its own per run, kacho#3246).
 #
 # The listener is mutual-TLS only (kacho#3131): the operator leaf comes in
 # INTERNAL_REST_{CA,CERT,KEY} (producer: lib/internal-rest-client.sh). No
