@@ -2362,6 +2362,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc18PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc18PrjDelOpId', '');",
                   "  try {",

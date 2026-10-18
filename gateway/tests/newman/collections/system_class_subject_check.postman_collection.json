@@ -1033,6 +1033,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc10PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc10PrjDelOpId', '');",
                   "  try {",
@@ -2405,6 +2408,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc11PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc11PrjDelOpId', '');",
                   "  try {",
@@ -3893,6 +3899,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc16PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc16PrjDelOpId', '');",
                   "  try {",
@@ -5779,6 +5788,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc18qPrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc18qPrjDelOpId', '');",
                   "  try {",

@@ -544,6 +544,9 @@ def delete_project_until_released(name: str, prj_var: str, op_var: str,
             test_script=[
                 "pm.test('уборка: снято (200) либо уже нет (404)', () => "
                 "pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                "// до захвата, и на 404 опрос пропускается.",
+                f"pm.environment.unset({js_str(op_var)});",
                 "if (pm.response.code === 200) {",
                 *["  " + s for s in save_from_response("j.id", op_var)],
                 "}",
