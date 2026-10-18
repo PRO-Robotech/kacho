@@ -50,8 +50,8 @@ endpoint (конвенция Kachō: `Internal.*` не на внешнем API).
 
 Синхронно возвращает инфра-проекцию namespace: число репозиториев и тегов, суммарный размер, число
 уникальных блобов, момент последнего GC. Это **инфра-чувствительные данные** — только `:9091`. READ
-гейтится cluster read-tier `system_viewer` (не object-scoped `v_get`): `system_viewer` не содержит
-wildcard `user:*`, поэтому тенанты доступа к инфра-статистике не получают.
+гейтится cluster read-tier `system_viewer` (не object-scoped `v_get`): `system_viewer` не принимает
+системный класс `system_class`, поэтому тенанты доступа к инфра-статистике не получают.
 
 <CodeBlock language="json">
   {dedent`
