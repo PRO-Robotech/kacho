@@ -1002,9 +1002,15 @@ def _wait(tmp_path: Path, payload: object, base: str | None) -> tuple[int, str]:
     (tmp_path / "payload.json").write_text(json.dumps(payload), encoding="utf-8")
     fetch.write_text(f"#!/usr/bin/env bash\ncat '{tmp_path / 'payload.json'}'\n", encoding="utf-8")
     fetch.chmod(0o700)
+    # Перечень прогонов головы — пустой: вытесненных нет, и сеть проба не трогает.
+    runs = tmp_path / "runs.sh"
+    runs.write_text("#!/usr/bin/env bash\necho '{\"total_count\": 0, \"workflow_runs\": []}'\n",
+                    encoding="utf-8")
+    runs.chmod(0o700)
     env = {k: v for k, v in os.environ.items() if k != "BASE"}
-    env.update(REPO="owner/repo", SHA="deadbeef", SELF=VERDICT, VERDICT_ATTEMPTS="2",
-               VERDICT_INTERVAL="0", VERDICT_FETCH_CMD=str(fetch))
+    # Срок 0 — ровно один заход: предел ожидания — срок по часам (kacho#3299).
+    env.update(REPO="owner/repo", SHA="deadbeef", SELF=VERDICT, VERDICT_DEADLINE="0",
+               VERDICT_INTERVAL="0", VERDICT_FETCH_CMD=str(fetch), VERDICT_RUNS_CMD=str(runs))
     if base is not None:
         env["BASE"] = base
     p = subprocess.run(["bash", "-e", str(WAIT)], cwd=tmp_path, env=env,
