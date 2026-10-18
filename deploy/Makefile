@@ -13,7 +13,7 @@
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
-        stand-ns-up stand-ns-down stand-ns-run stand-ns-census \
+        stand-ns-up stand-ns-down stand-ns-run stand-ns-census stand-owner \
         stand-second-factor-wrap-rotate bootstrap-cloud-admin
 
 SHELL := bash
@@ -1216,6 +1216,19 @@ stand-ns-run:
 
 stand-ns-census:
 	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
+
+# stand-owner — владелец стенда проб с носителем уровня «2» (kacho#3281): заведение
+# путём человека и второй фактор по времени, повторный посев — вход паролем и
+# повышение кодом фактора. Пол каталога прав не снижается. Состояние (адрес,
+# пароль, секрет фактора) — файл 0600 рабочего каталога стенда, в вывод не идёт;
+# TOKEN=1 печатает носитель в stdout для подстановки, TWIN=1 — обе стороны пола
+# (держатель предиката). Нужен проброс: `bash scripts/stand-ns.sh forward NS`.
+stand-owner:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — чей стенд сеять (NS=t<задача>-<коротко>)"; exit 2; }
+	@env="$${KACHO_STAND_NS_WORKDIR:-$(CURDIR)/.stand-ns}/$(NS)/probe.env"; \
+	[ -f "$$env" ] || { echo "ABORT: окружения проб $$env нет — сначала bash scripts/stand-ns.sh forward $(NS)" >&2; exit 75; }; \
+	. "$$env" && STAND_OWNER_STATE="$${env%/probe.env}/owner.json" \
+	  python3 scripts/stand_owner.py $(if $(filter 1,$(TOKEN)),--token,) $(if $(filter 1,$(TWIN)),--prove-twin,)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # stand-second-factor-wrap-rotate — производитель условия Ф12-35 «в» (kacho#3038):
