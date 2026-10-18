@@ -127,18 +127,13 @@ func main() {
 	// `:check`), и на внешний listener они не попадают — это делает HasInternalSuffix
 	// у gRPC-роутера и `isInternalRoute` у REST. Прежняя редакция утверждала
 	// «НЕ регистрируется в restmux»; это неверно и уже вводило в заблуждение.
-	// Это ребро gateway→iam → те же MTLS_IAM_ENABLE creds, что и у iam
-	// backend conns. Fail-fast on misconfig.
-	iamSubjectCreds, err := iamEdgeDialCreds(cfg, cfg.IAMInternalAddr)
-	if err != nil {
-		log.Fatalf("iam subject mTLS creds: %v", err)
-	}
-	iamSubjectClient, err := clients.NewIAMSubjectClient(cfg.IAMInternalAddr, logger, iamSubjectCreds,
-		upstreamFailures.DialOptions("iamInternal")...)
+	// Соединение — `iamInternal` карты бэкендов, то, что опрашивает `/readyz`
+	// (kacho#3284): удостоверение ребра (MTLS_IAM_ENABLE) и учёт причины отказа
+	// на нём ставит dialBackends, своего соединения клиент не заводит.
+	iamSubjectClient, err := subjectClientOf(cfg, backends, logger)
 	if err != nil {
 		log.Fatalf("iam subject client: %v", err)
 	}
-	defer func() { _ = iamSubjectClient.Close() }()
 
 	authInterceptor := middleware.NewAuthInterceptor(
 		// Ручка названа ЗДЕСЬ, а не спрятана за методом конфигурации: место сборки

@@ -4,9 +4,12 @@
 package main
 
 import (
+	"fmt"
+	"log/slog"
 	"maps"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 )
 
@@ -40,4 +43,21 @@ func readinessTargets(backends proxy.Backends, authorize *clients.IAMAuthorizeCl
 	targets[readinessAuthorizeKey] = authorize.Conn()
 	critical[readinessAuthorizeKey] = !failOpen
 	return targets, critical
+}
+
+// subjectClientOf — клиент субъекта (вход по токену, базовая полоса, проверка
+// администратора системы) над соединением `iamInternal` карты бэкендов — тем,
+// что опрашивает `/readyz` (kacho#3284). Соединение, ведущее не по адресу
+// внутреннего слушателя службы доступа, — отказ старта: иначе вход молча шёл
+// бы одним адресом, а готовность спрашивала бы о другом.
+func subjectClientOf(cfg config.Config, backends proxy.Backends, logger *slog.Logger) (*clients.IAMSubjectClient, error) {
+	conn := backends["iamInternal"]
+	if conn == nil {
+		return nil, fmt.Errorf("backend %q has no connection", "iamInternal")
+	}
+	if conn.Target() != cfg.IAMInternalAddr {
+		return nil, fmt.Errorf("connection for backend %q targets %q, address map says %q",
+			"iamInternal", conn.Target(), cfg.IAMInternalAddr)
+	}
+	return clients.NewIAMSubjectClient(conn, logger)
 }
