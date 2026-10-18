@@ -912,15 +912,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -952,7 +943,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -1133,15 +1124,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -1173,7 +1155,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -1251,15 +1233,6 @@
                 "manifests",
                 "latest"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -1284,7 +1257,7 @@
                   "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + (pm.environment.get('_rpPushTok') || '')});",
                   "const _m = JSON.stringify({schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json', config: {mediaType: 'application/vnd.oci.image.config.v1+json', digest: 'sha256:' + pm.environment.get('_rpConfigDigest'), size: parseInt(pm.environment.get('_rpConfigSize'), 10)}, layers: [{mediaType: 'application/vnd.oci.image.layer.v1.tar', digest: 'sha256:' + pm.environment.get('_rpLayerDigest'), size: parseInt(pm.environment.get('_rpLayerSize'), 10)}]});",
                   "pm.environment.set('regPubXAppDigest', 'sha256:' + CryptoJS.SHA256(_m).toString(CryptoJS.enc.Hex));",
-                  "pm.request.body.update({mode: 'raw', raw: _m});",
+                  "pm.request.update({body: {mode: 'raw', raw: _m}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/vnd.oci.image.manifest.v1+json'});"
                 ]
               }
@@ -1572,15 +1545,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -1612,7 +1576,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -1793,15 +1757,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -1833,7 +1788,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -1911,15 +1866,6 @@
                 "manifests",
                 "latest"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -1944,7 +1890,7 @@
                   "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + (pm.environment.get('_rpPushTok') || '')});",
                   "const _m = JSON.stringify({schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json', config: {mediaType: 'application/vnd.oci.image.config.v1+json', digest: 'sha256:' + pm.environment.get('_rpConfigDigest'), size: parseInt(pm.environment.get('_rpConfigSize'), 10)}, layers: [{mediaType: 'application/vnd.oci.image.layer.v1.tar', digest: 'sha256:' + pm.environment.get('_rpLayerDigest'), size: parseInt(pm.environment.get('_rpLayerSize'), 10)}]});",
                   "pm.environment.set('regPubYAppDigest', 'sha256:' + CryptoJS.SHA256(_m).toString(CryptoJS.enc.Hex));",
-                  "pm.request.body.update({mode: 'raw', raw: _m});",
+                  "pm.request.update({body: {mode: 'raw', raw: _m}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/vnd.oci.image.manifest.v1+json'});"
                 ]
               }
@@ -2508,15 +2454,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -2548,7 +2485,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -2729,15 +2666,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -2769,7 +2697,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -2847,15 +2775,6 @@
                 "manifests",
                 "seed"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -2880,7 +2799,7 @@
                   "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + (pm.environment.get('_rpPushTok') || '')});",
                   "const _m = JSON.stringify({schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json', config: {mediaType: 'application/vnd.oci.image.config.v1+json', digest: 'sha256:' + pm.environment.get('_rpConfigDigest'), size: parseInt(pm.environment.get('_rpConfigSize'), 10)}, layers: [{mediaType: 'application/vnd.oci.image.layer.v1.tar', digest: 'sha256:' + pm.environment.get('_rpLayerDigest'), size: parseInt(pm.environment.get('_rpLayerSize'), 10)}]});",
                   "pm.environment.set('regPubYPubDigest', 'sha256:' + CryptoJS.SHA256(_m).toString(CryptoJS.enc.Hex));",
-                  "pm.request.body.update({mode: 'raw', raw: _m});",
+                  "pm.request.update({body: {mode: 'raw', raw: _m}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/vnd.oci.image.manifest.v1+json'});"
                 ]
               }
@@ -7073,15 +6992,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -7113,7 +7023,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -7222,15 +7132,6 @@
                 "uploads",
                 ""
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -7262,7 +7163,7 @@
                   "if (_b && _l) {",
                   "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                   "}",
-                  "pm.request.body.update({mode: 'raw', raw: _content});",
+                  "pm.request.update({body: {mode: 'raw', raw: _content}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});"
                 ]
               }
@@ -7304,15 +7205,6 @@
                 "manifests",
                 "latest"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -7337,7 +7229,7 @@
                   "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + (pm.environment.get('_rpPushTok') || '')});",
                   "const _m = JSON.stringify({schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json', config: {mediaType: 'application/vnd.oci.image.config.v1+json', digest: 'sha256:' + pm.environment.get('_rpConfigDigest'), size: parseInt(pm.environment.get('_rpConfigSize'), 10)}, layers: [{mediaType: 'application/vnd.oci.image.layer.v1.tar', digest: 'sha256:' + pm.environment.get('_rpLayerDigest'), size: parseInt(pm.environment.get('_rpLayerSize'), 10)}]});",
                   "pm.environment.set('regPubXLateDigest', 'sha256:' + CryptoJS.SHA256(_m).toString(CryptoJS.enc.Hex));",
-                  "pm.request.body.update({mode: 'raw', raw: _m});",
+                  "pm.request.update({body: {mode: 'raw', raw: _m}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/vnd.oci.image.manifest.v1+json'});"
                 ]
               }
@@ -8896,15 +8788,6 @@
                 "manifests",
                 "anon-{{runId}}"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"replaced\": \"pre-request\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -8927,7 +8810,7 @@
                   "  pm.execution.skipRequest();",
                   "}",
                   "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + (pm.environment.get('regPubAnonTok') || '')});",
-                  "pm.request.body.update({mode: 'raw', raw: pm.environment.get('_regPubXAppManifest') || ''});",
+                  "pm.request.update({body: {mode: 'raw', raw: pm.environment.get('_regPubXAppManifest') || ''}});",
                   "pm.request.headers.upsert({key: 'Content-Type', value: 'application/vnd.oci.image.manifest.v1+json'});"
                 ]
               }

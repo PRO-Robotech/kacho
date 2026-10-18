@@ -272,7 +272,10 @@ def _upload_blob(label, repo_path, kind):
 
     Содержимое строится в пред-скрипте и дайджест считается от тех же байтов, что
     уходят телом (ASCII: длина строки = размер). Конфиг ссылается на дайджест слоя,
-    поэтому слой заливается первым."""
+    поэтому слой заливается первым. Тело задаётся ТОЛЬКО пред-скриптом
+    (`pm.request.update`): заглушка в коллекции была бы телом без адресата для
+    гейта тел края. Механика проверена прогоном newman против эхо-сервера: сервер
+    получил ровно эти байты, дайджест совпал."""
     var = "_rpUploadLoc"
     if kind == "layer":
         content_js = "'regpub-layer ' + pm.environment.get('runId') + ' " + label + "'"
@@ -291,7 +294,7 @@ def _upload_blob(label, repo_path, kind):
                  f"if (_loc) pm.environment.set('{var}', _loc);",
              ]),
         Step(name=f"push-{label}-{kind}-put", method="PUT", path=f"/v2/{repo_path}/blobs/uploads/",
-             auth="anonymous", body={"replaced": "pre-request"},
+             auth="anonymous",
              pre_script=[
                  *_dp(f"/v2/{repo_path}/blobs/uploads/", "_rpPushTok"),
                  f"const _content = {content_js};",
@@ -303,7 +306,7 @@ def _upload_blob(label, repo_path, kind):
                  "if (_b && _l) {",
                  "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=' + encodeURIComponent('sha256:' + _hex);",
                  "}",
-                 "pm.request.body.update({mode: 'raw', raw: _content});",
+                 "pm.request.update({body: {mode: 'raw', raw: _content}});",
                  "pm.request.headers.upsert({key: 'Content-Type', value: 'application/octet-stream'});",
              ],
              test_script=[
@@ -331,12 +334,12 @@ def _push(label, reg_var, repo, tag, digest_var):
         *_upload_blob(label, repo_path, "layer"),
         *_upload_blob(label, repo_path, "config"),
         Step(name=f"push-{label}-manifest", method="PUT", path=f"/v2/{repo_path}/manifests/{tag}",
-             auth="anonymous", body={"replaced": "pre-request"},
+             auth="anonymous",
              pre_script=[
                  *_dp(f"/v2/{repo_path}/manifests/{tag}", "_rpPushTok"),
                  f"const _m = {manifest_js};",
                  f"pm.environment.set('{digest_var}', 'sha256:' + CryptoJS.SHA256(_m).toString(CryptoJS.enc.Hex));",
-                 "pm.request.body.update({mode: 'raw', raw: _m});",
+                 "pm.request.update({body: {mode: 'raw', raw: _m}});",
                  f"pm.request.headers.upsert({{key: 'Content-Type', value: '{_MANIFEST_MT}'}});",
              ],
              test_script=[
@@ -894,8 +897,8 @@ CASES.append(Case(
              auth="anonymous", pre_script=_dp(f"/v2/{_X}/app/manifests/latest", "regPubAnonTok"),
              test_script=[*assert_status(200), "pm.environment.set('_regPubXAppManifest', pm.response.text());"]),
         _anon_write("anon-put-manifest", "PUT", f"/v2/{_X}/app/manifests/anon-{{{{runId}}}}",
-                    "REG-PUB-1-24: заливка манифеста анонимом → 403", body={"replaced": "pre-request"},
-                    pre_extra=["pm.request.body.update({mode: 'raw', raw: pm.environment.get('_regPubXAppManifest') || ''});",
+                    "REG-PUB-1-24: заливка манифеста анонимом → 403",
+                    pre_extra=["pm.request.update({body: {mode: 'raw', raw: pm.environment.get('_regPubXAppManifest') || ''}});",
                                f"pm.request.headers.upsert({{key: 'Content-Type', value: '{_MANIFEST_MT}'}});"]),
         Step(name="anon-delete-manifest", method="DELETE", path=f"/v2/{_X}/app/manifests/latest", auth="anonymous",
              pre_script=_dp(f"/v2/{_X}/app/manifests/latest", "regPubAnonTok"),
