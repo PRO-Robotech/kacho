@@ -1159,11 +1159,19 @@ stack-up:
 
 # ── СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН ВНЕШНЕГО КЛАСТЕРА (kacho#3102) ──────
 #
-#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>]
+#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>] [KANAME_BRANCH=<ветка> [KANAME_REF=<sha40>]]
 #   make stand-ns-down   NS=t<задача>-<коротко>
 #   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
 #   make stand-ns-census [EXPIRED=1]
 #   make reload-svc      NS=t<задача>-<коротко> SVC=<служба> [REF=<коммит>] [BRANCH=<ветка>]
+#
+# KANAME_BRANCH (stand-ns-up, stand-ns-run) — служба доступа ставится образом этой
+# ветки своего репозитория, а не пином профиля (kacho#3312): ревизия — голова ветки
+# на origin службы либо KANAME_REF=<sha40>; тег — `task-<ветка>-<8>` либо
+# `<ветка>-<8>`, какой опубликован, отвечает реестр; нет образа — отказ с тегом и
+# командой сборки (`gh workflow run docker-build.yml --ref <ветка>` в репозитории
+# службы), отката на пин нет; провенанс сверяет ссылку и ревизию образа с головой
+# ветки. Без KANAME_BRANCH — служба по пину, как прежде.
 #
 # BRANCH (stand-ns-up, stand-ns-run, reload-svc) — ветка, сборкой которой
 # опубликованы образы REF; не задана — ветки-кандидатки выводятся из истории, и
@@ -1207,7 +1215,11 @@ EXPIRED ?=
 BRANCH ?=
 # Ветка публикации образов доходит до скрипта переменной окружения; пустая — не
 # задаётся вовсе (ветки тогда выводятся из истории).
-STAND_BRANCH_ENV = $(if $(BRANCH),STAND_IMAGE_BRANCHES='$(subst ','\'',$(BRANCH))' ,)
+STAND_BRANCH_ENV = $(if $(BRANCH),STAND_IMAGE_BRANCHES='$(subst ','\'',$(BRANCH))' ,)$(STAND_KANAME_ENV)
+KANAME_BRANCH ?=
+KANAME_REF ?=
+# Ветка службы доступа — тем же путём, окружением; пустая не задаётся вовсе.
+STAND_KANAME_ENV = $(if $(KANAME_BRANCH),STAND_KANAME_BRANCH='$(subst ','\'',$(KANAME_BRANCH))' ,)$(if $(KANAME_REF),STAND_KANAME_REF='$(subst ','\'',$(KANAME_REF))' ,)
 stand-ns-up:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
 	@$(STAND_BRANCH_ENV)bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"

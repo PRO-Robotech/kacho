@@ -20,6 +20,10 @@
 #                                     каждого пода службы обязан сойтись с REF
 #   stand-ns.sh self-test             проба правил имени, срока и порта (кластера не требует)
 #
+#   STAND_KANAME_BRANCH=<ветка> [STAND_KANAME_REF=<sha40>] (up, run) — служба доступа
+#   ставится образом этой ветки, а не пином профиля (kacho#3312; раздел «ОБРАЗ
+#   ВЕТКИ СЛУЖБЫ ДОСТУПА» ниже)
+#
 # Зовут его цели `make -C deploy stand-ns-up | stand-ns-down | stand-ns-run | stand-ns-census`.
 #
 # ── ПОРЯДОК ПОДЪЁМА И СНЯТИЕ НА НЕУСПЕХЕ ──────────────────────────────────────
@@ -1120,6 +1124,135 @@ reachable() {
   esac
 }
 
+# ── ОБРАЗ ВЕТКИ СЛУЖБЫ ДОСТУПА ВМЕСТО ПИНА (kacho#3312, вслед kaname#916) ────
+#
+# Служба доступа — вынесенная часть: её образ собирает конвейер ЕЁ репозитория, и
+# стенд ставит его по пину профиля (`kaname.image` в values.yaml зонта). Прогон
+# ветки службы на внешнем кластере требует её образа, а пин его не называет.
+# Конвейер службы публикует образ ветки задачи под `task-<ветка>-<8 знаков
+# ревизии>`, посаженное (ствол, линия) — под `<ветка>-<8 знаков>`; косая черта
+# ветки — дефис (шаг `subject` docker-build.yml службы). STAND_KANAME_BRANCH
+# (make KANAME_BRANCH=…) ставит образ ветки вместо пина:
+#   1. ревизия — голова ветки на origin службы, либо STAND_KANAME_REF (sha40);
+#      origin выводится из go.mod (модуль, чьё последнее звено — имя образа);
+#   2. тег выводится из ветки и ревизии и спрашивается у реестра той же
+#      `reachable`, что и образы дерева (kacho#3260); нет образа — отказ с именем
+#      тега и командой сборки, без отката на пин;
+#   3. провенанс: ссылка контейнера — ссылка ветки, ревизия из файла образа —
+#      голова ветки (`stand-provenance.sh --pin --pin-revision`); иначе стенд не
+#      объявляется поднятым.
+# Без параметра — прежнее поведение: накладки нет, служба ставится по пину.
+KANAME_BRANCH="${STAND_KANAME_BRANCH:-}"
+KANAME_REF="${STAND_KANAME_REF:-}"
+KANAME_IMAGE_REF="" KANAME_IMAGE_NAME="" KANAME_SHA="" KANAME_TAG=""
+
+# kaname_tags ВЕТКА SHA40 — теги образа ветки по убыванию правдоподобия: форма
+# задачи, затем форма посаженного. Какой опубликован, отвечает реестр.
+kaname_tags() {
+  local branch="$1" sha="$2" slug
+  [ -n "$branch" ] || { warn "ветка службы доступа пуста — тег образа выводить не из чего"; return 2; }
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { warn "ревизия ветки «$sha» не sha40 — тег по восьми знакам вывести не из чего"; return 2; }
+  slug="${branch//\//-}"
+  printf 'task-%s-%s\n%s-%s\n' "$slug" "${sha:0:8}" "$slug" "${sha:0:8}"
+}
+
+# kaname_remote ИМЯ — origin службы: STAND_KANAME_REMOTE либо модуль go.mod,
+# чьё последнее звено — имя её образа (тот же модуль, что пинит дерево).
+kaname_remote() {
+  if [ -n "${STAND_KANAME_REMOTE:-}" ]; then printf '%s\n' "$STAND_KANAME_REMOTE"; return 0; fi
+  local mod
+  mod="$(awk -v n="$1" '{ p = ($1 == "require") ? $2 : $1 } p ~ ("/" n "$") { print p; exit }' "$REPO_ROOT/go.mod")"
+  [ -n "$mod" ] || { warn "модуля «…/$1» в go.mod нет — репозиторий службы не выведен (STAND_KANAME_REMOTE)"; return 2; }
+  printf 'https://%s\n' "$mod"
+}
+
+# kaname_branch_head ORIGIN ВЕТКА — голова ветки на origin службы: 0 — напечатана,
+# 1 — ветки нет, 2 — origin не ответил. Спрашивается ровно refs/heads/<ветка>:
+# образец подмешал бы тёзку-приставку.
+kaname_branch_head() {
+  local remote="$1" branch="$2" out
+  out="$(git ls-remote --heads "$remote" "refs/heads/$branch" 2>&1)" || {
+    warn "origin службы не ответил о ветке «$branch»: $(head -1 <<<"$out")"; return 2; }
+  out="$(awk -v r="refs/heads/$branch" '$2 == r { print $1 }' <<<"$out")"
+  [ -n "$out" ] || { warn "ветки «$branch» на origin службы нет"; return 1; }
+  printf '%s\n' "$out"
+}
+
+# kaname_pick_tag РЕПОЗИТОРИЙ ВЕТКА SHA40 СЛАГ — первый тег kaname_tags, лежащий в
+# реестре, в KANAME_TAG (зовётся без подоболочки). 0 — найден; 1 — ни одного:
+# названы спрошенные теги и команда сборки; 2 — реестр не ответил либо тег не выведен.
+kaname_pick_tag() {
+  local repo="$1" branch="$2" sha="$3" slug="$4" tags tag rc tried=""
+  KANAME_TAG=""
+  tags="$(kaname_tags "$branch" "$sha")" || return 2
+  while IFS= read -r tag; do
+    reachable "$repo" "$tag"; rc=$?
+    case "$rc" in
+      0) KANAME_TAG="$tag"; return 0 ;;
+      1) tried="$tried $repo:$tag" ;;
+      *) warn "реестр не ответил о $repo:$tag — «не ответил» не равно «образа нет»"; return 2 ;;
+    esac
+  done <<<"$tags"
+  warn "образа ветки «$branch» службы доступа (ревизия $sha) в реестре НЕТ — спрошено:$tried"
+  warn "собрать тем же способом, что конвейер службы, — ручным запуском сборки на ветке, чья голова $sha:"
+  warn "  gh workflow run docker-build.yml -R $slug --ref $branch"
+  warn "пин профиля вместо ветки НЕ ставится: стенд назывался бы стендом ветки, а исполнял бы пин"
+  return 1
+}
+
+# kaname_repository ИМЯ СЛОЙ… — репозиторий образа службы после сложения слоёв
+# цепочки: тег ветки ставится в тот же репозиторий, что и пин.
+kaname_repository() {
+  python3 - "$@" <<'PY'
+import sys, yaml
+def merge(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        out = dict(a)
+        for k, v in b.items():
+            out[k] = merge(a.get(k), v)
+        return out
+    return b
+name, d = sys.argv[1], {}
+for f in sys.argv[2:]:
+    d = merge(d, yaml.safe_load(open(f)) or {})
+repo = (((d.get(name) or {}).get("image") or {}).get("repository")) or ""
+if not repo:
+    sys.exit("%s.image.repository в слоях цепочки не объявлен — тег ветки ставить некуда" % name)
+print(repo)
+PY
+}
+
+# kaname_overlay ВЫВОД СЛОЙ… — накладка «образ ветки службы вместо пина». Без
+# STAND_KANAME_BRANCH — ничего не пишет, код 0 (служба по пину). Итог — в
+# KANAME_IMAGE_REF, KANAME_IMAGE_NAME, KANAME_SHA (зовётся без подоболочки).
+# Коды: 0 — накладка написана либо не нужна; 1 — ветки либо образа нет; 2 — не выполнилось.
+kaname_overlay() {
+  local dst="$1"; shift
+  local img remote slug sha repo rc
+  KANAME_IMAGE_REF="" KANAME_IMAGE_NAME="" KANAME_SHA=""
+  if [ -z "$KANAME_BRANCH" ]; then
+    [ -z "$KANAME_REF" ] || { warn "STAND_KANAME_REF задан без STAND_KANAME_BRANCH — тег образа без ветки не выводится"; return 2; }
+    return 0
+  fi
+  # shellcheck source=deploy/scripts/lib/product-names.sh
+  . "$HERE/lib/product-names.sh"
+  img="$(product_image_name iam)" || { warn "имя образа службы доступа не прочитано (выше)"; return 2; }
+  remote="$(kaname_remote "$img")" || return 2
+  slug="$(sed -E 's#^(git@[^:]+:|[a-z]+://([^@/]+@)?[^/]+/)##; s#\.git$##' <<<"$remote")"
+  if [ -n "$KANAME_REF" ]; then
+    [[ "$KANAME_REF" =~ ^[0-9a-f]{40}$ ]] || { warn "STAND_KANAME_REF «$KANAME_REF» не sha40"; return 2; }
+    sha="$KANAME_REF"
+  else
+    sha="$(kaname_branch_head "$remote" "$KANAME_BRANCH")" || return $?
+  fi
+  repo="$(kaname_repository "$img" "$@")" || return 2
+  kaname_pick_tag "$repo" "$KANAME_BRANCH" "$sha" "$slug"; rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+  printf '%s:\n  image:\n    repository: %s\n    tag: %s\n    digest: ""\n' "$img" "$repo" "$KANAME_TAG" >"$dst" || return 2
+  KANAME_IMAGE_NAME="$img" KANAME_SHA="$sha" KANAME_IMAGE_REF="$repo:$KANAME_TAG"
+  log "служба $img — образ ветки $KANAME_BRANCH (ревизия $sha): $KANAME_IMAGE_REF найден в реестре; пин профиля не ставится"
+}
+
 # ref_guard SHA — образы ревизии SHA вправе исполнять чарт рабочей копии, только
 # если между ними не менялся ни один ВХОД СБОРКИ ОБРАЗОВ: иначе стенд назывался бы
 # стендом этой копии, а исполнял бы другой код. Что вход, а что нет, выводится из
@@ -1205,6 +1338,13 @@ cmd_up() {
   stand_overlay "$ns" "$cans" "$persist" "$port" "$issuer" >"$work/stand.yaml" ||
     die "слой стенда не выведен (выше)" 2
   images_overlay "$sha" "$work/images.yaml" "${layers[@]}" || die "накладка образов ревизии $sha не выведена" 2
+  local krc=0
+  kaname_overlay "$work/kaname.yaml" "${layers[@]}" || krc=$?
+  case "$krc" in
+    0) ;;
+    1) die "образа ветки «$KANAME_BRANCH» службы доступа нет (выше) — стенд на пине вместо ветки не поднимается" 2 ;;
+    *) die "образ ветки «$KANAME_BRANCH» службы доступа не выбран (код $krc, выше) — «не выбран» не равно «нет»" 2 ;;
+  esac
 
   expires="$(date -u -d "+${TTL_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
   ns_objects "$ns" "$task" "$expires" "$stack" "$sha" "$cans" "$dnsns" "$dnssel" >"$work/ns.yaml"
@@ -1213,6 +1353,7 @@ cmd_up() {
 
   bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2
   local extra_base=(-f "$work/images.yaml" -f "$work/stand.yaml")
+  [ -z "$KANAME_IMAGE_REF" ] || extra_base+=(-f "$work/kaname.yaml")
   # shellcheck disable=SC2206 # цепочка — слова `-f <файл>`, разбор по словам и нужен
   local chain_args=($chain)
   # Предрендер ДО записи: отказ переноса и заявка на том без класса видны раньше,
@@ -1284,14 +1425,17 @@ $claims" 2
   fi
   NS="$ns" POSTURE_SKIP="${POSTURE_SKIP:-}" POSTURE_PROFILE=production \
     bg tee_to "$work/posture.log" bash "$HERE/assert-production-posture.sh" || die "боевая посадка стенда не доказана (журнал $work/posture.log)" 1
-  local prc=0
-  bg tee_to "$work/provenance.log" bash "$HERE/stand-provenance.sh" --namespace "$ns" --expect "$sha" || prc=$?
-  [ "$prc" -eq 0 ] || die "провенанс стенда не сходится с ревизией $sha (код $prc, журнал $work/provenance.log)" 1
+  local prc=0 pv=(--namespace "$ns" --expect "$sha")
+  # Образ ветки службы доступа сверяется с ЕЁ ссылкой и головой ветки, а не с пином.
+  [ -z "$KANAME_IMAGE_REF" ] || pv+=(--pin "$KANAME_IMAGE_NAME=$KANAME_IMAGE_REF" --pin-revision "$KANAME_IMAGE_NAME=$KANAME_SHA")
+  bg tee_to "$work/provenance.log" bash "$HERE/stand-provenance.sh" "${pv[@]}" || prc=$?
+  [ "$prc" -eq 0 ] || die "провенанс стенда не сходится с ревизией $sha${KANAME_IMAGE_REF:+ и веткой службы $KANAME_BRANCH@$KANAME_SHA} (код $prc, журнал $work/provenance.log)" 1
 
   UP_DONE=1
   trap - INT TERM
   trap ctx_cleanup EXIT
   log "стенд $ns ПОДНЯТ за $(( $(date +%s) - start )) с: цепочка $stack, образы $sha, срок $expires"
+  [ -z "$KANAME_IMAGE_REF" ] || log "служба $KANAME_IMAGE_NAME — образ ветки $KANAME_BRANCH: $KANAME_IMAGE_REF, ревизия $KANAME_SHA сверена провенансом"
   log "консоль https://$(ns_host "$ns"):$port · край https://127.0.0.1:$((port + 1)) · приёмник http://127.0.0.1:$((port + 2))"
   log "проброс и окружение проб:  bash deploy/scripts/stand-ns.sh forward $ns"
 }
