@@ -1940,32 +1940,83 @@ def _ends_with_literal_slash(path: str) -> bool:
     return bool(segs) and segs[-1] == ""
 
 
-# Формы ЗАПИСИ адреса запроса в предварительном скрипте. Чтение (`.toString()`,
-# `.path` справа от присваивания) записью не является; всё, что адрес меняет или
-# уводит в псевдоним, — является. Сомнение решается в строгую сторону: лишняя
-# находка тут стоит строгого варианта, пропущенная — ослабленной проверки.
-_URL_WRITE_FORMS = (
-    re.compile(r"pm\.request\.url\s*=(?!=)"),
-    re.compile(r"pm\.request\.url(?:\.[A-Za-z_$][\w$]*)+\s*=(?!=)"),
-    re.compile(r"pm\.request\.url\.(?:update|addQueryParams|removeQueryParams|"
-               r"addVariable|getRemote)\s*\("),
-    re.compile(r"pm\.request\.url(?:\.path|\.query|\.host)\.\w+\s*\("),
-    re.compile(r"=\s*pm\.request\.url\s*[;,)]"),
-    re.compile(r"pm\.request\.update\s*\([^)]*\burl\b"),
-    re.compile(r"pm\.request\s*=(?!=)"),
-)
+# РАЗРЕШАЮЩИЙ ПЕРЕЧЕНЬ, А НЕ ЗАПРЕЩАЮЩИЙ (приёмка #3324, второй круг). Перечень форм
+# ЗАПИСИ адреса пропускал любую форму, которой в нём не было (`pm.request.url +=`,
+# `pm.request['url'] =`, псевдоним запроса, `Object.assign`, деструктуризация, цепочка
+# через перевод строки — 8 из 8), и незахваченная переменная снова уходила в повтор.
+# Поэтому здесь перечислено ДОПУСТИМОЕ, а всё прочее — строгий вариант. Сомнение
+# решается в строгую сторону: лишний строгий вариант стоит одного отказа на
+# неудачном захвате, пропущенный — ослабленной проверки.
+#
+# Допустимо (после изъятия формы стража адреса плоскости данных):
+#   * обращения к `pm` только через точку и только к членам, кроме `request`, —
+#     кроме трёх форм ниже; `pm` как значение (псевдоним, деструктуризация,
+#     аргумент), `pm[...]`, `this`, `globalThis`, `eval`, `Function` — строгий;
+#   * `pm.request.headers.<метод>(…)` — заголовки адреса не меняют;
+#   * `pm.request.url.toString()` — чтение в строку (страж подстановки набора);
+#   * `pm.request.update({body: …})` — аргумент начинается с `body:` и не несёт
+#     ни `url`, ни `method`, ни вычисляемого ключа, ни развёртки.
+_CFG_URL_DECL = re.compile(
+    r"const __cfgUrl = pm\.environment\.get\(('[^'\\]*')\) \|\| "
+    r"pm\.variables\.get\(\1\) \|\| '';")
+_PM_ESCAPES = re.compile(r"\b(?:this|globalThis|eval|Function)\b|\bpm\s*\[|[.\w$]\s*\.\s*pm\b")
+
+
+def _balanced_args(text: str) -> Optional[str]:
+    """Текст от открывающей скобки до парной ей закрывающей; None — пары нет."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[:i + 1]
+    return None
+
+
+def _pm_request_use_is_allowed(after: str) -> bool:
+    """`after` — текст сразу за `pm.request`; допустима ли эта форма обращения."""
+    if re.match(r"\s*\.\s*headers\s*\.\s*[A-Za-z_$][\w$]*\s*\(", after):
+        return True
+    if re.match(r"\s*\.\s*url\s*\.\s*toString\s*\(\s*\)", after):
+        return True
+    upd = re.match(r"\s*\.\s*update\s*(?=\()", after)
+    if upd:
+        arg = _balanced_args(after[upd.end():])
+        return bool(arg and re.match(r"\(\s*\{\s*body\s*:", arg)
+                    and not re.search(r"\burl\b|\bmethod\b|\[|\.\.\.", arg))
+    return False
 
 
 def _address_is_step_template(path: str, pre_lines) -> bool:
     """Адрес шага на исполнении — его собственный шаблон: предварительный скрипт
-    не пишет `pm.request.url` ничем, кроме подстановки ЭТОГО шаблона на базовый
-    адрес (`pm.request.url = <имя> + pm.variables.replaceIn('<шаблон>');` —
-    форма стража адреса плоскости данных). Любая другая запись — адрес чужой."""
-    code = "\n".join(pre_lines or ())
-    lawful = re.compile(r"pm\.request\.url\s*=\s*[A-Za-z_$][\w$]*\s*\+\s*"
-                        r"pm\.variables\.replaceIn\(" + re.escape(js_str(path or "")) + r"\)\s*;")
-    rest = lawful.sub("", code)
-    return not any(f.search(rest) for f in _URL_WRITE_FORMS)
+    не трогает `pm.request` ничем, кроме форм разрешающего перечня выше, а адрес
+    пишет только формой стража плоскости данных
+    (`pm.request.url = __cfgUrl + pm.variables.replaceIn('<этот шаблон>');`)."""
+    rest = "\n".join(pre_lines or ())
+    lawful = re.compile(r"pm\.request\.url = __cfgUrl \+ pm\.variables\.replaceIn\("
+                        + re.escape(js_str(path or "")) + r"\);")
+    if lawful.search(rest):
+        # Подстановка законна, лишь пока `__cfgUrl` — базовый адрес из окружения,
+        # объявленный ровно этой формой и нигде не переписанный.
+        if len(lawful.findall(rest)) != 1 or len(_CFG_URL_DECL.findall(rest)) != 1:
+            return False
+        rest = _CFG_URL_DECL.sub("", lawful.sub("", rest))
+        if re.search(r"__cfgUrl\s*(?:[-+*/|&]?=(?!=)|\+\+|--)", rest):
+            return False
+    if _PM_ESCAPES.search(rest):
+        return False
+    for m in re.finditer(r"\bpm\b", rest):
+        tail = rest[m.end():]
+        member = re.match(r"\s*\.\s*([A-Za-z_$][\w$]*)", tail)
+        if not member:
+            return False
+        if member.group(1) != "request":
+            continue
+        if not _pm_request_use_is_allowed(tail[member.end():]):
+            return False
+    return True
 
 
 # Исполняемая строка мягкого варианта: по ней, а не по комментарию-метке, перепись

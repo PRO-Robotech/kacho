@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -118,10 +119,15 @@ def _dp(path: str) -> List[str]:
     """Страж адреса плоскости данных — та же форма, что у набора registry:
     подставляет СВОЙ шаблон на базовый адрес."""
     return [
-        "const __cfgUrl = pm.environment.get('registryDataPlaneBaseUrl') || '';",
+        "const __cfgUrl = pm.environment.get('registryDataPlaneBaseUrl')"
+        " || pm.variables.get('registryDataPlaneBaseUrl') || '';",
         "if (__cfgUrl) {",
         "  pm.request.url = __cfgUrl + pm.variables.replaceIn(" + json.dumps(path).replace('"', "'") + ");",
+        "} else {",
+        "  pm.test('harness config', () => { pm.expect.fail('нет адреса'); });",
+        "  pm.execution.skipRequest();",
         "}",
+        "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer t'});",
     ]
 
 
@@ -134,11 +140,19 @@ _PUT_REWRITE = _dp(TRAILING) + [
     "}",
 ]
 
+# Дописывание к адресу — форма записи, которой не было в запрещающем перечне
+# (приёмка #3324, второй круг): на исполнении 81 запрос без отказа стража.
+_PUT_APPEND = _dp(TRAILING) + [
+    "const _l = pm.environment.get('_rpUploadLoc') || '';",
+    "if (_l) { pm.request.url += _l.slice(1); }",
+]
+
 # Шаги: имя → (шаблон адреса, предварительный скрипт).
 STEPS = {
     "trailing": (TRAILING, []),
     "trailing-dp": (TRAILING, _dp(TRAILING)),
     "put-rewrite": (TRAILING, _PUT_REWRITE),
+    "put-append": (TRAILING, _PUT_APPEND),
     "strict": (STRICT, []),
     # Косая — в значении ЗАПРОСА, а не в конце пути: адрес хвостовой косой не несёт.
     "query-slash": ("/a/{{id}}?next=x/", []),
@@ -157,6 +171,8 @@ CASES = [
     ("хвостовая косая адреса, пустой предпоследний сегмент", "trailing",
      ["v2", "reg-1", "app", "blobs", "", ""], 403, True, False),
     ("заливка по Location, Location не захвачен, 404", "put-rewrite",
+     ["v2", "reg-1", "app", "blobs", "uploads", ""], 404, True, False),
+    ("дописывание к адресу, Location не захвачен, 404", "put-append",
      ["v2", "reg-1", "app", "blobs", "uploads", ""], 404, True, False),
     ("заливка по Location, Location захвачен, 201", "put-rewrite",
      ["v2", "reg-1", "app", "blobs", "uploads", "u-123"], 201, False, False),
@@ -254,6 +270,27 @@ def test_mutant_lenient_for_rewritten_address_is_red(monkeypatch):
     assert any(p.startswith("заливка по Location, Location не захвачен") for p in problems), problems
 
 
+def test_mutant_deny_list_of_write_forms_is_red(monkeypatch):
+    # Прежний ЗАПРЕЩАЮЩИЙ перечень форм записи: всё, чего в нём нет, проходило в
+    # мягкий вариант. Мутант возвращает его — дописывание к адресу обязано краснеть.
+    gs = _load_gen_shared()
+    deny = [re.compile(r) for r in (
+        r"pm\.request\.url\s*=(?!=)", r"pm\.request\.url(?:\.[A-Za-z_$][\w$]*)+\s*=(?!=)",
+        r"pm\.request\.url\.(?:update|addQueryParams|removeQueryParams|addVariable)\s*\(",
+        r"=\s*pm\.request\.url\s*[;,)]", r"pm\.request\.update\s*\([^)]*\burl\b",
+        r"pm\.request\s*=(?!=)")]
+
+    def deny_list(path, pre):
+        lawful = re.compile(r"pm\.request\.url\s*=\s*[A-Za-z_$][\w$]*\s*\+\s*pm\.variables\.replaceIn\("
+                            + re.escape(gs.js_str(path)) + r"\)\s*;")
+        rest = lawful.sub("", "\n".join(pre))
+        return not any(f.search(rest) for f in deny)
+
+    monkeypatch.setattr(gs, "_address_is_step_template", deny_list)
+    problems = judge(gs)
+    assert any(p.startswith("дописывание к адресу") for p in problems), problems
+
+
 def test_mutant_own_template_assignment_counted_as_rewrite_is_red(monkeypatch):
     # Законный близнец: подстановка СВОЕГО шаблона на базовый адрес — не перезапись.
     gs = _load_gen_shared()
@@ -283,7 +320,26 @@ _FORMS = [
     ("пустой скрипт", [], True),
     ("подстановка своего шаблона", _dp(_PATH), True),
     ("чтение адреса", ["try { _u = pm.request.url.toString(); } catch (e) {}"], True),
+    ("заголовки и тело", ["pm.request.headers.remove('Authorization');",
+                          "pm.request.update({body: {mode: 'raw', raw: _c}});"], True),
     ("подстановка ЧУЖОГО шаблона", _dp("/v2/{{other}}/blobs/uploads/"), False),
+    ("подстановка своего шаблона чужим именем",
+     ["pm.request.url = _l + pm.variables.replaceIn('" + TRAILING + "');"], False),
+    ("базовый адрес переписан после объявления", _dp(_PATH) + ["__cfgUrl = _l;"], False),
+    ("дописывание +=", ["pm.request.url += _l;"], False),
+    ("скобки pm.request['url'] =", ["pm.request['url'] = _b + _l;"], False),
+    ("скобки pm['request']", ["pm['request'].url = _b + _l;"], False),
+    ("псевдоним pm.request", ["const _r = pm.request;", "_r.url = _b + _l;"], False),
+    ("псевдоним pm", ["const _p = pm;", "_p.request.url = _b + _l;"], False),
+    ("индекс сегмента", ["pm.request.url.path[5] = _l;"], False),
+    ("Object.assign", ["Object.assign(pm.request, {url: _b + _l});"], False),
+    ("деструктуризация", ["const {url} = pm.request;", "url.update(_b + _l);"], False),
+    ("цепочка через перевод строки", ["pm.request.url", "  .update(_b + _l);"], False),
+    ("псевдоним url через var", ["var _u = pm.request.url", "_u.update(_b + _l)"], False),
+    ("update с url", ["pm.request.update({body: {mode: 'raw'}, url: _b + _l});"], False),
+    ("update вычисляемым ключом", ["pm.request.update({body: {}, ['u' + 'rl']: _l});"], False),
+    ("this", ["this.pm.request.url = _l;"], False),
+    ("globalThis без имени pm", ["globalThis['p' + 'm'].request.url = _l;"], False),
     ("присваивание строкой", ["pm.request.url = _b + _l;"], False),
     ("присваивание полю", ["pm.request.url.path = ['v2', _l];"], False),
     ("метод записи", ["pm.request.url.update(_b + _l);"], False),
