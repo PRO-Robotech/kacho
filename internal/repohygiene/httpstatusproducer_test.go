@@ -171,13 +171,9 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	}
 	dials := dialledTransports(t, bodies)
 	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatalf("чтение %s: %v", f, err)
-		}
 		filesRead++
 		rel, _ := filepath.Rel(root, f)
-		got, c := judgeStatusAssertions(rel, string(b), producible, dials[rel])
+		got, c := judgeStatusAssertions(rel, bodies[rel], producible, dials[rel])
 		findings = append(findings, got...)
 		total.add(c)
 	}
