@@ -21,7 +21,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-import pytest
 import yaml
 
 _spec = importlib.util.spec_from_file_location(
@@ -1351,26 +1350,52 @@ def _mutant(old: str, new: str) -> ModuleType:
     return mod
 
 
-@pytest.mark.parametrize("mid,cond,old,new,probe,on_mutant", RULE_MUTANTS,
-                         ids=[m[0] for m in RULE_MUTANTS])
-def test_every_rule_condition_has_a_mutant_its_probe_kills(mid, cond, old, new, probe, on_mutant,
-                                                            monkeypatch) -> None:
+def _kill(mid: str, old: str, new: str, probe: str, on_mutant: str) -> None:
     """Проба строки зелена на решателе и падает на его мутанте: условие держит
-    именно она. Решатель — тот же для обеих половин, меняется одно условие."""
+    именно она. Решатель — тот же для обеих половин, меняется одно условие.
+
+    Мутант подставляется пробе на время её вызова и снимается в `finally`, так
+    что падение строки не оставляет мутанта соседним пробам."""
     me = sys.modules[__name__]
     getattr(me, probe)()
     mod = _mutant(old, new)
-    for name in ("decide", "render"):
-        monkeypatch.setattr(me, name, getattr(mod, name))
-    monkeypatch.setattr(me, "pr_verdict", mod)
-    with pytest.raises((AssertionError, TypeError)) as failed:
-        getattr(me, probe)()
+    saved = {name: getattr(me, name) for name in ("decide", "render", "pr_verdict")}
+    failed: BaseException | None = None
+    try:
+        me.decide, me.render, me.pr_verdict = mod.decide, mod.render, mod
+        try:
+            getattr(me, probe)()
+        except (AssertionError, TypeError) as exc:
+            failed = exc
+    finally:
+        for name, value in saved.items():
+            setattr(me, name, value)
+    assert failed is not None, f"{mid}: проба {probe} зелена на мутанте — условие не держит никто"
     # Упала не «как-нибудь», а предсказанным исходом: вердикт мутанта назван в
     # первой строке отказа пробы (`render`), падение без порядка — TypeError.
     if on_mutant == "TypeError":
-        assert failed.type is TypeError, (mid, failed.value)
+        assert isinstance(failed, TypeError), (mid, failed)
     else:
-        assert str(failed.value).startswith(f"вердикт: {on_mutant}"), (mid, failed.value)
+        assert str(failed).startswith(f"вердикт: {on_mutant}"), (mid, failed)
+
+
+def _mutant_probe(row: tuple[str, ...]):
+    mid, _, old, new, probe, on_mutant = row
+
+    def probe_fn() -> None:
+        _kill(mid, old, new, probe, on_mutant)
+
+    probe_fn.__name__ = f"test_every_rule_condition_has_a_mutant_its_probe_kills_{mid}"
+    probe_fn.__doc__ = f"{mid}: мутант условия гасится пробой {probe}."
+    return probe_fn
+
+
+# Строка таблицы — отдельная проба модуля: сбор по имени `test_*` видит каждую,
+# и выпавшая строка уменьшает счёт проб, а не прячется в цикле одной пробы.
+for _row in RULE_MUTANTS:
+    _fn = _mutant_probe(_row)
+    globals()[_fn.__name__] = _fn
+del _row, _fn
 
 
 def test_the_mutant_table_covers_every_condition_of_the_rule() -> None:
