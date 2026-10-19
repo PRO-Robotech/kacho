@@ -190,6 +190,112 @@ async function listWithControls(page: Page, path: string): Promise<void> {
   ).toBeVisible({ timeout: 45_000 });
 }
 
+/**
+ * Снимок страницы, ДОЖДАВШИЙСЯ того, что из него будет прочитано (kacho#3329).
+ *
+ * Класс дефекта: проба ждёт ОДНО (кнопку «Столбцы», первую строку свойств), а
+ * читает ДРУГОЕ (строки таблицы, все строки свойств, все ручки ряда) — один раз.
+ * На списке подсетей ожидаемое и читаемое рисуются разными проходами — «Столбцы»
+ * стоят, пока список ещё грузится, строки приходят ответом края, — и это уже
+ * стоило ложного красного (kacho#3329). У остальных мест чтение и ожидание
+ * сегодня, быть может, рисуются одним проходом, но проба не вправе зависеть от
+ * этого свойства консоли: однократное чтение видит то, что успело отрисоваться,
+ * и вердикт становится функцией скорости стенда.
+ *
+ * Здесь ожидание и чтение — ОДНО действие: опрашивается тот самый снимок, о
+ * котором потом утверждают, и возвращается снимок, прошедший условие, а не
+ * перечитанный после него. Условие — минимум, без которого утверждение пробы
+ * «истинно даром» (одна строка вместо двух, нет строки с копированием); оно же
+ * было предусловием пробы и до правки, поэтому вопрос пробы не сужен.
+ */
+async function readWhen<T>(
+  read: () => Promise<T>,
+  measure: (snapshot: T) => number,
+  atLeast: number,
+  message: string,
+): Promise<T> {
+  let snapshot!: T;
+  await expect
+    .poll(async () => measure((snapshot = await read())), { message, timeout: 45_000 })
+    .toBeGreaterThanOrEqual(atLeast);
+  return snapshot;
+}
+
+/** Строки таблицы, где в первой ячейке есть значение-ссылка и значок «Скопировать имя». */
+async function nameCells(page: Page) {
+  return page.evaluate(() => {
+    const rows: Array<{ valueRight: number; copyX: number; cellRight: number }> = [];
+    document.querySelectorAll("tbody tr").forEach((tr) => {
+      const td = tr.querySelector("td");
+      if (!td) return;
+      const copyBtn = Array.from(td.querySelectorAll("button")).find((b) =>
+        /Скопировать имя/.test(b.getAttribute("aria-label") ?? b.getAttribute("title") ?? ""),
+      );
+      const value = td.querySelector("a");
+      if (!copyBtn || !value) return;
+      rows.push({
+        valueRight: Math.round(value.getBoundingClientRect().right),
+        copyX: Math.round(copyBtn.getBoundingClientRect().x),
+        cellRight: Math.round(td.getBoundingClientRect().right),
+      });
+    });
+    return rows;
+  });
+}
+
+/**
+ * Ключ снимка `rowControls` и имя ручки для текста отказа. Прежде проверка шла
+ * по РУССКИМ именам (`controls["поиск"]`), которых в снимке нет: `undefined`
+ * проходил `not.toBeNull()`, и утверждение «ручка нашлась» не могло упасть.
+ */
+const CONTROL_NAMES: ReadonlyArray<[string, string]> = [
+  ["search", "поиск"],
+  ["columns", "Столбцы"],
+  ["create", "Создать"],
+];
+
+const presentCount = (controls: Record<string, Box | null>) =>
+  Object.values(controls).filter((box) => box !== null).length;
+
+/**
+ * Придерживает ответ списка `path`, пока проба не скажет «отпусти».
+ *
+ * Зачем. Строка инструментов рисуется ДО строк: пока список грузится, страница
+ * уже несёт «Столбцы», а таблица — ещё нет (`listViewState`: «loading» не
+ * «welcome»). Чтение, начатое сразу после появления «Столбцов», видит строки
+ * только тогда, когда ответ края успел обогнать пробу, — то есть по жребию
+ * (kacho#3329: на стенде t3305-ak-full проба прочла ноль строк, а снимок
+ * страницы через миг показал две).
+ *
+ * Отпускается ответ ПОСЛЕ первого чтения пробы, а не после появления
+ * «Столбцов»: отпущенный раньше ответ снова соревнуется с чтением (замерено на
+ * t3329-tb: из двух прогонов чтения без ожидания, отпустивших ответ сразу по
+ * «Столбцам», одно прочло обе строки, другое — «Ресурсов не найдено»). Так
+ * первое чтение ВСЕГДА видит список без строк: проба, читающая однократно,
+ * краснеет на каждом прогоне, а проба, ждущая условия, доходит до строк
+ * следующим опросом.
+ *
+ * Держит УСЛОВИЕ, а не срок: ответ уже получен от края целиком и отдаётся
+ * браузеру по команде пробы. Последующие чтения того же пути (перечитывание по
+ * событию потока) идут без задержки — обещание к тому моменту разрешено.
+ */
+async function holdListAnswer(page: Page, path: string): Promise<() => void> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const response = await route.fetch();
+      await released;
+      await route.fulfill({ response });
+    },
+  );
+  return release;
+}
+
 test("порядок ручек списка: сузить, показать, сделать", async ({ page }) => {
   // verifies #925
   //
@@ -203,9 +309,15 @@ test("порядок ручек списка: сузить, показать, с
   await networkWithSubnets(page, projectId);
   await listWithControls(page, `/projects/${projectId}/vpc/networks`);
 
-  const controls = await rowControls(page);
-  for (const name of ["поиск", "столбцы", "создать"]) {
-    expect(controls[name], `в строке инструментов не нашлось ручки «${name}» — сравнивать порядок не с чем`).not.toBeNull();
+  // verifies #3329
+  const controls = await readWhen(
+    () => rowControls(page),
+    presentCount,
+    3,
+    "в строке инструментов не собрались все три ручки (поиск · «Столбцы» · «Создать») — сравнивать порядок не с чем",
+  );
+  for (const [key, name] of CONTROL_NAMES) {
+    expect(controls[key], `в строке инструментов не нашлось ручки «${name}» — сравнивать порядок не с чем`).not.toBeNull();
   }
   const search = controls.search!;
   const columns = controls.columns!;
@@ -246,12 +358,14 @@ test("ручки списка — одной высоты и одного рад
   await networkWithSubnets(page, projectId);
   await listWithControls(page, `/projects/${projectId}/vpc/networks`);
 
-  const controls = await rowControls(page);
-  const presentControls = Object.entries(controls).filter(([, box]) => box !== null) as Array<[string, Box]>;
-  expect(
-    presentControls.length,
+  // verifies #3329
+  const controls = await readWhen(
+    () => rowControls(page),
+    presentCount,
+    2,
     "в строке инструментов меньше двух ручек — «одна высота у всех» на одной ручке истинно даром",
-  ).toBeGreaterThanOrEqual(2);
+  );
+  const presentControls = Object.entries(controls).filter(([, box]) => box !== null) as Array<[string, Box]>;
 
   const listing = presentControls.map(([name, box]) => `${name} (${box.what}) h=${box.h} r=${box.radius}`).join(", ");
 
@@ -326,9 +440,15 @@ test("вкладка карточки повторяет порядок руче
       "показывает приглашение и ручек не несёт: предмет пробы не создан",
   ).toBeVisible({ timeout: 45_000 });
 
-  const controls = await rowControls(page);
-  for (const name of ["поиск", "столбцы", "создать"]) {
-    expect(controls[name], `на вкладке карточки не нашлось ручки «${name}»`).not.toBeNull();
+  // verifies #3329
+  const controls = await readWhen(
+    () => rowControls(page),
+    presentCount,
+    3,
+    "на вкладке карточки не собрались все три ручки (поиск · «Столбцы» · «Создать») — сравнивать порядок не с чем",
+  );
+  for (const [key, name] of CONTROL_NAMES) {
+    expect(controls[key], `на вкладке карточки не нашлось ручки «${name}»`).not.toBeNull();
   }
   const { search, columns, create } = controls as Record<string, Box>;
 
@@ -370,9 +490,14 @@ test("ручки вкладки карточки — той же высоты, �
   await page.getByRole("tab", { name: /Подсети/ }).first().click();
   await expect(page.getByRole("button", { name: /Столбцы/ })).toBeVisible({ timeout: 45_000 });
 
-  const controls = await rowControls(page);
+  // verifies #3329
+  const controls = await readWhen(
+    () => rowControls(page),
+    presentCount,
+    2,
+    "на вкладке меньше двух ручек — утверждать об одной высоте не о чем",
+  );
   const presentControls = Object.entries(controls).filter(([, box]) => box !== null) as Array<[string, Box]>;
-  expect(presentControls.length, "на вкладке меньше двух ручек — утверждать об одной высоте не о чем").toBeGreaterThanOrEqual(2);
 
   const listing = presentControls.map(([name, box]) => `${name} (${box.what}) h=${box.h} r=${box.radius}`).join(", ");
   const heights = [...new Set(presentControls.map(([, box]) => box.h))];
@@ -402,13 +527,13 @@ test("значение строки свойств стоит слева, одн
 
   await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
-
-  const rows = await propertyRows(page);
-  expect(
-    rows.length,
+  // verifies #3329
+  const rows = await readWhen(
+    () => propertyRows(page),
+    (snapshot) => snapshot.length,
+    3,
     "на карточке меньше трёх строк свойств — «одной колонкой» на такой выборке истинно даром",
-  ).toBeGreaterThanOrEqual(3);
+  );
 
   const lefts = [...new Set(rows.map((row) => row.valueX))];
   expect(
@@ -442,15 +567,15 @@ test("копирование в строке свойств — столбцом
 
   await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
-
-  const rows = await propertyRows(page);
+  // verifies #3329
+  const rows = await readWhen(
+    () => propertyRows(page),
+    (snapshot) => snapshot.filter((row) => row.copyRight !== null).length,
+    2,
+    "строк с копированием меньше двух — «правый край общий» требует хотя бы двух: " +
+      "на одной строке любое расположение образует «столбец»",
+  );
   const withCopy = rows.filter((row) => row.copyRight !== null);
-  expect(
-    withCopy.length,
-    `строк с копированием ${withCopy.length} — «правый край общий» требует хотя бы двух: ` +
-      `на одной строке любое расположение образует «столбец»`,
-  ).toBeGreaterThanOrEqual(2);
 
   for (const row of withCopy) {
     expect(
@@ -505,32 +630,23 @@ test("одно значение, два места: в ячейке копиро
   const netId = await networkWithSubnets(page, projectId);
 
   // ── МЕСТО ПЕРВОЕ: ячейка таблицы. Копирование идёт ЗА значением.
+  // Строка инструментов появляется раньше строк — ответ списка придержан до
+  // первого чтения, чтобы этот порядок был не жребием, а условием прогона.
+  // verifies #3329
+  const releaseList = await holdListAnswer(page, "/vpc/v1/subnets");
   await listWithControls(page, `/projects/${projectId}/vpc/subnets`);
 
-  const cells = await page.evaluate(() => {
-    const rows: Array<{ valueRight: number; copyX: number; cellRight: number }> = [];
-    document.querySelectorAll("tbody tr").forEach((tr) => {
-      const td = tr.querySelector("td");
-      if (!td) return;
-      const copyBtn = Array.from(td.querySelectorAll("button")).find((b) =>
-        /Скопировать имя/.test(b.getAttribute("aria-label") ?? b.getAttribute("title") ?? ""),
-      );
-      const value = td.querySelector("a");
-      if (!copyBtn || !value) return;
-      rows.push({
-        valueRight: Math.round(value.getBoundingClientRect().right),
-        copyX: Math.round(copyBtn.getBoundingClientRect().x),
-        cellRight: Math.round(td.getBoundingClientRect().right),
-      });
-    });
-    return rows;
-  });
-
-  expect(
-    cells.length,
+  const cells = await readWhen(
+    async () => {
+      const snapshot = await nameCells(page);
+      releaseList();
+      return snapshot;
+    },
+    (snapshot) => snapshot.length,
+    2,
     "в колонке имени меньше двух строк со значком копирования — «идёт за значением» неотличимо " +
       "от «стоит столбцом»: на одной строке это одно и то же",
-  ).toBeGreaterThanOrEqual(2);
+  );
 
   for (const cell of cells) {
     expect(
@@ -550,17 +666,18 @@ test("одно значение, два места: в ячейке копиро
 
   // ── МЕСТО ВТОРОЕ: строка свойств. То же копирование — у правого края, ДАЛЕКО от значения.
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
-
-  const rows = await propertyRows(page);
-  const shortest = rows
-    .filter((row) => row.copyX !== null)
-    .find((row) => row.valueRight < row.columnRight - 60);
-  expect(
-    shortest,
+  // Предикат «короткой строки с копированием» — ОДИН для ожидания и для чтения:
+  // разойдись они, проба ждала бы одно, а утверждала о другом (kacho#3329).
+  const shortRowWithCopy = (row: Awaited<ReturnType<typeof propertyRows>>[number]) =>
+    row.copyX !== null && row.valueRight < row.columnRight - 60;
+  const rows = await readWhen(
+    () => propertyRows(page),
+    (snapshot) => snapshot.filter(shortRowWithCopy).length,
+    1,
     "среди строк свойств не нашлось ни одной, где значение заметно короче колонки: " +
       "на значении во всю ширину «у правого края» и «за значением» совпадают, и различить их нечем",
-  ).toBeDefined();
+  );
+  const shortest = rows.find(shortRowWithCopy);
 
   expect(
     shortest!.copyX! - shortest!.valueRight,
