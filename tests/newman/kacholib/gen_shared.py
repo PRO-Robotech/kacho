@@ -1751,7 +1751,7 @@ def retry_until_authorized(step, budget: int, interval_ms: int,
         "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
         # Добавка набора в ГОЛОВУ ожидания: проверка, которая обязана отработать
         # ДО того, как шаг начнёт жечь бюджет. Пусто у тех, кто её не заводил.
-        *(_RETRY_LANE_HEAD if lane_head else ()),
+        *(_retry_lane_head(step.path) if lane_head else ()),
         "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_authRetryCount', '0');",
         "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -1908,15 +1908,55 @@ def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=
 # шаг — их в дереве 2894, — и тринадцать строк объяснения на каждый дали бы
 # стотысячный прирост коллекций, ничего не сообщив прогону. В скрипт идёт то, что
 # читает разбирающий ПАДЕНИЕ; объяснение — тому, кто правит генератор.
-_RETRY_LANE_HEAD = (
+#
+# ХВОСТОВАЯ КОСАЯ АДРЕСА — НЕ НЕЗАХВАЧЕННАЯ ПЕРЕМЕННАЯ (kacho#3324). С kacho#3257
+# генератор отправляет хвостовую косую как есть — последним пустым сегментом
+# (`path_segments_as_sent`), и законный адрес `/v2/<repo>/blobs/uploads/` (открытие
+# загрузки Registry v2) страж, судивший ЛЮБОЙ пустой сегмент, принимал за пустую
+# переменную: шесть шагов `push-*-open` сборки #3309 получили отказ при ответе 202.
+# Во время исполнения два случая неразличимы — пустая переменная в конце пути даёт
+# тот же пустой последний сегмент, — различает их только ШАБЛОН адреса шага, и знает
+# его генератор. Поэтому вариант стража выбирается здесь, по адресу шага: у адреса,
+# который сам кончается косой, пустой ПОСЛЕДНИЙ сегмент законен, у прочих — отказ,
+# как прежде; пустой ВНУТРЕННИЙ сегмент и уцелевшая подстановка — отказ всегда.
+# У шагов без хвостовой косой голова побайтово прежняя. Обе стороны и мутанты
+# держит проба `tests/newman/scripts/retry_lane_head_test.py`.
+_RETRY_LANE_TRAILING_MARK = (
+    "// хвостовая косая — литерал адреса шага: пустой ПОСЛЕДНИЙ сегмент законен (kacho#3324)."
+)
+
+
+def _ends_with_literal_slash(path: str) -> bool:
+    """Адрес шага сам кончается косой — последний сегмент «как отправлен» пуст
+    литералом шаблона, а не пустой переменной. Сегменты — тем же производителем,
+    что сериализует путь (`path_segments_as_sent`); запрос отрезается, как у края."""
+    segs = path_segments_as_sent((path or "").split("?")[0])
+    return bool(segs) and segs[-1] == ""
+
+
+def _retry_lane_head(path: str) -> tuple:
+    """Голова полосы ожидания для адреса шага `path` (см. прозу выше)."""
+    if _ends_with_literal_slash(path):
+        some = ("const _rblank = _rpath.some(function (v, _ri) {",
+                "  if (v === '') { return _ri !== _rpath.length - 1; }")
+        mark = (_RETRY_LANE_TRAILING_MARK,)
+    else:
+        some = ("const _rblank = _rpath.some(function (v) {",
+                "  if (v === '') { return true; }")
+        mark = ()
+    return _RETRY_LANE_HEAD_TOP + mark + some + _RETRY_LANE_HEAD_TAIL
+
+
+_RETRY_LANE_HEAD_TOP = (
     "",
     "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
     "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
     "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
     "  return String(s && s.value !== undefined ? s.value : s);",
     "});",
-    "const _rblank = _rpath.some(function (v) {",
-    "  if (v === '') { return true; }",
+)
+
+_RETRY_LANE_HEAD_TAIL = (
     "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
     "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
     "});",
