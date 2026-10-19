@@ -1751,7 +1751,7 @@ def retry_until_authorized(step, budget: int, interval_ms: int,
         "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
         # Добавка набора в ГОЛОВУ ожидания: проверка, которая обязана отработать
         # ДО того, как шаг начнёт жечь бюджет. Пусто у тех, кто её не заводил.
-        *(_retry_lane_head(step.path) if lane_head else ()),
+        *(_retry_lane_head(step.path, getattr(step, "pre_script", ())) if lane_head else ()),
         "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_authRetryCount', '0');",
         "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -1919,6 +1919,12 @@ def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=
 # его генератор. Поэтому вариант стража выбирается здесь, по адресу шага: у адреса,
 # который сам кончается косой, пустой ПОСЛЕДНИЙ сегмент законен, у прочих — отказ,
 # как прежде; пустой ВНУТРЕННИЙ сегмент и уцелевшая подстановка — отказ всегда.
+# Мягкий вариант — ТОЛЬКО шагу, чей адрес на исполнении и есть шаблон: если
+# предварительный скрипт переписывает `pm.request.url` иначе, чем подстановкой
+# своего же шаблона (заливка блоба уходит по захваченному `Location`), пустой
+# последний сегмент значит «переписывать было нечем» — незахваченная переменная, и
+# такой шаг остаётся на строгом варианте (приёмка #3324: мягкий вариант у
+# `push-*-put` превращал один отказ в 81 холостой повтор).
 # У шагов без хвостовой косой голова побайтово прежняя. Обе стороны и мутанты
 # держит проба `tests/newman/scripts/retry_lane_head_test.py`.
 _RETRY_LANE_TRAILING_MARK = (
@@ -1934,15 +1940,55 @@ def _ends_with_literal_slash(path: str) -> bool:
     return bool(segs) and segs[-1] == ""
 
 
-def _retry_lane_head(path: str) -> tuple:
+# Формы ЗАПИСИ адреса запроса в предварительном скрипте. Чтение (`.toString()`,
+# `.path` справа от присваивания) записью не является; всё, что адрес меняет или
+# уводит в псевдоним, — является. Сомнение решается в строгую сторону: лишняя
+# находка тут стоит строгого варианта, пропущенная — ослабленной проверки.
+_URL_WRITE_FORMS = (
+    re.compile(r"pm\.request\.url\s*=(?!=)"),
+    re.compile(r"pm\.request\.url(?:\.[A-Za-z_$][\w$]*)+\s*=(?!=)"),
+    re.compile(r"pm\.request\.url\.(?:update|addQueryParams|removeQueryParams|"
+               r"addVariable|getRemote)\s*\("),
+    re.compile(r"pm\.request\.url(?:\.path|\.query|\.host)\.\w+\s*\("),
+    re.compile(r"=\s*pm\.request\.url\s*[;,)]"),
+    re.compile(r"pm\.request\.update\s*\([^)]*\burl\b"),
+    re.compile(r"pm\.request\s*=(?!=)"),
+)
+
+
+def _address_is_step_template(path: str, pre_lines) -> bool:
+    """Адрес шага на исполнении — его собственный шаблон: предварительный скрипт
+    не пишет `pm.request.url` ничем, кроме подстановки ЭТОГО шаблона на базовый
+    адрес (`pm.request.url = <имя> + pm.variables.replaceIn('<шаблон>');` —
+    форма стража адреса плоскости данных). Любая другая запись — адрес чужой."""
+    code = "\n".join(pre_lines or ())
+    lawful = re.compile(r"pm\.request\.url\s*=\s*[A-Za-z_$][\w$]*\s*\+\s*"
+                        r"pm\.variables\.replaceIn\(" + re.escape(js_str(path or "")) + r"\)\s*;")
+    rest = lawful.sub("", code)
+    return not any(f.search(rest) for f in _URL_WRITE_FORMS)
+
+
+# Исполняемая строка мягкого варианта: по ней, а не по комментарию-метке, перепись
+# коллекций судит, какой вариант шаг получил на деле.
+_RETRY_LANE_LENIENT_EMPTY = "  if (v === '') { return _ri !== _rpath.length - 1; }"
+_RETRY_LANE_STRICT_EMPTY = "  if (v === '') { return true; }"
+
+
+def _lenient_trailing_slash(path: str, pre_lines) -> bool:
+    """Мягкий вариант стража: адрес шага сам кончается косой И на исполнении
+    остаётся своим шаблоном."""
+    return _ends_with_literal_slash(path) and _address_is_step_template(path, pre_lines)
+
+
+def _retry_lane_head(path: str, pre_lines=()) -> tuple:
     """Голова полосы ожидания для адреса шага `path` (см. прозу выше)."""
-    if _ends_with_literal_slash(path):
+    if _lenient_trailing_slash(path, pre_lines):
         some = ("const _rblank = _rpath.some(function (v, _ri) {",
-                "  if (v === '') { return _ri !== _rpath.length - 1; }")
+                _RETRY_LANE_LENIENT_EMPTY)
         mark = (_RETRY_LANE_TRAILING_MARK,)
     else:
         some = ("const _rblank = _rpath.some(function (v) {",
-                "  if (v === '') { return true; }")
+                _RETRY_LANE_STRICT_EMPTY)
         mark = ()
     return _RETRY_LANE_HEAD_TOP + mark + some + _RETRY_LANE_HEAD_TAIL
 

@@ -13,8 +13,14 @@
 
 ИСХОДЫ, КОТОРЫЕ ПРОБА УТВЕРЖДАЕТ — обе стороны:
   * хвостовая косая АДРЕСА ШАГА — не отказ, и окно видимости прав на таком
-    адресе по-прежнему пережидается (403 → повтор);
-  * пустой ВНУТРЕННИЙ сегмент у адреса с хвостовой косой — отказ;
+    адресе по-прежнему пережидается (403 → повтор); так же — у шага, чей
+    предварительный скрипт лишь подставляет СВОЙ шаблон на базовый адрес;
+  * шаг, чей предварительный скрипт ПЕРЕПИСЫВАЕТ адрес на захваченное значение
+    (`push-*-put` — заливка по `Location`), со строгим вариантом: незахваченный
+    `Location` оставляет шаблон с косой, и это отказ, а не 81 холостой повтор
+    (приёмка #3324, check-verifier);
+  * пустой ВНУТРЕННИЙ сегмент у адреса с хвостовой косой — отказ, в том числе
+    ПРЕДПОСЛЕДНИЙ (мутант «пустой законен на двух последних местах»);
   * пустой ПОСЛЕДНИЙ сегмент у адреса БЕЗ хвостовой косой (переменная в конце
     пути пуста) — отказ: это ровно та форма, ради которой страж заведён;
   * неразрешённая подстановка (newman отдаёт её процентно-кодированной) — отказ;
@@ -65,6 +71,7 @@ class _Step:
     method: str
     path: str
     test_script: List[str] = field(default_factory=list)
+    pre_script: List[str] = field(default_factory=list)
 
 
 # Собственное утверждение шага: 202 — исход открытия загрузки. Предмет пробы —
@@ -106,19 +113,60 @@ process.stdout.write(JSON.stringify(out));
 TRAILING = "/v2/{{_rpRepoPath}}/blobs/uploads/"
 STRICT = "/registry/v1/registries/{{registryId}}"
 
-# (метка, шаблон адреса шага, сегменты в момент исполнения, код, ждём отказ стража, ждём повтор)
+
+def _dp(path: str) -> List[str]:
+    """Страж адреса плоскости данных — та же форма, что у набора registry:
+    подставляет СВОЙ шаблон на базовый адрес."""
+    return [
+        "const __cfgUrl = pm.environment.get('registryDataPlaneBaseUrl') || '';",
+        "if (__cfgUrl) {",
+        "  pm.request.url = __cfgUrl + pm.variables.replaceIn(" + json.dumps(path).replace('"', "'") + ");",
+        "}",
+    ]
+
+
+# Заливка блоба: адрес ПЕРЕПИСАН на захваченный `Location` — слепок `push-*-put`.
+_PUT_REWRITE = _dp(TRAILING) + [
+    "const _l = pm.environment.get('_rpUploadLoc') || '';",
+    "const _b = pm.environment.get('registryDataPlaneBaseUrl') || '';",
+    "if (_b && _l) {",
+    "  pm.request.url = _b + _l + (_l.indexOf('?') >= 0 ? '&' : '?') + 'digest=x';",
+    "}",
+]
+
+# Шаги: имя → (шаблон адреса, предварительный скрипт).
+STEPS = {
+    "trailing": (TRAILING, []),
+    "trailing-dp": (TRAILING, _dp(TRAILING)),
+    "put-rewrite": (TRAILING, _PUT_REWRITE),
+    "strict": (STRICT, []),
+    # Косая — в значении ЗАПРОСА, а не в конце пути: адрес хвостовой косой не несёт.
+    "query-slash": ("/a/{{id}}?next=x/", []),
+}
+
+# (метка, шаг, сегменты в момент исполнения, код, ждём отказ стража, ждём повтор)
 CASES = [
-    ("хвостовая косая адреса, 202", TRAILING,
+    ("хвостовая косая адреса, 202", "trailing",
      ["v2", "reg-1", "app", "blobs", "uploads", ""], 202, False, False),
-    ("хвостовая косая адреса, 403 — окно видимости", TRAILING,
+    ("хвостовая косая адреса, 403 — окно видимости", "trailing",
      ["v2", "reg-1", "app", "blobs", "uploads", ""], 403, False, True),
-    ("хвостовая косая адреса, пустой внутренний сегмент", TRAILING,
+    ("открытие загрузки за стражем адреса, 202", "trailing-dp",
+     ["v2", "reg-1", "app", "blobs", "uploads", ""], 202, False, False),
+    ("хвостовая косая адреса, пустой внутренний сегмент", "trailing",
      ["v2", "", "blobs", "uploads", ""], 403, True, False),
-    ("адрес без хвостовой косой, пустая последняя переменная", STRICT,
+    ("хвостовая косая адреса, пустой предпоследний сегмент", "trailing",
+     ["v2", "reg-1", "app", "blobs", "", ""], 403, True, False),
+    ("заливка по Location, Location не захвачен, 404", "put-rewrite",
+     ["v2", "reg-1", "app", "blobs", "uploads", ""], 404, True, False),
+    ("заливка по Location, Location захвачен, 201", "put-rewrite",
+     ["v2", "reg-1", "app", "blobs", "uploads", "u-123"], 201, False, False),
+    ("косая в запросе, пустая переменная перед запросом", "query-slash",
+     ["a", "?next=x", ""], 403, True, False),
+    ("адрес без хвостовой косой, пустая последняя переменная", "strict",
      ["registry", "v1", "registries", ""], 403, True, False),
-    ("неразрешённая подстановка", STRICT,
+    ("неразрешённая подстановка", "strict",
      ["registry", "v1", "registries", "%7B%7BregistryId%7D%7D"], 403, True, False),
-    ("разрешённый адрес, 403 — окно видимости", STRICT,
+    ("разрешённый адрес, 403 — окно видимости", "strict",
      ["registry", "v1", "registries", "regaaaaaaaaaaaaaaaaa"], 403, False, True),
 ]
 
@@ -131,8 +179,10 @@ def _node() -> str:
     return node
 
 
-def _script(gs, path: str, mutate=None) -> List[str]:
-    step = _Step(name="push-probe-open", method="POST", path=path, test_script=list(_OWN))
+def _script(gs, step_key: str, mutate=None) -> List[str]:
+    path, pre = STEPS[step_key]
+    step = _Step(name="push-probe-open", method="POST", path=path, test_script=list(_OWN),
+                 pre_script=list(pre))
     wrapped = gs.retry_until_authorized(step, budget=3, interval_ms=1, lane_head=True)
     lines = list(wrapped.test_script)
     return mutate(lines) if mutate else lines
@@ -141,11 +191,11 @@ def _script(gs, path: str, mutate=None) -> List[str]:
 def judge(gs, mutate=None) -> List[str]:
     """Находки по всем случаям; пустой список — голова держит обе стороны."""
     problems: List[str] = []
-    by_path = {}
-    for label, path, segs, code, want_guard, want_retry in CASES:
-        by_path.setdefault(path, []).append((label, segs, code, want_guard, want_retry))
-    for path, cases in by_path.items():
-        lines = _script(gs, path, mutate)
+    by_step = {}
+    for label, key, segs, code, want_guard, want_retry in CASES:
+        by_step.setdefault(key, []).append((label, segs, code, want_guard, want_retry))
+    for key, cases in by_step.items():
+        lines = _script(gs, key, mutate)
         name = "push-probe-open-rya"
         payload = {"name": name, "script": "\n".join(lines),
                    "cases": [{"segs": s, "code": c} for _, s, c, _, _ in cases]}
@@ -196,6 +246,61 @@ def test_mutant_trailing_slash_never_lawful_is_red(monkeypatch):
     assert any(p.startswith("хвостовая косая адреса, 202") for p in problems), problems
 
 
+def test_mutant_lenient_for_rewritten_address_is_red(monkeypatch):
+    # Приёмка #3324: мягкий вариант у шага, переписывающего адрес (`push-*-put`).
+    gs = _load_gen_shared()
+    monkeypatch.setattr(gs, "_address_is_step_template", lambda path, pre: True)
+    problems = judge(gs)
+    assert any(p.startswith("заливка по Location, Location не захвачен") for p in problems), problems
+
+
+def test_mutant_own_template_assignment_counted_as_rewrite_is_red(monkeypatch):
+    # Законный близнец: подстановка СВОЕГО шаблона на базовый адрес — не перезапись.
+    gs = _load_gen_shared()
+    monkeypatch.setattr(gs, "_address_is_step_template", lambda path, pre: not pre)
+    problems = judge(gs)
+    assert any(p.startswith("открытие загрузки за стражем адреса") for p in problems), problems
+
+
+def test_mutant_empty_lawful_at_two_last_places_is_red():
+    # Мутант X5 приёмки: пустой сегмент законен на ДВУХ последних местах.
+    gs = _load_gen_shared()
+    site = gs._RETRY_LANE_LENIENT_EMPTY
+
+    def widen(lines):
+        assert lines.count(site) <= 1
+        return [l.replace("_ri !== _rpath.length - 1", "_ri < _rpath.length - 2") if l == site else l
+                for l in lines]
+
+    problems = judge(gs, widen)
+    assert any(p.startswith("хвостовая косая адреса, пустой предпоследний") for p in problems), problems
+
+
+# Формы предварительного скрипта: запись адреса (кроме подстановки своего шаблона)
+# лишает шаг мягкого варианта; чтение — нет.
+_PATH = TRAILING
+_FORMS = [
+    ("пустой скрипт", [], True),
+    ("подстановка своего шаблона", _dp(_PATH), True),
+    ("чтение адреса", ["try { _u = pm.request.url.toString(); } catch (e) {}"], True),
+    ("подстановка ЧУЖОГО шаблона", _dp("/v2/{{other}}/blobs/uploads/"), False),
+    ("присваивание строкой", ["pm.request.url = _b + _l;"], False),
+    ("присваивание полю", ["pm.request.url.path = ['v2', _l];"], False),
+    ("метод записи", ["pm.request.url.update(_b + _l);"], False),
+    ("метод пути", ["pm.request.url.query.add({key: 'digest', value: _d});"], False),
+    ("псевдоним", ["const _u = pm.request.url;", "_u.path = [];"], False),
+    ("обновление запроса с адресом", ["pm.request.update({url: _b + _l});"], False),
+    ("подмена запроса", ["pm.request = new sdk.Request(_b + _l);"], False),
+]
+
+
+def test_address_rewrite_forms_both_sides():
+    gs = _load_gen_shared()
+    wrong = [f"{label}: {gs._address_is_step_template(_PATH, pre)}, ждали {want}"
+             for label, pre, want in _FORMS if gs._address_is_step_template(_PATH, pre) != want]
+    assert wrong == [], "\n".join(wrong)
+
+
 def test_mutant_trailing_slash_always_lawful_is_red(monkeypatch):
     # Перешироченная починка: пустой последний сегмент признан законным всегда —
     # и пустая переменная в конце пути снова уходит в повтор.
@@ -207,10 +312,11 @@ def test_mutant_trailing_slash_always_lawful_is_red(monkeypatch):
 
 def test_generated_collections_carry_the_head_of_their_own_address():
     """Коллекции порождены нынешним производителем: у каждого обёрнутого шага с
-    головой вариант стража совпадает с хвостом его адреса. Перепись печатается —
-    «ноль шагов с хвостовой косой» отличим от «ноль прочитанных шагов»."""
+    головой ИСПОЛНЯЕМАЯ строка стража (не метка-комментарий) — та, что следует
+    из адреса шага и его предварительного скрипта. Перепись печатается — «ноль
+    мягких шагов» отличим от «ноль прочитанных шагов»."""
     gs = _load_gen_shared()
-    lawful_line = gs._RETRY_LANE_TRAILING_MARK
+    lenient_line, strict_line = gs._RETRY_LANE_LENIENT_EMPTY, gs._RETRY_LANE_STRICT_EMPTY
     seen = trailing = 0
     problems: List[str] = []
     for coll in sorted(REPO.glob("services/*/tests/newman/collections/*.postman_collection.json")):
@@ -225,13 +331,19 @@ def test_generated_collections_carry_the_head_of_their_own_address():
                     if ev.get("listen") != "test" or not any("_rblank" in l for l in exec_):
                         continue
                     seen += 1
-                    segs = ((it.get("request") or {}).get("url") or {}).get("path") or []
-                    tail = bool(segs) and segs[-1] == ""
-                    trailing += tail
-                    if tail != (lawful_line in exec_):
-                        problems.append(f"{coll.relative_to(REPO)}: {it['name']}")
+                    url = (it.get("request") or {}).get("url") or {}
+                    host = (url.get("host") or [""])[0]
+                    path = (url.get("raw") or "")[len(host):]
+                    pre = next(((e.get("script") or {}).get("exec") or []
+                                for e in it.get("event", []) or [] if e.get("listen") == "prerequest"), [])
+                    want = gs._lenient_trailing_slash(path, pre)
+                    trailing += want
+                    got_lenient, got_strict = lenient_line in exec_, strict_line in exec_
+                    if (got_lenient, got_strict) != (want, not want):
+                        problems.append(f"{coll.relative_to(REPO)}: {it['name']} "
+                                        f"(ждали {'мягкий' if want else 'строгий'})")
         walk(json.loads(coll.read_text(encoding="utf-8")).get("item", []))
-    print(f"шагов с головой полосы ожидания: {seen}, из них с хвостовой косой адреса: {trailing}")
+    print(f"шагов с головой полосы ожидания: {seen}, из них с мягким вариантом: {trailing}")
     assert seen > 0, "ни одного шага с головой полосы ожидания — предпосылка пробы исчезла"
     assert problems == [], "голова не соответствует адресу шага (коллекции не перегенерированы?):\n" \
         + "\n".join(problems[:20])
