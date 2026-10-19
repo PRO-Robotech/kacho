@@ -116,3 +116,39 @@ func TestLentAddressIsBoundByTheCodeAndReleased(t *testing.T) {
 		t.Fatalf("после закрытия слушателя одолженный %s не занимается снова: %v", addr, err)
 	}
 }
+
+// bindWithoutReuse — соперник без SO_REUSEADDR: только привязка, без слушания.
+// Слушатель Go ставит SO_REUSEADDR всегда и потому одолженного адреса этим
+// способом не отличит; соперник без него отличает «порт удержан» от «порт
+// свободен».
+func bindWithoutReuse(t *testing.T, addr string) error {
+	t.Helper()
+	ta, err := net.ResolveTCPAddr("tcp4", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = syscall.Close(fd) }()
+	sa := &syscall.SockaddrInet4{Port: ta.Port}
+	copy(sa.Addr[:], ta.IP.To4())
+	return syscall.Bind(fd, sa)
+}
+
+// TestLentAddressIsHeldWhileLent — одолженный адрес держит сокет пробы: пока
+// удержание стоит, соперник без SO_REUSEADDR получает «адрес занят»; после
+// снятия — привязывается. Прежняя форма («открыл, прочитал, закрыл») отдала бы
+// порт сопернику сразу — первая ветка покраснела бы.
+func TestLentAddressIsHeldWhileLent(t *testing.T) {
+	addr, release := lend(t)
+	t.Cleanup(release)
+	if err := bindWithoutReuse(t, addr); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("пока адрес %s одолжен, соперник без SO_REUSEADDR обязан получить «адрес занят», получено %v", addr, err)
+	}
+	release()
+	if err := bindWithoutReuse(t, addr); err != nil {
+		t.Fatalf("после снятия удержания соперник обязан занять %s, получено %v", addr, err)
+	}
+}

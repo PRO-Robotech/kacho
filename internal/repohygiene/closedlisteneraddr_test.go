@@ -12,16 +12,32 @@ import (
 // мест «выбрал порт — закрыл — отдал» ноль. Обход, не прочитавший ни одного
 // файла или не увидевший ни одного слушателя, — «не выполнилось», а не зелёный.
 func TestNoProbeUsesTheAddressOfAClosedListener(t *testing.T) {
+	t.Parallel()
 	c, err := ClosedListenerAddrsInTree(repoRoot(t))
 	if err != nil {
 		t.Fatalf("обход дерева не выполнился: %v", err)
 	}
 	t.Log(c.String())
-	if c.Files == 0 || c.Listeners == 0 {
-		t.Fatalf("предпосылка обхода не выполнена — проверять нечего: %s", c.String())
+	for _, r := range c.Refusals() {
+		t.Error(r)
 	}
-	for _, f := range c.Findings {
-		t.Error(f.String())
+}
+
+// TestClosedListenerAddrGateRefusesWhatItCouldNotRead — перепись с неразобранным
+// файлом — отказ, а не зелёный; пустой обход — отказ; чистая перепись — молчание.
+func TestClosedListenerAddrGateRefusesWhatItCouldNotRead(t *testing.T) {
+	t.Parallel()
+	clean := ClosedListenerAddrCensus{Files: 3, Listeners: 2}
+	if r := clean.Refusals(); len(r) != 0 {
+		t.Fatalf("чистая перепись дала отказы: %v", r)
+	}
+	unparsed := ClosedListenerAddrCensus{Files: 3, Listeners: 2, Unparsed: []string{"a/b.go: 3:1: expected declaration"}}
+	if r := unparsed.Refusals(); len(r) != 1 || !strings.Contains(r[0], "a/b.go") {
+		t.Fatalf("неразобранный файл обязан дать отказ с координатой: %v", r)
+	}
+	empty := ClosedListenerAddrCensus{}
+	if r := empty.Refusals(); len(r) != 1 || !strings.Contains(r[0], "предпосылка") {
+		t.Fatalf("пустой обход обязан дать отказ предпосылки: %v", r)
 	}
 }
 
@@ -76,6 +92,129 @@ func freeAddr(cfg *tls.Config) string {
 	l.Close()
 	return a
 }`},
+	// ДЕФЕКТ: объявление var у слушателя и у носителя.
+	"var declarations": {want: 1, src: `package p
+import "net"
+func freeAddr() string {
+	var l, _ = net.Listen("tcp", "127.0.0.1:0")
+	var addr = l.Addr().String()
+	_ = l.Close()
+	return addr
+}`},
+	// БЛИЗНЕЦ: те же объявления var, закрытие отложено.
+	"var declarations deferred": {want: 0, src: `package p
+import "net"
+func serve(use func(string)) {
+	var l, _ = net.Listen("tcp", "127.0.0.1:0")
+	defer l.Close()
+	var addr = l.Addr().String()
+	use(addr)
+}`},
+	// ДЕФЕКТ: адрес уходит в поле структуры, структура живёт после закрытия.
+	"field assignment": {want: 1, src: `package p
+import "net"
+type backend struct{ addr string }
+func newBackend() *backend {
+	b := &backend{}
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	b.addr = lis.Addr().String()
+	_ = lis.Close()
+	return b
+}`},
+	// БЛИЗНЕЦ: поле заполнено, слушатель закрыт в t.Cleanup.
+	"field assignment cleanup": {want: 0, src: `package p
+import "net"
+type tb interface{ Cleanup(func()) }
+type backend struct{ addr string }
+func newBackend(t tb) *backend {
+	b := &backend{}
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	b.addr = lis.Addr().String()
+	t.Cleanup(func() { _ = lis.Close() })
+	return b
+}`},
+	// ДЕФЕКТ: адрес прочитан у слушателя ПОСЛЕ закрытия, без носителя.
+	"addr read after close": {want: 1, src: `package p
+import "net"
+func freeAddr() string {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	_ = l.Close()
+	return l.Addr().String()
+}`},
+	// БЛИЗНЕЦ: адрес прочитан до закрытия и после закрытия не нужен.
+	"addr read before close": {want: 0, src: `package p
+import "net"
+func once(use func(string)) {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	use(l.Addr().String())
+	_ = l.Close()
+}`},
+	// ДЕФЕКТ: носитель через промежуточное имя.
+	"carrier through an intermediate": {want: 1, src: `package p
+import "net"
+func freeAddr() string {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	a := l.Addr()
+	s := a.String()
+	_ = l.Close()
+	return s
+}`},
+	// БЛИЗНЕЦ: промежуточное имя, использование до закрытия.
+	"carrier through an intermediate before close": {want: 0, src: `package p
+import "net"
+func once(use func(string)) {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	a := l.Addr()
+	s := a.String()
+	use(s)
+	_ = l.Close()
+}`},
+	// ДЕФЕКТ: закрытие в ветке, которая НЕ завершается, — путь доходит до адреса.
+	"close in a branch that falls through": {want: 1, src: `package p
+import "net"
+func pick(ok bool) string {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	if !ok {
+		_ = l.Close()
+	}
+	return addr
+}`},
+	// БЛИЗНЕЦ: закрытие только в ветке ошибки, которая сразу уходит.
+	"close only in the error branch": {want: 0, src: `package p
+import "net"
+func serve(start func() error) string {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	if err := start(); err != nil {
+		_ = l.Close()
+		return ""
+	}
+	return addr
+}`},
+	// БЛИЗНЕЦ: закрытие в ветке ошибки, завершённой t.Fatal.
+	"close in a fatal branch": {want: 0, src: `package p
+import "net"
+type tb interface{ Fatal(...any) }
+func serve(t tb, start func() error) string {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	if err := start(); err != nil {
+		_ = l.Close()
+		t.Fatal(err)
+	}
+	return addr
+}`},
+	// БЛИЗНЕЦ: результат вызова с адресом в аргументе — не адрес.
+	"call result is not a carrier": {want: 0, src: `package p
+import "net"
+func probe(use func(string) error) error {
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	err := use(addr)
+	_ = l.Close()
+	return err
+}`},
 	// БЛИЗНЕЦ: закрытие отложено — слушатель служит пробе до конца.
 	"deferred close": {want: 0, src: `package p
 import "net"
@@ -123,8 +262,10 @@ func text() string { return "addr := l.Addr().String(); _ = l.Close(); return ad
 }
 
 func TestClosedListenerAddrGateInjections(t *testing.T) {
+	t.Parallel()
 	for name, c := range closedListenerSynth {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, found, err := ClosedListenerAddrsInSource(strings.ReplaceAll(name, " ", "_")+".go", c.src)
 			if err != nil {
 				t.Fatalf("синтетика не разобрана: %v", err)

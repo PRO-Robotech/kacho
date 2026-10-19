@@ -115,9 +115,19 @@ func (h *Held) release() {
 // tb.Cleanup.
 func Lend(tb testing.TB) string {
 	tb.Helper()
-	fd, addr := bindPrivate(tb, true)
-	tb.Cleanup(func() { _ = syscall.Close(fd) })
+	addr, release := lend(tb)
+	tb.Cleanup(release)
 	return addr
+}
+
+// lend — одолженный адрес и снятие удержания (идемпотентное): пробе пакета нужно
+// снять удержание раньше конца пробы, чтобы показать, что держал адрес именно
+// одолженный сокет.
+func lend(tb testing.TB) (string, func()) {
+	tb.Helper()
+	fd, addr := bindPrivate(tb, true)
+	var once sync.Once
+	return addr, func() { once.Do(func() { _ = syscall.Close(fd) }) }
 }
 
 // bindPrivate — сокет TCP, привязанный к своему адресу петли и порту, который
