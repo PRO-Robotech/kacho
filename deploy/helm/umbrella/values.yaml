@@ -121,11 +121,11 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    # Ревизия ветки службы 81fa3e12 — голова PRO-Robotech/kaname 746 с классами субъектов kaname#829 (kacho#3251);
-    # она содержит b20866a6 — вливание PRO-Robotech/kaname#835 (kacho#3238), сверху лишь приёмка SC-18.
+    # Ревизия ствола службы efac3adf — вливание PRO-Robotech/kaname#879 в main
+    # (вложенные правила ролей kaname#874, судья формы kaname#872; kacho#3251).
     # Ту же ревизию называет пин модуля службы в go.mod: поднимаются вместе, их
     # согласие держит deploy/outsourced_image_pin_agrees_with_module_pin_test.go.
-    tag: 746-81fa3e12
+    tag: main-efac3adf
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud

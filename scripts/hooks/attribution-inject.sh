@@ -127,7 +127,9 @@ real_trailer="Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.co
 kit() {
     mkdir -p "$1"
     local f
-    for f in commit-msg attribution-rule.sh prepush-attribution.sh pre-push install.sh; do
+    # prepush-added-files.sh — второй страж хука (#3286): без него хук отказывает
+    # всякой отправке, и пробы атрибуции судили бы не атрибуцию.
+    for f in commit-msg attribution-rule.sh prepush-attribution.sh prepush-added-files.sh pre-push install.sh; do
         [ -f "$here/$f" ] && cp "$here/$f" "$1/"
     done
     if [ "${2:-}" = blind ] && [ -f "$1/attribution-rule.sh" ]; then
