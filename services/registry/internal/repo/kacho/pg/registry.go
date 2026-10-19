@@ -398,9 +398,45 @@ func (r *RegistryRepo) RepositoryDeclared(ctx context.Context, registryID, repo 
 	return declared, nil
 }
 
-// RepositoryCounts — заготовка пробы kacho#3328 (до реализации).
+// RepositoryCounts возвращает число репозиториев каждого из registryIDs ОДНИМ запросом.
+// Репозиторий считается по тому же предикату существования, что RepositoryDeclared:
+// строка наложения ЛИБО строка регистрации; UNION сводит имя, присутствующее в обеих
+// таблицах, к одному. Оба поиска идут по первичным ключам (registry_id, …), поэтому
+// стоимость — число репозиториев запрошенных реестров, а не таблиц целиком. Реестра
+// без репозиториев в ответе нет (его число 0); пустой registryIDs → пустой ответ без
+// обращения к базе.
 func (r *RegistryRepo) RepositoryCounts(ctx context.Context, registryIDs []string) (map[string]int32, error) {
-	return map[string]int32{}, nil
+	if err := r.ready(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int32, len(registryIDs))
+	if len(registryIDs) == 0 {
+		return out, nil
+	}
+	q := fmt.Sprintf(`SELECT registry_id, count(*)::int4 FROM (
+		  SELECT registry_id, name AS repo FROM %s.repository_configs WHERE registry_id = ANY($1)
+		  UNION
+		  SELECT registry_id, repo FROM %s.registry_repository_registration WHERE registry_id = ANY($1)
+		) AS declared GROUP BY registry_id`, schema, schema)
+	rows, err := r.pool.Query(ctx, q, registryIDs)
+	if err != nil {
+		return nil, wrapPgErr(err, "Registry", "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id string
+			n  int32
+		)
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, wrapPgErr(err, "Registry", "")
+		}
+		out[id] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrapPgErr(err, "Registry", "")
+	}
+	return out, nil
 }
 
 // RegisterRepository эмитит register-intent (parent+owner tuple) нового repo в
